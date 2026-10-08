@@ -1,0 +1,41 @@
+internal/cli/root.go
+  s_7350c8b8a33662::t_f01b0d0efa59e1 99
+  s_7350c8b8a33662::t_e66c66e7eeed17 111
+  s_7350c8b8a33662::t_cb04fb7d2cd51e 1-39,41-98,100-110,112-160
+  s_7350c8b8a33662::t_6c50948130ebb7 40
+internal/cli/help.go
+  s_7350c8b8a33662::t_b280352d984d63 1-156
+go.mod
+  s_7350c8b8a33662::t_55ce43f5e9821d 3,9,12,21-22,26
+internal/cli/help_test.go
+  s_7350c8b8a33662::t_24e51da86bb6a4 1-86
+internal/cli/cmd_misc.go
+  s_7350c8b8a33662::t_0d05adc3331efc 1-12,23-63
+  s_7350c8b8a33662::t_ef230d06992b85 13-22
+internal/cli/output.go
+  s_7350c8b8a33662::t_8cca65d77f69d2 1-68
+cmd/lola/main.go
+  s_7350c8b8a33662::t_c8daeb317b5dd7 1-12
+internal/cli/cli_suite_test.go
+  s_7350c8b8a33662::t_0b474aa32e4108 1-36
+internal/cli/conventions_test.go
+  s_7350c8b8a33662::t_0145a605759924 1-70
+go.sum
+  s_7350c8b8a33662::t_6ab6f556e66cef 3,24-25,44-48,62,75-78,85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b776bda3ffc410d7bbc0dbcbcf8e52cea0e19668",
+  "prompts": {},
+  "sessions": {
+    "s_7350c8b8a33662": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27cf1736-4356-4afd-8072-f4e256412a5f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
