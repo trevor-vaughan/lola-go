@@ -1,0 +1,24 @@
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_e24d93cc65dbb9::t_49342c4fc8832f 15,45-47,79,198-199,248-249,276-277,318-335
+  s_e24d93cc65dbb9::t_49abf0babbc006 138,596
+  s_e24d93cc65dbb9::t_304c150d4f7e42 427,446-448,451,455,459-462,575-576,588,592-595,597-598,601-603,627-629,699,719,819-821,833-834
+  s_e24d93cc65dbb9::t_4b6187affd45c6 336
+docs/decisions.md
+  s_e24d93cc65dbb9::t_4984c7e182c57a 15,28-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf0d61c0326355bf13f80937b06d12e58f9ddda0",
+  "prompts": {},
+  "sessions": {
+    "s_e24d93cc65dbb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cdff5d55-210d-45a4-a889-779c9f9ad108",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
