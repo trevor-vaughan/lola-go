@@ -1,0 +1,20 @@
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_f47a8c68a4e66f::t_5f5d5b8458d5c4 75
+  s_f47a8c68a4e66f::t_7240fcc79f9d06 1-74,76-701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b4f91360d897ab936ad93501ce2e6c883636b88",
+  "prompts": {},
+  "sessions": {
+    "s_f47a8c68a4e66f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e03e3de2-f5c0-4a8b-90a1-f2ef450d5ffa",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
