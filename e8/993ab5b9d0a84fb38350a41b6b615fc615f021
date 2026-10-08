@@ -1,0 +1,115 @@
+.taskfiles/go.yml
+  s_e24d93cc65dbb9::t_b81161ef48c164 27
+cmd/lola/main.go
+  s_e24d93cc65dbb9::t_1472d8dd457da3 7
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_e24d93cc65dbb9::t_37a9797d69dd71 5
+go.mod
+  s_e24d93cc65dbb9::t_ecc77df7fe3582 1
+internal/cli/cli_suite_test.go
+  s_e24d93cc65dbb9::t_1663a4df7e6509 12
+internal/cli/cmd_core.go
+  s_e24d93cc65dbb9::t_29c9119f15b7f5 13-16
+internal/cli/cmd_store.go
+  s_e24d93cc65dbb9::t_716d0249a38177 15-19
+internal/cli/conventions_test.go
+  s_e24d93cc65dbb9::t_c800c0d7a2c41b 10-11
+internal/cli/core_test.go
+  s_e24d93cc65dbb9::t_354c7d369506f2 11
+internal/cli/guide.go
+  s_e24d93cc65dbb9::t_3f0da324d93395 9
+internal/cli/help_test.go
+  s_e24d93cc65dbb9::t_fb371b947f07ff 10
+internal/cli/human.go
+  s_e24d93cc65dbb9::t_759b26d97d2963 8-10
+internal/cli/output.go
+  s_e24d93cc65dbb9::t_456d7df7fc21eb 12
+internal/cli/prompt.go
+  s_e24d93cc65dbb9::t_7696d301e09674 10
+internal/cli/root.go
+  s_e24d93cc65dbb9::t_4b904b1a068492 14-17
+internal/cli/store_test.go
+  s_e24d93cc65dbb9::t_7d83d2e771cbd7 12
+internal/engine/cache.go
+  s_e24d93cc65dbb9::t_f6f24d9f0a619b 9-11
+internal/engine/cache_test.go
+  s_e24d93cc65dbb9::t_1667e417617454 11-14
+internal/engine/engine.go
+  s_e24d93cc65dbb9::t_9b00ab50431f20 20-28
+internal/engine/engine_test.go
+  s_e24d93cc65dbb9::t_51ccf1f3399bbc 12-20
+internal/engine/lola_internal_test.go
+  s_e24d93cc65dbb9::t_e0e61132186965 8
+internal/engine/ops.go
+  s_e24d93cc65dbb9::t_d6a4ae1453dfa6 15-21
+internal/errs/errs_test.go
+  s_e24d93cc65dbb9::t_f27dba67884ce3 11
+internal/fsx/atomic_test.go
+  s_e24d93cc65dbb9::t_10d71539e33551 10-11
+internal/fsx/block_test.go
+  s_e24d93cc65dbb9::t_1d799b47293bf7 7
+internal/fsx/jsonc_test.go
+  s_e24d93cc65dbb9::t_2fe8294e4215c6 7
+internal/fsx/resolve_test.go
+  s_e24d93cc65dbb9::t_82480d278fdea0 10-11
+internal/ledger/ledger.go
+  s_e24d93cc65dbb9::t_45ed8e61d444bf 16-17
+internal/ledger/ledger_test.go
+  s_e24d93cc65dbb9::t_692d4e3cd2d19d 10-11
+internal/manifest/manifest.go
+  s_e24d93cc65dbb9::t_fdf6511f12f0bb 16
+internal/manifest/manifest_test.go
+  s_e24d93cc65dbb9::t_f607008d4e071a 10-11
+internal/module/frontmatter_test.go
+  s_e24d93cc65dbb9::t_cfc7a58de1a89f 7
+internal/module/load.go
+  s_e24d93cc65dbb9::t_db87ad069453df 19
+internal/module/load_test.go
+  s_e24d93cc65dbb9::t_4e8a2f384e3aa3 12-14
+internal/module/names_test.go
+  s_e24d93cc65dbb9::t_51adbd9b89a1b3 9
+internal/paths/paths_test.go
+  s_e24d93cc65dbb9::t_80fad2263d8014 7-8
+internal/plan/apply_test.go
+  s_e24d93cc65dbb9::t_74da4e189a7241 11-13
+internal/plan/compute.go
+  s_e24d93cc65dbb9::t_545111387ec6ce 15-17
+internal/plan/compute_test.go
+  s_e24d93cc65dbb9::t_f18ad0c5293462 13-16
+internal/plan/intent.go
+  s_e24d93cc65dbb9::t_3fa202dcae1463 11
+internal/source/folder.go
+  s_e24d93cc65dbb9::t_2e417fa383e50e 16-17
+internal/source/folder_test.go
+  s_e24d93cc65dbb9::t_d12028947a4144 12-13
+internal/source/source_test.go
+  s_e24d93cc65dbb9::t_c202c70194698a 10-11
+internal/store/digest.go
+  s_e24d93cc65dbb9::t_3fef31ae099ff4 12
+internal/store/store.go
+  s_e24d93cc65dbb9::t_6b33801d564427 19-22
+internal/store/store_test.go
+  s_e24d93cc65dbb9::t_15f8e0a2c88e79 12-15
+internal/target/claude.go
+  s_e24d93cc65dbb9::t_e22a77ad22fd95 10-12
+internal/target/claude_test.go
+  s_e24d93cc65dbb9::t_c19cb34fd3abf8 10-14
+internal/target/target.go
+  s_e24d93cc65dbb9::t_91bebba9377ea1 8-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8993ab5b9d0a84fb38350a41b6b615fc615f021",
+  "prompts": {},
+  "sessions": {
+    "s_e24d93cc65dbb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cdff5d55-210d-45a4-a889-779c9f9ad108",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
