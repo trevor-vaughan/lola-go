@@ -1,0 +1,23 @@
+internal/cli/cmd_store.go
+  s_e24d93cc65dbb9::t_e5ec6205e66614 109
+internal/store/store.go
+  s_e24d93cc65dbb9::t_8dcb5783c4a245 1-3,13,33,41,43,50-66,135-136,150,156-158,167,204-209,212,223,225-227,229,233-241,255
+internal/store/store_test.go
+  s_e24d93cc65dbb9::t_c7d01634ea54b7 48,56-57,64-65,70-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5ed2e6b0cffcb4da22cf024e3dde112b640aa0a1",
+  "prompts": {},
+  "sessions": {
+    "s_e24d93cc65dbb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cdff5d55-210d-45a4-a889-779c9f9ad108",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
