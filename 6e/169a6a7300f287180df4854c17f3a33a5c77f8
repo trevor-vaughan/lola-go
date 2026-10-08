@@ -1,0 +1,19 @@
+docs/superpowers/plans/2026-10-08-lola-go-plan-2-adr-alignment.md
+  s_e24d93cc65dbb9::t_33e55447bb9fb0 1-6556
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e169a6a7300f287180df4854c17f3a33a5c77f8",
+  "prompts": {},
+  "sessions": {
+    "s_e24d93cc65dbb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cdff5d55-210d-45a4-a889-779c9f9ad108",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
