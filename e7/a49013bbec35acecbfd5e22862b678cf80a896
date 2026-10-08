@@ -1,0 +1,40 @@
+internal/engine/ops.go
+  s_7350c8b8a33662::t_3fbb4b0943a5c5 356-358
+  s_7350c8b8a33662::t_225114c3675496 220
+  s_7350c8b8a33662::t_1a0930133a043f 77,82
+  s_7350c8b8a33662::t_39b74515244aad 109-115
+  s_7350c8b8a33662::t_0c4c2c001d5140 242,254
+  s_7350c8b8a33662::t_0b9565a4edaa93 282,290,300,306
+  s_7350c8b8a33662::t_8a80d618f1bcd1 286-289,291-299,301-305,307-309
+  s_7350c8b8a33662::t_d0c2227918304a 118
+  s_7350c8b8a33662::t_a4d2aa018b534c 139,142
+  s_7350c8b8a33662::t_497f7410a172ee 93,100
+  s_7350c8b8a33662::t_dad3355671cacd 20
+  s_7350c8b8a33662::t_774fd107efa6df 320,328,331
+internal/engine/engine.go
+  s_7350c8b8a33662::t_dbc2f22d7fb566 138-139
+  s_7350c8b8a33662::t_dd1ff1e267155f 176,178-180,197-214
+  s_7350c8b8a33662::t_50f1b6fb361c95 124-137,140-143
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_7350c8b8a33662::t_7c57fc2a4ace56 114
+internal/engine/engine_test.go
+  s_7350c8b8a33662::t_a4e37fed8c31cb 282-312,316-320
+  s_7350c8b8a33662::t_214a15adf8befa 313-315
+  s_7350c8b8a33662::t_c7e7c408aedafd 231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7a49013bbec35acecbfd5e22862b678cf80a896",
+  "prompts": {},
+  "sessions": {
+    "s_7350c8b8a33662": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27cf1736-4356-4afd-8072-f4e256412a5f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
