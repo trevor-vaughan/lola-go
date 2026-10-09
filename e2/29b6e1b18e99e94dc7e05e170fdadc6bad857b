@@ -1,0 +1,52 @@
+internal/source/text.go
+  s_6a5f51d54fae2c::t_30f178ddc247d5 3-4
+internal/plan/compute_test.go
+  s_6a5f51d54fae2c::t_3e295e0909bcfb 202-211
+internal/module/json.go
+  s_6a5f51d54fae2c::t_ec5f8ecf128241 1-138
+internal/source/folder.go
+  s_6a5f51d54fae2c::t_30f178ddc247d5 16,98,102,118,121,211,231,233,237,240
+internal/untrusted/untrusted_test.go
+  s_6a5f51d54fae2c::t_0cd5fd78ceeb1c 1-28
+internal/plan/compute.go
+  s_6a5f51d54fae2c::t_c0595b2203647c 322-324
+  s_6a5f51d54fae2c::t_43913bfedd89c7 331-337
+internal/source/archive.go
+  s_6a5f51d54fae2c::t_30f178ddc247d5 23,61,64,124,129,136,180,241,244,248,257,264,276,305,313,324,338,343,346,351,355,433
+internal/source/git.go
+  s_6a5f51d54fae2c::t_30f178ddc247d5 16,98,142
+internal/untrusted/untrusted_suite_test.go
+  s_6a5f51d54fae2c::t_0cd5fd78ceeb1c 1-13
+docs/architecture.md
+  s_6a5f51d54fae2c::t_ec5f8ecf128241 239
+internal/source/fetch.go
+  s_6a5f51d54fae2c::t_30f178ddc247d5 10,24,39
+internal/untrusted/untrusted.go
+  s_6a5f51d54fae2c::t_953504b738cb04 1-28,30-50
+  s_6a5f51d54fae2c::t_c668e4dddbc52a 29
+internal/module/load.go
+  s_6a5f51d54fae2c::t_fb1089ac406b68 259,265-266
+internal/module/load_test.go
+  s_6a5f51d54fae2c::t_7323aa166cd69c 7
+  s_6a5f51d54fae2c::t_e042893f863e03 260-327
+internal/source/source.go
+  s_6a5f51d54fae2c::t_30f178ddc247d5 16,82,96,99,152,154,226,230-231,246,250,259,270,312-313,317
+internal/source/download.go
+  s_6a5f51d54fae2c::t_30f178ddc247d5 14,31,48,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e229b6e1b18e99e94dc7e05e170fdadc6bad857b",
+  "prompts": {},
+  "sessions": {
+    "s_6a5f51d54fae2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e697c59c-885f-4dbe-ab74-4b25da27ea97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
