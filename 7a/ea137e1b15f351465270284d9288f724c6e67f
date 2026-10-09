@@ -1,0 +1,33 @@
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_9d26cc24c5b24d::t_bae2fc5719380c 656-657
+docs/superpowers/specs/2026-10-09-target-framework-design.md
+  s_9d26cc24c5b24d::t_62401d91a7a499 467
+  s_9d26cc24c5b24d::t_6ec8d433d0a2a4 468-470
+  s_9d26cc24c5b24d::t_bae2fc5719380c 464-466
+docs/usage.md
+  s_9d26cc24c5b24d::t_bae2fc5719380c 164,205
+internal/target/gemini/gemini.go
+  s_9d26cc24c5b24d::t_f2a08383b5fcc8 77
+internal/target/gemini/gemini_test.go
+  s_9d26cc24c5b24d::t_3db68df9c28e76 136,142-143,147,178,182
+internal/target/opencode/opencode.go
+  s_9d26cc24c5b24d::t_64930e214ada6b 64-66,137,143-154,235
+internal/target/opencode/opencode_test.go
+  s_9d26cc24c5b24d::t_aff3359a3a98d1 110,116-117,119-120,126-145,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7aea137e1b15f351465270284d9288f724c6e67f",
+  "prompts": {},
+  "sessions": {
+    "s_9d26cc24c5b24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d51748-b884-400b-ab16-b52c76a98a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
