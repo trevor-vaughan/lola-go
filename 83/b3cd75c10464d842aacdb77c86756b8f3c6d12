@@ -1,0 +1,29 @@
+internal/engine/init_test.go
+  s_6a5f51d54fae2c::t_2d6d72f71b11fb 1-94
+internal/cli/store_test.go
+  s_6a5f51d54fae2c::t_236ff2584608a6 140-162
+internal/module/detect.go
+  s_6a5f51d54fae2c::t_236ff2584608a6 24-32
+internal/module/agentplugins.go
+  s_6a5f51d54fae2c::t_236ff2584608a6 24-27,72-73,204-212,214
+internal/engine/init.go
+  s_6a5f51d54fae2c::t_c25365aa8cbef2 1-125
+internal/cli/cmd_store.go
+  s_6a5f51d54fae2c::t_c25365aa8cbef2 443-450,458,462-464,469-470,473-474,477-479
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83b3cd75c10464d842aacdb77c86756b8f3c6d12",
+  "prompts": {},
+  "sessions": {
+    "s_6a5f51d54fae2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e697c59c-885f-4dbe-ab74-4b25da27ea97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
