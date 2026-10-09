@@ -1,21 +1,44 @@
 internal/engine/engine.go
   s_63b65f3b03cdde::t_c44901c37a930d 208,371
+  s_63b65f3b03cdde::t_1a18c503c1e57a 371
 internal/engine/engine_test.go
   s_63b65f3b03cdde::t_f9ee031aff1213 272-289,352,433-439
+  s_63b65f3b03cdde::t_e9768899bc3ca0 272-289
+  s_63b65f3b03cdde::t_378e3a650a91d0 352
 internal/target/claude.go
   s_63b65f3b03cdde::t_41b8f0d50642c4 28
+  s_63b65f3b03cdde::t_7f731160a333f2 45,51,68
 internal/target/claude_test.go
   s_63b65f3b03cdde::t_8840a887d854f6 128,130
 internal/target/gemini.go
   s_63b65f3b03cdde::t_c50e3525f1d289 35
+  s_63b65f3b03cdde::t_b0e5d68c38a85a 1-34,36-38,40-191
+  s_63b65f3b03cdde::t_1cfbdf888a56b7 192
+  s_63b65f3b03cdde::t_e7ef5f4ae004fb 39
 internal/target/gemini_test.go
   s_63b65f3b03cdde::t_149a9dda0b29b8 38,136,138
+  s_63b65f3b03cdde::t_bf118bf2979eee 1-37,39-135,137,139-142
+  s_63b65f3b03cdde::t_43b52fb55d44b6 38
 internal/target/opencode.go
   s_63b65f3b03cdde::t_6eb52ce69aabba 1-228
+  s_63b65f3b03cdde::t_9364abb8c5a33b 1-32,40-53,55-228
+  s_63b65f3b03cdde::t_9a77aab4fbb848 54
 internal/target/opencode_test.go
   s_63b65f3b03cdde::t_e4866638302083 1-142
+  s_63b65f3b03cdde::t_58eac8ec83f8e0 1-116,119-126,128,130-132,141-142
+  s_63b65f3b03cdde::t_1acd96b92f4a29 117-118
 internal/target/target.go
   s_63b65f3b03cdde::t_e141ab06f8246f 47,59-61,69
+  s_63b65f3b03cdde::t_69b89da5b62384 6-8,90-114
+  s_63b65f3b03cdde::t_33ed5fb3c9c51e 47,69
+internal/module/frontmatter_test.go
+  s_63b65f3b03cdde::t_04610dd2c7bc04 52-81
+go.mod
+  s_63b65f3b03cdde::t_d91475faeb5681 7
+go.sum
+  s_63b65f3b03cdde::t_624162a6a680a8 9-10
+internal/module/frontmatter.go
+  s_63b65f3b03cdde::t_cac84c2f001889 6-7,75-117
 ---
 {
   "schema_version": "authorship/3.0.0",
