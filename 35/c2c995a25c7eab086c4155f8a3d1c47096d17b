@@ -1,0 +1,33 @@
+docs/usage.md
+  s_9d26cc24c5b24d::t_654af0389d8669 13,15,117-128,140-157,199,203
+docs/decisions.md
+  s_9d26cc24c5b24d::t_654af0389d8669 17-18
+docs/architecture.md
+  s_9d26cc24c5b24d::t_654af0389d8669 4,12,30,36-39,44,48-49,70-80,85-115,215-220
+docs/roadmap.md
+  s_9d26cc24c5b24d::t_654af0389d8669 3,13-17,20,22,24,29-31,37-38
+docs/superpowers/specs/2026-10-09-target-framework-design.md
+  s_9d26cc24c5b24d::t_654af0389d8669 3,119-122,130,132,138,148-149,201-206,307,393-410
+AGENTS.md
+  s_9d26cc24c5b24d::t_654af0389d8669 14-16
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_9d26cc24c5b24d::t_654af0389d8669 47-51,53-55,58,96,98,134,141-142,146-154,195-202,325,591-593,597-600,742-745
+README.md
+  s_9d26cc24c5b24d::t_654af0389d8669 16-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35c2c995a25c7eab086c4155f8a3d1c47096d17b",
+  "prompts": {},
+  "sessions": {
+    "s_9d26cc24c5b24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d51748-b884-400b-ab16-b52c76a98a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
