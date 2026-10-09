@@ -1,0 +1,23 @@
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_9d26cc24c5b24d::t_3a6294b19a4224 66,102,869
+docs/superpowers/specs/2026-10-09-target-framework-design.md
+  s_9d26cc24c5b24d::t_01cd7edf74d211 426-427
+docs/usage.md
+  s_9d26cc24c5b24d::t_028cded826dd07 155,192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9e31b47a5618aff925300c11f4021416ea3c5d4",
+  "prompts": {},
+  "sessions": {
+    "s_9d26cc24c5b24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d51748-b884-400b-ab16-b52c76a98a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
