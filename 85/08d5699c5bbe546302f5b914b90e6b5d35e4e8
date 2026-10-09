@@ -1,0 +1,27 @@
+internal/target/gemini/gemini.go
+  s_9d26cc24c5b24d::t_91929ad737d5c6 82-83,90
+internal/target/gemini/gemini_test.go
+  s_9d26cc24c5b24d::t_e26dbaca39798b 75-98
+internal/target/opencode/opencode.go
+  s_9d26cc24c5b24d::t_a28dc23e3561c6 105,114
+internal/target/opencode/opencode_test.go
+  s_9d26cc24c5b24d::t_e5cb597f5f4cf7 70-93
+internal/target/render.go
+  s_9d26cc24c5b24d::t_9dcae981aa3603 69-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8508d5699c5bbe546302f5b914b90e6b5d35e4e8",
+  "prompts": {},
+  "sessions": {
+    "s_9d26cc24c5b24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d51748-b884-400b-ab16-b52c76a98a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
