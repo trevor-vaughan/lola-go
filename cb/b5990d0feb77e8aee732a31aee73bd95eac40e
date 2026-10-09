@@ -1,0 +1,21 @@
+internal/target/opencode/opencode.go
+  s_9d26cc24c5b24d::t_adb42b8c247c4c 71-75,100
+internal/target/opencode/opencode_test.go
+  s_9d26cc24c5b24d::t_4c9200fbc37a4a 220,239-240,243-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cbb5990d0feb77e8aee732a31aee73bd95eac40e",
+  "prompts": {},
+  "sessions": {
+    "s_9d26cc24c5b24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d51748-b884-400b-ab16-b52c76a98a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
