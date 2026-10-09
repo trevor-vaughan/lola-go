@@ -1,0 +1,68 @@
+.golangci.yml
+  s_6a5f51d54fae2c::t_60237f1e708866 36-41
+internal/source/git.go
+  s_6a5f51d54fae2c::t_9e772d3f268711 1-170
+internal/source/folder.go
+  s_6a5f51d54fae2c::t_e8a8ab1eafb48a 83-113
+  s_6a5f51d54fae2c::t_5fbcee6963024d 176-179
+  s_6a5f51d54fae2c::t_0b5c130291b2be 211-214,219
+  s_6a5f51d54fae2c::t_386fe4c83834de 60
+  s_6a5f51d54fae2c::t_22fd056cf378d1 33-34
+  s_6a5f51d54fae2c::t_c725bb94b2206f 185
+internal/cli/sources_test.go
+  s_6a5f51d54fae2c::t_0925de8e718262 1-75
+internal/source/git_internal_test.go
+  s_6a5f51d54fae2c::t_f2df0600ee6d49 1-39
+internal/source/source_test.go
+  s_6a5f51d54fae2c::t_5b017bc44a25fc 129,136-190
+  s_6a5f51d54fae2c::t_f52917d0517744 93,95-96
+  s_6a5f51d54fae2c::t_024e302e02f819 191
+internal/source/archive.go
+  s_6a5f51d54fae2c::t_e1662e0f1950ac 47-49
+internal/engine/engine_test.go
+  s_6a5f51d54fae2c::t_111ac766190a80 569
+internal/engine/check.go
+  s_6a5f51d54fae2c::t_378bea67fad85d 85-86
+  s_6a5f51d54fae2c::t_76eaf1968b96f6 29-32
+  s_6a5f51d54fae2c::t_e1d8f3cd36e9b8 99-101
+internal/source/fetch.go
+  s_6a5f51d54fae2c::t_37ad154dfd0e29 5,7,22-25,27-36,40-57,59
+internal/engine/sources_test.go
+  s_6a5f51d54fae2c::t_000b16e0330032 1-186
+internal/engine/engine.go
+  s_6a5f51d54fae2c::t_1c95912b87df67 347-348
+internal/source/source.go
+  s_6a5f51d54fae2c::t_95694dbcb40bfa 172-176,179
+  s_6a5f51d54fae2c::t_b3f61788457d77 46-52
+  s_6a5f51d54fae2c::t_ac7f7049beea8a 104-106,108-109
+  s_6a5f51d54fae2c::t_915d771aa89d65 5
+  s_6a5f51d54fae2c::t_95a94febeaa99d 185
+  s_6a5f51d54fae2c::t_6b2b262fe40225 201-237
+  s_6a5f51d54fae2c::t_54506de9653e8a 252-255
+  s_6a5f51d54fae2c::t_244467a5ff876f 122-126,129-132,134-135
+  s_6a5f51d54fae2c::t_392324ef3d5f91 23-24,28-29
+  s_6a5f51d54fae2c::t_bda31dbc2d3bd2 97-98
+  s_6a5f51d54fae2c::t_dfed915f54cb0b 65
+  s_6a5f51d54fae2c::t_c18e25522a6e6f 89-90
+internal/source/git_test.go
+  s_6a5f51d54fae2c::t_d1bcbf6d7acdee 1-212
+internal/testenv/testenv.go
+  s_6a5f51d54fae2c::t_7bcfeb1a90e68b 63-78
+  s_6a5f51d54fae2c::t_bc5595bd3e7cf6 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3731e559e9c4d1acb5f915f50a353c790a07d301",
+  "prompts": {},
+  "sessions": {
+    "s_6a5f51d54fae2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e697c59c-885f-4dbe-ab74-4b25da27ea97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
