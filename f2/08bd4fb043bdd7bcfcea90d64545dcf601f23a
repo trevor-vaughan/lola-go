@@ -1,0 +1,39 @@
+internal/module/names_test.go
+  s_6a5f51d54fae2c::t_36a93176474d4b 10,26
+  s_6a5f51d54fae2c::t_250337304df72c 25,27-31
+internal/plan/compute_test.go
+  s_6a5f51d54fae2c::t_6e61cef39f0e4d 208
+internal/source/git.go
+  s_6a5f51d54fae2c::t_dd35a5dad899ad 81
+internal/plan/compute.go
+  s_6a5f51d54fae2c::t_dd35a5dad899ad 335,485-487
+  s_6a5f51d54fae2c::t_129917c4362833 65
+internal/module/json.go
+  s_6a5f51d54fae2c::t_4b8a6dfb687e4c 73,75-76
+  s_6a5f51d54fae2c::t_dd35a5dad899ad 13-14,33-35,39-42,46-49,51,64-65,74,100-101,105,111,135-145
+  s_6a5f51d54fae2c::t_63f7fc36840544 146-147
+internal/engine/engine.go
+  s_6a5f51d54fae2c::t_f3c8d787621147 367-370
+internal/module/load_test.go
+  s_6a5f51d54fae2c::t_250337304df72c 8,280-282,285-291,317,325,339-357
+internal/engine/engine_test.go
+  s_6a5f51d54fae2c::t_250337304df72c 150-155
+internal/module/names.go
+  s_6a5f51d54fae2c::t_dd35a5dad899ad 7-8,18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f208bd4fb043bdd7bcfcea90d64545dcf601f23a",
+  "prompts": {},
+  "sessions": {
+    "s_6a5f51d54fae2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e697c59c-885f-4dbe-ab74-4b25da27ea97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
