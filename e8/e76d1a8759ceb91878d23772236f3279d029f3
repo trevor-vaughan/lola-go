@@ -1,0 +1,38 @@
+internal/source/archive.go
+  s_6a5f51d54fae2c::t_b42f5054a63018 58
+internal/source/source.go
+  s_6a5f51d54fae2c::t_b42f5054a63018 55-57,93,123-124,128-132,137-160,166,194-199,223,234,240,260-261,263,280,282,288-292,296
+internal/cli/sources_test.go
+  s_6a5f51d54fae2c::t_c6e495088bfb1a 73
+internal/source/fetch_test.go
+  s_6a5f51d54fae2c::t_74f92a0c84603c 38,44,47-48
+  s_6a5f51d54fae2c::t_27680ce7e003c0 39,45-46
+  s_6a5f51d54fae2c::t_f165976b3984ca 40-43
+docs/architecture.md
+  s_6a5f51d54fae2c::t_373e490eae5321 232-236
+internal/source/git_test.go
+  s_6a5f51d54fae2c::t_385aac2c56c7ff 197
+docs/usage.md
+  s_6a5f51d54fae2c::t_373e490eae5321 51-53
+docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md
+  s_6a5f51d54fae2c::t_373e490eae5321 364-367
+internal/source/source_test.go
+  s_6a5f51d54fae2c::t_f87445b0b5aa4c 137-148
+  s_6a5f51d54fae2c::t_07bcdaeae746ac 205-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8e76d1a8759ceb91878d23772236f3279d029f3",
+  "prompts": {},
+  "sessions": {
+    "s_6a5f51d54fae2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e697c59c-885f-4dbe-ab74-4b25da27ea97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
