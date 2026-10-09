@@ -1,0 +1,42 @@
+.golangci.yml
+  s_9d26cc24c5b24d::t_7fadd34df25327 3,5-21
+internal/target/claude/claude_suite_test.go
+  s_9d26cc24c5b24d::t_c1053c6af4612d 1-13
+internal/targets/targets_suite_test.go
+  s_9d26cc24c5b24d::t_6226d2e20c9215 1-13
+internal/cli/cmd_core.go
+  s_9d26cc24c5b24d::t_7a639b284ff9a3 51
+  s_9d26cc24c5b24d::t_daf955a1ab4289 17
+  s_9d26cc24c5b24d::t_b483b793da1302 31-32
+internal/target/target.go
+  s_9d26cc24c5b24d::t_5a0ca1e538806c 1-4
+internal/target/claude/claude.go
+  s_9d26cc24c5b24d::t_f730af49837d2c 1-125
+internal/targets/targets.go
+  s_9d26cc24c5b24d::t_a7efe23880d8f3 1-30
+internal/targets/targets_test.go
+  s_9d26cc24c5b24d::t_a7cc9c73c0b7f6 1-24
+internal/engine/engine.go
+  s_9d26cc24c5b24d::t_f377d69b4d2bd9 56
+  s_9d26cc24c5b24d::t_311617ebac2cd1 33
+internal/target/claude/claude_test.go
+  s_9d26cc24c5b24d::t_5fb4b1f789ac8f 1-128
+internal/target/render.go
+  s_9d26cc24c5b24d::t_1e548d3e664b45 1-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "930dc95b80b95bf2a4402f4839ec63745c10d3ae",
+  "prompts": {},
+  "sessions": {
+    "s_9d26cc24c5b24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d51748-b884-400b-ab16-b52c76a98a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
