@@ -1,0 +1,39 @@
+.golangci.yml
+  s_63b65f3b03cdde::t_7dddb0fa693fb3 3,5-21
+internal/cli/cmd_core.go
+  s_63b65f3b03cdde::t_d1a81fe508f988 17,31-32,51
+internal/engine/engine.go
+  s_63b65f3b03cdde::t_80e1ec2f954267 33,56
+internal/target/claude/claude.go
+  s_63b65f3b03cdde::t_0c9c87801c404e 1-2,12,15-16,19,22-23,30,33,38,41,47,53,70,73,102-103,106,108,111,114,120,122
+internal/target/claude/claude_suite_test.go
+  s_63b65f3b03cdde::t_28d9b543f93f48 1-13
+internal/target/claude/claude_test.go
+  s_63b65f3b03cdde::t_43f02eff4f6f49 1,14,34
+internal/target/render.go
+  s_63b65f3b03cdde::t_ce1b28aa464dd2 1-64
+internal/target/target.go
+  s_63b65f3b03cdde::t_9dc027af4bff8d 1-4
+internal/targets/targets.go
+  s_63b65f3b03cdde::t_7fb9aa0f5c342f 1-30
+internal/targets/targets_suite_test.go
+  s_63b65f3b03cdde::t_167b79eb3af091 1-13
+internal/targets/targets_test.go
+  s_63b65f3b03cdde::t_9fe0414561d590 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e19ff95f880ac61c337774e0fc4047c7da67c8b",
+  "prompts": {},
+  "sessions": {
+    "s_63b65f3b03cdde": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6aee765-d917-4fb3-bab9-9ededbd9c567",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
