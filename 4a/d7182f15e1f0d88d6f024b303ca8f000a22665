@@ -1,0 +1,37 @@
+.golangci.yml
+  s_9d26cc24c5b24d::t_3fa97cc408dd1c 16
+internal/engine/engine_test.go
+  s_9d26cc24c5b24d::t_809241dac91b90 9,20,25,46-68,519-531,605-612
+  s_9d26cc24c5b24d::t_66ce2927c1937a 613-614
+internal/engine/engine.go
+  s_9d26cc24c5b24d::t_3fa97cc408dd1c 377
+internal/engine/check.go
+  s_9d26cc24c5b24d::t_3fa97cc408dd1c 71-72
+internal/engine/probe.go
+  s_9d26cc24c5b24d::t_3fa97cc408dd1c 30,109-111,114,126-142
+  s_9d26cc24c5b24d::t_395c00fc21333c 143
+internal/target/claude/claude.go
+  s_9d26cc24c5b24d::t_9ea0a61de687c5 31-33
+internal/target/claude/claude_test.go
+  s_9d26cc24c5b24d::t_a6d8d0b7057a53 144,146,148-152
+internal/target/conformance/conformance_test.go
+  s_9d26cc24c5b24d::t_1cb9fc2f70bd2a 61-82,89,145-161
+internal/target/target.go
+  s_9d26cc24c5b24d::t_2fdb2405e9bbb3 32,46-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ad7182f15e1f0d88d6f024b303ca8f000a22665",
+  "prompts": {},
+  "sessions": {
+    "s_9d26cc24c5b24d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d51748-b884-400b-ab16-b52c76a98a93",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
