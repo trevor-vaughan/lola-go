@@ -1,0 +1,21 @@
+internal/module/agentplugins.go
+  s_6a5f51d54fae2c::t_eecb3650a68025 352-360,373-387,405
+internal/module/agentplugins_test.go
+  s_6a5f51d54fae2c::t_606d4dfdc6b352 186-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e020331ee4fb4650ebaf4b21c6a02cbac13dc66b",
+  "prompts": {},
+  "sessions": {
+    "s_6a5f51d54fae2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e697c59c-885f-4dbe-ab74-4b25da27ea97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
