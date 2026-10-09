@@ -1,0 +1,23 @@
+internal/module/agentplugins_test.go
+  s_6a5f51d54fae2c::t_8daf032b3c2050 116-120,133-148,151-155,166-167,204-211,319-361
+internal/module/agentplugins.go
+  s_6a5f51d54fae2c::t_0493592eaae980 154-160,593
+  s_6a5f51d54fae2c::t_6ca799f1b3787a 18,94-95,97-106,163-180,182-191,194,248,251,257-264,268-269,272-280,291-308,311-315,327,331,410-412,420-421,501,514-515
+  s_6a5f51d54fae2c::t_b5f1f57e7825cd 516
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a7af07912f436e0ac273a68c7de860219d6d47c3",
+  "prompts": {},
+  "sessions": {
+    "s_6a5f51d54fae2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e697c59c-885f-4dbe-ab74-4b25da27ea97",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
