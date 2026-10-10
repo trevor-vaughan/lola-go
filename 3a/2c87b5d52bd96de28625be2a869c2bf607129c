@@ -1,0 +1,31 @@
+docs/roadmap.md
+  s_382d929572417e::t_85ae5030428c12 28-32
+docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md
+  s_382d929572417e::t_85ae5030428c12 763-764,901-904
+docs/usage.md
+  s_382d929572417e::t_85ae5030428c12 222-224,307-311,329-421,487-488,503,527-533,549,560-561,590
+README.md
+  s_382d929572417e::t_85ae5030428c12 26,28
+docs/architecture.md
+  s_382d929572417e::t_85ae5030428c12 16-17,34,37,40,46,75-85,166-167,216-278,383-386,402-405
+docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md
+  s_382d929572417e::t_85ae5030428c12 241,368-436
+docs/decisions.md
+  s_382d929572417e::t_85ae5030428c12 11-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a2c87b5d52bd96de28625be2a869c2bf607129c",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
