@@ -14,10 +14,12 @@ internal/module/json.go
   s_382d929572417e::t_0af7593e224d5c 121,134,143-157
 internal/module/load.go
   s_382d929572417e::t_a7186e5a87bc51 413,426-432,435
+  s_382d929572417e::t_15b46cb93d2739 413,426-432,435
 internal/module/load_test.go
   s_382d929572417e::t_5560bfa1d25ea3 289-290,321-324,356-361
 internal/store/store_test.go
   s_382d929572417e::t_ea5a3baedfceaf 102-123
+  s_382d929572417e::t_23742735413482 102-123
 ---
 {
   "schema_version": "authorship/3.0.0",
