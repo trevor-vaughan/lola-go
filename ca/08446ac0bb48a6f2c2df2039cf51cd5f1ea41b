@@ -1,0 +1,23 @@
+docs/architecture.md
+  s_382d929572417e::t_f0ae9a3144a295 269-271
+docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md
+  s_382d929572417e::t_e3170b0c61b15b 377-380,405-409
+docs/usage.md
+  s_382d929572417e::t_35857987a27b38 376-378,412-414,482-483,528
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ca08446ac0bb48a6f2c2df2039cf51cd5f1ea41b",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
