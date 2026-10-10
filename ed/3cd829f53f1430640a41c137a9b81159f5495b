@@ -1,0 +1,43 @@
+internal/config/write.go
+  s_382d929572417e::t_c2c2ae50d6dc0e 1-179
+internal/config/config.go
+  s_382d929572417e::t_8e27e94dda9aa5 1-233
+  s_382d929572417e::t_70fa3b0365915f 234-237
+internal/paths/paths_test.go
+  s_382d929572417e::t_de8044748d037a 65-83
+  s_382d929572417e::t_a7daf179422653 4-6,29-30
+internal/config/config_suite_test.go
+  s_382d929572417e::t_16673563f4b521 1-13
+internal/config/selector.go
+  s_382d929572417e::t_f2001d6fcdd401 1-100
+internal/paths/key_internal_test.go
+  s_382d929572417e::t_81b29173df8913 1-24
+internal/config/selections.go
+  s_382d929572417e::t_3cd25d9a67c087 1-259
+  s_382d929572417e::t_e37df679b9ff13 260-269
+internal/paths/key.go
+  s_382d929572417e::t_5072e06fb2535b 1-54
+internal/engine/engine.go
+  s_382d929572417e::t_b6b784ec47cc59 165-167,169,173
+internal/config/config_test.go
+  s_382d929572417e::t_d78b7a1bc0407e 1-373
+  s_382d929572417e::t_2c01e540f2e75c 374-375
+internal/paths/paths.go
+  s_382d929572417e::t_7913082563bb8d 14-29,54,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed3cd829f53f1430640a41c137a9b81159f5495b",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
