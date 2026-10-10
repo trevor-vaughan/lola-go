@@ -4,8 +4,10 @@ internal/cli/cmd_store.go
   s_382d929572417e::t_d3e17a36a6c0d7 187
 internal/cli/flow.go
   s_382d929572417e::t_f852aba01119bc 1-645
+  s_382d929572417e::t_b7ac768543d1cf 623-628,630,634-638
 internal/cli/flow_test.go
   s_382d929572417e::t_66610343e48f7c 1-490
+  s_382d929572417e::t_f9254e12824062 380-414
 internal/cli/prompt.go
   s_382d929572417e::t_c61499099439a2 33,83
 internal/cli/prompter.go
@@ -20,6 +22,7 @@ internal/engine/cache.go
   s_382d929572417e::t_c175322f87da37 38-51
 internal/engine/choices.go
   s_382d929572417e::t_6129cd087065d7 41-42,61,114,184,291-356
+  s_382d929572417e::t_ef0f98f9c902ce 61,184
 ---
 {
   "schema_version": "authorship/3.0.0",
