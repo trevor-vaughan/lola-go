@@ -1,0 +1,69 @@
+internal/engine/runtimehooks_test.go
+  s_382d929572417e::t_9fecd7ecc6e9c0 1-172
+internal/plan/compute_test.go
+  s_382d929572417e::t_9fecd7ecc6e9c0 12,517-533
+  s_382d929572417e::t_24396ff884c97c 534-535
+internal/module/components_test.go
+  s_382d929572417e::t_9fecd7ecc6e9c0 297-343
+internal/cli/human.go
+  s_382d929572417e::t_6443211b35af12 61-62,90-91,172-173
+.golangci.yml
+  s_382d929572417e::t_6443211b35af12 20
+internal/engine/engine_test.go
+  s_382d929572417e::t_9fecd7ecc6e9c0 150,165
+internal/source/folder.go
+  s_382d929572417e::t_6443211b35af12 172,206
+internal/module/formats_test.go
+  s_382d929572417e::t_9fecd7ecc6e9c0 154
+internal/engine/check.go
+  s_382d929572417e::t_6443211b35af12 74-76
+internal/plan/intent.go
+  s_382d929572417e::t_6443211b35af12 71,85
+internal/engine/engine.go
+  s_382d929572417e::t_6443211b35af12 363-365,444,447,463
+internal/plan/compute.go
+  s_382d929572417e::t_6443211b35af12 412-418,423-425
+internal/engine/runtimehooks.go
+  s_382d929572417e::t_6443211b35af12 1-65
+internal/engine/gitignore.go
+  s_382d929572417e::t_6443211b35af12 1-81
+internal/source/git.go
+  s_382d929572417e::t_6443211b35af12 47-52,84
+internal/engine/probe.go
+  s_382d929572417e::t_6443211b35af12 58,64-73
+internal/module/components.go
+  s_382d929572417e::t_6443211b35af12 14,473-475,490-496,501-571
+  s_382d929572417e::t_5aebd77baeb7dc 572
+internal/target/claude/claude.go
+  s_382d929572417e::t_a75d20a2da7dd5 41-42,48-50,142-146,148-157,159
+internal/target/claude/hooks.go
+  s_382d929572417e::t_653041c218d73d 1-241
+internal/target/claude/hooks_test.go
+  s_382d929572417e::t_c21b3f9988536b 1-303
+internal/target/conformance/conformance_test.go
+  s_382d929572417e::t_de20a6d0f815be 28,192,196-197,200-204
+internal/target/finding.go
+  s_382d929572417e::t_f4cacabdfabb21 10,15-18
+internal/target/gemini/gemini.go
+  s_382d929572417e::t_5a6ffc1270bb5a 208-209,212
+internal/target/opencode/opencode.go
+  s_382d929572417e::t_e55d698b3d3de1 256-257,260
+internal/target/target.go
+  s_382d929572417e::t_ea36526cd9b272 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5e32276985a43126dd5c6053722af984caea2111",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
