@@ -1,0 +1,25 @@
+internal/cli/core_test.go
+  s_382d929572417e::t_f7209e650d5fbb 201,210
+internal/cli/prompt.go
+  s_382d929572417e::t_1f28e55844078c 138
+internal/engine/runtimehooks.go
+  s_382d929572417e::t_795f6c0208cb1c 10,52,72-79,121-141,259-261,263,267-287,289,294
+internal/engine/runtimehooks_test.go
+  s_382d929572417e::t_e063ba96c77cd9 23,30-47,351-361,495-509
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a9849247e46ed370be4655b78bf2c0834a723a2",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
