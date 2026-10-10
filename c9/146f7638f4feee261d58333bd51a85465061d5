@@ -1,0 +1,44 @@
+internal/config/write.go
+  s_382d929572417e::t_f5e76092f66bc0 1-179
+internal/config/selections.go
+  s_382d929572417e::t_f5e76092f66bc0 1-269
+internal/paths/key.go
+  s_382d929572417e::t_f5e76092f66bc0 1-50
+internal/paths/paths.go
+  s_382d929572417e::t_f5e76092f66bc0 14-29,54,59
+internal/paths/key_internal_test.go
+  s_382d929572417e::t_a85f0169b9bf50 1-24
+internal/config/config.go
+  s_382d929572417e::t_f5e76092f66bc0 1-253
+internal/paths/paths_test.go
+  s_382d929572417e::t_a85f0169b9bf50 4-6,29-30,65-91
+  s_382d929572417e::t_80a9b8c6842935 92
+internal/config/config_suite_test.go
+  s_382d929572417e::t_a85f0169b9bf50 1-13
+internal/config/selector.go
+  s_382d929572417e::t_f5e76092f66bc0 1-105
+internal/config/fifo_unix_test.go
+  s_382d929572417e::t_a85f0169b9bf50 1-13
+internal/config/fifo_other_test.go
+  s_382d929572417e::t_a85f0169b9bf50 1-9
+internal/config/config_test.go
+  s_382d929572417e::t_a85f0169b9bf50 1-404
+internal/engine/engine.go
+  s_382d929572417e::t_f5e76092f66bc0 165-167,169,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9146f7638f4feee261d58333bd51a85465061d5",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
