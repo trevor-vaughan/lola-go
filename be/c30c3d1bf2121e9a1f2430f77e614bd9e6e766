@@ -1,0 +1,42 @@
+internal/cli/cmd_core.go
+  s_382d929572417e::t_0b8a7a6c0af222 95,101,120,122,125-126,128-139,141-142
+internal/cli/cmd_store.go
+  s_382d929572417e::t_d3e17a36a6c0d7 187
+internal/cli/flow.go
+  s_382d929572417e::t_f852aba01119bc 1-645
+  s_382d929572417e::t_b7ac768543d1cf 623-628,630,634-638
+internal/cli/flow_test.go
+  s_382d929572417e::t_66610343e48f7c 1-490
+  s_382d929572417e::t_f9254e12824062 380-414
+internal/cli/prompt.go
+  s_382d929572417e::t_c61499099439a2 33,83
+internal/cli/prompter.go
+  s_382d929572417e::t_d8945868e75e2a 1-121
+internal/cli/root.go
+  s_382d929572417e::t_1f2ffbc546bc43 23-25,34-35,37-52,67,70-72,169
+internal/cli/summary.go
+  s_382d929572417e::t_7f779bfe77c73f 1-224
+internal/config/selections.go
+  s_382d929572417e::t_6bc4440890e70d 6,279-295
+internal/engine/cache.go
+  s_382d929572417e::t_c175322f87da37 38-51
+internal/engine/choices.go
+  s_382d929572417e::t_6129cd087065d7 41-42,61,114,184,291-356
+  s_382d929572417e::t_ef0f98f9c902ce 61,184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bec30c3d1bf2121e9a1f2430f77e614bd9e6e766",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
