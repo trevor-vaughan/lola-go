@@ -1,0 +1,50 @@
+internal/engine/runtimehooks.go
+  s_382d929572417e::t_fc74d333549ccf 418,423,426
+  s_382d929572417e::t_795f6c0208cb1c 10,52,72-79,121,126-142,260-262,264,268-288,290,295
+internal/engine/runtimehooks_test.go
+  s_382d929572417e::t_ba021406f04ad0 532-547
+  s_382d929572417e::t_e063ba96c77cd9 23,30-47,351-361,495-509
+internal/target/claude/hooks.go
+  s_382d929572417e::t_3ccc366ce14e1e 36-40,184-185,203-205
+internal/target/claude/hooks_test.go
+  s_382d929572417e::t_999514a8a8e3bc 157-158,164,166-171,173-180,185
+  s_382d929572417e::t_b91fc93bc0aee5 387
+internal/target/gemini/gemini.go
+  s_382d929572417e::t_8978a833a0cd98 208-209
+internal/target/opencode/opencode.go
+  s_382d929572417e::t_78451315e4b3b9 256-257
+internal/cli/core_test.go
+  s_382d929572417e::t_f7209e650d5fbb 201,210
+internal/cli/prompt.go
+  s_382d929572417e::t_1f28e55844078c 138
+internal/module/components_test.go
+  s_382d929572417e::t_eda0f61699b50c 358-359,362-378
+internal/module/frontmatter.go
+  s_382d929572417e::t_22d9f3d5e79c5e 10,13-14,27-29,33-37
+internal/module/frontmatter_test.go
+  s_382d929572417e::t_bd4758a2849a4c 7,40-51
+internal/module/load.go
+  s_382d929572417e::t_a88cb691b9f5ea 320-322,329-355
+docs/architecture.md
+  s_382d929572417e::t_00d753980eb2d4 226-228,245-249,254-255,268-269
+docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md
+  s_382d929572417e::t_ce0fa2de35bd95 411-436
+docs/usage.md
+  s_382d929572417e::t_d4d47ae9b1e25a 358-359,363-365,377-381,397-398,529
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f0e0d96cc74c8c04787dff62e99e5911fd390517",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
