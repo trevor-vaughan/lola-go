@@ -1,0 +1,51 @@
+internal/target/claude/hooks_test.go
+  s_382d929572417e::t_84e3f18a2c5866 213-233
+  s_382d929572417e::t_6267ed6e0e4aec 1-212,234-294
+internal/engine/runtimehooks_test.go
+  s_382d929572417e::t_314725e41a9cf0 1-152
+  s_382d929572417e::t_cf14fad241895f 153-156
+internal/engine/runtimehooks.go
+  s_382d929572417e::t_1f1c0f7279f265 1-54
+internal/engine/gitignore.go
+  s_382d929572417e::t_5f08a0f69e11ce 1-75
+  s_382d929572417e::t_355cf55934cb40 76-81
+internal/target/claude/hooks.go
+  s_382d929572417e::t_7be6c0aa8efff8 1-232
+  s_382d929572417e::t_a22368ffd32e56 233-234
+.golangci.yml
+  s_382d929572417e::t_a5dc89d965e945 20
+internal/engine/check.go
+  s_382d929572417e::t_4ac9e7e7204dc4 74-76
+internal/engine/engine.go
+  s_382d929572417e::t_edf93431811f2c 363-365,444,447,463
+internal/engine/engine_test.go
+  s_382d929572417e::t_99d90da8bfe974 150,165
+internal/engine/probe.go
+  s_382d929572417e::t_6a5d6b68044d96 58,64-73
+internal/source/folder.go
+  s_382d929572417e::t_8eeb72c1ea1203 172,206
+internal/source/git.go
+  s_382d929572417e::t_c9ab6f160906a9 47-52,84
+internal/target/claude/claude.go
+  s_382d929572417e::t_bbe9827053e70a 41-42,48-50,142-146,148-157,159
+internal/target/conformance/conformance_test.go
+  s_382d929572417e::t_27c3a21d83a246 192,196-197,200-204
+internal/target/target.go
+  s_382d929572417e::t_894705258d2796 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ed75c5a2f4a07509df14b761dcd4f7f4d9439ae",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
