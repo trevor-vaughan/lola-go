@@ -1,0 +1,40 @@
+internal/engine/runtimehooks.go
+  s_382d929572417e::t_9bb40c5a0111ac 37,209-214,217-221,224-225,229-230,232-252,260-298
+  s_382d929572417e::t_0219a5a117c5c9 299-300
+internal/module/frontmatter.go
+  s_382d929572417e::t_9bb40c5a0111ac 10,13-14,27-29,33-37
+internal/cli/prompt.go
+  s_382d929572417e::t_9bb40c5a0111ac 105-107
+internal/module/frontmatter_test.go
+  s_382d929572417e::t_5ee064692f9310 7,40-50
+  s_382d929572417e::t_026a15b5c6949e 51
+internal/module/components_test.go
+  s_382d929572417e::t_5ee064692f9310 344-384
+internal/module/load.go
+  s_382d929572417e::t_9bb40c5a0111ac 5,10,106-108,115-152,320-322,329-353
+  s_382d929572417e::t_2c56c87ae70e81 354-355
+internal/engine/runtimehooks_test.go
+  s_382d929572417e::t_5ee064692f9310 283-334
+internal/target/claude/claude.go
+  s_382d929572417e::t_87948e541ff95e 7,10-11,17,72-93,98-102,106-108,114-118,121,124,131-138,140-141,143,224-251
+internal/target/claude/hooks.go
+  s_382d929572417e::t_c9d0276255aae2 85-86,92,94-97,100-142,145,147,153,159,167,170,176,182,187,269-344
+internal/target/claude/hooks_test.go
+  s_382d929572417e::t_122d7a369ec211 305-436
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f588e869a51315b17e503c620a0ef09bd87f6246",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
