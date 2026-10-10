@@ -1,0 +1,79 @@
+docs/architecture.md
+  s_382d929572417e::t_bcaf6b8820cf62 5-7,15-16,36-37,50-51,55-100,462-464
+  s_382d929572417e::t_fd68f2874f0c74 5-7,15-16,36-37,50-51,55-100,462-464
+docs/decisions.md
+  s_382d929572417e::t_de94a63fe4765a 24-26
+  s_382d929572417e::t_b8c3c0df269022 24-26
+docs/roadmap.md
+  s_382d929572417e::t_71be4ed7f409c7 32-37
+  s_382d929572417e::t_b0aac0b424f2be 32-37
+docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md
+  s_382d929572417e::t_71a6ed8e1e7821 295-341
+  s_382d929572417e::t_837e375dbfd944 295-341
+docs/usage.md
+  s_382d929572417e::t_bc80596ceb1562 11,13,481-483,495-496,539-584,590-688,758-759,791-794,802-805
+  s_382d929572417e::t_1e64c813366629 11,13,481-483,495-496,539-563,566-584,590-688,758-759,791-794,802-805
+  s_382d929572417e::t_2a1db80a9a8638 564-565
+  s_382d929572417e::t_3cf1eaf853853c 585-589
+internal/cli/cmd_core.go
+  s_382d929572417e::t_dda428f3f9e466 99-100,111-125
+  s_382d929572417e::t_250b5cb2bdb8ef 99-100,111-125
+  s_382d929572417e::t_faa770892678d7 188
+internal/cli/help.go
+  s_382d929572417e::t_7240e0c017fdc9 150,153
+  s_382d929572417e::t_baeb8a60ff5a4a 150,153
+internal/config/config.go
+  s_382d929572417e::t_55a16a728b5f32 17,71-75,77-79,86-88,90-92,103-114
+internal/config/config_test.go
+  s_382d929572417e::t_855ab48067682d 89-95,147-154,208-209,270-274,356-362
+internal/config/fifo_other_test.go
+  s_382d929572417e::t_0385c9441fd6bd 1-9
+internal/config/fifo_unix_test.go
+  s_382d929572417e::t_a236c3bda91085 1-13
+internal/config/selector.go
+  s_382d929572417e::t_f004bebc646908 9,71-74
+internal/paths/key.go
+  s_382d929572417e::t_671c0e12672c2c 10-11,19
+internal/paths/paths_test.go
+  s_382d929572417e::t_33906a014a7544 84-92
+internal/engine/choices.go
+  s_382d929572417e::t_08715c471c35e6 115-116,123-129
+internal/engine/choices_test.go
+  s_382d929572417e::t_7c20132c9c2de6 130-141
+internal/cli/flow.go
+  s_382d929572417e::t_a1411e7146175c 49-50,57,66-73,181-182,195,198-201,231,237,270,273-278,325,465-467,495-499,512
+  s_382d929572417e::t_93c714818ff277 350
+internal/cli/flow_test.go
+  s_382d929572417e::t_905db1c16b2297 264-319,329,417-462
+  s_382d929572417e::t_69c6524703ceca 523
+internal/cli/summary.go
+  s_382d929572417e::t_eaf61faf412a50 12,21,89,102,104,119-120,125
+internal/cli/prompter.go
+  s_382d929572417e::t_0f33c369f2b61b 35-36,38-39,43-44
+internal/cli/cmd_store.go
+  s_382d929572417e::t_dad0a7428bac0e 236
+internal/cli/huh.go
+  s_382d929572417e::t_86b5409db28020 7,48-54,57,71-73,85-86,167
+internal/cli/huh_internal_test.go
+  s_382d929572417e::t_975b87682bbf93 32-49,98,102,106-137
+internal/cli/prompt.go
+  s_382d929572417e::t_314b59002975ad 22,31,55,72,77-79,82
+README.md
+  s_382d929572417e::t_8c766b293d2a23 48,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc9677ba325a51fa3e279dbf8496c1763ab3c375",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
