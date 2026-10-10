@@ -1,7 +1,10 @@
 internal/engine/choices.go
   s_382d929572417e::t_2a87584b5fb620 1-287
+  s_382d929572417e::t_8bcff8341b9a75 1-36,41-110,112-124,126-171
+  s_382d929572417e::t_1c446b3c72a893 172-287
 internal/engine/choices_test.go
   s_382d929572417e::t_e9325aaf61e2e6 1-139
+  s_382d929572417e::t_9bebc19a275312 1-111,130-139
 internal/engine/engine.go
   s_382d929572417e::t_6e97c5e9986e86 136-145,329-330,337-339
 internal/engine/ops.go
