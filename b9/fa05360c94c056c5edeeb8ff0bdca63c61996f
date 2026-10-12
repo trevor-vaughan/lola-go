@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-10-12-plan-6a-sync-design.md
+  s_80676529bb4fda::t_719144d9a0871b 238-241,1146-1150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b9fa05360c94c056c5edeeb8ff0bdca63c61996f",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
