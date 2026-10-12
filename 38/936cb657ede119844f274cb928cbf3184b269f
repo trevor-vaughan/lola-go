@@ -1,0 +1,24 @@
+internal/migrate/run_test.go
+  s_10471f401300a2::t_1e0f3c95c00005 358-377
+  s_10471f401300a2::t_74edca51ae85d5 16
+docs/usage.md
+  s_10471f401300a2::t_d46acaa6d93d1b 822-823,846
+internal/migrate/run.go
+  s_10471f401300a2::t_4d72653037813c 132,427-433,521,527-530,537-539,563-565,567-578,588-590,592-596,602-643,838-840,885-886
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "38936cb657ede119844f274cb928cbf3184b269f",
+  "prompts": {},
+  "sessions": {
+    "s_10471f401300a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7211564e-9a49-4a4e-ab5b-0e79b26c59da",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
