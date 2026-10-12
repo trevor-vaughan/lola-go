@@ -1,0 +1,28 @@
+internal/migrate/trash_test.go
+  s_382d929572417e::t_e85b518620dd15 1-144
+internal/migrate/trash.go
+  s_382d929572417e::t_b7178ab7420872 1-268
+  s_382d929572417e::t_61f8307f45ea52 269-281
+internal/migrate/trash_internal_test.go
+  s_382d929572417e::t_10f6d9abf44f32 1-61
+internal/paths/paths.go
+  s_382d929572417e::t_912e915fa2de95 22,62
+internal/paths/paths_test.go
+  s_382d929572417e::t_4ffac3acb6d8b7 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5734e2e7a2de93a0d01d540c13166ed59cdd7242",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
