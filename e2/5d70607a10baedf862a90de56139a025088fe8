@@ -1,0 +1,24 @@
+e2e/migrate/scripts/build-image.sh
+  s_80676529bb4fda::t_8e2d528c772762 3-4
+  s_80676529bb4fda::t_133fa91ba25f6e 18-22
+scripts/e2e-migrate.sh
+  s_80676529bb4fda::t_b04c7def29fae5 8-9
+  s_80676529bb4fda::t_9b76f531c8a088 6,15
+  s_80676529bb4fda::t_3dda9fd9bd8d93 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e25d70607a10baedf862a90de56139a025088fe8",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
