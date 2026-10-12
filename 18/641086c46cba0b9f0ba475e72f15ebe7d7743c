@@ -1,0 +1,68 @@
+Taskfile.yml
+  s_10471f401300a2::t_1dbf85328f10f0 6-7,49-52
+  s_10471f401300a2::t_90dcfda0ee31a3 53
+e2e/migrate/fixtures/rooted/module/commands/inner.md
+  s_10471f401300a2::t_7f445300e90222 1-4
+e2e/migrate/migrate.venom.yml
+  s_10471f401300a2::t_b2380043497297 1-112
+.taskfiles/e2e.yml
+  s_10471f401300a2::t_7f445300e90222 1-32
+e2e/migrate/scripts/python-setup-b.sh
+  s_10471f401300a2::t_b2380043497297 1-8
+e2e/migrate/fixtures/rooted/commands/rooted.md
+  s_10471f401300a2::t_b2380043497297 1-4
+e2e/migrate/fixtures/review/AGENTS.md
+  s_10471f401300a2::t_7f445300e90222 1
+e2e/migrate/fixtures/review/commands/ship/notes.txt
+  s_10471f401300a2::t_b2380043497297 1
+e2e/migrate/fixtures/kit/commands/deploy.md
+  s_10471f401300a2::t_7f445300e90222 1-4
+e2e/migrate/fixtures/kit/skills/lint/SKILL.md
+  s_10471f401300a2::t_b2380043497297 1-5
+e2e/migrate/fixtures/review/mcps.json
+  s_10471f401300a2::t_b2380043497297 1
+e2e/migrate/scripts/python-setup.sh
+  s_10471f401300a2::t_b2380043497297 1-23
+e2e/migrate/scripts/snapshot.py
+  s_10471f401300a2::t_b2380043497297 1-24
+e2e/migrate/fixtures/review/agents/critic.md
+  s_10471f401300a2::t_b2380043497297 1-5
+e2e/migrate/fixtures/review/skills/review/ref/checks.md
+  s_10471f401300a2::t_7f445300e90222 1
+scripts/e2e-migrate.sh
+  s_10471f401300a2::t_b2380043497297 1-74
+e2e/migrate/fixtures/tools/commands/tool.md
+  s_10471f401300a2::t_b2380043497297 1-4
+e2e/migrate/scripts/check.py
+  s_10471f401300a2::t_b2380043497297 1-163
+e2e/migrate/fixtures/review/skills/review/SKILL.md
+  s_10471f401300a2::t_b2380043497297 1-5
+e2e/migrate/scripts/build-image.sh
+  s_10471f401300a2::t_b2380043497297 1-21
+e2e/migrate/scripts/gitserve.py
+  s_10471f401300a2::t_b2380043497297 1-48
+AGENTS.md
+  s_10471f401300a2::t_1dbf85328f10f0 9-10
+e2e/migrate/requirements.txt
+  s_10471f401300a2::t_b2380043497297 1-115
+e2e/migrate/fixtures/review/commands/ship.md
+  s_10471f401300a2::t_7f445300e90222 1-4
+e2e/migrate/fixtures/tools/mcps.json
+  s_10471f401300a2::t_7f445300e90222 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18641086c46cba0b9f0ba475e72f15ebe7d7743c",
+  "prompts": {},
+  "sessions": {
+    "s_10471f401300a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7211564e-9a49-4a4e-ab5b-0e79b26c59da",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
