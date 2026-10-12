@@ -1,0 +1,21 @@
+internal/store/store.go
+  s_80676529bb4fda::t_aaee47dec117d5 29-30,34,77-79,82,88-90,95-96,160-162,196-198,209,249-250,252,269,276-325
+internal/store/store_test.go
+  s_80676529bb4fda::t_97653980de97e0 13,329-428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "08dcdb0de888471e5e6aceb4e17d6989f85be49a",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
