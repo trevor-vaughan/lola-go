@@ -1,0 +1,39 @@
+internal/store/digest.go
+  s_80676529bb4fda::t_73613af083f9af 13-19,41-44,47,51-53,55
+internal/source/folder_test.go
+  s_80676529bb4fda::t_15e3449b2c7a2a 68-75
+internal/source/git_test.go
+  s_80676529bb4fda::t_15e3449b2c7a2a 80-90
+internal/store/store_test.go
+  s_80676529bb4fda::t_15e3449b2c7a2a 6,20-22,169-225,334-335,338,340-343,345,347,352
+internal/source/archive.go
+  s_80676529bb4fda::t_73613af083f9af 81-82,93,97-101,104-105,111,114-116,119,124-126,128,369-370
+  s_80676529bb4fda::t_6b5a5ea95afa30 371
+internal/store/store.go
+  s_80676529bb4fda::t_73613af083f9af 14,53-55,82-83,87,146-147,171,180-192,211-224
+  s_80676529bb4fda::t_e6a0979018bc52 225-226
+internal/engine/engine.go
+  s_80676529bb4fda::t_73613af083f9af 365
+internal/source/archive_test.go
+  s_80676529bb4fda::t_15e3449b2c7a2a 228-240
+internal/source/folder.go
+  s_80676529bb4fda::t_73613af083f9af 23-25,27-30,51,55,68-70,72,76,80,82-95,97-108,254-257,265,267,271,274-277,280
+internal/source/git.go
+  s_80676529bb4fda::t_73613af083f9af 150-153,158,162-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0e10f1c8440bf33f961c72534442ed788e40992",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
