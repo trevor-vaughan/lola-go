@@ -1,0 +1,20 @@
+internal/engine/replace_test.go
+  s_80676529bb4fda::t_f609d363fe409b 205-216
+  s_80676529bb4fda::t_56e46eb7e01dc9 176-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "710c2aa36556e951afa012184289fc14851b59a6",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
