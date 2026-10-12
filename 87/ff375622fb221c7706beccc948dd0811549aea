@@ -1,0 +1,23 @@
+internal/source/folder.go
+  s_9055082ff5427a::t_a1e369b38f25f2 87-90,96-97
+internal/source/folder_test.go
+  s_9055082ff5427a::t_65b65b5b152e67 76-85
+internal/source/git_test.go
+  s_9055082ff5427a::t_800e52c71bab10 172-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "87ff375622fb221c7706beccc948dd0811549aea",
+  "prompts": {},
+  "sessions": {
+    "s_9055082ff5427a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a58cc85171b2c8fd1",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
