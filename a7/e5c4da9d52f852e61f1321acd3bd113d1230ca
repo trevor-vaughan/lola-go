@@ -1,0 +1,21 @@
+internal/source/recorded.go
+  s_80676529bb4fda::t_d30a0ad12aea65 6,34-35,63-65,81-94
+internal/source/recorded_test.go
+  s_80676529bb4fda::t_ba093096f09553 25-26,48-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a7e5c4da9d52f852e61f1321acd3bd113d1230ca",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
