@@ -1,0 +1,37 @@
+internal/migrate/trash_internal_test.go
+  s_10471f401300a2::t_e007d8027644b9 61-85
+internal/migrate/trash_test.go
+  s_10471f401300a2::t_e007d8027644b9 120-147
+internal/migrate/dirsync_unix.go
+  s_10471f401300a2::t_c524c01d9730b3 1-4,9-15,17
+  s_10471f401300a2::t_54731335631136 5-8,16
+internal/untrusted/untrusted.go
+  s_10471f401300a2::t_54731335631136 8,47-48,53-54
+  s_10471f401300a2::t_c6c7b96ddb4d97 55
+internal/untrusted/untrusted_test.go
+  s_10471f401300a2::t_e007d8027644b9 4-7,9,40-54
+  s_10471f401300a2::t_6fa72620137f72 55
+internal/migrate/dirsync_windows.go
+  s_10471f401300a2::t_54731335631136 1-6
+internal/migrate/trash.go
+  s_10471f401300a2::t_c524c01d9730b3 62,91,182-188
+  s_10471f401300a2::t_7b9160e647451a 63-64,88-90,92-100,112,114-116,119-122,137,142,144,147,153-181,189-196
+  s_10471f401300a2::t_01ed7f6e14d60f 140-141
+  s_10471f401300a2::t_bca4e0707ad5be 197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30071f90fadb98167815d8ef28d31b4e3409d64b",
+  "prompts": {},
+  "sessions": {
+    "s_10471f401300a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7211564e-9a49-4a4e-ab5b-0e79b26c59da",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
