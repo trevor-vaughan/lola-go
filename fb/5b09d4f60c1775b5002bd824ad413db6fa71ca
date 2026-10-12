@@ -1,0 +1,59 @@
+e2e/migrate/migrate.venom.yml
+  s_382d929572417e::t_f463e973bc0bd0 1-106
+.taskfiles/e2e.yml
+  s_382d929572417e::t_1ac369a01f6d5a 1-32
+Taskfile.yml
+  s_382d929572417e::t_e03e40e7dce9ee 6-7,49-53
+e2e/migrate/fixtures/kit/commands/deploy.md
+  s_382d929572417e::t_7b5e72a23d5929 1-4
+e2e/migrate/fixtures/kit/skills/lint/SKILL.md
+  s_382d929572417e::t_86cb03185533df 1-5
+e2e/migrate/fixtures/review/AGENTS.md
+  s_382d929572417e::t_20f45e0f62e637 1
+e2e/migrate/fixtures/review/agents/critic.md
+  s_382d929572417e::t_8d2ef630a53362 1-5
+e2e/migrate/fixtures/review/commands/ship.md
+  s_382d929572417e::t_16b6952d00f968 1-4
+e2e/migrate/fixtures/review/commands/ship/notes.txt
+  s_382d929572417e::t_900eae7ebdd6d9 1
+e2e/migrate/fixtures/review/mcps.json
+  s_382d929572417e::t_e6337ecf2194d3 1
+e2e/migrate/fixtures/review/skills/review/SKILL.md
+  s_382d929572417e::t_3637ee90cfc3a7 1-5
+e2e/migrate/fixtures/review/skills/review/ref/checks.md
+  s_382d929572417e::t_76b5dcdce01117 1
+e2e/migrate/fixtures/tools/commands/tool.md
+  s_382d929572417e::t_0b05a0b061b2db 1-4
+e2e/migrate/fixtures/tools/mcps.json
+  s_382d929572417e::t_b644e66de1e4bf 1
+e2e/migrate/scripts/build-image.sh
+  s_382d929572417e::t_6acb790839c47a 1-17
+e2e/migrate/scripts/check.py
+  s_382d929572417e::t_38e1a6f3710579 1-162
+e2e/migrate/scripts/gitserve.py
+  s_382d929572417e::t_7a387d82aac7ba 1-48
+e2e/migrate/scripts/python-setup-b.sh
+  s_382d929572417e::t_d56e2a1973b6ae 1-8
+e2e/migrate/scripts/python-setup.sh
+  s_382d929572417e::t_56d196b5c1121e 1-19
+e2e/migrate/scripts/snapshot.py
+  s_382d929572417e::t_715b11f60f1c02 1-24
+scripts/e2e-migrate.sh
+  s_382d929572417e::t_ac13d1d7269bc8 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb5b09d4f60c1775b5002bd824ad413db6fa71ca",
+  "prompts": {},
+  "sessions": {
+    "s_382d929572417e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f9c1a25-3876-4f63-9e98-9d48b63a72e5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
