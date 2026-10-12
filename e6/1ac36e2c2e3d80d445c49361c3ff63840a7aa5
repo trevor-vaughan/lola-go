@@ -1,0 +1,65 @@
+.taskfiles/e2e.yml
+  s_10471f401300a2::t_ba986c82092a41 1-32
+AGENTS.md
+  s_10471f401300a2::t_bd20d30b193b40 9-10
+Taskfile.yml
+  s_10471f401300a2::t_2b15608ff6d3ed 6-7,49-53
+e2e/migrate/fixtures/kit/commands/deploy.md
+  s_10471f401300a2::t_193550bb2dc749 1-4
+e2e/migrate/fixtures/kit/skills/lint/SKILL.md
+  s_10471f401300a2::t_b9cc6ce64def3f 1-5
+e2e/migrate/fixtures/review/AGENTS.md
+  s_10471f401300a2::t_cb83c35d2fae44 1
+e2e/migrate/fixtures/review/agents/critic.md
+  s_10471f401300a2::t_ee0b846b5cdf5f 1-5
+e2e/migrate/fixtures/review/commands/ship.md
+  s_10471f401300a2::t_6aa0e948660543 1-4
+e2e/migrate/fixtures/review/commands/ship/notes.txt
+  s_10471f401300a2::t_375039d295e291 1
+e2e/migrate/fixtures/review/mcps.json
+  s_10471f401300a2::t_4fe391629f6a40 1
+e2e/migrate/fixtures/review/skills/review/SKILL.md
+  s_10471f401300a2::t_0732d09a7ec9ab 1-5
+e2e/migrate/fixtures/review/skills/review/ref/checks.md
+  s_10471f401300a2::t_9fd89d91f007f7 1
+e2e/migrate/fixtures/rooted/commands/rooted.md
+  s_10471f401300a2::t_0b3fc795a803fe 1-4
+e2e/migrate/fixtures/rooted/module/commands/inner.md
+  s_10471f401300a2::t_f706788878434e 1-4
+e2e/migrate/fixtures/tools/commands/tool.md
+  s_10471f401300a2::t_dfca74ddeb696a 1-4
+e2e/migrate/fixtures/tools/mcps.json
+  s_10471f401300a2::t_2bcdc5fd7a40ac 1
+e2e/migrate/migrate.venom.yml
+  s_10471f401300a2::t_24ce7a81a1bf6f 1-112
+e2e/migrate/scripts/build-image.sh
+  s_10471f401300a2::t_5899fccac2f3fd 1-17
+e2e/migrate/scripts/check.py
+  s_10471f401300a2::t_f6aae63b62156d 1-163
+e2e/migrate/scripts/gitserve.py
+  s_10471f401300a2::t_3727692f12ca18 1-48
+e2e/migrate/scripts/python-setup-b.sh
+  s_10471f401300a2::t_2cf77040497f28 1-8
+e2e/migrate/scripts/python-setup.sh
+  s_10471f401300a2::t_6a7d360aa1c366 1-23
+e2e/migrate/scripts/snapshot.py
+  s_10471f401300a2::t_3341b6ef087316 1-24
+scripts/e2e-migrate.sh
+  s_10471f401300a2::t_a0bfc7c5855d1b 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e61ac36e2c2e3d80d445c49361c3ff63840a7aa5",
+  "prompts": {},
+  "sessions": {
+    "s_10471f401300a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7211564e-9a49-4a4e-ab5b-0e79b26c59da",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
