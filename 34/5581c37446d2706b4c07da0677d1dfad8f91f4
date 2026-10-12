@@ -1,0 +1,67 @@
+.taskfiles/e2e.yml
+  s_9055082ff5427a::t_03d41239621fac 1-32
+AGENTS.md
+  s_9055082ff5427a::t_9311f273cafc6e 9-10
+Taskfile.yml
+  s_9055082ff5427a::t_ccbcfae038814f 6-7,49-53
+e2e/migrate/fixtures/kit/commands/deploy.md
+  s_9055082ff5427a::t_69d578bd811837 1-4
+e2e/migrate/fixtures/kit/skills/lint/SKILL.md
+  s_9055082ff5427a::t_ee3cfdf50efd82 1-5
+e2e/migrate/fixtures/review/AGENTS.md
+  s_9055082ff5427a::t_e8ed4771dd17a0 1
+e2e/migrate/fixtures/review/agents/critic.md
+  s_9055082ff5427a::t_070adcbd3e41b7 1-5
+e2e/migrate/fixtures/review/commands/ship.md
+  s_9055082ff5427a::t_6181dbebfa848a 1-4
+e2e/migrate/fixtures/review/commands/ship/notes.txt
+  s_9055082ff5427a::t_5406e6afef3dd1 1
+e2e/migrate/fixtures/review/mcps.json
+  s_9055082ff5427a::t_8a52b28a162d6d 1
+e2e/migrate/fixtures/review/skills/review/SKILL.md
+  s_9055082ff5427a::t_096fb3205027ee 1-5
+e2e/migrate/fixtures/review/skills/review/ref/checks.md
+  s_9055082ff5427a::t_5c2d69d4a9e3bb 1
+e2e/migrate/fixtures/rooted/commands/rooted.md
+  s_9055082ff5427a::t_a841c23bf81eeb 1-4
+e2e/migrate/fixtures/rooted/module/commands/inner.md
+  s_9055082ff5427a::t_a3de912b50144c 1-4
+e2e/migrate/fixtures/tools/commands/tool.md
+  s_9055082ff5427a::t_75b80d9ebc11bb 1-4
+e2e/migrate/fixtures/tools/mcps.json
+  s_9055082ff5427a::t_5709bcf2874ed7 1
+e2e/migrate/migrate.venom.yml
+  s_9055082ff5427a::t_929e86c1c5081b 1-112
+e2e/migrate/requirements.txt
+  s_9055082ff5427a::t_ae068bb2105bfc 1-115
+e2e/migrate/scripts/build-image.sh
+  s_9055082ff5427a::t_729fac4371ca51 1-21
+e2e/migrate/scripts/check.py
+  s_9055082ff5427a::t_980affaeb07cc7 1-163
+e2e/migrate/scripts/gitserve.py
+  s_9055082ff5427a::t_0f0ecc12135e86 1-48
+e2e/migrate/scripts/python-setup-b.sh
+  s_9055082ff5427a::t_0aee3f6f9e2caa 1-8
+e2e/migrate/scripts/python-setup.sh
+  s_9055082ff5427a::t_44bee230502495 1-23
+e2e/migrate/scripts/snapshot.py
+  s_9055082ff5427a::t_574c0f361c9dc6 1-24
+scripts/e2e-migrate.sh
+  s_9055082ff5427a::t_e5916945ece76d 1-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "345581c37446d2706b4c07da0677d1dfad8f91f4",
+  "prompts": {},
+  "sessions": {
+    "s_9055082ff5427a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a58cc85171b2c8fd1",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
