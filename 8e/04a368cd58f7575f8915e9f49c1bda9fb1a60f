@@ -1,0 +1,30 @@
+internal/migrate/run.go
+  s_10471f401300a2::t_c24547e1d9e3db 261-265,267-271,274-278,280-311,313-331,1048
+  s_10471f401300a2::t_551e64fa7b8aa5 362-363,365
+  s_10471f401300a2::t_2b0a8abb5058f3 176,858,865-867,1029,1032,1036-1047
+  s_10471f401300a2::t_8a6b7f0186ec96 1049
+internal/migrate/run_test.go
+  s_10471f401300a2::t_d157b038159702 403-440
+internal/cli/cmd_migrate.go
+  s_10471f401300a2::t_cb85a85e903600 84
+docs/usage.md
+  s_10471f401300a2::t_2eeae10fcb427a 826-829
+docs/architecture.md
+  s_10471f401300a2::t_b3fd1bac4dafc5 548-550
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e04a368cd58f7575f8915e9f49c1bda9fb1a60f",
+  "prompts": {},
+  "sessions": {
+    "s_10471f401300a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7211564e-9a49-4a4e-ab5b-0e79b26c59da",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
