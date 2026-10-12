@@ -1,0 +1,25 @@
+internal/engine/gitignore.go
+  s_10471f401300a2::t_48195e3219ed7b 25
+internal/migrate/run.go
+  s_10471f401300a2::t_22e268a1e59387 4-21,26-339,347-1002
+internal/migrate/run_test.go
+  s_10471f401300a2::t_b7735e92cd326a 4-9,11-12,14,16-21,24-57,63-521
+internal/source/git.go
+  s_10471f401300a2::t_139b78c3aa0670 8,12,66-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6df646a92ac2f2abbbdd00ac36674aaee52c45dd",
+  "prompts": {},
+  "sessions": {
+    "s_10471f401300a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7211564e-9a49-4a4e-ab5b-0e79b26c59da",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
