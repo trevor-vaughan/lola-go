@@ -7,6 +7,7 @@ internal/engine/choices.go
 internal/engine/engine.go
   s_ae5de64031a7d5::t_99248549775875 361,364-370,373-377,400-401,428,469
   s_ae5de64031a7d5::t_5e3d80cd6661aa 452,457-458
+  s_ae5de64031a7d5::t_0c8d4fb6ea99fa 386-394
 internal/engine/ops.go
   s_ae5de64031a7d5::t_e986a73dc884b9 149,152-156,274
 internal/engine/pin.go
@@ -18,6 +19,7 @@ internal/store/store.go
   s_ae5de64031a7d5::t_51e0754c0a5e05 196
 internal/engine/engine_test.go
   s_ae5de64031a7d5::t_dfb9f637134293 126-146
+  s_ae5de64031a7d5::t_0654c95758130a 147-168
 internal/source/source.go
   s_ae5de64031a7d5::t_303ac7e0f8da1c 36-37,93,95,108-113,117-130
 internal/source/source_test.go
