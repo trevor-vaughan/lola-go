@@ -1,0 +1,30 @@
+docs/superpowers/specs/2026-10-12-plan-6a-sync-design.md
+  s_ae5de64031a7d5::t_388b439ccf24ec 771-773,777-790
+  s_ae5de64031a7d5::t_f0c2ca532b0d4b 85-86,349-350,635-637
+  s_ae5de64031a7d5::t_d13a90d13cc9b8 339-348,351-352,370-383,831-837,1060-1061
+  s_ae5de64031a7d5::t_e49c5a69224983 431-434,458-461,475-478,519-520
+  s_ae5de64031a7d5::t_2a1833168c82c5 554-556,1040-1041
+  s_ae5de64031a7d5::t_cd3466a7f348bf 640-641,916,931
+  s_ae5de64031a7d5::t_b4a7eaae2408d9 492-518,1066
+  s_ae5de64031a7d5::t_4df14fd6a92e57 363-365,642
+  s_ae5de64031a7d5::t_d1f8b3880dde56 1213-1263
+  s_ae5de64031a7d5::t_3a90ee21cb32df 752-757,796-797,922
+  s_ae5de64031a7d5::t_7efe1da966136e 1067-1068,1078-1079
+  s_ae5de64031a7d5::t_62057c985bc48b 667-668,670,737
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7336df34be97f3c0969d6c95d085780ff7895b7c",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
