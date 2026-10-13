@@ -1,0 +1,38 @@
+internal/engine/sync_test.go
+  s_ae5de64031a7d5::t_12c8d74e259d49 775
+  s_ae5de64031a7d5::t_2dea13030826da 621-646
+  s_ae5de64031a7d5::t_db39ab210ed7fc 614-615,697
+internal/cli/sync_test.go
+  s_ae5de64031a7d5::t_3ea62202abe2f0 166-192
+  s_ae5de64031a7d5::t_12c8d74e259d49 160-161,360
+internal/engine/sync.go
+  s_ae5de64031a7d5::t_01e18f0f204780 100-114,920,936-953
+  s_ae5de64031a7d5::t_2e3695baedc7f7 489,632
+  s_ae5de64031a7d5::t_db39ab210ed7fc 22
+  s_ae5de64031a7d5::t_05325fc6fb8ba4 97-99
+  s_ae5de64031a7d5::t_1a5fd978fffaaf 954-955
+internal/cli/cmd_sync.go
+  s_ae5de64031a7d5::t_05325fc6fb8ba4 353-361
+docs/architecture.md
+  s_ae5de64031a7d5::t_4a7165bb1dc26c 676-678
+docs/usage.md
+  s_ae5de64031a7d5::t_4a7165bb1dc26c 258,272-275,1154-1156
+docs/superpowers/specs/2026-10-12-plan-6a-sync-design.md
+  s_ae5de64031a7d5::t_2103970adbd620 489-492,939-940,955-956
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "237eb206e3bcf0c86597a4c3607d790c4fd99256",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
