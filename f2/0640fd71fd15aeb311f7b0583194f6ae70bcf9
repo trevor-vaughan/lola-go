@@ -1,0 +1,21 @@
+internal/engine/ops.go
+  s_ae5de64031a7d5::t_78a2b20612d1e2 397
+internal/engine/trust_test.go
+  s_ae5de64031a7d5::t_b41fe769f6c914 113-114,122-127,247-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f20640fd71fd15aeb311f7b0583194f6ae70bcf9",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
