@@ -1,0 +1,26 @@
+docs/architecture.md
+  s_ae5de64031a7d5::t_78f64724259db5 566-569
+docs/usage.md
+  s_ae5de64031a7d5::t_85379b6634255e 963
+internal/trust/trust.go
+  s_ae5de64031a7d5::t_74862ab013274b 304-318
+internal/trust/trust_test.go
+  s_ae5de64031a7d5::t_74862ab013274b 208
+  s_ae5de64031a7d5::t_e46a85c33311e8 207,209,221-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6e1e7bdd9540913eb8d84dbb6bb19c58cb9fac40",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
