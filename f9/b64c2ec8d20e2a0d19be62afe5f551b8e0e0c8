@@ -1,0 +1,23 @@
+internal/engine/pin.go
+  s_ae5de64031a7d5::t_1ede06225138a6 102
+internal/engine/sources_test.go
+  s_ae5de64031a7d5::t_8da653ccce38b0 360-373
+internal/store/store.go
+  s_ae5de64031a7d5::t_1ede06225138a6 111-113,116,201,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f9b64c2ec8d20e2a0d19be62afe5f551b8e0e0c8",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
