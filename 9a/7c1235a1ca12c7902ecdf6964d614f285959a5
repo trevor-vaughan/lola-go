@@ -1,0 +1,27 @@
+internal/cli/cmd_sync.go
+  s_ae5de64031a7d5::t_0d76c6a73305ae 23-24,27-33,35-38,78-80,98,105,134-135,190-191
+internal/cli/prompter.go
+  s_ae5de64031a7d5::t_8eaa96d45a020e 37
+internal/cli/sync_test.go
+  s_ae5de64031a7d5::t_e7f1d17505fddc 428,452-453,463,497,500,502,508,517,522-536,547
+internal/engine/sync.go
+  s_ae5de64031a7d5::t_bbd7a603f5bdf4 169-170,181,466,550-552,556-577,643,664,691-698,707-710,718-734
+internal/engine/sync_test.go
+  s_ae5de64031a7d5::t_1b8b47c9f39d57 1415-1416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9a7c1235a1ca12c7902ecdf6964d614f285959a5",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
