@@ -1,0 +1,31 @@
+internal/trust/trust_suite_test.go
+  s_ae5de64031a7d5::t_f639020ecc3874 1-13
+internal/trust/perm_unix.go
+  s_ae5de64031a7d5::t_f639020ecc3874 1-8
+internal/trust/trust.go
+  s_ae5de64031a7d5::t_f639020ecc3874 1-306
+internal/trust/trust_test.go
+  s_ae5de64031a7d5::t_f639020ecc3874 1-272
+internal/paths/paths_test.go
+  s_ae5de64031a7d5::t_f639020ecc3874 36-37
+internal/trust/perm_windows.go
+  s_ae5de64031a7d5::t_f639020ecc3874 1-9
+internal/paths/paths.go
+  s_ae5de64031a7d5::t_f639020ecc3874 22-23,64-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05e2987f8544912771a923de96d210c287560d18",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
