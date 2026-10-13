@@ -1,0 +1,34 @@
+internal/engine/sync_test.go
+  s_ae5de64031a7d5::t_79a96dbe9f81cf 1-291
+internal/engine/sync.go
+  s_ae5de64031a7d5::t_a92ce82b6b6e49 1-38,41-410,412-432,434-469,475-488
+  s_ae5de64031a7d5::t_c513a8219d5f9b 489-500
+internal/engine/engine_test.go
+  s_ae5de64031a7d5::t_665872ebc12fbc 1071-1076
+internal/engine/pin.go
+  s_ae5de64031a7d5::t_02a29bdc919be1 39-41,58-64
+internal/engine/sources_test.go
+  s_ae5de64031a7d5::t_cd7e4f20355272 253-254,259-270,272-284,312-313,324-325
+internal/source/fetch.go
+  s_ae5de64031a7d5::t_73aba27727b97b 20
+internal/source/reach.go
+  s_ae5de64031a7d5::t_c7ae25578b3030 20,44-55,69
+internal/source/source.go
+  s_ae5de64031a7d5::t_66cae1bbba3484 120,151,234,236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc4aba5f72a25006327bd472cbb997ff17309dff",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
