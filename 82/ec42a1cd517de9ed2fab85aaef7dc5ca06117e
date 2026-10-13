@@ -1,0 +1,23 @@
+internal/source/git.go
+  s_80676529bb4fda::t_551d108942bd44 285-287,295,298-304,315-320
+  s_80676529bb4fda::t_505e90b2dc981d 321
+internal/source/git_test.go
+  s_80676529bb4fda::t_d2eb2866d49ee6 284-289,291-296
+  s_80676529bb4fda::t_551d108942bd44 290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82ec42a1cd517de9ed2fab85aaef7dc5ca06117e",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
