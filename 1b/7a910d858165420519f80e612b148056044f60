@@ -1,0 +1,21 @@
+internal/cli/sync_output.go
+  s_ae5de64031a7d5::t_ee48911326b4a9 28,33-37
+internal/cli/sync_test.go
+  s_ae5de64031a7d5::t_c810ead9d77a4d 138-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b7a910d858165420519f80e612b148056044f60",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
