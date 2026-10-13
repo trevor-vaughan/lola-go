@@ -1,0 +1,40 @@
+internal/engine/runtimehooks_test.go
+  s_ae5de64031a7d5::t_a93220b8641866 471,491,637,656,677
+internal/engine/choices.go
+  s_ae5de64031a7d5::t_bf6da711e0eec0 144,197,290
+internal/engine/ops.go
+  s_ae5de64031a7d5::t_aea0e62874de8d 417
+  s_ae5de64031a7d5::t_bf6da711e0eec0 232,311,385-386,388,399-403,405-407,410-416,418-423,523-524,540,816-818,843
+internal/engine/edits_test.go
+  s_ae5de64031a7d5::t_a93220b8641866 288
+internal/engine/engine_test.go
+  s_ae5de64031a7d5::t_a93220b8641866 262,285,301,341,354,464,509,761,773,776,784,970,1139,1210
+docs/usage.md
+  s_ae5de64031a7d5::t_69ff1b59a597fe 170
+  s_ae5de64031a7d5::t_e0be2bbcea890f 171-175
+  s_ae5de64031a7d5::t_bd60a71f7e730c 168-169
+internal/engine/trust_test.go
+  s_ae5de64031a7d5::t_9d22bb3b5f3ac3 141-143,305-315,317-356
+  s_ae5de64031a7d5::t_40ba84e8ec877b 316
+  s_ae5de64031a7d5::t_a93220b8641866 81,201,206,217
+internal/cli/cmd_core.go
+  s_ae5de64031a7d5::t_aea0e62874de8d 182-185,188,198
+docs/architecture.md
+  s_ae5de64031a7d5::t_bd60a71f7e730c 594-598
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85a5452b21e456f99d9b1fffb6f10464920e4db4",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
