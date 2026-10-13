@@ -1,0 +1,25 @@
+internal/plan/apply.go
+  s_80676529bb4fda::t_733867512af63a 11-12,91-94,104-105,107-145,147-150,153-161,248-250,255-261,280
+  s_80676529bb4fda::t_5d3e598566195d 51-54
+  s_80676529bb4fda::t_69e514512cf137 101-103,106,146
+internal/plan/apply_internal_test.go
+  s_80676529bb4fda::t_fc10e94ba3385d 1-60
+internal/fsx/atomic.go
+  s_80676529bb4fda::t_733867512af63a 46-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd7aeffb4ef550db337dd4d2d42fdacadafc35ee",
+  "prompts": {},
+  "sessions": {
+    "s_80676529bb4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7479332e-15ab-41b6-851e-35b294f67d6b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
