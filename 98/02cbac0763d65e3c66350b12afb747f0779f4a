@@ -1,0 +1,42 @@
+internal/cli/cmd_core.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 184,194
+internal/engine/hints.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 23-31
+internal/engine/trust_test.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 38,82,141,146,154,179,199,201,204,215,238,242,264-265,279,288,303-304,306-316,318-319,323-324,326-328,330-331,335,337-340,391-400
+  s_ae5de64031a7d5::t_30861d22a6d881 401
+internal/migrate/plan.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 228
+internal/engine/ops.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 64-68,71-75,243,277,287,292,307,318,322-323,338,350,355,364,382,394-404,406,408-409,412-421,454-456,526-527,543,819-820,850,874
+internal/migrate/run_test.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 238-245
+internal/engine/choices.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 146-148,152,157,210,299-301,329,332,337-339,341,345,352,354,357-362,365-379,381
+internal/engine/edits_test.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 288
+internal/engine/runtimehooks_test.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 471,491,637,656,677
+internal/trust/trust.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 4-5
+internal/engine/engine_test.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 263,286,302,342,355,465,510,581-585,767,779,782,790,976,1125,1194,1265
+internal/cli/flow_test.go
+  s_ae5de64031a7d5::t_6171381c5cdfe5 212,217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9802cbac0763d65e3c66350b12afb747f0779f4a",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
