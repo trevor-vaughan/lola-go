@@ -1,0 +1,22 @@
+internal/engine/sync_test.go
+  s_ae5de64031a7d5::t_02567aaf26ae21 5,168-169,171,264,429,432,564-731
+  s_ae5de64031a7d5::t_b09eb521342ee2 732-733
+internal/engine/sync.go
+  s_ae5de64031a7d5::t_6a072586e062c8 5-6,9-10,17,60-64,67-93,147-148,150-159,175-178,211,222-233,235-241,250-253,256,262,266,270-271,308-334,337-344,416,436-440,442-454,456,520-541,803-966
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af78c59159a39a20783f9f9f90522d7e387486be",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
