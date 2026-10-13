@@ -1,0 +1,39 @@
+AGENTS.md
+  s_ae5de64031a7d5::t_fdd819cf092b46 25-27
+internal/cli/cmd_sync.go
+  s_ae5de64031a7d5::t_d6ab02c8882225 57,61-68,71,77,80,140,189-190,198-207,220-224
+internal/cli/flow_test.go
+  s_ae5de64031a7d5::t_fa049936c66d0c 32,76-79
+internal/cli/huh.go
+  s_ae5de64031a7d5::t_1f5d89ea6bebb0 283-288
+internal/cli/huh_internal_test.go
+  s_ae5de64031a7d5::t_6f629b9da82d71 141-152
+internal/cli/human.go
+  s_ae5de64031a7d5::t_b6687fede1e75f 213,229-241
+internal/cli/prompter.go
+  s_ae5de64031a7d5::t_0ac920f65b265f 8,26-27,145
+internal/cli/sync_test.go
+  s_ae5de64031a7d5::t_b89ba4c05c0b69 5,15,19-46,117-118,171-172,179-226
+internal/engine/hooks.go
+  s_ae5de64031a7d5::t_c4401feec10508 34-36,41,78-79,183
+internal/engine/sync.go
+  s_ae5de64031a7d5::t_5e225bd88dd58a 53-63,1040,1059
+internal/engine/sync_test.go
+  s_ae5de64031a7d5::t_d85a2f5c2c244d 714,716-717
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "150ff438fd09d63b24682cbfc559ca97d2f98cfa",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
