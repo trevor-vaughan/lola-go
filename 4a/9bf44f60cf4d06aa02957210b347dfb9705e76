@@ -1,0 +1,85 @@
+internal/cli/cmd_core.go
+  s_ae5de64031a7d5::t_83f18569df91e8 91
+internal/cli/cmd_sync.go
+  s_ae5de64031a7d5::t_af1a759cc21061 1-56,58-60,69-70,72-76,78-79,81-139,141-188,191-197,208-219,225-355
+  s_ae5de64031a7d5::t_d6ab02c8882225 57,61-68,71,77,80,140,189-190,198-207,220-224
+internal/cli/root.go
+  s_ae5de64031a7d5::t_773a8363e69893 169-171
+internal/cli/sync_test.go
+  s_ae5de64031a7d5::t_5aab6456232817 1-4,6-14,16-18,47-116,119-170,173-178,227-270
+  s_ae5de64031a7d5::t_b89ba4c05c0b69 5,15,19-46,117-118,171-172,179-226
+internal/engine/engine_test.go
+  s_ae5de64031a7d5::t_56d64618c5e429 1068-1069,1102-1103
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_d303754df56033 111
+internal/engine/sync.go
+  s_ae5de64031a7d5::t_c080c4de38d9db 89-91,265,267,348,467-488
+  s_ae5de64031a7d5::t_3b020989cc60f9 137-138,769,791,835-839
+  s_ae5de64031a7d5::t_1a2c470693fc1f 11,428-429,432-436,530-536,541,564-587,610-612,614
+  s_ae5de64031a7d5::t_fca00e194bbe27 17,173-174,176-185,201-204,237,248-259,261-264,266,268,277-280,284,301-302,347,349,356,504-508,510-522,524,588-609,870-872,894,905-932,991,993,998
+  s_ae5de64031a7d5::t_48cd6eae1ab21f 50-51,1041,1044-1045,1048,1052
+  s_ae5de64031a7d5::t_4f4ccae8ecc7fd 172,282-283,285-287,855-856
+  s_ae5de64031a7d5::t_5e225bd88dd58a 53-63,1040,1059
+docs/architecture.md
+  s_ae5de64031a7d5::t_9a9b48f8db1940 45,47,54,58,64-71,90-105,165-181,285-290,303-308,312-313,317-325,335-372,410-417,479-485,487-489,532-550,554-574,590-597,600-611,625-628,631-633,637-650,663-667,673-676,681-693,698-706,740-741
+  s_ae5de64031a7d5::t_994f80d54361ab 588-589,634-636,651-662,668-672,677-680,694-697,742-750
+docs/decisions.md
+  s_ae5de64031a7d5::t_6e8340ff83cea7 41-43,46
+  s_ae5de64031a7d5::t_6c59cbc0c6158e 44-45
+docs/roadmap.md
+  s_ae5de64031a7d5::t_7c0beb364b3fdc 44-47
+docs/usage.md
+  s_ae5de64031a7d5::t_615b1b7cf17191 12,168-170,178-181,200-222,225-233,238-262,266-269,272-279,284-285,295,299-300,303-307,310,1081,1103-1104,1106-1108,1110,1113-1115,1126-1128,1133-1142
+  s_ae5de64031a7d5::t_08e5f7fd883189 223-224,234-237,263-265,270-271,280-283,286-294,296-298,301-302,308-309,1143-1150
+internal/engine/sources_test.go
+  s_ae5de64031a7d5::t_79bdd9026e9333 16,69-72,74-78,87,100-101,397,407,411-412
+  s_ae5de64031a7d5::t_4c014c63784bfb 271
+internal/trust/trust.go
+  s_ae5de64031a7d5::t_c77c35ee452c0e 168,234-235,237,240
+internal/trust/trust_test.go
+  s_ae5de64031a7d5::t_4d788bdab23984 190-194
+internal/engine/sync_internal_test.go
+  s_ae5de64031a7d5::t_3604f4e611a3b2 1-33
+internal/engine/pin.go
+  s_ae5de64031a7d5::t_298fdfa2864891 45,65-72
+internal/engine/ops.go
+  s_ae5de64031a7d5::t_6f7f57091cbade 357-358,447-450,460,465-471,885-887
+internal/engine/sync_test.go
+  s_ae5de64031a7d5::t_34b665c45080e0 335-336,340-342,344-347,349-372,426-439,441-445,482-483,490-492,501-517
+  s_ae5de64031a7d5::t_5feca37eaf345a 175-176,178,256,422,425,574-583,585-643
+  s_ae5de64031a7d5::t_7cb5f656397bb1 411,440
+  s_ae5de64031a7d5::t_03fc8916d509f0 836-854
+  s_ae5de64031a7d5::t_d85a2f5c2c244d 714,716-717
+internal/engine/trust_test.go
+  s_ae5de64031a7d5::t_2d2431f54e5ce3 236-247
+AGENTS.md
+  s_ae5de64031a7d5::t_fdd819cf092b46 25-27
+internal/cli/flow_test.go
+  s_ae5de64031a7d5::t_fa049936c66d0c 32,76-79
+internal/cli/huh.go
+  s_ae5de64031a7d5::t_1f5d89ea6bebb0 283-288
+internal/cli/huh_internal_test.go
+  s_ae5de64031a7d5::t_6f629b9da82d71 141-152
+internal/cli/human.go
+  s_ae5de64031a7d5::t_b6687fede1e75f 213,229-241
+internal/cli/prompter.go
+  s_ae5de64031a7d5::t_0ac920f65b265f 8,26-27,145
+internal/engine/hooks.go
+  s_ae5de64031a7d5::t_c4401feec10508 34-36,41,78-79,183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a9bf44f60cf4d06aa02957210b347dfb9705e76",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
