@@ -1,0 +1,21 @@
+internal/cli/cmd_sync.go
+  s_55b5f06e1909ec::t_08bcb5335bfcb1 7,19,21-31,37,57-60,63-80,82,96-98,100,109,113-115,117-118,120,122-123,125-133,135-137,141-142,144-175,177-183,185,187-204,206-207,209-214,216-226
+internal/cli/scope_test.go
+  s_55b5f06e1909ec::t_4b17637cbdf577 4,7,70,75-81,118-148,172-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ecfbeec314e46fbd94347d6c9847e8494493b67",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
