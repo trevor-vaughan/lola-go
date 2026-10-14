@@ -1,0 +1,29 @@
+.golangci.yml
+  s_55b5f06e1909ec::t_1206dfaf99a4e1 40-49
+docs/architecture.md
+  s_55b5f06e1909ec::t_4c90a311d7e2cc 66-68
+internal/activeprofile/activeprofile.go
+  s_55b5f06e1909ec::t_a9f098bef98980 1-35
+internal/activeprofile/activeprofile_suite_test.go
+  s_55b5f06e1909ec::t_c5b7495a46f4b4 1-13
+internal/activeprofile/activeprofile_test.go
+  s_55b5f06e1909ec::t_cbd0fc2fd99ef4 1-24
+internal/ledger/ledger.go
+  s_55b5f06e1909ec::t_5121b80dc10a53 17,106,220,223-224,227,244,246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4fcc1b8cbd61b9bf06cb1c21dbcbc0138289a357",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
