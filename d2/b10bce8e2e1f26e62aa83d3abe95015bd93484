@@ -1,0 +1,23 @@
+internal/cli/pager.go
+  s_55b5f06e1909ec::t_d09e1a0a1d7148 30-33,36-38
+internal/cli/pager_test.go
+  s_55b5f06e1909ec::t_fe45f1979f4929 59-61,63,73,128-151
+internal/cli/root.go
+  s_55b5f06e1909ec::t_82c6d29e9c05cc 53-54,68-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d2b10bce8e2e1f26e62aa83d3abe95015bd93484",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
