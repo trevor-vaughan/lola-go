@@ -1,0 +1,25 @@
+docs/usage.md
+  s_55b5f06e1909ec::t_f2cb5792bedec1 525-533,538
+internal/cli/cmd_profile.go
+  s_55b5f06e1909ec::t_9c5039e7c3e574 178-179,199,204-206
+internal/cli/cmd_sync.go
+  s_55b5f06e1909ec::t_7c93c2dbe7a2c7 240-242
+internal/cli/profile_test.go
+  s_55b5f06e1909ec::t_409ad6e20d5079 158,166,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "436b4f218e4cf4315f218696d7dce46a7c646300",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
