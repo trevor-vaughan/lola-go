@@ -1,0 +1,22 @@
+internal/profile/profile.go
+  s_55b5f06e1909ec::t_6bc0a2a8367a0d 71-74,80,83-87,127-128,145
+internal/profile/profile_test.go
+  s_55b5f06e1909ec::t_12095a0587a098 78-79,95,128,162-167
+  s_55b5f06e1909ec::t_d748ac4ccda446 168-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b075e07e27847a26c5078a8b6411e867f513dd6a",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
