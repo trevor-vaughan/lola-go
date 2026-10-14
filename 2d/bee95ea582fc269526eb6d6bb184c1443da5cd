@@ -1,0 +1,53 @@
+internal/engine/edits.go
+  s_55b5f06e1909ec::t_a836a3505ba971 234-237
+internal/cli/sync_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 126,133,158,166,216,222,321-322,333,337-338,407,514,533,607,642,769
+internal/engine/sync_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 250,364,412,414,417,441,473,497,526,538,557,629,677,853-854,857,859-860,1056,1217,1308,1438,1542,1921,1940,1962,1979
+internal/engine/hints.go
+  s_55b5f06e1909ec::t_a836a3505ba971 12-18,20-23,25-29,39-40,42
+internal/migrate/run_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 244
+docs/decisions.md
+  s_55b5f06e1909ec::t_a836a3505ba971 54
+internal/engine/edits_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 346
+internal/engine/sources_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 515,557
+internal/cli/flow_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 219,224,242,287,293
+internal/engine/trust_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 144,157,204,247-248,265-266,274,302,307,327,341,380-381,389-390,401,456,507,529,553,608-609,611,671
+internal/engine/engine_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 576,767,1091,1125,1374,1397,1457,1459,1645
+internal/cli/store_test.go
+  s_55b5f06e1909ec::t_773d829f5572fd 37
+internal/cli/summary.go
+  s_55b5f06e1909ec::t_a836a3505ba971 131-134,138,169,221-222
+internal/engine/choices.go
+  s_55b5f06e1909ec::t_a836a3505ba971 222
+internal/engine/ops.go
+  s_55b5f06e1909ec::t_a836a3505ba971 378,635,778,796,888
+internal/engine/sync.go
+  s_55b5f06e1909ec::t_a836a3505ba971 1138
+docs/architecture.md
+  s_55b5f06e1909ec::t_a836a3505ba971 716-721
+docs/usage.md
+  s_55b5f06e1909ec::t_a836a3505ba971 163-164,171,183-185,246,382,420-421,423,441,451-455,481-482,709
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2dbee95ea582fc269526eb6d6bb184c1443da5cd",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
