@@ -1,0 +1,33 @@
+internal/manifest/manifest.go
+  s_55b5f06e1909ec::t_5910d56541e44a 101,108-110
+internal/profile/profile_suite_test.go
+  s_55b5f06e1909ec::t_25ff44b7bc0a5c 1-13
+internal/paths/paths_test.go
+  s_55b5f06e1909ec::t_25ff44b7bc0a5c 32
+internal/profile/profile_test.go
+  s_55b5f06e1909ec::t_25ff44b7bc0a5c 1-167
+internal/profile/profile.go
+  s_55b5f06e1909ec::t_5910d56541e44a 1-206
+docs/architecture.md
+  s_55b5f06e1909ec::t_5910d56541e44a 60-65
+internal/paths/paths.go
+  s_55b5f06e1909ec::t_5910d56541e44a 17,60
+.golangci.yml
+  s_55b5f06e1909ec::t_5910d56541e44a 24-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee62549ebd06833a0e385a1833d9afeb248cf42b",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
