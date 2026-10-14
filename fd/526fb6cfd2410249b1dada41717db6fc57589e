@@ -1,0 +1,23 @@
+docs/architecture.md
+  s_55b5f06e1909ec::t_06868f7b307f73 213-220
+internal/ledger/ledger.go
+  s_55b5f06e1909ec::t_667616768b5da6 20,22,73-75,80,105-122,124-127,168-170,178-180,220-251,290
+internal/ledger/ledger_test.go
+  s_55b5f06e1909ec::t_69956bbb4b5407 6,206-255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd526fb6cfd2410249b1dada41717db6fc57589e",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
