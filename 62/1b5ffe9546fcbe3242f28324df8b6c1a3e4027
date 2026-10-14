@@ -1,0 +1,24 @@
+internal/cli/cmd_sync.go
+  s_55b5f06e1909ec::t_5cc86fdb8099da 17,63,65-67,70-86,90-93,149,152-158
+  s_55b5f06e1909ec::t_53173f6f07d769 87-89
+internal/cli/scope_test.go
+  s_55b5f06e1909ec::t_46cef183d11e15 188,194,206,211
+docs/usage.md
+  s_55b5f06e1909ec::t_4edf5e684f1f91 1043-1044
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "621b5ffe9546fcbe3242f28324df8b6c1a3e4027",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
