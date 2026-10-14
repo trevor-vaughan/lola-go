@@ -1,0 +1,43 @@
+internal/cli/scope.go
+  s_55b5f06e1909ec::t_d08c9b5c5a6399 1-25,28-46,47-154
+internal/cli/cmd_core.go
+  s_55b5f06e1909ec::t_8b763f8de32d42 167-171,177-181,185,314,319-323,327
+internal/cli/cmd_sync.go
+  s_55b5f06e1909ec::t_181745035ad44b 61,68,72-76
+internal/cli/flow.go
+  s_55b5f06e1909ec::t_3993c0efffad65 48,96,112,263,279-281,283-287,289,292
+internal/cli/flow_test.go
+  s_55b5f06e1909ec::t_aef3c28fe2b260 311,482
+internal/cli/huh.go
+  s_55b5f06e1909ec::t_8e20fe3d036e5f 204
+internal/cli/huh_internal_test.go
+  s_55b5f06e1909ec::t_178607190cb9b2 108,126-128,137-138
+internal/cli/install_test.go
+  s_55b5f06e1909ec::t_b7b1da6d660d2e 56-57
+internal/cli/prompter.go
+  s_55b5f06e1909ec::t_23b87e469a582b 65-67,69,74
+internal/cli/scope_test.go
+  s_55b5f06e1909ec::t_1d2efa56f33966 10,46-107
+internal/cli/sync_test.go
+  s_55b5f06e1909ec::t_edc05e64fcfe17 603,623,630,640,675,683,697
+internal/engine/scope.go
+  s_55b5f06e1909ec::t_9625f0d1cb3c6b 31-32,156-161
+internal/engine/scope_test.go
+  s_55b5f06e1909ec::t_89b473cce854e9 102-103,106-107,110-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a20e5b130fe2e70ccb02f575d32ba563b93e888e",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
