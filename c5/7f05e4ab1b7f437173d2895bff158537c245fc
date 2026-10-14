@@ -1,0 +1,51 @@
+docs/architecture.md
+  s_55b5f06e1909ec::t_873245c2b084f4 145-148
+  s_55b5f06e1909ec::t_d24775f3afe207 946-973
+internal/cli/cmd_sync.go
+  s_55b5f06e1909ec::t_7cdd80a7045d0a 289-290,296
+  s_55b5f06e1909ec::t_7c93c2dbe7a2c7 240-242
+internal/cli/profile_test.go
+  s_55b5f06e1909ec::t_254ccce57f9e2f 211-215
+  s_55b5f06e1909ec::t_409ad6e20d5079 159,167,207
+  s_55b5f06e1909ec::t_eb60b3107f9682 145
+  s_55b5f06e1909ec::t_dba735610ab9b4 8,84,126-127
+internal/engine/profile_test.go
+  s_55b5f06e1909ec::t_f952a3f5df103f 798-817
+  s_55b5f06e1909ec::t_f34873b89eb6a4 6,87-94,601,611,647-648,658-707,786
+internal/engine/sync.go
+  s_55b5f06e1909ec::t_09d4787ee8c98e 1194-1196,1201-1220
+  s_55b5f06e1909ec::t_ead67c592f6df6 257-259,261-263,266,274-277,280-290,293-308,328-329,476-481
+  s_55b5f06e1909ec::t_38f1d782efa542 1197-1200
+internal/cli/scope_test.go
+  s_55b5f06e1909ec::t_a10f62b633cc83 116-153
+internal/engine/activate.go
+  s_55b5f06e1909ec::t_2e6e532dc0e41a 43,216,224,241,254
+  s_55b5f06e1909ec::t_34c6938ede6965 5,36-38,65,68-72,74-76,81-88,90-94,96-100,102-103,106,108,140-141,143,180,198,215,218,225-227,229,231-236,240,242-253,255-264
+docs/decisions.md
+  s_55b5f06e1909ec::t_13f37cbc962a9c 65
+internal/engine/profile.go
+  s_55b5f06e1909ec::t_d6ffe6d50c1577 45-49,58,115-133,135-139,141,144,150,153-174,177-181,183-197,200-212
+docs/usage.md
+  s_55b5f06e1909ec::t_f2cb5792bedec1 525-533,538
+internal/cli/cmd_profile.go
+  s_55b5f06e1909ec::t_9c5039e7c3e574 184-185,205,210-212
+  s_55b5f06e1909ec::t_0b0ed6f6bac543 125-131
+internal/engine/profileview.go
+  s_55b5f06e1909ec::t_6b8553ebd6c59e 118-119,121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c57f05e4ab1b7f437173d2895bff158537c245fc",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
