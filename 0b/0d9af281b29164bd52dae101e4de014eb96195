@@ -1,0 +1,23 @@
+internal/activeprofile/activeprofile_test.go
+  s_55b5f06e1909ec::t_ca5241bbebdc29 19-20
+internal/ledger/ledger.go
+  s_55b5f06e1909ec::t_e46d586b20df57 244,246
+internal/ledger/ledger_test.go
+  s_55b5f06e1909ec::t_ca5241bbebdc29 210-212,250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b0d9af281b29164bd52dae101e4de014eb96195",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
