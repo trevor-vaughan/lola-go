@@ -1,0 +1,44 @@
+internal/profile/profile.go
+  s_55b5f06e1909ec::t_8faed93d995b65 1-148,150-221
+.golangci.yml
+  s_55b5f06e1909ec::t_27dfa19d0056cb 24-39
+docs/architecture.md
+  s_55b5f06e1909ec::t_0d3c8bf97a8e07 42-43,61-66
+  s_55b5f06e1909ec::t_06868f7b307f73 213-220
+internal/manifest/manifest.go
+  s_55b5f06e1909ec::t_ab772b01fa3069 101,108-110
+internal/paths/paths.go
+  s_55b5f06e1909ec::t_557893e2dd0525 17,60
+internal/paths/paths_test.go
+  s_55b5f06e1909ec::t_7adf7e1356621b 32
+internal/profile/profile_suite_test.go
+  s_55b5f06e1909ec::t_99ad63a1e075d4 1-13
+internal/profile/profile_test.go
+  s_55b5f06e1909ec::t_c5088f95038d09 1-76,78-79,81-174
+internal/yamldoc/nofollow_unix.go
+  s_55b5f06e1909ec::t_0f63a910fdc587 1-8
+internal/yamldoc/nofollow_windows.go
+  s_55b5f06e1909ec::t_3aadec276cf005 1-5
+internal/yamldoc/yamldoc.go
+  s_55b5f06e1909ec::t_05a9e64983fe94 32-63,66,74-75
+internal/ledger/ledger.go
+  s_55b5f06e1909ec::t_667616768b5da6 20,22,73-75,80,105-122,124-127,168-170,178-180,220-251,290
+internal/ledger/ledger_test.go
+  s_55b5f06e1909ec::t_69956bbb4b5407 6,206-255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3ee96b494714ee5fa92869070b9255beae5b4638",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
