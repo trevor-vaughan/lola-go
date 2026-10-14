@@ -1,0 +1,27 @@
+internal/engine/profile_test.go
+  s_55b5f06e1909ec::t_4e0164d750c654 798-817
+internal/cli/profile_test.go
+  s_55b5f06e1909ec::t_4e0164d750c654 211-215
+docs/architecture.md
+  s_55b5f06e1909ec::t_c241ca7d3f6e70 145-148
+internal/engine/sync.go
+  s_55b5f06e1909ec::t_c241ca7d3f6e70 1194-1220
+internal/cli/cmd_sync.go
+  s_55b5f06e1909ec::t_c241ca7d3f6e70 289-290,296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43fc31b7d8ea597600c8a4d94b332af836d8bd36",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
