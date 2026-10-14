@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md
+  s_55b5f06e1909ec::t_ff7b8d458a2de2 347-349,448,775-779
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f56fa3db07892fcb865412c39172f9829187881",
+  "prompts": {},
+  "sessions": {
+    "s_55b5f06e1909ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9befd7bc-c4fa-4112-88a1-2079f455b7c8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
