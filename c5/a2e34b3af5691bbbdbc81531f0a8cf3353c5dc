@@ -1,0 +1,47 @@
+internal/cli/profile_update.go
+  s_33f910aed78e99::t_bc7d345f30b566 7,9,28,36-37,39,42,47,79,88,104,126-132,135-151,154-202,204
+docs/architecture.md
+  s_33f910aed78e99::t_7ac11972c9721f 938-964
+docs/decisions.md
+  s_33f910aed78e99::t_67b1c1b520022b 93
+docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md
+  s_33f910aed78e99::t_38a2f24b99d672 169-173,444-446,636-638
+docs/usage.md
+  s_33f910aed78e99::t_bbc52b84b36d53 713-717,725-730,733-735,1389-1390
+internal/cli/cmd_profile.go
+  s_33f910aed78e99::t_c02da109501185 155-157
+internal/cli/cmd_sync.go
+  s_33f910aed78e99::t_9236ffdb3307f9 63-65,68
+internal/cli/profile_add.go
+  s_33f910aed78e99::t_c2bd1b99f66b5e 40,44-46
+internal/cli/remoteprofile_test.go
+  s_33f910aed78e99::t_82bcd0e5dc4a30 270-272,317-343,345-346
+internal/cli/scope.go
+  s_33f910aed78e99::t_6a9fc925a1650a 162-168,185-187,189,191-202,204
+internal/engine/remote.go
+  s_33f910aed78e99::t_36b2590b9cd02a 406-408,410,412-421
+internal/engine/remote_add.go
+  s_33f910aed78e99::t_076f905ee1eccc 52-55,216-217,237-238
+internal/engine/remote_remove.go
+  s_33f910aed78e99::t_f21630bd6bb0b6 67
+internal/engine/remote_update.go
+  s_33f910aed78e99::t_083f5e6e4076d8 26-30,32,68-79,81-83,110,174-175,180,224-227,231,233-234,236-237,240,256,265-270,273,276-280,372-373,401-403
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_0c492342def141 302,305,336,975,977,995,1027,1047,1053,1137-1138,1217-1218,1228-1230,1234-1250,1282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5a2e34b3af5691bbbdbc81531f0a8cf3353c5dc",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
