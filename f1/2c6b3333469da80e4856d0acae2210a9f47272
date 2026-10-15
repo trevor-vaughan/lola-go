@@ -1,0 +1,41 @@
+docs/architecture.md
+  s_33f910aed78e99::t_a343979e42cae3 942-972,974-976,984-986
+docs/decisions.md
+  s_33f910aed78e99::t_2ab5554a22e847 94-96
+docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md
+  s_33f910aed78e99::t_fc56d2076ba6a3 172-174,640-641,649-651
+docs/usage.md
+  s_33f910aed78e99::t_945c2dbdeb1b63 709-714,723-724,738-742,744-745,755-756,771
+internal/cli/cmd_profile.go
+  s_33f910aed78e99::t_2faf954003085b 168-171,268
+internal/cli/profile_update.go
+  s_33f910aed78e99::t_42df176dc4ef53 48,99-103,107
+internal/cli/remoteprofile_test.go
+  s_33f910aed78e99::t_e0b3c794209e9d 349-372,397-398
+internal/engine/profile.go
+  s_33f910aed78e99::t_233d9d0c3bee5d 186
+internal/engine/profileview.go
+  s_33f910aed78e99::t_3b49693dd751dc 284
+internal/engine/remote_remove.go
+  s_33f910aed78e99::t_7934c0881351d0 76-77,103,150,153,163
+internal/engine/remote_update.go
+  s_33f910aed78e99::t_90226aca828828 36,38-45,90,92,107-110,113-114,123,134-138,145,151,153,181-182,193,203,232,250-251,254,274,303-364,506,509
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_28512a74ce5e6c 306,1249,1253,1270-1271,1274-1317,1499,1504-1505,1507,1513
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f12c6b3333469da80e4856d0acae2210a9f47272",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
