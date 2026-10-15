@@ -1,0 +1,26 @@
+internal/engine/remote_update.go
+  s_33f910aed78e99::t_cd53be79b3c86c 63-69
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_5a5022d1016781 760-775
+  s_33f910aed78e99::t_3534ab28581847 776-777
+internal/engine/remote_remove.go
+  s_33f910aed78e99::t_cd53be79b3c86c 60-66
+internal/engine/remote.go
+  s_33f910aed78e99::t_e506e6b07b022e 200-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "87463435d6b3ea3d3ce568e4ea9c9aa962aa175e",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
