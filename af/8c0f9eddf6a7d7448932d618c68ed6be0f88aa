@@ -1,0 +1,21 @@
+docs/usage.md
+  s_33f910aed78e99::t_bdd60c1913e818 719-721
+internal/testenv/testenv.go
+  s_33f910aed78e99::t_07a611e2fa94ce 120-131,138,145-146,155-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af8c0f9eddf6a7d7448932d618c68ed6be0f88aa",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
