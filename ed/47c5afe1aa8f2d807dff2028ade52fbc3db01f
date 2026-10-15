@@ -1,0 +1,45 @@
+docs/architecture.md
+  s_33f910aed78e99::t_ca559617238a69 904-908,934,936-952
+docs/decisions.md
+  s_33f910aed78e99::t_b5ee7b5be7e492 81,92
+docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md
+  s_33f910aed78e99::t_1194519c9aacac 129,142,168-171,176,442-443,639-640
+docs/usage.md
+  s_33f910aed78e99::t_dcf1911f53dd64 16,647,684-688,693-697,699-722,1372-1374
+internal/cli/cmd_profile.go
+  s_33f910aed78e99::t_3675ab941ec61c 35,89-101,135,137,163-167,173,177,198,258,380,383,386
+internal/cli/profile_add.go
+  s_33f910aed78e99::t_2199bd7c543782 40
+internal/cli/profile_update.go
+  s_33f910aed78e99::t_262c8bbce0a3e6 15-22,24,32-34,36,39,41,45,48-53,70-71,76-86,88,90,93-97,99-101,103,107-108
+internal/cli/remoteprofile_test.go
+  s_33f910aed78e99::t_9116d0adc1c2ca 225,246,269-270,343,348-350,380-382,398
+internal/cli/scope.go
+  s_33f910aed78e99::t_5ce7c66c0e484d 162-166,183,185-187,189
+internal/engine/remote.go
+  s_33f910aed78e99::t_dec15eb1c9544c 393-408,411-422,424
+internal/engine/remote_add.go
+  s_33f910aed78e99::t_ea88efc455d3da 15,33-35,56-59,101-105,119,225-226,246-247
+internal/engine/remote_remove.go
+  s_33f910aed78e99::t_1dd43d2e609103 67
+internal/engine/remote_update.go
+  s_33f910aed78e99::t_8a416791eb8f56 24-27,29-30,35-37,41-44,50-63,65,67,73,77,79-81,83-84,91,93,95,97-98,101,103-104,107,110,112,116,120-121,123,126-127,129-133,135-153,155,157,159-160,162-166,168-169,171-173,175-177,179-182,184-186,188-206,208,211-214,217,225-228,234,238-242,246,271-275,277,283-285,288,291,293,298-300,311,320,328-329,337,340,343,385-388,404
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_f316ab23750e76 302,305,336,670-692,998,1000,1018,1050,1061,1064,1070,1073,1090-1091,1111,1132,1141,1151,1160,1191,1214,1218,1250,1271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ed47c5afe1aa8f2d807dff2028ade52fbc3db01f",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
