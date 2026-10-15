@@ -1,0 +1,21 @@
+internal/plan/apply.go
+  s_33f910aed78e99::t_b8aa6ef28b75e1 268-270
+internal/plan/apply_test.go
+  s_33f910aed78e99::t_dd7d74fd55bdb2 260-272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a7742ad5803c3f67f49032f3b45d81c21d5d4b65",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
