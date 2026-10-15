@@ -1,0 +1,37 @@
+docs/architecture.md
+  s_33f910aed78e99::t_076075c35e6972 880-881,905-911
+docs/decisions.md
+  s_33f910aed78e99::t_2286846131a13e 67,82
+docs/usage.md
+  s_33f910aed78e99::t_b19b4687bcff84 16,526-529,644,684-692
+internal/cli/cmd_profile.go
+  s_33f910aed78e99::t_b0d6622affb5d9 23-24,35,60-62,64-65,92,99,101,129-131,160-161,220,224,226,237
+internal/cli/profile_remote.go
+  s_33f910aed78e99::t_d79067c36061c8 208-252
+internal/cli/profile_test.go
+  s_33f910aed78e99::t_c30f9b6e8c1fe9 260,281,285,293-295
+internal/cli/remoteprofile_test.go
+  s_33f910aed78e99::t_3df53438882e00 194-218
+internal/cli/store_test.go
+  s_33f910aed78e99::t_922e9b9c3557d1 389,393
+internal/engine/remote.go
+  s_33f910aed78e99::t_27683da327e9d2 22,32,334-456,506-508,510-529,532,536,540,543-546,549,674
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_595b9bd0f4c55c 652-713
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6d5e25fac0fef904d785ca7ed6c38f36268be1b8",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
