@@ -1,0 +1,49 @@
+docs/architecture.md
+  s_33f910aed78e99::t_acfb6ef4ab0a4e 904-908,941-944,950-972,992-994,1002-1004
+docs/decisions.md
+  s_33f910aed78e99::t_401ea56c59bbf9 94-97
+docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md
+  s_33f910aed78e99::t_240e5d4d153912 177-178,645-646,653-656
+docs/usage.md
+  s_33f910aed78e99::t_5ada22ae8b7c6a 16,685-689,705-708,712-714,717-718,726-731,740-741,755-759,763-764,775-776,791
+internal/cli/cmd_profile.go
+  s_33f910aed78e99::t_470d9742d1b1dc 89-101,169-174,272,389-390,392,394,397-398,405-411,414
+internal/cli/profile_add.go
+  s_33f910aed78e99::t_312e3a4d830c82 40
+internal/cli/profile_update.go
+  s_33f910aed78e99::t_97cd4929e8febf 29,34-36,53-54,93-98,120-124,128,146-149,155-159,161-171,174-175,178,181,214,216,235,258-259,272-273,295,297,306,311-317,321,338,352,355,358-359,366
+internal/cli/remoteprofile_test.go
+  s_33f910aed78e99::t_b31a767e1541eb 75-77,358,360-363,366-370,413-415,418-419,463-510,537-538,617-619
+internal/cli/scope.go
+  s_33f910aed78e99::t_64e780ab46aa0d 189,191-195
+internal/engine/profile.go
+  s_33f910aed78e99::t_b9c6c64e3c9ee9 186
+internal/engine/profileview.go
+  s_33f910aed78e99::t_8585f3f7b54cd0 284
+internal/engine/remote.go
+  s_33f910aed78e99::t_a2ef95a66e5c77 396-406,408-413
+internal/engine/remote_add.go
+  s_33f910aed78e99::t_790a9056ab7c72 15,33-35,57-58,60,100-101,103-106,120
+internal/engine/remote_remove.go
+  s_33f910aed78e99::t_313f60ea7b4306 76-77,103,150,153,163
+internal/engine/remote_update.go
+  s_33f910aed78e99::t_7baf3210bd6599 38,40-47,147,149,163,181,190,218-220,225,239,259-261,286-287,289-293,301-305,316-317,319-324,388,393,455,462-463,466,487,516-577,751,754
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_dcded6ed670383 318,682-695,1254,1258-1272,1274-1311,1411-1416,1601,1606-1607,1609,1615
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bddedca011b0ec3896af9e517669cd4a5505b48e",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
