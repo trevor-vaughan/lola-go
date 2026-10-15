@@ -1,0 +1,31 @@
+.golangci.yml
+  s_33f910aed78e99::t_0f29b9f0b1c51b 34
+docs/architecture.md
+  s_33f910aed78e99::t_414b24d3e4f5db 42-44,69-75
+internal/profile/profile.go
+  s_33f910aed78e99::t_c764070eddcd25 3-4,21,47,50-52,79-144,146-147,151,164-165,167-168,178,180-181,198-217
+internal/profile/profile_test.go
+  s_33f910aed78e99::t_9ceca7119efdd3 181-281
+internal/yamldoc/nofollow_other.go
+  s_33f910aed78e99::t_4763ddd070ef91 1-8
+internal/yamldoc/nofollow_windows.go
+  s_33f910aed78e99::t_9ddb0e73f95c58 1-5
+internal/yamldoc/yamldoc.go
+  s_33f910aed78e99::t_1d09db9ebf883d 31-41,44-51,59-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e82bd369dc087c5d7b1df5a97f4464d70e15a0d4",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
