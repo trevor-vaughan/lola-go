@@ -1,0 +1,23 @@
+docs/usage.md
+  s_33f910aed78e99::t_866cecab810798 709
+internal/engine/activate.go
+  s_33f910aed78e99::t_770e8f91c95fb7 185-186
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_3555c6583da8ba 154-155,185-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1244b2cf80192de9849ebb2349d2e980794a1c55",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
