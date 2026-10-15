@@ -1,0 +1,23 @@
+docs/decisions.md
+  s_33f910aed78e99::t_a1a50bca49f4a4 73
+docs/usage.md
+  s_33f910aed78e99::t_bd100a1fe7e2ae 616-619,636-639
+internal/engine/projectprofile_test.go
+  s_33f910aed78e99::t_562a543bd8c21d 323-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0da0eb4ef12e6b7f10e5bf71cf3a0cba27a18c1c",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
