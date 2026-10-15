@@ -1,0 +1,19 @@
+internal/engine/projectprofile_test.go
+  s_7f808eab366c85::t_e524a3e1d4afb0 126-130,132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "be51329f0a3d6ebca41c5fd874e9e7c4eece07fe",
+  "prompts": {},
+  "sessions": {
+    "s_7f808eab366c85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af1bbee599802aa1d",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
