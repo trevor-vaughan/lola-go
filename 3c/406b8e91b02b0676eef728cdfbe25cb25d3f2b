@@ -1,0 +1,63 @@
+.golangci.yml
+  s_33f910aed78e99::t_9d7877ca03a06c 38
+docs/architecture.md
+  s_33f910aed78e99::t_5a7babab8f36d2 74-81,86-88,539-542
+  s_33f910aed78e99::t_27f3c6ec90d566 867-884
+docs/decisions.md
+  s_33f910aed78e99::t_f124c9773692d3 79
+  s_33f910aed78e99::t_f2756d8a4e6a1b 77-78,81-82
+internal/paths/paths.go
+  s_33f910aed78e99::t_1baaa0682011ed 22,32,67,77
+internal/paths/paths_test.go
+  s_33f910aed78e99::t_b03f3fa0f2e8d2 31,46
+internal/profile/profile.go
+  s_33f910aed78e99::t_a545155cafe968 2-6,50,158-181,188,191,198,201,204-205,207,218,227,240,243-245,254,258-259,261,324-328,369
+internal/profile/remote.go
+  s_33f910aed78e99::t_9843f3a64ce1ed 1-78,94-99,105-121,137-148,151-373
+internal/profile/remote_test.go
+  s_33f910aed78e99::t_beaf45db2df344 1-195,208-214,218-258
+internal/source/recorded.go
+  s_33f910aed78e99::t_5719c59533c1ed 63,102,105
+internal/source/source.go
+  s_33f910aed78e99::t_c3af7ab7168caa 74-83
+internal/source/source_test.go
+  s_33f910aed78e99::t_70e95bda06c075 287-297,299-302
+docs/usage.md
+  s_33f910aed78e99::t_028e778030a1de 507-510,615-625,629-647,1504,1629
+internal/cli/cmd_profile.go
+  s_33f910aed78e99::t_69ad34cef0e381 4,58-62,324-328,350-360,367-368,380
+internal/cli/help.go
+  s_33f910aed78e99::t_848cc2b246b3c7 205
+internal/cli/remoteprofile_test.go
+  s_33f910aed78e99::t_2ec51d9d2e6636 1-80
+internal/engine/activate.go
+  s_33f910aed78e99::t_4bc0b63fae2d79 71-83,102,109-110,112-121,124-128,131-138,142-144,150-155,157-161,166-167,171-175,177-186,217-218,220-223,331-334
+internal/engine/profile.go
+  s_33f910aed78e99::t_85d02502bbc3b1 140-143,156-157,167-173,193,200-203,217-218,220-221,228-256,258-260,267,287-290,297-306,308,312-313,318-329,342-344,362-364,373,406-411,413-414,419,431-432,442
+internal/engine/profileview.go
+  s_33f910aed78e99::t_ef5b2fa87bad83 22-27,33-35,54-55,99-102,110-114,117-120,131-132,138-149,154-156,159-170,173,179,228-232,234-236,245-246,250-256,265-270,272,278-280,289-292,321-322,331-338,356,360-364,366-367,369,375-380
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_3273e7252380be 1-232
+internal/engine/render.go
+  s_33f910aed78e99::t_37e7cd146b9dae 166-167
+internal/engine/sync.go
+  s_33f910aed78e99::t_e376221837b9a7 1631,1634-1639,1656-1662,1669,1855-1872
+internal/testenv/testenv.go
+  s_33f910aed78e99::t_0ae1e2145cc2c1 5-12,20,97-104,112,117-119,132-137,139-144,147-149,150-152,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c406b8e91b02b0676eef728cdfbe25cb25d3f2b",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
