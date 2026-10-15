@@ -1,0 +1,27 @@
+docs/architecture.md
+  s_33f910aed78e99::t_99586fac1eba85 498-500
+internal/plan/apply.go
+  s_33f910aed78e99::t_335acdc99c8eaa 16-18,20-22,99-103
+internal/plan/apply_test.go
+  s_33f910aed78e99::t_2a39217fa529c6 4,241-259
+internal/profile/profile.go
+  s_33f910aed78e99::t_a7ca5108dc0a26 105-106,125-149,338,353-368
+internal/profile/profile_test.go
+  s_33f910aed78e99::t_3dcc739d0e8ffe 295-313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c2f5c2e686886731dc56f9538e03afc07fa8cecc",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
