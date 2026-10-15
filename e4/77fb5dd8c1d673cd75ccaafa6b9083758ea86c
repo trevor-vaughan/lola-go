@@ -1,0 +1,34 @@
+internal/yamldoc/yamldoc.go
+  s_33f910aed78e99::t_ad01d70af36c38 47,61
+internal/engine/ops.go
+  s_33f910aed78e99::t_e8e45b66be73d7 560-567
+  s_33f910aed78e99::t_d40b0ad947fb87 10,559,572-583
+internal/cli/cmd_sync.go
+  s_33f910aed78e99::t_1adb0e1d1cf5f9 4,313-315,340-347,349-350
+  s_33f910aed78e99::t_64526b59ecf623 198
+  s_33f910aed78e99::t_e4f6da9c1fd113 316-318
+docs/architecture.md
+  s_33f910aed78e99::t_ad70901ef501df 820-828
+docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md
+  s_33f910aed78e99::t_9b9a86fadd5f51 480-481,786
+internal/engine/projectprofile_test.go
+  s_33f910aed78e99::t_870f03d028b85d 126-127,132,135,137,204-264
+internal/engine/sync.go
+  s_33f910aed78e99::t_809892b75ae7e5 664,740-743,747,751-753,756,760-772,779-780,784-786,1001
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e477fb5dd8c1d673cd75ccaafa6b9083758ea86c",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
