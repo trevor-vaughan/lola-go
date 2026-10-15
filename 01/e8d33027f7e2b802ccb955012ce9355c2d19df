@@ -1,0 +1,56 @@
+docs/architecture.md
+  s_33f910aed78e99::t_71d15b51f29441 839
+  s_33f910aed78e99::t_160ab664bbb4eb 830-838
+docs/usage.md
+  s_33f910aed78e99::t_d00043e8d189f2 623
+  s_33f910aed78e99::t_2f79d2e6998a39 624-629
+internal/cli/cmd_sync.go
+  s_33f910aed78e99::t_3677e37390a15b 317,321
+  s_33f910aed78e99::t_1adb0e1d1cf5f9 4,313-316,341-348,350-351
+  s_33f910aed78e99::t_6b59ccee142365 318-319
+  s_33f910aed78e99::t_64526b59ecf623 198
+internal/cli/profile_test.go
+  s_33f910aed78e99::t_4a10af14757cdf 160-168,176-177,179-180,182,184,186-189
+  s_33f910aed78e99::t_13c692c5685c27 159,169-175,178,181,183,185
+internal/cli/sync_output.go
+  s_33f910aed78e99::t_8cb914c81a18aa 175-176,180,184-186,212-218
+internal/engine/profile.go
+  s_33f910aed78e99::t_053266ab1fa84d 16,280,281,282-295,339-340,342-357,360-362,364-367,372,374-376,378,380,382,384-385
+  s_33f910aed78e99::t_fc0db087ac0b76 277-279,296-338,341,358-359,363,368-371,373,377,379,381,383
+internal/engine/profileview.go
+  s_33f910aed78e99::t_47b936ab6f6778 109-111
+internal/engine/projectprofile_test.go
+  s_33f910aed78e99::t_ebf1c053669503 308-311,315-322,324,343-347,348,354-355,357,360-363,375
+  s_33f910aed78e99::t_7102f79f41c90b 161-171
+  s_33f910aed78e99::t_fd28907b9fe78b 312-314,323,325-342,349-353,356,358-359,364-374
+internal/engine/sync.go
+  s_33f910aed78e99::t_3f2d0e8c782eb3 94,102-107,303,312,413,443,487,856,858-862,942,1196-1198
+  s_33f910aed78e99::t_c5dfe17e813cff 665,865-888,985-986,1640,1685-1686,1689,1701
+  s_33f910aed78e99::t_078ec592ce0c03 53-54,98-101,332-334,348,597,603,688-689,855,940-941
+internal/engine/ops.go
+  s_33f910aed78e99::t_e8e45b66be73d7 559-566
+internal/yamldoc/yamldoc.go
+  s_33f910aed78e99::t_ad01d70af36c38 47,61
+docs/decisions.md
+  s_33f910aed78e99::t_61b73723e1cb6f 76
+internal/cli/cmd_profile.go
+  s_33f910aed78e99::t_b8fa06acb6e9fc 146
+internal/engine/activate.go
+  s_33f910aed78e99::t_672620ec072e85 72-73,123-133,135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01e8d33027f7e2b802ccb955012ce9355c2d19df",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
