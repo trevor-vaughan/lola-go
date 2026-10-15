@@ -1,0 +1,52 @@
+docs/usage.md
+  s_33f910aed78e99::t_4bef0560c12403 661-663,701
+  s_33f910aed78e99::t_271f18bf3355c0 654-658,670-671
+  s_33f910aed78e99::t_866cecab810798 716
+  s_33f910aed78e99::t_c684f90351a74f 697-700
+  s_33f910aed78e99::t_6099ffbf5bfcfc 680-692
+internal/engine/remote.go
+  s_33f910aed78e99::t_e1705cf66543eb 10,151,153,157,200,203-205,209,300,302,352,561-570,681-698,788-790,799-802,805
+  s_33f910aed78e99::t_e0532dfffc4bcb 41-42,55,175,722-730
+  s_33f910aed78e99::t_e37b0c145846ab 524-525,527-534,544,554-556,699-721
+  s_33f910aed78e99::t_d4507f09fd4b6b 66-67,246-251,314-315,331-345,350-351,354-356,358-372,377-461
+internal/engine/remoteprofile_test.go
+  s_33f910aed78e99::t_f0bd1120418ece 459-461,466-475,834-843
+  s_33f910aed78e99::t_7c911da122a91a 422-429
+  s_33f910aed78e99::t_3555c6583da8ba 154-155,185-188
+  s_33f910aed78e99::t_48781c9d1a0f74 812-827
+  s_33f910aed78e99::t_71fc6e5a77f6c5 674-734,741
+internal/source/archive.go
+  s_33f910aed78e99::t_725ff13ea5491a 383
+internal/source/git.go
+  s_33f910aed78e99::t_ec569646a85ca6 320
+internal/source/source.go
+  s_33f910aed78e99::t_7c4173cc2c5019 123-134
+internal/cli/profile_remote.go
+  s_33f910aed78e99::t_68374042de1cb8 84,97-99
+internal/cli/remoteprofile_test.go
+  s_33f910aed78e99::t_a808933925bbfb 127-128,136,152-153
+internal/engine/activate.go
+  s_33f910aed78e99::t_770e8f91c95fb7 185-186
+docs/architecture.md
+  s_33f910aed78e99::t_f953b57a2515bb 914-915
+  s_33f910aed78e99::t_5424f0ccf9543c 902-909
+docs/decisions.md
+  s_33f910aed78e99::t_15fe6ff33efd5c 82
+  s_33f910aed78e99::t_e718706f3d9132 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "824f56269267a98a15073fc92a6b438c94a58287",
+  "prompts": {},
+  "sessions": {
+    "s_33f910aed78e99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b26a6f0c-cf6c-4111-95fc-536ffa0a4003",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
