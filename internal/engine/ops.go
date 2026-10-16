@@ -375,7 +375,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 			return e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
 		})
 		if err != nil && len(saves) > 0 {
-			err = errApplied(err, sel.Path)
+			err = e.errApplied(err, sel.Path, sp.sc)
 		}
 		if err != nil && i < len(plans)-1 {
 			var skipped []string
@@ -632,7 +632,7 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	keepPin := false
 	if len(r.Targets) > 0 {
 		var err error
-		if v, err = e.installedVersion(v, prev, installed); err != nil {
+		if v, err = e.installedVersion(sp.sc, v, prev, installed); err != nil {
 			return err
 		}
 		// Adding assistants to an installed module never moves it, nor its pin.
@@ -775,7 +775,7 @@ func (e *Engine) headCommit(v store.Version, ref string) (commit string, git boo
 // the version installed there, so adding an assistant never upgrades the module on the others;
 // otherwise v, the version the request resolved to. An installed version the cache no longer
 // holds is refused.
-func (e *Engine) installedVersion(v store.Version, prev *manifest.Entry, installed *ledger.Entry) (store.Version, error) {
+func (e *Engine) installedVersion(sc Scope, v store.Version, prev *manifest.Entry, installed *ledger.Entry) (store.Version, error) {
 	if prev == nil || installed == nil || installed.Digest == v.Meta.Digest {
 		return v, nil
 	}
@@ -793,7 +793,7 @@ func (e *Engine) installedVersion(v store.Version, prev *manifest.Entry, install
 			untrusted.Text(id, untrusted.MaxName))
 	}
 	return store.Version{}, errs.WithHints(untrusted.CleanErr(err),
-		"lola render installs the cached version of "+untrusted.Text(v.Name, untrusted.MaxName)+" here again; run it, then add the assistants")
+		e.Command(sc, "render")+" installs the cached version of "+untrusted.Text(v.Name, untrusted.MaxName)+" here again; run it, then add the assistants")
 }
 
 // addedTargets are a module's targets when a request adds some (InstallRequest.Targets): the
@@ -885,11 +885,7 @@ func (e *Engine) notInstalled(sc Scope, name string) error {
 	if found, err := e.Store.Has(name); err == nil && found {
 		hints = append(hints, "still in your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name}))
 	}
-	list := "lola list"
-	if sc.Kind == target.User {
-		list += " --user"
-	}
-	hints = append(hints, "installed here: "+list)
+	hints = append(hints, "installed here: "+e.Command(sc, "list"))
 	return errs.WithHints(fmt.Errorf("lola uninstall: %q is not installed %s", name, e.where(sc)), hints...)
 }
 
@@ -1172,6 +1168,9 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 			r.Target, r.Status, r.Skipped = id, status, skipped
 			rows = append(rows, r)
 		}
+	}
+	for i := range rows {
+		rows[i].Scope = sc.Kind.String()
 	}
 	return rows, nil
 }

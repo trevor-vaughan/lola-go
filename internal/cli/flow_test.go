@@ -216,12 +216,12 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		r := lolaP(p, "install", "review-kit", "--scope", "project")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("review-kit: project.yml changed for it since you last trusted it"))
-		Expect(r.err).To(ContainSubstring("hint: review and apply it: lola sync review-kit\n"))
+		Expect(r.err).To(ContainSubstring("hint: review and apply it: lola sync --project review-kit\n"))
 		Expect(p.calls).To(BeEmpty(), "refused before any prompt")
 
 		p = &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")}, review: []string{cli.ReviewQuit}}
 		r = lolaP(p, "install", "--scope", "project", "-t", "claude-code")
-		Expect(r.err).To(ContainSubstring("⚠ 1 module in project.yml changed since you last trusted it: review-kit → lola sync\n"))
+		Expect(r.err).To(ContainSubstring("⚠ 1 module in project.yml changed since you last trusted it: review-kit → lola sync --project\n"))
 		Expect(p.moduleSteps[0].Options).To(ConsistOf(HaveField("Name", "deploy")), "the picker never offers it")
 	})
 
@@ -239,7 +239,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		r := lola("install", "deploy", "--scope", "project")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: project.yml's top-level targets changed since you last trusted them\n" +
-			"  hint: review and apply them: lola sync\n  hint: or name the assistants: lola install deploy -t <id>\n"))
+			"  hint: review and apply them: lola sync --project\n  hint: or name the assistants: lola install --project deploy -t <id>\n"))
 
 		p := &scripted{
 			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")},
@@ -284,13 +284,13 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(os.WriteFile(mpath, append(b, []byte("  - name: deploy\n    source: "+deploy+"\n")...), 0o644)).To(Succeed())
 		r = lola("install", "--scope", "project")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: lola install needs a module or source\n  hint: install what project.yml lists: lola sync\n"),
+		Expect(r.err).To(ContainSubstring("error: lola install needs a module or source\n  hint: install what project.yml lists: lola sync --project\n"),
 			"off a terminal, the missing-argument error")
 
 		p = &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){aborted}}
 		r = lolaP(p, "install", "--scope", "project")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(ContainSubstring("⚠ 1 module in project.yml is not installed → lola sync\n"))
+		Expect(r.err).To(ContainSubstring("⚠ 1 module in project.yml is not installed → lola sync --project\n"))
 		Expect(p.calls).To(Equal([]string{"modules"}), "said before the module picker")
 	})
 
@@ -308,7 +308,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.calls).To(Equal([]string{"scope", "modules", "assistants", "components:review-kit", "review"}),
 			"deploy has one component and no exclusion, so it gets no page")
 
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{ProjectRoot: proj, Home: home}), "nothing preselected")
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home}), "nothing preselected")
 		Expect(p.moduleSteps[0].Options).To(Equal([]cli.ModuleOption{
 			{Name: "deploy", Label: deploy + " · deploy"},
 			{Name: "review-kit", Label: review + " · review-kit — Code review helpers"}}))
@@ -479,7 +479,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){func(st cli.ScopeStep) ([]string, error) { return nil, cli.ErrAborted }}}
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{ProjectRoot: proj, Home: home}))
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home}))
 	})
 
 	It("asks for the Other directory again, with the reason, until it is a directory that is not the project above", func() {

@@ -9,9 +9,9 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 | Command | What it does |
 |---|---|
 | `lola install [<source\|name>...]` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. With no argument on a terminal, walks you through the choices ([Choosing what to install](#choosing-what-to-install)). |
-| `lola sync [<module>...]` | Make the project (or `--user`) match its manifest: install every entry at the version it pins, render the modules already installed, and remove the ones the manifest no longer lists. Names limit the run to those modules. Shows and asks about changes to `project.yml` you have not trusted yet, entry by entry ([Sync, pins and trust](#sync-pins-and-trust)). |
+| `lola sync [<module>...]` | Make the project (or `--user`) match its manifest: install every entry at the version it pins, render the modules already installed, and remove the ones the manifest no longer lists. Names limit the run to those modules. Shows and asks about changes to `project.yml` you have not trusted yet, entry by entry, paging the diff on a terminal ([Sync, pins and trust](#sync-pins-and-trust)). `--scope both` syncs the project, then user scope. |
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
-| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`: run `lola sync`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. |
+| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`: run `lola sync`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. Without a scope flag it shows the project found from here, if any, and user scope; every row names its scope ([Choosing a scope](#choosing-a-scope)). |
 | `lola render` | Render every installed module again at the version `project.yml` pins (the one installed when it pins none; a folder module from its folder). Removes files a module no longer ships. Leaves as installed, with a warning, a module it may not act on ([Sync, pins and trust](#sync-pins-and-trust)). |
 | `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
@@ -160,15 +160,15 @@ module leaves that entry untrusted. lola refuses to act on an untrusted entry as
   `lola migrate` refuse with `<name>: project.yml changed for it since you last trusted it` (for
   an entry a pull added: `<name>: project.yml added it since you last trusted the file`; with no
   record: `<name>: project.yml has not been trusted on this machine`), and the hint
-  `review and apply it: lola sync <name>`; the partial uninstall adds
-  `or remove it: lola uninstall <name>`;
+  `review and apply it: lola sync --project <name>`; the partial uninstall adds
+  `or remove it: lola uninstall --project <name>`;
 - an install, by name or by source, that would take its assistants from top-level `targets` you
   have not trusted (no `-t`, and no entry with `targets` of its own) refuses before fetching
   anything with `project.yml's top-level targets changed since you last trusted them`, hinting
   `lola sync` or your own install with `-t <id>` added (your `--ref` and `--path` kept); the
   install pickers ask for the assistants instead and never preselect those targets;
 - the install pickers leave such modules out, with one notice per project:
-  `2 modules in project.yml changed since you last trusted them: a, b → lola sync` (`are new or
+  `2 modules in project.yml changed since you last trusted them: a, b → lola sync --project` (`are new or
   changed since you last trusted the file` when a pull added one). Add a
   source… in the pickers adds the module to your cache and lists it by name, so it is left out
   too; Change scope onto a project where a module you picked is untrusted stops with the refusal;
@@ -180,8 +180,9 @@ in the current directory: write the folder as `./<name>`.
 
 `lola sync <name>` shows such changes and asks you to trust them
 ([Sync, pins and trust](#sync-pins-and-trust)), which is what every refusal hints. Every
-`lola sync` command lola prints carries your scope: `--user` at user scope, and `-C <root>` when
-the project found from the directory you ran lola in is not the one it means; so does an
+`lola sync`, `lola render` or `lola install` command lola prints carries your scope: `--user` at
+user scope, `--project` for the project found from the directory you ran lola in, and
+`-C <root>` for another; so does an
 install's `retry with: lola install <names>` after a failure that left fetched modules in your
 cache, which these refusals leave out, since retrying would refuse again. Installing the
 module from its source still works, and writes the entry as new, keeping none of the changed
@@ -242,7 +243,7 @@ already installed, and removes what the manifest no longer lists: a whole module
 an entry no longer names. A pinned version comes from your cache when it is there; otherwise a git
 module is fetched by its commit, which must be reachable from the entry's `ref`, and an archive is
 fetched again; either way its content must have the pinned digest. When it does not, sync stops:
-`if you expect the change, re-pin it: lola sync --update <module>`. A moved tag or a force-pushed
+`if you expect the change, re-pin it: lola sync --project --update <module>`. A moved tag or a force-pushed
 branch never changes what sync installs, nor does `lola cache update`.
 
 - **Names limit a run.** `lola sync a b` validates, checks, fetches, asks about and records only
@@ -378,7 +379,7 @@ you trusted again from what it already fetched, so what it applies is what it sh
   one not installed, a removed one still installed. Its content never enters your cache, it gets
   no pin, its hooks are neither asked about nor run, and its record in `trust.json` stays as it
   was, so the next sync asks about it again (lola remembers no answer). The result says
-  `left as installed until you trust them: docs-kit → lola sync`;
+  `left as installed until you trust them: docs-kit → lola sync --project`;
 - the top-level `targets` have no option of their own: *Trust all* accepts them, and so does an
   accepted added or changed entry that has no `targets` of its own (its option says
   `accepts the top-level targets [claude-code] → [claude-code, opencode]`, or
@@ -416,10 +417,10 @@ accepts every change of the run.
   old-mod, and there is no terminal to ask on`, with the diff (fields only for git and archive
   entries, since nothing was fetched, each entry it would pin by name, and a new or changed
   folder with its content, read from your disk) and the removals on stderr, and the hints
-  `see them: lola sync -n` and `then accept them: lola sync --trust -y`. Trust alone adds
-  `or accept some: lola sync --trust <module>…`, with your other flags. `-y` confirms removals
+  `see them: lola sync --project -n` and `then accept them: lola sync --project --trust -y`. Trust alone adds
+  `or accept some: lola sync --project --trust <module>…`, with your other flags. `-y` confirms removals
   only, which the refusal says when you gave it; `--trust` alone with removals hints
-  `then confirm them: lola sync --trust -y`.
+  `then confirm them: lola sync --project --trust -y`.
 - A pin sync writes is a change you trust, even for an entry you trusted before: re-pinning
   with `--update`, and writing back the pin of an unpinned entry, need your answer or `--trust`.
 - Neither an answer, `--trust` nor `-y` consents to install hooks, runtime hooks or an agent's MCP
@@ -437,7 +438,7 @@ trusts a folder's content by the version installed (`lock.json`). When a folder 
 something else (a pull changed the module, or you edited it), sync shows it as a change of its
 digest with the files, MCP servers and hooks, and asks as for any other change. The diff adds
 `review the edits: git log -p -- mods/notes` when the folder is in a git work tree, and
-`edited it yourself? lola install ./mods/notes`: installing it records the content as yours, so
+`edited it yourself? lola install --project ./mods/notes`: installing it records the content as yours, so
 editing your own module costs one question per sync, or that install. A checkout without
 `lock.json` has no version installed, so sync asks about each folder module once.
 
@@ -447,11 +448,11 @@ module as installed (no files, copy or hooks touched), with a warning and its re
 
 | Code | Why | Hint |
 |---|---|---|
-| `not-in-manifest` | `project.yml` no longer lists it | `review: lola sync <module>`, which offers its removal |
-| `source-differs` | its entry asks for another source, ref or path than is installed, or, for a folder module, your cache now has it from another folder (at user scope too) | `review and apply it: lola sync <module>` |
-| `not-trusted` | its entry, or the top-level targets it installs to, changed since you trusted them | `review and apply it: lola sync <module>` |
-| `content-changed` | a folder module's content is not the version installed | `review it: lola sync <module>`; `edited it yourself? lola install ./<folder>` |
-| `content-changed` | a folder module's content no longer loads (an unknown `lola.yml` key, another module name); the message carries the error | `review it: lola sync <module>`; `or remove it: lola uninstall <module>`, then the error's own hints |
+| `not-in-manifest` | `project.yml` no longer lists it | `review: lola sync --project <module>`, which offers its removal |
+| `source-differs` | its entry asks for another source, ref or path than is installed, or, for a folder module, your cache now has it from another folder (at user scope too) | `review and apply it: lola sync --project <module>` |
+| `not-trusted` | its entry, or the top-level targets it installs to, changed since you trusted them | `review and apply it: lola sync --project <module>` |
+| `content-changed` | a folder module's content is not the version installed | `review it: lola sync --project <module>`; `edited it yourself? lola install --project ./<folder>` |
+| `content-changed` | a folder module's content no longer loads (an unknown `lola.yml` key, another module name); the message carries the error | `review it: lola sync --project <module>`; `or remove it: lola uninstall --project <module>`, then the error's own hints |
 
 and renders the others. User scope applies only `source-differs`. A left-out module changes
 render's exit status only under `--strict`: without it render exits 0 with the warnings (a script
@@ -475,10 +476,24 @@ manifest or `trust.json`; the content of trusted entries at their pins may still
 your cache, without moving any ref's cached head, and at user scope `--update -n` fetches into
 your cache and moves the refs' cached heads, as `-n` may there.
 
+**Paging.** When both stdout and stderr are terminals and the output is human, `lola sync`
+shows the trust diff, the removals it asks about and a dry run's diff and plan through a pager,
+git-style, in full (unpaged output keeps its caps and `… and N more` lines). The question comes
+after the pager exits, on the terminal. The pager is `$LOLA_PAGER`, else `$PAGER`, else `less`
+(`more` on Windows); an empty `$LOLA_PAGER` falls through to `$PAGER`, and `cat` means no pager.
+The value is split on whitespace and run without a shell; `less` gets `LESS=FRX` when `LESS` is
+unset, so a diff that fits one screen just prints. lola never runs a pager found in the current
+directory (a relative entry in `PATH`); it warns and prints the diff instead, as it does when the
+pager is missing or fails. Ctrl+C belongs to the pager while it runs. `--no-pager`, or
+`pager: false` in your `config.yaml` (never a project's), turns paging off; `--json`, `--plain`
+and output that is not a terminal never page. `lola sync` reads `pager` only when it could
+page, so off a terminal a malformed `pager` value does not stop it; like any malformed key, it
+still fails a command that reads `default_scope` (one without a scope flag).
+
 **`lola install` without arguments** says how many modules `project.yml` lists that are not
 installed, on a terminal before the module picker (`1 module in project.yml is not installed →
-lola sync`), and off a terminal as a hint of its missing-argument error
-(`install what project.yml lists: lola sync`).
+lola sync --project`), and off a terminal as a hint of its missing-argument error
+(`install what project.yml lists: lola sync --project`).
 
 ## Module layout
 
@@ -705,7 +720,7 @@ hooks only for modules whose version changed or that gain a target, and `--dry-r
 hashed, so an edited copy never runs, and asks again showing the scripts; off a terminal,
 `lola sync <module> --allow-hooks` runs it. A sync that does not name the module, and is not
 given `--allow-hooks`, asks nothing about the hook and says
-`pending post-install hook for <module> → lola sync <module>` (off a terminal, with the
+`pending post-install hook for <module> → lola sync --project <module>` (off a terminal, with the
 `--allow-hooks` form); a dry run says so too, and, naming the module, shows the hook it would
 run.
 
@@ -842,9 +857,9 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
 
 ## Scopes and targets
 
-- **Project scope**: files go into the project; state lives in `.lola/`. For `install`, see
-  [Which scope](#which-scope). Every other command acts on the nearest parent directory with a
-  `.lola/`, else the current directory; `-C <dir>` picks one explicitly.
+- **Project scope** (`--project`, or `-C <dir>` for another directory): files go into the
+  project; state lives in `.lola/`. Which scope a command acts on without a flag is in
+  [Choosing a scope](#choosing-a-scope).
 - **User scope** (`--user`): files go into your home directory (OpenCode's into
   `$XDG_CONFIG_HOME/opencode/`); state lives under `$XDG_CONFIG_HOME/lola/` (manifest
   `user.yml`) and `$XDG_STATE_HOME/lola/` (ledger `lock.json`). Rules installed at user scope
@@ -997,22 +1012,51 @@ a later prompt you decline), that consent stays recorded and nothing else is wri
 screen readers; there, end of input at any prompt, runtime hook consent included, cancels the
 run ("aborted; nothing changed"), and Ctrl+C interrupts.
 
-### Which scope
+### Choosing a scope
 
-`install` never picks a scope silently. First match wins:
+The scope flags are global: every command takes them.
+
+| Flag | Scope |
+|---|---|
+| `--scope project\|user\|both` (also `project,user`) | that; `-C <dir>` sets the project |
+| `--project` | project (`--scope project`) |
+| `--user` | user (`--scope user`) |
+| `-C, --root <dir>` | the project at `<dir>` |
+
+`--user` and `--project` must agree with `--scope`, and `--user` cannot take `-C`. `--project`
+and `--scope project` without `-C` use the nearest parent with a `.lola/`, else the current
+directory. `--scope user -C <dir>` is an error.
+
+**Commands that write** (`install`, `sync`, `uninstall`, `render`) never pick a scope silently.
+First match wins:
 
 | You give | Scope |
 |---|---|
-| `--scope project\|user\|both` (also `project,user`) | that; `-C <dir>` sets the project |
-| `--user` | user (with `--scope`, they must agree) |
-| `-C <dir>` | the project at `<dir>` |
-| a terminal | the scope step, with nothing preselected |
-| nothing, in or below a directory with `.lola/` | that project; stderr says `scope: project (found .lola/ at <path>)` |
+| a scope flag | that scope |
+| a terminal | the scope picker (Project, User, Other directory…), with nothing preselected |
+| nothing, in or below a directory with `.lola/` | that project (`install` says `scope: project (found .lola/ at <path>)` on stderr) |
 | `default_scope` in `config.yaml` | that scope |
-| none of these | an error naming `--scope`, `--user`, `-C` and `default_scope` |
+| none of these | an error naming the command, `--project`, `--user`, `-C` and `default_scope` (and `--scope both` for `install` and `sync`) |
 
-`--scope project` without `-C` uses the nearest parent with a `.lola/`, else the current
-directory. `--scope user -C <dir>` is an error.
+`install` and `sync` take both scopes (`--scope both`, both ticked, or `default_scope: both`):
+`install` plans them together, and `sync` syncs the project, then user scope, stopping at the
+first that fails or is declined (its message names the scopes it did not reach), with each
+scope's output under its own `project (<root>):` or `user:` line; `--plain` output carries no
+scope label, as with `install`. `uninstall` and `render` act on one scope: their picker asks you
+to tick one (pressing Enter with nothing ticked asks again), and two scopes from the flags or
+`default_scope` are refused with `name one: --project or --user`.
+
+**Commands that only read** (`list`) never ask: the flags decide, `--scope both` included;
+otherwise they show the project found walking up, if there is one, and user scope, on a terminal
+or off it. `default_scope` does not apply to them, and every row names its scope. When one of
+those two cannot be read (a damaged `user.yml`, say), `list` fails with a hint naming the other
+scope's own command, such as `lola list --project`.
+
+`check` acts on the one scope the flags name, else on the nearest parent with a `.lola/`, else
+the current directory, and never asks; `--scope both` is refused as above. It reads
+`selections.yaml` for that scope. Commands
+without a scope (`search`, `cache …`, `init`, `version`, `help`) accept the scope flags and
+ignore them; `lola migrate` keeps its own.
 
 You cannot install a project at your home directory: it renders exactly where the user scope
 does (`~/.claude`, …), so the two would claim the same files. `install` refuses it however it
@@ -1023,10 +1067,13 @@ project an older lola installed, so you can remove it. `--json` output lists eve
 `config`, `discovered` or `picked`. Modules and steps carry the same `scope` and `root`.
 `default_scope` is only read off a terminal; on one, the scope step asks.
 
-**Breaking change:** `lola install` off a terminal, in a directory with no `.lola/` above it
-and no `default_scope`, no longer installs into the current directory; pass `--scope project`
-(or set `default_scope: project`). `render`, `uninstall`, `list` and `check` keep the old
-resolution, since they act where lola already installed something.
+**Breaking changes:** off a terminal, in a directory with no `.lola/` above it and no
+`default_scope`, `install`, `sync`, `uninstall` and `render` no longer act on the current
+directory; pass `--project` (or set `default_scope: project`). On a terminal they ask for the
+scope unless a flag gives it.
+
+**Breaking change:** `-C`'s long form is `--root`; `--project` is a scope flag and no longer
+takes a directory.
 
 ### Component flags
 
@@ -1065,6 +1112,7 @@ an `include` in the `global` section, anchors, aliases and merge keys, and files
 # lola settings. Safe to edit by hand.
 version: 1
 default_scope: project   # project | user | both; read off a terminal only
+pager: true              # false prints sync's consent diff without a pager
 ```
 
 `selections.yaml` is the one place that says which components you do not want. `install`,
@@ -1102,7 +1150,7 @@ Entries for projects you moved are left alone.
 
 Every answer has a flag, so scripts and CI never need a terminal. Off one (or with `--json`)
 lola never asks; a missing answer is an error whose hint names the flag: no module →
-`lola install <source|name>`; no scope → see [Which scope](#which-scope); no assistant found →
+`lola install <source|name>`; no scope → see [Choosing a scope](#choosing-a-scope); no assistant found →
 `-t`. Copy the equivalent commands from an interactive run to repeat it.
 
 ## Findings
@@ -1259,7 +1307,7 @@ copy's directories before it removes the original.
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
-| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
 | `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote or you trusted in `lola sync` (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
@@ -1319,7 +1367,8 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 - `install --json` adds `scopes` (each with `scope`, `root` and `scope_source`), and per
   module `scope`, `skipped` (component names, `[]` when none) and `saved_to` (the
   `selections.yaml` it wrote, or `""`), and `equivalent_commands` (`[]` when no step was shown).
-  `list --json` and `check --json` carry `skipped` per module.
+  `list --json` and `check --json` carry `skipped` per module; `list --json` rows carry `scope`
+  (`project` or `user`), and `list --plain` rows end with it.
 - `sync --json`: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`,
   `equivalent_commands` (in a dry run that is not in sync, the command that applies it off a
   terminal, as `install --json` has; otherwise `[]`), and the plan's `modules`, `steps`,
@@ -1340,6 +1389,9 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   `ref`, `commit`, `digest`, `previous_digest`,
   `reason` (`unpinned` or `update`), `written` (false in a dry run). `removals`: `module`,
   `targets`, `whole_module`, `paths` (each `target` and `path`). Commits and digests are full.
+  With two scopes (`--scope both`), `sync --json` prints `{"scopes": [...]}`, one such document
+  per scope in order; when a scope fails, the error document carries the scopes synced before it
+  in `scopes` (`[]` when the first failed).
   A refusal for lack of a terminal prints the changes on stderr first, except under `--json`.
   `--plain` adds `pin` (module, digest, reason) and `remove` (module, target, path) rows after
   the plan's; in a dry run `trust` rows (module, change; the top-level targets' row has an empty
@@ -1370,6 +1422,8 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `LOLA_ACCESSIBLE` | `1` draws the install flow and sync's questions as numbered line prompts (screen readers); Ctrl+C cancels them as it does a full-screen form |
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
+| `LOLA_PAGER`, `PAGER` | The pager for sync's consent diff, in that order (default `less`, `more` on Windows); empty falls through, `cat` means none ([Sync, pins and trust](#sync-pins-and-trust)) |
+| `LESS` | Passed to `less`; set to `FRX` for the pager when unset |
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, the trust record, lock files and `lola migrate`'s trash (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |

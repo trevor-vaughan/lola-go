@@ -343,7 +343,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			Expect(os.Chmod(filepath.Join(src, "hooks/pre.sh"), 0o755)).To(Succeed())
 			_, err := install(engine.Options{AllowHooks: true, HookOutput: GinkgoWriter}, nil, skipShip, src)
 			Expect(err).To(HaveOccurred())
-			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola render applies them once the problem is fixed"))
+			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola render -C " + proj + " applies them once the problem is fixed"))
 			Expect(saved()).To(ContainSubstring("skip: [command/ship]"))
 			Expect(exists(".claude/agents/critic.md")).To(BeFalse())
 		})

@@ -241,7 +241,7 @@ var _ = Describe("Migrate", func() {
 		GinkgoT().Chdir(proj)
 		res, err = run(migrate.Options{})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Destinations[0].Unmappable).To(ConsistOf(HaveField("Hints", []string{"review and apply it: lola sync review"})),
+		Expect(res.Destinations[0].Unmappable).To(ConsistOf(HaveField("Hints", []string{"review and apply it: lola sync --project review"})),
 			"from inside the project, no -C")
 	})
 

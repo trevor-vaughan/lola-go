@@ -141,7 +141,7 @@ var _ = Describe("Engine and the trust record", func() {
 			before = state()
 		})
 		refusal := "example: project.yml changed for it since you last trusted it"
-		reviewIt := "review and apply it: lola sync example"
+		reviewIt := "review and apply it: lola sync --project example"
 
 		It("refuses install by name, and the pickers never offer it, before anything is fetched or written", func() {
 			err := install(engine.Options{}, "example")
@@ -154,7 +154,7 @@ var _ = Describe("Engine and the trust record", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ch.Module("example")).To(BeNil())
 			Expect(ch.Module("third")).NotTo(BeNil())
-			Expect(ch.Warnings).To(ContainElement("1 module in project.yml changed since you last trusted it: example → lola sync"))
+			Expect(ch.Warnings).To(ContainElement("1 module in project.yml changed since you last trusted it: example → lola sync --project"))
 			req.Modules = []engine.InstallRequest{{Arg: "example"}}
 			_, err = e.InstallChoices(ctx, req)
 			Expect(err).To(MatchError(refusal))
@@ -201,7 +201,7 @@ var _ = Describe("Engine and the trust record", func() {
 		It("refuses a partial uninstall, but removes it whole and forgets it", func() {
 			_, err := e.Uninstall(ctx, sc, []string{"example"}, engine.Options{Targets: []string{"opencode"}})
 			Expect(err).To(MatchError(refusal))
-			Expect(errs.Hints(err)).To(Equal([]string{reviewIt, "or remove it: lola uninstall example"}))
+			Expect(errs.Hints(err)).To(Equal([]string{reviewIt, "or remove it: lola uninstall --project example"}))
 			Expect(state()).To(Equal(before))
 
 			_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{Targets: []string{"claude-code", "opencode"}})
@@ -244,8 +244,8 @@ var _ = Describe("Engine and the trust record", func() {
 			res, err := e.Render(ctx, sc, engine.Options{})
 			Expect(err).NotTo(HaveOccurred(), "left out, not refused: the other modules still render")
 			Expect(res.Findings).To(ContainElements(
-				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync example"),
-				leftOut("other", engine.CodeNotInManifest, "project.yml no longer lists it", "review: lola sync other")))
+				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync --project example"),
+				leftOut("other", engine.CodeNotInManifest, "project.yml no longer lists it", "review: lola sync --project other")))
 			Expect(rendered("example", "other", "third")).To(Equal(map[string]bool{"example": false, "other": false, "third": true}))
 			Expect(res.Modules).To(ConsistOf(HaveField("Name", "third")))
 			led, err := e.Ledger(sc)
@@ -262,8 +262,8 @@ var _ = Describe("Engine and the trust record", func() {
 			res, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(ContainElements(
-				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync example"),
-				leftOut("third", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync third")))
+				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync --project example"),
+				leftOut("third", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync --project third")))
 			Expect(rendered("example", "third")).To(Equal(map[string]bool{"example": false, "third": false}))
 
 			// A project this machine has no record of leaves out every module.
@@ -271,7 +271,7 @@ var _ = Describe("Engine and the trust record", func() {
 			res, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(ContainElement(leftOut("example", engine.CodeNotTrusted, "project.yml has not been trusted on this machine",
-				"review and apply it: lola sync example")))
+				"review and apply it: lola sync --project example")))
 
 			// A tracked lock.json is still refused whole.
 			gitIn(proj, "init", "-q")
@@ -299,12 +299,12 @@ var _ = Describe("Engine and the trust record", func() {
 
 			sub := filepath.Join(proj, "sub")
 			Expect(os.MkdirAll(sub, 0o755)).To(Succeed())
-			for _, c := range []struct{ wd, install string }{{proj, "lola install ./mods/kit"}, {sub, "lola install ../mods/kit"}} {
+			for _, c := range []struct{ wd, install string }{{proj, "lola install --project ./mods/kit"}, {sub, "lola install --project ../mods/kit"}} {
 				e.Getwd = func() (string, error) { return c.wd, nil }
 				res, err := e.Render(ctx, sc, engine.Options{})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(res.Findings).To(ContainElement(leftOut("kit", engine.CodeContentChanged, "its content changed since lola installed it",
-					"review it: lola sync kit; edited it yourself? "+c.install)))
+					"review it: lola sync --project kit; edited it yourself? "+c.install)))
 				Expect(rendered("example", "kit")).To(Equal(map[string]bool{"example": true, "kit": false}))
 				mcp, err := os.ReadFile(filepath.Join(proj, ".mcp.json"))
 				Expect(err).NotTo(HaveOccurred())
@@ -324,7 +324,7 @@ var _ = Describe("Engine and the trust record", func() {
 				Expect(err).NotTo(HaveOccurred(), yml)
 				Expect(res.Findings).To(ContainElement(And(HaveField("Code", engine.CodeContentChanged), HaveField("Module", "kit"),
 					HaveField("Text", HavePrefix("its content no longer loads: ")),
-					HaveField("Hint", HavePrefix("review it: lola sync kit")))), yml)
+					HaveField("Hint", HavePrefix("review it: lola sync --project kit")))), yml)
 				Expect(rendered("example", "kit")).To(Equal(map[string]bool{"example": true, "kit": false}), yml)
 			}
 		})
@@ -338,7 +338,7 @@ var _ = Describe("Engine and the trust record", func() {
 			res, err := e.Render(ctx, sc, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(ContainElement(leftOut("other", engine.CodeSourceDiffers, "project.yml asks for another source than is installed",
-				"review and apply it: lola sync other")))
+				"review and apply it: lola sync --project other")))
 			Expect(rendered("example", "other")).To(Equal(map[string]bool{"example": true, "other": false}))
 
 			// At user scope, whose user.yml the user edits by hand.
@@ -377,8 +377,8 @@ var _ = Describe("Engine and the trust record", func() {
 			removeRendered()
 			_, err = e.Render(ctx, sc, engine.Options{Strict: true})
 			Expect(err).To(MatchError(HavePrefix("--strict: 2 finding(s); nothing was changed")))
-			Expect(errs.Hints(err)).To(Equal([]string{"review and apply it: lola sync example", "review it: lola sync kit",
-				"edited it yourself? lola install ./mods/kit"}), "each module's own remedy, and no generic advice")
+			Expect(errs.Hints(err)).To(Equal([]string{"review and apply it: lola sync --project example", "review it: lola sync --project kit",
+				"edited it yourself? lola install --project ./mods/kit"}), "each module's own remedy, and no generic advice")
 			Expect(rendered("other")).To(Equal(map[string]bool{"other": false}), "nothing was changed")
 
 			// Another finding brings the generic advice back, after the remedies.
@@ -386,8 +386,8 @@ var _ = Describe("Engine and the trust record", func() {
 			Expect(install(engine.Options{}, other)).To(Succeed())
 			_, err = e.Render(ctx, sc, engine.Options{Strict: true})
 			Expect(err).To(MatchError(HavePrefix("--strict: 3 finding(s); nothing was changed")))
-			Expect(errs.Hints(err)).To(HaveExactElements("review and apply it: lola sync example", "review it: lola sync kit",
-				"edited it yourself? lola install ./mods/kit", ContainSubstring("rerun without --strict"), ContainSubstring("--force")))
+			Expect(errs.Hints(err)).To(HaveExactElements("review and apply it: lola sync --project example", "review it: lola sync --project kit",
+				"edited it yourself? lola install --project ./mods/kit", ContainSubstring("rerun without --strict"), ContainSubstring("--force")))
 		})
 	})
 
@@ -398,7 +398,7 @@ var _ = Describe("Engine and the trust record", func() {
 		refused := func(err error, args, why string) {
 			GinkgoHelper()
 			Expect(err).To(MatchError("project.yml's top-level targets " + why))
-			Expect(errs.Hints(err)).To(Equal([]string{"review and apply them: lola sync", "or name the assistants: lola install " + args + " -t <id>"}),
+			Expect(errs.Hints(err)).To(Equal([]string{"review and apply them: lola sync --project", "or name the assistants: lola install --project " + args + " -t <id>"}),
 				"never a retry that refuses again")
 			Expect(loadManifest()).To(Equal(before))
 			Expect(filepath.Join(proj, ".opencode")).NotTo(BeAnExistingFile())
@@ -453,7 +453,7 @@ var _ = Describe("Engine and the trust record", func() {
 
 		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v2"}}, engine.Options{})
 		Expect(err).To(MatchError("project.yml's top-level targets changed since you last trusted them"))
-		Expect(errs.Hints(err)[1]).To(Equal("or name the assistants: lola install " + url + " --ref v2 -t <id>"))
+		Expect(errs.Hints(err)[1]).To(Equal("or name the assistants: lola install --project " + url + " --ref v2 -t <id>"))
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Path: "sub"}}, engine.Options{})
 		Expect(errs.Hints(err)[1]).To(ContainSubstring(url + " --path sub -t <id>"))
 		Expect(requests.Load()).To(BeZero(), "the git server saw no request")
@@ -504,7 +504,7 @@ var _ = Describe("Engine and the trust record", func() {
 		Expect(err).To(MatchError(HavePrefix("lola removed what you uninstalled from the project's files, lock.json and project.yml, " +
 			"but lola could not record that you trust what it wrote to project.yml: ")))
 		Expect(errs.Hints(err)).To(Equal([]string{"until it can, lola treats those entries as changed behind its back; " +
-			"fix the trust file, then run lola sync again to review and trust them", "replace it with a regular file"}))
+			"fix the trust file, then run lola sync --project again to review and trust them", "replace it with a regular file"}))
 		Expect(loadManifest().Find("example")).To(BeNil())
 	})
 
@@ -526,7 +526,7 @@ var _ = Describe("Engine and the trust record", func() {
 		err := both(src)
 		Expect(err).To(MatchError(ContainSubstring("lola could not record")))
 		Expect(err).To(MatchError(ContainSubstring("lola stopped there and did not install into the user scope")))
-		Expect(errs.Hints(err)).To(ContainElement("fetched modules stay in your cache; retry with: lola install example; lola install --user example"),
+		Expect(errs.Hints(err)).To(ContainElement("fetched modules stay in your cache; retry with: lola install --project example; lola install --user example"),
 			"a retry at each scope")
 		rows, err := e.Status(engine.Scope{Kind: target.User})
 		Expect(err).NotTo(HaveOccurred())
@@ -550,7 +550,7 @@ var _ = Describe("Engine and the trust record", func() {
 		ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ch.Module("example")).To(BeNil())
-		Expect(ch.Warnings).To(ConsistOf("1 module in project.yml changed since you last trusted it: example → lola sync"))
+		Expect(ch.Warnings).To(ConsistOf("1 module in project.yml changed since you last trusted it: example → lola sync --project"))
 	})
 
 	Describe("an entry whose source project.yml records relative to the project", func() {
@@ -605,10 +605,10 @@ var _ = Describe("Engine and the trust record", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ch.Warnings).To(ConsistOf("1 module in project.yml is new since you last trusted the file: gone → lola sync" + flags))
 			},
-			Entry("at the project root", "proj", "", false),
-			Entry("below it", "proj/sub", "", false),
+			Entry("at the project root", "proj", " --project", false),
+			Entry("below it", "proj/sub", " --project", false),
 			Entry("above it", ".", " -C PROJ", false),
-			Entry("in a fresh clone", "proj", "", true),
+			Entry("in a fresh clone", "proj", " --project", true),
 		)
 	})
 
@@ -668,7 +668,7 @@ var _ = Describe("Engine and the trust record", func() {
 
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: other}, {Arg: src, Targets: []string{"opencode"}}}, engine.Options{})
 			Expect(err).To(MatchError("example: project.yml changed for it since you last trusted it"))
-			Expect(errs.Hints(err)).To(Equal([]string{"review and apply it: lola sync example"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"review and apply it: lola sync --project example"}))
 		})
 	})
 })

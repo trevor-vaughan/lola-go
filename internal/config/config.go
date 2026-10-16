@@ -30,11 +30,12 @@ const (
 // Config is config.yaml.
 type Config struct {
 	DefaultScope string // "", project, user or both
+	Pager        bool   // page consent diffs on a terminal (Plan 6b §9); pager: false turns it off
 }
 
 // LoadConfig reads config.yaml; a missing or empty file is the default configuration.
 func LoadConfig(path string) (*Config, error) {
-	c := &Config{}
+	c := &Config{Pager: true}
 	d0, _, err := yamldoc.Read(path, Version)
 	root := yamldoc.Root(d0)
 	if err != nil || root == nil {
@@ -53,6 +54,12 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			c.DefaultScope = s
 			return nil
+		},
+		"pager": func(n *yaml.Node, at string) error {
+			if n.Kind != yaml.ScalarNode || n.Tag != "!!bool" {
+				return d.fail(n, at, "must be true or false, not "+kindName(n), "write pager: false to print consent diffs without a pager")
+			}
+			return n.Decode(&c.Pager)
 		},
 	}, "version"); err != nil {
 		return nil, err

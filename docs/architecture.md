@@ -88,7 +88,7 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 
 ## Selections and the install flow
 
-**Files.** `internal/config` reads `$XDG_CONFIG_HOME/lola/config.yaml` (`default_scope`) and
+**Files.** `internal/config` reads `$XDG_CONFIG_HOME/lola/config.yaml` (`default_scope`, `pager`) and
 `selections.yaml` once per command. Both are untrusted: at most 1 MiB, one YAML document, no
 anchors, aliases or merge keys, known keys only, `version: 1`, module names through `ValidateName`,
 known kinds, valid `path.Match` globs (no control or format characters in a selector name, from the
@@ -115,8 +115,26 @@ root is its own `projects:` section of `selections.yaml`. Results carry `scope` 
 `scopes`, modules and steps. The scope picker's **Other directory…** adds a project root; the
 flags still give at most one project and the user scope.
 
+**Scope.** Every command takes the root's persistent `--scope`, `--project`, `--user` and
+`-C/--root` (Plan 6b §3.1); `app.scopeRequest` turns them into an `engine.ScopeRequest`.
+`Engine.ResolveScope` (`internal/engine/scope.go`) owns the rules: `--user` refuses `--project`
+and `-C`; `--scope` (which `--user` and `--project` must agree with), then `--user` or
+`--project`, then `-C`, then, on a terminal, `Pick` (the CLI runs the picker); off one, a
+`.lola/` found walking up, then `default_scope`, else a refusal naming every way to give a
+scope, naming the command (`ScopeRequest.Command`), with `--scope both` only when
+`ScopeRequest.Both`. Without `Both`, two scopes from `--scope` or `default_scope` are refused
+there too. The CLI's `app.scopes` runs it for `install`'s siblings that write (`uninstall`,
+`render`, `sync`); the picker loop (`scopePicker`, which install's flow shares) asks a
+one-scope command (`ScopeStep.One`) to tick exactly one, nothing preselected, so an empty
+answer asks again. `sync` takes both scopes and syncs them in order, project roots first,
+stopping at the first that fails or is declined; `--json` prints `{"scopes": [...]}`, or carries
+the synced scopes in the error document (`syncedScopesError`). `Engine.ResolveReadScope` is the read-only rule (`list`): the flags when given,
+`--scope both` included, else the project found walking up and user scope, never asking and never
+reading `default_scope`; each `StatusRow` carries its `scope`. `check` and shell completions use
+`app.scope`: the flags as one scope, else the found project, never asking.
+
 **Install.** `InstallAll` takes, per destination, the scope and its source (`flag`, `config`,
-`discovered`, `picked`, from `ResolveInstallScope` or the picker), its targets and its selection
+`discovered`, `picked`, from `ResolveScope` or the picker), its targets and its selection
 edits, plus global edits, and refuses a destination listed twice and any project rooted at the home
 directory (it renders where the user scope does, so two ledgers would claim one set of files;
 `Render` and `Uninstall` still accept one an older lola installed). Order: the selections lock
@@ -704,10 +722,12 @@ record; `user.yml` is the user's own, and the engine never loads one for it.
   same-source checks accept a location an earlier lola recorded through a link
   (`source.SameLocation`).
 - **Hints.** Every `lola sync` command lola prints, in a hint, a notice, a dry run's closing lines
-  or the picker's equivalent command, comes from `Engine.SyncCommand` (built on `Command`): `lola
-  sync`, then `--user` at user scope, or `-C <root>` when `FindProject` of the working directory
-  (`Engine.Getwd`, `os.Getwd` unless a spec sets it) is not the scope's root (`RootArgs`, which
-  install's equivalent commands use too), then the names and flags, each through
+  or the picker's equivalent command, comes from `Engine.SyncCommand` (built on `Command`, which
+  every other scoped command in a hint uses too): `lola sync`, then the scope's flag
+  (`RootArgs`): `--user` at user scope, `--project` when `FindProject` of the working directory
+  (`Engine.Getwd`, `os.Getwd` unless a spec sets it) is the scope's root (`FoundHere`, which
+  install's equivalent commands use to decide `-C`), else `-C <root>`; a command without a scope
+  flag would ask for its scope on a terminal (Plan 6b §12.3). Then the names and flags, each through
   `untrusted.Text` and `errs.ShellJoin`. A hint that repeats the user's run carries its names,
   `--update` and `--force`, and the hook flags only when given (`SyncRequest.rerun`); the
   "… and N more" of a capped file list or dry-run plan names the user's run with `-n --json`
@@ -831,6 +851,21 @@ staging, never cached). The first that applies leaves the module as installed wi
 lists instead of its generic advice (`Result.remedies`, `strictError`). The others render at the
 manifest's pin, else the ledger's version (`renderPin`); a failed fetch under the pin is coached
 as sync coaches it (`syncPinError`, `lola sync --update <m>`).
+
+**Pager.** When stdout and stderr are both terminals (`WithTerminals` stands in for them in
+specs), with human output and no `--no-pager`, `sync` reads `pager` (default `true`) from the
+user's `config.yaml` (never a project's) and, when it is on, shows the trust diff, the removals
+and a dry run's result through `pager.show` (`internal/cli/pager.go`, Plan 6b §9): it renders
+them uncapped (an empty `more` lifts the `filesShown` and `stepsShown` caps) in the color of the
+terminal, and runs `$LOLA_PAGER`, else `$PAGER`, else `less` (`more` on Windows), split on
+whitespace with no shell and found with `exec.LookPath`; a pager in the current directory
+(`exec.ErrDot`) is refused. The text goes in on a pipe (a pager that quits without reading it is
+fine: exec drops the EPIPE of a clean exit); the pager writes to stdout; `LESS=FRX` is added to
+`Engine.Environ` when `LESS` is unset. While it runs, `signal.Notify(os.Interrupt)` keeps Ctrl+C
+from killing lola (the pager handles it). `show` returns when the pager exits, so the question
+comes after it. A missing, refused or failing pager is a warning, and the capped text is printed
+as before. An empty `$LOLA_PAGER` cannot be told from an unset one through the injected
+`getenv`, so it falls through to `$PAGER`; `cat` means no pager.
 
 **Accessible mode.** huh's line prompts read stdin in cooked mode, where Ctrl+C is a SIGINT.
 While an accessible-mode form waits, `eofReader.catch` holds `signal.Notify(os.Interrupt)`; the

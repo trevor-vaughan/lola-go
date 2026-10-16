@@ -247,7 +247,7 @@ var _ = Describe("Sync", func() {
 			GinkgoHelper()
 			Expect(err).To(MatchError(MatchRegexp(`^example: the source now serves different content than project.yml pins \(pinned ` + pin +
 				`, got sha256:[0-9a-f]{64}\)$`)))
-			Expect(errs.Hints(err)).To(Equal([]string{"if you expect the change, re-pin it: lola sync --update example",
+			Expect(errs.Hints(err)).To(Equal([]string{"if you expect the change, re-pin it: lola sync --project --update example",
 				"otherwise the source changed under the same ref or commit: check it before re-pinning"}))
 		}
 		// git: a pulled pin whose digest is not the content of its commit
@@ -361,7 +361,7 @@ var _ = Describe("Sync", func() {
 				if req.Update {
 					flags = " --update"
 				}
-				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync" + flags + " -n", "then accept them: lola sync" + flags + " --trust -y",
+				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project" + flags + " -n", "then accept them: lola sync --project" + flags + " --trust -y",
 					"-y confirms removals only; accept the changes with --trust"}), name)
 				refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 				Expect(ok).To(BeTrue(), name)
@@ -409,12 +409,12 @@ var _ = Describe("Sync", func() {
 			}{
 				{"neither --trust nor -y", engine.SyncRequest{},
 					"your trust for changes to .lola/project.yml; and your confirmation to remove other",
-					[]string{"see them: lola sync -n", "then accept them: lola sync --trust -y"}, true, true},
+					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust -y"}, true, true},
 				{"-y alone", engine.SyncRequest{ConfirmRemovals: confirm}, "your trust for changes to .lola/project.yml",
-					[]string{"see them: lola sync -n", "then accept them: lola sync --trust -y", "-y confirms removals only; accept the changes with --trust"},
+					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust -y", "-y confirms removals only; accept the changes with --trust"},
 					true, false},
 				{"--trust alone", engine.SyncRequest{Trust: yes}, "your confirmation to remove other",
-					[]string{"see them: lola sync -n", "then confirm them: lola sync --trust -y"}, false, true},
+					[]string{"see them: lola sync --project -n", "then confirm them: lola sync --project --trust -y"}, false, true},
 			} {
 				requests.Store(0)
 				_, err := sync(c.req)
@@ -438,7 +438,7 @@ var _ = Describe("Sync", func() {
 				Expect(removals).To(BeEmpty(), c.name)
 			}
 
-			// Every hint leads to lola sync --trust -y, which applies: no refusal loop.
+			// Every hint leads to lola sync --project --trust -y, which applies: no refusal loop.
 			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: confirm})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(lockFile().Modules).NotTo(HaveKey("other"))
@@ -470,7 +470,7 @@ var _ = Describe("Sync", func() {
 				before := state()
 				_, err := sync(engine.SyncRequest{Trust: yes})
 				Expect(err).To(MatchError("example: commit "+entry.Commit+" is not on main at "+url), "cached: %v", cached)
-				Expect(errs.Hints(err)).To(Equal([]string{"re-pin to what main serves: lola sync --update example"}))
+				Expect(errs.Hints(err)).To(Equal([]string{"re-pin to what main serves: lola sync --project --update example"}))
 				Expect(state()).To(Equal(before), "cached: %v", cached)
 			}
 		})
@@ -494,7 +494,7 @@ var _ = Describe("Sync", func() {
 				before := state()
 				_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: confirm}) // -y --trust
 				Expect(err).To(MatchError("other: local source "+source+" resolves outside the project ("+location+")"), source)
-				Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install " + location}), source)
+				Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install --project " + location}), source)
 				Expect(asked).To(BeEmpty(), "%s: refused before the diff", source)
 				Expect(state()).To(Equal(before), source)
 			}
@@ -523,7 +523,7 @@ var _ = Describe("Sync", func() {
 				before := state()
 				_, err = sync(engine.SyncRequest{Trust: t, ConfirmRemovals: confirm})
 				Expect(err).To(MatchError("real: local source mods/real resolves outside the project (" + outside + ")"))
-				Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install " + outside}))
+				Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install --project " + outside}))
 				Expect(asked).To(BeEmpty())
 				Expect(state()).To(Equal(before))
 			}
@@ -535,7 +535,7 @@ var _ = Describe("Sync", func() {
 				"  - name: other\n    source: "+src+"\n"), 0o600)).To(Succeed())
 			_, err := sync(engine.SyncRequest{Trust: yes})
 			Expect(err).To(MatchError(ContainSubstring("other: local source " + src + " resolves outside the project")))
-			Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install " + src}))
+			Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install --project " + src}))
 			install(sc, engine.InstallRequest{Arg: src}) // as hinted
 			_, err = sync(engine.SyncRequest{Trust: yes})
 			Expect(err).NotTo(HaveOccurred(), "the entry is covered: only the hand-written top-level targets are asked about")
@@ -554,7 +554,7 @@ var _ = Describe("Sync", func() {
 				"  - name: other\n    source: "+src+"\n"), 0o600)).To(Succeed())
 			_, err = sync(engine.SyncRequest{Trust: yes})
 			Expect(err).To(MatchError(ContainSubstring("other: local source " + src + " resolves outside the project")))
-			Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install " + src}))
+			Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install --project " + src}))
 			install(sc, engine.InstallRequest{Arg: src}) // as hinted: the one-source rule does not stand in its way
 			_, err = sync(engine.SyncRequest{Trust: yes})
 			Expect(err).NotTo(HaveOccurred(), "the entry is covered: only the hand-written top-level targets are asked about")
@@ -626,7 +626,7 @@ var _ = Describe("Sync", func() {
 		})
 
 		const syncAgain = "until it can, lola treats those entries as changed behind its back; fix the trust file, " +
-			"then run lola sync again to review and trust them"
+			"then run lola sync --project again to review and trust them"
 		It("fails closed when the trust record cannot be written after the apply", func() {
 			install(sc, engine.InstallRequest{Arg: src})
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "example", Source: url, Ref: "v1"}}})
@@ -674,7 +674,7 @@ var _ = Describe("Sync", func() {
 
 		_, err := sync(engine.SyncRequest{})
 		Expect(err).To(MatchError("example: commit " + commit + " is not on main at " + url))
-		Expect(errs.Hints(err)).To(Equal([]string{"re-pin to what main serves: lola sync --update example"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"re-pin to what main serves: lola sync --project --update example"}))
 		Expect(state()).To(Equal(before))
 	})
 
@@ -850,14 +850,14 @@ var _ = Describe("Sync", func() {
 			before := state()
 			_, err := sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("lola sync needs your trust for the changed content of kit, and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -n", "then accept them: lola sync --trust",
-				"or accept some: lola sync --trust <module>…", "edited it yourself? lola install ./mods/kit"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust",
+				"or accept some: lola sync --project --trust <module>…", "edited it yourself? lola install --project ./mods/kit"}))
 			// Each hint repeating the run carries its flags; a run of one module has none to pick.
 			_, err = sync(engine.SyncRequest{Update: true})
-			Expect(errs.Hints(err)).To(ContainElement("or accept some: lola sync --update --trust <module>…"))
+			Expect(errs.Hints(err)).To(ContainElement("or accept some: lola sync --project --update --trust <module>…"))
 			_, err = sync(engine.SyncRequest{Modules: []string{"kit"}})
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync kit -n", "then accept them: lola sync kit --trust",
-				"edited it yourself? lola install ./mods/kit"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project kit -n", "then accept them: lola sync --project kit --trust",
+				"edited it yourself? lola install --project ./mods/kit"}))
 			_, err = sync(engine.SyncRequest{})
 			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 			Expect(ok).To(BeTrue())
@@ -1053,7 +1053,7 @@ var _ = Describe("Sync", func() {
 		install(engine.Scope{Kind: target.User}, engine.InstallRequest{Arg: url})
 		sub := filepath.Join(proj, "sub")
 		Expect(os.MkdirAll(sub, 0o755)).To(Succeed())
-		for _, c := range []struct{ wd, flags string }{{sub, ""}, {tmp, "-C " + proj + " "}} {
+		for _, c := range []struct{ wd, flags string }{{sub, "--project "}, {tmp, "-C " + proj + " "}} {
 			e.Getwd = func() (string, error) { return c.wd, nil }
 			_, err := sync(engine.SyncRequest{Modules: []string{"example"}, Update: true, Options: engine.Options{Force: true}})
 			Expect(err).To(MatchError(ContainSubstring("example in your cache comes from")))
@@ -1214,7 +1214,7 @@ var _ = Describe("Sync", func() {
 			res, err := sync(engine.SyncRequest{Modules: []string{"other"}, ConfirmRemovals: confirm})
 			Expect(err).NotTo(HaveOccurred(), "the untrusted entries the user did not name need no answer")
 			Expect(res.InSync).To(BeTrue())
-			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "2 other modules are not in sync: example, gone → lola sync"}))
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "2 other modules are not in sync: example, gone → lola sync --project"}))
 			Expect(asked).To(BeEmpty())
 			Expect(removals).To(BeEmpty())
 			Expect(requests.Load()).To(BeZero(), "example is not fetched")
@@ -1305,7 +1305,7 @@ var _ = Describe("Sync", func() {
 			before := state()
 			_, err := sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("lola sync needs your confirmation to remove example, other, and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -n", "then confirm them: lola sync -y"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project -n", "then confirm them: lola sync --project -y"}))
 			Expect(state()).To(Equal(before))
 			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())
@@ -1435,7 +1435,7 @@ var _ = Describe("Sync", func() {
 			Expect(read(".claude/commands/gone.md")).To(Equal("gone\n"), "a declined removal stays installed")
 			Expect(lockFile().Modules).To(HaveKey("gone"))
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
-				Text: "left as installed until you trust them: example, gone, kit → lola sync"}))
+				Text: "left as installed until you trust them: example, gone, kit → lola sync --project"}))
 			Expect(res.Trust.Changes).To(HaveExactElements(HaveField("Module", "acc")), "the result reports what was applied")
 			Expect(res.Modules).To(HaveExactElements(HaveField("Name", "acc")))
 
@@ -1539,7 +1539,7 @@ var _ = Describe("Sync", func() {
 			Expect(filepath.Join(proj, ".claude/commands/gone.md")).NotTo(BeAnExistingFile(), "the accepted removal is applied")
 			Expect(filepath.Join(proj, ".opencode/commands/kit.md")).NotTo(BeAnExistingFile(), "kit does not take the untrusted targets")
 			Expect(read(".opencode/commands/own.md")).To(Equal("own\n"), "an entry with targets of its own stays in the run")
-			Expect(res.Notices).To(ContainElement(HaveField("Text", "left as installed until you trust them: kit → lola sync")))
+			Expect(res.Notices).To(ContainElement(HaveField("Text", "left as installed until you trust them: kit → lola sync --project")))
 			r, err := e.Trust.Load(proj)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(r.View.Targets).To(Equal([]string{"claude-code"}))
@@ -1918,7 +1918,7 @@ var _ = Describe("Sync", func() {
 		It("a scope without a manifest, creating nothing", func() {
 			_, err := sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("no project.yml in " + proj))
-			Expect(errs.Hints(err)).To(ContainElement("start one: lola install <source>"))
+			Expect(errs.Hints(err)).To(ContainElement("start one: lola install --project <source>"))
 			Expect(os.ReadDir(proj)).To(BeEmpty(), "no .lola/ is left behind")
 			_, err = sync(engine.SyncRequest{Scope: engine.Scope{Kind: target.User}})
 			Expect(err).To(MatchError("no user.yml at " + p.UserManifest))
@@ -1937,7 +1937,7 @@ var _ = Describe("Sync", func() {
 				_, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: dry}})
 				Expect(err).To(MatchError("example in your cache comes from " + url + ", and project.yml asks for " + folder +
 					"; the cache is shared by every project on this machine"))
-				Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync"}))
+				Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync --project"}))
 			}
 			Expect(requests.Load()).To(BeZero())
 			Expect(state()).To(Equal(before))
@@ -1959,7 +1959,7 @@ var _ = Describe("Sync", func() {
 			_, err = sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("example in your cache comes from " + a + ", and project.yml asks for " + b +
 				"; the cache is shared by every project on this machine"))
-			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync --project"}))
 			Expect(state()).To(Equal(before))
 		})
 
@@ -1976,7 +1976,7 @@ var _ = Describe("Sync", func() {
 				{"source: " + archive + "\n    digest: " + digest + "\n    commit: " + strings.Repeat("c", 40),
 					"commit is recorded only for a git source", ""},
 				{"source: " + url + "\n    digest: " + digest, "other: its digest is pinned without the commit it came from",
-					"re-pin it: lola sync --update other"},
+					"re-pin it: lola sync --project --update other"},
 				{"source: ../src/other\n    targets: [nope]", `other: unknown target "nope"`, "valid targets: "},
 				{"source: ./missing", "other: ./missing is not a source", "sources are "},
 			} {

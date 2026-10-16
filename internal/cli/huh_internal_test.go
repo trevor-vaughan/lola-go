@@ -105,7 +105,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 	})
 
 	It("offers Project, User and Other directory…, in that order, with nothing preselected (Plan 5c §14)", func() {
-		got, err := accessible(&out, "3", "1", "0").Scope(ScopeStep{ProjectRoot: "/src/api"})
+		got, err := accessible(&out, "3", "1", "0").Scope(ScopeStep{Question: "Install where?", ProjectRoot: "/src/api"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(ConsistOf(ScopeProject, ScopeOther))
 		Expect(out.String()).To(ContainSubstring("Install where?"))
@@ -119,6 +119,21 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out.String()).To(ContainSubstring("2. ✓ User (~)\n"), "Change scope preselects the last answer")
 		Expect(out.String()).To(ContainSubstring("3. ✓ Other directory…\n"))
+	})
+
+	It("asks a command that acts on one scope with nothing preselected (Plan 6b §3.1)", func() {
+		got, err := accessible(&out, "2", "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{ScopeUser}))
+		Expect(out.String()).To(ContainSubstring("Render where?"))
+		Expect(out.String()).To(ContainSubstring("1.   Project (/src/api)\n"))
+		Expect(out.String()).To(ContainSubstring("3.   Other directory…\n"))
+	})
+
+	It("resolves no scope from empty input: the answer is empty, never Project", func() {
+		got, err := accessible(&out, "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty())
 	})
 
 	It("asks sync's trust question with Cancel under the cursor, and Choose… as numbered multi-selects with nothing preselected", func() {

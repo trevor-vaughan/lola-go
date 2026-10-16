@@ -58,7 +58,7 @@ var _ = Describe("core commands", func() {
 
 		r = lola("ls", "-C", proj)
 		Expect(r.out).To(MatchRegexp(`example\s+claude-code\s+✓ ok`))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\n"))
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\n"))
 
 		r = lola("update", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
@@ -577,7 +577,7 @@ var _ = Describe("core commands", func() {
 		Expect(lola("cache", "update", "kit").code).To(Equal(0))
 
 		Expect(lola("list", "-C", proj).out).To(MatchRegexp(`kit\s+claude-code\s+✓ ok → update available\s`))
-		Expect(lola("list", "-C", proj, "--plain").out).To(Equal("kit\tclaude-code\tok\ton\t" + archive + "\n"))
+		Expect(lola("list", "-C", proj, "--plain").out).To(Equal("kit\tclaude-code\tok\ton\t" + archive + "\tproject\n"))
 		var res struct{ Modules []map[string]any }
 		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
 		Expect(res.Modules).To(HaveLen(1))
@@ -601,7 +601,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(MatchRegexp(`other\s+claude-code\s+⚠ not installed\s`))
 		Expect(r.out).To(MatchRegexp(`other\s+opencode\s+⚠ not installed\s`))
-		Expect(lola("list", "-C", proj, "--plain").out).To(ContainSubstring("other\tclaude-code\tnot_installed\ton\tmods/other\n"))
+		Expect(lola("list", "-C", proj, "--plain").out).To(ContainSubstring("other\tclaude-code\tnot_installed\ton\tmods/other\tproject\n"))
 		var res struct{ Modules []map[string]any }
 		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
 		Expect(res.Modules).To(ContainElement(And(HaveKeyWithValue("name", "other"), HaveKeyWithValue("status", "not_installed"),

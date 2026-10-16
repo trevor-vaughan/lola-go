@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -15,7 +13,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
-	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -23,7 +20,7 @@ import (
 // installFlags are lola install's flags.
 type installFlags struct {
 	targets, skips, onlys, unskips                                            []string
-	ref, path, scope                                                          string
+	ref, path                                                                 string
 	dry, force, strict, rules, noRules, allowHooks, allowRuntime, global, yes bool
 }
 
@@ -48,7 +45,7 @@ type installFlow struct {
 	resolution                  engine.ScopeResolution
 	scopes                      []engine.ScopeChoice // nil until answered
 	prevScopes                  []string             // the scope picker's last answer, preselected when Change scope asks again
-	prevOther                   string               // the last Other directory as typed, offered again
+	picker                      *scopePicker
 	choices                     *engine.Choices
 	pins                        []engine.VersionRef // the versions the module arguments resolved to, kept when Change scope asks again
 	cachePins                   []engine.VersionRef // the versions of the modules picked from the cache, kept the same way
@@ -96,7 +93,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	}
 	p := a.prompter(cmd)
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
-		edits: edits, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
+		edits: edits, picker: &scopePicker{p: p, eng: eng, cwd: cwd, refuseHome: true}, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
 	if !fl.ask && len(args) == 0 {
 		return fl.missingArgument()
 	}
@@ -108,11 +105,12 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 // them (Plan 6a §10.2).
 func (fl *installFlow) missingArgument() error {
 	err := fl.guide.args(1)(fl.cmd, fl.args)
-	dir, derr := fl.a.projectDir()
-	if derr != nil {
+	req, rerr := fl.a.scopeRequest(fl.cwd, false)
+	if rerr != nil {
 		return err
 	}
-	res, rerr := fl.eng.ResolveInstallScope(engine.ScopeRequest{Scope: fl.f.scope, User: fl.a.user, ProjectDir: dir, Cwd: fl.cwd})
+	req.Command, req.Both = "install", true
+	res, rerr := fl.eng.ResolveScope(req)
 	if rerr != nil {
 		return err
 	}
@@ -258,11 +256,12 @@ func (fl *installFlow) ensureScopes() error {
 	if fl.scopes != nil {
 		return nil
 	}
-	dir, err := fl.a.projectDir()
+	req, err := fl.a.scopeRequest(fl.cwd, fl.ask)
 	if err != nil {
 		return err
 	}
-	res, err := fl.eng.ResolveInstallScope(engine.ScopeRequest{Scope: fl.f.scope, User: fl.a.user, ProjectDir: dir, Cwd: fl.cwd, Interactive: fl.ask})
+	req.Command, req.Both = "install", true
+	res, err := fl.eng.ResolveScope(req)
 	if err != nil {
 		return err
 	}
@@ -277,104 +276,20 @@ func (fl *installFlow) ensureScopes() error {
 		fl.scopes = res.Scopes
 		return nil
 	}
-	step := ScopeStep{ProjectRoot: untrusted.Text(res.ProjectRoot, untrusted.MaxName), Home: fl.eng.Paths.Home, Preselect: fl.prevScopes}
-	for {
-		entries, err := fl.p.Scope(step)
-		if err != nil {
-			return err
-		}
-		if len(entries) == 0 {
-			step.Problem = "pick at least one scope"
-			continue
-		}
-		home := engine.Scope{Kind: target.Project, ProjectDir: fl.eng.Paths.Home}.Key()
-		user := slices.Contains(entries, ScopeUser)
-		if slices.Contains(entries, ScopeProject) && (engine.Scope{Kind: target.Project, ProjectDir: res.ProjectRoot}).Key() == home {
-			step.Problem = "the project here is your home directory; tick User instead"
-			continue
-		}
-		// Project roots first, then the user scope, as --scope both orders them.
-		var scopes []engine.ScopeChoice
-		if slices.Contains(entries, ScopeProject) {
-			scopes = engine.Scopes([]string{config.ScopeProject}, res.ProjectRoot, engine.SourcePicked)
-		}
-		if slices.Contains(entries, ScopeOther) {
-			other, err := fl.otherDirectory(scopes)
-			if err != nil {
-				return err
-			}
-			scopes = append(scopes, engine.Scopes([]string{config.ScopeProject}, other, engine.SourcePicked)...)
-		}
-		if user {
-			scopes = append(scopes, engine.Scopes([]string{config.ScopeUser}, "", engine.SourcePicked)...)
-		}
-		fl.shown[ReviewScope], fl.prevScopes, fl.scopes = true, entries, scopes
-		for key, byMod := range fl.picks {
-			if !slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }) {
-				for _, picked := range byMod {
-					fl.droppedScope += len(picked)
-				}
-				delete(fl.picks, key)
-			}
-		}
-		return nil
+	entries, scopes, err := fl.picker.pick(res, ScopeStep{Question: "Install where?", Preselect: fl.prevScopes})
+	if err != nil {
+		return err
 	}
-}
-
-// otherDirectory asks for the directory of Other directory… (§14) until the answer is an
-// existing directory that is not the project picked above, nor the home directory (the user
-// scope's root, which install refuses as a project), and returns it absolute. A relative
-// answer is taken from the current directory; ~ is not expanded. An answer is offered again to
-// edit only when it is safe to show.
-func (fl *installFlow) otherDirectory(picked []engine.ScopeChoice) (string, error) {
-	home := engine.Scope{Kind: target.Project, ProjectDir: fl.eng.Paths.Home}.Key()
-	offer := func(in string) string {
-		if untrusted.Text(in, len(in)) != in {
-			return ""
-		}
-		return in
-	}
-	step := DirectoryStep{Value: fl.prevOther}
-	for {
-		in, err := fl.p.OtherDirectory(step)
-		if err != nil {
-			return "", err
-		}
-		dir := in
-		if !filepath.IsAbs(dir) {
-			dir = filepath.Join(fl.cwd, dir)
-		}
-		dir = filepath.Clean(dir)
-		key := engine.Scope{Kind: target.Project, ProjectDir: dir}.Key()
-		safe := untrusted.Text(dir, untrusted.MaxName)
-		fi, err := os.Stat(dir)
-		var problem string
-		var pathErr *fs.PathError
-		switch {
-		case in == "":
-			problem = "enter the path of a directory"
-		case errors.Is(err, fs.ErrNotExist):
-			problem = safe + " does not exist"
-			if strings.HasPrefix(in, "~") {
-				problem += " (~ is not expanded)"
+	fl.shown[ReviewScope], fl.prevScopes, fl.scopes = true, entries, scopes
+	for key, byMod := range fl.picks {
+		if !slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }) {
+			for _, picked := range byMod {
+				fl.droppedScope += len(picked)
 			}
-		case errors.As(err, &pathErr):
-			problem = safe + ": " + pathErr.Err.Error()
-		case err != nil:
-			problem = untrusted.Text(err.Error(), untrusted.MaxName)
-		case !fi.IsDir():
-			problem = safe + " is not a directory"
-		case slices.ContainsFunc(picked, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }):
-			problem = "that is the project above"
-		case key == home:
-			problem = "that is your user scope (~); tick User instead"
+			delete(fl.picks, key)
 		}
-		if problem == "" {
-			fl.prevOther = offer(in)
-			return dir, nil
-		}
-		step = DirectoryStep{Value: offer(in), Problem: problem}
 	}
+	return nil
 }
 
 // coach prints, once per scope and before the module picker, how many modules the scope's

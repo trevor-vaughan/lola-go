@@ -189,15 +189,21 @@ func (h *huhForms) multi(title, desc string, opts []huh.Option[string], value *[
 	return ms.Height(height)
 }
 
-// Scope offers Project, User and Other directory…, preselecting exactly st.Preselect.
+// Scope offers Project, User and Other directory…, preselecting exactly st.Preselect. It is a
+// multi-select even when st.One, so nothing is chosen until the user ticks it (a select would
+// answer Project on Enter); the flow asks again until one is ticked.
 func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 	opts := []huh.Option[string]{
 		huh.NewOption(h.cut("Project ("+st.ProjectRoot+")"), ScopeProject).Selected(contains(st.Preselect, ScopeProject)),
 		huh.NewOption("User (~)", ScopeUser).Selected(contains(st.Preselect, ScopeUser)),
 		huh.NewOption("Other directory…", ScopeOther).Selected(contains(st.Preselect, ScopeOther)),
 	}
+	desc := st.Problem
+	if desc == "" && st.One {
+		desc = "pick one"
+	}
 	var chosen []string
-	err := h.run(h.withProblem(st.Problem, h.multi("Install where?", st.Problem, opts, &chosen))...)
+	err := h.run(h.withProblem(st.Problem, h.multi(st.Question, desc, opts, &chosen))...)
 	return chosen, err
 }
 

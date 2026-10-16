@@ -41,10 +41,12 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(r.out).To(ContainSubstring("Aliases:\n  version, ver"))
 	})
 
-	It("says -C's default holds for every command but install, which resolves its scope", func() {
+	It("lists the scope flags among every command's global flags", func() {
 		r := lola("install", "--help")
 		Expect(r.code).To(Equal(0))
-		Expect(r.out).To(MatchRegexp(`-C, --project string\s+project root; without it, every command but install uses the nearest parent with \.lola/, else the current directory \(install: see lola help install\)\n`))
+		Expect(r.out).To(MatchRegexp(`--scope string\s+act on this scope: project, user or both \(also project,user\)\n`))
+		Expect(r.out).To(MatchRegexp(`--project\s+act on project scope: --scope project\n`))
+		Expect(r.out).To(MatchRegexp(`-C, --root string\s+the project at this directory; implies project scope\n`))
 	})
 
 	It("rejects an unknown help topic and both modes at once", func() {
@@ -68,9 +70,10 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(v["hints"]).To(ContainElement("see: lola --help"))
 	})
 
-	It("rejects --json with --plain and --user with -C", func() {
+	It("rejects --json with --plain, and --user with -C where a command has a scope", func() {
 		Expect(lola("version", "--json", "--plain").err).To(ContainSubstring("--json and --plain cannot be combined"))
-		Expect(lola("version", "--user", "-C", ".").err).To(ContainSubstring("--user cannot be combined with -C"))
+		Expect(lola("render", "--user", "-C", ".").err).To(ContainSubstring("--user cannot be combined with -C"))
+		Expect(lola("version", "--user", "-C", ".").code).To(Equal(0), "a command without a scope ignores the scope flags")
 	})
 
 	It("prints the version in every output mode", func() {

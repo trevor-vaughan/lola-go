@@ -13,18 +13,20 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // session returns the engine and scope for a command.
-func (a *app) session() (*engine.Engine, engine.Scope, error) {
+func (a *app) session(cmd *cobra.Command) (*engine.Engine, engine.Scope, error) {
 	eng, err := a.engine()
 	if err != nil {
 		return nil, engine.Scope{}, err
 	}
-	sc, err := a.scope()
+	sc, err := a.scope(cmd, eng)
 	return eng, sc, err
 }
 
@@ -70,7 +72,7 @@ func savedTo(r *engine.Result) string {
 
 // completeInstalled offers the names of modules installed in the current scope.
 func (a *app) completeInstalled(cmd *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	eng, sc, err := a.session()
+	eng, sc, err := a.session(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -114,7 +116,7 @@ func (a *app) installCmd() *cobra.Command {
 			"Ctrl+C cancels and writes nothing. LOLA_ACCESSIBLE=1 (or TERM=dumb) asks as numbered\n" +
 			"line prompts instead. -y applies without the final menu.\n" +
 			"\n" +
-			"Scope: --scope, --user or -C; else, on a terminal, the picker (Project, User, Other\n" +
+			"Scope: --scope, --user, --project or -C; else, on a terminal, the picker (Project, User, Other\n" +
 			"directory…; nothing preselected, pick any of them); else a project with .lola/ at or\n" +
 			"above the current directory; else default_scope in $XDG_CONFIG_HOME/lola/config.yaml\n" +
 			"(version: 1, default_scope: project|user|both); otherwise install refuses to guess.\n" +
@@ -140,8 +142,6 @@ func (a *app) installCmd() *cobra.Command {
 		},
 	}
 	addTargetFlag(cmd, &f.targets, "assistants to install for")
-	cmd.Flags().StringVar(&f.scope, "scope", "", "where to install: project, user or both")
-	_ = cmd.RegisterFlagCompletionFunc("scope", cobra.FixedCompletions([]string{"project", "user", "both"}, cobra.ShellCompDirectiveNoFileComp))
 	cmd.Flags().StringArrayVar(&f.skips, "skip", nil, "do not install these components, and remember it in selections.yaml (kind/name or module:kind/name; repeatable)")
 	cmd.Flags().StringArrayVar(&f.onlys, "only", nil, "install only these components of each module that has them, and remember it (repeatable)")
 	cmd.Flags().StringArrayVar(&f.unskips, "unskip", nil, "install these skipped components again, and remember it (repeatable)")
@@ -166,19 +166,25 @@ func (a *app) uninstallCmd() *cobra.Command {
 	g := argGuide{noun: "module", find: "lola list", usage: "lola uninstall <module>... [-t target] [-y]",
 		examples: []string{"lola uninstall my-module -y", "lola uninstall my-module -t claude-code", "lola uninstall my-module --dry-run"}}
 	cmd := &cobra.Command{
-		Use:               "uninstall <module>...",
-		Aliases:           []string{"remove", "rm", "erase", "delete", "del"},
-		Short:             "Remove modules from this project (or --user)",
-		Long:              "Remove everything lola wrote for the modules (on -t targets only, if given). The modules stay\nin your cache; remove them there with lola cache rm.",
+		Use:     "uninstall <module>...",
+		Aliases: []string{"remove", "rm", "erase", "delete", "del"},
+		Short:   "Remove modules from this project (or --user)",
+		Long: "Remove everything lola wrote for the modules (on -t targets only, if given). The modules stay\nin your cache; remove them there with lola cache rm.\n\n" +
+			scopeHelp,
 		Example:           g.example(),
 		GroupID:           groupCore,
 		Args:              g.args(1),
 		ValidArgsFunction: a.completeInstalled,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			eng, sc, err := a.session()
+			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
+			scs, err := a.scopes(cmd, eng, "Uninstall from where?", false, false)
+			if err != nil {
+				return err
+			}
+			sc := scs[0].Scope
 			opts := engine.Options{Targets: targets, DryRun: true, Force: force}
 			if !dry && !yes {
 				preview, err := eng.Uninstall(cmd.Context(), sc, args, opts)
@@ -215,58 +221,91 @@ func (a *app) listCmd() *cobra.Command {
 			"missing (a file lola wrote, or the module copy, is gone); stale (project.yml pins another version\n" +
 			"than the one installed: run lola sync); not installed (listed in project.yml: run lola sync); or\n" +
 			"skipped (nothing of the module could be rendered for the target).\n" +
-			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.",
-		Example: "  lola list\n  lola list --user\n  lola list --json",
+			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.\n\n" +
+			"Scope: --project, --user, -C <dir> or --scope (both included); without them, the project with\n" +
+			".lola/ at or above the current directory, if any, and user scope. list never asks, and\n" +
+			"default_scope does not apply. Every row names its scope.",
+		Example: "  lola list\n  lola list --user\n  lola list --scope both -C ~/work/app\n  lola list --json",
 		GroupID: groupCore,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			eng, sc, err := a.session()
+			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
-			rows, err := eng.Status(sc)
+			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			if len(targets) > 0 {
-				kept := rows[:0]
-				for _, r := range rows {
-					if strings.Contains(","+strings.Join(targets, ",")+",", ","+r.Target+",") {
-						kept = append(kept, r)
+			req, err := a.scopeRequest(cwd, false)
+			if err != nil {
+				return err
+			}
+			scs, err := eng.ResolveReadScope(req)
+			if err != nil {
+				return err
+			}
+			rows := []engine.StatusRow{}
+			var scopes []engine.Scope
+			for i, c := range scs {
+				got, err := eng.Status(c.Scope)
+				if err != nil && len(scs) == 2 && c.Source == engine.SourceDiscovered {
+					// No flag chose these scopes, so one that cannot be read must not hide the other.
+					return errs.WithHints(err, "list the other scope: "+eng.Command(scs[1-i].Scope, "list"))
+				}
+				if err != nil {
+					return err
+				}
+				for _, r := range got {
+					if len(targets) == 0 || slices.Contains(targets, r.Target) {
+						rows = append(rows, r)
 					}
 				}
-				rows = kept
+				scopes = append(scopes, c.Scope)
 			}
-			return a.emit(cmd, func(w io.Writer, s style) { printStatus(w, s, sc, rows) }, map[string]any{"modules": rows})
+			return a.emit(cmd, func(w io.Writer, s style) {
+				printStatus(w, s, scopes, rows, func(sc engine.Scope) string { return eng.Command(sc, "install") })
+			}, map[string]any{"modules": rows})
 		},
 	}
 	addTargetFlag(cmd, &targets, "only show these assistants")
 	return cmd
 }
 
-func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow) {
+// printStatus prints the rows of every scope list read: a table whose rows each name their
+// scope, then a line per scope with nothing installed, coaching install (the command install
+// names for a scope). --plain rows are name, target, status, rules, source, scope.
+func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, install func(engine.Scope) string) {
 	if s.plain {
 		for _, r := range rows {
 			rules := "on"
 			if !r.Rules {
 				rules = "off"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source, r.Scope)
 		}
 		return
 	}
-	if len(rows) == 0 {
-		where := "in " + sc.ProjectDir
-		if sc.Kind == target.User {
-			where = "at user scope"
+	var empty []string
+	for _, sc := range scopes {
+		if !slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return r.Scope == sc.Kind.String() }) {
+			where := "in " + untrusted.Text(sc.ProjectDir, untrusted.MaxName)
+			if sc.Kind == target.User {
+				where = "at user scope"
+			}
+			empty = append(empty, "nothing installed "+where+" (try: "+install(sc)+" <source>)")
 		}
-		fmt.Fprintf(w, "nothing installed %s (try: lola install <source>)\n", where)
+	}
+	if len(rows) == 0 {
+		for _, line := range empty {
+			fmt.Fprintln(w, line)
+		}
 		return
 	}
 	// The SKIPPED column (components selections.yaml excludes) appears only when one is.
 	skipped := slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return len(r.Skipped) > 0 })
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	head := "MODULE\tTARGET\tSTATUS\tRULES"
+	head := "SCOPE\tMODULE\tTARGET\tSTATUS\tRULES"
 	if skipped {
 		head += "\tSKIPPED"
 	}
@@ -291,9 +330,12 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 		if skipped {
 			rules += "\t" + strconv.Itoa(len(r.Skipped))
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, status, rules, r.Source)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", r.Scope, r.Name, r.Target, status, rules, r.Source)
 	}
 	_ = tw.Flush()
+	for _, line := range empty {
+		fmt.Fprintln(w, line)
+	}
 }
 
 func (a *app) renderCmd() *cobra.Command {
@@ -307,15 +349,20 @@ func (a *app) renderCmd() *cobra.Command {
 			"folder), fetching that version again if your cache lost it, and remove files the module no\n" +
 			"longer ships. Files edited by hand are reported and kept unless --force.\n" +
 			"Claude Code runtime hooks whose consent no longer matches (a new version, or a moved\n" +
-			"project) are asked about again, and removed unless you consent.",
+			"project) are asked about again, and removed unless you consent.\n\n" + scopeHelp,
 		Example: "  lola render\n  lola render --dry-run\n  lola render -t claude-code --force",
 		GroupID: groupCore,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			eng, sc, err := a.session()
+			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
+			scs, err := a.scopes(cmd, eng, "Render where?", false, false)
+			if err != nil {
+				return err
+			}
+			sc := scs[0].Scope
 			opts := engine.Options{Targets: targets, DryRun: dry, Force: force, Strict: strict}
 			a.hookOptions(cmd, &opts, allowHooks, allowRuntime)
 			res, err := eng.Render(cmd.Context(), sc, opts)
@@ -348,7 +395,7 @@ func (a *app) checkCmd() *cobra.Command {
 		GroupID: groupCore,
 		Args:    cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			eng, sc, err := a.session()
+			eng, sc, err := a.session(cmd)
 			if err != nil {
 				return err
 			}

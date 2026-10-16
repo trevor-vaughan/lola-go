@@ -34,7 +34,7 @@ var _ = Describe("store, search and init commands", func() {
 		r := lola("uninstall", "example", "-y", "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: lola uninstall: \"example\" is not installed in this project\n" +
-			"  hint: still in your cache: lola cache rm example\n  hint: installed here: lola list\n"))
+			"  hint: still in your cache: lola cache rm example\n  hint: installed here: lola list -C " + proj + "\n"))
 	})
 
 	It("cache add shows a plugin's format and each detection warning once", func() {

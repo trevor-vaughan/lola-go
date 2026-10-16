@@ -9,16 +9,24 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
+// FoundHere reports whether sc is the project a lola command run from the working directory
+// (Getwd) finds: the nearest parent with .lola/, else the directory itself.
+func (e *Engine) FoundHere(sc Scope) bool {
+	cwd, err := e.Getwd()
+	return err == nil && sc.Kind == target.Project && (Scope{Kind: target.Project, ProjectDir: FindProject(cwd)}).Key() == sc.Key()
+}
+
 // RootArgs are the flags that point a lola command run from the working directory (Getwd) at
-// sc's project (Plan 6a §11.3): -C <root> when the project found from there is not sc's root,
-// none when it is, and none at user scope, whose flag differs between commands. A working
-// directory lola cannot read gets -C, which works from anywhere.
+// sc (Plan 6a §11.3, Plan 6b §12.3): --user at user scope; at project scope --project when sc is
+// the project found from there, else -C <root>. A working directory lola cannot read gets -C,
+// which works from anywhere. A command without a scope flag would ask for its scope on a
+// terminal, so every hint carries one.
 func (e *Engine) RootArgs(sc Scope) []string {
-	if sc.Kind != target.Project {
-		return nil
-	}
-	if cwd, err := e.Getwd(); err == nil && (Scope{Kind: target.Project, ProjectDir: FindProject(cwd)}).Key() == sc.Key() {
-		return nil
+	switch {
+	case sc.Kind != target.Project:
+		return []string{"--user"}
+	case e.FoundHere(sc):
+		return []string{"--project"}
 	}
 	return []string{"-C", untrusted.Text(sc.ProjectDir, untrusted.MaxName)}
 }
@@ -28,14 +36,10 @@ func (e *Engine) RootArgs(sc Scope) []string {
 func (e *Engine) SyncCommand(sc Scope, args ...string) string { return e.Command(sc, "sync", args...) }
 
 // Command is a lola command a hint names for sc: lola, the subcommand, the scope's flags
-// (--user, or RootArgs), then args, each through untrusted.Text and quoted for the user's shell,
-// so the command acts on the scope the user ran from where they are.
+// (RootArgs), then args, each through untrusted.Text and quoted for the user's shell, so the
+// command acts on the scope the user ran from where they are.
 func (e *Engine) Command(sc Scope, sub string, args ...string) string {
-	cmd := []string{"lola", sub}
-	if sc.Kind == target.User {
-		cmd = append(cmd, "--user")
-	}
-	cmd = append(cmd, e.RootArgs(sc)...)
+	cmd := append([]string{"lola", sub}, e.RootArgs(sc)...)
 	for _, a := range args {
 		cmd = append(cmd, untrusted.Text(a, untrusted.MaxName))
 	}

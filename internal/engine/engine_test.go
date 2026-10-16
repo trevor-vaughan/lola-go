@@ -573,7 +573,7 @@ var _ = Describe("Engine", func() {
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine"})
 		_, err := install(claude, src)
 		Expect(err).To(MatchError(ContainSubstring("exists and was not written by lola")))
-		Expect(errs.Hints(err)).To(ContainElement("fetched modules stay in your cache; retry with: lola install example"))
+		Expect(errs.Hints(err)).To(ContainElement("fetched modules stay in your cache; retry with: lola install --project example"))
 		names, _ := e.Store.Names()
 		Expect(names).To(Equal([]string{"example"}))
 
@@ -764,7 +764,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
 		Expect(err).To(MatchError(`lola uninstall: "example" is not installed in this project`))
-		Expect(errs.Hints(err)).To(Equal([]string{"still in your cache: lola cache rm example", "installed here: lola list"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"still in your cache: lola cache rm example", "installed here: lola list --project"}))
 	})
 
 	It("uninstall coaches lola cache rm for a cached module whose index lola refuses", func() {
@@ -1088,7 +1088,7 @@ var _ = Describe("Engine", func() {
 			_, err := e.Render(ctx, sc, engine.Options{})
 			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"))
 			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
-				"if you never installed with lola in this checkout, delete it too, then run lola sync"}))
+				"if you never installed with lola in this checkout, delete it too, then run lola sync --project"}))
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile(), "nothing rendered")
 			Expect(ledgerBytes()).To(Equal(before))
 			for _, dry := range []bool{false, true} {
@@ -1122,7 +1122,7 @@ var _ = Describe("Engine", func() {
 				GinkgoHelper()
 				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"))
 				Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
-					"if you never installed with lola in this checkout, delete it too, then run lola sync"}))
+					"if you never installed with lola in this checkout, delete it too, then run lola sync --project"}))
 				Expect(ledgerBytes()).To(Equal(ledger))
 				Expect(read(".lola/project.yml")).To(Equal(man))
 				Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
@@ -1371,7 +1371,7 @@ var _ = Describe("Engine", func() {
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 			Expect(res.Modules[0].Hooks).To(ConsistOf(HaveField("Status", engine.HookDeclined)))
 			Expect(res.Notices).To(ContainElement(HaveField("Text", "example: post-install hook skipped without your consent; "+
-				"review and run it: lola sync example, or consent without asking: lola sync example --allow-hooks")))
+				"review and run it: lola sync --project example, or consent without asking: lola sync --project example --allow-hooks")))
 			Expect(hookLog()).To(BeNil())
 		})
 
@@ -1394,7 +1394,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.InSync).To(BeTrue())
 			Expect(res.Notices).To(ContainElement(HaveField("Text", "example: its post-install hook has not run (you declined it); "+
-				"review and run it: lola sync example, or consent without asking: lola sync example --allow-hooks")))
+				"review and run it: lola sync --project example, or consent without asking: lola sync --project example --allow-hooks")))
 			Expect(pending()).To(BeTrue())
 			Expect(hookLog()).To(BeNil())
 
@@ -1454,9 +1454,9 @@ var _ = Describe("Engine", func() {
 				res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: opts})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(res.InSync).To(BeTrue())
-				want := "pending post-install hook for example → lola sync example"
+				want := "pending post-install hook for example → lola sync --project example"
 				if opts.Ask == nil {
-					want += " (off a terminal: lola sync example --allow-hooks)"
+					want += " (off a terminal: lola sync --project example --allow-hooks)"
 				}
 				Expect(res.Notices).To(ContainElement(HaveField("Text", want)))
 			}
@@ -1642,7 +1642,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ranOn(res)).To(ConsistOf("claude-code="+engine.HookDeclined, "opencode="+engine.HookDeclined), "the run the dry run planned")
 			Expect(res.Notices).To(ContainElement(HaveField("Text", "example: post-install hook skipped without your consent; "+
-				"review and run it: lola sync example, or consent without asking: lola sync example --allow-hooks")))
+				"review and run it: lola sync --project example, or consent without asking: lola sync --project example --allow-hooks")))
 			Expect(hookLog()).To(HaveLen(1), "nothing ran")
 			Expect(pending()).To(BeTrue(), "lola sync offers it")
 		})

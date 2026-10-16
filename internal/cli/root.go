@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // version is stamped at build time with -ldflags "-X .../internal/cli.version=<v>".
@@ -44,8 +45,13 @@ type app struct {
 	getenv      func(string) string
 	json        bool
 	plain       bool
-	user        bool
-	project     string
+	scopeFlag   string // --scope
+	user        bool   // --user
+	project     bool   // --project
+	root        string // -C/--root
+	noPager     bool   // --no-pager
+	termOut     bool   // stdout is a terminal whatever it is (WithTerminals)
+	termErr     bool   // stderr is a terminal whatever it is (WithTerminals)
 	eng         *engine.Engine
 	newPrompter func(*cobra.Command) Prompter
 }
@@ -57,6 +63,12 @@ type Option func(*app)
 // with it.
 func WithPrompter(p Prompter) Option {
 	return func(a *app) { a.newPrompter = func(*cobra.Command) Prompter { return p } }
+}
+
+// WithTerminals makes lola treat stdout and stderr as terminals when out and errw say so, which
+// decides paging; specs page through a fake pager with it.
+func WithTerminals(out, errw bool) Option {
+	return func(a *app) { a.termOut, a.termErr = out, errw }
 }
 
 var cobraOnce sync.Once
@@ -94,9 +106,6 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 			if a.json && a.plain {
 				return errs.WithHints(errors.New("--json and --plain cannot be combined"), "pick one output format")
 			}
-			if a.user && a.project != "" {
-				return errs.WithHints(errors.New("--user cannot be combined with -C/--project"), "user scope has no project directory")
-			}
 			return nil
 		},
 	}
@@ -104,8 +113,12 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	pf := root.PersistentFlags()
 	pf.BoolVar(&a.json, "json", false, "print machine-readable JSON")
 	pf.BoolVar(&a.plain, "plain", false, "print tab-separated lines without color")
-	pf.StringVarP(&a.project, "project", "C", "", "project root; without it, every command but install uses the nearest parent with .lola/, else the current directory (install: see lola help install)")
-	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory) instead of a project")
+	pf.StringVar(&a.scopeFlag, "scope", "", "act on this scope: project, user or both (also project,user)")
+	_ = root.RegisterFlagCompletionFunc("scope", cobra.FixedCompletions([]string{"project", "user", "both"}, cobra.ShellCompDirectiveNoFileComp))
+	pf.BoolVar(&a.project, "project", false, "act on project scope: --scope project")
+	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory): --scope user")
+	pf.StringVarP(&a.root, "root", "C", "", "the project at this directory; implies project scope")
+	pf.BoolVar(&a.noPager, "no-pager", false, "print consent diffs without a pager")
 
 	root.AddGroup(
 		&cobra.Group{ID: groupCore, Title: "Core:"},
@@ -131,39 +144,44 @@ func (a *app) engine() (*engine.Engine, error) {
 	return a.eng, nil
 }
 
-// projectDir returns -C as an absolute directory, or "" when it was not given.
-func (a *app) projectDir() (string, error) {
-	if a.project == "" {
-		return "", nil
+// scopeRequest is what the scope flags say, for the engine to resolve from cwd: -C/--root
+// becomes an absolute directory, which must exist.
+func (a *app) scopeRequest(cwd string, interactive bool) (engine.ScopeRequest, error) {
+	req := engine.ScopeRequest{Scope: a.scopeFlag, User: a.user, Project: a.project, Cwd: cwd, Interactive: interactive}
+	if a.root == "" {
+		return req, nil
 	}
-	dir, err := filepath.Abs(a.project)
+	dir, err := filepath.Abs(a.root)
 	if err != nil {
-		return "", err
+		return req, err
 	}
 	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-		return "", fmt.Errorf("-C %s: not a directory", a.project)
+		return req, fmt.Errorf("-C %s: not a directory", untrusted.Text(a.root, untrusted.MaxName))
 	}
-	return dir, nil
+	req.ProjectDir = dir
+	return req, nil
 }
 
-// scope resolves --user and -C into an engine scope. install resolves its scopes itself
-// (installScopes); every other command acts where lola already installed something.
-func (a *app) scope() (engine.Scope, error) {
-	if a.user {
-		return engine.Scope{Kind: target.User}, nil
-	}
-	if a.project != "" {
-		dir, err := a.projectDir()
-		if err != nil {
-			return engine.Scope{}, err
-		}
-		return engine.Scope{Kind: target.Project, ProjectDir: dir}, nil
-	}
+// scope is the one scope of a command that never asks for it: the scope flags, which must name
+// one scope, else the nearest parent with .lola/, else the current directory.
+func (a *app) scope(cmd *cobra.Command, eng *engine.Engine) (engine.Scope, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return engine.Scope{}, err
 	}
-	return engine.Scope{Kind: target.Project, ProjectDir: engine.FindProject(cwd)}, nil
+	if a.scopeFlag == "" && !a.user && !a.project && a.root == "" {
+		return engine.Scope{Kind: target.Project, ProjectDir: engine.FindProject(cwd)}, nil
+	}
+	req, err := a.scopeRequest(cwd, false)
+	if err != nil {
+		return engine.Scope{}, err
+	}
+	req.Command = cmd.Name()
+	res, err := eng.ResolveScope(req)
+	if err != nil {
+		return engine.Scope{}, err
+	}
+	return res.Scopes[0].Scope, nil
 }
 
 // Execute runs root and maps the outcome to an exit code: 0 on success or a cancelled

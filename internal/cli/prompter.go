@@ -62,13 +62,16 @@ const (
 	ScopeOther   = "other"
 )
 
-// ScopeStep offers Project (at ProjectRoot), User and Other directory…. Nothing is preselected
-// on the first run; when Change scope asks again, Preselect is the last answer.
+// ScopeStep asks Question, offering Project (at ProjectRoot), User and Other directory…; One
+// says the command takes one of them. Nothing is preselected on the first run; when install's
+// Change scope asks again, Preselect is the last answer.
 type ScopeStep struct {
+	Question    string
 	ProjectRoot string
 	Home        string
 	Preselect   []string
 	Problem     string
+	One         bool
 }
 
 // DirectoryStep asks for the Other directory. Value is the answer offered to edit (the last

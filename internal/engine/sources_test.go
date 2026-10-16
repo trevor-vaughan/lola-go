@@ -512,7 +512,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			_, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).To(MatchError(ContainSubstring("the source now serves different content than project.yml pins (pinned " +
 				lockFile().Modules["example"].Digest)))
-			Expect(errs.Hints(err)).To(ContainElement("if you expect the change, re-pin it: lola sync --update example"),
+			Expect(errs.Hints(err)).To(ContainElement("if you expect the change, re-pin it: lola sync --project --update example"),
 				"under the pin, never installing what the source serves unseen")
 			Expect(ship()).To(Equal("Ship $ARGUMENTS\n"))
 			_, found, err := e.Store.Origin("example")
@@ -554,7 +554,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(ContainElement(And(HaveField("Module", "example"), HaveField("Code", engine.CodeContentChanged),
 				HaveField("Text", `its content no longer loads: its source now declares module "beta"`),
-				HaveField("Hint", "review it: lola sync example; or remove it: lola uninstall example"))))
+				HaveField("Hint", "review it: lola sync --project example; or remove it: lola uninstall --project example"))))
 			_, found, err := e.Store.Origin("beta")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(found).To(BeFalse(), "nothing is cached under the other name")

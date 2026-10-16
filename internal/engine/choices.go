@@ -219,7 +219,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 				return nil, err
 			}
 			prev, installed := man.Find(v.Name), led.Modules[v.Name]
-			if v, err = e.installedVersion(v, prev, installed); err != nil {
+			if v, err = e.installedVersion(sc, v, prev, installed); err != nil {
 				return nil, err
 			}
 			keep = prev != nil && installed != nil

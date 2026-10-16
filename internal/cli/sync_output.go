@@ -320,7 +320,8 @@ func hashLines(f trust.FieldChange) []string {
 }
 
 // printFiles prints a module's file changes: their counts, then one path per line, changed and
-// removed before added, each group in path order, at most filesShown, then how many more.
+// removed before added, each group in path order; given more, the command that lists them all,
+// at most filesShown, then how many more (a pager shows them all).
 func printFiles(w io.Writer, files []engine.FileChange, more string) {
 	if len(files) == 0 {
 		return
@@ -340,7 +341,7 @@ func printFiles(w io.Writer, files []engine.FileChange, more string) {
 	}
 	fmt.Fprintln(w, "      files: "+strings.Join(counts, ", "))
 	for i, f := range shown {
-		if i == filesShown {
+		if more != "" && i == filesShown {
 			fmt.Fprintf(w, "        … and %d more (%s lists them all)\n", len(shown)-filesShown, more)
 			break
 		}

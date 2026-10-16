@@ -231,7 +231,8 @@ func editTargets(mods []*module.Module) []editTarget {
 }
 
 // errApplied adds to a failure during apply, after selections.yaml was written, that the
-// next render converges on the saved selections.
-func errApplied(err error, path string) error {
-	return errs.WithHints(err, "your selections were saved to "+untrusted.Text(path, untrusted.MaxName)+"; lola render applies them once the problem is fixed")
+// next render of sc converges on the saved selections.
+func (e *Engine) errApplied(err error, path string, sc Scope) error {
+	return errs.WithHints(err, "your selections were saved to "+untrusted.Text(path, untrusted.MaxName)+"; "+e.Command(sc, "render")+
+		" applies them once the problem is fixed")
 }

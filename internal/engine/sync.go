@@ -1135,7 +1135,7 @@ func (e *Engine) refuseMissingManifest(sc Scope) error {
 			"install a module at user scope first: lola install --user <source>")
 	}
 	return errs.WithHints(fmt.Errorf("no project.yml in %s", untrusted.Text(sc.ProjectDir, untrusted.MaxName)),
-		"start one: lola install <source>", "or sync another project: lola sync -C <dir>")
+		"start one: "+e.Command(sc, "install")+" <source>", "or sync another project: lola sync -C <dir>")
 }
 
 // syncLimit is the set of modules a sync acts on (Plan 6a §3.1): the names given, or every

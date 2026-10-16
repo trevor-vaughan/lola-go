@@ -176,6 +176,7 @@ type VersionRef struct {
 
 // StatusRow is one module × target line of `lola list`.
 type StatusRow struct {
+	Scope  string `json:"scope"` // project or user
 	Name   string `json:"name"`
 	Target string `json:"target"`
 	Status string `json:"status"` // ok, modified, missing, stale, skipped, unreadable

@@ -128,10 +128,14 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 		}
 	}
 	fmt.Fprintln(w, "Equivalent commands:")
+	// A -C root is made safe in the command itself (equivalents), so it is checked here.
+	unsafeRoot := slices.ContainsFunc(spec.Scopes, func(si engine.ScopeInstall) bool {
+		return si.Scope.ProjectDir != untrusted.Text(si.Scope.ProjectDir, untrusted.MaxName)
+	})
 	for _, line := range fl.equivalents(spec) {
 		safe := untrusted.Text(line, len(line))
 		fmt.Fprintln(w, "  "+safe)
-		if safe != line {
+		if safe != line || (unsafeRoot && strings.Contains(line, " -C ")) {
 			fmt.Fprintln(w, "note: the line above has unsafe characters replaced by '?'; it is not copyable as shown")
 		}
 	}
@@ -162,7 +166,7 @@ func entryText(e config.Entry) string {
 // cache add for each source added, then one lola install line per destination, quoted for the
 // user's shell (errs.ShellJoin) and without --dry-run. With more than one destination every
 // project line names its root with -C; a single project line does so only when the root is not
-// the project found from here, which the engine decides for every hint (RootArgs).
+// the project found from here, which the engine decides for every hint (FoundHere).
 func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 	var out []string
 	for _, a := range fl.added {
@@ -214,8 +218,8 @@ func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 	}
 	for _, si := range spec.Scopes {
 		var root []string
-		if si.Scope.ProjectDir != "" && (len(spec.Scopes) > 1 || fl.eng.RootArgs(si.Scope) != nil) {
-			root = []string{"-C", si.Scope.ProjectDir}
+		if si.Scope.ProjectDir != "" && (len(spec.Scopes) > 1 || !fl.eng.FoundHere(si.Scope)) {
+			root = []string{"-C", untrusted.Text(si.Scope.ProjectDir, untrusted.MaxName)}
 		}
 		out = append(out, line(si.Scope.Kind.String(), root, per(si)))
 	}
