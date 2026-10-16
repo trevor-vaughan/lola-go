@@ -5,7 +5,7 @@ import (
 )
 
 // Prompter asks the install flow's questions (Plan 5c §3, §4): one method per step and one
-// for the review menu. The huh adapter draws them inline on stderr; specs inject a scripted
+// for the review menu; and sync's yes/no questions (Plan 6a §3.4). The huh adapter draws them inline on stderr; specs inject a scripted
 // one. A method returns ErrAborted when the user cancels. Validation a step needs (at least
 // one scope, an Other directory that exists) runs in the flow after the method returns, which
 // asks again with Problem set.
@@ -23,6 +23,8 @@ type Prompter interface {
 	// ConfirmEmpty asks "Install <module> with no components?", default No.
 	ConfirmEmpty(module string) (bool, error)
 	Review(ReviewStep) (string, error)
+	// Confirm asks a yes/no question, default No: sync's trust question and its removals.
+	Confirm(question string) (bool, error)
 }
 
 // The scope picker's entries (Plan 5c §14), in the order it offers them.
@@ -140,3 +142,4 @@ func (noPrompter) Assistants(AssistantStep) ([]string, error)   { return nil, er
 func (noPrompter) Components(ComponentPage) ([]string, error)   { return nil, errNoTerminal }
 func (noPrompter) ConfirmEmpty(string) (bool, error)            { return false, errNoTerminal }
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }
+func (noPrompter) Confirm(string) (bool, error)                 { return false, errNoTerminal }

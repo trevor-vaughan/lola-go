@@ -345,7 +345,7 @@ func loadSkills(dir string, m *Module) error {
 		}
 		rel := "skills/" + e.Name()
 		if _, err := os.Stat(filepath.Join(dir, rel, "SKILL.md")); err != nil {
-			m.Warnings = append(m.Warnings, rel+" has no SKILL.md; skipped")
+			m.Warnings = append(m.Warnings, safeName(rel)+" has no SKILL.md; skipped")
 			continue
 		}
 		if err := ValidateName("skill", e.Name()); err != nil {
@@ -491,7 +491,7 @@ func loadRules(dir string, m *Module) error {
 	for _, e := range es {
 		name, ok := strings.CutSuffix(e.Name(), ".md")
 		if e.IsDir() || !ok {
-			m.Warnings = append(m.Warnings, "rules/"+e.Name()+" is not a rule (rules/<name>.md); skipped")
+			m.Warnings = append(m.Warnings, safeName("rules/"+e.Name())+" is not a rule (rules/<name>.md); skipped")
 			continue
 		}
 		if err := ValidateName("rule", name); err != nil {
@@ -544,13 +544,14 @@ func checkHooks(dir string, m *Module) error {
 		fi, err := os.Lstat(filepath.Join(dir, h.Script))
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			return fmt.Errorf("%s: %s hook %s does not exist", m.Manifest, h.Event, h.Script)
+			return fmt.Errorf("%s: %s hook %q does not exist", m.Manifest, h.Event, h.Script)
 		case err != nil:
 			return err
 		case !fi.Mode().IsRegular():
-			return fmt.Errorf("%s: %s hook %s is not a regular file", m.Manifest, h.Event, h.Script)
+			return fmt.Errorf("%s: %s hook %q is not a regular file", m.Manifest, h.Event, h.Script)
 		case fi.Mode().Perm()&0o111 == 0:
-			return errs.WithHints(fmt.Errorf("%s: %s hook %s is not executable", m.Manifest, h.Event, h.Script), "chmod +x "+h.Script)
+			return errs.WithHints(fmt.Errorf("%s: %s hook %q is not executable", m.Manifest, h.Event, h.Script),
+				errs.ShellJoin([]string{"chmod", "+x", untrusted.Text(h.Script, len(h.Script))}))
 		}
 	}
 	return nil

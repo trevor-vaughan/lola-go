@@ -71,6 +71,66 @@ var _ = Describe("core commands", func() {
 		Expect(filepath.Join(proj, ".mcp.json")).NotTo(BeAnExistingFile())
 	})
 
+	It("prints a module's file names, MCP command lines and hook scripts without driving the terminal", func() {
+		writeTree(mod, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n", "skills/x/ref/a\x1b[2Jb.md": "x",
+			"mcps.json": `{"mcpServers":{"lola-gh":{"command":"gh-mcp","args":["\u001b]0;pwned\u0007"]}}}`,
+			"lola.yml":  "name: example\nhooks: {post-install: \"hooks/p\\e[31m.sh\"}\n", "hooks/p\x1b[31m.sh": "#!/bin/sh\nexit 0\n"})
+		r := lola("install", mod, "-C", proj, "-n")
+		Expect(r.out).To(ContainSubstring(".claude/skills/x/ref/a?[2Jb.md"))
+		Expect(r.out).To(ContainSubstring("lola-gh (stdio) runs: gh-mcp ?]0;pwned?"))
+		Expect(r.out).To(ContainSubstring("post-install hook hooks/p?[31m.sh"))
+		const control = "[\x00-\x08\x0b-\x1f\x7f]"
+		for _, args := range [][]string{{"install", mod, "-C", proj, "-n"}, {"install", mod, "-C", proj, "--allow-hooks"}} {
+			r := lola(args...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out+r.err).NotTo(MatchRegexp(control), strings.Join(args, " "))
+		}
+		Expect(os.Remove(filepath.Join(proj, ".claude", "skills", "x", "ref", "a\x1b[2Jb.md"))).To(Succeed())
+		r = lola("render", "-C", proj, "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(".claude/skills/x/ref/a?[2Jb.md"))
+		Expect(r.out + r.err).NotTo(MatchRegexp(control))
+	})
+
+	It("prints a module's rule and hook file names in warnings and errors without driving the terminal", func() {
+		writeTree(mod, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n", "rules/a\x1b[2Jb.txt": "x"})
+		r := lola("cache", "add", mod)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("rules/a?[2Jb.txt is not a rule"))
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("cache", "show", "example")
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("cache", "show", "example", "--json")
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		Expect(r.out + r.err).NotTo(ContainSubstring(`\u001b`))
+
+		bad := filepath.Join(GinkgoT().TempDir(), "bad")
+		writeTree(bad, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n", "skills/\x1b[2Jy/note": "x",
+			"lola.yml": "name: bad\nhooks: {post-install: \"hooks/p\\e[31m.sh\"}\n", "hooks/p\x1b[31m.sh": "#!/bin/sh\nexit 0\n"})
+		Expect(os.Chmod(filepath.Join(bad, "hooks", "p\x1b[31m.sh"), 0o644)).To(Succeed())
+		r = lola("install", bad, "-C", proj, "-n")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.out + r.err).To(ContainSubstring("hooks/p?[31m.sh"))
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("install", bad, "-C", proj, "-n", "--json")
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		Expect(r.out + r.err).NotTo(ContainSubstring(`\u001b`))
+	})
+
+	It("prints a cached module's hook script without driving the terminal", func() {
+		writeTree(mod, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n",
+			"lola.yml": "name: example\nhooks: {post-install: \"hooks/p\\e[31m.sh\"}\n", "hooks/p\x1b[31m.sh": "#!/bin/sh\nexit 0\n"})
+		Expect(lola("cache", "add", mod).code).To(Equal(0))
+		r := lola("cache", "show", "example")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("post-install: hooks/p?[31m.sh"))
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("cache", "show", "example", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("hooks/p?[31m.sh"))
+		Expect(r.out).NotTo(ContainSubstring(`\u001b`))
+	})
+
 	It("prints what a target skipped with a hint, and --strict fails without writing", func() {
 		writeTree(mod, map[string]string{"agents/bare.md": "No description.\n"})
 		r := lola("install", mod, "-C", proj, "--strict")

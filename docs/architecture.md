@@ -42,33 +42,33 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 | `module` | The IR, frontmatter parsing, name rules, format detection and the Claude plugin and Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened module JSON reading, rules, hook validation, and normalization. |
 | `untrusted` | Makes text lola did not write safe to print: control characters, Unicode format characters and line separators replaced, length capped, OS errors without their path. |
 | `source` | Source parsing and validation (also of sources recorded in `project.yml` and `lock.json`, `Recorded`), the folder, git and archive fetchers with their executables, the reachability check of a pinned commit, and `GitCommand`, the one hardened way lola runs git (also for the engine's git-ignore check and migrate's git-tracked guard, with `InWorkTree`). |
-| `store` | The cache's storage: content-addressed versions with their executables, per-ref heads with their commits, digest-checked puts, snapshots of a pinned version (`Pinned`), the cache lock. (Internal name; user-facing text says "cache".) |
+| `store` | The cache's storage: content-addressed versions with their executables, per-ref heads with their commits, `Prepare` (check and digest in the run's staging) and `Commit` (publish under the cache lock; `Put` is both), snapshots of a pinned version (`Pinned`), the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, validated at load; the ledger written deterministically, the manifest edited in place (`manifest.Edit`) with its pins. |
-| `trust` | The trust record (`trust.json`): per project key, the view of `project.yml` lola wrote and its hash; strict, permission-checked reads, locked per-project saves, coverage, and the per-field refresh. No dependency on `engine`. |
+| `trust` | The trust record (`trust.json`): per project key, the view of `project.yml` lola wrote and its hash; strict, permission-checked reads, locked per-project saves, coverage, the per-field refresh, and `Check`: the status and the typed field changes of a manifest against its record. No dependency on `engine`. |
 | `consent` | Recorded consent to a module's install hooks (key `<module>`) and runtime hooks (key `<module>/runtime-hooks/<settings-file hash>`), each recording a digest. |
 | `target` | The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`, `Probe`, and helpers renderers share. No implementations. |
 | `target/claude`, `target/gemini`, `target/opencode` | The `claude-code`, `gemini-cli` and `opencode` renderers, each with its capability table and probe. One package per target. |
 | `target/conformance` | Specs every registered target must pass. |
 | `targets` | The registry: the one list of every target. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and manifest). |
-| `engine` | Install, uninstall, render, status, fetch, update, search; run staging, module copies, install hooks, runtime hook consent, the git-ignore and tracked-ledger checks; every manifest write with its trust refresh (`saveManifest`) and the refusals of untrusted entries; install scope resolution, the component resolver, selection edits and `InstallChoices`. |
+| `engine` | Install, uninstall, render, sync (`desired`, the trust report, containment, removals), status, fetch, update, search; run staging, module copies, install hooks, runtime hook consent, the git-ignore and tracked-ledger checks; every manifest write with its trust refresh (`saveManifest`) and the refusals of untrusted entries; install scope resolution, the component resolver, selection edits and `InstallChoices`. |
 | `migrate` | `lola migrate`: strict reading of the Python lola's `installed.yml` and `source.yml`, the plan (destinations, outcomes, recorded paths), the trash, and running the installs and the cleanup over the engine. |
 | `cli` | Commands, help, aliases, completion, output and prompts; the install flow and its `Prompter`, with the huh adapter. |
 | `errs` | Errors that carry coaching hints. |
-| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, no `LOLA_HOME`, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git server. |
+| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, no `LOLA_HOME`, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git server (`ServeGitWith` also shows each request to a spec). |
 
 ## Selections and the install flow
 
 **Files.** `internal/config` reads `$XDG_CONFIG_HOME/lola/config.yaml` (`default_scope`) and
 `selections.yaml` once per command. Both are untrusted: at most 1 MiB, one YAML document, no
-anchors, aliases or merge keys, known keys only, `version: 1`, module names through
-`ValidateName`, known kinds, valid `path.Match` globs (no control or format characters in a
-selector name, from the file or a flag), no `include` in `global`, absolute project keys. Errors name the
-file, line and key path (keys through `untrusted.Text`) with a hint. Project keys pass through
-`paths.ProjectKey` (absolute, clean, symlinks resolved; on Windows forward slashes and a lower
-drive letter) and compare with `paths.KeyID` (case-folded on darwin and Windows), so two keys
-for one project are refused and a hand-written spelling still matches. The project lock file is
-named after the same key.
+anchors, aliases or merge keys, known keys only, `version: 1`, module names through `ValidateName`,
+known kinds, valid `path.Match` globs (no control or format characters in a selector name, from the
+file or a flag), no `include` in `global`, absolute project keys. Errors name the file, line and key
+path (keys through `untrusted.Text`) with a hint. Project keys pass through `paths.ProjectKey`
+(absolute, clean, symlinks resolved; on Windows forward slashes and a lower drive letter) and
+compare with `paths.KeyID` (case-folded on darwin and Windows), so two keys for one project are
+refused and a hand-written spelling still matches. The project lock file is named after the same
+key.
 
 **Resolver.** `resolveComponents` (engine) is the one place a module becomes the components a
 scope installs: the cached version minus the effective exclusions (global skip ∪ scope skip −
@@ -87,22 +87,22 @@ root is its own `projects:` section of `selections.yaml`. Results carry `scope` 
 flags still give at most one project and the user scope.
 
 **Install.** `InstallAll` takes, per destination, the scope and its source (`flag`, `config`,
-`discovered`, `picked`, from `ResolveInstallScope` or the picker), its targets and its
-selection edits, plus global edits, and refuses a destination listed twice and any project
-rooted at the home directory (it renders where the user scope does, so two ledgers would claim
-one set of files; `Render` and `Uninstall` still accept one an older lola installed). Order: the
-selections lock (`$XDG_STATE_HOME/lola/locks/selections.lock`, always before any scope lock),
-then every scope's lock in `lockOrder` (project roots by canonical key, then the user scope, so
-two runs never wait on each other in a cycle), then each scope's module resolution; the edits applied to
-`selections.yaml` in memory (`applyEdits`: `--only`, then `--skip`, then `--unskip`); planning
-through the resolver; every refusal and prompt for every scope (`prepare`: runtime hook consent,
-`--strict`, `plan.Compute` conflicts, install hook consent); `config.Save`; then `commit` per
-scope. A refusal or cancel writes nothing; a failure while applying leaves `selections.yaml`
-written and says the next `render` converges. `config.Save` re-reads the file under the lock,
-replaces only the changed modules' entries through the yaml.v3 node API (comments and order
-survive, also in a comments-only or null document; a section or project key a removal empties
-is dropped unless it carries a comment, then it stays as an empty mapping), writes atomically at a symlink's target with mode 0600, and never overwrites a file
-that does not load.
+`discovered`, `picked`, from `ResolveInstallScope` or the picker), its targets and its selection
+edits, plus global edits, and refuses a destination listed twice and any project rooted at the home
+directory (it renders where the user scope does, so two ledgers would claim one set of files;
+`Render` and `Uninstall` still accept one an older lola installed). Order: the selections lock
+(`$XDG_STATE_HOME/lola/locks/selections.lock`, always before any scope lock), then every scope's
+lock in `lockOrder` (project roots by canonical key, then the user scope, so two runs never wait on
+each other in a cycle), then each scope's module resolution; the edits applied to `selections.yaml`
+in memory (`applyEdits`: `--only`, then `--skip`, then `--unskip`); planning through the resolver;
+every refusal and prompt for every scope (`prepare`: runtime hook consent, `--strict`,
+`plan.Compute` conflicts, install hook consent); `config.Save`; then `commit` per scope. A refusal
+or cancel writes nothing; a failure while applying leaves `selections.yaml` written and says the
+next `render` converges. `config.Save` re-reads the file under the lock, replaces only the changed
+modules' entries through the yaml.v3 node API (comments and order survive, also in a comments-only
+or null document; a section or project key a removal empties is dropped unless it carries a comment,
+then it stays as an empty mapping), writes atomically at a symlink's target with mode 0600, and
+never overwrites a file that does not load.
 
 **Choices and the flow.** `InstallChoices` computes everything the pickers show: per destination
 the assistants and the manifest's fixed targets; per cached module (sorted by source, then name)
@@ -162,23 +162,23 @@ comments). JSON edits operate on the hujson AST so bytes outside the edited memb
 preserved; trailing line comments belong to the line they end. `ledger.created` remembers the
 JSON files lola created, so they are deleted when lola's last member leaves them empty.
 
-**Owned array members.** `AddJSONMember` claims one element, any JSON value, in a JSON array
-that users also edit: a string for rule references (Gemini and OpenCode), an object for a
-runtime hook's matcher group (Claude Code). Elements compare as canonical JSON, so key order and
-layout in the user's file do not matter. The ledger records a string as `value`, as it always
-has, and any other element as `member`, in canonical JSON; either is part of the artifact's
-identity, so several modules can each own an entry in one array, and the hash is over the
-element's canonical JSON. Files and step lines get the element with `& < >` unescaped
-(`fsx.ReadableJSON`), so a shell operator reads as one. A ledger `member` that another tool
-reformatted is recorded again as canonical JSON at load; one that is a string or `null` is
-refused, with a hint. A member is present or absent, never hand-edited: one the user removed is
-rewritten with a note, and an orphan the user removed (or edited, which changes its identity) is
-forgotten. A string the user already listed is adopted; any other element the user already has
-is a forceable conflict, since owning the user's own hook group would delete it on uninstall. A `created` entry with a `key` records an array lola created; when lola's
-last member leaves it, the array goes too, with the parent objects it leaves empty, and the file
-if lola created that. A value at the pointer that is not an array is a hard error. Appending
-keeps comments that follow the last member before the closing bracket or brace, so removing
-lola's entry restores the file byte for byte.
+**Owned array members.** `AddJSONMember` claims one element, any JSON value, in a JSON array that
+users also edit: a string for rule references (Gemini and OpenCode), an object for a runtime hook's
+matcher group (Claude Code). Elements compare as canonical JSON, so key order and layout in the
+user's file do not matter. The ledger records a string as `value`, as it always has, and any other
+element as `member`, in canonical JSON; either is part of the artifact's identity, so several
+modules can each own an entry in one array, and the hash is over the element's canonical JSON. Files
+and step lines get the element with `& < >` unescaped (`fsx.ReadableJSON`), so a shell operator
+reads as one. A ledger `member` that another tool reformatted is recorded again as canonical JSON at
+load; one that is a string or `null` is refused, with a hint. A member is present or absent, never
+hand-edited: one the user removed is rewritten with a note, and an orphan the user removed (or
+edited, which changes its identity) is forgotten. A string the user already listed is adopted; any
+other element the user already has is a forceable conflict, since owning the user's own hook group
+would delete it on uninstall. A `created` entry with a `key` records an array lola created; when
+lola's last member leaves it, the array goes too, with the parent objects it leaves empty, and the
+file if lola created that. A value at the pointer that is not an array is a hard error. Appending
+keeps comments that follow the last member before the closing bracket or brace, so removing lola's
+entry restores the file byte for byte.
 
 **Rules** are plain files each target writes where its assistant loads them, never in a
 user-owned instruction file. Claude Code loads `.claude/rules/lola/<module>/<rule>.md` as is.
@@ -282,12 +282,12 @@ replace outside the project. User-scope copies and `user.yml` may live behind a 
 `manifest.Edit` then writes at the link's target.
 
 Install hooks build inside copies (`npm install`, virtual environments), so a copy's content is
-never compared with the cache. A copy is replaced only when its module's version changes (the
-ledger digest differs, or there is no ledger entry) or the copy is missing (`needsCopy`); an
-entry that is not a real directory, such as a committed symlink, counts as missing. Each
-replaced copy is assembled as `.<module>.new`, the current one moves to `.<module>.old`, and the new one takes its place. If
-the ledger is never committed (the `after` callback of `plan.Apply` runs only after the commit),
-the old copies are restored; otherwise they are dropped. Copies of modules that leave the
+never compared with the cache. A copy is replaced only when its module's version changes (the ledger
+digest differs, or there is no ledger entry) or the copy is missing (`needsCopy`); an entry that is
+not a real directory, such as a committed symlink, counts as missing. Each replaced copy is
+assembled as `.<module>.new`, the current one moves to `.<module>.old`, and the new one takes its
+place. If the ledger is never committed (the `after` callback of `plan.Apply` runs only after the
+commit), the old copies are restored; otherwise they are dropped. Copies of modules that leave the
 ledger are removed. `status` reports a missing copy as `missing`, and `render` restores it and
 reruns its hooks; edits inside a copy are not reported.
 
@@ -300,29 +300,29 @@ the same digest (sha256 over each hook's event, script path and script sha256), 
 prompt, whose yes is recorded in `$XDG_STATE_HOME/lola/consent.json`. Without consent a
 `pre-install` hook is an error and a `post-install` hook is declined with a warning.
 
-Hooks run once per target, in the module copy, with the parent environment plus
-`LOLA_MODULE_NAME`, `LOLA_MODULE_PATH`, `LOLA_PROJECT_PATH` (the target's scope root),
-`LOLA_ASSISTANT`, `LOLA_SCOPE` and `LOLA_HOOK`, under a 10-minute timeout. A failing
-`pre-install` hook restores the old copies and writes nothing; `post-install` hooks run after
-the commit, so a failure is a warning. `install` runs hooks for every module it installs;
-`render` only for modules whose copy it replaces (a new version, or a missing copy). A dry run reports hooks as `would-run`.
+Hooks run once per target, in the module copy, with the parent environment plus `LOLA_MODULE_NAME`,
+`LOLA_MODULE_PATH`, `LOLA_PROJECT_PATH` (the target's scope root), `LOLA_ASSISTANT`, `LOLA_SCOPE`
+and `LOLA_HOOK`, under a 10-minute timeout. A failing `pre-install` hook restores the old copies and
+writes nothing; `post-install` hooks run after the commit, so a failure is a warning. `install` runs
+hooks for every module it installs; `render` only for modules whose copy it replaces (a new version,
+or a missing copy). A dry run reports hooks as `would-run`.
 
 ## Runtime hooks
 
-`target/claude` renders each matcher group of a module's runtime hooks as one `AddJSONMember`
-intent (kind `target.KindRuntimeHook`) under `/hooks/<Event>` of `.claude/settings.local.json`, or
+`target/claude` renders each matcher group of a module's runtime hooks as one `AddJSONMember` intent
+(kind `target.KindRuntimeHook`) under `/hooks/<Event>` of `.claude/settings.local.json`, or
 `~/.claude/settings.json` at user scope. Command handlers get `CLAUDE_PLUGIN_ROOT` and
 `CLAUDE_PLUGIN_DATA` (`PlanContext.PluginRoot` and `PluginData`, the same values `target.Expand`
 uses): textual forms are replaced in one pass, shell form gains an `export` prefix, and exec form
-becomes `env -- NAME=value NAME=value <command> <args>`. `--` must come before the assignments:
-GNU `env` reads a `--` after them as the command. Paths that are not shell-safe, commands `env`
-would misread, PowerShell handlers and a settings file git could commit are forceable skips of
-the whole set; forced renders export single-quoted values and refer to the variables, so a
-POSIX shell never parses a lola path as shell syntax (an unquoted reference is still split at
-spaces and glob-expanded, so the docs tell authors to quote it). A path holding `' " $` `` ` `` or `\` is never
-forced, since the forced form relies on those characters' quoting rules. An event that is not an identifier is an unforceable skip. On
-Windows only exec form fits: every `C:\` path holds `\`, so shell-form hooks are never forced
-there, and the skip's hint names exec form alone.
+becomes `env -- NAME=value NAME=value <command> <args>`. `--` must come before the assignments: GNU
+`env` reads a `--` after them as the command. Paths that are not shell-safe, commands `env` would
+misread, PowerShell handlers and a settings file git could commit are forceable skips of the whole
+set; forced renders export single-quoted values and refer to the variables, so a POSIX shell never
+parses a lola path as shell syntax (an unquoted reference is still split at spaces and
+glob-expanded, so the docs tell authors to quote it). A path holding `' " $` `` ` `` or `\` is never
+forced, since the forced form relies on those characters' quoting rules. An event that is not an
+identifier is an unforceable skip. On Windows only exec form fits: every `C:\` path holds `\`, so
+shell-form hooks are never forced there, and the skip's hint names exec form alone.
 
 **Git-ignore check.** Targets stay pure, so the engine computes
 `PlanContext.LocalSettingsExposed` once per command (`probeRun.localSettings`), at project scope
@@ -332,45 +332,44 @@ and only for modules with runtime hooks: if the project or a parent holds `.git`
 repository's config from running programs (fsmonitor, hooks). Any other status, or no git, sets
 the reason, and the target skips the hooks (fail closed).
 
-**Frontmatter hooks.** Claude Code also runs a `hooks:` key in skill, command and agent
-frontmatter. `module` checks every key equal to `hooks` ignoring case like `runtime_hooks`;
-`target/claude` (`componentHooks`) gives their command handlers the same rewrite and renders
-the rest of the document through `target.Expand` separately, so `Expand`'s raw substitution
-never reaches hook shell text. Two load refusals close the ways around this: hooks in a `.md`
-file under a command's sidecar directory (Claude Code reads it as a command; lola copies it as
-a file), and a first line starting with `---` that `ParseDoc` does not read as frontmatter (more
-dashes, trailing whitespace or text, no line break), where another parser might find hooks. `allowed-tools` is installed
-as written, with the warning `claude-code/allowed-tools`.
+**Frontmatter hooks.** Claude Code also runs a `hooks:` key in skill, command and agent frontmatter.
+`module` checks every key equal to `hooks` ignoring case like `runtime_hooks`; `target/claude`
+(`componentHooks`) gives their command handlers the same rewrite and renders the rest of the
+document through `target.Expand` separately, so `Expand`'s raw substitution never reaches hook shell
+text. Two load refusals close the ways around this: hooks in a `.md` file under a command's sidecar
+directory (Claude Code reads it as a command; lola copies it as a file), and a first line starting
+with `---` that `ParseDoc` does not read as frontmatter (more dashes, trailing whitespace or text,
+no line break), where another parser might find hooks. `allowed-tools` is installed as written, with
+the warning `claude-code/allowed-tools`.
 
-**Consent.** Invariant: every intent of kind `target.KindRuntimeHook`, every intent of a
-component carrying hooks, and every intent of an agent with inline MCP servers (Claude Code
-starts them with the agent) passes the consent gate. Such intents carry a `plan.HookConsent`
-naming the settings file whose consent covers them (and, for a component, its kind, name,
-hooks and, for an agent, its inline servers as rendered); an intent without one is refused if it has the kind `KindRuntimeHook` or, whatever its
-kind, edits `/hooks` in a `.claude/settings.json` or `settings.local.json`. In `execute`, before `--strict` and
-before `plan.Compute`, the engine groups a module's gated intents by settings file and computes
-their digest: sha256 over each group's target, pointer and canonical JSON, and each component's
-target, kind, name, canonical hooks and canonical inline servers (all as rendered, so absolute
-paths are in it), then
-the module version's content digest. Consent is recorded in `consent.json` under
-`<module>/runtime-hooks/<sha256 of the settings file's absolute path, symlinks resolved>`, which
-cannot collide with an install hook entry because module names have no `/`, and gives each
-project and scope its own consent. A recorded digest, `--allow-runtime-hooks` or a yes from the
-CLI's prompt keeps the intents (the latter two record the digest); a dry run makes the same
-decision without asking or recording; otherwise the intents are dropped with
-`<target>/runtime-hooks-declined`, per settings hooks and per component. Dropping them is what
-makes consent fail closed: the planner sees the module's installed groups and components as
-orphans and removes them. The consent view (`engine.RuntimeHook`) reads handler fields by exact
-name, as Claude Code does, shows every handler or matcher-group field it does not describe as
-JSON, and passes every string through `untrusted.Text`. An inline server's view entry has
-`mcp_server` set and no event; it shows env and header values, since they change what runs.
+**Consent.** Invariant: every intent of kind `target.KindRuntimeHook`, every intent of a component
+carrying hooks, and every intent of an agent with inline MCP servers (Claude Code starts them with
+the agent) passes the consent gate. Such intents carry a `plan.HookConsent` naming the settings file
+whose consent covers them (and, for a component, its kind, name, hooks and, for an agent, its inline
+servers as rendered); an intent without one is refused if it has the kind `KindRuntimeHook` or,
+whatever its kind, edits `/hooks` in a `.claude/settings.json` or `settings.local.json`. In
+`execute`, before `--strict` and before `plan.Compute`, the engine groups a module's gated intents
+by settings file and computes their digest: sha256 over each group's target, pointer and canonical
+JSON, and each component's target, kind, name, canonical hooks and canonical inline servers (all as
+rendered, so absolute paths are in it), then the module version's content digest. Consent is
+recorded in `consent.json` under `<module>/runtime-hooks/<sha256 of the settings file's absolute
+path, symlinks resolved>`, which cannot collide with an install hook entry because module names have
+no `/`, and gives each project and scope its own consent. A recorded digest, `--allow-runtime-hooks`
+or a yes from the CLI's prompt keeps the intents (the latter two record the digest); a dry run makes
+the same decision without asking or recording; otherwise the intents are dropped with
+`<target>/runtime-hooks-declined`, per settings hooks and per component. Dropping them is what makes
+consent fail closed: the planner sees the module's installed groups and components as orphans and
+removes them. The consent view (`engine.RuntimeHook`) reads handler fields by exact name, as Claude
+Code does, shows every handler or matcher-group field it does not describe as JSON, and passes every
+string through `untrusted.Text`. An inline server's view entry has `mcp_server` set and no event; it
+shows env and header values, since they change what runs.
 
-**Drift.** A hook group is identified by its content, so an owned group missing from its
-settings file is one the user edited or removed. `plan.Compute` keeps a missing owned
-non-string member owned but absent (step `absent`) instead of writing it again, which would run
-both copies; the engine reports `<target>/runtime-hook-drift` as info with a hint (it records
-the user's choice, so `--strict` ignores it, and human output prints info findings that carry a
-hint), and `--force` writes it again. On uninstall the member is forgotten and the drift is info. String members and
+**Drift.** A hook group is identified by its content, so an owned group missing from its settings
+file is one the user edited or removed. `plan.Compute` keeps a missing owned non-string member owned
+but absent (step `absent`) instead of writing it again, which would run both copies; the engine
+reports `<target>/runtime-hook-drift` as info with a hint (it records the user's choice, so
+`--strict` ignores it, and human output prints info findings that carry a hint), and `--force`
+writes it again. On uninstall the member is forgotten and the drift is info. String members and
 files keep the "was missing; rewritten" rule.
 
 ## Applying
@@ -408,14 +407,14 @@ release `.lola/` is removed only if this command created it and nothing was reco
 
 ## Fetching sources
 
-`source.Parse` classifies an argument; `source.Fetch` stages a module from a `Spec`. Both call
-one unexported `validate`, because the engine also builds `Spec`s from the ledger and the
-cache index without parsing an argument, and a project's files may be someone else's. `validate` refuses `-`-prefixed locations and refs, remote-helper syntax,
-`git://`, credentials, queries and fragments in URLs (`file://` included), plain `http` off
-loopback, and refs that fail `git check-ref-format` (full SHAs skip that check). A user name is
-allowed only in `ssh://` and scp form, a password never is, and an scp location with
-`user:password@`, `?` or `#` is refused. A local archive must be a regular file, checked with
-`Lstat` before any open, so a pipe cannot block lola.
+`source.Parse` classifies an argument; `source.Fetch` stages a module from a `Spec`. Both call one
+unexported `validate`, because the engine also builds `Spec`s from the ledger and the cache index
+without parsing an argument, and a project's files may be someone else's. `validate` refuses
+`-`-prefixed locations and refs, remote-helper syntax, `git://`, credentials, queries and fragments
+in URLs (`file://` included), plain `http` off loopback, and refs that fail `git check-ref-format`
+(full SHAs skip that check). A user name is allowed only in `ssh://` and scp form, a password never
+is, and an scp location with `user:password@`, `?` or `#` is refused. A local archive must be a
+regular file, checked with `Lstat` before any open, so a pipe cannot block lola.
 
 ```
 git      → clone into scratch ──────────── listing: git ls-files in the clone
@@ -477,17 +476,17 @@ repository is never filtered by that repository's ignore rules.
   does and refuses a declared count over the entry limit, or a declared size or actual span
   over 1 KiB per allowed entry: `archive/zip` reads records until one fails to parse, whatever
   the declared size, and checks the count only modulo 65536.
-- **Downloads.** A clone of the default transport (proxies honored) with compression
-  disabled, a 2-minute timeout, at most 5 redirects, none from https to http and none to http off loopback, and a body
-  capped at 256 MiB.
-- **Untrusted text.** git's stderr, archive entry names, module-root candidates, HTTP status
-  text and echoed URLs go through `untrusted.Text`, which replaces control characters, invalid
-  UTF-8, Unicode format characters (bidi overrides, zero-width characters, BOM) and line or
-  paragraph separators with `?`, indents continuation lines, and caps the length. A parsed URL is echoed as
+- **Downloads.** A clone of the default transport (proxies honored) with compression disabled, a
+  2-minute timeout, at most 5 redirects, none from https to http and none to http off loopback, and
+  a body capped at 256 MiB.
+- **Untrusted text.** git's stderr, archive entry names, module-root candidates, HTTP status text
+  and echoed URLs go through `untrusted.Text`, which replaces control characters, invalid UTF-8,
+  Unicode format characters (bidi overrides, zero-width characters, BOM) and line or paragraph
+  separators with `?`, indents continuation lines, and caps the length. A parsed URL is echoed as
   scheme, host and path only (`displayURL`); one that does not parse, or was never checked, is
-  echoed up to its first `?` or `#`, and only as its scheme when it holds an `@` (`redactURL`).
-  The redirect target of a failed download and refused `git://` URLs are not echoed at all; OS
-  errors lose their path.
+  echoed up to its first `?` or `#`, and only as its scheme when it holds an `@` (`redactURL`). The
+  redirect target of a failed download and refused `git://` URLs are not echoed at all; OS errors
+  lose their path.
 
 Every fetch reports its **executables** from the source's own metadata: git's tree modes, an
 archive's entry modes, a folder's file system. The digest takes execute bits from that list,
@@ -530,48 +529,49 @@ head's commit must be empty or a full SHA, and a version's recorded digest must 
 id abbreviates, or the cache coaches `lola cache rm`. The IR is re-derived from `content/`,
 never stored.
 
-Installs run from their module copies, so the cache is re-fetchable. `render` installs the
-version the ledger records, never a head, so `cache update` changes no installation: for a git
-or archive module `Store.Pinned` copies that version's `content/` into a **snapshot** in the
-command's private `run-*` staging directory, hashes the copy with the recorded executables, and
-loads the module from it, so the IR, the intents and the module copy all come from the bytes
-that were hashed. On a miss (after `lola cache rm`, say) `fetchPin` fetches it again from the
-cache's recorded source or the ledger's: a git commit must be reachable from the ref and is
-fetched by SHA; the content must declare the module's name and have the recorded digest
-(`PutRequest.Name`, `PutRequest.Digest`) or nothing is cached; the head for the ref is set only
-if it has none (`HeadIfAbsent`). A folder module is read from its folder (the version installed
-when the folder is gone), and refused, with nothing cached, when it now declares another name.
-When the version cannot be obtained (a git entry with no recorded commit, a fetch that serves
-another commit, other content than the recorded digest) the error carries two hints: `lola
-install <source> [--ref r] [--path p]` (`installCommand`), which installs what the source serves
-now, and `lola uninstall <name>`. `install` pins git and archive
-entries (`commit` from the fetch or head, `digest`); folders are never pinned. `status` reports
-`stale` when the manifest's pin differs from the ledger's digest, and `update_available` when the
-cache head for the entry's ref differs from the pin (or from the ledger's digest when unpinned).
+Installs run from their module copies, so the cache is re-fetchable. `render` installs the version
+the ledger records, never a head, so `cache update` changes no installation: for a git or archive
+module `Store.Pinned` copies that version's `content/` into a **snapshot** in the command's private
+`run-*` staging directory, hashes the copy with the recorded executables, and loads the module from
+it, so the IR, the intents and the module copy all come from the bytes that were hashed. On a miss
+(after `lola cache rm`, say) `fetchPin` fetches it again from the cache's recorded source or the
+ledger's: a git commit must be reachable from the ref and is fetched by SHA; the content is prepared
+in the run's staging (`Store.Prepare`) and must declare the module's name (`PutRequest.Name`) and
+have the recorded digest, or nothing is cached; then render commits it (`Store.Commit` with
+`headIfAbsent`, so the head for the ref is set only if it has none) and renders from the staged tree
+it hashed. A folder module is read from its folder (the version installed when the folder is gone),
+and refused, with nothing cached, when it now declares another name. When the version cannot be
+obtained (a git entry with no recorded commit, a fetch that serves another commit, other content
+than the recorded digest) the error carries two hints: `lola install <source> [--ref r] [--path p]`
+(`installCommand`), which installs what the source serves now, and `lola uninstall <name>`.
+`install` pins git and archive entries (`commit` from the fetch or head, `digest`); folders are
+never pinned. `status` reports `stale` when the manifest's pin differs from the ledger's digest, and
+`update_available` when the cache head for the entry's ref differs from the pin (or from the
+ledger's digest when unpinned).
 
 ## Trust record
 
-`project.yml` is committed and someone else's after a pull, so lola keeps its own account of
-what it wrote there. The **view** of a manifest is what can change what lola fetches or
-writes: the top-level `targets` and each entry's `name`, `source`, `ref`, `path`, `commit`,
-`digest`, `targets` and `rules`, modules sorted by name, empty values omitted. `trust.json`
-(`$XDG_STATE_HOME/lola/`) maps each project key (`paths.ProjectKey`, compared with `SameKey`)
-to its view and the hex sha256 of the view's canonical JSON. An entry is **covered** when the
-record holds an entry of its name with every view field equal. Top-level `targets` are
-recorded, but nothing in 6a.2 checks them: installs still use the manifest's (6a.3's `render`
-refuses pulled ones). A project with no record covers nothing: there is no seeding from `lock.json`
-(user ruling, 2026-10-13: lola-go is unreleased, so no older project needs it). User scope has
-no record; `user.yml` is the user's own, and the engine never loads one for it.
+`project.yml` is committed and someone else's after a pull, so lola keeps its own account of what it
+wrote there. The **view** of a manifest is what can change what lola fetches or writes: the
+top-level `targets` and each entry's `name`, `source`, `ref`, `path`, `commit`, `digest`, `targets`
+and `rules`, modules sorted by name, empty values omitted. `trust.json` (`$XDG_STATE_HOME/lola/`)
+maps each project key (`paths.ProjectKey`, compared with `SameKey`) to its view and the hex sha256
+of the view's canonical JSON. An entry is **covered** when the record holds an entry of its name
+with every view field equal. Top-level `targets` are recorded; `lola sync` shows a change to them
+(`trust.Check`), while installs still use the manifest's (6a.3b's `render` refuses pulled ones). A
+project with no record covers nothing: there is no seeding from `lock.json` (user ruling,
+2026-10-13: lola-go is unreleased, so no older project needs it). User scope has no record;
+`user.yml` is the user's own, and the engine never loads one for it.
 
-- **Reading.** The version is decoded on its own first, as `manifest.Load` reads
-  `project.yml`'s: a newer one is refused with the hint `upgrade lola` (not for a key the newer
-  lola added) and a negative one as unreadable. Then strict JSON with unknown keys and trailing
-  data refused, at most 4 MiB, and each record's hash checked against its view. A file that fails is an error
-  with a hint and is never overwritten. The file and `$XDG_STATE_HOME/lola` are refused when a
-  symbolic link or (outside Windows, whose permission bits mean nothing) group- or
-  world-writable; the opened file must be the one checked (`os.SameFile`). Go reports a Windows
-  junction as irregular, so a state directory that is one is refused as not a directory. A
-  version up to this lola's is read, 0 included, as `consent.json` reads its own.
+- **Reading.** The version is decoded on its own first, as `manifest.Load` reads `project.yml`'s: a
+  newer one is refused with the hint `upgrade lola` (not for a key the newer lola added) and a
+  negative one as unreadable. Then strict JSON with unknown keys and trailing data refused, at most
+  4 MiB, and each record's hash checked against its view. A file that fails is an error with a hint
+  and is never overwritten. The file and `$XDG_STATE_HOME/lola` are refused when a symbolic link or
+  (outside Windows, whose permission bits mean nothing) group- or world-writable; the opened file
+  must be the one checked (`os.SameFile`). Go reports a Windows junction as irregular, so a state
+  directory that is one is refused as not a directory. A version up to this lola's is read, 0
+  included, as `consent.json` reads its own.
 - **Writing.** Under `$XDG_STATE_HOME/lola/locks/trust.lock`, taken after every scope lock and
   held only around the read-modify-write: the file is read again and only this project's record
   replaced, then written `0600` through `fsx.WriteFileAtomic`. The state directory, `locks/` and
@@ -585,32 +585,30 @@ no record; `user.yml` is the user's own, and the engine never loads one for it.
   its trust state: a write never covers a field it left alone, and a field changed in an entry
   the record does not hold is not recorded. `loaded` is a clone of the manifest read under the
   scope lock. A failed save leaves lola's own edits uncovered (fail closed) and the error says
-  the files, ledger and manifest were updated, and which scopes of the same install it then did
-  not reach.
-- **Refusals.** Over an uncovered entry: an install by name (in `InstallAll` and
-  `InstallChoices`, checked for every argument at every scope before any is resolved, so
-  nothing is fetched), an install that adds targets (`lola migrate`'s), and an
-  uninstall that keeps some of the module's targets are refused with `ErrChangedSinceTrusted`
-  and the hint `lola install <source> [--ref r] [--path p]` (`installFromSource`: the entry's
-  source parsed against the project root with its links resolved; a local source the entry
-  records relative to the root, parsed or not, is named relative to the caller's directory,
-  `./`-prefixed, so following the hint records it relative again and the committed
-  `project.yml` stays portable). An install by source writes the entry as new: it
+  what the caller applied (an uninstall says it removed what was asked), and which scopes of the
+  same install it then did not reach.
+- **Refusals.** Over an uncovered entry: an install by name (in `InstallAll` and `InstallChoices`,
+  checked for every argument at every scope before any is resolved, so nothing is fetched), an
+  install that adds targets (`lola migrate`'s), and an uninstall that keeps some of the module's
+  targets are refused with `ErrChangedSinceTrusted` and the hint `lola install <source> [--ref r]
+  [--path p]` (`installFromSource`: the entry's source parsed against the project root with its
+  links resolved; a local source the entry records relative to the root, parsed or not, is named
+  relative to the caller's directory, `./`-prefixed, so following the hint records it relative again
+  and the committed `project.yml` stays portable). An install by source writes the entry as new: it
   inherits no `targets`, `rules`, `ref` or `path`, and `planInstallModule` drops the entry from
   `loaded`, so the refresh records it whole. With no targets given, the module keeps the targets
-  `lock.json` installed it on (the user's own installs chose them; a ledger git tracks is
-  refused, see below), so what is installed is what
-  the entry records. An argument that names an uncovered entry is refused as a name even when
-  `source.Parse` would take it as a folder: `resolve` takes a cached name first and applies the
-  entry's ref to any name-shaped argument, and the pickers' fetch caches the folder under that
-  name, so only `./<name>` is unambiguous. Removing a module is always allowed. The pickers
-  never offer what the install would refuse after the summary: an explicit name is refused at
-  listing, a cached module with an uncovered entry is left out with a warning, and
-  `moduleScope` shows a source over an uncovered entry as the new entry it becomes. Add a source… caches the source and
-  lists it by name, so an uncovered entry stays out of the pickers (S2 applies only to a source
-  argument), and Change scope onto a scope where a kept pick is uncovered is the refusal, not a
-  dropped pick. `lola migrate` reports the module as unmappable with the refusal's reason and
-  hint; it refuses after `resolve` has fetched the source, which is the user's own legacy
+  `lock.json` installed it on (the user's own installs chose them; a ledger git tracks is refused,
+  see below), so what is installed is what the entry records. An argument that names an uncovered
+  entry is refused as a name even when `source.Parse` would take it as a folder: `resolve` takes a
+  cached name first and applies the entry's ref to any name-shaped argument, and the pickers' fetch
+  caches the folder under that name, so only `./<name>` is unambiguous. Removing a module is always
+  allowed. The pickers never offer what the install would refuse after the summary: an explicit name
+  is refused at listing, a cached module with an uncovered entry is left out with a warning, and
+  `moduleScope` shows a source over an uncovered entry as the new entry it becomes. Add a source…
+  caches the source and lists it by name, so an uncovered entry stays out of the pickers (S2 applies
+  only to a source argument), and Change scope onto a scope where a kept pick is uncovered is the
+  refusal, not a dropped pick. `lola migrate` reports the module as unmappable with the refusal's
+  reason and hint; it refuses after `resolve` has fetched the source, which is the user's own legacy
   configuration.
 - **Tracked ledger.** At project scope every operation that decides from the ledger runs
   `refuseTrackedLedger` after loading the scope and before resolving or fetching anything:
@@ -624,11 +622,91 @@ no record; `user.yml` is the user's own, and the engine never loads one for it.
   removal rely on.
 - **Canonical locations.** `source.Parse` resolves a folder or local archive with
   `filepath.EvalSymlinks(filepath.Clean(p))`, once (an archive link whose target has a different
-  archive suffix is refused, since the suffix picks the extractor); `install` records a
-  relative source against the project root with its links resolved (`canonicalRoot`), and every
-  reader of a recorded relative source (`recordedSpec`, the refusal hint) resolves it against
-  that root too, so it resolves however the root was reached. The cache's same-source checks accept a location an
+  archive suffix is refused, since the suffix picks the extractor); `install` records a relative
+  source against the project root with its links resolved (`canonicalRoot`), and every reader of a
+  recorded relative source (`recordedSpec`, the refusal hint) resolves it against that root too, so
+  it resolves however the root was reached. The cache's same-source checks accept a location an
   earlier lola recorded through a link (`source.SameLocation`).
+
+## Sync
+
+`Engine.Sync` (`internal/engine/sync.go`) makes one scope match its manifest. The CLI adapts it:
+it answers the two questions (`SyncRequest.Trust`, `SyncRequest.ConfirmRemovals`) through the
+Prompter's `Confirm` on a terminal, with `--trust` (which still prints the diff it accepted) and
+`-y` as always-yes answers, and nil (cannot ask) otherwise. The steps,
+in order, under the scope lock (none in a dry run):
+
+0. Refuse a project at the home directory, symlinked project state, and a scope without a
+   manifest (an empty one means "remove everything"); sweep day-old `run-*` directories (best
+   effort, also in a dry run) and create this run's.
+1. Refuse a tracked `lock.json` (`refuseTrackedLedger`).
+2. Validate every entry of `desired(man)` in name order, before any network contact or prompt:
+   `source.Parse` against the canonical root (`/` at user scope) and `source.Validate` with the
+   entry's ref and path (git's `check-ref-format`); the pin's shape against the source's kind; the
+   cache holding the name from another source or path (`refuseOtherSource`, through
+   `Store.Origin` and `source.SameLocation`), coached with `lola cache rm`; the effective targets;
+   the `--update` names. `desired` is the one function Plan 6b extends with profiles.
+3. At project scope, `trust.Check` of the record against the manifest's view gives the status and
+   the coverage of each entry (`Record.Exists` tells a project without a record, `new`, from a
+   record of an empty manifest; an empty manifest has nothing to trust).
+4. Containment: an uncovered folder or local archive, and a covered one whose source as written
+   names a path inside the project (`lexicallyInside`: a pulled link can lead it out), must
+   resolve inside the project's real root (`source.IsWithin`, which resolves symbolic links and
+   refuses what it cannot resolve), else the run is refused before any diff, whatever `--trust` or
+   `-y` say. Each covered folder is then read (no network): content that is not the version
+   `lock.json` records, or any content when it records none, marks the entry `folderChanged`, a
+   trust change (`folderChanges` adds it to the report as a `digest` change). Then the **early
+   refusal**: a run that is not dry, cannot ask (`Trust` nil), and needs the question (a status
+   other than trusted, a changed folder, or a git or archive entry unpinned or under `--update`)
+   returns a `TrustRefusalError` carrying the field-only report, before any fetch or
+   `ls-remote`.
+5. Resolve each entry: a folder is fetched every run; `--update` fetches the ref; an unpinned git
+   or archive entry takes a snapshot of the cache head for its ref, or fetches the ref when there
+   is none or the head has no commit (written before pins); a pinned entry takes a snapshot of
+   its version (`Store.Pinned`), checking reachability for an uncovered git entry even on a hit,
+   or fetches it by its commit (`fetchPin`). Every fetch is prepared in the run's staging
+   (`Store.Prepare`) and must declare the entry's name. A covered entry at an unchanged pin (and
+   not a changed folder) is committed to the cache now, without moving a head in a project dry
+   run; everything else stays staged.
+6. Plan every module (`planModule`) from the snapshot or staged tree, before the question; the
+   apply uses the same intents.
+7. At project scope the report compares the record with the manifest **as it will be saved**
+   (the pins the run writes applied), so a pin change is a trust change. `fillContent` adds per
+   added or changed entry the files against the version `lock.json` records (from the cache,
+   never fetched; a lost or unreadable version lists every file as added with a note), the
+   module MCP servers (`contentMCPServer`: argv quoted word by word as consent shows it, env,
+   headers and cwd: the diff is their only consent), install hooks, and every runtime hook and
+   agent MCP server the content declares (`declaredRuntimeHooks`: the module planned for every
+   target lola knows without selections, probing no assistant, then `describeRuntimeHooks`);
+   `note` marks an entry whose manifest does not pin its content and says what it installs
+   (`notFixed`: an archive's file or URL, a git entry's ref or `the default branch`).
+   `trust.hostChanged` flags a changed source whenever either side is in scp form, which may
+   name a folder. Every value goes through `untrusted.Text`. Dry: the report goes in the
+   result. Otherwise the question; No is `ErrDeclined`.
+8. Publish (`Store.Commit`, which checks the same-name rule again under the cache lock): pinned
+   fetches with `headIfAbsent`, the rest moving their ref's head. A dry run publishes nothing
+   more, except `--update -n` at user scope.
+9. Removals, at module and target granularity with the ledger's paths, each confined first
+   (`lock.json` is hostile input: an unknown target or a path outside its target's root refuses the
+   run before any question), then confirmed through `ConfirmRemovals` before any hook consent is
+   asked or recorded; nil refuses, No is `ErrDeclined`.
+10. `prepare` (runtime hook consent, the plan and its conflicts, install hook consent); a dry run
+    returns here. `commit` applies the plan with the manifest edit of new pins staged in the same
+    `plan.Apply` transaction (`saveManifest`). The trust record is written once, after the
+    apply, and only when the user said yes: through `saveManifest` with a record equal to the
+    loaded manifest (whose refresh is exactly the saved view) when pins are written, else by
+    `Trust.Save` of the loaded view, also when nothing was applied. A failed write fails closed:
+    the error says what was applied (nothing, or the files and `lock.json`, or `project.yml` too)
+    and hints to run `lola sync` again (`trustSyncAgain`; install and uninstall keep
+    `trustInstallAgain` until 6a.3b).
+11. `in_sync` is set when there is no step, pin, removal or module copy to replace.
+
+**Prepare and commit.** `Store.Prepare` detects, normalizes, checks the cached copy reads the
+same, and digests, in the run's staging, taking no lock and touching nothing in `modules/`.
+`Store.Commit` copies the staged tree into a version (renamed into place, as before) under the
+cache lock and sets the head; the run keeps rendering from its staged tree, the bytes that were
+hashed. `Put`, used by install and `cache add`, is the two in a row. Content of an entry the user
+has not trusted never enters the cache before a yes, in a dry run included.
 
 ## Security model
 
@@ -663,11 +741,17 @@ no record; `user.yml` is the user's own, and the engine never loads one for it.
   prints them; other text a module contains (frontmatter keys quoted in finding texts, for
   example) is not yet sanitized.
 - **Pulled manifests.** An entry of `project.yml` lola did not write (a pull, a hand edit) is
-  never installed by name or rewritten: see [Trust record](#trust-record). Residual risk: until
-  the trust diff of `lola sync` (Plan 6a.3), a project with no record (a fresh clone) has every
-  entry refused, and the remedy is installing each from its source; and `render` still renders
-  the versions `lock.json` records, which a pull cannot change because the ledger is private.
-  A tracked `lock.json` is refused by `render`.
+  never installed by name or rewritten: see [Trust record](#trust-record). `lola sync` shows every
+  change with the content it brings and acts only on a yes or `--trust`, never `-y`; off a
+  terminal it refuses before any network contact; uncovered local sources, and covered ones
+  written inside the project, must stay inside it, checked before the diff; a covered folder
+  whose content is not the version installed is a trust change; untrusted content stays in the
+  run's staging until the yes, so a dry run or a No caches none of it. Residual risk: in an
+  interactive or dry run the untrusted content is fetched (from a validated location) before the
+  question, so the diff can show it. `render` still renders the versions `lock.json` records,
+  which a pull cannot change because the ledger is private, and a tracked `lock.json` is refused
+  by `sync`, `render`, `install` and `uninstall`. Step paths in `--json` output stay raw
+  (JSON-escaped): `lola migrate` reads them as paths.
 - **Unparseable files** are never rewritten, `selections.yaml` and `trust.json` included.
 - **User files are untrusted.** `config.yaml` and `selections.yaml` are size-capped and strictly
   validated; their keys and values reach the terminal only through `untrusted.Text`.

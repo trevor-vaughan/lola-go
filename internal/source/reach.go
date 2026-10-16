@@ -17,7 +17,7 @@ import (
 // same answer), and git merge-base decides. GIT_NO_LAZY_FETCH stops git fetching a missing
 // object behind lola's back. The check is skipped when the ref is the commit itself.
 func CheckReachable(ctx context.Context, spec Spec, commit, stagingParent string) error {
-	if err := validate(spec); err != nil {
+	if err := Validate(spec); err != nil {
 		return err
 	}
 	if spec.Ref == commit {
@@ -41,6 +41,18 @@ func CheckReachable(ctx context.Context, spec Spec, commit, stagingParent string
 	return err
 }
 
+// NotOnRefError is CheckReachable's refusal of a commit its ref does not reach. Ref "" is the
+// source's default branch.
+type NotOnRefError struct{ Commit, Ref, Location string }
+
+func (e *NotOnRefError) Error() string {
+	where := "the default branch"
+	if e.Ref != "" {
+		where = untrusted.Text(e.Ref, untrusted.MaxName)
+	}
+	return fmt.Sprintf("commit %s is not on %s at %s", untrusted.Text(e.Commit, untrusted.MaxName), where, untrusted.Text(e.Location, untrusted.MaxName))
+}
+
 // reachable is CheckReachable's work in the empty repository directory repo.
 func reachable(ctx context.Context, spec Spec, commit, name, repo string) error {
 	format := "sha1"
@@ -54,11 +66,7 @@ func reachable(ctx context.Context, spec Spec, commit, name, repo string) error 
 	if _, err := runGitEnv(ctx, noLazy, repo, "fetch", "-q", "--filter=tree:0", "--", spec.Location, name); err != nil {
 		return err
 	}
-	where := "the default branch"
-	if spec.Ref != "" {
-		where = untrusted.Text(spec.Ref, untrusted.MaxName)
-	}
-	notOn := fmt.Errorf("commit %s is not on %s at %s", commit, where, untrusted.Text(spec.Location, untrusted.MaxName))
+	notOn := &NotOnRefError{Commit: commit, Ref: spec.Ref, Location: spec.Location}
 	if _, err := runGitEnv(ctx, noLazy, repo, "cat-file", "-e", commit+"^{commit}"); err != nil {
 		if _, isExit := errors.AsType[*exec.ExitError](err); isExit {
 			return notOn

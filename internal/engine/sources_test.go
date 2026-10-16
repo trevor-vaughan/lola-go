@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -65,7 +66,16 @@ var _ = Describe("Engine with git and archive sources", func() {
 		sc        engine.Scope
 		ctx       = context.Background()
 		claude    = engine.Options{Targets: []string{"claude-code"}}
+		// served, when set, sees every request the test git server receives, on the server's
+		// goroutines; servedMu guards it and whatever it records.
+		served   func(*http.Request)
+		servedMu sync.Mutex
 	)
+	serve := func(f func(*http.Request)) {
+		servedMu.Lock()
+		defer servedMu.Unlock()
+		served = f
+	}
 	BeforeEach(func() {
 		tmp = testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
@@ -74,6 +84,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		proj = filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
+		serve(nil)
 	})
 	// serveRepo serves a repository holding exampleModule, tagged v1, and returns its URL and
 	// the tagged commit.
@@ -85,7 +96,14 @@ var _ = Describe("Engine with git and archive sources", func() {
 		gitIn(work, "commit", "-q", "-m", "init")
 		gitIn(work, "tag", "v1")
 		gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "example.git"))
-		return testenv.ServeGit(filepath.Join(tmp, "srv")) + "/example.git", gitIn(work, "rev-parse", "v1")
+		url := testenv.ServeGitWith(filepath.Join(tmp, "srv"), func(r *http.Request) {
+			servedMu.Lock()
+			defer servedMu.Unlock()
+			if served != nil {
+				served(r)
+			}
+		})
+		return url + "/example.git", gitIn(work, "rev-parse", "v1")
 	}
 	lockFile := func() *ledger.Ledger {
 		l, err := ledger.Load(filepath.Join(proj, ".lola", "lock.json"))
@@ -232,8 +250,36 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "render, cached: %v", cached)
 			_, err = e.Status(sc)
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "list, cached: %v", cached)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "sync, cached: %v", cached)
 			Expect(pwned).NotTo(BeAnExistingFile())
 		}
+	})
+
+	It("sync refuses a hostile ref in project.yml before git runs", func() {
+		url, _ := serveRepo()
+		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url}}, claude)
+		Expect(err).NotTo(HaveOccurred())
+		pwned := filepath.Join(tmp, "PWNED")
+		manPath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(manPath)
+		Expect(err).NotTo(HaveOccurred())
+		hostile := strings.Replace(string(b), "source: "+url, "source: "+url+"\n    ref: --upload-pack=touch "+pwned, 1)
+		Expect(hostile).NotTo(Equal(string(b)))
+		Expect(os.WriteFile(manPath, []byte(hostile), 0o644)).To(Succeed())
+		var requests atomic.Int32
+		serve(func(*http.Request) { requests.Add(1) })
+		for _, cached := range []bool{true, false} {
+			if !cached {
+				Expect(e.Store.Remove("example")).To(BeTrue())
+			}
+			for _, dry := range []bool{false, true} {
+				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: dry}})
+				Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "cached: %v, dry run: %v", cached, dry)
+			}
+			Expect(pwned).NotTo(BeAnExistingFile())
+		}
+		Expect(requests.Load()).To(BeZero(), "git never ran against the source")
 	})
 
 	It("sync refuses a hostile source or path before git runs", func() {
@@ -263,6 +309,8 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).To(MatchError(ContainSubstring(h.want)), "project.yml load: %s", h.source)
 			_, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).To(MatchError(ContainSubstring(h.want)), "project.yml render: %s", h.source)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).To(MatchError(ContainSubstring(h.want)), "project.yml sync: %s", h.source)
 			Expect(os.WriteFile(manPath, goodMan, 0o600)).To(Succeed())
 
 			l := lockFile()
@@ -273,6 +321,8 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(e.Store.Remove("example")).To(BeTrue())
 			_, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).To(MatchError(ContainSubstring(h.want)), "lock.json render: %s", h.source)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).To(MatchError(ContainSubstring(h.want)), "lock.json sync: %s", h.source)
 			Expect(os.WriteFile(ledPath, goodLed, 0o600)).To(Succeed())
 			_, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).NotTo(HaveOccurred(), "restored state renders again")
@@ -337,6 +387,47 @@ var _ = Describe("Engine with git and archive sources", func() {
 			entries, err := os.ReadDir(e.Paths.Staging)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(entries).To(BeEmpty(), "render leaves nothing staged")
+		})
+
+		It("reports the same findings for a version fetched again as for one the cache holds", func() {
+			push(map[string]string{".claude-plugin/plugin.json": `{"name":"example","x-extra":"kept"}`})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			hit, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(e.Store.Remove("example")).To(BeTrue())
+
+			miss, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(miss.Findings).To(Equal(hit.Findings), "the cache state never changes what render reports")
+			Expect(miss.Findings).NotTo(ContainElement(HaveField("Text", ContainSubstring("x-extra"))), "a format adapter's warning is install's, not render's")
+		})
+
+		It("keeps the scratch of a pinned fetch inside the run's staging directory", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(e.Store.Remove("example")).To(BeTrue())
+			var seen [][]string
+			serve(func(*http.Request) { // on the server's goroutine: record, assert later
+				entries, err := os.ReadDir(e.Paths.Staging)
+				names := []string{}
+				if err != nil {
+					names = append(names, err.Error())
+				}
+				for _, d := range entries {
+					names = append(names, d.Name())
+				}
+				seen = append(seen, names)
+			})
+
+			_, err = e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			servedMu.Lock()
+			defer servedMu.Unlock()
+			Expect(seen).NotTo(BeEmpty(), "the version was fetched again")
+			for _, names := range seen {
+				Expect(names).To(ConsistOf(MatchRegexp(`^run-`)), "every temporary tree of the fetch is inside the run's directory")
+			}
 		})
 
 		It("sync refuses a pinned commit that is not on its ref", func() {

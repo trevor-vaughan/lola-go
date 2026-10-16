@@ -421,28 +421,84 @@ var _ = Describe("Store", func() {
 		Expect(o.Heads).To(ConsistOf(store.Head{Ref: "main", Digest: v1.ID, Commit: c1}, store.Head{Ref: "v1", Digest: v1.ID, Commit: c2}))
 	})
 
-	It("sets a head only where there is none with HeadIfAbsent", func() {
+	It("sets a head only where there is none when a commit asks for that", func() {
 		v1, err := put(map[string]string{"commands/a.md": "old"}, "main")
 		Expect(err).NotTo(HaveOccurred())
-		v2, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "new"}), FallbackName: "example",
-			Source: "/src/example", Type: "folder", Ref: "main", HeadIfAbsent: true, Now: now})
+		st, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "new"}), FallbackName: "example",
+			Source: "/src/example", Type: "folder", Ref: "main", Now: now})
+		Expect(err).NotTo(HaveOccurred())
+		v2, err := s.Commit(st, true)
 		Expect(err).NotTo(HaveOccurred())
 		h, _, _ := s.Head("example", "main")
 		Expect(h.ID).To(Equal(v1.ID), "an existing head never moves")
 		Expect(v2.ContentDir).To(BeADirectory(), "the version is cached")
-		_, err = s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "new"}), FallbackName: "example",
-			Source: "/src/example", Type: "folder", Ref: "dev", HeadIfAbsent: true, Now: now})
+		st, err = s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "new"}), FallbackName: "example",
+			Source: "/src/example", Type: "folder", Ref: "dev", Now: now})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = s.Commit(st, true)
 		Expect(err).NotTo(HaveOccurred())
 		h, _, _ = s.Head("example", "dev")
 		Expect(h.ID).To(Equal(v2.ID), "a ref without a head gets one")
 	})
 
-	It("refuses content whose digest is not the one asked for, caching nothing", func() {
-		_, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "A"}), FallbackName: "example",
-			Source: "/src/example", Type: "folder", Digest: "sha256:" + strings.Repeat("0", 64), Now: now})
-		Expect(err).To(MatchError(ContainSubstring("example: the content fetched has digest sha256:")))
-		Expect(err).To(MatchError(ContainSubstring("not the pinned sha256:000000000000")))
-		Expect(filepath.Join(p.Store, "example")).NotTo(BeAnExistingFile())
+	Describe("Prepare and Commit", func() {
+		It("prepares content in staging without touching the cache, and commits a copy of it", func() {
+			staged := stage(map[string]string{"commands/a.md": "A", "bin/x.sh": "x"})
+			st, err := s.Prepare(store.PutRequest{Staged: staged, FallbackName: "example", Source: "/src/example", Type: "git",
+				Ref: "main", Commit: strings.Repeat("1", 40), Executables: []string{"bin/x.sh"}, Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(st.Version.ContentDir).To(Equal(staged))
+			want, err := store.Digest(staged, []string{"bin/x.sh"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(st.Version.Meta.Digest).To(Equal(want))
+			Expect(st.Version.ID).To(Equal(strings.TrimPrefix(st.Version.Meta.Digest, "sha256:")[:12]))
+			Expect(st.Version.Commit).To(Equal(strings.Repeat("1", 40)))
+			Expect(st.Version.Module.Commands).To(HaveLen(1))
+			Expect(filepath.Join(p.Store, "example")).NotTo(BeAnExistingFile(), "nothing reaches the cache")
+			Expect(s.Names()).To(BeEmpty())
+
+			v, err := s.Commit(st, false)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(v.ID).To(Equal(st.Version.ID))
+			Expect(v.Meta.Digest).To(Equal(st.Version.Meta.Digest))
+			Expect(v.ContentDir).To(Equal(filepath.Join(p.Store, "example", "versions", v.ID, "content")))
+			Expect(os.ReadFile(filepath.Join(staged, "commands/a.md"))).To(Equal([]byte("A")), "the run keeps its staged tree")
+			h, ok, err := s.Head("example", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ok).To(BeTrue())
+			Expect(h.ID).To(Equal(v.ID))
+			Expect(h.Commit).To(Equal(strings.Repeat("1", 40)))
+			got, ok, err := s.Pinned("example", v.Meta.Digest, filepath.Dir(staged))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ok).To(BeTrue(), "the cached copy reads back as the version prepared")
+			Expect(got.Meta.Executables).To(Equal([]string{"bin/x.sh"}))
+		})
+
+		It("checks the same-name rule again when it commits", func() {
+			st, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "A"}), FallbackName: "example",
+				Source: "/src/example", Type: "folder", Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			// Another process caches the name from another source between prepare and commit.
+			_, err = s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "B"}), FallbackName: "example",
+				Source: "/elsewhere/example", Type: "folder", Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			before, _, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = s.Commit(st, false)
+			Expect(err).To(MatchError(ContainSubstring(`a different module named "example" is already in your cache (from /elsewhere/example)`)))
+			Expect(errs.Hints(err)).To(ContainElement("remove the cached one first: lola cache rm example"))
+			after, _, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(after).To(Equal(before))
+			Expect(filepath.Join(p.Store, "example", "versions", st.Version.ID)).NotTo(BeAnExistingFile())
+		})
+
+		It("refuses content that declares another module than the one asked for", func() {
+			_, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"lola.yml": "name: beta\n", "commands/a.md": "A"}),
+				FallbackName: "example", Name: "example", Source: "/src/example", Type: "folder", Now: now})
+			Expect(err).To(MatchError(`example: its source now declares module "beta"`))
+		})
 	})
 
 	Describe("Pinned", func() {

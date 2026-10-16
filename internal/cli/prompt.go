@@ -11,6 +11,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // interactive reports whether lola may prompt: both stdin and stderr are terminals.
@@ -49,7 +50,7 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options, allow, allow
 			w := cmd.ErrOrStderr()
 			fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
 			for _, h := range hooks {
-				fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, h.Script, h.SHA256)
+				fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256)
 			}
 			fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
 			return a.ask(cmd, "Run "+module+"'s install hooks?")

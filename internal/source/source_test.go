@@ -59,6 +59,57 @@ var _ = Describe("Parse", func() {
 			"a location recorded through a link names the same folder")
 		Expect(source.SameLocation(source.KindFolder, filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "x"))).To(BeFalse())
 		Expect(source.SameLocation(source.KindGit, "https://example.com/a.git", "https://example.com/b.git")).To(BeFalse())
+		Expect(source.SameLocation(source.KindFolder, "link/x", filepath.Join(cwd, "mods", "x"))).To(BeFalse(),
+			"a relative recorded location is never resolved against an unknown directory")
+		Expect(source.SameLocation(source.KindFolder, filepath.Join(cwd, "gone", "x"), filepath.Join(cwd, "mods", "x"))).To(BeFalse(),
+			"a recorded location that no longer exists names nothing")
+	})
+
+	It("tells whether a location is inside a directory, after symbolic links", func() {
+		Expect(os.Symlink(filepath.Join(cwd, "mods"), filepath.Join(cwd, "link"))).To(Succeed())
+		Expect(os.Symlink(cwd, filepath.Join(cwd, "mods", "up"))).To(Succeed())
+		for child, want := range map[string]bool{
+			filepath.Join(cwd, "mods", "x"):               true,
+			filepath.Join(cwd, "link", "x"):               true,
+			filepath.Join(cwd, "mods", "x", "new"):        true, // not there yet: resolved through its parent
+			filepath.Join(cwd, "mods"):                    true,
+			filepath.Join(cwd, "mods", "up"):              false, // a link leading out
+			filepath.Join(cwd, "mods", "up", "mods", "x"): true,  // out and back in
+			filepath.Join(cwd, "file.txt"):                false,
+			filepath.Dir(cwd):                             false,
+		} {
+			in, err := source.IsWithin(filepath.Join(cwd, "mods"), child)
+			Expect(err).NotTo(HaveOccurred(), child)
+			Expect(in).To(Equal(want), child)
+		}
+		in, err := source.IsWithin(filepath.Join(cwd, "link"), filepath.Join(cwd, "mods", "x"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(in).To(BeTrue(), "the parent is resolved too")
+		_, err = source.IsWithin(filepath.Join(cwd, "missing"), filepath.Join(cwd, "mods", "x"))
+		Expect(err).To(HaveOccurred(), "a parent that cannot be resolved is an error, never an answer")
+	})
+
+	It("returns an error, never an answer, for a path it cannot place", func() {
+		outside := filepath.Join(filepath.Dir(cwd), "outside-"+filepath.Base(cwd))
+		Expect(os.MkdirAll(outside, 0o755)).To(Succeed())
+		DeferCleanup(func() { Expect(os.RemoveAll(outside)).To(Succeed()) })
+		Expect(os.Symlink(outside, filepath.Join(cwd, "mods", "out"))).To(Succeed())
+
+		_, err := source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "out")+"/../x")
+		Expect(err).To(HaveOccurred(), "a missing path through a link and '..' is not cleaned lexically")
+
+		_, err = source.IsWithin(filepath.Join(cwd, "mods"), "mods/x")
+		Expect(err).To(HaveOccurred(), "a relative child cannot be compared with an absolute parent")
+
+		if os.Geteuid() != 0 {
+			sealed := filepath.Join(cwd, "mods", "sealed")
+			Expect(os.Mkdir(sealed, 0o755)).To(Succeed())
+			Expect(os.Symlink(outside, filepath.Join(sealed, "link"))).To(Succeed())
+			Expect(os.Chmod(sealed, 0o000)).To(Succeed())
+			DeferCleanup(func() { Expect(os.Chmod(sealed, 0o755)).To(Succeed()) })
+			_, err = source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(sealed, "link", "x"))
+			Expect(err).To(HaveOccurred(), "a path that cannot be examined is not inside")
+		}
 	})
 
 	It("accepts an archive link whose target has the same suffix and refuses one that changes it", func() {

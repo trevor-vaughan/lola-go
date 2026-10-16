@@ -138,6 +138,18 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
+	It("asks sync's questions, defaulting to No, and cancels at end of input", func() {
+		ok, err := accessible(&out, "y").Confirm("Trust these changes and continue?")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(out.String()).To(ContainSubstring("Trust these changes and continue?"))
+		ok, err = accessible(&out, "").Confirm("Remove these?")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeFalse())
+		_, err = accessible(&out).Confirm("Remove these?")
+		Expect(err).To(MatchError(ErrAborted), "end of input is a cancel, not the default No")
+	})
+
 	It("stops a multi-field form at the first end of input, reading nothing after it", func() {
 		pg := ComponentPage{Module: "kit", Title: "kit", Groups: []ComponentGroup{
 			{Kind: "skill", Title: "Skills (1)", Options: []ComponentOption{{ID: "skill/a", Label: "a", Selected: true}}},

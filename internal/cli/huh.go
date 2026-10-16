@@ -280,6 +280,12 @@ func (h *huhForms) ConfirmEmpty(module string) (bool, error) {
 	return ok, h.run(huh.NewConfirm().Title("Install " + module + " with no components?").Value(&ok))
 }
 
+func (h *huhForms) Confirm(question string) (bool, error) {
+	ok := false
+	err := h.run(huh.NewConfirm().Title(question).Value(&ok))
+	return ok, err
+}
+
 // reviewLabels name the review menu's entries.
 var reviewLabels = map[string]string{ReviewApply: "Apply", ReviewScope: "Change scope", ReviewModules: "Change modules",
 	ReviewAssistants: "Change assistants", ReviewComponents: "Change components", ReviewQuit: "Quit"}

@@ -117,7 +117,7 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 				errs.ShellJoin([]string{"lola", "install", untrusted.Text(spec.Location, untrusted.MaxName)}))
 		}
 	}
-	return spec, true, validate(spec)
+	return spec, true, Validate(spec)
 }
 
 // SameLocation reports whether recorded, a location the cache or a manifest recorded for a
@@ -148,7 +148,7 @@ func parseRemote(arg string) (Spec, bool, error) {
 	case u.Scheme != "ssh" && archiveSuffix(u.Path) != "":
 		spec.Kind = KindArchive
 	}
-	return spec, true, validate(spec)
+	return spec, true, Validate(spec)
 }
 
 // parseURL parses raw. The error shows only raw's scheme: raw may hold a password or a query,
@@ -231,9 +231,9 @@ func archiveSuffix(name string) string {
 	return ""
 }
 
-// validate refuses a Spec that must never reach a fetcher (design §2). Fetch calls it too:
+// Validate refuses a Spec that must never reach a fetcher (design §2). Fetch calls it too:
 // the engine builds Specs from lola.yml and the cache index, which may be someone else's.
-func validate(spec Spec) error {
+func Validate(spec Spec) error {
 	if err := checkLocation(spec.Location); err != nil {
 		return err
 	}

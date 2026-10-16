@@ -40,7 +40,7 @@ func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched,
 	}
 
 	// Check containment BEFORE creating the staging directory
-	if within, err := isWithin(root, stagingParent); err != nil {
+	if within, err := IsWithin(root, stagingParent); err != nil {
 		return Fetched{}, err
 	} else if within {
 		return Fetched{}, errs.WithHints(
@@ -157,37 +157,49 @@ func checkedRoot(base, subpath, name, shown string) (string, string, error) {
 	return filepath.Join(base, subpath), name, nil
 }
 
-func isWithin(parent, child string) (bool, error) {
+// IsWithin reports whether child, after symbolic links, is inside parent, after symbolic links:
+// a path relative to the resolved parent that is filepath.IsLocal (Plan 6a §8). A child that does
+// not exist yet is resolved through its nearest existing ancestor. An error resolving either is
+// returned, never taken as an answer.
+func IsWithin(parent, child string) (bool, error) {
 	p, err := filepath.EvalSymlinks(parent)
 	if err != nil {
 		return false, err
 	}
-	// For child, resolve through the nearest existing ancestor since child may not exist yet
-	c := child
+	// Resolve child through its nearest existing ancestor, since child may not exist yet, and
+	// append the components below that ancestor as they are. A ".." in a path that does not
+	// exist is refused: cleaning it lexically would skip a link it passes through.
+	anc := child
 	for {
-		if _, err := os.Lstat(c); err == nil {
+		_, err := os.Lstat(anc)
+		if err == nil {
 			break
 		}
-		parent := filepath.Dir(c)
-		if parent == c {
-			// Reached root, can't resolve further
-			return false, nil
+		if !errors.Is(err, fs.ErrNotExist) {
+			return false, err
 		}
-		c = parent
+		if anc == child && slices.Contains(strings.Split(filepath.ToSlash(child), "/"), "..") {
+			return false, fmt.Errorf("cannot place %s: it does not exist and contains \"..\"", child)
+		}
+		up := filepath.Dir(anc)
+		if up == anc {
+			return false, fmt.Errorf("no part of %s exists", child)
+		}
+		anc = up
 	}
-	c, err = filepath.EvalSymlinks(c)
+	c, err := filepath.EvalSymlinks(anc)
 	if err != nil {
 		return false, err
 	}
-	// Append the remaining non-existent components lexically to the resolved ancestor
-	if child != c {
-		rel := strings.TrimPrefix(strings.TrimPrefix(child, c), string(filepath.Separator))
-		if rel != "" {
-			c = filepath.Join(c, rel)
-		}
+	below, err := filepath.Rel(anc, child)
+	if err != nil {
+		return false, err
 	}
-	rel, err := filepath.Rel(p, c)
-	return err == nil && filepath.IsLocal(rel), nil
+	rel, err := filepath.Rel(p, filepath.Join(c, below))
+	if err != nil {
+		return false, err
+	}
+	return filepath.IsLocal(rel), nil
 }
 
 func ignored(rel string) bool {

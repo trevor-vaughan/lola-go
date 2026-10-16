@@ -72,6 +72,27 @@ func (r Recorded) Check() error {
 // IsFullCommit reports whether s is a full sha1 or sha256 commit id.
 func IsFullCommit(s string) bool { return fullSHARE.MatchString(s) }
 
+// Host is where a recorded location is fetched from: the lower-cased scheme and host (with its
+// port) of a URL, "ssh://" and the host for git's scp form, and "" for a local path or file://
+// URL. A location that does not parse as a URL is its own host, so it never matches another.
+func Host(loc string) string {
+	if !strings.Contains(loc, "://") {
+		if !scpRE.MatchString(loc) {
+			return ""
+		}
+		host, _, _ := strings.Cut(loc, ":")
+		return "ssh://" + strings.ToLower(host[strings.LastIndex(host, "@")+1:])
+	}
+	u, err := url.Parse(loc)
+	switch {
+	case err != nil:
+		return loc
+	case strings.EqualFold(u.Scheme, "file"):
+		return ""
+	}
+	return strings.ToLower(u.Scheme + "://" + u.Host)
+}
+
 // IsFolderForm reports whether loc, as a file records it, can only name a local folder: it is
 // not a URL, not git's scp form, and has no archive suffix. Parse decides what it is on disk.
 func IsFolderForm(loc string) bool {

@@ -166,6 +166,9 @@ func Execute(root *cobra.Command) int {
 	switch {
 	case err == nil:
 		return 0
+	case errors.Is(err, errSyncAborted):
+		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing installed.")
+		return 0
 	case errors.Is(err, ErrAborted):
 		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing changed.")
 		return 0

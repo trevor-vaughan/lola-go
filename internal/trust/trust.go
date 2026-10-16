@@ -25,6 +25,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 )
 
 // Version is the trust file schema version this binary writes.
@@ -162,10 +163,148 @@ func (e Entry) clone() Entry {
 	return e
 }
 
-// Record is one project's entry in trust.json. A project with none has an empty View, which
-// covers nothing.
+// Statuses of a manifest against its project's trust record (§7.3).
+const (
+	StatusTrusted = "trusted" // the record is the manifest's view, or the manifest is empty
+	StatusNew     = "new"     // the project has no record: nothing is covered
+	StatusChanged = "changed"
+)
+
+// Kinds of a module's change.
+const (
+	ChangeAdded   = "added"
+	ChangeRemoved = "removed"
+	ChangeChanged = "changed"
+)
+
+// FieldChange is one view field whose value differs from the record's. From and To keep the
+// field's JSON type: a string, a list of target ids for targets, a boolean for rules; nil for
+// an absent value.
+type FieldChange struct {
+	Field string `json:"field"`
+	From  any    `json:"from"`
+	To    any    `json:"to"`
+}
+
+// Change is how one module's entry differs from the record: added (every field it has, from
+// nil), removed (every field it had, to nil) or changed (each differing field). HostChanged says
+// a changed source names another host, scheme or kind of place (local or remote); ContentFixed
+// says the entry pins its content by digest.
+type Change struct {
+	Module       string        `json:"module"`
+	Kind         string        `json:"change"`
+	HostChanged  bool          `json:"host_changed"`
+	ContentFixed bool          `json:"content_fixed"`
+	Fields       []FieldChange `json:"fields"`
+}
+
+// Report is the result of Check: the status, the top-level targets when the record does not
+// cover them (nil when it does), and each module's change in name order.
+type Report struct {
+	Status  string
+	Targets *FieldChange
+	Changes []Change
+}
+
+// Check compares v, the view of a manifest, with the record r (§7.3).
+func Check(r *Record, v View) Report {
+	v.Modules = slices.Clone(v.Modules)
+	v.sort()
+	rv := r.View
+	rv.Modules = slices.Clone(rv.Modules)
+	rv.sort()
+	rep := Report{Status: StatusTrusted, Changes: []Change{}}
+	if !slices.Equal(rv.Targets, v.Targets) {
+		rep.Targets = &FieldChange{Field: "targets", From: listValue(rv.Targets), To: listValue(v.Targets)}
+	}
+	for _, e := range v.Modules {
+		old := rv.Find(e.Name)
+		switch {
+		case old == nil:
+			rep.Changes = append(rep.Changes, Change{Module: e.Name, Kind: ChangeAdded, ContentFixed: e.Digest != "", Fields: fieldChanges(Entry{}, e)})
+		case !old.equal(e):
+			rep.Changes = append(rep.Changes, Change{Module: e.Name, Kind: ChangeChanged, ContentFixed: e.Digest != "",
+				HostChanged: hostChanged(old.Source, e.Source), Fields: fieldChanges(*old, e)})
+		}
+	}
+	for _, e := range rv.Modules {
+		if v.Find(e.Name) == nil {
+			rep.Changes = append(rep.Changes, Change{Module: e.Name, Kind: ChangeRemoved, Fields: fieldChanges(e, Entry{})})
+		}
+	}
+	slices.SortStableFunc(rep.Changes, func(a, b Change) int { return strings.Compare(a.Module, b.Module) })
+	// Without a record every entry and the targets are changes; a manifest with neither has
+	// nothing to trust.
+	switch {
+	case rep.Targets == nil && len(rep.Changes) == 0:
+	case !r.Exists:
+		rep.Status = StatusNew
+	default:
+		rep.Status = StatusChanged
+	}
+	return rep
+}
+
+// hostChanged reports whether a changed source names another host, scheme or kind of place.
+// A source in git's scp form may name a local folder instead (source.Parse checks the disk
+// first), so a change involving one always counts: the warning errs toward being shown.
+func hostChanged(from, to string) bool {
+	if from == to {
+		return false
+	}
+	isSCP := func(loc string) bool { return !strings.Contains(loc, "://") && source.Host(loc) != "" }
+	return isSCP(from) || isSCP(to) || source.Host(from) != source.Host(to)
+}
+
+// fieldChanges lists the view fields whose values differ between from and to, in the order
+// lola writes them.
+func fieldChanges(from, to Entry) []FieldChange {
+	out := []FieldChange{}
+	for _, f := range []struct {
+		name     string
+		from, to string
+	}{{"source", from.Source, to.Source}, {"ref", from.Ref, to.Ref}, {"path", from.Path, to.Path},
+		{"commit", from.Commit, to.Commit}, {"digest", from.Digest, to.Digest}} {
+		if f.from != f.to {
+			out = append(out, FieldChange{Field: f.name, From: stringValue(f.from), To: stringValue(f.to)})
+		}
+	}
+	if !slices.Equal(from.Targets, to.Targets) {
+		out = append(out, FieldChange{Field: "targets", From: listValue(from.Targets), To: listValue(to.Targets)})
+	}
+	if !sameRules(from.Rules, to.Rules) {
+		out = append(out, FieldChange{Field: "rules", From: boolValue(from.Rules), To: boolValue(to.Rules)})
+	}
+	return out
+}
+
+func stringValue(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func listValue(ss []string) any {
+	if len(ss) == 0 {
+		return nil
+	}
+	return slices.Clone(ss)
+}
+
+func boolValue(b *bool) any {
+	if b == nil {
+		return nil
+	}
+	return *b
+}
+
+// Record is one project's entry in trust.json. Exists is false for a project the file has no
+// record for: its View is empty and covers nothing, and Check tells it apart from a record of an
+// empty manifest.
 type Record struct {
-	View View
+	View   View
+	Exists bool
 }
 
 type project struct {
@@ -196,7 +335,7 @@ func (s *Store) Load(root string) (*Record, error) {
 	}
 	for k, p := range f.Projects {
 		if paths.SameKey(k, key) {
-			return &Record{View: p.View}, nil
+			return &Record{View: p.View, Exists: true}, nil
 		}
 	}
 	return &Record{}, nil

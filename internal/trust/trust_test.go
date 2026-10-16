@@ -148,10 +148,116 @@ var _ = Describe("trust record", func() {
 			Expect(got.Targets).To(Equal([]string{"cursor"}))
 		})
 
+		It("returns exactly the saved view for a record equal to the manifest it loaded", func() {
+			loaded := view(entry("x", "d1"), entry("y", "dy"))
+			for _, saved := range []trust.View{
+				view(entry("x", "d2"), entry("y", "dy")),
+				view(entry("y", "dy"), entry("z", "dz")),
+				{Targets: []string{"opencode"}, Modules: []trust.Entry{entry("x", "d1")}},
+				loaded,
+			} {
+				Expect(trust.Refresh(loaded, loaded, saved)).To(Equal(saved))
+			}
+		})
+
 		It("records nothing for a changed entry the record does not hold", func() {
 			loaded := view(entry("x", "d1"))
 			saved := view(entry("x", "d2"))
 			Expect(trust.Refresh(trust.View{}, loaded, saved).Modules).To(BeEmpty())
+		})
+	})
+
+	Describe("Check", func() {
+		no := false
+		pinned := manifest.Entry{Name: "kit", Source: "https://github.com/acme/kit.git", Ref: "v1", Commit: strings.Repeat("a", 40),
+			Digest: "sha256:" + strings.Repeat("b", 64)}
+		folder := manifest.Entry{Name: "local", Source: "mods/local", Targets: []string{"opencode"}, Rules: &no}
+		m := func(targets []string, es ...manifest.Entry) trust.View {
+			return trust.ViewOf(&manifest.Manifest{Targets: targets, Modules: es})
+		}
+		claude := []string{"claude-code"}
+
+		It("calls a project without a record new, listing every entry as added with each field it has", func() {
+			rep := trust.Check(&trust.Record{}, m(claude, pinned, folder))
+			Expect(rep.Status).To(Equal(trust.StatusNew))
+			Expect(rep.Targets).To(Equal(&trust.FieldChange{Field: "targets", From: nil, To: []string{"claude-code"}}))
+			Expect(rep.Changes).To(HaveExactElements(
+				trust.Change{Module: "kit", Kind: trust.ChangeAdded, ContentFixed: true, Fields: []trust.FieldChange{
+					{Field: "source", To: pinned.Source}, {Field: "ref", To: "v1"}, {Field: "commit", To: pinned.Commit}, {Field: "digest", To: pinned.Digest}}},
+				trust.Change{Module: "local", Kind: trust.ChangeAdded, Fields: []trust.FieldChange{
+					{Field: "source", To: "mods/local"}, {Field: "targets", To: []string{"opencode"}}, {Field: "rules", To: false}}},
+			))
+		})
+
+		It("has nothing to ask about an empty manifest in a project without a record", func() {
+			Expect(trust.Check(&trust.Record{}, m(nil))).To(Equal(trust.Report{Status: trust.StatusTrusted, Changes: []trust.Change{}}))
+			Expect(trust.Check(&trust.Record{}, m(claude)).Status).To(Equal(trust.StatusNew), "top-level targets are a change")
+		})
+
+		It("calls a manifest equal to its record trusted, with no changes", func() {
+			rep := trust.Check(&trust.Record{View: m(claude, folder, pinned), Exists: true}, m(claude, pinned, folder))
+			Expect(rep).To(Equal(trust.Report{Status: trust.StatusTrusted, Changes: []trust.Change{}}))
+			Expect(trust.Check(&trust.Record{Exists: true}, m(nil)).Status).To(Equal(trust.StatusTrusted), "a record of an empty manifest")
+		})
+
+		It("lists each changed field with typed values, removed entries and changed targets", func() {
+			moved := pinned
+			moved.Source, moved.Commit, moved.Digest = "https://git.example.net/acme/kit.git", "", ""
+			local := folder
+			local.Rules, local.Targets = nil, nil
+			rec := &trust.Record{View: m(claude, pinned, folder, manifest.Entry{Name: "old", Source: "mods/old"}), Exists: true}
+			rep := trust.Check(rec, m([]string{"claude-code", "opencode"}, moved, local))
+			Expect(rep.Status).To(Equal(trust.StatusChanged))
+			Expect(rep.Targets).To(Equal(&trust.FieldChange{Field: "targets", From: []string{"claude-code"}, To: []string{"claude-code", "opencode"}}))
+			Expect(rep.Changes).To(HaveExactElements(
+				trust.Change{Module: "kit", Kind: trust.ChangeChanged, HostChanged: true, Fields: []trust.FieldChange{
+					{Field: "source", From: pinned.Source, To: moved.Source}, {Field: "commit", From: pinned.Commit}, {Field: "digest", From: pinned.Digest}}},
+				trust.Change{Module: "local", Kind: trust.ChangeChanged, Fields: []trust.FieldChange{
+					{Field: "targets", From: []string{"opencode"}}, {Field: "rules", From: false}}},
+				trust.Change{Module: "old", Kind: trust.ChangeRemoved, Fields: []trust.FieldChange{{Field: "source", From: "mods/old"}}},
+			))
+			b, err := json.Marshal(rep.Changes[1].Fields)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).To(Equal(`[{"field":"targets","from":["opencode"],"to":null},{"field":"rules","from":false,"to":null}]`))
+		})
+
+		It("marks a source moved between local and remote, or to another scheme, as a host change, and a path change on one host as none", func() {
+			for from, to := range map[string]string{
+				"mods/kit":                        "https://github.com/acme/kit.git",
+				"https://github.com/acme/kit.git": "ssh://git@github.com/acme/kit.git",
+				"git@github.com:acme/kit.git":     "git@gitlab.com:acme/kit.git",
+			} {
+				rec := &trust.Record{View: m(nil, manifest.Entry{Name: "kit", Source: from}), Exists: true}
+				Expect(trust.Check(rec, m(nil, manifest.Entry{Name: "kit", Source: to})).Changes[0].HostChanged).To(BeTrue(), from+" → "+to)
+			}
+			rec := &trust.Record{View: m(nil, manifest.Entry{Name: "kit", Source: "https://github.com/acme/kit.git"}), Exists: true}
+			Expect(trust.Check(rec, m(nil, manifest.Entry{Name: "kit", Source: "https://github.com/evil/kit.git"})).Changes[0].HostChanged).To(BeFalse())
+		})
+
+		It("marks a swap between git's scp form and a path with a colon as a host change, since a folder may bear that name", func() {
+			rec := &trust.Record{View: m(nil, manifest.Entry{Name: "kit", Source: "git@github.com:acme/kit.git"}), Exists: true}
+			rep := trust.Check(rec, m(nil, manifest.Entry{Name: "kit", Source: "github.com:acme/kit.git"}))
+			Expect(rep.Changes[0].HostChanged).To(BeTrue())
+		})
+
+		It("leaves the caller's module order alone", func() {
+			b, a := manifest.Entry{Name: "b", Source: "mods/b"}, manifest.Entry{Name: "a", Source: "mods/a"}
+			v := trust.View{Modules: []trust.Entry{trust.EntryOf(b), trust.EntryOf(a)}}
+			rv := trust.View{Modules: []trust.Entry{trust.EntryOf(b), trust.EntryOf(a)}}
+			trust.Check(&trust.Record{View: rv, Exists: true}, v)
+			Expect(v.Modules[0].Name).To(Equal("b"))
+			Expect(rv.Modules[0].Name).To(Equal("b"))
+		})
+
+		It("finds a record through Load as existing, and a project without one as not", func() {
+			r, err := s.Load(root)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.Exists).To(BeFalse())
+			Expect(s.Save(root, trust.View{})).To(Succeed())
+			r, err = s.Load(root)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.Exists).To(BeTrue())
+			Expect(trust.Check(r, trust.View{}).Status).To(Equal(trust.StatusTrusted))
 		})
 	})
 

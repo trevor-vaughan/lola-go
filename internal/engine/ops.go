@@ -354,7 +354,8 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		if len(sp.man.Targets) == 0 {
 			change.Targets = sp.targets
 		}
-		err := e.saveManifest(sp.sc, sp.loaded, change, sp.trust, func(man *plan.ManifestWrite) error {
+		updated := "the project's files, lock.json and project.yml were updated"
+		err := e.saveManifest(sp.sc, sp.loaded, change, sp.trust, updated, trustInstallAgain, func(man *plan.ManifestWrite) error {
 			return e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
 		})
 		if err != nil && len(saves) > 0 {
@@ -443,8 +444,10 @@ func (e *Engine) trustRecord(sc Scope) (*trust.Record, error) {
 // apply, which commits it with the ledger. After a successful apply at project scope it
 // refreshes rec, the project's trust record, per field (trust.Refresh): what this write changed
 // becomes trusted, and nothing else does. A record that cannot be written leaves lola's own
-// edits uncovered, which later commands refuse: the error says what was applied.
-func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, rec *trust.Record, apply func(*plan.ManifestWrite) error) error {
+// edits uncovered, which later commands refuse: the error says what was applied (the caller's
+// applied) and how to get them trusted (its hint).
+func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, rec *trust.Record, applied, hint string,
+	apply func(*plan.ManifestWrite) error) error {
 	dst, data, err := manifest.Edit(e.files(sc).manifest, c)
 	if err != nil {
 		return err
@@ -454,12 +457,18 @@ func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Ch
 	}
 	view := trust.Refresh(rec.View, trust.ViewOf(loaded), trust.ViewOf(loaded.Applied(c)))
 	if err := e.Trust.Save(sc.ProjectDir, view); err != nil {
-		return errs.WithHints(fmt.Errorf("the project's files, lock.json and project.yml were updated, but lola could not record that you trust "+
-			"what it wrote to project.yml: %w", err),
-			"until it can, lola treats those entries as changed behind its back; fix the trust file, then install each of them again from its source")
+		return errs.WithHints(fmt.Errorf("%s, but lola could not record that you trust what it wrote to project.yml: %w", applied, err), hint)
 	}
 	return nil
 }
+
+// The hints of a trust record that cannot be written after the project changed (Plan 6a §9.4).
+// It fails closed: what lola wrote stays untrusted until the record can be written. install and
+// uninstall coach installing again (until 6a.3b); sync coaches itself, which asks again.
+const (
+	trustInstallAgain = "until it can, lola treats those entries as changed behind its back; fix the trust file, then install each of them again from its source"
+	trustSyncAgain    = "until it can, lola treats those entries as changed behind its back; fix the trust file, then run lola sync again to review and trust them"
+)
 
 // root is a scope's project root as results report it: "" at user scope.
 func root(sc Scope) string {
@@ -873,7 +882,9 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, cwd string, names []st
 			change.Set = append(change.Set, kept)
 		}
 	}
-	if err := e.saveManifest(sc, man, change, rec, func(mw *plan.ManifestWrite) error { return e.commit(ctx, pr, opts, res, mw, nil) }); err != nil {
+	removed := "lola removed what you uninstalled from the project's files, lock.json and project.yml"
+	if err := e.saveManifest(sc, man, change, rec, removed, trustInstallAgain,
+		func(mw *plan.ManifestWrite) error { return e.commit(ctx, pr, opts, res, mw, nil) }); err != nil {
 		return nil, err
 	}
 	for i := range res.Modules {

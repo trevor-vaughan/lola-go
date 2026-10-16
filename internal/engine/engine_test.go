@@ -1065,9 +1065,16 @@ var _ = Describe("Engine", func() {
 			Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
 			_, err := e.Render(ctx, sc, engine.Options{})
 			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout"))
-			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
+				"if you never installed with lola in this checkout, delete it too, then run lola sync"}))
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile(), "nothing rendered")
 			Expect(ledgerBytes()).To(Equal(before))
+			for _, dry := range []bool{false, true} {
+				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: dry}})
+				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout"), "sync, dry run: %v", dry)
+				Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile(), "nothing synced")
+				Expect(ledgerBytes()).To(Equal(before))
+			}
 
 			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
 			_, err = e.Render(ctx, sc, engine.Options{})
@@ -1092,7 +1099,8 @@ var _ = Describe("Engine", func() {
 			refused := func(err error) {
 				GinkgoHelper()
 				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout"))
-				Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json"}))
+				Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
+					"if you never installed with lola in this checkout, delete it too, then run lola sync"}))
 				Expect(ledgerBytes()).To(Equal(ledger))
 				Expect(read(".lola/project.yml")).To(Equal(man))
 				Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())

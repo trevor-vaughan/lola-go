@@ -30,9 +30,11 @@ const memberShown = 120
 
 // stepLine renders one plan step.
 func stepLine(s style, st plan.Step) string {
-	dest := st.Path
+	// Paths and keys can carry a module's file and server names: printed safely here, and kept
+	// raw in the result, where lola migrate reads them as paths.
+	dest := untrusted.Text(st.Path, len(st.Path))
 	if st.Key != "" {
-		dest += " " + st.Key
+		dest += " " + untrusted.Text(st.Key, len(st.Key))
 	}
 	if st.Value != "" {
 		dest += " " + strconv.Quote(st.Value)
@@ -41,7 +43,7 @@ func stepLine(s style, st plan.Step) string {
 		dest += " " + untrusted.Text(string(st.Member), memberShown)
 	}
 	if st.Via != "" {
-		dest += " (via symlink → " + st.Via + ")"
+		dest += " (via symlink → " + untrusted.Text(st.Via, len(st.Via)) + ")"
 	}
 	forced := st.Forced
 	if st.Replaced {
@@ -165,6 +167,19 @@ func scopeLabel(sc engine.ScopeResult) string {
 }
 
 func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
+	printPlan(w, s, r, scopes)
+	printFindings(w, s, r.Findings)
+	for _, n := range r.Notices {
+		fmt.Fprintln(w, noticeLine(s, n))
+	}
+	if r.DryRun || s.plain {
+		return
+	}
+	printDone(w, s, verb, r, scopes)
+}
+
+// printPlan prints the steps and each module's details: what a run did, or in a dry run would do.
+func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResult) {
 	if r.DryRun && !s.plain {
 		fmt.Fprintln(w, "plan (dry run; nothing was written):")
 	}
@@ -192,11 +207,12 @@ func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []e
 		}
 		printRuntimeHooks(w, s, m)
 		for _, h := range m.Hooks {
+			script := untrusted.Text(h.Script, len(h.Script))
 			if s.plain {
-				fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, h.Script, h.Target, h.Status)
+				fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, script, h.Target, h.Status)
 				continue
 			}
-			line := fmt.Sprintf("%s %s hook %s (%s): %s", m.Name, h.Event, h.Script, h.Target, h.Status)
+			line := fmt.Sprintf("%s %s hook %s (%s): %s", m.Name, h.Event, script, h.Target, h.Status)
 			switch h.Status {
 			case engine.HookRan:
 				fmt.Fprintln(w, s.ok(line))
@@ -207,26 +223,29 @@ func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []e
 			}
 		}
 	}
-	for _, f := range r.Findings {
-		if f.Severity == target.SeverityInfo && f.Hint == "" {
-			continue // an info finding with a hint is something the user can act on
-		}
-		if line := findingLine(s, f); line != "" {
-			fmt.Fprintln(w, line)
-		}
-	}
-	for _, n := range r.Notices {
-		fmt.Fprintln(w, noticeLine(s, n))
-	}
-	if r.DryRun || s.plain {
-		return
-	}
+}
+
+// printDone prints the closing "✓ <verb> <module>" line of each module a run wrote.
+func printDone(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
 	for _, m := range r.Modules {
 		where := ""
 		if len(scopes) > 1 {
 			where = " at " + m.Scope + " scope"
 		}
 		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s%s (%s)", verb, m.Name, where, strings.Join(m.Targets, ", "))))
+	}
+}
+
+// printFindings prints the findings the user can act on: warn and skip findings, and info
+// findings with a hint.
+func printFindings(w io.Writer, s style, findings []target.Finding) {
+	for _, f := range findings {
+		if f.Severity == target.SeverityInfo && f.Hint == "" {
+			continue
+		}
+		if line := findingLine(s, f); line != "" {
+			fmt.Fprintln(w, line)
+		}
 	}
 }
 

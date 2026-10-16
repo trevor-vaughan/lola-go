@@ -31,11 +31,14 @@ const (
 	HookDeclined = "declined" // no consent; only post-install hooks can be declined without aborting
 )
 
-// HookScript is one install hook with the sha256 of its script, as consent shows it.
+// HookScript is one install hook with the sha256 of its script, as consent shows it. Script is
+// the script's path, as the module names it, through untrusted.Text; path is that path itself,
+// which runs and keys consent.
 type HookScript struct {
 	Event  string `json:"event"`
 	Script string `json:"script"`
 	SHA256 string `json:"sha256"`
+	path   string
 }
 
 // HookRun is one hook for one target in an operation's result.
@@ -72,8 +75,8 @@ func hookScripts(dir string, hooks []module.Hook) ([]HookScript, string, error) 
 				return nil, "", err
 			}
 			sum := sha256.Sum256(b)
-			s := HookScript{Event: h.Event, Script: h.Script, SHA256: hex.EncodeToString(sum[:])}
-			fmt.Fprintf(all, "%s\x00%s\x00%s\n", s.Event, s.Script, s.SHA256)
+			s := HookScript{Event: h.Event, Script: shown(h.Script), SHA256: hex.EncodeToString(sum[:]), path: h.Script}
+			fmt.Fprintf(all, "%s\x00%s\x00%s\n", s.Event, s.path, s.SHA256)
 			out = append(out, s)
 		}
 	}
@@ -177,7 +180,7 @@ func (e *Engine) runHook(ctx context.Context, sc Scope, j *hookJob, s HookScript
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.HookTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(j.dir, s.Script))
+	cmd := exec.CommandContext(ctx, filepath.Join(j.dir, s.path))
 	cmd.Dir = j.dir
 	cmd.Env = append(e.Environ(),
 		"LOLA_MODULE_NAME="+j.name,

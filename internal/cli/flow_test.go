@@ -29,6 +29,7 @@ type scripted struct {
 	dirs       []func(cli.DirectoryStep) (string, error)
 	empty      []bool
 	review     []string
+	confirm    []bool
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -71,6 +72,10 @@ func (s *scripted) Components(pg cli.ComponentPage) ([]string, error) {
 func (s *scripted) ConfirmEmpty(module string) (bool, error) {
 	s.calls = append(s.calls, "empty:"+module)
 	return pop(&s.empty, "confirm-empty"), nil
+}
+func (s *scripted) Confirm(question string) (bool, error) {
+	s.calls = append(s.calls, "confirm:"+question)
+	return pop(&s.confirm, "confirm"), nil
 }
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)

@@ -233,6 +233,18 @@ var _ = Describe("Engine and the trust record", func() {
 		Expect(covered("example")).To(BeFalse(), "fail closed")
 	})
 
+	It("says an uninstall removed what it was asked to when the trust record cannot be written", func() {
+		Expect(install(claude, src)).To(Succeed())
+		Expect(os.Remove(p.TrustLock)).To(Succeed())
+		Expect(os.MkdirAll(p.TrustLock, 0o700)).To(Succeed()) // a lock that cannot be taken
+		_, err := e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
+		Expect(err).To(MatchError(HavePrefix("lola removed what you uninstalled from the project's files, lock.json and project.yml, " +
+			"but lola could not record that you trust what it wrote to project.yml: ")))
+		Expect(errs.Hints(err)).To(Equal([]string{"until it can, lola treats those entries as changed behind its back; " +
+			"fix the trust file, then install each of them again from its source", "replace it with a regular file"}))
+		Expect(loadManifest().Find("example")).To(BeNil())
+	})
+
 	// both installs at the project and the user scope together, as the install pickers do.
 	both := func(args ...string) error {
 		var reqs []engine.InstallRequest

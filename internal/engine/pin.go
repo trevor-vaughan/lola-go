@@ -16,48 +16,65 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// fetchPin fetches the version a pin names into the cache, staging it in run, and returns its
-// snapshot under run (Plan 6a §6.4). spec is the entry's source with its ref. For git the commit
-// must be reachable from that ref, it is fetched by its SHA, and the fetch must resolve to it;
-// for every kind the content's digest must be digest, or nothing is cached. A head is set only for
-// a ref that has none, so the pinned fetch never moves one.
-func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, commit, digest, run string) (_ store.Version, err error) {
+// fetchPin fetches the version a pin names into run and prepares it there (store.Prepare), and
+// returns it staged, not cached (Plan 6a §6.4): the caller commits it (store.Commit with
+// headIfAbsent, so the pinned fetch never moves a head) once the content may enter the cache.
+// spec is the entry's source with its ref. For git the commit must be reachable from that ref,
+// it is fetched by its SHA, and the fetch must resolve to it; for every kind the content's digest
+// must be digest. A tree that fails a check is removed with the run.
+func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, commit, digest, run string) (store.Staged, error) {
 	installAgain := "install what its source serves now: " + installCommand(spec.Location, spec.Ref, spec.Path)
 	fetch := spec
 	if spec.Kind == source.KindGit {
 		if commit == "" {
-			return store.Version{}, errs.WithHints(fmt.Errorf("%s: no commit is recorded for the version installed, so lola cannot fetch it", name), installAgain)
+			return store.Staged{}, errs.WithHints(fmt.Errorf("%s: no commit is recorded for the version installed, so lola cannot fetch it", name), installAgain)
 		}
 		if err := source.CheckReachable(ctx, spec, commit, run); err != nil {
-			return store.Version{}, fmt.Errorf("%s: %w", name, err)
+			return store.Staged{}, fmt.Errorf("%s: %w", name, err)
 		}
 		fetch.Ref = commit
 	}
 	f, err := source.Fetch(ctx, fetch, run)
 	if err != nil {
-		return store.Version{}, err
+		if spec.Kind == source.KindGit {
+			err = &commitFetchError{err}
+		}
+		return store.Staged{}, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(f.Dir)) }()
 	if f.Commit != commit {
-		return store.Version{}, errs.WithHints(fmt.Errorf("%s: %s served commit %s for %s", name, untrusted.Text(spec.Location, untrusted.MaxName),
-			untrusted.Text(f.Commit, untrusted.MaxName), commit), installAgain)
+		return store.Staged{}, errs.WithHints(&servedCommitError{name: name, location: spec.Location, got: f.Commit, want: commit}, installAgain)
 	}
-	v, err := e.Store.Put(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: commit, Executables: f.Executables, Digest: digest, HeadIfAbsent: true, Now: e.Now()})
+	st, err := e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Name: name, Source: spec.Location, Type: string(spec.Kind),
+		Path: spec.Path, Ref: spec.Ref, Commit: commit, Executables: f.Executables, Now: e.Now()})
 	if err != nil {
-		if _, renamed := errors.AsType[*store.OtherNameError](err); renamed {
-			return store.Version{}, err // fetching again cannot help; the caller names the way out
-		}
-		if _, mismatch := errors.AsType[*store.DigestMismatchError](err); mismatch {
-			return store.Version{}, errs.WithHints(err, installAgain)
-		}
-		return store.Version{}, err
+		return store.Staged{}, err // a module that renamed itself: fetching again cannot help, and the caller names the way out
 	}
-	pv, ok, err := e.Store.Pinned(name, digest, run)
-	if err == nil && !ok {
-		err = fmt.Errorf("%s: version %s left the cache while lola was using it", name, v.ID)
+	if got := st.Version.Meta.Digest; got != digest {
+		return store.Staged{}, errs.WithHints(&digestMismatchError{name: name, got: got, want: digest}, installAgain)
 	}
-	return pv, err
+	return st, nil
+}
+
+// commitFetchError is fetchPin's failure to fetch a git commit by its SHA, which a server can
+// refuse; its message is the fetch's.
+type commitFetchError struct{ err error }
+
+func (e *commitFetchError) Error() string { return e.err.Error() }
+func (e *commitFetchError) Unwrap() error { return e.err }
+
+// servedCommitError is fetchPin's refusal of a fetch by commit that resolved to another commit.
+type servedCommitError struct{ name, location, got, want string }
+
+func (e *servedCommitError) Error() string {
+	return fmt.Sprintf("%s: %s served commit %s for %s", e.name, untrusted.Text(e.location, untrusted.MaxName),
+		untrusted.Text(e.got, untrusted.MaxName), e.want)
+}
+
+// digestMismatchError is fetchPin's refusal of content whose digest is not the pin's.
+type digestMismatchError struct{ name, got, want string }
+
+func (e *digestMismatchError) Error() string {
+	return fmt.Sprintf("%s: the content fetched has digest %s, not the pinned %s", e.name, e.got, untrusted.Text(e.want, untrusted.MaxName))
 }
 
 // installedForRender is the version render installs for a ledger module: the folder as it is
@@ -91,9 +108,15 @@ func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, 
 			return store.Version{}, errs.WithHints(fmt.Errorf("%s is no longer in your cache, and its source folder is gone", name),
 				"remove it: "+errs.ShellJoin([]string{"lola", "uninstall", name}))
 		}
-		if v, err = e.fetchPin(ctx, name, spec, entry.Commit, entry.Digest, run); err != nil {
+		st, err := e.fetchPin(ctx, name, spec, entry.Commit, entry.Digest, run)
+		if err == nil {
+			_, err = e.Store.Commit(st, true)
+		}
+		if err != nil {
 			return store.Version{}, errs.WithHints(err, uninstall)
 		}
+		v = st.Version
+		v.Module.Warnings = st.LoadWarnings // what a cache hit would report, not what detection did
 	}
 	v.Commit = entry.Commit
 	return v, nil

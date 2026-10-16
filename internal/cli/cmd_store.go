@@ -111,7 +111,9 @@ func newModuleView(v store.Version, o store.Origin) moduleView {
 	for _, r := range m.Rules {
 		mv.Rules = append(mv.Rules, r.Name)
 	}
-	mv.Hooks = append(mv.Hooks, m.DeclaredHooks...)
+	for _, h := range m.DeclaredHooks {
+		mv.Hooks = append(mv.Hooks, module.Hook{Event: h.Event, Script: untrusted.Text(h.Script, len(h.Script))})
+	}
 	mv.Warnings = append(mv.Warnings, m.Warnings...)
 	for _, n := range v.Meta.OthersPresent {
 		// A version fresh from cache add already carries its detection warnings.

@@ -87,33 +87,35 @@ type Version struct {
 
 // PutRequest describes freshly fetched content. Staged must be in the run's staging directory
 // (a run-* under paths.Staging), where the version is assembled beside it; Executables are the
-// fetch's (source.Fetched.Executables). Digest, when set, is the digest the content must have
-// (a pin): other content is refused before anything is cached.
-// HeadIfAbsent sets the head for Ref only when it has none, so a pinned fetch never moves one.
+// fetch's (source.Fetched.Executables).
 // Name, when set, is the module the content must declare: content declaring another (a source
 // that renamed its module) is refused with an *OtherNameError before anything is cached.
 type PutRequest struct {
 	Staged, FallbackName, Name      string
 	Source, Type, Path, Ref, Commit string
 	Executables                     []string
-	Digest                          string
-	HeadIfAbsent                    bool
 	Now                             time.Time
 }
 
-// DigestMismatchError is Put's refusal of content whose digest is not PutRequest.Digest.
-type DigestMismatchError struct{ Name, Got, Want string }
-
-func (e *DigestMismatchError) Error() string {
-	return fmt.Sprintf("%s: the content fetched has digest %s, not the pinned %s", e.Name, e.Got, untrusted.Text(e.Want, untrusted.MaxName))
-}
-
-// OtherNameError is Put's refusal of content that declares another module than
+// OtherNameError is Prepare's refusal of content that declares another module than
 // PutRequest.Name.
 type OtherNameError struct{ Want, Declared string }
 
 func (e *OtherNameError) Error() string {
 	return fmt.Sprintf("%s: its source now declares module %q", e.Want, untrusted.Text(e.Declared, untrusted.MaxName))
+}
+
+// Staged is content Prepare checked in the run's staging directory, which is not in the cache
+// until Commit publishes it (Plan 6a §6.3). Version is what the cached version will be, except
+// that its ContentDir is the staged tree, which the run renders from: the bytes that were
+// hashed. Version.Commit is the commit the fetch resolved. Version.Module.Warnings are what
+// detection reported, which install shows; LoadWarnings are what a load of the cached copy
+// reports, which is all a cache hit reports, so a run that renders the staged tree uses them.
+type Staged struct {
+	Version           Version
+	LoadWarnings      []string
+	source, typ, path string
+	ref               string
 }
 
 // Store is the machine-wide module store. targets are the target ids a module's per-entry
@@ -150,19 +152,34 @@ func describeOrigin(source, path string) string {
 	return source + " (path " + untrusted.Text(path, untrusted.MaxName) + ")"
 }
 
-// Put detects the staged content's format and reads it as a module (module.Detect), normalizes
-// it (module.Normalize), stores it as a version (reusing an identical one) and points the head
-// for req.Ref at it. The version's module carries the warnings detection reported.
+// Put caches freshly fetched content and points the head for req.Ref at it: Prepare, then
+// Commit. The staged content is removed once it is cached.
 func (s *Store) Put(req PutRequest) (Version, error) {
-	m, err := module.Detect(req.Staged, req.FallbackName, s.targets)
+	st, err := s.Prepare(req)
 	if err != nil {
 		return Version{}, err
 	}
+	v, err := s.Commit(st, false)
+	if err != nil {
+		return Version{}, err
+	}
+	return v, os.RemoveAll(req.Staged)
+}
+
+// Prepare detects the staged content's format and reads it as a module (module.Detect),
+// normalizes it in place (module.Normalize), checks that the cached copy would read the same and
+// digests it. Nothing in the cache changes and no lock is taken: untrusted content stays in the
+// run's staging until Commit. The version's module carries the warnings detection reported.
+func (s *Store) Prepare(req PutRequest) (Staged, error) {
+	m, err := module.Detect(req.Staged, req.FallbackName, s.targets)
+	if err != nil {
+		return Staged{}, err
+	}
 	if req.Name != "" && m.Name != req.Name {
-		return Version{}, &OtherNameError{Want: req.Name, Declared: m.Name}
+		return Staged{}, &OtherNameError{Want: req.Name, Declared: m.Name}
 	}
 	if err := s.normalize(req.Staged, m); err != nil {
-		return Version{}, err
+		return Staged{}, err
 	}
 	// The cache loads a version without format adapters (Plan 5b design §4), so the normalized
 	// copy must read back as exactly what detection produced.
@@ -171,46 +188,57 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 		err = errors.New("its cached copy would not read the same as the fetched one")
 	}
 	if err != nil {
-		return Version{}, errs.WithHints(fmt.Errorf("lola could not cache %s faithfully: %w", m.Name, err),
+		return Staged{}, errs.WithHints(fmt.Errorf("lola could not cache %s faithfully: %w", m.Name, err),
 			"this is a bug in lola, not in the module: please report it, with the module's source")
 	}
 	execs := keptExecutables(req.Staged, req.Executables)
 	digest, err := Digest(req.Staged, execs)
 	if err != nil {
-		return Version{}, err
+		return Staged{}, err
 	}
-	if req.Digest != "" && digest != req.Digest {
-		return Version{}, &DigestMismatchError{Name: m.Name, Got: digest, Want: req.Digest}
-	}
-	id := strings.TrimPrefix(digest, "sha256:")[:12]
+	// A cached load runs no format adapter, so only detection saw what the adapter warned
+	// about; its warnings include everything the cached load warns about.
+	loadWarnings := cached.Warnings
+	cached.Warnings = m.Warnings
+	meta := Meta{Format: m.Format, Manifest: m.Manifest, OthersPresent: m.Shadowed, Ref: req.Ref, Commit: req.Commit,
+		FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest, Executables: execs}
+	v := Version{Name: m.Name, ID: strings.TrimPrefix(digest, "sha256:")[:12], ContentDir: req.Staged, Commit: req.Commit, Meta: meta, Module: cached}
+	return Staged{Version: v, LoadWarnings: loadWarnings, source: req.Source, typ: req.Type, path: req.Path, ref: req.Ref}, nil
+}
+
+// Commit publishes a prepared version under the cache lock: it refuses a module whose name the
+// cache already holds from another source or path (checked again here, since another process may
+// have cached the name since the caller checked), copies the staged tree into a new version
+// (reusing an identical one) and sets the head for the fetched ref. With headIfAbsent the head
+// is set only when that ref has none, so a pinned fetch never moves one. The staged tree is
+// left in place for the run, which keeps rendering from it; the returned version is the
+// cache's.
+func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
+	sv := st.Version
 	unlock, err := s.lockStore()
 	if err != nil {
 		return Version{}, err
 	}
 	defer unlock()
 
-	o, found, err := s.Origin(m.Name)
+	o, found, err := s.Origin(sv.Name)
 	if err != nil {
 		return Version{}, err
 	}
-	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, req.Source) || o.Path != req.Path) {
+	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path) {
 		return Version{}, errs.WithHints(fmt.Errorf("a different module named %q is already in your cache (from %s); this one is from %s",
-			m.Name, describeOrigin(o.Source, o.Path), describeOrigin(req.Source, req.Path)),
-			"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", m.Name}))
+			sv.Name, describeOrigin(o.Source, o.Path), describeOrigin(st.source, st.path)),
+			"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", sv.Name}))
 	}
-	vdir := filepath.Join(s.dir, m.Name, "versions", id)
+	vdir := filepath.Join(s.dir, sv.Name, "versions", sv.ID)
 	switch _, err := os.Stat(vdir); {
 	case errors.Is(err, fs.ErrNotExist):
-		if err := s.addVersion(req, vdir, Meta{Format: m.Format, Manifest: m.Manifest, OthersPresent: m.Shadowed,
-			Ref: req.Ref, Commit: req.Commit, FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest, Executables: execs}); err != nil {
+		if err := addVersion(sv.ContentDir, vdir, sv.Meta); err != nil {
 			return Version{}, err
 		}
 	case err != nil:
 		return Version{}, err
-	default: // identical content is already stored; the staged copy is redundant
-		if err := os.RemoveAll(req.Staged); err != nil {
-			return Version{}, err
-		}
+	default: // identical content is already stored
 		// A version cached before execute bits were recorded can have this id (a platform with
 		// execute bits digested the same modes from the file system) and no executables in its
 		// record; without them its digest can never be checked again, so record them now.
@@ -218,30 +246,28 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 		if err := readYAML(filepath.Join(vdir, originFile), &meta); err != nil {
 			return Version{}, err
 		}
-		if !slices.Equal(meta.Executables, execs) {
-			meta.Executables = execs
+		if !slices.Equal(meta.Executables, sv.Meta.Executables) {
+			meta.Executables = sv.Meta.Executables
 			if err := writeYAML(filepath.Join(vdir, originFile), meta); err != nil {
 				return Version{}, err
 			}
 		}
 	}
 	if !found {
-		o = Origin{Source: req.Source, Type: req.Type, Path: req.Path}
+		o = Origin{Source: st.source, Type: st.typ, Path: st.path}
 	}
-	if !req.HeadIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == req.Ref }) {
-		o.Heads = setHead(o.Heads, Head{Ref: req.Ref, Digest: id, Commit: req.Commit})
+	if !headIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == st.ref }) {
+		o.Heads = setHead(o.Heads, Head{Ref: st.ref, Digest: sv.ID, Commit: sv.Commit})
 	}
-	if err := writeYAML(filepath.Join(s.dir, m.Name, indexFile), o); err != nil {
+	if err := writeYAML(filepath.Join(s.dir, sv.Name, indexFile), o); err != nil {
 		return Version{}, err
 	}
-	v, err := s.Load(m.Name, id)
+	v, err := s.Load(sv.Name, sv.ID)
 	if err != nil {
 		return Version{}, err
 	}
-	// A cached load runs no format adapter, so only detection saw what the adapter warned
-	// about; its warnings include everything the cached load warns about.
-	v.Module.Warnings = m.Warnings
-	v.Commit = req.Commit
+	v.Module.Warnings = sv.Module.Warnings
+	v.Commit = sv.Commit
 	return v, nil
 }
 
@@ -261,16 +287,16 @@ func keptExecutables(dir string, execs []string) []string {
 	return slices.Compact(out)
 }
 
-// addVersion assembles content/ and .lola-origin beside the staged content, in the run's
-// staging directory, then renames the whole version into place, so a version directory is
+// addVersion assembles a copy of the staged tree as content/ and .lola-origin beside it, in the
+// run's staging directory, then renames the whole version into place, so a version directory is
 // either complete or absent.
-func (s *Store) addVersion(req PutRequest, vdir string, meta Meta) (err error) {
-	build, err := os.MkdirTemp(filepath.Dir(req.Staged), "version-*")
+func addVersion(staged, vdir string, meta Meta) (err error) {
+	build, err := os.MkdirTemp(filepath.Dir(staged), "version-*")
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(build)) }()
-	if err := os.Rename(req.Staged, filepath.Join(build, "content")); err != nil {
+	if err := os.CopyFS(filepath.Join(build, "content"), os.DirFS(staged)); err != nil {
 		return err
 	}
 	if err := writeYAML(filepath.Join(build, originFile), meta); err != nil {

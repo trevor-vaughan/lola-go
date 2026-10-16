@@ -550,11 +550,11 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		mr.Targets = append(mr.Targets, id)
 	}
 	for _, s := range m.MCPServers {
-		run := MCPRun{Name: s.Name, Transport: s.Transport, Runs: target.Expand(s.URL, pctx)}
+		runs := target.Expand(s.URL, pctx)
 		if s.Transport == module.TransportStdio {
-			run.Runs = target.Expand(strings.Join(append([]string{s.Command}, s.Args...), " "), pctx)
+			runs = target.Expand(strings.Join(append([]string{s.Command}, s.Args...), " "), pctx)
 		}
-		mr.MCPServers = append(mr.MCPServers, run)
+		mr.MCPServers = append(mr.MCPServers, MCPRun{Name: shown(s.Name), Transport: shown(s.Transport), Runs: shown(runs)})
 	}
 	return intents, finds, notes, mr, nil
 }

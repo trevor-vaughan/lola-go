@@ -9,6 +9,7 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 | Command | What it does |
 |---|---|
 | `lola install [<source\|name>...]` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. With no argument on a terminal, walks you through the choices ([Choosing what to install](#choosing-what-to-install)). |
+| `lola sync [--update [<module>...]]` | Make the project (or `--user`) match its manifest: install every entry at the version it pins, render the modules already installed, and remove the ones the manifest no longer lists. Shows and asks about changes to `project.yml` you have not trusted yet ([Sync, pins and trust](#sync-pins-and-trust)). |
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
 | `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref; whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. |
 | `lola render` | Render every installed module again at the version it was installed at (a folder module from its folder). Removes files a module no longer ships. |
@@ -164,7 +165,9 @@ module leaves that entry untrusted. lola refuses to act on an untrusted entry as
 An argument that names such an entry is taken as that name, even when a folder of that name is
 in the current directory: write the folder as `./<name>`.
 
-If you trust the entry, install it from its source, as the hint shows
+`lola sync` shows such changes and asks you to trust them
+([Sync, pins and trust](#sync-pins-and-trust)). The other commands' refusals hint at the other
+way in: if you trust the entry, install it from its source
 (`lola install <source> [--ref r] [--path p]`; a source `project.yml` records relative to the
 project is shown relative to the directory you ran lola in, so run the hint there and the entry
 stays relative): lola writes the entry as new, keeping none of the changed entry's `targets`,
@@ -172,9 +175,10 @@ stays relative): lola writes the entry as new, keeping none of the changed entry
 assistants this checkout installed it on (`lock.json`), not on targets a pull set. Removing the
 module (`lola uninstall <name>`) always works. A project with no record in `trust.json` (a fresh
 clone, a moved directory, a deleted state directory) has every entry untrusted until you
-install each from its source. `lola render`, `lola install` and `lola uninstall` refuse a project
-whose `.lola/lock.json` git tracks, before fetching anything (lola keeps it private to each
-checkout: `git rm --cached .lola/lock.json`).
+install each from its source or trust them with `lola sync`. `lola sync`, `lola render`,
+`lola install` and `lola uninstall` refuse a project whose `.lola/lock.json` git tracks, before
+fetching anything (lola keeps it private to each checkout: `git rm --cached .lola/lock.json`; if
+you never installed with lola in that checkout, delete the file too, then run `lola sync`).
 
 A local source is read through its symbolic links once: lola records the real path, and a source
 you type relative to the project is recorded relative to the project's real root, however you
@@ -192,6 +196,137 @@ no recorded commit, or a fetch that returns another commit or other content), it
 suggests `lola install <source> [--ref r] [--path p]`, which installs what the source serves
 now, or `lola uninstall <name>`. Hooks may build inside the copy: lola leaves its content
 alone, replaces the copy only for a new version or when it is gone, and then runs the hooks again.
+
+## Sync, pins and trust
+
+`lola sync` makes a project match its `.lola/project.yml` (`--user`: `user.yml`), the way a
+teammate who cloned your repository gets what you installed:
+
+```
+git clone https://example.com/acme/api.git && cd api
+lola sync            # shows what project.yml asks for, asks, installs it
+lola sync            # already in sync
+lola sync --update   # fetch every module's ref again and re-pin it
+```
+
+It installs every entry at the version its **pin** names (`commit` and `digest`, written by
+`lola install` and by sync itself, see [Pins](#sources-and-the-cache)), renders the modules
+already installed, and removes what the manifest no longer lists: a whole module, or the targets
+an entry no longer names. A pinned version comes from your cache when it is there; otherwise a git
+module is fetched by its commit, which must be reachable from the entry's `ref`, and an archive is
+fetched again; either way its content must have the pinned digest. When it does not, sync stops:
+`if you expect the change, re-pin it: lola sync --update <module>`. A moved tag or a force-pushed
+branch never changes what sync installs, nor does `lola cache update`.
+
+- **Unpinned entries.** A git or archive entry without a `digest` installs your cache's newest
+  version for its ref (fetching the ref when the cache has none), and sync writes that pin into
+  `project.yml`. Folder entries are never pinned: sync reads the folder on every run, and
+  `--update` writes no pin for one.
+- **`--update [<module>...]`** fetches the refs again (every entry, or the ones named) and re-pins
+  them. Names are taken only with `--update`, and must be entries of the manifest.
+- **Removals** are listed with every file lola wrote for them and confirmed on a terminal
+  (default No); `-y` confirms them, `--trust` does not. Off a terminal without `-y`, a sync that
+  would remove anything is refused. `lock.json` is not trusted input: a recorded path that
+  climbs out of its target's root (`../`, an absolute path) or names a target lola does not know
+  refuses the sync before anything is asked. A recorded path that leaves its root through a
+  symbolic link is refused when the removals are listed, as `lola uninstall` refuses it: after
+  the trust question, before the removals one.
+- **Already in sync.** A second run writes nothing.
+- **Missing commit.** A cached git head recorded without a commit (written before pins) is
+  fetched again at its ref, never refused.
+- **Output order.** The plan, the pins, the removals, the findings and the notices, then the
+  `✓ synced` and `✓ removed` lines.
+- **One source per name.** Your cache keeps one source per module name for every project on the
+  machine. An entry whose name your cache holds from another source or path (a pulled
+  `project.yml` that moved a folder, say) is refused before anything is fetched:
+  `lola cache rm <module>`, then `lola sync` again. **Known limitation:** two checkouts or
+  worktrees of one repository whose `project.yml` lists folder modules inside the repository name
+  the same modules from different folders, so each one's sync refuses what the other cached and
+  coaches `lola cache rm` again.
+
+**The trust diff.** At project scope, sync compares `project.yml`, with the pins it would write,
+to what you last trusted (`$XDG_STATE_HOME/lola/trust.json`): what lola wrote there, or what you
+accepted in an earlier sync. Any difference is shown before anything is cached or installed, with
+the content each changed entry brings:
+
+```
+.lola/project.yml changed since lola last wrote it or you last trusted it:
+  ! review-kit    source host changed: https://github.com/acme/review-kit.git → https://git.example.net/acme/review-kit.git
+  + lint-pack     https://github.com/acme/lint-pack.git  ref v2
+                  commit 4f1c2d3e5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d
+                  digest sha256:3f2a9c1b7d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d8e
+      files: + skills/lint/SKILL.md  + commands/fix.md
+      MCP server github (stdio) runs: npx -y @acme/github-mcp
+        env: GITHUB_TOKEN=${GITHUB_TOKEN}
+      install hook post-install: scripts/setup.sh
+  ~ notes         ref v1 → v2 (content not fixed; installs what v2 serves now)
+  - old-mod
+  ~ targets       [claude-code] → [claude-code, opencode]
+Trust these changes and continue?
+```
+
+`!` marks a source that moved to another host, scheme, or between your disk and the network; a
+change to or from the `host:path` form always counts, since it may name a folder. A note on an
+entry whose manifest does not pin its content says what it installs: for a git entry its ref (or
+`the default branch`), for an archive `installs what <file or URL> serves now`. The
+files are compared with the version installed, from your cache; when your cache no longer has it,
+or cannot read it, every file is listed as added with a note saying why (lola never fetches the
+old version to compare). Up to 40 files are
+listed per module; `lola sync -n --json` lists all. Each MCP server shows what it runs, with
+every argument that is not a plain word in quotes (`sh -c "curl x|sh"` is three words), or where
+it connects, then its `env`, `header` and `cwd` lines, since each can change what runs or where
+data goes. Every hook the content declares is listed: install hooks, runtime hooks and an
+agent's own hooks and MCP servers, whatever assistants the entry installs for and whichever
+components you deselected. Accepting the diff is your consent to the module MCP servers it lists.
+
+- On a terminal, sync asks (default No). A yes is recorded once the sync has applied; if it fails,
+  or you answer No, the next sync asks again. A No or Ctrl+C prints `aborted; nothing installed.`
+  (your cache may already hold the versions you had trusted before). A No to the removals prints
+  it too: nothing is installed, removed or recorded, though your cache keeps the versions you
+  had just trusted.
+- Off a terminal (or under `--json`), `--trust` accepts the changes, and prints the diff it
+  accepted on stderr (except under `--json`, whose `trust` holds it). Without it the run is
+  refused before any network contact, with the changes (without their content: nothing was
+  fetched) and the hints `lola sync -n` and `lola sync --trust`. `-y` confirms removals only; it
+  never trusts.
+- A pin sync writes is a change you trust, even for an entry you trusted before: re-pinning
+  with `--update`, and writing back the pin of an unpinned entry, need a yes or `--trust`.
+- Neither a yes, `--trust` nor `-y` consents to install hooks, runtime hooks or an agent's MCP
+  servers: lola still asks for each, or takes `--allow-hooks` and `--allow-runtime-hooks`.
+- A project with no record in `trust.json` (a fresh clone, a moved directory, a deleted state
+  directory) has every entry untrusted: the first sync shows them all under
+  `.lola/project.yml has not been trusted on this machine (a fresh clone, or a moved project):`
+  and asks once. A manifest with no modules and no targets has nothing to trust.
+- If lola cannot write `trust.json` after applying, the error says what was applied, and what it
+  wrote stays untrusted: fix the file, then run `lola sync` again to review and trust it.
+- User scope has no trust diff: `user.yml` is yours.
+
+**Folder modules in the repository.** `project.yml` names a folder, not its content, so sync
+trusts a folder's content by the version installed (`lock.json`). When a folder you trusted holds
+something else (a pull changed the module, or you edited it), sync shows it as a change of its
+digest with the files, MCP servers and hooks, and asks as for any other change; off a terminal
+the run is refused without `--trust`
+(`the content of <module> changed since lola last installed it, which needs your trust, …`).
+A checkout without `lock.json` has no version installed, so sync asks about each folder module
+once. When nothing else in `project.yml` changed, the diff is headed
+`.lola/project.yml is unchanged, but module content changed since lola installed it or you last
+trusted it:`.
+
+**Local sources stay in the project.** A folder, local archive or `file://` source of an entry you
+have not trusted must resolve, after symbolic links, inside the project root, and so must one you
+installed from inside the project, so that a pulled symbolic link cannot lead it out. One that
+leaves it is refused before the diff, and neither `--trust` nor `-y` overrides it:
+`<module>: local source ../x resolves outside the project (/home/me/x)`, with the hint to install
+it yourself if you trust it (`lola install /home/me/x`), which records the entry as trusted. A
+source you installed from outside the project is not checked. A project reached through a
+symbolic link is checked against its real root.
+
+**What a sync caches.** Content of entries you have not trusted is fetched into the run's
+private directory and enters your cache only after you trust it. `-n` (dry run) shows the diff,
+the plan, the pins and the removals on stdout, asks nothing and writes nothing to the project, the
+manifest or `trust.json`; the content of trusted entries at their pins may still be fetched into
+your cache, without moving any ref's cached head, and at user scope `--update -n` fetches into
+your cache and moves the refs' cached heads, as `-n` may there.
 
 ## Module layout
 
@@ -963,7 +1098,7 @@ copy's directories before it removes the original.
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
-| `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
+| `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote or you trusted in `lola sync` (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
@@ -985,16 +1120,19 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   `.lola/project.yml` is a symlink, and replaces a module copy that is not a real directory. At
   user scope a symlinked `user.yml` is followed and edited at its target.
 - Changes are transactional: if anything fails, every file is restored.
-- `--dry-run` (`-n`) prints the plan and writes nothing.
+- `--dry-run` (`-n`) prints the plan and writes nothing (`lola sync -n` may still fetch the
+  versions you trusted into your cache).
 - lola never rewrites a `project.yml` entry someone else changed, and never installs one by name
-  (see [Trust](#sources-and-the-cache)); `render`, `install` and `uninstall` refuse a
-  `.lola/lock.json` that git tracks.
+  (see [Trust](#sources-and-the-cache)); `lola sync` shows such changes and asks first
+  ([Sync, pins and trust](#sync-pins-and-trust)). `sync`, `render`, `install` and `uninstall`
+  refuse a `.lola/lock.json` that git tracks.
 - Each command that fetches keeps its temporary files in one private directory,
-  `$XDG_CACHE_HOME/lola/.staging/run-*`, removed when it ends. `install`, `render` and
+  `$XDG_CACHE_HOME/lola/.staging/run-*`, removed when it ends. `install`, `sync`, `render` and
   `cache update` also remove those a killed lola left behind once they are a day old, and warn
   when they cannot. A dry run (`-n`) still does this: the directories are lola's own temporaries.
-  A command left waiting at a confirmation prompt for more than a day may lose its directory to
-  that sweep; run it again.
+  A command left waiting at a prompt for more than a day (an install's confirmation, a hook
+  consent, or sync's trust or removal question) may lose its directory to that sweep; run it
+  again.
 
 ## Output contract
 
@@ -1005,11 +1143,36 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 - Exit status: `0` on success or when you decline a prompt; `1` on any error.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
-- Without a terminal, `uninstall`, `cache rm` and `migrate` need `-y`.
+- Without a terminal, `uninstall`, `cache rm` and `migrate` need `-y`. `sync` needs `-y` to
+  remove anything and `--trust` to accept changes to `project.yml`, including the pin it writes
+  back for an unpinned entry you trusted before; `-y` never trusts.
 - `install --json` adds `scopes` (each with `scope`, `root` and `scope_source`), and per
   module `scope`, `skipped` (component names, `[]` when none) and `saved_to` (the
   `selections.yaml` it wrote, or `""`), and `equivalent_commands` (`[]` when no step was shown).
   `list --json` and `check --json` carry `skipped` per module.
+- `sync --json`: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, and the
+  plan's `modules`, `steps`, `findings` and `notices`. `trust` has `status` (`trusted`, `new`,
+  `changed`, or `not_applicable` at user scope), `recorded` (this run wrote the trust record),
+  `targets` (the top-level targets' `field`, `from` and `to`, or `null` when trusted) and
+  `changes`: per module `module`, `change` (`added`, `changed`, `removed`), `host_changed`,
+  `content_fixed`, `note` (for an entry that does not pin its content), `fields` (`field`, `from`,
+  `to`: strings, a list for `targets`, a boolean for `rules`, `null` for an absent value),
+  `files` (`path`, `change`), `files_note`, `mcp_servers` (`name`, `transport`, `runs`, `env` as
+  `NAME=value` strings and `headers` as `Name: value` strings, each sorted and `[]` when none,
+  and `cwd`, `""` when unset) and `hooks` (`kind`: `install`, `runtime` or `mcp_server`;
+  `target`, `event`, `detail`). `pins`: `module`, `ref`, `commit`, `digest`, `previous_digest`,
+  `reason` (`unpinned` or `update`), `written` (false in a dry run). `removals`: `module`,
+  `targets`, `whole_module`, `paths` (each `target` and `path`). Commits and digests are full.
+  A refusal for lack of a terminal prints the changes on stderr first, except under `--json`.
+  `--plain` adds `pin` (module, digest, reason) and `remove` (module, target, path) rows after
+  the plan's; in a dry run `trust` rows (module, change; the top-level targets' row has an empty
+  module and the change `targets`) come before the plan's.
+- Text a module or a manifest chose (names, paths, hook scripts such as `modules[].hooks[].script`
+  and the scripts of install hooks, `mcp_servers[].runs`, module warnings, the trust diff, and the
+  module file names in `lola cache show`, human or `--json`) shows control and invisible characters
+  as `?` in JSON as on a terminal. `runs` and a hook's `script` are for reading, not an exact
+  command line to run. A step's `path`, `member` and `value` are the exception: they are what lola
+  wrote, raw but for JSON's escaping.
 - `migrate --json`: `dry_run`, `nothing_to_migrate`, `python_home`, `trash` (`""` when nothing
   was put there), `home` (`action` `move`, `keep` or `none`, with `reason` and `trash`),
   `unmappable` and `not_migrated` (each entry with its `hints`), `warnings`, and per

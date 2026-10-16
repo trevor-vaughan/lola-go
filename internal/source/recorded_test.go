@@ -60,3 +60,27 @@ var _ = Describe("Recorded.Check", func() {
 		Entry("a bidi override in the path", source.Recorded{Source: "../x", Path: "a\u202eb"}, "path holds control or invisible characters"),
 	)
 })
+
+var _ = Describe("Host", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("names where a recorded location is fetched from", func() {
+		for loc, want := range map[string]string{
+			"https://GitHub.com/acme/a.git":      "https://github.com",
+			"https://github.com:8443/acme/a.git": "https://github.com:8443",
+			"http://127.0.0.1:9/a.git":           "http://127.0.0.1:9",
+			"ssh://git@git.example.net/a.git":    "ssh://git.example.net",
+			"git@git.example.net:acme/a.git":     "ssh://git.example.net",
+			"mods/a":                             "",
+			"/abs/a.zip":                         "",
+			"file:///abs/a.zip":                  "",
+			"https://github.com@evil.com/x":      "https://evil.com",
+			"Git@GitHub.COM:a/b":                 "ssh://github.com",
+		} {
+			Expect(source.Host(loc)).To(Equal(want), loc)
+		}
+		Expect(source.Host("https://a.example/x.git")).NotTo(Equal(source.Host("https://b.example/x.git")))
+		Expect(source.Host("https://a.example/x.git")).NotTo(Equal(source.Host("ssh://a.example/x.git")), "another scheme")
+		Expect(source.Host("https://%zz/x.git")).To(Equal("https://%zz/x.git"), "an unparseable URL matches nothing else")
+	})
+})
