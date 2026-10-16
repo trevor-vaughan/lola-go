@@ -34,9 +34,6 @@ var _ = Describe("Compute", func() {
 	mcp := func(name, value string) plan.Intent {
 		return plan.Intent{Target: tgt, Kind: "mcp", Op: plan.OpSetJSON, Path: ".mcp.json", Pointer: "/mcpServers/" + name, Value: []byte(value)}
 	}
-	block := func(lines ...string) plan.Intent {
-		return plan.Intent{Target: tgt, Kind: plan.KindPointerBlock, Op: plan.OpPointerBlock, Path: "CLAUDE.md", Lines: lines}
-	}
 	req := func(force bool, changes ...plan.ModuleChange) plan.Request {
 		return plan.Request{Roots: map[string]string{tgt: root}, BaseDirs: map[string][]string{tgt: {".claude/commands"}},
 			Ledger: led, Force: force, Changes: changes}
@@ -310,37 +307,6 @@ var _ = Describe("Compute", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(p.Files[0].Delete).To(BeTrue())
 			Expect(p.Ledger.Created).To(BeEmpty())
-		})
-	})
-
-	Describe("shared pointer blocks", func() {
-		shared := func(intents ...plan.Intent) plan.Request {
-			r := req(false)
-			r.SharedTargets, r.Shared = []string{tgt}, intents
-			return r
-		}
-
-		It("creates CLAUDE.md, then deletes it when the last line goes", func() {
-			p, err := plan.Compute(shared(block("@.claude/lola/a.md")))
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(p.Files[0].Data)).To(Equal("<!-- lola:instructions:start -->\n@.claude/lola/a.md\n<!-- lola:instructions:end -->\n"))
-			Expect(p.Ledger.Shared[0].Kind).To(Equal(plan.KindPointerBlock))
-			apply(p)
-			p, err = plan.Compute(shared())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(p.Files[0].Delete).To(BeTrue())
-			Expect(p.Ledger.Shared).To(BeEmpty())
-		})
-
-		It("keeps the user's CLAUDE.md text byte-identical around the block", func() {
-			put("CLAUDE.md", "# Rules\n")
-			p, err := plan.Compute(shared(block("@.claude/lola/a.md")))
-			Expect(err).NotTo(HaveOccurred())
-			apply(p)
-			p, err = plan.Compute(shared())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(p.Files[0].Delete).To(BeFalse())
-			Expect(string(p.Files[0].Data)).To(Equal("# Rules\n"))
 		})
 	})
 

@@ -15,11 +15,14 @@ type Paths struct {
 	UserManifest string // ConfigHome/lola/user.yml
 	UserLedger   string // StateHome/lola/lock.json
 	UserLock     string // StateHome/lola/.lock
-	Store        string // DataHome/lola/modules
-	StoreLock    string // DataHome/lola/.lock
-	PluginData   string // DataHome/lola/plugin-data
-	Staging      string // DataHome/lola/.staging: same filesystem as Store, so renames never cross devices
+	Locks        string // StateHome/lola/locks: one lock file per project, outside the project's .lola/
+	Consent      string // StateHome/lola/consent.json: install hook consent (§9.1)
+	Store        string // CacheHome/lola/modules: the cache
+	StoreLock    string // CacheHome/lola/.lock
+	Staging      string // CacheHome/lola/.staging: same filesystem as Store, so renames never cross devices
 	Tmp          string // CacheHome/lola/tmp: downloads
+	UserModules  string // DataHome/lola/user-modules: module copies at user scope
+	PluginData   string // DataHome/lola/plugin-data
 }
 
 // Resolve computes Paths. An XDG variable that is unset, empty or relative falls back to
@@ -47,10 +50,13 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.UserManifest = filepath.Join(p.ConfigHome, "lola", "user.yml")
 	p.UserLedger = filepath.Join(p.StateHome, "lola", "lock.json")
 	p.UserLock = filepath.Join(p.StateHome, "lola", ".lock")
-	p.Store = filepath.Join(p.DataHome, "lola", "modules")
-	p.StoreLock = filepath.Join(p.DataHome, "lola", ".lock")
-	p.PluginData = filepath.Join(p.DataHome, "lola", "plugin-data")
-	p.Staging = filepath.Join(p.DataHome, "lola", ".staging")
+	p.Locks = filepath.Join(p.StateHome, "lola", "locks")
+	p.Consent = filepath.Join(p.StateHome, "lola", "consent.json")
+	p.Store = filepath.Join(p.CacheHome, "lola", "modules")
+	p.StoreLock = filepath.Join(p.CacheHome, "lola", ".lock")
+	p.Staging = filepath.Join(p.CacheHome, "lola", ".staging")
 	p.Tmp = filepath.Join(p.CacheHome, "lola", "tmp")
+	p.UserModules = filepath.Join(p.DataHome, "lola", "user-modules")
+	p.PluginData = filepath.Join(p.DataHome, "lola", "plugin-data")
 	return p, nil
 }

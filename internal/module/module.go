@@ -56,10 +56,16 @@ type MCPServer struct {
 	Targets   []string
 }
 
-// Hook is an install hook a module declares. lola never runs hooks; it lists them.
+// Rule is always-on context (§5.6): rules/<Name>.md with its frontmatter removed.
+type Rule struct {
+	Name, Body string
+}
+
+// Hook is an install hook a module declares (§9.1): Script is the module-relative path of an
+// executable regular file. lola runs hooks only with the user's consent.
 type Hook struct {
-	Event   string `json:"event"`
-	Command string `json:"command"`
+	Event  string `json:"event"`
+	Script string `json:"script"`
 }
 
 // Module is the IR every format adapter produces and every target consumes.
@@ -70,20 +76,16 @@ type Module struct {
 	Targets                                                   []string       // declared support matrix; empty = all
 	Formats                                                   map[string]any // verbatim passthrough keyed by format id
 	Format                                                    string         // detected source format: "lola" or "native"
+	Manifest                                                  string         // manifest file read (ManifestNames), "" for the native layout
+	Shadowed                                                  []string       // lower-precedence manifests that were ignored
 	Skills                                                    []Skill
 	Commands                                                  []Command
 	Agents                                                    []Agent
 	MCPServers                                                []MCPServer
-	Instructions                                              string // INSTRUCTIONS.md content, "" if absent
-	LegacyAgentsMD                                            bool
+	Rules                                                     []Rule
 	DeclaredHooks                                             []Hook
 	Warnings                                                  []string // non-fatal load problems, e.g. skipped skills
 }
-
-// LegacyAgentsMDWarning is printed at cache add and install when a module ships AGENTS.md
-// (ADR #242: lola never installs a module's AGENTS.md).
-const LegacyAgentsMDWarning = "AGENTS.md in a module is not installed: lola owns no part of your " +
-	"assistants' AGENTS.md. Rename it to INSTRUCTIONS.md to ship always-on instructions (ADR #242)."
 
 // Supports reports whether an artifact or module restricted to targets applies to id.
 // An empty list means every target.

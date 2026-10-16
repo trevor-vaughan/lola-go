@@ -45,7 +45,7 @@ var _ = Describe("Store", func() {
 		s = store.New(p)
 	})
 
-	It("stores a version, moves the staged dir, and records origin and head", func() {
+	It("stores a version, moves the staged dir, and records the index and the version's .lola-origin", func() {
 		staged := stage(map[string]string{"commands/a.md": "A"})
 		v, err := s.Put(store.PutRequest{Staged: staged, FallbackName: "example", Source: "/src/example", Type: "folder", Now: now})
 		Expect(err).NotTo(HaveOccurred())
@@ -53,16 +53,51 @@ var _ = Describe("Store", func() {
 		Expect(v.ID).To(HaveLen(12))
 		Expect(v.Meta.Digest).To(HavePrefix("sha256:" + v.ID))
 		Expect(v.Meta.FetchedAt).To(Equal("2026-10-08T12:00:00Z"))
+		Expect(v.Meta.Format).To(Equal("native"))
+		Expect(filepath.Join(p.Store, "example", "versions", v.ID, ".lola-origin")).To(BeARegularFile())
 		Expect(v.Module.Commands).To(HaveLen(1))
 		Expect(filepath.Join(v.ContentDir, "commands/a.md")).To(BeARegularFile())
 		Expect(staged).NotTo(BeADirectory())
 		o, found, err := s.Origin("example")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found).To(BeTrue())
-		Expect(o).To(Equal(store.Origin{Source: "/src/example", Type: "folder", Format: "native", Heads: []store.Head{{Ref: "", Digest: v.ID}}}))
-		fi, err := os.Stat(filepath.Join(p.Store, "example", "origin.yml"))
+		Expect(o).To(Equal(store.Origin{Source: "/src/example", Type: "folder", Heads: []store.Head{{Ref: "", Digest: v.ID}}}))
+		fi, err := os.Stat(filepath.Join(p.Store, "example", "index.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
+	})
+
+	It("refuses a cache index whose head is not a version id, before using it in a path", func() {
+		_, err := put(map[string]string{"commands/a.md": "x"}, "")
+		Expect(err).NotTo(HaveOccurred())
+		index := filepath.Join(p.Store, "example", "index.yml")
+		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: folder\nheads:\n  - {ref: \"\", digest: ../../../outside}\n"), 0o600)).To(Succeed())
+		_, _, err = s.Origin("example")
+		Expect(err).To(MatchError(ContainSubstring(`version id "../../../outside" is invalid`)))
+		_, _, err = s.Head("example", "")
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("refuses names and version ids that are not lola's before using them in a path", func() {
+		_, _, err := s.Origin("../outside")
+		Expect(err).To(MatchError(ContainSubstring("module name")))
+		_, err = s.Load("../outside", "0123456789ab")
+		Expect(err).To(MatchError(ContainSubstring("module name")))
+		_, err = s.Load("example", "../versions")
+		Expect(err).To(MatchError(ContainSubstring("is invalid")))
+	})
+
+	It("normalizes at add: one generated lola.yml, the others removed and recorded in .lola-origin", func() {
+		v, err := put(map[string]string{"lola.yml": "name: example\n", ".lola.yaml": "name: other\n", "commands/a.md": "x"}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Meta.Format).To(Equal("lola"))
+		Expect(v.Meta.Manifest).To(Equal("lola.yml"))
+		Expect(v.Meta.OthersPresent).To(Equal([]string{".lola.yaml"}))
+		Expect(filepath.Join(v.ContentDir, ".lola.yaml")).NotTo(BeAnExistingFile())
+		b, err := os.ReadFile(filepath.Join(v.ContentDir, "lola.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal("name: example\n"))
+		Expect(store.Digest(v.ContentDir)).To(Equal(v.Meta.Digest), "the digest covers the normalized content")
 	})
 
 	It("keeps one head per ref so projects can pin different refs", func() {

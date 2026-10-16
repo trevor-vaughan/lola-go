@@ -21,8 +21,12 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 )
 
-// load takes the scope lock (unless dry) and reads the manifest and ledger.
+// load refuses symlinked project state, takes the scope lock (unless dry) and reads the
+// manifest and ledger.
 func (e *Engine) load(sc Scope, dry bool) (*manifest.Manifest, *ledger.Ledger, func(), error) {
+	if err := e.refuseSymlinkedState(sc); err != nil {
+		return nil, nil, nil, err
+	}
 	unlock := func() {}
 	if !dry {
 		u, err := e.lock(sc)
@@ -82,6 +86,7 @@ func (e *Engine) Install(ctx context.Context, sc Scope, cwd string, reqs []Insta
 	}
 	res := newResult(opts.DryRun)
 	var changes []plan.ModuleChange
+	var copies []moduleCopy
 	var entries []manifest.Entry
 	var fetched []string
 	for _, r := range reqs {
@@ -108,16 +113,31 @@ func (e *Engine) Install(ctx context.Context, sc Scope, cwd string, reqs []Insta
 				ent.Ref = prev.Ref
 			}
 		}
-		intents, notes, mr, err := e.planModule(sc, v, modTargets)
+		if prev := man.Find(v.Name); prev != nil {
+			ent.Rules = prev.Rules
+		}
+		if opts.Rules != nil {
+			ent.Rules = nil
+			if !*opts.Rules {
+				ent.Rules = opts.Rules
+			}
+		}
+		intents, notes, mr, err := e.planModule(sc, v, modTargets, &ent)
 		if err != nil {
 			return nil, withRetry(err, fetched)
 		}
 		res.Modules, res.Notices = append(res.Modules, mr), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: v.Name, Targets: modTargets, Intents: intents,
 			Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: v.Meta.Commit, Digest: v.Meta.Digest}})
+		replace, err := needsCopy(e.files(sc).modules, v.Name, led.Modules[v.Name], v.Meta.Digest)
+		if err != nil {
+			return nil, withRetry(err, fetched)
+		}
+		copies = append(copies, moduleCopy{name: v.Name, src: v.ContentDir, replace: replace,
+			hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true})
 		entries = append(entries, ent)
 	}
-	err = e.execute(sc, led, changes, opts, res, func(*plan.Plan) error {
+	err = e.execute(ctx, sc, led, changes, copies, opts, res, func(*plan.Plan) error {
 		if len(man.Targets) == 0 {
 			man.Targets = targets
 		}
@@ -215,9 +235,9 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 			ts = allTargets(entry, ment, man)
 		}
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts})
-		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []module.Hook{}})
+		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []HookRun{}})
 	}
-	err = e.execute(sc, led, changes, opts, res, func(p *plan.Plan) error {
+	err = e.execute(ctx, sc, led, changes, nil, opts, res, func(p *plan.Plan) error {
 		for _, name := range names {
 			left := p.Ledger.Modules[name]
 			if left == nil {
@@ -262,6 +282,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 	}
 	sort.Strings(names)
 	var changes []plan.ModuleChange
+	var copies []moduleCopy
 	for _, name := range names {
 		entry := led.Modules[name]
 		v, ok, err := e.Store.Head(name, entry.Ref)
@@ -304,22 +325,29 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 		if len(ts) == 0 {
 			continue
 		}
-		intents, notes, mr, err := e.planModule(sc, v, ts)
+		intents, notes, mr, err := e.planModule(sc, v, ts, man.Find(name))
 		if err != nil {
 			return nil, err
 		}
 		res.Modules, res.Notices = append(res.Modules, mr), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
 			Entry: &ledger.Entry{Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Meta.Commit, Digest: v.Meta.Digest}})
+		replace, err := needsCopy(e.files(sc).modules, name, entry, v.Meta.Digest)
+		if err != nil {
+			return nil, err
+		}
+		copies = append(copies, moduleCopy{name: name, src: v.ContentDir, replace: replace,
+			hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace})
 	}
-	if err := e.execute(sc, led, changes, opts, res, func(*plan.Plan) error { return e.makePluginData(sc, changes) }); err != nil {
+	if err := e.execute(ctx, sc, led, changes, copies, opts, res, func(*plan.Plan) error { return e.makePluginData(sc, changes) }); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-// Status reports each installed module × target: missing (an owned destination is gone),
-// modified (one differs from what lola wrote), stale (the store head differs), or ok.
+// Status reports each installed module × target: missing (an owned destination or the
+// module copy is gone), modified (a destination differs from what lola wrote), stale (the
+// store head differs), or ok. A module copy's content is not compared: hooks build in it.
 func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
@@ -337,11 +365,17 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			// The cached head cannot be loaded (corrupt, unknown key): report it and keep going.
 			for _, id := range allTargets(entry, man.Find(name), man) {
-				rows = append(rows, StatusRow{Name: name, Target: id, Status: "unreadable", Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest})
+				rows = append(rows, StatusRow{Name: name, Target: id, Status: "unreadable", Rules: man.Find(name).RulesOn(),
+					Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest})
 			}
 			continue
 		}
 		stale := ok && v.Meta.Digest != entry.Digest
+		_, err = os.Lstat(filepath.Join(e.files(sc).modules, name))
+		copyMissing := errors.Is(err, fs.ErrNotExist)
+		if err != nil && !copyMissing {
+			return nil, err
+		}
 		for _, id := range allTargets(entry, man.Find(name), man) {
 			if ok && !module.Supports(v.Module.Targets, id) {
 				continue
@@ -368,10 +402,14 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 					status = "modified"
 				}
 			}
+			if copyMissing {
+				status = "missing"
+			}
 			if status == "ok" && stale {
 				status = "stale"
 			}
-			rows = append(rows, StatusRow{Name: name, Target: id, Status: status, Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest})
+			rows = append(rows, StatusRow{Name: name, Target: id, Status: status, Rules: man.Find(name).RulesOn(),
+				Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest})
 		}
 	}
 	return rows, nil

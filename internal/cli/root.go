@@ -27,7 +27,6 @@ var errAborted = errors.New("aborted")
 const (
 	groupCore       = "core"
 	groupStore      = "store"
-	groupCompat     = "compat"
 	groupAdditional = "additional"
 )
 
@@ -89,7 +88,6 @@ func NewRootCmd(getenv func(string) string) *cobra.Command {
 	root.AddGroup(
 		&cobra.Group{ID: groupCore, Title: "Core:"},
 		&cobra.Group{ID: groupStore, Title: "Cache:"},
-		&cobra.Group{ID: groupCompat, Title: "Compatibility:"},
 		&cobra.Group{ID: groupAdditional, Title: "Additional:"},
 	)
 	a.addCoreCommands(root)

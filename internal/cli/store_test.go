@@ -21,6 +21,7 @@ var _ = Describe("store, search and init commands", func() {
 		proj, mod = filepath.Join(tmp, "proj"), filepath.Join(tmp, "example")
 		writeTree(mod, map[string]string{
 			"lola.yml":         "name: example\ndescription: Code review helpers\nversion: 1.2.0\nkeywords: [git, review]\nhooks: {pre-install: setup.sh}\n",
+			"setup.sh":         "#!/bin/sh\n",
 			"commands/ship.md": "Ship\n",
 			"AGENTS.md":        "legacy",
 		})
@@ -39,11 +40,11 @@ var _ = Describe("store, search and init commands", func() {
 		r := lola("cache", "add", mod)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("example 1.2.0"))
-		Expect(r.out).To(ContainSubstring("⚠ example declares install hooks that lola does not run:"))
+		Expect(r.out).To(ContainSubstring("⚠ example has install hooks; lola runs them only with your consent:\n    pre-install: setup.sh"))
 		Expect(r.out).To(ContainSubstring("AGENTS.md in a module is not installed"))
 		Expect(r.out).To(ContainSubstring("✓ cached example; install it with: lola install example"))
 
-		r = lola("mod", "ls")
+		r = lola("cache", "ls")
 		Expect(r.out).To(MatchRegexp(`(?m)^example\s+1\.2\.0\s+1\s+` + regexpQuote(mod) + `$`))
 
 		r = lola("cache", "show", "example", "--json")
@@ -52,7 +53,8 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(info["format"]).To(Equal("lola"))
 		Expect(info["commands"]).To(Equal([]any{"ship"}))
 		Expect(info["skills"]).To(Equal([]any{}))
-		Expect(info["hooks"]).To(Equal([]any{map[string]any{"event": "pre-install", "command": "setup.sh"}}))
+		Expect(info["rules"]).To(Equal([]any{}))
+		Expect(info["hooks"]).To(Equal([]any{map[string]any{"event": "pre-install", "script": "setup.sh"}}))
 
 		Expect(lola("cache", "update").out).To(ContainSubstring("→ example (default): unchanged"))
 		writeTree(mod, map[string]string{"commands/ship.md": "Ship v2\n"})
@@ -60,11 +62,21 @@ var _ = Describe("store, search and init commands", func() {
 
 		r = lola("cache", "rm", "example")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("MCP servers that run from the cache will stop working"))
+		Expect(r.err).To(ContainSubstring("will remove from your cache: example"))
+		Expect(r.err).NotTo(ContainSubstring("stop working"))
 		Expect(r.err).To(ContainSubstring("hint: pass -y to confirm"))
 		r = lola("cache", "delete", "example", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(lola("cache", "list").out).To(ContainSubstring("your cache is empty"))
+	})
+
+	It("cache info warns about a manifest that normalization ignored", func() {
+		writeTree(mod, map[string]string{".lola.yml": "name: other\n"})
+		Expect(lola("cache", "add", mod).code).To(Equal(0))
+		r := lola("cache", "info", "example", "--json")
+		var info map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
+		Expect(info["warnings"]).To(ContainElement(".lola.yml was ignored: lola.yml takes precedence"))
 	})
 
 	It("refuses to remove a module that is not stored", func() {
@@ -93,6 +105,8 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(filepath.Join(proj, ".claude/skills/hello/SKILL.md")).To(BeARegularFile())
 		Expect(lola("init", "fresh").err).To(ContainSubstring("already a module"))
 		Expect(lola("init", "Bad_Name").err).To(ContainSubstring("module name"))
+		writeTree(filepath.Join(tmp, "hidden"), map[string]string{".lola.yml": "name: hidden\n"})
+		Expect(lola("init", "hidden").err).To(ContainSubstring("already a module (it has .lola.yml)"))
 	})
 
 	It("init writes nothing when any scaffold path already exists", func() {
@@ -105,20 +119,13 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(filepath.Join(dir, "commands")).NotTo(BeADirectory())
 	})
 
-	It("lola mod init <dir> scaffolds a module", func() {
+	It("a module scaffolded by lola init installs as is", func() {
 		GinkgoT().Chdir(tmp)
-		r := lola("mod", "init", "fresh")
+		r := lola("init", "fresh")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("✓ created module fresh in fresh"))
 		Expect(lola("install", "./fresh", "-C", proj, "-t", "claude-code").code).To(Equal(0))
 		Expect(filepath.Join(proj, ".claude/skills/hello/SKILL.md")).To(BeARegularFile())
-	})
-
-	It("lola mod ls lists the cache", func() {
-		Expect(lola("cache", "add", mod).code).To(Equal(0))
-		r := lola("mod", "ls")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(MatchRegexp(`(?m)^example\s+1\.2\.0\s+1\s+`))
 	})
 
 	It("bare lola cache lists the cache", func() {
@@ -136,7 +143,6 @@ var _ = Describe("store, search and init commands", func() {
 	})
 
 	It("completes subcommand aliases, including group aliases", func() {
-		Expect(lola("__complete", "mo").out).To(HavePrefix("mod\tCompatibility commands: forward to lola cache and lola init\n"))
 		Expect(lola("__complete", "cache", "ls").out).To(HavePrefix("ls\tList modules in your cache\n"))
 		Expect(lola("__complete", "cache", "l").out).To(HavePrefix("list\t"))
 	})
@@ -153,8 +159,8 @@ var _ = Describe("store, search and init commands", func() {
 			writeTree(other, map[string]string{"lola.yml": "name: other\ndescription: Other thing\n", "commands/o.md": "O\n"})
 			Expect(lola("cache", "add", mod).code).To(Equal(0))
 			Expect(lola("cache", "add", other).code).To(Equal(0))
-			Expect(lola("install", "example", "-t", "claude-code", "-C", proj).code).To(Equal(0))
-			vers, err := filepath.Glob(filepath.Join(tmp, "data", "lola", "modules", "example", "versions", "*", "content", "lola.yml"))
+			Expect(lola("install", "example", "-t", "claude-code", "-C", proj, "--allow-hooks").code).To(Equal(0))
+			vers, err := filepath.Glob(filepath.Join(tmp, "cache", "lola", "modules", "example", "versions", "*", "content", "lola.yml"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(vers).To(HaveLen(1))
 			f, err := os.OpenFile(vers[0], os.O_APPEND|os.O_WRONLY, 0)
@@ -228,11 +234,6 @@ var _ = Describe("published alias table", func() {
 			"lola cache list":   {"ls"},
 			"lola cache info":   {"show", "view"},
 			"lola cache search": {"find"},
-			"lola mod add":      {"get"},
-			"lola mod rm":       {"remove", "uninstall", "erase", "delete", "del"},
-			"lola mod list":     {"ls"},
-			"lola mod info":     {"show", "view"},
-			"lola mod search":   {"find"},
 			"lola version":      {"ver"},
 		}))
 	})

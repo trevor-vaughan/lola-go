@@ -7,6 +7,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
 
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 )
 
@@ -45,4 +46,29 @@ func pickTargets(cmd *cobra.Command, detected []string) ([]string, error) {
 		return nil, errAborted
 	}
 	return chosen, err
+}
+
+// hookOptions sets the install hook options of a command (§9.1): --allow-hooks grants consent
+// for the run; otherwise, on a terminal, lola asks per module, defaulting to No. Hook output
+// goes to stderr.
+func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options, allow bool) {
+	opts.AllowHooks, opts.HookOutput = allow, cmd.ErrOrStderr()
+	if allow || !interactive(cmd) || a.json {
+		return
+	}
+	opts.Ask = func(module string, hooks []engine.HookScript) (bool, error) {
+		w := cmd.ErrOrStderr()
+		fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
+		for _, h := range hooks {
+			fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, h.Script, h.SHA256)
+		}
+		fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
+		ok := false
+		err := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title("Run " + module + "'s install hooks?").Value(&ok))).
+			WithInput(cmd.InOrStdin()).WithOutput(w).Run()
+		if errors.Is(err, huh.ErrUserAborted) {
+			return false, errAborted
+		}
+		return ok, err
+	}
 }

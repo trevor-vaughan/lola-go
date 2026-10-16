@@ -37,7 +37,7 @@ func (Claude) Detect(root string) bool {
 
 // BaseDirs implements Target.
 func (Claude) BaseDirs(Scope) []string {
-	return []string{".claude/skills", ".claude/commands", ".claude/agents", ".claude/lola"}
+	return []string{".claude/skills", ".claude/commands", ".claude/agents", ".claude/rules"}
 }
 
 // Plan implements Target.
@@ -97,13 +97,14 @@ func (c Claude) Plan(m *module.Module, ctx PlanContext) ([]plan.Intent, []Notice
 		}
 		out = append(out, plan.Intent{Target: id, Kind: "mcp", Op: plan.OpSetJSON, Path: mcpFile, Pointer: "/mcpServers/" + s.Name, Value: value})
 	}
-	if m.Instructions != "" {
-		if ctx.Scope == User {
-			notes = append(notes, Notice{Level: LevelInfo, Text: fmt.Sprintf(
-				"%s: instructions are not installed at user scope, because they would apply to every project", m.Name)})
-		} else {
-			out = append(out, text("instructions", ".claude/lola/"+m.Name+".md", m.Instructions))
+	// Claude Code loads every .claude/rules/**/*.md without paths: frontmatter in every
+	// session, at project and user scope, so rules never touch CLAUDE.md (§5.6).
+	for _, r := range m.Rules {
+		if ctx.SkipRules {
+			break
 		}
+		out = append(out, plan.Intent{Target: id, Kind: "rule", Op: plan.OpWriteFile,
+			Path: ".claude/rules/lola/" + m.Name + "/" + r.Name + ".md", Data: []byte(r.Body), Mode: 0o644})
 	}
 	return out, notes, nil
 }
@@ -149,16 +150,4 @@ func claudeMCP(s module.MCPServer, ctx PlanContext) (map[string]any, []Notice) {
 		v["headers"] = expandMap(s.Headers, ctx)
 	}
 	return v, notes
-}
-
-// Shared implements Target: one CLAUDE.md pointer block at project scope.
-func (Claude) Shared(scope Scope, mods []string) []plan.Intent {
-	if scope == User || len(mods) == 0 {
-		return nil
-	}
-	lines := make([]string, 0, len(mods))
-	for _, m := range slices.Sorted(slices.Values(mods)) {
-		lines = append(lines, "@.claude/lola/"+m+".md")
-	}
-	return []plan.Intent{{Target: "claude-code", Kind: plan.KindPointerBlock, Op: plan.OpPointerBlock, Path: "CLAUDE.md", Lines: lines}}
 }

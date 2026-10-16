@@ -21,8 +21,8 @@ import (
 const Version = 1
 
 // Artifact is one thing lola wrote. Path is relative to the target's scope root; Key is an
-// RFC 6901 pointer for JSON members; SHA256 is over the file bytes, the canonical JSON of the
-// member, or the pointer-block text. Resolved is set only when Path resolves outside the root.
+// RFC 6901 pointer for JSON members; SHA256 is over the file bytes or the canonical JSON of
+// the member. Resolved is set only when Path resolves outside the root.
 type Artifact struct {
 	Target   string `json:"target"`
 	Kind     string `json:"kind"`
@@ -56,13 +56,12 @@ type Entry struct {
 type Ledger struct {
 	Version int               `json:"version"`
 	Modules map[string]*Entry `json:"modules"`
-	Shared  []Artifact        `json:"shared"`
 	Created []FileRef         `json:"created"`
 }
 
 // New returns an empty ledger.
 func New() *Ledger {
-	return &Ledger{Version: Version, Modules: map[string]*Entry{}, Shared: []Artifact{}, Created: []FileRef{}}
+	return &Ledger{Version: Version, Modules: map[string]*Entry{}, Created: []FileRef{}}
 }
 
 // Load reads path; a missing file is an empty ledger.
@@ -106,11 +105,6 @@ func (l *Ledger) validate() error {
 			}
 		}
 	}
-	for _, a := range l.Shared {
-		if a.Target == "" {
-			return fmt.Errorf("shared artifact %s has no target", a.Path)
-		}
-	}
 	return nil
 }
 
@@ -129,10 +123,6 @@ func (l *Ledger) normalize() {
 		}
 		sortArtifacts(e.Artifacts)
 	}
-	if l.Shared == nil {
-		l.Shared = []Artifact{}
-	}
-	sortArtifacts(l.Shared)
 	if l.Created == nil {
 		l.Created = []FileRef{}
 	}
@@ -158,8 +148,7 @@ func (l *Ledger) Save(path string) error {
 
 // Clone returns a deep copy.
 func (l *Ledger) Clone() *Ledger {
-	c := &Ledger{Version: l.Version, Modules: make(map[string]*Entry, len(l.Modules)),
-		Shared: slices.Clone(l.Shared), Created: slices.Clone(l.Created)}
+	c := &Ledger{Version: l.Version, Modules: make(map[string]*Entry, len(l.Modules)), Created: slices.Clone(l.Created)}
 	for k, e := range l.Modules {
 		ec := *e
 		ec.Artifacts = slices.Clone(e.Artifacts)

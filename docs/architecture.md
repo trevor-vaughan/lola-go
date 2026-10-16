@@ -1,22 +1,23 @@
 # Architecture
 
 For contributors. The design spec is `docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`;
-this page describes what is built in Plan 1. Where Plan 1 differs from the target spec, see the
-transitional note in [decisions.md](decisions.md).
+this page describes what is built (Plans 1 and 2).
 
 ## Pipeline
 
 ```
-source ──fetch──▶ staging ──Put──▶ cache (content-addressed versions, heads per ref)
+source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache (content-addressed versions, heads per ref)
                                       │ module.Load (IR, re-derived each time)
                                       ▼
                      targets (pure: IR → intents + notices)
                                       ▼
             plan.Compute (diff vs ledger + disk, conflict matrix) ──▶ Plan
                                       ▼
+            hook consent ─▶ module copies swapped in ─▶ pre-install hooks
+                                      ▼
             plan.Apply (stage, back up, rename, write ledger, rollback on error)
                                       ▼
-                          manifest saved (desired state)
+            manifest saved (desired state) ─▶ old copies dropped ─▶ post-install hooks
 ```
 
 `internal/engine` runs this pipeline for one scope; `internal/cli` is thin cobra wiring over it.
@@ -26,22 +27,23 @@ source ──fetch──▶ staging ──Put──▶ cache (content-addressed 
 | Package | Responsibility |
 |---|---|
 | `paths` | XDG resolution from an injected `getenv`; no globals. |
-| `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC member edits, markdown pointer blocks, mode normalization. |
-| `module` | The IR, frontmatter parsing, name rules, and loading `lola.yml` + the native layout. |
+| `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC member edits, mode normalization. |
+| `module` | The IR, frontmatter parsing, name rules, loading `lola.yml` + the native layout, rules, hook validation, and normalization. |
 | `source` | Source parsing and the folder fetcher. |
 | `store` | The cache's storage: content-addressed versions, per-ref heads, the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, deterministic IO. |
+| `consent` | Recorded consent to run a module's install hooks, keyed by the hooks' digest. |
 | `target` | The `Target` interface and the `claude-code` renderer. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction). |
-| `engine` | Install, uninstall, render, status, fetch, update, search. |
+| `engine` | Install, uninstall, render, status, fetch, update, search; module copies and hooks. |
 | `cli` | Commands, help, aliases, completion, output and prompts. |
 | `errs` | Errors that carry coaching hints. |
 | `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config). |
 
 ## Plans and the ledger
 
-Targets return **intents** (`WriteFile`, `CopyTree`, `SetJSON`, `PointerBlock`). `plan.Compute`
-expands trees, then, in two passes:
+Targets return **intents** (`WriteFile`, `CopyTree`, `SetJSON`). `plan.Compute` expands trees,
+then, in two passes:
 
 1. **Desired.** Each intent's destination is read at its symlink-resolved location and
    classified: new → create; identical → adopt (recorded, not rewritten); lola's and unchanged
@@ -58,60 +60,108 @@ The result is byte-exact `FileChange`s and the ledger that applying them produce
 exactly this computation.
 
 Hashes: files are hashed by bytes, JSON members by their canonical JSON (sorted keys, no
-comments), pointer blocks by their text. JSON edits operate on the hujson AST so bytes outside
-the edited member are preserved; trailing line comments belong to the line they end.
+comments). JSON edits operate on the hujson AST so bytes outside the edited member are
+preserved; trailing line comments belong to the line they end. `ledger.created` remembers the
+JSON files lola created, so they are deleted when lola's last member leaves them empty.
 
-**Shared artifacts** (the `CLAUDE.md` pointer block) are re-derived on every operation from the
-set of modules that ship instructions, via `Target.Shared`. `ledger.created` remembers shared
-files lola created, so they are deleted when lola's last content leaves them empty.
+**Rules** are plain files each target writes where its assistant loads them (Claude Code:
+`.claude/rules/lola/<module>/<rule>.md`). Every artifact belongs to exactly one module; lola
+edits no user-owned instruction file, so nothing is shared between modules.
+
+## Module copies
+
+`${PLUGIN_ROOT}` expands to the module copy, `.lola/modules/<module>/` (user scope:
+`$XDG_DATA_HOME/lola/user-modules/<module>/`), never into the cache. The path does not change
+between versions, so rendered files stay valid while a copy is replaced. Targets read artifact
+content from the cache version (`PlanContext.ContentDir`) and expand `${PLUGIN_ROOT}` to the
+copy (`PlanContext.PluginRoot`), because the copy is only put in place after the plan is
+computed.
+
+At project scope the engine refuses to run when `.lola/` or `.lola/modules/` is a symlink
+(`refuseSymlinkedState`, before the lock is taken, also for dry runs and `status`): a repository
+can commit one, and the copy swap would then rename and delete directories outside the project.
+User-scope copies may live behind a symlink.
+
+Install hooks build inside copies (`npm install`, virtual environments), so a copy's content is
+never compared with the cache. A copy is replaced only when its module's version changes (the
+ledger digest differs, or there is no ledger entry) or the copy is missing (`needsCopy`). Each
+replaced copy is assembled as `.<module>.new`, the current one moves to `.<module>.old`, and the new one takes its place. If
+the ledger is never committed (the `after` callback of `plan.Apply` runs only after the commit),
+the old copies are restored; otherwise they are dropped. Copies of modules that leave the
+ledger are removed. `status` reports a missing copy as `missing`, and `render` restores it and
+reruns its hooks; edits inside a copy are not reported.
+
+## Install hooks
+
+`pre-install` and `post-install` scripts must be executable regular files inside the module
+(checked when the module is loaded). After the plan is computed and before anything is written,
+the engine decides consent per module: `--allow-hooks` (this run only), a recorded consent for
+the same digest (sha256 over each hook's event, script path and script sha256), or the CLI's
+prompt, whose yes is recorded in `$XDG_STATE_HOME/lola/consent.json`. Without consent a
+`pre-install` hook is an error and a `post-install` hook is declined with a warning.
+
+Hooks run once per target, in the module copy, with the parent environment plus
+`LOLA_MODULE_NAME`, `LOLA_MODULE_PATH`, `LOLA_PROJECT_PATH` (the target's scope root),
+`LOLA_ASSISTANT`, `LOLA_SCOPE` and `LOLA_HOOK`, under a 10-minute timeout. A failing
+`pre-install` hook restores the old copies and writes nothing; `post-install` hooks run after
+the commit, so a failure is a warning. `install` runs hooks for every module it installs;
+`render` only for modules whose copy it replaces (a new version, or a missing copy). A dry run reports hooks as `would-run`.
 
 ## Applying
 
-`plan.Apply` runs under the scope lock (`.lola/.lock` or `$XDG_STATE_HOME/lola/.lock`):
-stage every new file next to its destination, move each existing destination aside, rename the
-staged files in, write the ledger. The ledger write is part of the transaction: any failure up
-to and including it restores everything in reverse order. Afterwards backups are removed,
-emptied directories are pruned (never past a target's base directories), and a logical symlink
-whose target was deleted is removed. The manifest is written last, through the `after` callback;
-if it fails, the already-applied files stay and the error is returned.
+`plan.Apply` runs under the scope lock: `$XDG_STATE_HOME/lola/locks/<hash>.lock` for a project,
+named after the resolved `.lola/` path, or `$XDG_STATE_HOME/lola/.lock` at user scope. The lock
+lives outside `.lola/`, so removing an empty `.lola/` never unlinks a lock another process is
+waiting on. Apply stages every new file next to its destination, moves each existing
+destination aside, renames the staged files in, and writes the ledger. The ledger write is part
+of the transaction: any failure up to and including it restores everything in reverse order.
+Afterwards backups are removed, emptied directories are pruned (never past a target's base
+directories), and a logical symlink whose target was deleted is removed. The manifest is
+written last, through the `after` callback; if it fails, the already-applied files stay and the
+error is returned.
 
-`.lola/` itself is created when the scope lock is taken. On release it is removed only if this
-command created it and nothing was recorded (no `project.yml`, and an empty or absent ledger), so
-a failed or empty first run leaves no trace.
+`.lola/` itself is created when the scope lock is taken, with a `.gitignore` lola owns. On
+release `.lola/` is removed only if this command created it and nothing was recorded (no
+`project.yml`, and an empty or absent ledger), so a failed or empty first run leaves no trace.
 
 ## Cache
 
 ```
-$XDG_DATA_HOME/lola/modules/<name>/
-  origin.yml               # source, type, path, format, heads: [{ref, digest}]
+$XDG_CACHE_HOME/lola/modules/<name>/
+  index.yml                # source, type, path, heads: [{ref, digest}]
   versions/<digest12>/
-    content/               # copy of the module: regular files only, modes 0644/0755
-    meta.yml               # ref, commit, fetched_at, full digest
+    content/               # the normalized module: native layout + one generated lola.yml
+    .lola-origin           # format, manifest, others_present, ref, commit, fetched_at, digest
 ```
 
-Versions are immutable, so `${PLUGIN_ROOT}` paths never change under a running MCP server, and
-heads per ref let projects pin different refs. Versions are assembled in
-`$XDG_DATA_HOME/lola/.staging/` (same filesystem) and renamed in whole, under
-`$XDG_DATA_HOME/lola/.lock`. The IR is re-derived from `content/`, never stored.
+`cache add` loads the staged module, normalizes it (`module.Normalize`: one generated
+`lola.yml`, every other manifest removed), digests the result, and renames the version into
+place in whole from `$XDG_CACHE_HOME/lola/.staging/` (same filesystem), under
+`$XDG_CACHE_HOME/lola/.lock`. `.lola-origin` records the detected format and which manifests
+were read and ignored. Module names and version ids read back from the cache are validated
+before they are used in a path. The IR is re-derived from `content/`, never stored.
 
-`render` looks up the head for each installed module's ref. If the head is missing (for example
-after `lola cache rm`), it fetches again from the cache's recorded source, or from the source in
-the ledger, and fails with a hint only if neither is usable. `status` reports `stale` when the
-head's digest differs from the ledger's.
-
-Planned (Plan 2): per-project module copies, normalization at add, and the cache under
-`$XDG_CACHE_HOME`. This section will change with it.
+Installs run from their module copies, so the cache is re-fetchable: `render` looks up the head
+for each installed module's ref and, if it is missing (for example after `lola cache rm`),
+fetches again from the cache's recorded source or the source in the ledger, failing with a hint
+only if neither is usable. `status` reports `stale` when the head's digest differs from the
+ledger's.
 
 ## Security model
 
-- **No code execution.** Module hooks are detected and listed, never run in this build.
-- **Sources are not trusted.** Symlinks in module content are refused; names that become paths
-  or JSON keys are validated; `CopyTree` reads through `os.Root`.
+- **Hooks run code, with consent.** Install hooks run as the user, unconfined (sandboxing is on
+  the roadmap), only after consent tied to the exact scripts. A changed script asks again; a
+  changed file that a script runs does not, which the user docs say.
+- **Sources are not trusted.** Symlinks in module content are refused, including a file swapped
+  for a symlink while it is copied; names that become paths or JSON keys are validated;
+  `CopyTree` reads through `os.Root`; cache names and version ids are validated before use.
 - **Destinations.** lola follows symlinked directories in the project, because dotfile managers
   use them, and shows writes that leave the project. **Residual risk:** a repository you check
   out can contain symlinks that redirect lola's writes elsewhere in your home directory.
   Conflict detection prevents overwriting content lola did not write, and the plan shows every
   redirected destination; review `lola install --dry-run` in repositories you do not trust.
+- **Project state.** lola refuses a `.lola/` or `.lola/modules/` that is a symlink, so a
+  repository cannot point the module-copy swap and uninstall cleanup outside the project.
 - **Unparseable files** are never rewritten.
 - lola's own state files are `0600`; its XDG directories `0700`.
 

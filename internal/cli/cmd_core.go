@@ -82,7 +82,7 @@ func (a *app) addCoreCommands(root *cobra.Command) {
 func (a *app) installCmd() *cobra.Command {
 	var targets []string
 	var ref, path string
-	var dry, force bool
+	var dry, force, rules, noRules, allowHooks bool
 	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), or a module directory",
 		usage:    "lola install <source|name>... [-t target]",
 		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review"}}
@@ -93,7 +93,12 @@ func (a *app) installCmd() *cobra.Command {
 		Long: "Install modules. Each argument is a module already in your cache (used without\n" +
 			"touching its source) or a source: " + source.AcceptedForms + ".\n" +
 			"The module is copied into your cache, rendered for each target, and recorded in\n" +
-			".lola/project.yml (user scope: $XDG_CONFIG_HOME/lola/user.yml).",
+			".lola/project.yml (user scope: $XDG_CONFIG_HOME/lola/user.yml).\n" +
+			"--no-rules installs everything except the module's always-on rules and records that\n" +
+			"choice, so later renders keep it; --rules turns them back on.\n" +
+			"Install hooks run only with your consent: lola asks on a terminal (default No) and\n" +
+			"remembers a yes until one of those scripts changes. Consent covers only the scripts\n" +
+			"themselves, not files they run. --allow-hooks consents for one run.",
 		Example: g.example(),
 		GroupID: groupCore,
 		Args:    g.args(1),
@@ -117,7 +122,12 @@ func (a *app) installCmd() *cobra.Command {
 			for _, arg := range args {
 				reqs = append(reqs, engine.InstallRequest{Arg: arg, Ref: ref, Path: path})
 			}
-			res, err := eng.Install(cmd.Context(), sc, cwd, reqs, engine.Options{Targets: sel, DryRun: dry, Force: force})
+			opts := engine.Options{Targets: sel, DryRun: dry, Force: force}
+			if rules || noRules {
+				opts.Rules = &rules
+			}
+			a.hookOptions(cmd, &opts, allowHooks)
+			res, err := eng.Install(cmd.Context(), sc, cwd, reqs, opts)
 			if err != nil {
 				return err
 			}
@@ -129,6 +139,10 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().StringVar(&path, "path", "", "module root inside the source (monorepos)")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite unowned or hand-edited files (never skips a prompt)")
+	cmd.Flags().BoolVar(&noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
+	cmd.Flags().BoolVar(&rules, "rules", false, "install the modules' rules again after --no-rules")
+	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
+	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
 	return cmd
 }
 
@@ -184,7 +198,7 @@ func (a *app) listCmd() *cobra.Command {
 		Aliases: []string{"ls"},
 		Short:   "List installed modules and their status per target",
 		Long: "List installed modules per target. Status is ok; modified (a file lola wrote was edited);\n" +
-			"missing (a file lola wrote is gone); or stale (your cache has a newer version: run lola render).",
+			"missing (a file lola wrote, or the module copy, is gone); or stale (your cache has a newer version: run lola render).",
 		Example: "  lola list\n  lola list --user\n  lola list --json",
 		GroupID: groupCore,
 		Args:    cobra.NoArgs,
@@ -216,7 +230,11 @@ func (a *app) listCmd() *cobra.Command {
 func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow) {
 	if s.plain {
 		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, r.Source)
+			rules := "on"
+			if !r.Rules {
+				rules = "off"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source)
 		}
 		return
 	}
@@ -229,7 +247,7 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "MODULE\tTARGET\tSTATUS\tSOURCE")
+	fmt.Fprintln(tw, "MODULE\tTARGET\tSTATUS\tRULES\tSOURCE")
 	for _, r := range rows {
 		status := s.ok(r.Status)
 		switch r.Status {
@@ -238,14 +256,18 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 		case "missing":
 			status = s.bad(r.Status)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Name, r.Target, status, r.Source)
+		rules := "on"
+		if !r.Rules {
+			rules = s.warn("off")
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, status, rules, r.Source)
 	}
 	_ = tw.Flush()
 }
 
 func (a *app) renderCmd() *cobra.Command {
 	var targets []string
-	var dry, force bool
+	var dry, force, allowHooks bool
 	cmd := &cobra.Command{
 		Use:     "render",
 		Aliases: []string{"update"},
@@ -260,7 +282,9 @@ func (a *app) renderCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := eng.Render(cmd.Context(), sc, engine.Options{Targets: targets, DryRun: dry, Force: force})
+			opts := engine.Options{Targets: targets, DryRun: dry, Force: force}
+			a.hookOptions(cmd, &opts, allowHooks)
+			res, err := eng.Render(cmd.Context(), sc, opts)
 			if err != nil {
 				return err
 			}
@@ -270,5 +294,6 @@ func (a *app) renderCmd() *cobra.Command {
 	addTargetFlag(cmd, &targets, "only render for these assistants")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite or delete hand-edited files (never skips a prompt)")
+	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "run the install hooks of updated modules without asking (consent for this run)")
 	return cmd
 }

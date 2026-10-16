@@ -1,7 +1,7 @@
 # lola
 
 lola is a package manager for AI-assistant context: skills, slash commands, subagents, MCP
-servers and always-on instructions. You install a module once; lola renders it into each
+servers and always-on rules. You install a module once; lola renders it into each
 assistant's native layout and records exactly what it wrote, so it can render again or
 uninstall cleanly, without touching anything it did not write.
 
@@ -16,6 +16,8 @@ explains why.
 - **Safety:** lola only overwrites or deletes files it wrote and nobody has changed, unless
   you pass `--force`; an existing file identical to what lola would write is adopted, not
   rewritten. JSON files keep their comments; a file lola cannot parse is never rewritten.
+  lola never edits your `CLAUDE.md` or `AGENTS.md`, and a module's install hooks run only
+  with your consent.
 
 Gemini CLI, OpenCode, git and archive sources, plugin formats, marketplaces, profiles and
 templating are planned: see [docs/roadmap.md](docs/roadmap.md).

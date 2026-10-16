@@ -61,8 +61,8 @@ func noticeLine(s style, n target.Notice) string {
 	return s.info(n.Text)
 }
 
-// printResult renders an install/uninstall/render result: steps, MCP transparency,
-// refused hooks, notices, and a summary line.
+// printResult renders an install/uninstall/render result: steps, MCP transparency, install
+// hooks, notices, and a summary line.
 func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 	if r.DryRun && !s.plain {
 		fmt.Fprintln(w, "plan (dry run; nothing was written):")
@@ -77,12 +77,20 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 				fmt.Fprintf(w, "    %s (%s) runs: %s\n", srv.Name, srv.Transport, srv.Runs)
 			}
 		}
-		if len(m.Hooks) > 0 {
-			fmt.Fprintln(w, s.warn(m.Name+" declares install hooks that lola does not run:"))
-			for _, h := range m.Hooks {
-				fmt.Fprintf(w, "    %s: %s\n", h.Event, h.Command)
+		for _, h := range m.Hooks {
+			if s.plain {
+				fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, h.Script, h.Target, h.Status)
+				continue
 			}
-			fmt.Fprintln(w, "  Review the script and run it yourself if you trust it.")
+			line := fmt.Sprintf("%s %s hook %s (%s): %s", m.Name, h.Event, h.Script, h.Target, h.Status)
+			switch h.Status {
+			case engine.HookRan:
+				fmt.Fprintln(w, s.ok(line))
+			case engine.HookWouldRun:
+				fmt.Fprintln(w, s.info(line))
+			default:
+				fmt.Fprintln(w, s.warn(line))
+			}
 		}
 	}
 	for _, n := range r.Notices {

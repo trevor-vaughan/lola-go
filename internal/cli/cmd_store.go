@@ -38,8 +38,7 @@ func (a *app) completeStored(_ *cobra.Command, _ []string, toComplete string) ([
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
-// addStoreCommands adds search and init (Core group), the cache group and the mod
-// compatibility group.
+// addStoreCommands adds search and init (Core group) and the cache group.
 func (a *app) addStoreCommands(root *cobra.Command) {
 	root.AddCommand(a.searchCmd(), a.initCmd())
 	cache := &cobra.Command{
@@ -62,41 +61,26 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 	}
 	cache.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheInfoCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd())
 	root.AddCommand(cache)
-
-	initCmd := a.initCmd()
-	initCmd.GroupID = ""
-	mod := &cobra.Command{
-		Use:                        "mod",
-		Short:                      "Compatibility commands: forward to lola cache and lola init",
-		Example:                    "  lola mod add ./my-module\n  lola mod ls\n  lola mod init my-module",
-		GroupID:                    groupCompat,
-		Args:                       cobra.ArbitraryArgs,
-		ValidArgsFunction:          aliasCompletions,
-		RunE:                       groupRunE,
-		SuggestionsMinimumDistance: 2,
-	}
-	mod.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheInfoCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd(), initCmd)
-	root.AddCommand(mod)
 }
 
 // moduleView is a stored version as shown by cache add and cache info.
 type moduleView struct {
-	Name         string        `json:"name"`
-	Description  string        `json:"description"`
-	Version      string        `json:"version"`
-	Digest       string        `json:"digest"`
-	Format       string        `json:"format"`
-	Source       string        `json:"source"`
-	Type         string        `json:"type"`
-	Path         string        `json:"path,omitempty"`
-	Heads        []headView    `json:"heads"`
-	Skills       []string      `json:"skills"`
-	Commands     []string      `json:"commands"`
-	Agents       []string      `json:"agents"`
-	MCPServers   []string      `json:"mcp_servers"`
-	Instructions bool          `json:"instructions"`
-	Hooks        []module.Hook `json:"hooks"`
-	Warnings     []string      `json:"warnings"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	Version     string        `json:"version"`
+	Digest      string        `json:"digest"`
+	Format      string        `json:"format"`
+	Source      string        `json:"source"`
+	Type        string        `json:"type"`
+	Path        string        `json:"path,omitempty"`
+	Heads       []headView    `json:"heads"`
+	Skills      []string      `json:"skills"`
+	Commands    []string      `json:"commands"`
+	Agents      []string      `json:"agents"`
+	MCPServers  []string      `json:"mcp_servers"`
+	Rules       []string      `json:"rules"`
+	Hooks       []module.Hook `json:"hooks"`
+	Warnings    []string      `json:"warnings"`
 }
 
 type headView struct {
@@ -106,9 +90,9 @@ type headView struct {
 
 func newModuleView(v store.Version, o store.Origin) moduleView {
 	m := v.Module
-	mv := moduleView{Name: m.Name, Description: m.Description, Version: m.Version, Digest: v.Meta.Digest, Format: o.Format,
+	mv := moduleView{Name: m.Name, Description: m.Description, Version: m.Version, Digest: v.Meta.Digest, Format: v.Meta.Format,
 		Source: o.Source, Type: o.Type, Path: o.Path, Heads: []headView{}, Skills: []string{}, Commands: []string{}, Agents: []string{},
-		MCPServers: []string{}, Instructions: m.Instructions != "", Hooks: []module.Hook{}, Warnings: []string{}}
+		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}}
 	for _, h := range o.Heads {
 		mv.Heads = append(mv.Heads, headView{Ref: h.Ref, Digest: h.Digest})
 	}
@@ -124,10 +108,13 @@ func newModuleView(v store.Version, o store.Origin) moduleView {
 	for _, s := range m.MCPServers {
 		mv.MCPServers = append(mv.MCPServers, s.Name)
 	}
+	for _, r := range m.Rules {
+		mv.Rules = append(mv.Rules, r.Name)
+	}
 	mv.Hooks = append(mv.Hooks, m.DeclaredHooks...)
 	mv.Warnings = append(mv.Warnings, m.Warnings...)
-	if m.LegacyAgentsMD {
-		mv.Warnings = append(mv.Warnings, module.LegacyAgentsMDWarning)
+	for _, n := range v.Meta.OthersPresent {
+		mv.Warnings = append(mv.Warnings, module.ShadowWarning(v.Meta.Manifest, n))
 	}
 	return mv
 }
@@ -156,20 +143,16 @@ func printModuleView(w io.Writer, s style, mv moduleView) {
 	for _, kv := range []struct {
 		k string
 		v []string
-	}{{"skills", mv.Skills}, {"commands", mv.Commands}, {"agents", mv.Agents}, {"mcp", mv.MCPServers}} {
+	}{{"skills", mv.Skills}, {"commands", mv.Commands}, {"agents", mv.Agents}, {"mcp", mv.MCPServers}, {"rules", mv.Rules}} {
 		if len(kv.v) > 0 {
 			fmt.Fprintf(w, "  %-9s %s\n", kv.k+":", strings.Join(kv.v, ", "))
 		}
 	}
-	if mv.Instructions {
-		fmt.Fprintln(w, "  instructions: yes")
-	}
 	if len(mv.Hooks) > 0 {
-		fmt.Fprintln(w, s.warn(mv.Name+" declares install hooks that lola does not run:"))
+		fmt.Fprintln(w, s.warn(mv.Name+" has install hooks; lola runs them only with your consent:"))
 		for _, h := range mv.Hooks {
-			fmt.Fprintf(w, "    %s: %s\n", h.Event, h.Command)
+			fmt.Fprintf(w, "    %s: %s\n", h.Event, h.Script)
 		}
-		fmt.Fprintln(w, "  Review the script and run it yourself if you trust it.")
 	}
 	for _, warn := range mv.Warnings {
 		fmt.Fprintln(w, s.warn(warn))
@@ -233,7 +216,7 @@ func (a *app) cacheRmCmd() *cobra.Command {
 		Use:               "rm <module>...",
 		Aliases:           []string{"remove", "uninstall", "erase", "delete", "del"},
 		Short:             "Remove modules (every cached version) from your cache",
-		Long:              "Remove every cached version of the modules. Installed files stay, but MCP servers that\nrun from the cache (${PLUGIN_ROOT}) stop working until you install again.",
+		Long:              "Remove every cached version of the modules. Installed modules keep working: each one runs\nfrom its own module copy, and lola render fetches the source again when it needs to.",
 		Example:           g.example(),
 		Args:              g.args(1),
 		ValidArgsFunction: a.completeStored,
@@ -252,7 +235,6 @@ func (a *app) cacheRmCmd() *cobra.Command {
 			}
 			if !yes {
 				fmt.Fprintf(cmd.ErrOrStderr(), "will remove from your cache: %s\n", strings.Join(args, ", "))
-				fmt.Fprintln(cmd.ErrOrStderr(), "installed files stay; MCP servers that run from the cache will stop working.")
 				if err := confirm(cmd, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
 					return err
 				}
@@ -479,7 +461,7 @@ func (a *app) initCmd() *cobra.Command {
 			if err := module.ValidateName("module", name); err != nil {
 				return errs.WithHints(err, "run lola init in a directory whose name is a valid module name")
 			}
-			for _, f := range []string{"lola.yml", "lola.yaml"} {
+			for _, f := range module.ManifestNames() {
 				if _, err := os.Stat(filepath.Join(abs, f)); err == nil {
 					return fmt.Errorf("%s is already a module (it has %s)", dir, f)
 				}

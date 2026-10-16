@@ -26,18 +26,21 @@ var _ = Describe("Resolve", func() {
 		Expect(p.UserManifest).To(Equal("/h/.config/lola/user.yml"))
 		Expect(p.UserLedger).To(Equal("/h/.local/state/lola/lock.json"))
 		Expect(p.UserLock).To(Equal("/h/.local/state/lola/.lock"))
-		Expect(p.Store).To(Equal("/h/.local/share/lola/modules"))
-		Expect(p.StoreLock).To(Equal("/h/.local/share/lola/.lock"))
-		Expect(p.PluginData).To(Equal("/h/.local/share/lola/plugin-data"))
-		Expect(p.Staging).To(Equal("/h/.local/share/lola/.staging"))
+		Expect(p.Locks).To(Equal("/h/.local/state/lola/locks"))
+		Expect(p.Consent).To(Equal("/h/.local/state/lola/consent.json"))
+		Expect(p.Store).To(Equal("/h/.cache/lola/modules"))
+		Expect(p.StoreLock).To(Equal("/h/.cache/lola/.lock"))
+		Expect(p.Staging).To(Equal("/h/.cache/lola/.staging"))
 		Expect(p.Tmp).To(Equal("/h/.cache/lola/tmp"))
+		Expect(p.UserModules).To(Equal("/h/.local/share/lola/user-modules"))
+		Expect(p.PluginData).To(Equal("/h/.local/share/lola/plugin-data"))
 	})
 
 	It("uses absolute XDG values", func() {
-		p, err := paths.Resolve(env(map[string]string{"HOME": "/h", "XDG_CONFIG_HOME": "/c/", "XDG_DATA_HOME": "/d"}))
+		p, err := paths.Resolve(env(map[string]string{"HOME": "/h", "XDG_CONFIG_HOME": "/c/", "XDG_CACHE_HOME": "/k"}))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(p.ConfigHome).To(Equal("/c"))
-		Expect(p.Store).To(Equal("/d/lola/modules"))
+		Expect(p.Store).To(Equal("/k/lola/modules"))
 	})
 
 	It("ignores relative XDG values, as the XDG spec requires", func() {

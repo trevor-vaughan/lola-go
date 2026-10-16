@@ -1,5 +1,6 @@
-// Package store manages lola's machine-wide module store (§6.2): one directory per module
-// holding origin.yml and content-addressed versions, with one head per fetched ref.
+// Package store manages lola's machine-wide module cache (§6.2): one directory per module
+// holding index.yml and content-addressed versions, with one head per fetched ref. Names
+// and version ids read back from the cache are validated before they are used in paths.
 package store
 
 import (
@@ -9,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -28,21 +30,41 @@ type Head struct {
 	Digest string `yaml:"digest"`
 }
 
-// Origin is where a stored module comes from (origin.yml).
+// Origin is where a stored module comes from (index.yml).
 type Origin struct {
 	Source string `yaml:"source"`
 	Type   string `yaml:"type"`
 	Path   string `yaml:"path,omitempty"`
-	Format string `yaml:"format"`
 	Heads  []Head `yaml:"heads"`
 }
 
-// Meta describes one stored version (meta.yml); its values are those of the first fetch.
+// Meta describes one stored version (.lola-origin); its values are those of the first fetch.
+// Format, Manifest and OthersPresent describe the source before normalization.
 type Meta struct {
-	Ref       string `yaml:"ref"`
-	Commit    string `yaml:"commit,omitempty"`
-	FetchedAt string `yaml:"fetched_at"`
-	Digest    string `yaml:"digest"`
+	Format        string   `yaml:"format"`
+	Manifest      string   `yaml:"manifest,omitempty"`
+	OthersPresent []string `yaml:"others_present,omitempty"`
+	Ref           string   `yaml:"ref"`
+	Commit        string   `yaml:"commit,omitempty"`
+	FetchedAt     string   `yaml:"fetched_at"`
+	Digest        string   `yaml:"digest"`
+}
+
+// Cache file names.
+const (
+	indexFile  = "index.yml"
+	originFile = ".lola-origin"
+)
+
+// idRE is the form of a version id: the first 12 hex digits of the content digest.
+var idRE = regexp.MustCompile(`^[0-9a-f]{12}$`)
+
+// checkID refuses a version id that is not one lola writes, before it reaches a path.
+func checkID(name, id string) error {
+	if !idRE.MatchString(id) {
+		return fmt.Errorf("cache entry %s: version id %q is invalid (expected 12 hex digits)", name, id)
+	}
+	return nil
 }
 
 // Version is one stored, immutable copy of a module.
@@ -83,11 +105,14 @@ func describeOrigin(source, path string) string {
 	return source + " (path " + path + ")"
 }
 
-// Put validates the staged content as a module, stores it as a version (reusing an identical
-// one) and points the head for req.Ref at it.
+// Put validates the staged content as a module, normalizes it (module.Normalize), stores it
+// as a version (reusing an identical one) and points the head for req.Ref at it.
 func (s *Store) Put(req PutRequest) (Version, error) {
 	m, err := module.Load(req.Staged, req.FallbackName)
 	if err != nil {
+		return Version{}, err
+	}
+	if err := module.Normalize(req.Staged, m); err != nil {
 		return Version{}, err
 	}
 	digest, err := Digest(req.Staged)
@@ -113,7 +138,8 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	vdir := filepath.Join(s.dir, m.Name, "versions", id)
 	switch _, err := os.Stat(vdir); {
 	case errors.Is(err, fs.ErrNotExist):
-		if err := s.addVersion(req, vdir, digest); err != nil {
+		if err := s.addVersion(req, vdir, Meta{Format: m.Format, Manifest: m.Manifest, OthersPresent: m.Shadowed,
+			Ref: req.Ref, Commit: req.Commit, FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest}); err != nil {
 			return Version{}, err
 		}
 	case err != nil:
@@ -126,17 +152,16 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	if !found {
 		o = Origin{Source: req.Source, Type: req.Type, Path: req.Path}
 	}
-	o.Format = m.Format
 	o.Heads = setHead(o.Heads, req.Ref, id)
-	if err := writeYAML(filepath.Join(s.dir, m.Name, "origin.yml"), o); err != nil {
+	if err := writeYAML(filepath.Join(s.dir, m.Name, indexFile), o); err != nil {
 		return Version{}, err
 	}
 	return s.Load(m.Name, id)
 }
 
-// addVersion assembles content/ and meta.yml in staging, then renames the whole version into
-// place, so a version directory is either complete or absent.
-func (s *Store) addVersion(req PutRequest, vdir, digest string) (err error) {
+// addVersion assembles content/ and .lola-origin in staging, then renames the whole version
+// into place, so a version directory is either complete or absent.
+func (s *Store) addVersion(req PutRequest, vdir string, meta Meta) (err error) {
 	build, err := os.MkdirTemp(s.staging, "version-*")
 	if err != nil {
 		return err
@@ -145,8 +170,7 @@ func (s *Store) addVersion(req PutRequest, vdir, digest string) (err error) {
 	if err := os.Rename(req.Staged, filepath.Join(build, "content")); err != nil {
 		return err
 	}
-	meta := Meta{Ref: req.Ref, Commit: req.Commit, FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest}
-	if err := writeYAML(filepath.Join(build, "meta.yml"), meta); err != nil {
+	if err := writeYAML(filepath.Join(build, originFile), meta); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(vdir), 0o700); err != nil {
@@ -183,9 +207,15 @@ func (s *Store) Head(name, ref string) (Version, bool, error) {
 
 // Load reads a stored version and re-derives its IR from content/.
 func (s *Store) Load(name, id string) (Version, error) {
+	if err := module.ValidateName("module", name); err != nil {
+		return Version{}, err
+	}
+	if err := checkID(name, id); err != nil {
+		return Version{}, err
+	}
 	vdir := filepath.Join(s.dir, name, "versions", id)
 	var meta Meta
-	if err := readYAML(filepath.Join(vdir, "meta.yml"), &meta); err != nil {
+	if err := readYAML(filepath.Join(vdir, originFile), &meta); err != nil {
 		return Version{}, err
 	}
 	content := filepath.Join(vdir, "content")
@@ -196,14 +226,25 @@ func (s *Store) Load(name, id string) (Version, error) {
 	return Version{Name: name, ID: id, ContentDir: content, Meta: meta, Module: m}, nil
 }
 
-// Origin reads origin.yml; found is false when the module is not stored.
+// Origin reads index.yml; found is false when the module is not stored.
 func (s *Store) Origin(name string) (Origin, bool, error) {
+	if err := module.ValidateName("module", name); err != nil {
+		return Origin{}, false, err
+	}
 	var o Origin
-	err := readYAML(filepath.Join(s.dir, name, "origin.yml"), &o)
+	err := readYAML(filepath.Join(s.dir, name, indexFile), &o)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Origin{}, false, nil
 	}
-	return o, err == nil, err
+	if err != nil {
+		return Origin{}, false, err
+	}
+	for _, h := range o.Heads {
+		if err := checkID(name, h.Digest); err != nil {
+			return Origin{}, false, err
+		}
+	}
+	return o, true, nil
 }
 
 // Names lists stored module names, sorted.
@@ -217,7 +258,7 @@ func (s *Store) Names() ([]string, error) {
 	}
 	var out []string
 	for _, e := range es {
-		if _, err := os.Stat(filepath.Join(s.dir, e.Name(), "origin.yml")); e.IsDir() && err == nil {
+		if _, err := os.Stat(filepath.Join(s.dir, e.Name(), indexFile)); e.IsDir() && err == nil {
 			out = append(out, e.Name())
 		}
 	}

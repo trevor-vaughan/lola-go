@@ -16,19 +16,15 @@ type Op string
 
 // Intent operations. CopyTree is expanded into one WriteFile per file before diffing.
 const (
-	OpWriteFile    Op = "write-file"
-	OpCopyTree     Op = "copy-tree"
-	OpSetJSON      Op = "set-json"
-	OpPointerBlock Op = "pointer-block"
+	OpWriteFile Op = "write-file"
+	OpCopyTree  Op = "copy-tree"
+	OpSetJSON   Op = "set-json"
 )
-
-// KindPointerBlock is the artifact kind of a markdown pointer block.
-const KindPointerBlock = "pointer-block"
 
 // Intent is one desired artifact. Path is relative to the target's scope root.
 type Intent struct {
 	Target string
-	Kind   string // skill, command, agent, mcp, instructions, pointer-block
+	Kind   string // skill, command, agent, mcp, rule
 	Op     Op
 	Path   string
 
@@ -40,8 +36,6 @@ type Intent struct {
 
 	Pointer string // SetJSON: RFC 6901 pointer to an object member
 	Value   []byte // SetJSON: standard JSON
-
-	Lines []string // PointerBlock
 }
 
 // ModuleChange replaces one module's artifacts on Targets. Entry carries the new ledger
@@ -68,7 +62,7 @@ const (
 // Step is one line of a plan as shown to the user.
 type Step struct {
 	Action Action `json:"action"`
-	Module string `json:"module,omitempty"` // "" for shared artifacts
+	Module string `json:"module,omitempty"`
 	Target string `json:"target"`
 	Kind   string `json:"kind"`
 	Path   string `json:"path"`

@@ -11,11 +11,16 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
+// writeTree creates files under root; files ending in .sh are executable.
 func writeTree(root string, files map[string]string) {
 	for p, c := range files {
 		full := filepath.Join(root, p)
+		mode := os.FileMode(0o644)
+		if filepath.Ext(p) == ".sh" {
+			mode = 0o755
+		}
 		Expect(os.MkdirAll(filepath.Dir(full), 0o755)).To(Succeed())
-		Expect(os.WriteFile(full, []byte(c), 0o644)).To(Succeed())
+		Expect(os.WriteFile(full, []byte(c), mode)).To(Succeed())
 	}
 }
 
@@ -29,7 +34,6 @@ var _ = Describe("core commands", func() {
 		writeTree(mod, map[string]string{
 			"commands/ship.md": "Ship $ARGUMENTS\n",
 			"mcps.json":        `{"mcpServers":{"lola-gh":{"command":"gh-mcp","args":["--stdio"]}}}`,
-			"lola.yml":         "name: example\nhooks: {pre-install: scripts/setup.sh}\n",
 		})
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
 	})
@@ -39,12 +43,11 @@ var _ = Describe("core commands", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("✓ create claude-code .claude/commands/ship.md"))
 		Expect(r.out).To(ContainSubstring("lola-gh (stdio) runs: gh-mcp --stdio"))
-		Expect(r.out).To(ContainSubstring("⚠ example declares install hooks that lola does not run:\n    pre-install: scripts/setup.sh\n  Review the script and run it yourself if you trust it."))
 		Expect(r.out).To(ContainSubstring("✓ installed example (claude-code)"))
 
 		r = lola("ls", "-C", proj)
 		Expect(r.out).To(MatchRegexp(`example\s+claude-code\s+✓ ok`))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\t" + mod + "\n"))
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\n"))
 
 		r = lola("update", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
@@ -55,6 +58,59 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("✗ delete claude-code .claude/commands/ship.md"))
 		Expect(r.out).To(ContainSubstring("→ still in your cache: lola cache rm example"))
 		Expect(filepath.Join(proj, ".mcp.json")).NotTo(BeAnExistingFile())
+	})
+
+	It("install --no-rules is remembered in the manifest and shown by list; --rules turns them back on", func() {
+		writeTree(mod, map[string]string{"rules/style.md": "Prefer small diffs.\n"})
+		r := lola("install", mod, "--no-rules", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(proj, ".claude/rules/lola/example/style.md")).NotTo(BeAnExistingFile())
+		b, err := os.ReadFile(filepath.Join(proj, ".lola/project.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(ContainSubstring("rules: false"))
+		Expect(lola("ls", "-C", proj).out).To(MatchRegexp(`example\s+claude-code\s+✓ ok\s+⚠ off`))
+		var rows struct {
+			Modules []map[string]any `json:"modules"`
+		}
+		Expect(json.Unmarshal([]byte(lola("ls", "-C", proj, "--json").out), &rows)).To(Succeed())
+		Expect(rows.Modules[0]["rules"]).To(BeFalse())
+
+		Expect(lola("update", "-C", proj).code).To(Equal(0))
+		Expect(filepath.Join(proj, ".claude/rules/lola/example/style.md")).NotTo(BeAnExistingFile(), "render keeps rules off")
+		r = lola("install", "example", "--rules", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(proj, ".claude/rules/lola/example/style.md")).To(BeARegularFile())
+		Expect(lola("ls", "-C", proj, "--plain").out).To(HavePrefix("example\tclaude-code\tok\ton\t"))
+
+		r = lola("install", "example", "--rules", "--no-rules", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("none of the others can be"))
+	})
+
+	It("runs install hooks only with consent: refused off a terminal, listed by --dry-run, run with --allow-hooks", func() {
+		writeTree(mod, map[string]string{
+			"lola.yml":         "name: example\nhooks: {pre-install: scripts/setup.sh, post-install: scripts/done.sh}\n",
+			"scripts/setup.sh": "#!/bin/sh\necho \"setting up for $LOLA_ASSISTANT\"\n",
+			"scripts/done.sh":  "#!/bin/sh\necho done\n",
+		})
+		r := lola("install", mod, "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(r.err).To(ContainSubstring("hint: then rerun with --allow-hooks, or on a terminal answer the prompt"))
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+
+		r = lola("install", mod, "-C", proj, "--dry-run")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ example pre-install hook scripts/setup.sh (claude-code): would-run"))
+		Expect(r.err).NotTo(ContainSubstring("setting up"))
+
+		r = lola("install", mod, "-C", proj, "--allow-hooks")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.err).To(ContainSubstring("setting up for claude-code"), "hook output goes to stderr")
+		Expect(r.out).To(ContainSubstring("✓ example pre-install hook scripts/setup.sh (claude-code): ran"))
+		Expect(r.out).To(ContainSubstring("✓ example post-install hook scripts/done.sh (claude-code): ran"))
+
+		Expect(lola("install", "example", "-C", proj).code).To(Equal(1), "--allow-hooks is consent for one run only")
 	})
 
 	It("finds the project by walking up from a subdirectory (Review Focus 5)", func() {

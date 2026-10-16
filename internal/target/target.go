@@ -41,8 +41,10 @@ type Notice struct {
 // PlanContext carries what a target needs besides the IR.
 type PlanContext struct {
 	Scope      Scope
-	ContentDir string // absolute content dir of the stored module version (${PLUGIN_ROOT})
+	ContentDir string // absolute content dir of the cached module version, which artifacts are read from
+	PluginRoot string // absolute ${PLUGIN_ROOT}: the module copy (§6.4)
 	PluginData string // absolute ${PLUGIN_DATA} dir for this module and scope
+	SkipRules  bool   // the manifest entry says rules: false (§5.6)
 }
 
 // Target is one assistant lola renders into.
@@ -56,9 +58,6 @@ type Target interface {
 	BaseDirs(scope Scope) []string
 	// Plan returns the module's intents for this target.
 	Plan(m *module.Module, ctx PlanContext) ([]plan.Intent, []Notice, error)
-	// Shared returns the shared artifacts for the sorted names of the modules that ship
-	// instructions for this target; no names means no shared artifacts.
-	Shared(scope Scope, instructionModules []string) []plan.Intent
 }
 
 // All returns every target in registration order, which is also help and completion order.
@@ -86,8 +85,8 @@ func Lookup(id string) (Target, bool) {
 // Expand substitutes ${PLUGIN_ROOT}, ${CLAUDE_PLUGIN_ROOT} and ${PLUGIN_DATA} (§5.5).
 func Expand(s string, ctx PlanContext) string {
 	return strings.NewReplacer(
-		"${PLUGIN_ROOT}", ctx.ContentDir,
-		"${CLAUDE_PLUGIN_ROOT}", ctx.ContentDir,
+		"${PLUGIN_ROOT}", ctx.PluginRoot,
+		"${CLAUDE_PLUGIN_ROOT}", ctx.PluginRoot,
 		"${PLUGIN_DATA}", ctx.PluginData,
 	).Replace(s)
 }

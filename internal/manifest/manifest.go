@@ -14,6 +14,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 )
 
 // Version is the manifest schema version this binary writes.
@@ -21,13 +22,18 @@ const Version = 1
 
 // Entry is one desired module. Source is kept as the user gave it (relative paths are
 // relative to the project root); Targets overrides the manifest's targets for this module.
+// Rules is nil unless the user turned the module's rules off (rules: false, §5.6).
 type Entry struct {
 	Name    string   `yaml:"name"`
 	Source  string   `yaml:"source"`
 	Ref     string   `yaml:"ref,omitempty"`
 	Path    string   `yaml:"path,omitempty"`
 	Targets []string `yaml:"targets,omitempty,flow"`
+	Rules   *bool    `yaml:"rules,omitempty"`
 }
+
+// RulesOn reports whether the module's rules are installed; an absent entry means yes.
+func (e *Entry) RulesOn() bool { return e == nil || e.Rules == nil || *e.Rules }
 
 // Manifest is the desired state of a scope.
 type Manifest struct {
@@ -53,6 +59,11 @@ func Load(path string) (*Manifest, error) {
 	}
 	if m.Version > Version {
 		return nil, fmt.Errorf("%s was written by a newer lola (manifest version %d); upgrade lola", path, m.Version)
+	}
+	for _, e := range m.Modules {
+		if err := module.ValidateName("module", e.Name); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
 	}
 	return m, nil
 }

@@ -19,13 +19,11 @@ import (
 
 // Request is everything Compute needs. Roots and BaseDirs are keyed by target id.
 type Request struct {
-	Roots         map[string]string
-	BaseDirs      map[string][]string
-	Ledger        *ledger.Ledger // observed state; never mutated
-	Changes       []ModuleChange
-	SharedTargets []string // targets whose shared artifacts Shared replaces
-	Shared        []Intent
-	Force         bool
+	Roots    map[string]string
+	BaseDirs map[string][]string
+	Ledger   *ledger.Ledger // observed state; never mutated
+	Changes  []ModuleChange
+	Force    bool
 }
 
 // Plan is a checked set of changes plus the ledger that results from applying them.
@@ -39,7 +37,6 @@ type Plan struct {
 const (
 	contentFile = iota
 	contentJSON
-	contentMarkdown
 )
 
 type file struct {
@@ -57,7 +54,7 @@ type planner struct {
 	req       Request
 	files     map[string]*file
 	order     []string
-	owners    map[string]string          // artifact ID → module that keeps owning it ("" = shared)
+	owners    map[string]string          // artifact ID → module that keeps owning it
 	releasing map[string]ledger.Artifact // artifact ID → old artifact of an owner being replanned
 	claimed   map[string]string          // artifact ID → owner desiring it in this plan
 	desired   map[string][]ledger.Artifact
@@ -90,13 +87,6 @@ func Compute(req Request) (*Plan, error) {
 		}
 		replanned, intents = append(replanned, o), append(intents, c.Intents)
 	}
-	shared := owned{owner: "", old: map[string]ledger.Artifact{}}
-	for _, a := range req.Ledger.Shared {
-		if slices.Contains(req.SharedTargets, a.Target) {
-			shared.old[a.ID()] = a
-		}
-	}
-	replanned, intents = append(replanned, shared), append(intents, req.Shared)
 
 	for _, o := range replanned {
 		for id, a := range o.old {
@@ -108,11 +98,6 @@ func Compute(req Request) (*Plan, error) {
 			if _, ok := p.releasing[a.ID()]; !ok {
 				p.owners[a.ID()] = name
 			}
-		}
-	}
-	for _, a := range req.Ledger.Shared {
-		if _, ok := p.releasing[a.ID()]; !ok {
-			p.owners[a.ID()] = ""
 		}
 	}
 
@@ -227,12 +212,6 @@ func hashOf(content []byte, exists bool, kind, key string) (string, error) {
 			return "", err
 		}
 		return sum(v), nil
-	case kind == KindPointerBlock:
-		b, found, err := fsx.PointerBlock(content)
-		if err != nil || !found {
-			return "", err
-		}
-		return sum([]byte(b)), nil
 	default:
 		return sum(content), nil
 	}
@@ -308,8 +287,6 @@ func desiredHash(in Intent) (string, error) {
 			return "", fmt.Errorf("%s %s: %w", in.Path, in.Pointer, err)
 		}
 		return sum(c), nil
-	case OpPointerBlock:
-		return sum([]byte(fsx.RenderPointerBlock(in.Lines))), nil
 	default:
 		return sum(in.Data), nil
 	}
@@ -398,9 +375,6 @@ func (p *planner) edit(f *file, in Intent) error {
 	case OpSetJSON:
 		f.content = contentJSON
 		f.cur, err = fsx.JSONSet(f.cur, in.Pointer, in.Value)
-	case OpPointerBlock:
-		f.content = contentMarkdown
-		f.cur, err = fsx.SetPointerBlock(f.cur, in.Lines)
 	default:
 		f.cur = in.Data
 		f.mode = fsx.NormalizeMode(in.Mode)
@@ -445,9 +419,6 @@ func (p *planner) drop(owner string, a ledger.Artifact) error {
 	case a.Key != "":
 		f.content = contentJSON
 		f.cur, err = fsx.JSONDelete(f.cur, a.Key)
-	case a.Kind == KindPointerBlock:
-		f.content = contentMarkdown
-		f.cur, err = fsx.SetPointerBlock(f.cur, nil)
 	default:
 		f.del = true
 	}
@@ -486,15 +457,12 @@ func (p *planner) finish() (*Plan, error) {
 		ref := ledger.FileRef{Target: f.target, Path: f.logical}
 		if f.touched && !f.del && f.created {
 			empty := false
-			switch f.content {
-			case contentJSON:
+			if f.content == contentJSON {
 				e, err := fsx.JSONIsEmptyObject(f.cur)
 				if err != nil {
 					return nil, fmt.Errorf("%s: %w", f.logical, err)
 				}
 				empty = e
-			case contentMarkdown:
-				empty = len(bytes.TrimSpace(f.cur)) == 0
 			}
 			f.del = empty
 		}
@@ -566,13 +534,6 @@ func (p *planner) updateLedger(l *ledger.Ledger, created map[ledger.FileRef]bool
 			delete(l.Modules, c.Name)
 		}
 	}
-	var shared []ledger.Artifact
-	for _, a := range l.Shared {
-		if !slices.Contains(p.req.SharedTargets, a.Target) {
-			shared = append(shared, a)
-		}
-	}
-	l.Shared = append(shared, p.desired[""]...)
 	l.Created = l.Created[:0]
 	for ref, ok := range created {
 		if ok {

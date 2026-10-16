@@ -1,5 +1,5 @@
 // Package fsx holds lola's filesystem primitives: atomic writes, symlink-aware destination
-// resolution, and byte-preserving edits of JSONC files and markdown pointer blocks.
+// resolution, and byte-preserving edits of JSONC files.
 package fsx
 
 import (

@@ -20,7 +20,7 @@ var _ = Describe("ledger", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(l.Version).To(Equal(1))
 		Expect(l.Save(path)).To(Succeed())
-		Expect(os.ReadFile(path)).To(MatchJSON(`{"version":1,"modules":{},"shared":[],"created":[]}`))
+		Expect(os.ReadFile(path)).To(MatchJSON(`{"version":1,"modules":{},"created":[]}`))
 	})
 
 	It("writes deterministic, sorted output with mode 0600 and round-trips", func() {
@@ -66,7 +66,6 @@ var _ = Describe("ledger", func() {
 			`{"version":1,"modules":{"x":null}}`:                                                    "x",
 			`{"version":1,"modules":{"bad\nname":{"digest":"d"}}}`:                                  "invalid",
 			`{"version":1,"modules":{"x":{"digest":"d","artifacts":[{"kind":"file","path":"p"}]}}}`: "target",
-			`{"version":1,"modules":{},"shared":[{"kind":"json-member","path":"p","key":"/k"}]}`:    "target",
 		} {
 			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
 			_, err := ledger.Load(path)

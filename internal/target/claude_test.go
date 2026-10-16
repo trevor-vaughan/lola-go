@@ -31,7 +31,8 @@ func byPath(ins []plan.Intent) map[string]plan.Intent {
 
 var _ = Describe("claude-code", func() {
 	c := target.Claude{}
-	ctx := target.PlanContext{Scope: target.Project, ContentDir: "/store/example/versions/abc/content", PluginData: "/proj/.lola/plugin-data/example"}
+	ctx := target.PlanContext{Scope: target.Project, ContentDir: "/store/example/versions/abc/content", PluginRoot: "/proj/.lola/modules/example",
+		PluginData: "/proj/.lola/plugin-data/example"}
 
 	It("is registered", func() {
 		t, ok := target.Lookup("claude-code")
@@ -51,7 +52,7 @@ var _ = Describe("claude-code", func() {
 		Expect(ins).To(HaveLen(4))
 		Expect(ins[0]).To(Equal(plan.Intent{Target: "claude-code", Kind: "skill", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
 			Path: ".claude/skills/review", Exclude: []string{"SKILL.md"}}))
-		Expect(string(ins[1].Data)).To(Equal("---\ndescription: r\n---\nRun /store/example/versions/abc/content/bin/x\n"))
+		Expect(string(ins[1].Data)).To(Equal("---\ndescription: r\n---\nRun /proj/.lola/modules/example/bin/x\n"))
 		Expect(ins[1].Path).To(Equal(".claude/skills/review/SKILL.md"))
 		Expect(ins[2].Src).To(Equal(ctx.ContentDir))
 		Expect(ins[2].Exclude).To(Equal([]string{"lola.yml", "SKILL.md"}))
@@ -88,7 +89,7 @@ var _ = Describe("claude-code", func() {
 		ins, notes, err := c.Plan(m, ctx)
 		Expect(err).NotTo(HaveOccurred())
 		p := byPath(ins)
-		Expect(p[".mcp.json/mcpServers/gh"].Value).To(MatchJSON(`{"command":"/store/example/versions/abc/content/bin/gh","args":["--data","/proj/.lola/plugin-data/example"],"env":{"T":"1"}}`))
+		Expect(p[".mcp.json/mcpServers/gh"].Value).To(MatchJSON(`{"command":"/proj/.lola/modules/example/bin/gh","args":["--data","/proj/.lola/plugin-data/example"],"env":{"T":"1"}}`))
 		Expect(p[".mcp.json/mcpServers/web"].Value).To(MatchJSON(`{"type":"http","url":"https://x/mcp","headers":{"A":"b"}}`))
 		Expect(p[".mcp.json/mcpServers/ev"].Value).To(MatchJSON(`{"type":"sse","url":"https://x/sse"}`))
 		Expect(notes).To(ConsistOf(target.Notice{Level: "warn", Text: `MCP server gh: claude-code has no working-directory setting; cwd "/tmp" dropped`}))
@@ -100,17 +101,19 @@ var _ = Describe("claude-code", func() {
 		Expect(ins[0].Path).To(Equal(".claude.json"))
 	})
 
-	It("installs instructions at project scope only", func() {
-		m := &module.Module{Name: "example", Instructions: "Be kind.\n"}
-		ins, _, err := c.Plan(m, ctx)
+	It("delivers rules verbatim to .claude/rules/lola/<module>/, at project and user scope", func() {
+		m := &module.Module{Name: "example", Rules: []module.Rule{{Name: "style", Body: "Keep ${PLUGIN_ROOT} as written.\n"}}}
+		want := []plan.Intent{{Target: "claude-code", Kind: "rule", Op: plan.OpWriteFile, Path: ".claude/rules/lola/example/style.md",
+			Data: []byte("Keep ${PLUGIN_ROOT} as written.\n"), Mode: 0o644}}
+		ins, notes, err := c.Plan(m, ctx)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(ins).To(Equal([]plan.Intent{{Target: "claude-code", Kind: "instructions", Op: plan.OpWriteFile, Path: ".claude/lola/example.md", Data: []byte("Be kind.\n"), Mode: 0o644}}))
+		Expect(notes).To(BeEmpty())
+		Expect(ins).To(Equal(want))
 		user := ctx
 		user.Scope = target.User
-		ins, notes, err := c.Plan(m, user)
+		ins, _, err = c.Plan(m, user)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(ins).To(BeEmpty())
-		Expect(notes[0].Text).To(ContainSubstring("not installed at user scope"))
+		Expect(ins).To(Equal(want))
 	})
 
 	It("skips artifacts restricted to other targets", func() {
@@ -118,13 +121,6 @@ var _ = Describe("claude-code", func() {
 		ins, _, err := c.Plan(m, ctx)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ins).To(BeEmpty())
-	})
-
-	It("derives one sorted CLAUDE.md pointer block, none at user scope or for no modules", func() {
-		Expect(c.Shared(target.Project, []string{"zeta", "alpha"})).To(Equal([]plan.Intent{{Target: "claude-code", Kind: plan.KindPointerBlock,
-			Op: plan.OpPointerBlock, Path: "CLAUDE.md", Lines: []string{"@.claude/lola/alpha.md", "@.claude/lola/zeta.md"}}}))
-		Expect(c.Shared(target.Project, nil)).To(BeEmpty())
-		Expect(c.Shared(target.User, []string{"a"})).To(BeEmpty())
 	})
 
 	It("detects .claude/ or CLAUDE.md and roots user scope at $HOME", func() {

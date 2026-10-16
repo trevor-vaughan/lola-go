@@ -56,4 +56,14 @@ modules:
 		_, err = manifest.Load(path)
 		Expect(err).To(MatchError(ContainSubstring("newer lola")))
 	})
+
+	It("validates module names and rejects path traversal attempts", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		for _, badName := range []string{"..", "../x", "Bad Name"} {
+			Expect(os.WriteFile(path, []byte("version: 1\nmodules:\n  - name: "+badName+"\n    source: x\n"), 0o600)).To(Succeed())
+			_, err := manifest.Load(path)
+			Expect(err).To(HaveOccurred(), "should reject module name %q", badName)
+			Expect(err.Error()).To(ContainSubstring(path), "error should name the file")
+		}
+	})
 })

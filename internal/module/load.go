@@ -22,21 +22,30 @@ import (
 // ErrNoModule means a directory contains no artifact lola can install.
 var ErrNoModule = errors.New("no module found")
 
-const lookedFor = "skills/*/SKILL.md, SKILL.md, commands/*.md, agents/*.md, mcps.json or INSTRUCTIONS.md"
+const lookedFor = "skills/*/SKILL.md, SKILL.md, commands/*.md, agents/*.md, mcps.json or rules/*.md"
 
 // lolaFile is the lola.yml schema (§5.4). Only name is required.
 type lolaFile struct {
 	Name        string            `yaml:"name"`
-	Description string            `yaml:"description"`
-	Version     string            `yaml:"version"`
-	Author      *Author           `yaml:"author"`
-	License     string            `yaml:"license"`
-	Homepage    string            `yaml:"homepage"`
-	Repository  string            `yaml:"repository"`
-	Keywords    []string          `yaml:"keywords"`
-	Targets     []string          `yaml:"targets"`
-	Formats     map[string]any    `yaml:"formats"`
-	Hooks       map[string]string `yaml:"hooks"`
+	Description string            `yaml:"description,omitempty"`
+	Version     string            `yaml:"version,omitempty"`
+	Author      *Author           `yaml:"author,omitempty"`
+	License     string            `yaml:"license,omitempty"`
+	Homepage    string            `yaml:"homepage,omitempty"`
+	Repository  string            `yaml:"repository,omitempty"`
+	Keywords    []string          `yaml:"keywords,omitempty"`
+	Targets     []string          `yaml:"targets,omitempty"`
+	Formats     map[string]any    `yaml:"formats,omitempty"`
+	Hooks       map[string]string `yaml:"hooks,omitempty"`
+}
+
+// ManifestNames lists the module manifest file names in precedence order (ADR #243): the
+// first one present is read and the others are ignored with a warning.
+func ManifestNames() []string { return []string{"lola.yaml", "lola.yml", ".lola.yaml", ".lola.yml"} }
+
+// ShadowWarning says that a lower-precedence manifest was ignored.
+func ShadowWarning(winner, shadowed string) string {
+	return shadowed + " was ignored: " + winner + " takes precedence"
 }
 
 const lolaKeys = "name, description, version, author, license, homepage, repository, keywords, targets, formats, hooks"
@@ -44,7 +53,9 @@ const lolaKeys = "name, description, version, author, license, homepage, reposit
 var unknownFieldRE = regexp.MustCompile(`field (\S+) not found`)
 
 // rootSkillExclude lists module-level entries that are never part of a root-level skill.
-var rootSkillExclude = []string{"lola.yml", "lola.yaml", "SKILL.md", "skills", "commands", "agents", "mcps.json", "INSTRUCTIONS.md", "AGENTS.md"}
+func rootSkillExclude() []string {
+	return append(ManifestNames(), "SKILL.md", "skills", "commands", "agents", "mcps.json", "rules", "INSTRUCTIONS.md", "AGENTS.md")
+}
 
 // Load reads the module rooted at dir.
 func Load(dir, fallbackName string) (*Module, error) {
@@ -55,13 +66,16 @@ func Load(dir, fallbackName string) (*Module, error) {
 	if err := ValidateName("module", m.Name); err != nil {
 		return nil, errs.WithHints(err, "add a lola.yml with a valid name: field")
 	}
-	steps := []func(string, *Module) error{loadSkills, loadCommands, loadAgents, loadMCP, loadInstructions}
+	if err := checkHooks(dir, m); err != nil {
+		return nil, err
+	}
+	steps := []func(string, *Module) error{loadSkills, loadCommands, loadAgents, loadMCP, loadRules}
 	for _, step := range steps {
 		if err := step(dir, m); err != nil {
 			return nil, err
 		}
 	}
-	if len(m.Skills)+len(m.Commands)+len(m.Agents)+len(m.MCPServers) == 0 && m.Instructions == "" {
+	if len(m.Skills)+len(m.Commands)+len(m.Agents)+len(m.MCPServers)+len(m.Rules) == 0 {
 		return nil, fmt.Errorf("%s: %w: looked for %s", dir, ErrNoModule, lookedFor)
 	}
 	return m, nil
@@ -69,16 +83,21 @@ func Load(dir, fallbackName string) (*Module, error) {
 
 func loadLolaFile(dir string, m *Module) error {
 	var found []string
-	for _, n := range []string{"lola.yml", "lola.yaml"} {
-		if _, err := os.Stat(filepath.Join(dir, n)); err == nil {
+	for _, n := range ManifestNames() {
+		_, err := os.Stat(filepath.Join(dir, n))
+		switch {
+		case err == nil:
 			found = append(found, n)
+		case !errors.Is(err, fs.ErrNotExist):
+			return err
 		}
 	}
-	switch len(found) {
-	case 0:
+	if len(found) == 0 {
 		return nil
-	case 2:
-		return errs.WithHints(errors.New("module has both lola.yml and lola.yaml"), "keep one of them")
+	}
+	m.Manifest, m.Shadowed = found[0], found[1:]
+	for _, n := range m.Shadowed {
+		m.Warnings = append(m.Warnings, ShadowWarning(m.Manifest, n))
 	}
 	b, err := os.ReadFile(filepath.Join(dir, found[0]))
 	if err != nil {
@@ -104,8 +123,8 @@ func loadLolaFile(dir string, m *Module) error {
 	m.Name, m.Description, m.Version = lf.Name, lf.Description, lf.Version
 	m.Author, m.License, m.Homepage, m.Repository = lf.Author, lf.License, lf.Homepage, lf.Repository
 	m.Keywords, m.Targets, m.Formats = lf.Keywords, lf.Targets, lf.Formats
-	for event, cmd := range lf.Hooks {
-		m.DeclaredHooks = append(m.DeclaredHooks, Hook{Event: event, Command: cmd})
+	for event, script := range lf.Hooks {
+		m.DeclaredHooks = append(m.DeclaredHooks, Hook{Event: event, Script: script})
 	}
 	sort.Slice(m.DeclaredHooks, func(i, j int) bool { return m.DeclaredHooks[i].Event < m.DeclaredHooks[j].Event })
 	return nil
@@ -164,7 +183,7 @@ func loadSkills(dir string, m *Module) error {
 		if err != nil {
 			return err
 		}
-		m.Skills = append(m.Skills, Skill{Name: m.Name, Dir: ".", Exclude: slices.Clone(rootSkillExclude), Doc: doc})
+		m.Skills = append(m.Skills, Skill{Name: m.Name, Dir: ".", Exclude: rootSkillExclude(), Doc: doc})
 		sort.Slice(m.Skills, func(i, j int) bool { return m.Skills[i].Name < m.Skills[j].Name })
 	}
 	return nil
@@ -277,16 +296,91 @@ func loadMCP(dir string, m *Module) error {
 	return nil
 }
 
-func loadInstructions(dir string, m *Module) error {
-	b, err := os.ReadFile(filepath.Join(dir, "INSTRUCTIONS.md"))
-	switch {
-	case err == nil:
-		m.Instructions = string(b)
-	case !errors.Is(err, fs.ErrNotExist):
+// loadRules reads rules/*.md (§5.6), sorted by name, and warns about anything else in rules/
+// and about legacy instruction files, which are never installed.
+func loadRules(dir string, m *Module) error {
+	es, err := entries(filepath.Join(dir, "rules"))
+	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(dir, "AGENTS.md")); err == nil {
-		m.LegacyAgentsMD = true
+	for _, e := range es {
+		name, ok := strings.CutSuffix(e.Name(), ".md")
+		if e.IsDir() || !ok {
+			m.Warnings = append(m.Warnings, "rules/"+e.Name()+" is not a rule (rules/<name>.md); skipped")
+			continue
+		}
+		if err := ValidateName("rule", name); err != nil {
+			return err
+		}
+		rel := "rules/" + e.Name()
+		doc, err := readDoc(dir, rel)
+		if err != nil {
+			return err
+		}
+		if _, ok := doc.Frontmatter["paths"]; ok {
+			return errs.WithHints(fmt.Errorf("%s: a rule applies in every session, so paths: is not supported", rel),
+				"path-scoped guidance belongs in a skill: skills/<name>/SKILL.md")
+		}
+		m.Rules = append(m.Rules, Rule{Name: name, Body: doc.Body})
+	}
+	sort.Slice(m.Rules, func(i, j int) bool { return m.Rules[i].Name < m.Rules[j].Name })
+	for _, f := range []string{"INSTRUCTIONS.md", "AGENTS.md"} {
+		_, err := os.Stat(filepath.Join(dir, f))
+		switch {
+		case err == nil:
+			m.Warnings = append(m.Warnings, f+" in a module is not installed: lola never edits your assistants' "+
+				"instruction files. Move it to rules/<topic>.md to ship it as always-on rules")
+		case !errors.Is(err, fs.ErrNotExist):
+			return err
+		}
 	}
 	return nil
+}
+
+// checkHooks refuses hooks lola could not run: unknown events, and scripts that are not
+// executable regular files inside the module.
+func checkHooks(dir string, m *Module) error {
+	for _, h := range m.DeclaredHooks {
+		if h.Event != "pre-install" && h.Event != "post-install" {
+			return fmt.Errorf("%s: hook %q is unknown; lola runs pre-install and post-install hooks", m.Manifest, h.Event)
+		}
+		if !filepath.IsLocal(h.Script) {
+			return fmt.Errorf("%s: %s hook %q must be a relative path inside the module", m.Manifest, h.Event, h.Script)
+		}
+		fi, err := os.Lstat(filepath.Join(dir, h.Script))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return fmt.Errorf("%s: %s hook %s does not exist", m.Manifest, h.Event, h.Script)
+		case err != nil:
+			return err
+		case !fi.Mode().IsRegular():
+			return fmt.Errorf("%s: %s hook %s is not a regular file", m.Manifest, h.Event, h.Script)
+		case fi.Mode().Perm()&0o111 == 0:
+			return errs.WithHints(fmt.Errorf("%s: %s hook %s is not executable", m.Manifest, h.Event, h.Script), "chmod +x "+h.Script)
+		}
+	}
+	return nil
+}
+
+// Normalize rewrites the module at dir as the cache stores it (ADR #243): exactly one
+// generated lola.yml, built from m, and no other manifest. m must have been loaded from dir.
+func Normalize(dir string, m *Module) error {
+	lf := lolaFile{Name: m.Name, Description: m.Description, Version: m.Version, Author: m.Author, License: m.License,
+		Homepage: m.Homepage, Repository: m.Repository, Keywords: m.Keywords, Targets: m.Targets, Formats: m.Formats}
+	for _, h := range m.DeclaredHooks {
+		if lf.Hooks == nil {
+			lf.Hooks = map[string]string{}
+		}
+		lf.Hooks[h.Event] = h.Script
+	}
+	b, err := yaml.Marshal(lf)
+	if err != nil {
+		return err
+	}
+	for _, n := range ManifestNames() {
+		if err := os.Remove(filepath.Join(dir, n)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return os.WriteFile(filepath.Join(dir, "lola.yml"), b, 0o644)
 }

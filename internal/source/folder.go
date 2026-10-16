@@ -223,23 +223,33 @@ func copyFiles(root, dst string, files []string) error {
 		case !fi.Mode().IsRegular():
 			return fmt.Errorf("%s: not a regular file", filepath.ToSlash(rel))
 		}
-		if err := copyFile(src, filepath.Join(dst, rel), fsx.NormalizeMode(fi.Mode())); err != nil {
+		if err := copyFile(src, filepath.Join(dst, rel), fi); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func copyFile(src, dst string, mode fs.FileMode) (err error) {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
+// copyFile copies src, which the caller found (with Lstat) to be the regular file fi. The
+// opened file must still be that file: one swapped for a symlink or another file between the
+// check and the open is refused, so a source can never redirect lola outside itself.
+func copyFile(src, dst string, fi fs.FileInfo) (err error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, in.Close()) }()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	opened, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(fi, opened) || !opened.Mode().IsRegular() {
+		return fmt.Errorf("%s changed while lola was reading it; refusing it", src)
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fsx.NormalizeMode(fi.Mode()))
 	if err != nil {
 		return err
 	}

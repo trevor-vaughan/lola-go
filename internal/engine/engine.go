@@ -4,20 +4,24 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/gofrs/flock"
 
+	"github.com/trevor-vaughan/lola-go/internal/consent"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/module"
@@ -34,17 +38,22 @@ type Scope struct {
 	ProjectDir string
 }
 
-// Engine is the orchestration entry point.
+// Engine is the orchestration entry point. Environ is the environment install hooks
+// inherit; HookTimeout bounds each hook run (§9.1).
 type Engine struct {
-	Paths   paths.Paths
-	Store   *store.Store
-	Targets []target.Target
-	Now     func() time.Time
+	Paths       paths.Paths
+	Store       *store.Store
+	Consent     *consent.Store
+	Targets     []target.Target
+	Now         func() time.Time
+	Environ     func() []string
+	HookTimeout time.Duration
 }
 
 // New returns an Engine over the real store and every registered target.
 func New(p paths.Paths) *Engine {
-	return &Engine{Paths: p, Store: store.New(p), Targets: target.All(), Now: time.Now}
+	return &Engine{Paths: p, Store: store.New(p), Consent: consent.New(p.Consent), Targets: target.All(), Now: time.Now,
+		Environ: os.Environ, HookTimeout: 10 * time.Minute}
 }
 
 // Options apply to install, uninstall and render.
@@ -52,6 +61,14 @@ type Options struct {
 	Targets []string // explicit target selection; empty means the manifest's targets
 	DryRun  bool
 	Force   bool
+	Rules   *bool // install only: false records rules: false, true clears it, nil keeps each entry's setting
+
+	// Install hooks (§9.1). AllowHooks grants consent for this run. Ask, when set, asks the
+	// user about hooks without a recorded consent; a yes is recorded. HookOutput receives
+	// the hooks' stdout and stderr.
+	AllowHooks bool
+	Ask        func(module string, hooks []HookScript) (bool, error)
+	HookOutput io.Writer
 }
 
 // MCPRun says what an MCP server runs: the stdio command line or the remote URL.
@@ -63,11 +80,11 @@ type MCPRun struct {
 
 // ModuleResult summarizes one module of an operation.
 type ModuleResult struct {
-	Name       string        `json:"name"`
-	Digest     string        `json:"digest,omitempty"`
-	Targets    []string      `json:"targets"`
-	MCPServers []MCPRun      `json:"mcp_servers"`
-	Hooks      []module.Hook `json:"hooks"`
+	Name       string    `json:"name"`
+	Digest     string    `json:"digest,omitempty"`
+	Targets    []string  `json:"targets"`
+	MCPServers []MCPRun  `json:"mcp_servers"`
+	Hooks      []HookRun `json:"hooks"`
 }
 
 // Result is what install, uninstall and render report.
@@ -92,20 +109,41 @@ type StatusRow struct {
 	Name   string `json:"name"`
 	Target string `json:"target"`
 	Status string `json:"status"` // ok, modified, missing, stale
+	Rules  bool   `json:"rules"`  // false when the manifest entry says rules: false
 	Source string `json:"source"`
 	Ref    string `json:"ref,omitempty"`
 	Digest string `json:"digest"`
 }
 
-type stateFiles struct{ lolaDir, manifest, ledger, lock, pluginData string }
+// stateFiles are a scope's state locations. lock is empty at project scope: the project's
+// lock file is named after its resolved .lola/ directory (see projectLock). modules holds
+// the module copies that ${PLUGIN_ROOT} points into (§6.4).
+type stateFiles struct{ lolaDir, manifest, ledger, lock, pluginData, modules string }
 
 func (e *Engine) files(sc Scope) stateFiles {
 	if sc.Kind == target.User {
-		return stateFiles{manifest: e.Paths.UserManifest, ledger: e.Paths.UserLedger, lock: e.Paths.UserLock, pluginData: e.Paths.PluginData}
+		return stateFiles{manifest: e.Paths.UserManifest, ledger: e.Paths.UserLedger, lock: e.Paths.UserLock,
+			pluginData: e.Paths.PluginData, modules: e.Paths.UserModules}
 	}
 	d := filepath.Join(sc.ProjectDir, ".lola")
 	return stateFiles{lolaDir: d, manifest: filepath.Join(d, "project.yml"), ledger: filepath.Join(d, "lock.json"),
-		lock: filepath.Join(d, ".lock"), pluginData: filepath.Join(d, "plugin-data")}
+		pluginData: filepath.Join(d, "plugin-data"), modules: filepath.Join(d, "modules")}
+}
+
+// lolaGitignore is the content of .lola/.gitignore, which lola owns.
+const lolaGitignore = "lock.json\nmodules/\nplugin-data/\n"
+
+// projectLock returns the lock file of the project whose existing .lola/ directory is
+// lolaDir. It lives under Paths.Locks, outside .lola/, so removing an empty .lola/ never
+// unlinks a lock file another process is waiting on; the name hashes the resolved path, so
+// every spelling of the project takes the same lock.
+func (e *Engine) projectLock(lolaDir string) (string, error) {
+	real, err := filepath.EvalSymlinks(lolaDir)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(real))
+	return filepath.Join(e.Paths.Locks, hex.EncodeToString(sum[:8])+".lock"), nil
 }
 
 // FindProject walks up from dir to the nearest directory containing .lola/; if there is
@@ -122,7 +160,7 @@ func FindProject(dir string) string {
 }
 
 // shouldRemoveLola reports whether dir (a .lola directory) contains no recorded state and should be removed.
-// It checks: project.yml doesn't exist, ledger is absent or empty (no modules, shared, or created).
+// It checks: project.yml doesn't exist, ledger is absent or empty (no modules or created files).
 // If the ledger can't be read, it returns false with the error (don't remove if we can't check).
 func shouldRemoveLola(dir string) (bool, error) {
 	// Check if project.yml exists
@@ -143,7 +181,7 @@ func shouldRemoveLola(dir string) (bool, error) {
 	}
 
 	// Check if ledger is empty
-	if len(l.Modules) == 0 && len(l.Shared) == 0 && len(l.Created) == 0 {
+	if len(l.Modules) == 0 && len(l.Created) == 0 {
 		return true, nil
 	}
 
@@ -179,10 +217,35 @@ func (e *Engine) Manifest(sc Scope) (*manifest.Manifest, error) {
 	return manifest.Load(e.files(sc).manifest)
 }
 
+// refuseSymlinkedState fails when the project's .lola/ or .lola/modules is a symlink: a
+// repository can commit one, and lola would then write, rename and delete outside the
+// project. Missing directories are fine. User-scope state is the user's own and may link.
+func (e *Engine) refuseSymlinkedState(sc Scope) error {
+	f := e.files(sc)
+	if f.lolaDir == "" {
+		return nil
+	}
+	for _, p := range []string{f.lolaDir, f.modules} {
+		fi, err := os.Lstat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return errs.WithHints(fmt.Errorf("%s is a symlink, and lola keeps its state in real directories", p),
+				"replace it with a directory: rm "+p+", then rerun")
+		}
+	}
+	return nil
+}
+
 // lock creates the scope's state directory and takes its exclusive lock.
 func (e *Engine) lock(sc Scope) (func(), error) {
 	f := e.files(sc)
 	lolaDidExist := false
+	lockFile := f.lock
 	if f.lolaDir != "" {
 		if _, err := os.Stat(f.lolaDir); err == nil {
 			lolaDidExist = true
@@ -191,17 +254,25 @@ func (e *Engine) lock(sc Scope) (func(), error) {
 			return nil, err
 		}
 		gi := filepath.Join(f.lolaDir, ".gitignore")
-		if _, err := os.Stat(gi); errors.Is(err, fs.ErrNotExist) {
-			if err := os.WriteFile(gi, []byte("lock.json\nplugin-data/\n.lock\n"), 0o644); err != nil {
+		cur, err := os.ReadFile(gi)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+		if !bytes.Equal(cur, []byte(lolaGitignore)) {
+			if err := fsx.WriteFileAtomic(gi, []byte(lolaGitignore), 0o644); err != nil {
 				return nil, err
 			}
 		}
-	} else if err := os.MkdirAll(filepath.Dir(f.lock), 0o700); err != nil {
+		if lockFile, err = e.projectLock(f.lolaDir); err != nil {
+			return nil, err
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(lockFile), 0o700); err != nil {
 		return nil, err
 	}
-	fl := flock.New(f.lock)
+	fl := flock.New(lockFile)
 	if err := fl.Lock(); err != nil {
-		return nil, fmt.Errorf("locking %s: %w", f.lock, err)
+		return nil, fmt.Errorf("locking %s: %w", lockFile, err)
 	}
 	return func() {
 		// Decide and remove while still holding the lock: after Unlock a waiting process could
@@ -275,20 +346,17 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, true, nil
 }
 
-// planModule asks every effective target for the module's intents.
-func (e *Engine) planModule(sc Scope, v store.Version, targets []string) ([]plan.Intent, []target.Notice, ModuleResult, error) {
+// planModule asks every effective target for the module's intents; ment is its manifest
+// entry (nil when it has none).
+func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry) ([]plan.Intent, []target.Notice, ModuleResult, error) {
 	m := v.Module
-	pctx := target.PlanContext{Scope: sc.Kind, ContentDir: v.ContentDir, PluginData: filepath.Join(e.files(sc).pluginData, m.Name)}
-	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: m.DeclaredHooks}
-	if mr.Hooks == nil {
-		mr.Hooks = []module.Hook{}
-	}
+	f := e.files(sc)
+	pctx := target.PlanContext{Scope: sc.Kind, ContentDir: v.ContentDir, PluginRoot: filepath.Join(f.modules, m.Name),
+		PluginData: filepath.Join(f.pluginData, m.Name), SkipRules: !ment.RulesOn()}
+	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}}
 	var notes []target.Notice
 	for _, w := range m.Warnings {
 		notes = append(notes, target.Notice{Level: target.LevelWarn, Text: m.Name + ": " + w})
-	}
-	if m.LegacyAgentsMD {
-		notes = append(notes, target.Notice{Level: target.LevelWarn, Text: m.Name + ": " + module.LegacyAgentsMDWarning})
 	}
 	var intents []plan.Intent
 	for _, id := range targets {
@@ -317,63 +385,15 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string) ([]plan
 	return intents, notes, mr, nil
 }
 
-// sharedFor recomputes shared artifacts on targets from the modules that will ship
-// instructions there once changes are applied.
-func (e *Engine) sharedFor(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, targets []string) ([]plan.Intent, error) {
-	var out []plan.Intent
-	for _, id := range targets {
-		t, err := e.target(id)
-		if err != nil {
-			return nil, err
-		}
-		has := map[string]bool{}
-		replanned := map[string]bool{}
-		for _, c := range changes {
-			if slices.Contains(c.Targets, id) {
-				replanned[c.Name] = true
-				for _, in := range c.Intents {
-					if in.Target == id && in.Kind == "instructions" {
-						has[c.Name] = true
-					}
-				}
-			}
-		}
-		for name, entry := range led.Modules {
-			if replanned[name] {
-				continue
-			}
-			for _, a := range entry.Artifacts {
-				if a.Target == id && a.Kind == "instructions" {
-					has[name] = true
-				}
-			}
-		}
-		var names []string
-		for n := range has {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		out = append(out, t.Shared(sc.Kind, names)...)
-	}
-	return out, nil
-}
-
 // execute computes and (unless dry) applies changes, then runs after under the scope lock.
-func (e *Engine) execute(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, opts Options, res *Result, after func(*plan.Plan) error) error {
-	var affected []string
-	for _, c := range changes {
-		for _, t := range c.Targets {
-			if !slices.Contains(affected, t) {
-				affected = append(affected, t)
-			}
-		}
-	}
-	shared, err := e.sharedFor(sc, led, changes, affected)
-	if err != nil {
-		return err
-	}
-	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes,
-		SharedTargets: affected, Shared: shared, Force: opts.Force}
+// copies are the module copies the changes render against: they are put in place before
+// the plan is applied and restored if the ledger is not committed. Copies of modules that
+// leave the ledger are removed. Install hooks get consent before anything is written;
+// pre-install hooks run in the new copies before the plan is applied, post-install hooks
+// after it is committed.
+func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy,
+	opts Options, res *Result, after func(*plan.Plan) error) error {
+	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes, Force: opts.Force}
 	for _, t := range e.Targets {
 		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
 		req.BaseDirs[t.ID()] = t.BaseDirs(sc.Kind)
@@ -383,8 +403,36 @@ func (e *Engine) execute(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		return err
 	}
 	res.Steps = append(res.Steps, p.Steps...)
-	if opts.DryRun {
-		return nil
+	jobs, err := e.planHooks(sc, copies, opts, res)
+	if err != nil || opts.DryRun {
+		return err
 	}
-	return plan.Apply(p, e.files(sc).ledger, func() error { return after(p) })
+	dir := e.files(sc).modules
+	perm := fs.FileMode(0o755)
+	if sc.Kind == target.User {
+		perm = 0o700
+	}
+	sw, err := swapCopies(dir, copies, perm)
+	if err != nil {
+		return err
+	}
+	if err := e.runHooks(ctx, sc, jobs, PreInstall, opts, res); err != nil {
+		return errors.Join(err, sw.rollback())
+	}
+	committed := false
+	err = plan.Apply(p, e.files(sc).ledger, func() error {
+		committed = true
+		return after(p)
+	})
+	if !committed {
+		return errors.Join(err, sw.rollback())
+	}
+	errs := []error{err, sw.commit()}
+	for _, c := range changes {
+		if p.Ledger.Modules[c.Name] == nil {
+			errs = append(errs, os.RemoveAll(filepath.Join(dir, c.Name)))
+		}
+	}
+	errs = append(errs, e.runHooks(ctx, sc, jobs, PostInstall, opts, res))
+	return errors.Join(errs...)
 }
