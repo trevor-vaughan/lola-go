@@ -105,6 +105,7 @@ func printCheck(w io.Writer, s style, rep *engine.CheckReport) {
 		fmt.Fprintln(w, checkLine(s, f))
 	}
 	for _, m := range rep.Modules {
+		printExcluded(w, s, m.Name, m.Skipped, false)
 		for _, f := range m.Findings {
 			if f.Target == "" {
 				fmt.Fprintln(w, checkLine(s, f))
@@ -136,16 +137,46 @@ func checkLine(s style, f target.Finding) string {
 	return findingLine(s, f)
 }
 
+// printInstall renders an install result; with more than one scope, steps are grouped and
+// modules named per scope.
+func printInstall(w io.Writer, s style, r *engine.InstallResult) {
+	printScoped(w, s, "installed", r.Result, r.Scopes)
+}
+
 // printResult renders an install/uninstall/render result: steps, MCP transparency, install
 // hooks, notices, and a summary line.
 func printResult(w io.Writer, s style, verb string, r *engine.Result) {
+	printScoped(w, s, verb, r, nil)
+}
+
+// scopeLabel names a scope in human output.
+func scopeLabel(sc engine.ScopeResult) string {
+	if sc.Root != "" {
+		return sc.Scope + " (" + untrusted.Text(sc.Root, untrusted.MaxName) + ")"
+	}
+	return sc.Scope
+}
+
+func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
 	if r.DryRun && !s.plain {
 		fmt.Fprintln(w, "plan (dry run; nothing was written):")
 	}
-	for _, st := range r.Steps {
-		fmt.Fprintln(w, "  "+stepLine(s, st))
+	if len(scopes) > 1 && !s.plain {
+		for _, sc := range scopes {
+			fmt.Fprintln(w, scopeLabel(sc)+":")
+			for _, st := range r.Steps {
+				if st.Scope == sc.Scope && st.Root == sc.Root {
+					fmt.Fprintln(w, "  "+stepLine(s, st))
+				}
+			}
+		}
+	} else {
+		for _, st := range r.Steps {
+			fmt.Fprintln(w, "  "+stepLine(s, st))
+		}
 	}
 	for _, m := range r.Modules {
+		printExcluded(w, s, m.Name, m.Skipped, r.DryRun)
 		if len(m.MCPServers) > 0 && !s.plain {
 			fmt.Fprintf(w, "%s MCP servers:\n", m.Name)
 			for _, srv := range m.MCPServers {
@@ -184,7 +215,11 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 		return
 	}
 	for _, m := range r.Modules {
-		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s (%s)", verb, m.Name, strings.Join(m.Targets, ", "))))
+		where := ""
+		if len(scopes) > 1 {
+			where = " at " + m.Scope + " scope"
+		}
+		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s%s (%s)", verb, m.Name, where, strings.Join(m.Targets, ", "))))
 	}
 }
 
@@ -211,4 +246,28 @@ func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult) {
 			fmt.Fprintln(w, "    "+line)
 		}
 	}
+}
+
+// printExcluded names a module's components that selections.yaml excludes; a dry run saved
+// no edit, so it says they would be skipped. A --plain row is "skipped", the module and the
+// component (kind/name).
+func printExcluded(w io.Writer, s style, module string, skipped []string, dry bool) {
+	if len(skipped) == 0 {
+		return
+	}
+	names := make([]string, len(skipped))
+	for i, c := range skipped {
+		names[i] = untrusted.Text(c, untrusted.MaxName)
+	}
+	if s.plain {
+		for _, c := range names {
+			fmt.Fprintf(w, "skipped\t%s\t%s\n", module, c)
+		}
+		return
+	}
+	verb := "skipped"
+	if dry {
+		verb = "would be skipped"
+	}
+	fmt.Fprintln(w, s.info(module+": "+verb+" in selections.yaml: "+strings.Join(names, ", ")))
 }

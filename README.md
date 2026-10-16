@@ -45,10 +45,10 @@ task build          # writes bin/lola
 ```sh
 lola init my-module                         # plugin.json, one skill, one command (Agent Plugins)
 mkdir my-project && cd my-project
-lola install ../my-module -t claude-code    # renders into .claude/, records .lola/project.yml
+lola install ../my-module --scope project -t claude-code   # renders into .claude/, records .lola/project.yml
 lola list                                   # my-module  claude-code  ✓ ok
 # edit ../my-module, then pick up the change:
-lola install ../my-module
+lola install ../my-module                   # no --scope: a terminal asks (nothing preselected); a script uses the .lola/ found
 lola uninstall my-module -y                 # removes exactly what lola wrote
 ```
 

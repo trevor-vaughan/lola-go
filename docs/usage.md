@@ -8,9 +8,9 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 
 | Command | What it does |
 |---|---|
-| `lola install <source\|name>...` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. |
+| `lola install [<source\|name>...]` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. With no argument on a terminal, walks you through the choices ([Choosing what to install](#choosing-what-to-install)). |
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
-| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (your cache has a newer version), or `skipped` (nothing of the module could be rendered for that target); and whether the module's rules are on. |
+| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (your cache has a newer version), or `skipped` (nothing of the module could be rendered for that target); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. |
 | `lola render` | Render every installed module again from your cache. Removes files a module no longer ships. |
 | `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
@@ -478,9 +478,9 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
 
 ## Scopes and targets
 
-- **Project scope** (default): files go into the project; state lives in `.lola/`. The project
-  is the nearest parent directory with a `.lola/`, else the current directory; `-C <dir>` picks
-  one explicitly.
+- **Project scope**: files go into the project; state lives in `.lola/`. For `install`, see
+  [Which scope](#which-scope). Every other command acts on the nearest parent directory with a
+  `.lola/`, else the current directory; `-C <dir>` picks one explicitly.
 - **User scope** (`--user`): files go into your home directory (OpenCode's into
   `$XDG_CONFIG_HOME/opencode/`); state lives under `$XDG_CONFIG_HOME/lola/` (manifest
   `user.yml`) and `$XDG_STATE_HOME/lola/` (ledger `lock.json`). Rules installed at user scope
@@ -492,8 +492,8 @@ The targets are `claude-code` (Claude Code), `gemini-cli` (Gemini CLI) and `open
 When you do not pass `-t`, lola uses the manifest's targets. Otherwise it offers the assistants
 installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your
 `PATH`): on a terminal you pick from them, with those already set up in the project preselected,
-or every installed assistant preselected when none is set up; off a terminal lola uses the ones
-both installed and set up. An assistant is set up in a project when it has `.claude/` or
+or every installed assistant preselected when none is set up (with only one installed, lola
+uses it without asking); off a terminal lola uses the ones both installed and set up. An assistant is set up in a project when it has `.claude/` or
 `CLAUDE.md` (Claude Code), `.gemini/` or `GEMINI.md` (Gemini CLI), or `.opencode/`,
 `opencode.json` or `opencode.jsonc` (OpenCode); at user scope, when `~/.claude/` or
 `~/CLAUDE.md`, `~/.gemini/` or `~/GEMINI.md`, or `$XDG_CONFIG_HOME/opencode/` exists. A target
@@ -535,6 +535,194 @@ For `opencode` (user scope: the same paths under `$XDG_CONFIG_HOME/opencode/`, w
 | Agents | `.opencode/agents/<agent>.md` with `mode: subagent` unless the agent sets a mode; `name` is dropped and `model` is kept only as `provider/model`. OpenCode cannot express a tool list and gives an agent without one every tool, so an agent with a non-empty `tools` is skipped (`--force` installs it without the list). OpenCode refuses to start on an invalid agent value, so lola drops a `color` other than `#rrggbb` (OpenCode 1.18 also takes theme names such as `accent`, but later versions reject them), a `mode` other than `subagent`, `primary` or `all`, a non-numeric `temperature` or `top_p`, a `steps` or `maxSteps` that is not a positive integer, a non-boolean `hidden` or `disable`, a non-string `variant` and a non-map `options`. `permission` is passed through unchecked |
 | MCP servers | `opencode.jsonc` if it exists, else `opencode.json` → `mcp.<name>`: `{"type": "local", "command": [...], "environment"}` or `{"type": "remote", "url", "headers"}`; `${VAR}` becomes `{env:VAR}`. OpenCode merges both files and `opencode.jsonc` wins, so a server of the same name in `opencode.json` is overridden by lola's |
 | Rules | `.opencode/lola/<module>/<rule>.md`, listed as `.opencode/lola/<module>/*.md` in the same file's `instructions` (at user scope by absolute path) |
+
+## Choosing what to install
+
+### The install flow
+
+`lola install` with no argument, on a terminal, asks what it needs, one step at a time, inline
+on stderr (no full-screen interface):
+
+1. **Scope**: **Project** (showing its root), **User** (`~`) and **Other directory…**, in that
+   order; tick any of them, at least one. Nothing is preselected, not even when `config.yaml`
+   sets `default_scope` (it applies only off a terminal) or the project already uses lola.
+   **Other directory…** then asks for a path: a relative one starts from the current
+   directory, and `~` is not expanded. It must be an existing directory, not the project
+   you ticked above, and not your home directory (that is the user scope; tick User instead);
+   otherwise lola says why and asks again. Ticking Project where the project is your home
+   directory is asked again the same way. That directory is installed into
+   as a project of its own, so one run can install into this project, another one and your
+   user scope at once.
+2. **Modules**: every module in your cache, as `source · name — description`, filterable by
+   typing. Modules already installed in a chosen scope are marked `(installed)`; picking one
+   reconfigures it. The last entry, **Add a source…**, asks for a source and an optional ref,
+   adds it to your cache exactly like `lola cache add`, and shows the list again with it
+   selected. Leaving the source empty returns to the list with the modules you ticked still
+   ticked. With an empty cache you get Add a source… or Quit.
+3. **Assistants**: the installed assistants, as described under
+   [Scopes and targets](#scopes-and-targets).
+4. **Components**: one page per module, a list per kind (skills, commands, agents, MCP
+   servers, rules), with everything preselected except what `selections.yaml` skips (labelled
+   `(skipped in selections.yaml)`). MCP servers that run a command say `(runs a command)`.
+   Rules are shown disabled under `--no-rules` (or when the module's rules are off). A module
+   with runtime hooks ends its page with "Runtime hooks: N (you will be asked before they are
+   installed)". Unpicking everything asks "Install <module> with no components?"; No leaves
+   the module out of this run. With several destinations, a module whose preselection is the
+   same everywhere gets one page for all of them; otherwise it gets one page per destination,
+   titled `<module> — project (<root>)` or `<module> — user`.
+5. **Summary**, then a menu: **Apply**, Change scope, Change modules, Change assistants,
+   Change components (each offered when that step was asked), or Quit. Changing a step asks
+   it again with your answers preselected; later answers that still apply are kept. Change
+   scope keeps the component picks of the destinations you keep, and the summary counts the
+   picks of the ones you remove as dropped.
+
+A step with no real choice is not shown: a scope, module, assistant or component flag answers
+it, as does a single installed assistant or a module with one component. The menu appears
+only when a step was shown; `-y` applies without it. The install uses exactly the versions
+the pickers listed, for source arguments and for modules picked from the cache, and keeps
+them through the menu's "Change …" steps. If a listed version was removed from your cache in
+the meantime, the run stops and asks you to run `lola install` again. Two arguments that
+resolve to different versions of one module are refused. When nothing would change, lola says
+`already up to date`. Runtime hook consent is asked during the install, as always.
+
+The summary lists, per destination and assistant, each module's components: `+` added, `~`
+updated (a newer cached version), `-` removed, `= N unchanged`; where each destination came
+from; the `selections.yaml` entries the run writes; and the **equivalent commands**, which do
+the same without a terminal:
+
+```
+Equivalent commands:
+  lola cache add ../src/deploy
+  lola install review-kit deploy --scope project -t claude-code --skip review-kit:skill/slow-lint
+```
+
+With more than one destination there is one `lola install` line per destination: each
+project gets `--scope project -C <root>` and the user scope gets `--scope user`. There is no
+flag for several project roots in one run; `--scope both` still installs into one project
+and your user scope.
+
+When the `-C` path contains control or format characters, the line is shown with them
+replaced by `?`, followed by a note that it is not copyable as shown.
+
+Ctrl+C at any step cancels: "aborted; nothing changed". Nothing is written before Apply,
+except that Add a source… (and a source you name as an argument) is fetched into your
+cache, which installs nothing. After Apply, a runtime-hook consent you give (or
+`--allow-runtime-hooks`) is recorded in `consent.json` when you give it, before
+`selections.yaml` and the installed files are written; if the run then stops (a refusal, or
+a later prompt you decline), that consent stays recorded and nothing else is written.
+`--dry-run` runs the steps and the summary and writes nothing, not even `selections.yaml`.
+
+`LOLA_ACCESSIBLE=1` (or `TERM=dumb`) asks the same questions as numbered line prompts, for
+screen readers; there, end of input at any prompt, runtime hook consent included, cancels the
+run ("aborted; nothing changed"), and Ctrl+C interrupts.
+
+### Which scope
+
+`install` never picks a scope silently. First match wins:
+
+| You give | Scope |
+|---|---|
+| `--scope project\|user\|both` (also `project,user`) | that; `-C <dir>` sets the project |
+| `--user` | user (with `--scope`, they must agree) |
+| `-C <dir>` | the project at `<dir>` |
+| a terminal | the scope step, with nothing preselected |
+| nothing, in or below a directory with `.lola/` | that project; stderr says `scope: project (found .lola/ at <path>)` |
+| `default_scope` in `config.yaml` | that scope |
+| none of these | an error naming `--scope`, `--user`, `-C` and `default_scope` |
+
+`--scope project` without `-C` uses the nearest parent with a `.lola/`, else the current
+directory. `--scope user -C <dir>` is an error.
+
+You cannot install a project at your home directory: it renders exactly where the user scope
+does (`~/.claude`, …), so the two would claim the same files. `install` refuses it however it
+is chosen (`-C ~`, `--scope project` or `--scope both` run from `~`, or a `.lola/` found in
+`~`), with a hint to use `--user` instead. `render` and `uninstall` still work on a home
+project an older lola installed, so you can remove it. `--json` output lists every destination in
+`scopes`, each with its `scope`, its `root` (for a project) and its `scope_source`: `flag`,
+`config`, `discovered` or `picked`. Modules and steps carry the same `scope` and `root`.
+`default_scope` is only read off a terminal; on one, the scope step asks.
+
+**Breaking change:** `lola install` off a terminal, in a directory with no `.lola/` above it
+and no `default_scope`, no longer installs into the current directory; pass `--scope project`
+(or set `default_scope: project`). `render`, `uninstall`, `list` and `check` keep the old
+resolution, since they act where lola already installed something.
+
+### Component flags
+
+| Flag | Effect |
+|---|---|
+| `--skip <selector>` | Do not install the matching components; saved as a skip (and a matching include in that section is removed). |
+| `--only <selector>` | For each module with a match, skip every component that does not match and unskip those that do. Saved as skips of the components that exist now, so components a later version adds are installed. Warns when a wider include in the section keeps a non-matching component installed. |
+| `--unskip <selector>` | Install skipped components again: removes the matching skips, and where a global skip still applies, adds an include. With `--global`, warns when a scope section still skips the item. |
+| `--global` | Save the above in the global section instead of the scope's. |
+
+A selector is `kind/name` or `module:kind/name`, where `kind` is `skill`, `command`, `agent`,
+`mcp` or `rule` and `name` may be a glob (`review-*`). A bare selector applies to every module
+being installed that has a match; one that matches nothing is an error that lists that kind's
+components (module-qualified). All three repeat, and always write `selections.yaml` (except
+under `--dry-run`), saying `→ saved to <path>`. With more than one destination (`--scope
+both`, or several ticked in the scope step) they need `--global`, since one flag cannot say
+which scope it means. `--no-rules` wins over rule selections. Names in
+selectors, from flags or the file, may not contain control or format characters.
+
+```sh
+lola install review-kit --scope project --skip skill/slow-lint --skip 'mcp/internal-*'
+lola install review-kit --scope user --only skill/review --only command/ship
+lola install review-kit --scope project --unskip review-kit:skill/slow-lint
+lola install review-kit deploy --scope both --skip command/deploy --global
+```
+
+### `config.yaml` and `selections.yaml`
+
+Both live in `$XDG_CONFIG_HOME/lola/` (normally `~/.config/lola/`), are safe to edit by hand,
+and are checked strictly: unknown keys, wrong types, unknown kinds, bad globs, relative or
+`~` project keys, two keys for one project, control or format characters in selector names,
+an `include` in the `global` section, anchors, aliases and merge keys, and files over
+1 MiB are errors that name the file, line and key, with a hint.
+
+```yaml
+# lola settings. Safe to edit by hand.
+version: 1
+default_scope: project   # project | user | both; read off a terminal only
+```
+
+`selections.yaml` is the one place that says which components you do not want. `install`,
+`render` and `check` all honor it, so editing it takes effect on the next `render` (a
+component you skip after installing it is removed, unless you edited its file, which is kept
+and reported):
+
+```yaml
+# lola selections: components you chose not to install.
+version: 1
+global:
+  review-kit:                       # module name as `lola list` shows it
+    skip: [skill/slow-lint, mcp/internal-db]
+user:
+  review-kit:
+    include: [mcp/internal-db]      # overrides a global skip at user scope
+projects:
+  /home/me/src/api:
+    review-kit:
+      skip: [command/deploy]
+      include: [skill/slow-lint]
+```
+
+A module's exclusions at a scope are the global skips, plus that scope's skips, minus that
+scope's includes (`global` has no includes). Project keys are absolute paths; a key written
+through a symlink or with `..` still matches its project. A selector naming a component the
+module no longer has is a warning. lola writes the file under a lock, replacing only the
+entries of the modules it changes, so your comments, order and other edits survive, even in a
+file that holds only comments or a null document. A section or project key that a removal
+empties is dropped, unless it carries a comment, in which case it stays as an empty mapping.
+A symlinked file is written at its target. A file that does not parse is never overwritten.
+Entries for projects you moved are left alone.
+
+### Off a terminal
+
+Every answer has a flag, so scripts and CI never need a terminal. Off one (or with `--json`)
+lola never asks; a missing answer is an error whose hint names the flag: no module →
+`lola install <source|name>`; no scope → see [Which scope](#which-scope); no assistant found →
+`-t`. Copy the equivalent commands from an interactive run to repeat it.
 
 ## Findings
 
@@ -605,6 +793,8 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
+| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
 changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
@@ -636,6 +826,10 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
 - Without a terminal, `uninstall` and `cache rm` need `-y`.
+- `install --json` adds `scopes` (each with `scope`, `root` and `scope_source`), and per
+  module `scope`, `skipped` (component names, `[]` when none) and `saved_to` (the
+  `selections.yaml` it wrote, or `""`), and `equivalent_commands` (`[]` when no step was shown).
+  `list --json` and `check --json` carry `skipped` per module.
 
 ## Environment
 
@@ -643,7 +837,10 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 |---|---|
 | `HOME` | User-scope root; base of the XDG defaults |
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
-| `XDG_CONFIG_HOME` | User-scope manifest, and OpenCode's user-scope directory (default `~/.config`) |
+| `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
+| `LOLA_ACCESSIBLE` | `1` draws the install flow as numbered line prompts (screen readers) |
+| `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
+| `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, and lock files (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |

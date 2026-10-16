@@ -1,6 +1,9 @@
 package paths_test
 
 import (
+	"os"
+	"path/filepath"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -23,6 +26,8 @@ var _ = Describe("Resolve", func() {
 		Expect(p.StateHome).To(Equal("/h/.local/state"))
 		Expect(p.DataHome).To(Equal("/h/.local/share"))
 		Expect(p.Config).To(Equal("/h/.config/lola/config.yaml"))
+		Expect(p.Selections).To(Equal("/h/.config/lola/selections.yaml"))
+		Expect(p.SelectionsLock).To(Equal("/h/.local/state/lola/locks/selections.lock"))
 		Expect(p.UserManifest).To(Equal("/h/.config/lola/user.yml"))
 		Expect(p.UserLedger).To(Equal("/h/.local/state/lola/lock.json"))
 		Expect(p.UserLock).To(Equal("/h/.local/state/lola/.lock"))
@@ -55,6 +60,34 @@ var _ = Describe("Resolve", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(p.ConfigHome).To(Equal("/h/.config"))
 		Expect(p.StateHome).To(Equal("/h/.local/state"))
+	})
+
+	It("keys a project by its clean, symlink-resolved absolute path", func() {
+		root := testenv.Isolate()
+		real := filepath.Join(root, "real", "api")
+		Expect(os.MkdirAll(real, 0o755)).To(Succeed())
+		Expect(os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "link"))).To(Succeed())
+		want, err := filepath.EvalSymlinks(real)
+		Expect(err).NotTo(HaveOccurred())
+		for _, spelling := range []string{real, filepath.Join(root, "link", "api"), filepath.Join(root, "real", "x", "..", "api") + "/"} {
+			k, err := paths.ProjectKey(spelling)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(k).To(Equal(want), spelling)
+		}
+		gone := filepath.Join(root, "moved", "..", "moved", "away")
+		k, err := paths.ProjectKey(gone)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(k).To(Equal(filepath.Join(root, "moved", "away")), "a project that no longer exists keeps its lexical key")
+		Expect(paths.SameKey(k, filepath.Join(root, "moved", "away"))).To(BeTrue())
+	})
+
+	It("keeps a project key lexical when the path cannot be resolved", func() {
+		root := testenv.Isolate()
+		file := filepath.Join(root, "notes.txt")
+		Expect(os.WriteFile(file, nil, 0o600)).To(Succeed())
+		k, err := paths.ProjectKey(filepath.Join(file, "x", "..", "api"))
+		Expect(err).NotTo(HaveOccurred(), "a path under a file is not a directory, not an error")
+		Expect(k).To(Equal(filepath.Join(file, "api")))
 	})
 
 	It("rejects an unset HOME", func() {

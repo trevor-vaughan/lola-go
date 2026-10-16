@@ -41,6 +41,12 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(r.out).To(ContainSubstring("Aliases:\n  version, ver"))
 	})
 
+	It("says -C's default holds for every command but install, which resolves its scope", func() {
+		r := lola("install", "--help")
+		Expect(r.code).To(Equal(0))
+		Expect(r.out).To(MatchRegexp(`-C, --project string\s+project root; without it, every command but install uses the nearest parent with \.lola/, else the current directory \(install: see lola help install\)\n`))
+	})
+
 	It("rejects an unknown help topic and both modes at once", func() {
 		Expect(lola("help", "nope").err).To(ContainSubstring(`no help topic "nope"`))
 		Expect(lola("help", "--long", "--short").code).To(Equal(1))

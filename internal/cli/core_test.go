@@ -393,7 +393,7 @@ var _ = Describe("core commands", func() {
 
 	It("records a relative source relative to the project root", func() {
 		GinkgoT().Chdir(proj)
-		Expect(lola("install", "../example").code).To(Equal(0))
+		Expect(lola("install", "../example", "--scope", "project").code).To(Equal(0))
 		b, err := os.ReadFile(filepath.Join(proj, ".lola/project.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(ContainSubstring("source: ../example"))

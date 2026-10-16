@@ -29,8 +29,12 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
        `.claude/settings.local.json` (`~/.claude/settings.json` at user scope) only under the
        user's recorded consent, with `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` supplied,
        and skipped when git could commit the settings file.
-   - **5c. Next: interactive selection.** An install flow built from pickers (modules, scopes,
-     assistants, components); its own design follows 5b.
+   - **5c. Done: interactive install flow.** `lola install` on a terminal walks through scope,
+     modules (with Add a source…), assistants and components, then a summary with the
+     equivalent commands and a review menu; no silent default scope (`--scope`,
+     `default_scope`); remembered exclusions in `selections.yaml`, written by the pickers and
+     by `--skip`/`--only`/`--unskip` and honored by `render` and `check`
+     (`docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md`).
 6. **Marketplaces, `sync` and profiles.** `lola market`, `@market/module`, `lola sync`, and
    stackable named sets of modules ([#223](https://github.com/LobsterTrap/lola/issues/223)).
 7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,

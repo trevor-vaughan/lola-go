@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
@@ -18,6 +19,7 @@ type CheckedModule struct {
 	Name     string           `json:"name"`
 	Targets  []string         `json:"targets"`
 	Findings []target.Finding `json:"findings"`
+	Skipped  []string         `json:"skipped"` // components selections.yaml excludes at the scope render uses; not checked
 }
 
 // CheckReport is the result of lola check: per-module findings, plus findings about the
@@ -30,7 +32,8 @@ type CheckReport struct {
 // Check reports, for each argument (a source, or a module in the cache), everything the
 // targets ids (every registered target when empty) would lose, change or skip. It renders
 // nothing and changes no state: a source is staged in a temporary directory, never added to
-// the cache.
+// the cache. Components that selections.yaml excludes at sc are reported as skipped, not
+// checked, since render would not install them.
 func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []string) (*CheckReport, error) {
 	if len(ids) == 0 {
 		for _, t := range e.Targets {
@@ -45,10 +48,14 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []st
 		}
 		ts = append(ts, t)
 	}
+	sel, err := e.selections()
+	if err != nil {
+		return nil, err
+	}
 	probes := e.newProbeRun(ctx)
 	rep := &CheckReport{Modules: []CheckedModule{}, Findings: []target.Finding{}}
 	for _, arg := range args {
-		cm, err := e.checkOne(ctx, sc, cwd, arg, ts, probes)
+		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, probes)
 		if err != nil {
 			return nil, err
 		}
@@ -58,13 +65,19 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []st
 	return rep, nil
 }
 
-func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, ts []target.Target, probes *probeRun) (cm CheckedModule, err error) {
-	m, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg)
+func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, probes *probeRun) (cm CheckedModule, err error) {
+	full, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg)
 	if err != nil {
 		return cm, err
 	}
 	defer func() { err = errors.Join(err, cleanup()) }()
-	cm = CheckedModule{Name: m.Name, Targets: []string{}, Findings: warningFindings(m)}
+	x, err := exclusions(sel, sc, full.Name)
+	if err != nil {
+		return cm, err
+	}
+	r := resolveComponents(full, x, true)
+	m := r.module
+	cm = CheckedModule{Name: m.Name, Targets: []string{}, Findings: warningFindings(m), Skipped: r.skipped}
 	for _, t := range ts {
 		if !module.Supports(m.Targets, t.ID()) {
 			continue

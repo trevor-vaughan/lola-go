@@ -2,14 +2,17 @@
 
 For contributors. The design spec is `docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`;
 this page describes what is built (Plans 1 to 4; 5a, sources, designed in
-`docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`; and 5b.1, module formats, designed
-in `docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md`).
+`docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`; 5b, module formats and runtime
+hooks, designed in `docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md`; and 5c, the
+interactive install flow, designed in `docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md`).
 
 ## Pipeline
 
 ```
 source ──fetch──▶ staging ──Put (detect, normalize, digest)──▶ cache (content-addressed versions, heads per ref)
                                       │ module.Load (IR, re-derived each time; no format adapter)
+                                      ▼
+                     resolver (cached module minus selections.yaml exclusions)
                                       ▼
                      targets (pure: IR → intents + findings)
                                       ▼
@@ -30,7 +33,8 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 
 | Package | Responsibility |
 |---|---|
-| `paths` | XDG resolution from an injected `getenv`; no globals. |
+| `paths` | XDG resolution from an injected `getenv`; no globals. `ProjectKey`, the canonical form of a project directory that the project lock and `selections.yaml` share. |
+| `config` | `config.yaml` and `selections.yaml`: strict loading of untrusted, hand-edited YAML, selectors, effective exclusions, and locked node-preserving writes. |
 | `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members, and array elements of any JSON value), mode normalization. |
 | `module` | The IR, frontmatter parsing, name rules, format detection and the Claude plugin and Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened module JSON reading, rules, hook validation, and normalization. |
 | `untrusted` | Makes text lola did not write safe to print: control characters, Unicode format characters and line separators replaced, length capped, OS errors without their path. |
@@ -43,10 +47,76 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 | `target/conformance` | Specs every registered target must pass. |
 | `targets` | The registry: the one list of every target. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction). |
-| `engine` | Install, uninstall, render, status, fetch, update, search; module copies, install hooks, runtime hook consent and the git-ignore check. |
-| `cli` | Commands, help, aliases, completion, output and prompts. |
+| `engine` | Install, uninstall, render, status, fetch, update, search; module copies, install hooks, runtime hook consent and the git-ignore check; install scope resolution, the component resolver, selection edits and `InstallChoices`. |
+| `cli` | Commands, help, aliases, completion, output and prompts; the install flow and its `Prompter`, with the huh adapter. |
 | `errs` | Errors that carry coaching hints. |
 | `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git server. |
+
+## Selections and the install flow
+
+**Files.** `internal/config` reads `$XDG_CONFIG_HOME/lola/config.yaml` (`default_scope`) and
+`selections.yaml` once per command. Both are untrusted: at most 1 MiB, one YAML document, no
+anchors, aliases or merge keys, known keys only, `version: 1`, module names through
+`ValidateName`, known kinds, valid `path.Match` globs (no control or format characters in a
+selector name, from the file or a flag), no `include` in `global`, absolute project keys. Errors name the
+file, line and key path (keys through `untrusted.Text`) with a hint. Project keys pass through
+`paths.ProjectKey` (absolute, clean, symlinks resolved; on Windows forward slashes and a lower
+drive letter) and compare with `paths.KeyID` (case-folded on darwin and Windows), so two keys
+for one project are refused and a hand-written spelling still matches. The project lock file is
+named after the same key.
+
+**Resolver.** `resolveComponents` (engine) is the one place a module becomes the components a
+scope installs: the cached version minus the effective exclusions (global skip ∪ scope skip −
+scope include) and without rules when they are off. `Install`, `Render` and `Check` plan its
+output, so a component skipped after installation is an orphan `plan.Compute` removes (or a
+conflict, if hand-edited); `Status` reports the skipped names. A pattern that names nothing is
+a warning notice.
+
+**Destinations.** An install acts on an ordered list of destinations: at most one user scope
+and any number of project roots. `Scope.Key()` names one: `user`, or the project's canonical
+key (`paths.ProjectKey`, compared through `paths.KeyID`), so every spelling of a root is one
+destination. Everything the flow keeps per destination is keyed by it: `ModuleChoice.Scope`,
+`Preview.Selected`, the flow's assistants, component picks and dropped-pick counts. Each project
+root is its own `projects:` section of `selections.yaml`. Results carry `scope` and `root` on
+`scopes`, modules and steps. The scope picker's **Other directory…** adds a project root; the
+flags still give at most one project and the user scope.
+
+**Install.** `InstallAll` takes, per destination, the scope and its source (`flag`, `config`,
+`discovered`, `picked`, from `ResolveInstallScope` or the picker), its targets and its
+selection edits, plus global edits, and refuses a destination listed twice and any project
+rooted at the home directory (it renders where the user scope does, so two ledgers would claim
+one set of files; `Render` and `Uninstall` still accept one an older lola installed). Order: the
+selections lock (`$XDG_STATE_HOME/lola/locks/selections.lock`, always before any scope lock),
+then every scope's lock in `lockOrder` (project roots by canonical key, then the user scope, so
+two runs never wait on each other in a cycle), then each scope's module resolution; the edits applied to
+`selections.yaml` in memory (`applyEdits`: `--only`, then `--skip`, then `--unskip`); planning
+through the resolver; every refusal and prompt for every scope (`prepare`: runtime hook consent,
+`--strict`, `plan.Compute` conflicts, install hook consent); `config.Save`; then `commit` per
+scope. A refusal or cancel writes nothing; a failure while applying leaves `selections.yaml`
+written and says the next `render` converges. `config.Save` re-reads the file under the lock,
+replaces only the changed modules' entries through the yaml.v3 node API (comments and order
+survive, also in a comments-only or null document; a section or project key a removal empties
+is dropped unless it carries a comment, then it stays as an empty mapping), writes atomically at a symlink's target with mode 0600, and never overwrites a file
+that does not load.
+
+**Choices and the flow.** `InstallChoices` computes everything the pickers show: per
+destination the assistants and the manifest's fixed targets; per cached module (sorted by
+source, then name) its components with first-line descriptions, and per destination whether it
+is installed, what is excluded and which components are installed now. `Choices.Preview` applies a run's edits to a
+copy of the selections with the same `applyEdits`, so the summary shows exactly what the
+install will do; `ModuleChoice.Diff` turns that into `+ ~ - =`. `Choices.Versions` and
+`ModuleChoice.ID` record the cached versions listed; `installFlow` keeps them as pins
+(`InstallRequest.Version`) through every "Change …" step, and `pinnedVersion` stops the run
+when a pinned version left the cache. Two arguments resolving to different versions of one
+module are refused when the choices are computed. The CLI's `installFlow` only
+fills answers: each step asks the `Prompter` (one method per step and one for the review menu)
+unless a flag or the situation answers it, component picks become `--skip`/`--unskip` edits,
+and the equivalent commands are built from the same spec. `Prompter` implementations: the huh
+adapter (inline forms on stderr; accessible line prompts under `LOLA_ACCESSIBLE=1` or
+`TERM=dumb`, with an `eofReader` that turns end of input into a cancel), the non-interactive
+one, and the specs' scripted one. In accessible mode every prompt, hook consent included, reads
+through the `eofReader`, so end of input is `ErrAborted`. Specs parse the equivalent commands back through the real
+command tree and compare the plans.
 
 ## Plans and the ledger
 
@@ -409,7 +479,9 @@ ledger's.
   paths, manifest metadata and runtime hook fields pass through `untrusted.Text` before lola
   prints them; other text a module contains (frontmatter keys quoted in finding texts, for
   example) is not yet sanitized.
-- **Unparseable files** are never rewritten.
+- **Unparseable files** are never rewritten, `selections.yaml` included.
+- **User files are untrusted.** `config.yaml` and `selections.yaml` are size-capped and strictly
+  validated; their keys and values reach the terminal only through `untrusted.Text`.
 - lola's own state files are `0600`; its XDG directories `0700`.
 
 ## Testing

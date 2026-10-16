@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
-	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
@@ -185,15 +184,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			spec, ok, err := source.Parse(args[0], cwd)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return errs.WithHints(fmt.Errorf("%q is not a source", args[0]), "sources are "+source.AcceptedForms)
-			}
-			spec.Ref, spec.Path = ref, path
-			v, err := eng.Fetch(cmd.Context(), spec)
+			v, err := eng.AddSource(cmd.Context(), cwd, args[0], ref, path)
 			if err != nil {
 				return err
 			}
@@ -242,7 +233,7 @@ func (a *app) cacheRmCmd() *cobra.Command {
 			}
 			if !yes {
 				fmt.Fprintf(cmd.ErrOrStderr(), "will remove from your cache: %s\n", strings.Join(args, ", "))
-				if err := confirm(cmd, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
+				if err := a.confirm(cmd, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
 					return err
 				}
 			}

@@ -19,7 +19,7 @@ func interactive(cmd *cobra.Command) bool {
 }
 
 // confirm asks before a destructive action; yes skips it. The summary was already printed.
-func confirm(cmd *cobra.Command, yes bool, question string) error {
+func (a *app) confirm(cmd *cobra.Command, yes bool, question string) error {
 	if yes {
 		return nil
 	}
@@ -28,27 +28,11 @@ func confirm(cmd *cobra.Command, yes bool, question string) error {
 	}
 	ok := false
 	err := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(question).Value(&ok))).
-		WithInput(cmd.InOrStdin()).WithOutput(cmd.ErrOrStderr()).Run()
+		WithInput(cmd.InOrStdin()).WithOutput(cmd.ErrOrStderr()).WithAccessible(a.accessible()).Run()
 	if errors.Is(err, huh.ErrUserAborted) || (err == nil && !ok) {
-		return errAborted
+		return ErrAborted
 	}
 	return err
-}
-
-// pickTargets lets the user choose among the installed assistants, preselecting those set up
-// here (or all of them when none is).
-func pickTargets(cmd *cobra.Command, installed, here []string) ([]string, error) {
-	var opts []huh.Option[string]
-	for _, id := range installed {
-		opts = append(opts, huh.NewOption(id, id).Selected(len(here) == 0 || slices.Contains(here, id)))
-	}
-	var chosen []string
-	err := huh.NewForm(huh.NewGroup(huh.NewMultiSelect[string]().Title("Install for which assistants?").Options(opts...).Value(&chosen))).
-		WithInput(cmd.InOrStdin()).WithOutput(cmd.ErrOrStderr()).Run()
-	if errors.Is(err, huh.ErrUserAborted) || (err == nil && len(chosen) == 0) {
-		return nil, errAborted
-	}
-	return chosen, err
 }
 
 // hookOptions sets the hook options of a command. Install hooks (§9.1): --allow-hooks grants
@@ -68,7 +52,7 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options, allow, allow
 				fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, h.Script, h.SHA256)
 			}
 			fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
-			return ask(cmd, "Run "+module+"'s install hooks?")
+			return a.ask(cmd, "Run "+module+"'s install hooks?")
 		}
 	}
 	if !allowRuntime {
@@ -85,18 +69,27 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options, allow, allow
 				}
 			}
 			fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
-			return ask(cmd, "Install "+module+"'s "+what+"?")
+			return a.ask(cmd, "Install "+module+"'s "+what+"?")
 		}
 	}
 }
 
-// ask asks a yes/no question on stderr, defaulting to No.
-func ask(cmd *cobra.Command, question string) (bool, error) {
+// ask asks a yes/no question on stderr, defaulting to No. In accessible mode end of input is a
+// cancel, not the default: huh would otherwise answer No and the install would go on.
+func (a *app) ask(cmd *cobra.Command, question string) (bool, error) {
 	ok := false
-	err := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(question).Value(&ok))).
-		WithInput(cmd.InOrStdin()).WithOutput(cmd.ErrOrStderr()).Run()
-	if errors.Is(err, huh.ErrUserAborted) {
-		return false, errAborted
+	accessible := a.accessible()
+	in := &eofReader{r: cmd.InOrStdin()}
+	form := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(question).Value(&ok))).
+		WithOutput(cmd.ErrOrStderr()).WithAccessible(accessible)
+	if accessible {
+		form = form.WithInput(in)
+	} else {
+		form = form.WithInput(cmd.InOrStdin())
+	}
+	err := form.Run()
+	if errors.Is(err, huh.ErrUserAborted) || in.eof {
+		return false, ErrAborted
 	}
 	return ok, err
 }

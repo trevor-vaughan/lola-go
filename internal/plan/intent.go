@@ -90,6 +90,8 @@ const (
 // Step is one line of a plan as shown to the user.
 type Step struct {
 	Action Action          `json:"action"`
+	Scope  string          `json:"scope,omitempty"` // project or user; the engine sets it
+	Root   string          `json:"root,omitempty"`  // the project root, set by install at project scope
 	Module string          `json:"module,omitempty"`
 	Target string          `json:"target"`
 	Kind   string          `json:"kind"`

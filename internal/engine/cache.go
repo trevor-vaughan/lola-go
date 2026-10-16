@@ -35,6 +35,20 @@ func NotStored(name string) error {
 	return errs.WithHints(fmt.Errorf("%s is not in your cache", name), "cached modules: lola cache list")
 }
 
+// AddSource fetches a source into the cache: lola cache add, and the install flow's Add a
+// source…. Adding to the cache installs nothing.
+func (e *Engine) AddSource(ctx context.Context, cwd, arg, ref, path string) (store.Version, error) {
+	spec, ok, err := source.Parse(arg, cwd)
+	if err != nil {
+		return store.Version{}, err
+	}
+	if !ok {
+		return store.Version{}, errs.WithHints(fmt.Errorf("%q is not a source", arg), "sources are "+source.AcceptedForms)
+	}
+	spec.Ref, spec.Path = ref, path
+	return e.Fetch(ctx, spec)
+}
+
 // Current returns a stored module's origin and the version used for its metadata: the
 // default-ref head if there is one, else the first head.
 func (e *Engine) Current(name string) (store.Version, store.Origin, error) {

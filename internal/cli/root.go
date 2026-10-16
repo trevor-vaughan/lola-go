@@ -20,8 +20,9 @@ import (
 // version is stamped at build time with -ldflags "-X .../internal/cli.version=<v>".
 var version = "dev"
 
-// errAborted means the user declined a prompt: exit 0, "aborted; nothing changed."
-var errAborted = errors.New("aborted")
+// ErrAborted means the user declined or cancelled a prompt: exit 0, "aborted; nothing
+// changed." A Prompter returns it for Ctrl+C, end of input in accessible mode, and Quit.
+var ErrAborted = errors.New("aborted")
 
 // Command group ids, in display order.
 const (
@@ -30,14 +31,25 @@ const (
 	groupAdditional = "additional"
 )
 
-// app holds per-invocation state shared by every command.
+// app holds per-invocation state shared by every command. newPrompter builds the Prompter
+// the install flow asks.
 type app struct {
-	getenv  func(string) string
-	json    bool
-	plain   bool
-	user    bool
-	project string
-	eng     *engine.Engine
+	getenv      func(string) string
+	json        bool
+	plain       bool
+	user        bool
+	project     string
+	eng         *engine.Engine
+	newPrompter func(*cobra.Command) Prompter
+}
+
+// Option configures the command tree.
+type Option func(*app)
+
+// WithPrompter makes install ask p instead of the terminal; specs script the install flow
+// with it.
+func WithPrompter(p Prompter) Option {
+	return func(a *app) { a.newPrompter = func(*cobra.Command) Prompter { return p } }
 }
 
 var cobraOnce sync.Once
@@ -52,9 +64,12 @@ func setupCobra() {
 
 // NewRootCmd builds the full command tree. getenv is injected so tests control the
 // environment; nothing reads os.Getenv directly.
-func NewRootCmd(getenv func(string) string) *cobra.Command {
+func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	setupCobra()
 	a := &app{getenv: getenv}
+	for _, o := range opts {
+		o(a)
+	}
 	root := &cobra.Command{
 		Use:   "lola",
 		Short: "Install AI-assistant skills, commands, agents, MCP servers and instructions",
@@ -82,7 +97,7 @@ func NewRootCmd(getenv func(string) string) *cobra.Command {
 	pf := root.PersistentFlags()
 	pf.BoolVar(&a.json, "json", false, "print machine-readable JSON")
 	pf.BoolVar(&a.plain, "plain", false, "print tab-separated lines without color")
-	pf.StringVarP(&a.project, "project", "C", "", "project root (default: nearest parent with .lola/, else the current directory)")
+	pf.StringVarP(&a.project, "project", "C", "", "project root; without it, every command but install uses the nearest parent with .lola/, else the current directory (install: see lola help install)")
 	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory) instead of a project")
 
 	root.AddGroup(
@@ -109,18 +124,31 @@ func (a *app) engine() (*engine.Engine, error) {
 	return a.eng, nil
 }
 
-// scope resolves --user and -C into an engine scope.
+// projectDir returns -C as an absolute directory, or "" when it was not given.
+func (a *app) projectDir() (string, error) {
+	if a.project == "" {
+		return "", nil
+	}
+	dir, err := filepath.Abs(a.project)
+	if err != nil {
+		return "", err
+	}
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return "", fmt.Errorf("-C %s: not a directory", a.project)
+	}
+	return dir, nil
+}
+
+// scope resolves --user and -C into an engine scope. install resolves its scopes itself
+// (installScopes); every other command acts where lola already installed something.
 func (a *app) scope() (engine.Scope, error) {
 	if a.user {
 		return engine.Scope{Kind: target.User}, nil
 	}
 	if a.project != "" {
-		dir, err := filepath.Abs(a.project)
+		dir, err := a.projectDir()
 		if err != nil {
 			return engine.Scope{}, err
-		}
-		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-			return engine.Scope{}, fmt.Errorf("-C %s: not a directory", a.project)
 		}
 		return engine.Scope{Kind: target.Project, ProjectDir: dir}, nil
 	}
@@ -138,7 +166,7 @@ func Execute(root *cobra.Command) int {
 	switch {
 	case err == nil:
 		return 0
-	case errors.Is(err, errAborted):
+	case errors.Is(err, ErrAborted):
 		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing changed.")
 		return 0
 	}

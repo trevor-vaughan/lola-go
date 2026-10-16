@@ -20,6 +20,7 @@ import (
 
 	"github.com/gofrs/flock"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/consent"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
@@ -32,12 +33,27 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Scope selects project or user state. ProjectDir is used at project scope only.
 type Scope struct {
 	Kind       target.Scope
 	ProjectDir string
+}
+
+// Key identifies the destination a scope is (Plan 5c §14): "user", or a project's canonical key
+// (paths.ProjectKey) in the form that compares as the OS compares paths, so every spelling of
+// one project root is one destination.
+func (s Scope) Key() string {
+	if s.Kind == target.User {
+		return config.ScopeUser
+	}
+	key, err := paths.ProjectKey(s.ProjectDir)
+	if err != nil { // only a relative ProjectDir with no working directory; keep it as given
+		key = s.ProjectDir
+	}
+	return paths.KeyID(key)
 }
 
 // Engine is the orchestration entry point. Environ is the environment install hooks and
@@ -93,11 +109,15 @@ type MCPRun struct {
 // ModuleResult summarizes one module of an operation.
 type ModuleResult struct {
 	Name         string        `json:"name"`
+	Scope        string        `json:"scope,omitempty"` // project or user, on install
+	Root         string        `json:"root,omitempty"`  // the project root, on install at project scope
 	Digest       string        `json:"digest,omitempty"`
 	Targets      []string      `json:"targets"`
 	MCPServers   []MCPRun      `json:"mcp_servers"`
 	Hooks        []HookRun     `json:"hooks"`
 	RuntimeHooks []RuntimeHook `json:"runtime_hooks"`
+	Skipped      []string      `json:"skipped"`  // kind/name of each component selections.yaml excludes
+	SavedTo      string        `json:"saved_to"` // selections.yaml when this install changed the module's entries
 }
 
 // Notice levels.
@@ -129,6 +149,16 @@ func newResult(dry bool) *Result {
 // InstallRequest is one install argument (§7.1) with its --ref and --path.
 type InstallRequest struct {
 	Arg, Ref, Path string
+	// Version, when set, is the cached version InstallChoices resolved this argument to: the
+	// install uses it instead of fetching the source or reading the head again, so it installs
+	// exactly what the pickers listed.
+	Version *VersionRef
+}
+
+// VersionRef names one cached version of a module.
+type VersionRef struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
 }
 
 // StatusRow is one module × target line of `lola list`.
@@ -140,6 +170,8 @@ type StatusRow struct {
 	Source string `json:"source"`
 	Ref    string `json:"ref,omitempty"`
 	Digest string `json:"digest"`
+	// Skipped lists the components selections.yaml excludes at this scope (kind/name).
+	Skipped []string `json:"skipped"`
 }
 
 // stateFiles are a scope's state locations. lock is empty at project scope: the project's
@@ -162,28 +194,23 @@ const lolaGitignore = "lock.json\nmodules/\nplugin-data/\n"
 
 // projectLock returns the lock file of the project whose existing .lola/ directory is
 // lolaDir. It lives under Paths.Locks, outside .lola/, so removing an empty .lola/ never
-// unlinks a lock file another process is waiting on; the name hashes the resolved path, so
-// every spelling of the project takes the same lock.
+// unlinks a lock file another process is waiting on; the name hashes the directory's
+// paths.ProjectKey (the key selections.yaml uses), so every spelling of the project takes the
+// same lock.
 func (e *Engine) projectLock(lolaDir string) (string, error) {
-	real, err := filepath.EvalSymlinks(lolaDir)
+	key, err := paths.ProjectKey(lolaDir)
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256([]byte(real))
+	sum := sha256.Sum256([]byte(paths.KeyID(key)))
 	return filepath.Join(e.Paths.Locks, hex.EncodeToString(sum[:8])+".lock"), nil
 }
 
 // FindProject walks up from dir to the nearest directory containing .lola/; if there is
 // none, dir itself is the project.
 func FindProject(dir string) string {
-	for d := dir; ; d = filepath.Dir(d) {
-		if fi, err := os.Stat(filepath.Join(d, ".lola")); err == nil && fi.IsDir() {
-			return d
-		}
-		if filepath.Dir(d) == d {
-			return dir
-		}
-	}
+	d, _ := findProject(dir)
+	return d
 }
 
 // shouldRemoveLola reports whether dir (a .lola directory) contains no recorded state and should be removed.
@@ -315,11 +342,19 @@ func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (v store.Version, 
 }
 
 // resolve implements §7.1 for this build: a stored name first (no network), then a source.
-func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest) (manifest.Entry, store.Version, bool, error) {
+// have, when it names a module, is the version this request already resolved to (fetched for
+// another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
+func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version) (manifest.Entry, store.Version, bool, error) {
 	if module.ValidateName("module", r.Arg) == nil {
 		o, found, err := e.Store.Origin(r.Arg)
 		if err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
+		}
+		if found && r.Version != nil && r.Version.Name != r.Arg {
+			return manifest.Entry{}, store.Version{}, false, pinMismatch(r)
+		}
+		if found && have.Name == r.Arg {
+			return manifest.Entry{Name: r.Arg, Source: o.Source, Ref: r.Ref, Path: o.Path}, have, false, nil
 		}
 		if found {
 			v, ok, err := e.Store.Head(r.Arg, r.Ref)
@@ -347,9 +382,21 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			"sources are "+source.AcceptedForms, "cached modules: lola cache list")
 	}
 	spec.Ref, spec.Path = r.Ref, r.Path
-	v, err := e.Fetch(ctx, spec)
-	if err != nil {
-		return manifest.Entry{}, store.Version{}, false, err
+	if r.Version != nil {
+		o, found, err := e.Store.Origin(r.Version.Name)
+		if err != nil {
+			return manifest.Entry{}, store.Version{}, false, err
+		}
+		if !found || o.Source != spec.Location || o.Path != spec.Path || o.Type != string(spec.Kind) {
+			return manifest.Entry{}, store.Version{}, false, pinMismatch(r)
+		}
+	}
+	v, fetched := have, false
+	if v.Name == "" {
+		if v, err = e.Fetch(ctx, spec); err != nil {
+			return manifest.Entry{}, store.Version{}, false, err
+		}
+		fetched = true
 	}
 	src := spec.Location
 	// A local path typed relative to the project is recorded that way; a URL is kept as given.
@@ -358,22 +405,32 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			src = rel
 		}
 	}
-	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, true, nil
+	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, fetched, nil
 }
 
-// planModule asks every effective target for the module's intents and findings; ment is its
-// manifest entry (nil when it has none).
-func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry, opts Options, probes *probeRun) ([]plan.Intent, []target.Finding, []Notice, ModuleResult, error) {
-	m := v.Module
+// pinMismatch refuses a request whose pinned version belongs to another module or source than
+// its argument.
+func pinMismatch(r InstallRequest) error {
+	return errs.WithHints(fmt.Errorf("%s is not the module or source version %s of %s was listed for",
+		untrusted.Text(r.Arg, untrusted.MaxName), untrusted.Text(r.Version.ID, untrusted.MaxName), untrusted.Text(r.Version.Name, untrusted.MaxName)),
+		"run lola install again to list the current versions")
+}
+
+// planModule asks every effective target for the intents and findings of the module's
+// components that x does not exclude; ment is its manifest entry (nil when it has none).
+func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry, x config.Exclusions, opts Options, probes *probeRun) ([]plan.Intent, []target.Finding, []Notice, ModuleResult, error) {
+	r := resolveComponents(v.Module, x, ment.RulesOn())
+	m := r.module
 	f := e.files(sc)
 	pctx := target.PlanContext{Scope: sc.Kind, ContentDir: v.ContentDir, PluginRoot: filepath.Join(f.modules, m.Name),
 		PluginData: filepath.Join(f.pluginData, m.Name), SkipRules: !ment.RulesOn(), Force: opts.Force}
 	if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
 		pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
 	}
-	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}}
+	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{},
+		Skipped: r.skipped}
 	finds := warningFindings(m)
-	var notes []Notice
+	notes := r.notes
 	var intents []plan.Intent
 	for i, id := range targets {
 		if slices.Contains(targets[:i], id) {
@@ -452,12 +509,33 @@ func StrictError(finds []target.Finding, rerun string, offerForce bool) error {
 // after it is committed. Runtime hooks get consent before anything is planned.
 func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy,
 	opts Options, res *Result, after func(*plan.Plan) error) error {
-	if err := e.consentRuntimeHooks(sc, changes, opts, res); err != nil {
+	pr, err := e.prepare(sc, led, changes, copies, opts, res)
+	if err != nil || opts.DryRun {
 		return err
+	}
+	return e.commit(ctx, pr, opts, res, after)
+}
+
+// prepared is a scope's computed plan whose every refusal and prompt has passed: what commit
+// applies.
+type prepared struct {
+	sc      Scope
+	plan    *plan.Plan
+	jobs    []*hookJob
+	changes []plan.ModuleChange
+	copies  []moduleCopy
+}
+
+// prepare runs everything that may refuse or ask before a scope is written: runtime hook
+// consent, --strict, the plan (conflicts) and install hook consent. It writes nothing but
+// recorded consents.
+func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy, opts Options, res *Result) (*prepared, error) {
+	if err := e.consentRuntimeHooks(sc, changes, opts, res); err != nil {
+		return nil, err
 	}
 	if opts.Strict {
 		if err := StrictError(res.Findings, "fix the module, or rerun without --strict to install what each target supports", true); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes, Force: opts.Force}
@@ -467,24 +545,34 @@ func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, chan
 	}
 	p, err := plan.Compute(req)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	for i := range p.Steps {
+		p.Steps[i].Scope = sc.Kind.String()
 	}
 	res.Steps = append(res.Steps, p.Steps...)
 	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules)...)
 	jobs, err := e.planHooks(sc, copies, opts, res)
-	if err != nil || opts.DryRun {
-		return err
+	if err != nil {
+		return nil, err
 	}
+	return &prepared{sc: sc, plan: p, jobs: jobs, changes: changes, copies: copies}, nil
+}
+
+// commit applies a prepared scope: module copies, pre-install hooks, the plan with after
+// under the scope lock, then post-install hooks.
+func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, after func(*plan.Plan) error) error {
+	sc, p := pr.sc, pr.plan
 	dir := e.files(sc).modules
 	perm := fs.FileMode(0o755)
 	if sc.Kind == target.User {
 		perm = 0o700
 	}
-	sw, err := swapCopies(dir, copies, perm)
+	sw, err := swapCopies(dir, pr.copies, perm)
 	if err != nil {
 		return err
 	}
-	if err := e.runHooks(ctx, sc, jobs, PreInstall, opts, res); err != nil {
+	if err := e.runHooks(ctx, sc, pr.jobs, PreInstall, opts, res); err != nil {
 		return errors.Join(err, sw.rollback())
 	}
 	committed := false
@@ -496,11 +584,11 @@ func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, chan
 		return errors.Join(err, sw.rollback())
 	}
 	errs := []error{err, sw.commit()}
-	for _, c := range changes {
+	for _, c := range pr.changes {
 		if p.Ledger.Modules[c.Name] == nil {
 			errs = append(errs, os.RemoveAll(filepath.Join(dir, c.Name)))
 		}
 	}
-	errs = append(errs, e.runHooks(ctx, sc, jobs, PostInstall, opts, res))
+	errs = append(errs, e.runHooks(ctx, sc, pr.jobs, PostInstall, opts, res))
 	return errors.Join(errs...)
 }

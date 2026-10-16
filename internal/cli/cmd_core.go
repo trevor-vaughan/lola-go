@@ -1,17 +1,18 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
-	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
@@ -32,44 +33,39 @@ func addTargetFlag(cmd *cobra.Command, dst *[]string, usage string) {
 	_ = cmd.RegisterFlagCompletionFunc("target", cobra.FixedCompletions(targets.IDs(), cobra.ShellCompDirectiveNoFileComp))
 }
 
-// selectTargets implements §4.1 for install: -t, else the manifest's targets (nil lets the
-// engine use them), else the installed assistants: picked on a terminal (those set up here
-// preselected), otherwise those both installed and set up here.
-func (a *app) selectTargets(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, flag []string) ([]string, error) {
-	if len(flag) > 0 {
-		return flag, nil
-	}
-	man, err := eng.Manifest(sc)
-	if err != nil {
-		return nil, err
-	}
-	if len(man.Targets) > 0 {
-		return nil, nil
-	}
-	var installed, here []string
-	for _, as := range eng.Detect(sc) {
-		if as.Binary == "" {
-			continue
-		}
-		installed = append(installed, as.Target)
-		if as.Marked {
-			here = append(here, as.Target)
+// installOutput is install's JSON: the engine's result and the commands that repeat the run
+// off a terminal (empty when no picker ran).
+type installOutput struct {
+	*engine.InstallResult
+	EquivalentCommands []string `json:"equivalent_commands"`
+}
+
+// selectionEdits parses the --skip, --only and --unskip values.
+func selectionEdits(skips, onlys, unskips []string) ([]engine.SelectionEdit, error) {
+	var out []engine.SelectionEdit
+	for _, f := range []struct {
+		op   string
+		vals []string
+	}{{engine.EditSkip, skips}, {engine.EditOnly, onlys}, {engine.EditUnskip, unskips}} {
+		for _, v := range f.vals {
+			sel, err := config.ParseSelector(v)
+			if err != nil {
+				return nil, fmt.Errorf("--%s: %w", f.op, err)
+			}
+			out = append(out, engine.SelectionEdit{Op: f.op, Selector: sel})
 		}
 	}
-	if len(installed) == 0 {
-		return nil, errs.WithHints(errors.New("no assistant found on your PATH, so lola does not know where to install"),
-			"pass -t with one or more of: "+strings.Join(targets.IDs(), ", "),
-			"example: lola install ./my-module -t claude-code")
+	return out, nil
+}
+
+// savedTo is the selections.yaml an install wrote, or "".
+func savedTo(r *engine.Result) string {
+	for _, m := range r.Modules {
+		if m.SavedTo != "" {
+			return m.SavedTo
+		}
 	}
-	if interactive(cmd) && !a.json {
-		return pickTargets(cmd, installed, here)
-	}
-	if len(here) == 0 {
-		return nil, errs.WithHints(errors.New("none of your installed assistants is set up here, so lola does not know where to install"),
-			"installed: "+strings.Join(installed, ", "),
-			"pass -t with one or more of them")
-	}
-	return here, nil
+	return ""
 }
 
 // completeInstalled offers the names of modules installed in the current scope.
@@ -96,15 +92,14 @@ func (a *app) addCoreCommands(root *cobra.Command) {
 }
 
 func (a *app) installCmd() *cobra.Command {
-	var targets []string
-	var ref, path string
-	var dry, force, strict, rules, noRules, allowHooks, allowRuntime bool
+	var f installFlags
 	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), or a module directory, archive or git URL",
 		usage: "lola install <source|name>... [-t target]",
 		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review",
-			"lola install https://github.com/acme/review.git --ref v1.2.0", "lola install ./review-1.2.0.tar.gz"}}
+			"lola install https://github.com/acme/review.git --ref v1.2.0", "lola install ./review-1.2.0.tar.gz",
+			"lola install review-kit --scope project --skip skill/slow-lint", "lola install"}}
 	cmd := &cobra.Command{
-		Use:     "install <source|name>...",
+		Use:     "install [<source|name>...]",
 		Aliases: []string{"add"},
 		Short:   "Install modules into this project (or --user)",
 		Long: "Install modules. Each argument is a module already in your cache (used without\n" +
@@ -113,6 +108,22 @@ func (a *app) installCmd() *cobra.Command {
 			"the source.\n" +
 			"The module is copied into your cache, rendered for each target, and recorded in\n" +
 			".lola/project.yml (user scope: $XDG_CONFIG_HOME/lola/user.yml).\n" +
+			"\n" +
+			"With no argument on a terminal, lola asks for the scope, modules, assistants and\n" +
+			"components, shows a summary with the equivalent commands, and applies on your say.\n" +
+			"Ctrl+C cancels and writes nothing. LOLA_ACCESSIBLE=1 (or TERM=dumb) asks as numbered\n" +
+			"line prompts instead. -y applies without the final menu.\n" +
+			"\n" +
+			"Scope: --scope, --user or -C; else, on a terminal, the picker (Project, User, Other\n" +
+			"directory…; nothing preselected, pick any of them); else a project with .lola/ at or\n" +
+			"above the current directory; else default_scope in $XDG_CONFIG_HOME/lola/config.yaml\n" +
+			"(version: 1, default_scope: project|user|both); otherwise install refuses to guess.\n" +
+			"\n" +
+			"Components: $XDG_CONFIG_HOME/lola/selections.yaml lists the components you skip, globally,\n" +
+			"at user scope and per project; install, render and check honor it. --skip, --only and\n" +
+			"--unskip take kind/name or module:kind/name (kind: skill, command, agent, mcp, rule;\n" +
+			"name may be a glob) and save to that file; --global saves to its global section.\n" +
+			"\n" +
 			"--no-rules installs everything except the module's always-on rules and records that\n" +
 			"choice, so later renders keep it; --rules turns them back on.\n" +
 			"Install hooks run only with your consent: lola asks on a terminal (default No) and\n" +
@@ -123,50 +134,29 @@ func (a *app) installCmd() *cobra.Command {
 			"consent off one. It holds until the module version, the hooks or the project path changes.",
 		Example: g.example(),
 		GroupID: groupCore,
-		Args:    g.args(1),
+		Args:    cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if (ref != "" || path != "") && len(args) > 1 {
-				return errors.New("--ref and --path apply to a single source")
-			}
-			eng, sc, err := a.session()
-			if err != nil {
-				return err
-			}
-			sel, err := a.selectTargets(cmd, eng, sc, targets)
-			if err != nil {
-				return err
-			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			var reqs []engine.InstallRequest
-			for _, arg := range args {
-				reqs = append(reqs, engine.InstallRequest{Arg: arg, Ref: ref, Path: path})
-			}
-			opts := engine.Options{Targets: sel, DryRun: dry, Force: force, Strict: strict}
-			if rules || noRules {
-				opts.Rules = &rules
-			}
-			a.hookOptions(cmd, &opts, allowHooks, allowRuntime)
-			res, err := eng.Install(cmd.Context(), sc, cwd, reqs, opts)
-			if err != nil {
-				return err
-			}
-			return a.emit(cmd, func(w io.Writer, s style) { printResult(w, s, "installed", res) }, res)
+			return a.runInstall(cmd, g, args, f)
 		},
 	}
-	addTargetFlag(cmd, &targets, "assistants to install for")
-	cmd.Flags().StringVar(&ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
-	cmd.Flags().StringVar(&path, "path", "", "module root inside the source (monorepos)")
-	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be (never skips a prompt)")
-	cmd.Flags().BoolVar(&strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
-	cmd.Flags().BoolVar(&noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
-	cmd.Flags().BoolVar(&rules, "rules", false, "install the modules' rules again after --no-rules")
+	addTargetFlag(cmd, &f.targets, "assistants to install for")
+	cmd.Flags().StringVar(&f.scope, "scope", "", "where to install: project, user or both")
+	_ = cmd.RegisterFlagCompletionFunc("scope", cobra.FixedCompletions([]string{"project", "user", "both"}, cobra.ShellCompDirectiveNoFileComp))
+	cmd.Flags().StringArrayVar(&f.skips, "skip", nil, "do not install these components, and remember it in selections.yaml (kind/name or module:kind/name; repeatable)")
+	cmd.Flags().StringArrayVar(&f.onlys, "only", nil, "install only these components of each module that has them, and remember it (repeatable)")
+	cmd.Flags().StringArrayVar(&f.unskips, "unskip", nil, "install these skipped components again, and remember it (repeatable)")
+	cmd.Flags().BoolVar(&f.global, "global", false, "save --skip, --only and --unskip in the global section of selections.yaml, for every scope")
+	cmd.Flags().StringVar(&f.ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
+	cmd.Flags().StringVar(&f.path, "path", "", "module root inside the source (monorepos)")
+	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
+	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be (never skips a prompt)")
+	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
+	cmd.Flags().BoolVar(&f.noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
+	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
 	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
-	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
-	cmd.Flags().BoolVar(&allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
+	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
+	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
 	return cmd
 }
 
@@ -196,7 +186,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 					return err
 				}
 				printResult(cmd.ErrOrStderr(), style{}, "", preview)
-				if err := confirm(cmd, false, "Uninstall "+strings.Join(args, ", ")+"?"); err != nil {
+				if err := a.confirm(cmd, false, "Uninstall "+strings.Join(args, ", ")+"?"); err != nil {
 					return err
 				}
 			}
@@ -270,8 +260,14 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 		fmt.Fprintf(w, "nothing installed %s (try: lola install <source>)\n", where)
 		return
 	}
+	// The SKIPPED column (components selections.yaml excludes) appears only when one is.
+	skipped := slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return len(r.Skipped) > 0 })
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "MODULE\tTARGET\tSTATUS\tRULES\tSOURCE")
+	head := "MODULE\tTARGET\tSTATUS\tRULES"
+	if skipped {
+		head += "\tSKIPPED"
+	}
+	fmt.Fprintln(tw, head+"\tSOURCE")
 	for _, r := range rows {
 		status := s.ok(r.Status)
 		switch r.Status {
@@ -283,6 +279,9 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 		rules := "on"
 		if !r.Rules {
 			rules = s.warn("off")
+		}
+		if skipped {
+			rules += "\t" + strconv.Itoa(len(r.Skipped))
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, status, rules, r.Source)
 	}
