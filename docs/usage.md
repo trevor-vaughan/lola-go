@@ -57,8 +57,8 @@ planned. lola refuses, with a hint:
   joiner in a folder name, a source over 4096 bytes or a ref over 256 bytes), before anything is
   fetched or written; the hint names the field to fix, or, for a module named from your cache
   whose recorded source is the problem, `lola cache rm <name>`;
-- an existing file that is not an archive, and a local archive that is not a regular file (a
-  symlink, pipe or device named like an archive).
+- an existing file that is not an archive, and a local archive that is not a regular file once
+  its links are resolved (a pipe or device named like an archive, or a link to one).
 
 Adding a module to the cache normalizes it: the cached copy holds exactly one `lola.yml`,
 generated from the module's manifest. lola reads the first manifest it finds (see
@@ -147,6 +147,41 @@ is allowed. A git `--path` must name a directory of the repository in its exact 
 a case-insensitive file system never checks out another one in its place. Execute bits come from
 the source itself (git's file modes, an archive's entry modes, a folder's files), never from the
 file system lola copied to, so the same module has the same digest on Linux, macOS and Windows.
+
+**Trust.** `project.yml` is committed, so a `git pull` can change it. lola keeps, per project,
+what it last wrote there in `$XDG_STATE_HOME/lola/trust.json`: the top-level `targets` and each
+entry's `name`, `source`, `ref`, `path`, `commit`, `digest`, `targets` and `rules`. An entry is
+**trusted** when every one of those fields is what lola wrote. Each write lola makes trusts
+exactly the fields it changes, so after a pull adds an entry or changes one, installing another
+module leaves that entry untrusted. lola refuses to act on an untrusted entry as written:
+
+- `lola install <name>`, a `lola uninstall -t` that keeps some of its targets, and
+  `lola migrate` refuse with `<name>: project.yml changed for it since you last trusted it`;
+- the install pickers leave the module out, with a warning. Add a source… in the pickers adds
+  the module to your cache and lists it by name, so it is left out too; Change scope onto a
+  project where a module you picked is untrusted stops with the refusal.
+
+An argument that names such an entry is taken as that name, even when a folder of that name is
+in the current directory: write the folder as `./<name>`.
+
+If you trust the entry, install it from its source, as the hint shows
+(`lola install <source> [--ref r] [--path p]`; a source `project.yml` records relative to the
+project is shown relative to the directory you ran lola in, so run the hint there and the entry
+stays relative): lola writes the entry as new, keeping none of the changed entry's `targets`,
+`rules`, `ref` or `path`, and trusts what it wrote. Without `-t`, the module stays on the
+assistants this checkout installed it on (`lock.json`), not on targets a pull set. Removing the
+module (`lola uninstall <name>`) always works. A project with no record in `trust.json` (a fresh
+clone, a moved directory, a deleted state directory) has every entry untrusted until you
+install each from its source. `lola render`, `lola install` and `lola uninstall` refuse a project
+whose `.lola/lock.json` git tracks, before fetching anything (lola keeps it private to each
+checkout: `git rm --cached .lola/lock.json`).
+
+A local source is read through its symbolic links once: lola records the real path, and a source
+you type relative to the project is recorded relative to the project's real root, however you
+reached it. A local archive given through a symbolic link must resolve to a file with the same
+archive suffix as the path you typed; otherwise lola refuses and suggests installing the target
+itself (`lola install <target>`). When it is accepted, a module without its own name takes its
+name from the target file.
 
 Installing a module also gives it a **module copy**: `.lola/modules/<module>/` in the project,
 or `$XDG_DATA_HOME/lola/user-modules/<module>/` at user scope. `${PLUGIN_ROOT}` (below) points
@@ -928,6 +963,7 @@ copy's directories before it removes the original.
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
+| `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
@@ -950,6 +986,15 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   user scope a symlinked `user.yml` is followed and edited at its target.
 - Changes are transactional: if anything fails, every file is restored.
 - `--dry-run` (`-n`) prints the plan and writes nothing.
+- lola never rewrites a `project.yml` entry someone else changed, and never installs one by name
+  (see [Trust](#sources-and-the-cache)); `render`, `install` and `uninstall` refuse a
+  `.lola/lock.json` that git tracks.
+- Each command that fetches keeps its temporary files in one private directory,
+  `$XDG_CACHE_HOME/lola/.staging/run-*`, removed when it ends. `install`, `render` and
+  `cache update` also remove those a killed lola left behind once they are a day old, and warn
+  when they cannot. A dry run (`-n`) still does this: the directories are lola's own temporaries.
+  A command left waiting at a confirmation prompt for more than a day may lose its directory to
+  that sweep; run it again.
 
 ## Output contract
 
@@ -986,7 +1031,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
-| `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, lock files and `lola migrate`'s trash (default `~/.local/state`) |
+| `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, the trust record, lock files and `lola migrate`'s trash (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive downloads (git reads them itself) |
 | `GIT_*`, `SSH_AUTH_SOCK` | Passed to git, except the variables that pick a repository or add config behind lola's back (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, …) |

@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 
@@ -105,7 +107,13 @@ type UpdateResult struct {
 // Update re-fetches every ref that has a head, for the named modules or all of them (§6.2).
 // Moving a head changes no installation: render installs the version lock.json records (Plan
 // 6a §10.7), which a notice says when a head moved.
-func (e *Engine) Update(ctx context.Context, names []string) (*UpdateResult, error) {
+func (e *Engine) Update(ctx context.Context, names []string) (_ *UpdateResult, err error) {
+	swept := e.sweepRuns()
+	run, err := e.runDir()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
 	if len(names) == 0 {
 		var err error
 		if names, err = e.Store.Names(); err != nil {
@@ -122,7 +130,7 @@ func (e *Engine) Update(ctx context.Context, names []string) (*UpdateResult, err
 			return nil, NotStored(n)
 		}
 		for _, h := range o.Heads {
-			v, err := e.Fetch(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: h.Ref})
+			v, err := e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: h.Ref}, "", run)
 			if err != nil {
 				return nil, fmt.Errorf("updating %s: %w", n, err)
 			}
@@ -132,7 +140,7 @@ func (e *Engine) Update(ctx context.Context, names []string) (*UpdateResult, err
 			out = append(out, HeadUpdate{Name: n, Ref: h.Ref, From: h.Digest, To: v.ID, Changed: v.ID != h.Digest})
 		}
 	}
-	res := &UpdateResult{Updates: out, Notices: []Notice{}}
+	res := &UpdateResult{Updates: out, Notices: append([]Notice{}, swept...)}
 	if slices.ContainsFunc(out, func(u HeadUpdate) bool { return u.Changed }) {
 		res.Notices = append(res.Notices, Notice{Level: LevelInfo,
 			Text: "installed modules keep the versions they were installed at; upgrade one with lola install <module>"})

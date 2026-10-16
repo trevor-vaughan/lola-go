@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -224,6 +225,10 @@ func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State) err
 	for _, pl := range list {
 		if !pl.already {
 			v := versions[installKey(pl.in)]
+			if errors.Is(v.err, engine.ErrChangedSinceTrusted) {
+				d.Unmappable = append(d.Unmappable, unmapped(pl.rec, untrusted.Text(v.err.Error(), 2*untrusted.MaxName), errs.Hints(v.err)...))
+				continue
+			}
 			if v.err != nil {
 				src := untrusted.Text(pl.in.Source, untrusted.MaxName)
 				d.Unmappable = append(d.Unmappable, unmapped(pl.rec,
@@ -444,12 +449,17 @@ func mapSource(rec Record, st *State) (Install, string, string) {
 }
 
 // migrated returns the manifest entry with in's source and path, or nil. A relative source in a
-// project manifest is relative to the project root.
+// project manifest is relative to the project's canonical root, as install records it, because
+// in.Source is canonical too.
 func migrated(man *manifest.Manifest, sc engine.Scope, in Install) *manifest.Entry {
+	root, err := filepath.EvalSymlinks(sc.ProjectDir)
+	if err != nil {
+		root = sc.ProjectDir
+	}
 	for i, ent := range man.Modules {
-		same := ent.Source == in.Source
+		same := source.SameLocation(in.Kind, ent.Source, in.Source)
 		if !same && sc.Kind == target.Project && in.Kind != source.KindGit && !filepath.IsAbs(ent.Source) {
-			same = filepath.Join(sc.ProjectDir, ent.Source) == in.Source
+			same = filepath.Join(root, ent.Source) == in.Source
 		}
 		if same && ent.Path == in.Path {
 			return &man.Modules[i]

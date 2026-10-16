@@ -12,7 +12,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
+	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
 // scripted is a Prompter that answers from queues and records each step it was asked, so
@@ -188,6 +191,26 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(lola("cache", "add", review).code).To(Equal(0))
 		Expect(lola("cache", "add", deploy).code).To(Equal(0))
 		GinkgoT().Chdir(proj)
+	})
+
+	It("refuses an entry project.yml changed since lola wrote it before any picker or summary", func() {
+		Expect(lola("install", "review-kit", "deploy", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(mpath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(mpath, []byte(strings.Replace(string(b), "  - name: review-kit\n", "  - name: review-kit\n    rules: false\n", 1)), 0o644)).To(Succeed())
+
+		p := &scripted{}
+		r := lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("review-kit: project.yml changed for it since you last trusted it"))
+		Expect(r.err).To(ContainSubstring("hint: if you trust it, install it from its source: lola install " + review))
+		Expect(p.calls).To(BeEmpty(), "refused before any prompt")
+
+		p = &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")}, review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "--scope", "project", "-t", "claude-code")
+		Expect(r.err).To(ContainSubstring("review-kit is not listed: project.yml changed for it since you last trusted it"))
+		Expect(p.moduleSteps[0].Options).To(ConsistOf(HaveField("Name", "deploy")), "the picker never offers it")
 	})
 
 	It("walks from nothing to an installed set: scope, modules, assistants, components, summary, apply", func() {
@@ -847,6 +870,11 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"),
 			[]byte("modules:\n  - name: deploy\n    source: "+deploy+"\n    ref: v9\n"), 0o644)).To(Succeed())
+		man, err := manifest.Load(filepath.Join(proj, ".lola", "project.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		pp, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(trust.New(pp).Save(proj, trust.ViewOf(man))).To(Succeed(), "that lola recorded the entry it wrote")
 		p := &scripted{
 			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project"), scopes("project")},
 			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},

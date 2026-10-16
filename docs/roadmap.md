@@ -39,7 +39,9 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
    - **6a. `lola sync`** with content pins in the manifest and trust for a pulled
      `project.yml`, delivered as 6a.1 pins (done: hardened manifest and ledger loading, pins
      written by `install`, machine-independent digests, `render` from the version installed),
-     6a.2 trust, 6a.3 the command
+     6a.2 trust (done: a per-project trust record of what lola wrote to `project.yml`,
+     refusals of entries a pull changed, canonical local locations, private run staging, and
+     `render` refusing a tracked `lock.json`), 6a.3 the command
      (`docs/superpowers/specs/2026-10-12-plan-6a-sync-design.md`).
    - **6b. Profiles:** stackable named sets of modules
      ([#223](https://github.com/LobsterTrap/lola/issues/223)).

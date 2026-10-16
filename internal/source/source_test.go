@@ -16,7 +16,9 @@ import (
 var _ = Describe("Parse", func() {
 	var cwd string
 	BeforeEach(func() {
-		cwd = testenv.Isolate()
+		var err error
+		cwd, err = filepath.EvalSymlinks(testenv.Isolate()) // locations come back canonical
+		Expect(err).NotTo(HaveOccurred())
 		Expect(os.MkdirAll(filepath.Join(cwd, "mods", "x"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(cwd, "file.txt"), nil, 0o644)).To(Succeed())
 	})
@@ -36,6 +38,49 @@ var _ = Describe("Parse", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())
 		Expect(s.Location).To(Equal(filepath.Join(cwd, "mods/x")))
+	})
+
+	It("canonicalizes a local location through symbolic links, once", func() {
+		Expect(os.Symlink(filepath.Join(cwd, "mods"), filepath.Join(cwd, "link"))).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(cwd, "mods", "a.zip"), nil, 0o644)).To(Succeed())
+		for arg, want := range map[string]string{
+			"link/x":                                        filepath.Join(cwd, "mods", "x"),
+			"link/../mods/x/":                               filepath.Join(cwd, "mods", "x"),
+			filepath.Join(cwd, "link", "a.zip"):             filepath.Join(cwd, "mods", "a.zip"),
+			"file://" + filepath.Join(cwd, "link/x"):        filepath.Join(cwd, "mods", "x"),
+			"file://" + filepath.Join(cwd, "link", "a.zip"): filepath.Join(cwd, "mods", "a.zip"),
+		} {
+			s, ok, err := source.Parse(arg, cwd)
+			Expect(err).NotTo(HaveOccurred(), arg)
+			Expect(ok).To(BeTrue(), arg)
+			Expect(s.Location).To(Equal(want), arg)
+		}
+		Expect(source.SameLocation(source.KindFolder, filepath.Join(cwd, "link", "x"), filepath.Join(cwd, "mods", "x"))).To(BeTrue(),
+			"a location recorded through a link names the same folder")
+		Expect(source.SameLocation(source.KindFolder, filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "x"))).To(BeFalse())
+		Expect(source.SameLocation(source.KindGit, "https://example.com/a.git", "https://example.com/b.git")).To(BeFalse())
+	})
+
+	It("accepts an archive link whose target has the same suffix and refuses one that changes it", func() {
+		blobs := filepath.Join(cwd, "blobs")
+		Expect(os.MkdirAll(blobs, 0o755)).To(Succeed())
+		for name, link := range map[string]string{"real.zip": "same.zip", "sha256-ab12": "blob.zip", "other.zip": "mod.tgz"} {
+			Expect(os.WriteFile(filepath.Join(blobs, name), nil, 0o644)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(blobs, name), filepath.Join(cwd, link))).To(Succeed())
+		}
+
+		s, ok, err := source.Parse("same.zip", cwd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(s.Location).To(Equal(filepath.Join(blobs, "real.zip")))
+
+		_, _, err = source.Parse("blob.zip", cwd)
+		Expect(err).To(MatchError(And(ContainSubstring("blob.zip"), ContainSubstring(filepath.Join(blobs, "sha256-ab12")), ContainSubstring("link"))))
+		Expect(errs.Hints(err)).To(ConsistOf("lola install " + filepath.Join(blobs, "sha256-ab12")))
+
+		_, _, err = source.Parse(filepath.Join(cwd, "mod.tgz"), cwd)
+		Expect(err).To(MatchError(And(ContainSubstring("mod.tgz"), ContainSubstring(filepath.Join(blobs, "other.zip")))))
+		Expect(errs.Hints(err)).To(ConsistOf("lola install " + filepath.Join(blobs, "other.zip")))
 	})
 
 	It("says 'not a source' for names and missing paths", func() {

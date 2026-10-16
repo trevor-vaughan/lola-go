@@ -221,6 +221,23 @@ var _ = Describe("Migrate", func() {
 		Expect(read(filepath.Join(proj, ".gemini/commands/ship.toml"))).To(ContainSubstring("Ship"))
 	})
 
+	It("install by name never trusts a pulled source: migrate refuses to rewrite a pulled entry", func() {
+		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
+		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"claude-code"}})
+		Expect(err).NotTo(HaveOccurred())
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		writeFile(mpath, strings.Replace(read(mpath), "  - name: review\n", "  - name: review\n    rules: false\n", 1)) // a pull
+		writeTree(proj, map[string]string{".gemini/commands/ship.toml": "python toml\n"})
+		h.install(rec{"module": "review", "assistant": "gemini-cli", "project_path": proj, "commands": []string{"ship"}})
+		before := snapshot(proj)
+		res, err := run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(snapshot(proj)).To(Equal(before), "nothing written")
+		Expect(res.Destinations[0].Unmappable).To(ConsistOf(And(HaveField("Module", "review"),
+			HaveField("Reason", "review: project.yml changed for it since you last trusted it"),
+			HaveField("Hints", []string{"if you trust it, install it from its source: lola install " + src}))))
+	})
+
 	It("refuses a planned version removed from the cache since, writing nothing", func() {
 		python(proj)
 		h.install(record(proj))

@@ -85,9 +85,10 @@ type Version struct {
 	Module               *module.Module
 }
 
-// PutRequest describes freshly fetched content. Staged must be under paths.Staging;
-// Executables are the fetch's (source.Fetched.Executables). Digest, when set, is the digest
-// the content must have (a pin): other content is refused before anything is cached.
+// PutRequest describes freshly fetched content. Staged must be in the run's staging directory
+// (a run-* under paths.Staging), where the version is assembled beside it; Executables are the
+// fetch's (source.Fetched.Executables). Digest, when set, is the digest the content must have
+// (a pin): other content is refused before anything is cached.
 // HeadIfAbsent sets the head for Ref only when it has none, so a pinned fetch never moves one.
 // Name, when set, is the module the content must declare: content declaring another (a source
 // that renamed its module) is refused with an *OtherNameError before anything is cached.
@@ -118,14 +119,14 @@ func (e *OtherNameError) Error() string {
 // Store is the machine-wide module store. targets are the target ids a module's per-entry
 // targets may name. normalize is module.Normalize; specs replace it to break the cached copy.
 type Store struct {
-	dir, lock, staging string
-	targets            []string
-	normalize          func(dir string, m *module.Module) error
+	dir, lock string
+	targets   []string
+	normalize func(dir string, m *module.Module) error
 }
 
 // New returns the store at p.Store for modules rendered to the targets ids.
 func New(p paths.Paths, targets []string) *Store {
-	return &Store{dir: p.Store, lock: p.StoreLock, staging: p.Staging, targets: targets, normalize: module.Normalize}
+	return &Store{dir: p.Store, lock: p.StoreLock, targets: targets, normalize: module.Normalize}
 }
 
 func (s *Store) lockStore() (func(), error) {
@@ -192,7 +193,7 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	if err != nil {
 		return Version{}, err
 	}
-	if found && (o.Source != req.Source || o.Path != req.Path) {
+	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, req.Source) || o.Path != req.Path) {
 		return Version{}, errs.WithHints(fmt.Errorf("a different module named %q is already in your cache (from %s); this one is from %s",
 			m.Name, describeOrigin(o.Source, o.Path), describeOrigin(req.Source, req.Path)),
 			"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", m.Name}))
@@ -260,10 +261,11 @@ func keptExecutables(dir string, execs []string) []string {
 	return slices.Compact(out)
 }
 
-// addVersion assembles content/ and .lola-origin in staging, then renames the whole version
-// into place, so a version directory is either complete or absent.
+// addVersion assembles content/ and .lola-origin beside the staged content, in the run's
+// staging directory, then renames the whole version into place, so a version directory is
+// either complete or absent.
 func (s *Store) addVersion(req PutRequest, vdir string, meta Meta) (err error) {
-	build, err := os.MkdirTemp(s.staging, "version-*")
+	build, err := os.MkdirTemp(filepath.Dir(req.Staged), "version-*")
 	if err != nil {
 		return err
 	}
@@ -429,7 +431,8 @@ func (s *Store) Names() ([]string, error) {
 }
 
 // Has reports whether the cache holds an entry for name. It never reads index.yml, so an
-// entry whose index lola refuses is still present (and removable).
+// entry whose index lola refuses is still present (and removable); Names, which lists only
+// entries with an index.yml, can leave out one Has counts.
 func (s *Store) Has(name string) (bool, error) {
 	if err := module.ValidateName("module", name); err != nil {
 		return false, err

@@ -26,6 +26,42 @@ type Change struct {
 	Remove  []string
 }
 
+// Clone returns a copy of m that shares no slice or pointer with it.
+func (m *Manifest) Clone() *Manifest {
+	out := &Manifest{Version: m.Version, Targets: slices.Clone(m.Targets)}
+	for _, e := range m.Modules {
+		out.Modules = append(out.Modules, e.clone())
+	}
+	return out
+}
+
+func (e Entry) clone() Entry {
+	e.Targets = slices.Clone(e.Targets)
+	if e.Rules != nil {
+		r := *e.Rules
+		e.Rules = &r
+	}
+	return e
+}
+
+// Applied is a copy of m with c applied as Edit applies it to the file: what lola means the
+// manifest to say after the edit.
+func (m *Manifest) Applied(c Change) *Manifest {
+	out := m.Clone()
+	if c.Targets != nil {
+		out.Targets = slices.Clone(c.Targets)
+	}
+	out.Modules = slices.DeleteFunc(out.Modules, func(e Entry) bool { return slices.Contains(c.Remove, e.Name) })
+	for _, e := range c.Set {
+		if cur := out.Find(e.Name); cur != nil {
+			*cur = e.clone()
+		} else {
+			out.Modules = append(out.Modules, e.clone())
+		}
+	}
+	return out
+}
+
 // topKeys and entryKeys are the order lola writes keys in; a key lola adds goes after the
 // keys that come before it in this order.
 var (

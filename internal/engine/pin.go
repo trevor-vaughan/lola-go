@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
@@ -15,19 +16,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// runDir creates the private directory one command keeps its snapshots in (Plan 6a §6.1); the
-// command removes it when it ends.
-func (e *Engine) runDir() (string, error) {
-	if err := os.MkdirAll(e.Paths.Staging, 0o700); err != nil {
-		return "", err
-	}
-	return os.MkdirTemp(e.Paths.Staging, "run-*")
-}
-
-// fetchPin fetches the version a pin names into the cache and returns its snapshot under run
-// (Plan 6a §6.4). spec is the entry's source with its ref. For git the commit must be
-// reachable from that ref, it is fetched by its SHA, and the fetch must resolve to it; for
-// every kind the content's digest must be digest, or nothing is cached. A head is set only for
+// fetchPin fetches the version a pin names into the cache, staging it in run, and returns its
+// snapshot under run (Plan 6a §6.4). spec is the entry's source with its ref. For git the commit
+// must be reachable from that ref, it is fetched by its SHA, and the fetch must resolve to it;
+// for every kind the content's digest must be digest, or nothing is cached. A head is set only for
 // a ref that has none, so the pinned fetch never moves one.
 func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, commit, digest, run string) (_ store.Version, err error) {
 	installAgain := "install what its source serves now: " + installCommand(spec.Location, spec.Ref, spec.Path)
@@ -36,12 +28,12 @@ func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, co
 		if commit == "" {
 			return store.Version{}, errs.WithHints(fmt.Errorf("%s: no commit is recorded for the version installed, so lola cannot fetch it", name), installAgain)
 		}
-		if err := source.CheckReachable(ctx, spec, commit, e.Paths.Staging); err != nil {
+		if err := source.CheckReachable(ctx, spec, commit, run); err != nil {
 			return store.Version{}, fmt.Errorf("%s: %w", name, err)
 		}
 		fetch.Ref = commit
 	}
-	f, err := source.Fetch(ctx, fetch, e.Paths.Staging)
+	f, err := source.Fetch(ctx, fetch, run)
 	if err != nil {
 		return store.Version{}, err
 	}
@@ -82,7 +74,7 @@ func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, 
 	}
 	if spec.Kind == source.KindFolder {
 		if _, err := os.Stat(spec.Location); err == nil {
-			v, err := e.fetchAs(ctx, spec, name)
+			v, err := e.fetchAs(ctx, spec, name, run)
 			return v, errs.WithHints(err, uninstall)
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return store.Version{}, fmt.Errorf("%s: %w", name, untrusted.CleanErr(err))
@@ -108,9 +100,14 @@ func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, 
 }
 
 // installCommand is the lola install command line for a source, its ref and path, each passed
-// through untrusted.Text because lock.json and the cache record author-chosen values.
+// through untrusted.Text because lock.json and the cache record author-chosen values. A location
+// starting with '-' is written as a relative path, which lola does not read as an option.
 func installCommand(location, ref, path string) string {
-	args := []string{"lola", "install", untrusted.Text(location, untrusted.MaxName)}
+	location = untrusted.Text(location, untrusted.MaxName)
+	if strings.HasPrefix(location, "-") {
+		location = "./" + location
+	}
+	args := []string{"lola", "install", location}
 	if ref != "" {
 		args = append(args, "--ref", untrusted.Text(ref, untrusted.MaxName))
 	}
@@ -131,7 +128,7 @@ func (e *Engine) recordedSpec(sc Scope, name string, entry *ledger.Entry) (sourc
 	if found {
 		return source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: entry.Ref}, nil
 	}
-	cwd := sc.ProjectDir
+	cwd := canonicalRoot(sc.ProjectDir)
 	if sc.Kind == target.User {
 		cwd = "/"
 	}

@@ -140,6 +140,19 @@ var _ = Describe("NewPlan", func() {
 		}, "already", "review"),
 	)
 
+	It("matches an entry whose absolute source reaches the folder through a symbolic link", func() {
+		link := filepath.Join(tmp, "srclink")
+		Expect(os.Symlink(filepath.Dir(src), link)).To(Succeed())
+		writeFile(filepath.Join(projA, ".lola", "project.yml"),
+			"version: 1\ntargets: [claude-code]\nmodules:\n  - name: review\n    source: "+filepath.Join(link, "review")+"\n")
+		h.install(at(projA, "claude-code"))
+
+		p := plan()
+		Expect(p.Destinations).To(HaveLen(1))
+		Expect(p.Destinations[0].Installs).To(BeEmpty())
+		Expect(p.Destinations[0].Already).To(HaveLen(1))
+	})
+
 	It("installs a target the manifest's entry lacks, naming the lola-go module it matched by source", func() {
 		writeFile(filepath.Join(projA, ".lola", "project.yml"),
 			"version: 1\ntargets: [claude-code]\nmodules:\n  - name: code-review\n    source: "+src+"\n")

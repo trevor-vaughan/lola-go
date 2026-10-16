@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -28,6 +29,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
 // tarGz returns a gzip tar holding files below dir/.
@@ -592,6 +594,9 @@ var _ = Describe("Engine with git and archive sources", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(os.WriteFile(f, regexp.MustCompile(`(?m)^\s*(`+field+`): .*\n`).ReplaceAll(b, nil), 0o600)).To(Succeed())
 			}
+			man, err := e.Manifest(sc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(e.Trust.Save(proj, trust.ViewOf(man))).To(Succeed(), "that lola recorded the entry it wrote")
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "example", Targets: []string{"gemini-cli"}}}, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(entry()).To(And(HaveField("Commit", ""), HaveField("Digest", ""), HaveField("Targets", ContainElement("gemini-cli"))))
@@ -723,6 +728,9 @@ var _ = Describe("Engine with git and archive sources", func() {
 				path := filepath.Join(proj, ".lola", "project.yml")
 				Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 				Expect(os.WriteFile(path, []byte("modules:\n  - name: example\n    source: "+url+"\n    ref: v9\n"), 0o644)).To(Succeed())
+				man, err := e.Manifest(sc)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(e.Trust.Save(proj, trust.ViewOf(man))).To(Succeed(), "that lola recorded the entry it wrote")
 				ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: scopes("project")})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ch.Module("example")).To(BeNil())
@@ -803,6 +811,9 @@ var _ = Describe("Engine with git and archive sources", func() {
 				Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 				before := []byte("modules:\n  - name: example\n    source: " + url + "\n")
 				Expect(os.WriteFile(path, before, 0o644)).To(Succeed())
+				man, err := e.Manifest(sc)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(e.Trust.Save(proj, trust.ViewOf(man))).To(Succeed(), "that lola recorded the entry it wrote")
 				ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: scopes("project")})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ch.Module("example")).To(BeNil())
@@ -873,10 +884,9 @@ var _ = Describe("Engine with git and archive sources", func() {
 			later := push(map[string]string{"commands/ship.md": "Ship v2\n"})
 			gitIn(work, "tag", "v2", later)
 			gitIn(work, "push", "-q", "--tags", bare)
-			mpath := filepath.Join(proj, ".lola", "project.yml")
-			raw, err := os.ReadFile(mpath)
+			// The project's entry moves to v2 the way lola records it: installed from its source.
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v2"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(os.WriteFile(mpath, bytes.Replace(raw, []byte("ref: v1"), []byte("ref: v2"), 1), 0o644)).To(Succeed())
 			_, err = e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: "example"}}, Options: claude, Scopes: []engine.ScopeInstall{
 				{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}}, {ScopeChoice: engine.ScopeChoice{Scope: usr, Source: engine.SourceFlag}}}})
 			Expect(err).NotTo(HaveOccurred())
@@ -944,5 +954,146 @@ var _ = Describe("Engine with git and archive sources", func() {
 			editPin("")
 			Expect(row()).To(HaveField("UpdateAvailable", true), "unpinned: the head against the version installed")
 		})
+	})
+
+	Describe("run staging", func() {
+		// runs lists the run directories under the cache's staging directory.
+		runs := func() []string {
+			es, err := os.ReadDir(e.Paths.Staging)
+			if os.IsNotExist(err) {
+				return nil
+			}
+			Expect(err).NotTo(HaveOccurred())
+			var out []string
+			for _, d := range es {
+				if strings.HasPrefix(d.Name(), "run-") {
+					out = append(out, d.Name())
+				}
+			}
+			return out
+		}
+
+		It("keeps a staging command's fetch temporaries in one private run directory, removed when it ends", func() {
+			url, _ := serveRepo()
+			real, err := exec.LookPath("git")
+			Expect(err).NotTo(HaveOccurred())
+			log := filepath.Join(tmp, "git.log")
+			// git logs each directory lola runs it in (-C), then runs as itself.
+			wrapper := "#!/bin/sh\nprev=\nfor a in \"$@\"; do\n  [ \"$prev\" = -C ] && printf '%s\\n' \"$a\" >> " + log + "\n  prev=$a\ndone\nexec " + real + " \"$@\"\n"
+			Expect(os.WriteFile(filepath.Join(tmp, "bin", "git"), []byte(wrapper), 0o755)).To(Succeed())
+
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			b, err := os.ReadFile(log)
+			Expect(err).NotTo(HaveOccurred())
+			seen := map[string]bool{}
+			for _, dir := range strings.Fields(string(b)) {
+				rel, err := filepath.Rel(e.Paths.Staging, dir)
+				Expect(err).NotTo(HaveOccurred())
+				if !filepath.IsLocal(rel) {
+					continue // not a temporary of the fetch
+				}
+				parts := strings.Split(filepath.ToSlash(rel), "/")
+				Expect(parts[0]).To(HavePrefix("run-"), "every temporary is inside the run directory: %s", rel)
+				seen[parts[0]] = true
+			}
+			Expect(seen).To(HaveLen(1), "one run directory per command")
+			Expect(runs()).To(BeEmpty(), "the run directory is removed when the command ends")
+		})
+
+		It("removes the run directory when a fetch fails or is cancelled", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: testenv.ServeGit(filepath.Join(tmp, "srv")) + "/missing.git"}}, claude)
+			Expect(err).To(HaveOccurred())
+			Expect(runs()).To(BeEmpty())
+
+			url, _ := serveRepo()
+			cancelled, cancel := context.WithCancel(ctx)
+			cancel()
+			_, err = e.Install(cancelled, sc, proj, []engine.InstallRequest{{Arg: url}}, claude)
+			Expect(err).To(HaveOccurred())
+			Expect(runs()).To(BeEmpty())
+		})
+
+		DescribeTable("each staging command first removes run directories older than a day, never a younger one",
+			func(command func() error) {
+				old, live := filepath.Join(e.Paths.Staging, "run-old"), filepath.Join(e.Paths.Staging, "run-live")
+				writeTree(old, map[string]string{"fetch-1/commands/a.md": "a"})
+				writeTree(live, map[string]string{"fetch-2/commands/a.md": "a"})
+				Expect(os.Chtimes(old, time.Now().Add(-25*time.Hour), time.Now().Add(-25*time.Hour))).To(Succeed())
+				Expect(os.Chtimes(live, time.Now().Add(-23*time.Hour), time.Now().Add(-23*time.Hour))).To(Succeed())
+
+				_ = command() // the sweep comes first, whether or not the command then succeeds
+
+				Expect(old).NotTo(BeADirectory())
+				Expect(filepath.Join(live, "fetch-2/commands/a.md")).To(BeARegularFile())
+				Expect(runs()).To(Equal([]string{"run-live"}))
+			},
+			Entry("install", func() error {
+				_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(tmp, "nowhere")}}, claude)
+				return err
+			}),
+			Entry("cache update", func() error { _, err := e.Update(ctx, nil); return err }),
+			Entry("render", func() error { _, err := e.Render(ctx, sc, claude); return err }),
+			Entry("the install pickers", func() error {
+				_, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj})
+				return err
+			}),
+		)
+
+		noticeTexts := func(ns []engine.Notice) []string {
+			var out []string
+			for _, n := range ns {
+				out = append(out, n.Text)
+			}
+			return out
+		}
+
+		DescribeTable("a stale run directory the sweep cannot remove is a warning, never a refusal",
+			func(command func() ([]string, error)) {
+				if os.Geteuid() == 0 {
+					Skip("root ignores directory permissions")
+				}
+				locked := filepath.Join(e.Paths.Staging, "run-old", "fetch-1")
+				writeTree(locked, map[string]string{"commands/a.md": "a"})
+				Expect(os.Chmod(locked, 0o500)).To(Succeed())
+				DeferCleanup(os.Chmod, locked, os.FileMode(0o700))
+				old := filepath.Dir(locked)
+				Expect(os.Chtimes(old, time.Now().Add(-25*time.Hour), time.Now().Add(-25*time.Hour))).To(Succeed())
+
+				warnings, err := command()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(warnings).To(ContainElement(ContainSubstring("could not remove")))
+				Expect(old).To(BeADirectory())
+			},
+			Entry("install", func() ([]string, error) {
+				writeTree(filepath.Join(tmp, "src", "example"), exampleModule)
+				res, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(tmp, "src", "example")}}, claude)
+				if err != nil {
+					return nil, err
+				}
+				return noticeTexts(res.Notices), nil
+			}),
+			Entry("cache update", func() ([]string, error) {
+				res, err := e.Update(ctx, nil)
+				if err != nil {
+					return nil, err
+				}
+				return noticeTexts(res.Notices), nil
+			}),
+			Entry("render", func() ([]string, error) {
+				res, err := e.Render(ctx, sc, claude)
+				if err != nil {
+					return nil, err
+				}
+				return noticeTexts(res.Notices), nil
+			}),
+			Entry("the install pickers", func() ([]string, error) {
+				ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj})
+				if err != nil {
+					return nil, err
+				}
+				return ch.Warnings, nil
+			}),
+		)
 	})
 })

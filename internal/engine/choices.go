@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -110,15 +113,48 @@ func (c *Choices) Module(name string) *ModuleChoice {
 // fixed targets, every cached module (and the module arguments, resolved) with its components,
 // and per scope whether it is installed, which components selections.yaml excludes and which
 // are installed now. It writes nothing but a source argument's fetch into the cache.
-func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choices, error) {
+func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Choices, err error) {
+	swept := e.sweepRuns()
+	run, err := e.runDir()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
 	sel, err := e.selections()
 	if err != nil {
 		return nil, err
 	}
 	ch := &Choices{Scopes: []ScopeChoices{}, Modules: []ModuleChoice{}, Requested: []string{}, Versions: []VersionRef{}, Warnings: []string{}, sel: sel}
+	for _, n := range swept {
+		ch.Warnings = append(ch.Warnings, n.Text)
+	}
 	// A version a module argument resolved to (its --ref, a fresh fetch, or the version pinned
 	// by r.Version, which is not fetched again) replaces the default head.
 	asked := map[string]store.Version{}
+	// The pickers refuse what the install would refuse after confirmation: a project whose
+	// ledger git tracks, before any argument is resolved.
+	var checked Result
+	for _, s := range req.Scopes {
+		if err := e.refuseTrackedLedger(ctx, s.Scope, &checked); err != nil {
+			return nil, err
+		}
+	}
+	for _, n := range checked.Notices {
+		ch.Warnings = append(ch.Warnings, n.Text)
+	}
+	// The trust state of each scope's entries: an install refuses to rewrite an uncovered one,
+	// so the pickers must never offer what it would refuse after confirmation.
+	uncovered, err := e.uncoveredEntries(req.Scopes)
+	if err != nil {
+		return nil, err
+	}
+	// A name an uncovered entry has is refused before any argument is resolved, so nothing is
+	// fetched.
+	for _, r := range req.Modules {
+		if u, ok := uncovered[r.Arg]; ok {
+			return nil, e.changedSinceTrusted(u.sc, req.Cwd, u.ent, false)
+		}
+	}
 	for _, r := range req.Modules {
 		sc := Scope{Kind: target.User}
 		if len(req.Scopes) > 0 {
@@ -141,7 +177,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		for _, ref := range refs {
 			rr := r
 			rr.Ref = ref
-			_, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "")
+			_, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "", run)
 			if err != nil {
 				return nil, err
 			}
@@ -168,6 +204,9 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		}
 		// Adding targets to an installed module keeps it, and its pin (planInstallModule).
 		keep := false
+		if u, ok := uncovered[v.Name]; ok && len(r.Targets) > 0 {
+			return nil, e.changedSinceTrusted(u.sc, req.Cwd, u.ent, false)
+		}
 		if len(r.Targets) > 0 {
 			man, led, _, err := e.load(sc, true)
 			if err != nil {
@@ -206,10 +245,15 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		sc  ScopeChoice
 		man *manifest.Manifest
 		led *ledger.Ledger
+		rec *trust.Record
 	}
 	var states []state
 	for _, s := range req.Scopes {
 		man, led, _, err := e.load(s.Scope, true)
+		if err != nil {
+			return nil, err
+		}
+		rec, err := e.trustRecord(s.Scope)
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +266,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 			detected[i].Binary = untrusted.Text(detected[i].Binary, untrusted.MaxName)
 		}
 		ch.Scopes = append(ch.Scopes, ScopeChoices{ScopeChoice: s, Name: s.Scope.Kind.String(), FixedTargets: fixed, Assistants: detected})
-		states = append(states, state{sc: s, man: man, led: led})
+		states = append(states, state{sc: s, man: man, led: led, rec: rec})
 	}
 	cached, warnings, err := e.CachedModules()
 	if err != nil {
@@ -250,6 +294,13 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 			// Installing a cached module takes the head of the ref each scope's entry records,
 			// so that is the version listed (Plan 6a §10.1); one that cannot be listed is
 			// left out, with a warning, so the others can still be picked.
+			// An uncovered entry is checked first: listing its pulled ref could coach installing it
+			// by name, which is refused.
+			if u, ok := uncovered[c.Version.Name]; ok {
+				ch.Warnings = append(ch.Warnings, fmt.Sprintf("%s is not listed: %s %v; %s", untrusted.Text(c.Version.Name, untrusted.MaxName),
+					filepath.Base(e.files(u.sc).manifest), ErrChangedSinceTrusted, installFromSource(u.sc, req.Cwd, u.ent)))
+				continue
+			}
 			var u *unlisted
 			if v, u, err = e.listedVersion(v, req.Scopes); err != nil {
 				return nil, err
@@ -261,7 +312,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		}
 		mc := moduleChoice(v, c.Origin)
 		for _, st := range states {
-			ms, err := e.moduleScope(sel, st.sc.Scope, st.man, st.led, v)
+			ms, err := e.moduleScope(sel, st.sc.Scope, st.man, st.led, st.rec, v)
 			if err != nil {
 				return nil, err
 			}
@@ -273,6 +324,38 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		return cmp.Or(cmp.Compare(a.Source, b.Source), cmp.Compare(a.Name, b.Name))
 	})
 	return ch, nil
+}
+
+// uncoveredEntry is an entry of a scope's manifest that its trust record does not cover.
+type uncoveredEntry struct {
+	sc  Scope
+	ent *manifest.Entry
+}
+
+// uncoveredEntries maps each module name to the first project scope of scopes whose entry for
+// it the trust record does not cover.
+func (e *Engine) uncoveredEntries(scopes []ScopeChoice) (map[string]uncoveredEntry, error) {
+	out := map[string]uncoveredEntry{}
+	for _, s := range scopes {
+		rec, err := e.trustRecord(s.Scope)
+		if err != nil {
+			return nil, err
+		}
+		if rec == nil {
+			continue
+		}
+		man, err := e.Manifest(s.Scope)
+		if err != nil {
+			return nil, err
+		}
+		for i := range man.Modules {
+			ent := &man.Modules[i]
+			if _, seen := out[ent.Name]; !seen && !rec.View.Covers(*ent) {
+				out[ent.Name] = uncoveredEntry{sc: s.Scope, ent: ent}
+			}
+		}
+	}
+	return out, nil
 }
 
 // entryRefs is the distinct refs the scopes' entries for name record, "" for a scope with no
@@ -420,13 +503,17 @@ func moduleChoice(v store.Version, o store.Origin) ModuleChoice {
 
 // moduleScope is v's module at sc: installed or not, its exclusions, and the components
 // installed now (the installed version, or v when that is no longer cached, through the
-// resolver with today's selections).
-func (e *Engine) moduleScope(sel *config.Selections, sc Scope, man *manifest.Manifest, led *ledger.Ledger, v store.Version) (ModuleScope, error) {
+// resolver with today's selections). An entry rec, sc's trust record, does not cover is taken
+// as absent: an install from its source writes it as new.
+func (e *Engine) moduleScope(sel *config.Selections, sc Scope, man *manifest.Manifest, led *ledger.Ledger, rec *trust.Record, v store.Version) (ModuleScope, error) {
 	x, err := exclusions(sel, sc, v.Name)
 	if err != nil {
 		return ModuleScope{}, err
 	}
 	ment := man.Find(v.Name)
+	if ment != nil && rec != nil && !rec.View.Covers(*ment) {
+		ment = nil // installed from its source, it is written as new (planInstallModule)
+	}
 	ms := ModuleScope{Scope: sc.Key(), Targets: []string{}, RulesOff: !ment.RulesOn(),
 		Excluded: resolveComponents(v.Module, x, true).skipped, Current: []string{}}
 	entry := led.Modules[v.Name]

@@ -86,6 +86,21 @@ modules:
 			Expect(out).To(ContainSubstring("targets: [gemini-cli]"))
 		})
 
+		It("Applied says in memory what Edit writes, and leaves the manifest it applies to alone", func() {
+			write(commented)
+			loaded, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			off := false
+			c := manifest.Change{Targets: []string{"opencode"}, Remove: []string{"zeta"},
+				Set: []manifest.Entry{{Name: "alpha", Source: "tools/alpha", Rules: &off, Targets: []string{"cursor"}}, {Name: "beta", Source: "../beta"}}}
+			Expect(os.WriteFile(path, []byte(edit(c)), 0o600)).To(Succeed())
+			written, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			before := loaded.Clone()
+			Expect(loaded.Applied(c)).To(Equal(written))
+			Expect(loaded).To(Equal(before))
+		})
+
 		It("drops fields an entry no longer has and writes rules: false", func() {
 			write(commented)
 			off := false

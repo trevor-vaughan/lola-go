@@ -123,6 +123,49 @@ var _ = Describe("Engine", func() {
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
 	})
 
+	It("records a local source relative to the canonical project root and caches one canonical location", func() {
+		real := filepath.Join(tmp, "real")
+		writeTree(filepath.Join(real, "mods", "example"), exampleModule)
+		link := filepath.Join(tmp, "link")
+		Expect(os.Symlink(real, link)).To(Succeed())
+		// A cache entry an earlier lola recorded through the link still names this folder.
+		_, err := e.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: filepath.Join(link, "mods", "example")})
+		Expect(err).NotTo(HaveOccurred())
+
+		for _, root := range []string{link, real} {
+			_, err := e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: root}, root, []engine.InstallRequest{{Arg: "mods/example"}}, claude)
+			Expect(err).NotTo(HaveOccurred(), root)
+			man, err := manifest.Load(filepath.Join(real, ".lola", "project.yml"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(man.Find("example")).To(HaveField("Source", "mods/example"), root)
+		}
+		_, err = e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: link}, link,
+			[]engine.InstallRequest{{Arg: filepath.Join(link, "mods", "example")}}, claude)
+		Expect(err).NotTo(HaveOccurred(), "an absolute path through the link is the cached folder too")
+	})
+
+	It("resolves a relative source recorded through a symlinked root again once the cache lost the module", func() {
+		// The link is deeper than its target, so the recorded source climbs above the lexical root.
+		real := filepath.Join(tmp, "data", "proj")
+		Expect(os.MkdirAll(real, 0o755)).To(Succeed())
+		link := filepath.Join(tmp, "home", "me", "proj")
+		Expect(os.MkdirAll(filepath.Dir(link), 0o755)).To(Succeed())
+		Expect(os.Symlink(real, link)).To(Succeed())
+		writeTree(filepath.Join(tmp, "home", "me", "shared", "example"), exampleModule)
+		lsc := engine.Scope{Kind: target.Project, ProjectDir: link}
+
+		_, err := e.Install(ctx, lsc, link, []engine.InstallRequest{{Arg: "../shared/example"}}, claude)
+		Expect(err).NotTo(HaveOccurred())
+		removed, err := e.Store.Remove("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(removed).To(BeTrue())
+
+		_, err = e.Render(ctx, lsc, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = e.Install(ctx, lsc, link, []engine.InstallRequest{{Arg: "example"}}, claude)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("installs every artifact kind into Claude Code and records a relative source relative to the project", func() {
 		res, err := install(claude, "../src/example")
 		Expect(err).NotTo(HaveOccurred())
@@ -216,7 +259,7 @@ var _ = Describe("Engine", func() {
 			SatisfyAll(HaveField("Code", "gemini-cli/arguments"), HaveField("Artifact", "ship"), HaveField("Severity", target.SeverityInfo))))
 		Expect(status()).To(Equal([]string{"example/gemini-cli=ok"}))
 
-		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".gemini/settings.json")).To(Equal(settings))
 		Expect(filepath.Join(proj, ".gemini/skills/review")).NotTo(BeAnExistingFile())
@@ -239,7 +282,7 @@ var _ = Describe("Engine", func() {
 			HaveField("Severity", target.SeverityWarn), HaveField("Module", "example"))))
 		Expect(status()).To(Equal([]string{"example/opencode=ok"}))
 
-		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read("opencode.jsonc")).To(Equal(jsonc))
 		Expect(read("opencode.json")).To(Equal(plain))
@@ -255,7 +298,7 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(proj, "opencode.json")).NotTo(BeAnExistingFile(), "lola created it and nothing else is left in it")
 		Expect(read("opencode.jsonc")).To(SatisfyAll(ContainSubstring("// mine"), ContainSubstring(`"lola-gh"`)))
 		Expect(status()).To(Equal([]string{"example/opencode=ok"}))
-		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read("opencode.jsonc")).To(Equal("{\n  // mine\n}\n"))
 	})
@@ -295,7 +338,7 @@ var _ = Describe("Engine", func() {
 		Expect(read(".gemini/settings.json")).NotTo(ContainSubstring("context"), "lola created the array, so it goes with its last member")
 		Expect(read("opencode.json")).NotTo(ContainSubstring("instructions"))
 
-		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(tree(proj)).To(ConsistOf(".lola/.gitignore", ".lola/lock.json", ".lola/project.yml"))
 	})
@@ -308,7 +351,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".gemini/settings.json")).To(SatisfyAll(ContainSubstring(`"../shared"`), ContainSubstring(`".gemini/lola/example"`), ContainSubstring("// team docs")))
 		Expect(read("opencode.jsonc")).To(SatisfyAll(ContainSubstring(`"CONTRIBUTING.md"`), ContainSubstring(`".opencode/lola/example/*.md"`), ContainSubstring("// ours")))
-		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".gemini/settings.json")).To(Equal(settings))
 		Expect(read("opencode.jsonc")).To(Equal(jsonc))
@@ -342,7 +385,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		locks, err := filepath.Glob(filepath.Join(p.Locks, "*.lock"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(locks).To(HaveLen(1))
+		Expect(locks).To(ConsistOf(MatchRegexp(`[0-9a-f]{16}\.lock$`), HaveSuffix("trust.lock")), "one scope lock, beside the trust record's")
 	})
 
 	It("records rules: false per module, honors it on render and reinstall, and clears it with Rules=true", func() {
@@ -418,7 +461,7 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(copyDir, "build")).NotTo(BeAnExistingFile(), "a new version replaces the copy whole")
 		Expect(tree(filepath.Join(proj, ".lola/modules"))).NotTo(ContainElement(HavePrefix(".example")), "no staged or old copy remains")
 
-		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(copyDir).NotTo(BeADirectory())
 	})
@@ -463,7 +506,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(filepath.Join(proj, ".claude/agents/critic.md")).NotTo(BeAnExistingFile())
 
-		res, err := e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		res, err := e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read("CLAUDE.md")).To(Equal("# Mine\n"))
 		Expect(tree(proj)).To(ConsistOf("CLAUDE.md", ".lola/.gitignore", ".lola/lock.json", ".lola/project.yml"))
@@ -715,16 +758,30 @@ var _ = Describe("Engine", func() {
 	It("uninstall of a module that is not installed points at the store", func() {
 		_, err := e.Fetch(ctx, sourceSpec(src))
 		Expect(err).NotTo(HaveOccurred())
-		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 		Expect(err).To(MatchError(`lola uninstall: "example" is not installed in this project`))
 		Expect(errs.Hints(err)).To(Equal([]string{"still in your cache: lola cache rm example", "installed here: lola list"}))
+	})
+
+	It("uninstall coaches lola cache rm for a cached module whose index lola refuses", func() {
+		_, err := install(claude, src)
+		Expect(err).NotTo(HaveOccurred())
+		index := filepath.Join(p.Store, "example", "index.yml")
+		b, err := os.ReadFile(index)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(index, append(b, []byte("  - ref: broken\n    digest: nothex\n")...), 0o600)).To(Succeed())
+		res, err := e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: "info", Text: "still in your cache: lola cache rm example"}))
+		_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
+		Expect(errs.Hints(err)).To(ContainElement("still in your cache: lola cache rm example"))
 	})
 
 	It("rejects uninstall with a malicious module name and leaves the project intact", func() {
 		testFile := filepath.Join(proj, "important.txt")
 		Expect(os.WriteFile(testFile, []byte("keep this"), 0o644)).To(Succeed())
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\nmodules:\n  - name: ../..\n    source: " + src + "\n"})
-		_, err := e.Uninstall(ctx, sc, []string{"../.."}, engine.Options{})
+		_, err := e.Uninstall(ctx, sc, proj, []string{"../.."}, engine.Options{})
 		Expect(err).To(HaveOccurred(), "should reject invalid module name")
 		Expect(testFile).To(BeAnExistingFile(), "important file should not be deleted")
 		content, err := os.ReadFile(testFile)
@@ -910,7 +967,7 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 
 		// (b) uninstall of nonexistent module fails and leaves no .lola/
-		_, err = e.Uninstall(ctx, sc, []string{"nope"}, engine.Options{})
+		_, err = e.Uninstall(ctx, sc, proj, []string{"nope"}, engine.Options{})
 		Expect(err).To(MatchError(ContainSubstring("not installed")))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 
@@ -994,6 +1051,94 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(proj, ".lola/keep")).To(BeARegularFile())
 	})
 
+	Describe("a tracked lock.json", func() {
+		BeforeEach(func() {
+			_, err := install(claude, src)
+			Expect(err).NotTo(HaveOccurred())
+			gitIn(proj, "init", "-q")
+		})
+		ledgerBytes := func() string { return read(".lola/lock.json") }
+
+		It("a tracked lock.json is refused", func() {
+			gitIn(proj, "add", "-f", ".lola/lock.json")
+			before := ledgerBytes()
+			Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
+			_, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout"))
+			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json"}))
+			Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile(), "nothing rendered")
+			Expect(ledgerBytes()).To(Equal(before))
+
+			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
+			_, err = e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred(), "an untracked ledger in a work tree renders")
+			Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+		})
+
+		It("refuses install, the install pickers and uninstall too, before anything is resolved, fetched or written", func() {
+			gitIn(proj, "add", "-f", ".lola/lock.json")
+			// A pull changed the entry, so an install by source would take its targets from the ledger.
+			off := false
+			m, err := e.Manifest(sc)
+			Expect(err).NotTo(HaveOccurred())
+			pulled := *m.Find("example")
+			pulled.Rules = &off
+			dst, data, err := manifest.Edit(filepath.Join(proj, ".lola", "project.yml"), manifest.Change{Set: []manifest.Entry{pulled}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(dst, data, 0o644)).To(Succeed())
+			other := filepath.Join(tmp, "src", "other")
+			writeTree(other, map[string]string{"lola.yml": "name: other\n", "commands/other.md": "Other\n"})
+			ledger, man := ledgerBytes(), read(".lola/project.yml")
+			refused := func(err error) {
+				GinkgoHelper()
+				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout"))
+				Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json"}))
+				Expect(ledgerBytes()).To(Equal(ledger))
+				Expect(read(".lola/project.yml")).To(Equal(man))
+				Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+				cached, err := e.Store.Has("other")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(cached).To(BeFalse(), "nothing fetched")
+			}
+
+			_, err = install(engine.Options{}, src, other)
+			refused(err)
+			_, err = e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}}})
+			refused(err)
+			_, err = e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}},
+				Modules: []engine.InstallRequest{{Arg: other}}})
+			refused(err)
+			_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
+			refused(err)
+
+			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
+			_, err = install(engine.Options{}, src, other)
+			Expect(err).NotTo(HaveOccurred(), "an untracked ledger in a work tree installs")
+		})
+
+		It("renders a lock.json git ignores", func() {
+			Expect(os.WriteFile(filepath.Join(proj, ".gitignore"), []byte(".lola/lock.json\n"), 0o644)).To(Succeed())
+			gitIn(proj, "add", ".gitignore")
+			Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
+			_, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+		})
+
+		It("fails closed when git cannot tell, and only warns when git is not installed", func() {
+			Expect(os.WriteFile(filepath.Join(proj, ".git", "HEAD"), []byte("garbage\n"), 0o644)).To(Succeed())
+			_, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).To(MatchError(ContainSubstring("lola could not check whether git tracks .lola/lock.json")))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola asks git whether it tracks .lola/lock.json: make git status work in this repository, then run lola again"}))
+
+			GinkgoT().Setenv("PATH", filepath.Join(tmp, "bin"))
+			res, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "git is not on PATH, so lola could not check that git does not track .lola/lock.json"}))
+		})
+	})
+
 	It("render with nothing installed leaves no .lola/", func() {
 		_, err := e.Render(ctx, sc, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
@@ -1032,7 +1177,7 @@ var _ = Describe("Engine", func() {
 			_, err := install(claude, src)
 			Expect(err).NotTo(HaveOccurred())
 			link := plant(".lola/modules")
-			_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+			_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 			expectRefused(err, link)
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 			_, err = e.Render(ctx, sc, engine.Options{})
@@ -1103,7 +1248,7 @@ var _ = Describe("Engine", func() {
 			Expect(os.ReadFile(real)).To(Equal([]byte("version: 1 # theirs\n")))
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 			Expect(filepath.Join(proj, ".lola", "lock.json")).NotTo(BeAnExistingFile())
-			_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+			_, err = e.Uninstall(ctx, sc, proj, []string{"example"}, engine.Options{})
 			Expect(err).To(MatchError(ContainSubstring("is a symlink")))
 			Expect(os.ReadFile(real)).To(Equal([]byte("version: 1 # theirs\n")))
 		})

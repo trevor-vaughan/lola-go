@@ -26,3 +26,11 @@ var _ = Describe("the order InstallAll locks destinations in (Plan 5c §14)", fu
 		Expect(lockOrder([]ScopeInstall{chosen[2], chosen[0], chosen[1]})).To(Equal([]int{0, 2, 1}))
 	})
 })
+
+var _ = Describe("installCommand", func() {
+	It("writes a location starting with '-' as a relative path and neutralizes author-chosen text", func() {
+		testenv.Isolate()
+		Expect(installCommand("-rf", "", "")).To(Equal("lola install ./-rf"))
+		Expect(installCommand("https://example.com/x.git", "v1\x1b[2J", "sub dir")).To(Equal(`lola install https://example.com/x.git --ref 'v1?[2J' --path 'sub dir'`))
+	})
+})

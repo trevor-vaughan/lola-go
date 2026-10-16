@@ -285,7 +285,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			_, err = e.Render(ctx, old, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).To(BeARegularFile())
-			_, err = e.Uninstall(ctx, old, []string{"example"}, engine.Options{})
+			_, err = e.Uninstall(ctx, old, p.Home, []string{"example"}, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 		})

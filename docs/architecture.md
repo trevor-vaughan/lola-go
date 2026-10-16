@@ -44,13 +44,14 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 | `source` | Source parsing and validation (also of sources recorded in `project.yml` and `lock.json`, `Recorded`), the folder, git and archive fetchers with their executables, the reachability check of a pinned commit, and `GitCommand`, the one hardened way lola runs git (also for the engine's git-ignore check and migrate's git-tracked guard, with `InWorkTree`). |
 | `store` | The cache's storage: content-addressed versions with their executables, per-ref heads with their commits, digest-checked puts, snapshots of a pinned version (`Pinned`), the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, validated at load; the ledger written deterministically, the manifest edited in place (`manifest.Edit`) with its pins. |
+| `trust` | The trust record (`trust.json`): per project key, the view of `project.yml` lola wrote and its hash; strict, permission-checked reads, locked per-project saves, coverage, and the per-field refresh. No dependency on `engine`. |
 | `consent` | Recorded consent to a module's install hooks (key `<module>`) and runtime hooks (key `<module>/runtime-hooks/<settings-file hash>`), each recording a digest. |
 | `target` | The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`, `Probe`, and helpers renderers share. No implementations. |
 | `target/claude`, `target/gemini`, `target/opencode` | The `claude-code`, `gemini-cli` and `opencode` renderers, each with its capability table and probe. One package per target. |
 | `target/conformance` | Specs every registered target must pass. |
 | `targets` | The registry: the one list of every target. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and manifest). |
-| `engine` | Install, uninstall, render, status, fetch, update, search; module copies, install hooks, runtime hook consent and the git-ignore check; install scope resolution, the component resolver, selection edits and `InstallChoices`. |
+| `engine` | Install, uninstall, render, status, fetch, update, search; run staging, module copies, install hooks, runtime hook consent, the git-ignore and tracked-ledger checks; every manifest write with its trust refresh (`saveManifest`) and the refusals of untrusted entries; install scope resolution, the component resolver, selection edits and `InstallChoices`. |
 | `migrate` | `lola migrate`: strict reading of the Python lola's `installed.yml` and `source.yml`, the plan (destinations, outcomes, recorded paths), the trash, and running the installs and the cleanup over the engine. |
 | `cli` | Commands, help, aliases, completion, output and prompts; the install flow and its `Prompter`, with the huh adapter. |
 | `errs` | Errors that carry coaching hints. |
@@ -425,8 +426,23 @@ folder   → (in place) ──────────────────�
          module root → copy (ignore list, no symlinks) → Fetched{Dir, Name, Commit, Executables}
 ```
 
-Each remote kind produces a local tree in a scratch directory under the staging directory,
-which is removed on success and on error. The copy that every kind shares then runs over the
+**Run staging.** Every engine operation that fetches (`InstallAll`, `InstallChoices`, `Fetch`
+for `cache add` and Add a source…, `Update` and `Render`; `migrate` goes through `InstallAll`)
+creates its own `run-*` under `$XDG_CACHE_HOME/lola/.staging/` (mode `0700`, `Engine.runDir`)
+and removes it on every return path. All but `Fetch`, which reports no notices, first remove
+`run-*` directories last modified more than a day ago (`Engine.sweepRuns`); the sweep is best
+effort, and what it cannot remove is a warning notice, never a refusal. Everything
+temporary goes inside: fetch scratch (`scratch-*`), fetched copies (`fetch-*`), the
+reachability check's repository, version builds (`version-*`, assembled beside the staged tree
+by `Store.Put`) and snapshots. A process killed outside lola's control leaves its directory
+until the next sweep. The sweep goes by the run directory's modification time, which changes only
+when a direct child is created or removed, so a run idle for more than a day (realistically, a
+command left waiting at a confirmation prompt; a fetch that long inside `scratch-*` is the
+other case) can be swept; the user docs say so. A dry run sweeps too, since the directories are
+lola's own temporaries and the sweep precedes the dry-run check (`InstallAll`, `Render`).
+
+Each remote kind produces a local tree in a scratch directory in the run's directory, which is
+removed on success and on error. The copy that every kind shares then runs over the
 tree with an explicit **listing mode**: it never guesses for a fetched tree, so a `.git/`
 inside an archive is never handed to git, and an archive extracted below the user's own
 repository is never filtered by that repository's ignore rules.
@@ -506,12 +522,13 @@ of it (`cache update`, or `install` of its source).
 
 `cache add` detects the staged module's format and reads it (`module.Detect`), normalizes it
 (`module.Normalize`: one generated `lola.yml`, every other lola manifest removed), digests the
-result, and renames the version into place in whole from `$XDG_CACHE_HOME/lola/.staging/` (same
-filesystem), under `$XDG_CACHE_HOME/lola/.lock`. `.lola-origin` records the detected format and
-which manifests were read and ignored. Module names and version ids read back from the cache are
-validated before they are used in a path; a head's commit must be empty or a full SHA, and a
-version's recorded digest must be the one its id abbreviates, or the cache coaches
-`lola cache rm`. The IR is re-derived from `content/`, never stored.
+result, and renames the version into place in whole from the run's staging directory under
+`$XDG_CACHE_HOME/lola/.staging/` (same filesystem), under `$XDG_CACHE_HOME/lola/.lock`.
+`.lola-origin` records the detected format and which manifests were read and ignored. Module
+names and version ids read back from the cache are validated before they are used in a path; a
+head's commit must be empty or a full SHA, and a version's recorded digest must be the one its
+id abbreviates, or the cache coaches `lola cache rm`. The IR is re-derived from `content/`,
+never stored.
 
 Installs run from their module copies, so the cache is re-fetchable. `render` installs the
 version the ledger records, never a head, so `cache update` changes no installation: for a git
@@ -531,6 +548,87 @@ now, and `lola uninstall <name>`. `install` pins git and archive
 entries (`commit` from the fetch or head, `digest`); folders are never pinned. `status` reports
 `stale` when the manifest's pin differs from the ledger's digest, and `update_available` when the
 cache head for the entry's ref differs from the pin (or from the ledger's digest when unpinned).
+
+## Trust record
+
+`project.yml` is committed and someone else's after a pull, so lola keeps its own account of
+what it wrote there. The **view** of a manifest is what can change what lola fetches or
+writes: the top-level `targets` and each entry's `name`, `source`, `ref`, `path`, `commit`,
+`digest`, `targets` and `rules`, modules sorted by name, empty values omitted. `trust.json`
+(`$XDG_STATE_HOME/lola/`) maps each project key (`paths.ProjectKey`, compared with `SameKey`)
+to its view and the hex sha256 of the view's canonical JSON. An entry is **covered** when the
+record holds an entry of its name with every view field equal. Top-level `targets` are
+recorded, but nothing in 6a.2 checks them: installs still use the manifest's (6a.3's `render`
+refuses pulled ones). A project with no record covers nothing: there is no seeding from `lock.json`
+(user ruling, 2026-10-13: lola-go is unreleased, so no older project needs it). User scope has
+no record; `user.yml` is the user's own, and the engine never loads one for it.
+
+- **Reading.** The version is decoded on its own first, as `manifest.Load` reads
+  `project.yml`'s: a newer one is refused with the hint `upgrade lola` (not for a key the newer
+  lola added) and a negative one as unreadable. Then strict JSON with unknown keys and trailing
+  data refused, at most 4 MiB, and each record's hash checked against its view. A file that fails is an error
+  with a hint and is never overwritten. The file and `$XDG_STATE_HOME/lola` are refused when a
+  symbolic link or (outside Windows, whose permission bits mean nothing) group- or
+  world-writable; the opened file must be the one checked (`os.SameFile`). Go reports a Windows
+  junction as irregular, so a state directory that is one is refused as not a directory. A
+  version up to this lola's is read, 0 included, as `consent.json` reads its own.
+- **Writing.** Under `$XDG_STATE_HOME/lola/locks/trust.lock`, taken after every scope lock and
+  held only around the read-modify-write: the file is read again and only this project's record
+  replaced, then written `0600` through `fsx.WriteFileAtomic`. The state directory, `locks/` and
+  the lock file get the read checks before the lock file is created, and a save that would make
+  the file larger than the 4 MiB a read accepts is refused, which leaves the file as it was.
+- **Refresh.** Every manifest write goes through `engine.saveManifest(sc, loaded, change, rec,
+  apply)`: it edits the manifest, hands the edit to `apply` (the commit, which stages it with
+  the ledger), and after a successful apply at project scope saves `trust.Refresh(record,
+  view(loaded), view(loaded.Applied(change)))`. Every field the write changed takes its new
+  value, an added entry is recorded whole, a removed one is dropped, and every other field keeps
+  its trust state: a write never covers a field it left alone, and a field changed in an entry
+  the record does not hold is not recorded. `loaded` is a clone of the manifest read under the
+  scope lock. A failed save leaves lola's own edits uncovered (fail closed) and the error says
+  the files, ledger and manifest were updated, and which scopes of the same install it then did
+  not reach.
+- **Refusals.** Over an uncovered entry: an install by name (in `InstallAll` and
+  `InstallChoices`, checked for every argument at every scope before any is resolved, so
+  nothing is fetched), an install that adds targets (`lola migrate`'s), and an
+  uninstall that keeps some of the module's targets are refused with `ErrChangedSinceTrusted`
+  and the hint `lola install <source> [--ref r] [--path p]` (`installFromSource`: the entry's
+  source parsed against the project root with its links resolved; a local source the entry
+  records relative to the root, parsed or not, is named relative to the caller's directory,
+  `./`-prefixed, so following the hint records it relative again and the committed
+  `project.yml` stays portable). An install by source writes the entry as new: it
+  inherits no `targets`, `rules`, `ref` or `path`, and `planInstallModule` drops the entry from
+  `loaded`, so the refresh records it whole. With no targets given, the module keeps the targets
+  `lock.json` installed it on (the user's own installs chose them; a ledger git tracks is
+  refused, see below), so what is installed is what
+  the entry records. An argument that names an uncovered entry is refused as a name even when
+  `source.Parse` would take it as a folder: `resolve` takes a cached name first and applies the
+  entry's ref to any name-shaped argument, and the pickers' fetch caches the folder under that
+  name, so only `./<name>` is unambiguous. Removing a module is always allowed. The pickers
+  never offer what the install would refuse after the summary: an explicit name is refused at
+  listing, a cached module with an uncovered entry is left out with a warning, and
+  `moduleScope` shows a source over an uncovered entry as the new entry it becomes. Add a source… caches the source and
+  lists it by name, so an uncovered entry stays out of the pickers (S2 applies only to a source
+  argument), and Change scope onto a scope where a kept pick is uncovered is the refusal, not a
+  dropped pick. `lola migrate` reports the module as unmappable with the refusal's reason and
+  hint; it refuses after `resolve` has fetched the source, which is the user's own legacy
+  configuration.
+- **Tracked ledger.** At project scope every operation that decides from the ledger runs
+  `refuseTrackedLedger` after loading the scope and before resolving or fetching anything:
+  `Render`, `InstallAll`, `InstallChoices` (so the pickers refuse what the install would) and
+  `Uninstall`; `Status` (`lola list`) only reads and does not. It runs `git ls-files
+  --error-unmatch -- .lola/lock.json` through `GitCommand` (`ledgerTracked`): tracked is refused
+  (hint `git rm --cached .lola/lock.json`), a git failure in a work tree is refused (fail closed,
+  with a hint to make `git status` work there; `dubious ownership` is the common cause), and git
+  missing from `PATH` is a warning notice (a picker warning in `InstallChoices`). This is what
+  makes the ledger this checkout's own, which the install-by-source targets above and every
+  removal rely on.
+- **Canonical locations.** `source.Parse` resolves a folder or local archive with
+  `filepath.EvalSymlinks(filepath.Clean(p))`, once (an archive link whose target has a different
+  archive suffix is refused, since the suffix picks the extractor); `install` records a
+  relative source against the project root with its links resolved (`canonicalRoot`), and every
+  reader of a recorded relative source (`recordedSpec`, the refusal hint) resolves it against
+  that root too, so it resolves however the root was reached. The cache's same-source checks accept a location an
+  earlier lola recorded through a link (`source.SameLocation`).
 
 ## Security model
 
@@ -564,7 +662,13 @@ cache head for the entry's ref differs from the pin (or from the ledger's digest
   paths, manifest metadata and runtime hook fields pass through `untrusted.Text` before lola
   prints them; other text a module contains (frontmatter keys quoted in finding texts, for
   example) is not yet sanitized.
-- **Unparseable files** are never rewritten, `selections.yaml` included.
+- **Pulled manifests.** An entry of `project.yml` lola did not write (a pull, a hand edit) is
+  never installed by name or rewritten: see [Trust record](#trust-record). Residual risk: until
+  the trust diff of `lola sync` (Plan 6a.3), a project with no record (a fresh clone) has every
+  entry refused, and the remedy is installing each from its source; and `render` still renders
+  the versions `lock.json` records, which a pull cannot change because the ledger is private.
+  A tracked `lock.json` is refused by `render`.
+- **Unparseable files** are never rewritten, `selections.yaml` and `trust.json` included.
 - **User files are untrusted.** `config.yaml` and `selections.yaml` are size-capped and strictly
   validated; their keys and values reach the terminal only through `untrusted.Text`.
 - lola's own state files are `0600`; its XDG directories `0700`.

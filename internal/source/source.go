@@ -33,7 +33,8 @@ const AcceptedForms = "a directory or archive (.zip, .tar, .tar.gz, .tgz) path o
 // archiveSuffixes are the archive file name endings, matched case-insensitively.
 var archiveSuffixes = []string{".zip", ".tar", ".tar.gz", ".tgz"}
 
-// Spec is a parsed source. Location is an absolute path for folders and local archives, else a URL.
+// Spec is a parsed source. Location is an absolute path for folders and local archives, with
+// symbolic links resolved when Parse made it, else a URL.
 type Spec struct {
 	Kind     Kind
 	Location string
@@ -89,9 +90,9 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 	var spec Spec
 	switch {
 	case err == nil && fi.IsDir():
-		spec = Spec{Kind: KindFolder, Location: filepath.Clean(p)}
+		spec = Spec{Kind: KindFolder}
 	case err == nil && fi.Mode().IsRegular() && archiveSuffix(p) != "":
-		spec = Spec{Kind: KindArchive, Location: filepath.Clean(p)}
+		spec = Spec{Kind: KindArchive}
 	case err == nil:
 		return Spec{}, false, errs.WithHints(fmt.Errorf("%s is a file, not a directory or an archive", untrusted.Text(arg, untrusted.MaxName)),
 			"archive names end in "+archiveSuffixList())
@@ -104,7 +105,33 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 	default:
 		return Spec{}, false, nil
 	}
+	if spec.Kind != KindGit {
+		// One form of a local location for every later comparison (Plan 6a §8).
+		if spec.Location, err = filepath.EvalSymlinks(filepath.Clean(p)); err != nil {
+			return Spec{}, false, fmt.Errorf("%s: %w", untrusted.Text(arg, untrusted.MaxName), untrusted.CleanErr(err))
+		}
+		if spec.Kind == KindArchive && archiveSuffix(spec.Location) != archiveSuffix(p) {
+			// The suffix picks the extractor, so a link must not change it silently.
+			return Spec{}, false, errs.WithHints(fmt.Errorf("%s is a link to %s, whose name does not end in the same archive suffix",
+				untrusted.Text(arg, untrusted.MaxName), untrusted.Text(spec.Location, untrusted.MaxName)),
+				errs.ShellJoin([]string{"lola", "install", untrusted.Text(spec.Location, untrusted.MaxName)}))
+		}
+	}
 	return spec, true, validate(spec)
+}
+
+// SameLocation reports whether recorded, a location the cache or a manifest recorded for a
+// source of kind, names the source at location, a Location Parse returned. A local folder or
+// archive recorded before locations were canonicalized can name it through a symbolic link.
+func SameLocation(kind Kind, recorded, location string) bool {
+	if recorded == location {
+		return true
+	}
+	if kind == KindGit || !filepath.IsAbs(recorded) {
+		return false
+	}
+	canonical, err := filepath.EvalSymlinks(recorded)
+	return err == nil && canonical == location
 }
 
 // parseRemote classifies a URL (§2 rows 4-6): an http(s) URL whose path ends in an archive

@@ -179,9 +179,13 @@ func (a *app) uninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
 			opts := engine.Options{Targets: targets, DryRun: true, Force: force}
 			if !dry && !yes {
-				preview, err := eng.Uninstall(cmd.Context(), sc, args, opts)
+				preview, err := eng.Uninstall(cmd.Context(), sc, cwd, args, opts)
 				if err != nil {
 					return err
 				}
@@ -191,7 +195,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 				}
 			}
 			opts.DryRun = dry
-			res, err := eng.Uninstall(cmd.Context(), sc, args, opts)
+			res, err := eng.Uninstall(cmd.Context(), sc, cwd, args, opts)
 			if err != nil {
 				return err
 			}

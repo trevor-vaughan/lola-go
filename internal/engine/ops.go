@@ -22,6 +22,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -119,9 +120,13 @@ type InstallResult struct {
 }
 
 // scopePlan is one scope of an install, locked, with its modules resolved and then planned.
+// loaded is the manifest as read under the lock, for the trust refresh (saveManifest); trust is
+// the project's trust record (nil at user scope).
 type scopePlan struct {
 	sc       Scope
 	man      *manifest.Manifest
+	loaded   *manifest.Manifest
+	trust    *trust.Record
 	led      *ledger.Ledger
 	targets  []string
 	given    []string
@@ -146,8 +151,14 @@ type resolvedRequest struct {
 // conflicts) and consent prompt for every scope; write selections.yaml; then apply each
 // scope. A refusal or a cancelled prompt writes nothing; a failure while applying leaves
 // selections.yaml written, which the next render converges on. A dry run writes neither.
-func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResult, error) {
+func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallResult, err error) {
 	opts := spec.Options
+	swept := e.sweepRuns()
+	run, err := e.runDir()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
 	var unlocks []func()
 	defer func() {
 		for i := len(unlocks) - 1; i >= 0; i-- {
@@ -191,6 +202,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 		return nil, err
 	}
 	res := newResult(opts.DryRun)
+	res.Notices = append(res.Notices, swept...)
 	out := &InstallResult{Result: res, Scopes: []ScopeResult{}}
 	probes := e.newProbeRun(ctx)
 	var fetched []string
@@ -204,7 +216,27 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 			return nil, err
 		}
 		unlocks = append(unlocks, unlock)
-		plans[i] = &scopePlan{sc: si.Scope, man: man, led: led, targets: si.Targets, given: si.Targets, replace: si.Replace}
+		// The targets an install by source keeps (planInstallModule) and the files it removes
+		// come from the ledger, which is this checkout's own only while git does not track it.
+		if err := e.refuseTrackedLedger(ctx, si.Scope, res); err != nil {
+			return nil, err
+		}
+		rec, err := e.trustRecord(si.Scope)
+		if err != nil {
+			return nil, err
+		}
+		plans[i] = &scopePlan{sc: si.Scope, man: man, loaded: man.Clone(), trust: rec, led: led, targets: si.Targets, given: si.Targets,
+			replace: si.Replace}
+	}
+	// A name installs the entry as project.yml has it: refused for an entry someone else
+	// changed, at every scope before any request is resolved, so nothing is fetched (Plan 6a
+	// §10.1).
+	for k, sp := range plans {
+		for _, r := range spec.Modules {
+			if ent := sp.man.Find(r.Arg); ent != nil && !sp.covers(*ent) {
+				return nil, e.changedSinceTrusted(spec.Scopes[k].Scope, spec.Cwd, ent, false)
+			}
+		}
 	}
 	for k, si := range spec.Scopes {
 		sp := plans[k]
@@ -264,7 +296,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 					}
 				}
 			}
-			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, entryRef(sp.man, r.Arg))
+			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, entryRef(sp.man, r.Arg), run)
 			if err != nil {
 				return nil, withRetry(err, fetched)
 			}
@@ -281,7 +313,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 	}
 	for _, sp := range plans {
 		for _, rr := range sp.resolved {
-			if err := e.planInstallModule(sp, rr, sel, opts, probes, res); err != nil {
+			if err := e.planInstallModule(sp, rr, spec.Cwd, sel, opts, probes, res); err != nil {
 				return nil, withRetry(err, fetched)
 			}
 		}
@@ -322,12 +354,22 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 		if len(sp.man.Targets) == 0 {
 			change.Targets = sp.targets
 		}
-		man, err := e.editManifest(sp.sc, change)
-		if err == nil {
-			err = e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
-		}
+		err := e.saveManifest(sp.sc, sp.loaded, change, sp.trust, func(man *plan.ManifestWrite) error {
+			return e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
+		})
 		if err != nil && len(saves) > 0 {
 			err = errApplied(err, sel.Path)
+		}
+		if err != nil && i < len(plans)-1 {
+			var skipped []string
+			for _, later := range plans[i+1:] {
+				if later.sc.Kind == target.User {
+					skipped = append(skipped, "the user scope")
+				} else {
+					skipped = append(skipped, "the project at "+untrusted.Text(later.sc.ProjectDir, untrusted.MaxName))
+				}
+			}
+			err = fmt.Errorf("%w; lola stopped there and did not install into %s", err, strings.Join(skipped, " or "))
 		}
 		if err != nil {
 			return nil, withRetry(err, fetched)
@@ -336,13 +378,87 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 	return out, nil
 }
 
-// editManifest is the manifest edit of a scope's change, for commit to stage with the ledger.
-func (e *Engine) editManifest(sc Scope, c manifest.Change) (*plan.ManifestWrite, error) {
+// covers reports whether the scope's trust record covers ent; at user scope every entry is the
+// user's own.
+func (sp *scopePlan) covers(ent manifest.Entry) bool {
+	return sp.trust == nil || sp.trust.View.Covers(ent)
+}
+
+// changedSinceTrusted refuses to rewrite ent, an entry of sc's manifest the trust record does
+// not cover (Plan 6a §10.1, §10.4, §10.8): a pull or a hand edit changed it since lola wrote it,
+// so lola acts on it only once the user installs it from its source, which records it as
+// trusted. remove adds the other way out, uninstalling it. cwd is the directory lola runs in.
+func (e *Engine) changedSinceTrusted(sc Scope, cwd string, ent *manifest.Entry, remove bool) error {
+	name := untrusted.Text(ent.Name, untrusted.MaxName)
+	hints := []string{installFromSource(sc, cwd, ent)}
+	if remove {
+		hints = append(hints, "or remove it: "+errs.ShellJoin([]string{"lola", "uninstall", name}))
+	}
+	return errs.WithHints(fmt.Errorf("%s: %s %w", name, filepath.Base(e.files(sc).manifest), ErrChangedSinceTrusted), hints...)
+}
+
+// ErrChangedSinceTrusted is wrapped by the refusal to rewrite a manifest entry the trust record
+// does not cover.
+var ErrChangedSinceTrusted = errors.New("changed for it since you last trusted it")
+
+// installFromSource coaches installing ent, an entry of sc's manifest, from its source, run in
+// cwd. A local source the manifest records relative to the project root is named relative to
+// cwd, so the install records it relative again (resolve) and a committed manifest stays
+// portable; one that no longer parses is joined to the root as recorded.
+func installFromSource(sc Scope, cwd string, ent *manifest.Entry) string {
+	location := ent.Source
+	spec, ok, err := source.Parse(ent.Source, canonicalRoot(sc.ProjectDir))
+	parsed := err == nil && ok
+	if parsed {
+		location = spec.Location
+	}
+	remote := strings.Contains(ent.Source, "://") || (parsed && spec.Kind == source.KindGit)
+	if !remote && !filepath.IsAbs(ent.Source) {
+		abs := filepath.Join(canonicalRoot(sc.ProjectDir), ent.Source)
+		if parsed {
+			abs = spec.Location
+		}
+		// Rel against cwd as given: source.Parse joins a relative argument to it the same way.
+		if rel, err := filepath.Rel(cwd, abs); err == nil {
+			location = rel
+			if rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				location = "." + string(filepath.Separator) + rel
+			}
+		}
+	}
+	return "if you trust it, install it from its source: " + installCommand(location, ent.Ref, ent.Path)
+}
+
+// trustRecord is the trust record of a project scope, nil at user scope, whose user.yml is the
+// user's own (Plan 6a §7.1).
+func (e *Engine) trustRecord(sc Scope) (*trust.Record, error) {
+	if sc.Kind != target.Project {
+		return nil, nil
+	}
+	return e.Trust.Load(sc.ProjectDir)
+}
+
+// saveManifest is every manifest write (Plan 6a §7.4). It edits the scope's manifest by c, the
+// change lola makes to loaded (the manifest as read under the scope lock), and hands the edit to
+// apply, which commits it with the ledger. After a successful apply at project scope it
+// refreshes rec, the project's trust record, per field (trust.Refresh): what this write changed
+// becomes trusted, and nothing else does. A record that cannot be written leaves lola's own
+// edits uncovered, which later commands refuse: the error says what was applied.
+func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, rec *trust.Record, apply func(*plan.ManifestWrite) error) error {
 	dst, data, err := manifest.Edit(e.files(sc).manifest, c)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &plan.ManifestWrite{Path: dst, Data: data}, nil
+	if err := apply(&plan.ManifestWrite{Path: dst, Data: data}); err != nil || rec == nil {
+		return err
+	}
+	view := trust.Refresh(rec.View, trust.ViewOf(loaded), trust.ViewOf(loaded.Applied(c)))
+	if err := e.Trust.Save(sc.ProjectDir, view); err != nil {
+		return errs.WithHints(fmt.Errorf("the project's files, lock.json and project.yml were updated, but lola could not record that you trust "+
+			"what it wrote to project.yml: %w", err),
+			"until it can, lola treats those entries as changed behind its back; fix the trust file, then install each of them again from its source")
+	}
+	return nil
 }
 
 // root is a scope's project root as results report it: "" at user scope.
@@ -409,8 +525,8 @@ func (e *Engine) editSelections(sel *config.Selections, spec InstallSpec, plans 
 }
 
 // planInstallModule plans one resolved module at sp's scope. With no targets given for the
-// scope, a module keeps the targets its manifest entry has.
-func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *config.Selections, opts Options, probes *probeRun, res *Result) error {
+// scope, a module keeps the targets its manifest entry has. cwd is the directory lola runs in.
+func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, cwd string, sel *config.Selections, opts Options, probes *probeRun, res *Result) error {
 	r, ent, v, given := rr.req, rr.ent, rr.v, sp.given
 	if slices.ContainsFunc(sp.entries, func(x manifest.Entry) bool { return x.Name == v.Name }) {
 		return fmt.Errorf("module %s is listed more than once", v.Name)
@@ -418,6 +534,32 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	man := sp.man
 	modTargets := sp.targets
 	prev := man.Find(v.Name)
+	// An install by source over an entry the trust record does not cover writes the entry as new
+	// (Plan 6a.2 ruling S2): it inherits nothing a pull may have put there, and the trust refresh
+	// records it whole. A request that adds targets (lola migrate's) keeps the entry's other
+	// fields, so it is refused instead. With no targets given, the module stays on the targets
+	// lock.json installed it on, which this checkout's own installs chose, so what is installed
+	// is what the entry records.
+	if prev != nil && !sp.covers(*prev) {
+		if len(r.Targets) > 0 {
+			return e.changedSinceTrusted(sp.sc, cwd, prev, false)
+		}
+		prev = nil
+		sp.loaded.Modules = slices.DeleteFunc(sp.loaded.Modules, func(x manifest.Entry) bool { return x.Name == v.Name })
+		var onLedger []string
+		if in := sp.led.Modules[v.Name]; in != nil && len(given) == 0 {
+			for _, a := range in.Artifacts {
+				onLedger = append(onLedger, a.Target)
+			}
+		}
+		slices.Sort(onLedger)
+		if onLedger = slices.Compact(onLedger); len(onLedger) > 0 {
+			modTargets = onLedger
+			if !slices.Equal(modTargets, man.Targets) {
+				ent.Targets = modTargets
+			}
+		}
+	}
 	installed := sp.led.Modules[v.Name]
 	keepPin := false
 	if len(r.Targets) > 0 {
@@ -664,7 +806,7 @@ func (e *Engine) where(sc Scope) string {
 // notInstalled is ADR #244's ambiguity error: it says where the module does exist.
 func (e *Engine) notInstalled(sc Scope, name string) error {
 	var hints []string
-	if _, found, err := e.Store.Origin(name); err == nil && found {
+	if found, err := e.Store.Has(name); err == nil && found {
 		hints = append(hints, "still in your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name}))
 	}
 	list := "lola list"
@@ -676,14 +818,24 @@ func (e *Engine) notInstalled(sc Scope, name string) error {
 }
 
 // Uninstall removes modules' artifacts (on opts.Targets, or everywhere) and drops them from
-// the manifest once nothing remains.
-func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts Options) (*Result, error) {
+// the manifest once nothing remains. cwd is the directory lola runs in, which hints name
+// sources relative to.
+func (e *Engine) Uninstall(ctx context.Context, sc Scope, cwd string, names []string, opts Options) (*Result, error) {
 	man, led, unlock, err := e.load(sc, opts.DryRun)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
+	rec, err := e.trustRecord(sc)
+	if err != nil {
+		return nil, err
+	}
 	res := newResult(opts.DryRun)
+	// The files an uninstall removes are the ledger's, which is this checkout's own only while
+	// git does not track it.
+	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
+		return nil, err
+	}
 	var changes []plan.ModuleChange
 	for _, name := range names {
 		entry, ment := led.Modules[name], man.Find(name)
@@ -693,6 +845,12 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		ts := opts.Targets
 		if len(ts) == 0 {
 			ts = allTargets(entry, ment, man)
+		}
+		// Removing a module only reduces what is installed; removing it from some targets
+		// rewrites the targets of an entry someone else may have changed (Plan 6a §10.4).
+		partial := slices.ContainsFunc(allTargets(entry, ment, man), func(t string) bool { return !slices.Contains(ts, t) })
+		if ment != nil && rec != nil && partial && !rec.View.Covers(*ment) {
+			return nil, e.changedSinceTrusted(sc, cwd, ment, true)
 		}
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts})
 		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}, Skipped: []string{}})
@@ -715,16 +873,12 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 			change.Set = append(change.Set, kept)
 		}
 	}
-	mw, err := e.editManifest(sc, change)
-	if err != nil {
-		return nil, err
-	}
-	if err := e.commit(ctx, pr, opts, res, mw, nil); err != nil {
+	if err := e.saveManifest(sc, man, change, rec, func(mw *plan.ManifestWrite) error { return e.commit(ctx, pr, opts, res, mw, nil) }); err != nil {
 		return nil, err
 	}
 	for i := range res.Modules {
 		name := res.Modules[i].Name
-		if _, found, err := e.Store.Origin(name); err == nil && found {
+		if found, err := e.Store.Has(name); err == nil && found {
 			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "still in your cache: " + errs.ShellJoin([]string{"lola", "cache", "rm", name})})
 		}
 		if dir := filepath.Join(e.files(sc).pluginData, name); dirExists(dir) {
@@ -749,16 +903,20 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 		return nil, err
 	}
 	defer unlock()
+	res := newResult(opts.DryRun)
+	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
+		return nil, err
+	}
 	sel, err := e.selections()
 	if err != nil {
 		return nil, err
 	}
+	res.Notices = append(res.Notices, e.sweepRuns()...)
 	run, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
-	res := newResult(opts.DryRun)
 	probes := e.newProbeRun(ctx)
 	names := make([]string, 0, len(led.Modules))
 	for n := range led.Modules {

@@ -33,6 +33,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -63,6 +64,7 @@ type Engine struct {
 	Paths        paths.Paths
 	Store        *store.Store
 	Consent      *consent.Store
+	Trust        *trust.Store
 	Targets      []target.Target
 	Now          func() time.Time
 	Environ      func() []string
@@ -72,7 +74,7 @@ type Engine struct {
 
 // New returns an Engine over the real store and every registered target.
 func New(p paths.Paths) *Engine {
-	return &Engine{Paths: p, Store: store.New(p, targets.IDs()), Consent: consent.New(p.Consent), Targets: targets.All(), Now: time.Now,
+	return &Engine{Paths: p, Store: store.New(p, targets.IDs()), Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
 		Environ: os.Environ, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second}
 }
 
@@ -358,15 +360,23 @@ func (e *Engine) lock(sc Scope) (func(), error) {
 	}, nil
 }
 
-// Fetch copies a source into the store (cache add, and install of a source).
-func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (store.Version, error) {
-	return e.fetchAs(ctx, spec, "")
+// Fetch copies a source into the store (lola cache add), staging it in a run directory of its own.
+// It does not sweep (sweepRuns): it has no notices to report a failed sweep in, and the next
+// install, render or cache update sweeps.
+func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (_ store.Version, err error) {
+	run, err := e.runDir()
+	if err != nil {
+		return store.Version{}, err
+	}
+	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	return e.fetchAs(ctx, spec, "", run)
 }
 
-// fetchAs is Fetch for content that must declare the module name, when name is set: content
-// declaring another is refused before anything is cached (store.PutRequest.Name).
-func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name string) (v store.Version, err error) {
-	f, err := source.Fetch(ctx, spec, e.Paths.Staging)
+// fetchAs copies a source into the store, staging it in the run directory run. Content must
+// declare the module name, when name is set: content declaring another is refused before
+// anything is cached (store.PutRequest.Name).
+func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name, run string) (v store.Version, err error) {
+	f, err := source.Fetch(ctx, spec, run)
 	if err != nil {
 		return store.Version{}, err
 	}
@@ -375,12 +385,22 @@ func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name string) (v 
 		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now()})
 }
 
+// canonicalRoot is dir with symbolic links resolved: the root a relative source is recorded
+// against and resolved from, so a source recorded through a link to the project resolves again
+// (Plan 6a §8). A root a dry run has not created yet is kept lexically, as paths.ProjectKey does.
+func canonicalRoot(dir string) string {
+	if root, err := filepath.EvalSymlinks(dir); err == nil {
+		return root
+	}
+	return dir
+}
+
 // resolve implements §7.1 for this build: a stored name first (no network), then a source.
 // have, when it names a module, is the version this request already resolved to (fetched for
 // another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
 // entryRef is the ref the scope's manifest records for a name argument: without --ref the
-// name resolves to the cache head for it (Plan 6a §10.1).
-func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef string) (manifest.Entry, store.Version, bool, error) {
+// name resolves to the cache head for it (Plan 6a §10.1). Fetches stage in the run directory run.
+func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef, run string) (manifest.Entry, store.Version, bool, error) {
 	if module.ValidateName("module", r.Arg) == nil {
 		if r.Ref == "" {
 			r.Ref = entryRef
@@ -407,7 +427,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			}
 			fetched := false
 			if !ok {
-				v, err = e.Fetch(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref})
+				v, err = e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref}, "", run)
 				if err != nil {
 					return manifest.Entry{}, store.Version{}, false, err
 				}
@@ -431,14 +451,15 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 		if err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
-		if !found || o.Source != spec.Location || o.Path != spec.Path || o.Type != string(spec.Kind) {
+		if !found || !source.SameLocation(spec.Kind, o.Source, spec.Location) || o.Path != spec.Path || o.Type != string(spec.Kind) {
 			return manifest.Entry{}, store.Version{}, false, pinMismatch(r)
 		}
 	}
 	src := spec.Location
-	// A local path typed relative to the project is recorded that way; a URL is kept as given.
+	// A local path typed relative to the project is recorded that way, relative to the canonical
+	// root as the location is canonical (Plan 6a §8); a URL is kept as given.
 	if sc.Kind == target.Project && filepath.IsAbs(spec.Location) && !filepath.IsAbs(r.Arg) && !strings.HasPrefix(r.Arg, "file://") {
-		if rel, err := filepath.Rel(sc.ProjectDir, spec.Location); err == nil {
+		if rel, err := filepath.Rel(canonicalRoot(sc.ProjectDir), spec.Location); err == nil {
 			src = rel
 		}
 	}
@@ -447,7 +468,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	}
 	v, fetched := have, false
 	if v.Name == "" {
-		if v, err = e.Fetch(ctx, spec); err != nil {
+		if v, err = e.fetchAs(ctx, spec, "", run); err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
 		fetched = true
