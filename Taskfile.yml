@@ -1,0 +1,48 @@
+version: '3'
+
+includes:
+  go:
+    taskfile: .taskfiles/go.yml
+
+vars:
+  APP_NAME: '{{.APP_NAME | default "lola"}}'
+  TEST_DIR: '{{.TEST_DIR | default ".test-output"}}'
+
+tasks:
+  default:
+    silent: true
+    cmd: |
+      task --list 2>/dev/null
+
+  build:
+    desc: "Alias for go:build"
+    cmds:
+      - task: go:build
+
+  test:
+    desc: "Alias for go:test (MODE=llm for errors-only output)"
+    cmds:
+      - task: go:test
+
+  lint:
+    desc: "Alias for go:lint"
+    cmds:
+      - task: go:lint
+
+  fmt:
+    desc: "Alias for go:fmt"
+    cmds:
+      - task: go:fmt
+
+  vuln:
+    desc: "Alias for go:vuln"
+    cmds:
+      - task: go:vuln
+
+  check:
+    desc: Run all quality gates (lint, test, vuln)
+    deps: [lint, test, vuln]
+
+  clean:
+    desc: Remove build artifacts and test output
+    cmd: rm -rf bin/ {{.TEST_DIR}}

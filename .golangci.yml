@@ -1,0 +1,19 @@
+version: "2"
+linters:
+  enable: [errorlint, gosec, misspell, bodyclose, unconvert]
+  settings:
+    errcheck:
+      exclude-functions:
+        # Human output: a failed write to stdout/stderr has no better channel to report on.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    gosec:
+      excludes:
+        - G304 # reading paths from the user's project and lola's store is the product's job
+        - G301 # rendered project dirs are 0755 like any checked-out tree
+        - G302 # rendered project files keep 0644/0755 so teammates' tools can read them
+        - G306 # same as G302 for os.WriteFile
+        - G204 # git runs with a fixed argv, never through a shell
+formatters:
+  enable: [gofmt]
