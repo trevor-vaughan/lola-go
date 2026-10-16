@@ -7,10 +7,17 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // cobraNameCell is the cell cobra's usage template renders for each subcommand name.
 const cobraNameCell = "{{rpad .Name .NamePadding }}"
+
+// cobraLocalFlags is the cell cobra's usage template renders a command's own flags with.
+const cobraLocalFlags = "{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}"
+
+// flagAliasKey is the flag annotation that lists a flag's aliases (Plan 6b §3.3).
+const flagAliasKey = "lola_aliases"
 
 // installHelp routes -h and `help` through renderHelp and makes command lists show aliases.
 func installHelp(root *cobra.Command) {
@@ -18,7 +25,11 @@ func installHelp(root *cobra.Command) {
 	if n := strings.Count(tmpl, cobraNameCell); n != 3 {
 		panic(fmt.Sprintf("cobra's usage template changed: expected 3 %q cells, found %d", cobraNameCell, n))
 	}
-	root.SetUsageTemplate(strings.ReplaceAll(tmpl, cobraNameCell, "{{aliasedPad .}}"))
+	if n := strings.Count(tmpl, cobraLocalFlags); n != 1 {
+		panic(fmt.Sprintf("cobra's usage template changed: expected 1 %q cell, found %d", cobraLocalFlags, n))
+	}
+	tmpl = strings.ReplaceAll(tmpl, cobraNameCell, "{{aliasedPad .}}")
+	root.SetUsageTemplate(strings.ReplaceAll(tmpl, cobraLocalFlags, "{{aliasedFlagUsages .LocalFlags | trimTrailingWhitespaces}}"))
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) { renderHelp(cmd, !isTTY(cmd.OutOrStdout())) })
 
 	var long, short bool
@@ -81,6 +92,45 @@ func aliasedPad(c *cobra.Command) string {
 		}
 	}
 	return fmt.Sprintf("%-*s", width, aliasedName(c))
+}
+
+// aliasFlags gives cmd's flags the aliases in aliases (canonical name → aliases), defining each
+// flag once (Plan 6b §3.3): pflag normalizes an alias to its canonical name before lookup, so
+// cobra parses --enable as --on and Changed("on") sees either, and the aliases are kept in the
+// flag's annotations for help (aliasedFlagUsages) and the published alias table.
+func aliasFlags(cmd *cobra.Command, aliases map[string][]string) {
+	canonical := map[string]string{}
+	for name, as := range aliases {
+		if err := cmd.Flags().SetAnnotation(name, flagAliasKey, as); err != nil {
+			panic(err) // a flag the command does not define: a programming error caught by every spec
+		}
+		for _, a := range as {
+			if cmd.Flags().Lookup(a) != nil {
+				panic("flag alias --" + a + " is a flag of " + cmd.CommandPath()) // a programming error, as above
+			}
+			canonical[a] = name
+		}
+	}
+	cmd.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+		if c, ok := canonical[name]; ok {
+			return pflag.NormalizedName(c)
+		}
+		return pflag.NormalizedName(name)
+	})
+}
+
+// aliasedFlagUsages is fs's usage lines with each flag's aliases after its name:
+// "--on (--enable, --activate)".
+func aliasedFlagUsages(fs *pflag.FlagSet) string {
+	out := pflag.NewFlagSet("", pflag.ContinueOnError)
+	fs.VisitAll(func(f *pflag.Flag) {
+		c := *f
+		if as := f.Annotations[flagAliasKey]; len(as) > 0 {
+			c.Name = f.Name + " (--" + strings.Join(as, ", --") + ")"
+		}
+		out.AddFlag(&c)
+	})
+	return out.FlagUsages()
 }
 
 // aliasCompletions completes subcommand aliases, which cobra itself never offers.

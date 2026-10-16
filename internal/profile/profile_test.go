@@ -136,8 +136,9 @@ modules:
 			write("base.yml", "")
 			write("notes.txt", "")
 			write("Bad Name.yml", "")
-			infos, err := profile.Visible(p, true)
+			infos, invalid, err := profile.Visible(p, true)
 			Expect(err).NotTo(HaveOccurred())
+			Expect(invalid).To(Equal(1), "Bad Name.yml is counted, notes.txt is not")
 			Expect(infos).To(Equal([]profile.Info{
 				{Name: "base", Kind: profile.KindUser, Path: filepath.Join(p.UserProfiles, "base.yml")},
 				{Name: "default", Kind: profile.KindDefault, Path: filepath.Join(p.UserProfiles, "default.yml")},
@@ -146,15 +147,16 @@ modules:
 			Expect(infos[1].Qualified()).To(Equal("default"))
 			Expect(infos[2].Qualified()).To(Equal("user:go"))
 
-			infos, err = profile.Visible(p, false)
+			infos, invalid, err = profile.Visible(p, false)
 			Expect(err).NotTo(HaveOccurred())
+			Expect(invalid).To(Equal(1))
 			Expect(infos).To(HaveLen(2))
 			Expect(infos).NotTo(ContainElement(HaveField("Name", "default")))
 		})
 
 		It("reads no file: a profile that does not load is still listed", func() {
 			write("broken.yml", "version: 9\n")
-			infos, err := profile.Visible(p, true)
+			infos, _, err := profile.Visible(p, true)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(infos).To(ConsistOf(HaveField("Name", "broken")))
 		})
@@ -162,7 +164,7 @@ modules:
 		It("refuses a profiles path that is not a directory, naming it and coaching", func() {
 			Expect(os.MkdirAll(filepath.Dir(p.UserProfiles), 0o700)).To(Succeed())
 			Expect(os.WriteFile(p.UserProfiles, nil, 0o600)).To(Succeed())
-			_, err := profile.Visible(p, true)
+			_, _, err := profile.Visible(p, true)
 			Expect(err).To(MatchError(ContainSubstring(p.UserProfiles)))
 			Expect(errs.Hints(err)).To(ContainElement("make " + p.UserProfiles + " a directory lola can read, or remove it"))
 		})
@@ -172,7 +174,7 @@ modules:
 			for i := range 257 {
 				write(fmt.Sprintf("p%d.yml", i), "")
 			}
-			_, err := profile.Visible(p, true)
+			_, _, err := profile.Visible(p, true)
 			Expect(err).To(MatchError(p.UserProfiles + " holds more than 256 files"))
 		})
 	})

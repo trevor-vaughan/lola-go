@@ -64,9 +64,11 @@ func (i Info) Qualified() string {
 
 // Visible is the profiles a scope can use, by name and in name order, read from the directory
 // listing alone (Plan 6b §6.1, §19 S8): the user's profiles, and default at user scope
-// (userScope). A file whose name is not <name>.yml with a valid name is not a profile. A
-// directory holding more than MaxFiles entries is refused, naming it; a missing one holds none.
-func Visible(p paths.Paths, userScope bool) ([]Info, error) {
+// (userScope). A file not named <name>.yml is not a profile; one named <name>.yml whose name
+// fails the module-name rules is not either, and the count of those is returned, for listings
+// to report without the names (§4.3, §19 S7). A directory holding more than MaxFiles entries is refused,
+// naming it; a missing one holds none.
+func Visible(p paths.Paths, userScope bool) ([]Info, int, error) {
 	dir := p.UserProfiles
 	unreadable := func(err error) error {
 		return errs.WithHints(fmt.Errorf("cannot list %s: %s", dir, untrusted.Text(err.Error(), 2*untrusted.MaxName)),
@@ -74,25 +76,29 @@ func Visible(p paths.Paths, userScope bool) ([]Info, error) {
 	}
 	f, err := os.Open(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return []Info{}, nil
+		return []Info{}, 0, nil
 	}
 	if err != nil {
-		return nil, unreadable(err)
+		return nil, 0, unreadable(err)
 	}
 	des, err := f.ReadDir(MaxFiles + 1)
 	if errors.Is(err, io.EOF) {
 		err = nil
 	}
 	if err = errors.Join(err, f.Close()); err != nil {
-		return nil, unreadable(err)
+		return nil, 0, unreadable(err)
 	}
 	if len(des) > MaxFiles {
-		return nil, errs.WithHints(fmt.Errorf("%s holds more than %d files", dir, MaxFiles), "move the profiles you do not use out of it")
+		return nil, 0, errs.WithHints(fmt.Errorf("%s holds more than %d files", dir, MaxFiles), "move the profiles you do not use out of it")
 	}
-	out := []Info{}
+	out, invalid := []Info{}, 0
 	for _, de := range des {
 		name, ok := strings.CutSuffix(de.Name(), ".yml")
-		if !ok || module.ValidateName("profile", name) != nil {
+		if !ok {
+			continue
+		}
+		if module.ValidateName("profile", name) != nil {
+			invalid++
 			continue
 		}
 		kind := KindUser
@@ -105,7 +111,7 @@ func Visible(p paths.Paths, userScope bool) ([]Info, error) {
 		out = append(out, Info{Name: name, Kind: kind, Path: filepath.Join(dir, de.Name())})
 	}
 	slices.SortFunc(out, func(a, b Info) int { return strings.Compare(a.Name, b.Name) })
-	return out, nil
+	return out, invalid, nil
 }
 
 // Profile is a profile file as read. Entries without targets of their own use Targets (Entries).

@@ -42,7 +42,11 @@ type Wanted struct {
 // desired is the set of modules a scope should have installed, in name order (Plan 6b §6.2): the
 // layers' entries, lowest layer first, an entry of a later layer replacing an earlier one of the
 // same name whole. Each replacement by a different entry is a notice.
-func desired(layers []Layer) ([]Wanted, []Notice) {
+func desired(layers []Layer) ([]Wanted, []Notice) { return desiredNoting(layers, nil) }
+
+// desiredNoting is desired with the replacement notices of the modules noted reports (all when
+// noted is nil): an activation notes only the modules of the profiles it names.
+func desiredNoting(layers []Layer, noted func(module string) bool) ([]Wanted, []Notice) {
 	won := map[string]*Wanted{}
 	var notices []Notice
 	for _, l := range layers {
@@ -51,7 +55,7 @@ func desired(layers []Layer) ([]Wanted, []Notice) {
 			w.Targets = slices.Clone(ent.Targets)
 			if prev := won[ent.Name]; prev != nil {
 				w.Over = append(slices.Clone(prev.Over), prev.From)
-				if !sameEntry(prev.Entry, ent) {
+				if !sameEntry(prev.Entry, ent) && (noted == nil || noted(ent.Name)) {
 					notices = append(notices, overrideNotice(ent, prev.Entry, l.Name, prev.From))
 				}
 			}
@@ -108,51 +112,104 @@ func (e *Engine) manifestLayer(sc Scope, man *manifest.Manifest) Layer {
 	return Layer{Name: filepath.Base(path), Path: path, Entries: man.Clone().Modules}
 }
 
-// layers is the scope's layers, lowest first (Plan 6b §6.2, D6): at user scope default (when its
-// file exists), then the active profiles of lock.json in order, then user.yml; at project scope
-// the active profiles, then project.yml. Each profile is read once, here, and its parse feeds the
-// whole run (§19 S6). An active profile whose file is gone is a warning and counts as off (§10);
-// one that does not load refuses the run. A project with no active profile never lists the
-// user's profiles directory, so a broken one cannot refuse every project.
-func (e *Engine) layers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([]Layer, []Notice, error) {
-	if sc.Kind == target.Project && len(led.Profiles) == 0 {
-		return []Layer{e.manifestLayer(sc, man)}, nil, nil
+// profileLayers is the profile layers a run reads, each once (Plan 6b §19 S6): default's, when
+// its file exists, and each listed active profile's, by qualified name. notices warns about the
+// listed names whose file is gone (§10).
+type profileLayers struct {
+	def     *Layer
+	named   map[string]Layer
+	notices []Notice
+}
+
+// loadProfiles reads the profiles of the scope's active lists: default (at user scope) and every
+// name any of lists holds, each once, so an activation's old and new lists share one parse. infos
+// is the profiles sc can use when the caller listed them already, else nil. A name whose file is
+// gone counts as off, with a warning when the last of lists, the one the run applies, holds it;
+// a profile that does not load refuses the run. A project with no active profile in any list
+// never lists the user's profiles directory, so a broken one cannot refuse every project.
+func (e *Engine) loadProfiles(sc Scope, infos []profile.Info, lists ...[]ledger.Active) (*profileLayers, error) {
+	pl := &profileLayers{named: map[string]Layer{}}
+	if sc.Kind == target.Project && !slices.ContainsFunc(lists, func(l []ledger.Active) bool { return len(l) > 0 }) {
+		return pl, nil
 	}
-	infos, err := profile.Visible(e.Paths, sc.Kind == target.User)
-	if err != nil {
-		return nil, nil, err
+	if infos == nil {
+		var err error
+		if infos, _, err = profile.Visible(e.Paths, sc.Kind == target.User); err != nil {
+			return nil, err
+		}
 	}
-	var out []Layer
-	var notices []Notice
-	load := func(i profile.Info) error {
+	load := func(i profile.Info) (Layer, error) {
 		p, err := profile.Load(i.Path)
 		if err != nil {
-			return err
+			return Layer{}, err
 		}
 		ents := p.Entries()
 		for k := range ents {
 			ents[k].Source = besideProfile(ents[k].Source, filepath.Dir(i.Path))
 		}
-		out = append(out, Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: ents})
-		return nil
+		return Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: ents}, nil
 	}
 	if k := slices.IndexFunc(infos, func(i profile.Info) bool { return i.Kind == profile.KindDefault }); k >= 0 {
-		if err := load(infos[k]); err != nil {
-			return nil, nil, err
+		l, err := load(infos[k])
+		if err != nil {
+			return nil, err
+		}
+		pl.def = &l
+	}
+	gone := map[string]bool{}
+	for _, list := range lists {
+		for _, a := range list {
+			if _, read := pl.named[a.Name]; read || gone[a.Name] {
+				continue
+			}
+			k := slices.IndexFunc(infos, func(i profile.Info) bool { return i.Qualified() == a.Name })
+			if k < 0 {
+				gone[a.Name] = true
+				continue
+			}
+			l, err := load(infos[k])
+			if err != nil {
+				return nil, err
+			}
+			pl.named[a.Name] = l
 		}
 	}
-	for _, a := range led.Profiles {
-		k := slices.IndexFunc(infos, func(i profile.Info) bool { return i.Qualified() == a.Name })
-		if k < 0 {
-			notices = append(notices, Notice{Level: LevelWarn, Text: "profile " + shown(a.Name) + " is on but no longer exists → " +
-				e.Command(sc, "profile", a.Name, "--off")})
-			continue
-		}
-		if err := load(infos[k]); err != nil {
-			return nil, nil, err
+	if len(lists) > 0 {
+		for _, a := range lists[len(lists)-1] {
+			if gone[a.Name] {
+				pl.notices = append(pl.notices, e.goneProfile(sc, a.Name))
+			}
 		}
 	}
-	return append(out, e.manifestLayer(sc, man)), notices, nil
+	return pl, nil
+}
+
+// assemble is the scope's layers for the active list active, lowest first (Plan 6b §6.2, D6):
+// default (when read), the active profiles in order (a gone one left out), then top, the scope's
+// manifest.
+func (pl *profileLayers) assemble(top Layer, active []ledger.Active) []Layer {
+	var out []Layer
+	if pl.def != nil {
+		out = append(out, *pl.def)
+	}
+	for _, a := range active {
+		if l, ok := pl.named[a.Name]; ok {
+			out = append(out, l)
+		}
+	}
+	return append(out, top)
+}
+
+// layers is the scope's layers for the active list lock.json holds, lowest first (Plan 6b §6.2,
+// D6): at user scope default (when its file exists), then the active profiles in order, then
+// user.yml; at project scope the active profiles, then project.yml. Each profile is read once,
+// here, and its parse feeds the whole run (§19 S6); see loadProfiles.
+func (e *Engine) layers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([]Layer, []Notice, error) {
+	pl, err := e.loadProfiles(sc, nil, led.Profiles)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pl.assemble(e.manifestLayer(sc, man), led.Profiles), pl.notices, nil
 }
 
 // besideProfile is a profile entry's source with a relative local path made absolute against

@@ -8,6 +8,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/pflag"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -368,6 +369,24 @@ var _ = Describe("published alias table", func() {
 			"lola cache search": {"find"},
 			"lola version":      {"ver"},
 		}))
+	})
+
+	It("the flag alias table is published and stable", func() {
+		table := map[string][]string{}
+		for _, c := range commands() {
+			c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+				if as := f.Annotations["lola_aliases"]; len(as) > 0 {
+					table[c.CommandPath()+" --"+f.Name] = as
+				}
+			})
+		}
+		Expect(table).To(Equal(map[string][]string{
+			"lola profile --on":     {"enable", "activate"},
+			"lola profile --off":    {"disable", "deactivate"},
+			"lola profile --switch": {"use"},
+		}))
+		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("--on (--enable, --activate) "),
+			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) ")))
 	})
 
 	It("JSON array keys are [] in an empty environment", func() {

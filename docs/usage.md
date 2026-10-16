@@ -13,6 +13,7 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. Refuses a module an active [profile](#profiles) or `default.yml` lists, naming it: the next sync would install it again. |
 | `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`: run `lola sync`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. Entries of [profiles](#profiles) are listed as the manifest's are, and when any module comes from a profile a `FROM` column names its layer. Without a scope flag it shows the project found from here, if any, and user scope; every row names its scope ([Choosing a scope](#choosing-a-scope)). Like `render`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could turn profiles on. |
 | `lola render` | Render every installed module again at the version `project.yml` pins (the one installed when it pins none; a folder module from its folder). A module a [profile](#profiles) lists renders at the profile's pin, else at the version `lock.json` records; one no layer lists any more is left as installed at project scope. Removes files a module no longer ships. Leaves as installed, with a warning, a module it may not act on ([Sync, pins and trust](#sync-pins-and-trust)). |
+| `lola profile [<name>...] [--on\|--off\|--switch]` | Without a name, list the [profiles](#profiles) each scope can use: kind, where each stands in the scope's active list (`1st of 2`, `always on` for `default`, `off`) and its file. With a name, show the profile and, per scope, the layer each of its modules comes from and the layers that entry overrides; for a profile that is off, what turning it on would give. Listing and showing never ask for a scope: without a flag they show the project found from here, if any, and user scope. `--on`, `--off` and `--switch` turn the named profiles on, off, or make them the active list, and apply the change at once; removing files asks first (`-y`). Refuses a project whose `.lola/lock.json` git tracks. |
 | `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
 | `lola init [dir] [--format agent-plugins\|lola]` | Scaffold a module named after the directory: by default an Agent Plugins package (`plugin.json`, one skill, one `dev.getlola` command); `--format lola` writes `lola.yml`, one skill and one command. It never overwrites a file and refuses a directory holding a module or a symbolic link on the way to a file it would write. |
@@ -506,15 +507,44 @@ This version reads your own profiles, in `$XDG_CONFIG_HOME/lola/profiles/<name>.
 
 **`default.yml`** is always on at user scope, and never at project scope: `lola sync --user`
 installs what it lists as well as what `user.yml` lists. Turning it off means renaming or
-deleting it. A profile with any other name is used only when the scope's active profile list in
-`lock.json` (`profiles`) names it, as `user:<name>`; this version has no command that changes
-that list. An active profile whose file is gone is a warning (`profile user:go is on but no
-longer exists`), and the run treats it as off. `lola uninstall` refuses a module an active
-profile lists (`<module> is wanted by profile user:go`), since the next sync would install it
-again. The warning and the refusal suggest `lola profile --user user:go --off` (with the scope's
-flag), a command this version does not have yet: to turn the profile off, remove its item from
-`profiles` in the scope's `lock.json`. For a module `default.yml` lists, the refusal says to
-remove it from `default.yml`.
+deleting it. A profile with any other name is used only when it is **on** in a scope: each scope
+has its own ordered active list, which `lola profile` changes and `lock.json` keeps (`profiles`,
+each item's qualified name and the action that put it there), never committed:
+
+```sh
+lola profile go --on                 # append go to the active list, and apply
+lola profile go docs --switch        # the active list becomes go, docs (default stays on)
+lola profile go --off                # turn it off; asks before removing files (-y)
+lola profile go --on --dry-run       # show what it would change
+```
+
+The actions have aliases for muscle memory from other tools: `--on` (`--enable`, `--activate`),
+`--off` (`--disable`, `--deactivate`) and `--switch` (`--use`); help shows them beside each flag,
+and messages use the canonical names. An action names one or more profiles, in order; a name given twice refuses, and so do two
+actions in one run (`--on and --off cannot be combined; pick one`). It resolves its scope as
+`sync` does ([Choosing a scope](#choosing-a-scope)) and applies only what the change moves: each
+module is loaded, replaced (another layer's entry wins now) or unloaded (no layer wants it any
+more; never one another layer still wants). Anything else the scope is waiting for, such as an
+entry you added to `user.yml` and have not synced, is left to `lola sync`, with a notice (`2 other
+changes are pending → lola sync --user`). Whenever the change removes files it asks first, on a
+terminal; `-y` confirms, and off a terminal without `-y` it refuses, naming the command that
+would, with the profiles by their qualified names. `--trust`, `--allow-hooks` and
+`--allow-runtime-hooks` work as for `lola sync`, except that the trust question offers only Trust all or Cancel: an action applies
+all of its changes or none. The new list is written only with a successful apply: a No, a refusal, an error or
+Ctrl+C leaves the old list and the old files. A profile already on (`user:go is already on (2nd
+of 3)`), one not on, or a switch to the current list is a notice and changes nothing. `--on
+default` is a notice; `--off` and `--switch` of `default` refuse (`rename or delete <path> to turn
+it off`), and at project scope `default` refuses (`default applies to user scope only`). The
+summary names each profile with its file (`Profile user:go (<path>) → on, 2nd of 2`) and lists each change (`+ a  <version>  profile:user:go`, `~ c  …  profile:user:go overrides
+profile:default`, `- a  …`) and is paged as `lola sync`'s diff is; `--json` gives the sync's
+document plus `profiles` (the active list after the run) and `changes`
+(`{module, action: load|replace|unload, from, over}`).
+
+An active profile whose file is gone is a warning (`profile user:go is on but no longer exists →
+lola profile --user user:go --off`), and the run treats it as off; `--off` takes it by either
+name. `lola uninstall` refuses a module an active profile lists (`<module> is wanted by profile
+user:go`, hint `lola profile --user user:go --off`), since the next sync would install it again.
+For a module `default.yml` lists, the refusal says to remove it from `default.yml`.
 
 A profile has the shape of a manifest, with an optional `description`:
 
@@ -548,6 +578,16 @@ modules:
 - **No manifest needed.** A scope with no `user.yml` (or `project.yml`) but a profile that lists
   modules syncs as if the manifest were empty, and so does one whose profile is gone but whose
   modules are still installed (they are removed); with none of these, `lola sync` still refuses.
+- **Seeing them.** `lola profile` lists the profiles each scope can use, and `lola profile go`
+  shows one: per scope whether it is on and, for each of its modules, the layer the scope takes it
+  from (`b  user.yml  (over profile:user:go)`). A name is the profile's file name without `.yml`;
+  `user:go` says it is yours, and `default` exists at user scope only. Files in `profiles/` whose
+  names are not valid profile names are counted (`1 file with an invalid name in … is not a
+  profile`), never shown. `--json` gives `profiles` (`name`, `kind`, `path`, `source`, `active`,
+  `position`, `scope`, `shadowed_by`, `extends`; with a name, also `modules` with `name`, `from`
+  and `overrides`) and `notices`; `--plain` rows are scope, name, kind, `on`/`off`, position and
+  path (with a name: scope, module, from and the overridden layers), followed by a `notice` row
+  (`notice`, level, text) per notice, as `lola list --plain` has.
 - **Reading.** A profile is read as strictly as `project.yml`: one YAML document of at most 1 MiB,
   version first (a newer lola's file asks you to upgrade lola), known keys only, at most 512
   entries, each checked as a manifest entry, and every refusal names the file and line. A profile
@@ -1087,7 +1127,8 @@ The scope flags are global: every command takes them.
 and `--scope project` without `-C` use the nearest parent with a `.lola/`, else the current
 directory. `--scope user -C <dir>` is an error.
 
-**Commands that write** (`install`, `sync`, `uninstall`, `render`) never pick a scope silently.
+**Commands that write** (`install`, `sync`, `uninstall`, `render`, and `lola profile` with
+`--on`, `--off` or `--switch`) never pick a scope silently.
 First match wins:
 
 | You give | Scope |
@@ -1102,15 +1143,15 @@ First match wins:
 `install` plans them together, and `sync` syncs the project, then user scope, stopping at the
 first that fails or is declined (its message names the scopes it did not reach), with each
 scope's output under its own `project (<root>):` or `user:` line; `--plain` output carries no
-scope label, as with `install`. `uninstall` and `render` act on one scope: their picker asks you
+scope label, as with `install`. `uninstall`, `render` and `lola profile`'s actions act on one scope: their picker asks you
 to tick one (pressing Enter with nothing ticked asks again), and two scopes from the flags or
 `default_scope` are refused with `name one: --project or --user`.
 
-**Commands that only read** (`list`) never ask: the flags decide, `--scope both` included;
+**Commands that only read** (`list`, and `lola profile` without an action) never ask: the flags decide, `--scope both` included;
 otherwise they show the project found walking up, if there is one, and user scope, on a terminal
 or off it. `default_scope` does not apply to them, and every row names its scope. When one of
 those two cannot be read (a damaged `user.yml`, say), `list` fails with a hint naming the other
-scope's own command, such as `lola list --project`.
+scope's own command, such as `lola list --project` (`lola profile --project` for `lola profile`).
 
 `check` acts on the one scope the flags name, else on the nearest parent with a `.lola/`, else
 the current directory, and never asks; `--scope both` is refused as above. It reads

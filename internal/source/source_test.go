@@ -95,7 +95,8 @@ var _ = Describe("Parse", func() {
 		DeferCleanup(func() { Expect(os.RemoveAll(outside)).To(Succeed()) })
 		Expect(os.Symlink(outside, filepath.Join(cwd, "mods", "out"))).To(Succeed())
 
-		_, err := source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "out")+"/../x")
+		// out/.. is cwd's parent, shared with other runs: the missing name is this run's own.
+		_, err := source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "out")+"/../absent-"+filepath.Base(cwd))
 		Expect(err).To(HaveOccurred(), "a missing path through a link and '..' is not cleaned lexically")
 
 		_, err = source.IsWithin(filepath.Join(cwd, "mods"), "mods/x")

@@ -1586,7 +1586,7 @@ var _ = Describe("Sync", func() {
 			Expect(err).To(MatchError(engine.ErrDeclined))
 			declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err)
 			Expect(ok).To(BeTrue())
-			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Render: true, Again: []string{"example"}}),
+			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Render: true, Again: []string{"example"}, Retry: "lola sync --project"}),
 				"render would install other without rules; example's pin is asked again")
 			Expect(project()).To(Equal(before), "nothing applied")
 			r, err := e.Trust.Load(proj)
@@ -1617,7 +1617,7 @@ var _ = Describe("Sync", func() {
 			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: no})
 			declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err)
 			Expect(ok).To(BeTrue())
-			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Again: []string{"notes"}}),
+			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Again: []string{"notes"}, Retry: "lola sync --project"}),
 				"render still leaves notes out: its content changed, so the next sync asks about it again")
 		})
 
@@ -1651,7 +1651,7 @@ var _ = Describe("Sync", func() {
 			_, err := sync(engine.SyncRequest{Trust: only("a", "gone"), ConfirmRemovals: no})
 			declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err)
 			Expect(ok).To(BeTrue())
-			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Again: []string{"a"}}),
+			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Again: []string{"a"}, Retry: "lola sync --project"}),
 				"render leaves a and notes out: their content changed; the next sync asks about the accepted a again")
 		})
 

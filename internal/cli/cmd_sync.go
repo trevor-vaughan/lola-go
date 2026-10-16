@@ -33,7 +33,8 @@ func unchanged(sc engine.Scope) string {
 
 // removalsDeclined is a No to a sync's removals (Plan 6a §9.3 step 9): nothing was applied, but
 // the trust the user accepted before was recorded, which the message says, with what the next
-// sync asks about again and what render would now install, each command carrying sc's flag.
+// run (the sync, or the activation, repeated) asks about again and what render would now install,
+// each command carrying sc's flag.
 func removalsDeclined(eng *engine.Engine, sc engine.Scope, d *engine.RemovalsDeclinedError) error {
 	msg := "removals declined; " + unchanged(sc) + " was not changed."
 	again := ""
@@ -43,11 +44,11 @@ func removalsDeclined(eng *engine.Engine, sc engine.Scope, d *engine.RemovalsDec
 	}
 	switch {
 	case d.Recorded && again == "":
-		msg += " The changes you trusted are recorded; the next " + eng.SyncCommand(sc) + " asks only about the removals."
+		msg += " The changes you trusted are recorded; the next " + d.Retry + " asks only about the removals."
 	case d.Recorded:
-		msg += " The changes you trusted are recorded; the next " + eng.SyncCommand(sc) + " asks " + again
+		msg += " The changes you trusted are recorded; the next " + d.Retry + " asks " + again
 	case again != "":
-		msg += " The next " + eng.SyncCommand(sc) + " asks " + again
+		msg += " The next " + d.Retry + " asks " + again
 	}
 	if d.Render {
 		msg += " " + eng.Command(sc, "render") + " would install what you trusted."
@@ -147,7 +148,7 @@ func (a *app) syncCmd() *cobra.Command {
 			// once every scope is synced.
 			done := []*engine.SyncResult{}
 			for i, c := range scs {
-				res, more, err := a.syncScope(cmd, eng, pg, c.Scope, args, f)
+				res, more, err := a.syncScope(cmd, eng, pg, c.Scope, args, nil, f)
 				if err != nil && len(scs) > 1 {
 					serr := &syncedScopesError{err: err, done: done}
 					if !a.json {
@@ -201,14 +202,20 @@ func (a *app) syncCmd() *cobra.Command {
 	return cmd
 }
 
-// syncScope syncs one scope: the trust question and the removals' confirmation on a terminal, or
-// the answers --trust and -y give; a cancel or a No is an aborted error naming the scope. The
-// diff and the removals a question is about go through pg before it is asked. more is the
-// command that lists what the human output caps.
-func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc engine.Scope, args []string, f syncFlags) (res *engine.SyncResult, more string, err error) {
+// syncScope syncs one scope, or applies the activation prof to it (lola profile): the trust
+// question and the removals' confirmation on a terminal, or the answers --trust and -y give; a
+// cancel or a No is an aborted error naming the scope. The diff and the removals a question is
+// about go through pg before it is asked. more is the command that lists what the human output
+// caps.
+func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc engine.Scope, args []string, prof *engine.ProfileChange,
+	f syncFlags) (res *engine.SyncResult, more string, err error) {
 	opts := engine.Options{DryRun: f.dry, Force: f.force}
 	a.hookOptions(cmd, &opts, f.allowHooks, f.allowRuntime)
-	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update, Options: opts}
+	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update, Options: opts, Profiles: prof}
+	question := "Remove these and sync? No applies nothing"
+	if prof != nil {
+		question = "Remove these and apply? No applies nothing"
+	}
 	name, more := manifestName(sc), eng.ListAll(req)
 	p := a.prompter(cmd) // never asks under --json
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
@@ -231,6 +238,9 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc en
 		req.Trust = func(rep engine.TrustReport) (engine.TrustAnswer, error) {
 			pg.show(cmd.ErrOrStderr(), stderr, more, diff(rep))
 			step := trustStep(rep)
+			if prof != nil {
+				step.Groups = nil // an activation applies all it planned or nothing: no Choose…
+			}
 			ans, err := p.Trust(step)
 			if err != nil {
 				return engine.TrustAnswer{}, err
@@ -246,7 +256,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc en
 	case p.Interactive():
 		req.ConfirmRemovals = func(rs []engine.Removal) (bool, error) {
 			pg.show(cmd.ErrOrStderr(), stderr, more, func(w io.Writer, s style, _ string) { printRemovals(w, s, rs) })
-			ok, err := p.Confirm("Remove these and sync? No applies nothing")
+			ok, err := p.Confirm(question)
 			if err == nil && ok {
 				names := make([]string, len(rs))
 				for i, r := range rs {
@@ -277,31 +287,17 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc en
 	return res, more, nil
 }
 
-// completeSync offers the names a sync takes: the entries of the current scope's manifest and the
-// modules installed there that it no longer lists, minus the names already given.
+// completeSync offers the names a sync takes: what the engine says the current scope's layers
+// want and has installed (SyncNames), minus the names already given.
 func (a *app) completeSync(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	eng, sc, err := a.session(cmd)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	man, err := eng.Manifest(sc)
+	names, err := eng.SyncNames(sc)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	led, err := eng.Ledger(sc)
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	names := []string{}
-	for _, ent := range man.Modules {
-		names = append(names, ent.Name)
-	}
-	for name := range led.Modules {
-		if man.Find(name) == nil {
-			names = append(names, name)
-		}
-	}
-	slices.Sort(names)
 	var out []cobra.Completion
 	for _, name := range names {
 		if strings.HasPrefix(name, toComplete) && !slices.Contains(args, name) {

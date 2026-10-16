@@ -42,6 +42,10 @@ type SyncRequest struct {
 	// cannot ask: a sync with removals is refused. The CLI passes an always-yes ConfirmRemovals
 	// for -y.
 	ConfirmRemovals func([]Removal) (bool, error)
+	// Profiles, when set, changes the scope's active profile list and applies the change (Plan 6b
+	// §6.3, §19 R3): the run is limited to the modules whose state differs from what the new list
+	// wants, and the new list is written to lock.json in the same commit as the apply.
+	Profiles *ProfileChange
 }
 
 // TrustAnswer is the user's answer to the trust question (Plan 6a §9.2): All accepts every change
@@ -185,6 +189,9 @@ type SyncResult struct {
 	Equivalent         string      `json:"-"`
 	ToApply            string      `json:"-"`
 	OffTerminal        string      `json:"-"`
+	// *Activation is set by an activation (SyncRequest.Profiles) only, adding its profiles and
+	// changes to the JSON document.
+	*Activation
 }
 
 // syncEntry is one desired entry of a sync: validated (spec, targets), then resolved to a
@@ -247,18 +254,65 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err := e.refuseTrackedLedger(ctx, sc, res.Result); err != nil {
 		return nil, err
 	}
-	layers, layerNotices, err := e.layers(sc, man, led)
+	// An activation builds the layers of its old and new active lists from one read of each
+	// profile; a list that does not change stops here, with its notice (Plan 6b §6.3 step 2).
+	names := req.Modules
+	var act *activation
+	var layers []Layer
+	var layerNotices, overrides []Notice
+	var want []Wanted
+	if req.Profiles != nil {
+		var notes []Notice
+		if act, notes, err = e.startActivation(sc, led, *req.Profiles); err != nil {
+			return nil, err
+		}
+		res.Activation, res.Notices = act.report, append(res.Notices, notes...)
+		if !act.changed {
+			res.InSync = true
+			return res, nil
+		}
+		// Hints that repeat the run name the profiles as resolved (Plan 6b §12.3).
+		req.Profiles = &ProfileChange{Action: req.Profiles.Action, Names: act.report.Named}
+		pl, err := e.loadProfiles(sc, act.infos, led.Profiles, act.list)
+		if err != nil {
+			return nil, err
+		}
+		top := e.manifestLayer(sc, man)
+		old, _ := desired(pl.assemble(top, led.Profiles))
+		layers, layerNotices = pl.assemble(top, act.list), pl.notices
+		// Precedence notices only for the modules the named profiles list.
+		want, overrides = desiredNoting(layers, func(m string) bool {
+			return slices.ContainsFunc(act.report.Named, func(q string) bool {
+				return slices.ContainsFunc(pl.named[q].Entries, func(ent manifest.Entry) bool { return ent.Name == m })
+			})
+		})
+		all := layerChanges(want, led, top.Name)
+		act.report.Changes = moved(all, old, want, led, act.report.Named)
+		names = []string{}
+		for _, c := range act.report.Changes {
+			names = append(names, c.name)
+		}
+		switch n := len(all) - len(act.report.Changes); {
+		case n == 1:
+			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "1 other change is pending → " + e.SyncCommand(sc)})
+		case n > 1:
+			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: fmt.Sprintf("%d other changes are pending → %s", n, e.SyncCommand(sc))})
+		}
+	} else {
+		if layers, layerNotices, err = e.layers(sc, man, led); err != nil {
+			return nil, err
+		}
+		want, overrides = desired(layers)
+		// Not for an activation, which always has a profile in play: the one it turns on or off.
+		if err := e.refuseMissingManifest(sc, want, led); err != nil {
+			return nil, err
+		}
+	}
+	limit, err := e.limitTo(sc, layers, want, led, names)
 	if err != nil {
 		return nil, err
 	}
-	want, overrides := desired(layers)
-	if err := e.refuseMissingManifest(sc, want, led); err != nil {
-		return nil, err
-	}
-	limit, err := e.limitTo(sc, layers, want, led, req.Modules)
-	if err != nil {
-		return nil, err
-	}
+	limit.only = act != nil
 	res.Notices = append(append(append(res.Notices, layerNotices...), overrides...), e.sweepRuns()...)
 	run, err := e.runDir()
 	if err != nil {
@@ -271,7 +325,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, err
 	}
 	res.Notices = append(res.Notices, kept...)
-	if n, ok := outOfSync(want, led, limit, e.SyncCommand(sc)); ok {
+	// An activation counted the changes it leaves pending above.
+	if n, ok := outOfSync(want, led, limit, e.SyncCommand(sc)); ok && act == nil {
 		res.Notices = append(res.Notices, n)
 	}
 	res.Notices = append(res.Notices, goneNotices(entries)...)
@@ -418,6 +473,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			if err != nil {
 				return nil, err
 			}
+			// An activation commits its new list with the apply, so it applies all it planned or
+			// nothing: an answer leaving some entries as installed is refused.
+			if act != nil && !ans.All && len(ans.Modules) > 0 {
+				return nil, errs.WithHints(errors.New("lola profile applies all of its changes or none; trust them all, or cancel"),
+					"see them: "+e.commandOf(req, "-n"))
+			}
 			if acc, err = accept(savedRep, res.Trust, ans, entries); err != nil {
 				return nil, err
 			}
@@ -475,7 +536,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			return nil, err
 		}
 		if !yes {
-			return nil, e.declineRemovals(sc, man, led, rec, acc, entries)
+			return nil, e.declineRemovals(req, man, led, rec, acc, entries)
 		}
 	}
 	res.Findings = append(res.Findings, probes.findings...)
@@ -484,9 +545,13 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
+	if act != nil {
+		pr.plan.Ledger.Profiles = act.list // written in the apply's commit (Plan 6b §6.3 step 5)
+	}
 	keepUnhooked(copies, pr.jobs, opts)
+	// A changed active list is a change the apply writes, even when it moves no module.
 	res.InSync = len(res.Steps) == 0 && len(res.Pins) == 0 && len(res.Removals) == 0 &&
-		!slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.replace })
+		!slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.replace }) && (act == nil || !act.changed)
 	for _, st := range res.Steps {
 		res.Changed = append(res.Changed, st.Module)
 	}
@@ -509,7 +574,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		// user's to give).
 		needTrust := res.Trust.Status != trust.StatusTrusted && res.Trust.Status != TrustStatusNotApplicable
 		if !res.InSync || needTrust {
-			res.ToApply = e.SyncCommand(sc, req.rerun()...)
+			res.ToApply = e.commandOf(req)
 			var answers []string
 			if needTrust {
 				answers = append(answers, "--trust")
@@ -519,7 +584,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 			res.EquivalentCommands = []string{res.ToApply}
 			if len(answers) > 0 {
-				res.OffTerminal = e.SyncCommand(sc, req.rerun(answers...)...)
+				res.OffTerminal = e.commandOf(req, answers...)
 				res.EquivalentCommands = []string{res.OffTerminal}
 			}
 		}
@@ -578,6 +643,9 @@ func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) s
 	var yes []string
 	if len(res.Removals) > 0 {
 		yes = append(yes, "-y")
+	}
+	if req.Profiles != nil {
+		return e.commandOf(req, append([]string{"--trust"}, yes...)...)
 	}
 	return e.SyncCommand(req.Scope, append([]string{"--trust"}, run.rerun(yes...)...)...)
 }
@@ -716,10 +784,12 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 // was applied. Recorded says the trust the user accepted changed the record, so the next sync
 // does not ask about it again; Again names the accepted entries it does ask about again, whose
 // pin or folder content the record holds only once lola writes it; Render says the record
-// changes what lola render installs.
+// changes what lola render installs. Retry is the run to repeat: lola sync, or the activation
+// as lola profile, with the scope's flags.
 type RemovalsDeclinedError struct {
 	Recorded, Render bool
 	Again            []string
+	Retry            string
 }
 
 func (e *RemovalsDeclinedError) Error() string {
@@ -731,10 +801,11 @@ func (e *RemovalsDeclinedError) Unwrap() error { return ErrDeclined }
 // but the trust the user accepted (acc, nil when nothing was asked) is recorded, without the pins
 // lola did not write: the answer stands, and the next sync asks again only about the removals and
 // the accepted entries (of entries, the run's) whose new pin or folder content it did not install.
-func (e *Engine) declineRemovals(sc Scope, man *manifest.Manifest, led *ledger.Ledger, rec *trust.Record, acc *acceptance,
+func (e *Engine) declineRemovals(req SyncRequest, man *manifest.Manifest, led *ledger.Ledger, rec *trust.Record, acc *acceptance,
 	entries []*syncEntry) error {
+	sc := req.Scope
 	if acc == nil {
-		return &RemovalsDeclinedError{}
+		return &RemovalsDeclinedError{Retry: e.commandOf(req)}
 	}
 	view := trust.Accept(rec.View, trust.ViewOf(man), acc.modules, acc.targets)
 	if err := e.Trust.Save(sc.ProjectDir, view); err != nil {
@@ -748,7 +819,8 @@ func (e *Engine) declineRemovals(sc Scope, man *manifest.Manifest, led *ledger.L
 	if err != nil {
 		return err
 	}
-	d := &RemovalsDeclinedError{Recorded: !rec.Exists || now != was, Render: e.rendersOther(sc, rec.View, view, man, led, entries)}
+	d := &RemovalsDeclinedError{Recorded: !rec.Exists || now != was, Render: e.rendersOther(sc, rec.View, view, man, led, entries),
+		Retry: e.commandOf(req)}
 	for _, se := range entries {
 		installed := led.Modules[se.ent.Name]
 		folder := se.spec.Kind == source.KindFolder && (installed == nil || installed.Digest != se.v.Meta.Digest)
@@ -940,21 +1012,21 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		}
 		answers = append(answers, "your confirmation to remove "+strings.Join(names, ", "))
 	}
-	hints = append(hints, "see them: "+e.SyncCommand(sc, req.rerun("-n")...))
+	hints = append(hints, "see them: "+e.commandOf(req, "-n"))
 	switch {
 	case trustMissing && (removalsMissing || yesGiven):
-		hints = append(hints, "then accept them: "+e.SyncCommand(sc, req.rerun("--trust", "-y")...))
-	case trustMissing && len(req.Modules) == 1:
-		hints = append(hints, "then accept them: "+e.SyncCommand(sc, req.rerun("--trust")...))
+		hints = append(hints, "then accept them: "+e.commandOf(req, "--trust", "-y"))
+	case trustMissing && (len(req.Modules) == 1 || req.Profiles != nil):
+		hints = append(hints, "then accept them: "+e.commandOf(req, "--trust"))
 	case trustMissing:
 		flags := req
 		flags.Modules = nil
-		hints = append(hints, "then accept them: "+e.SyncCommand(sc, req.rerun("--trust")...),
+		hints = append(hints, "then accept them: "+e.commandOf(req, "--trust"),
 			"or accept some: "+e.SyncCommand(sc, flags.rerun("--trust")...)+" <module>…")
 	case trustGiven:
-		hints = append(hints, "then confirm them: "+e.SyncCommand(sc, req.rerun("--trust", "-y")...))
+		hints = append(hints, "then confirm them: "+e.commandOf(req, "--trust", "-y"))
 	default:
-		hints = append(hints, "then confirm them: "+e.SyncCommand(sc, req.rerun("-y")...))
+		hints = append(hints, "then confirm them: "+e.commandOf(req, "-y"))
 	}
 	for _, se := range entries {
 		if trustMissing && se.folderChanged {
@@ -964,8 +1036,12 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 	if trustMissing && yesGiven {
 		hints = append(hints, "-y confirms removals only; accept the changes with --trust")
 	}
+	run := "lola sync"
+	if req.Profiles != nil {
+		run = "lola profile"
+	}
 	return errs.WithHints(&TrustRefusalError{Report: rep, Removals: removals,
-		msg: "lola sync needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"}, hints...)
+		msg: run + " needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"}, hints...)
 }
 
 // andJoin joins phrases as prose: "a", "a and b", "a, b and c".
@@ -1120,6 +1196,33 @@ func needsPin(se *syncEntry) bool {
 	return se.from == "" && se.spec.Kind != source.KindFolder && (se.update || se.ent.Digest == "")
 }
 
+// SyncNames is the module names lola sync takes in sc, for completion: every module the scope's
+// layers want, installed or not, and every module installed there, in name order. It reads the
+// manifest, lock.json and the active profiles, and takes no lock; it runs no git, so it does not
+// check that lock.json is untracked, which every command it completes does. Residual for Plan
+// 6b.3a: it parses the profiles an unchecked, possibly committed lock.json names. Harmless while
+// those can only be the user's own profiles; once project profiles exist, a planted list could
+// make completion read checked-in profile files before any trust check.
+func (e *Engine) SyncNames(sc Scope) ([]string, error) {
+	man, led, _, err := e.load(sc, true)
+	if err != nil {
+		return nil, err
+	}
+	layers, _, err := e.layers(sc, man, led)
+	if err != nil {
+		return nil, err
+	}
+	want, _ := desired(layers)
+	names := sortedNames(led)
+	for _, w := range want {
+		if led.Modules[w.Name] == nil {
+			names = append(names, w.Name)
+		}
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
 // sortedNames is the ledger's module names in order.
 func sortedNames(led *ledger.Ledger) []string {
 	names := make([]string, 0, len(led.Modules))
@@ -1154,10 +1257,17 @@ func (e *Engine) refuseMissingManifest(sc Scope, want []Wanted, led *ledger.Ledg
 }
 
 // syncLimit is the set of modules a sync acts on (Plan 6a §3.1): the names given, or every
-// module when none was.
-type syncLimit struct{ names []string }
+// module when none was and the run is not only those names. An activation's run is only the
+// modules it changes (Plan 6b §6.3 step 4), which may be none.
+type syncLimit struct {
+	names []string
+	only  bool
+}
 
-func (l syncLimit) has(name string) bool { return len(l.names) == 0 || slices.Contains(l.names, name) }
+// all reports whether the run acts on every module.
+func (l syncLimit) all() bool { return !l.only && len(l.names) == 0 }
+
+func (l syncLimit) has(name string) bool { return l.all() || slices.Contains(l.names, name) }
 
 // limitTo is the run names limit sync to, each of them an entry a layer wants (want) or a module
 // installed there that no layer wants any more; any other name is refused before anything else,
@@ -1203,7 +1313,7 @@ func (e *Engine) limitTo(sc Scope, layers []Layer, want []Wanted, led *ledger.Le
 // the top-level targets only when an entry of the run has no targets of its own, since it
 // installs to them. An unlimited run's report is rep.
 func runReport(rep trust.Report, limit syncLimit, entries []*syncEntry) trust.Report {
-	if len(limit.names) == 0 {
+	if limit.all() {
 		return rep
 	}
 	out := trust.Report{Status: rep.Status, Changes: []trust.Change{}}
@@ -1226,7 +1336,7 @@ func runReport(rep trust.Report, limit syncLimit, entries []*syncEntry) trust.Re
 // installed or pinned to another version than the one installed, and a module installed but no
 // longer listed. ok is false for an unlimited run and when there are none.
 func outOfSync(want []Wanted, led *ledger.Ledger, limit syncLimit, sync string) (n Notice, ok bool) {
-	if len(limit.names) == 0 {
+	if limit.all() {
 		return Notice{}, false
 	}
 	var names []string
@@ -1292,7 +1402,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			base, from, file = shown(w.path), w.From, w.path
 			editPin := "edit the pin in " + shown(w.path)
 			switch in := led.Modules[name]; {
-			case ent.Digest != "" && update && len(limit.names) > 0:
+			case ent.Digest != "" && update && !limit.all():
 				return nil, nil, errs.WithHints(fmt.Errorf("%s: its pin is in %s, which lola never writes", name, shown(w.path)),
 					editPin+", then: "+e.SyncCommand(sc, name))
 			case ent.Digest != "" && update:
@@ -1322,7 +1432,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		if err := checkPinShape(name, base, spec.Kind, ent, repin); err != nil {
 			return nil, nil, err
 		}
-		gone, err := e.refuseOtherSource(sc, name, spec, e.SyncCommand(sc, req.rerun()...))
+		gone, err := e.refuseOtherSource(sc, name, spec, e.commandOf(req))
 		if err != nil {
 			return nil, nil, err
 		}

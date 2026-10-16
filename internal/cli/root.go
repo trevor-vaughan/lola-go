@@ -78,6 +78,7 @@ func setupCobra() {
 	cobraOnce.Do(func() {
 		cobra.EnableCommandSorting = false
 		cobra.AddTemplateFunc("aliasedPad", aliasedPad)
+		cobra.AddTemplateFunc("aliasedFlagUsages", aliasedFlagUsages)
 	})
 }
 

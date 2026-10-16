@@ -90,7 +90,7 @@ func (a *app) completeInstalled(cmd *cobra.Command, _ []string, toComplete strin
 }
 
 func (a *app) addCoreCommands(root *cobra.Command) {
-	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.checkCmd())
+	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.profileCmd(), a.checkCmd())
 }
 
 func (a *app) installCmd() *cobra.Command {

@@ -2,6 +2,8 @@ package engine_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -73,6 +75,28 @@ var _ = Describe("profiles", func() {
 			removals = append(removals, r)
 			return true, nil
 		}, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
+	}
+	// turn runs lola profile's action on names in s, confirming removals as -y does.
+	turn := func(s engine.Scope, action engine.ProfileAction, names ...string) (*engine.SyncResult, error) {
+		return e.Sync(ctx, engine.SyncRequest{Scope: s, Profiles: &engine.ProfileChange{Action: action, Names: names},
+			ConfirmRemovals: func(r []engine.Removal) (bool, error) {
+				removals = append(removals, r)
+				return true, nil
+			}})
+	}
+	// exported is changes as JSON and human output see them.
+	exported := func(cs []engine.LayerChange) []engine.LayerChange {
+		out := []engine.LayerChange{}
+		for _, c := range cs {
+			out = append(out, engine.LayerChange{Module: c.Module, Action: c.Action, From: c.From, Over: c.Over, Version: c.Version, Was: c.Was})
+		}
+		return out
+	}
+	activeList := func(s engine.Scope) []ledger.Active {
+		GinkgoHelper()
+		led, err := e.Ledger(s)
+		Expect(err).NotTo(HaveOccurred())
+		return led.Profiles
 	}
 	installed := func(s engine.Scope) map[string]string {
 		GinkgoHelper()
@@ -461,6 +485,343 @@ var _ = Describe("profiles", func() {
 		b, err := os.ReadFile(filepath.Join(proj, ".claude", "commands", "ship.md"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).NotTo(ContainSubstring("attacker"))
+	})
+
+	It("lists the profiles a scope can use, with their place in the active list", func() {
+		writeProfile("default", "version: 1\n")
+		writeProfile("go", "version: 1\n")
+		writeProfile("base", "version: 1\n")
+		writeTree(p.UserProfiles, map[string]string{"Bad Name.yml": "", "notes.txt": ""})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		activate(sc, "user:go", "user:base", "user:gone")
+		activate(user, "user:base")
+
+		rows, notices, err := e.Profiles(ctx, sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rows).To(HaveLen(2), "default applies to user scope only")
+		Expect(rows[0]).To(And(HaveField("Name", "base"), HaveField("Kind", "user"), HaveField("Active", true), HaveField("Position", HaveValue(Equal(2))),
+			HaveField("Scope", "project"), HaveField("Path", filepath.Join(p.UserProfiles, "base.yml")), HaveField("Extends", BeEmpty()),
+			HaveField("ShadowedBy", BeNil()), HaveField("Of", 3)))
+		Expect(rows[1]).To(And(HaveField("Name", "go"), HaveField("Position", HaveValue(Equal(1)))))
+		Expect(notices).To(ConsistOf(
+			engine.Notice{Level: engine.LevelWarn, Text: "profile user:gone is on but no longer exists → lola profile --project user:gone --off"},
+			engine.Notice{Level: engine.LevelWarn, Text: "1 file with an invalid name in " + p.UserProfiles + " is not a profile"}))
+
+		rows, _, err = e.Profiles(ctx, user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rows).To(HaveLen(3))
+		Expect(rows[1]).To(And(HaveField("Name", "default"), HaveField("Kind", "default"), HaveField("Active", true), HaveField("Position", BeNil())))
+		Expect(rows[2]).To(And(HaveField("Name", "go"), HaveField("Active", false), HaveField("Position", BeNil())))
+	})
+
+	It("shows a profile's modules with the layer that wins in each scope", func() {
+		a, b, b2 := mod("a", "a", "A"), mod("b", "b", "B"), mod("b2", "b", "B2")
+		writeProfile("default", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n")
+		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: b, source: "+b+"}\n  - {name: a, source: "+a+"}\n")
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: b, source: " + b2 + "}\n"})
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
+		activate(sc, "user:go")
+
+		states, _, err := e.ProfileState(ctx, []engine.Scope{sc, user}, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states).To(HaveLen(2))
+		Expect(states[0].Scope).To(Equal("project"))
+		Expect(states[0].Active).To(BeTrue())
+		Expect(states[0].Modules).To(Equal([]engine.ProfileModule{
+			{Name: "a", From: "profile:user:go", Overrides: []string{}},
+			{Name: "b", From: "profile:user:go", Overrides: []string{}}}))
+		Expect(states[1].Active).To(BeFalse())
+		Expect(states[1].Modules).To(Equal([]engine.ProfileModule{
+			{Name: "a", From: "profile:user:go", Overrides: []string{"profile:default"}},
+			{Name: "b", From: "user.yml", Overrides: []string{"profile:user:go"}}}), "an inactive profile shows what turning it on would do")
+		Expect(installed(user)).To(BeEmpty(), "nothing is written")
+
+		states, _, err = e.ProfileState(ctx, []engine.Scope{sc, user}, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states).To(ConsistOf(And(HaveField("ProfileRow.Scope", "user"), HaveField("ProfileRow.Qualified", "default"))))
+		_, _, err = e.ProfileState(ctx, []engine.Scope{sc}, "default")
+		Expect(err).To(MatchError("default applies to user scope only"))
+		Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user default"}))
+	})
+
+	It("refuses a profile name that names none, listing those the scope can use", func() {
+		writeProfile("go", "version: 1\n")
+		writeProfile("default", "version: 1\n")
+		for _, name := range []string{"nope", "project:go", "remote:go", "user:nope", "../go", "user:"} {
+			_, _, err := e.ProfileState(ctx, []engine.Scope{user}, name)
+			Expect(err).To(MatchError("no profile "+name+" for user scope"), name)
+			Expect(errs.Hints(err)).To(Equal([]string{"profiles user scope can use: default, user:go"}), name)
+		}
+		_, _, err := e.ProfileState(ctx, []engine.Scope{sc}, "x\x1b[31m")
+		Expect(err).To(MatchError("no profile x?[31m for the project at "+proj), "the name goes through untrusted.Text")
+		Expect(os.RemoveAll(p.UserProfiles)).To(Succeed())
+		_, _, err = e.ProfileState(ctx, []engine.Scope{user}, "go")
+		Expect(errs.Hints(err)).To(Equal([]string{"write one: " + filepath.Join(p.UserProfiles, "<name>.yml")}))
+	})
+
+	It("refuses a profile that does not load, naming the file and line", func() {
+		bad := writeProfile("go", "version: 1\nmodules:\n  - {name: a, nope: 1}\n")
+		_, _, err := e.ProfileState(ctx, []engine.Scope{user}, "go")
+		Expect(err).To(MatchError(ContainSubstring(bad)))
+		Expect(err).To(MatchError(ContainSubstring("line 3")))
+	})
+
+	It("refuses a profile listed but gone when read, without a panic", func() {
+		Expect(os.MkdirAll(p.UserProfiles, 0o755)).To(Succeed())
+		gone := filepath.Join(p.UserProfiles, "go.yml")
+		Expect(os.Symlink(filepath.Join(tmp, "nowhere.yml"), gone)).To(Succeed())
+		var err error
+		Expect(func() { _, _, err = e.ProfileState(ctx, []engine.Scope{user}, "go") }).NotTo(Panic())
+		Expect(err).To(MatchError(ContainSubstring(gone)))
+	})
+
+	It("profile commands refuse a tracked lock.json", func() {
+		writeProfile("go", "version: 1\n")
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		activate(sc, "user:go")
+		gitIn(proj, "init", "-q")
+		gitIn(proj, "add", "-f", ".lola/lock.json")
+		tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"
+		_, _, err := e.Profiles(ctx, sc)
+		Expect(err).To(MatchError(tracked))
+		_, _, err = e.ProfileState(ctx, []engine.Scope{sc}, "go")
+		Expect(err).To(MatchError(tracked))
+		for _, action := range []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff, engine.ProfileSwitch} {
+			_, err = turn(sc, action, "go")
+			Expect(err).To(MatchError(tracked), string(action))
+		}
+		Expect(activeList(sc)).To(Equal([]ledger.Active{{Name: "user:go", By: ledger.ByOn}}))
+		gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
+		_, _, err = e.Profiles(ctx, sc)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("turning a profile off never removes a module another layer wants", func() {
+		a, c := mod("a", "a", "A"), mod("c", "c", "C")
+		writeProfile("default", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: "+c+"}\n")
+		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n  - {name: c, source: "+c+"}\n")
+		_, err := sync(user)
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := turn(user, engine.ProfileOn, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Activation.Profiles).To(Equal([]string{"user:go"}))
+		Expect(res.Activation.Named).To(Equal([]string{"user:go"}))
+		Expect(exported(res.Activation.Changes)).To(Equal([]engine.LayerChange{
+			{Module: "a", Action: "load", From: "profile:user:go", Over: []string{}, Version: a},
+			{Module: "c", Action: "replace", From: "profile:user:go", Over: []string{"profile:default"}, Version: c, Was: c}}))
+		Expect(activeList(user)).To(Equal([]ledger.Active{{Name: "user:go", By: ledger.ByOn}}))
+		Expect(installed(user)).To(Equal(map[string]string{"a": "profile:user:go", "c": "profile:user:go"}))
+		Expect(removals).To(BeEmpty())
+
+		res, err = turn(user, engine.ProfileOff, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Activation.Profiles).To(BeEmpty())
+		Expect(exported(res.Activation.Changes)).To(Equal([]engine.LayerChange{
+			{Module: "a", Action: "unload", From: "profile:user:go", Over: []string{}, Version: a},
+			{Module: "c", Action: "replace", From: "profile:default", Over: []string{}, Version: c, Was: c}}))
+		Expect(removals).To(ConsistOf(ConsistOf(And(HaveField("Module", "a"), HaveField("WholeModule", true)))), "only a goes, and it is asked about")
+		Expect(installed(user)).To(Equal(map[string]string{"c": "profile:default"}))
+		Expect(command(p.Home, "c")).To(Equal("C\n"))
+		Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).NotTo(BeAnExistingFile())
+		Expect(activeList(user)).To(BeEmpty())
+	})
+
+	It("a refused activation leaves the active list and files unchanged", func() {
+		a := mod("a", "a", "A")
+		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n")
+		writeProfile("bad", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: b, source: "+filepath.Join(mods, "nope")+"}\n")
+		_, err := turn(user, engine.ProfileOn, "go")
+		Expect(err).NotTo(HaveOccurred())
+		before, err := os.ReadFile(p.UserLedger)
+		Expect(err).NotTo(HaveOccurred())
+		unchanged := func(why string) {
+			GinkgoHelper()
+			after, err := os.ReadFile(p.UserLedger)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(after)).To(Equal(string(before)), why)
+			Expect(command(p.Home, "a")).To(Equal("A\n"), why)
+		}
+		off := func(confirm func([]engine.Removal) (bool, error)) error {
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Profiles: &engine.ProfileChange{Action: engine.ProfileOff, Names: []string{"go"}},
+				ConfirmRemovals: confirm})
+			return err
+		}
+
+		err = off(func([]engine.Removal) (bool, error) { return false, nil })
+		Expect(errors.As(err, new(*engine.RemovalsDeclinedError))).To(BeTrue(), "%v", err)
+		unchanged("a No")
+		err = off(nil)
+		Expect(err).To(MatchError("lola profile needs your confirmation to remove a, and there is no terminal to ask on"))
+		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola profile --user user:go --off -n", "then confirm them: lola profile --user user:go --off -y"}),
+			"hints name the profile as resolved")
+		unchanged("a refusal off a terminal")
+		Expect(off(func([]engine.Removal) (bool, error) { return false, context.Canceled })).To(MatchError(context.Canceled))
+		unchanged("an interrupt between staging and commit")
+		_, err = turn(user, engine.ProfileSwitch, "bad")
+		Expect(err).To(MatchError(ContainSubstring("nope")))
+		unchanged("an error")
+		_, err = turn(user, engine.ProfileOff, "go", "nope")
+		Expect(err).To(MatchError("no profile nope for user scope"))
+		unchanged("an unknown name")
+
+		// A partial trust answer would commit the new list with planned modules left out.
+		writeProfile("bare", "version: 1\nmodules:\n  - {name: a, source: "+a+"}\n")
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
+		asked := false
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"bare"}},
+			Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
+				asked = true
+				return engine.TrustAnswer{Modules: []string{"a"}}, nil
+			}})
+		Expect(asked).To(BeTrue(), "the profile's entry installs to project.yml's untrusted targets")
+		Expect(err).To(MatchError("lola profile applies all of its changes or none; trust them all, or cancel"))
+		Expect(activeList(sc)).To(BeEmpty(), "a partial trust answer")
+		Expect(filepath.Join(proj, ".claude", "commands", "a.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("an activation applies only what the change moves", func() {
+		c := mod("c", "c", "C")
+		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: "+c+"}\n")
+		writeTree(proj, map[string]string{"a/lola.yml": "name: a\n", "a/commands/a.md": "A\n", "b/lola.yml": "name: b\n", "b/commands/b.md": "B\n",
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: a}\n"})
+		_, err := sync(sc)
+		Expect(err).NotTo(HaveOccurred())
+		// Pending since: a pulled entry (untrusted) and an edit of a's folder.
+		writeTree(proj, map[string]string{"a/commands/a.md": "A edited\n",
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: a}\n  - {name: b, source: b}\n"})
+
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"go"}}})
+		Expect(err).NotTo(HaveOccurred(), "no trust question about project.yml's pulled entry, which the change does not move")
+		Expect(exported(res.Activation.Changes)).To(Equal([]engine.LayerChange{{Module: "c", Action: "load", From: "profile:user:go", Over: []string{}, Version: c}}))
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "1 other change is pending → lola sync --project"}))
+		Expect(installed(sc)).To(Equal(map[string]string{"a": "", "c": "profile:user:go"}))
+		Expect(command(proj, "a")).To(Equal("A\n"), "a's edited folder waits for lola sync")
+		Expect(filepath.Join(proj, ".claude", "commands", "b.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("holds at most 64 profiles in an active list", func() {
+		var names []string
+		for i := range 65 {
+			names = append(names, fmt.Sprintf("p%d", i))
+			writeProfile(names[i], "version: 1\n")
+		}
+		_, err := turn(user, engine.ProfileSwitch, names...)
+		Expect(err).To(MatchError("at most 64 profiles can be on in a scope"))
+		Expect(errs.Hints(err)).To(Equal([]string{"turn some off: lola profile --user <name>… --off"}))
+		Expect(turn(user, engine.ProfileSwitch, names[:64]...)).Error().NotTo(HaveOccurred())
+		Expect(activeList(user)).To(HaveLen(64))
+		_, err = turn(user, engine.ProfileOn, names[64])
+		Expect(err).To(MatchError("at most 64 profiles can be on in a scope"))
+		Expect(activeList(user)).To(HaveLen(64))
+	})
+
+	It("--switch keeps default on and unloads only what nothing wants", func() {
+		a, b, c := mod("a", "a", "A"), mod("b", "b", "B"), mod("c", "c", "C")
+		writeProfile("default", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: "+c+"}\n")
+		writeProfile("base", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n  - {name: c, source: "+c+"}\n")
+		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: b, source: "+b+"}\n")
+		writeProfile("docs", "version: 1\n")
+		_, err := turn(user, engine.ProfileOn, "base")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(installed(user)).To(Equal(map[string]string{"a": "profile:user:base", "c": "profile:user:base"}))
+
+		res, err := turn(user, engine.ProfileSwitch, "go", "docs")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Activation.Profiles).To(Equal([]string{"user:go", "user:docs"}), "in the order typed")
+		Expect(activeList(user)).To(Equal([]ledger.Active{{Name: "user:go", By: ledger.BySwitch}, {Name: "user:docs", By: ledger.BySwitch}}))
+		Expect(removals).To(ConsistOf(ConsistOf(HaveField("Module", "a"))))
+		Expect(installed(user)).To(Equal(map[string]string{"b": "profile:user:go", "c": "profile:default"}))
+		Expect(command(p.Home, "c")).To(Equal("C\n"))
+
+		res, err = turn(user, engine.ProfileSwitch, "go", "docs")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.InSync).To(BeTrue())
+		Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelInfo, Text: "the active profiles are already user:go, user:docs"}))
+		Expect(res.Activation.Changes).To(BeEmpty())
+	})
+
+	It("refuses default's actions it cannot take, a name given twice, and notes what is already so", func() {
+		writeProfile("default", "version: 1\n")
+		writeProfile("go", "version: 1\n")
+		res, err := turn(user, engine.ProfileOn, "default")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelInfo, Text: "default is always on in user scope"}))
+		for _, action := range []engine.ProfileAction{engine.ProfileOff, engine.ProfileSwitch} {
+			_, err = turn(user, action, "default")
+			Expect(err).To(MatchError("default is always on in user scope; lola profile --" + string(action) + " cannot change that"))
+			Expect(errs.Hints(err)).To(Equal([]string{"rename or delete " + filepath.Join(p.UserProfiles, "default.yml") + " to turn it off"}))
+		}
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		_, err = turn(sc, engine.ProfileOn, "default")
+		Expect(err).To(MatchError("default applies to user scope only"))
+
+		_, err = turn(user, engine.ProfileOn, "go", "user:go")
+		Expect(err).To(MatchError("user:go is named twice"))
+		Expect(errs.Hints(err)).To(Equal([]string{"name each profile once"}))
+
+		Expect(turn(user, engine.ProfileOn, "go")).Error().NotTo(HaveOccurred())
+		res, err = turn(user, engine.ProfileOn, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelInfo, Text: "user:go is already on (1st of 1)"}))
+		Expect(res.InSync).To(BeTrue())
+		Expect(turn(user, engine.ProfileOff, "go")).Error().NotTo(HaveOccurred())
+		res, err = turn(user, engine.ProfileOff, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelInfo, Text: "user:go is not on"}))
+	})
+
+	It("turns off an active profile whose file is gone, by either name", func() {
+		a := mod("a", "a", "A")
+		gone := writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n")
+		for _, name := range []string{"user:go", "go"} {
+			Expect(turn(user, engine.ProfileOn, "go")).Error().NotTo(HaveOccurred())
+			Expect(os.Remove(gone)).To(Succeed())
+			res, err := turn(user, engine.ProfileOff, name)
+			Expect(err).NotTo(HaveOccurred(), name)
+			Expect(res.Activation.Changes).To(ConsistOf(HaveField("Action", "unload")))
+			Expect(activeList(user)).To(BeEmpty())
+			Expect(installed(user)).To(BeEmpty())
+			writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n")
+		}
+	})
+
+	It("turns a profile on in a project without .lola, writing the list with the apply", func() {
+		a := mod("a", "a", "A")
+		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n")
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true},
+			Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"go"}}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.ToApply).To(Equal("lola profile --project user:go --on"))
+		Expect(res.Activation.Changes).To(ConsistOf(HaveField("Action", "load")))
+		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory(), "a dry run writes nothing")
+
+		_, err = turn(sc, engine.ProfileOn, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(activeList(sc)).To(Equal([]ledger.Active{{Name: "user:go", By: ledger.ByOn}}))
+		Expect(filepath.Join(proj, ".lola", ".gitignore")).To(BeARegularFile())
+		Expect(command(proj, "a")).To(Equal("A\n"))
+		Expect(filepath.Join(proj, ".lola", "project.yml")).NotTo(BeAnExistingFile())
+	})
+
+	It("names every module a sync takes, from every layer, without asking git", func() {
+		c := mod("c", "c", "C")
+		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: "+c+"}\n")
+		writeTree(proj, map[string]string{"a/lola.yml": "name: a\n", "a/commands/a.md": "A\n",
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: a}\n"})
+		activate(sc, "user:go")
+		names, err := e.SyncNames(sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(names).To(Equal([]string{"a", "c"}), "not installed yet, from project.yml and from a profile")
+
+		_, err = sync(sc)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
+		gitIn(proj, "init", "-q")
+		gitIn(proj, "add", "-f", ".lola/lock.json")
+		names, err = e.SyncNames(sc)
+		Expect(err).NotTo(HaveOccurred(), "no git check: a tracked lock.json is the completed command's to refuse")
+		Expect(names).To(Equal([]string{"a", "c"}), "a module installed but no longer listed")
 	})
 
 	It("resolves a profile's relative folder source against the profile's directory", func() {

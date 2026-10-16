@@ -58,7 +58,9 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 - `ledger`, `manifest`: Observed and desired state, validated at load; the ledger written
   deterministically, the manifest edited in place (`manifest.Edit`) with its pins.
 - `profile`: Profiles (Plan 6b §4): `Visible` finds the user's profiles and, at user scope,
-  `default.yml` by their names alone (at most 256 entries in `profiles/`); `Load` reads one through
+  `default.yml` by their names alone (at most 256 entries in `profiles/`), and counts the `.yml`
+  files whose names fail the module-name rules, which listings report as a count and never by
+  name (§19 S7); `Load` reads one through
   `yamldoc.Read` (following a symbolic link, as for `user.yml`, §19 P7), version first, known keys
   only, at most 512 entries each checked as a manifest entry (`manifest.Entry.Validate`), every
   refusal with the file and line; `Entries` gives entries without targets the profile's
@@ -140,7 +142,10 @@ stopping at the first that fails or is declined; `--json` prints `{"scopes": [..
 the synced scopes in the error document (`syncedScopesError`). `Engine.ResolveReadScope` is the read-only rule (`list`): the flags when given,
 `--scope both` included, else the project found walking up and user scope, never asking and never
 reading `default_scope`; each `StatusRow` carries its `scope`. `check` and shell completions use
-`app.scope`: the flags as one scope, else the found project, never asking.
+`app.scope`: the flags as one scope, else the found project, never asking. `lola sync`'s
+completion asks the engine (`SyncNames`): every module the scope's layers want, installed or not
+(a profile's included), and every module installed there; it takes no lock and runs no git, so
+the tracked-`lock.json` check is left to the command it completes.
 
 **Install.** `InstallAll` takes, per destination, the scope and its source (`flag`, `config`,
 `discovered`, `picked`, from `ResolveScope` or the picker), its targets and its selection
@@ -798,6 +803,32 @@ installs the winning entry's pin, else `lock.json`'s version, and names where a 
 lives (an edit of the profile, or `sync --update` for the manifest). Render keeps or sets each
 module's `from`, warns about missing profiles, and removes nothing for them.
 
+`Profiles` and `ProfileState` (`internal/engine/profileview.go`) are what `lola profile` reads,
+per scope. Both refuse a project whose `lock.json` git tracks before reading anything else
+(§19 S5). `Profiles` reads the profiles directory's listing and `lock.json`, never a profile file
+(§19 S8): each visible profile with its kind, path and 1-based position in the active list
+(`default` is always active and has none), a missing-profile warning per stored name with no
+file, and the invalid-name count as a warning. `ProfileState` resolves a typed name
+(`resolveProfile`, §4.4 for the user kinds: a bare name is the user's profile, `default` is
+`default.yml` at user scope only, `user:go` names its kind; `project:` and `remote:` names are
+unknown until 6b.3, §19 P8; an unknown name lists the profiles the scope can use), then builds
+the scope's layers with the profile appended to the active list when it is off, as `--on`
+would, and reports each of its modules' winning layer (`From`) and the layers that entry replaced
+(`Overrides`, from `Wanted.Over`). The profile is read once, by `layers`. Over several scopes,
+one the name does not resolve in is left out; when it resolves in none, the first refusal is
+returned. `lola profile` (`internal/cli/cmd_profile.go`) resolves its scopes with
+`ResolveReadScope`, as `list` does, and prints a table whose rows name their scope;
+`ProfileNames` completes its argument from the profiles directory's listing alone. Its action flags' aliases (`--enable`, `--use`, …) are one flag each: `aliasFlags`
+(`internal/cli/help.go`) records them in the flag's `lola_aliases` annotation and installs a
+pflag normalize function mapping each alias to its canonical name, and the usage template renders
+`.LocalFlags` through `aliasedFlagUsages` (`--on (--enable, --activate)`). With an
+action flag, `profileAction` checks the one-action rule on canonical flag names after cobra has
+parsed (§19 R7), and `profileApply` resolves one scope as every writing command does (the picker
+on a terminal; `both` refused), then runs `syncScope` with the `ProfileChange`: the same trust
+and removal questions as `lola sync`, `-y` and `--trust` as answers. The summary
+(`printProfileAction`: the list's new state, each change, then `printSync`'s lines) goes through
+`pager.show`.
+
 `Uninstall` refuses a module any profile layer lists (`refuseProfileModule`), even when the
 manifest lists it too, since uninstalling would leave it wanted: each profile's hint is
 `turn <name> off: lola profile <scope flag> <name> --off`, and `default`'s is the edit of
@@ -892,8 +923,9 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
    answer given in step 7 (without the pins, which were not written), so the next sync asks
    again only the removals and the accepted entries whose pin or folder content it did not
    install; it returns a `RemovalsDeclinedError` (wrapping `ErrDeclined`) that says whether the
-   record changed, names those entries (`Again`), and says whether the record changes what
-   `render` installs (`rendersOther`).
+   record changed, names those entries (`Again`), says whether the record changes what
+   `render` installs (`rendersOther`), and carries the run to repeat (`Retry`, `commandOf`: the
+   sync, or an activation's `lola profile`).
 10. `prepare` (runtime hook consent, the plan and its conflicts, install hook consent, the pending
     hook marks); a forced copy whose pending hook was declined again is kept by `keepUnhooked`
     (a dry run keeps it replaced, so its plan shows the hook); a dry run sets its closing commands
@@ -903,12 +935,44 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
     `saveManifest` when pins are written, else by `Trust.Save`, also when nothing was applied. A
     failed write fails closed: the error says what was applied and hints to run `lola sync` again
     (`syncAgain`, with the scope's flags; `install`, `uninstall` and `migrate` use it too).
-11. `in_sync` is set when there is no step, pin, removal or module copy to replace; `Changed`
+11. `in_sync` is set when there is no step, pin, removal or module copy to replace and no
+    active list an activation changes (one that moves no module still writes it); `Changed`
     names the modules the run changed. After a trust answer, `Equivalent` is the command that
     gives it off a terminal: the user's run with `--trust` for Trust all; for a partial answer,
     `lola sync --trust <names>` naming every accepted entry (a field-only change renders nothing
     but changes the record) and every changed module; `-y` when removals were confirmed. The
     CLI prints it after the removals are answered, when it asked the question.
+
+**Activation** (`internal/engine/activate.go`, Plan 6b §6.3, §19 R3). `lola profile --on`,
+`--off` and `--switch` are syncs: `SyncRequest.Profiles` (`ProfileChange{Action, Names}`) runs
+under the same scope lock, after the tracked-`lock.json` refusal. `startActivation` lists the
+profiles directory once, and `activeList` resolves each typed name (`resolveProfile`; only when
+that finds none, `--off` also takes a stored name whose file is gone, as typed or as
+`user:<name>`), refuses a name given twice, refuses `--off`/`--switch` of `default` (hint: rename
+or delete `default.yml`) and any action on it at project scope, makes `--on default` a notice,
+and builds the new list: `--on` appends in typed order (`by: on`), `--off` removes, `--switch`
+replaces it in typed order (`by: switch`), at most 64. A list whose names do not change returns
+at once with its notice (`already on (2nd of 3)`, `not on`, `already …`) and `in_sync`.
+Otherwise the request's names become the qualified ones, so every hint repeating the run names
+them as resolved. `loadProfiles` reads `default` and the union of the old and new lists once each,
+keyed by qualified name, reusing that listing (a gone name warns only when the new list holds it);
+`assemble` builds the old and the new layers from it. `layerChanges` diffs the new `desired`
+against `lock.json` (`load`, `replace`, `unload`), and `moved` keeps what the change of list moves:
+a module whose winning entry differs from the old layers' (absent, another layer, another entry),
+and an installed module the new layers do not want that the old ones did or that `lock.json` says
+a named profile installed. The other differences are pending from before: they are left to
+`lola sync`, with the notice `N other changes are pending → lola sync <scope flag>`
+(`outOfSync` is skipped). The run is limited to the moved modules (`syncLimit.only`, so none means
+none), so trust (§8) and removals (§19 R15) see only them; precedence notices name only modules
+the named profiles list (`desiredNoting`); the missing-manifest refusal does not apply. A trust
+answer that leaves some entries as installed is refused: the new list is committed with the
+apply, so an activation applies all it planned or nothing. `prepare`'s ledger gets the new list,
+so it is written in the apply's commit, also when no module moves; a refusal, a No, an error or
+an interrupt leaves the old list and files. The result embeds `*Activation`: `profiles` (the
+list after the run), `changes` (`{module, action, from, over}`, `over` from `Wanted.Over`; an
+unload's `from` is the layer `lock.json` recorded) and `Named`/`Files` (human output only). Hints
+that repeat the run (`commandOf`) name `lola profile <names> --<action>` with the scope's flags
+instead of `lola sync`.
 
 **Prepare and commit.** `Store.Prepare` detects, normalizes, checks the cached copy reads the
 same, and digests, in the run's staging, taking no lock and touching nothing in `modules/`.
