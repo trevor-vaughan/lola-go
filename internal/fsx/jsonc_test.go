@@ -1,11 +1,20 @@
 package fsx_test
 
 import (
+	"encoding/json"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 )
+
+// str is s as a JSON string member.
+func str(s string) []byte {
+	b, err := json.Marshal(s)
+	Expect(err).NotTo(HaveOccurred())
+	return b
+}
 
 var _ = Describe("JSONC edits", func() {
 	DescribeTable("JSONSet preserves every byte outside the edited member",
@@ -43,7 +52,7 @@ var _ = Describe("JSONC edits", func() {
 
 	DescribeTable("JSONAddMember appends one string and preserves the rest",
 		func(src, ptr, member, want string, wantCreated bool) {
-			got, created, err := fsx.JSONAddMember([]byte(src), ptr, member)
+			got, created, err := fsx.JSONAddMember([]byte(src), ptr, str(member))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(got)).To(Equal(want))
 			Expect(created).To(Equal(wantCreated))
@@ -66,7 +75,7 @@ var _ = Describe("JSONC edits", func() {
 
 	DescribeTable("JSONRemoveMember removes one string and its own comments",
 		func(src, member string, dropEmpty bool, want string) {
-			got, err := fsx.JSONRemoveMember([]byte(src), "/context/includeDirectories", member, dropEmpty)
+			got, err := fsx.JSONRemoveMember([]byte(src), "/context/includeDirectories", str(member), dropEmpty)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(got)).To(Equal(want))
 		},
@@ -88,21 +97,86 @@ var _ = Describe("JSONC edits", func() {
 		Entry("is a no-op when the array is missing", `{"a": 1}`, "m", true, `{"a": 1}`),
 	)
 
-	It("JSONHasMember finds only string members of an array", func() {
-		src := []byte(`{"i": ["a", 1, {"b": 2}]}`)
-		Expect(fsx.JSONHasMember(src, "/i", "a")).To(BeTrue())
-		Expect(fsx.JSONHasMember(src, "/i", "b")).To(BeFalse())
-		Expect(fsx.JSONHasMember(src, "/missing", "a")).To(BeFalse())
+	It("JSONHasMember compares members as canonical JSON", func() {
+		src := []byte(`{"i": ["a", 1, {"b": 2, "a": [1, "x"]}, /* c */ "\u0062x"]}`)
+		Expect(fsx.JSONHasMember(src, "/i", str("a"))).To(BeTrue())
+		Expect(fsx.JSONHasMember(src, "/i", str("b"))).To(BeFalse())
+		Expect(fsx.JSONHasMember(src, "/i", str("bx"))).To(BeTrue())
+		Expect(fsx.JSONHasMember(src, "/i", []byte(`1`))).To(BeTrue())
+		Expect(fsx.JSONHasMember(src, "/i", []byte(`{ "a": [1,"x"], "b": 2 }`))).To(BeTrue())
+		Expect(fsx.JSONHasMember(src, "/i", []byte(`{"a":[1,"x"],"b":3}`))).To(BeFalse())
+		Expect(fsx.JSONHasMember(src, "/missing", str("a"))).To(BeFalse())
 	})
 
-	It("refuses array edits where the value is not an array", func() {
+	It("refuses array edits where the value is not an array, or the member is not JSON", func() {
 		src := []byte(`{"i": "a"}`)
-		_, err := fsx.JSONHasMember(src, "/i", "a")
-		Expect(err).To(MatchError("/i is not an array"))
-		_, _, err = fsx.JSONAddMember(src, "/i", "a")
-		Expect(err).To(MatchError("/i is not an array"))
-		_, err = fsx.JSONRemoveMember(src, "/i", "a", true)
-		Expect(err).To(MatchError("/i is not an array"))
+		_, err := fsx.JSONHasMember(src, "/i", str("a"))
+		Expect(err).To(MatchError(`"/i" is not an array`))
+		_, _, err = fsx.JSONAddMember(src, "/i", str("a"))
+		Expect(err).To(MatchError(`"/i" is not an array`))
+		_, err = fsx.JSONRemoveMember(src, "/i", str("a"), true)
+		Expect(err).To(MatchError(`"/i" is not an array`))
+		_, err = fsx.JSONHasMember([]byte(`{"h": {"e\u001b": "x"}}`), "/h/e\x1b", str("a"))
+		Expect(err).To(MatchError(`"/h/e\x1b" is not an array`))
+		_, _, err = fsx.JSONAddMember([]byte(`{}`), "/i", []byte(`{x`))
+		Expect(err).To(HaveOccurred())
+	})
+
+	Describe("object members", func() {
+		group := []byte(`{"matcher":"Bash","hooks":[{"type":"command","command":"x"}]}`)
+
+		It("adds an object indented like its siblings, once, and removes it whatever its key order", func() {
+			user := "{\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": []} // mine\n    ]\n  }\n}\n"
+			got, created, err := fsx.JSONAddMember([]byte(user), "/hooks/Stop", group)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(created).To(BeFalse())
+			Expect(string(got)).To(Equal("{\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": []}, // mine\n" +
+				"      {\n        \"hooks\": [\n          {\n            \"command\": \"x\",\n            \"type\": \"command\"\n          }\n        ],\n" +
+				"        \"matcher\": \"Bash\"\n      }\n    ]\n  }\n}\n"))
+			again, _, err := fsx.JSONAddMember(got, "/hooks/Stop", []byte(`{"hooks":[{"command":"x","type":"command"}],"matcher":"Bash"}`))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(again)).To(Equal(string(got)))
+			back, err := fsx.JSONRemoveMember(got, "/hooks/Stop", []byte(` { "matcher" : "Bash", "hooks":[{"command":"x","type":"command"}]}`), true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(back)).To(Equal(user))
+		})
+
+		It("creates the event array and /hooks, and drops both once the array it created empties", func() {
+			src := "{\n  \"model\": \"x\"\n}\n"
+			got, created, err := fsx.JSONAddMember([]byte(src), "/hooks/Stop", group)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(created).To(BeTrue())
+			Expect(fsx.JSONHasMember(got, "/hooks/Stop", group)).To(BeTrue())
+			back, err := fsx.JSONRemoveMember(got, "/hooks/Stop", group, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(back)).To(Equal(src))
+		})
+
+		DescribeTable("writes & < > as themselves, so a shell operator reads as one, and still finds and removes the member",
+			func(src string) {
+				shell := []byte(`{"hooks":[{"type":"command","command":"a && b > c < d"}]}`)
+				got, _, err := fsx.JSONAddMember([]byte(src), "/hooks/Stop", shell)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(got)).To(ContainSubstring(`"a && b > c < d"`))
+				Expect(string(got)).NotTo(ContainSubstring(`\u00`))
+				Expect(fsx.JSONHasMember(got, "/hooks/Stop", shell)).To(BeTrue())
+				again, _, err := fsx.JSONAddMember(got, "/hooks/Stop", shell)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(again)).To(Equal(string(got)), "the unescaped member is the same member")
+				back, err := fsx.JSONRemoveMember(got, "/hooks/Stop", shell, true)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(back)).To(Equal(src))
+			},
+			Entry("into an existing array", "{\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": []}\n    ]\n  }\n}\n"),
+			Entry("into an array it creates", "{\n  \"model\": \"x\"\n}\n"),
+		)
+	})
+
+	It("CanonicalJSON escapes & < > as before, for hashes and records; ReadableJSON writes them as themselves", func() {
+		Expect(fsx.CanonicalJSON([]byte(`{"b":"a && b > c","a":"<x>"}`))).To(Equal([]byte(`{"a":"\u003cx\u003e","b":"a \u0026\u0026 b \u003e c"}`)))
+		Expect(fsx.ReadableJSON([]byte(`{"b":"a && b > c", "a":"<x>"}`))).To(Equal([]byte(`{"a":"<x>","b":"a && b > c"}`)))
+		_, err := fsx.ReadableJSON([]byte(`{x`))
+		Expect(err).To(HaveOccurred())
 	})
 
 	It("keeps comments after the last member or element, and removing lola's again restores the file", func() {
@@ -119,10 +193,10 @@ var _ = Describe("JSONC edits", func() {
 			Expect(string(back)).To(Equal(c.src))
 		}
 		arr := "{\n  \"i\": [\n    \"a\"\n    // \"b\"\n  ]\n}\n"
-		got, _, err := fsx.JSONAddMember([]byte(arr), "/i", "m")
+		got, _, err := fsx.JSONAddMember([]byte(arr), "/i", str("m"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(got)).To(Equal("{\n  \"i\": [\n    \"a\",\n    \"m\"\n    // \"b\"\n  ]\n}\n"))
-		back, err := fsx.JSONRemoveMember(got, "/i", "m", false)
+		back, err := fsx.JSONRemoveMember(got, "/i", str("m"), false)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(back)).To(Equal(arr))
 	})

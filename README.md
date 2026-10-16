@@ -23,9 +23,9 @@ explains why.
   you pass `--force`; an existing file identical to what lola would write is adopted, not
   rewritten. JSON files keep their comments; a file lola cannot parse is never rewritten.
   lola never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`, and a module's install hooks
-  run only with your consent.
+  run, and its Claude Code runtime hooks are installed, only with your consent.
 
-Claude Code runtime hooks, marketplaces, profiles and templating are planned: see
+Marketplaces, profiles and templating are planned: see
 [docs/roadmap.md](docs/roadmap.md).
 
 ## Install

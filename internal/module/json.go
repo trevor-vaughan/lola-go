@@ -118,7 +118,7 @@ func checkJSONKeys(b []byte) error {
 					"keep one of them: a JSON reader would silently use only one")
 			case seen && !top.freeForm:
 				return errs.WithHints(fmt.Errorf("key %s differs from %s only in case, in %s", quoted(key), quoted(first), jsonPointer(stack[:n-1])),
-					"keep one spelling: lola reads these keys regardless of case, so the two would clash; only the names in env and headers may differ just in case")
+					"keep one spelling: lola reads these keys regardless of case, so the two would clash; only the names in a server's env and headers may differ just in case")
 			case !seen:
 				top.folded[foldKey(key)] = key
 			}
@@ -131,15 +131,28 @@ func checkJSONKeys(b []byte) error {
 				return errs.WithHints(fmt.Errorf("nested deeper than %d levels", maxJSONDepth), "module JSON files are a few levels deep; flatten the nesting")
 			}
 			object := tok == json.Delim('{')
-			freeForm := object && len(stack) == 3 && stack[0].object && stack[0].key == "mcpServers" && stack[1].object &&
-				stack[2].object && (stack[2].key == "env" || stack[2].key == "headers")
-			stack = append(stack, &jsonLevel{object: object, wantKey: object, freeForm: freeForm, keys: map[string]bool{}, folded: map[string]string{}})
+			stack = append(stack, &jsonLevel{object: object, wantKey: object, freeForm: object && serverMap(stack), keys: map[string]bool{}, folded: map[string]string{}})
 		case json.Delim(']'):
 			stack = valueDone(stack[:len(stack)-1])
 		default:
 			stack = valueDone(stack)
 		}
 	}
+}
+
+// serverMap reports whether an object opening inside stack is a server's env or headers:
+// /mcpServers/<server>/env or /headers, or, in a Claude plugin's list form,
+// /mcpServers/<i>/<server>/env or /headers. Names there are free-form, so they may differ just
+// in case; a server named env or headers is one level up and keeps the case rule.
+func serverMap(stack []*jsonLevel) bool {
+	if len(stack) < 3 || !stack[0].object || stack[0].key != "mcpServers" {
+		return false
+	}
+	server := stack[1:]
+	if len(stack) == 4 && !stack[1].object {
+		server = stack[2:]
+	}
+	return len(server) == 2 && server[0].object && server[1].object && (server[1].key == "env" || server[1].key == "headers")
 }
 
 // valueDone records that a value inside the innermost open object or array ended.

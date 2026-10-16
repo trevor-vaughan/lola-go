@@ -200,8 +200,25 @@ func expand(in Intent) (out []Intent, err error) {
 	return out, err
 }
 
-func intentID(in Intent) string {
-	return ledger.Artifact{Target: in.Target, Path: in.Path, Key: in.Pointer, Value: in.Member}.ID()
+// artifact is the ledger record of what in desires, without its hash. An array member is
+// recorded in canonical JSON: a string as Value, any other value as Member.
+func artifact(in Intent) (ledger.Artifact, error) {
+	a := ledger.Artifact{Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer}
+	if in.Op != OpAddJSONMember {
+		return a, nil
+	}
+	c, err := fsx.CanonicalJSON(in.Member)
+	if err != nil {
+		return a, fmt.Errorf("%s %s: member: %w", in.Path, in.Pointer, err)
+	}
+	if c[0] != '"' {
+		a.Member = c
+		return a, nil
+	}
+	if err := json.Unmarshal(c, &a.Value); err != nil || a.Value == "" {
+		return a, fmt.Errorf("%s %s: member: an empty string", in.Path, in.Pointer)
+	}
+	return a, nil
 }
 
 func sum(b []byte) string {
@@ -209,24 +226,18 @@ func sum(b []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// memberHash hashes an owned array element as canonical JSON.
-func memberHash(value string) (string, error) {
-	b, err := json.Marshal(value)
-	return sum(b), err
-}
-
-// hashOf hashes what currently occupies a destination; "" means absent. value names an
-// owned element of the array at key.
-func hashOf(content []byte, exists bool, key, value string) (string, error) {
+// hashOf hashes what currently occupies a destination; "" means absent. elem, canonical JSON,
+// names an owned element of the array at key.
+func hashOf(content []byte, exists bool, key string, elem []byte) (string, error) {
 	switch {
 	case !exists:
 		return "", nil
-	case value != "":
-		found, err := fsx.JSONHasMember(content, key, value)
+	case elem != nil:
+		found, err := fsx.JSONHasMember(content, key, elem)
 		if err != nil || !found {
 			return "", err
 		}
-		return memberHash(value)
+		return sum(elem), nil
 	case key != "":
 		v, found, err := fsx.JSONGet(content, key)
 		if err != nil || !found {
@@ -252,7 +263,7 @@ func Observe(root string, a ledger.Artifact) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h, err := hashOf(b, true, a.Key, a.Value)
+	h, err := hashOf(b, true, a.Key, a.Element())
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", a.Path, err)
 	}
@@ -291,16 +302,21 @@ func (p *planner) file(target, logical string) (*file, error) {
 	return f, nil
 }
 
-func (p *planner) hash(f *file, key, value string) (string, error) {
-	h, err := hashOf(f.orig, f.exists, key, value)
+// unparseable is the error for a destination lola cannot read or edit as it must.
+func unparseable(logical string, err error) error {
+	return errs.WithHints(fmt.Errorf("%s: %w", logical, err),
+		"lola never rewrites a file it cannot parse; fix it by hand and retry (--force does not override this)")
+}
+
+func (p *planner) hash(f *file, key string, elem []byte) (string, error) {
+	h, err := hashOf(f.orig, f.exists, key, elem)
 	if err != nil {
-		return "", errs.WithHints(fmt.Errorf("%s: %w", f.logical, err),
-			"lola never rewrites a file it cannot parse; fix it by hand and retry (--force does not override this)")
+		return "", unparseable(f.logical, err)
 	}
 	return h, nil
 }
 
-func desiredHash(in Intent) (string, error) {
+func desiredHash(in Intent, a ledger.Artifact) (string, error) {
 	switch in.Op {
 	case OpSetJSON:
 		c, err := fsx.CanonicalJSON(in.Value)
@@ -309,14 +325,22 @@ func desiredHash(in Intent) (string, error) {
 		}
 		return sum(c), nil
 	case OpAddJSONMember:
-		return memberHash(in.Member)
+		return sum(a.Element()), nil
 	default:
 		return sum(in.Data), nil
 	}
 }
 
-func (p *planner) conflict(in Intent, reason string, forceable bool) {
-	p.conflicts = append(p.conflicts, Conflict{Target: in.Target, Path: in.Path, Key: in.Pointer, Value: in.Member, Reason: reason, Forceable: forceable})
+// shown is an artifact's array element as a conflict shows it: the string, or canonical JSON.
+func shown(a ledger.Artifact) string {
+	if a.Member != nil {
+		return string(a.Member)
+	}
+	return a.Value
+}
+
+func (p *planner) conflict(a ledger.Artifact, reason string, forceable bool) {
+	p.conflicts = append(p.conflicts, Conflict{Target: a.Target, Path: a.Path, Key: a.Key, Value: shown(a), Reason: reason, Forceable: forceable})
 }
 
 // want plans one desired intent, following the conflict matrix of spec §9. The previous
@@ -324,7 +348,11 @@ func (p *planner) conflict(in Intent, reason string, forceable bool) {
 // destination claimed twice in one operation is a conflict, also when one module claims it
 // twice (Plan 5b design §3.2).
 func (p *planner) want(owner string, in Intent) error {
-	id := intentID(in)
+	art, err := artifact(in)
+	if err != nil {
+		return err
+	}
+	id := art.ID()
 	var prev *ledger.Artifact
 	if a, ok := p.releasing[id]; ok {
 		prev = &a
@@ -336,33 +364,36 @@ func (p *planner) want(owner string, in Intent) error {
 		if other != owner {
 			reason = fmt.Sprintf("also provided by module %q in this operation", other)
 		}
-		p.conflict(in, reason, false)
+		p.conflict(art, reason, false)
 		return nil
 	}
 	p.claimed[id] = owner
 	if other, ok := p.owners[id]; ok && other != owner {
-		p.conflict(in, fmt.Sprintf("owned by module %q; uninstall it first", other), false)
+		p.conflict(art, fmt.Sprintf("owned by module %q; uninstall it first", other), false)
 		return nil
 	}
 	f, err := p.file(in.Target, in.Path)
 	if err != nil {
 		return err
 	}
-	cur, err := p.hash(f, in.Pointer, in.Member)
+	cur, err := p.hash(f, in.Pointer, art.Element())
 	if err != nil {
 		return err
 	}
-	want, err := desiredHash(in)
+	want, err := desiredHash(in, art)
 	if err != nil {
 		return err
 	}
-	art := ledger.Artifact{Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer, Value: in.Member, SHA256: want}
+	art.SHA256 = want
 	if f.res.Outside {
 		art.Resolved = f.res.Abs
 	}
 	p.desired[owner] = append(p.desired[owner], art)
 
-	step := Step{Module: owner, Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer, Value: in.Member}
+	step, err := stepOf(owner, art)
+	if err != nil {
+		return err
+	}
 
 	// Detect mode-only changes
 	desiredMode := fsx.NormalizeMode(in.Mode)
@@ -371,24 +402,39 @@ func (p *planner) want(owner string, in Intent) error {
 	switch {
 	case cur == want && prev != nil && !modeDiffers:
 		return nil // already in the desired state
+	case cur == want && art.Member != nil:
+		// A string member is a reference lola may share; any other member, such as a hook
+		// group, is the user's own configuration, which owning would delete on uninstall.
+		step.Action, step.Forced = ActionAdopt, "unowned"
+		p.conflict(art, "exists and was not written by lola; owning it would remove it on uninstall", true)
 	case cur == want && !modeDiffers:
 		step.Action = ActionAdopt
 	case cur == want && modeDiffers:
 		step.Action = ActionUpdate
 		step.Note = "mode changed"
+	case cur == "" && prev != nil && art.Member != nil && !p.req.Force:
+		// A non-string member is identified by its content, so one the user removed is
+		// usually one the user edited; writing it again would run both copies (a hook group).
+		// It stays owned but absent until --force restores it.
+		step.Action, step.Note = ActionAbsent, "missing; --force restores it"
+		p.steps = append(p.steps, step)
+		return nil
 	case cur == "":
 		step.Action = ActionCreate
 		if prev != nil {
 			step.Note = "was missing; rewritten"
+			if art.Member != nil {
+				step.Forced = "missing"
+			}
 		}
 	case prev != nil && cur == prev.SHA256:
 		step.Action = ActionUpdate
 	case prev != nil:
 		step.Action, step.Forced = ActionUpdate, "hand-edited"
-		p.conflict(in, "hand-edited since lola wrote it", true)
+		p.conflict(art, "hand-edited since lola wrote it", true)
 	default:
 		step.Action, step.Forced = ActionUpdate, "unowned"
-		p.conflict(in, "exists and was not written by lola", true)
+		p.conflict(art, "exists and was not written by lola", true)
 	}
 	if f.res.Outside {
 		step.Via = f.res.Abs
@@ -397,10 +443,10 @@ func (p *planner) want(owner string, in Intent) error {
 	if step.Action == ActionAdopt {
 		return nil
 	}
-	return p.edit(f, in)
+	return p.edit(f, in, art)
 }
 
-func (p *planner) edit(f *file, in Intent) error {
+func (p *planner) edit(f *file, in Intent, art ledger.Artifact) error {
 	var err error
 	switch in.Op {
 	case OpSetJSON:
@@ -409,7 +455,7 @@ func (p *planner) edit(f *file, in Intent) error {
 	case OpAddJSONMember:
 		f.content = contentJSON
 		var created bool
-		f.cur, created, err = fsx.JSONAddMember(f.cur, in.Pointer, in.Member)
+		f.cur, created, err = fsx.JSONAddMember(f.cur, in.Pointer, art.Element())
 		if created {
 			p.arrays[ledger.FileRef{Target: in.Target, Path: in.Path, Key: in.Pointer}] = true
 		}
@@ -418,7 +464,7 @@ func (p *planner) edit(f *file, in Intent) error {
 		f.mode = fsx.NormalizeMode(in.Mode)
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %w", in.Path, err)
+		return unparseable(in.Path, err)
 	}
 	if !f.exists && in.Op != OpWriteFile {
 		f.created = true
@@ -427,17 +473,34 @@ func (p *planner) edit(f *file, in Intent) error {
 	return nil
 }
 
+// stepOf is the plan step for artifact a of owner. A non-string member is shown as written
+// (fsx.ReadableJSON), not as the canonical JSON the ledger records.
+func stepOf(owner string, a ledger.Artifact) (Step, error) {
+	step := Step{Module: owner, Target: a.Target, Kind: a.Kind, Path: a.Path, Key: a.Key, Value: a.Value}
+	if a.Member != nil {
+		m, err := fsx.ReadableJSON(a.Member)
+		if err != nil {
+			return step, fmt.Errorf("%s %s: member: %w", a.Path, a.Key, err)
+		}
+		step.Member = m
+	}
+	return step, nil
+}
+
 // drop plans the removal of an artifact nobody desires any more.
 func (p *planner) drop(owner string, a ledger.Artifact) error {
 	f, err := p.file(a.Target, a.Path)
 	if err != nil {
 		return err
 	}
-	cur, err := p.hash(f, a.Key, a.Value)
+	cur, err := p.hash(f, a.Key, a.Element())
 	if err != nil {
 		return err
 	}
-	step := Step{Module: owner, Target: a.Target, Kind: a.Kind, Path: a.Path, Key: a.Key, Value: a.Value}
+	step, err := stepOf(owner, a)
+	if err != nil {
+		return err
+	}
 	if f.res.Outside {
 		step.Via = f.res.Abs
 	}
@@ -448,16 +511,15 @@ func (p *planner) drop(owner string, a ledger.Artifact) error {
 		return nil
 	case cur != a.SHA256:
 		step.Forced = "hand-edited"
-		p.conflicts = append(p.conflicts, Conflict{Target: a.Target, Path: a.Path, Key: a.Key, Value: a.Value,
-			Reason: "hand-edited since lola wrote it; kept", Forceable: true})
+		p.conflict(a, "hand-edited since lola wrote it; kept", true)
 	}
 	step.Action = ActionDelete
 	p.steps = append(p.steps, step)
 	switch {
-	case a.Value != "":
+	case a.Element() != nil:
 		f.content = contentJSON
 		dropEmpty := p.arrays[ledger.FileRef{Target: a.Target, Path: a.Path, Key: a.Key}]
-		f.cur, err = fsx.JSONRemoveMember(f.cur, a.Key, a.Value, dropEmpty)
+		f.cur, err = fsx.JSONRemoveMember(f.cur, a.Key, a.Element(), dropEmpty)
 	case a.Key != "":
 		f.content = contentJSON
 		f.cur, err = fsx.JSONDelete(f.cur, a.Key)

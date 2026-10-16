@@ -19,7 +19,10 @@ Guidance for coding agents working on lola (Go).
 - **Errors coach.** Attach next steps with `errs.WithHints`; the CLI prints them as `hint:` lines
   or the `hints` JSON array.
 - **Output.** Every command emits through `app.emit`. JSON keys are snake_case; arrays are never
-  `null`. Human output may use `✓ ⚠ ✗ →`; color only via `style`.
+  `null`. Human output may use `✓ ⚠ ✗ →`; color only via `style`. Author-chosen text reaches
+  output only through `untrusted.Text` or `untrusted.CleanErr`, except JSON `steps[].member` and
+  `steps[].value`, which carry the value lola wrote, raw but for JSON's escaping of control
+  characters.
 - **Vocabulary.** User-facing text (messages, hints, help, docs) says "cache", never "store" or
   "origin" (ADR #245). Internal identifiers (package `store`, `store.Origin`) keep their names.
 - **Aliases** are additive and stable: never repurpose one, never collide with a sibling, use the

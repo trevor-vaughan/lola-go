@@ -169,7 +169,7 @@ func listFiles(ctx context.Context, root string, mode listing) ([]string, error)
 	case listGit:
 		return gitFiles(ctx, root, "--cached")
 	case listDetect:
-		out, err := gitCommand(ctx, root, "rev-parse", "--is-inside-work-tree").Output()
+		out, err := GitCommand(ctx, root, "rev-parse", "--is-inside-work-tree").Output()
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -203,7 +203,7 @@ func listFiles(ctx context.Context, root string, mode listing) ([]string, error)
 // gitFiles lists the files under root that git ls-files selects with which.
 func gitFiles(ctx context.Context, root string, which ...string) ([]string, error) {
 	args := append(append([]string{"ls-files", "-z"}, which...), "--", ".")
-	cmd := gitCommand(ctx, root, args...)
+	cmd := GitCommand(ctx, root, args...)
 	stderr := &headWriter{limit: maxStderr + 1}
 	cmd.Stderr = stderr
 	out, err := cmd.Output()

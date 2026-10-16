@@ -21,6 +21,12 @@ var _ = Describe("Text", func() {
 		Expect(untrusted.Text("remote: one\n✓ installed\r\n", 100)).To(Equal("remote: one\n  ✓ installed?\n  "))
 	})
 
+	It("replaces format characters and line separators that can make text render differently from what it is", func() {
+		Expect(untrusted.Text("a\u202eb\u2066c\u2069d\u200be\ufeff", 100)).To(Equal("a?b?c?d?e?"))
+		Expect(untrusted.Text("a\u2028b\u2029c", 100)).To(Equal("a?b?c"))
+		Expect(untrusted.Text("ünï ✓", 100)).To(Equal("ünï ✓"))
+	})
+
 	It("caps the text", func() {
 		Expect(untrusted.Text(strings.Repeat("x", 300), untrusted.MaxName)).To(Equal(strings.Repeat("x", untrusted.MaxName) + "…"))
 		Expect(untrusted.Text("abé", 3)).To(Equal("ab?…"))

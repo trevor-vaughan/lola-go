@@ -55,11 +55,22 @@ type probeEntry struct {
 
 // probeRun reads the installed versions of the assistants one command renders for. Each
 // target is probed once; a binary is executed only when the cache has no entry for its build.
+// It also asks git, once, whether the project could commit .claude/settings.local.json.
 type probeRun struct {
 	e        *Engine
 	ctx      context.Context
 	versions map[string]string
 	findings []target.Finding
+	exposed  *string // localSettingsExposed, once known
+}
+
+// localSettings is localSettingsExposed for the project at dir, checked once per command.
+func (r *probeRun) localSettings(dir string) string {
+	if r.exposed == nil {
+		s := localSettingsExposed(r.ctx, dir)
+		r.exposed = &s
+	}
+	return *r.exposed
 }
 
 func (e *Engine) newProbeRun(ctx context.Context) *probeRun {

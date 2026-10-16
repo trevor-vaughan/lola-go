@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -468,8 +470,9 @@ func (l loader) runtimeHooks(es []hooksEntry) error {
 	return nil
 }
 
-// hookEvents checks the shape of a Claude hooks event map, {"<Event>": [{matcher group}, …]},
-// and returns it as canonical JSON. lola does not render runtime hooks yet, so it checks no more.
+// hookEvents checks a Claude hooks event map, {"<Event>": [{matcher group}, …]}, down to the
+// handler fields lola rewrites or shows when it asks for consent, and returns it as canonical
+// JSON. Other fields, and handler types lola does not know, are kept as authored.
 func hookEvents(at string, raw json.RawMessage) (json.RawMessage, error) {
 	var events map[string][]map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &events); err != nil || events == nil {
@@ -479,7 +482,92 @@ func hookEvents(at string, raw json.RawMessage) (json.RawMessage, error) {
 	if len(events) == 0 {
 		return nil, entryErr(at, "hooks lists no event", "name at least one event, or remove the entry")
 	}
+	for _, event := range slices.Sorted(maps.Keys(events)) {
+		if len(events[event]) == 0 {
+			return nil, entryErr(at, fmt.Sprintf("hooks event %s lists no matcher group", quoted(event)),
+				`add a matcher group, e.g. {"matcher": "Bash", "hooks": [...]}, or remove the event`)
+		}
+		for i, group := range events[event] {
+			where := "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(event) + "/" + strconv.Itoa(i)
+			if err := hookGroup(group); err != nil {
+				return nil, entryErr(at, fmt.Sprintf("hooks %s%s", untrusted.Text(where, untrusted.MaxName), err.Error()),
+					"see Claude Code's hooks reference for each handler type's fields")
+			}
+		}
+	}
 	return fsx.CanonicalJSON(raw)
+}
+
+// hookGroup checks one matcher group. Its error starts with the path below the group it is
+// about ("" or "/hooks/<i>"), then ": ".
+func hookGroup(group map[string]json.RawMessage) error {
+	var matcher string
+	if raw, ok := group["matcher"]; ok && json.Unmarshal(raw, &matcher) != nil {
+		return errors.New(": matcher must be a string")
+	}
+	var handlers []map[string]json.RawMessage
+	if err := json.Unmarshal(group["hooks"], &handlers); err != nil || len(handlers) == 0 ||
+		slices.ContainsFunc(handlers, func(h map[string]json.RawMessage) bool { return h == nil }) {
+		return errors.New(": hooks must be a list of one or more handlers")
+	}
+	for i, h := range handlers {
+		if msg := hookHandler(h); msg != "" {
+			return fmt.Errorf("/hooks/%d: %s", i, msg)
+		}
+	}
+	return nil
+}
+
+// hookHandler checks one handler's fields by type and returns what is wrong, or "".
+func hookHandler(h map[string]json.RawMessage) string {
+	text := func(key string, required bool) string {
+		raw, ok := h[key]
+		var v *string
+		switch {
+		case !ok && !required:
+			return ""
+		case required && (json.Unmarshal(raw, &v) != nil || v == nil || *v == ""):
+			return key + " must be a non-empty string"
+		case !required && (json.Unmarshal(raw, &v) != nil || v == nil):
+			return key + " must be a string"
+		}
+		return ""
+	}
+	list := func(key string) string {
+		var v []string
+		if raw, ok := h[key]; ok && (json.Unmarshal(raw, &v) != nil || v == nil) {
+			return key + " must be a list of strings"
+		}
+		return ""
+	}
+	msgs := []string{text("type", true), text("if", false)}
+	var async *bool
+	if raw, ok := h["async"]; ok && (json.Unmarshal(raw, &async) != nil || async == nil) {
+		msgs = append(msgs, "async must be true or false")
+	}
+	var typ string
+	if json.Unmarshal(h["type"], &typ) == nil {
+		switch typ {
+		case "command":
+			msgs = append(msgs, text("command", true), list("args"), text("shell", false))
+		case "http":
+			var headers map[string]string
+			if raw, ok := h["headers"]; ok && (json.Unmarshal(raw, &headers) != nil || headers == nil) {
+				msgs = append(msgs, "headers must map names to strings")
+			}
+			msgs = append(msgs, text("url", true), list("allowedEnvVars"))
+		case "mcp_tool":
+			msgs = append(msgs, text("server", true), text("tool", true))
+		case "prompt", "agent":
+			msgs = append(msgs, text("prompt", true))
+		}
+	}
+	for _, m := range msgs {
+		if m != "" {
+			return m
+		}
+	}
+	return ""
 }
 
 // mcpFile reads servers from a file in Claude's .mcp.json shape, sorted by name.

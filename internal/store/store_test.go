@@ -99,6 +99,28 @@ var _ = Describe("Store", func() {
 		Expect(v.Module.MCPServers[0].Env).To(Equal(map[string]string{"<<": "v"}))
 	})
 
+	It("caches a Claude hooks event named \"<<\" as a literal event", func() {
+		v, err := put(map[string]string{".claude-plugin/plugin.json": `{"name":"mk","hooks":{"<<":[{"hooks":[{"type":"command","command":"x"}]}]}}`}, "")
+		Expect(err).NotTo(HaveOccurred())
+		loaded, err := s.Load("mk", v.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(loaded.Module.RuntimeHooks).To(HaveLen(1))
+		Expect(string(loaded.Module.RuntimeHooks[0].Hooks)).To(MatchJSON(`{"<<":[{"hooks":[{"type":"command","command":"x"}]}]}`))
+	})
+
+	It("writes a \"<<\" value as a quoted string, not a merge tag", func() {
+		v, err := put(map[string]string{".claude-plugin/plugin.json": `{"name":"mk","mcpServers":{"s":{"command":"<<","env":{"A":"<<"}}}}`}, "")
+		Expect(err).NotTo(HaveOccurred())
+		yml, err := os.ReadFile(filepath.Join(v.ContentDir, "lola.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(yml)).NotTo(ContainSubstring("!!merge"))
+		Expect(string(yml)).To(ContainSubstring(`A: "<<"`))
+		loaded, err := s.Load("mk", v.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(loaded.Module.MCPServers[0].Command).To(Equal("<<"))
+		Expect(loaded.Module.MCPServers[0].Env).To(Equal(map[string]string{"A": "<<"}))
+	})
+
 	DescribeTable("caches a kept value of -0.0, which YAML would read back as 0", func(files map[string]string) {
 		_, err := put(files, "")
 		Expect(err).NotTo(HaveOccurred())

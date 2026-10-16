@@ -286,7 +286,8 @@ var _ = Describe("module JSON files", func() {
 			write(root, map[string]string{"mcps.json": doc})
 			_, err := module.Load(root, "x", targets.IDs())
 			Expect(err).To(MatchError(msg))
-			Expect(errs.Hints(err)).To(ConsistOf(ContainSubstring("keep one spelling")))
+			Expect(errs.Hints(err)).To(ConsistOf("keep one spelling: lola reads these keys regardless of case, so the two would clash; " +
+				"only the names in a server's env and headers may differ just in case"))
 		},
 		Entry("a top-level key", `{"mcpServers":{"gh":{"command":"a"}},"MCPSERVERS":{"gh":{"command":"evil"}}}`, `mcps.json: key "MCPSERVERS" differs from "mcpServers" only in case, in the top-level object`),
 		Entry("a server field", `{"mcpServers":{"gh":{"command":"a","Command":"evil"}}}`, `mcps.json: key "Command" differs from "command" only in case, in /mcpServers/gh`),
@@ -317,6 +318,10 @@ var _ = Describe("module JSON files", func() {
 			"mcp.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"s":{"type":"stdio","command":"x","env":{"HTTP_PROXY":"a","http_proxy":"b"}}}}`}, "env"),
 		Entry("headers in an Agent Plugins mcp.json", map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"p"}`,
 			"mcp.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"s":{"type":"sse","url":"https://x","headers":{"HTTP_PROXY":"a","http_proxy":"b"}}}}`}, "headers"),
+		Entry("env in a Claude plugin's list-form inline server", map[string]string{
+			".claude-plugin/plugin.json": `{"name":"p","mcpServers":[{"s":{"command":"x","env":{"HTTP_PROXY":"a","http_proxy":"b"}}}]}`}, "env"),
+		Entry("headers in a Claude plugin's list-form inline server", map[string]string{
+			".claude-plugin/plugin.json": `{"name":"p","mcpServers":[{"s":{"url":"https://x","headers":{"HTTP_PROXY":"a","http_proxy":"b"}}}]}`}, "headers"),
 	)
 	apManifest := `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"p"}`
 	apMCP := func(servers string) string {
@@ -348,6 +353,12 @@ var _ = Describe("module JSON files", func() {
 			`mcp.json: key "URL" differs from "url" only in case, in /mcpServers/headers`),
 		Entry("an env object elsewhere", map[string]string{"mcps.json": `{"mcpServers":{"s":{"command":"x"}},"x":{"env":{"A":"1","a":"2"}}}`},
 			`mcps.json: key "a" differs from "A" only in case, in /x/env`),
+		Entry("a server named env in a Claude plugin's list form", map[string]string{".claude-plugin/plugin.json": `{"name":"p","mcpServers":[{` + envServer + `}]}`},
+			`.claude-plugin/plugin.json: key "Command" differs from "command" only in case, in /mcpServers/0/env`),
+		Entry("a server named headers in a Claude plugin's list form", map[string]string{".claude-plugin/plugin.json": `{"name":"p","mcpServers":[{` + headersServer + `}]}`},
+			`.claude-plugin/plugin.json: key "URL" differs from "url" only in case, in /mcpServers/0/headers`),
+		Entry("an env object one level too deep in the list form", map[string]string{".claude-plugin/plugin.json": `{"name":"p","mcpServers":[{"s":{"command":"x","env":{"x":{"k":1,"K":2}}}}]}`},
+			`.claude-plugin/plugin.json: key "K" differs from "k" only in case, in /mcpServers/0/s/env/x`),
 	)
 })
 

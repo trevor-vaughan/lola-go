@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // completeStored offers stored module names.
@@ -89,7 +90,7 @@ type headView struct {
 
 func newModuleView(v store.Version, o store.Origin) moduleView {
 	m := v.Module
-	mv := moduleView{Name: m.Name, Description: m.Description, Version: m.Version, Digest: v.Meta.Digest, Format: v.Meta.Format,
+	mv := moduleView{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName), Version: untrusted.Text(m.Version, untrusted.MaxName), Digest: v.Meta.Digest, Format: v.Meta.Format,
 		Source: o.Source, Type: o.Type, Path: o.Path, Heads: []headView{}, Skills: []string{}, Commands: []string{}, Agents: []string{},
 		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}}
 	for _, h := range o.Heads {

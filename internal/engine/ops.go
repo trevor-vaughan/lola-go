@@ -157,12 +157,14 @@ func (e *Engine) Install(ctx context.Context, sc Scope, cwd string, reqs []Insta
 	return res, nil
 }
 
-// makePluginData creates ${PLUGIN_DATA} for modules whose rendered artifacts reference it.
+// makePluginData creates ${PLUGIN_DATA} for modules whose rendered artifacts reference it. A
+// JSON value holds the directory JSON-escaped (a Windows path's backslashes are doubled).
 func (e *Engine) makePluginData(sc Scope, changes []plan.ModuleChange) error {
 	for _, c := range changes {
 		dir := filepath.Join(e.files(sc).pluginData, c.Name)
+		inJSON := bytes.Trim(plan.StringMember(dir), `"`)
 		if slices.ContainsFunc(c.Intents, func(in plan.Intent) bool {
-			return bytes.Contains(in.Data, []byte(dir)) || bytes.Contains(in.Value, []byte(dir))
+			return bytes.Contains(in.Data, []byte(dir)) || bytes.Contains(in.Value, inJSON) || bytes.Contains(in.Member, inJSON)
 		}) {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
 				return err
@@ -237,7 +239,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 			ts = allTargets(entry, ment, man)
 		}
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts})
-		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []HookRun{}})
+		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}})
 	}
 	err = e.execute(ctx, sc, led, changes, nil, opts, res, func(p *plan.Plan) error {
 		for _, name := range names {
@@ -290,7 +292,9 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 		entry := led.Modules[name]
 		v, ok, err := e.Store.Head(name, entry.Ref)
 		if err != nil {
-			return nil, err
+			// One module that no longer loads (one installed before a new refusal, say) stops
+			// every module's render, so name the way out.
+			return nil, errs.WithHints(err, "if you no longer want "+name+", remove it: lola uninstall "+name)
 		}
 		if !ok {
 			o, found, err := e.Store.Origin(name)

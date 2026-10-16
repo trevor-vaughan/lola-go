@@ -9,6 +9,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 func (s style) paint(code, text string) string {
@@ -23,6 +24,10 @@ func (s style) warn(t string) string { return s.paint("33", "⚠ "+t) }
 func (s style) bad(t string) string  { return s.paint("31", "✗ "+t) }
 func (s style) info(t string) string { return s.paint("36", "→ "+t) }
 
+// memberShown caps a JSON array member, such as a hook group, in a step line; the full member
+// is in the JSON output.
+const memberShown = 120
+
 // stepLine renders one plan step.
 func stepLine(s style, st plan.Step) string {
 	dest := st.Path
@@ -31,6 +36,9 @@ func stepLine(s style, st plan.Step) string {
 	}
 	if st.Value != "" {
 		dest += " " + strconv.Quote(st.Value)
+	}
+	if st.Member != nil {
+		dest += " " + untrusted.Text(string(st.Member), memberShown)
 	}
 	if st.Via != "" {
 		dest += " (via symlink → " + st.Via + ")"
@@ -50,6 +58,8 @@ func stepLine(s style, st plan.Step) string {
 		return s.bad(line)
 	case plan.ActionForget:
 		return s.info(line)
+	case plan.ActionAbsent:
+		return s.warn(line)
 	default:
 		return s.ok(line)
 	}
@@ -77,6 +87,8 @@ func findingLine(s style, f target.Finding) string {
 		line = s.warn(f.Describe())
 	case target.SeveritySkip:
 		line = s.bad("skipped " + f.Describe())
+	case target.SeverityInfo:
+		line = s.info(f.Describe())
 	default:
 		return ""
 	}
@@ -140,6 +152,7 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 				fmt.Fprintf(w, "    %s (%s) runs: %s\n", srv.Name, srv.Transport, srv.Runs)
 			}
 		}
+		printRuntimeHooks(w, s, m)
 		for _, h := range m.Hooks {
 			if s.plain {
 				fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, h.Script, h.Target, h.Status)
@@ -157,8 +170,8 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 		}
 	}
 	for _, f := range r.Findings {
-		if f.Severity == target.SeverityInfo {
-			continue
+		if f.Severity == target.SeverityInfo && f.Hint == "" {
+			continue // an info finding with a hint is something the user can act on
 		}
 		if line := findingLine(s, f); line != "" {
 			fmt.Fprintln(w, line)
@@ -172,5 +185,30 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 	}
 	for _, m := range r.Modules {
 		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s (%s)", verb, m.Name, strings.Join(m.Targets, ", "))))
+	}
+}
+
+// printRuntimeHooks lists a module's runtime hooks per target with their consent status. A
+// --plain row is module, target, event, type, status and the component whose frontmatter has
+// the hook ("" for settings hooks); an agent's inline MCP server has "mcp_server:<name>" for
+// its event and its transport for its type.
+func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult) {
+	if s.plain {
+		for _, h := range m.RuntimeHooks {
+			event := h.Event
+			if h.MCPServer != "" {
+				event = "mcp_server:" + h.MCPServer
+			}
+			fmt.Fprintf(w, "runtime-hook\t%s\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Target, event, h.Type, h.Status, h.Component)
+		}
+		return
+	}
+	for i, h := range m.RuntimeHooks {
+		if i == 0 || h.Target != m.RuntimeHooks[i-1].Target {
+			fmt.Fprintf(w, "%s runtime hooks for %s (%s):\n", m.Name, h.Target, h.Status)
+		}
+		for _, line := range runtimeHookLines(h) {
+			fmt.Fprintln(w, "    "+line)
+		}
 	}
 }

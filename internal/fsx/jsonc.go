@@ -79,24 +79,30 @@ func lookup(root *hujson.Value, toks []string) (*hujson.Value, string) {
 	return cur, indent
 }
 
-// JSONHasMember reports whether the array at ptr contains the string member. A missing
-// array is false; a value at ptr that is not an array is an error.
-func JSONHasMember(b []byte, ptr, member string) (bool, error) {
+// JSONHasMember reports whether the array at ptr contains member, a JSON value; elements
+// compare as canonical JSON. A missing array is false; a value at ptr that is not an array is
+// an error.
+func JSONHasMember(b []byte, ptr string, member []byte) (bool, error) {
+	want, err := CanonicalJSON(member)
+	if err != nil {
+		return false, err
+	}
 	v, found, err := JSONGet(b, ptr)
 	if err != nil || !found {
 		return false, err
 	}
-	var arr []any
+	var arr []json.RawMessage
 	if err := json.Unmarshal(v, &arr); err != nil {
-		return false, fmt.Errorf("%s is not an array", ptr)
+		return false, fmt.Errorf("%q is not an array", ptr)
 	}
-	return slices.Contains(arr, any(member)), nil
+	return slices.ContainsFunc(arr, func(e json.RawMessage) bool { return bytes.Equal(e, want) }), nil
 }
 
-// JSONAddMember appends the string member to the array at ptr unless it is already there.
-// A missing array is created, with any missing parent objects; created reports that.
-// Bytes outside the array's new element are preserved.
-func JSONAddMember(b []byte, ptr, member string) (out []byte, created bool, err error) {
+// JSONAddMember appends member, a JSON value, to the array at ptr unless an element equal to it
+// as canonical JSON is already there. A missing array is created, with any missing parent
+// objects; created reports that. The element is written as ReadableJSON, laid out like its
+// siblings, and bytes outside it are preserved.
+func JSONAddMember(b []byte, ptr string, member []byte) (out []byte, created bool, err error) {
 	toks, err := JSONPointerTokens(ptr)
 	if err != nil {
 		return nil, false, err
@@ -105,7 +111,11 @@ func JSONAddMember(b []byte, ptr, member string) (out []byte, created bool, err 
 	if err != nil {
 		return nil, false, err
 	}
-	elem, err := json.Marshal(member)
+	want, err := CanonicalJSON(member)
+	if err != nil {
+		return nil, false, err
+	}
+	elem, err := ReadableJSON(member)
 	if err != nil {
 		return nil, false, err
 	}
@@ -116,31 +126,37 @@ func JSONAddMember(b []byte, ptr, member string) (out []byte, created bool, err 
 	}
 	arr, ok := cur.Value.(*hujson.Array)
 	if !ok {
-		return nil, false, fmt.Errorf("%s is not an array", ptr)
+		return nil, false, fmt.Errorf("%q is not an array", ptr)
 	}
-	if elementIndex(arr, member) >= 0 {
-		return b, false, nil
-	}
-	v, err := hujson.Parse(elem)
-	if err != nil {
-		return nil, false, err
+	i, err := elementIndex(arr, want)
+	if err != nil || i >= 0 {
+		return b, false, err
 	}
 	it := arrayItems(arr)
 	childIndent, multiline := it.indent(indent)
+	v, err := renderValue(elem, childIndent, multiline)
+	if err != nil {
+		return nil, false, err
+	}
 	v.BeforeExtra, v.AfterExtra = it.place(indent, childIndent, multiline)
 	arr.Elements = append(arr.Elements, v)
 	return root.Pack(), false, nil
 }
 
-// JSONRemoveMember removes the string member from the array at ptr. When the array is then
-// empty and dropEmpty is set, the array itself is removed, as are parent objects that became
-// empty (JSONDelete). A missing array or member is not an error.
-func JSONRemoveMember(b []byte, ptr, member string, dropEmpty bool) ([]byte, error) {
+// JSONRemoveMember removes the element equal to member, a JSON value, as canonical JSON from the
+// array at ptr. When the array is then empty and dropEmpty is set, the array itself is removed,
+// as are parent objects that became empty (JSONDelete). A missing array or member is not an
+// error.
+func JSONRemoveMember(b []byte, ptr string, member []byte, dropEmpty bool) ([]byte, error) {
 	toks, err := JSONPointerTokens(ptr)
 	if err != nil {
 		return nil, err
 	}
 	root, err := parseJSONC(b)
+	if err != nil {
+		return nil, err
+	}
+	want, err := CanonicalJSON(member)
 	if err != nil {
 		return nil, err
 	}
@@ -150,11 +166,11 @@ func JSONRemoveMember(b []byte, ptr, member string, dropEmpty bool) ([]byte, err
 	}
 	arr, ok := cur.Value.(*hujson.Array)
 	if !ok {
-		return nil, fmt.Errorf("%s is not an array", ptr)
+		return nil, fmt.Errorf("%q is not an array", ptr)
 	}
-	i := elementIndex(arr, member)
-	if i < 0 {
-		return b, nil
+	i, err := elementIndex(arr, want)
+	if err != nil || i < 0 {
+		return b, err
 	}
 	arrayItems(arr).unlink(i)
 	arr.Elements = slices.Delete(arr.Elements, i, i+1)
@@ -164,8 +180,20 @@ func JSONRemoveMember(b []byte, ptr, member string, dropEmpty bool) ([]byte, err
 	return root.Pack(), nil
 }
 
-// CanonicalJSON returns raw (JSON or JSONC) re-encoded with sorted keys and no whitespace.
+// CanonicalJSON returns raw (JSON or JSONC) re-encoded with sorted keys and no whitespace, and
+// with & < > escaped as encoding/json does. Hashes, ledger records and comparisons use it.
 func CanonicalJSON(raw []byte) ([]byte, error) {
+	return reencode(raw, true)
+}
+
+// ReadableJSON is CanonicalJSON with & < > written as themselves: the form lola writes into
+// files people read and shows them, so a shell operator such as && in a hook reads as one.
+// Compare and hash with CanonicalJSON.
+func ReadableJSON(raw []byte) ([]byte, error) {
+	return reencode(raw, false)
+}
+
+func reencode(raw []byte, escapeHTML bool) ([]byte, error) {
 	v, err := hujson.Parse(raw)
 	if err != nil {
 		return nil, err
@@ -175,7 +203,13 @@ func CanonicalJSON(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(v.Pack(), &x); err != nil {
 		return nil, err
 	}
-	return json.Marshal(x)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(escapeHTML)
+	if err := enc.Encode(x); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 // JSONSet sets the member at ptr to value (standard JSON), creating missing parent objects.
@@ -193,7 +227,7 @@ func JSONSet(b []byte, ptr string, value []byte) ([]byte, error) {
 	for depth, t := range toks {
 		obj, ok := cur.Value.(*hujson.Object)
 		if !ok {
-			return nil, fmt.Errorf("%s: %q is not an object", ptr, "/"+strings.Join(toks[:depth], "/"))
+			return nil, fmt.Errorf("%q: %q is not an object", ptr, "/"+strings.Join(toks[:depth], "/"))
 		}
 		childIndent, multiline := objectItems(obj).indent(indent)
 		val := value
@@ -305,13 +339,19 @@ func appendMember(obj *hujson.Object, name string, val hujson.Value, parentInden
 	obj.Members = append(obj.Members, m)
 }
 
-func elementIndex(arr *hujson.Array, s string) int {
+// elementIndex returns the index of the first element of arr whose canonical JSON is want, or -1.
+func elementIndex(arr *hujson.Array, want []byte) (int, error) {
 	for i, e := range arr.Elements {
-		if lit, ok := e.Value.(hujson.Literal); ok && lit.Kind() == '"' && lit.String() == s {
-			return i
+		e.BeforeExtra, e.AfterExtra = nil, nil
+		c, err := CanonicalJSON(e.Pack())
+		if err != nil {
+			return -1, err
+		}
+		if bytes.Equal(c, want) {
+			return i, nil
 		}
 	}
-	return -1
+	return -1, nil
 }
 
 // items is the layout shared by an object's members and an array's elements. before(i) is

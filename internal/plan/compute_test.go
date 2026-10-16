@@ -9,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
@@ -325,7 +326,7 @@ var _ = Describe("Compute", func() {
 	Describe("owned array members", func() {
 		const dirs = "/context/includeDirectories"
 		member := func(value string) plan.Intent {
-			return plan.Intent{Target: tgt, Kind: "rule", Op: plan.OpAddJSONMember, Path: "settings.json", Pointer: dirs, Member: value}
+			return plan.Intent{Target: tgt, Kind: "rule", Op: plan.OpAddJSONMember, Path: "settings.json", Pointer: dirs, Member: plan.StringMember(value)}
 		}
 		read := func() string {
 			b, err := os.ReadFile(filepath.Join(root, "settings.json"))
@@ -415,7 +416,7 @@ var _ = Describe("Compute", func() {
 		It("refuses a destination that is not an array, even with --force", func() {
 			put("settings.json", `{"context": {"includeDirectories": "docs"}}`)
 			_, err := install("a", true, member("lola/a"))
-			Expect(err).To(MatchError(ContainSubstring("/context/includeDirectories is not an array")))
+			Expect(err).To(MatchError(ContainSubstring(`"/context/includeDirectories" is not an array`)))
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("fix it by hand")))
 		})
 
@@ -425,6 +426,139 @@ var _ = Describe("Compute", func() {
 			Expect(plan.Observe(root, a)).To(Equal(sum(`"lola/a"`)))
 			put("settings.json", `{"context": {"includeDirectories": ["docs"]}}`)
 			Expect(plan.Observe(root, a)).To(Equal(""))
+		})
+	})
+
+	Describe("JSON-value members", func() {
+		const settings, stop = ".claude/settings.local.json", "/hooks/Stop"
+		groupX := `{"matcher":"","hooks":[{"type":"command","command":"x"}]}`
+		canonX := `{"hooks":[{"command":"x","type":"command"}],"matcher":""}`
+		group := func(value string) plan.Intent {
+			return plan.Intent{Target: tgt, Kind: "runtime-hook", Op: plan.OpAddJSONMember, Path: settings, Pointer: stop, Member: []byte(value)}
+		}
+		read := func() string {
+			b, err := os.ReadFile(filepath.Join(root, settings))
+			Expect(err).NotTo(HaveOccurred())
+			return string(b)
+		}
+
+		It("records the member as canonical JSON, and removes it with the arrays and file it created", func() {
+			user := "{\n  \"model\": \"opus\"\n}\n"
+			put(settings, user)
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionCreate, Module: "a", Target: tgt, Kind: "runtime-hook", Path: settings,
+				Key: stop, Member: []byte(canonX)}}))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop,
+				Member: []byte(canonX), SHA256: sum(canonX)}}))
+			Expect(p.Ledger.Created).To(Equal([]ledger.FileRef{{Target: tgt, Path: settings, Key: stop}}))
+			apply(p)
+			Expect(read()).To(ContainSubstring("\"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n"))
+			Expect(plan.Observe(root, p.Ledger.Modules["a"].Artifacts[0])).To(Equal(sum(canonX)))
+
+			p, err = install("a", false, group(canonX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(BeEmpty(), "the same group in another key order is unchanged")
+
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps[0].Action).To(Equal(plan.ActionDelete))
+			apply(p)
+			Expect(read()).To(Equal(user))
+			Expect(p.Ledger.Created).To(BeEmpty())
+		})
+
+		It("deletes the settings file it created once the last group leaves", func() {
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			apply(p)
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Files).To(HaveLen(1))
+			Expect(p.Files[0].Delete).To(BeTrue())
+		})
+
+		It("keeps the user's groups in an event array it did not create", func() {
+			user := "{\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": [{\"type\": \"command\", \"command\": \"mine\"}]} // mine\n    ]\n  }\n}\n"
+			put(settings, user)
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Created).To(BeEmpty())
+			apply(p)
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			apply(p)
+			Expect(read()).To(Equal(user))
+		})
+
+		It("refuses to adopt an identical group lola does not own, unless forced", func() {
+			put(settings, `{"hooks": {"Stop": [`+groupX+`]}}`)
+			_, err := install("a", false, group(groupX))
+			Expect(conflicts(err)).To(Equal([]plan.Conflict{{Target: tgt, Path: settings, Key: stop, Value: canonX,
+				Reason: "exists and was not written by lola; owning it would remove it on uninstall", Forceable: true}}))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force")))
+
+			p, err := install("a", true, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps[0].Action).To(Equal(plan.ActionAdopt))
+			Expect(p.Steps[0].Forced).To(Equal("unowned"))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(HaveLen(1))
+		})
+
+		It("refuses the same group from two modules, even with --force", func() {
+			_, err := plan.Compute(req(true, change("a", group(groupX)), change("b", group(canonX))))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", `also provided by module "a" in this operation`)))
+			own("a", ledger.Artifact{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop, Member: []byte(canonX), SHA256: sum(canonX)})
+			put(settings, `{"hooks": {"Stop": [`+groupX+`]}}`)
+			_, err = install("b", true, group(groupX))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", `owned by module "a"; uninstall it first`)))
+		})
+
+		It("keeps an owned group the user removed absent, recorded as owned, unless forced", func() {
+			own("a", ledger.Artifact{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop, Member: []byte(canonX), SHA256: sum(canonX)})
+			edited := `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "x --safe"}]}]}}`
+			put(settings, edited)
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionAbsent, Module: "a", Target: tgt, Kind: "runtime-hook", Path: settings,
+				Key: stop, Member: []byte(canonX), Note: "missing; --force restores it"}}))
+			Expect(p.Files).To(BeEmpty())
+			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop,
+				Member: []byte(canonX), SHA256: sum(canonX)}}))
+
+			p, err = install("a", true, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionCreate), "Forced": Equal("missing"),
+				"Note": Equal("was missing; rewritten")})))
+			Expect(p.Files).To(HaveLen(1))
+		})
+
+		It("forgets a group the user edited, leaving the edited one alone", func() {
+			own("a", ledger.Artifact{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop, Member: []byte(canonX), SHA256: sum(canonX)})
+			edited := `{"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "x --safe"}]}]}}`
+			put(settings, edited)
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionForget, Module: "a", Target: tgt, Kind: "runtime-hook", Path: settings,
+				Key: stop, Member: []byte(canonX), Note: "already gone"}}))
+			Expect(p.Files).To(BeEmpty())
+		})
+
+		DescribeTable("refuses a settings file it cannot edit, with coaching",
+			func(content, msg string) {
+				put(settings, content)
+				_, err := install("a", true, group(groupX))
+				Expect(err).To(MatchError(ContainSubstring(msg)))
+				Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("fix it by hand")))
+			},
+			Entry("malformed JSON", `{"hooks": `, settings+": "),
+			Entry("hooks that is not an object", `{"hooks": "off"}`, `"/hooks" is not an object`),
+			Entry("an event that is not an array", `{"hooks": {"Stop": {}}}`, `"/hooks/Stop" is not an array`),
+		)
+
+		It("refuses a member that is not JSON", func() {
+			_, err := install("a", false, group(`{"hooks":`))
+			Expect(err).To(MatchError(ContainSubstring(settings + " " + stop + ": member:")))
 		})
 	})
 

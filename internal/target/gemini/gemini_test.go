@@ -310,13 +310,13 @@ var _ = Describe("gemini-cli", func() {
 		Expect(fs).To(BeEmpty())
 		Expect(ins).To(Equal([]plan.Intent{
 			{Target: "gemini-cli", Kind: "rule", Op: plan.OpWriteFile, Path: ".gemini/lola/example/GEMINI.md", Data: []byte("Keep ${PLUGIN_ROOT}.\n\nBe brief.\n"), Mode: 0o644},
-			{Target: "gemini-cli", Kind: "rule", Op: plan.OpAddJSONMember, Path: ".gemini/settings.json", Pointer: "/context/includeDirectories", Member: ".gemini/lola/example"},
+			{Target: "gemini-cli", Kind: "rule", Op: plan.OpAddJSONMember, Path: ".gemini/settings.json", Pointer: "/context/includeDirectories", Member: plan.StringMember(".gemini/lola/example")},
 		}))
 
 		ctx.Scope, ctx.Root = target.User, "/home/u"
 		ins, _ = plan1(m)
 		Expect(ins[0].Path).To(Equal(".gemini/lola/example/GEMINI.md"))
-		Expect(ins[1].Member).To(Equal("/home/u/.gemini/lola/example"), "an absolute member: user settings apply in every project")
+		Expect(ins[1].Member).To(Equal(plan.StringMember("/home/u/.gemini/lola/example")), "an absolute member: user settings apply in every project")
 
 		ctx.SkipRules = true
 		ins, _ = plan1(m)

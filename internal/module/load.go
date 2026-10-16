@@ -2,10 +2,12 @@ package module
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -101,10 +103,139 @@ func build(dir string, m *Module, known []string) (*Module, error) {
 			return nil, err
 		}
 	}
+	if err := frontmatterHooks(m); err != nil {
+		return nil, err
+	}
+	if err := agentServers(m); err != nil {
+		return nil, err
+	}
 	if len(m.Skills)+len(m.Commands)+len(m.Agents)+len(m.MCPServers)+len(m.Rules)+len(m.RuntimeHooks) == 0 {
 		return nil, fmt.Errorf("%s: %w: looked for %s", dir, ErrNoModule, lookedFor)
 	}
 	return m, nil
+}
+
+// frontmatterHooks checks the hooks Claude Code runs from skill, command and agent frontmatter
+// (any key that equals "hooks" ignoring case, which lola treats as hooks) with the checks of
+// components.runtime_hooks: they reach Claude Code only with consent, which shows them.
+func frontmatterHooks(m *Module) error {
+	check := func(kind, name string, doc Doc) error {
+		for _, k := range slices.Sorted(maps.Keys(doc.Frontmatter)) {
+			if !strings.EqualFold(k, "hooks") {
+				continue
+			}
+			at := fmt.Sprintf("%s %s: frontmatter %s", kind, name, safeName(k))
+			b, err := json.Marshal(doc.Frontmatter[k])
+			if err != nil {
+				return entryErr(at, "every key must be a string", "quote keys that look like numbers or booleans")
+			}
+			if _, err := hookEvents(at, b); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, s := range m.Skills {
+		if err := check("skill", s.Name, s.Doc); err != nil {
+			return err
+		}
+	}
+	for _, c := range m.Commands {
+		if err := check("command", c.Name, c.Doc); err != nil {
+			return err
+		}
+	}
+	for _, a := range m.Agents {
+		if err := check("agent", a.Name, a.Doc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// serversExample is the coaching for an agent's mcpServers list.
+const serversExample = "write each server as a list item: - github names a configured server, - pw: {command: npx} defines one"
+
+// agentServers checks the MCP servers in agent frontmatter (any key that equals "mcpServers"
+// ignoring case): a list whose items name a server the user configured, or define one server
+// that Claude Code starts with the agent. A definition gets the checks of mcps.json
+// (mcpEntry.server); it reaches Claude Code only with consent, which shows it.
+func agentServers(m *Module) error {
+	for _, a := range m.Agents {
+		defined, named := map[string]bool{}, map[string]bool{}
+		for _, k := range slices.Sorted(maps.Keys(a.Doc.Frontmatter)) {
+			if !strings.EqualFold(k, "mcpServers") {
+				continue
+			}
+			at := fmt.Sprintf("agent %s: frontmatter %s", a.Name, safeName(k))
+			b, err := json.Marshal(a.Doc.Frontmatter[k])
+			if err != nil {
+				return entryErr(at, "every key must be a string", "quote keys that look like numbers or booleans")
+			}
+			var items []json.RawMessage
+			if err := json.Unmarshal(b, &items); err != nil || items == nil {
+				return entryErr(at, "must be a list of server names and inline servers", serversExample)
+			}
+			for i, item := range items {
+				at := fmt.Sprintf("%s[%d]", at, i)
+				name, inline, err := agentServer(at, item)
+				switch {
+				case err != nil:
+					return err
+				case inline && defined[name]:
+					return entryErr(at, fmt.Sprintf("server %q is defined more than once", name), "rename one of the servers")
+				case inline && named[name], !inline && defined[name]:
+					return entryErr(at, fmt.Sprintf("server %q is both defined here and named as a configured server", safeName(name)),
+						"rename the inline server, or remove the name")
+				case inline:
+					defined[name] = true
+				default:
+					named[name] = true
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// agentServer checks one item of an agent's mcpServers list, at the position at, and returns
+// the server it names or defines; inline is true for a definition, whose name is valid.
+func agentServer(at string, item json.RawMessage) (name string, inline bool, err error) {
+	if string(item) == "null" {
+		return "", false, entryErr(at, "must be a server name or one server's definition", serversExample)
+	}
+	if json.Unmarshal(item, &name) == nil {
+		if strings.TrimSpace(name) == "" {
+			return "", false, entryErr(at, "a server name must not be empty", "name a configured MCP server, or remove the item")
+		}
+		return name, false, nil
+	}
+	var def map[string]json.RawMessage
+	if err := json.Unmarshal(item, &def); err != nil || def == nil {
+		return "", false, entryErr(at, "must be a server name or one server's definition", serversExample)
+	}
+	if len(def) != 1 {
+		return "", false, entryErr(at, "an inline server must map exactly one server name to its definition", "write each server as its own list item")
+	}
+	name = slices.Collect(maps.Keys(def))[0]
+	raw := def[name]
+	if err := ValidateName("MCP server", name); err != nil {
+		return "", false, entryErr(at, err.Error(), "rename the server")
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+		return "", false, entryErr(at, fmt.Sprintf("server %q must be a mapping of its fields", name),
+			"give it command and args for a server Claude Code starts, or url for one it connects to")
+	}
+	var e mcpEntry
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return "", false, entryErr(at, fmt.Sprintf("server %q: type, command, cwd and url must be strings, args a list of strings, and env and headers must map names to strings", name),
+			"fix the field's value")
+	}
+	if _, err := e.server(name); err != nil {
+		return "", false, fmt.Errorf("%s: %w", at, err)
+	}
+	return name, true, nil
 }
 
 // listed loads a kind from its components entries when the kind is listed, else by discovery
@@ -274,10 +405,44 @@ func loadCommands(dir string, m *Module) error {
 		c := Command{Name: f[0], File: f[1], Doc: doc}
 		if fi, err := os.Stat(filepath.Join(dir, "commands", f[0])); err == nil && fi.IsDir() {
 			c.SidecarDir = "commands/" + f[0]
+			if c.Sidecars, err = sidecars(dir, c); err != nil {
+				return err
+			}
 		}
 		m.Commands = append(m.Commands, c)
 	}
 	return nil
+}
+
+// sidecars reads the .md files under a command's sidecar directory, which Claude Code reads as
+// commands of their own, and refuses frontmatter hooks in them: Claude Code would run those
+// hooks, while lola installs the directory as the command's files, outside the consent that
+// covers the command's hooks.
+func sidecars(dir string, c Command) ([]Sidecar, error) {
+	var out []Sidecar
+	err := filepath.WalkDir(filepath.Join(dir, filepath.FromSlash(c.SidecarDir)), func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".md") {
+			return err
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		doc, err := readDoc(dir, rel)
+		if err != nil {
+			return err
+		}
+		for _, k := range slices.Sorted(maps.Keys(doc.Frontmatter)) {
+			if strings.EqualFold(k, "hooks") {
+				return entryErr(fmt.Sprintf("command %s: %s: frontmatter %s", c.Name, safeName(rel), safeName(k)),
+					"Claude Code reads this file as a command, so lola would install its hooks without asking", "put hooks in the command itself")
+			}
+		}
+		out = append(out, Sidecar{File: rel, Doc: doc})
+		return nil
+	})
+	return out, err
 }
 
 func loadAgents(dir string, m *Module) error {
@@ -410,7 +575,7 @@ func Normalize(dir string, m *Module) error {
 	if err := doc.Encode(lf); err != nil {
 		return err
 	}
-	quoteMergeKeys(&doc)
+	quoteMerge(&doc)
 	b, err := yaml.Marshal(&doc)
 	if err != nil {
 		return err
@@ -423,18 +588,15 @@ func Normalize(dir string, m *Module) error {
 	return os.WriteFile(filepath.Join(dir, "lola.yml"), b, 0o644)
 }
 
-// quoteMergeKeys makes every mapping key "<<" below n a quoted string. The encoder tags it
-// !!merge and writes it plain, which YAML reads back as a merge key, so a server's env, a
-// hooks event or a kept value would come back from the cache meaning something else.
-func quoteMergeKeys(n *yaml.Node) {
-	if n.Kind == yaml.MappingNode {
-		for i := 0; i < len(n.Content); i += 2 {
-			if k := n.Content[i]; k.Kind == yaml.ScalarNode && k.Value == "<<" {
-				k.Tag, k.Style = "!!str", yaml.DoubleQuotedStyle
-			}
-		}
+// quoteMerge makes every "<<" scalar below n, key or value, a quoted string. The encoder tags
+// it !!merge and writes it plain: as a key YAML reads it back as a merge key, so a server's
+// env, a hooks event or a kept value would come back from the cache meaning something else,
+// and as a value it reads as "!!merge <<" to any other YAML reader.
+func quoteMerge(n *yaml.Node) {
+	if n.Kind == yaml.ScalarNode && n.Value == "<<" {
+		n.Tag, n.Style = "!!str", yaml.DoubleQuotedStyle
 	}
 	for _, c := range n.Content {
-		quoteMergeKeys(c)
+		quoteMerge(c)
 	}
 }

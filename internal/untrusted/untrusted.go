@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/fs"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -14,7 +15,9 @@ const MaxName = 256
 
 // Text makes text chosen by a remote party safe to print: every C0 control except newline,
 // DEL, every C1 control and every byte that is not UTF-8 becomes '?', so the text cannot drive
-// the terminal. Each continuation line is indented by two spaces, so it cannot pose as lola's
+// the terminal; every format character (Unicode Cf: bidi overrides, zero-width characters,
+// BOM) and line or paragraph separator (Zl, Zp) also becomes '?', so text cannot render
+// differently from what it is. Each continuation line is indented by two spaces, so it cannot pose as lola's
 // own output. Text longer than limit bytes is cut and ends in "…".
 func Text(s string, limit int) string {
 	cut := len(s) > limit
@@ -28,7 +31,7 @@ func Text(s string, limit int) string {
 			b.WriteString("\n  ")
 		case r == utf8.RuneError && !strings.HasPrefix(s[i:], "\uFFFD"):
 			b.WriteByte('?')
-		case r < 0x20, r >= 0x7f && r <= 0x9f:
+		case r < 0x20, r >= 0x7f && r <= 0x9f, unicode.Is(unicode.Cf, r), unicode.Is(unicode.Zl, r), unicode.Is(unicode.Zp, r):
 			b.WriteByte('?')
 		default:
 			b.WriteRune(r)

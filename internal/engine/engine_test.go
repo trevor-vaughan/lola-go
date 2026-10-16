@@ -147,7 +147,7 @@ var _ = Describe("Engine", func() {
 		Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
 	})
 
-	It("installs a Claude Code plugin from a folder, reporting its runtime hooks and unsupported keys", func() {
+	It("installs a Claude Code plugin from a folder, reporting its declined runtime hooks and unsupported keys", func() {
 		plugin := filepath.Join(tmp, "src", "deploy")
 		writeTree(plugin, map[string]string{
 			".claude-plugin/plugin.json": `{"name":"deploy","commands":{"about":{"content":"About ${CLAUDE_PLUGIN_ROOT}","description":"About"}},"lspServers":{}}`,
@@ -162,7 +162,7 @@ var _ = Describe("Engine", func() {
 		Expect(read(".mcp.json")).To(MatchJSON(`{"mcpServers":{"gh":{"command":"` + filepath.Join(proj, ".lola/modules/deploy/bin/gh") +
 			`","env":{"D":"` + filepath.Join(proj, ".lola/plugin-data/deploy") + `"}}}}`))
 		Expect(res.Findings).To(ContainElements(
-			SatisfyAll(HaveField("Code", "kind-unsupported"), HaveField("Kind", "runtime-hook"), HaveField("Artifact", "hooks/hooks.json"), HaveField("Severity", target.SeveritySkip)),
+			SatisfyAll(HaveField("Code", "claude-code/runtime-hooks-declined"), HaveField("Kind", "runtime-hook"), HaveField("Severity", target.SeverityWarn)),
 			SatisfyAll(HaveField("Code", "module-warning"), HaveField("Text", ContainSubstring("lspServers is not supported")))))
 	})
 

@@ -9,6 +9,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // HeadUpdate reports one re-fetched ref of a stored module.
@@ -126,11 +127,12 @@ func (e *Engine) Search(query string) ([]SearchHit, []string, error) {
 		match := strings.Contains(strings.ToLower(m.Name), q) || strings.Contains(strings.ToLower(m.Description), q) ||
 			slices.ContainsFunc(m.Keywords, func(k string) bool { return strings.Contains(strings.ToLower(k), q) })
 		if match {
-			kw := m.Keywords
-			if kw == nil {
-				kw = []string{}
+			kw := []string{}
+			for _, k := range m.Keywords {
+				kw = append(kw, untrusted.Text(k, untrusted.MaxName))
 			}
-			hits = append(hits, SearchHit{Name: m.Name, Description: m.Description, Version: m.Version, Keywords: kw, Where: "cache"})
+			hits = append(hits, SearchHit{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName),
+				Version: untrusted.Text(m.Version, untrusted.MaxName), Keywords: kw, Where: "cache"})
 		}
 	}
 	return hits, warnings, nil

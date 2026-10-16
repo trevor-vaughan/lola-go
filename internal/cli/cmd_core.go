@@ -98,7 +98,7 @@ func (a *app) addCoreCommands(root *cobra.Command) {
 func (a *app) installCmd() *cobra.Command {
 	var targets []string
 	var ref, path string
-	var dry, force, strict, rules, noRules, allowHooks bool
+	var dry, force, strict, rules, noRules, allowHooks, allowRuntime bool
 	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), or a module directory, archive or git URL",
 		usage: "lola install <source|name>... [-t target]",
 		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review",
@@ -117,7 +117,10 @@ func (a *app) installCmd() *cobra.Command {
 			"choice, so later renders keep it; --rules turns them back on.\n" +
 			"Install hooks run only with your consent: lola asks on a terminal (default No) and\n" +
 			"remembers a yes until one of those scripts changes. Consent covers only the scripts\n" +
-			"themselves, not files they run. --allow-hooks consents for one run.",
+			"themselves, not files they run. --allow-hooks consents for one run.\n" +
+			"Claude Code runtime hooks (a plugin's hooks) are installed only with your consent too:\n" +
+			"lola lists them and asks on a terminal (default No), and --allow-runtime-hooks records\n" +
+			"consent off one. It holds until the module version, the hooks or the project path changes.",
 		Example: g.example(),
 		GroupID: groupCore,
 		Args:    g.args(1),
@@ -145,7 +148,7 @@ func (a *app) installCmd() *cobra.Command {
 			if rules || noRules {
 				opts.Rules = &rules
 			}
-			a.hookOptions(cmd, &opts, allowHooks)
+			a.hookOptions(cmd, &opts, allowHooks, allowRuntime)
 			res, err := eng.Install(cmd.Context(), sc, cwd, reqs, opts)
 			if err != nil {
 				return err
@@ -163,6 +166,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&rules, "rules", false, "install the modules' rules again after --no-rules")
 	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
 	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
+	cmd.Flags().BoolVar(&allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
 	return cmd
 }
 
@@ -287,13 +291,15 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 
 func (a *app) renderCmd() *cobra.Command {
 	var targets []string
-	var dry, force, strict, allowHooks bool
+	var dry, force, strict, allowHooks, allowRuntime bool
 	cmd := &cobra.Command{
 		Use:     "render",
 		Aliases: []string{"update"},
 		Short:   "Render every installed module again from your cache",
 		Long: "Re-render every installed module from the cached version for its ref, removing files the\n" +
-			"module no longer ships. Files edited by hand are reported and kept unless --force.",
+			"module no longer ships. Files edited by hand are reported and kept unless --force.\n" +
+			"Claude Code runtime hooks whose consent no longer matches (a new version, or a moved\n" +
+			"project) are asked about again, and removed unless you consent.",
 		Example: "  lola render\n  lola render --dry-run\n  lola render -t claude-code --force",
 		GroupID: groupCore,
 		Args:    cobra.NoArgs,
@@ -303,7 +309,7 @@ func (a *app) renderCmd() *cobra.Command {
 				return err
 			}
 			opts := engine.Options{Targets: targets, DryRun: dry, Force: force, Strict: strict}
-			a.hookOptions(cmd, &opts, allowHooks)
+			a.hookOptions(cmd, &opts, allowHooks, allowRuntime)
 			res, err := eng.Render(cmd.Context(), sc, opts)
 			if err != nil {
 				return err
@@ -316,6 +322,7 @@ func (a *app) renderCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite or delete hand-edited files and render skipped artifacts that can be (never skips a prompt)")
 	cmd.Flags().BoolVar(&strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
 	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "run the install hooks of updated modules without asking (consent for this run)")
+	cmd.Flags().BoolVar(&allowRuntime, "allow-runtime-hooks", false, "install Claude Code runtime hooks that need consent without asking (consent is recorded)")
 	return cmd
 }
 

@@ -164,12 +164,31 @@ becomes a per-module data directory that lola creates and never deletes
 (`.lola/plugin-data/<module>` at project scope, `$XDG_DATA_HOME/lola/plugin-data/<module>` at
 user scope).
 
+**Frontmatter.** lola reads the frontmatter of every Markdown component (skills, commands,
+agents and rules), and refuses what another parser might read differently, because that could
+hide a key, hooks included, from what lola checks and shows. It refuses a file when:
+
+- its first line, after an optional byte-order mark, starts with `---` but is not exactly
+  `---` (`----`, `---` with trailing spaces or text, or with no line break). Hint: "start
+  frontmatter with a line of exactly ---; for a rule (horizontal line) at the top, write *** or
+  ___ instead, or begin the file with other text".
+- its frontmatter holds a second YAML document. Hint: "remove the extra document, or quote the
+  line that looks like a YAML document separator".
+- its frontmatter has a `<<` merge key at any depth (a quoted `'<<'` is an ordinary key). Hint:
+  "write the merged keys out in the frontmatter".
+
+When lola writes a component that has no frontmatter and a body whose first line starts with
+`---`, it puts an empty frontmatter block (`---` twice) before the body, so no assistant reads
+the body as frontmatter.
+
 **Rules.** Each `rules/<rule>.md` is always-on context: your assistant loads it in every
 session. lola delivers rules where the assistant loads them natively (see the tables below) and
 never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`. Gemini CLI reads them only in folders
 you trust, and project rules only when it starts in the project root.
 Frontmatter is removed; a `paths:` key is an error, because guidance for some files belongs in a
 skill. The rest of a rule is delivered verbatim: `${PLUGIN_ROOT}` is not expanded in rules. A
+rule whose remaining text starts with `---` gets an empty `---` block first, so that text is
+never read as the rule's frontmatter. A
 module-root `INSTRUCTIONS.md` or `AGENTS.md` is not installed; lola warns and suggests moving it
 to `rules/`. `lola install --no-rules` installs everything else and records `rules: false` on
 the module's manifest entry, so later renders keep it off; `--rules` turns them back on.
@@ -219,9 +238,9 @@ not stored, so later installs from your cache do not repeat them.
 - `lspServers`, `outputStyles`, `workflows`, `experimental`, `settings`, `userConfig`,
   `channels`, `dependencies`, `types`, MCP bundles (`.mcpb`, `.dxt`) and keys lola does not know
   are not installed: lola warns and keeps them under `formats.claude-plugin`.
-- Hooks are Claude Code runtime hooks. This build loads them but installs them nowhere: every
-  assistant reports them as `kind-unsupported`. Installing them into Claude Code, with your
-  consent, is planned.
+- Hooks are Claude Code runtime hooks. lola installs them into Claude Code only, and only with
+  your consent (see [Runtime hooks](#runtime-hooks) below); the other assistants report them
+  as `kind-unsupported`.
 
 **Agent Plugins packages** (root `plugin.json`):
 
@@ -301,8 +320,14 @@ components:
   `mcp.json`, hooks files) is a regular file, not a symbolic link, of at most 1 MiB. No object
   may repeat a key, or hold two keys that differ only in case (such as `command` and
   `Command`), except the names in a server's `env` or `headers` (exactly
-  `/mcpServers/<server>/env` and `/mcpServers/<server>/headers`), where `HTTP_PROXY` and
-  `http_proxy` may both appear.
+  `/mcpServers/<server>/env` and `/mcpServers/<server>/headers`, or
+  `/mcpServers/<i>/<server>/env` and `/headers` in a Claude plugin's list form), where
+  `HTTP_PROXY` and `http_proxy` may both appear.
+- A hooks event lists at least one matcher group: `{"Stop": []}` is an error. Each group has an
+  optional string `matcher` and a non-empty `hooks` list of handlers; each handler has a `type`,
+  and the fields lola rewrites or shows for consent must have Claude Code's types (`command`,
+  `args`, `shell`, `if`, `async`, `url`, `headers`, `allowedEnvVars`, `server`, `tool`,
+  `prompt`). Other fields, and handler types lola does not know, are kept as written.
 - An MCP server in Claude's `.mcp.json` shape (`mcps.json`, a plugin's `.mcp.json` and inline
   `mcpServers`) is either local, with `command` and optionally `args`, `env` and `cwd`, or
   remote, with `url` and optionally `headers`; mixing the two, or a `type` that contradicts
@@ -319,6 +344,137 @@ Without consent a `pre-install` hook stops the install before anything is writte
 `post-install` hook is skipped with a warning. A failing `pre-install` hook installs nothing; a
 failing `post-install` hook leaves the installation in place with a warning. `lola render` runs
 hooks only for modules whose version changed, and `--dry-run` lists hooks without running them.
+
+### Runtime hooks
+
+A module's runtime hooks (a Claude plugin's `hooks/hooks.json`, or `components.runtime_hooks`)
+are Claude Code hooks: Claude Code runs them on its own events, inside the session, with your
+permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` report them as
+`kind-unsupported`, which `--force` does not override.
+
+- **Where.** At project scope, `.claude/settings.local.json`; at user scope,
+  `~/.claude/settings.json`; in both, under `hooks.<Event>`. These are your own settings files,
+  not the shared `.claude/settings.json`, because your consent should not reach everyone who
+  clones the repository. Each matcher group is one entry lola owns: your other hooks and
+  settings, comments included, are left as they are, and uninstall removes exactly lola's
+  groups (and an event list or `hooks` object lola created, once it is empty).
+- **Variables.** Claude Code gives plugin hooks `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA`,
+  but not hooks in settings files, so lola supplies them for every `command` handler: the module
+  copy and its plugin-data directory, as absolute paths.
+  - `${CLAUDE_PLUGIN_ROOT}`, `$CLAUDE_PLUGIN_ROOT` and `${PLUGIN_ROOT}` (and the `DATA` forms)
+    in `command` and `args` become the path. A bare `$NAME` counts only when no letter, digit or
+    `_` follows it, so `$CLAUDE_PLUGIN_ROOTS` is left alone.
+  - A shell-form command (no `args`) becomes
+    `export CLAUDE_PLUGIN_ROOT='<root>' CLAUDE_PLUGIN_DATA='<data>'; <command>`, so every part of
+    a compound command, and every script it runs, sees both.
+  - An exec-form command (with `args`, even `[]`) becomes `env -- CLAUDE_PLUGIN_ROOT=<root>
+    CLAUDE_PLUGIN_DATA=<data> <command> <args>...`, with every value passed as written.
+  - Other handler types (`http`, `mcp_tool`, `prompt`, `agent`) and every other field are kept
+    as written.
+- **What lola will not install** without `--force` (each is a forceable skip of the module's
+  hooks): a shell-form hook when the module copy's or plugin-data path has characters other
+  than letters, digits and `/ . _ + -` (`claude-code/runtime-hook-path-unsafe`; use exec form,
+  or a simpler path; if the path holds `'`, `"`, `$`, `` ` `` or `\`, `--force` does not
+  override it, so only exec form installs); an exec-form command containing `=` or starting with `-`, which `env`
+  would misread (also `runtime-hook-path-unsafe`); a shell-form hook with `shell: "powershell"`,
+  which cannot take the `export` (`claude-code/runtime-hook-shell-unsupported`); and, at
+  project scope, a `.claude/settings.local.json` that git could commit
+  (`claude-code/settings-local-not-ignored`, below). Even with `--force`, a POSIX shell never
+  parses a lola path as shell syntax: an unsafe path is exported in single quotes and referred
+  to as `${CLAUDE_PLUGIN_ROOT}`. The shell still splits an unquoted reference at spaces and
+  expands glob characters in it, so a forced `${CLAUDE_PLUGIN_ROOT}/x.sh` under a path with a
+  space runs a different program. Write hooks with the variable quoted:
+  `"${CLAUDE_PLUGIN_ROOT}/x.sh"`. Other shells (PowerShell, for example) get no such guarantee.
+- **Windows.** The rewrite assumes a POSIX shell and an `env` program. Windows paths
+  (`C:\...`) hold `\`, so shell-form hooks never install there, even with `--force`: give the
+  hooks `args` (exec form). An exec-form hook needs an `env` executable, which Git Bash
+  provides.
+- **Hooks in component frontmatter.** Claude Code also runs a `hooks:` key in a skill's,
+  command's or agent's frontmatter while that component is active. lola treats any key that
+  equals `hooks` ignoring case as hooks, checks it like `runtime_hooks`, gives its command
+  handlers the same variable rewrite (`${PLUGIN_ROOT}` expansion of the rest of the file never
+  touches them), and installs the component only under the same consent: the prompt lists its
+  hooks under the component's name. Declined, that component is skipped and the rest of the
+  module installs. A `.md` file inside a command's own directory (`commands/deploy/notes.md`
+  beside `commands/deploy.md`) is a command to Claude Code, so a `hooks:` key there is refused
+  when the module loads: put hooks in the command itself. A file whose first line starts with `---`
+  but is not exactly `---` is refused too (see Frontmatter, above), because Claude Code might
+  read frontmatter there that lola cannot. When lola rewrites the hooks, the component's body
+  stays body text: it is never read as frontmatter. Installs made before this version keep
+  their components with frontmatter hooks until `lola render`, which asks for consent or
+  removes them; a module whose command directory holds a `.md` file with hooks no longer loads,
+  and `lola render` stops until you fix or remove it (`lola uninstall <name>`). Consent is yours alone: if your project commits the installed skills,
+  commands or agents under `.claude/`, their frontmatter hooks and `allowed-tools` reach your
+  teammates, whose Claude Code applies its own workspace-trust rules to them.
+- **MCP servers in agent frontmatter.** An agent's `mcpServers:` list (any key that equals
+  `mcpServers` ignoring case) gives the agent MCP servers. An item such as `- github` names a
+  server you already configured and needs no consent. An item such as
+  `- playwright: {command: npx, args: [-y, "@playwright/mcp@latest"]}` defines a server that
+  Claude Code starts when the agent starts, so lola installs such an agent only under the same
+  consent as hooks: the prompt lists each inline server under the agent's name, with its
+  transport, its command line or URL, its headers and env with their values (a value such as
+  `LD_PRELOAD=…` changes what runs), and any other field as JSON. Consent covers the servers
+  as lola renders them, so changing one, even only its `args`, asks again. Declined, the agent
+  is skipped (`claude-code/runtime-hooks-declined`) and one installed earlier is removed. When
+  the module loads, `mcpServers` must be a list; each item must be a non-empty name or a
+  mapping of exactly one server name to its definition; the definition gets the checks of
+  `mcps.json` (one transport's fields, a `type` that agrees with them, a valid server name).
+  A server name may be defined once per agent, and not both defined and named there.
+  Installs made before this version keep such agents until `lola render`, which asks for
+  consent or removes them.
+- **Permission mode.** An agent's `permissionMode` sets the permission mode Claude Code runs it
+  in. lola installs it as written and reports `claude-code/permission-mode`, naming the agent
+  and the mode. Claude Code v2.1.267+ ignores `bypassPermissions` in a subagent's frontmatter.
+- **Pre-approved tools.** A skill's, command's or agent's `allowed-tools` lets Claude Code run
+  those tools without asking. lola installs it as written and reports
+  `claude-code/allowed-tools`, naming the component and every tool it lists. A `.md` file in a
+  command's own directory is a command to Claude Code too, so its `allowed-tools` gets the same
+  warning, naming that file.
+- **Git.** When the project is in a git work tree, lola checks that git ignores
+  `.claude/settings.local.json` and does not track it (`git check-ignore`, `git ls-files`, with
+  the project's git configuration unable to run programs). Claude Code ignores the file only
+  when it creates the file itself, so add `.claude/settings.local.json` to your `.gitignore`. If
+  git is missing or fails, lola skips the hooks too.
+
+**Consent.** lola installs a module's runtime hooks only with your consent:
+
+- On a terminal, lola lists each hook (its event, matcher and type, `if`, `async` and `shell`
+  when set, then the command line it runs, the URL an `http` hook sends data to with its headers
+  and the environment it sends, the MCP tool it calls, or the prompt, cut at 200 characters;
+  then any other field of the handler or of its matcher group, as JSON) and each inline MCP
+  server of an agent, and asks "Install <module>'s Claude Code hooks?" ("…hooks and agent MCP
+  servers?" when it lists a server), defaulting to No. A yes is recorded in
+  `$XDG_STATE_HOME/lola/consent.json`.
+- The terminal view shows each value on one line, and a newline inside a value appears as the
+  two characters `\n`, so a value cannot pass as another hook line. Control characters,
+  invisible format characters (bidirectional overrides, zero-width characters, a byte-order
+  mark) and line or paragraph separators in a value show as `?`, so text looks like what it is.
+  Names, paths and manifest metadata (a module's description and version) get the same treatment where lola prints them; other module text, such as frontmatter keys quoted in finding texts, does not yet. `--json`
+  consent values are replaced the same way; the exact group lola writes is the step's `member`
+  (`steps[].member`).
+- If the prompt fails (input closes, for example), the run stops: nothing is written and nothing
+  is recorded.
+- Off a terminal, `--allow-runtime-hooks` records consent to the hooks the summary lists.
+  `--allow-hooks` is for install hooks and never covers runtime hooks, and `-y` never grants
+  consent.
+- `--dry-run` makes the decision a real run would make (a recorded consent or
+  `--allow-runtime-hooks` installs the hooks; anything else declines them), lists the hooks,
+  and never asks or records.
+- Consent is recorded per module and settings file (the absolute path of
+  `.claude/settings.local.json` or `~/.claude/settings.json`, symlinks resolved), and covers the
+  hooks as lola renders them, paths included, and the module version they come from. A new
+  version asks again, and so does another project, the other scope, or the same project after
+  you move it: off a terminal, its hooks are removed until you consent with
+  `--allow-runtime-hooks`. Consenting in one project leaves the others' consent alone.
+- Without consent the hooks are skipped with `claude-code/runtime-hooks-declined`, and the rest
+  of the module installs (`--strict` makes that an error). Hooks lola installed under an earlier
+  consent are removed: they never keep running under a consent that did not cover them.
+- A hook group is identified by its content, so a group you edit or remove is no longer lola's
+  copy. `lola install` and `lola render` do not write it again, since both copies would run:
+  lola keeps it as owned but absent and reports `claude-code/runtime-hook-drift`, with the hint
+  to run with `--force`, which writes it again. The report is info, not a warning: it records
+  your choice, so `--strict` does not fail on it. Uninstall leaves your edited group in place.
+  (Missing files and JSON keys are rewritten as before; this rule is only for hook groups.)
 
 ## Scopes and targets
 
@@ -385,7 +541,8 @@ For `opencode` (user scope: the same paths under `$XDG_CONFIG_HOME/opencode/`, w
 When a target cannot express part of a module, lola tells you instead of failing the whole
 module. Each **finding** has a severity:
 
-- **info**: a lossless adaptation. Shown by `lola check` and in `--json` output.
+- **info**: a lossless adaptation, or a choice you made. Shown by `lola check` and in `--json`
+  output, and by `install` and `render` when it carries a hint.
 - **warn**: something is dropped or changed, but the artifact works; it is installed.
 - **skip**: that artifact is left out for that target, because the assistant could not use it
   (for example an agent without a `description`); everything else is installed.
@@ -400,7 +557,7 @@ Each finding has a stable code, shown by `--plain` and `--json`. A forceable ski
 
 | Code | Severity | Forceable | Meaning |
 |---|---|---|---|
-| `kind-unsupported` | skip | no | The target has no place for this kind of artifact (in this build, every target for a module's runtime hooks). |
+| `kind-unsupported` | skip | no | The target has no place for this kind of artifact (in this build, `gemini-cli` and `opencode` for a module's runtime hooks). |
 | `name-rejected` | skip | yes | The target rejects the artifact's name (for `opencode`, also a skill whose `name` differs from its directory). |
 | `required-key-missing` | skip | yes | A frontmatter key the target needs is absent, empty, or was dropped for having the wrong type. |
 | `agent-tools-unenforceable` | skip | yes | The agent restricts its tools in a way the target cannot enforce (`gemini-cli`: names that are not Gemini's; `opencode`: any non-blank `tools` value, list or string). The assistant would give the agent every tool, so it is left out unless `--force`, which installs it without the list. |
@@ -424,6 +581,14 @@ Each finding has a stable code, shown by `--plain` and `--json`. A forceable ski
 | `opencode/escaped-arguments` | warn | no | A command has a Claude-escaped `\$N` or `\$ARGUMENTS`; OpenCode has no escape and still replaces it with arguments, so reword the text. |
 | `opencode/env-reference` | info | no | `${VAR}` in an MCP server becomes OpenCode's `{env:VAR}`. |
 | `opencode/env-default-dropped` | warn | no | OpenCode has no defaults for environment references: `${VAR:-default}` becomes `{env:VAR}`. |
+| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; rerun with `--allow-runtime-hooks`, or answer the prompt on a terminal. |
+| `claude-code/allowed-tools` | warn | no | A skill, command or agent pre-approves tools with `allowed-tools`; Claude Code runs them without asking. Installed as written. |
+| `claude-code/permission-mode` | warn | no | An agent sets the permission mode Claude Code runs it in with `permissionMode`; the finding names the mode. Claude Code v2.1.267+ ignores `bypassPermissions` in a subagent's frontmatter. Installed as written. |
+| `claude-code/runtime-hook-path-unsafe` | skip | yes, unless a path holds a quote, `$`, a backquote or `\` | A shell-form hook needs the module copy and plugin-data paths to hold only letters, digits and `/ . _ + -`, or an exec-form command contains `=` or starts with `-`. |
+| `claude-code/runtime-hook-shell-unsupported` | skip | yes | A shell-form hook runs in PowerShell, which cannot take the `export` lola adds; give it `args`. |
+| `claude-code/settings-local-not-ignored` | skip | yes | Git could commit `.claude/settings.local.json` (tracked, not ignored, or git missing or failing); add it to `.gitignore`. |
+| `claude-code/runtime-hook-event-invalid` | skip | no | A hooks event name is not an identifier, so it is no event Claude Code fires. |
+| `claude-code/runtime-hook-drift` | info | no | A hook group lola installed was edited or removed. On install and render lola leaves it out until `--force` writes it again, and prints the finding with that hint; on uninstall lola leaves your edited group alone. `--strict` does not fail on it. |
 | `probe/not-found` | info | no | The assistant is not on `PATH`; lola checked against the newest version it knows. |
 | `probe/unknown-version` | info | no | The assistant's version could not be read. |
 | `probe/cache` | info | no | The version was read but could not be cached. |
@@ -439,6 +604,7 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes. | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
+| `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
 changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
@@ -449,6 +615,8 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   Anything else is a **conflict**: lola lists every conflict and changes nothing.
   `--force` overrides conflicts and lists each overridden file in the summary.
 - A destination owned by another installed module is never overridden, even with `--force`.
+- A runtime hook group already in your settings, identical to one a module renders, is a
+  conflict: owning it would remove your hook on uninstall. `--force` takes it over.
 - A JSON file that does not parse is never rewritten, even with `--force`.
 - Comments and formatting in JSON files survive lola's edits; only lola's own keys change.
 - lola writes through symlinked directories and shows `(via symlink → /real/path)` when a write
@@ -477,7 +645,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest, and OpenCode's user-scope directory (default `~/.config`) |
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
-| `XDG_STATE_HOME` | The user-scope ledger, hook consent and lock files (default `~/.local/state`) |
+| `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, and lock files (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive downloads (git reads them itself) |
 | `GIT_*`, `SSH_AUTH_SOCK` | Passed to git, except the variables that pick a repository or add config behind lola's back (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, …) |

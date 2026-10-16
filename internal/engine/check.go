@@ -71,6 +71,9 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, ts []t
 		}
 		pctx := target.PlanContext{Scope: sc.Kind, Root: t.Root(sc.Kind, sc.ProjectDir, e.Paths), ContentDir: contentDir,
 			PluginRoot: contentDir, PluginData: contentDir, Version: probes.version(t)}
+		if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
+			pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
+		}
 		_, finds, err := t.Plan(m, pctx)
 		if err != nil {
 			return cm, fmt.Errorf("%s for %s: %w", m.Name, t.ID(), err)

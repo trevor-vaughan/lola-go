@@ -74,6 +74,13 @@ type Options struct {
 	AllowHooks bool
 	Ask        func(module string, hooks []HookScript) (bool, error)
 	HookOutput io.Writer
+
+	// Runtime hooks (Plan 5b design §7.3), which an assistant runs on its own events.
+	// AllowRuntimeHooks grants and records consent to the hooks the summary lists;
+	// AskRuntimeHooks, when set, asks the user about hooks without a recorded consent, and a
+	// yes is recorded. AllowHooks never covers them.
+	AllowRuntimeHooks bool
+	AskRuntimeHooks   func(module string, hooks []RuntimeHook) (bool, error)
 }
 
 // MCPRun says what an MCP server runs: the stdio command line or the remote URL.
@@ -85,11 +92,12 @@ type MCPRun struct {
 
 // ModuleResult summarizes one module of an operation.
 type ModuleResult struct {
-	Name       string    `json:"name"`
-	Digest     string    `json:"digest,omitempty"`
-	Targets    []string  `json:"targets"`
-	MCPServers []MCPRun  `json:"mcp_servers"`
-	Hooks      []HookRun `json:"hooks"`
+	Name         string        `json:"name"`
+	Digest       string        `json:"digest,omitempty"`
+	Targets      []string      `json:"targets"`
+	MCPServers   []MCPRun      `json:"mcp_servers"`
+	Hooks        []HookRun     `json:"hooks"`
+	RuntimeHooks []RuntimeHook `json:"runtime_hooks"`
 }
 
 // Notice levels.
@@ -360,7 +368,10 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	f := e.files(sc)
 	pctx := target.PlanContext{Scope: sc.Kind, ContentDir: v.ContentDir, PluginRoot: filepath.Join(f.modules, m.Name),
 		PluginData: filepath.Join(f.pluginData, m.Name), SkipRules: !ment.RulesOn(), Force: opts.Force}
-	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}}
+	if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
+		pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
+	}
+	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}}
 	finds := warningFindings(m)
 	var notes []Notice
 	var intents []plan.Intent
@@ -438,9 +449,12 @@ func StrictError(finds []target.Finding, rerun string, offerForce bool) error {
 // the plan is applied and restored if the ledger is not committed. Copies of modules that
 // leave the ledger are removed. Install hooks get consent before anything is written;
 // pre-install hooks run in the new copies before the plan is applied, post-install hooks
-// after it is committed.
+// after it is committed. Runtime hooks get consent before anything is planned.
 func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy,
 	opts Options, res *Result, after func(*plan.Plan) error) error {
+	if err := e.consentRuntimeHooks(sc, changes, opts, res); err != nil {
+		return err
+	}
 	if opts.Strict {
 		if err := StrictError(res.Findings, "fix the module, or rerun without --strict to install what each target supports", true); err != nil {
 			return err
@@ -456,6 +470,7 @@ func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, chan
 		return err
 	}
 	res.Steps = append(res.Steps, p.Steps...)
+	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules)...)
 	jobs, err := e.planHooks(sc, copies, opts, res)
 	if err != nil || opts.DryRun {
 		return err

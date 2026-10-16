@@ -3,12 +3,15 @@ package module
 import (
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"regexp"
 	"slices"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 )
 
 // Doc is a markdown document with optional YAML frontmatter between --- fences.
@@ -20,11 +23,25 @@ type Doc struct {
 	Body           string
 }
 
+// opensFrontmatter reports whether s begins with a line a frontmatter parser might take as an
+// opener: after one byte-order mark, anything that starts with "---". Parsers differ on what may
+// follow (trailing whitespace of any Unicode kind, or text), so lola reads only an exact "---"
+// line and treats every other such line as ambiguous.
+func opensFrontmatter(s string) bool {
+	return strings.HasPrefix(strings.TrimPrefix(s, "\ufeff"), "---")
+}
+
 // ParseDoc splits src into frontmatter and body. A document that does not start with a
-// "---" line has no frontmatter, which is valid.
+// "---" line has no frontmatter, which is valid. A first line that starts with "---" but is not
+// exactly that line (more dashes, trailing text or whitespace, or no line break) is refused: an assistant's
+// parser may read frontmatter there, hooks included, that lola would not see (fail closed).
 func ParseDoc(src []byte) (Doc, error) {
 	s := strings.TrimPrefix(string(src), "\ufeff")
 	if !strings.HasPrefix(s, "---\n") && !strings.HasPrefix(s, "---\r\n") {
+		if opensFrontmatter(s) {
+			return Doc{}, errs.WithHints(errors.New(`the first line starts with "---" but is not exactly "---", so lola cannot read the frontmatter an assistant might`),
+				"start frontmatter with a line of exactly ---; for a rule (horizontal line) at the top, write *** or ___ instead, or begin the file with other text")
+		}
 		return Doc{Body: s}, nil
 	}
 	rest := s[strings.IndexByte(s, '\n')+1:]
@@ -41,9 +58,9 @@ func ParseDoc(src []byte) (Doc, error) {
 			if nl >= 0 {
 				body = rest[pos+nl+1:]
 			}
-			var fm map[string]any
-			if err := yaml.Unmarshal([]byte(raw), &fm); err != nil {
-				return Doc{}, fmt.Errorf("frontmatter: %w", err)
+			fm, err := parseFrontmatter(raw)
+			if err != nil {
+				return Doc{}, err
 			}
 			return Doc{Frontmatter: fm, RawFrontmatter: raw, Body: body}, nil
 		}
@@ -54,9 +71,58 @@ func ParseDoc(src []byte) (Doc, error) {
 	}
 }
 
+// parseFrontmatter decodes raw as one YAML mapping. It refuses what another parser might read
+// differently (fail closed): a second YAML document, which some parsers take as the frontmatter,
+// and a merge key at any depth, which carries keys lola would not list or fields it would not
+// check (a server's command, a hook group's matcher).
+func parseFrontmatter(raw string) (map[string]any, error) {
+	dec := yaml.NewDecoder(strings.NewReader(raw))
+	var root yaml.Node
+	if err := dec.Decode(&root); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("frontmatter: %w", err)
+	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, errs.WithHints(errors.New("frontmatter holds more than one YAML document, so parsers may disagree on which one is the frontmatter"),
+			"remove the extra document, or quote the line that looks like a YAML document separator")
+	}
+	if hasMergeKey(&root) {
+		return nil, errs.WithHints(errors.New("frontmatter uses a merge key (<<), which hides keys from lola"),
+			"write the merged keys out in the frontmatter")
+	}
+	var fm map[string]any
+	if err := root.Decode(&fm); err != nil {
+		return nil, fmt.Errorf("frontmatter: %w", err)
+	}
+	return fm, nil
+}
+
+// hasMergeKey reports whether a mapping under n has a merge key: a plain << or one tagged
+// !!merge, which the parser resolves to the !!merge tag; a quoted '<<' is a literal key. An
+// alias is not followed, since its anchored node is checked where it is defined.
+func hasMergeKey(n *yaml.Node) bool {
+	for i, c := range n.Content {
+		if n.Kind == yaml.MappingNode && i%2 == 0 && c.Tag == "!!merge" {
+			return true
+		}
+		if hasMergeKey(c) {
+			return true
+		}
+	}
+	return false
+}
+
 // Render rebuilds the document from the raw frontmatter and body.
 func (d Doc) Render() string {
 	if d.RawFrontmatter == "" && d.Frontmatter == nil {
+		// A body whose first line a parser would take as a frontmatter opener (the test ParseDoc
+		// refuses on) gets an empty block first, so it is never read as frontmatter.
+		if opensFrontmatter(d.Body) {
+			return "---\n---\n" + d.Body
+		}
 		return d.Body
 	}
 	return "---\n" + d.RawFrontmatter + "---\n" + d.Body

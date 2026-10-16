@@ -25,10 +25,11 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      - **5b.1. Done: module formats.** Claude Code plugins and Agent Plugins v1 packages
        (client namespaces routed per target), adapted once at `cache add` into a `components:`
        section of `lola.yml`, and `init --format agent-plugins` as the default.
-     - **5b.2. Next: Claude Code runtime hooks.** A Claude plugin's hooks, which 5b.1 loads but
-       installs nowhere, rendered into `.claude/settings.local.json` (`~/.claude/settings.json`
-       at user scope) only with the user's consent.
-   - **5c. Interactive selection.** An install flow built from pickers (modules, scopes,
+     - **5b.2. Done: Claude Code runtime hooks.** A module's runtime hooks rendered into
+       `.claude/settings.local.json` (`~/.claude/settings.json` at user scope) only under the
+       user's recorded consent, with `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` supplied,
+       and skipped when git could commit the settings file.
+   - **5c. Next: interactive selection.** An install flow built from pickers (modules, scopes,
      assistants, components); its own design follows 5b.
 6. **Marketplaces, `sync` and profiles.** `lola market`, `@market/module`, `lola sync`, and
    stackable named sets of modules ([#223](https://github.com/LobsterTrap/lola/issues/223)).

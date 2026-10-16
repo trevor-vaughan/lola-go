@@ -13,6 +13,8 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
                                       ▼
                      targets (pure: IR → intents + findings)
                                       ▼
+            runtime hook consent (drops unconsented hook groups)
+                                      ▼
             plan.Compute (diff vs ledger + disk, conflict matrix) ──▶ Plan
                                       ▼
             hook consent ─▶ module copies swapped in ─▶ pre-install hooks
@@ -29,19 +31,19 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 | Package | Responsibility |
 |---|---|
 | `paths` | XDG resolution from an injected `getenv`; no globals. |
-| `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members and string array elements), mode normalization. |
+| `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members, and array elements of any JSON value), mode normalization. |
 | `module` | The IR, frontmatter parsing, name rules, format detection and the Claude plugin and Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened module JSON reading, rules, hook validation, and normalization. |
-| `untrusted` | Makes text lola did not write safe to print: control characters replaced, length capped, OS errors without their path. |
-| `source` | Source parsing and validation, and the folder, git and archive fetchers. |
+| `untrusted` | Makes text lola did not write safe to print: control characters, Unicode format characters and line separators replaced, length capped, OS errors without their path. |
+| `source` | Source parsing and validation, the folder, git and archive fetchers, and `GitCommand`, the one hardened way lola runs git (also for the engine's git-ignore check). |
 | `store` | The cache's storage: content-addressed versions, per-ref heads, the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, deterministic IO. |
-| `consent` | Recorded consent to run a module's install hooks, keyed by the hooks' digest. |
+| `consent` | Recorded consent to a module's install hooks (key `<module>`) and runtime hooks (key `<module>/runtime-hooks/<settings-file hash>`), each recording a digest. |
 | `target` | The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`, `Probe`, and helpers renderers share. No implementations. |
 | `target/claude`, `target/gemini`, `target/opencode` | The `claude-code`, `gemini-cli` and `opencode` renderers, each with its capability table and probe. One package per target. |
 | `target/conformance` | Specs every registered target must pass. |
 | `targets` | The registry: the one list of every target. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction). |
-| `engine` | Install, uninstall, render, status, fetch, update, search; module copies and hooks. |
+| `engine` | Install, uninstall, render, status, fetch, update, search; module copies, install hooks, runtime hook consent and the git-ignore check. |
 | `cli` | Commands, help, aliases, completion, output and prompts. |
 | `errs` | Errors that carry coaching hints. |
 | `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git server. |
@@ -70,12 +72,19 @@ comments). JSON edits operate on the hujson AST so bytes outside the edited memb
 preserved; trailing line comments belong to the line they end. `ledger.created` remembers the
 JSON files lola created, so they are deleted when lola's last member leaves them empty.
 
-**Owned array members.** `AddJSONMember` claims one string in a JSON array that users also edit
-(rule references for Gemini and OpenCode). The artifact records the string as `value`,
-which is part of its identity, so several modules can each own an entry in one array; the hash is
-over the string's canonical JSON. A member is present or absent, never hand-edited: one the user
-already listed is adopted, one the user removed is rewritten with a note, and an orphan the user
-removed is forgotten. A `created` entry with a `key` records an array lola created; when lola's
+**Owned array members.** `AddJSONMember` claims one element, any JSON value, in a JSON array
+that users also edit: a string for rule references (Gemini and OpenCode), an object for a
+runtime hook's matcher group (Claude Code). Elements compare as canonical JSON, so key order and
+layout in the user's file do not matter. The ledger records a string as `value`, as it always
+has, and any other element as `member`, in canonical JSON; either is part of the artifact's
+identity, so several modules can each own an entry in one array, and the hash is over the
+element's canonical JSON. Files and step lines get the element with `& < >` unescaped
+(`fsx.ReadableJSON`), so a shell operator reads as one. A ledger `member` that another tool
+reformatted is recorded again as canonical JSON at load; one that is a string or `null` is
+refused, with a hint. A member is present or absent, never hand-edited: one the user removed is
+rewritten with a note, and an orphan the user removed (or edited, which changes its identity) is
+forgotten. A string the user already listed is adopted; any other element the user already has
+is a forceable conflict, since owning the user's own hook group would delete it on uninstall. A `created` entry with a `key` records an array lola created; when lola's
 last member leaves it, the array goes too, with the parent objects it leaves empty, and the file
 if lola created that. A value at the pointer that is not an array is a hard error. Appending
 keeps comments that follow the last member before the closing bracket or brace, so removing
@@ -156,8 +165,8 @@ that finds the file is not its format declines with a warning and detection move
   existing, no symlink); names follow `ValidateName`; two artifacts of a kind and name whose
   effective targets overlap are refused. Targets honor per-entry `targets` for every kind,
   rules included. Runtime hooks (`Module.RuntimeHooks`, canonical JSON of the event map) are
-  loaded but no target lists the `runtime-hook` kind, so `Admit` reports `kind-unsupported`
-  until Plan 5b.2 renders them for Claude Code.
+  checked down to the handler fields lola rewrites or shows; only `claude-code` lists the
+  `runtime-hook` kind (see [Runtime hooks](#runtime-hooks)).
 - **Module JSON** (`mcps.json`, `plugin.json`, `.mcp.json`, `mcp.json`, hooks files) is read by
   one helper: a regular file, not a symlink, at most 1 MiB, nesting at most 64 levels, and no
   object key repeated at any depth (a token walk before decoding, naming the key's JSON
@@ -205,6 +214,72 @@ Hooks run once per target, in the module copy, with the parent environment plus
 `pre-install` hook restores the old copies and writes nothing; `post-install` hooks run after
 the commit, so a failure is a warning. `install` runs hooks for every module it installs;
 `render` only for modules whose copy it replaces (a new version, or a missing copy). A dry run reports hooks as `would-run`.
+
+## Runtime hooks
+
+`target/claude` renders each matcher group of a module's runtime hooks as one `AddJSONMember`
+intent (kind `target.KindRuntimeHook`) under `/hooks/<Event>` of `.claude/settings.local.json`, or
+`~/.claude/settings.json` at user scope. Command handlers get `CLAUDE_PLUGIN_ROOT` and
+`CLAUDE_PLUGIN_DATA` (`PlanContext.PluginRoot` and `PluginData`, the same values `target.Expand`
+uses): textual forms are replaced in one pass, shell form gains an `export` prefix, and exec form
+becomes `env -- NAME=value NAME=value <command> <args>`. `--` must come before the assignments:
+GNU `env` reads a `--` after them as the command. Paths that are not shell-safe, commands `env`
+would misread, PowerShell handlers and a settings file git could commit are forceable skips of
+the whole set; forced renders export single-quoted values and refer to the variables, so a
+POSIX shell never parses a lola path as shell syntax (an unquoted reference is still split at
+spaces and glob-expanded, so the docs tell authors to quote it). A path holding `' " $` `` ` `` or `\` is never
+forced, since the forced form relies on those characters' quoting rules. An event that is not an identifier is an unforceable skip. On
+Windows only exec form fits: every `C:\` path holds `\`, so shell-form hooks are never forced
+there, and the skip's hint names exec form alone.
+
+**Git-ignore check.** Targets stay pure, so the engine computes
+`PlanContext.LocalSettingsExposed` once per command (`probeRun.localSettings`), at project scope
+and only for modules with runtime hooks: if the project or a parent holds `.git`, it runs
+`git ls-files --error-unmatch` (status 1 means untracked) and `git check-ignore -q --no-index`
+(status 0 means ignored) through `source.GitCommand`, whose `-c` overrides keep a cloned
+repository's config from running programs (fsmonitor, hooks). Any other status, or no git, sets
+the reason, and the target skips the hooks (fail closed).
+
+**Frontmatter hooks.** Claude Code also runs a `hooks:` key in skill, command and agent
+frontmatter. `module` checks every key equal to `hooks` ignoring case like `runtime_hooks`;
+`target/claude` (`componentHooks`) gives their command handlers the same rewrite and renders
+the rest of the document through `target.Expand` separately, so `Expand`'s raw substitution
+never reaches hook shell text. Two load refusals close the ways around this: hooks in a `.md`
+file under a command's sidecar directory (Claude Code reads it as a command; lola copies it as
+a file), and a first line starting with `---` that `ParseDoc` does not read as frontmatter (more
+dashes, trailing whitespace or text, no line break), where another parser might find hooks. `allowed-tools` is installed
+as written, with the warning `claude-code/allowed-tools`.
+
+**Consent.** Invariant: every intent of kind `target.KindRuntimeHook`, every intent of a
+component carrying hooks, and every intent of an agent with inline MCP servers (Claude Code
+starts them with the agent) passes the consent gate. Such intents carry a `plan.HookConsent`
+naming the settings file whose consent covers them (and, for a component, its kind, name,
+hooks and, for an agent, its inline servers as rendered); an intent without one is refused if it has the kind `KindRuntimeHook` or, whatever its
+kind, edits `/hooks` in a `.claude/settings.json` or `settings.local.json`. In `execute`, before `--strict` and
+before `plan.Compute`, the engine groups a module's gated intents by settings file and computes
+their digest: sha256 over each group's target, pointer and canonical JSON, and each component's
+target, kind, name, canonical hooks and canonical inline servers (all as rendered, so absolute
+paths are in it), then
+the module version's content digest. Consent is recorded in `consent.json` under
+`<module>/runtime-hooks/<sha256 of the settings file's absolute path, symlinks resolved>`, which
+cannot collide with an install hook entry because module names have no `/`, and gives each
+project and scope its own consent. A recorded digest, `--allow-runtime-hooks` or a yes from the
+CLI's prompt keeps the intents (the latter two record the digest); a dry run makes the same
+decision without asking or recording; otherwise the intents are dropped with
+`<target>/runtime-hooks-declined`, per settings hooks and per component. Dropping them is what
+makes consent fail closed: the planner sees the module's installed groups and components as
+orphans and removes them. The consent view (`engine.RuntimeHook`) reads handler fields by exact
+name, as Claude Code does, shows every handler or matcher-group field it does not describe as
+JSON, and passes every string through `untrusted.Text`. An inline server's view entry has
+`mcp_server` set and no event; it shows env and header values, since they change what runs.
+
+**Drift.** A hook group is identified by its content, so an owned group missing from its
+settings file is one the user edited or removed. `plan.Compute` keeps a missing owned
+non-string member owned but absent (step `absent`) instead of writing it again, which would run
+both copies; the engine reports `<target>/runtime-hook-drift` as info with a hint (it records
+the user's choice, so `--strict` ignores it, and human output prints info findings that carry a
+hint), and `--force` writes it again. On uninstall the member is forgotten and the drift is info. String members and
+files keep the "was missing; rewritten" rule.
 
 ## Applying
 
@@ -275,8 +350,9 @@ repository is never filtered by that repository's ignore rules.
   disabled, a 2-minute timeout, at most 5 redirects, none from https to http and none to http off loopback, and a body
   capped at 256 MiB.
 - **Untrusted text.** git's stderr, archive entry names, module-root candidates, HTTP status
-  text and echoed URLs go through `untrusted.Text`, which replaces control characters and invalid
-  UTF-8 with `?`, indents continuation lines, and caps the length. A parsed URL is echoed as
+  text and echoed URLs go through `untrusted.Text`, which replaces control characters, invalid
+  UTF-8, Unicode format characters (bidi overrides, zero-width characters, BOM) and line or
+  paragraph separators with `?`, indents continuation lines, and caps the length. A parsed URL is echoed as
   scheme, host and path only (`displayURL`); one that does not parse, or was never checked, is
   echoed up to its first `?` or `#`, and only as its scheme when it holds an `@` (`redactURL`).
   The redirect target of a failed download and refused `git://` URLs are not echoed at all; OS
@@ -310,7 +386,10 @@ ledger's.
 
 - **Hooks run code, with consent.** Install hooks run as the user, unconfined (sandboxing is on
   the roadmap), only after consent tied to the exact scripts. A changed script asks again; a
-  changed file that a script runs does not, which the user docs say.
+  changed file that a script runs does not, which the user docs say. Runtime hooks reach
+  Claude Code's settings only under a consent tied to the rendered groups and the module
+  version, so everything they could run from the module copy is covered; they go to the per-user
+  settings file, never the shared one, and only when git cannot commit it.
 - **Sources are not trusted.** Symlinks in module content are refused, including a file swapped
   for a symlink while it is copied; names that become paths or JSON keys are validated;
   `CopyTree` reads through `os.Root`; cache names and version ids are validated before use.
@@ -326,8 +405,10 @@ ledger's.
 - **Fetched sources.** Residual risks: lola honors the user's environment and git config
   (credential helpers, `insteadOf`, proxies) by design; git follows an initial http redirect
   itself, possibly to plain http; and a server can serve different content for the same ref.
-  `cache update` and content digests make a change visible but do not prevent it. Text a
-  module contains (finding texts, for example) is not yet sanitized when lola prints it.
+  `cache update` and content digests make a change visible but do not prevent it. Names,
+  paths, manifest metadata and runtime hook fields pass through `untrusted.Text` before lola
+  prints them; other text a module contains (frontmatter keys quoted in finding texts, for
+  example) is not yet sanitized.
 - **Unparseable files** are never rewritten.
 - lola's own state files are `0600`; its XDG directories `0700`.
 
