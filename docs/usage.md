@@ -13,7 +13,7 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. Refuses a module an active [profile](#profiles) or `default.yml` lists, naming it: the next sync would install it again. |
 | `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`: run `lola sync`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. Entries of [profiles](#profiles) are listed as the manifest's are, and when any module comes from a profile a `FROM` column names its layer. Without a scope flag it shows the project found from here, if any, and user scope; every row names its scope ([Choosing a scope](#choosing-a-scope)). Like `render`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could turn profiles on. |
 | `lola render` | Render every installed module again at the version `project.yml` pins (the one installed when it pins none; a folder module from its folder). A module a [profile](#profiles) lists renders at the profile's pin, else at the version `lock.json` records; one no layer lists any more is left as installed at project scope. Removes files a module no longer ships. Leaves as installed, with a warning, a module it may not act on ([Sync, pins and trust](#sync-pins-and-trust)). |
-| `lola profile [<name>...] [--on\|--off\|--switch]` | Without a name, list the [profiles](#profiles) each scope can use (yours, and at project scope the project's): kind, where each stands in the scope's active list (`1st of 2`, `always on` for `default`, `off`) and its file. With a name, show the profile and, per scope, the layer each of its modules comes from and the layers that entry overrides; for a profile that is off, what turning it on would give. Listing and showing never ask for a scope: without a flag they show the project found from here, if any, and user scope. `--on`, `--off` and `--switch` turn the named profiles on, off, or make them the active list, and apply the change at once; removing files asks first (`-y`). Refuses a project whose `.lola/lock.json` git tracks. |
+| `lola profile [<name>...] [--on\|--off\|--switch\|--add <source>\|--update\|--remove]` | Without a name, list the [profiles](#profiles) each scope can use (yours, and at project scope the project's): kind, where each stands in the scope's active list (`1st of 2`, `always on` for `default`, `off`) and its file. With a name, show the profile and, per scope, the layer each of its modules comes from and the layers that entry overrides; for a profile that is off, what turning it on would give. Listing and showing never ask for a scope: without a flag they show the project found from here, if any, and user scope. `--on`, `--off` and `--switch` turn the named profiles on, off, or make them the active list, and apply the change at once; removing files asks first (`-y`). `--add <source>` fetches a [remote profile](#remote-profiles), shows it and asks before keeping it; `--update` fetches one again and applies it where it is on; `--remove` deletes one (asks; `-y`). Refuses a project whose `.lola/lock.json` git tracks. |
 | `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
 | `lola init [dir] [--format agent-plugins\|lola]` | Scaffold a module named after the directory: by default an Agent Plugins package (`plugin.json`, one skill, one `dev.getlola` command); `--format lola` writes `lola.yml`, one skill and one command. It never overwrites a file and refuses a directory holding a module or a symbolic link on the way to a file it would write. |
@@ -504,8 +504,10 @@ profile:default`).
 ## Profiles
 
 A **profile** is a named set of module entries, kept apart from any `project.yml` or `user.yml`.
-This version reads your own profiles, in `$XDG_CONFIG_HOME/lola/profiles/<name>.yml`, and a
-project's, committed in `.lola/profiles/<name>.yml` (see [Project profiles](#project-profiles)).
+lola reads your own profiles, in `$XDG_CONFIG_HOME/lola/profiles/<name>.yml`; a project's,
+committed in `.lola/profiles/<name>.yml` (see [Project profiles](#project-profiles)); and remote
+profiles, fetched from a source and kept in `$XDG_DATA_HOME/lola/profiles/<name>/` (see
+[Remote profiles](#remote-profiles)).
 
 **`default.yml`** is always on at user scope, and never at project scope: `lola sync --user`
 installs what it lists as well as what `user.yml` lists. Turning it off means renaming or
@@ -521,8 +523,10 @@ lola profile go --on --dry-run       # show what it would change
 ```
 
 The actions have aliases for muscle memory from other tools: `--on` (`--enable`, `--activate`),
-`--off` (`--disable`, `--deactivate`) and `--switch` (`--use`); help shows them beside each flag,
-and messages use the canonical names. An action names one or more profiles, in order; a name given twice refuses, and so do two
+`--off` (`--disable`, `--deactivate`), `--switch` (`--use`), and for [remote
+profiles](#remote-profiles) `--add` (`--get`), `--update` (`--upgrade`) and `--remove` (`--rm`,
+`--delete`, `--del`, `--erase`, `--uninstall`); help shows them beside each flag, and messages use
+the canonical names. An action names one or more profiles, in order; a name given twice refuses, and so do two
 actions in one run (`--on and --off cannot be combined; pick one`). It resolves its scope as
 `sync` does ([Choosing a scope](#choosing-a-scope)) and applies only what the change moves: each
 module is loaded, replaced (another layer's entry wins now) or unloaded (no layer wants it any
@@ -555,6 +559,7 @@ A profile has the shape of a manifest, with an optional `description`:
 version: 1
 description: Go tooling          # optional, at most 256 bytes
 targets: [claude-code]           # optional; entries without targets use these
+extends: [go]                    # optional: remote profiles whose entries come first
 modules:
   - name: go-style
     source: https://github.com/example/go-style
@@ -569,6 +574,19 @@ modules:
   field is merged), with a notice when they differ: `gopls: user.yml overrides profile:user:go
   (v2.0 over v1.2)`. `lock.json` records the profile that won (`from`).
 - **Targets.** An entry without `targets` uses its profile's `targets`, else the scope manifest's.
+- **Extends.** `extends:` names up to 16 [remote profiles](#remote-profiles), by their bare names
+  (`go`, never `remote:go`), whose entries your profile, or a project's, builds on: their entries
+  come first, in the order listed, then the profile's own, a later entry of a module replacing an
+  earlier one whole; `lola profile <name>` shows the replaced remote profile as `(over
+  profile:remote:go)`. An entry without `targets` takes the extending profile's. That is how a
+  profile of yours named `go` builds on the remote `go` it shadows (`extends: [go]`). A name that
+  is not a remote profile you have refuses with the file and line (`extends: go is not a remote
+  profile you have`), whether it is missing, invalid or one of your own profiles; a remote profile
+  cannot extend another, and one level is all there is. The extended remote profile's entries keep
+  their pins, which only `lola profile remote:<name> --update` changes (`lola sync --update
+  <module>` refuses them). In a project profile, the trust record notes the remote profile each
+  entry comes from, with its source and pin, so after an update of it the entries it gives are
+  asked about again.
 - **Folders.** A relative folder or archive path resolves against the profile file's directory.
   Your profiles are trusted as `user.yml` is: their entries are never asked about, and their
   folders may be anywhere, even at project scope.
@@ -587,8 +605,10 @@ modules:
   `user:go` says it is yours, and `default` exists at user scope only. Files in `profiles/` whose
   names are not valid profile names are counted (`1 file with an invalid name in … is not a
   profile`), never shown. `--json` gives `profiles` (`name`, `kind`, `path`, `source`, `active`,
-  `position`, `scope`, `shadowed_by`, `extends`; with a name, also `modules` with `name`, `from`
-  and `overrides`) and `notices`; `--plain` rows are scope, name, kind, `on`/`off`, position and
+  `position`, `scope`, `shadowed_by`, `extends`, the remote profiles it extends, which only a
+  profile's state fills in; with a name, also `modules` with `name`, `from` and `overrides`, and
+  `read_as`, the profile of yours read in place of an active remote one, else `null`)
+  and `notices`; `--plain` rows are scope, name, kind, `on`/`off`, position and
   path (with a name: scope, module, from and the overridden layers), followed by a `notice` row
   (`notice`, level, text) per notice, as `lola list --plain` has.
   At project scope a bare name is the project's profile or yours; a name both of them define is
@@ -609,6 +629,140 @@ modules:
   may be a symbolic link (a dotfile manager's), as `user.yml` may; one that is not a regular file
   (a directory, a FIFO) is refused. `profiles/` may hold at most
   256 entries; a file whose name is not a valid module name followed by `.yml` is not a profile.
+
+### Remote profiles
+
+A remote profile is one someone shares from a git repository or an https archive. lola keeps
+each in `$XDG_DATA_HOME/lola/profiles/<name>/`: `profile.yml`, the file as fetched, and
+`source.json`, where it came from and its pin (the commit, and the digest of `profile.yml`). It
+lives with lola's data, not the cache, so clearing the cache never drops a profile that is on. It
+is used at user scope and in any project, by its name or as `remote:<name>`.
+
+```sh
+lola profile go --add https://github.com/example/profiles         # fetch profiles/go.yml, show it, ask
+lola profile --add https://github.com/example/profiles            # on a terminal: pick among its profiles
+lola profile go --add https://example.com/p.tar.gz --path team    # team/profiles/go.yml in an archive
+lola profile go --add https://github.com/example/profiles -n      # show it, keep nothing
+lola profile remote:go --on                                       # adding turns nothing on
+lola profile go --update                                          # fetch it again, show the change, ask
+lola profile go --remove                                          # delete it; asks (-y)
+```
+
+- **Adding.** `lola profile <name> --add <source>` (alias `--get`; `go` or `remote:go`) fetches the
+  source, at `--ref` (a branch, tag or commit of a git source), into lola's staging and reads
+  `profiles/<name>.yml` under its root, or under `--path`. The source must be a git repository
+  (`https://`, `ssh://`, `user@host:path`) or an `https://` archive at a host named by name: a
+  folder, a local archive, a `file://` URL, a URL lola cannot parse, plain `http://`, `localhost`
+  and `*.localhost` (with or without trailing dots), a host given as a loopback, link-local,
+  unspecified, private, carrier-grade NAT or site-local IP address (an IPv6 address that embeds an
+  IPv4 one, such as `::127.0.0.1` or `64:ff9b::7f00:1`, counts as that address), and one whose last
+  label is a number in any form but `a.b.c.d` (`2130706433`, `0x7f.1`, `127.1`) are refused (`…
+  names the private address 10.0.0.7; a remote profile reaches hosts by name only, never inside
+  your network`), and so are a hostile ref, a remote helper (`ext::`), `git://` and credentials in
+  the URL, before anything is fetched. Only `profiles/` is fetched, and a symbolic link in it, or
+  on the way to it through `--path`, is refused before anything is read. The profile is read as
+  strictly as any other, and each of its modules is fetched at its pin to show, under a header
+  naming the file every scope shares and the scope it is compared with (`remote:go → <path> (shared
+  by every scope); content compared with project <dir>`) and the profile's source and pin, every
+  entry with all the MCP servers, hooks and files it brings, whatever that scope's `lock.json`
+  says, which only notes when it has this version installed (paged, as `lola sync`'s diff is;
+  printed without a pager, the files are capped with the `-n --json` command that lists them all,
+  which names the profile even when you picked it: `lola profile remote:go --add <source> -n
+  --json`); then it asks. Nothing is kept or cached before you say yes: a No or Ctrl+C leaves no
+  trace. Other lola commands go on while it asks. Without a name, a terminal offers the source's
+  profiles to pick from (filterable, nothing preselected; files whose names are not valid profile
+  names, and `default.yml`, are only counted); off a terminal it refuses, naming them, with the
+  command that adds each (that shows each, for `-n`). A `--path` the source does not have, and a
+  source without `profiles/`, are refused saying which (`the source has no profiles/ directory at
+  its root`). Off a terminal `--trust` accepts what it shows, and without it lola refuses before
+  any network contact; `-n` shows it and keeps nothing. A remote profile of that name already kept
+  is refused (`lola profile remote:<name> --update` fetches it again), and so are the name
+  `default`, a `user:` or `project:` name, and a file in the profile's place. `--add` asks for a
+  scope as other actions do, `Compare its content with which scope? (adding turns nothing on)`;
+  adding turns nothing on (`turn it on: lola profile remote:go --on`). `--json` gives
+  `remote_profiles` (`profile`, `file`, `source`, `ref`, `path`, `commit`, `digest`,
+  `compared_with`, `description`, `changes` as in the trust diff, `written`), `notices` and
+  `dry_run`.
+- **Updating.** `lola profile <name> --update` (alias `--upgrade`; `go` or `remote:go`) fetches
+  the profile again from the source, ref and `--path` its `source.json` records, which are checked
+  as a typed source is. When the commit and digest are the same it says so (`remote:go is up to
+  date with <source> (commit …, sha256:…)`) and changes nothing; otherwise it shows the old and
+  new pins and how each entry changes (`~ example  rules (none) → false`, a new entry with what it
+  brings, a dropped one with `-`, `(no entry changes)` when only the file's other fields changed),
+  paged, and asks; off a terminal `--trust` accepts it, and
+  without it lola refuses before any network contact. A No or Ctrl+C keeps the old profile, and
+  so does a scope lola cannot read to apply it (refused before the question), and a profile that
+  changed while you were asked (`remote:go changed while you were asked; nothing was updated`).
+  The new profile replaces the old one in one step. When the scope you run it in uses the profile
+  (it is on, or an active profile or `default` extends it), lola then applies what the update
+  moves there, the modules whose winning entry it changes, with a `lola sync` of them, asking
+  before it removes files (`-y`) and about any project trust the change needs (`--trust`); any
+  other change the scope was waiting for is left to `lola sync`, with a notice (`1 other change
+  is pending → lola sync --user`), and an update that changes nothing installed there says so.
+  If the sync stops, the update is kept and the error says so (`remote:go is updated, but not
+  applied to user scope: …`, hint `apply it later: lola sync --user example`, with the run's
+  `--allow-hooks` and `--allow-runtime-hooks`), still printing the update's notices (under
+  `--json`, as hints of the error). Hints that repeat the update keep the run's `--allow-hooks`,
+  `--allow-runtime-hooks` and `-y`. The update is
+  applied in that scope only. The other scope you can see from there (user scope, or from user
+  scope the project found from the working directory) is read, never written: when it uses the
+  profile a notice gives the command that applies it there (`remote:go is also on at user scope;
+  apply it there: lola sync --user example`), and one that cannot be read is said so. Every
+  other scope picks the update up at its next `lola sync` (`remote:go is not in use in project
+  <dir>; every scope that uses it picks the update up at its next lola sync`). `--update` of
+  `user:go` or `project:go` is refused: those are files you edit. `--json` gives
+  `remote_profiles` (with `previous_commit` and `previous_digest`), `notices`, `dry_run`, `apply`
+  (the modules it applies in the scope) and `sync`, the sync's document or `null`.
+- **Removing.** `lola profile <name> --remove` (aliases `--rm`, `--delete`, `--del`, `--erase`,
+  `--uninstall`) deletes a remote profile's directory, after asking on a terminal; `-y` confirms,
+  and off a terminal without it lola refuses. It is refused while the scope you run it in, user
+  scope, or the project found from the working directory uses the profile (`remote:go is on at
+  user scope`, `remote:go is on in project <dir>`, or `remote:go is extended by user:mine, on at
+  user scope`), hinting the `--off` that frees it, or the edit of the `extends:` that names it
+  (the only way for `default.yml`), each command keeping the run's `-y`, and while one of them
+  cannot be read to tell; lola keeps no
+  list of every checkout, so other projects are not checked. `--force` removes it anyway, turning
+  those checks into warnings, and never skips the question. Its modules stay installed until each
+  scope's next `lola sync`, which warns that the profile is on but gone and removes them (asking
+  first); a profile that extends it refuses until you edit its `extends:`. `-n` says what it would
+  remove, and the command that removes it.
+- **Your consent is its pin.** A remote profile is yours once you accept it, so its entries are
+  never asked about in a project's trust diff. Every entry must carry its pin (`commit` and
+  `digest` for git, `digest` for an archive) and name a git repository or an https archive over
+  `https://` or `ssh://` at a host named by name, never a path on your machine, plain `http://`,
+  `localhost` or an address inside your network (an IP address counts only in its `a.b.c.d`
+  form: `2130706433` or `0x7f.1`, which git still connects to, is refused); one that does not, or whose `profile.yml` no longer has the
+  digest `source.json` records, refuses every run that uses it, hinting the commands that replace
+  it: `remove it: lola profile remote:go --remove --force` (it is in use wherever it was read,
+  and no check of that can pass; `--force` still asks, and `-y` is kept when you gave it), then
+  `then add it again: lola profile go --add <its source>` when `--add` accepts the source
+  `source.json` records, or why it does not. An entry's URL is never looked up
+  on disk, so a directory a checkout names like it never stands in for it. `lola sync --update
+  <module>` refuses a module whose pin a remote profile sets (`update it: lola profile
+  remote:<name> --update`). lola does not resolve host names: a name that points inside your
+  network, or a server that redirects there, is still fetched; add profiles only from sources you
+  trust to that extent.
+- **Local beats remote.** A profile of yours, or of the project at its scope, shadows a remote
+  profile of the same name: a bare name means the local one, listings say `(shadowed by
+  user:go)`, and `lola profile remote:go --on` is refused while it is shadowed (`use yours: lola
+  profile user:go --on`, or build on it with `extends:`, or rename or delete yours). When you
+  write a profile with the name of a remote one that is on, yours is used in its place from then
+  on (`user:go now replaces remote:go`), while the active list keeps `remote:go`: delete yours and
+  the remote one is used again, `--off` of it takes `remote:go`, and `--on` of yours changes
+  nothing (`user:go is already on, in place of remote:go (1st of 1)`). A project profile never
+  replaces it on its own: as for your profiles, lola says `project:go also exists → lola profile
+  project:go --on`, and turning that on puts it in the remote profile's place as a trust change,
+  dropping every other active profile of yours or remote one of its name.
+- **Seeing them.** `lola profile` lists them with kind `remote`; `lola profile remote:go` shows the
+  source, ref, commit and digest (`source`, `ref`, `commit` and `digest` in `--json`, `""` for a
+  local profile) and its modules. An active remote profile that a profile of yours now shadows
+  shows `user: 1st of 1, read as user:go; its modules:` and lists the remote profile's own modules.
+  One that a project profile shadows stays in effect until you turn that on: `project (<dir>): 1st
+  of 1, in effect; project:go would take its place if turned on`, with `to use project:go instead:
+  lola profile --project project:go --on`. When both are on, it says so instead (`project:go is on
+  too, 2nd of 2, and its entry wins where both list a module`): the later of the two in the active
+  list wins. A name in `$XDG_DATA_HOME/lola/profiles/` that is not a valid profile name is counted, never shown; a name starting with `.` is a directory lola is
+  writing.
 
 ### Project profiles
 
@@ -1466,6 +1620,7 @@ copy's directories before it removes the original.
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](#profiles); `default.yml` is always on at user scope. lola never writes them. | Yours to keep |
+| `$XDG_DATA_HOME/lola/profiles/` | [Remote profiles](#remote-profiles), one directory each with `profile.yml` and `source.json`. Only `lola profile` writes them. | Yours to keep |
 | `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote or you trusted in `lola sync` (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
 
@@ -1590,7 +1745,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
 | `LOLA_PAGER`, `PAGER` | The pager for sync's consent diff, in that order (default `less`, `more` on Windows); empty falls through, `cat` means none ([Sync, pins and trust](#sync-pins-and-trust)) |
 | `LESS` | Passed to `less`; set to `FRX` for the pager when unset |
-| `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
+| `XDG_DATA_HOME` | User-scope module copies, plugin data and [remote profiles](#remote-profiles) (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, the trust record, lock files and `lola migrate`'s trash (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive downloads (git reads them itself) |

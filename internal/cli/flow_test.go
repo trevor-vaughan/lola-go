@@ -32,6 +32,7 @@ type scripted struct {
 	review     []string
 	confirm    []bool
 	trust      []func(cli.TrustStep) (engine.TrustAnswer, error)
+	profiles   []func(cli.ProfileStep) ([]string, error)
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -40,6 +41,7 @@ type scripted struct {
 	pages          []cli.ComponentPage
 	reviewSteps    []cli.ReviewStep
 	trustSteps     []cli.TrustStep
+	profileSteps   []cli.ProfileStep
 }
 
 func pop[T any](q *[]T, step string) T {
@@ -83,6 +85,10 @@ func (s *scripted) Confirm(question string) (bool, error) {
 func (s *scripted) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 	s.calls, s.trustSteps = append(s.calls, "trust"), append(s.trustSteps, st)
 	return pop(&s.trust, "trust")(st)
+}
+func (s *scripted) Profiles(st cli.ProfileStep) ([]string, error) {
+	s.calls, s.profileSteps = append(s.calls, "profiles"), append(s.profileSteps, st)
+	return pop(&s.profiles, "profiles")(st)
 }
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)

@@ -119,6 +119,29 @@ func aliasFlags(cmd *cobra.Command, aliases map[string][]string) {
 	})
 }
 
+// checkFlagAliases panics when a flag alias of c or any command under it names a flag the command
+// inherits, a persistent flag of an ancestor or cobra's help flag (Plan 6b §3.3): cobra merges
+// those into the command's flag set, through the command's normalize function, so the inherited
+// flag would silently become the alias's flag. aliasFlags checks the command's own flags; this
+// runs once the tree is built, when the inherited ones are known.
+func checkFlagAliases(c *cobra.Command) {
+	c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+		for _, a := range f.Annotations[flagAliasKey] {
+			if a == "help" {
+				panic("flag alias --help of " + c.CommandPath() + " is cobra's help flag") // a programming error caught by every spec
+			}
+			for p := c.Parent(); p != nil; p = p.Parent() {
+				if p.PersistentFlags().Lookup(a) != nil {
+					panic("flag alias --" + a + " of " + c.CommandPath() + " is a flag " + p.CommandPath() + " gives every command") // as above
+				}
+			}
+		}
+	})
+	for _, sub := range c.Commands() {
+		checkFlagAliases(sub)
+	}
+}
+
 // aliasedFlagUsages is fs's usage lines with each flag's aliases after its name:
 // "--on (--enable, --activate)".
 func aliasedFlagUsages(fs *pflag.FlagSet) string {
@@ -202,7 +225,7 @@ ENVIRONMENT
   HOME             user-scope root and base of the XDG defaults
   PATH             where lola finds installed assistants; absolute entries only
   XDG_CONFIG_HOME  config.yaml, selections.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
-  XDG_DATA_HOME    user-scope module copies and plugin data (default ~/.local/share)
+  XDG_DATA_HOME    user-scope module copies, plugin data and remote profiles (default ~/.local/share)
   XDG_STATE_HOME   the user-scope ledger, hook consent, locks and lola migrate's trash (default ~/.local/state)
   XDG_CACHE_HOME   the cache, downloads and assistant versions (default ~/.cache)
 `)

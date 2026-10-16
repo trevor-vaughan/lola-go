@@ -19,6 +19,7 @@ type Paths struct {
 	UserLock       string   // StateHome/lola/.lock
 	Locks          string   // StateHome/lola/locks: one lock file per project, outside the project's .lola/
 	SelectionsLock string   // StateHome/lola/locks/selections.lock: taken before any scope lock
+	ProfilesLock   string   // StateHome/lola/locks/profiles.lock: shared to read remote profiles, exclusive to write them; taken first (Plan 6b §10)
 	Consent        string   // StateHome/lola/consent.json: install hook consent (§9.1)
 	Trust          string   // StateHome/lola/trust.json: per project, the project.yml view the user trusted (Plan 6a §7)
 	TrustLock      string   // StateHome/lola/locks/trust.lock: held around trust.json's read-modify-write, after every scope lock
@@ -28,6 +29,7 @@ type Paths struct {
 	Staging        string   // CacheHome/lola/.staging: same filesystem as Store, so renames never cross devices
 	Tmp            string   // CacheHome/lola/tmp: downloads
 	UserModules    string   // DataHome/lola/user-modules: module copies at user scope
+	RemoteProfiles string   // DataHome/lola/profiles: one directory per remote profile, holding profile.yml and source.json (Plan 6b §4.1, D3)
 	PluginData     string   // DataHome/lola/plugin-data
 	Probes         string   // CacheHome/lola/probes.json: assistant versions, per binary build
 	Search         []string // absolute PATH entries, where lola looks for assistants' binaries
@@ -62,6 +64,7 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.UserLock = filepath.Join(p.StateHome, "lola", ".lock")
 	p.Locks = filepath.Join(p.StateHome, "lola", "locks")
 	p.SelectionsLock = filepath.Join(p.Locks, "selections.lock")
+	p.ProfilesLock = filepath.Join(p.Locks, "profiles.lock")
 	p.Consent = filepath.Join(p.StateHome, "lola", "consent.json")
 	p.Trust = filepath.Join(p.StateHome, "lola", "trust.json")
 	p.TrustLock = filepath.Join(p.Locks, "trust.lock")
@@ -71,6 +74,7 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.Staging = filepath.Join(p.CacheHome, "lola", ".staging")
 	p.Tmp = filepath.Join(p.CacheHome, "lola", "tmp")
 	p.UserModules = filepath.Join(p.DataHome, "lola", "user-modules")
+	p.RemoteProfiles = filepath.Join(p.DataHome, "lola", "profiles")
 	p.PluginData = filepath.Join(p.DataHome, "lola", "plugin-data")
 	p.Probes = filepath.Join(p.CacheHome, "lola", "probes.json")
 	// Relative PATH entries are ignored, like Go's exec.ErrDot: a repository must not be able

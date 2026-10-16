@@ -446,7 +446,7 @@ var _ = Describe("profiles", func() {
 		res, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Update: true, ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
-			Text: "example: --update leaves the pin profile:default sets; edit the pin in " + def}))
+			Text: "example: --update leaves the pin " + def + " sets; edit the pin in " + def}))
 		Expect(pinned()).To(And(HaveField("Commit", first), HaveField("Digest", v1)), "the profile's pin is installed")
 
 		// A project profile is the project's: its unpinned entry is pinned, with the user's trust,
@@ -680,7 +680,8 @@ var _ = Describe("profiles", func() {
 		Expect(err).To(MatchError("no profile x?[31m for the project at "+proj), "the name goes through untrusted.Text")
 		Expect(os.RemoveAll(p.UserProfiles)).To(Succeed())
 		_, _, err = e.ProfileState(ctx, []engine.Scope{user}, "go")
-		Expect(errs.Hints(err)).To(Equal([]string{"write one: " + filepath.Join(p.UserProfiles, "<name>.yml")}))
+		Expect(errs.Hints(err)).To(Equal([]string{"write one: " + filepath.Join(p.UserProfiles, "<name>.yml") +
+			"; lola profile --add fetches a remote one"}))
 	})
 
 	It("refuses a profile that does not load, naming the file and line", func() {

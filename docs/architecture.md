@@ -61,18 +61,32 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
   deterministically, the manifest edited in place (`manifest.Edit`) with its pins.
 - `profile`: Profiles (Plan 6b §4): `Visible` finds the user's profiles and, at user scope,
   `default.yml` by their names alone (at most 256 entries in `profiles/`), and counts the `.yml`
-  files whose names fail the module-name rules, which listings report as a count and never by
-  name (§19 S7); `Load` reads one through
-  `yamldoc.Read` (following a symbolic link, as for `user.yml`, §19 P7), version first, known keys
-  only, at most 512 entries each checked as a manifest entry (`manifest.Entry.Validate`), every
-  refusal with the file and line; `Entries` gives entries without targets the profile's
-  `targets`. `Project` lists a project's committed profiles in `<root>/.lola/profiles/` the
-  same way, after refusing a `.lola/` or `.lola/profiles/` that is a symbolic link, not a
-  directory, or resolves outside the root (`fsx.Resolve`, §19 S3); a `default.yml` there is no
-  profile, and its path is returned for listings to warn about (a project cannot define
-  `default`). `LoadProject` reads one as `Load` does but refuses a symbolic link and opens it with
-  `yamldoc.ReadNoFollow`, coaching "restore it from version control". No network, no writes;
-  depguard holds its imports.
+  files whose names fail the module-name rules, which listings report as a count and never by name
+  (§19 S7); `Load` reads one through `yamldoc.Read` (following a symbolic link, as for `user.yml`,
+  §19 P7), version first, known keys only, at most 512 entries each checked as a manifest entry
+  (`manifest.Entry.Validate`), every refusal with the file and line; `Entries` gives entries without
+  targets the profile's `targets`. `Project` lists a project's committed profiles in
+  `<root>/.lola/profiles/` the same way, after refusing a `.lola/` or `.lola/profiles/` that is a
+  symbolic link, not a directory, or resolves outside the root (`fsx.Resolve`, §19 S3); a
+  `default.yml` there is no profile, and its path is returned for listings to warn about (a project
+  cannot define `default`). `LoadProject` reads one as `Load` does but refuses a symbolic link and
+  opens it with `yamldoc.ReadNoFollow`, coaching "restore it from version control". `Remote` lists
+  the remote profiles in `$XDG_DATA_HOME/lola/profiles/`, one directory each (a name starting with
+  `.` is a directory lola is writing, never a profile); `LoadRemote` reads `<name>/profile.yml` and
+  `source.json` (`Origin`: version, source, ref, path, commit, digest) without following a link,
+  checks the origin (`Origin.Check`: the recorded-source rules, a remote source, a full pin) and
+  that the file's bytes have the digest it records, then applies a remote profile's rules: every
+  entry names a remote source and carries its pin (§19 S1, D4). `CheckRemoteSource` is what a remote
+  source is: `https://`, `ssh://` or git's scp form, at a host given by name, never a URL that does
+  not parse, plain `http://`, `localhost` or `*.localhost` (trailing dots included), a loopback,
+  link-local, unspecified, private, carrier-grade NAT or site-local (`fec0::/10`) IP address,
+  NAT64's local-use `64:ff9b:1::/48`, an IPv6 address embedding such an IPv4 one (`::a.b.c.d`,
+  `64:ff9b::/96`), or an IP address in any but its canonical form (a host whose last label is a
+  number, WHATWG's "ends in a number", is an IP address to git and ssh; rulings R-6b3b-6, R-6b3b-9).
+  `Fetched` and `FetchedNames` read `<name>.yml` from the `profiles/` directory of a source the
+  engine fetched into staging, refusing a `profiles/` or a file that is a symbolic link before
+  reading (§19 S3), with the same rules. No network, no writes; depguard holds its imports (`source`
+  for the pin rules only).
 - `activeprofile`: The qualified names a scope's active profile list stores in `lock.json`
   (`user:go`, `project:go`, `remote:go`; never `default`), at most 64: a leaf with no YAML, so
   `ledger` imports it and `profile` may import `ledger` later without a cycle.
@@ -523,7 +537,10 @@ release `.lola/` is removed only if this command created it and nothing was reco
 
 ## Fetching sources
 
-`source.Parse` classifies an argument; `source.Fetch` stages a module from a `Spec`. Both call one
+`source.Parse` classifies an argument: a URL (`://`, but `file://`) or git's scp form (a Windows
+drive path excepted) by its form alone, never looked up on disk, where a directory a checkout
+names like it could stand in for it (Plan 6b ruling R-6b3b-5); anything else by what is on disk.
+`source.Fetch` stages a module from a `Spec`. Both call one
 unexported `validate`, because the engine also builds `Spec`s from the ledger and the cache index
 without parsing an argument, and a project's files may be someone else's. `validate` refuses
 `-`-prefixed locations and refs, remote-helper syntax, `git://`, credentials, queries and fragments
@@ -848,6 +865,117 @@ the trust question, which for an activation is all or none (P10). `lola sync` ne
 project:go --on`), as activations and the listing do. Nothing about a declined replacement is
 stored.
 
+**Remote profiles** (`$XDG_DATA_HOME/lola/profiles/<name>/`, Plan 6b §4.2, §8.2) are listed by
+`Engine.visible` beside the local ones (`profile.Remote`) and read with `profile.LoadRemote`.
+Their layers are the user's own (`Layer.Key` empty, so `own()`): the consent was given when the
+profile was fetched, so no project's trust view holds them (D5); every entry is pinned, so
+nothing is written back, and `ownPin` coaches a pin problem with `lola profile remote:<name>
+--update`. Local beats remote (decision 4): `resolveProfile` looks for a bare name among the
+local profiles first, refuses a name that local profiles of two or more kinds define
+(`ambiguousProfileError`, every candidate named), and takes the remote profile only when no
+local one has its name; `shadowing` names the local profile that shadows a remote one, which
+`activeList` refuses to turn on and listings report (`ProfileRow.ShadowedBy`). An active
+`remote:<name>` whose name a user profile now has is read as that profile (`userShadow`, D8),
+with the notice `user:go now replaces remote:go`, on every run: the stored name is never
+rewritten, so the remote profile is used again once the user's file goes, and `--on user:go`
+leaves the list as it is (`user:go is already on, in place of remote:go`). A project profile is
+never swapped in by a sync: the `replaced`/`replacements` pairs take an active `remote:` profile
+as they take a `user:` one, and `--on project:go` takes the first active namesake's place and
+drops the others. `validateSync` refuses a remote profile's entry, or an extended one's,
+that still parses as local (a Windows drive path, the one local form a remote source check can
+miss).
+
+**The profiles lock** (`$XDG_STATE_HOME/lola/locks/profiles.lock`, Plan 6b §10, §19 S6) is the
+first lock any run takes. `readProfiles` takes it shared for every run that reads the remote
+profiles (`Sync`, `Render`, `Install`, `Uninstall`, `lola list` (`Status`), `lola profile`'s
+listing and state (`Profiles`, `ProfileState`), the install coaching and completion
+(`InstallCoaching`, `SyncNames`), and `--add`/`--update`/`--remove` while they fetch, show and
+ask), and lists them under it: when a killed writer left a directory behind (a `.new-`, `.old-` or
+`.del-` directory; any other name starting with `.` is not lola's and is left alone), it lets go,
+takes the lock exclusively, finishes that work (`sweepRemote`) and starts again, so a crash between
+an update's two renames never makes a profile that is on look gone. A dry run takes it too, but
+never sweeps, and takes none when no lola has made the lock file yet. The writers take it
+exclusively (`lockProfiles(true)`) only to check again that what they showed still holds and to
+write, so no question is ever asked under it and syncs elsewhere go on.
+
+**Adding a remote profile** (`Engine.AddProfile`, `internal/engine/remote_add.go`, Plan 6b
+§6.5) checks everything it can before any network contact: the name (`remote:go` taken as `go`,
+another kind refused, then `remoteName`: valid, not `default`), the source (`remoteSpec`:
+`profile.CheckRemoteSource`, which takes only `https://`, `ssh://` and git's scp form at a host
+named by name, ruling R-6b3b-6; then `source.Parse`, which never looks a URL or scp form up on
+disk, ruling R-6b3b-5; `source.Recorded.Check` and `source.Validate`), that the scope is readable
+and its `lock.json` untracked (`profileScope`), and that it can ask (a nil `Consent` refuses,
+naming `-n` and `--trust`). Under the shared lock it fetches only `<--path>/profiles` of the
+source into the run's staging (`fetchProfiles`: `source.Fetch`, which refuses a link in it or on
+the way to it, §19 S3; a missing `--path` or `profiles/` is told apart through
+`source.MissingPathError.Exists`). `profile.Fetched` reads each named (or picked, `pickRemote`,
+which never offers `default`) profile; `remoteContent` diffs its entries against none
+(`trust.Check`) and, for each, resolves its module at its pin into the same staging
+(`remoteEntry`: parsed without the disk, refused when local, `source.Validate`, `checkPinShape`,
+`resolveSync`) and lists its whole content, every file, MCP server and hook as added, whatever
+the scope's `lock.json` says, which only annotates it (`FilesNote`, ruling R-6b3b-7); nothing is
+published to the cache. After `Consent`, under the exclusive lock, it sweeps, checks no profile
+of the name appeared (`refuseKept`, which also refuses a file in its place), and `writeRemote`
+writes `profile.yml` (the bytes fetched) and `source.json` into a `.new-<name>-*` directory under
+`RemoteProfiles`, flushes that directory, and renames it into place, renaming any previous
+directory aside to `.old-<name>-*` first and removing it after, and syncing the directory (§19
+R11); `sweepRemote` puts an `.old-` directory back when nothing took its place and removes the
+rest (`.new-`, and `.del-`, a removal's). Once the rename succeeded the profile counts as written:
+a later failure (flushing, removing the `.old-` one, or `visible` checking for a local namesake)
+is a warning notice, never a failed add or update. The run's staging is removed on every path.
+
+**Updating one** (`Engine.UpdateProfile`, `internal/engine/remote_update.go`) takes the profiles
+lock shared first (`readProfiles`, whose sweep finishes an interrupted write, so a profile left
+aside is found), resolves the name to a kept remote profile (`remoteNamed`; a bare name is the
+remote one, since only those are updated), refuses before any network contact when it cannot ask,
+and reads the kept profile (`profile.LoadRemote`), checks its recorded source again (`remoteSpec`),
+fetches `profiles/` as `--add` does and compares: an unchanged `Origin` is a notice; otherwise
+`remoteContent` diffs the old entries against the new, with the whole content of each changed one.
+Before the question, `scopeBefore` reads what the run's scope, and the other scope a user sees from
+there (user scope, or the project `foundProject` finds), want and whether they use the profile
+(`uses`: as an active layer, not one a user profile shadows, or through an active layer's
+`extends:`); a run's scope it cannot read refuses there, so nothing is kept that cannot be applied.
+After `Consent`, under the exclusive lock, it refuses when the kept profile is no longer the one
+shown, replaces it (`writeRemote`), and `scopeUse.after` reads the scopes again and keeps the
+modules whose winning entry changed (§19 P9), counting every other difference from `lock.json` as
+pending. The run's scope gets those modules as `ProfileUpdateResult.Apply`, which the CLI syncs
+after the lock is released; the other scope only gets a notice with the command that applies them
+there, or that it could not be read (R-6b3b-2). The update and its apply are two steps: the profile
+is shared by every scope, and the next sync of any scope applies it, so a sync that stops leaves
+the update kept and says so, with the update's notices (as error hints under `--json`).
+`ProfileUpdateRequest.Flags` carries the run's `--allow-hooks`, `--allow-runtime-hooks` and `-y`,
+which every hint that repeats the run keeps.
+
+**Removing one** (`Engine.RemoveProfile`, `internal/engine/remote_remove.go`) refuses without a way
+to ask (`-y` answers; `--force` never does), under the shared lock taken first, as for an update,
+then checks the run's scope, user scope and the project found from the working directory
+(`foundProject`): through `uses`, the profile itself on, or an active profile or `default`
+extending it, refuses unless `Force`, and so does a scope it cannot read (under `--force` only a
+failure of the run's own `profileScope`, a tracked or unreadable `lock.json`, still refuses; a
+scope whose layers cannot be read becomes a warning). Its hints repeat the run's `-y` (and `-n` for
+the `--force` one), since without it they refuse off a terminal. After the question, under the
+exclusive lock, it checks the profile is still there with the `source.json` it read before asking
+(else `changed while you were asked`), and renames the directory aside (`.del-<name>-*`, which a
+sweep only ever removes) before removing it, so the profile is gone in one step; a failure to
+delete what was renamed aside is a warning, since the profile is gone and the next run's sweep
+removes it. A name that is not a directory there is no profile. The modules it installed are left
+to each scope's next sync, which reports the active profile as gone (§10).
+
+**`extends:`** (Plan 6b §4.3) is resolved in `loadProfiles`, which lists the remote profiles and
+reads each remote profile once per run, whether it is active, extended or both: a user or project
+profile's layer holds the extended remote profiles' entries in list order, then its own, a later
+entry replacing an earlier one of its name with no override notice (`Layer.over` records the
+replaced remote profiles, which `desired` puts in `Wanted.Over`, so a profile's state and an
+activation's `changes[].over` name them), and an entry without targets takes the extending
+profile's. A name that is no remote profile refuses with the profile's file and line
+(`Profile.ExtendsError`), reading as an invalid name does, so it never tells which remote profiles
+exist (§19 S4). `Layer.via` keeps, per module, the remote profile an entry came from
+(`trust.ExtendsView`: name, source, commit, digest), and `Wanted.via`/`syncEntry.via` carry it:
+its pin is the remote profile's (`ownPin`, so `sync --update` refuses it and no pin is ever
+written into the extending profile), and in a project profile's trust part the entry is recorded
+with it (`trust.Entry.Extends`, `CoversEntry`), so a remote profile updated or replaced is a
+change to every entry it gives, field `extends`, through the trust picker.
+
 `Status` (`lola list`) reads the same layers: a row's `From` is the layer whose entry wins now,
 else the one `lock.json` recorded (the manifest's base name when it recorded none); a profile's
 entry that `lock.json` does not record is `not_installed` like a manifest entry. It returns the
@@ -1116,6 +1244,11 @@ handler.
   `cache update` and content digests make a change visible but do not prevent it; a version
   fetched again for an install must match its recorded digest, and a git commit must be on its
   ref. Checkouts convert nothing and run no filter program a repository's attributes name.
+- **Remote profiles.** A remote profile and its entries reach `https://`/`ssh://` hosts by name
+  only (R-6b3b-6/-9); lola never resolves names, so a name that resolves inside your network, and
+  a redirect to an address inside it that git or the archive fetch follows, are still fetched
+  (residual). A planted, untracked `lock.json` can change only the 'installed' annotation of
+  `--add`/`--update`, never what is shown (R-6b3b-7).
 - **Recorded sources.** `project.yml` and `lock.json` may be someone else's: their sources,
   refs, paths, commits and digests are checked when they are loaded, before any git run, for
   every command that reads them (`list` included). Names,

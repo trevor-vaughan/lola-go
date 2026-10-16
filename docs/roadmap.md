@@ -50,7 +50,10 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      pending post-install hooks, moved projects, accessible-mode Ctrl+C)
      (`docs/superpowers/specs/2026-10-12-plan-6a-sync-design.md`).
    - **6b. Profiles:** stackable named sets of modules
-     ([#223](https://github.com/LobsterTrap/lola/issues/223)).
+     ([#223](https://github.com/LobsterTrap/lola/issues/223)), delivered as 6b.1 a scope for
+     every command and the pager, 6b.2a layers, 6b.2b `lola profile`, 6b.3a project profiles
+     and 6b.3b remote profiles (done: `--add`, `--update` and `--remove`, `extends:`, and the
+     profiles lock) (`docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md`).
    - **6c. Marketplaces:** `lola market` and `@market/module`, reading the Claude marketplace
      JSON catalog format, and the Python lola's YAML catalogs for migrated users.
    - **6d. `lola clean`:** move files lola does not manage out of its destinations.

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -19,11 +21,75 @@ import (
 
 // profileActions are lola profile's action flags, canonical names in the order a refusal names
 // them (Plan 6b §3.2).
-var profileActions = []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff, engine.ProfileSwitch}
+var profileActions = []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff, engine.ProfileSwitch, engine.ProfileAdd, engine.ProfileUpdate,
+	engine.ProfileRemove}
+
+// profileFlags are the flags each action takes beside the scope and output flags (Plan 6b §3.2,
+// §19 P13), in the order a refusal checks them: a flag the run's action does not take, or any of
+// them without an action, is refused, since a flag that does nothing must not look accepted.
+var profileFlags = map[engine.ProfileAction][]string{
+	engine.ProfileOn:     {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
+	engine.ProfileOff:    {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
+	engine.ProfileSwitch: {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
+	engine.ProfileAdd:    {"trust", "dry-run", "ref", "path"},
+	engine.ProfileUpdate: {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
+	engine.ProfileRemove: {"yes", "dry-run", "force"},
+}
+
+// refuseProfileFlags refuses a flag of profileFlags that cmd's action act ("" for none) does not
+// take, naming the actions that do; the hint is the run without it (args are its names).
+func refuseProfileFlags(cmd *cobra.Command, args []string, act engine.ProfileAction) error {
+	var all []string
+	for _, a := range profileActions {
+		for _, f := range profileFlags[a] {
+			if !slices.Contains(all, f) {
+				all = append(all, f)
+			}
+		}
+	}
+	for _, f := range all {
+		if !cmd.Flags().Changed(f) || slices.Contains(profileFlags[act], f) {
+			continue
+		}
+		var takes []string
+		for _, a := range profileActions {
+			if slices.Contains(profileFlags[a], f) {
+				takes = append(takes, "--"+string(a))
+			}
+		}
+		applies := takes[0]
+		if len(takes) > 1 {
+			applies = strings.Join(takes[:len(takes)-1], ", ") + " and " + takes[len(takes)-1]
+		}
+		return errs.WithHints(fmt.Errorf("--%s applies to %s only", f, applies), "drop it: "+runWithout(cmd, args, f))
+	}
+	return nil
+}
+
+// runWithout is the lola profile command the user ran, its names args and every flag they set
+// but those named in drop, by canonical name, quoted for the shell: what a hint offers to run
+// instead.
+func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
+	out := []string{"lola", "profile"}
+	for _, a := range args {
+		out = append(out, untrusted.Text(a, untrusted.MaxName))
+	}
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		switch {
+		case slices.Contains(drop, f.Name):
+		case f.Value.Type() == "bool":
+			out = append(out, "--"+f.Name)
+		default:
+			out = append(out, "--"+f.Name, untrusted.Text(f.Value.String(), untrusted.MaxName))
+		}
+	})
+	return errs.ShellJoin(out)
+}
 
 // profileAction is the one action flag set on cmd, "" for none (Plan 6b §19 R7): cobra has
-// parsed, so the check is on canonical names; two different actions refuse, naming both.
-func profileAction(cmd *cobra.Command) (engine.ProfileAction, error) {
+// parsed, so the check is on canonical names; two different actions refuse, naming both, with
+// the run keeping each one of them as hints (args are its names).
+func profileAction(cmd *cobra.Command, args []string) (engine.ProfileAction, error) {
 	var set []engine.ProfileAction
 	for _, act := range profileActions {
 		if cmd.Flags().Changed(string(act)) {
@@ -36,14 +102,26 @@ func profileAction(cmd *cobra.Command) (engine.ProfileAction, error) {
 	case 1:
 		return set[0], nil
 	}
-	return "", errs.WithHints(fmt.Errorf("--%s and --%s cannot be combined; pick one", set[0], set[1]), "lola profile <name>… --on|--off|--switch")
+	var hints []string
+	for _, keep := range set {
+		var drop []string
+		for _, other := range set {
+			if other != keep {
+				drop = append(drop, string(other))
+			}
+		}
+		hints = append(hints, "keep --"+string(keep)+": "+runWithout(cmd, args, drop...))
+	}
+	return "", errs.WithHints(fmt.Errorf("--%s and --%s cannot be combined; pick one", set[0], set[1]), hints...)
 }
 
 func (a *app) profileCmd() *cobra.Command {
 	var f syncFlags
 	var on, off, switchTo bool
+	var add remoteFlags
+	var update, remove bool
 	cmd := &cobra.Command{
-		Use:   "profile [<name>...] [--on|--off|--switch]",
+		Use:   "profile [<name>...] [--on|--off|--switch|--add <source>|--update|--remove]",
 		Short: "List your profiles, show one, or turn them on and off",
 		Long: "A profile is a named set of module entries, kept in $XDG_CONFIG_HOME/lola/profiles/<name>.yml;\n" +
 			"default.yml there is always on at user scope. A project may commit its own in\n" +
@@ -54,44 +132,63 @@ func (a *app) profileCmd() *cobra.Command {
 			"wins, at user scope default, then the active profiles in order, then user.yml; at project\n" +
 			"scope the active profiles, then project.yml. For a profile that is off, it shows what turning\n" +
 			"it on would give.\n" +
-			"A name is the profile's file name; user:<name> says it is yours, project:<name> the project's.\n" +
-			"A name both define is refused at project scope until you qualify it.\n\n" +
+			"Remote profiles, fetched from a source, are kept in $XDG_DATA_HOME/lola/profiles/<name>/ and\n" +
+			"used at every scope; a profile of yours, or the project's, with the same name shadows one.\n" +
+			"A name is the profile's file name; user:<name> says it is yours, project:<name> the project's,\n" +
+			"remote:<name> the remote one. A name yours and the project's both define is refused at\n" +
+			"project scope until you qualify it.\n\n" +
 			"--on turns the named profiles on, appended to the scope's active list in the order given;\n" +
 			"--off turns them off; --switch makes them the active list, in order (default stays on). Each\n" +
 			"applies the change at once, as lola sync does for the modules it changes: the modules no\n" +
 			"layer wants any more are removed, never one another layer still wants. Any action that\n" +
 			"removes files asks first; -y confirms. default cannot be turned off (rename or delete\n" +
 			"default.yml) and has no place at project scope. One action per run.\n\n" +
+			"--add <source> fetches profiles/<name>.yml from a git repository or an https archive (at\n" +
+			"--ref, under --path), shows its entries with the files, MCP servers and hooks each brings,\n" +
+			"and asks before keeping it; without a name, a terminal offers the source's profiles. Every\n" +
+			"entry of a remote profile must be pinned. Adding turns nothing on, and off a terminal it\n" +
+			"needs --trust, checked before anything is fetched. --update fetches a remote profile again\n" +
+			"from the source, ref and path it was added from, shows how its entries change, asks, and\n" +
+			"applies it to the scope when the scope uses it; other scopes pick it up at their next sync.\n" +
+			"--remove deletes a remote profile, asking first (-y); it is refused while the scope, user scope\n" +
+			"or the project found from here uses it, unless --force, which never skips the question.\n\n" +
 			"Scope without an action: --project, --user, -C <dir> or --scope (both included); without them,\n" +
 			"the project with .lola/ at or above the current directory, if any, and user scope. Listing and\n" +
 			"showing never ask, and default_scope does not apply.\n" +
 			"With an action: " + strings.TrimPrefix(scopeHelp, "Scope: ") + "\n" +
 			"Every lola profile refuses a project whose .lola/lock.json git tracks.",
 		Example: "  lola profile\n  lola profile go\n  lola profile go --on\n  lola profile go docs --switch --user\n" +
-			"  lola profile go --off -y\n  lola profile --user --json",
+			"  lola profile go --off -y\n  lola profile --user --json\n  lola profile go --add https://github.com/example/profiles\n" +
+			"  lola profile go --update\n  lola profile go --remove -y",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeProfile,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			act, err := profileAction(cmd)
+			act, err := profileAction(cmd, args)
 			if err != nil {
+				return err
+			}
+			if err := refuseProfileFlags(cmd, args, act); err != nil {
 				return err
 			}
 			eng, err := a.engine()
 			if err != nil {
 				return err
 			}
-			if act != "" {
+			switch act {
+			case "":
+			case engine.ProfileAdd:
+				return a.profileAdd(cmd, eng, args, add, f)
+			case engine.ProfileUpdate:
+				return a.profileUpdate(cmd, eng, args, f)
+			case engine.ProfileRemove:
+				return a.profileRemove(cmd, eng, args, f)
+			default:
 				return a.profileApply(cmd, eng, engine.ProfileChange{Action: act, Names: args}, f)
 			}
-			for _, flag := range []string{"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"} {
-				if cmd.Flags().Changed(flag) {
-					return errs.WithHints(fmt.Errorf("--%s applies to --on, --off and --switch only", flag), "lola profile <name>… --on|--off|--switch --"+flag)
-				}
-			}
 			if len(args) > 1 {
-				return errs.WithHints(errors.New("name one profile to show"), "list them all: lola profile",
-					"or act on them: lola profile <name>… --on|--off|--switch")
+				return errs.WithHints(errors.New("name one profile to show"), "list them all: "+runWithout(cmd, nil),
+					"or turn them on: "+runWithout(cmd, args)+" --on")
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -142,9 +239,15 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&on, string(engine.ProfileOn), false, "turn the named profiles on, appended to the active list in order, and apply")
 	cmd.Flags().BoolVar(&off, string(engine.ProfileOff), false, "turn the named profiles off and apply (asks when files go; -y)")
 	cmd.Flags().BoolVar(&switchTo, string(engine.ProfileSwitch), false, "make the named profiles the active list, in order, and apply")
+	cmd.Flags().StringVar(&add.source, string(engine.ProfileAdd), "", "fetch a remote profile from this git repository or https archive, show it and ask")
+	cmd.Flags().BoolVar(&update, string(engine.ProfileUpdate), false, "fetch a remote profile again from its source, show what changed, ask, and apply it where it is on")
+	cmd.Flags().BoolVar(&remove, string(engine.ProfileRemove), false, "delete a remote profile (asks; -y; refused while it is in use, unless --force)")
+	cmd.Flags().StringVar(&add.ref, "ref", "", "with --add: the branch, tag or commit to fetch")
+	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory of the source that holds profiles/")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
-	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals (only removals: it never trusts changes)")
-	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its profiles the run installs, and a project profile taking your profile's place, without asking (never grants hook consent)")
+	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
+	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its profiles the run installs, a project profile taking your profile's place, and a remote profile --add or --update shows, without asking (never grants hook consent)")
+	cmd.Flags().BoolVar(&f.force, "force", false, "with --remove: remove a remote profile in use (never skips the question)")
 	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
 	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
 	// Aliases for muscle memory from other tools (Plan 6b §3.3): systemctl and conda, nvm and
@@ -153,6 +256,9 @@ func (a *app) profileCmd() *cobra.Command {
 		string(engine.ProfileOn):     {"enable", "activate"},
 		string(engine.ProfileOff):    {"disable", "deactivate"},
 		string(engine.ProfileSwitch): {"use"},
+		string(engine.ProfileAdd):    {"get"},
+		string(engine.ProfileUpdate): {"upgrade"},
+		string(engine.ProfileRemove): {"rm", "delete", "del", "erase", "uninstall"},
 	})
 	return cmd
 }
@@ -317,7 +423,11 @@ func printProfiles(w io.Writer, s style, eng *engine.Engine, rows []engine.Profi
 			if r.Active {
 				active = s.paint("32", active)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s  %s\n", r.Scope, r.Name, r.Kind, active, r.Path)
+			path := r.Path
+			if r.ShadowedBy != nil {
+				path += " (shadowed by " + *r.ShadowedBy + ")"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s  %s\n", r.Scope, r.Name, r.Kind, active, path)
 		}
 		_ = tw.Flush()
 	}
@@ -339,14 +449,42 @@ func printProfileState(w io.Writer, s style, states []engine.ProfileState, notic
 		}
 	} else {
 		fmt.Fprintf(w, "Profile %s (%s)\n", states[0].Qualified, states[0].Path)
+		if st := states[0]; st.Source != "" {
+			from := "from " + st.Source
+			if st.Ref != "" {
+				from += " (ref " + st.Ref + ")"
+			}
+			fmt.Fprintln(w, from)
+			if st.Commit != "" {
+				fmt.Fprintln(w, "commit "+st.Commit)
+			}
+			fmt.Fprintln(w, "digest "+st.Digest)
+		}
+		if len(states[0].Extends) > 0 {
+			fmt.Fprintln(w, "extends "+strings.Join(states[0].Extends, ", "))
+		}
 		for _, st := range states {
 			where := st.Scope
 			if st.Root != "" {
 				where += " (" + st.Root + ")"
 			}
 			switch {
+			case !st.Active && st.ShadowedBy != nil:
+				fmt.Fprintf(w, "%s: off, shadowed by %s; its modules:\n", where, *st.ShadowedBy)
 			case !st.Active:
 				fmt.Fprintf(w, "%s: off; turned on, its modules would come from:\n", where)
+			case st.ReadAs != nil:
+				fmt.Fprintf(w, "%s: %s, read as %s; its modules:\n", where, activeText(st.ProfileRow), *st.ReadAs)
+			case st.ShadowedBy != nil && st.ShadowPosition != nil:
+				wins := "its entry"
+				if st.Position != nil && *st.ShadowPosition < *st.Position {
+					wins = "this one's entry"
+				}
+				fmt.Fprintf(w, "%s: %s, in effect; %s is on too, %s of %d, and %s wins where both list a module; its modules:\n", where,
+					activeText(st.ProfileRow), *st.ShadowedBy, engine.Ordinal(*st.ShadowPosition), st.Of, wins)
+			case st.ShadowedBy != nil:
+				fmt.Fprintf(w, "%s: %s, in effect; %s would take its place if turned on; its modules:\n", where, activeText(st.ProfileRow),
+					*st.ShadowedBy)
 			default:
 				fmt.Fprintf(w, "%s: %s\n", where, activeText(st.ProfileRow))
 			}
@@ -356,7 +494,7 @@ func printProfileState(w io.Writer, s style, states []engine.ProfileState, notic
 			}
 			tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 			for _, m := range st.Modules {
-				line := "  " + m.Name + "\t" + m.From
+				line := "  " + m.Name + "\t" + cmp.Or(m.From, "not wanted here")
 				if len(m.Overrides) > 0 {
 					line += "\t(over " + strings.Join(m.Overrides, ", ") + ")"
 				}

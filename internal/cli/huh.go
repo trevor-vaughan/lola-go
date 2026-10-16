@@ -399,6 +399,25 @@ func (h *huhForms) Confirm(question string) (bool, error) {
 	return ok, err
 }
 
+// Profiles offers a source's profiles to add, filterable, nothing preselected; files whose names
+// are not valid are counted in its description.
+func (h *huhForms) Profiles(st ProfileStep) ([]string, error) {
+	opts := make([]huh.Option[string], 0, len(st.Names))
+	for _, n := range st.Names {
+		opts = append(opts, huh.NewOption(h.cut(n), n))
+	}
+	desc := "from " + st.Source
+	switch {
+	case st.Invalid == 1:
+		desc += "; 1 file with an invalid name is not offered"
+	case st.Invalid > 1:
+		desc += fmt.Sprintf("; %d files with invalid names are not offered", st.Invalid)
+	}
+	var chosen []string
+	err := h.run(h.multi("Add which profiles?", h.cut(desc), opts, &chosen).Filterable(true))
+	return chosen, err
+}
+
 // reviewLabels name the review menu's entries.
 var reviewLabels = map[string]string{ReviewApply: "Apply", ReviewScope: "Change scope", ReviewModules: "Change modules",
 	ReviewAssistants: "Change assistants", ReviewComponents: "Change components", ReviewQuit: "Quit"}

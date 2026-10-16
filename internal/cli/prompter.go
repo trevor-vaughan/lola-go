@@ -31,6 +31,17 @@ type Prompter interface {
 	Trust(TrustStep) (engine.TrustAnswer, error)
 	// Confirm asks a yes/no question, default No: sync's removals.
 	Confirm(question string) (bool, error)
+	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
+	// multi-select, nothing preselected (Plan 6b §3.2).
+	Profiles(ProfileStep) ([]string, error)
+}
+
+// ProfileStep offers the profiles a source holds, by name; Invalid counts its files whose names
+// are not valid profile names, never shown (Plan 6b §19 S7).
+type ProfileStep struct {
+	Source  string
+	Names   []string
+	Invalid int
 }
 
 // TrustStep is sync's trust question (Plan 6a §7.5). Changes is the number of changes "Trust
@@ -174,6 +185,7 @@ func (noPrompter) Components(ComponentPage) ([]string, error)   { return nil, er
 func (noPrompter) ConfirmEmpty(string) (bool, error)            { return false, errNoTerminal }
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }
 func (noPrompter) Confirm(string) (bool, error)                 { return false, errNoTerminal }
+func (noPrompter) Profiles(ProfileStep) ([]string, error)       { return nil, errNoTerminal }
 func (noPrompter) Trust(TrustStep) (engine.TrustAnswer, error) {
 	return engine.TrustAnswer{}, errNoTerminal
 }

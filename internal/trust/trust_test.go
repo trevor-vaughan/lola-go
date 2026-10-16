@@ -319,6 +319,32 @@ var _ = Describe("trust record", func() {
 			Expect(string(b)).To(Equal(`[{"field":"targets","from":["opencode"],"to":null},{"field":"rules","from":false,"to":null}]`))
 		})
 
+		It("lists the remote profile an entry comes from as its extends field, and covers only the same one", func() {
+			from := func(digest string) *trust.ExtendsView {
+				return &trust.ExtendsView{Name: "remote:go", Source: "https://example.com/p.git", Commit: strings.Repeat("c", 40), Digest: digest}
+			}
+			was, now := trust.EntryOf(pinned), trust.EntryOf(pinned)
+			was.Extends, now.Extends = from("sha256:1"), from("sha256:2")
+			rec := &trust.Record{View: trust.View{Modules: []trust.Entry{was}}, Exists: true}
+			rep := trust.Check(rec, trust.View{Modules: []trust.Entry{now}})
+			Expect(rep.Changes).To(HaveExactElements(trust.Change{Module: "kit", Kind: trust.ChangeChanged, ContentFixed: true, Fields: []trust.FieldChange{
+				{Field: "extends", From: "remote:go from https://example.com/p.git commit cccccccccccc sha256:1",
+					To: "remote:go from https://example.com/p.git commit cccccccccccc sha256:2"}}}))
+			moved := trust.EntryOf(pinned)
+			moved.Extends = from("sha256:1")
+			moved.Extends.Commit = strings.Repeat("d", 40)
+			Expect(trust.Check(rec, trust.View{Modules: []trust.Entry{moved}}).Changes[0].Fields).To(Equal([]trust.FieldChange{{Field: "extends",
+				From: "remote:go from https://example.com/p.git commit cccccccccccc sha256:1",
+				To:   "remote:go from https://example.com/p.git commit dddddddddddd sha256:1"}}), "a commit-only change shows")
+			Expect(rec.View.CoversEntry(was)).To(BeTrue())
+			Expect(rec.View.CoversEntry(now)).To(BeFalse())
+			Expect(rec.View.Covers(pinned)).To(BeFalse(), "an entry of the profile's own is not the remote profile's")
+			accepted := trust.Accept(rec.View, "", trust.View{Modules: []trust.Entry{now}}, []string{"kit"}, false)
+			Expect(accepted.CoversEntry(now)).To(BeTrue())
+			now.Extends.Digest = "sha256:3"
+			Expect(accepted.Modules[0].Extends.Digest).To(Equal("sha256:2"), "the record shares nothing with the view")
+		})
+
 		It("marks a source moved between local and remote, or to another scheme, as a host change, and a path change on one host as none", func() {
 			for from, to := range map[string]string{
 				"mods/kit":                        "https://github.com/acme/kit.git",

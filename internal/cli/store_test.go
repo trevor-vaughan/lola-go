@@ -384,9 +384,13 @@ var _ = Describe("published alias table", func() {
 			"lola profile --on":     {"enable", "activate"},
 			"lola profile --off":    {"disable", "deactivate"},
 			"lola profile --switch": {"use"},
+			"lola profile --add":    {"get"},
+			"lola profile --update": {"upgrade"},
+			"lola profile --remove": {"rm", "delete", "del", "erase", "uninstall"},
 		}))
 		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("--on (--enable, --activate) "),
-			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) ")))
+			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--add (--get) string "),
+			ContainSubstring("--update (--upgrade) "), ContainSubstring("--remove (--rm, --delete, --del, --erase, --uninstall) ")))
 	})
 
 	It("JSON array keys are [] in an empty environment", func() {

@@ -35,6 +35,7 @@ linters:
             - github.com/trevor-vaughan/lola-go/internal/manifest
             - github.com/trevor-vaughan/lola-go/internal/module # name rules
             - github.com/trevor-vaughan/lola-go/internal/paths
+            - github.com/trevor-vaughan/lola-go/internal/source # a remote profile's pin rules, never a fetch
             - github.com/trevor-vaughan/lola-go/internal/untrusted
             - github.com/trevor-vaughan/lola-go/internal/yamldoc
             - go.yaml.in/yaml/v3

@@ -35,16 +35,28 @@ const Version = 1
 const maxSize = 4 << 20
 
 // Entry is one module's view fields: everything of a manifest entry that changes what lola
-// fetches or writes.
+// fetches or writes. Extends is set on a project profile's entry that comes from a remote profile
+// it extends (Plan 6b §8.1), and omitted otherwise, so a view without one hashes as in Plan 6a.
 type Entry struct {
-	Name    string   `json:"name"`
-	Source  string   `json:"source,omitempty"`
-	Ref     string   `json:"ref,omitempty"`
-	Path    string   `json:"path,omitempty"`
-	Commit  string   `json:"commit,omitempty"`
-	Digest  string   `json:"digest,omitempty"`
-	Targets []string `json:"targets,omitempty"`
-	Rules   *bool    `json:"rules,omitempty"`
+	Name    string       `json:"name"`
+	Source  string       `json:"source,omitempty"`
+	Ref     string       `json:"ref,omitempty"`
+	Path    string       `json:"path,omitempty"`
+	Commit  string       `json:"commit,omitempty"`
+	Digest  string       `json:"digest,omitempty"`
+	Targets []string     `json:"targets,omitempty"`
+	Rules   *bool        `json:"rules,omitempty"`
+	Extends *ExtendsView `json:"extends,omitempty"`
+}
+
+// ExtendsView is the remote profile an entry comes from through extends: (Plan 6b §8.1, §19 S4):
+// its qualified name and the source and pin of its source.json. Another pin (after lola profile
+// --update) or another source of that name is a change to every entry it gives.
+type ExtendsView struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+	Commit string `json:"commit,omitempty"`
+	Digest string `json:"digest"`
 }
 
 // View is a manifest's top-level targets and entries, modules sorted by name (§7.2), and the
@@ -161,14 +173,21 @@ func (v View) Find(name string) *Entry {
 }
 
 // Covers reports whether the view holds an entry named like e whose every view field equals e's.
-func (v View) Covers(e manifest.Entry) bool {
+func (v View) Covers(e manifest.Entry) bool { return v.CoversEntry(EntryOf(e)) }
+
+// CoversEntry is Covers for an entry's view, which may come from a remote profile (Extends).
+func (v View) CoversEntry(e Entry) bool {
 	r := v.Find(e.Name)
-	return r != nil && r.equal(EntryOf(e))
+	return r != nil && r.equal(e)
 }
 
 func (a Entry) equal(b Entry) bool {
 	return a.Name == b.Name && a.Source == b.Source && a.Ref == b.Ref && a.Path == b.Path && a.Commit == b.Commit &&
-		a.Digest == b.Digest && slices.Equal(a.Targets, b.Targets) && sameRules(a.Rules, b.Rules)
+		a.Digest == b.Digest && slices.Equal(a.Targets, b.Targets) && sameRules(a.Rules, b.Rules) && sameExtends(a.Extends, b.Extends)
+}
+
+func sameExtends(a, b *ExtendsView) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
 func sameRules(a, b *bool) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
@@ -254,10 +273,17 @@ func (e *Entry) take(l, s Entry) {
 	if !sameRules(l.Rules, s.Rules) {
 		e.Rules = s.Rules
 	}
+	if !sameExtends(l.Extends, s.Extends) {
+		e.Extends = s.Extends
+	}
 }
 
 func (e Entry) clone() Entry {
 	e.Targets = slices.Clone(e.Targets)
+	if e.Extends != nil {
+		x := *e.Extends
+		e.Extends = &x
+	}
 	return e
 }
 
@@ -377,7 +403,23 @@ func fieldChanges(from, to Entry) []FieldChange {
 	if !sameRules(from.Rules, to.Rules) {
 		out = append(out, FieldChange{Field: "rules", From: boolValue(from.Rules), To: boolValue(to.Rules)})
 	}
+	if !sameExtends(from.Extends, to.Extends) {
+		out = append(out, FieldChange{Field: "extends", From: extendsValue(from.Extends), To: extendsValue(to.Extends)})
+	}
 	return out
+}
+
+// extendsValue is the remote profile an entry comes from, as a field change shows it: its name,
+// source, commit (12 characters, when it has one) and digest ("remote:go from https://… commit
+// 0123456789ab sha256:…").
+func extendsValue(x *ExtendsView) any {
+	if x == nil {
+		return nil
+	}
+	if x.Commit != "" {
+		return x.Name + " from " + x.Source + " commit " + x.Commit[:min(12, len(x.Commit))] + " " + x.Digest
+	}
+	return x.Name + " from " + x.Source + " " + x.Digest
 }
 
 func stringValue(s string) any {

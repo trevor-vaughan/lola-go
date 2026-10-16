@@ -19,14 +19,21 @@ import (
 
 // ProfileRow is one profile a scope can use, as lola profile lists it (Plan 6b §12.2). Name is
 // the profile's own name and Kind where it comes from; Position counts from 1 in the scope's
-// active list, nil when the profile is off or is default, which is always on. Source,
-// ShadowedBy and Extends belong to remote profiles and extends:, which a later plan adds: they
-// are "", nil and [] here. Every string has been through untrusted.Text.
+// active list, nil when the profile is off or is default, which is always on. A remote
+// profile's Source, Ref, Commit and Digest are its source.json's: where it came from and the pin
+// you consented to ("" for a local profile, and for a remote one whose
+// source.json cannot be read, which a notice reports); ShadowedBy is the local profile of its
+// name that shadows it, nil when none does (§4.4). Extends is the remote profiles the profile
+// extends, by qualified name, in a profile's state; a listing reads no profile file, so it is []
+// there. Every string has been through untrusted.Text.
 type ProfileRow struct {
 	Name       string   `json:"name"`
 	Kind       string   `json:"kind"`
 	Path       string   `json:"path"`
 	Source     string   `json:"source"`
+	Ref        string   `json:"ref"`
+	Commit     string   `json:"commit"`
+	Digest     string   `json:"digest"`
 	Active     bool     `json:"active"`
 	Position   *int     `json:"position"`
 	Scope      string   `json:"scope"`
@@ -38,14 +45,20 @@ type ProfileRow struct {
 }
 
 // ProfileState is one profile's state in a scope (Plan 6b §12.1, §12.2): its row and each of its
-// modules with the layer whose entry wins there.
+// modules with the layer whose entry wins there. ReadAs is, for an active remote profile, the
+// user profile of its name read in its place (D8), nil otherwise: a project profile that shadows
+// it takes its place only when turned on. ShadowPosition is that project profile's place in the
+// active list when it is on too (both are layers, the later one winning), nil when it is off.
 type ProfileState struct {
 	ProfileRow
-	Modules []ProfileModule `json:"modules"`
+	ReadAs         *string         `json:"read_as"`
+	ShadowPosition *int            `json:"-"`
+	Modules        []ProfileModule `json:"modules"`
 }
 
 // ProfileModule is a module a profile lists, with the layer whose entry the scope uses (From)
-// and the layers that entry replaced (Overrides), lowest first.
+// and the layers that entry replaced (Overrides), lowest first; From is "" when no layer of the
+// scope wants it (a remote profile's module while a local profile shadows it).
 type ProfileModule struct {
 	Name      string   `json:"name"`
 	From      string   `json:"from"`
@@ -89,20 +102,33 @@ func (e *Engine) profileScope(ctx context.Context, sc Scope) (infos []profile.In
 }
 
 // Profiles is every profile sc can use, in name order (Plan 6b §3.2 "lola profile"), with its
-// place in the scope's active list. It reads the profiles directory's listing and lock.json, no
-// profile file (§19 S8). An active profile whose file is gone is a notice, as in a sync (§10),
-// and files whose names are not valid profile names are a count, never shown (§4.3, §19 S7).
+// place in the scope's active list. It reads the profiles directories' listings, lock.json and
+// each remote profile's source.json, no profile file (§19 S8). An active profile whose file is
+// gone is a notice, as in a sync (§10), and so is a remote profile a user profile now shadows;
+// files whose names are not valid profile names are a count, never shown (§4.3, §19 S7).
 func (e *Engine) Profiles(ctx context.Context, sc Scope) ([]ProfileRow, []Notice, error) {
+	unlock, err := e.readProfiles(true)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer unlock()
 	infos, listing, led, notices, err := e.profileScope(ctx, sc)
 	if err != nil {
 		return nil, nil, err
 	}
 	rows := make([]ProfileRow, 0, len(infos))
 	for _, i := range infos {
-		rows = append(rows, e.profileRow(sc, i, led))
+		row, note := e.profileRow(sc, infos, i, led)
+		rows = append(rows, row)
+		if note != nil {
+			notices = append(notices, *note)
+		}
 	}
 	for _, a := range led.Profiles {
-		if !slices.ContainsFunc(infos, func(i profile.Info) bool { return i.Qualified() == a.Name }) {
+		switch mine := userShadow(infos, a.Name); {
+		case mine != nil:
+			notices = append(notices, Notice{Level: LevelWarn, Text: shown(mine.Qualified()) + " now replaces " + shown(a.Name)})
+		case !slices.ContainsFunc(infos, func(i profile.Info) bool { return i.Qualified() == a.Name }):
 			notices = append(notices, e.goneProfile(sc, a.Name))
 		}
 	}
@@ -113,32 +139,55 @@ func (e *Engine) Profiles(ctx context.Context, sc Scope) ([]ProfileRow, []Notice
 }
 
 // ProfileNames is the names of the profiles you can turn on or off, for completion: your own
-// profiles (default is always on), by the listing of their directory alone.
+// profiles (default is always on), then the remote ones no profile of yours shadows, by the
+// listings of their directories alone.
 func (e *Engine) ProfileNames() ([]string, error) {
 	infos, _, err := profile.Visible(e.Paths, false)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, len(infos))
-	for k, i := range infos {
-		out[k] = i.Name
+	remote, _, err := profile.Remote(e.Paths)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(infos)+len(remote))
+	for _, i := range infos {
+		out = append(out, i.Name)
+	}
+	for _, i := range remote {
+		if !slices.Contains(out, i.Name) {
+			out = append(out, i.Name)
+		}
 	}
 	return out, nil
 }
 
-// profileRow is i's row in sc, whose lock.json is led.
-func (e *Engine) profileRow(sc Scope, i profile.Info, led *ledger.Ledger) ProfileRow {
+// profileRow is i's row in sc, whose lock.json is led and whose profiles are infos, with a
+// warning when i is a remote profile whose source.json cannot be read.
+func (e *Engine) profileRow(sc Scope, infos []profile.Info, i profile.Info, led *ledger.Ledger) (ProfileRow, *Notice) {
 	row := ProfileRow{Name: shown(i.Name), Kind: string(i.Kind), Path: shown(i.Path), Scope: sc.Kind.String(), Extends: []string{},
 		Qualified: shown(i.Qualified()), Root: shown(root(sc)), Of: len(led.Profiles)}
+	var note *Notice
+	if i.Kind == profile.KindRemote {
+		o, err := profile.ReadOrigin(filepath.Dir(i.Path))
+		if err != nil {
+			note = &Notice{Level: LevelWarn, Text: shown(i.Qualified()) + ": " + shown(untrusted.CleanErr(err).Error())}
+		}
+		row.Source, row.Ref, row.Commit, row.Digest = shown(o.Source), shown(o.Ref), shown(o.Commit), shown(o.Digest)
+		if sh := shadowing(infos, i); sh != nil {
+			by := shown(sh.Qualified())
+			row.ShadowedBy = &by
+		}
+	}
 	if i.Kind == profile.KindDefault {
 		row.Active = true
-		return row
+		return row, note
 	}
 	if k := slices.IndexFunc(led.Profiles, func(a ledger.Active) bool { return a.Name == i.Qualified() }); k >= 0 {
 		pos := k + 1
 		row.Active, row.Position = true, &pos
 	}
-	return row
+	return row, note
 }
 
 // goneProfile is the warning about an active profile whose file is gone (Plan 6b §10).
@@ -153,6 +202,11 @@ func (e *Engine) goneProfile(sc Scope, q string) Notice {
 // when it resolves in none, the first scope's refusal is returned. The named profile is read, and
 // the scope's active ones, once each, as a sync reads them.
 func (e *Engine) ProfileState(ctx context.Context, scopes []Scope, name string) ([]ProfileState, []Notice, error) {
+	unlock, err := e.readProfiles(true)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer unlock()
 	out, notices := []ProfileState{}, []Notice{}
 	var first error
 	for _, sc := range scopes {
@@ -187,9 +241,30 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 	if err != nil {
 		return nil, nil, err
 	}
-	st := &ProfileState{ProfileRow: e.profileRow(sc, i, led), Modules: []ProfileModule{}}
+	row, note := e.profileRow(sc, infos, i, led)
+	if note != nil {
+		notices = append(notices, *note)
+	}
+	st := &ProfileState{ProfileRow: row, Modules: []ProfileModule{}}
 	view := led.Clone()
-	if i.Kind != profile.KindDefault && !st.Active {
+	// A remote profile a local one shadows cannot be turned on (§4.4), and one that is on is read
+	// as the local one (D8): either is shown as it stands, its own entries.
+	shadowed := i.Kind == profile.KindRemote && st.ShadowedBy != nil
+	if shadowed && st.Active {
+		at := slices.IndexFunc(led.Profiles, func(a ledger.Active) bool { return shown(a.Name) == *st.ShadowedBy })
+		switch mine := userShadow(infos, i.Qualified()); {
+		case mine != nil:
+			by := shown(mine.Qualified())
+			st.ReadAs = &by
+		case at >= 0:
+			pos := at + 1
+			st.ShadowPosition = &pos
+		default:
+			notices = append(notices, Notice{Level: LevelInfo, Text: "to use " + *st.ShadowedBy + " instead: " +
+				e.Command(sc, "profile", *st.ShadowedBy, "--on")})
+		}
+	}
+	if i.Kind != profile.KindDefault && !st.Active && !shadowed {
 		view.Profiles = append(view.Profiles, ledger.Active{Name: i.Qualified(), By: ledger.ByOn})
 	}
 	pl, err := e.loadProfiles(sc, infos, view.Profiles)
@@ -198,32 +273,45 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 	}
 	var own Layer
 	var read bool
-	if i.Kind == profile.KindDefault {
+	switch {
+	case i.Kind == profile.KindDefault:
 		if read = pl.def != nil; read {
 			own = *pl.def
 		}
-	} else {
+	case shadowed:
+		p, _, err := profile.LoadRemote(i.Path)
+		if err != nil {
+			return nil, nil, e.readd(sc, i.Name, false, err)
+		}
+		own, read = Layer{Entries: p.Entries()}, true
+	default:
 		own, read = pl.named[i.Qualified()]
 	}
 	if !read {
 		// infos holds i, so loadProfiles read it or failed; this guards that rather than index on it.
 		return nil, nil, errs.WithHints(fmt.Errorf("profile %s no longer exists", shown(i.Qualified())), "see the profiles: "+e.Command(sc, "profile"))
 	}
+	for _, x := range own.extends {
+		st.Extends = append(st.Extends, shown(x))
+	}
 	want, _ := desired(pl.assemble(e.manifestLayer(sc, man), view.Profiles))
 	for _, ent := range own.Entries {
-		w := find(want, ent.Name)
-		over := []string{}
-		for _, o := range w.Over {
-			over = append(over, shown(o))
+		m := ProfileModule{Name: shown(ent.Name), Overrides: []string{}}
+		if w := find(want, ent.Name); w != nil {
+			m.From = shown(w.From)
+			for _, o := range w.Over {
+				m.Overrides = append(m.Overrides, shown(o))
+			}
 		}
-		st.Modules = append(st.Modules, ProfileModule{Name: shown(ent.Name), From: shown(w.From), Overrides: over})
+		st.Modules = append(st.Modules, m)
 	}
 	slices.SortFunc(st.Modules, func(a, b ProfileModule) int { return strings.Compare(a.Name, b.Name) })
 	return st, append(notices, pl.notices...), nil
 }
 
-// ownedBy is whose a profile of kind is, as an ambiguous name's refusal says it: "your profile"
-// or "the project's", or as a hint's label, "yours" or "the project's".
+// ownedBy is whose a profile of kind is, as an ambiguous name's refusal says it: "your profile",
+// "the project's" or "the remote profile", or as a hint's label, "yours", "the project's" or "the
+// remote one".
 func ownedBy(kind profile.Kind, label bool) string {
 	switch {
 	case kind == profile.KindUser && label:
@@ -232,6 +320,10 @@ func ownedBy(kind profile.Kind, label bool) string {
 		return "your profile"
 	case kind == profile.KindProject:
 		return "the project's"
+	case kind == profile.KindRemote && label:
+		return "the remote one"
+	case kind == profile.KindRemote:
+		return "the remote profile"
 	}
 	return string(kind)
 }
@@ -260,8 +352,8 @@ type unknownProfileError struct{ error }
 
 func (e *unknownProfileError) Unwrap() error { return e.error }
 
-// ambiguousProfileError is a bare profile name both a user and a project profile define (D8),
-// with the two profiles, so --off can say which of them is on.
+// ambiguousProfileError is a bare profile name that profiles of several local kinds define (D8),
+// with those profiles, so --off can say which of them are on.
 type ambiguousProfileError struct {
 	error
 	found []profile.Info
@@ -270,15 +362,14 @@ type ambiguousProfileError struct {
 func (e *ambiguousProfileError) Unwrap() error { return e.error }
 
 // resolveProfile is the profile a name typed on the command line names in sc (Plan 6b §4.4),
-// among infos, the profiles sc can use: a bare name is, at project scope, the project's profile
-// or the user's of that name, and at user scope the user's (remote profiles, which it would also
-// look in, come with Plan 6b.3b); a bare name both a project and a user profile define is
-// ambiguous and refused, naming both profiles and their files and hinting, for each, the user's
-// command with the name qualified (D8); default is default.yml, at user scope only; a qualified
-// name (user:go, project:go) names its kind. Any other name is refused, listing the profiles sc
-// can use; remote: names are refused so until their kind is read (§19 P8). args is what the
-// user typed after lola profile, the names and the action flag, or nil for the state form of a
-// single name.
+// among infos, the profiles sc can use. A bare name is a local profile of that name, at project
+// scope the project's or the user's, at user scope the user's; else the remote one: local beats
+// remote, which a local namesake shadows. A bare name that local profiles of two or more kinds
+// define is ambiguous and refused, naming every one of them and its file and hinting, for each,
+// the user's command with the name qualified (D8). default is default.yml, at user scope only. A
+// qualified name (user:go, project:go, remote:go) names its kind. Any other name is refused,
+// listing the profiles sc can use. args is what the user typed after lola profile, the names and
+// the action flag, or nil for the state form of a single name.
 func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string, args []string) (profile.Info, error) {
 	kind, bare, qualified := strings.Cut(name, ":")
 	if !qualified {
@@ -296,22 +387,31 @@ func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string, arg
 	var found []profile.Info
 	if module.ValidateName("profile", bare) == nil {
 		for _, i := range infos {
-			if i.Name == bare && i.Kind != profile.KindDefault && (kind == "" || kind == string(i.Kind)) {
+			if i.Name == bare && i.Kind != profile.KindDefault && (kind == "" && i.Kind != profile.KindRemote || kind == string(i.Kind)) {
 				found = append(found, i)
 			}
 		}
+		if len(found) == 0 && kind == "" {
+			if k := slices.IndexFunc(infos, func(i profile.Info) bool { return i.Kind == profile.KindRemote && i.Name == bare }); k >= 0 {
+				found = append(found, infos[k])
+			}
+		}
 	}
-	switch len(found) {
-	case 1:
+	switch {
+	case len(found) == 1:
 		return found[0], nil
-	case 2:
+	case len(found) > 1:
 		var named, hints []string
 		for _, i := range found {
 			named = append(named, ownedBy(i.Kind, false)+" "+shown(i.Qualified())+" ("+shown(i.Path)+")")
 			hints = append(hints, ownedBy(i.Kind, true)+": "+e.Command(sc, "profile", qualifiedArgs(args, name, i.Qualified())...))
 		}
-		return profile.Info{}, &ambiguousProfileError{errs.WithHints(fmt.Errorf("%s is ambiguous: %s and %s are both named %s", shown(bare),
-			named[0], named[1], shown(bare)), hints...), found}
+		all := "both"
+		if len(found) > 2 {
+			all = "all"
+		}
+		return profile.Info{}, &ambiguousProfileError{errs.WithHints(fmt.Errorf("%s is ambiguous: %s are %s named %s", shown(bare),
+			andJoin(named), all, shown(bare)), hints...), found}
 	}
 	var names []string
 	for _, i := range infos {
@@ -327,6 +427,7 @@ func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string, arg
 		if sc.Kind == target.Project {
 			hint += ", or the project's: " + shown(filepath.Join(sc.ProjectDir, profile.ProjectDir, "<name>.yml"))
 		}
+		hint += "; lola profile --add fetches a remote one"
 	}
 	return profile.Info{}, &unknownProfileError{errs.WithHints(fmt.Errorf("no profile %s for %s", untrusted.Text(name, untrusted.MaxName), where), hint)}
 }

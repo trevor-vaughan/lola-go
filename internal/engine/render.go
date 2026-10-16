@@ -85,7 +85,7 @@ func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manife
 		}
 	} else {
 		part := &trust.Record{View: rec.View.Part(w.key), Exists: rec.Exists}
-		if !part.View.Covers(*ment) || len(ment.Targets) == 0 && !slices.Equal(rec.View.Targets, man.Targets) {
+		if !part.View.CoversEntry(w.view()) || len(ment.Targets) == 0 && !slices.Equal(rec.View.Targets, man.Targets) {
 			return newLeftOut(name, CodeNotTrusted, base+" "+untrustedWhy(part, name), review), nil, nil
 		}
 	}
@@ -162,8 +162,9 @@ func (e *Engine) renderPin(sc Scope, name string, entry *ledger.Entry, w *Wanted
 	switch {
 	case w == nil || w.Digest == "":
 		return entry.Digest, entry.Commit, "", ""
-	case w.own():
-		return w.Digest, w.Commit, shown(w.path), "edit the pin in " + shown(w.path)
+	case w.own() || w.via != nil:
+		file, repin := e.ownPin(sc, w.From, w.path, w.via)
+		return w.Digest, w.Commit, file, repin
 	case w.key != "":
 		return w.Digest, w.Commit, projectProfileFile(w.key), e.SyncCommand(sc, "--update", name)
 	}

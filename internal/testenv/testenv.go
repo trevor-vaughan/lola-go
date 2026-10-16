@@ -2,6 +2,14 @@
 package testenv
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
@@ -9,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/onsi/ginkgo/v2"
 )
@@ -85,6 +94,14 @@ func ServeGit(root string) string {
 // the server's goroutine: a spec counts the requests lola makes, or looks at the file system
 // while a fetch is in flight.
 func ServeGitWith(root string, seen func(*http.Request)) string {
+	srv := httptest.NewServer(gitBackend(root, seen))
+	ginkgo.GinkgoT().Cleanup(srv.Close)
+	return srv.URL
+}
+
+// gitBackend is git's http-backend over the bare repositories below root, reading no global or
+// system git config, calling seen, when set, with every request first.
+func gitBackend(root string, seen func(*http.Request)) http.Handler {
 	t := ginkgo.GinkgoT()
 	out, err := exec.Command("git", "--exec-path").Output()
 	if err != nil {
@@ -92,14 +109,56 @@ func ServeGitWith(root string, seen func(*http.Request)) string {
 	}
 	h := &cgi.Handler{Path: filepath.Join(strings.TrimSpace(string(out)), "git-http-backend"), Env: []string{
 		"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_SYSTEM=" + os.DevNull}}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if seen != nil {
 			seen(r)
 		}
 		h.ServeHTTP(w, r)
-	}))
+	})
+}
+
+// specHost is the name ServeGitTLS serves at: a reserved name (RFC 6761 .test), which no
+// resolver answers, so only the spec's own git config can lead it anywhere.
+const specHost = "lola.test"
+
+// ServeGitTLS is ServeGitWith over https, at https://lola.test:<port>: lola refuses remote
+// profiles that name a host by an IP address, localhost, or plain http (Plan 6b rulings R-6b3b-6,
+// R-6b3b-9), so specs of remote profiles serve their repositories this way. The server's
+// certificate is made for the spec, for lola.test alone. A git config of the spec's own, which
+// GIT_CONFIG_GLOBAL points git at for the spec (lola passes it on), resolves lola.test to the
+// server on loopback (http.curloptResolve) and trusts the certificate (http.sslCAInfo); no lola
+// code knows the server is a spec's, or needs a loopback exception. Isolate's GIT_CONFIG_GLOBAL
+// of /dev/null comes back after the spec.
+func ServeGitTLS(root string, seen func(*http.Request)) string {
+	t := ginkgo.GinkgoT()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("testenv: %v", err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: specHost}, DNSNames: []string{specHost},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour), IsCA: true, BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("testenv: %v", err)
+	}
+	dir := t.TempDir()
+	ca := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600); err != nil {
+		t.Fatalf("testenv: %v", err)
+	}
+	srv := httptest.NewUnstartedServer(gitBackend(root, seen))
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, MinVersion: tls.VersionTLS12}
+	srv.StartTLS()
 	t.Cleanup(srv.Close)
-	return srv.URL
+	_, port, _ := strings.Cut(strings.TrimPrefix(srv.URL, "https://"), ":")
+	config := filepath.Join(dir, "gitconfig")
+	body := "[http]\n\tcurloptResolve = " + specHost + ":" + port + ":127.0.0.1\n\tsslCAInfo = " + ca + "\n"
+	if err := os.WriteFile(config, []byte(body), 0o600); err != nil {
+		t.Fatalf("testenv: %v", err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", config)
+	return "https://" + specHost + ":" + port
 }
 
 // specTools are the programs specs, fake assistants and hook scripts invoke through PATH.

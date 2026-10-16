@@ -118,7 +118,7 @@ var _ = Describe("profiles", func() {
 		r = lola("profile", "go", "base")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: name one profile to show\n  hint: list them all: lola profile\n" +
-			"  hint: or act on them: lola profile <name>… --on|--off|--switch\n"))
+			"  hint: or turn them on: lola profile go base --on\n"))
 		r = lola("profile", "nope", "--user")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: no profile nope for user scope\n  hint: profiles user scope can use: user:base, default, user:go\n"))
@@ -257,7 +257,9 @@ var _ = Describe("profiles", func() {
 			Expect(r.err).To(ContainSubstring(" cannot be combined; pick one\n"))
 		}
 		Expect(lola("profile", "go", "--user", "--on", "--off").err).To(Equal("error: --on and --off cannot be combined; pick one\n" +
-			"  hint: lola profile <name>… --on|--off|--switch\n"))
+			"  hint: keep --on: lola profile go --on --user\n  hint: keep --off: lola profile go --off --user\n"))
+		Expect(lola("profile", "go", "--user", "--on", "--add", "https://example.com/p.git").err).To(HavePrefix(
+			"error: --on and --add cannot be combined; pick one\n"))
 		Expect(lola("profile", "go", "--user", "--off", "--switch").err).To(HavePrefix("error: --off and --switch cannot be combined; pick one\n"))
 		Expect(lola("profile", "go", "--user", "--enable", "--deactivate").err).To(HavePrefix("error: --on and --off cannot be combined; pick one\n"),
 			"aliases are refused by their canonical names")
@@ -269,19 +271,28 @@ var _ = Describe("profiles", func() {
 		Expect(lola("profile", "--on", "--user").err).To(Equal("error: --on needs the names of the profiles\n  hint: list them: lola profile\n"))
 	})
 
-	DescribeTable("refuses an action's flags without an action",
-		func(flag, canonical string) {
+	DescribeTable("refuses an action's flags without an action, or with one that does not take them",
+		func(args []string, want string) {
 			writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-			r := lola("profile", "go", flag)
+			r := lola(append([]string{"profile", "go"}, args...)...)
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: --" + canonical + " applies to --on, --off and --switch only\n" +
-				"  hint: lola profile <name>… --on|--off|--switch --" + canonical + "\n"))
+			Expect(r.err).To(Equal(want))
 		},
-		Entry("-y", "-y", "yes"),
-		Entry("--trust", "--trust", "trust"),
-		Entry("-n", "-n", "dry-run"),
-		Entry("--allow-hooks", "--allow-hooks", "allow-hooks"),
-		Entry("--allow-runtime-hooks", "--allow-runtime-hooks", "allow-runtime-hooks"),
+		Entry("-y", []string{"-y"}, "error: --yes applies to --on, --off, --switch, --update and --remove only\n  hint: drop it: lola profile go\n"),
+		Entry("--trust", []string{"--trust"},
+			"error: --trust applies to --on, --off, --switch, --add and --update only\n  hint: drop it: lola profile go\n"),
+		Entry("-n", []string{"-n", "--user"},
+			"error: --dry-run applies to --on, --off, --switch, --add, --update and --remove only\n  hint: drop it: lola profile go --user\n"),
+		Entry("--allow-hooks", []string{"--allow-hooks"},
+			"error: --allow-hooks applies to --on, --off, --switch and --update only\n  hint: drop it: lola profile go\n"),
+		Entry("--allow-runtime-hooks", []string{"--allow-runtime-hooks"},
+			"error: --allow-runtime-hooks applies to --on, --off, --switch and --update only\n  hint: drop it: lola profile go\n"),
+		Entry("--ref", []string{"--on", "--ref", "v1"}, "error: --ref applies to --add only\n  hint: drop it: lola profile go --on\n"),
+		Entry("--path", []string{"--path", "x"}, "error: --path applies to --add only\n  hint: drop it: lola profile go\n"),
+		Entry("-y with --add", []string{"--add", "https://example.com/p.git", "-y"},
+			"error: --yes applies to --on, --off, --switch, --update and --remove only\n  hint: drop it: lola profile go --add https://example.com/p.git\n"),
+		Entry("--force", []string{"--on", "--force"}, "error: --force applies to --remove only\n  hint: drop it: lola profile go --on\n"),
+		Entry("--ref with --update", []string{"--update", "--ref", "v1"}, "error: --ref applies to --add only\n  hint: drop it: lola profile go --update\n"),
 	)
 
 	It("turns profiles on and off, asking before it removes files", func() {

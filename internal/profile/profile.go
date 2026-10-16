@@ -1,7 +1,9 @@
 // Package profile reads profiles (Plan 6b §4): named, shareable sets of module entries in the
-// shape of manifest entries. This version reads the user's own profiles and default, from
-// paths.UserProfiles, and a project's committed profiles, from <root>/.lola/profiles, which it
-// treats as someone else's (§19 S3). It does no network access and writes no file.
+// shape of manifest entries. It reads the user's own profiles and default, from
+// paths.UserProfiles; a project's committed profiles, from <root>/.lola/profiles, which it
+// treats as someone else's (§19 S3); remote profiles, which lola profile --add keeps in
+// paths.RemoteProfiles; and the profiles of a source the engine fetched into staging. It does no
+// network access and writes no file.
 package profile
 
 import (
@@ -34,6 +36,7 @@ const (
 	MaxFiles       = 256 // entries in a profiles directory
 	MaxEntries     = 512 // modules in one profile
 	MaxDescription = 256 // bytes of a description
+	MaxExtends     = 16  // names in extends:
 )
 
 // Kind is where a profile comes from (Plan 6b §4.1).
@@ -45,6 +48,7 @@ const (
 	KindUser    Kind = "user"    // $XDG_CONFIG_HOME/lola/profiles/<name>.yml
 	KindDefault Kind = "default" // $XDG_CONFIG_HOME/lola/profiles/default.yml, user scope only
 	KindProject Kind = "project" // <root>/.lola/profiles/<name>.yml, committed with the project
+	KindRemote  Kind = "remote"  // <paths.RemoteProfiles>/<name>/profile.yml, fetched by lola profile --add
 )
 
 // ProjectDir is where a project keeps its profiles, relative to its root.
@@ -152,27 +156,9 @@ func ownDirs(root string) (found bool, err error) {
 // does not (§4.3, §19 S7). A file not named <name>.yml is not a profile. A directory holding more
 // than MaxFiles entries is refused, naming it; a missing one holds none.
 func list(dir string) ([]string, int, error) {
-	unreadable := func(err error) error {
-		return errs.WithHints(fmt.Errorf("cannot list %s: %s", untrusted.Text(dir, untrusted.MaxName), untrusted.Text(err.Error(), 2*untrusted.MaxName)),
-			"make "+untrusted.Text(dir, untrusted.MaxName)+" a directory lola can read, or remove it")
-	}
-	f, err := os.Open(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, 0, nil
-	}
+	des, err := readDir(dir)
 	if err != nil {
-		return nil, 0, unreadable(err)
-	}
-	des, err := f.ReadDir(MaxFiles + 1)
-	if errors.Is(err, io.EOF) {
-		err = nil
-	}
-	if err = errors.Join(err, f.Close()); err != nil {
-		return nil, 0, unreadable(err)
-	}
-	if len(des) > MaxFiles {
-		return nil, 0, errs.WithHints(fmt.Errorf("%s holds more than %d files", untrusted.Text(dir, untrusted.MaxName), MaxFiles),
-			"move the profiles you do not use out of it")
+		return nil, 0, err
 	}
 	var names []string
 	invalid := 0
@@ -191,14 +177,50 @@ func list(dir string) ([]string, int, error) {
 	return names, invalid, nil
 }
 
+// readDir is the listing of dir, a profiles directory: nil for a missing one, refused, naming
+// it, when it holds more than MaxFiles entries (§19 S8) or cannot be read.
+func readDir(dir string) ([]os.DirEntry, error) {
+	unreadable := func(err error) error {
+		return errs.WithHints(fmt.Errorf("cannot list %s: %s", untrusted.Text(dir, untrusted.MaxName), untrusted.Text(err.Error(), 2*untrusted.MaxName)),
+			"make "+untrusted.Text(dir, untrusted.MaxName)+" a directory lola can read, or remove it")
+	}
+	f, err := os.Open(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, unreadable(err)
+	}
+	des, err := f.ReadDir(MaxFiles + 1)
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
+	if err = errors.Join(err, f.Close()); err != nil {
+		return nil, unreadable(err)
+	}
+	if len(des) > MaxFiles {
+		return nil, errs.WithHints(fmt.Errorf("%s holds more than %d files", untrusted.Text(dir, untrusted.MaxName), MaxFiles),
+			"move the profiles you do not use out of it")
+	}
+	if des == nil {
+		des = []os.DirEntry{}
+	}
+	return des, nil
+}
+
 // Profile is a profile file as read. Entries without targets of their own use Targets (Entries).
+// Extends names the remote profiles whose entries come before the profile's own (Plan 6b §4.3):
+// the engine resolves them, since only it lists the remote profiles.
 type Profile struct {
 	Version     int              `yaml:"version"`
 	Description string           `yaml:"description,omitempty"`
 	Targets     []string         `yaml:"targets,omitempty,flow"`
+	Extends     []string         `yaml:"extends,omitempty,flow"`
 	Modules     []manifest.Entry `yaml:"modules,omitempty"`
 	read        []byte           // the bytes it was read from
 	hint        string           // how to fix the file
+	remote      bool             // a remote profile's rules apply (checkRemote)
+	extendsAt   []int            // the line of each name in Extends
 }
 
 // Load reads the profile at path once (Plan 6b §4.3, §6.1): through yamldoc.Read, as user.yml is
@@ -207,7 +229,7 @@ type Profile struct {
 // first, so a newer lola's profile is refused for its version; then every key known and every
 // field checked, each refusal naming the file and the line. A missing file is an error that wraps fs.ErrNotExist; an empty one holds no modules.
 func Load(path string) (*Profile, error) {
-	return load(path, yamldoc.Read, "fix it by hand; lola never writes it")
+	return load(path, yamldoc.Read, "fix it by hand; lola never writes it", false)
 }
 
 // LoadProject reads the project profile at path once, as Load reads a user's, except that the
@@ -220,11 +242,12 @@ func LoadProject(path string) (*Profile, error) {
 		return nil, errs.WithHints(fmt.Errorf("%s is a symbolic link; a project's profile must be a file of its own", untrusted.Text(path, untrusted.MaxName)),
 			"replace it with the file it points to", hint)
 	}
-	return load(path, yamldoc.ReadNoFollow, hint)
+	return load(path, yamldoc.ReadNoFollow, hint, false)
 }
 
-// load reads the profile at path with read, every refusal coached with hint.
-func load(path string, read func(string, int) (*yaml.Node, []byte, error), hint string) (*Profile, error) {
+// load reads the profile at path with read, every refusal coached with hint; remote applies a
+// remote profile's rules.
+func load(path string, read func(string, int) (*yaml.Node, []byte, error), hint string, remote bool) (*Profile, error) {
 	d, b, err := read(path, Version)
 	if err != nil {
 		// yamldoc's hints are for files lola writes; a profile's cause is kept as text only.
@@ -233,14 +256,14 @@ func load(path string, read func(string, int) (*yaml.Node, []byte, error), hint 
 	if b == nil {
 		return nil, fmt.Errorf("%s: %w", path, fs.ErrNotExist)
 	}
-	return parse(path, d, b, hint)
+	return parse(path, d, b, hint, remote)
 }
 
 // parse decodes and checks the profile document d, read from path as b; every refusal is
-// coached with hint.
-func parse(path string, d *yaml.Node, b []byte, hint string) (*Profile, error) {
+// coached with hint. remote applies a remote profile's rules (checkRemote).
+func parse(path string, d *yaml.Node, b []byte, hint string, remote bool) (*Profile, error) {
 	fixHint := func(err error) error { return errs.WithHints(err, hint) }
-	p := &Profile{Version: Version, read: b, hint: hint}
+	p := &Profile{Version: Version, read: b, hint: hint, remote: remote}
 	root := yamldoc.Root(d)
 	if root == nil {
 		return p, nil
@@ -283,6 +306,29 @@ func (p *Profile) check(root *yaml.Node) error {
 		return fmt.Errorf("%d: targets holds control or invisible characters", at("targets"))
 	case len(p.Modules) > MaxEntries:
 		return fmt.Errorf("%d: modules lists more than %d entries", at("modules"), MaxEntries)
+	case p.remote && p.Extends != nil:
+		return errs.WithHints(fmt.Errorf("%d: a remote profile cannot extend another", at("extends")),
+			"only your profiles and a project's may use extends:")
+	case len(p.Extends) > MaxExtends:
+		return fmt.Errorf("%d: extends lists more than %d profiles", at("extends"), MaxExtends)
+	}
+	p.extendsAt = make([]int, len(p.Extends))
+	if n := yamldoc.Value(root, "extends"); n != nil {
+		for i := range p.Extends {
+			p.extendsAt[i] = n.Line
+			if i < len(n.Content) {
+				p.extendsAt[i] = n.Content[i].Line
+			}
+		}
+	}
+	for i, name := range p.Extends {
+		// An invalid name reads as a missing remote profile does (ExtendsError, §19 S4).
+		if module.ValidateName("profile", name) != nil {
+			return p.ExtendsError("", i)
+		}
+		if slices.Contains(p.Extends[:i], name) {
+			return errs.WithHints(fmt.Errorf("%d: extends lists %s twice", p.extendsAt[i], name), "name each profile once")
+		}
 	}
 	var lines []*yaml.Node
 	if n := yamldoc.Value(root, "modules"); n != nil {
@@ -303,8 +349,26 @@ func (p *Profile) check(root *yaml.Node) error {
 		if err := e.Validate(); err != nil {
 			return fmt.Errorf("%d: module %s: %w", line, e.Name, err)
 		}
+		if p.remote {
+			if err := checkRemote(*e); err != nil {
+				return fmt.Errorf("%d: module %s: %w", line, e.Name, err)
+			}
+		}
 	}
 	return nil
+}
+
+// ExtendsError is the refusal of the k-th name in Extends, of the profile read from path ("" when
+// the caller adds the path), as one that names no remote profile you have (Plan 6b §4.3): an
+// invalid name, a missing remote profile and a profile of another kind read alike, so the error
+// never says which remote profiles exist (§19 S4).
+func (p *Profile) ExtendsError(path string, k int) error {
+	err := fmt.Errorf("%d: extends: %s is not a remote profile you have", p.extendsAt[k], untrusted.Text(p.Extends[k], untrusted.MaxName))
+	const hint = "extends: names remote profiles you have added; see them: lola profile --user"
+	if path == "" {
+		return errs.WithHints(err, hint)
+	}
+	return errs.WithHints(fmt.Errorf("%s:%w", path, err), hint, p.hint)
 }
 
 // Pin is the file at path, from which p was read, with each entry of pins taking its commit and
@@ -343,7 +407,7 @@ func (p *Profile) Pin(path string, pins []manifest.Entry) ([]byte, error) {
 	if err := yaml.Unmarshal(out, &check); err != nil {
 		return nil, err
 	}
-	if _, err := parse(path, &check, out, p.hint); err != nil {
+	if _, err := parse(path, &check, out, p.hint, false); err != nil {
 		return nil, errs.WithHints(fmt.Errorf("not writing %s, which lola could not load again: %w", untrusted.Text(path, untrusted.MaxName), err),
 			"nothing was written")
 	}

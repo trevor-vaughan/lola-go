@@ -201,6 +201,12 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 			untrusted.Text(e.Paths.Home, untrusted.MaxName)),
 			"install at user scope: "+errs.ShellJoin(append(user, "--user")))
 	}
+	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
+	unlockProfiles, err := e.readProfiles(opts.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	unlocks = append(unlocks, unlockProfiles)
 	editing := len(spec.GlobalEdits) > 0 || slices.ContainsFunc(spec.Scopes, func(si ScopeInstall) bool { return len(si.Edits) > 0 })
 	if editing && !opts.DryRun {
 		unlock, err := config.Lock(e.Paths.SelectionsLock)
@@ -964,6 +970,12 @@ func (e *Engine) notInstalled(sc Scope, name string) error {
 // Uninstall removes modules' artifacts (on opts.Targets, or everywhere) and drops them from
 // the manifest once nothing remains.
 func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts Options) (*Result, error) {
+	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
+	unlockProfiles, err := e.readProfiles(opts.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockProfiles()
 	man, led, unlock, err := e.load(sc, opts.DryRun)
 	if err != nil {
 		return nil, err
@@ -1053,6 +1065,12 @@ func dirExists(p string) bool {
 // trust record, or a folder whose content changed is left as installed, with a warn finding
 // that names the remedy (Plan 6a §10.3, §10.7).
 func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result, err error) {
+	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
+	unlockProfiles, err := e.readProfiles(opts.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockProfiles()
 	man, led, unlock, err := e.load(sc, opts.DryRun)
 	if err != nil {
 		return nil, err
@@ -1165,6 +1183,11 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 // project whose lock.json git tracks, since a committed one could name active profiles (Plan 6b
 // §5, §19 S5); the notices are the active profiles that no longer exist, and git missing.
 func (e *Engine) Status(ctx context.Context, sc Scope) ([]StatusRow, []Notice, error) {
+	unlock, err := e.readProfiles(true)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer unlock()
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
 		return nil, nil, err
@@ -1319,6 +1342,11 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted) []StatusRow 
 // tracks before reading the profiles it names, as every command that reads them does (Plan 6b
 // §5, §19 S5).
 func (e *Engine) InstallCoaching(ctx context.Context, sc Scope) (notice, hint string, err error) {
+	unlock, err := e.readProfiles(true)
+	if err != nil {
+		return "", "", err
+	}
+	defer unlock()
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
 		return "", "", err

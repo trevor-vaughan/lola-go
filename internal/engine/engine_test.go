@@ -386,7 +386,8 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		locks, err := filepath.Glob(filepath.Join(p.Locks, "*.lock"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(locks).To(ConsistOf(MatchRegexp(`[0-9a-f]{16}\.lock$`), HaveSuffix("trust.lock")), "one scope lock, beside the trust record's")
+		Expect(locks).To(ConsistOf(MatchRegexp(`[0-9a-f]{16}\.lock$`), HaveSuffix("trust.lock"), HaveSuffix("profiles.lock")),
+			"one scope lock, beside the trust record's and the profiles'")
 	})
 
 	It("records rules: false per module, honors it on render and reinstall, and clears it with Rules=true", func() {

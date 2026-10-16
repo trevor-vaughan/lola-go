@@ -1,0 +1,1402 @@
+package engine_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync/atomic"
+
+	"github.com/gofrs/flock"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/profile"
+	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/testenv"
+)
+
+var _ = Describe("remote profiles", func() {
+	var (
+		tmp, proj, work, url string
+		commit, digest       string
+		p                    paths.Paths
+		e                    *engine.Engine
+		user, sc             engine.Scope
+		requests             atomic.Int32
+		ctx                  = context.Background()
+	)
+	BeforeEach(func() {
+		var err error
+		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		p, err = paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		e = engine.New(p)
+		proj = filepath.Join(tmp, "proj")
+		e.Getwd = func() (string, error) { return proj, nil }
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		user, sc = engine.Scope{Kind: target.User}, engine.Scope{Kind: target.Project, ProjectDir: proj}
+		// The module example, served over loopback git with every request counted, and its pin.
+		work = filepath.Join(tmp, "work")
+		writeTree(work, exampleModule)
+		gitIn(work, "init", "-q", "-b", "main")
+		gitIn(work, "add", "-A")
+		gitIn(work, "commit", "-q", "-m", "init")
+		gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "example.git"))
+		url = testenv.ServeGitTLS(filepath.Join(tmp, "srv"), func(*http.Request) { requests.Add(1) }) + "/example.git"
+		commit = gitIn(work, "rev-parse", "HEAD")
+		// The pin is computed with a cache of its own, so the specs start with an empty one.
+		other := p
+		other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
+		v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url})
+		Expect(err).NotTo(HaveOccurred())
+		digest = v.Meta.Digest
+		requests.Store(0)
+	})
+	// pinned is a profile whose one entry is example at its pin.
+	pinned := func() string {
+		return "version: 1\ntargets: [claude-code]\nmodules:\n  - name: example\n    source: " + url + "\n    commit: " + commit +
+			"\n    digest: " + digest + "\n"
+	}
+	// keep writes a remote profile as lola profile --add does: profile.yml and its source.json.
+	keep := func(name, content string) {
+		GinkgoHelper()
+		dir := filepath.Join(p.RemoteProfiles, name)
+		Expect(os.MkdirAll(dir, 0o700)).To(Succeed())
+		b, err := json.Marshal(profile.Origin{Version: 1, Source: "https://example.com/profiles.git", Commit: commit,
+			Digest: profile.Digest([]byte(content))})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(dir, "source.json"), b, 0o600)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(dir, "profile.yml"), []byte(content), 0o600)).To(Succeed())
+	}
+	ledgerPath := func(s engine.Scope) string {
+		if s.Kind == target.User {
+			return p.UserLedger
+		}
+		return filepath.Join(s.ProjectDir, ".lola", "lock.json")
+	}
+	activate := func(s engine.Scope, names ...string) {
+		GinkgoHelper()
+		led, err := e.Ledger(s)
+		Expect(err).NotTo(HaveOccurred())
+		led.Profiles = nil
+		for _, n := range names {
+			led.Profiles = append(led.Profiles, ledger.Active{Name: n, By: ledger.ByOn})
+		}
+		Expect(os.MkdirAll(filepath.Dir(ledgerPath(s)), 0o755)).To(Succeed())
+		Expect(led.Save(ledgerPath(s))).To(Succeed())
+	}
+	active := func(s engine.Scope) []string {
+		GinkgoHelper()
+		led, err := e.Ledger(s)
+		Expect(err).NotTo(HaveOccurred())
+		out := []string{}
+		for _, a := range led.Profiles {
+			out = append(out, a.Name)
+		}
+		return out
+	}
+	yes := func([]engine.Removal) (bool, error) { return true, nil }
+	turn := func(s engine.Scope, action engine.ProfileAction, names ...string) (*engine.SyncResult, error) {
+		return e.Sync(ctx, engine.SyncRequest{Scope: s, Profiles: &engine.ProfileChange{Action: action, Names: names}, ConfirmRemovals: yes})
+	}
+	shipped := func(root string) string { return filepath.Join(root, ".claude", "commands", "ship.md") }
+	userRoot := func() string { return p.Home }
+
+	It("installs a remote profile's pinned entries at user scope and in a project, as your own", func() {
+		keep("go", pinned())
+		res, err := turn(user, engine.ProfileOn, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Activation.Profiles).To(Equal([]string{"remote:go"}))
+		Expect(shipped(userRoot())).To(BeAnExistingFile())
+		led, err := e.Ledger(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["example"].From).To(Equal("profile:remote:go"))
+		Expect(led.Modules["example"].Commit).To(Equal(commit))
+
+		// At project scope it needs no trust: the consent was given when it was added (D5).
+		res, err = turn(sc, engine.ProfileOn, "remote:go")
+		Expect(err).NotTo(HaveOccurred(), "no Trust callback, and none needed")
+		Expect(res.Trust.Changes).To(BeEmpty())
+		Expect(shipped(proj)).To(BeAnExistingFile())
+		Expect(active(sc)).To(Equal([]string{"remote:go"}))
+
+		// Its pin is its own: sync --update of its module points at --update of the profile.
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Modules: []string{"example"}, Update: true})
+		Expect(err).To(MatchError("example: its pin is in remote:go, which only lola profile --update changes"))
+		Expect(errs.Hints(err)).To(Equal([]string{"update it: lola profile --user remote:go --update"}), "the update applies what it moves")
+	})
+
+	It("a local profile shadows a remote one of the same name", func() {
+		keep("go", pinned())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		rows, _, err := e.Profiles(ctx, user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rows).To(ContainElement(And(HaveField("Kind", "remote"), HaveField("ShadowedBy", HaveValue(Equal("user:go"))),
+			HaveField("Source", "https://example.com/profiles.git"), HaveField("Commit", commit))))
+		res, err := turn(user, engine.ProfileOn, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Activation.Profiles).To(Equal([]string{"user:go"}), "a bare name is the local one")
+		_, err = turn(user, engine.ProfileOn, "remote:go")
+		Expect(err).To(MatchError("remote:go is shadowed by your profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") +
+			"): a local profile always wins over a remote one of its name"))
+		Expect(errs.Hints(err)).To(Equal([]string{"use yours: lola profile --user user:go --on",
+			"or build on the remote one: add extends: [go] to " + filepath.Join(p.UserProfiles, "go.yml"),
+			"or rename or delete " + filepath.Join(p.UserProfiles, "go.yml")}))
+
+		// A user:go that appears after remote:go was turned on shadows it, with a notice.
+		Expect(os.Remove(filepath.Join(p.UserProfiles, "go.yml"))).To(Succeed())
+		activate(user, "remote:go")
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shipped(userRoot())).To(BeAnExistingFile())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		res, err = e.Sync(ctx, engine.SyncRequest{Scope: user, ConfirmRemovals: yes})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "user:go now replaces remote:go"}))
+		Expect(shipped(userRoot())).NotTo(BeAnExistingFile(), "yours lists nothing, so the remote's module goes")
+		Expect(active(user)).To(Equal([]string{"remote:go"}), "a sync never rewrites the list")
+		// An action that does not name it leaves the stored name as it is (ruling R-6b3b-8, M13).
+		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n"})
+		res, err = turn(user, engine.ProfileOn, "docs")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "user:go now replaces remote:go"}))
+		Expect(active(user)).To(Equal([]string{"remote:go", "user:docs"}))
+		// A bare --off of go is ambiguous: yours, which shadows it, is off.
+		_, err = turn(user, engine.ProfileOff, "go")
+		Expect(err).To(MatchError("go is ambiguous: the remote profile remote:go is on, and your profile user:go (" +
+			filepath.Join(p.UserProfiles, "go.yml") + "), which shadows it, is off"))
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user remote:go --off"}))
+		_, err = turn(user, engine.ProfileOff, "remote:go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(active(user)).To(Equal([]string{"user:docs"}))
+	})
+
+	It("an ambiguous bare profile name refuses with every qualified name", func() {
+		keep("go", pinned())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
+		_, err := turn(sc, engine.ProfileOn, "go")
+		Expect(err).To(MatchError("go is ambiguous: your profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") +
+			") and the project's project:go (" + filepath.Join(proj, ".lola", "profiles", "go.yml") + ") are both named go"))
+		Expect(errs.Hints(err)).To(Equal([]string{"yours: lola profile --project user:go --on", "the project's: lola profile --project project:go --on"}))
+		_, err = turn(sc, engine.ProfileOn, "remote:go")
+		Expect(err).To(MatchError(ContainSubstring("remote:go is shadowed by your profile user:go")))
+		Expect(os.Remove(filepath.Join(p.UserProfiles, "go.yml"))).To(Succeed())
+		_, err = turn(sc, engine.ProfileOn, "remote:go")
+		Expect(err).To(MatchError(ContainSubstring("remote:go is shadowed by the project's project:go")))
+		Expect(errs.Hints(err)).To(ContainElement("or rename or delete " + filepath.Join(proj, ".lola", "profiles", "go.yml")))
+	})
+
+	It("never swaps an active remote profile for a project's except when you turn that on", func() {
+		keep("go", pinned())
+		activate(sc, "remote:go")
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "project:go also exists → lola profile --project project:go --on"}))
+		Expect(shipped(proj)).To(BeAnExistingFile())
+
+		// A bare --off of go means the project's, which is off while the remote one is on: refused.
+		_, err = turn(sc, engine.ProfileOff, "go")
+		Expect(err).To(MatchError("go is ambiguous: the remote profile remote:go is on, and the project's project:go (" +
+			filepath.Join(proj, ".lola", "profiles", "go.yml") + "), which shadows it, is off"))
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --project remote:go --off",
+			"to use the project's instead: lola profile --project project:go --on"}))
+		// Both hints keep the run's flags.
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOff, Names: []string{"go"}},
+			Options: engine.Options{DryRun: true, AllowHooks: true}})
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --project remote:go --off --allow-hooks -n",
+			"to use the project's instead: lola profile --project project:go --on --allow-hooks -n"}))
+
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"project:go"}},
+			ConfirmRemovals: yes})
+		var refusal *engine.TrustRefusalError
+		Expect(errors.As(err, &refusal)).To(BeTrue(), "%v", err)
+		Expect(refusal.Report.Replacements).To(Equal([]engine.Replacement{{Profile: "project:go", Replaces: "remote:go", Modules: []string{"example"}}}))
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"project:go"}},
+			ConfirmRemovals: yes, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(active(sc)).To(Equal([]string{"project:go"}))
+	})
+
+	It("shows an active remote profile a profile of yours shadows with its own modules", func() {
+		keep("go", pinned())
+		activate(user, "remote:go")
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		states, _, err := e.ProfileState(ctx, []engine.Scope{user}, "remote:go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states).To(HaveLen(1))
+		Expect(states[0].Active).To(BeTrue())
+		Expect(states[0].ShadowedBy).To(HaveValue(Equal("user:go")))
+		Expect(states[0].Modules).To(Equal([]engine.ProfileModule{{Name: "example", Overrides: []string{}}}),
+			"remote:go's own entries, which user:go, read in its place, does not want")
+		Expect(states[0].ReadAs).To(HaveValue(Equal("user:go")))
+
+		// A project profile of its name shadows it too, but is never read in its place.
+		Expect(os.Remove(filepath.Join(p.UserProfiles, "go.yml"))).To(Succeed())
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
+		activate(sc, "remote:go")
+		states, notices, err := e.ProfileState(ctx, []engine.Scope{sc}, "remote:go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states[0].ShadowedBy).To(HaveValue(Equal("project:go")))
+		Expect(states[0].ReadAs).To(BeNil())
+		Expect(states[0].Modules).To(Equal([]engine.ProfileModule{{Name: "example", From: "profile:remote:go", Overrides: []string{}}}))
+		Expect(notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "to use project:go instead: lola profile --project project:go --on"}))
+
+		// Both on: no hint to turn on what is on; the later of the two wins where both list a module.
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\nmodules:\n  - {name: example, source: " + url +
+			", commit: " + commit + ", digest: " + digest + "}\n"})
+		activate(sc, "remote:go", "project:go")
+		states, notices, err = e.ProfileState(ctx, []engine.Scope{sc}, "remote:go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states[0].ReadAs).To(BeNil())
+		Expect(states[0].ShadowPosition).To(HaveValue(Equal(2)))
+		Expect(states[0].Modules).To(Equal([]engine.ProfileModule{{Name: "example", From: "profile:project:go",
+			Overrides: []string{"profile:remote:go"}}}))
+		Expect(notices).NotTo(ContainElement(HaveField("Text", HavePrefix("to use project:go instead"))))
+	})
+
+	It("turning on the profile of yours that already stands in for an active remote one changes nothing", func() {
+		keep("go", pinned())
+		activate(user, "remote:go")
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		res, err := turn(user, engine.ProfileOn, "go")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "user:go is already on, in place of remote:go (1st of 1)"}))
+		Expect(active(user)).To(Equal([]string{"remote:go"}), "the stored name stays")
+	})
+
+	It("turning on a project profile replaces every active namesake of yours and every remote one", func() {
+		keep("go", pinned())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
+		activate(sc, "user:go", "remote:go")
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"project:go"}},
+			ConfirmRemovals: yes, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(active(sc)).To(Equal([]string{"project:go"}))
+	})
+
+	It("refuses a remote profile that no longer has the bytes its pin records", func() {
+		keep("go", pinned())
+		activate(user, "remote:go")
+		Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "go", "profile.yml"), []byte(pinned()+"description: edited\n"), 0o600)).To(Succeed())
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
+		Expect(err).To(MatchError(ContainSubstring("changed since you added it")))
+		readd := []string{"remove it: lola profile --user remote:go --remove --force",
+			"then add it again: lola profile --user go --add https://example.com/profiles.git",
+			"lola wrote it when you added the profile; remove the profile and add it again"}
+		Expect(errs.Hints(err)).To(Equal(readd))
+		Expect(requests.Load()).To(BeZero())
+		_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go", DryRun: true})
+		Expect(err).To(MatchError(ContainSubstring("changed since you added it")))
+		Expect(errs.Hints(err)).To(Equal(readd))
+		_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go", DryRun: true, Flags: []string{"--allow-hooks", "-y"}})
+		Expect(errs.Hints(err)).To(ContainElement("remove it: lola profile --user remote:go --remove --force -y"), "the run's -y is kept")
+
+		// Shadowed by a profile of yours, its state reads it alone, and coaches the same.
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		_, _, err = e.ProfileState(ctx, []engine.Scope{user}, "remote:go")
+		Expect(err).To(MatchError(ContainSubstring("changed since you added it")))
+		Expect(errs.Hints(err)).To(Equal(readd))
+		Expect(os.Remove(filepath.Join(p.UserProfiles, "go.yml"))).To(Succeed())
+
+		// --remove of it cannot tell whether it is in use, and never hints itself; the hinted
+		// command removes it.
+		yes := func(engine.RemoteProfile) (bool, error) { return true, nil }
+		_, err = e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Confirm: yes})
+		Expect(err).To(MatchError(HavePrefix("lola cannot tell whether remote:go is in use at user scope: remote:go itself does not load: ")))
+		Expect(errs.Hints(err)).To(Equal([]string{"or remove it anyway: lola profile --user remote:go --remove --force"}))
+		Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "go", "source.json"), []byte("{}"), 0o600)).To(Succeed())
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
+		Expect(errs.Hints(err)).To(Equal([]string{"remove it: lola profile --user remote:go --remove --force",
+			"lola wrote it when you added the profile; remove the profile and add it again"}), "no source to add it again from")
+		res, err := e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Force: true, Confirm: yes})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Removed).To(BeTrue())
+	})
+
+	It("never hints adding a remote profile again from a recorded source --add refuses", func() {
+		keep("go", pinned())
+		b, err := json.Marshal(profile.Origin{Version: 1, Source: "https://example.com/profiles.tar.gz", Ref: "v1",
+			Digest: profile.Digest([]byte(pinned()))})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "go", "source.json"), b, 0o600)).To(Succeed())
+		_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go", DryRun: true})
+		Expect(err).To(MatchError(ContainSubstring("--ref applies to git sources only")))
+		Expect(errs.Hints(err)).To(Equal([]string{"remove it: lola profile --user remote:go --remove --force",
+			"its recorded source cannot be added again: --ref applies to git sources only, not to archive https://example.com/profiles.tar.gz; " +
+				"add go from a source lola profile --add accepts"}))
+		Expect(requests.Load()).To(BeZero())
+	})
+
+	It("extends applies remote entries first and the local profile's last", func() {
+		keep("go", pinned())
+		mods := filepath.Join(tmp, "mods")
+		writeTree(filepath.Join(mods, "a"), map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
+		mine := filepath.Join(p.UserProfiles, "mine.yml")
+		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nextends: [go]\nmodules:\n  - {name: a, source: " +
+			filepath.Join(mods, "a") + "}\n"})
+		res, err := turn(user, engine.ProfileOn, "mine")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Activation.Changes).To(ConsistOf(HaveField("Module", "a"), HaveField("Module", "example")))
+		Expect(shipped(userRoot())).To(BeAnExistingFile())
+		led, err := e.Ledger(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["example"].From).To(Equal("profile:user:mine"), "the layer is the profile that extends")
+		states, _, err := e.ProfileState(ctx, []engine.Scope{user}, "mine")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states[0].Extends).To(Equal([]string{"remote:go"}))
+		Expect(states[0].Modules).To(ConsistOf(HaveField("Name", "a"), HaveField("Name", "example")))
+
+		// Its pin is the remote profile's.
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Modules: []string{"example"}, Update: true})
+		Expect(err).To(MatchError("example: its pin is in remote:go, which only lola profile --update changes"))
+		res, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Update: true, ConfirmRemovals: yes})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
+			Text: "example: --update leaves the pin remote:go sets; update it: lola profile --user remote:go --update"}), "the file that sets it")
+
+		// The local profile's own entry of a module replaces the remote one whole, and says so.
+		Expect(os.WriteFile(mine, []byte("version: 1\ntargets: [claude-code]\nextends: [go]\nmodules:\n  - {name: example, source: "+url+
+			", commit: "+commit+", digest: "+digest+", targets: [gemini-cli]}\n"), 0o600)).To(Succeed())
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, ConfirmRemovals: yes})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shipped(userRoot())).NotTo(BeAnExistingFile(), "a is gone too, and example installs to gemini-cli only")
+		led, err = e.Ledger(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["example"].Targets).To(Equal([]string{"gemini-cli"}))
+		Expect(led.Modules).NotTo(HaveKey("a"))
+		states, _, err = e.ProfileState(ctx, []engine.Scope{user}, "mine")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states[0].Modules).To(Equal([]engine.ProfileModule{{Name: "example", From: "profile:user:mine", Overrides: []string{"profile:remote:go"}}}))
+	})
+
+	It("a later extended remote profile's entry replaces an earlier one's, and says so", func() {
+		keep("go", pinned())
+		keep("docs", pinned())
+		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\nextends: [go, docs]\n"})
+		res, err := turn(user, engine.ProfileOn, "mine")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Activation.Changes).To(ConsistOf(And(HaveField("Module", "example"), HaveField("From", "profile:user:mine"),
+			HaveField("Over", Equal([]string{"profile:remote:go"})))))
+		states, _, err := e.ProfileState(ctx, []engine.Scope{user}, "mine")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(states[0].Modules).To(Equal([]engine.ProfileModule{{Name: "example", From: "profile:user:mine", Overrides: []string{"profile:remote:go"}}}))
+	})
+
+	It("extends refuses a local, missing or remote-declared target", func() {
+		keep("go", pinned())
+		writeTree(p.UserProfiles, map[string]string{"base.yml": "version: 1\n"})
+		for _, name := range []string{"nope", "base"} {
+			path := filepath.Join(p.UserProfiles, "mine.yml")
+			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\nextends:\n  - go\n  - " + name + "\n"})
+			_, err := turn(user, engine.ProfileOn, "mine")
+			Expect(err).To(MatchError(path+":4: extends: "+name+" is not a remote profile you have"), "missing and local read alike")
+			Expect(errs.Hints(err)).To(ContainElement("extends: names remote profiles you have added; see them: lola profile --user"))
+		}
+		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\nextends: [\"Bad Name\"]\n"})
+		_, err := turn(user, engine.ProfileOn, "mine")
+		Expect(err).To(MatchError(ContainSubstring("mine.yml:2: extends: Bad Name is not a remote profile you have")), "invalid reads as missing")
+		keep("go", "version: 1\nextends: [docs]\n")
+		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\nextends: [go]\n"})
+		_, err = turn(user, engine.ProfileOn, "mine")
+		Expect(err).To(MatchError(ContainSubstring("profile.yml:2: a remote profile cannot extend another")))
+		Expect(active(user)).To(BeEmpty())
+	})
+
+	It("records the remote profile a project profile's entry comes from, and asks again when its pin changes", func() {
+		keep("go", pinned())
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nextends: [go]\n"})
+		trustAll := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
+		_, err := turn(sc, engine.ProfileOn, "team")
+		var refusal *engine.TrustRefusalError
+		Expect(errors.As(err, &refusal)).To(BeTrue(), "%v", err)
+		Expect(refusal.Report.Changes).To(ConsistOf(And(HaveField("Module", "example"), HaveField("Profile", "project:team"),
+			HaveField("Fields", ContainElement(HaveField("Field", "extends"))))))
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"team"}}, Trust: trustAll})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shipped(proj)).To(BeAnExistingFile())
+		rec, err := e.Trust.Load(proj)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rec.View.Part("team").Modules[0].Extends).To(HaveValue(HaveField("Name", "remote:go")))
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.InSync).To(BeTrue())
+
+		// The remote profile now has other bytes (an update): same entries, another pin.
+		keep("go", pinned()+"description: updated\n")
+		requests.Store(0)
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(errors.As(err, &refusal)).To(BeTrue(), "%v", err)
+		Expect(refusal.Report.Changes).To(ConsistOf(And(HaveField("Module", "example"), HaveField("Kind", "changed"),
+			HaveField("Fields", ConsistOf(HaveField("Field", "extends"))))))
+		Expect(requests.Load()).To(BeZero(), "refused before any network contact")
+	})
+
+	It("asks about an extended entry only while it wins, and refuses its --update in a project sync", func() {
+		keep("go", pinned())
+		entry := "  - {name: example, source: " + url + ", commit: " + commit + ", digest: " + digest + "}\n"
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + entry,
+			".lola/profiles/team.yml": "version: 1\nextends: [go]\n"})
+		var reports []engine.TrustReport
+		trustAll := func(r engine.TrustReport) (engine.TrustAnswer, error) {
+			reports = append(reports, r)
+			return engine.TrustAnswer{All: true}, nil
+		}
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: trustAll, ConfirmRemovals: yes})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"team"}},
+			Trust: trustAll, ConfirmRemovals: yes})
+		Expect(err).NotTo(HaveOccurred())
+		for _, r := range reports {
+			Expect(r.Changes).NotTo(ContainElement(HaveField("Profile", "project:team")), "project.yml's example wins: team's is not asked about")
+		}
+		led, err := e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["example"].From).To(Equal(""), "project.yml's")
+
+		// The extended entry's pin is the remote profile's, at project scope too.
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Update: true, Trust: trustAll, ConfirmRemovals: yes})
+		Expect(err).To(MatchError("example: its pin is in remote:go, which only lola profile --update changes"))
+		Expect(errs.Hints(err)).To(Equal([]string{"update it: lola profile --project remote:go --update"}))
+
+		// Once project.yml drops it, team's entry wins, and is asked about, as the remote profile's.
+		reports = nil
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: trustAll, ConfirmRemovals: yes})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reports).NotTo(BeEmpty())
+		Expect(reports[0].Changes).To(ContainElement(And(HaveField("Module", "example"), HaveField("Profile", "project:team"),
+			HaveField("Fields", ContainElement(HaveField("Field", "extends"))))))
+	})
+
+	It("takes the profiles lock first: shared to read the remote profiles, exclusive to write them", func() {
+		keep("go", pinned())
+		activate(user, "remote:go")
+		Expect(os.MkdirAll(filepath.Dir(p.ProfilesLock), 0o700)).To(Succeed())
+		other := flock.New(p.ProfilesLock)
+		Expect(other.RLock()).To(Succeed())
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
+		Expect(err).NotTo(HaveOccurred(), "readers share it")
+		Expect(other.Unlock()).To(Succeed())
+
+		Expect(other.Lock()).To(Succeed())
+		done := make(chan error, 1)
+		go func() {
+			_, err := e.Render(ctx, user, engine.Options{})
+			done <- err
+		}()
+		dry := make(chan error, 1)
+		go func() {
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Options: engine.Options{DryRun: true}})
+			dry <- err
+		}()
+		// Every other run that reads the profiles waits too: install and uninstall, and the
+		// read-only listing, a profile's state and lola list.
+		readers := map[string]chan error{}
+		run := func(name string, f func() error) {
+			ch := make(chan error, 1)
+			readers[name] = ch
+			go func() { ch <- f() }()
+		}
+		run("install", func() error {
+			_, err := e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: work}}, engine.Options{})
+			return err
+		})
+		run("uninstall", func() error {
+			_, err := e.Uninstall(ctx, user, []string{"example"}, engine.Options{})
+			return err
+		})
+		run("profiles", func() error {
+			_, _, err := e.Profiles(ctx, user)
+			return err
+		})
+		run("state", func() error {
+			_, _, err := e.ProfileState(ctx, []engine.Scope{user}, "remote:go")
+			return err
+		})
+		run("status", func() error {
+			_, _, err := e.Status(ctx, user)
+			return err
+		})
+		Consistently(done, "300ms").ShouldNot(Receive(), "a writer holds it")
+		Consistently(dry, "100ms").ShouldNot(Receive(), "a dry run reads the profiles under the lock too")
+		for name, ch := range readers {
+			Consistently(ch, "10ms").ShouldNot(Receive(), name)
+		}
+		Expect(other.Unlock()).To(Succeed())
+		Eventually(done, "10s").Should(Receive(BeNil()))
+		Eventually(dry, "10s").Should(Receive(BeNil()))
+		for name, ch := range readers {
+			Eventually(ch, "10s").Should(Receive(), name)
+		}
+	})
+
+	Describe("--add", func() {
+		var src string // the profile source's URL
+		// publish makes the profile source: a git repository of files, served beside example.
+		publish := func(files map[string]string) {
+			GinkgoHelper()
+			dir := filepath.Join(tmp, "profiles-work")
+			Expect(os.RemoveAll(dir)).To(Succeed())
+			writeTree(dir, files)
+			gitIn(dir, "init", "-q", "-b", "main")
+			gitIn(dir, "add", "-A")
+			gitIn(dir, "commit", "-q", "-m", "profiles")
+			bare := filepath.Join(tmp, "srv", "profiles.git")
+			Expect(os.RemoveAll(bare)).To(Succeed())
+			gitIn(tmp, "clone", "-q", "--bare", dir, bare)
+		}
+		add := func(req engine.ProfileAddRequest) (*engine.RemoteResult, error) {
+			if req.Scope == (engine.Scope{}) {
+				req.Scope = user
+			}
+			if req.Source == "" {
+				req.Source = src
+			}
+			return e.AddProfile(ctx, req)
+		}
+		accept := func(seen *[]engine.RemoteProfile) func([]engine.RemoteProfile) (bool, error) {
+			return func(rps []engine.RemoteProfile) (bool, error) {
+				*seen = rps
+				return true, nil
+			}
+		}
+		// kept is what lola keeps of remote profiles and stages, which a refused --add leaves as it was.
+		kept := func() []string {
+			GinkgoHelper()
+			out := []string{}
+			for _, dir := range []string{p.RemoteProfiles, p.Staging, p.Store} {
+				es, err := os.ReadDir(dir)
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				Expect(err).NotTo(HaveOccurred())
+				for _, d := range es {
+					out = append(out, filepath.Join(dir, d.Name()))
+				}
+			}
+			return out
+		}
+		BeforeEach(func() {
+			src = url[:len(url)-len("example.git")] + "profiles.git"
+			publish(map[string]string{"profiles/go.yml": pinned(), "profiles/docs.yml": "version: 1\ndescription: docs\n", "README.md": "hi\n"})
+			requests.Store(0)
+		})
+
+		It("adds a remote profile after showing its entries and the content they bring", func() {
+			var seen []engine.RemoteProfile
+			res, err := add(engine.ProfileAddRequest{Name: "go", Consent: accept(&seen)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(seen).To(HaveLen(1))
+			Expect(seen[0]).To(And(HaveField("Profile", "remote:go"), HaveField("Source", src), HaveField("Written", false)))
+			Expect(seen[0].Changes).To(ConsistOf(And(HaveField("Module", "example"), HaveField("Kind", "added"),
+				HaveField("Files", ContainElement(HaveField("Path", "commands/ship.md"))), HaveField("MCPServers", HaveLen(1)))))
+			Expect(res.Profiles[0].Written).To(BeTrue())
+			pr, o, err := profile.LoadRemote(filepath.Join(p.RemoteProfiles, "go", "profile.yml"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pr.Modules).To(HaveLen(1))
+			Expect(o).To(Equal(profile.Origin{Version: 1, Source: src, Commit: gitIn(filepath.Join(tmp, "profiles-work"), "rev-parse", "HEAD"),
+				Digest: profile.Digest([]byte(pinned()))}))
+			es, err := os.ReadDir(p.Store)
+			Expect(err == nil && len(es) > 0).To(BeFalse(), "the modules it showed are not cached")
+
+			_, err = add(engine.ProfileAddRequest{Name: "go", Consent: accept(&seen)})
+			Expect(err).To(MatchError("you already have a remote profile remote:go"))
+			Expect(errs.Hints(err)).To(Equal([]string{"fetch it again: lola profile --user remote:go --update"}))
+
+			_, err = turn(user, engine.ProfileOn, "go")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shipped(userRoot())).To(BeAnExistingFile())
+		})
+
+		It("profile --add off a terminal without --trust refuses before network contact", func() {
+			_, err := add(engine.ProfileAddRequest{Name: "go", Ref: "main"})
+			Expect(err).To(MatchError("lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on"))
+			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user go --add " + src + " --ref main -n",
+				"then add it unasked: lola profile --user go --add " + src + " --ref main --trust"}))
+			Expect(requests.Load()).To(BeZero())
+			Expect(kept()).To(BeEmpty())
+
+			// A dry run asks nothing and writes nothing.
+			res, err := add(engine.ProfileAddRequest{Name: "go", DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles[0].Changes).To(HaveLen(1))
+			Expect(res.Profiles[0].ComparedWith).To(Equal("user scope"))
+			// The scope it compares with is named, its root printed safely.
+			odd := filepath.Join(tmp, "odd\x1b[2Jproj")
+			Expect(os.MkdirAll(odd, 0o755)).To(Succeed())
+			res, err = add(engine.ProfileAddRequest{Scope: engine.Scope{Kind: target.Project, ProjectDir: odd}, Name: "go", DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles[0].ComparedWith).To(HavePrefix("project " + filepath.Join(tmp, "odd")))
+			Expect(res.Profiles[0].ComparedWith).NotTo(ContainSubstring("\x1b"))
+			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeADirectory())
+		})
+
+		It("never lets a directory named like an entry's URL stand in for it", func() {
+			// A checkout plants a folder module at <proj>/https:/lola.test:<port>/example.git, the
+			// path a remote entry's URL would name if it were looked up on disk (ruling R-6b3b-5).
+			planted := filepath.Join(proj, strings.Replace(url, "://", ":/", 1))
+			writeTree(planted, map[string]string{"lola.yml": "name: example\n", "commands/planted.md": "Planted\n"})
+			var seen []engine.RemoteProfile
+			_, err := add(engine.ProfileAddRequest{Scope: sc, Name: "go", Consent: accept(&seen)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(seen[0].Changes[0].Files).To(ConsistOf(HaveField("Path", "commands/ship.md"), HaveField("Path", "agents/critic.md"),
+				HaveField("Path", "skills/review/SKILL.md"), HaveField("Path", "skills/review/ref/checks.md"), HaveField("Path", "mcps.json"),
+				HaveField("Path", "rules/style.md")), "the consent shows what the URL serves")
+			_, err = turn(sc, engine.ProfileOn, "remote:go")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(shipped(proj)).To(BeAnExistingFile())
+			Expect(filepath.Join(proj, ".claude", "commands", "planted.md")).NotTo(BeAnExistingFile(), "and so is what installs")
+
+			// The same holds for an entry of your own profile at project scope.
+			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url + "}\n"})
+			_, err = turn(sc, engine.ProfileSwitch, "user:mine")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filepath.Join(proj, ".claude", "commands", "planted.md")).NotTo(BeAnExistingFile())
+		})
+
+		It("refuses a source at an address inside your network, or over plain http, before any network contact", func() {
+			GinkgoT().Chdir(tmp)
+			port, _, _ := strings.Cut(strings.TrimPrefix(src, "https://lola.test:"), "/")
+			for source, want := range map[string]string{
+				"https://127.0.0.1:" + port + "/profiles.git":  "names the loopback address 127.0.0.1",
+				"https://[::1]:" + port + "/profiles.git":      "names the loopback address ::1",
+				"https://169.254.169.254/profiles.git":         "names the link-local address 169.254.169.254",
+				"https://10.0.0.7/profiles.git":                "names the private address 10.0.0.7",
+				"http://lola.test:" + port + "/profiles.git":   "uses http://; a remote profile's sources must use https:// or ssh://",
+				"https://localhost:" + port + "/profiles.git":  "names localhost, this machine",
+				"https://2130706433:" + port + "/profiles.git": "names the host 2130706433, which git and ssh read as an IP address",
+			} {
+				_, err := add(engine.ProfileAddRequest{Name: "go", Source: source, Consent: accept(new([]engine.RemoteProfile))})
+				Expect(err).To(MatchError(ContainSubstring(want)), source)
+				Expect(errs.Hints(err)).To(Equal([]string{"use the repository's https:// or ssh:// URL (or user@host:path), with its host name"}), source)
+			}
+			Expect(requests.Load()).To(BeZero())
+			// An entry at such an address is refused when the profile is read, before any module is fetched.
+			publish(map[string]string{"profiles/go.yml": "version: 1\nmodules:\n  - {name: example, source: \"https://192.168.0.2/example.git\", commit: " +
+				commit + ", digest: " + digest + "}\n"})
+			_, err := add(engine.ProfileAddRequest{Name: "go", Consent: accept(new([]engine.RemoteProfile))})
+			Expect(err).To(MatchError(ContainSubstring("profiles/go.yml:3: module example: https://192.168.0.2/example.git names the private address")))
+			Expect(kept()).To(BeEmpty())
+		})
+
+		It("shows the whole content whatever a scope's lock.json says", func() {
+			// A planted lock.json claims the module is installed at its pin (ruling R-6b3b-7).
+			led := ledger.New()
+			led.Modules["example"] = &ledger.Entry{Source: url, Commit: commit, Digest: digest, Targets: []string{"claude-code"}}
+			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+			Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
+			res, err := add(engine.ProfileAddRequest{Scope: sc, Name: "go", DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			c := res.Profiles[0].Changes[0]
+			Expect(c.Files).To(HaveLen(6))
+			Expect(c.Files).To(HaveEach(HaveField("Change", "added")))
+			Expect(c.MCPServers).To(ConsistOf(HaveField("Change", "added")))
+			Expect(c.FilesNote).To(Equal("this version is installed in project " + proj))
+		})
+
+		It("takes a remote: name, refuses another kind, and never a file in its place", func() {
+			yes := func([]engine.RemoteProfile) (bool, error) { return true, nil }
+			_, err := add(engine.ProfileAddRequest{Name: "user:go", Consent: yes})
+			Expect(err).To(MatchError("--add keeps remote profiles; user:go names another kind"))
+			Expect(errs.Hints(err)).To(Equal([]string{"add it as a remote profile: lola profile --user go --add " + src}))
+			_, err = add(engine.ProfileAddRequest{Name: "project:go", Ref: "main", Path: "sub", DryRun: true})
+			Expect(errs.Hints(err)).To(Equal([]string{"add it as a remote profile: lola profile --user go --add " + src + " --ref main --path sub -n"}),
+				"the hint keeps the run's flags")
+			for _, name := range []string{"default", "remote:default"} {
+				_, err = add(engine.ProfileAddRequest{Name: name, Consent: yes})
+				Expect(err).To(MatchError("a remote profile cannot be named default"), name)
+			}
+			_, err = add(engine.ProfileAddRequest{Name: "remote:", Consent: yes, Pick: func([]string, int) ([]string, error) {
+				Fail("remote: names no profile; it never starts the picker")
+				return nil, nil
+			}})
+			Expect(err).To(HaveOccurred())
+			Expect(requests.Load()).To(BeZero(), "all refused before any network contact")
+			Expect(os.MkdirAll(p.RemoteProfiles, 0o700)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "go"), nil, 0o600)).To(Succeed())
+			_, err = add(engine.ProfileAddRequest{Name: "remote:go", Consent: yes})
+			Expect(err).To(MatchError(filepath.Join(p.RemoteProfiles, "go") + " is not a profile lola wrote, and is in the way of remote:go"))
+			Expect(os.Remove(filepath.Join(p.RemoteProfiles, "go"))).To(Succeed())
+			res, err := add(engine.ProfileAddRequest{Name: "remote:go", Consent: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles[0].Profile).To(Equal("remote:go"))
+		})
+
+		It("never offers a source's default.yml, which no remote profile may be", func() {
+			publish(map[string]string{"profiles/go.yml": pinned(), "profiles/default.yml": "version: 1\n"})
+			var offered []string
+			var invalid int
+			_, err := add(engine.ProfileAddRequest{DryRun: true, Pick: func(names []string, n int) ([]string, error) {
+				offered, invalid = names, n
+				return names, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(offered).To(Equal([]string{"go"}))
+			Expect(invalid).To(Equal(1))
+		})
+
+		It("asks under a shared lock, so syncs go on, and writes only what is still free", func() {
+			writeTree(filepath.Dir(p.UserManifest), map[string]string{filepath.Base(p.UserManifest): "version: 1\n"})
+			res, err := add(engine.ProfileAddRequest{Name: "go", Consent: func([]engine.RemoteProfile) (bool, error) {
+				done := make(chan error, 1)
+				go func() {
+					_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
+					done <- err
+				}()
+				Eventually(done, "10s").Should(Receive(BeNil()), "a sync while you are asked does not wait")
+				keep("go", pinned()) // another --add of go while you were asked
+				return true, nil
+			}})
+			Expect(err).To(MatchError("you already have a remote profile remote:go"))
+			Expect(res).To(BeNil())
+		})
+
+		It("reports what it added when it cannot check for a local profile of the name", func() {
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				Skip("needs a directory its owner cannot read")
+			}
+			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n"})
+			DeferCleanup(func() { Expect(os.Chmod(p.UserProfiles, 0o700)).To(Succeed()) })
+			res, err := add(engine.ProfileAddRequest{Name: "go", Consent: func([]engine.RemoteProfile) (bool, error) {
+				Expect(os.Chmod(p.UserProfiles, 0)).To(Succeed())
+				return true, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles[0].Written).To(BeTrue())
+			Expect(res.Notices).To(ContainElement(And(HaveField("Level", engine.LevelWarn),
+				HaveField("Text", HavePrefix("added remote:go; lola could not check whether a local profile shadows them: ")))))
+			Expect(filepath.Join(p.RemoteProfiles, "go", "profile.yml")).To(BeARegularFile())
+		})
+
+		It("writes under the exclusive lock, waiting for the runs that hold it shared", func() {
+			publish(map[string]string{"profiles/go.yml": pinned()})
+			Expect(os.MkdirAll(filepath.Dir(p.ProfilesLock), 0o700)).To(Succeed())
+			other := flock.New(p.ProfilesLock)
+			Expect(other.RLock()).To(Succeed())
+			done := make(chan error, 1)
+			go func() {
+				_, err := add(engine.ProfileAddRequest{Name: "go", Consent: func([]engine.RemoteProfile) (bool, error) { return true, nil }})
+				done <- err
+			}()
+			Consistently(done, "300ms").ShouldNot(Receive(), "a reader holds it")
+			Expect(other.Unlock()).To(Succeed())
+			Eventually(done, "10s").Should(Receive(BeNil()))
+			Expect(filepath.Join(p.RemoteProfiles, "go", "profile.yml")).To(BeARegularFile())
+		})
+
+		It("says when --path is not in the source, or has no profiles/", func() {
+			publish(map[string]string{"README.md": "hi\n", "team/README.md": "hi\n"})
+			yes := func([]engine.RemoteProfile) (bool, error) { return true, nil }
+			_, err := add(engine.ProfileAddRequest{Name: "go", Path: "nope", Consent: yes})
+			Expect(err).To(MatchError("--path nope is not a directory in the source"))
+			_, err = add(engine.ProfileAddRequest{Name: "go", Path: "team", Consent: yes})
+			Expect(err).To(MatchError("the source has no profiles/ directory under --path team"))
+		})
+
+		It("nothing of a remote profile is kept before consent", func() {
+			for _, answer := range []func([]engine.RemoteProfile) (bool, error){
+				func([]engine.RemoteProfile) (bool, error) { return false, nil },
+				func([]engine.RemoteProfile) (bool, error) { return false, context.Canceled }, // Ctrl+C at the question
+			} {
+				_, err := add(engine.ProfileAddRequest{Name: "go", Consent: answer})
+				Expect(err).To(HaveOccurred())
+				Expect(requests.Load()).NotTo(BeZero(), "it fetched to show the profile")
+				Expect(kept()).To(BeEmpty(), "no profile, no staging, no cache")
+			}
+		})
+
+		It("names the source's profiles, adding those picked, or refusing without a picker", func() {
+			var seen []engine.RemoteProfile
+			_, err := add(engine.ProfileAddRequest{Consent: accept(&seen)})
+			Expect(err).To(MatchError("name the profile to add; the source has docs and go"))
+			Expect(errs.Hints(err)).To(Equal([]string{"add docs: lola profile --user docs --add " + src + " --trust",
+				"add go: lola profile --user go --add " + src + " --trust"}))
+			var offered []string
+			_, err = add(engine.ProfileAddRequest{Consent: accept(&seen), Pick: func(names []string, invalid int) ([]string, error) {
+				offered = names
+				return []string{"docs"}, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(offered).To(Equal([]string{"docs", "go"}))
+			Expect(seen).To(ConsistOf(HaveField("Profile", "remote:docs")))
+			_, err = add(engine.ProfileAddRequest{DryRun: true})
+			Expect(errs.Hints(err)).To(Equal([]string{"see docs: lola profile --user docs --add " + src + " -n",
+				"see go: lola profile --user go --add " + src + " -n"}), "a look never turns into a write")
+			Expect(filepath.Join(p.RemoteProfiles, "docs", "profile.yml")).To(BeAnExistingFile())
+			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeADirectory())
+		})
+
+		It("a profile with a hostile ref or source refuses before git runs", func() {
+			GinkgoT().Chdir(tmp)
+			for _, req := range []engine.ProfileAddRequest{
+				{Name: "go", Source: src, Ref: "--upload-pack=touch PWNED"},
+				{Name: "go", Source: "ext::sh -c touch% PWNED"},
+				{Name: "go", Source: "fd::0"},
+				{Name: "go", Source: "git://127.0.0.1/profiles.git"},
+				{Name: "go", Source: "https://tok3n@example.com/p.git"},
+				{Name: "go", Source: src, Path: "../outside"},
+			} {
+				var seen []engine.RemoteProfile
+				req.Consent = accept(&seen)
+				_, err := add(req)
+				Expect(err).To(HaveOccurred(), "%+v", req)
+				Expect(requests.Load()).To(BeZero(), "%+v", req)
+			}
+			// A profile whose entry carries a hostile ref is refused when it is read, before any of
+			// its modules is fetched.
+			publish(map[string]string{"profiles/go.yml": "version: 1\nmodules:\n  - name: example\n    source: " + url +
+				"\n    ref: --upload-pack=touch PWNED\n    commit: " + commit + "\n    digest: " + digest + "\n"})
+			var seen []engine.RemoteProfile
+			_, err := add(engine.ProfileAddRequest{Name: "go", Consent: accept(&seen)})
+			Expect(err).To(MatchError(ContainSubstring("profiles/go.yml:3: module example: ref \"--upload-pack=touch PWNED\" starts with '-'")))
+			for _, hostile := range [][2]string{{"ext::sh -c touch% PWNED", "names a git remote helper"}, {"fd::0", "names a git remote helper"},
+				{"git://localhost/example.git", "a git:// source is refused"}} {
+				entry, want := hostile[0], hostile[1]
+				publish(map[string]string{"profiles/go.yml": "version: 1\nmodules:\n  - name: example\n    source: \"" + entry + "\"\n    commit: " +
+					commit + "\n    digest: " + digest + "\n"})
+				_, err := add(engine.ProfileAddRequest{Name: "go", Consent: accept(&seen)})
+				Expect(err).To(MatchError(ContainSubstring(want)), entry)
+			}
+			Expect(filepath.Join(tmp, "PWNED")).NotTo(BeAnExistingFile())
+			Expect(seen).To(BeNil())
+			Expect(kept()).To(BeEmpty())
+		})
+
+		It("a remote profile with a local source or an unpinned entry refuses", func() {
+			writeTree(filepath.Join(proj, "local", "profiles"), map[string]string{"go.yml": pinned()})
+			for _, local := range []string{filepath.Join(proj, "local"), "./local", "file://" + filepath.Join(proj, "local")} {
+				_, err := add(engine.ProfileAddRequest{Name: "go", Source: local, Consent: func([]engine.RemoteProfile) (bool, error) { return true, nil }})
+				Expect(err).To(MatchError(ContainSubstring("is on this machine; a remote profile names only git repositories and https archives")), local)
+			}
+			publish(map[string]string{"profiles/go.yml": "version: 1\nmodules:\n  - {name: example, source: " + url + "}\n",
+				"profiles/near.yml": "version: 1\nmodules:\n  - {name: example, source: ../example}\n"})
+			_, err := add(engine.ProfileAddRequest{Name: "go", Consent: func([]engine.RemoteProfile) (bool, error) { return true, nil }})
+			Expect(err).To(MatchError(ContainSubstring("profiles/go.yml:3: module example: it is not pinned")))
+			_, err = add(engine.ProfileAddRequest{Name: "near", Consent: func([]engine.RemoteProfile) (bool, error) { return true, nil }})
+			Expect(err).To(MatchError(ContainSubstring("profiles/near.yml:3: module example: ../example is on this machine")))
+			Expect(kept()).To(BeEmpty())
+		})
+
+		It("a crafted profile file refuses at load", func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links need privileges on Windows")
+			}
+			dir := filepath.Join(tmp, "profiles-work")
+			publish(map[string]string{"elsewhere/profiles/go.yml": pinned(), "profiles/docs.yml": "version: 1\n", "notes.md": "hi\n"})
+			commitLinks := func(links map[string]string) {
+				GinkgoHelper()
+				for link, to := range links {
+					Expect(os.Symlink(to, filepath.Join(dir, link))).To(Succeed())
+				}
+				gitIn(dir, "add", "-A")
+				gitIn(dir, "commit", "-q", "-m", "links")
+				gitIn(dir, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
+			}
+			yes := func([]engine.RemoteProfile) (bool, error) { return true, nil }
+			// A link outside --path and profiles/ is never read, and allowed.
+			commitLinks(map[string]string{"README.md": "notes.md", "team": "elsewhere"})
+			_, err := add(engine.ProfileAddRequest{Name: "docs", Consent: yes})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = add(engine.ProfileAddRequest{Name: "go", Path: "team", Consent: yes})
+			Expect(err).To(MatchError(ContainSubstring("team: symbolic links are not allowed")), "a link in --path")
+			commitLinks(map[string]string{"profiles/go.yml": "../elsewhere/profiles/go.yml"})
+			_, err = add(engine.ProfileAddRequest{Name: "go", Consent: yes})
+			Expect(err).To(MatchError(ContainSubstring("profiles/go.yml: symbolic links are not allowed")), "a link in profiles/")
+			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeADirectory())
+		})
+
+		It("puts back a profile an interrupted write left aside, and never one an interrupted removal left", func() {
+			keep("go", pinned())
+			keep("docs", "version: 1\n")
+			activate(user, "remote:go")
+			Expect(os.Rename(filepath.Join(p.RemoteProfiles, "go"), filepath.Join(p.RemoteProfiles, ".old-go-123"))).To(Succeed())
+			Expect(os.Rename(filepath.Join(p.RemoteProfiles, "docs"), filepath.Join(p.RemoteProfiles, ".del-docs-456"))).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(p.RemoteProfiles, ".new-go-789"), 0o700)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, ".DS_Store"), nil, 0o600)).To(Succeed()) // not lola's: left alone
+			// Any run that reads the remote profiles finishes the interrupted work first: the profile
+			// that was being replaced is not read as gone.
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("no longer exists"))))
+			Expect(shipped(userRoot())).To(BeAnExistingFile())
+			es, err := os.ReadDir(p.RemoteProfiles)
+			Expect(err).NotTo(HaveOccurred())
+			var names []string
+			for _, d := range es {
+				names = append(names, d.Name())
+			}
+			Expect(names).To(ConsistOf("go", ".DS_Store"))
+		})
+	})
+
+	It("finds a profile an interrupted update left aside before it names one for --update or --remove", func() {
+		keep("go", pinned())
+		aside := func() {
+			GinkgoHelper()
+			Expect(os.Rename(filepath.Join(p.RemoteProfiles, "go"), filepath.Join(p.RemoteProfiles, ".old-go-123"))).To(Succeed())
+		}
+		aside()
+		_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go", DryRun: true})
+		Expect(err).To(MatchError("you have no remote profile go"), "a dry run never sweeps, so it does not find it")
+		_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go"})
+		Expect(err).To(MatchError(ContainSubstring("there is no terminal to ask on")), "found, then refused before any network contact")
+		Expect(filepath.Join(p.RemoteProfiles, "go")).To(BeADirectory())
+		aside()
+		rm, err := e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Confirm: func(engine.RemoteProfile) (bool, error) { return true, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rm.Removed).To(BeTrue())
+	})
+
+	It("profile commands refuse a tracked lock.json", func() {
+		keep("go", pinned())
+		activate(sc, "remote:go")
+		gitIn(proj, "init", "-q")
+		gitIn(proj, "add", "-f", ".lola/lock.json")
+		tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"
+		yes := func([]engine.RemoteProfile) (bool, error) { return true, nil }
+		_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Scope: sc, Name: "docs", Source: url, Consent: yes})
+		Expect(err).To(MatchError(tracked))
+		_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: sc, Name: "go", Consent: yes})
+		Expect(err).To(MatchError(tracked))
+		_, err = e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: sc, Name: "go", Force: true,
+			Confirm: func(engine.RemoteProfile) (bool, error) { return true, nil }})
+		Expect(err).To(MatchError(tracked), "--force overrides the check of use, not this one")
+		Expect(requests.Load()).To(BeZero())
+		Expect(filepath.Join(p.RemoteProfiles, "go")).To(BeADirectory())
+	})
+
+	Describe("--update", func() {
+		var src string
+		work := func() string { return filepath.Join(tmp, "profiles-work") }
+		publish := func(files map[string]string) {
+			GinkgoHelper()
+			writeTree(work(), files)
+			gitIn(work(), "add", "-A")
+			gitIn(work(), "commit", "-q", "-m", "change")
+			gitIn(work(), "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
+		}
+		yes := func([]engine.RemoteProfile) (bool, error) { return true, nil }
+		BeforeEach(func() {
+			src = url[:len(url)-len("example.git")] + "profiles.git"
+			writeTree(work(), map[string]string{"profiles/go.yml": pinned()})
+			gitIn(work(), "init", "-q", "-b", "main")
+			gitIn(work(), "add", "-A")
+			gitIn(work(), "commit", "-q", "-m", "profiles")
+			gitIn(tmp, "clone", "-q", "--bare", work(), filepath.Join(tmp, "srv", "profiles.git"))
+			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Scope: user, Name: "go", Source: src, Consent: yes})
+			Expect(err).NotTo(HaveOccurred())
+			requests.Store(0)
+		})
+		update := func(s engine.Scope, name string, consent func([]engine.RemoteProfile) (bool, error)) (*engine.ProfileUpdateResult, error) {
+			return e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: s, Name: name, Consent: consent})
+		}
+		file := func() string {
+			GinkgoHelper()
+			b, err := os.ReadFile(filepath.Join(p.RemoteProfiles, "go", "profile.yml"))
+			Expect(err).NotTo(HaveOccurred())
+			return string(b)
+		}
+
+		It("profile --add off a terminal without --trust refuses before network contact", func() {
+			_, err := update(user, "go", nil)
+			Expect(err).To(MatchError("lola profile --update shows how the profile changes and asks before keeping it, and there is no terminal to ask on"))
+			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user remote:go --update -n",
+				"then update it unasked: lola profile --user remote:go --update --trust"}))
+			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go", Flags: []string{"--allow-runtime-hooks", "-y"}})
+			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user remote:go --update -n --allow-runtime-hooks -y",
+				"then update it unasked: lola profile --user remote:go --update --trust --allow-runtime-hooks -y"}), "hints keep the run's flags")
+			Expect(requests.Load()).To(BeZero())
+
+			publish(map[string]string{"profiles/go.yml": pinned() + "description: new\n"})
+			res, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go", DryRun: true, Flags: []string{"--allow-hooks"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
+				Text: "to update it: lola profile --user remote:go --update --allow-hooks (off a terminal: --trust)"}))
+		})
+
+		It("shows how the entries change, replaces the profile, and names what to apply where it is on", func() {
+			res, err := update(user, "remote:go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles).To(BeEmpty())
+			Expect(res.Notices).To(ConsistOf(HaveField("Text", HavePrefix("remote:go is up to date with "+src+" (commit "))))
+
+			_, err = turn(user, engine.ProfileOn, "go")
+			Expect(err).NotTo(HaveOccurred())
+			before := file()
+			changed := strings.Replace(pinned(), "targets: [claude-code]", "targets: [claude-code]\ndescription: now with rules off", 1) +
+				"    rules: false\n"
+			publish(map[string]string{"profiles/go.yml": changed})
+
+			// Declined: the old profile stays, and nothing is staged.
+			_, err = update(user, "go", func([]engine.RemoteProfile) (bool, error) { return false, nil })
+			Expect(err).To(MatchError(engine.ErrDeclined))
+			Expect(file()).To(Equal(before))
+			_, err = update(user, "go", func([]engine.RemoteProfile) (bool, error) { return false, context.Canceled })
+			Expect(err).To(MatchError(context.Canceled))
+			Expect(file()).To(Equal(before))
+			es, _ := os.ReadDir(p.Staging)
+			Expect(es).To(BeEmpty())
+
+			var seen []engine.RemoteProfile
+			res, err = update(user, "go", func(rps []engine.RemoteProfile) (bool, error) {
+				seen = rps
+				return true, nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(seen).To(HaveLen(1))
+			Expect(seen[0].PreviousDigest).To(Equal(profile.Digest([]byte(before))))
+			Expect(seen[0].Digest).To(Equal(profile.Digest([]byte(changed))))
+			Expect(seen[0].Changes).To(ConsistOf(And(HaveField("Module", "example"), HaveField("Kind", "changed"),
+				HaveField("Fields", ConsistOf(HaveField("Field", "rules"))))))
+			Expect(file()).To(Equal(changed))
+			Expect(res.Apply).To(Equal([]string{"example"}))
+			es, err = os.ReadDir(p.RemoteProfiles)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(es).To(HaveLen(1), "nothing left aside")
+
+			// Fetched again with nothing new, it is up to date.
+			res, err = update(sc, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ConsistOf(HaveField("Text", HavePrefix("remote:go is up to date"))))
+		})
+
+		It("applies only what the update moves, counting what else is pending", func() {
+			_, err := turn(user, engine.ProfileOn, "go")
+			Expect(err).NotTo(HaveOccurred())
+			mods := filepath.Join(tmp, "mods")
+			writeTree(filepath.Join(mods, "a"), map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
+			writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " +
+				filepath.Join(mods, "a") + "}\n"})
+			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
+			res, err := update(user, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Apply).To(Equal([]string{"example"}), "a, pending from user.yml, is not the update's")
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "1 other change is pending → lola sync --user"}))
+
+			// An entry another layer overrides moves nothing.
+			writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " +
+				url + ", commit: " + commit + ", digest: " + digest + "}\n"})
+			publish(map[string]string{"profiles/go.yml": pinned() + "description: only the description\n"})
+			res, err = update(user, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Apply).To(BeEmpty())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "the update changes nothing installed at user scope"}))
+		})
+
+		It("says how to apply the update in the other scope it is used in, and when it cannot tell", func() {
+			_, err := turn(user, engine.ProfileOn, "go")
+			Expect(err).NotTo(HaveOccurred())
+			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
+			res, err := update(sc, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Apply).To(BeEmpty(), "applied only in the run's scope")
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "remote:go is on at user scope; apply it there: lola sync --user example"}))
+
+			// From user scope, the project found from the working directory is the other scope.
+			activate(sc, "remote:go")
+			publish(map[string]string{"profiles/go.yml": pinned()})
+			res, err = update(user, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Apply).To(Equal([]string{"example"}))
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "remote:go is also on in project " + proj + "; apply it there: lola sync --project example"}))
+
+			// Through extends: of an active profile, too; and a scope lola cannot read is said so.
+			activate(sc)
+			activate(user)
+			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\nextends: [go]\n"})
+			activate(user, "user:mine")
+			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
+			res, err = update(sc, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "remote:go is extended by user:mine, at user scope; apply it there: lola sync --user example"}))
+			gitIn(proj, "init", "-q")
+			gitIn(proj, "add", "-f", ".lola/lock.json")
+			publish(map[string]string{"profiles/go.yml": pinned()})
+			res, err = update(user, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(HaveField("Text", HavePrefix("lola could not check whether remote:go is in use in project "+proj+
+				": .lola/lock.json is tracked by git"))))
+		})
+
+		It("a remote profile with a local source or an unpinned entry refuses", func() {
+			before := file()
+			for content, want := range map[string]string{
+				"version: 1\nmodules:\n  - {name: example, source: " + url + "}\n":                                                                ":3: module example: it is not pinned",
+				"version: 1\nmodules:\n  - {name: example, source: ../example}\n":                                                                 ":3: module example: ../example is on this machine",
+				"version: 1\nmodules:\n  - {name: example, source: \"http://localhost/x.git\", commit: " + commit + ", digest: " + digest + "}\n": "uses http://",
+			} {
+				publish(map[string]string{"profiles/go.yml": content})
+				_, err := update(user, "go", yes)
+				Expect(err).To(MatchError(ContainSubstring(want)), content)
+				Expect(file()).To(Equal(before))
+			}
+		})
+
+		It("refuses before the question when it cannot read the scope it would apply to, and keeps the profile it showed", func() {
+			_, err := turn(user, engine.ProfileOn, "go")
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(p.UserProfiles, map[string]string{"broken.yml": "version: 1\nshell: x\n"})
+			activate(user, "remote:go", "user:broken")
+			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
+			asked := false
+			_, err = update(user, "go", func([]engine.RemoteProfile) (bool, error) {
+				asked = true
+				return true, nil
+			})
+			Expect(err).To(MatchError(HavePrefix("lola cannot tell whether remote:go is in use at user scope, so it did not ask to update it: ")))
+			Expect(asked).To(BeFalse())
+			Expect(file()).To(Equal(pinned()))
+
+			// A profile changed while you were asked is not replaced; the hint keeps the run's flags.
+			activate(user, "remote:go")
+			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scope: user, Name: "go", Flags: []string{"--allow-hooks", "-y"},
+				Consent: func([]engine.RemoteProfile) (bool, error) {
+					keep("go", pinned()+"description: another update\n")
+					return true, nil
+				}})
+			Expect(err).To(MatchError("remote:go changed while you were asked; nothing was updated"))
+			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go --update --allow-hooks -y"}))
+			Expect(file()).To(Equal(pinned() + "description: another update\n"))
+		})
+
+		It("reports a profile it wrote as written when what follows the write fails", func() {
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				Skip("needs a directory its owner cannot delete from")
+			}
+			stuck := filepath.Join(p.RemoteProfiles, "go", "stuck")
+			writeTree(stuck, map[string]string{"f": ""})
+			Expect(os.Chmod(stuck, 0o500)).To(Succeed())
+			DeferCleanup(func() {
+				left, err := filepath.Glob(filepath.Join(p.RemoteProfiles, "*", "stuck"))
+				Expect(err).NotTo(HaveOccurred())
+				for _, d := range left {
+					Expect(os.Chmod(d, 0o700)).To(Succeed())
+				}
+			})
+			publish(map[string]string{"profiles/go.yml": pinned() + "description: new\n"})
+			res, err := update(user, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles[0].Written).To(BeTrue())
+			Expect(res.Notices).To(ContainElement(And(HaveField("Level", engine.LevelWarn), HaveField("Text", HavePrefix("remote:go is written, but: ")))))
+			Expect(file()).To(Equal(pinned() + "description: new\n"))
+		})
+
+		It("names nothing to apply where the profile is not used, and refuses a profile of another kind or none", func() {
+			publish(map[string]string{"profiles/go.yml": pinned() + "description: new\n"})
+			res, err := update(sc, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Apply).To(BeEmpty())
+			Expect(res.Notices).To(ContainElement(HaveField("Text",
+				"remote:go is not in use in project "+proj+"; every scope that uses it picks the update up at its next lola sync")))
+
+			_, err = update(user, "user:go", yes)
+			Expect(err).To(MatchError("--update acts on remote profiles; user:go is not one"))
+			Expect(errs.Hints(err)).To(Equal([]string{"edit " + filepath.Join(p.UserProfiles, "go.yml") + " by hand: lola updates only remote profiles",
+				"see the remote ones: lola profile --user"}))
+			_, err = update(user, "docs", yes)
+			Expect(err).To(MatchError("you have no remote profile docs"))
+			Expect(errs.Hints(err)).To(Equal([]string{"--update remote:go: lola profile --user remote:go --update"}))
+		})
+
+		It("a profile with a hostile ref or source refuses before git runs", func() {
+			// source.json is lola's, but a tampered one is refused before anything is fetched.
+			o, err := profile.ReadOrigin(filepath.Join(p.RemoteProfiles, "go"))
+			Expect(err).NotTo(HaveOccurred())
+			o.Ref = "--upload-pack=touch PWNED"
+			b, err := json.Marshal(o)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "go", "source.json"), b, 0o600)).To(Succeed())
+			_, err = update(user, "go", yes)
+			Expect(err).To(MatchError(ContainSubstring("starts with '-'")))
+			Expect(requests.Load()).To(BeZero())
+			Expect(filepath.Join(tmp, "PWNED")).NotTo(BeAnExistingFile())
+		})
+	})
+
+	Describe("--remove", func() {
+		asked := 0
+		yes := func(engine.RemoteProfile) (bool, error) {
+			asked++
+			return true, nil
+		}
+		remove := func(s engine.Scope, name string, force bool, confirm func(engine.RemoteProfile) (bool, error)) (*engine.ProfileRemoveResult, error) {
+			return e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: s, Name: name, Force: force, Confirm: confirm})
+		}
+		BeforeEach(func() { asked = 0 })
+
+		It("removes a remote profile after asking, refused while it is in use unless --force", func() {
+			keep("go", pinned())
+			_, err := turn(user, engine.ProfileOn, "go")
+			Expect(err).NotTo(HaveOccurred())
+			for _, s := range []engine.Scope{user, sc} {
+				_, err = remove(s, "go", false, yes)
+				Expect(err).To(MatchError("remote:go is on at user scope"), "user scope is checked from a project too")
+				Expect(errs.Hints(err)).To(HaveExactElements("turn remote:go off first: lola profile --user remote:go --off",
+					And(HavePrefix("or remove it anyway: lola profile "), HaveSuffix(" remote:go --remove --force"))))
+			}
+			Expect(asked).To(BeZero())
+			_, err = remove(user, "go", true, nil)
+			Expect(err).To(MatchError("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on"),
+				"--force never answers the question")
+			Expect(errs.Hints(err)).To(Equal([]string{"confirm it: lola profile --user remote:go --remove --force -y"}))
+			_, err = remove(user, "go", true, func(engine.RemoteProfile) (bool, error) { return false, nil })
+			Expect(err).To(MatchError(engine.ErrDeclined))
+			Expect(filepath.Join(p.RemoteProfiles, "go")).To(BeADirectory())
+
+			res, err := remove(user, "go", true, yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(Equal(1))
+			Expect(res.Removed).To(BeTrue())
+			Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelWarn,
+				Text: "remote:go is on at user scope; its modules stay installed there until the next lola sync --user, which removes them"}))
+			es, err := os.ReadDir(p.RemoteProfiles)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(es).To(BeEmpty())
+			Expect(shipped(userRoot())).To(BeAnExistingFile())
+
+			sres, err := e.Sync(ctx, engine.SyncRequest{Scope: user, ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(sres.Notices).To(ContainElement(HaveField("Text", "profile remote:go is on but no longer exists → lola profile --user remote:go --off")))
+			Expect(shipped(userRoot())).NotTo(BeAnExistingFile())
+		})
+
+		It("checks the project found from the working directory too, naming the scope that uses it", func() {
+			keep("go", pinned())
+			activate(sc, "remote:go") // proj, found from the working directory
+			_, err := remove(user, "go", false, yes)
+			Expect(err).To(MatchError("remote:go is on in project " + proj))
+			Expect(errs.Hints(err)).To(Equal([]string{"turn remote:go off first: lola profile --project remote:go --off",
+				"or remove it anyway: lola profile --user remote:go --remove --force"}))
+			Expect(asked).To(BeZero())
+
+			// Another project is not found from here: lola keeps no list of every checkout.
+			e.Getwd = func() (string, error) { return tmp, nil }
+			res, err := remove(user, "go", false, yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Removed).To(BeTrue())
+		})
+
+		It("keeps --force in its dry run's command, and under it warns of a scope it cannot read", func() {
+			keep("go", pinned())
+			activate(user, "remote:go")
+			res, err := e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Force: true, DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
+				Text: "to remove it: lola profile --user remote:go --remove --force (off a terminal: -y)"}))
+
+			// The project found from here has a tracked lock.json: it cannot be read.
+			activate(user)
+			activate(sc)
+			gitIn(proj, "init", "-q")
+			gitIn(proj, "add", "-f", ".lola/lock.json")
+			_, err = remove(user, "go", false, yes)
+			Expect(err).To(MatchError(HavePrefix("lola cannot tell whether remote:go is in use in project " + proj + ": .lola/lock.json is tracked by git")))
+			Expect(errs.Hints(err)).To(HaveExactElements(HavePrefix("git rm --cached"), HavePrefix("if you never installed"),
+				"or remove it anyway: lola profile --user remote:go --remove --force"))
+			res, err = remove(user, "go", true, yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Removed).To(BeTrue())
+			Expect(res.Notices).To(ContainElement(HaveField("Text", HavePrefix("could not check whether remote:go is in use in project "+proj))))
+		})
+
+		It("keeps -y and -n in its hints, and refuses a profile that changed while you were asked", func() {
+			keep("go", pinned())
+			activate(user, "remote:go")
+			_, err := e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Yes: true, Confirm: yes})
+			Expect(err).To(MatchError("remote:go is on at user scope"))
+			Expect(errs.Hints(err)).To(Equal([]string{"turn remote:go off first: lola profile --user remote:go --off -y",
+				"or remove it anyway: lola profile --user remote:go --remove --force -y"}))
+			_, err = e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Yes: true, DryRun: true})
+			Expect(errs.Hints(err)).To(ContainElement("or remove it anyway: lola profile --user remote:go --remove --force -y -n"))
+			_, err = e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Yes: true})
+			Expect(errs.Hints(err)).To(Equal([]string{"confirm it: lola profile --user remote:go --remove -y"}), "-y once")
+			activate(user)
+			res, err := e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Yes: true, DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "to remove it: lola profile --user remote:go --remove -y"}))
+
+			_, err = e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Confirm: func(engine.RemoteProfile) (bool, error) {
+				keep("go", pinned()+"description: replaced\n")
+				return true, nil
+			}})
+			Expect(err).To(MatchError("remote:go changed while you were asked; nothing was removed"))
+			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go --remove"}))
+			Expect(filepath.Join(p.RemoteProfiles, "go", "profile.yml")).To(BeAnExistingFile())
+		})
+
+		It("reports a profile it removed but could not delete as removed, with a warning", func() {
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				Skip("needs a directory its owner cannot delete from")
+			}
+			keep("go", pinned())
+			stuck := filepath.Join(p.RemoteProfiles, "go", "stuck")
+			writeTree(stuck, map[string]string{"f": ""})
+			Expect(os.Chmod(stuck, 0o500)).To(Succeed())
+			DeferCleanup(func() {
+				left, err := filepath.Glob(filepath.Join(p.RemoteProfiles, "*", "stuck"))
+				Expect(err).NotTo(HaveOccurred())
+				for _, d := range left {
+					Expect(os.Chmod(d, 0o700)).To(Succeed())
+				}
+			})
+			res, err := remove(user, "go", false, yes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Removed).To(BeTrue())
+			Expect(res.Notices).To(ContainElement(And(HaveField("Level", engine.LevelWarn), HaveField("Text",
+				And(HavePrefix("removed remote:go, but could not delete "+filepath.Join(p.RemoteProfiles, ".del-go-")),
+					HaveSuffix("; the next lola run removes it"))))))
+			left, err := filepath.Glob(filepath.Join(p.RemoteProfiles, ".del-go-*", "stuck"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(left).To(HaveLen(1))
+			Expect(os.Chmod(left[0], 0o700)).To(Succeed())
+			writeTree(filepath.Dir(p.UserManifest), map[string]string{filepath.Base(p.UserManifest): "version: 1\n"})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.ReadDir(p.RemoteProfiles)).To(BeEmpty(), "the next run removed it")
+		})
+
+		It("refuses a remote profile an active profile extends, and one that is not remote", func() {
+			keep("go", pinned())
+			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\nextends: [go]\n"})
+			activate(user, "user:mine")
+			_, err := remove(sc, "remote:go", false, yes)
+			Expect(err).To(MatchError("remote:go is extended by user:mine, on at user scope"))
+			Expect(errs.Hints(err)).To(HaveExactElements("turn user:mine off first: lola profile --user user:mine --off",
+				"or remove go from the extends: of "+filepath.Join(p.UserProfiles, "mine.yml"), HavePrefix("or remove it anyway: ")))
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\nextends: [go]\n"})
+			activate(user)
+			_, err = remove(user, "go", false, yes)
+			Expect(err).To(MatchError("remote:go is extended by default, on at user scope"))
+			Expect(errs.Hints(err)).To(HaveExactElements("remove go from the extends: of "+filepath.Join(p.UserProfiles, "default.yml")+" first",
+				"or remove it anyway: lola profile --user remote:go --remove --force"), "default cannot be turned off")
+			Expect(os.Remove(filepath.Join(p.UserProfiles, "default.yml"))).To(Succeed())
+			activate(user, "user:mine")
+			_, err = remove(user, "user:mine", false, yes)
+			Expect(err).To(MatchError("--remove acts on remote profiles; user:mine is not one"))
+			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "stray"), nil, 0o600)).To(Succeed())
+			_, err = remove(user, "stray", true, yes)
+			Expect(err).To(MatchError("you have no remote profile stray"), "a file there is no profile")
+			Expect(filepath.Join(p.RemoteProfiles, "stray")).To(BeAnExistingFile())
+			activate(user)
+			_, err = remove(sc, "go", false, yes)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+})

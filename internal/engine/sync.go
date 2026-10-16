@@ -221,6 +221,7 @@ type syncEntry struct {
 	ent           manifest.Entry
 	from, file    string
 	key           string
+	via           *trust.ExtendsView // the remote profile the entry comes from through extends: (Wanted.via)
 	ledgerPin     bool
 	goneFrom      string // the description (describeSource) of the local source the cache records for the name, which no longer exists
 	covered       bool
@@ -263,6 +264,13 @@ func entryOf(entries []*syncEntry, c TrustChange) *syncEntry {
 	return nil
 }
 
+// view is the entry as the trust record holds it: with the remote profile it comes from.
+func (se *syncEntry) view() trust.Entry {
+	v := trust.EntryOf(se.ent)
+	v.Extends = se.via
+	return v
+}
+
 // pinned is the entry as the sync records it: with its new pin, if it gets one.
 func (se *syncEntry) pinned() manifest.Entry {
 	ent := se.ent
@@ -286,6 +294,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
 			untrusted.Text(e.Paths.Home, untrusted.MaxName)), "sync the user scope: "+e.SyncCommand(Scope{Kind: target.User}))
 	}
+	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
+	unlockProfiles, err := e.readProfiles(opts.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockProfiles()
 	man, led, unlock, err := e.load(sc, opts.DryRun)
 	if err != nil {
 		return nil, err
@@ -394,7 +408,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		// The entry of a profile of the user's own is trusted as user.yml is (Plan 6b §8.2); a
 		// project profile's is covered by that profile's part of the record (§8.1).
 		for _, se := range entries {
-			se.covered = se.own() || rec.View.Part(se.key).Covers(se.ent)
+			se.covered = se.own() || rec.View.Part(se.key).CoversEntry(se.view())
 		}
 		if err := e.containLocalSources(sc, entries); err != nil {
 			return nil, err
@@ -775,6 +789,10 @@ func trustParts(man *manifest.Manifest, layers []Layer, entries []*syncEntry) []
 			m.Modules = append(m.Modules, ent)
 		}
 		p.view = trust.ViewOf(m.Applied(manifest.Change{Set: pinsOf(entries, p.name)}))
+		// An entry from a remote profile the profile extends is recorded with it (§8.1, §19 S4).
+		for k := range p.view.Modules {
+			p.view.Modules[k].Extends = l.via[p.view.Modules[k].Name]
+		}
 		out = append(out, p)
 	}
 	return out
@@ -1416,12 +1434,18 @@ func needsPin(se *syncEntry) bool {
 
 // SyncNames is the module names lola sync takes in sc, for completion: every module the scope's
 // layers want, installed or not, and every module installed there, in name order. It reads the
-// manifest, lock.json and the user's own active profiles, and takes no lock; it runs no git, so
-// it does not check that lock.json is untracked, which every command it completes does. So it
-// never reads a project profile: a committed lock.json could name one, and completion would
+// manifest, lock.json and the user's own active profiles, under the profiles lock taken shared
+// as a dry run takes it (none before any lola made the lock file), and no other lock; it runs no
+// git, so it does not check that lock.json is untracked, which every command it completes does.
+// So it never reads a project profile: a committed lock.json could name one, and completion would
 // parse checked-in files no command has checked (Plan 6b §19 S5). The modules of active project
 // profiles that are not installed are left out.
 func (e *Engine) SyncNames(sc Scope) ([]string, error) {
+	unlock, err := e.readProfiles(true)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
 		return nil, err
@@ -1628,15 +1652,23 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		}
 		if w.own() {
 			base, from, file = shown(w.path), w.From, w.path
-			editPin := "edit the pin in " + shown(w.path)
+		}
+		// The pin of the user's own profile, or of a remote profile a profile extends, is in a
+		// file lola sync never writes (Plan 6b §6.4).
+		if w.own() || w.via != nil {
+			pinFile, editPin := e.ownPin(sc, w.From, w.path, w.via)
 			switch in := led.Modules[name]; {
 			case ent.Digest != "" && update && !limit.all():
-				return nil, nil, errs.WithHints(fmt.Errorf("%s: its pin is in %s, which lola never writes", name, shown(w.path)),
-					editPin+", then: "+e.SyncCommand(sc, name))
+				// --update of a remote profile applies what it moves itself; a hand edit needs a sync.
+				never, then := "lola never writes", editPin+", then: "+e.SyncCommand(sc, name)
+				if remoteLayer(w.From) || w.via != nil {
+					never, then = "only lola profile --update changes", editPin
+				}
+				return nil, nil, errs.WithHints(fmt.Errorf("%s: its pin is in %s, which %s", name, pinFile, never), then)
 			case ent.Digest != "" && update:
 				update = false
-				kept = append(kept, Notice{Level: LevelInfo, Text: name + ": --update leaves the pin " + w.From + " sets; " + editPin})
-			case ent.Digest == "" && !update && in != nil && in.Digest != "" && in.Source == ent.Source && in.Ref == ent.Ref && in.Path == ent.Path &&
+				kept = append(kept, Notice{Level: LevelInfo, Text: name + ": --update leaves the pin " + pinFile + " sets; " + editPin})
+			case w.own() && ent.Digest == "" && !update && in != nil && in.Digest != "" && in.Source == ent.Source && in.Ref == ent.Ref && in.Path == ent.Path &&
 				!source.IsFolderForm(ent.Source):
 				ent.Commit, ent.Digest = in.Commit, in.Digest
 			}
@@ -1649,13 +1681,20 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			return nil, nil, errs.WithHints(fmt.Errorf("%s: %s is not a source", name, untrusted.Text(ent.Source, untrusted.MaxName)),
 				"sources are "+source.AcceptedForms)
 		}
+		// A remote profile's entry names a remote source (D4): Parse never looks a URL or scp form
+		// up on disk, and a path that still reads as local, a Windows drive, is refused (ruling
+		// R-6b3b-5).
+		if (remoteLayer(w.From) || w.via != nil) && source.IsLocal(spec.Kind, spec.Location) {
+			return nil, nil, fmt.Errorf("%s: %s is on this machine; a remote profile names only git repositories and https archives", name,
+				untrusted.Text(ent.Source, untrusted.MaxName))
+		}
 		spec.Ref, spec.Path = ent.Ref, ent.Path
 		if err := source.Validate(spec); err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
 		repin := e.SyncCommand(sc, "--update", name)
-		if w.own() && w.Digest != "" {
-			repin = "edit the pin in " + shown(w.path)
+		if (w.own() || w.via != nil) && w.Digest != "" {
+			_, repin = e.ownPin(sc, w.From, w.path, w.via)
 		}
 		if err := checkPinShape(name, base, spec.Kind, ent, repin); err != nil {
 			return nil, nil, err
@@ -1677,7 +1716,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 				return nil, nil, fmt.Errorf("%s: %w", name, err)
 			}
 		}
-		out = append(out, &syncEntry{ent: ent, from: from, file: file, key: w.key, ledgerPin: w.own() && w.Digest == "" && ent.Digest != "", goneFrom: gone,
+		out = append(out, &syncEntry{ent: ent, from: from, file: file, key: w.key, via: w.via, ledgerPin: w.own() && w.Digest == "" && ent.Digest != "", goneFrom: gone,
 			spec: spec, targets: ts, update: update})
 	}
 	return out, kept, nil
@@ -1834,6 +1873,8 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 // edits (Plan 6b §6.4).
 func (e *Engine) pinnedIn(sc Scope, se *syncEntry) (file, repin string) {
 	switch {
+	case se.via != nil:
+		return e.ownPin(sc, se.from, se.file, se.via)
 	case se.from == "":
 		return filepath.Base(e.files(sc).manifest), e.SyncCommand(sc, "--update", se.ent.Name)
 	case se.key != "":
@@ -1841,7 +1882,27 @@ func (e *Engine) pinnedIn(sc Scope, se *syncEntry) (file, repin string) {
 	case se.ledgerPin:
 		return "lock.json", e.SyncCommand(sc, "--update", se.ent.Name)
 	}
-	return shown(se.file), "edit the pin in " + shown(se.file)
+	return e.ownPin(sc, se.from, se.file, nil)
+}
+
+// ownPin is where the pin of an entry from a profile of the user's own, or from a remote
+// profile a profile extends (via), is, as a message names it, and how to change it (Plan 6b
+// §6.4): from is the entry's layer and path its file. A remote profile's pin changes only with
+// lola profile remote:<name> --update; any other's is edited by hand.
+func (e *Engine) ownPin(sc Scope, from, path string, via *trust.ExtendsView) (file, repin string) {
+	q := strings.TrimPrefix(from, ledger.FromProfile(""))
+	if via != nil {
+		q = via.Name
+	}
+	if via != nil || remoteLayer(from) {
+		return shown(q), "update it: " + e.Command(sc, "profile", q, "--update")
+	}
+	return shown(path), "edit the pin in " + shown(path)
+}
+
+// remoteLayer reports whether the layer named from is a remote profile (profile:remote:<name>).
+func remoteLayer(from string) bool {
+	return strings.HasPrefix(from, ledger.FromProfile(string(profile.KindRemote)+":"))
 }
 
 // syncPinError coaches a pinned fetch that failed in a way re-pinning can resolve; update is the
