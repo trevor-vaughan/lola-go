@@ -13,6 +13,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // ignoredNames are never copied from a folder source.
@@ -94,11 +95,11 @@ func folderRoot(base, subpath, baseName string) (string, string, error) {
 		if fi, err := os.Stat(base); err != nil {
 			return "", "", err
 		} else if !fi.IsDir() {
-			return "", "", fmt.Errorf("%s is not a directory", printable(base, maxName))
+			return "", "", fmt.Errorf("%s is not a directory", untrusted.Text(base, untrusted.MaxName))
 		}
 		return base, baseName, nil
 	}
-	shown := fmt.Sprintf("--path %q", printable(subpath, maxName))
+	shown := fmt.Sprintf("--path %q", untrusted.Text(subpath, untrusted.MaxName))
 	if !filepath.IsLocal(subpath) {
 		return "", "", errs.WithHints(fmt.Errorf("%s must be a relative path inside the source", shown), pathHint)
 	}
@@ -114,10 +115,10 @@ func checkedRoot(base, subpath, name, shown string) (string, string, error) {
 		fi, err := os.Lstat(filepath.Join(base, current))
 		switch {
 		case err != nil && !errors.Is(err, fs.ErrNotExist):
-			return "", "", fmt.Errorf("%s: %w", shown, cleanErr(err))
+			return "", "", fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
 		case err == nil && fi.Mode()&fs.ModeSymlink != 0:
 			return "", "", fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source",
-				printable(filepath.ToSlash(current), maxName))
+				untrusted.Text(filepath.ToSlash(current), untrusted.MaxName))
 		case err != nil || !fi.IsDir():
 			return "", "", errs.WithHints(fmt.Errorf("%s is not a directory in the source", shown), pathHint)
 		}
@@ -207,7 +208,7 @@ func gitFiles(ctx context.Context, root string, which ...string) ([]string, erro
 	cmd.Stderr = stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("git ls-files in the source failed: %w: %s", err, printable(strings.TrimSpace(stderr.String()), maxStderr))
+		return nil, fmt.Errorf("git ls-files in the source failed: %w: %s", err, untrusted.Text(strings.TrimSpace(stderr.String()), maxStderr))
 	}
 	var files []string
 	for _, f := range strings.Split(string(out), "\x00") {
@@ -227,16 +228,16 @@ func copyFiles(root, dst string, files []string) error {
 		case os.IsNotExist(err):
 			continue // tracked by git but deleted in the work tree
 		case err != nil:
-			return fmt.Errorf("%s: %w", printable(filepath.ToSlash(rel), maxName), cleanErr(err))
+			return fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
 		case fi.Mode()&fs.ModeSymlink != 0:
-			return fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", printable(filepath.ToSlash(rel), maxName))
+			return fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
 		case fi.IsDir():
 			continue // a git submodule entry
 		case !fi.Mode().IsRegular():
-			return fmt.Errorf("%s: not a regular file", printable(filepath.ToSlash(rel), maxName))
+			return fmt.Errorf("%s: not a regular file", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
 		}
 		if err := copyFile(src, filepath.Join(dst, rel), fi); err != nil {
-			return fmt.Errorf("%s: %w", printable(filepath.ToSlash(rel), maxName), cleanErr(err))
+			return fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
 		}
 	}
 	return nil

@@ -138,12 +138,17 @@ var _ = Describe("Parse of URLs", func() {
 var _ = Describe("Parse of malformed URLs", func() {
 	It("refuses a URL that does not parse without echoing its credentials or query, with a hint", func() {
 		cwd := testenv.Isolate()
-		for _, arg := range []string{"https://user:s3cr3t@github.com:44x/o/r.git", "https://h/%zz?token=s3cr3t"} {
+		for _, arg := range []string{"https://user:s3cr3t@github.com:44x/o/r.git", "https://h/%zz?token=s3cr3t", "x%zz:s3cr3t@h://r"} {
 			_, _, err := source.Parse(arg, cwd)
 			Expect(err).To(MatchError(ContainSubstring("not a valid URL")), arg)
 			Expect(err.Error()).NotTo(ContainSubstring("s3cr3t"), arg)
 			Expect(errs.Hints(err)).NotTo(BeEmpty(), arg)
 		}
+	})
+
+	It("shows no part of an unparseable URL whose text before :// is not a scheme", func() {
+		_, _, err := source.Parse("x%zz:s3cr3t@h://r", testenv.Isolate())
+		Expect(err).To(MatchError("the URL is not a valid URL"))
 	})
 
 	It("shows only the scheme of an unparseable URL that holds an '@', wherever a '?' or '#' falls", func() {

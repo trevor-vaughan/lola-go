@@ -1,14 +1,15 @@
 # Architecture
 
 For contributors. The design spec is `docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`;
-this page describes what is built (Plans 1 to 4, and 5a: sources, designed in
-`docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`).
+this page describes what is built (Plans 1 to 4; 5a, sources, designed in
+`docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`; and 5b.1, module formats, designed
+in `docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md`).
 
 ## Pipeline
 
 ```
-source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache (content-addressed versions, heads per ref)
-                                      │ module.Load (IR, re-derived each time)
+source ──fetch──▶ staging ──Put (detect, normalize, digest)──▶ cache (content-addressed versions, heads per ref)
+                                      │ module.Load (IR, re-derived each time; no format adapter)
                                       ▼
                      targets (pure: IR → intents + findings)
                                       ▼
@@ -29,7 +30,8 @@ source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache
 |---|---|
 | `paths` | XDG resolution from an injected `getenv`; no globals. |
 | `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members and string array elements), mode normalization. |
-| `module` | The IR, frontmatter parsing, name rules, loading `lola.yml` + the native layout, rules, hook validation, and normalization. |
+| `module` | The IR, frontmatter parsing, name rules, format detection and the Claude plugin and Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened module JSON reading, rules, hook validation, and normalization. |
+| `untrusted` | Makes text lola did not write safe to print: control characters replaced, length capped, OS errors without their path. |
 | `source` | Source parsing and validation, and the folder, git and archive fetchers. |
 | `store` | The cache's storage: content-addressed versions, per-ref heads, the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, deterministic IO. |
@@ -123,8 +125,45 @@ The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
   `$XDG_CACHE_HOME/lola/probes.json`. The version only feeds
   `PlanContext.Version`, which `Admit` compares with capability `Bounds` to add findings;
   rendering always follows the newest version, so output is the same on every machine.
-- **`lola check`** (`engine.Check`) stages a folder like `cache add` into a temporary directory
-  (or reads a cached module), runs every target's `Plan` and keeps only the findings.
+- **`lola check`** (`engine.Check`) stages a source like `cache add` into a temporary directory
+  and detects its format (or reads a cached module), runs every target's `Plan` and keeps only
+  the findings.
+
+## Module formats
+
+Detection (`module.Detect`) runs only on fetched content: `Store.Put` (cache add, install of a
+source, update) and `engine.Check` of a source. It walks ADR #243's precedence: a lola
+manifest, else the first plugin manifest an adapter accepts (root `plugin.json` with the Agent
+Plugins `$schema`, then `.claude-plugin/plugin.json`), else the native layout. Every
+lower-precedence manifest present is recorded in `Module.Shadowed` with a warning; an adapter
+that finds the file is not its format declines with a warning and detection moves on.
+
+- **Adapters run once and are written down.** An adapter (`module.adapter`: a manifest path
+  and a `read` that returns a `lolaFile`) converts the plugin manifest into the same structure
+  a `lola.yml` decodes into: metadata, `format`, a `components` section that lists every kind
+  explicitly (an empty list turns discovery off) and `formats.<format>` for data lola does not
+  use. That structure is applied and checked by exactly the code that reads a `lola.yml`, and
+  `Normalize` writes it as the cached `lola.yml`, next to the plugin's untouched files.
+- **The load path is format-free.** `module.Load` is detection with no adapters, and it is how
+  the cache's versions are read: the generated `lola.yml` wins precedence, and its
+  `components` make discovery irrelevant, so the plugin manifests left in the cache are inert
+  and a lola upgrade cannot reinterpret a cached version. A spec loads each format's cached
+  copy this way and checks that every target renders it exactly like the fetched one, and that
+  normalizing it again changes nothing. A cached load does not see what the adapter warned
+  about, so `Store.Put` returns the version with detection's warnings.
+- **`components`** (`internal/module/components.go`): per kind, path or inline entries with
+  optional per-entry `targets`. Paths are checked element by element with `Lstat` (local,
+  existing, no symlink); names follow `ValidateName`; two artifacts of a kind and name whose
+  effective targets overlap are refused. Targets honor per-entry `targets` for every kind,
+  rules included. Runtime hooks (`Module.RuntimeHooks`, canonical JSON of the event map) are
+  loaded but no target lists the `runtime-hook` kind, so `Admit` reports `kind-unsupported`
+  until Plan 5b.2 renders them for Claude Code.
+- **Module JSON** (`mcps.json`, `plugin.json`, `.mcp.json`, `mcp.json`, hooks files) is read by
+  one helper: a regular file, not a symlink, at most 1 MiB, nesting at most 64 levels, and no
+  object key repeated at any depth (a token walk before decoding, naming the key's JSON
+  pointer).
+- **Defense in depth.** The planner refuses one module claiming a destination twice ("provided
+  twice by module X") rather than letting the later intent win.
 
 ## Module copies
 
@@ -236,7 +275,7 @@ repository is never filtered by that repository's ignore rules.
   disabled, a 2-minute timeout, at most 5 redirects, none from https to http and none to http off loopback, and a body
   capped at 256 MiB.
 - **Untrusted text.** git's stderr, archive entry names, module-root candidates, HTTP status
-  text and echoed URLs go through `printable`, which replaces control characters and invalid
+  text and echoed URLs go through `untrusted.Text`, which replaces control characters and invalid
   UTF-8 with `?`, indents continuation lines, and caps the length. A parsed URL is echoed as
   scheme, host and path only (`displayURL`); one that does not parse, or was never checked, is
   echoed up to its first `?` or `#`, and only as its scheme when it holds an `@` (`redactURL`).
@@ -253,8 +292,9 @@ $XDG_CACHE_HOME/lola/modules/<name>/
     .lola-origin           # format, manifest, others_present, ref, commit, fetched_at, digest
 ```
 
-`cache add` loads the staged module, normalizes it (`module.Normalize`: one generated
-`lola.yml`, every other manifest removed), digests the result, and renames the version into
+`cache add` detects the staged module's format and reads it (`module.Detect`), normalizes it
+(`module.Normalize`: one generated `lola.yml`, every other lola manifest removed), digests the
+result, and renames the version into
 place in whole from `$XDG_CACHE_HOME/lola/.staging/` (same filesystem), under
 `$XDG_CACHE_HOME/lola/.lock`. `.lola-origin` records the detected format and which manifests
 were read and ignored. Module names and version ids read back from the cache are validated

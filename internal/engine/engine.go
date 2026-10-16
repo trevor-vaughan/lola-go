@@ -56,7 +56,7 @@ type Engine struct {
 
 // New returns an Engine over the real store and every registered target.
 func New(p paths.Paths) *Engine {
-	return &Engine{Paths: p, Store: store.New(p), Consent: consent.New(p.Consent), Targets: targets.All(), Now: time.Now,
+	return &Engine{Paths: p, Store: store.New(p, targets.IDs()), Consent: consent.New(p.Consent), Targets: targets.All(), Now: time.Now,
 		Environ: os.Environ, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second}
 }
 
@@ -364,7 +364,10 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	finds := warningFindings(m)
 	var notes []Notice
 	var intents []plan.Intent
-	for _, id := range targets {
+	for i, id := range targets {
+		if slices.Contains(targets[:i], id) {
+			continue // a target named twice is planned once
+		}
 		if !module.Supports(m.Targets, id) {
 			notes = append(notes, Notice{Level: LevelInfo, Text: fmt.Sprintf("%s does not support %s; skipped there", m.Name, id)})
 			continue

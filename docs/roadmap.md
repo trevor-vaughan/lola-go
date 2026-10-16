@@ -16,13 +16,20 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
 4. **Done: Gemini CLI and OpenCode.** Both targets on the framework, with capability tables,
    probes and rules delivered through owned list members in their settings; a symlinked
    `.lola/plugin-data` is refused and a module copy that is not a directory is replaced.
-5. **Sources and formats**, in two plans:
+5. **Sources and formats**, in three plans:
    - **5a. Done: sources.** Git (`--ref` for branches, tags and full SHAs), zip/tar archives
      and archive URLs
      (`docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`).
-   - **5b. Formats.** `.claude-plugin/plugin.json` (with runtime hooks under consent), Agent
-     Plugins v1 (namespaces, untargeted packages), and `init --format agent-plugins` as the
-     default. It gets its own design, which reworks MVP spec §5.2 and §5.3.
+   - **5b. Formats**, designed in `docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md`
+     (which reworks MVP spec §5.2–§5.4), in two plans:
+     - **5b.1. Done: module formats.** Claude Code plugins and Agent Plugins v1 packages
+       (client namespaces routed per target), adapted once at `cache add` into a `components:`
+       section of `lola.yml`, and `init --format agent-plugins` as the default.
+     - **5b.2. Next: Claude Code runtime hooks.** A Claude plugin's hooks, which 5b.1 loads but
+       installs nowhere, rendered into `.claude/settings.local.json` (`~/.claude/settings.json`
+       at user scope) only with the user's consent.
+   - **5c. Interactive selection.** An install flow built from pickers (modules, scopes,
+     assistants, components); its own design follows 5b.
 6. **Marketplaces, `sync` and profiles.** `lola market`, `@market/module`, `lola sync`, and
    stackable named sets of modules ([#223](https://github.com/LobsterTrap/lola/issues/223)).
 7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,

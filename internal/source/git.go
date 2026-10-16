@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // gitTimeout covers one whole git fetch: ls-remote, clone or fetch, and the copy.
@@ -77,7 +78,7 @@ func (w *headWriter) Write(p []byte) (int, error) {
 func (w *headWriter) String() string { return w.buf.String() }
 
 // runGit runs a git command and returns its stdout. A failure carries git's stderr, made
-// printable, and coaching for the usual causes.
+// safe to print by untrusted.Text, and coaching for the usual causes.
 func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := gitCommand(ctx, dir, args...)
 	stderr := &headWriter{limit: maxStderr + 1}
@@ -94,7 +95,7 @@ func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	}
 	msg := strings.TrimSpace(stderr.String())
 	if msg != "" {
-		err = fmt.Errorf("%w: %s", err, printable(msg, maxStderr))
+		err = fmt.Errorf("%w: %s", err, untrusted.Text(msg, maxStderr))
 	}
 	err = fmt.Errorf("git %s failed: %w", args[0], err)
 	if strings.Contains(msg, "Authentication failed") || strings.Contains(msg, "Permission denied") ||
@@ -138,7 +139,7 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 // checkout puts spec's ref of its repository into the empty directory scratch: the default
 // branch, the one branch or tag named ref, or the full commit SHA ref. It never guesses.
 func checkout(ctx context.Context, spec Spec, scratch string) error {
-	url, ref, shown, shownRef := spec.Location, spec.Ref, printable(spec.Location, maxName), printable(spec.Ref, maxName)
+	url, ref, shown, shownRef := spec.Location, spec.Ref, untrusted.Text(spec.Location, untrusted.MaxName), untrusted.Text(spec.Ref, untrusted.MaxName)
 	clone := []string{"clone", "-q", "--depth", "1", "--no-recurse-submodules"}
 	if ref == "" {
 		_, err := runGit(ctx, "", append(clone, "--", url, scratch)...)

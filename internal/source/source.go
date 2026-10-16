@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Kind is the type of a source.
@@ -59,6 +60,9 @@ const gitCredentialsHint = "remove the credentials, query or fragment; let a git
 // fullSHARE is a full sha1 or sha256 commit id.
 var fullSHARE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
+// schemeRE is the URL scheme grammar (RFC 3986 §3.1).
+var schemeRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
+
 // Parse classifies arg. ok is false when arg is not a source form at all (for example a
 // bare module name); err is set when arg is a source form that is unusable or refused.
 func Parse(arg, cwd string) (Spec, bool, error) {
@@ -75,7 +79,7 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 			return Spec{}, false, err
 		}
 		if u.Host != "" && u.Host != "localhost" {
-			return Spec{}, false, fmt.Errorf("%s: file URLs must not name a remote host", printable(arg, maxName))
+			return Spec{}, false, fmt.Errorf("%s: file URLs must not name a remote host", untrusted.Text(arg, untrusted.MaxName))
 		}
 		p = u.Path
 	} else if !filepath.IsAbs(p) {
@@ -89,10 +93,10 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 	case err == nil && fi.Mode().IsRegular() && archiveSuffix(p) != "":
 		spec = Spec{Kind: KindArchive, Location: filepath.Clean(p)}
 	case err == nil:
-		return Spec{}, false, errs.WithHints(fmt.Errorf("%s is a file, not a directory or an archive", printable(arg, maxName)),
+		return Spec{}, false, errs.WithHints(fmt.Errorf("%s is a file, not a directory or an archive", untrusted.Text(arg, untrusted.MaxName)),
 			"archive names end in "+archiveSuffixList())
 	case isURL:
-		return Spec{}, false, fmt.Errorf("%s: no such directory or archive", printable(arg, maxName))
+		return Spec{}, false, fmt.Errorf("%s: no such directory or archive", untrusted.Text(arg, untrusted.MaxName))
 	case strings.Contains(arg, "://"):
 		return parseRemote(arg)
 	case scpRE.MatchString(arg):
@@ -132,10 +136,11 @@ func parseURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// schemeOnly is raw's scheme and "://…" when raw has a scheme, else fallback.
+// schemeOnly is raw's scheme and "://…" when raw starts with a valid scheme and "://", else
+// fallback: text before a "://" that is not a scheme may be a password.
 func schemeOnly(raw, fallback string) string {
-	if scheme, _, ok := strings.Cut(raw, "://"); ok {
-		return printable(scheme, maxName) + "://…"
+	if scheme, _, ok := strings.Cut(raw, "://"); ok && schemeRE.MatchString(scheme) {
+		return scheme + "://…"
 	}
 	return fallback
 }
@@ -144,9 +149,9 @@ func schemeOnly(raw, fallback string) string {
 // Without a scheme, the location is shown without the leading "://".
 func displayURL(u *url.URL) string {
 	if u.Scheme == "" {
-		return printable(u.Host+u.EscapedPath(), maxName)
+		return untrusted.Text(u.Host+u.EscapedPath(), untrusted.MaxName)
 	}
-	return printable(u.Scheme+"://"+u.Host+u.EscapedPath(), maxName)
+	return untrusted.Text(u.Scheme+"://"+u.Host+u.EscapedPath(), untrusted.MaxName)
 }
 
 // checkURL refuses what no source URL may carry (§2): a query or fragment, credentials, and
@@ -205,16 +210,25 @@ func validate(spec Spec) error {
 	if err := checkLocation(spec.Location); err != nil {
 		return err
 	}
+	if spec.Kind == KindArchive && strings.HasPrefix(spec.Location, "//") {
+		// A scheme-less URL ("//user:password@host/path"), never a path Parse produced: it is
+		// not echoed, as its user info may hold a password.
+		return errs.WithHints(errors.New("archive location starts with //, a URL without a scheme"),
+			"give the archive's https:// URL or its absolute path")
+	}
 	if spec.Kind == KindGit {
 		if err := validateGitLocation(spec.Location); err != nil {
 			return err
 		}
 	} else if !filepath.IsAbs(spec.Location) {
 		if spec.Kind != KindArchive {
-			// A path is shown as given; a URL-shaped one may hold a password, so only its scheme is.
-			shown := schemeOnly(spec.Location, printable(spec.Location, maxName))
-			return errs.WithHints(fmt.Errorf("%s source %s is not an absolute path", printable(string(spec.Kind), maxName), shown),
-				"give the absolute path of the "+printable(string(spec.Kind), maxName))
+			// A path is shown as given; a URL-shaped one may hold a password, so at most its scheme is.
+			shown := untrusted.Text(spec.Location, untrusted.MaxName)
+			if strings.Contains(spec.Location, "://") {
+				shown = schemeOnly(spec.Location, "(not shown: it looks like a URL)")
+			}
+			return errs.WithHints(fmt.Errorf("%s source %s is not an absolute path", untrusted.Text(string(spec.Kind), untrusted.MaxName), shown),
+				"give the absolute path of the "+untrusted.Text(string(spec.Kind), untrusted.MaxName))
 		}
 		u, err := parseURL(spec.Location)
 		if err != nil {
@@ -229,11 +243,11 @@ func validate(spec Spec) error {
 		}
 	}
 	if spec.Kind == KindArchive && archiveSuffix(spec.Location) == "" {
-		return errs.WithHints(fmt.Errorf("archive %s does not end in an archive suffix", printable(spec.Location, maxName)),
+		return errs.WithHints(fmt.Errorf("archive %s does not end in an archive suffix", untrusted.Text(spec.Location, untrusted.MaxName)),
 			"archive names end in "+archiveSuffixList())
 	}
 	if strings.HasPrefix(spec.Ref, "-") {
-		return errs.WithHints(fmt.Errorf("ref %q starts with '-'", printable(spec.Ref, maxName)),
+		return errs.WithHints(fmt.Errorf("ref %q starts with '-'", untrusted.Text(spec.Ref, untrusted.MaxName)),
 			"a branch, tag or commit never starts with '-'")
 	}
 	if spec.Kind == KindGit && spec.Ref != "" && !fullSHARE.MatchString(spec.Ref) {
@@ -242,7 +256,7 @@ func validate(spec Spec) error {
 			if len(errs.Hints(err)) > 0 { // git itself is missing
 				return err
 			}
-			return errs.WithHints(fmt.Errorf("ref %q is not a valid branch or tag name", printable(spec.Ref, maxName)),
+			return errs.WithHints(fmt.Errorf("ref %q is not a valid branch or tag name", untrusted.Text(spec.Ref, untrusted.MaxName)),
 				"--ref takes a branch name, a tag name or a full commit SHA")
 		}
 	}
@@ -253,7 +267,7 @@ func validate(spec Spec) error {
 // and user name cannot be read as an ssh option. scp form never has a user name starting
 // with '-': checkLocation refuses a location that starts with one.
 func validateGitLocation(loc string) error {
-	host, shown := "", printable(loc, maxName)
+	host, shown := "", untrusted.Text(loc, untrusted.MaxName)
 	if !strings.Contains(loc, "://") && scpRE.MatchString(loc) {
 		// The location is never echoed here: it is not a URL that can be shown without its secret.
 		if scpCredentialsRE.MatchString(loc) {
@@ -295,12 +309,12 @@ func validateGitLocation(loc string) error {
 // would make git run a remote helper.
 func checkLocation(loc string) error {
 	if strings.HasPrefix(loc, "-") {
-		return errs.WithHints(fmt.Errorf("source %q starts with '-', which would be read as an option", printable(loc, maxName)),
-			"for a path, write ./"+printable(loc, maxName))
+		return errs.WithHints(fmt.Errorf("source %q starts with '-', which would be read as an option", untrusted.Text(loc, untrusted.MaxName)),
+			"for a path, write ./"+untrusted.Text(loc, untrusted.MaxName))
 	}
 	if remoteHelperRE.MatchString(loc) {
 		return errs.WithHints(fmt.Errorf("source %q names a git remote helper (<transport>::<address>), which lola never runs",
-			printable(loc, maxName)), "sources are "+AcceptedForms)
+			untrusted.Text(loc, untrusted.MaxName)), "sources are "+AcceptedForms)
 	}
 	if len(loc) >= 6 && strings.EqualFold(loc[:6], "git://") {
 		// No location in the message: a git:// URL can carry a user name or a query.

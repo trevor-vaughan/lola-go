@@ -36,6 +36,28 @@ var _ = Describe("store, search and init commands", func() {
 			"  hint: still in your cache: lola cache rm example\n  hint: installed here: lola list\n"))
 	})
 
+	It("cache add shows a plugin's format and each detection warning once", func() {
+		plugin := filepath.Join(tmp, "plugin")
+		writeTree(plugin, map[string]string{
+			".claude-plugin/plugin.json": `{"name":"deploy","lspServers":{}}`,
+			".lola.yaml":                 "name: deploy\n",
+			".lola.yml":                  "name: shadowed\n",
+			"commands/a.md":              "A",
+		})
+		r := lola("cache", "add", plugin)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(strings.Count(r.out, ".lola.yml was ignored: .lola.yaml takes precedence")).To(Equal(1))
+		Expect(strings.Count(r.out, ".claude-plugin/plugin.json was ignored: .lola.yaml takes precedence")).To(Equal(1))
+
+		Expect(os.Remove(filepath.Join(plugin, ".lola.yml"))).To(Succeed())
+		Expect(os.Remove(filepath.Join(plugin, ".lola.yaml"))).To(Succeed())
+		Expect(lola("cache", "rm", "deploy", "-y").code).To(Equal(0))
+		r = lola("cache", "add", plugin)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("format:   claude-plugin"))
+		Expect(strings.Count(r.out, "lspServers is not supported")).To(Equal(1))
+	})
+
 	It("adds, lists, shows, updates and removes stored modules", func() {
 		r := lola("cache", "add", mod)
 		Expect(r.code).To(Equal(0), r.err)
@@ -115,8 +137,29 @@ var _ = Describe("store, search and init commands", func() {
 		r := lola("init", dir)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("skills/hello/SKILL.md already exists; lola init never overwrites files"))
-		Expect(filepath.Join(dir, "lola.yml")).NotTo(BeAnExistingFile())
-		Expect(filepath.Join(dir, "commands")).NotTo(BeADirectory())
+		Expect(filepath.Join(dir, "plugin.json")).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(dir, "dev.getlola")).NotTo(BeADirectory())
+	})
+
+	It("init scaffolds an Agent Plugins package by default and the native layout with --format lola", func() {
+		GinkgoT().Chdir(tmp)
+		r := lola("init", "plugged", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var v map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
+		Expect(v["format"]).To(Equal("agent-plugins"))
+		Expect(v["files"]).To(Equal([]any{"plugin.json", "skills/hello/SKILL.md", "dev.getlola/commands/hello.md"}))
+		r = lola("init", "native_one", "--format", "lola")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✓ created module native_one in native_one (lola)"))
+		Expect(filepath.Join(tmp, "native_one", "lola.yml")).To(BeARegularFile())
+		r = lola("init", "other", "--format", "zip")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(`lola init cannot scaffold format "zip"`))
+		Expect(r.err).To(ContainSubstring("hint: use --format agent-plugins or --format lola"))
+		r = lola("init", "under_score")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("hint: or pass --format lola, whose names may also hold '_'"))
 	})
 
 	It("a module scaffolded by lola init installs as is", func() {

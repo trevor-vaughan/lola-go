@@ -10,6 +10,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 )
 
 // CheckedModule is what lola check found for one module.
@@ -114,7 +115,7 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string) (*module.Mod
 	if err != nil {
 		return nil, "", none, errors.Join(err, cleanup())
 	}
-	m, err := module.Load(staged.Dir, staged.Name)
+	m, err := module.Detect(staged.Dir, staged.Name, targets.IDs())
 	if err != nil {
 		return nil, "", none, errors.Join(err, cleanup())
 	}

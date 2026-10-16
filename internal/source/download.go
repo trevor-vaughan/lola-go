@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Download settings for archive URLs (design §5.1).
@@ -27,7 +28,7 @@ func download(ctx context.Context, rawURL, dest string, limit int64) (err error)
 	tr := http.DefaultTransport.(*http.Transport).Clone() // keeps the proxy settings
 	tr.DisableCompression = true                          // a .tar.gz served as gzip stays gzip
 	client := &http.Client{Transport: tr, Timeout: downloadTimeout, CheckRedirect: checkRedirect}
-	shown := printable(rawURL, maxName)
+	shown := untrusted.Text(rawURL, untrusted.MaxName)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", shown, err)
@@ -44,11 +45,11 @@ func download(ctx context.Context, rawURL, dest string, limit int64) (err error)
 		if ue, ok := errors.AsType[*url.Error](err); ok {
 			err = ue.Err // the *url.Error repeats the URL of the failing hop, query and all
 		}
-		return errs.WithHints(fmt.Errorf("downloading %s: %s", shown, printable(err.Error(), maxName)), hints...)
+		return errs.WithHints(fmt.Errorf("downloading %s: %s", shown, untrusted.Text(err.Error(), untrusted.MaxName)), hints...)
 	}
 	defer func() { err = errors.Join(err, resp.Body.Close()) }()
 	if resp.StatusCode != http.StatusOK {
-		return errs.WithHints(fmt.Errorf("downloading %s: the server answered %s", shown, printable(resp.Status, maxName)),
+		return errs.WithHints(fmt.Errorf("downloading %s: the server answered %s", shown, untrusted.Text(resp.Status, untrusted.MaxName)),
 			"check the URL, or "+downloadHint)
 	}
 	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)

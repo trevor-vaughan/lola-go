@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -13,7 +15,7 @@ var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 func ValidateName(kind, name string) error {
 	if !nameRE.MatchString(name) || strings.Contains(name, "..") {
 		return fmt.Errorf("%s name %q is invalid: use 1-64 characters from a-z, 0-9, '.', '_' "+
-			"and '-', starting with a letter or digit, with no '..'", kind, name)
+			"and '-', starting with a letter or digit, with no '..'", kind, untrusted.Text(name, 65))
 	}
 	return nil
 }

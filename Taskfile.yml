@@ -34,14 +34,19 @@ tasks:
     cmds:
       - task: go:fmt
 
+  cross:
+    desc: "Alias for go:cross"
+    cmds:
+      - task: go:cross
+
   vuln:
     desc: "Alias for go:vuln"
     cmds:
       - task: go:vuln
 
   check:
-    desc: Run all quality gates (lint, test, vuln)
-    deps: [lint, test, vuln]
+    desc: Run all quality gates (lint, test, cross, vuln)
+    deps: [lint, test, cross, vuln]
 
   clean:
     desc: Remove build artifacts and test output

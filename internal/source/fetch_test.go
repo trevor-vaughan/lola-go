@@ -44,6 +44,18 @@ var _ = Describe("Fetch", func() {
 		}
 		refused(source.KindGit, "ftp://u:s3cr3t@h/r")
 		refused(source.KindFolder, "https://u:s3cr3t@h/r")
+		refused(source.KindFolder, "u:s3cr3t@h://x")
+		refused(source.KindArchive, "//u:s3cr3t@h/r")
+		refused(source.KindArchive, "//u:s3cr3t@h/r.zip")
+	})
+
+	It("names what is wrong with a URL-shaped location it does not echo", func() {
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: "u:s3cr3t@h://x"}, staging)
+		Expect(err).To(MatchError("folder source (not shown: it looks like a URL) is not an absolute path"))
+		_, err = source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: "ftp://h/x"}, staging)
+		Expect(err).To(MatchError("folder source ftp://… is not an absolute path"))
+		_, err = source.Fetch(ctx, source.Spec{Kind: source.KindArchive, Location: "//u:s3cr3t@h/r"}, staging)
+		Expect(err).To(MatchError("archive location starts with //, a URL without a scheme"))
 	})
 
 	It("shows a scheme-less location as given, not as ://location", func() {

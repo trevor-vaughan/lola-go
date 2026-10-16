@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Fetch validates spec, then stages its module content in a new directory under
@@ -20,7 +21,7 @@ func fetch(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fe
 		return Fetched{}, err
 	}
 	if spec.Ref != "" && (spec.Kind == KindFolder || spec.Kind == KindArchive) {
-		return Fetched{}, errs.WithHints(fmt.Errorf("--ref applies to git sources only, not to %s source %s", spec.Kind, printable(spec.Location, maxName)),
+		return Fetched{}, errs.WithHints(fmt.Errorf("--ref applies to git sources only, not to %s source %s", spec.Kind, untrusted.Text(spec.Location, untrusted.MaxName)),
 			"drop --ref: a "+string(spec.Kind)+" has no branches, tags or commits")
 	}
 	switch spec.Kind {
@@ -35,7 +36,7 @@ func fetch(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fe
 			return fetchGit(ctx, spec, scratch, stagingParent)
 		})
 	default:
-		return Fetched{}, fmt.Errorf("source %s has unknown type %q", printable(spec.Location, maxName), printable(string(spec.Kind), maxName))
+		return Fetched{}, fmt.Errorf("source %s has unknown type %q", untrusted.Text(spec.Location, untrusted.MaxName), untrusted.Text(string(spec.Kind), untrusted.MaxName))
 	}
 }
 

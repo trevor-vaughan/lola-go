@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -299,7 +298,7 @@ var _ = Describe("Fetch of an archive, error text", func() {
 
 	It("refuses a location that is not a regular file without opening it", func() {
 		fifo := filepath.Join(tmp, "pipe.tar")
-		Expect(syscall.Mkfifo(fifo, 0o600)).To(Succeed())
+		mkfifo(fifo)
 		_, err := fetch(fifo)
 		Expect(err).To(MatchError(ContainSubstring("not a regular file")))
 		Expect(errs.Hints(err)).NotTo(BeEmpty())

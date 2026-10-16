@@ -9,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
@@ -24,7 +25,7 @@ func doc(src string) module.Doc {
 }
 
 // kinds are the artifact kinds of the module IR.
-var kinds = []string{"skill", "command", "agent", "mcp", "rule"}
+var kinds = []string{"skill", "command", "agent", "mcp", "rule", "runtime-hook"}
 
 // clean is a module every target should render without losing anything that matters.
 func clean() *module.Module {
@@ -54,7 +55,8 @@ func wrong() *module.Module {
 		},
 		MCPServers: []module.MCPServer{{Name: "env", Transport: module.TransportStdio, Command: "srv", Cwd: "/tmp",
 			Env: map[string]string{"LEVEL": "${LOG_LEVEL:-info}"}}},
-		Rules: []module.Rule{{Name: "style", Body: "Keep ${PLUGIN_ROOT} literal.\n"}},
+		Rules:        []module.Rule{{Name: "style", Body: "Keep ${PLUGIN_ROOT} literal.\n"}},
+		RuntimeHooks: []module.RuntimeHookSet{{Source: "hooks/hooks.json", Hooks: []byte(`{"PreToolUse":[{"hooks":[{"command":"x","type":"command"}]}]}`)}},
 	}
 }
 
@@ -77,7 +79,32 @@ func alone(m *module.Module) []*module.Module {
 	for _, r := range m.Rules {
 		out = append(out, &module.Module{Name: m.Name, Rules: []module.Rule{r}})
 	}
+	for _, h := range m.RuntimeHooks {
+		out = append(out, &module.Module{Name: m.Name, RuntimeHooks: []module.RuntimeHookSet{h}})
+	}
 	return out
+}
+
+// restrict sets the per-entry targets of every artifact in m.
+func restrict(m *module.Module, ids []string) {
+	for i := range m.Skills {
+		m.Skills[i].Targets = ids
+	}
+	for i := range m.Commands {
+		m.Commands[i].Targets = ids
+	}
+	for i := range m.Agents {
+		m.Agents[i].Targets = ids
+	}
+	for i := range m.MCPServers {
+		m.MCPServers[i].Targets = ids
+	}
+	for i := range m.Rules {
+		m.Rules[i].Targets = ids
+	}
+	for i := range m.RuntimeHooks {
+		m.RuntimeHooks[i].Targets = ids
+	}
 }
 
 var _ = Describe("every registered target", func() {
@@ -159,6 +186,31 @@ var _ = Describe("every registered target", func() {
 						}
 						Expect(ins).NotTo(BeEmpty(), skips[0].Describe())
 						Expect(fs).To(ContainElement(HaveField("Forced", true)))
+					}
+				})
+
+				It("reports runtime hooks as kind-unsupported and never renders them, even with Force", func() {
+					m := &module.Module{Name: "example", RuntimeHooks: wrong().RuntimeHooks}
+					force := ctx
+					force.Force = true
+					for _, c := range []target.PlanContext{ctx, force} {
+						ins, fs := run(m, c)
+						Expect(ins).To(BeEmpty())
+						Expect(fs).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Severity": Equal(target.SeveritySkip),
+							"Kind": Equal("runtime-hook"), "Artifact": Equal("hooks/hooks.json"), "Code": Equal("kind-unsupported"), "Forceable": BeFalse()})))
+					}
+				})
+
+				It("renders an artifact restricted to targets only on those targets", func() {
+					for _, m := range alone(clean()) {
+						elsewhere, here := m, m
+						restrict(elsewhere, []string{"some-other-target"})
+						ins, fs := run(elsewhere, ctx)
+						Expect(ins).To(BeEmpty())
+						Expect(fs).To(BeEmpty())
+						restrict(here, []string{"some-other-target", t.ID()})
+						ins, _ = run(here, ctx)
+						Expect(ins).NotTo(BeEmpty())
 					}
 				})
 

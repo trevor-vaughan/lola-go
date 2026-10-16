@@ -2,7 +2,6 @@ package module
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +16,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // ErrNoModule means a directory contains no artifact lola can install.
@@ -27,6 +27,7 @@ const lookedFor = "skills/*/SKILL.md, SKILL.md, commands/*.md, agents/*.md, mcps
 // lolaFile is the lola.yml schema (§5.4). Only name is required.
 type lolaFile struct {
 	Name        string            `yaml:"name"`
+	Format      string            `yaml:"format,omitempty"`
 	Description string            `yaml:"description,omitempty"`
 	Version     string            `yaml:"version,omitempty"`
 	Author      *Author           `yaml:"author,omitempty"`
@@ -37,6 +38,7 @@ type lolaFile struct {
 	Targets     []string          `yaml:"targets,omitempty"`
 	Formats     map[string]any    `yaml:"formats,omitempty"`
 	Hooks       map[string]string `yaml:"hooks,omitempty"`
+	Components  *components       `yaml:"components,omitempty"`
 }
 
 // ManifestNames lists the module manifest file names in precedence order (ADR #243): the
@@ -48,40 +50,75 @@ func ShadowWarning(winner, shadowed string) string {
 	return shadowed + " was ignored: " + winner + " takes precedence"
 }
 
-const lolaKeys = "name, description, version, author, license, homepage, repository, keywords, targets, formats, hooks"
+const lolaKeys = "name, format, description, version, author, license, homepage, repository, keywords, targets, formats, hooks, components"
 
-var unknownFieldRE = regexp.MustCompile(`field (\S+) not found`)
+var unknownFieldRE = regexp.MustCompile(`field (\S+) not found in type (\S+)`)
 
-// rootSkillExclude lists module-level entries that are never part of a root-level skill.
+// Formats whose adapter can write a manifest (Plan 5b design §3.3).
+const (
+	FormatClaudePlugin = "claude-plugin"
+	FormatAgentPlugins = "agent-plugins"
+)
+
+// rootSkillExclude lists module-level entries that are never part of a root-level skill,
+// including the plugin manifests a format adapter read.
 func rootSkillExclude() []string {
-	return append(ManifestNames(), "SKILL.md", "skills", "commands", "agents", "mcps.json", "rules", "INSTRUCTIONS.md", "AGENTS.md")
+	return append(ManifestNames(), "SKILL.md", "skills", "commands", "agents", "mcps.json", "rules", "INSTRUCTIONS.md", "AGENTS.md",
+		".claude-plugin", "plugin.json", ".mcp.json", "mcp.json")
 }
 
-// Load reads the module rooted at dir.
-func Load(dir, fallbackName string) (*Module, error) {
-	m := &Module{Format: "native", Name: fallbackName}
-	if err := loadLolaFile(dir, m); err != nil {
-		return nil, err
-	}
+// Load reads the module rooted at dir from its lola manifest or, without one, its native
+// layout; it never reads a plugin format's manifest. The cache loads its versions this way, so
+// a cached module's meaning cannot change with lola's format adapters. known lists the target
+// ids that a components entry's targets may name.
+func Load(dir, fallbackName string, known []string) (*Module, error) {
+	return detect(dir, fallbackName, known, nil)
+}
+
+// build finishes a module whose manifest, if any, has been applied to m: it checks the
+// module and loads its artifacts.
+func build(dir string, m *Module, known []string) (*Module, error) {
 	if err := ValidateName("module", m.Name); err != nil {
 		return nil, errs.WithHints(err, "add a lola.yml with a valid name: field")
 	}
 	if err := checkHooks(dir, m); err != nil {
 		return nil, err
 	}
-	steps := []func(string, *Module) error{loadSkills, loadCommands, loadAgents, loadMCP, loadRules}
+	l, c := loader{dir: dir, m: m, known: known}, m.components
+	if c == nil {
+		c = &components{}
+	}
+	steps := []func() error{
+		listed(c.Skills, l.skills, func() error { return loadSkills(dir, m) }),
+		listed(c.Commands, l.commands, func() error { return loadCommands(dir, m) }),
+		listed(c.Agents, l.agents, func() error { return loadAgents(dir, m) }),
+		listed(c.MCP, l.mcp, func() error { return loadMCP(dir, m) }),
+		listed(c.Rules, l.rules, func() error { return loadRules(dir, m) }),
+		listed(c.RuntimeHooks, l.runtimeHooks, func() error { return nil }), // never discovered
+	}
 	for _, step := range steps {
-		if err := step(dir, m); err != nil {
+		if err := step(); err != nil {
 			return nil, err
 		}
 	}
-	if len(m.Skills)+len(m.Commands)+len(m.Agents)+len(m.MCPServers)+len(m.Rules) == 0 {
+	if len(m.Skills)+len(m.Commands)+len(m.Agents)+len(m.MCPServers)+len(m.Rules)+len(m.RuntimeHooks) == 0 {
 		return nil, fmt.Errorf("%s: %w: looked for %s", dir, ErrNoModule, lookedFor)
 	}
 	return m, nil
 }
 
-func loadLolaFile(dir string, m *Module) error {
+// listed loads a kind from its components entries when the kind is listed, else by discovery
+// (§3.1: listing a kind replaces its discovery).
+func listed[E any](entries *[]E, load func([]E) error, discover func() error) func() error {
+	if entries == nil {
+		return discover
+	}
+	return func() error { return load(*entries) }
+}
+
+// readLolaFile reads the first lola manifest present in dir (ADR #243 precedence), recording
+// the others as shadowed. It returns nil when dir has none.
+func readLolaFile(dir string, m *Module) (*lolaFile, error) {
 	var found []string
 	for _, n := range ManifestNames() {
 		_, err := os.Stat(filepath.Join(dir, n))
@@ -89,11 +126,11 @@ func loadLolaFile(dir string, m *Module) error {
 		case err == nil:
 			found = append(found, n)
 		case !errors.Is(err, fs.ErrNotExist):
-			return err
+			return nil, err
 		}
 	}
 	if len(found) == 0 {
-		return nil
+		return nil, nil
 	}
 	m.Manifest, m.Shadowed = found[0], found[1:]
 	for _, n := range m.Shadowed {
@@ -101,25 +138,39 @@ func loadLolaFile(dir string, m *Module) error {
 	}
 	b, err := os.ReadFile(filepath.Join(dir, found[0]))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var lf lolaFile
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
 	if err := dec.Decode(&lf); err != nil {
 		if errors.Is(err, io.EOF) {
-			return fmt.Errorf("%s is empty; it needs at least a name: field", found[0])
+			return nil, fmt.Errorf("%s is empty; it needs at least a name: field", found[0])
 		}
 		var hints []string
-		if mm := unknownFieldRE.FindStringSubmatch(err.Error()); mm != nil {
-			hints = append(hints, fmt.Sprintf("remove or fix %q; known keys are %s", mm[1], lolaKeys))
+		if mm := unknownFieldRE.FindStringSubmatch(err.Error()); mm != nil && knownKeys[mm[2]] != "" {
+			hints = append(hints, fmt.Sprintf("remove or fix %q; known keys there are %s", mm[1], knownKeys[mm[2]]))
 		}
-		return errs.WithHints(fmt.Errorf("%s: %w", found[0], err), hints...)
+		return nil, errs.WithHints(fmt.Errorf("%s: %s", found[0], untrusted.Text(err.Error(), 4*untrusted.MaxName)), hints...)
 	}
 	if lf.Name == "" {
-		return fmt.Errorf("%s: name is required", found[0])
+		return nil, fmt.Errorf("%s: name is required", found[0])
 	}
+	return &lf, nil
+}
+
+// apply sets m from a manifest: a lola.yml, or one an adapter wrote.
+func (m *Module) apply(lf *lolaFile) error {
 	m.Format = "lola"
+	switch lf.Format {
+	case "":
+	case FormatClaudePlugin, FormatAgentPlugins:
+		m.Format = lf.Format
+	default:
+		return errs.WithHints(fmt.Errorf("%s: format %q is unknown", m.Manifest, untrusted.Text(lf.Format, untrusted.MaxName)),
+			"format: records the adapter that wrote the file ("+FormatClaudePlugin+" or "+FormatAgentPlugins+"); remove it from a lola.yml you write")
+	}
+	m.components = lf.Components
 	m.Name, m.Description, m.Version = lf.Name, lf.Description, lf.Version
 	m.Author, m.License, m.Homepage, m.Repository = lf.Author, lf.License, lf.Homepage, lf.Repository
 	m.Keywords, m.Targets, m.Formats = lf.Keywords, lf.Targets, lf.Formats
@@ -134,11 +185,11 @@ func loadLolaFile(dir string, m *Module) error {
 func readDoc(dir, rel string) (Doc, error) {
 	b, err := os.ReadFile(filepath.Join(dir, rel))
 	if err != nil {
-		return Doc{}, err
+		return Doc{}, fmt.Errorf("%s: %w", safeName(rel), untrusted.CleanErr(err))
 	}
 	d, err := ParseDoc(b)
 	if err != nil {
-		return Doc{}, fmt.Errorf("%s: %w", rel, err)
+		return Doc{}, fmt.Errorf("%s: %w", safeName(rel), err)
 	}
 	return d, nil
 }
@@ -257,43 +308,12 @@ type mcpEntry struct {
 }
 
 func loadMCP(dir string, m *Module) error {
-	b, err := os.ReadFile(filepath.Join(dir, "mcps.json"))
-	if errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Lstat(filepath.Join(dir, "mcps.json")); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	var doc struct {
-		MCPServers map[string]mcpEntry `json:"mcpServers"`
-	}
-	if err := json.Unmarshal(b, &doc); err != nil {
-		return fmt.Errorf("mcps.json: %w", err)
-	}
-	for name, e := range doc.MCPServers {
-		if err := ValidateName("MCP server", name); err != nil {
-			return fmt.Errorf("mcps.json: %w", err)
-		}
-		s := MCPServer{Name: name, Command: e.Command, Args: e.Args, Env: e.Env, Cwd: e.Cwd, URL: e.URL, Headers: e.Headers}
-		switch {
-		case e.Type == "sse":
-			s.Transport = TransportSSE
-		case e.Type == "http" || e.Type == "streamable-http" || (e.Type == "" && e.URL != ""):
-			s.Transport = TransportHTTP
-		case (e.Type == "stdio" || e.Type == "") && e.Command != "":
-			s.Transport = TransportStdio
-		case e.Type != "" && e.Type != "stdio":
-			return fmt.Errorf("mcps.json: server %q: unknown transport %q (use stdio, http or sse)", name, e.Type)
-		default:
-			return fmt.Errorf("mcps.json: server %q needs a command or a url", name)
-		}
-		if s.Transport != TransportStdio && s.URL == "" {
-			return fmt.Errorf("mcps.json: server %q needs a command or a url", name)
-		}
-		m.MCPServers = append(m.MCPServers, s)
-	}
-	sort.Slice(m.MCPServers, func(i, j int) bool { return m.MCPServers[i].Name < m.MCPServers[j].Name })
-	return nil
+	servers, err := mcpFile(dir, "mcps.json")
+	m.MCPServers = servers
+	return err
 }
 
 // loadRules reads rules/*.md (§5.6), sorted by name, and warns about anything else in rules/
@@ -312,16 +332,11 @@ func loadRules(dir string, m *Module) error {
 		if err := ValidateName("rule", name); err != nil {
 			return err
 		}
-		rel := "rules/" + e.Name()
-		doc, err := readDoc(dir, rel)
+		body, err := ruleBody(dir, "rules/"+e.Name())
 		if err != nil {
 			return err
 		}
-		if _, ok := doc.Frontmatter["paths"]; ok {
-			return errs.WithHints(fmt.Errorf("%s: a rule applies in every session, so paths: is not supported", rel),
-				"path-scoped guidance belongs in a skill: skills/<name>/SKILL.md")
-		}
-		m.Rules = append(m.Rules, Rule{Name: name, Body: doc.Body})
+		m.Rules = append(m.Rules, Rule{Name: name, Body: body})
 	}
 	sort.Slice(m.Rules, func(i, j int) bool { return m.Rules[i].Name < m.Rules[j].Name })
 	for _, f := range []string{"INSTRUCTIONS.md", "AGENTS.md"} {
@@ -335,6 +350,20 @@ func loadRules(dir string, m *Module) error {
 		}
 	}
 	return nil
+}
+
+// ruleBody reads a rule file (§5.6): its body, without frontmatter, which may not scope it
+// to paths.
+func ruleBody(dir, rel string) (string, error) {
+	doc, err := readDoc(dir, rel)
+	if err != nil {
+		return "", err
+	}
+	if _, ok := doc.Frontmatter["paths"]; ok {
+		return "", errs.WithHints(fmt.Errorf("%s: a rule applies in every session, so paths: is not supported", safeName(rel)),
+			"path-scoped guidance belongs in a skill: skills/<name>/SKILL.md")
+	}
+	return doc.Body, nil
 }
 
 // checkHooks refuses hooks lola could not run: unknown events, and scripts that are not
@@ -366,14 +395,23 @@ func checkHooks(dir string, m *Module) error {
 // generated lola.yml, built from m, and no other manifest. m must have been loaded from dir.
 func Normalize(dir string, m *Module) error {
 	lf := lolaFile{Name: m.Name, Description: m.Description, Version: m.Version, Author: m.Author, License: m.License,
-		Homepage: m.Homepage, Repository: m.Repository, Keywords: m.Keywords, Targets: m.Targets, Formats: m.Formats}
+		Homepage: m.Homepage, Repository: m.Repository, Keywords: m.Keywords, Targets: m.Targets, Formats: m.Formats,
+		Components: m.components}
+	if m.Format == FormatClaudePlugin || m.Format == FormatAgentPlugins {
+		lf.Format = m.Format
+	}
 	for _, h := range m.DeclaredHooks {
 		if lf.Hooks == nil {
 			lf.Hooks = map[string]string{}
 		}
 		lf.Hooks[h.Event] = h.Script
 	}
-	b, err := yaml.Marshal(lf)
+	var doc yaml.Node
+	if err := doc.Encode(lf); err != nil {
+		return err
+	}
+	quoteMergeKeys(&doc)
+	b, err := yaml.Marshal(&doc)
 	if err != nil {
 		return err
 	}
@@ -383,4 +421,20 @@ func Normalize(dir string, m *Module) error {
 		}
 	}
 	return os.WriteFile(filepath.Join(dir, "lola.yml"), b, 0o644)
+}
+
+// quoteMergeKeys makes every mapping key "<<" below n a quoted string. The encoder tags it
+// !!merge and writes it plain, which YAML reads back as a merge key, so a server's env, a
+// hooks event or a kept value would come back from the cache meaning something else.
+func quoteMergeKeys(n *yaml.Node) {
+	if n.Kind == yaml.MappingNode {
+		for i := 0; i < len(n.Content); i += 2 {
+			if k := n.Content[i]; k.Kind == yaml.ScalarNode && k.Value == "<<" {
+				k.Tag, k.Style = "!!str", yaml.DoubleQuotedStyle
+			}
+		}
+	}
+	for _, c := range n.Content {
+		quoteMergeKeys(c)
+	}
 }

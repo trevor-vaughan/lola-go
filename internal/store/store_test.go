@@ -12,6 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -42,7 +43,7 @@ var _ = Describe("Store", func() {
 		var err error
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		s = store.New(p)
+		s = store.New(p, targets.IDs())
 	})
 
 	It("stores a version, moves the staged dir, and records the index and the version's .lola-origin", func() {
@@ -66,6 +67,48 @@ var _ = Describe("Store", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
 	})
+
+	It("adapts a plugin once: .lola-origin records its format, the version keeps the plugin files, and a refetch is the same version", func() {
+		plugin := map[string]string{
+			".claude-plugin/plugin.json": `{"name":"deploy","lspServers":{},"mcpServers":"./b.mcpb"}`,
+			"commands/a.md":              "A",
+			"mcps.json":                  `{"mcpServers":{"native":{"command":"n"}}}`,
+		}
+		v, err := put(plugin, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Name).To(Equal("deploy"))
+		Expect(v.Meta.Format).To(Equal("claude-plugin"))
+		Expect(v.Meta.Manifest).To(Equal(".claude-plugin/plugin.json"))
+		Expect(v.Module.Format).To(Equal("claude-plugin"))
+		Expect(v.Module.MCPServers).To(BeEmpty())
+		Expect(filepath.Join(v.ContentDir, ".claude-plugin", "plugin.json")).To(BeARegularFile())
+		Expect(v.Module.Warnings).To(HaveLen(2), "Put reports what detection found, which a cached load no longer sees")
+		again, err := put(plugin, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(again.ID).To(Equal(v.ID))
+		loaded, err := s.Load("deploy", v.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(loaded.Module.Warnings).To(BeEmpty())
+		Expect(loaded.Module.Commands).To(Equal(v.Module.Commands))
+	})
+
+	It("caches a plugin with a \"<<\" key, which YAML would otherwise read as a merge key", func() {
+		v, err := put(map[string]string{".claude-plugin/plugin.json": `{"name":"mk","mcpServers":{"s":{"command":"x","env":{"<<":"v"}}}}`}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Module.MCPServers).To(HaveLen(1))
+		Expect(v.Module.MCPServers[0].Env).To(Equal(map[string]string{"<<": "v"}))
+	})
+
+	DescribeTable("caches a kept value of -0.0, which YAML would read back as 0", func(files map[string]string) {
+		_, err := put(files, "")
+		Expect(err).NotTo(HaveOccurred())
+	},
+		Entry("a Claude plugin's unknown key", map[string]string{".claude-plugin/plugin.json": `{"name":"mk","weird":-0.0}`, "commands/a.md": "A"}),
+		Entry("an Agent Plugins extensions value", map[string]string{
+			"plugin.json":       `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"mk","extensions":{"com.example":{"n":-0.0}}}`,
+			"skills/s/SKILL.md": "---\nname: s\ndescription: S\n---\n",
+		}),
+	)
 
 	It("refuses a cache index whose head is not a version id, before using it in a path", func() {
 		_, err := put(map[string]string{"commands/a.md": "x"}, "")

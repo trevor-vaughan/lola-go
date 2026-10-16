@@ -5,7 +5,7 @@ Guidance for coding agents working on lola (Go).
 ## Commands
 
 - `task build` -> `bin/lola`; `task test` (add `MODE=llm` for failures only); `task lint`;
-  `task vuln`; `task check` runs all gates. Artifacts go to `.test-output/`.
+  `task vuln`; `task cross` (Windows/macOS build + vet); `task check` runs all gates. Artifacts go to `.test-output/`.
 
 ## Rules
 

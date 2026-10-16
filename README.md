@@ -13,9 +13,9 @@ explains why.
 
 - **Assistants:** Claude Code, Gemini CLI and OpenCode, at project scope or user scope
   (`--user`).
-- **Modules:** in lola's native layout, with an optional `lola.yml`, from a local folder, a
-  git repository (`--ref` for a branch, tag or commit), or a zip or tar archive, local or
-  downloaded.
+- **Modules:** in lola's native layout (with an optional `lola.yml`), Claude Code plugins and
+  Agent Plugins packages, from a local folder, a git repository (`--ref` for a branch, tag or
+  commit), or a zip or tar archive, local or downloaded.
 - **Portability report:** `lola check ./my-module` shows what each assistant would drop,
   adapt or skip, without writing anything; `install` prints the same findings, and
   `--strict` makes them errors.
@@ -25,7 +25,7 @@ explains why.
   lola never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`, and a module's install hooks
   run only with your consent.
 
-Plugin formats, marketplaces, profiles and templating are planned: see
+Claude Code runtime hooks, marketplaces, profiles and templating are planned: see
 [docs/roadmap.md](docs/roadmap.md).
 
 ## Install
@@ -43,7 +43,7 @@ task build          # writes bin/lola
 ## Quickstart
 
 ```sh
-lola init my-module                         # lola.yml, one skill, one command
+lola init my-module                         # plugin.json, one skill, one command (Agent Plugins)
 mkdir my-project && cd my-project
 lola install ../my-module -t claude-code    # renders into .claude/, records .lola/project.yml
 lola list                                   # my-module  claude-code  ✓ ok

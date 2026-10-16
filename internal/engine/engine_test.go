@@ -147,6 +147,59 @@ var _ = Describe("Engine", func() {
 		Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
 	})
 
+	It("installs a Claude Code plugin from a folder, reporting its runtime hooks and unsupported keys", func() {
+		plugin := filepath.Join(tmp, "src", "deploy")
+		writeTree(plugin, map[string]string{
+			".claude-plugin/plugin.json": `{"name":"deploy","commands":{"about":{"content":"About ${CLAUDE_PLUGIN_ROOT}","description":"About"}},"lspServers":{}}`,
+			"skills/review/SKILL.md":     "---\ndescription: Review\n---\nReview.\n",
+			".mcp.json":                  `{"mcpServers":{"gh":{"command":"${CLAUDE_PLUGIN_ROOT}/bin/gh","env":{"D":"${CLAUDE_PLUGIN_DATA}"}}}}`,
+			"hooks/hooks.json":           `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"x"}]}]}}`,
+		})
+		res, err := install(claude, plugin)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(".claude/skills/review/SKILL.md")).To(Equal("---\ndescription: Review\n---\nReview.\n"))
+		Expect(read(".claude/commands/about.md")).To(Equal("---\ndescription: About\n---\nAbout " + filepath.Join(proj, ".lola/modules/deploy")))
+		Expect(read(".mcp.json")).To(MatchJSON(`{"mcpServers":{"gh":{"command":"` + filepath.Join(proj, ".lola/modules/deploy/bin/gh") +
+			`","env":{"D":"` + filepath.Join(proj, ".lola/plugin-data/deploy") + `"}}}}`))
+		Expect(res.Findings).To(ContainElements(
+			SatisfyAll(HaveField("Code", "kind-unsupported"), HaveField("Kind", "runtime-hook"), HaveField("Artifact", "hooks/hooks.json"), HaveField("Severity", target.SeveritySkip)),
+			SatisfyAll(HaveField("Code", "module-warning"), HaveField("Text", ContainSubstring("lspServers is not supported")))))
+	})
+
+	It("agent-plugins client namespaces reach only their target", func() {
+		pkg := filepath.Join(tmp, "src", "tools")
+		writeTree(pkg, map[string]string{
+			"plugin.json":                            `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools"}`,
+			"skills/deploy/SKILL.md":                 "---\nname: deploy\ndescription: Deploy\n---\nDeploy.\n",
+			"com.anthropic.claude/commands/cc.md":    "Claude.\n",
+			"com.anthropic.claude-code/agents/ca.md": "---\ndescription: Claude agent\n---\nAgent.\n",
+			"ai.opencode/commands/oc.md":             "OpenCode.\n",
+			"com.google.gemini-cli/commands/gm.md":   "---\ndescription: Gemini\n---\nGemini.\n",
+			"dev.getlola/commands/all.md":            "---\ndescription: All\n---\nAll.\n",
+		})
+		_, err := install(engine.Options{Targets: []string{"claude-code", "gemini-cli", "opencode"}}, pkg)
+		Expect(err).NotTo(HaveOccurred())
+		var commands []string
+		for _, f := range tree(proj) {
+			if !strings.HasPrefix(f, ".lola/") && (strings.Contains(f, "/commands/") || strings.Contains(f, "/agents/") || strings.Contains(f, "/skills/")) {
+				commands = append(commands, f)
+			}
+		}
+		Expect(commands).To(ConsistOf(
+			".claude/skills/deploy/SKILL.md", ".gemini/skills/deploy/SKILL.md", ".opencode/skills/deploy/SKILL.md",
+			".claude/commands/cc.md", ".claude/agents/ca.md",
+			".opencode/commands/oc.md",
+			".gemini/commands/gm.toml",
+			".claude/commands/all.md", ".gemini/commands/all.toml", ".opencode/commands/all.md",
+		))
+	})
+
+	It("installs once when a target is named twice", func() {
+		_, err := install(engine.Options{Targets: []string{"claude-code", "claude-code"}}, src)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
+	})
+
 	It("installs into Gemini CLI next to the user's own settings, and leaves settings.json byte for byte on uninstall", func() {
 		settings := "{\n  // my theme\n  \"theme\": \"dark\",\n  \"mcpServers\": {\n    \"mine\": {\"command\": \"x\"} // keep\n  }\n}\n"
 		writeTree(proj, map[string]string{".gemini/settings.json": settings})
@@ -556,6 +609,20 @@ var _ = Describe("Engine", func() {
 			Expect(names).To(BeEmpty(), "nothing was added to the cache")
 			Expect(filepath.Join(proj, ".lola")).NotTo(BeAnExistingFile())
 			Expect(tree(p.Tmp)).To(BeEmpty(), "the staged copy is removed")
+		})
+
+		It("detects a plugin format in a source it checks", func() {
+			pkg := filepath.Join(tmp, "src", "tools")
+			writeTree(pkg, map[string]string{
+				"plugin.json":                 `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"tools","extensions":{"com.x":{}}}`,
+				"ai.opencode/commands/oc.md":  "OpenCode.\n",
+				"dev.getlola/commands/all.md": "All.\n",
+			})
+			rep, err := e.Check(ctx, sc, proj, []string{pkg}, []string{"claude-code", "opencode"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(rep.Modules[0].Name).To(Equal("tools"))
+			Expect(rep.Modules[0].Findings).To(ContainElement(SatisfyAll(HaveField("Code", "module-warning"),
+				HaveField("Text", "plugin.json: extensions: lola renders nothing for the namespace com.x; it was ignored"))))
 		})
 
 		It("checks a cached module by name, and explains an argument that is neither", func() {

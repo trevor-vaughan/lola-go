@@ -20,6 +20,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Archive limits (design §5). They are not configuration; specs lower them through fetch.
@@ -57,10 +58,10 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if filepath.IsAbs(spec.Location) {
 		fi, err := os.Lstat(file)
 		if err != nil {
-			return Fetched{}, fmt.Errorf("reading %s: %w", printable(file, maxName), cleanErr(err))
+			return Fetched{}, fmt.Errorf("reading %s: %w", untrusted.Text(file, untrusted.MaxName), untrusted.CleanErr(err))
 		}
 		if !fi.Mode().IsRegular() {
-			return Fetched{}, errs.WithHints(fmt.Errorf("%s is not a regular file", printable(file, maxName)),
+			return Fetched{}, errs.WithHints(fmt.Errorf("%s is not a regular file", untrusted.Text(file, untrusted.MaxName)),
 				"point at a "+archiveSuffixList()+" file, not a link, pipe or device")
 		}
 	} else {
@@ -120,19 +121,19 @@ func extract(file, suffix, dest string, lim limits) (err error) {
 func (x *extractor) zip(file string) (err error) {
 	in, err := os.Open(file)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", printable(file, maxName), cleanErr(err))
+		return fmt.Errorf("reading %s: %w", untrusted.Text(file, untrusted.MaxName), untrusted.CleanErr(err))
 	}
 	defer func() { err = errors.Join(err, in.Close()) }()
 	fi, err := in.Stat()
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", printable(file, maxName), cleanErr(err))
+		return fmt.Errorf("reading %s: %w", untrusted.Text(file, untrusted.MaxName), untrusted.CleanErr(err))
 	}
 	if err := checkZipDirectory(in, fi.Size(), x.lim.entries); err != nil {
 		return err
 	}
 	zr, err := zip.NewReader(in, fi.Size())
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", printable(file, maxName), cleanErr(err))
+		return fmt.Errorf("reading %s: %w", untrusted.Text(file, untrusted.MaxName), untrusted.CleanErr(err))
 	}
 	for _, f := range zr.File {
 		if err := x.count(); err != nil {
@@ -176,7 +177,7 @@ func checkZipDirectory(r io.ReaderAt, size int64, entries int) error {
 	le := binary.LittleEndian
 	tail := make([]byte, min(size, 65<<10)) // archive/zip's search window
 	if _, err := r.ReadAt(tail, size-int64(len(tail))); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("reading the zip's end record: %w", cleanErr(err))
+		return fmt.Errorf("reading the zip's end record: %w", untrusted.CleanErr(err))
 	}
 	at := -1
 	for i := len(tail) - zipEndLen; i >= 0; i-- { // the last signature decides, as in archive/zip
@@ -237,14 +238,14 @@ func checkZipDirectory(r io.ReaderAt, size int64, entries int) error {
 
 func (x *extractor) zipFile(f *zip.File) (err error) {
 	if f.UncompressedSize64 > math.MaxInt64 {
-		return fmt.Errorf("%s: declares an impossible size", printable(f.Name, maxName))
+		return fmt.Errorf("%s: declares an impossible size", untrusted.Text(f.Name, untrusted.MaxName))
 	}
 	if hi, lo := bits.Mul64(f.CompressedSize64, x.lim.ratio); hi == 0 && f.UncompressedSize64 > lo {
-		return fmt.Errorf("%s: compressed more than %d to 1; refusing a possible zip bomb", printable(f.Name, maxName), x.lim.ratio)
+		return fmt.Errorf("%s: compressed more than %d to 1; refusing a possible zip bomb", untrusted.Text(f.Name, untrusted.MaxName), x.lim.ratio)
 	}
 	rc, err := f.Open()
 	if err != nil {
-		return fmt.Errorf("%s: %w", printable(f.Name, maxName), err)
+		return fmt.Errorf("%s: %w", untrusted.Text(f.Name, untrusted.MaxName), err)
 	}
 	defer func() { err = errors.Join(err, rc.Close()) }()
 	return x.file(f.Name, f.Mode(), int64(f.UncompressedSize64), rc)
@@ -253,14 +254,14 @@ func (x *extractor) zipFile(f *zip.File) (err error) {
 func (x *extractor) tar(file string, gz bool) (err error) {
 	f, err := os.Open(file)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", printable(file, maxName), cleanErr(err))
+		return fmt.Errorf("reading %s: %w", untrusted.Text(file, untrusted.MaxName), untrusted.CleanErr(err))
 	}
 	defer func() { err = errors.Join(err, f.Close()) }()
 	var r io.Reader = f
 	if gz {
 		zr, err := gzip.NewReader(f)
 		if err != nil {
-			return fmt.Errorf("reading %s: %w", printable(file, maxName), cleanErr(err))
+			return fmt.Errorf("reading %s: %w", untrusted.Text(file, untrusted.MaxName), untrusted.CleanErr(err))
 		}
 		defer func() { err = errors.Join(err, zr.Close()) }()
 		r = zr
@@ -272,7 +273,7 @@ func (x *extractor) tar(file string, gz bool) (err error) {
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("reading %s: %w", printable(file, maxName), cleanErr(err))
+			return fmt.Errorf("reading %s: %w", untrusted.Text(file, untrusted.MaxName), untrusted.CleanErr(err))
 		}
 		if err := x.count(); err != nil {
 			return err
@@ -301,7 +302,7 @@ func (x *extractor) count() error {
 }
 
 func refusedType(name, kind string) error {
-	return fmt.Errorf("%s: only regular files and directories are allowed in an archive, not %s", printable(name, maxName), kind)
+	return fmt.Errorf("%s: only regular files and directories are allowed in an archive, not %s", untrusted.Text(name, untrusted.MaxName), kind)
 }
 
 // entryPath returns the root-relative path of an entry, refusing any name that could
@@ -309,7 +310,7 @@ func refusedType(name, kind string) error {
 func entryPath(name string) (string, error) {
 	if strings.Contains(name, `\`) || strings.HasPrefix(name, "/") || slices.Contains(strings.Split(name, "/"), "..") ||
 		!filepath.IsLocal(name) {
-		return "", fmt.Errorf("%s: unsafe path in the archive (absolute, '..', backslash or not local)", printable(name, maxName))
+		return "", fmt.Errorf("%s: unsafe path in the archive (absolute, '..', backslash or not local)", untrusted.Text(name, untrusted.MaxName))
 	}
 	return path.Clean(name), nil
 }
@@ -320,7 +321,7 @@ func (x *extractor) dir(name string) error {
 		return err
 	}
 	if err := x.root.MkdirAll(rel, 0o755); err != nil {
-		return fmt.Errorf("%s: %w", printable(name, maxName), cleanErr(err))
+		return fmt.Errorf("%s: %w", untrusted.Text(name, untrusted.MaxName), untrusted.CleanErr(err))
 	}
 	return nil
 }
@@ -334,24 +335,24 @@ func (x *extractor) file(name string, mode fs.FileMode, size int64, r io.Reader)
 	}
 	if dir := path.Dir(rel); dir != "." {
 		if err := x.root.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("%s: %w", printable(name, maxName), cleanErr(err))
+			return fmt.Errorf("%s: %w", untrusted.Text(name, untrusted.MaxName), untrusted.CleanErr(err))
 		}
 	}
 	f, err := x.root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fsx.NormalizeMode(mode))
 	if errors.Is(err, fs.ErrExist) {
-		return fmt.Errorf("%s: the archive holds this path more than once", printable(name, maxName))
+		return fmt.Errorf("%s: the archive holds this path more than once", untrusted.Text(name, untrusted.MaxName))
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %w", printable(name, maxName), cleanErr(err))
+		return fmt.Errorf("%s: %w", untrusted.Text(name, untrusted.MaxName), untrusted.CleanErr(err))
 	}
 	n, err := io.Copy(f, io.LimitReader(r, min(size, x.lim.bytes-x.written)+1))
 	x.written += n
 	if err := errors.Join(err, f.Close()); err != nil {
-		return fmt.Errorf("%s: %w", printable(name, maxName), cleanErr(err))
+		return fmt.Errorf("%s: %w", untrusted.Text(name, untrusted.MaxName), untrusted.CleanErr(err))
 	}
 	switch {
 	case n > size:
-		return fmt.Errorf("%s: longer than its header declares", printable(name, maxName))
+		return fmt.Errorf("%s: longer than its header declares", untrusted.Text(name, untrusted.MaxName))
 	case x.written > x.lim.bytes:
 		return fmt.Errorf("the archive unpacks to more than %d bytes", x.lim.bytes)
 	}
@@ -429,7 +430,7 @@ func shallowest(tree string, cands map[string]int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		names[i] = printable(filepath.ToSlash(rel), maxName)
+		names[i] = untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName)
 	}
 	slices.Sort(names)
 	return "", errs.WithHints(fmt.Errorf("the archive holds several module roots at the same depth: %s", strings.Join(names, ", ")),

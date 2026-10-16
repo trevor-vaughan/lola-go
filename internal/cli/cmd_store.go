@@ -1,12 +1,11 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -114,7 +113,10 @@ func newModuleView(v store.Version, o store.Origin) moduleView {
 	mv.Hooks = append(mv.Hooks, m.DeclaredHooks...)
 	mv.Warnings = append(mv.Warnings, m.Warnings...)
 	for _, n := range v.Meta.OthersPresent {
-		mv.Warnings = append(mv.Warnings, module.ShadowWarning(v.Meta.Manifest, n))
+		// A version fresh from cache add already carries its detection warnings.
+		if w := module.ShadowWarning(v.Meta.Manifest, n); !slices.Contains(mv.Warnings, w) {
+			mv.Warnings = append(mv.Warnings, w)
+		}
 	}
 	return mv
 }
@@ -437,19 +439,15 @@ func (a *app) searchCmd() *cobra.Command {
 	}
 }
 
-// scaffold is the module `lola init` writes, relative to the module root.
-var scaffold = []struct{ path, body string }{
-	{"lola.yml", "name: %s\ndescription: Describe what this module does\nversion: 0.1.0\n"},
-	{"skills/hello/SKILL.md", "---\ndescription: Greet the user. Replace this skill with your own.\n---\nGreet the user by name and offer help.\n"},
-	{"commands/hello.md", "---\ndescription: Say hello\n---\nSay hello to $ARGUMENTS.\n"},
-}
-
 func (a *app) initCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:     "init [dir]",
-		Short:   "Create a new module in a directory (default: the current one)",
-		Long:    "Scaffold a native-layout module: lola.yml, one skill and one command. The module is named\nafter the directory, which must be a valid module name.",
-		Example: "  lola init my-module\n  lola install ./my-module -t claude-code",
+	var format string
+	cmd := &cobra.Command{
+		Use:   "init [dir]",
+		Short: "Create a new module in a directory (default: the current one)",
+		Long: "Scaffold a module named after the directory. The default format is an Agent Plugins package:\n" +
+			"plugin.json, a portable skill and a dev.getlola command. --format lola writes the native layout:\n" +
+			"lola.yml, one skill and one command.",
+		Example: "  lola init my-module\n  lola init my_module --format lola\n  lola install ./my-module -t claude-code",
 		GroupID: groupCore,
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -457,69 +455,26 @@ func (a *app) initCmd() *cobra.Command {
 			if len(args) == 1 {
 				dir = args[0]
 			}
-			abs, err := filepath.Abs(dir)
+			s, err := engine.Init(dir, format)
 			if err != nil {
 				return err
 			}
-			name := filepath.Base(abs)
-			if err := module.ValidateName("module", name); err != nil {
-				return errs.WithHints(err, "run lola init in a directory whose name is a valid module name")
-			}
-			for _, f := range module.ManifestNames() {
-				if _, err := os.Stat(filepath.Join(abs, f)); err == nil {
-					return fmt.Errorf("%s is already a module (it has %s)", dir, f)
-				}
-			}
-			for _, f := range scaffold {
-				if _, err := os.Lstat(filepath.Join(abs, f.path)); err == nil {
-					return fmt.Errorf("%s already exists; lola init never overwrites files", filepath.Join(abs, f.path))
-				} else if !errors.Is(err, fs.ErrNotExist) {
-					return err
-				}
-			}
-			files := []string{}
-			for _, f := range scaffold {
-				body := f.body
-				if f.path == "lola.yml" {
-					body = fmt.Sprintf(body, name)
-				}
-				if err := writeNew(filepath.Join(abs, f.path), body); err != nil {
-					return err
-				}
-				files = append(files, f.path)
-			}
-			return a.emit(cmd, func(w io.Writer, s style) {
-				if s.plain {
-					for _, f := range files {
+			return a.emit(cmd, func(w io.Writer, st style) {
+				if st.plain {
+					for _, f := range s.Files {
 						fmt.Fprintln(w, filepath.Join(dir, f))
 					}
 					return
 				}
-				fmt.Fprintln(w, s.ok("created module "+name+" in "+dir))
-				for _, f := range files {
+				fmt.Fprintln(w, st.ok("created module "+s.Name+" in "+dir+" ("+s.Format+")"))
+				for _, f := range s.Files {
 					fmt.Fprintln(w, "    "+f)
 				}
-				fmt.Fprintln(w, s.info("try it: lola install "+dir+" -t claude-code"))
-			}, map[string]any{"name": name, "path": abs, "files": files})
+				fmt.Fprintln(w, st.info("try it: lola install "+dir+" -t claude-code"))
+			}, s)
 		},
 	}
-}
-
-// writeNew creates a file that must not exist yet.
-func writeNew(path, body string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if errors.Is(err, fs.ErrExist) {
-		return fmt.Errorf("%s already exists; lola init never overwrites files", path)
-	}
-	if err != nil {
-		return err
-	}
-	if _, err := f.WriteString(body); err != nil {
-		_ = f.Close()
-		return err
-	}
-	return f.Close()
+	cmd.Flags().StringVar(&format, "format", engine.InitFormats()[0], "the module format: "+strings.Join(engine.InitFormats(), " or "))
+	_ = cmd.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(engine.InitFormats(), cobra.ShellCompDirectiveNoFileComp))
+	return cmd
 }
