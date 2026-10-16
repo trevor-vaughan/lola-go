@@ -41,6 +41,92 @@ var _ = Describe("JSONC edits", func() {
 		Entry("is a no-op when the member is missing", "{\"a\":1}", "/b/c", "{\"a\":1}"),
 	)
 
+	DescribeTable("JSONAddMember appends one string and preserves the rest",
+		func(src, ptr, member, want string, wantCreated bool) {
+			got, created, err := fsx.JSONAddMember([]byte(src), ptr, member)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(got)).To(Equal(want))
+			Expect(created).To(Equal(wantCreated))
+		},
+		Entry("keeps a comment on the line it ended",
+			"{\n  \"context\": {\n    \"includeDirectories\": [\n      \"docs\" // mine\n    ]\n  }\n}\n",
+			"/context/includeDirectories", ".gemini/lola/m",
+			"{\n  \"context\": {\n    \"includeDirectories\": [\n      \"docs\", // mine\n      \".gemini/lola/m\"\n    ]\n  }\n}\n", false),
+		Entry("keeps a trailing-comma style", "{\n  \"instructions\": [\n    \"a.md\",\n  ]\n}\n", "/instructions", "b",
+			"{\n  \"instructions\": [\n    \"a.md\",\n    \"b\",\n  ]\n}\n", false),
+		Entry("stays inline in a one-line array", `{"instructions": ["a.md"]}`, "/instructions", "b",
+			`{"instructions": ["a.md", "b"]}`, false),
+		Entry("fills an empty array", "{\n  \"instructions\": []\n}\n", "/instructions", "b",
+			"{\n  \"instructions\": [\n    \"b\"\n  ]\n}\n", false),
+		Entry("creates the array and its parents in an empty file", "", "/context/includeDirectories", ".gemini/lola/m",
+			"{\n  \"context\": {\n    \"includeDirectories\": [\n      \".gemini/lola/m\"\n    ]\n  }\n}\n", true),
+		Entry("leaves an array that already has the member untouched", "{\"instructions\": [ \"b\" ] }", "/instructions", "b",
+			"{\"instructions\": [ \"b\" ] }", false),
+	)
+
+	DescribeTable("JSONRemoveMember removes one string and its own comments",
+		func(src, member string, dropEmpty bool, want string) {
+			got, err := fsx.JSONRemoveMember([]byte(src), "/context/includeDirectories", member, dropEmpty)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(got)).To(Equal(want))
+		},
+		Entry("last element: the previous line's comment survives",
+			"{\n  \"context\": {\n    \"includeDirectories\": [\n      \"a\", // a\n      \"b\" // b\n    ]\n  }\n}\n", "b", false,
+			"{\n  \"context\": {\n    \"includeDirectories\": [\n      \"a\" // a\n    ]\n  }\n}\n"),
+		Entry("first element of an inline array", `{"context": {"includeDirectories": ["a", "b"]}}`, "a", false,
+			`{"context": {"includeDirectories": ["b"]}}`),
+		Entry("drops an emptied array and the parents it leaves empty",
+			"{\n  \"theme\": \"x\",\n  \"context\": {\n    \"includeDirectories\": [\n      \"m\"\n    ]\n  }\n}\n", "m", true,
+			"{\n  \"theme\": \"x\"\n}\n"),
+		Entry("keeps an emptied array when told to",
+			"{\n  \"context\": {\n    \"includeDirectories\": [\n      \"m\"\n    ]\n  }\n}\n", "m", false,
+			"{\n  \"context\": {\n    \"includeDirectories\": [\n    ]\n  }\n}\n"),
+		Entry("keeps an array that still has other members", `{"context": {"includeDirectories": ["a", "m"]}}`, "m", true,
+			`{"context": {"includeDirectories": ["a"]}}`),
+		Entry("is a no-op when the member is missing", `{"context": {"includeDirectories": ["a"]}}`, "m", true,
+			`{"context": {"includeDirectories": ["a"]}}`),
+		Entry("is a no-op when the array is missing", `{"a": 1}`, "m", true, `{"a": 1}`),
+	)
+
+	It("JSONHasMember finds only string members of an array", func() {
+		src := []byte(`{"i": ["a", 1, {"b": 2}]}`)
+		Expect(fsx.JSONHasMember(src, "/i", "a")).To(BeTrue())
+		Expect(fsx.JSONHasMember(src, "/i", "b")).To(BeFalse())
+		Expect(fsx.JSONHasMember(src, "/missing", "a")).To(BeFalse())
+	})
+
+	It("refuses array edits where the value is not an array", func() {
+		src := []byte(`{"i": "a"}`)
+		_, err := fsx.JSONHasMember(src, "/i", "a")
+		Expect(err).To(MatchError("/i is not an array"))
+		_, _, err = fsx.JSONAddMember(src, "/i", "a")
+		Expect(err).To(MatchError("/i is not an array"))
+		_, err = fsx.JSONRemoveMember(src, "/i", "a", true)
+		Expect(err).To(MatchError("/i is not an array"))
+	})
+
+	It("keeps comments after the last member or element, and removing lola's again restores the file", func() {
+		for _, c := range []struct{ src, want string }{
+			{"{\n  // only a comment\n}\n", "{\n  \"mcp\": {\n    \"x\": 1\n  }\n  // only a comment\n}\n"},
+			{"{\n  \"a\": 1\n  // \"b\": 2\n}\n", "{\n  \"a\": 1,\n  \"mcp\": {\n    \"x\": 1\n  }\n  // \"b\": 2\n}\n"},
+			{"{  // on the brace line\n}\n", "{  // on the brace line\n  \"mcp\": {\n    \"x\": 1\n  }\n}\n"},
+		} {
+			got, err := fsx.JSONSet([]byte(c.src), "/mcp/x", []byte("1"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(got)).To(Equal(c.want))
+			back, err := fsx.JSONDelete(got, "/mcp/x")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(back)).To(Equal(c.src))
+		}
+		arr := "{\n  \"i\": [\n    \"a\"\n    // \"b\"\n  ]\n}\n"
+		got, _, err := fsx.JSONAddMember([]byte(arr), "/i", "m")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(got)).To(Equal("{\n  \"i\": [\n    \"a\",\n    \"m\"\n    // \"b\"\n  ]\n}\n"))
+		back, err := fsx.JSONRemoveMember(got, "/i", "m", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(back)).To(Equal(arr))
+	})
+
 	It("JSONGet returns canonical JSON with comments and trailing commas removed", func() {
 		v, found, err := fsx.JSONGet([]byte("{\"m\": {\"b\": 1, /*x*/ \"a\": [1,2,],},}"), "/m")
 		Expect(err).NotTo(HaveOccurred())

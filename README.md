@@ -13,6 +13,9 @@ explains why.
 
 - **Assistants:** Claude Code, at project scope or user scope (`--user`).
 - **Modules:** local folders in lola's native layout, with an optional `lola.yml`.
+- **Portability report:** `lola check ./my-module` shows what each assistant would drop,
+  adapt or skip, without writing anything; `install` prints the same findings, and
+  `--strict` makes them errors.
 - **Safety:** lola only overwrites or deletes files it wrote and nobody has changed, unless
   you pass `--force`; an existing file identical to what lola would write is adopted, not
   rewritten. JSON files keep their comments; a file lola cannot parse is never rewritten.
@@ -24,7 +27,10 @@ templating are planned: see [docs/roadmap.md](docs/roadmap.md).
 
 ## Install
 
-You need Go 1.26 or later, [Task](https://taskfile.dev), and git.
+You need Go 1.26 or later, [Task](https://taskfile.dev), and git. `go.mod` pins toolchain
+go1.26.9, which fixes a reachable standard-library vulnerability; Go fetches it automatically
+unless `GOTOOLCHAIN=local` is set, as some distribution packages do (`go env -w
+GOTOOLCHAIN=auto` re-enables it).
 
 ```sh
 git clone https://github.com/trevor-vaughan/lola-go && cd lola-go

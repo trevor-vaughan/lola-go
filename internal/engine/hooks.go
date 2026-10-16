@@ -15,7 +15,6 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
-	"github.com/trevor-vaughan/lola-go/internal/target"
 )
 
 // Install hook events, in the order they run.
@@ -131,7 +130,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 					"review it: lola cache info "+c.name, "then rerun with --allow-hooks, or on a terminal answer the prompt")
 			}
 			status = HookDeclined
-			res.Notices = append(res.Notices, target.Notice{Level: target.LevelWarn,
+			res.Notices = append(res.Notices, Notice{Level: LevelWarn,
 				Text: c.name + ": post-install hook skipped without your consent (rerun with --allow-hooks to run it)"})
 		}
 		for _, s := range scripts {
@@ -162,7 +161,7 @@ func (e *Engine) runHooks(ctx context.Context, sc Scope, jobs []*hookJob, event 
 				if event == PreInstall {
 					return errs.WithHints(err, "nothing was installed; the hook's output is above")
 				}
-				res.Notices = append(res.Notices, target.Notice{Level: target.LevelWarn, Text: err.Error() + "; the installation was kept"})
+				res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: err.Error() + "; the installation was kept"})
 			}
 		}
 	}

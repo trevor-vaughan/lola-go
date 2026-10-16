@@ -260,7 +260,7 @@ var _ = Describe("Engine", func() {
 		Expect(read("CLAUDE.md")).To(Equal("# Mine\n"))
 		Expect(tree(proj)).To(ConsistOf("CLAUDE.md", ".lola/.gitignore", ".lola/lock.json", ".lola/project.yml"))
 		Expect(filepath.Join(proj, ".claude/skills")).To(BeADirectory(), "base dirs stay")
-		Expect(res.Notices).To(ContainElement(target.Notice{Level: "info", Text: "still in your cache: lola cache rm example"}))
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: "info", Text: "still in your cache: lola cache rm example"}))
 		Expect(res.Notices).To(ContainElement(HaveField("Text", ContainSubstring("plugin data kept at"))))
 		m, _ := manifest.Load(filepath.Join(proj, ".lola/project.yml"))
 		Expect(m.Modules).To(BeEmpty())
@@ -318,12 +318,103 @@ var _ = Describe("Engine", func() {
 	})
 
 	It("keeps a fetched module stored when the install fails, and says how to retry", func() {
-		writeTree(src, map[string]string{"agents/bad.md": "no frontmatter\n"})
+		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine"})
 		_, err := install(claude, src)
-		Expect(err).To(MatchError(ContainSubstring("needs a description")))
+		Expect(err).To(MatchError(ContainSubstring("exists and was not written by lola")))
 		Expect(errs.Hints(err)).To(ContainElement("fetched modules stay in your cache; retry with: lola install example"))
 		names, _ := e.Store.Names()
 		Expect(names).To(Equal([]string{"example"}))
+	})
+
+	Describe("findings", func() {
+		BeforeEach(func() { writeTree(src, map[string]string{"agents/bare.md": "Criticize without a description.\n"}) })
+
+		It("skips what a target cannot render and installs the rest", func() {
+			res, err := install(claude, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Findings).To(ContainElement(SatisfyAll(
+				HaveField("Severity", target.SeveritySkip), HaveField("Module", "example"), HaveField("Artifact", "bare"))))
+			Expect(filepath.Join(proj, ".claude/agents/bare.md")).NotTo(BeAnExistingFile())
+			Expect(read(".claude/agents/critic.md")).To(ContainSubstring("Criticize."))
+			Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
+		})
+
+		It("renders forceable skips with --force, marked as forced", func() {
+			res, err := install(engine.Options{Targets: claude.Targets, Force: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read(".claude/agents/bare.md")).To(ContainSubstring("Criticize without a description."))
+			Expect(res.Findings).To(ContainElement(SatisfyAll(HaveField("Severity", target.SeverityWarn), HaveField("Forced", true))))
+		})
+
+		It("--strict lists every finding and writes nothing; forced skips do not count", func() {
+			_, err := install(engine.Options{Targets: claude.Targets, Strict: true}, src)
+			Expect(err).To(MatchError(ContainSubstring("--strict: 1 finding(s); nothing was changed")))
+			Expect(err).To(MatchError(ContainSubstring("example: claude-code agent bare: claude-code needs a description")))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("rerun without --strict")))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force renders")))
+			Expect(filepath.Join(proj, ".claude")).NotTo(BeAnExistingFile())
+
+			_, err = install(engine.Options{Targets: claude.Targets, Strict: true, Force: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("--strict advises --force only when a refused finding is forceable, and the caller's own rerun advice", func() {
+			warn := target.Finding{Severity: target.SeverityWarn, Module: "example", Code: "module-warning", Text: "legacy file"}
+			err := engine.StrictError([]target.Finding{warn}, "use the other command", true)
+			Expect(errs.Hints(err)).To(Equal([]string{"use the other command"}))
+
+			skip := target.Finding{Severity: target.SeveritySkip, Module: "example", Code: "required-key-missing", Forceable: true}
+			err = engine.StrictError([]target.Finding{warn, skip}, "use the other command", true)
+			Expect(errs.Hints(err)).To(ConsistOf("use the other command", ContainSubstring("--force renders")))
+
+			err = engine.StrictError([]target.Finding{skip}, "use the other command", false)
+			Expect(errs.Hints(err)).To(Equal([]string{"use the other command"}))
+
+			Expect(engine.StrictError([]target.Finding{{Severity: target.SeverityInfo}}, "x", true)).To(Succeed())
+		})
+
+		It("lists a target where nothing of a module could be rendered as skipped", func() {
+			Expect(os.RemoveAll(src)).To(Succeed())
+			writeTree(src, map[string]string{"agents/bare.md": "No description.\n"})
+			_, err := install(claude, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(status()).To(Equal([]string{"example/claude-code=skipped"}))
+		})
+	})
+
+	Describe("Check", func() {
+		It("reports every target's findings for a folder without touching any state", func() {
+			writeTree(src, map[string]string{"agents/bare.md": "No description.\n", "AGENTS.md": "legacy\n"})
+			rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(rep.Modules).To(HaveLen(1))
+			m := rep.Modules[0]
+			Expect(m.Name).To(Equal("example"))
+			Expect(m.Targets).To(Equal([]string{"claude-code"}))
+			Expect(m.Findings).To(ContainElement(SatisfyAll(HaveField("Kind", "module"), HaveField("Code", "module-warning"))))
+			Expect(m.Findings).To(ContainElement(SatisfyAll(HaveField("Severity", target.SeveritySkip), HaveField("Artifact", "bare"),
+				HaveField("Module", "example"))))
+			Expect(rep.Findings).To(ConsistOf(HaveField("Code", "probe/not-found")))
+			names, err := e.Store.Names()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(BeEmpty(), "nothing was added to the cache")
+			Expect(filepath.Join(proj, ".lola")).NotTo(BeAnExistingFile())
+			Expect(tree(p.Tmp)).To(BeEmpty(), "the staged copy is removed")
+		})
+
+		It("checks a cached module by name, and explains an argument that is neither", func() {
+			_, err := e.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src})
+			Expect(err).NotTo(HaveOccurred())
+			rep, err := e.Check(ctx, sc, proj, []string{"example"}, []string{"claude-code"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(rep.Modules[0].Name).To(Equal("example"))
+
+			_, err = e.Check(ctx, sc, proj, []string{"nothing-here"}, nil)
+			Expect(err).To(MatchError(`"nothing-here" is neither a folder nor a module in your cache`))
+			Expect(errs.Hints(err)).To(ContainElement("cached modules: lola cache list"))
+			_, err = e.Check(ctx, sc, proj, []string{"../src/example"}, []string{"vim"})
+			Expect(err).To(MatchError(`unknown target "vim"`))
+		})
 	})
 
 	It("requires targets and validates them", func() {
@@ -343,7 +434,7 @@ var _ = Describe("Engine", func() {
 		writeTree(src, map[string]string{"lola.yml": "name: example\ntargets: [opencode]\n"})
 		res, err := install(claude, src)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(ContainElement(target.Notice{Level: "info", Text: "example does not support claude-code; skipped there"}))
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: "info", Text: "example does not support claude-code; skipped there"}))
 		Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 		Expect(status()).To(BeEmpty())
 	})
@@ -406,10 +497,96 @@ var _ = Describe("Engine", func() {
 		Expect(engine.FindProject(tmp)).To(Equal(tmp))
 	})
 
-	It("Detect finds Claude Code by .claude/ or CLAUDE.md", func() {
-		Expect(e.Detect(sc)).To(BeEmpty())
-		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
-		Expect(e.Detect(sc)).To(Equal([]string{"claude-code"}))
+	Describe("assistants", func() {
+		// assistant puts an executable on the spec's PATH that runs script.
+		assistant := func(name, script string) string {
+			path := filepath.Join(tmp, "bin", name)
+			Expect(os.WriteFile(path, []byte("#!/bin/sh\n"+script), 0o755)).To(Succeed())
+			return path
+		}
+		probeFindings := func(res *engine.Result) []target.Finding {
+			var out []target.Finding
+			for _, f := range res.Findings {
+				if f.Kind == "assistant" {
+					out = append(out, f)
+				}
+			}
+			return out
+		}
+
+		It("Detect reports installed binaries and project markers without running anything", func() {
+			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code"}}))
+			bin := assistant("claude", "touch \""+filepath.Join(tmp, "ran")+"\"\n")
+			Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
+			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code", Binary: bin, Marked: true}}))
+			Expect(filepath.Join(tmp, "ran")).NotTo(BeAnExistingFile())
+		})
+
+		It("ignores a binary found only through a relative PATH entry", func() {
+			Expect(os.MkdirAll(filepath.Join(proj, "bin"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(proj, "bin", "claude"), []byte("#!/bin/sh\n"), 0o755)).To(Succeed())
+			GinkgoT().Chdir(proj)
+			GinkgoT().Setenv("PATH", "bin:"+os.Getenv("PATH"))
+			p, err := paths.Resolve(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(engine.New(p).Detect(sc)[0].Binary).To(BeEmpty())
+		})
+
+		It("still renders an explicitly chosen target whose assistant is missing, and says so", func() {
+			res, err := install(claude, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
+			Expect(probeFindings(res)).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "claude-code", Kind: "assistant",
+				Code: "probe/not-found", Text: "claude is not on PATH; checked against the newest version lola knows"}}))
+		})
+
+		It("reads the installed version once per binary build and caches it", func() {
+			count := filepath.Join(tmp, "count")
+			assistant("claude", "echo x >> \""+count+"\"\necho '2.1.287 (Claude Code)'\n")
+			for range 2 {
+				res, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(probeFindings(res)).To(BeEmpty())
+			}
+			Expect(os.ReadFile(count)).To(Equal([]byte("x\n")), "the second run used the cache")
+			b, err := os.ReadFile(p.Probes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).To(ContainSubstring(`"version": "2.1.287"`))
+		})
+
+		It("keeps control characters out of the version it reads", func() {
+			assistant("claude", "printf '2.1.287\\033[31m (Claude Code)\\n'\n")
+			_, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			b, err := os.ReadFile(p.Probes)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).To(ContainSubstring(`"version": "2.1.287"`))
+		})
+
+		It("reports a version it cannot read, and stops a probe that hangs", func() {
+			assistant("claude", "echo 'no version here'\n")
+			res, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(probeFindings(res)).To(ConsistOf(HaveField("Code", "probe/unknown-version")))
+
+			assistant("claude", "exec sleep 5\n")
+			e.ProbeTimeout = 100 * time.Millisecond
+			start := time.Now()
+			res, err = install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(time.Since(start)).To(BeNumerically("<", 3*time.Second))
+			Expect(probeFindings(res)).To(ConsistOf(HaveField("Code", "probe/unknown-version")))
+		})
+
+		It("stops a probe whose children keep its output open", func() {
+			assistant("claude", "sleep 8 &\nexec sleep 8\n")
+			e.ProbeTimeout = 200 * time.Millisecond
+			start := time.Now()
+			res, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(time.Since(start)).To(BeNumerically("<", 3*time.Second))
+			Expect(probeFindings(res)).To(ConsistOf(HaveField("Code", "probe/unknown-version")))
+		})
 	})
 
 	It("reports conflicts with hints and changes nothing", func() {

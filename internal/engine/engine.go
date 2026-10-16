@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 )
 
 // Scope selects project or user state. ProjectDir is used at project scope only.
@@ -38,29 +40,32 @@ type Scope struct {
 	ProjectDir string
 }
 
-// Engine is the orchestration entry point. Environ is the environment install hooks
-// inherit; HookTimeout bounds each hook run (§9.1).
+// Engine is the orchestration entry point. Environ is the environment install hooks and
+// version probes inherit; HookTimeout bounds each hook run (§9.1) and ProbeTimeout each
+// assistant version probe.
 type Engine struct {
-	Paths       paths.Paths
-	Store       *store.Store
-	Consent     *consent.Store
-	Targets     []target.Target
-	Now         func() time.Time
-	Environ     func() []string
-	HookTimeout time.Duration
+	Paths        paths.Paths
+	Store        *store.Store
+	Consent      *consent.Store
+	Targets      []target.Target
+	Now          func() time.Time
+	Environ      func() []string
+	HookTimeout  time.Duration
+	ProbeTimeout time.Duration
 }
 
 // New returns an Engine over the real store and every registered target.
 func New(p paths.Paths) *Engine {
-	return &Engine{Paths: p, Store: store.New(p), Consent: consent.New(p.Consent), Targets: target.All(), Now: time.Now,
-		Environ: os.Environ, HookTimeout: 10 * time.Minute}
+	return &Engine{Paths: p, Store: store.New(p), Consent: consent.New(p.Consent), Targets: targets.All(), Now: time.Now,
+		Environ: os.Environ, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second}
 }
 
 // Options apply to install, uninstall and render.
 type Options struct {
 	Targets []string // explicit target selection; empty means the manifest's targets
 	DryRun  bool
-	Force   bool
+	Force   bool  // overrides forceable conflicts and renders forceable skipped artifacts
+	Strict  bool  // fail before writing anything when a warn or skip finding remains
 	Rules   *bool // install only: false records rules: false, true clears it, nil keeps each entry's setting
 
 	// Install hooks (§9.1). AllowHooks grants consent for this run. Ask, when set, asks the
@@ -87,16 +92,30 @@ type ModuleResult struct {
 	Hooks      []HookRun `json:"hooks"`
 }
 
+// Notice levels.
+const (
+	LevelInfo = "info"
+	LevelWarn = "warn"
+)
+
+// Notice is something lola itself tells the user about an operation. What a target loses
+// when it renders a module is a target.Finding instead.
+type Notice struct {
+	Level string `json:"level"`
+	Text  string `json:"text"`
+}
+
 // Result is what install, uninstall and render report.
 type Result struct {
-	Modules []ModuleResult  `json:"modules"`
-	Steps   []plan.Step     `json:"steps"`
-	Notices []target.Notice `json:"notices"`
-	DryRun  bool            `json:"dry_run"`
+	Modules  []ModuleResult   `json:"modules"`
+	Steps    []plan.Step      `json:"steps"`
+	Findings []target.Finding `json:"findings"`
+	Notices  []Notice         `json:"notices"`
+	DryRun   bool             `json:"dry_run"`
 }
 
 func newResult(dry bool) *Result {
-	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Notices: []target.Notice{}, DryRun: dry}
+	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, DryRun: dry}
 }
 
 // InstallRequest is one install argument (§7.1) with its --ref and --path.
@@ -108,7 +127,7 @@ type InstallRequest struct {
 type StatusRow struct {
 	Name   string `json:"name"`
 	Target string `json:"target"`
-	Status string `json:"status"` // ok, modified, missing, stale
+	Status string `json:"status"` // ok, modified, missing, stale, skipped
 	Rules  bool   `json:"rules"`  // false when the manifest entry says rules: false
 	Source string `json:"source"`
 	Ref    string `json:"ref,omitempty"`
@@ -199,17 +218,6 @@ func (e *Engine) target(id string) (target.Target, error) {
 		ids = append(ids, t.ID())
 	}
 	return nil, errs.WithHints(fmt.Errorf("unknown target %q", id), "valid targets: "+strings.Join(ids, ", "))
-}
-
-// Detect lists the targets whose assistants appear to be used in sc, in registration order.
-func (e *Engine) Detect(sc Scope) []string {
-	var out []string
-	for _, t := range e.Targets {
-		if t.Detect(t.Root(sc.Kind, sc.ProjectDir, e.Paths)) {
-			out = append(out, t.ID())
-		}
-	}
-	return out
 }
 
 // Manifest loads the scope's manifest.
@@ -346,33 +354,35 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, true, nil
 }
 
-// planModule asks every effective target for the module's intents; ment is its manifest
-// entry (nil when it has none).
-func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry) ([]plan.Intent, []target.Notice, ModuleResult, error) {
+// planModule asks every effective target for the module's intents and findings; ment is its
+// manifest entry (nil when it has none).
+func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry, opts Options, probes *probeRun) ([]plan.Intent, []target.Finding, []Notice, ModuleResult, error) {
 	m := v.Module
 	f := e.files(sc)
 	pctx := target.PlanContext{Scope: sc.Kind, ContentDir: v.ContentDir, PluginRoot: filepath.Join(f.modules, m.Name),
-		PluginData: filepath.Join(f.pluginData, m.Name), SkipRules: !ment.RulesOn()}
+		PluginData: filepath.Join(f.pluginData, m.Name), SkipRules: !ment.RulesOn(), Force: opts.Force}
 	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}}
-	var notes []target.Notice
-	for _, w := range m.Warnings {
-		notes = append(notes, target.Notice{Level: target.LevelWarn, Text: m.Name + ": " + w})
-	}
+	finds := warningFindings(m)
+	var notes []Notice
 	var intents []plan.Intent
 	for _, id := range targets {
 		if !module.Supports(m.Targets, id) {
-			notes = append(notes, target.Notice{Level: target.LevelInfo, Text: fmt.Sprintf("%s does not support %s; skipped there", m.Name, id)})
+			notes = append(notes, Notice{Level: LevelInfo, Text: fmt.Sprintf("%s does not support %s; skipped there", m.Name, id)})
 			continue
 		}
 		t, err := e.target(id)
 		if err != nil {
-			return nil, nil, mr, err
+			return nil, nil, nil, mr, err
 		}
-		ins, n, err := t.Plan(m, pctx)
+		pctx.Version = probes.version(t)
+		ins, fs, err := t.Plan(m, pctx)
 		if err != nil {
-			return nil, nil, mr, fmt.Errorf("%s for %s: %w", m.Name, id, err)
+			return nil, nil, nil, mr, fmt.Errorf("%s for %s: %w", m.Name, id, err)
 		}
-		intents, notes = append(intents, ins...), append(notes, n...)
+		for i := range fs {
+			fs[i].Module = m.Name
+		}
+		intents, finds = append(intents, ins...), append(finds, fs...)
 		mr.Targets = append(mr.Targets, id)
 	}
 	for _, s := range m.MCPServers {
@@ -382,7 +392,43 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		}
 		mr.MCPServers = append(mr.MCPServers, run)
 	}
-	return intents, notes, mr, nil
+	return intents, finds, notes, mr, nil
+}
+
+// warningFindings turns a module's load warnings (legacy instruction files, skipped rule
+// entries) into findings about the module itself.
+func warningFindings(m *module.Module) []target.Finding {
+	finds := []target.Finding{}
+	for _, w := range m.Warnings {
+		finds = append(finds, target.Finding{Severity: target.SeverityWarn, Module: m.Name, Kind: "module", Code: "module-warning", Text: w})
+	}
+	return finds
+}
+
+// StrictError lists the findings --strict refuses: every warn and skip, except skipped
+// artifacts that --force rendered. It returns nil when none remains. rerun is the caller's
+// advice for getting past the findings; offerForce says the command has --force, which is
+// advised only when a refused finding is one --force can render.
+func StrictError(finds []target.Finding, rerun string, offerForce bool) error {
+	var bad []target.Finding
+	for _, f := range finds {
+		if f.Severity != target.SeverityInfo && !f.Forced {
+			bad = append(bad, f)
+		}
+	}
+	if len(bad) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "--strict: %d finding(s); nothing was changed", len(bad))
+	for _, f := range bad {
+		fmt.Fprintf(&b, "\n  %s", f.Describe())
+	}
+	hints := []string{rerun}
+	if offerForce && slices.ContainsFunc(bad, func(f target.Finding) bool { return f.Forceable }) {
+		hints = append(hints, "--force renders skipped artifacts that can be rendered anyway")
+	}
+	return errs.WithHints(errors.New(b.String()), hints...)
 }
 
 // execute computes and (unless dry) applies changes, then runs after under the scope lock.
@@ -393,6 +439,11 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 // after it is committed.
 func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy,
 	opts Options, res *Result, after func(*plan.Plan) error) error {
+	if opts.Strict {
+		if err := StrictError(res.Findings, "fix the module, or rerun without --strict to install what each target supports", true); err != nil {
+			return err
+		}
+	}
 	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes, Force: opts.Force}
 	for _, t := range e.Targets {
 		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)

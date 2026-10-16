@@ -34,6 +34,13 @@ var _ = Describe("Resolve", func() {
 		Expect(p.Tmp).To(Equal("/h/.cache/lola/tmp"))
 		Expect(p.UserModules).To(Equal("/h/.local/share/lola/user-modules"))
 		Expect(p.PluginData).To(Equal("/h/.local/share/lola/plugin-data"))
+		Expect(p.Probes).To(Equal("/h/.cache/lola/probes.json"))
+	})
+
+	It("searches only the absolute PATH entries for assistants", func() {
+		p, err := paths.Resolve(env(map[string]string{"HOME": "/h", "PATH": "/usr/bin::bin:./tools:/opt/x/../y"}))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(p.Search).To(Equal([]string{"/usr/bin", "/opt/y"}))
 	})
 
 	It("uses absolute XDG values", func() {

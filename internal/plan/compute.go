@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -57,6 +58,7 @@ type planner struct {
 	owners    map[string]string          // artifact ID → module that keeps owning it
 	releasing map[string]ledger.Artifact // artifact ID → old artifact of an owner being replanned
 	claimed   map[string]string          // artifact ID → owner desiring it in this plan
+	arrays    map[ledger.FileRef]bool    // JSON arrays lola created: recorded, or created by this plan
 	desired   map[string][]ledger.Artifact
 	steps     []Step
 	conflicts []Conflict
@@ -73,7 +75,12 @@ type owned struct {
 // for unreadable or unparseable files.
 func Compute(req Request) (*Plan, error) {
 	p := &planner{req: req, files: map[string]*file{}, owners: map[string]string{}, releasing: map[string]ledger.Artifact{},
-		claimed: map[string]string{}, desired: map[string][]ledger.Artifact{}}
+		claimed: map[string]string{}, arrays: map[ledger.FileRef]bool{}, desired: map[string][]ledger.Artifact{}}
+	for _, r := range req.Ledger.Created {
+		if r.Key != "" {
+			p.arrays[r] = true
+		}
+	}
 	var replanned []owned
 	var intents [][]Intent
 	for _, c := range req.Changes {
@@ -193,7 +200,7 @@ func expand(in Intent) (out []Intent, err error) {
 }
 
 func intentID(in Intent) string {
-	return ledger.Artifact{Target: in.Target, Path: in.Path, Key: in.Pointer}.ID()
+	return ledger.Artifact{Target: in.Target, Path: in.Path, Key: in.Pointer, Value: in.Member}.ID()
 }
 
 func sum(b []byte) string {
@@ -201,11 +208,24 @@ func sum(b []byte) string {
 	return hex.EncodeToString(h[:])
 }
 
-// hashOf hashes what currently occupies a destination; "" means absent.
-func hashOf(content []byte, exists bool, kind, key string) (string, error) {
+// memberHash hashes an owned array element as canonical JSON.
+func memberHash(value string) (string, error) {
+	b, err := json.Marshal(value)
+	return sum(b), err
+}
+
+// hashOf hashes what currently occupies a destination; "" means absent. value names an
+// owned element of the array at key.
+func hashOf(content []byte, exists bool, key, value string) (string, error) {
 	switch {
 	case !exists:
 		return "", nil
+	case value != "":
+		found, err := fsx.JSONHasMember(content, key, value)
+		if err != nil || !found {
+			return "", err
+		}
+		return memberHash(value)
 	case key != "":
 		v, found, err := fsx.JSONGet(content, key)
 		if err != nil || !found {
@@ -231,7 +251,7 @@ func Observe(root string, a ledger.Artifact) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	h, err := hashOf(b, true, a.Kind, a.Key)
+	h, err := hashOf(b, true, a.Key, a.Value)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", a.Path, err)
 	}
@@ -270,8 +290,8 @@ func (p *planner) file(target, logical string) (*file, error) {
 	return f, nil
 }
 
-func (p *planner) hash(f *file, kind, key string) (string, error) {
-	h, err := hashOf(f.orig, f.exists, kind, key)
+func (p *planner) hash(f *file, key, value string) (string, error) {
+	h, err := hashOf(f.orig, f.exists, key, value)
 	if err != nil {
 		return "", errs.WithHints(fmt.Errorf("%s: %w", f.logical, err),
 			"lola never rewrites a file it cannot parse; fix it by hand and retry (--force does not override this)")
@@ -287,13 +307,15 @@ func desiredHash(in Intent) (string, error) {
 			return "", fmt.Errorf("%s %s: %w", in.Path, in.Pointer, err)
 		}
 		return sum(c), nil
+	case OpAddJSONMember:
+		return memberHash(in.Member)
 	default:
 		return sum(in.Data), nil
 	}
 }
 
 func (p *planner) conflict(in Intent, reason string, forceable bool) {
-	p.conflicts = append(p.conflicts, Conflict{Target: in.Target, Path: in.Path, Key: in.Pointer, Reason: reason, Forceable: forceable})
+	p.conflicts = append(p.conflicts, Conflict{Target: in.Target, Path: in.Path, Key: in.Pointer, Value: in.Member, Reason: reason, Forceable: forceable})
 }
 
 // want plans one desired intent, following the conflict matrix of spec §9. The previous
@@ -317,7 +339,7 @@ func (p *planner) want(owner string, in Intent) error {
 	if err != nil {
 		return err
 	}
-	cur, err := p.hash(f, in.Kind, in.Pointer)
+	cur, err := p.hash(f, in.Pointer, in.Member)
 	if err != nil {
 		return err
 	}
@@ -325,13 +347,13 @@ func (p *planner) want(owner string, in Intent) error {
 	if err != nil {
 		return err
 	}
-	art := ledger.Artifact{Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer, SHA256: want}
+	art := ledger.Artifact{Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer, Value: in.Member, SHA256: want}
 	if f.res.Outside {
 		art.Resolved = f.res.Abs
 	}
 	p.desired[owner] = append(p.desired[owner], art)
 
-	step := Step{Module: owner, Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer}
+	step := Step{Module: owner, Target: in.Target, Kind: in.Kind, Path: in.Path, Key: in.Pointer, Value: in.Member}
 
 	// Detect mode-only changes
 	desiredMode := fsx.NormalizeMode(in.Mode)
@@ -375,6 +397,13 @@ func (p *planner) edit(f *file, in Intent) error {
 	case OpSetJSON:
 		f.content = contentJSON
 		f.cur, err = fsx.JSONSet(f.cur, in.Pointer, in.Value)
+	case OpAddJSONMember:
+		f.content = contentJSON
+		var created bool
+		f.cur, created, err = fsx.JSONAddMember(f.cur, in.Pointer, in.Member)
+		if created {
+			p.arrays[ledger.FileRef{Target: in.Target, Path: in.Path, Key: in.Pointer}] = true
+		}
 	default:
 		f.cur = in.Data
 		f.mode = fsx.NormalizeMode(in.Mode)
@@ -395,11 +424,11 @@ func (p *planner) drop(owner string, a ledger.Artifact) error {
 	if err != nil {
 		return err
 	}
-	cur, err := p.hash(f, a.Kind, a.Key)
+	cur, err := p.hash(f, a.Key, a.Value)
 	if err != nil {
 		return err
 	}
-	step := Step{Module: owner, Target: a.Target, Kind: a.Kind, Path: a.Path, Key: a.Key}
+	step := Step{Module: owner, Target: a.Target, Kind: a.Kind, Path: a.Path, Key: a.Key, Value: a.Value}
 	if f.res.Outside {
 		step.Via = f.res.Abs
 	}
@@ -410,12 +439,16 @@ func (p *planner) drop(owner string, a ledger.Artifact) error {
 		return nil
 	case cur != a.SHA256:
 		step.Forced = "hand-edited"
-		p.conflicts = append(p.conflicts, Conflict{Target: a.Target, Path: a.Path, Key: a.Key,
+		p.conflicts = append(p.conflicts, Conflict{Target: a.Target, Path: a.Path, Key: a.Key, Value: a.Value,
 			Reason: "hand-edited since lola wrote it; kept", Forceable: true})
 	}
 	step.Action = ActionDelete
 	p.steps = append(p.steps, step)
 	switch {
+	case a.Value != "":
+		f.content = contentJSON
+		dropEmpty := p.arrays[ledger.FileRef{Target: a.Target, Path: a.Path, Key: a.Key}]
+		f.cur, err = fsx.JSONRemoveMember(f.cur, a.Key, a.Value, dropEmpty)
 	case a.Key != "":
 		f.content = contentJSON
 		f.cur, err = fsx.JSONDelete(f.cur, a.Key)
@@ -481,6 +514,13 @@ func (p *planner) finish() (*Plan, error) {
 			Outside: f.res.Outside, Delete: f.del, Data: f.cur, Mode: f.mode, StopDirs: stops})
 	}
 	sort.Slice(out.Files, func(i, j int) bool { return out.Files[i].Abs < out.Files[j].Abs })
+	for ref := range p.arrays {
+		keep, err := p.arrayRemains(ref)
+		if err != nil {
+			return nil, err
+		}
+		created[ref] = keep
+	}
 	for i := range out.Files {
 		if out.Files[i].Delete {
 			out.Files[i].Data, out.Files[i].Mode = nil, 0
@@ -492,6 +532,23 @@ func (p *planner) finish() (*Plan, error) {
 		return a.Module+"\x00"+a.Target+"\x00"+a.Path+"\x00"+a.Key < b.Module+"\x00"+b.Target+"\x00"+b.Path+"\x00"+b.Key
 	})
 	return out, nil
+}
+
+// arrayRemains reports whether a JSON array lola created still exists once the plan is
+// applied, so the ledger keeps remembering it.
+func (p *planner) arrayRemains(ref ledger.FileRef) (bool, error) {
+	f := p.files[ref.Target+"\x00"+ref.Path]
+	switch {
+	case f == nil || !f.touched:
+		return true, nil
+	case f.del:
+		return false, nil
+	}
+	_, found, err := fsx.JSONGet(f.cur, ref.Key)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", f.logical, err)
+	}
+	return found, nil
 }
 
 func (p *planner) stopDirs(target string) ([]string, error) {
@@ -540,7 +597,5 @@ func (p *planner) updateLedger(l *ledger.Ledger, created map[ledger.FileRef]bool
 			l.Created = append(l.Created, ref)
 		}
 	}
-	sort.Slice(l.Created, func(i, j int) bool {
-		return l.Created[i].Target+"\x00"+l.Created[i].Path < l.Created[j].Target+"\x00"+l.Created[j].Path
-	})
+	sort.Slice(l.Created, func(i, j int) bool { return l.Created[i].ID() < l.Created[j].ID() })
 }

@@ -21,8 +21,9 @@ import (
 const Version = 1
 
 // Artifact is one thing lola wrote. Path is relative to the target's scope root; Key is an
-// RFC 6901 pointer for JSON members; SHA256 is over the file bytes or the canonical JSON of
-// the member. Resolved is set only when Path resolves outside the root.
+// RFC 6901 pointer for JSON members, and Value the string element lola owns when Key is an
+// array; SHA256 is over the file bytes or the canonical JSON of the member or element.
+// Resolved is set only when Path resolves outside the root.
 type Artifact struct {
 	Target   string `json:"target"`
 	Kind     string `json:"kind"`
@@ -34,13 +35,18 @@ type Artifact struct {
 }
 
 // ID identifies the destination an artifact occupies.
-func (a Artifact) ID() string { return a.Target + "\x00" + a.Path + "\x00" + a.Key }
+func (a Artifact) ID() string { return a.Target + "\x00" + a.Path + "\x00" + a.Key + "\x00" + a.Value }
 
-// FileRef names a shared file lola created and may delete once it is empty again.
+// FileRef names a JSON file lola created, or with Key an array lola created in one. lola
+// removes either once its last member leaves it.
 type FileRef struct {
 	Target string `json:"target"`
 	Path   string `json:"path"`
+	Key    string `json:"key,omitempty"`
 }
+
+// ID orders and identifies refs.
+func (r FileRef) ID() string { return r.Target + "\x00" + r.Path + "\x00" + r.Key }
 
 // Entry is one installed module.
 type Entry struct {
@@ -126,10 +132,7 @@ func (l *Ledger) normalize() {
 	if l.Created == nil {
 		l.Created = []FileRef{}
 	}
-	sort.Slice(l.Created, func(i, j int) bool {
-		a, b := l.Created[i], l.Created[j]
-		return a.Target+"\x00"+a.Path < b.Target+"\x00"+b.Path
-	})
+	sort.Slice(l.Created, func(i, j int) bool { return l.Created[i].ID() < l.Created[j].ID() })
 }
 
 // Save writes the ledger deterministically with mode 0600.

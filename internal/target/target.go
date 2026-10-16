@@ -1,10 +1,10 @@
-// Package target renders the module IR into each assistant's native layout. Targets are
-// pure: they read the IR and return intents and notices, and never touch the disk.
+// Package target is the contract every assistant target implements, plus helpers they share.
+// Targets live in their own packages (internal/target/<name>) and are listed by
+// internal/targets. They are pure: they read the IR and return intents and findings, and never
+// write to the disk. Whatever a target cannot express is reported as a Finding.
 package target
 
 import (
-	"strings"
-
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
@@ -26,18 +26,6 @@ func (s Scope) String() string {
 	return "project"
 }
 
-// Notice levels.
-const (
-	LevelInfo = "info"
-	LevelWarn = "warn"
-)
-
-// Notice is something the user should know about a plan that is not an error.
-type Notice struct {
-	Level string `json:"level"`
-	Text  string `json:"text"`
-}
-
 // PlanContext carries what a target needs besides the IR.
 type PlanContext struct {
 	Scope      Scope
@@ -45,6 +33,8 @@ type PlanContext struct {
 	PluginRoot string // absolute ${PLUGIN_ROOT}: the module copy (§6.4)
 	PluginData string // absolute ${PLUGIN_DATA} dir for this module and scope
 	SkipRules  bool   // the manifest entry says rules: false (§5.6)
+	Force      bool   // render forceable skips (Skipped)
+	Version    string // the installed assistant's version, "" when unknown; adds findings only (Bounds)
 }
 
 // Target is one assistant lola renders into.
@@ -56,37 +46,11 @@ type Target interface {
 	Detect(root string) bool
 	// BaseDirs are root-relative artifact directories that cleanup never removes.
 	BaseDirs(scope Scope) []string
-	// Plan returns the module's intents for this target.
-	Plan(m *module.Module, ctx PlanContext) ([]plan.Intent, []Notice, error)
-}
-
-// All returns every target in registration order, which is also help and completion order.
-func All() []Target { return []Target{Claude{}} }
-
-// IDs returns the ids of All.
-func IDs() []string {
-	var ids []string
-	for _, t := range All() {
-		ids = append(ids, t.ID())
-	}
-	return ids
-}
-
-// Lookup returns the target with id.
-func Lookup(id string) (Target, bool) {
-	for _, t := range All() {
-		if t.ID() == id {
-			return t, true
-		}
-	}
-	return nil, false
-}
-
-// Expand substitutes ${PLUGIN_ROOT}, ${CLAUDE_PLUGIN_ROOT} and ${PLUGIN_DATA} (§5.5).
-func Expand(s string, ctx PlanContext) string {
-	return strings.NewReplacer(
-		"${PLUGIN_ROOT}", ctx.PluginRoot,
-		"${CLAUDE_PLUGIN_ROOT}", ctx.PluginRoot,
-		"${PLUGIN_DATA}", ctx.PluginData,
-	).Replace(s)
+	// Capabilities is what the target can express; Plan admits every artifact through it.
+	Capabilities() Capabilities
+	// Probe tells lola how to find the assistant and read its version.
+	Probe() Probe
+	// Plan returns the module's intents for this target and what rendering loses. A content
+	// problem is a Finding; the error is for failures that are not about the module's content.
+	Plan(m *module.Module, ctx PlanContext) ([]plan.Intent, []Finding, error)
 }

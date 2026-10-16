@@ -11,6 +11,9 @@ Guidance for coding agents working on lola (Go).
 
 - **Behavior lives in `internal/engine`**; `internal/cli` only adapts it. New flows get engine
   specs first.
+- **Targets** are one package each under `internal/target/<name>`, listed in `internal/targets`.
+  They render through `target.Admit` and their capability table; anything they cannot express
+  is a `target.Finding`, never an error. Import boundaries are enforced by `depguard`.
 - **No package-level mutable state.** Paths come from `paths.Resolve(getenv)` in `main`; cobra
   globals are set once behind `sync.Once`.
 - **Errors coach.** Attach next steps with `errs.WithHints`; the CLI prints them as `hint:` lines

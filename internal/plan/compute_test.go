@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -307,6 +308,112 @@ var _ = Describe("Compute", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(p.Files[0].Delete).To(BeTrue())
 			Expect(p.Ledger.Created).To(BeEmpty())
+		})
+	})
+
+	Describe("owned array members", func() {
+		const dirs = "/context/includeDirectories"
+		member := func(value string) plan.Intent {
+			return plan.Intent{Target: tgt, Kind: "rule", Op: plan.OpAddJSONMember, Path: "settings.json", Pointer: dirs, Member: value}
+		}
+		read := func() string {
+			b, err := os.ReadFile(filepath.Join(root, "settings.json"))
+			Expect(err).NotTo(HaveOccurred())
+			return string(b)
+		}
+
+		It("creates the array and its file, shares it between modules, and removes both after the last member", func() {
+			p, err := install("a", false, member("lola/a"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionCreate, Module: "a", Target: tgt, Kind: "rule", Path: "settings.json", Key: dirs, Value: "lola/a"}}))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{{Target: tgt, Kind: "rule", Path: "settings.json", Key: dirs, Value: "lola/a", SHA256: sum(`"lola/a"`)}}))
+			Expect(p.Ledger.Created).To(Equal([]ledger.FileRef{{Target: tgt, Path: "settings.json"}, {Target: tgt, Path: "settings.json", Key: dirs}}))
+			apply(p)
+			Expect(read()).To(Equal("{\n  \"context\": {\n    \"includeDirectories\": [\n      \"lola/a\"\n    ]\n  }\n}\n"))
+
+			p, err = install("b", false, member("lola/b"))
+			Expect(err).NotTo(HaveOccurred())
+			apply(p)
+			Expect(read()).To(ContainSubstring("\"lola/a\",\n      \"lola/b\"\n"))
+
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			apply(p)
+			Expect(read()).To(Equal("{\n  \"context\": {\n    \"includeDirectories\": [\n      \"lola/b\"\n    ]\n  }\n}\n"))
+			Expect(p.Ledger.Created).To(HaveLen(2))
+
+			p, err = plan.Compute(req(false, removal("b")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Files).To(HaveLen(1))
+			Expect(p.Files[0].Delete).To(BeTrue())
+			Expect(p.Ledger.Created).To(BeEmpty())
+		})
+
+		It("adds to the user's commented array and restores it byte for byte on removal", func() {
+			user := "{\n  // mine\n  \"context\": {\n    \"includeDirectories\": [\n      \"docs\" // shared\n    ]\n  }\n}\n"
+			put("settings.json", user)
+			p, err := install("a", false, member("lola/a"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(p.Files[0].Data)).To(ContainSubstring("\"docs\", // shared\n      \"lola/a\"\n"))
+			Expect(p.Ledger.Created).To(BeEmpty())
+			apply(p)
+
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(p.Files[0].Data)).To(Equal(user))
+		})
+
+		It("keeps an array it did not create when its last member leaves", func() {
+			put("settings.json", "{\n  \"context\": {\n    \"includeDirectories\": []\n  }\n}\n")
+			p, err := install("a", false, member("lola/a"))
+			Expect(err).NotTo(HaveOccurred())
+			apply(p)
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Files[0].Delete).To(BeFalse())
+			v, found, err := fsx.JSONGet(p.Files[0].Data, dirs)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(string(v)).To(Equal("[]"))
+		})
+
+		It("adopts a member the user already listed, and rewrites one the user removed, with a note", func() {
+			put("settings.json", `{"context": {"includeDirectories": ["lola/a"]}}`)
+			p, err := install("a", false, member("lola/a"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps[0].Action).To(Equal(plan.ActionAdopt))
+			Expect(p.Files).To(BeEmpty())
+			apply(p)
+
+			put("settings.json", `{"context": {"includeDirectories": []}}`)
+			p, err = install("a", false, member("lola/a"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps[0].Action).To(Equal(plan.ActionCreate))
+			Expect(p.Steps[0].Note).To(Equal("was missing; rewritten"))
+		})
+
+		It("forgets a member the user already removed", func() {
+			own("a", ledger.Artifact{Target: tgt, Kind: "rule", Path: "settings.json", Key: dirs, Value: "lola/a", SHA256: sum(`"lola/a"`)})
+			put("settings.json", `{"context": {"includeDirectories": ["docs"]}}`)
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps[0].Action).To(Equal(plan.ActionForget))
+			Expect(p.Files).To(BeEmpty())
+		})
+
+		It("refuses a destination that is not an array, even with --force", func() {
+			put("settings.json", `{"context": {"includeDirectories": "docs"}}`)
+			_, err := install("a", true, member("lola/a"))
+			Expect(err).To(MatchError(ContainSubstring("/context/includeDirectories is not an array")))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("fix it by hand")))
+		})
+
+		It("Observe reports a member's hash only while the member is listed", func() {
+			a := ledger.Artifact{Target: tgt, Kind: "rule", Path: "settings.json", Key: dirs, Value: "lola/a"}
+			put("settings.json", `{"context": {"includeDirectories": ["lola/a"]}}`)
+			Expect(plan.Observe(root, a)).To(Equal(sum(`"lola/a"`)))
+			put("settings.json", `{"context": {"includeDirectories": ["docs"]}}`)
+			Expect(plan.Observe(root, a)).To(Equal(""))
 		})
 	})
 

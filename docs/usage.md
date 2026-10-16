@@ -10,8 +10,9 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 |---|---|
 | `lola install <source\|name>...` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. |
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
-| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), or `stale` (your cache has a newer version); and whether the module's rules are on. |
+| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (your cache has a newer version), or `skipped` (nothing of the module could be rendered for that target); and whether the module's rules are on. |
 | `lola render` | Render every installed module again from your cache. Removes files a module no longer ships. |
+| `lola check [module-or-folder...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
 | `lola init [dir]` | Scaffold a module: `lola.yml`, one skill, one command. |
 | `lola cache add\|rm\|list\|info\|update\|search` | Manage your cache. Bare `lola cache` lists it. |
@@ -113,9 +114,18 @@ hooks only for modules whose version changed, and `--dry-run` lists hooks withou
   `$XDG_CONFIG_HOME/lola/` (manifest `user.yml`) and `$XDG_STATE_HOME/lola/` (ledger
   `lock.json`). Rules installed at user scope apply in every project.
 
-When you do not pass `-t`, lola uses the manifest's targets; otherwise the assistants it detects
-(`.claude/` or `CLAUDE.md` for Claude Code). On a terminal you pick from the detected ones.
-`claude-code` is the only target in this build.
+When you do not pass `-t`, lola uses the manifest's targets. Otherwise it offers the assistants
+installed on your machine (their command, such as `claude`, is on your `PATH`): on a terminal
+you pick from them, with those already set up in the project preselected (`.claude/` or
+`CLAUDE.md` for Claude Code), or every installed assistant preselected when none is set up; off a terminal lola uses the ones both installed and set up. A
+target you name with `-t`, or that the manifest lists, is always rendered, installed or not,
+for example in a container that only prepares files. `claude-code` is the only target in this
+build.
+
+lola runs an installed assistant once, with `--version`, to learn which version you have, and
+caches the answer in `$XDG_CACHE_HOME/lola/probes.json` until the binary changes. The version
+never changes what lola writes (teammates on other versions get the same files); it only adds
+warnings when your version lacks something the module uses.
 
 What lands where for `claude-code`:
 
@@ -126,6 +136,44 @@ What lands where for `claude-code`:
 | Agents | `.claude/agents/<agent>.md` | `~/.claude/agents/` |
 | MCP servers | `.mcp.json` → `mcpServers.<name>` | `~/.claude.json` → `mcpServers.<name>` |
 | Rules | `.claude/rules/lola/<module>/<rule>.md` | `~/.claude/rules/lola/<module>/<rule>.md` |
+
+## Findings
+
+When a target cannot express part of a module, lola tells you instead of failing the whole
+module. Each **finding** has a severity:
+
+- **info**: a lossless adaptation. Shown by `lola check` and in `--json` output.
+- **warn**: something is dropped or changed, but the artifact works; it is installed.
+- **skip**: that artifact is left out for that target, because the assistant could not use it
+  (for example an agent without a `description`); everything else is installed.
+
+`--force` also renders skipped artifacts that can be rendered (it never invents a place for
+something the assistant has no place for). `--strict` turns every remaining warn or skip into an
+error before anything is written; use it in CI. A `--force` render is not remembered: a later
+`lola render` without `--force` skips (and removes) those artifacts again.
+
+Each finding has a stable code, shown by `--plain` and `--json`. A forceable skip is one that
+`--force` can render; a skip that `--force` rendered is reported as a warn.
+
+| Code | Severity | Forceable | Meaning |
+|---|---|---|---|
+| `kind-unsupported` | skip | no | The target has no place for this kind of artifact. |
+| `name-rejected` | skip | yes | The target rejects the artifact's name. |
+| `required-key-missing` | skip | yes | A frontmatter key the target needs is absent, empty, or was dropped for having the wrong type. |
+| `frontmatter-invalid` | skip | no | The frontmatter parses but lola cannot re-encode it. |
+| `frontmatter-key-dropped` | warn | no | The target does not support a frontmatter key, so it is left out. |
+| `frontmatter-value-dropped` | warn | no | A frontmatter key has a value of the wrong type for the target, so it is left out. |
+| `frontmatter/yaml-ambiguous` | warn | no | An unquoted frontmatter value that YAML parsers read differently; quote it. |
+| `version/unsupported` | warn | no | Your installed assistant is older than the version lola renders for and ignores something the module uses. |
+| `version/limited` | warn | no | Your installed assistant has a known limitation that affects this module. |
+| `module-warning` | warn | no | The module itself has a problem, such as a legacy instruction file or a skipped rule entry. |
+| `mcp-cwd-dropped` | warn | no | The target has no working-directory setting for an MCP server, so `cwd` is dropped. |
+| `probe/not-found` | info | no | The assistant is not on `PATH`; lola checked against the newest version it knows. |
+| `probe/unknown-version` | info | no | The assistant's version could not be read. |
+| `probe/cache` | info | no | The version was read but could not be cached. |
+
+lola only reports what its own rendering loses. For general advice on writing skills, commands
+and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenjam/skillsaw).
 
 ## Files lola keeps
 
@@ -168,9 +216,10 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | Variable | Used for |
 |---|---|
 | `HOME` | User-scope root; base of the XDG defaults |
+| `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest (default `~/.config`) |
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook consent and lock files (default `~/.local/state`) |
-| `XDG_CACHE_HOME` | The cache and download scratch space (default `~/.cache`) |
+| `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
 
 Relative XDG values are ignored, as the XDG specification requires.

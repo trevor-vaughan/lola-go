@@ -85,6 +85,7 @@ func (e *Engine) Install(ctx context.Context, sc Scope, cwd string, reqs []Insta
 		}
 	}
 	res := newResult(opts.DryRun)
+	probes := e.newProbeRun(ctx)
 	var changes []plan.ModuleChange
 	var copies []moduleCopy
 	var entries []manifest.Entry
@@ -122,11 +123,11 @@ func (e *Engine) Install(ctx context.Context, sc Scope, cwd string, reqs []Insta
 				ent.Rules = opts.Rules
 			}
 		}
-		intents, notes, mr, err := e.planModule(sc, v, modTargets, &ent)
+		intents, finds, notes, mr, err := e.planModule(sc, v, modTargets, &ent, opts, probes)
 		if err != nil {
 			return nil, withRetry(err, fetched)
 		}
-		res.Modules, res.Notices = append(res.Modules, mr), append(res.Notices, notes...)
+		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: v.Name, Targets: modTargets, Intents: intents,
 			Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: v.Meta.Commit, Digest: v.Meta.Digest}})
 		replace, err := needsCopy(e.files(sc).modules, v.Name, led.Modules[v.Name], v.Meta.Digest)
@@ -137,6 +138,7 @@ func (e *Engine) Install(ctx context.Context, sc Scope, cwd string, reqs []Insta
 			hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true})
 		entries = append(entries, ent)
 	}
+	res.Findings = append(res.Findings, probes.findings...)
 	err = e.execute(ctx, sc, led, changes, copies, opts, res, func(*plan.Plan) error {
 		if len(man.Targets) == 0 {
 			man.Targets = targets
@@ -254,10 +256,10 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	for i := range res.Modules {
 		name := res.Modules[i].Name
 		if _, found, err := e.Store.Origin(name); err == nil && found {
-			res.Notices = append(res.Notices, target.Notice{Level: target.LevelInfo, Text: "still in your cache: lola cache rm " + name})
+			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "still in your cache: lola cache rm " + name})
 		}
 		if dir := filepath.Join(e.files(sc).pluginData, name); dirExists(dir) {
-			res.Notices = append(res.Notices, target.Notice{Level: target.LevelInfo, Text: name + ": plugin data kept at " + dir})
+			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: name + ": plugin data kept at " + dir})
 		}
 	}
 	return res, nil
@@ -276,6 +278,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 	}
 	defer unlock()
 	res := newResult(opts.DryRun)
+	probes := e.newProbeRun(ctx)
 	names := make([]string, 0, len(led.Modules))
 	for n := range led.Modules {
 		names = append(names, n)
@@ -325,11 +328,11 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 		if len(ts) == 0 {
 			continue
 		}
-		intents, notes, mr, err := e.planModule(sc, v, ts, man.Find(name))
+		intents, finds, notes, mr, err := e.planModule(sc, v, ts, man.Find(name), opts, probes)
 		if err != nil {
 			return nil, err
 		}
-		res.Modules, res.Notices = append(res.Modules, mr), append(res.Notices, notes...)
+		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
 			Entry: &ledger.Entry{Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Meta.Commit, Digest: v.Meta.Digest}})
 		replace, err := needsCopy(e.files(sc).modules, name, entry, v.Meta.Digest)
@@ -339,6 +342,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 		copies = append(copies, moduleCopy{name: name, src: v.ContentDir, replace: replace,
 			hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace})
 	}
+	res.Findings = append(res.Findings, probes.findings...)
 	if err := e.execute(ctx, sc, led, changes, copies, opts, res, func(*plan.Plan) error { return e.makePluginData(sc, changes) }); err != nil {
 		return nil, err
 	}
@@ -347,7 +351,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 
 // Status reports each installed module × target: missing (an owned destination or the
 // module copy is gone), modified (a destination differs from what lola wrote), stale (the
-// store head differs), or ok. A module copy's content is not compared: hooks build in it.
+// store head differs), skipped (the target rendered nothing of the module), or ok. A module copy's content is not compared: hooks build in it.
 func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
@@ -385,11 +389,12 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 				return nil, err
 			}
 			root := t.Root(sc.Kind, sc.ProjectDir, e.Paths)
-			status := "ok"
+			status, n := "ok", 0
 			for _, a := range entry.Artifacts {
 				if a.Target != id {
 					continue
 				}
+				n++
 				h, err := plan.Observe(root, a)
 				if err != nil {
 					return nil, err
@@ -401,6 +406,9 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 				if h != a.SHA256 {
 					status = "modified"
 				}
+			}
+			if n == 0 {
+				status = "skipped"
 			}
 			if copyMissing {
 				status = "missing"

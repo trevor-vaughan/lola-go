@@ -11,18 +11,20 @@ import (
 type Paths struct {
 	Home, ConfigHome, CacheHome, StateHome, DataHome string
 
-	Config       string // ConfigHome/lola/config.yaml
-	UserManifest string // ConfigHome/lola/user.yml
-	UserLedger   string // StateHome/lola/lock.json
-	UserLock     string // StateHome/lola/.lock
-	Locks        string // StateHome/lola/locks: one lock file per project, outside the project's .lola/
-	Consent      string // StateHome/lola/consent.json: install hook consent (§9.1)
-	Store        string // CacheHome/lola/modules: the cache
-	StoreLock    string // CacheHome/lola/.lock
-	Staging      string // CacheHome/lola/.staging: same filesystem as Store, so renames never cross devices
-	Tmp          string // CacheHome/lola/tmp: downloads
-	UserModules  string // DataHome/lola/user-modules: module copies at user scope
-	PluginData   string // DataHome/lola/plugin-data
+	Config       string   // ConfigHome/lola/config.yaml
+	UserManifest string   // ConfigHome/lola/user.yml
+	UserLedger   string   // StateHome/lola/lock.json
+	UserLock     string   // StateHome/lola/.lock
+	Locks        string   // StateHome/lola/locks: one lock file per project, outside the project's .lola/
+	Consent      string   // StateHome/lola/consent.json: install hook consent (§9.1)
+	Store        string   // CacheHome/lola/modules: the cache
+	StoreLock    string   // CacheHome/lola/.lock
+	Staging      string   // CacheHome/lola/.staging: same filesystem as Store, so renames never cross devices
+	Tmp          string   // CacheHome/lola/tmp: downloads
+	UserModules  string   // DataHome/lola/user-modules: module copies at user scope
+	PluginData   string   // DataHome/lola/plugin-data
+	Probes       string   // CacheHome/lola/probes.json: assistant versions, per binary build
+	Search       []string // absolute PATH entries, where lola looks for assistants' binaries
 }
 
 // Resolve computes Paths. An XDG variable that is unset, empty or relative falls back to
@@ -58,5 +60,13 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.Tmp = filepath.Join(p.CacheHome, "lola", "tmp")
 	p.UserModules = filepath.Join(p.DataHome, "lola", "user-modules")
 	p.PluginData = filepath.Join(p.DataHome, "lola", "plugin-data")
+	p.Probes = filepath.Join(p.CacheHome, "lola", "probes.json")
+	// Relative PATH entries are ignored, like Go's exec.ErrDot: a repository must not be able
+	// to plant a binary that lola runs to read a version.
+	for _, dir := range filepath.SplitList(getenv("PATH")) {
+		if filepath.IsAbs(dir) {
+			p.Search = append(p.Search, filepath.Clean(dir))
+		}
+	}
 	return p, nil
 }

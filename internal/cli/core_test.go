@@ -24,6 +24,12 @@ func writeTree(root string, files map[string]string) {
 	}
 }
 
+// fakeAssistant puts an executable named name on the spec's PATH (testenv.Isolate's bin/)
+// that prints version, standing in for an installed assistant.
+func fakeAssistant(root, name, version string) {
+	Expect(os.WriteFile(filepath.Join(root, "bin", name), []byte("#!/bin/sh\necho '"+version+"'\n"), 0o755)).To(Succeed())
+}
+
 var _ = Describe("core commands", func() {
 	var tmp, proj, mod string
 	BeforeEach(func() {
@@ -36,6 +42,7 @@ var _ = Describe("core commands", func() {
 			"mcps.json":        `{"mcpServers":{"lola-gh":{"command":"gh-mcp","args":["--stdio"]}}}`,
 		})
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
+		fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
 	})
 
 	It("installs into detected targets off a terminal, lists, renders and uninstalls", func() {
@@ -58,6 +65,70 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("✗ delete claude-code .claude/commands/ship.md"))
 		Expect(r.out).To(ContainSubstring("→ still in your cache: lola cache rm example"))
 		Expect(filepath.Join(proj, ".mcp.json")).NotTo(BeAnExistingFile())
+	})
+
+	It("prints what a target skipped with a hint, and --strict fails without writing", func() {
+		writeTree(mod, map[string]string{"agents/bare.md": "No description.\n"})
+		r := lola("install", mod, "-C", proj, "--strict")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("--strict: 1 finding(s); nothing was changed"))
+		Expect(filepath.Join(proj, ".lola/project.yml")).NotTo(BeAnExistingFile())
+
+		r = lola("install", mod, "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✗ skipped example: claude-code agent bare: claude-code needs a description in the agent's frontmatter\n    hint: add description: to the agent's frontmatter"))
+		Expect(lola("install", mod, "-C", proj, "--plain").out).To(ContainSubstring("finding\tskip\texample\tclaude-code\tagent\tbare\trequired-key-missing\t"))
+	})
+
+	It("--plain leaves out info findings on install, as human output does; check keeps them", func() {
+		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
+		r := lola("install", mod, "-C", proj, "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring("finding\tinfo"))
+
+		GinkgoT().Chdir(mod)
+		r = lola("check", "--plain", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("finding\tinfo"))
+	})
+
+	It("lists a module nothing of which a target could render with the warn glyph", func() {
+		Expect(os.RemoveAll(mod)).To(Succeed())
+		writeTree(mod, map[string]string{"agents/bare.md": "No description.\n"})
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		Expect(lola("ls", "-C", proj).out).To(MatchRegexp(`example\s+claude-code\s+⚠ skipped`))
+	})
+
+	It("lola check reports findings in every output mode and fails only under --strict", func() {
+		r := lola("check", mod)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✓ example: claude-code renders everything"))
+
+		writeTree(mod, map[string]string{"agents/bare.md": "No description.\n"})
+		GinkgoT().Chdir(mod)
+		r = lola("check")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✗ skipped example: claude-code agent bare: claude-code needs a description"))
+		Expect(lola("check", "--plain").out).To(ContainSubstring("finding\tskip\texample\tclaude-code\tagent\tbare\trequired-key-missing\t"))
+
+		var rep struct {
+			Modules []struct {
+				Name     string           `json:"name"`
+				Findings []map[string]any `json:"findings"`
+			} `json:"modules"`
+			Findings []map[string]any `json:"findings"`
+		}
+		Expect(json.Unmarshal([]byte(lola("check", "--json").out), &rep)).To(Succeed())
+		Expect(rep.Modules[0].Name).To(Equal("example"))
+		Expect(rep.Modules[0].Findings).To(ContainElement(HaveKeyWithValue("code", "required-key-missing")))
+		Expect(rep.Findings).To(BeEmpty(), "claude is installed in this spec")
+
+		r = lola("check", "--strict")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("--strict: 1 finding(s); nothing was changed"))
+		Expect(r.err).To(ContainSubstring("hint: fix the module; lola install renders what each target supports"))
+		Expect(r.err).NotTo(ContainSubstring("--force"))
+		Expect(r.err).NotTo(ContainSubstring("rerun without --strict"))
 	})
 
 	It("install --no-rules is remembered in the manifest and shown by list; --rules turns them back on", func() {
@@ -130,11 +201,16 @@ var _ = Describe("core commands", func() {
 		Expect(string(b)).To(ContainSubstring("source: ../example"))
 	})
 
-	It("names -t and the valid targets when nothing is detected", func() {
+	It("names -t and the installed assistants when none is set up here", func() {
 		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())
 		r := lola("install", mod, "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: no assistant detected here"))
+		Expect(r.err).To(ContainSubstring("error: none of your installed assistants is set up here"))
+		Expect(r.err).To(ContainSubstring("hint: installed: claude-code"))
+
+		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
+		r = lola("install", mod, "-C", proj)
+		Expect(r.err).To(ContainSubstring("error: no assistant found on your PATH"))
 		Expect(r.err).To(ContainSubstring("hint: pass -t with one or more of: claude-code"))
 		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0), "the manifest's targets are reused")

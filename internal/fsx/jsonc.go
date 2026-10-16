@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/tailscale/hujson"
@@ -51,20 +52,116 @@ func JSONGet(b []byte, ptr string) (value []byte, found bool, err error) {
 	if err != nil {
 		return nil, false, err
 	}
-	cur := &root
-	for _, t := range toks {
-		obj, ok := cur.Value.(*hujson.Object)
-		if !ok {
-			return nil, false, nil
-		}
-		i := memberIndex(obj, t)
-		if i < 0 {
-			return nil, false, nil
-		}
-		cur = &obj.Members[i].Value
+	cur, _ := lookup(&root, toks)
+	if cur == nil {
+		return nil, false, nil
 	}
 	c, err := CanonicalJSON(cur.Pack())
 	return c, true, err
+}
+
+// lookup returns the value at toks and the indentation of the line that holds it, or nil
+// when a member is missing or a parent is not an object.
+func lookup(root *hujson.Value, toks []string) (*hujson.Value, string) {
+	cur, indent := root, ""
+	for _, t := range toks {
+		obj, ok := cur.Value.(*hujson.Object)
+		if !ok {
+			return nil, ""
+		}
+		i := memberIndex(obj, t)
+		if i < 0 {
+			return nil, ""
+		}
+		indent, _ = objectItems(obj).indent(indent)
+		cur = &obj.Members[i].Value
+	}
+	return cur, indent
+}
+
+// JSONHasMember reports whether the array at ptr contains the string member. A missing
+// array is false; a value at ptr that is not an array is an error.
+func JSONHasMember(b []byte, ptr, member string) (bool, error) {
+	v, found, err := JSONGet(b, ptr)
+	if err != nil || !found {
+		return false, err
+	}
+	var arr []any
+	if err := json.Unmarshal(v, &arr); err != nil {
+		return false, fmt.Errorf("%s is not an array", ptr)
+	}
+	return slices.Contains(arr, any(member)), nil
+}
+
+// JSONAddMember appends the string member to the array at ptr unless it is already there.
+// A missing array is created, with any missing parent objects; created reports that.
+// Bytes outside the array's new element are preserved.
+func JSONAddMember(b []byte, ptr, member string) (out []byte, created bool, err error) {
+	toks, err := JSONPointerTokens(ptr)
+	if err != nil {
+		return nil, false, err
+	}
+	root, err := parseJSONC(b)
+	if err != nil {
+		return nil, false, err
+	}
+	elem, err := json.Marshal(member)
+	if err != nil {
+		return nil, false, err
+	}
+	cur, indent := lookup(&root, toks)
+	if cur == nil {
+		out, err := JSONSet(b, ptr, []byte("["+string(elem)+"]"))
+		return out, err == nil, err
+	}
+	arr, ok := cur.Value.(*hujson.Array)
+	if !ok {
+		return nil, false, fmt.Errorf("%s is not an array", ptr)
+	}
+	if elementIndex(arr, member) >= 0 {
+		return b, false, nil
+	}
+	v, err := hujson.Parse(elem)
+	if err != nil {
+		return nil, false, err
+	}
+	it := arrayItems(arr)
+	childIndent, multiline := it.indent(indent)
+	v.BeforeExtra, v.AfterExtra = it.place(indent, childIndent, multiline)
+	arr.Elements = append(arr.Elements, v)
+	return root.Pack(), false, nil
+}
+
+// JSONRemoveMember removes the string member from the array at ptr. When the array is then
+// empty and dropEmpty is set, the array itself is removed, as are parent objects that became
+// empty (JSONDelete). A missing array or member is not an error.
+func JSONRemoveMember(b []byte, ptr, member string, dropEmpty bool) ([]byte, error) {
+	toks, err := JSONPointerTokens(ptr)
+	if err != nil {
+		return nil, err
+	}
+	root, err := parseJSONC(b)
+	if err != nil {
+		return nil, err
+	}
+	cur, _ := lookup(&root, toks)
+	if cur == nil {
+		return b, nil
+	}
+	arr, ok := cur.Value.(*hujson.Array)
+	if !ok {
+		return nil, fmt.Errorf("%s is not an array", ptr)
+	}
+	i := elementIndex(arr, member)
+	if i < 0 {
+		return b, nil
+	}
+	arrayItems(arr).unlink(i)
+	arr.Elements = slices.Delete(arr.Elements, i, i+1)
+	if dropEmpty && len(arr.Elements) == 0 {
+		return JSONDelete(root.Pack(), ptr)
+	}
+	return root.Pack(), nil
 }
 
 // CanonicalJSON returns raw (JSON or JSONC) re-encoded with sorted keys and no whitespace.
@@ -98,7 +195,7 @@ func JSONSet(b []byte, ptr string, value []byte) ([]byte, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s: %q is not an object", ptr, "/"+strings.Join(toks[:depth], "/"))
 		}
-		childIndent, multiline := memberIndent(obj, indent)
+		childIndent, multiline := objectItems(obj).indent(indent)
 		val := value
 		if depth < len(toks)-1 {
 			val = []byte("{}")
@@ -152,7 +249,8 @@ func JSONDelete(b []byte, ptr string) ([]byte, error) {
 		if i < 0 {
 			return b, nil
 		}
-		removeMember(obj, i)
+		objectItems(obj).unlink(i)
+		obj.Members = slices.Delete(obj.Members, i, i+1)
 		if d == 0 || len(obj.Members) > 0 {
 			break
 		}
@@ -167,20 +265,6 @@ func memberIndex(obj *hujson.Object, name string) int {
 		}
 	}
 	return -1
-}
-
-// memberIndent reports the indentation used for obj's members and whether obj is laid out
-// one member per line. An empty object is treated as multiline, indented two spaces deeper.
-func memberIndent(obj *hujson.Object, parentIndent string) (string, bool) {
-	if len(obj.Members) == 0 {
-		return parentIndent + "  ", true
-	}
-	before := string(obj.Members[0].Name.BeforeExtra)
-	nl := strings.LastIndexByte(before, '\n')
-	if nl < 0 {
-		return parentIndent, false
-	}
-	return before[nl+1:], true
 }
 
 func renderValue(val []byte, indent string, multiline bool) (hujson.Value, error) {
@@ -214,55 +298,105 @@ func splitAtNewline(e hujson.Extra) (string, string) {
 
 func appendMember(obj *hujson.Object, name string, val hujson.Value, parentIndent, indent string, multiline bool) {
 	m := hujson.ObjectMember{Name: hujson.Value{Value: hujson.String(name)}, Value: val}
-	if !multiline {
-		if n := len(obj.Members); n > 0 {
-			m.Name.BeforeExtra = obj.Members[n-1].Name.BeforeExtra
-			m.Value.BeforeExtra = obj.Members[n-1].Value.BeforeExtra
-			if n == 1 {
-				m.Name.BeforeExtra = hujson.Extra(" ")
-			}
-		}
-		obj.Members = append(obj.Members, m)
-		return
+	if n := len(obj.Members); !multiline && n > 0 {
+		m.Value.BeforeExtra = obj.Members[n-1].Value.BeforeExtra
 	}
-	lineEnd, rest := splitAtNewline(obj.AfterExtra)
-	closing := "\n" + parentIndent
-	if rest != "" {
-		closing = rest[strings.LastIndexByte(rest, '\n'):]
-	}
-	if len(obj.Members) > 0 {
-		last := &obj.Members[len(obj.Members)-1]
-		if last.Value.AfterExtra != nil {
-			m.Value.AfterExtra = hujson.Extra{}
-		}
-	}
-	m.Name.BeforeExtra = hujson.Extra(lineEnd + "\n" + indent)
+	m.Name.BeforeExtra, m.Value.AfterExtra = objectItems(obj).place(parentIndent, indent, multiline)
 	obj.Members = append(obj.Members, m)
-	obj.AfterExtra = hujson.Extra(closing)
 }
 
-func removeMember(obj *hujson.Object, i int) {
-	gone := obj.Members[i]
-	keep, _ := splitAtNewline(gone.Name.BeforeExtra)
-	if !strings.Contains(string(gone.Name.BeforeExtra), "\n") {
+func elementIndex(arr *hujson.Array, s string) int {
+	for i, e := range arr.Elements {
+		if lit, ok := e.Value.(hujson.Literal); ok && lit.Kind() == '"' && lit.String() == s {
+			return i
+		}
+	}
+	return -1
+}
+
+// items is the layout shared by an object's members and an array's elements. before(i) is
+// the Extra in front of item i (for a member, in front of its name), after(i) the Extra
+// between item i and its comma, and tail the composite's AfterExtra: what precedes the
+// closing brace or bracket.
+type items struct {
+	n             int
+	before, after func(i int) *hujson.Extra
+	tail          *hujson.Extra
+}
+
+func objectItems(obj *hujson.Object) items {
+	return items{n: len(obj.Members), tail: &obj.AfterExtra,
+		before: func(i int) *hujson.Extra { return &obj.Members[i].Name.BeforeExtra },
+		after:  func(i int) *hujson.Extra { return &obj.Members[i].Value.AfterExtra }}
+}
+
+func arrayItems(arr *hujson.Array) items {
+	return items{n: len(arr.Elements), tail: &arr.AfterExtra,
+		before: func(i int) *hujson.Extra { return &arr.Elements[i].BeforeExtra },
+		after:  func(i int) *hujson.Extra { return &arr.Elements[i].AfterExtra }}
+}
+
+// indent reports the indentation of the items and whether they are laid out one per line.
+// An empty composite is treated as multiline, indented two spaces deeper than parentIndent.
+func (it items) indent(parentIndent string) (string, bool) {
+	if it.n == 0 {
+		return parentIndent + "  ", true
+	}
+	before := string(*it.before(0))
+	nl := strings.LastIndexByte(before, '\n')
+	if nl < 0 {
+		return parentIndent, false
+	}
+	return before[nl+1:], true
+}
+
+// place lays out a new last item. It returns the item's BeforeExtra and AfterExtra (which
+// keeps a trailing-comma style). A comment that ended the old last line stays on that line;
+// the lines after it, comments included, stay between the new item and the closing brace or
+// bracket, so removing the item again restores them.
+func (it items) place(parentIndent, indent string, multiline bool) (before, after hujson.Extra) {
+	if !multiline {
+		switch {
+		case it.n == 1:
+			before = hujson.Extra(" ")
+		case it.n > 1:
+			before = *it.before(it.n - 1)
+		}
+		return before, nil
+	}
+	lineEnd, rest := splitAtNewline(*it.tail)
+	if rest == "" {
+		rest = "\n" + parentIndent
+	}
+	if it.n > 0 && *it.after(it.n - 1) != nil {
+		after = hujson.Extra{}
+	}
+	*it.tail = hujson.Extra(rest)
+	return hujson.Extra(lineEnd + "\n" + indent), after
+}
+
+// unlink fixes the layout around item i before it is removed: the item's own comments go
+// with it, and a comment that ends the previous line stays.
+func (it items) unlink(i int) {
+	gone := *it.before(i)
+	keep, _ := splitAtNewline(gone)
+	if !strings.Contains(string(gone), "\n") {
 		keep = ""
 	}
-	if i < len(obj.Members)-1 {
-		next := &obj.Members[i+1]
-		_, rest := splitAtNewline(next.Name.BeforeExtra)
-		if rest == "" {
-			next.Name.BeforeExtra = gone.Name.BeforeExtra
+	if i < it.n-1 {
+		next := it.before(i + 1)
+		if _, rest := splitAtNewline(*next); rest == "" {
+			*next = gone
 		} else {
-			next.Name.BeforeExtra = hujson.Extra(keep + rest)
+			*next = hujson.Extra(keep + rest)
 		}
-	} else {
-		_, rest := splitAtNewline(obj.AfterExtra)
-		obj.AfterExtra = hujson.Extra(keep + rest)
-		if i > 0 {
-			obj.Members[i-1].Value.AfterExtra = gone.Value.AfterExtra
-		}
+		return
 	}
-	obj.Members = append(obj.Members[:i], obj.Members[i+1:]...)
+	_, rest := splitAtNewline(*it.tail)
+	*it.tail = hujson.Extra(keep + rest)
+	if i > 0 {
+		*it.after(i - 1) = *it.after(i)
+	}
 }
 
 // JSONIsEmptyObject reports whether b is an object with no members (comments ignored).

@@ -1,0 +1,153 @@
+// Package conformance_test holds the specs every registered target must pass. A new target
+// gets them by being listed in internal/targets.
+package conformance_test
+
+import (
+	"path"
+	"slices"
+	"strings"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/trevor-vaughan/lola-go/internal/module"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
+	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
+	"github.com/trevor-vaughan/lola-go/internal/testenv"
+)
+
+func doc(src string) module.Doc {
+	d, err := module.ParseDoc([]byte(src))
+	Expect(err).NotTo(HaveOccurred())
+	return d
+}
+
+// kinds are the artifact kinds of the module IR.
+var kinds = []string{"skill", "command", "agent", "mcp", "rule"}
+
+// clean is a module every target should render without losing anything that matters.
+func clean() *module.Module {
+	return &module.Module{Name: "example",
+		Skills:   []module.Skill{{Name: "review", Dir: "skills/review", Doc: doc("---\nname: review\ndescription: Review code\n---\nReview it.\n")}},
+		Commands: []module.Command{{Name: "ship", Doc: doc("---\ndescription: Ship it\n---\nShip $ARGUMENTS\n")}},
+		Agents:   []module.Agent{{Name: "critic", Doc: doc("---\ndescription: Critic\n---\nCriticize.\n")}},
+		MCPServers: []module.MCPServer{
+			{Name: "gh", Transport: module.TransportStdio, Command: "${PLUGIN_ROOT}/bin/gh", Args: []string{"--stdio"}},
+			{Name: "web", Transport: module.TransportHTTP, URL: "https://example.com/mcp"},
+		},
+		Rules: []module.Rule{{Name: "style", Body: "Prefer small diffs.\n"}},
+	}
+}
+
+// wrong is a module with every problem some target cannot express.
+func wrong() *module.Module {
+	return &module.Module{Name: "example",
+		Skills: []module.Skill{
+			{Name: "bare", Dir: "skills/bare", Doc: doc("---\nuser-invocable: no\n---\nNo description.\n")},
+			{Name: "my_skill", Dir: "skills/my_skill", Doc: doc("---\nname: other\ndescription: d\n---\nx\n")},
+		},
+		Commands: []module.Command{{Name: "status", Doc: doc("---\nallowed-tools: Bash\nmode: 0755\n---\nRun !`git status` with $1\n")}},
+		Agents: []module.Agent{
+			{Name: "rev", Doc: doc("---\ntools: Read, Grep\nmodel: opus\ncolor: red\n---\nNo description.\n")},
+			{Name: "v1.2", Doc: doc("---\ndescription: d\ntools: {write: false}\n---\nx\n")},
+		},
+		MCPServers: []module.MCPServer{{Name: "env", Transport: module.TransportStdio, Command: "srv", Cwd: "/tmp",
+			Env: map[string]string{"LEVEL": "${LOG_LEVEL:-info}"}}},
+		Rules: []module.Rule{{Name: "style", Body: "Keep ${PLUGIN_ROOT} literal.\n"}},
+	}
+}
+
+var _ = Describe("every registered target", func() {
+	for _, t := range targets.All() {
+		for _, scope := range []target.Scope{target.Project, target.User} {
+			Context(t.ID()+" at "+scope.String()+" scope", func() {
+				var ctx target.PlanContext
+				BeforeEach(func() {
+					testenv.Isolate()
+					ctx = target.PlanContext{Scope: scope, ContentDir: "/cache/example/content",
+						PluginRoot: "/copies/example", PluginData: "/data/example"}
+				})
+				run := func(m *module.Module, c target.PlanContext) ([]plan.Intent, []target.Finding) {
+					ins, fs, err := t.Plan(m, c)
+					Expect(err).NotTo(HaveOccurred(), "content problems are findings, never Plan errors")
+					return ins, fs
+				}
+
+				It("plans the same intents and findings every time", func() {
+					for _, m := range []func() *module.Module{clean, wrong} {
+						ins1, fs1 := run(m(), ctx)
+						ins2, fs2 := run(m(), ctx)
+						Expect(ins2).To(Equal(ins1))
+						Expect(fs2).To(Equal(fs1))
+					}
+				})
+
+				It("writes files only under its base directories and keeps every path relative and clean", func() {
+					bases := t.BaseDirs(scope)
+					for _, m := range []func() *module.Module{clean, wrong} {
+						force := ctx
+						force.Force = true
+						ins, _ := run(m(), force)
+						for _, in := range ins {
+							Expect(path.IsAbs(in.Path)).To(BeFalse(), in.Path)
+							Expect(path.Clean(in.Path)).To(Equal(in.Path))
+							Expect(in.Path).NotTo(HavePrefix(".."))
+							if in.Op == plan.OpWriteFile || in.Op == plan.OpCopyTree {
+								Expect(slices.ContainsFunc(bases, func(b string) bool { return strings.HasPrefix(in.Path, b+"/") })).
+									To(BeTrue(), "%s is outside %v", in.Path, bases)
+							}
+						}
+					}
+				})
+
+				It("renders the clean module without skipping anything", func() {
+					_, fs := run(clean(), ctx)
+					for _, f := range fs {
+						Expect(f.Severity).NotTo(Equal(target.SeveritySkip), f.Describe())
+					}
+				})
+
+				It("reports well-formed findings about itself", func() {
+					_, fs := run(wrong(), ctx)
+					Expect(fs).NotTo(BeEmpty())
+					for _, f := range fs {
+						Expect(f.Target).To(Equal(t.ID()))
+						Expect([]target.Severity{target.SeverityInfo, target.SeverityWarn, target.SeveritySkip}).To(ContainElement(f.Severity))
+						Expect(f.Code).NotTo(BeEmpty())
+						Expect(f.Text).NotTo(BeEmpty())
+						Expect(kinds).To(ContainElement(f.Kind))
+						Expect(f.Forceable && f.Severity != target.SeveritySkip).To(BeFalse(), "only skips are forceable: %s", f.Describe())
+					}
+				})
+
+				It("leaves skipped artifacts out, and renders the forceable ones only with Force", func() {
+					ins, fs := run(wrong(), ctx)
+					force := ctx
+					force.Force = true
+					forced, ffs := run(wrong(), force)
+					forceable := slices.ContainsFunc(fs, func(f target.Finding) bool { return f.Severity == target.SeveritySkip && f.Forceable })
+					if forceable {
+						Expect(len(forced)).To(BeNumerically(">", len(ins)))
+						Expect(ffs).To(ContainElement(HaveField("Forced", true)))
+					} else {
+						Expect(forced).To(Equal(ins))
+					}
+				})
+
+				It("plans only the kinds it declares", func() {
+					declared := t.Capabilities().Kinds
+					for _, m := range []func() *module.Module{clean, wrong} {
+						ins, _ := run(m(), ctx)
+						for _, in := range ins {
+							Expect(declared).To(HaveKey(in.Kind), in.Path)
+						}
+					}
+					for k := range declared {
+						Expect(kinds).To(ContainElement(k))
+					}
+				})
+			})
+		}
+	}
+})

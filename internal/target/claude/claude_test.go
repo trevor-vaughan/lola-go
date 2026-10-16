@@ -1,4 +1,4 @@
-package target_test
+package claude_test
 
 import (
 	"os"
@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/target/claude"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -30,16 +31,9 @@ func byPath(ins []plan.Intent) map[string]plan.Intent {
 }
 
 var _ = Describe("claude-code", func() {
-	c := target.Claude{}
+	c := claude.Target{}
 	ctx := target.PlanContext{Scope: target.Project, ContentDir: "/store/example/versions/abc/content", PluginRoot: "/proj/.lola/modules/example",
 		PluginData: "/proj/.lola/plugin-data/example"}
-
-	It("is registered", func() {
-		t, ok := target.Lookup("claude-code")
-		Expect(ok).To(BeTrue())
-		Expect(t.ID()).To(Equal("claude-code"))
-		Expect(target.IDs()).To(ContainElement("claude-code"))
-	})
 
 	It("renders skills as a tree plus an expanded SKILL.md", func() {
 		m := &module.Module{Name: "example", Skills: []module.Skill{
@@ -74,10 +68,33 @@ var _ = Describe("claude-code", func() {
 		Expect(string(ins[0].Data)).To(Equal("---\nname: rev\ndescription: reviews\nmodel: opus\ntools: [Read]\n---\nYou review.\n"))
 	})
 
-	It("requires an agent description", func() {
-		m := &module.Module{Name: "example", Agents: []module.Agent{{Name: "rev", Doc: doc("body\n")}}}
-		_, _, err := c.Plan(m, ctx)
-		Expect(err).To(MatchError(ContainSubstring(`agent "rev": claude-code needs a description`)))
+	It("drops a non-string agent description and skips the agent as missing one", func() {
+		m := &module.Module{Name: "example", Agents: []module.Agent{{Name: "num", Doc: doc("---\ndescription: 5\n---\nx\n")}}}
+		ins, finds, err := c.Plan(m, ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ins).To(BeEmpty())
+		Expect(finds).To(ConsistOf(
+			SatisfyAll(HaveField("Code", "frontmatter-value-dropped"), HaveField("Severity", target.SeverityWarn)),
+			SatisfyAll(HaveField("Code", "required-key-missing"), HaveField("Severity", target.SeveritySkip), HaveField("Forceable", true))))
+	})
+
+	It("skips an agent without a description, and renders it with Force", func() {
+		m := &module.Module{Name: "example", Agents: []module.Agent{{Name: "rev", Doc: doc("body\n")}, {Name: "ok", Doc: doc("---\ndescription: d\n---\nx\n")}}}
+		ins, finds, err := c.Plan(m, ctx)
+		Expect(err).NotTo(HaveOccurred(), "a content problem is a finding, not an error")
+		Expect(ins).To(HaveLen(1))
+		Expect(ins[0].Path).To(Equal(".claude/agents/ok.md"))
+		Expect(finds).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "claude-code", Kind: "agent", Artifact: "rev",
+			Code: "required-key-missing", Text: "claude-code needs a description in the agent's frontmatter",
+			Hint: "add description: to the agent's frontmatter", Forceable: true}}))
+
+		forced := ctx
+		forced.Force = true
+		ins, finds, err = c.Plan(m, forced)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ins).To(HaveLen(2))
+		Expect(finds[0].Severity).To(Equal(target.SeverityWarn))
+		Expect(finds[0].Forced).To(BeTrue())
 	})
 
 	It("renders MCP servers in .mcp.json shape with expansion, and ~/.claude.json at user scope", func() {
@@ -86,13 +103,14 @@ var _ = Describe("claude-code", func() {
 			{Name: "web", Transport: "http", URL: "https://x/mcp", Headers: map[string]string{"A": "b"}},
 			{Name: "ev", Transport: "sse", URL: "https://x/sse"},
 		}}
-		ins, notes, err := c.Plan(m, ctx)
+		ins, finds, err := c.Plan(m, ctx)
 		Expect(err).NotTo(HaveOccurred())
 		p := byPath(ins)
 		Expect(p[".mcp.json/mcpServers/gh"].Value).To(MatchJSON(`{"command":"/proj/.lola/modules/example/bin/gh","args":["--data","/proj/.lola/plugin-data/example"],"env":{"T":"1"}}`))
 		Expect(p[".mcp.json/mcpServers/web"].Value).To(MatchJSON(`{"type":"http","url":"https://x/mcp","headers":{"A":"b"}}`))
 		Expect(p[".mcp.json/mcpServers/ev"].Value).To(MatchJSON(`{"type":"sse","url":"https://x/sse"}`))
-		Expect(notes).To(ConsistOf(target.Notice{Level: "warn", Text: `MCP server gh: claude-code has no working-directory setting; cwd "/tmp" dropped`}))
+		Expect(finds).To(ConsistOf(target.Finding{Severity: target.SeverityWarn, Target: "claude-code", Kind: "mcp", Artifact: "gh",
+			Code: "mcp-cwd-dropped", Text: `claude-code has no working-directory setting; cwd "/tmp" dropped`}))
 
 		user := ctx
 		user.Scope = target.User

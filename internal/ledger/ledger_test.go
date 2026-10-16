@@ -50,6 +50,27 @@ var _ = Describe("ledger", func() {
 		Expect(back.Created[0].Path).To(Equal(".mcp.json"))
 	})
 
+	It("tells array members and created arrays apart from their file and round-trips them", func() {
+		mine := ledger.Artifact{Target: "gemini-cli", Kind: "rule", Path: ".gemini/settings.json", Key: "/context/includeDirectories", Value: ".gemini/lola/a"}
+		theirs := mine
+		theirs.Value = ".gemini/lola/b"
+		Expect(mine.ID()).NotTo(Equal(theirs.ID()))
+		l := ledger.New()
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "d", Artifacts: []ledger.Artifact{mine}}
+		l.Created = []ledger.FileRef{
+			{Target: "gemini-cli", Path: ".gemini/settings.json", Key: "/context/includeDirectories"},
+			{Target: "gemini-cli", Path: ".gemini/settings.json"},
+		}
+		Expect(l.Save(path)).To(Succeed())
+		back, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(back.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{mine}))
+		Expect(back.Created).To(Equal([]ledger.FileRef{
+			{Target: "gemini-cli", Path: ".gemini/settings.json"},
+			{Target: "gemini-cli", Path: ".gemini/settings.json", Key: "/context/includeDirectories"},
+		}))
+	})
+
 	It("refuses a newer version and unknown fields", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		Expect(os.WriteFile(path, []byte(`{"version":2,"modules":{}}`), 0o600)).To(Succeed())

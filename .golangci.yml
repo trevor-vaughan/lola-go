@@ -1,7 +1,25 @@
 version: "2"
 linters:
-  enable: [errorlint, gosec, misspell, bodyclose, unconvert]
+  enable: [errorlint, gosec, misspell, bodyclose, unconvert, depguard]
   settings:
+    depguard:
+      rules:
+        # Targets are pure renderers behind the target contract: they may not reach into the
+        # engine, the CLI or lola's state, so each can grow without touching the core.
+        targets:
+          list-mode: strict
+          files:
+            - "**/internal/target/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/trevor-vaughan/lola-go/internal/target
+            - github.com/trevor-vaughan/lola-go/internal/module
+            - github.com/trevor-vaughan/lola-go/internal/paths
+            - github.com/trevor-vaughan/lola-go/internal/plan
+            - go.yaml.in/yaml/v3
+            - github.com/BurntSushi/toml
+            - golang.org/x/mod/semver
     errcheck:
       exclude-functions:
         # Human output: a failed write to stdout/stderr has no better channel to report on.

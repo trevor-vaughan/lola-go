@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
@@ -33,11 +34,12 @@ func confirm(cmd *cobra.Command, yes bool, question string) error {
 	return err
 }
 
-// pickTargets lets the user choose among detected targets, all preselected.
-func pickTargets(cmd *cobra.Command, detected []string) ([]string, error) {
+// pickTargets lets the user choose among the installed assistants, preselecting those set up
+// here (or all of them when none is).
+func pickTargets(cmd *cobra.Command, installed, here []string) ([]string, error) {
 	var opts []huh.Option[string]
-	for _, id := range detected {
-		opts = append(opts, huh.NewOption(id, id).Selected(true))
+	for _, id := range installed {
+		opts = append(opts, huh.NewOption(id, id).Selected(len(here) == 0 || slices.Contains(here, id)))
 	}
 	var chosen []string
 	err := huh.NewForm(huh.NewGroup(huh.NewMultiSelect[string]().Title("Install for which assistants?").Options(opts...).Value(&chosen))).

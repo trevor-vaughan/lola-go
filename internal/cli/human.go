@@ -51,14 +51,73 @@ func stepLine(s style, st plan.Step) string {
 	}
 }
 
-func noticeLine(s style, n target.Notice) string {
+func noticeLine(s style, n engine.Notice) string {
 	if s.plain {
 		return "notice\t" + n.Level + "\t" + n.Text
 	}
-	if n.Level == target.LevelWarn {
+	if n.Level == engine.LevelWarn {
 		return s.warn(n.Text)
 	}
 	return s.info(n.Text)
+}
+
+// findingLine renders a warn or skip finding, with its hint; info findings print only as JSON
+// or in lola check.
+func findingLine(s style, f target.Finding) string {
+	if s.plain {
+		return strings.Join([]string{"finding", string(f.Severity), f.Module, f.Target, f.Kind, f.Artifact, f.Code, f.Text}, "\t")
+	}
+	var line string
+	switch f.Severity {
+	case target.SeverityWarn:
+		line = s.warn(f.Describe())
+	case target.SeveritySkip:
+		line = s.bad("skipped " + f.Describe())
+	default:
+		return ""
+	}
+	if f.Hint != "" {
+		line += "\n    hint: " + f.Hint
+	}
+	return line
+}
+
+// printCheck renders a lola check report: every finding, including info ones, and a line for
+// each target that renders a module without loss.
+func printCheck(w io.Writer, s style, rep *engine.CheckReport) {
+	for _, f := range rep.Findings {
+		fmt.Fprintln(w, checkLine(s, f))
+	}
+	for _, m := range rep.Modules {
+		for _, f := range m.Findings {
+			if f.Target == "" {
+				fmt.Fprintln(w, checkLine(s, f))
+			}
+		}
+		for _, id := range m.Targets {
+			clean := true
+			for _, f := range m.Findings {
+				if f.Target == id {
+					clean = false
+					fmt.Fprintln(w, checkLine(s, f))
+				}
+			}
+			if clean && !s.plain {
+				fmt.Fprintln(w, s.ok(m.Name+": "+id+" renders everything"))
+			}
+		}
+	}
+}
+
+func checkLine(s style, f target.Finding) string {
+	if f.Severity == target.SeverityInfo && !s.plain {
+		line := s.info(f.Describe())
+		if f.Hint != "" {
+			line += "\n    hint: " + f.Hint
+		}
+		return line
+	}
+	return findingLine(s, f)
 }
 
 // printResult renders an install/uninstall/render result: steps, MCP transparency, install
@@ -91,6 +150,14 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 			default:
 				fmt.Fprintln(w, s.warn(line))
 			}
+		}
+	}
+	for _, f := range r.Findings {
+		if f.Severity == target.SeverityInfo {
+			continue
+		}
+		if line := findingLine(s, f); line != "" {
+			fmt.Fprintln(w, line)
 		}
 	}
 	for _, n := range r.Notices {

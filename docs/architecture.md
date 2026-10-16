@@ -1,7 +1,7 @@
 # Architecture
 
 For contributors. The design spec is `docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`;
-this page describes what is built (Plans 1 and 2).
+this page describes what is built (Plans 1 to 3).
 
 ## Pipeline
 
@@ -9,7 +9,7 @@ this page describes what is built (Plans 1 and 2).
 source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache (content-addressed versions, heads per ref)
                                       │ module.Load (IR, re-derived each time)
                                       ▼
-                     targets (pure: IR → intents + notices)
+                     targets (pure: IR → intents + findings)
                                       ▼
             plan.Compute (diff vs ledger + disk, conflict matrix) ──▶ Plan
                                       ▼
@@ -27,23 +27,26 @@ source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache
 | Package | Responsibility |
 |---|---|
 | `paths` | XDG resolution from an injected `getenv`; no globals. |
-| `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC member edits, mode normalization. |
+| `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members and string array elements), mode normalization. |
 | `module` | The IR, frontmatter parsing, name rules, loading `lola.yml` + the native layout, rules, hook validation, and normalization. |
 | `source` | Source parsing and the folder fetcher. |
 | `store` | The cache's storage: content-addressed versions, per-ref heads, the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, deterministic IO. |
 | `consent` | Recorded consent to run a module's install hooks, keyed by the hooks' digest. |
-| `target` | The `Target` interface and the `claude-code` renderer. |
+| `target` | The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`, `Probe`, and helpers renderers share. No implementations. |
+| `target/claude` | The `claude-code` renderer and its capability table. One package per target. |
+| `target/conformance` | Specs every registered target must pass. |
+| `targets` | The registry: the one list of every target. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction). |
 | `engine` | Install, uninstall, render, status, fetch, update, search; module copies and hooks. |
 | `cli` | Commands, help, aliases, completion, output and prompts. |
 | `errs` | Errors that carry coaching hints. |
-| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config). |
+| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, and a `PATH` without the developer's assistants). |
 
 ## Plans and the ledger
 
-Targets return **intents** (`WriteFile`, `CopyTree`, `SetJSON`). `plan.Compute` expands trees,
-then, in two passes:
+Targets return **intents** (`WriteFile`, `CopyTree`, `SetJSON`, `AddJSONMember`).
+`plan.Compute` expands trees, then, in two passes:
 
 1. **Desired.** Each intent's destination is read at its symlink-resolved location and
    classified: new → create; identical → adopt (recorded, not rewritten); lola's and unchanged
@@ -64,9 +67,51 @@ comments). JSON edits operate on the hujson AST so bytes outside the edited memb
 preserved; trailing line comments belong to the line they end. `ledger.created` remembers the
 JSON files lola created, so they are deleted when lola's last member leaves them empty.
 
+**Owned array members.** `AddJSONMember` claims one string in a JSON array that users also edit
+(rule references for Gemini and OpenCode, Plan 4). The artifact records the string as `value`,
+which is part of its identity, so several modules can each own an entry in one array; the hash is
+over the string's canonical JSON. A member is present or absent, never hand-edited: one the user
+already listed is adopted, one the user removed is rewritten with a note, and an orphan the user
+removed is forgotten. A `created` entry with a `key` records an array lola created; when lola's
+last member leaves it, the array goes too, with the parent objects it leaves empty, and the file
+if lola created that. A value at the pointer that is not an array is a hard error. Appending
+keeps comments that follow the last member before the closing bracket or brace, so removing
+lola's entry restores the file byte for byte.
+
 **Rules** are plain files each target writes where its assistant loads them (Claude Code:
 `.claude/rules/lola/<module>/<rule>.md`). Every artifact belongs to exactly one module; lola
 edits no user-owned instruction file, so nothing is shared between modules.
+
+## Targets
+
+The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
+
+- **One package per target** (`internal/target/claude`, …) implements the contract in
+  `internal/target`; `internal/targets` lists them explicitly (no `init()` registration). A
+  `depguard` rule in `.golangci.yml` lets target packages import only the contract, `module`,
+  `paths`, `plan`, the standard library and their vetted third-party packages, never the engine,
+  the CLI or lola's state.
+- **Findings, not errors.** A target returns what it loses as `target.Finding`s with a severity:
+  info, warn, or skip (that artifact is left out for that target). `Plan`'s error is only for
+  failures that are not about module content. `target.Skipped` applies `--force` (forceable
+  skips are rendered, marked `Forced`); `engine.StrictError` decides what `--strict` refuses.
+  Load warnings become findings about the module; the engine's own messages stay `Notice`s.
+- **Capability tables.** Each target declares `Capabilities`: supported artifact kinds,
+  frontmatter keys with value shapes and patterns (or always dropped), required keys, name
+  patterns, and content rules. `target.Admit` checks one artifact against them, returns the
+  document without the dropped keys, and warns about YAML values that 1.1 and 1.2 parsers read
+  differently (`module.Doc.Ambiguous`). Renderers render through `Admit`, so the table is both
+  what lola checks and what it does. Value-dependent checks stay in the target's code and
+  return the same findings.
+- **Probes.** `Detect` combines a binary lookup over the absolute `PATH` entries
+  (`paths.Paths.Search`; relative entries are ignored, so a repository cannot plant a binary)
+  with the target's project markers, and executes nothing. Install, render and check run each
+  participating assistant once with its version arguments (`Engine.ProbeTimeout`, no shell),
+  cached per binary build in `$XDG_CACHE_HOME/lola/probes.json`. The version only feeds
+  `PlanContext.Version`, which `Admit` compares with capability `Bounds` to add findings;
+  rendering always follows the newest version, so output is the same on every machine.
+- **`lola check`** (`engine.Check`) stages a folder like `cache add` into a temporary directory
+  (or reads a cached module), runs every target's `Plan` and keeps only the findings.
 
 ## Module copies
 
@@ -167,7 +212,10 @@ ledger's.
 
 ## Testing
 
-Ginkgo/Gomega specs per package; every spec calls `testenv.Isolate()`. CLI specs run the real
-command tree in-process with buffered, non-terminal streams. Convention specs walk the live
-command tree. Specs named after Python bugs pin the fixes (`corrupt JSON config is never
+Ginkgo/Gomega specs per package; every spec calls `testenv.Isolate()`, which also replaces
+`PATH` with the spec's own `bin/` (where specs put fake assistants) followed by a per-spec
+directory of symlinks to the few tools specs need (`sh`, `git`, …), so a developer's real assistant
+is never found. CLI specs run the real command tree in-process with buffered, non-terminal streams.
+Convention specs walk the live command tree, and the conformance suite walks the live target
+registry. Specs named after Python bugs pin the fixes (`corrupt JSON config is never
 overwritten`, …). `task test MODE=llm` prints only failures.

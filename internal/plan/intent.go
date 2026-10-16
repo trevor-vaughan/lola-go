@@ -6,6 +6,7 @@ package plan
 import (
 	"fmt"
 	"io/fs"
+	"strconv"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
@@ -16,9 +17,10 @@ type Op string
 
 // Intent operations. CopyTree is expanded into one WriteFile per file before diffing.
 const (
-	OpWriteFile Op = "write-file"
-	OpCopyTree  Op = "copy-tree"
-	OpSetJSON   Op = "set-json"
+	OpWriteFile     Op = "write-file"
+	OpCopyTree      Op = "copy-tree"
+	OpSetJSON       Op = "set-json"
+	OpAddJSONMember Op = "add-json-member"
 )
 
 // Intent is one desired artifact. Path is relative to the target's scope root.
@@ -34,8 +36,9 @@ type Intent struct {
 	Src     string   // CopyTree: absolute source directory
 	Exclude []string // CopyTree: Src-relative slash paths to skip
 
-	Pointer string // SetJSON: RFC 6901 pointer to an object member
+	Pointer string // SetJSON: RFC 6901 pointer to an object member; AddJSONMember: to the array
 	Value   []byte // SetJSON: standard JSON
+	Member  string // AddJSONMember: the string element lola owns in the array (§6.4)
 }
 
 // ModuleChange replaces one module's artifacts on Targets. Entry carries the new ledger
@@ -67,6 +70,7 @@ type Step struct {
 	Kind   string `json:"kind"`
 	Path   string `json:"path"`
 	Key    string `json:"key,omitempty"`
+	Value  string `json:"value,omitempty"`  // the owned array element, for array members
 	Via    string `json:"via,omitempty"`    // resolved destination when it is outside the scope root
 	Forced string `json:"forced,omitempty"` // "unowned" or "hand-edited" when --force overrode a conflict
 	Note   string `json:"note,omitempty"`
@@ -74,8 +78,8 @@ type Step struct {
 
 // Conflict is a destination lola refuses to touch.
 type Conflict struct {
-	Target, Path, Key, Reason string
-	Forceable                 bool
+	Target, Path, Key, Value, Reason string
+	Forceable                        bool
 }
 
 // ConflictError lists every conflict of a refused plan.
@@ -88,6 +92,9 @@ func (e *ConflictError) Error() string {
 		dest := c.Path
 		if c.Key != "" {
 			dest += " " + c.Key
+		}
+		if c.Value != "" {
+			dest += " " + strconv.Quote(c.Value)
 		}
 		fmt.Fprintf(&b, "\n  %s: %s: %s", c.Target, dest, c.Reason)
 	}
