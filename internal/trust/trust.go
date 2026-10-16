@@ -1,8 +1,8 @@
 // Package trust keeps the trust record (Plan 6a §7): per project, the view of project.yml that
 // lola last wrote or the user last trusted, in $XDG_STATE_HOME/lola/trust.json. A manifest entry
 // the record covers is one lola may act on as written; any other entry came from somewhere else
-// (a pull, a hand edit) and is refused until the user installs it from its source. User scope
-// has no record: user.yml is the user's own.
+// (a pull, a hand edit) and is refused until the user reviews and trusts it with lola sync. User
+// scope has no record: user.yml is the user's own.
 package trust
 
 import (
@@ -133,6 +133,30 @@ func Refresh(r, loaded, saved View) View {
 			out.Modules = append(out.Modules, s.clone())
 		case cur != nil:
 			cur.take(*l, s)
+		}
+	}
+	out.sort()
+	return out
+}
+
+// Accept is the record r after the user trusted, in the view v of the manifest as loaded, the
+// entries named in modules (an entry v lacks is dropped from the record), and the top-level
+// targets when targets is set (§7.4). Every other entry keeps its record, so a declined or
+// unnamed entry stays as covered, or as uncovered, as it was. Accepting every change of v and
+// its targets returns v.
+func Accept(r, v View, modules []string, targets bool) View {
+	out := View{Targets: slices.Clone(r.Targets)}
+	if targets {
+		out.Targets = slices.Clone(v.Targets)
+	}
+	for _, e := range r.Modules {
+		if !slices.Contains(modules, e.Name) {
+			out.Modules = append(out.Modules, e.clone())
+		}
+	}
+	for _, e := range v.Modules {
+		if slices.Contains(modules, e.Name) {
+			out.Modules = append(out.Modules, e.clone())
 		}
 	}
 	out.sort()

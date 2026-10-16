@@ -162,7 +162,7 @@ func entryText(e config.Entry) string {
 // cache add for each source added, then one lola install line per destination, quoted for the
 // user's shell (errs.ShellJoin) and without --dry-run. With more than one destination every
 // project line names its root with -C; a single project line does so only when the root is not
-// the project found from here.
+// the project found from here, which the engine decides for every hint (RootArgs).
 func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 	var out []string
 	for _, a := range fl.added {
@@ -214,7 +214,7 @@ func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 	}
 	for _, si := range spec.Scopes {
 		var root []string
-		if si.Scope.ProjectDir != "" && (len(spec.Scopes) > 1 || si.Scope.ProjectDir != engine.FindProject(fl.cwd)) {
+		if si.Scope.ProjectDir != "" && (len(spec.Scopes) > 1 || fl.eng.RootArgs(si.Scope) != nil) {
 			root = []string{"-C", si.Scope.ProjectDir}
 		}
 		out = append(out, line(si.Scope.Kind.String(), root, per(si)))

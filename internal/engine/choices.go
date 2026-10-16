@@ -50,11 +50,15 @@ type Choices struct {
 }
 
 // ScopeChoices is what one scope offers: its assistants and the targets its manifest fixes.
+// FixedTargets are the manifest's top-level targets when the trust record covers them; when it
+// does not, they are UntrustedTargets instead, which an install may not take unasked (Plan 6a
+// §10.1), so the assistant picker asks and never preselects them.
 type ScopeChoices struct {
 	ScopeChoice
-	Name         string      `json:"scope"` // project or user; Scope.Key() tells two project roots apart
-	FixedTargets []string    `json:"fixed_targets"`
-	Assistants   []Assistant `json:"assistants"`
+	Name             string      `json:"scope"` // project or user; Scope.Key() tells two project roots apart
+	FixedTargets     []string    `json:"fixed_targets"`
+	UntrustedTargets []string    `json:"untrusted_targets"`
+	Assistants       []Assistant `json:"assistants"`
 }
 
 // ModuleChoice is one cached module, with its components and its state at each scope.
@@ -143,16 +147,18 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		ch.Warnings = append(ch.Warnings, n.Text)
 	}
 	// The trust state of each scope's entries: an install refuses to rewrite an uncovered one,
-	// so the pickers must never offer what it would refuse after confirmation.
-	uncovered, err := e.uncoveredEntries(req.Scopes)
+	// so the pickers must never offer what it would refuse after confirmation, and say once per
+	// scope which entries lola sync would review.
+	uncovered, notices, err := e.uncoveredEntries(req.Scopes)
 	if err != nil {
 		return nil, err
 	}
+	ch.Warnings = append(ch.Warnings, notices...)
 	// A name an uncovered entry has is refused before any argument is resolved, so nothing is
 	// fetched.
 	for _, r := range req.Modules {
 		if u, ok := uncovered[r.Arg]; ok {
-			return nil, e.changedSinceTrusted(u.sc, req.Cwd, u.ent, false)
+			return nil, e.notTrusted(u.sc, u.rec, u.ent, false)
 		}
 	}
 	for _, r := range req.Modules {
@@ -205,7 +211,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		// Adding targets to an installed module keeps it, and its pin (planInstallModule).
 		keep := false
 		if u, ok := uncovered[v.Name]; ok && len(r.Targets) > 0 {
-			return nil, e.changedSinceTrusted(u.sc, req.Cwd, u.ent, false)
+			return nil, e.notTrusted(u.sc, u.rec, u.ent, false)
 		}
 		if len(r.Targets) > 0 {
 			man, led, _, err := e.load(sc, true)
@@ -257,15 +263,19 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		if err != nil {
 			return nil, err
 		}
-		fixed := slices.Clone(man.Targets)
+		fixed, untrustedTargets := slices.Clone(man.Targets), []string{}
 		if fixed == nil {
 			fixed = []string{}
+		}
+		if rec != nil && len(fixed) > 0 && !slices.Equal(rec.View.Targets, fixed) {
+			fixed, untrustedTargets = []string{}, fixed
 		}
 		detected := e.Detect(s.Scope)
 		for i := range detected {
 			detected[i].Binary = untrusted.Text(detected[i].Binary, untrusted.MaxName)
 		}
-		ch.Scopes = append(ch.Scopes, ScopeChoices{ScopeChoice: s, Name: s.Scope.Kind.String(), FixedTargets: fixed, Assistants: detected})
+		ch.Scopes = append(ch.Scopes, ScopeChoices{ScopeChoice: s, Name: s.Scope.Kind.String(), FixedTargets: fixed,
+			UntrustedTargets: untrustedTargets, Assistants: detected})
 		states = append(states, state{sc: s, man: man, led: led, rec: rec})
 	}
 	cached, warnings, err := e.CachedModules()
@@ -294,11 +304,9 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 			// Installing a cached module takes the head of the ref each scope's entry records,
 			// so that is the version listed (Plan 6a §10.1); one that cannot be listed is
 			// left out, with a warning, so the others can still be picked.
-			// An uncovered entry is checked first: listing its pulled ref could coach installing it
-			// by name, which is refused.
-			if u, ok := uncovered[c.Version.Name]; ok {
-				ch.Warnings = append(ch.Warnings, fmt.Sprintf("%s is not listed: %s %v; %s", untrusted.Text(c.Version.Name, untrusted.MaxName),
-					filepath.Base(e.files(u.sc).manifest), ErrChangedSinceTrusted, installFromSource(u.sc, req.Cwd, u.ent)))
+			// An uncovered entry is checked first, and left out under its scope's one notice:
+			// listing its pulled ref could coach installing it by name, which is refused.
+			if _, ok := uncovered[c.Version.Name]; ok {
 				continue
 			}
 			var u *unlisted
@@ -326,36 +334,65 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	return ch, nil
 }
 
-// uncoveredEntry is an entry of a scope's manifest that its trust record does not cover.
+// uncoveredEntry is an entry of a scope's manifest that rec, its trust record, does not cover.
 type uncoveredEntry struct {
 	sc  Scope
+	rec *trust.Record
 	ent *manifest.Entry
 }
 
 // uncoveredEntries maps each module name to the first project scope of scopes whose entry for
-// it the trust record does not cover.
-func (e *Engine) uncoveredEntries(scopes []ScopeChoice) (map[string]uncoveredEntry, error) {
+// it the trust record does not cover, and returns the pickers' notices (Plan 6a §10.1): one per
+// such scope, naming its uncovered entries and the sync that reviews them.
+func (e *Engine) uncoveredEntries(scopes []ScopeChoice) (map[string]uncoveredEntry, []string, error) {
 	out := map[string]uncoveredEntry{}
+	var notices []string
 	for _, s := range scopes {
 		rec, err := e.trustRecord(s.Scope)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if rec == nil {
 			continue
 		}
 		man, err := e.Manifest(s.Scope)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		var names []string
 		for i := range man.Modules {
 			ent := &man.Modules[i]
-			if _, seen := out[ent.Name]; !seen && !rec.View.Covers(*ent) {
-				out[ent.Name] = uncoveredEntry{sc: s.Scope, ent: ent}
+			if rec.View.Covers(*ent) {
+				continue
+			}
+			names = append(names, ent.Name)
+			if _, seen := out[ent.Name]; !seen {
+				out[ent.Name] = uncoveredEntry{sc: s.Scope, rec: rec, ent: ent}
 			}
 		}
+		if len(names) == 0 {
+			continue
+		}
+		slices.Sort(names)
+		base := filepath.Base(e.files(s.Scope).manifest)
+		// An entry the record never held (a pull added it) was never trusted, so it is new.
+		added := slices.ContainsFunc(names, func(n string) bool { return rec.View.Find(n) == nil })
+		what := fmt.Sprintf("%d modules in %s changed since you last trusted them", len(names), base)
+		switch {
+		case !rec.Exists && len(names) == 1:
+			what = "1 module in " + base + " is not trusted on this machine yet"
+		case !rec.Exists:
+			what = fmt.Sprintf("%d modules in %s are not trusted on this machine yet", len(names), base)
+		case added && len(names) == 1:
+			what = "1 module in " + base + " is new since you last trusted the file"
+		case added:
+			what = fmt.Sprintf("%d modules in %s are new or changed since you last trusted the file", len(names), base)
+		case len(names) == 1:
+			what = "1 module in " + base + " changed since you last trusted it"
+		}
+		notices = append(notices, what+": "+nameList(names)+" → "+e.SyncCommand(s.Scope))
 	}
-	return out, nil
+	return out, notices, nil
 }
 
 // entryRefs is the distinct refs the scopes' entries for name record, "" for a scope with no

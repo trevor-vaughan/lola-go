@@ -225,7 +225,7 @@ func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State) err
 	for _, pl := range list {
 		if !pl.already {
 			v := versions[installKey(pl.in)]
-			if errors.Is(v.err, engine.ErrChangedSinceTrusted) {
+			if errors.Is(v.err, engine.ErrNotTrusted) {
 				d.Unmappable = append(d.Unmappable, unmapped(pl.rec, untrusted.Text(v.err.Error(), 2*untrusted.MaxName), errs.Hints(v.err)...))
 				continue
 			}

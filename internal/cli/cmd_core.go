@@ -179,13 +179,9 @@ func (a *app) uninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
 			opts := engine.Options{Targets: targets, DryRun: true, Force: force}
 			if !dry && !yes {
-				preview, err := eng.Uninstall(cmd.Context(), sc, cwd, args, opts)
+				preview, err := eng.Uninstall(cmd.Context(), sc, args, opts)
 				if err != nil {
 					return err
 				}
@@ -195,7 +191,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 				}
 			}
 			opts.DryRun = dry
-			res, err := eng.Uninstall(cmd.Context(), sc, cwd, args, opts)
+			res, err := eng.Uninstall(cmd.Context(), sc, args, opts)
 			if err != nil {
 				return err
 			}
@@ -217,8 +213,9 @@ func (a *app) listCmd() *cobra.Command {
 		Short:   "List installed modules and their status per target",
 		Long: "List installed modules per target. Status is ok; modified (a file lola wrote was edited);\n" +
 			"missing (a file lola wrote, or the module copy, is gone); stale (project.yml pins another version\n" +
-			"than the one installed); or skipped (nothing of the module could be rendered for the target).\n" +
-			"→ update available: your cache has a newer version for the ref: lola install <module>.",
+			"than the one installed: run lola sync); not installed (listed in project.yml: run lola sync); or\n" +
+			"skipped (nothing of the module could be rendered for the target).\n" +
+			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.",
 		Example: "  lola list\n  lola list --user\n  lola list --json",
 		GroupID: groupCore,
 		Args:    cobra.NoArgs,
@@ -279,6 +276,8 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 		switch r.Status {
 		case "modified", "stale", "unreadable", "skipped":
 			status = s.warn(r.Status)
+		case "not_installed":
+			status = s.warn("not installed")
 		case "missing":
 			status = s.bad(r.Status)
 		}

@@ -167,7 +167,7 @@ func scopeLabel(sc engine.ScopeResult) string {
 }
 
 func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
-	printPlan(w, s, r, scopes)
+	printPlan(w, s, r, scopes, "")
 	printFindings(w, s, r.Findings)
 	for _, n := range r.Notices {
 		fmt.Fprintln(w, noticeLine(s, n))
@@ -179,7 +179,9 @@ func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []e
 }
 
 // printPlan prints the steps and each module's details: what a run did, or in a dry run would do.
-func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResult) {
+// Given more, the command that lists every step, the human steps of one scope stop at stepsShown
+// per module, then say how many more.
+func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResult, more string) {
 	if r.DryRun && !s.plain {
 		fmt.Fprintln(w, "plan (dry run; nothing was written):")
 	}
@@ -193,8 +195,23 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 			}
 		}
 	} else {
+		indent := "  "
+		if s.plain { // rows start at column 1, so cut -f1 reads the action
+			indent = ""
+		}
+		capped := more != "" && !s.plain
+		seen := map[string]int{} // steps so far per module; steps of two modules may interleave
+		var over []string        // the modules past the cap, in the order they passed it
 		for _, st := range r.Steps {
-			fmt.Fprintln(w, "  "+stepLine(s, st))
+			seen[st.Module]++
+			if !capped || seen[st.Module] <= stepsShown {
+				fmt.Fprintln(w, indent+stepLine(s, st))
+			} else if seen[st.Module] == stepsShown+1 {
+				over = append(over, st.Module)
+			}
+		}
+		for _, m := range over {
+			fmt.Fprintf(w, "%s… and %d more for %s (%s lists them all)\n", indent, seen[m]-stepsShown, untrusted.Text(m, untrusted.MaxName), more)
 		}
 	}
 	for _, m := range r.Modules {
@@ -202,7 +219,11 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 		if len(m.MCPServers) > 0 && !s.plain {
 			fmt.Fprintf(w, "%s MCP servers:\n", m.Name)
 			for _, srv := range m.MCPServers {
-				fmt.Fprintf(w, "    %s (%s) runs: %s\n", srv.Name, srv.Transport, srv.Runs)
+				verb := "runs"
+				if srv.Transport != "stdio" {
+					verb = "connects to"
+				}
+				fmt.Fprintf(w, "    %s (%s) %s: %s\n", srv.Name, srv.Transport, verb, srv.Runs)
 			}
 		}
 		printRuntimeHooks(w, s, m)
@@ -212,7 +233,11 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 				fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, script, h.Target, h.Status)
 				continue
 			}
-			line := fmt.Sprintf("%s %s hook %s (%s): %s", m.Name, h.Event, script, h.Target, h.Status)
+			status := h.Status
+			if status == engine.HookWouldRun {
+				status = "would run" // JSON and --plain keep the would-run value
+			}
+			line := fmt.Sprintf("%s %s hook %s (%s): %s", m.Name, h.Event, script, h.Target, status)
 			switch h.Status {
 			case engine.HookRan:
 				fmt.Fprintln(w, s.ok(line))

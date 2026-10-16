@@ -58,8 +58,9 @@ func (s Scope) Key() string {
 }
 
 // Engine is the orchestration entry point. Environ is the environment install hooks and
-// version probes inherit; HookTimeout bounds each hook run (§9.1) and ProbeTimeout each
-// assistant version probe.
+// version probes inherit; Getwd is the working directory hints are written for (Plan 6a
+// §11.3); HookTimeout bounds each hook run (§9.1) and ProbeTimeout each assistant version
+// probe.
 type Engine struct {
 	Paths        paths.Paths
 	Store        *store.Store
@@ -68,6 +69,7 @@ type Engine struct {
 	Targets      []target.Target
 	Now          func() time.Time
 	Environ      func() []string
+	Getwd        func() (string, error)
 	HookTimeout  time.Duration
 	ProbeTimeout time.Duration
 }
@@ -75,7 +77,7 @@ type Engine struct {
 // New returns an Engine over the real store and every registered target.
 func New(p paths.Paths) *Engine {
 	return &Engine{Paths: p, Store: store.New(p, targets.IDs()), Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
-		Environ: os.Environ, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second}
+		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second}
 }
 
 // Options apply to install, uninstall and render.
@@ -142,6 +144,9 @@ type Result struct {
 	Findings []target.Finding `json:"findings"`
 	Notices  []Notice         `json:"notices"`
 	DryRun   bool             `json:"dry_run"`
+	// remedies are the hints of the modules render left out, in module order, which a --strict
+	// refusal names instead of its generic advice (Plan 6a §10.3).
+	remedies []string
 }
 
 func newResult(dry bool) *Result {
@@ -381,8 +386,10 @@ func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name, run string
 		return store.Version{}, err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(f.Dir)) }()
+	// A source the user names takes the place of a local one the cache records that no longer
+	// exists (Plan 6a §6.5); Commit checks that under the cache lock.
 	return e.Store.Put(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now()})
+		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), ReplaceGoneOrigin: true})
 }
 
 // canonicalRoot is dir with symbolic links resolved: the root a relative source is recorded
@@ -552,7 +559,12 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	for _, s := range m.MCPServers {
 		runs := target.Expand(s.URL, pctx)
 		if s.Transport == module.TransportStdio {
-			runs = target.Expand(strings.Join(append([]string{s.Command}, s.Args...), " "), pctx)
+			// Each argument quoted unless plain, so where one ends stays visible, as consent shows argv.
+			words := make([]string, 0, len(s.Args)+1)
+			for _, w := range append([]string{s.Command}, s.Args...) {
+				words = append(words, word(target.Expand(w, pctx)))
+			}
+			runs = strings.Join(words, " ")
 		}
 		mr.MCPServers = append(mr.MCPServers, MCPRun{Name: shown(s.Name), Transport: shown(s.Transport), Runs: shown(runs)})
 	}
@@ -574,6 +586,12 @@ func warningFindings(m *module.Module) []target.Finding {
 // advice for getting past the findings; offerForce says the command has --force, which is
 // advised only when a refused finding is one --force can render.
 func StrictError(finds []target.Finding, rerun string, offerForce bool) error {
+	return strictError(finds, rerun, offerForce, nil)
+}
+
+// strictError is StrictError where render left modules out: remedies, their own hints, come
+// first, deduplicated, and the caller's advice follows only when another finding remains.
+func strictError(finds []target.Finding, rerun string, offerForce bool, remedies []string) error {
 	var bad []target.Finding
 	for _, f := range finds {
 		if f.Severity != target.SeverityInfo && !f.Forced {
@@ -588,9 +606,17 @@ func StrictError(finds []target.Finding, rerun string, offerForce bool) error {
 	for _, f := range bad {
 		fmt.Fprintf(&b, "\n  %s", f.Describe())
 	}
-	hints := []string{rerun}
-	if offerForce && slices.ContainsFunc(bad, func(f target.Finding) bool { return f.Forceable }) {
-		hints = append(hints, "--force renders skipped artifacts that can be rendered anyway")
+	var hints []string
+	for _, h := range remedies {
+		if !slices.Contains(hints, h) {
+			hints = append(hints, h)
+		}
+	}
+	if len(remedies) == 0 || slices.ContainsFunc(bad, func(f target.Finding) bool { return !slices.Contains(leftOutCodes, f.Code) }) {
+		hints = append(hints, rerun)
+		if offerForce && slices.ContainsFunc(bad, func(f target.Finding) bool { return f.Forceable }) {
+			hints = append(hints, "--force renders skipped artifacts that can be rendered anyway")
+		}
 	}
 	return errs.WithHints(errors.New(b.String()), hints...)
 }
@@ -629,7 +655,7 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		return nil, err
 	}
 	if opts.Strict {
-		if err := StrictError(res.Findings, "fix the module, or rerun without --strict to install what each target supports", true); err != nil {
+		if err := strictError(res.Findings, "fix the module, or rerun without --strict to install what each target supports", true, res.remedies); err != nil {
 			return nil, err
 		}
 	}
@@ -651,6 +677,20 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 	jobs, err := e.planHooks(sc, copies, opts, res)
 	if err != nil {
 		return nil, err
+	}
+	// A post-install hook declined for want of consent stays pending in lock.json until it runs
+	// (Plan 6a §9.3 step 10); a module whose hooks this run does not reach, or whose forced copy
+	// is kept, keeps its mark.
+	for _, c := range copies {
+		entry := p.Ledger.Modules[c.name]
+		if entry == nil {
+			continue
+		}
+		ran := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name })
+		post := declaresPostInstall(c.hooks)
+		kept := !c.runHooks || c.forced && !ran
+		declined := !kept && !ran && post
+		entry.HooksPending = declined || kept && post && led.Modules[c.name] != nil && led.Modules[c.name].HooksPending
 	}
 	return &prepared{sc: sc, plan: p, jobs: jobs, changes: changes, copies: copies}, nil
 }

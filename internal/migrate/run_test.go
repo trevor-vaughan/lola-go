@@ -235,7 +235,14 @@ var _ = Describe("Migrate", func() {
 		Expect(snapshot(proj)).To(Equal(before), "nothing written")
 		Expect(res.Destinations[0].Unmappable).To(ConsistOf(And(HaveField("Module", "review"),
 			HaveField("Reason", "review: project.yml changed for it since you last trusted it"),
-			HaveField("Hints", []string{"if you trust it, install it from its source: lola install " + src}))))
+			HaveField("Hints", []string{"review and apply it: lola sync -C " + proj + " review"}))),
+			"hints name the scope the user ran: migrate ran outside the project")
+
+		GinkgoT().Chdir(proj)
+		res, err = run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Destinations[0].Unmappable).To(ConsistOf(HaveField("Hints", []string{"review and apply it: lola sync review"})),
+			"from inside the project, no -C")
 	})
 
 	It("refuses a planned version removed from the cache since, writing nothing", func() {

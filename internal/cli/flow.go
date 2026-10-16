@@ -98,9 +98,35 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
 		edits: edits, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
 	if !fl.ask && len(args) == 0 {
-		return g.args(1)(cmd, args)
+		return fl.missingArgument()
 	}
 	return fl.run()
+}
+
+// missingArgument is install's refusal off a terminal without an argument; when the scope the
+// install would use lists modules lock.json does not record, it hints the sync that installs
+// them (Plan 6a §10.2).
+func (fl *installFlow) missingArgument() error {
+	err := fl.guide.args(1)(fl.cmd, fl.args)
+	dir, derr := fl.a.projectDir()
+	if derr != nil {
+		return err
+	}
+	res, rerr := fl.eng.ResolveInstallScope(engine.ScopeRequest{Scope: fl.f.scope, User: fl.a.user, ProjectDir: dir, Cwd: fl.cwd})
+	if rerr != nil {
+		return err
+	}
+	var hints []string
+	for _, c := range res.Scopes {
+		_, hint, cerr := fl.eng.InstallCoaching(c.Scope)
+		if cerr != nil {
+			return cerr
+		}
+		if hint != "" {
+			hints = append(hints, hint)
+		}
+	}
+	return errs.WithHints(err, hints...)
 }
 
 // prompter returns the injected Prompter, the non-interactive one under --json, or the huh
@@ -119,6 +145,9 @@ func (fl *installFlow) run() error {
 	var spec engine.InstallSpec
 	for {
 		if err := fl.ensureScopes(); err != nil {
+			return err
+		}
+		if err := fl.coach(); err != nil {
 			return err
 		}
 		if err := fl.ensureChoices(); err != nil {
@@ -348,6 +377,27 @@ func (fl *installFlow) otherDirectory(picked []engine.ScopeChoice) (string, erro
 	}
 }
 
+// coach prints, once per scope and before the module picker, how many modules the scope's
+// manifest lists that lock.json does not record, and the sync that installs them (Plan 6a
+// §10.2).
+func (fl *installFlow) coach() error {
+	if !fl.ask || len(fl.args) > 0 {
+		return nil
+	}
+	s := fl.a.style(fl.cmd)
+	for _, c := range fl.scopes {
+		notice, _, err := fl.eng.InstallCoaching(c.Scope)
+		if err != nil {
+			return err
+		}
+		if notice != "" && !fl.warned[notice] {
+			fl.warned[notice] = true
+			fmt.Fprintln(fl.cmd.ErrOrStderr(), s.warn(notice))
+		}
+	}
+	return nil
+}
+
 // ensureChoices computes what the pickers offer; off a terminal nothing is offered.
 func (fl *installFlow) ensureChoices() error {
 	if !fl.ask || fl.choices != nil {
@@ -487,7 +537,9 @@ func (fl *installFlow) moduleOptions() []ModuleOption {
 
 // ensureAssistants decides each scope's assistants (§4.3): -t, else the targets the scope's
 // manifest fixes; off a terminal, those installed and set up here; on one, the only
-// assistant installed, else the picker (once, for every scope whose targets are open).
+// assistant installed, else the picker (once, for every scope whose targets are open). On a
+// terminal, top-level targets the trust record does not cover fix nothing: the scope is open,
+// and the picker never preselects them (Plan 6a §10.1).
 func (fl *installFlow) ensureAssistants() error {
 	if fl.targets != nil {
 		return nil
@@ -495,7 +547,7 @@ func (fl *installFlow) ensureAssistants() error {
 	delete(fl.shown, ReviewAssistants)
 	answer := map[string][]string{}
 	var open, openLabels []string
-	var installed, here []string
+	var installed, here, untrustedTargets []string
 	for _, c := range fl.scopes {
 		name := c.Scope.Key()
 		if len(fl.f.targets) > 0 {
@@ -506,7 +558,15 @@ func (fl *installFlow) ensureAssistants() error {
 		if err != nil {
 			return err
 		}
-		if len(man.Targets) > 0 {
+		fixed := man.Targets
+		if fl.choices != nil {
+			for _, s := range fl.choices.Scopes {
+				if s.Scope.Key() == name {
+					fixed, untrustedTargets = s.FixedTargets, union(untrustedTargets, s.UntrustedTargets)
+				}
+			}
+		}
+		if len(fixed) > 0 {
 			answer[name] = nil
 			continue
 		}
@@ -546,6 +606,7 @@ func (fl *installFlow) ensureAssistants() error {
 		if len(pre) == 0 {
 			pre = installed
 		}
+		pre = slices.DeleteFunc(slices.Clone(pre), func(id string) bool { return slices.Contains(untrustedTargets, id) })
 		step := AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels}
 		for {
 			picked, err := fl.p.Assistants(step)

@@ -2,8 +2,10 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -54,6 +56,13 @@ func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) erro
 	return nil
 }
 
+// jsonFielder is an error whose --json document carries more keys than error and hints (a sync
+// refused for want of answers carries the changes and removals it needs them for).
+type jsonFielder interface {
+	error
+	JSONFields() map[string]any
+}
+
 // writeError prints err per the output contract.
 func writeError(w io.Writer, err error, asJSON bool) {
 	hints := errs.Hints(err)
@@ -61,7 +70,12 @@ func writeError(w io.Writer, err error, asJSON bool) {
 		hints = []string{}
 	}
 	if asJSON {
-		if json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "hints": hints}) == nil {
+		doc := map[string]any{}
+		if f, ok := errors.AsType[jsonFielder](err); ok {
+			maps.Copy(doc, f.JSONFields())
+		}
+		doc["error"], doc["hints"] = err.Error(), hints
+		if json.NewEncoder(w).Encode(doc) == nil {
 			return
 		}
 		// Encoding failed (or the write did): fall through to the human format.

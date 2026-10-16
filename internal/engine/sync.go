@@ -2,12 +2,8 @@ package engine
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
-	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,7 +15,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
-	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
@@ -28,23 +23,33 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// SyncRequest is one lola sync (Plan 6a §9.2): make Scope match its manifest. Update names the
-// entries to re-pin at their ref; UpdateAll re-pins every entry. Options are as for render:
-// DryRun, Force and the hook options; Targets, Strict and Rules are not used.
+// SyncRequest is one lola sync (Plan 6a §9.2): make Scope match its manifest. Modules limits the
+// run to the modules named (§3.1); empty means every entry and every installed module. Update
+// re-pins every git and archive entry of the run at its ref. Options are as for render: DryRun,
+// Force and the hook options; Targets, Strict and Rules are not used.
 type SyncRequest struct {
-	Scope     Scope
-	Update    []string
-	UpdateAll bool
-	Options   Options
-	// Trust asks the user to trust the changes to project.yml since they last trusted it, and
-	// the pins the sync would write (Plan 6a §7.5). nil means it cannot ask: a sync that needs
-	// the question is refused before any network contact. The CLI passes an always-yes Trust for
-	// --trust; -y never sets it.
-	Trust func(TrustReport) (bool, error)
+	Scope   Scope
+	Modules []string
+	Update  bool
+	Options Options
+	// Trust asks the user to trust the changes to project.yml since they last trusted it, the
+	// pins the sync would write and the folders whose content changed (Plan 6a §7.5): all of
+	// them, or the entries the answer names. nil means it cannot ask: a sync that needs the
+	// question is refused before any network contact. The CLI passes a Trust that answers All
+	// for --trust; -y never sets it.
+	Trust func(TrustReport) (TrustAnswer, error)
 	// ConfirmRemovals asks the user to confirm the removals the sync would make. nil means it
 	// cannot ask: a sync with removals is refused. The CLI passes an always-yes ConfirmRemovals
 	// for -y.
 	ConfirmRemovals func([]Removal) (bool, error)
+}
+
+// TrustAnswer is the user's answer to the trust question (Plan 6a §9.2): All accepts every change
+// of the run; otherwise Modules names the accepted entries, as the report names them. An answer
+// accepting nothing is a Cancel.
+type TrustAnswer struct {
+	All     bool
+	Modules []string
 }
 
 // Removal is what a sync removes from one module (Plan 6a §9.3 step 9): the whole module, which
@@ -73,12 +78,15 @@ const TrustStatusNotApplicable = "not_applicable"
 
 // TrustReport is how the scope's manifest, with the pins the sync writes, differs from what the
 // user last trusted (Plan 6a §7.3, §11.2). Recorded says this run wrote the trust record.
-// Targets is the top-level targets' change, nil when the record covers them.
+// Targets is the top-level targets' change, nil when the record covers them. ManifestChanged
+// says the manifest itself differs from the record; when it does not, the changes are the pins
+// the sync would write and folders whose content changed, which the diff's header says.
 type TrustReport struct {
-	Status   string             `json:"status"`
-	Recorded bool               `json:"recorded"`
-	Targets  *trust.FieldChange `json:"targets"`
-	Changes  []TrustChange      `json:"changes"`
+	Status          string             `json:"status"`
+	Recorded        bool               `json:"recorded"`
+	Targets         *trust.FieldChange `json:"targets"`
+	Changes         []TrustChange      `json:"changes"`
+	ManifestChanged bool               `json:"-"`
 }
 
 // TrustChange is one module's change with the content it brings (Plan 6a §7.3): the files the
@@ -92,8 +100,24 @@ type TrustChange struct {
 	// without a digest in the manifest): "content not fixed; installs what <ref> serves now",
 	// naming the source for an archive, which has no ref.
 	Note string `json:"note,omitempty"`
+	// Reason says why the sync needs trust for an entry whose manifest entry may be as trusted:
+	// the pin it would write ("re-pin from <ref> (--update)", "pin what <ref> serves now", each
+	// noting "not fetched yet" before anything is) or a folder's changed content.
+	Reason string `json:"reason,omitempty"`
+	// Pin is the pin the sync writes for the entry, once fetched; the human diff prints its hashes
+	// when no commit or digest field shows them (the pin the record holds already).
+	Pin *Pin `json:"-"`
+	// InstallsToTargets marks an added or changed entry with no targets of its own while the
+	// top-level targets changed: accepting it accepts them (Plan 6a §7.4).
+	InstallsToTargets bool `json:"-"`
+	// ReviewEdits and InstallOwn are the lines the diff adds for a folder whose content changed
+	// (Plan 6a §7.5): the git command that shows the edits, when the folder is in a git work
+	// tree, and the install that records the content as the user's own.
+	ReviewEdits string `json:"-"`
+	InstallOwn  string `json:"-"`
 	// FolderContent marks a change that is only a folder module's content differing from what
-	// was installed, with project.yml as trusted; the human diff words its header by it.
+	// was installed, with project.yml as trusted (folderChanges); folderEdits gives such a change
+	// its ReviewEdits and InstallOwn lines.
 	FolderContent bool               `json:"-"`
 	Files         []FileChange       `json:"files"`
 	FilesNote     string             `json:"files_note,omitempty"`
@@ -101,51 +125,26 @@ type TrustChange struct {
 	Hooks         []ContentHook      `json:"hooks"`
 }
 
-// ContentMCPServer is a module MCP server as the trust diff shows it, which is the only consent
-// it gets (L1): Runs is the command with each argument quoted unless plain, so the arguments'
-// boundaries stay visible, or the URL; Env ("NAME=value") and Headers ("Name: value") are
-// sorted, and Cwd is "" when unset, since each can change what runs or where data goes.
-type ContentMCPServer struct {
-	Name      string   `json:"name"`
-	Transport string   `json:"transport"`
-	Runs      string   `json:"runs"`
-	Env       []string `json:"env"`
-	Headers   []string `json:"headers"`
-	Cwd       string   `json:"cwd"`
-}
-
-// FileChange is a file a module version adds, changes or removes (trust.Change kinds).
-type FileChange struct {
-	Path   string `json:"path"`
-	Change string `json:"change"`
-}
-
-// Kinds of hooks a module's content declares.
-const (
-	HookKindInstall   = "install"    // an install hook: Event is pre-install or post-install, Detail its script
-	HookKindRuntime   = "runtime"    // a runtime hook handler an assistant runs on Event
-	HookKindMCPServer = "mcp_server" // an agent's inline MCP server
-)
-
-// ContentHook is one hook a module's content declares, as the trust diff shows it: Target is the
-// assistant a runtime hook or agent MCP server is rendered for ("" for an install hook), Detail
-// what it runs or where it connects.
-type ContentHook struct {
-	Kind   string `json:"kind"`
-	Target string `json:"target,omitempty"`
-	Event  string `json:"event"`
-	Detail string `json:"detail"`
-}
-
-// TrustRefusalError is a sync refused because the user must trust changes to the manifest and
-// there is no way to ask (SyncRequest.Trust is nil). Report holds the changes without their
-// content: nothing was fetched to show it.
+// TrustRefusalError is a sync refused, before any network contact, because it needs answers it
+// cannot ask for (Plan 6a §9.3 step 4): the user's trust (SyncRequest.Trust is nil), the
+// confirmation of its removals (ConfirmRemovals is nil), or both. Report holds the trust changes,
+// with fields only for git and archive entries, since nothing was fetched to show their content,
+// and changes: [] when only the removals are missing; Removals lists the removals, [] when only
+// trust is missing.
 type TrustRefusalError struct {
-	Report TrustReport
-	msg    string
+	Report   TrustReport
+	Removals []Removal
+	msg      string
 }
 
 func (e *TrustRefusalError) Error() string { return e.msg }
+
+// JSONFields are the keys the error document of a --json refusal carries next to error and
+// hints (Plan 6a §11.2): the changes it needs trust for and the removals, so a CI consumer gets
+// them without a second run.
+func (e *TrustRefusalError) JSONFields() map[string]any {
+	return map[string]any{"trust": e.Report, "removals": e.Removals}
+}
 
 // Pin reasons: why a sync writes an entry's pin.
 const (
@@ -166,15 +165,26 @@ type Pin struct {
 }
 
 // SyncResult is what a sync reports: Result over its one scope, the pins it writes, and whether
-// the scope was already in sync (nothing to write, pin or remove).
+// the scope was already in sync (nothing to write, pin or remove). Changed names, in order, the
+// modules the run changes (a step, a pin, a removal or a replaced copy): a sync limited to them
+// with the same answers applies the same plan. A dry run that is not in sync names the command
+// that applies it, ToApply, and, when that needs answers, the form for no terminal, OffTerminal
+// (Plan 6a §11.1); EquivalentCommands is the one of them that applies it off a terminal, [] for
+// any other run. Equivalent is, after a trust answer, the command that gives the same answers off
+// a terminal (§7.5).
 type SyncResult struct {
 	*Result
-	Scope    string      `json:"scope"`
-	Root     string      `json:"root"`
-	Trust    TrustReport `json:"trust"`
-	Pins     []Pin       `json:"pins"`
-	Removals []Removal   `json:"removals"`
-	InSync   bool        `json:"in_sync"`
+	Scope              string      `json:"scope"`
+	Root               string      `json:"root"`
+	Trust              TrustReport `json:"trust"`
+	Pins               []Pin       `json:"pins"`
+	Removals           []Removal   `json:"removals"`
+	InSync             bool        `json:"in_sync"`
+	EquivalentCommands []string    `json:"equivalent_commands"`
+	Changed            []string    `json:"-"`
+	Equivalent         string      `json:"-"`
+	ToApply            string      `json:"-"`
+	OffTerminal        string      `json:"-"`
 }
 
 // desired is the set of modules a scope should have installed: in 6a, the manifest's entries
@@ -190,11 +200,14 @@ func desired(man *manifest.Manifest) []manifest.Entry {
 // is set while the version is not in the cache, and headIfAbsent says its commit must not move
 // a head (a pinned fetch, or any in a project dry run). pin is set when the sync writes a new pin for the entry. covered says
 // the trust record covers the entry (always at user scope); folderChanged says it is a covered
-// folder at project scope whose content is not the version lock.json records.
+// folder at project scope whose content is not the version lock.json records, and
+// notInstalled that lock.json records none.
 type syncEntry struct {
 	ent           manifest.Entry
+	goneFrom      string // the description (describeSource) of the local source the cache records for the name, which no longer exists
 	covered       bool
 	folderChanged bool
+	notInstalled  bool
 	spec          source.Spec
 	targets       []string
 	update        bool
@@ -223,10 +236,9 @@ func (se *syncEntry) pinned() manifest.Entry {
 // record is written once, after the apply.
 func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err error) {
 	sc, opts := req.Scope, req.Options
-	f := e.files(sc)
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); sc.Kind == target.Project && sc.Key() == home.Key() {
 		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
-			untrusted.Text(e.Paths.Home, untrusted.MaxName)), "sync the user scope: "+errs.ShellJoin([]string{"lola", "sync", "--user"}))
+			untrusted.Text(e.Paths.Home, untrusted.MaxName)), "sync the user scope: "+e.SyncCommand(Scope{Kind: target.User}))
 	}
 	man, led, unlock, err := e.load(sc, opts.DryRun)
 	if err != nil {
@@ -236,8 +248,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err := e.refuseMissingManifest(sc); err != nil {
 		return nil, err
 	}
+	limit, err := e.limitTo(sc, man, led, req.Modules)
+	if err != nil {
+		return nil, err
+	}
 	res := &SyncResult{Result: newResult(opts.DryRun), Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
-		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}}}
+		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}}, EquivalentCommands: []string{}}
 	res.Notices = append(res.Notices, e.sweepRuns()...)
 	run, err := e.runDir()
 	if err != nil {
@@ -248,16 +264,24 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, err
 	}
 
-	entries, err := e.validateSync(sc, man, req)
+	entries, err := e.validateSync(sc, man, req, limit)
 	if err != nil {
 		return nil, err
 	}
+	if n, ok := outOfSync(man, led, limit, e.SyncCommand(sc)); ok {
+		res.Notices = append(res.Notices, n)
+	}
+	res.Notices = append(res.Notices, goneNotices(entries)...)
 	var rec *trust.Record
-	manifestChanged := false
+	var early trust.Report
+	manifestChanged, needTrust := false, false
 	if sc.Kind == target.Project {
 		if rec, err = e.Trust.Load(sc.ProjectDir); err != nil {
 			return nil, err
 		}
+		// Coverage is the entry's own (§7.2): it decides containment and whether content the
+		// entry pins may be cached before the question. Top-level targets the record does not
+		// cover are a change of the report, which an entry that installs to them waits on.
 		for _, se := range entries {
 			se.covered = rec.View.Covers(se.ent)
 		}
@@ -274,22 +298,56 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				return nil, err
 			}
 			installed := led.Modules[se.ent.Name]
+			se.notInstalled = installed == nil
 			se.folderChanged = installed == nil || installed.Digest != se.v.Meta.Digest
 		}
-		// A run that cannot ask is refused here, before anything is fetched (Plan 6a §9.3 step 4).
-		rep := trust.Check(rec, trust.ViewOf(man))
-		manifestChanged = rep.Status != trust.StatusTrusted
-		folderChanged := slices.ContainsFunc(entries, func(se *syncEntry) bool { return se.folderChanged })
-		if !opts.DryRun && req.Trust == nil && (manifestChanged || folderChanged || slices.ContainsFunc(entries, needsPin)) {
-			report := trustReport(rep)
-			folderChanges(&report, entries, led)
-			notFixed(&report, entries)
-			return nil, trustRefusal(f.manifest, report, manifestChanged, entries)
-		}
+		early = runReport(trust.Check(rec, trust.ViewOf(man)), limit, entries)
+		manifestChanged = early.Status != trust.StatusTrusted
+		needTrust = manifestChanged || slices.ContainsFunc(entries, func(se *syncEntry) bool { return se.folderChanged || needsPin(se) })
 	} else {
 		for _, se := range entries {
 			se.covered = true
 		}
+	}
+	// The removals are listed now, from lock.json and the manifest alone, and a run that cannot
+	// ask for an answer it needs is refused here, once, before anything is fetched (Plan 6a §9.3
+	// step 4).
+	if res.Removals, err = e.syncRemovals(sc, man, led, entries, limit); err != nil {
+		return nil, err
+	}
+	trustMissing, removalsMissing := needTrust && req.Trust == nil, len(res.Removals) > 0 && req.ConfirmRemovals == nil
+	if !opts.DryRun && (trustMissing || removalsMissing) {
+		report := TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}}
+		if sc.Kind == target.Project {
+			report.Status = early.Status
+		}
+		if trustMissing {
+			// An uncovered folder is read for the refusal too: it is local, containment has passed,
+			// and its content stays in the run's staging.
+			for _, se := range entries {
+				if se.spec.Kind == source.KindFolder && se.v.ContentDir == "" {
+					if err := e.resolveSync(ctx, sc, se, run); err != nil {
+						return nil, err
+					}
+				}
+			}
+			report = trustReport(early)
+			report.ManifestChanged = manifestChanged
+			folderChanges(&report, entries, led)
+			if err := e.folderEdits(sc, &report, entries); err != nil {
+				return nil, err
+			}
+			notFixed(&report, entries)
+			pinReasons(&report, entries, false)
+			if err := e.fillContent(sc, &report, entries, led, e.newProbeRun(ctx)); err != nil {
+				return nil, err
+			}
+		}
+		removals := []Removal{}
+		if removalsMissing {
+			removals = res.Removals
+		}
+		return nil, e.syncRefusal(sc, req, report, removals, trustMissing, removalsMissing, entries)
 	}
 
 	for _, se := range entries {
@@ -299,8 +357,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 		}
 		// What the user trusts at its pin goes into the cache now; everything else waits. A
-		// project dry run moves no head (Plan 6a §3.1), not even for an --update fetch.
-		if se.covered && se.pin == nil && !se.folderChanged {
+		// project dry run moves no head (Plan 6a §3.1), not even for an --update fetch, and
+		// replaces no source the cache records (§6.5).
+		if se.covered && se.pin == nil && !se.folderChanged && (!opts.DryRun || se.goneFrom == "") {
 			if opts.DryRun && sc.Kind == target.Project {
 				se.headIfAbsent = true
 			}
@@ -309,85 +368,83 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 		}
 	}
-	var pinned []manifest.Entry
-	for _, se := range entries {
-		if se.pin != nil {
-			res.Pins = append(res.Pins, *se.pin)
-			pinned = append(pinned, se.pinned())
+	// The pins the sync writes are trust changes too: the question is about the manifest as it
+	// will be saved (Plan 6a §7.3).
+	probes := e.newProbeRun(ctx)
+	var savedRep trust.Report
+	if sc.Kind == target.Project {
+		saved := man.Applied(manifest.Change{Set: pinsOf(entries)})
+		savedRep = runReport(trust.Check(rec, trust.ViewOf(saved)), limit, entries)
+		res.Trust = trustReport(savedRep)
+		res.Trust.ManifestChanged = manifestChanged
+		folderChanges(&res.Trust, entries, led)
+		if err := e.folderEdits(sc, &res.Trust, entries); err != nil {
+			return nil, err
+		}
+		notFixed(&res.Trust, entries)
+		pinReasons(&res.Trust, entries, true)
+		if err := e.fillContent(sc, &res.Trust, entries, led, probes); err != nil {
+			return nil, err
+		}
+		for i := range res.Trust.Changes {
+			c := &res.Trust.Changes[i]
+			k := slices.IndexFunc(entries, func(se *syncEntry) bool { return shown(se.ent.Name) == c.Module })
+			c.InstallsToTargets = res.Trust.Targets != nil && c.Kind != trust.ChangeRemoved && k >= 0 && len(entries[k].ent.Targets) == 0
 		}
 	}
-
-	// Plan every module now, from the bytes that were hashed, before the trust question: the apply
-	// uses these intents (Plan 6a §9.3 step 10).
+	// Plan every module now, from the bytes that were hashed, before the trust question: a module
+	// that cannot be planned stops the run before anything is asked (Plan 6a §9.3 step 10).
 	sel, err := e.selections()
 	if err != nil {
 		return nil, err
 	}
-	probes := e.newProbeRun(ctx)
-	var changes []plan.ModuleChange
-	var copies []moduleCopy
-	want := map[string]bool{}
-	for _, se := range entries {
-		name := se.ent.Name
-		want[name] = true
-		ent := se.pinned()
-		x, err := exclusions(sel, sc, name)
-		if err != nil {
-			return nil, err
-		}
-		intents, finds, notes, mr, err := e.planModule(sc, se.v, se.targets, &ent, x, opts, probes)
-		if err != nil {
-			return nil, err
-		}
-		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
-		installed := led.Modules[name]
-		ts := se.targets
-		for _, t := range allTargets(installed, nil, &manifest.Manifest{}) {
-			if !slices.Contains(ts, t) {
-				ts = append(slices.Clone(ts), t)
-			}
-		}
-		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
-			Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: se.v.Commit, Digest: se.v.Meta.Digest}})
-		replace, err := needsCopy(f.modules, name, installed, se.v.Meta.Digest)
-		if err != nil {
-			return nil, err
-		}
-		copies = append(copies, moduleCopy{name: name, src: se.v.ContentDir, replace: replace,
-			hooks: se.v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace})
+	sp, err := e.planSync(sc, entries, led, sel, opts, probes, req.Modules)
+	if err != nil {
+		return nil, err
 	}
-
-	// The pins the sync writes are trust changes too: the question is about the manifest as it
-	// will be saved (Plan 6a §7.3).
-	accepted := false
-	if sc.Kind == target.Project {
-		saved := man.Applied(manifest.Change{Set: pinned})
-		res.Trust = trustReport(trust.Check(rec, trust.ViewOf(saved)))
-		folderChanges(&res.Trust, entries, led)
-		notFixed(&res.Trust, entries)
-		if err := e.fillContent(sc, &res.Trust, entries, led, probes); err != nil {
-			return nil, err
-		}
-		if res.Trust.Status != trust.StatusTrusted {
-			switch {
-			case opts.DryRun:
-			case req.Trust == nil:
-				return nil, trustRefusal(f.manifest, res.Trust, manifestChanged, entries)
-			default:
-				yes, err := req.Trust(res.Trust)
-				if err != nil {
+	var acc *acceptance
+	if sc.Kind == target.Project && res.Trust.Status != trust.StatusTrusted {
+		switch {
+		case opts.DryRun:
+		case req.Trust == nil: // refused at step 4 already; kept so no path applies untrusted content
+			return nil, e.syncRefusal(sc, req, res.Trust, []Removal{}, true, false, entries)
+		default:
+			ans, err := req.Trust(res.Trust)
+			if err != nil {
+				return nil, err
+			}
+			if acc, err = accept(savedRep, res.Trust, ans, entries); err != nil {
+				return nil, err
+			}
+			// A partial answer takes the entries the user did not accept out of the run, as
+			// installed, and plans the rest again from the same staged trees: the summary is the
+			// apply (Plan 6a §9.3 step 7).
+			if len(acc.leave) > 0 {
+				entries = slices.DeleteFunc(entries, func(se *syncEntry) bool { return slices.Contains(acc.leave, shown(se.ent.Name)) })
+				// Clones: the report the user answered keeps every change it showed.
+				res.Removals = slices.DeleteFunc(slices.Clone(res.Removals), func(r Removal) bool { return slices.Contains(acc.leave, r.Module) })
+				res.Trust.Changes = slices.DeleteFunc(slices.Clone(res.Trust.Changes), func(c TrustChange) bool { return slices.Contains(acc.leave, c.Module) })
+				if !acc.targets {
+					res.Trust.Targets = nil
+				}
+				res.Notices = append(res.Notices, Notice{Level: LevelWarn,
+					Text: "left as installed until you trust them: " + nameList(acc.leave) + " → " + e.SyncCommand(sc)})
+				if sp, err = e.planSync(sc, entries, led, sel, opts, probes, req.Modules); err != nil {
 					return nil, err
 				}
-				if !yes {
-					return nil, ErrDeclined
-				}
-				accepted = true
 			}
 		}
 	}
-	// Publish what the user trusts now (Plan 6a §9.3 step 8). A dry run publishes nothing more,
-	// except that --update -n at user scope, whose user.yml is the user's own, fetches into the
-	// cache and moves heads, as -n always may there.
+	res.Modules, res.Findings, res.Notices = sp.modules, append(res.Findings, sp.findings...), append(res.Notices, sp.notices...)
+	pinned := pinsOf(entries)
+	for _, se := range entries {
+		if se.pin != nil {
+			res.Pins = append(res.Pins, *se.pin)
+		}
+	}
+	// Publish what the user trusts now (Plan 6a §9.3 step 8); a declined entry's content is never
+	// committed. A dry run publishes nothing more, except that --update -n at user scope, whose
+	// user.yml is the user's own, fetches into the cache and moves heads, as -n always may there.
 	for _, se := range entries {
 		if opts.DryRun && (sc.Kind != target.User || !se.update) {
 			continue
@@ -398,36 +455,22 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 
 	// Removals are confirmed before any hook consent is asked or recorded (Plan 6a §9.3 step 9).
-	for _, se := range entries {
-		r, err := e.removal(sc, se.ent.Name, led.Modules[se.ent.Name], se.targets)
-		if err != nil {
-			return nil, err
-		}
-		if r != nil {
-			res.Removals = append(res.Removals, *r)
-		}
-	}
-	for _, name := range sortedNames(led) {
-		if !want[name] {
-			r, err := e.removal(sc, name, led.Modules[name], nil)
-			if err != nil {
-				return nil, err
-			}
-			res.Removals = append(res.Removals, *r)
-			changes = append(changes, plan.ModuleChange{Name: name, Targets: allTargets(led.Modules[name], nil, &manifest.Manifest{})})
+	changes, copies := sp.changes, sp.copies
+	for _, r := range res.Removals {
+		if r.WholeModule {
+			changes = append(changes, plan.ModuleChange{Name: r.Module, Targets: allTargets(led.Modules[r.Module], nil, &manifest.Manifest{})})
 		}
 	}
 	if len(res.Removals) > 0 && !opts.DryRun {
-		if req.ConfirmRemovals == nil {
-			return nil, errs.WithHints(errors.New("lola sync would remove modules, and there is no terminal to ask on"),
-				"see them: "+errs.ShellJoin([]string{"lola", "sync", "-n"}), "then: "+errs.ShellJoin([]string{"lola", "sync", "-y"}))
+		if req.ConfirmRemovals == nil { // refused at step 4 already; kept so no path removes unasked
+			return nil, e.syncRefusal(sc, req, TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}}, res.Removals, false, true, entries)
 		}
 		yes, err := req.ConfirmRemovals(slices.Clone(res.Removals))
 		if err != nil {
 			return nil, err
 		}
 		if !yes {
-			return nil, ErrDeclined
+			return nil, e.declineRemovals(sc, man, led, rec, acc, entries)
 		}
 	}
 	res.Findings = append(res.Findings, probes.findings...)
@@ -436,41 +479,309 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
+	keepUnhooked(copies, pr.jobs, opts)
 	res.InSync = len(res.Steps) == 0 && len(res.Pins) == 0 && len(res.Removals) == 0 &&
 		!slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.replace })
+	for _, st := range res.Steps {
+		res.Changed = append(res.Changed, st.Module)
+	}
+	for _, p := range res.Pins {
+		res.Changed = append(res.Changed, p.Module)
+	}
+	for _, r := range res.Removals {
+		res.Changed = append(res.Changed, r.Module)
+	}
+	for _, c := range copies {
+		if c.replace {
+			res.Changed = append(res.Changed, c.name)
+		}
+	}
+	slices.Sort(res.Changed)
+	res.Changed = slices.Compact(res.Changed)
 	if opts.DryRun {
+		// A dry run ends with the command that applies it: the user's own run without -n, and
+		// the flags that answer its questions off a terminal (never --allow-hooks: consent is the
+		// user's to give).
+		needTrust := res.Trust.Status != trust.StatusTrusted && res.Trust.Status != TrustStatusNotApplicable
+		if !res.InSync || needTrust {
+			res.ToApply = e.SyncCommand(sc, req.rerun()...)
+			var answers []string
+			if needTrust {
+				answers = append(answers, "--trust")
+			}
+			if len(res.Removals) > 0 {
+				answers = append(answers, "-y")
+			}
+			res.EquivalentCommands = []string{res.ToApply}
+			if len(answers) > 0 {
+				res.OffTerminal = e.SyncCommand(sc, req.rerun(answers...)...)
+				res.EquivalentCommands = []string{res.OffTerminal}
+			}
+		}
 		return res, nil
 	}
 	apply := func(mw *plan.ManifestWrite) error {
 		return e.commit(ctx, pr, opts, res.Result, mw, func(*plan.Plan) error { return e.makePluginData(sc, changes) })
 	}
-	// The trust record is written once, after the apply: accepting trust records the view lola
-	// saves, every field of it (a record equal to the loaded manifest refreshes to exactly the
-	// saved view).
+	// The trust record is written once, after the apply: it records the entries the user accepted,
+	// and the top-level targets when they were accepted, as lola saves them; every other entry
+	// keeps its record (Plan 6a §7.4).
 	var trusted *trust.Record
-	if accepted {
-		trusted = &trust.Record{View: trust.ViewOf(man)}
+	if acc != nil {
+		trusted = &trust.Record{View: trust.Accept(rec.View, trust.ViewOf(man), acc.modules, acc.targets)}
 	}
 	if len(pinned) > 0 {
 		err = e.saveManifest(sc, man, manifest.Change{Set: pinned}, trusted, "the project's files, lock.json and project.yml were updated",
-			trustSyncAgain, apply)
-	} else if err = apply(nil); err == nil && accepted {
-		if err = e.Trust.Save(sc.ProjectDir, trust.ViewOf(man)); err != nil {
+			syncAgain(e.SyncCommand(sc)), apply)
+	} else if err = apply(nil); err == nil && trusted != nil {
+		if err = e.Trust.Save(sc.ProjectDir, trusted.View); err != nil {
 			msg := "lola could not record that you trust project.yml"
 			if !res.InSync {
 				msg = "the project's files and lock.json were updated, but " + msg
 			}
-			err = errs.WithHints(fmt.Errorf("%s: %w", msg, err), trustSyncAgain)
+			err = errs.WithHints(fmt.Errorf("%s: %w", msg, err), syncAgain(e.SyncCommand(sc)))
 		}
 	}
 	if err != nil {
 		return nil, err
 	}
-	res.Trust.Recorded = accepted
+	res.Trust.Recorded = trusted != nil
 	for i := range res.Pins {
 		res.Pins[i].Written = true
 	}
+	if acc != nil {
+		res.Equivalent = e.equivalent(req, acc, res)
+	}
 	return res, nil
+}
+
+// equivalent is the command that gives a run's trust answer (acc) off a terminal (Plan 6a §7.5,
+// §19 X2): Trust all is the user's own run with --trust; a partial answer names every entry it
+// accepted, whose record changes even when nothing is rendered, and every module the run changed,
+// so a run limited to them applies the same plan and records the same trust. -y is added when the
+// run's removals were confirmed.
+func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) string {
+	run := req
+	if !acc.all {
+		run.Modules = slices.Clone(res.Changed)
+		for _, m := range acc.modules {
+			run.Modules = append(run.Modules, shown(m))
+		}
+		slices.Sort(run.Modules)
+		run.Modules = slices.Compact(run.Modules)
+	}
+	var yes []string
+	if len(res.Removals) > 0 {
+		yes = append(yes, "-y")
+	}
+	return e.SyncCommand(req.Scope, append([]string{"--trust"}, run.rerun(yes...)...)...)
+}
+
+// pinsOf is each entry of the run with the new pin the sync writes for it.
+func pinsOf(entries []*syncEntry) []manifest.Entry {
+	var out []manifest.Entry
+	for _, se := range entries {
+		if se.pin != nil {
+			out = append(out, se.pinned())
+		}
+	}
+	return out
+}
+
+// syncPlan is a sync's plan of the entries of its run: the module changes and copies the apply
+// uses, and what planning reported.
+type syncPlan struct {
+	changes  []plan.ModuleChange
+	copies   []moduleCopy
+	modules  []ModuleResult
+	findings []target.Finding
+	notices  []Notice
+}
+
+// planSync plans each entry from the bytes that were hashed, its snapshot or staged tree (Plan 6a
+// §9.3 step 10): its intents for its effective targets and selections, the change that renders
+// them over the targets lock.json has it on, and its module copy, replaced (running its hooks)
+// when its version changes, the copy is gone or it adds a target, or to offer a pending post-install hook to a run
+// that names its module (named) or gives --allow-hooks.
+func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, sel *config.Selections, opts Options, probes *probeRun,
+	named []string) (syncPlan, error) {
+	sp := syncPlan{modules: []ModuleResult{}}
+	for _, se := range entries {
+		name := se.ent.Name
+		ent := se.pinned()
+		x, err := exclusions(sel, sc, name)
+		if err != nil {
+			return syncPlan{}, err
+		}
+		intents, finds, notes, mr, err := e.planModule(sc, se.v, se.targets, &ent, x, opts, probes)
+		if err != nil {
+			return syncPlan{}, err
+		}
+		sp.modules, sp.findings, sp.notices = append(sp.modules, mr), append(sp.findings, finds...), append(sp.notices, notes...)
+		installed := led.Modules[name]
+		ts := se.targets
+		for _, t := range allTargets(installed, nil, &manifest.Manifest{}) {
+			if !slices.Contains(ts, t) {
+				ts = append(slices.Clone(ts), t)
+			}
+		}
+		sp.changes = append(sp.changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
+			Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: se.v.Commit, Digest: se.v.Meta.Digest, Targets: mr.Targets}})
+		replace, err := needsCopy(e.files(sc).modules, name, installed, se.v.Meta.Digest)
+		if err != nil {
+			return syncPlan{}, err
+		}
+		// A target the module is not installed on has never had its hooks run: the copy is
+		// replaced to run them, as for a new version.
+		replace = replace || addsTargets(installed, mr.Targets)
+		// A pending post-install hook runs only in a copy replaced from the hashed version, after
+		// the consent keyed on those bytes (Plan 6a §9.3 step 10, C1), and is offered only to a
+		// run that names its module or gives --allow-hooks: any other run keeps it pending,
+		// asking nothing, and says how to run it.
+		pending := installed != nil && installed.HooksPending && declaresPostInstall(se.v.Module.DeclaredHooks)
+		if pending && !replace && !opts.AllowHooks && !slices.Contains(named, name) {
+			text := "pending post-install hook for " + name + " → " + e.SyncCommand(sc, name)
+			if opts.Ask == nil {
+				text += " (off a terminal: " + e.SyncCommand(sc, name, "--allow-hooks") + ")"
+			}
+			sp.notices = append(sp.notices, Notice{Level: LevelWarn, Text: text})
+			pending = false
+		}
+		sp.copies = append(sp.copies, moduleCopy{name: name, src: se.v.ContentDir, replace: replace || pending,
+			hooks: se.v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace || pending, forced: pending && !replace,
+			pending: pending})
+	}
+	return sp, nil
+}
+
+// acceptance is the user's trust answer applied to a run (Plan 6a §7.4, §9.3 step 7): the
+// entries accepted, by their names in the record and the manifest; whether the top-level targets
+// are; and the modules that leave the run as installed, by the names the report shows.
+type acceptance struct {
+	all     bool
+	modules []string
+	targets bool
+	leave   []string
+}
+
+// accept applies ans to rep, the run's report (raw, the check of the manifest as it would be
+// saved, whose changes rep's shown ones extend with folders and pins). All accepts every change
+// and the targets. Otherwise the changes ans names are accepted; the top-level targets are
+// accepted with an accepted added or changed entry that has no targets of its own, since it
+// installs to them, never with a removed one; and the run loses the changes not accepted and,
+// when changed top-level targets are not accepted, every entry that installs to them. An answer
+// accepting nothing is a Cancel.
+func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncEntry) (*acceptance, error) {
+	names := map[string]string{} // shown → raw
+	for _, c := range raw.Changes {
+		names[shown(c.Module)] = c.Module
+	}
+	for _, se := range entries {
+		names[shown(se.ent.Name)] = se.ent.Name
+	}
+	acc := &acceptance{all: ans.All, targets: rep.Targets != nil && ans.All}
+	for _, c := range rep.Changes {
+		if !ans.All && !slices.Contains(ans.Modules, c.Module) {
+			acc.leave = append(acc.leave, c.Module)
+			continue
+		}
+		acc.modules = append(acc.modules, names[c.Module])
+		k := slices.IndexFunc(entries, func(se *syncEntry) bool { return shown(se.ent.Name) == c.Module })
+		if rep.Targets != nil && c.Kind != trust.ChangeRemoved && k >= 0 && len(entries[k].ent.Targets) == 0 {
+			acc.targets = true
+		}
+	}
+	if len(acc.modules) == 0 && !acc.targets {
+		return nil, ErrDeclined
+	}
+	if rep.Targets != nil && !acc.targets {
+		for _, se := range entries {
+			if len(se.ent.Targets) == 0 && !slices.Contains(acc.leave, shown(se.ent.Name)) {
+				acc.leave = append(acc.leave, shown(se.ent.Name))
+			}
+		}
+	}
+	slices.Sort(acc.leave)
+	return acc, nil
+}
+
+// RemovalsDeclinedError is a sync whose removals the user declined (Plan 6a §9.3 step 9): nothing
+// was applied. Recorded says the trust the user accepted changed the record, so the next sync
+// does not ask about it again; Again names the accepted entries it does ask about again, whose
+// pin or folder content the record holds only once lola writes it; Render says the record
+// changes what lola render installs.
+type RemovalsDeclinedError struct {
+	Recorded, Render bool
+	Again            []string
+}
+
+func (e *RemovalsDeclinedError) Error() string {
+	return "removals declined; the project was not changed"
+}
+func (e *RemovalsDeclinedError) Unwrap() error { return ErrDeclined }
+
+// declineRemovals is a No to a run's removals (Plan 6a §9.3 step 9, §19 X6): nothing is applied,
+// but the trust the user accepted (acc, nil when nothing was asked) is recorded, without the pins
+// lola did not write: the answer stands, and the next sync asks again only about the removals and
+// the accepted entries (of entries, the run's) whose new pin or folder content it did not install.
+func (e *Engine) declineRemovals(sc Scope, man *manifest.Manifest, led *ledger.Ledger, rec *trust.Record, acc *acceptance,
+	entries []*syncEntry) error {
+	if acc == nil {
+		return &RemovalsDeclinedError{}
+	}
+	view := trust.Accept(rec.View, trust.ViewOf(man), acc.modules, acc.targets)
+	if err := e.Trust.Save(sc.ProjectDir, view); err != nil {
+		return errs.WithHints(fmt.Errorf("lola could not record that you trust project.yml: %w", err), syncAgain(e.SyncCommand(sc)))
+	}
+	was, err := rec.View.Hash()
+	if err != nil {
+		return err
+	}
+	now, err := view.Hash()
+	if err != nil {
+		return err
+	}
+	d := &RemovalsDeclinedError{Recorded: !rec.Exists || now != was, Render: e.rendersOther(sc, rec.View, view, man, led, entries)}
+	for _, se := range entries {
+		installed := led.Modules[se.ent.Name]
+		folder := se.spec.Kind == source.KindFolder && (installed == nil || installed.Digest != se.v.Meta.Digest)
+		if slices.Contains(acc.modules, se.ent.Name) && (se.pin != nil || folder) {
+			d.Again = append(d.Again, shown(se.ent.Name))
+		}
+	}
+	return d
+}
+
+// rendersOther reports whether trusting view instead of old changes what render installs (Plan
+// 6a §10.3), by render's own check: an installed module whose entry asks for the source lock.json
+// records, that view covers (and, without targets of its own, covers the top-level targets) and
+// old did not, is no longer left out. A folder this run did not stage, or staged with content
+// that differs from the version installed, or whose cached source moved, stays left out,
+// whatever the record says.
+func (e *Engine) rendersOther(sc Scope, old, view trust.View, man *manifest.Manifest, led *ledger.Ledger, entries []*syncEntry) bool {
+	rendered := func(v trust.View, ent manifest.Entry) bool {
+		return v.Covers(ent) && (len(ent.Targets) > 0 || slices.Equal(v.Targets, man.Targets))
+	}
+	for _, ent := range man.Modules {
+		in := led.Modules[ent.Name]
+		if in == nil || ent.Source != in.Source || ent.Ref != in.Ref || ent.Path != in.Path || !rendered(view, ent) || rendered(old, ent) {
+			continue
+		}
+		spec, ok, err := source.Parse(ent.Source, canonicalRoot(sc.ProjectDir))
+		folder := err == nil && ok && spec.Kind == source.KindFolder
+		if folder {
+			// A folder this run did not stage (declined, or outside the run) may have changed content:
+			// render would leave it out, so it is not claimed.
+			k := slices.IndexFunc(entries, func(se *syncEntry) bool { return se.ent.Name == ent.Name })
+			if k < 0 || entries[k].v.Meta.Digest != in.Digest {
+				continue
+			}
+		}
+		if moved, err := e.folderMoved(sc, ent.Name, in); err == nil && moved == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // trustReport is the report of a trust check, every manifest value through untrusted.Text.
@@ -504,16 +815,62 @@ func notFixed(rep *TrustReport, entries []*syncEntry) {
 		se := entries[k]
 		c.ContentFixed = se.ent.Digest != ""
 		if !c.ContentFixed && se.spec.Kind != source.KindFolder {
-			served := shown(se.ent.Source) // an archive has no ref: the file or URL serves it
-			if se.spec.Kind == source.KindGit {
-				served = "the default branch"
-				if se.ent.Ref != "" {
-					served = shown(se.ent.Ref)
-				}
-			}
-			c.Note = "content not fixed; installs what " + served + " serves now"
+			c.Note = "content not fixed; installs what " + served(se) + " serves now"
 		}
 	}
+}
+
+// served names what an entry's source serves: its ref, the default branch of a git source
+// without one, or the file or URL of an archive, which has no ref.
+func served(se *syncEntry) string {
+	switch {
+	case se.spec.Kind != source.KindGit:
+		return shown(se.ent.Source)
+	case se.ent.Ref == "":
+		return "the default branch"
+	}
+	return shown(se.ent.Ref)
+}
+
+// pinReasons gives each change of an entry the run writes a pin for its reason (Plan 6a §7.5):
+// re-pin from its ref under --update, or pin what its ref serves now; an entry whose manifest
+// entry is as trusted gets a change of its own, so the diff names it. Before anything is fetched
+// (fetched false) the pin is not known, which the reason says. A folder whose content changed is
+// given its reason too.
+func pinReasons(rep *TrustReport, entries []*syncEntry, fetched bool) {
+	for _, se := range entries {
+		var reason string
+		switch {
+		case se.folderChanged && se.notInstalled:
+			reason = "not installed yet"
+		case se.folderChanged:
+			reason = "content changed since lola installed it"
+		case !needsPin(se) || fetched && se.pin == nil:
+			continue
+		case se.update && fetched:
+			reason = "re-pin from " + served(se) + " (--update)"
+		case se.update:
+			reason = "re-pin from " + served(se) + " (--update; not fetched yet)"
+		case fetched:
+			reason = "pin what " + served(se) + " serves now"
+		default:
+			reason = "pin what " + served(se) + " serves now (not fetched yet)"
+		}
+		k := slices.IndexFunc(rep.Changes, func(c TrustChange) bool { return c.Module == shown(se.ent.Name) })
+		if k < 0 {
+			rep.Changes = append(rep.Changes, TrustChange{Change: trust.Change{Module: shown(se.ent.Name), Kind: trust.ChangeChanged,
+				ContentFixed: se.ent.Digest != "", Fields: []trust.FieldChange{}}, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, Hooks: []ContentHook{}})
+			k = len(rep.Changes) - 1
+			if rep.Status == trust.StatusTrusted {
+				rep.Status = trust.StatusChanged
+			}
+		}
+		rep.Changes[k].Reason = reason
+		if fetched {
+			rep.Changes[k].Pin = se.pin
+		}
+	}
+	slices.SortStableFunc(rep.Changes, func(a, b TrustChange) int { return strings.Compare(a.Module, b.Module) })
 }
 
 // shownValue is a field value of a trust change with its strings through untrusted.Text.
@@ -531,30 +888,111 @@ func shownValue(v any) any {
 	return v
 }
 
-// trustRefusal refuses a sync that needs the user's trust and cannot ask (Plan 6a §11.3): for
-// the manifest, which changed since the user trusted it, else for the pins the sync would write,
-// else for the folders whose content changed. The error carries the report for the caller to
-// show.
-func trustRefusal(manifestPath string, rep TrustReport, manifestChanged bool, entries []*syncEntry) error {
-	name := filepath.Join(filepath.Base(filepath.Dir(manifestPath)), filepath.Base(manifestPath))
-	msg := name + " changed since you last trusted it"
-	switch {
-	case manifestChanged:
-	case slices.ContainsFunc(entries, needsPin):
-		msg = "lola sync would write pins to " + name + ", which needs your trust"
-	default:
-		var names []string
+// syncRefusal refuses a sync that needs answers it cannot ask for (Plan 6a §9.3 step 4, §11.3),
+// naming in one error every answer missing and every cause: the user's trust (trustMissing) for
+// the manifest, the pins the sync would write and the folders whose content changed, and the
+// confirmation of the removals (removalsMissing), the answers joined by "; and" so a list of
+// names never runs into the next answer. The hints repeat the user's run (req) at its
+// scope with the flags that answer, so the user is never sent from one refusal to the next. The
+// error carries the report and the removals for the caller to show.
+func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removals []Removal, trustMissing, removalsMissing bool,
+	entries []*syncEntry) error {
+	var answers, hints []string
+	yesGiven, trustGiven := req.ConfirmRemovals != nil, req.Trust != nil
+	if trustMissing {
+		manifestPath := e.files(sc).manifest
+		name := filepath.Join(filepath.Base(filepath.Dir(manifestPath)), filepath.Base(manifestPath))
+		var causes, pins, folders []string
+		switch {
+		case !rep.ManifestChanged:
+		case rep.Status == trust.StatusNew:
+			causes = append(causes, name+", which has not been trusted on this machine")
+		default:
+			causes = append(causes, "changes to "+name)
+		}
 		for _, se := range entries {
-			if se.folderChanged {
-				names = append(names, se.ent.Name)
+			switch {
+			case se.folderChanged:
+				folders = append(folders, shown(se.ent.Name))
+			case needsPin(se):
+				pins = append(pins, shown(se.ent.Name))
 			}
 		}
-		msg = "the content of " + strings.Join(names, ", ") + " changed since lola last installed it, which needs your trust"
+		if len(pins) > 0 {
+			causes = append(causes, "the pins it would write for "+strings.Join(pins, ", "))
+		}
+		if len(folders) > 0 {
+			causes = append(causes, "the changed content of "+strings.Join(folders, ", "))
+		}
+		answers = append(answers, "your trust for "+andJoin(causes))
 	}
-	msg += ", and there is no terminal to ask on"
-	return errs.WithHints(&TrustRefusalError{Report: rep, msg: msg},
-		"see the changes: "+errs.ShellJoin([]string{"lola", "sync", "-n"}),
-		"then accept them: "+errs.ShellJoin([]string{"lola", "sync", "--trust"}))
+	if removalsMissing {
+		var names []string
+		for _, r := range removals {
+			names = append(names, r.Module)
+		}
+		answers = append(answers, "your confirmation to remove "+strings.Join(names, ", "))
+	}
+	hints = append(hints, "see them: "+e.SyncCommand(sc, req.rerun("-n")...))
+	switch {
+	case trustMissing && (removalsMissing || yesGiven):
+		hints = append(hints, "then accept them: "+e.SyncCommand(sc, req.rerun("--trust", "-y")...))
+	case trustMissing && len(req.Modules) == 1:
+		hints = append(hints, "then accept them: "+e.SyncCommand(sc, req.rerun("--trust")...))
+	case trustMissing:
+		flags := req
+		flags.Modules = nil
+		hints = append(hints, "then accept them: "+e.SyncCommand(sc, req.rerun("--trust")...),
+			"or accept some: "+e.SyncCommand(sc, flags.rerun("--trust")...)+" <module>…")
+	case trustGiven:
+		hints = append(hints, "then confirm them: "+e.SyncCommand(sc, req.rerun("--trust", "-y")...))
+	default:
+		hints = append(hints, "then confirm them: "+e.SyncCommand(sc, req.rerun("-y")...))
+	}
+	for _, se := range entries {
+		if trustMissing && se.folderChanged {
+			hints = append(hints, "edited it yourself? "+e.installFolder(sc, se.spec.Location))
+		}
+	}
+	if trustMissing && yesGiven {
+		hints = append(hints, "-y confirms removals only; accept the changes with --trust")
+	}
+	return errs.WithHints(&TrustRefusalError{Report: rep, Removals: removals,
+		msg: "lola sync needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"}, hints...)
+}
+
+// andJoin joins phrases as prose: "a", "a and b", "a, b and c".
+func andJoin(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+}
+
+// syncRemovals is what the run removes (Plan 6a §9.3 step 9), from lock.json and the manifest
+// alone: the targets each entry of the run no longer has, then each installed module of the run
+// the manifest no longer lists, whole.
+func (e *Engine) syncRemovals(sc Scope, man *manifest.Manifest, led *ledger.Ledger, entries []*syncEntry, limit syncLimit) ([]Removal, error) {
+	out := []Removal{}
+	for _, se := range entries {
+		r, err := e.removal(sc, se.ent.Name, led.Modules[se.ent.Name], se.targets)
+		if err != nil {
+			return nil, err
+		}
+		if r != nil {
+			out = append(out, *r)
+		}
+	}
+	for _, name := range sortedNames(led) {
+		if man.Find(name) == nil && limit.has(name) {
+			r, err := e.removal(sc, name, led.Modules[name], nil)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, *r)
+		}
+	}
+	return out, nil
 }
 
 // containLocalSources refuses an entry whose local folder or archive resolves outside the
@@ -567,7 +1005,7 @@ func trustRefusal(manifestPath string, rep TrustReport, manifestChanged bool, en
 func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry) error {
 	var root string
 	for _, se := range entries {
-		local := se.spec.Kind == source.KindFolder || se.spec.Kind == source.KindArchive && filepath.IsAbs(se.spec.Location)
+		local := source.IsLocal(se.spec.Kind, se.spec.Location)
 		if !local || se.covered && !lexicallyInside(sc, se.ent.Source) {
 			continue
 		}
@@ -583,9 +1021,11 @@ func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry) error {
 			return fmt.Errorf("%s: resolving its local source: %w", se.ent.Name, untrusted.CleanErr(err))
 		}
 		if !in {
+			// Validation refused any other source the cache has for the name, except a local one
+			// that is gone, which the install replaces (§6.5): the install works as hinted.
 			return errs.WithHints(fmt.Errorf("%s: local source %s resolves outside the project (%s)", se.ent.Name,
 				untrusted.Text(se.ent.Source, untrusted.MaxName), untrusted.Text(se.spec.Location, untrusted.MaxName)),
-				"install it yourself if you trust it: "+installCommand(se.spec.Location, "", se.ent.Path))
+				"install it yourself if you trust it: "+e.Command(sc, "install", installArgs(se.spec.Location, "", se.ent.Path)...))
 		}
 	}
 	return nil
@@ -603,6 +1043,10 @@ func lexicallyInside(sc Scope, src string) bool {
 			return true
 		}
 		p = u.Path
+		// file:///C:/x has the path /C:/x; on Windows the drive is the path's start.
+		if v := strings.TrimPrefix(p, "/"); filepath.VolumeName(v) != "" {
+			p = v
+		}
 	}
 	if !filepath.IsAbs(p) {
 		return filepath.IsLocal(p)
@@ -616,7 +1060,7 @@ func lexicallyInside(sc Scope, src string) bool {
 }
 
 // folderChanges adds to rep, as a change of its digest, each covered folder whose content is not
-// the version lock.json records (none when lock.json records none), and makes a trusted report
+// the version lock.json records (an addition when lock.json records none), and makes a trusted report
 // changed: the user trusts what an in-repo module holds by trusting the version installed.
 func folderChanges(rep *TrustReport, entries []*syncEntry, led *ledger.Ledger) {
 	for _, se := range entries {
@@ -624,10 +1068,11 @@ func folderChanges(rep *TrustReport, entries []*syncEntry, led *ledger.Ledger) {
 			continue
 		}
 		var from any
+		kind := trust.ChangeAdded
 		if installed := led.Modules[se.ent.Name]; installed != nil {
-			from = shown(installed.Digest)
+			from, kind = shown(installed.Digest), trust.ChangeChanged
 		}
-		rep.Changes = append(rep.Changes, TrustChange{Change: trust.Change{Module: se.ent.Name, Kind: trust.ChangeChanged,
+		rep.Changes = append(rep.Changes, TrustChange{Change: trust.Change{Module: se.ent.Name, Kind: kind,
 			Fields: []trust.FieldChange{{Field: "digest", From: from, To: se.v.Meta.Digest}}},
 			FolderContent: true, Files: []FileChange{}, MCPServers: []ContentMCPServer{}, Hooks: []ContentHook{}})
 		if rep.Status == trust.StatusTrusted {
@@ -635,6 +1080,29 @@ func folderChanges(rep *TrustReport, entries []*syncEntry, led *ledger.Ledger) {
 		}
 	}
 	slices.SortStableFunc(rep.Changes, func(a, b TrustChange) int { return strings.Compare(a.Module, b.Module) })
+}
+
+// folderEdits gives each folder whose content changed the diff's lines (Plan 6a §7.5): how to
+// review the edits when the folder is in a git work tree, and how to record the content as the
+// user's own when they made the edits.
+func (e *Engine) folderEdits(sc Scope, rep *TrustReport, entries []*syncEntry) error {
+	for i := range rep.Changes {
+		c := &rep.Changes[i]
+		k := slices.IndexFunc(entries, func(se *syncEntry) bool { return shown(se.ent.Name) == c.Module })
+		if !c.FolderContent || k < 0 {
+			continue
+		}
+		loc := entries[k].spec.Location
+		inTree, err := source.InWorkTree(loc)
+		if err != nil {
+			return err
+		}
+		if inTree {
+			c.ReviewEdits = "review the edits: " + e.reviewFolder(loc)
+		}
+		c.InstallOwn = "edited it yourself? " + e.installFolder(sc, loc)
+	}
+	return nil
 }
 
 // needsPin reports whether a sync writes a pin for the entry: a git or archive entry under
@@ -670,30 +1138,126 @@ func (e *Engine) refuseMissingManifest(sc Scope) error {
 		"start one: lola install <source>", "or sync another project: lola sync -C <dir>")
 }
 
-// validateSync checks every desired entry and the --update names before anything is fetched or
-// asked (Plan 6a §9.3 step 2), stopping at the first failure: the source parses and passes
-// source.Validate with the entry's ref and path; the pin fits the source's kind; the cache holds
-// no other source under the name (§6.5); the effective targets are known.
-func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, req SyncRequest) ([]*syncEntry, error) {
-	base := filepath.Base(e.files(sc).manifest)
-	for _, name := range req.Update {
-		if man.Find(name) == nil {
-			var names []string
+// syncLimit is the set of modules a sync acts on (Plan 6a §3.1): the names given, or every
+// module when none was.
+type syncLimit struct{ names []string }
+
+func (l syncLimit) has(name string) bool { return len(l.names) == 0 || slices.Contains(l.names, name) }
+
+// limitTo is the run names limit sync to, each of them an entry of the scope's manifest or a
+// module installed there that the manifest no longer lists; any other name is refused before
+// anything else, listing both.
+func (e *Engine) limitTo(sc Scope, man *manifest.Manifest, led *ledger.Ledger, names []string) (syncLimit, error) {
+	var l syncLimit
+	for _, name := range names {
+		if man.Find(name) == nil && led.Modules[name] == nil {
+			base := filepath.Base(e.files(sc).manifest)
+			listed, gone := []string{}, []string{}
 			for _, ent := range desired(man) {
-				names = append(names, ent.Name)
+				listed = append(listed, shown(ent.Name))
 			}
-			return nil, errs.WithHints(fmt.Errorf("%s is not in %s", untrusted.Text(name, untrusted.MaxName), base),
-				"modules in "+base+": "+strings.Join(names, ", "))
+			for _, n := range sortedNames(led) {
+				if man.Find(n) == nil {
+					gone = append(gone, shown(n))
+				}
+			}
+			hints := []string{"modules in " + base + ": " + strings.Join(listed, ", ")}
+			if len(listed) == 0 {
+				hints[0] += "none"
+			}
+			if len(gone) > 0 {
+				hints = append(hints, "installed but no longer listed: "+strings.Join(gone, ", "))
+			}
+			return syncLimit{}, errs.WithHints(fmt.Errorf("%s is neither in %s nor installed here", untrusted.Text(name, untrusted.MaxName), base), hints...)
+		}
+		if !slices.Contains(l.names, name) {
+			l.names = append(l.names, name)
 		}
 	}
-	cwd := "/"
-	if sc.Kind == target.Project {
-		cwd = canonicalRoot(sc.ProjectDir)
+	return l, nil
+}
+
+// runReport is rep limited to the run (Plan 6a §3.1): the changes of the modules it names, and
+// the top-level targets only when an entry of the run has no targets of its own, since it
+// installs to them. An unlimited run's report is rep.
+func runReport(rep trust.Report, limit syncLimit, entries []*syncEntry) trust.Report {
+	if len(limit.names) == 0 {
+		return rep
 	}
+	out := trust.Report{Status: rep.Status, Changes: []trust.Change{}}
+	for _, c := range rep.Changes {
+		if limit.has(c.Module) {
+			out.Changes = append(out.Changes, c)
+		}
+	}
+	if slices.ContainsFunc(entries, func(se *syncEntry) bool { return len(se.ent.Targets) == 0 }) {
+		out.Targets = rep.Targets
+	}
+	if out.Targets == nil && len(out.Changes) == 0 {
+		out.Status = trust.StatusTrusted
+	}
+	return out
+}
+
+// outOfSync is the notice of a limited run about the modules it left out that are not in sync,
+// by a local check of the manifest against lock.json (Plan 6a §9.3 step 11): an entry not
+// installed or pinned to another version than the one installed, and a module installed but no
+// longer listed. ok is false for an unlimited run and when there are none.
+func outOfSync(man *manifest.Manifest, led *ledger.Ledger, limit syncLimit, sync string) (n Notice, ok bool) {
+	if len(limit.names) == 0 {
+		return Notice{}, false
+	}
+	var names []string
+	for _, ent := range desired(man) {
+		in := led.Modules[ent.Name]
+		if !limit.has(ent.Name) && (in == nil || ent.Digest != "" && ent.Digest != in.Digest) {
+			names = append(names, ent.Name)
+		}
+	}
+	for _, name := range sortedNames(led) {
+		if !limit.has(name) && man.Find(name) == nil {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return Notice{}, false
+	}
+	slices.Sort(names)
+	what := fmt.Sprintf("%d other modules are", len(names))
+	if len(names) == 1 {
+		what = "1 other module is"
+	}
+	return Notice{Level: LevelWarn, Text: what + " not in sync: " + nameList(names) + " → " + sync}, true
+}
+
+// nameList joins module names for a notice, each through untrusted.Text, at most 10 of them and
+// then how many more there are.
+func nameList(names []string) string {
+	const most = 10
+	shownNames := make([]string, 0, min(len(names), most))
+	for _, n := range names[:min(len(names), most)] {
+		shownNames = append(shownNames, untrusted.Text(n, untrusted.MaxName))
+	}
+	out := strings.Join(shownNames, ", ")
+	if len(names) > most {
+		out += fmt.Sprintf(" and %d more", len(names)-most)
+	}
+	return out
+}
+
+// validateSync checks every entry of the run before anything is fetched or asked (Plan 6a §9.3
+// step 2), stopping at the first failure: the source parses and passes source.Validate with the
+// entry's ref and path; the pin fits the source's kind; the cache holds no other source under
+// the name (§6.5); the effective targets are known.
+func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, req SyncRequest, limit syncLimit) ([]*syncEntry, error) {
+	base := filepath.Base(e.files(sc).manifest)
 	var out []*syncEntry
 	for _, ent := range desired(man) {
 		name := ent.Name
-		spec, ok, err := source.Parse(ent.Source, cwd)
+		if !limit.has(name) {
+			continue
+		}
+		spec, ok, err := source.Parse(ent.Source, sourceRoot(sc))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
@@ -705,10 +1269,11 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, req SyncRequest)
 		if err := source.Validate(spec); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
-		if err := checkPinShape(name, base, spec.Kind, ent); err != nil {
+		if err := checkPinShape(name, base, spec.Kind, ent, e.SyncCommand(sc, "--update", name)); err != nil {
 			return nil, err
 		}
-		if err := e.refuseOtherSource(sc, name, spec); err != nil {
+		gone, err := e.refuseOtherSource(sc, name, spec, e.SyncCommand(sc, req.rerun()...))
+		if err != nil {
 			return nil, err
 		}
 		ts := ent.Targets
@@ -724,16 +1289,16 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, req SyncRequest)
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
 		}
-		out = append(out, &syncEntry{ent: ent, spec: spec, targets: ts, update: req.UpdateAll || slices.Contains(req.Update, name)})
+		out = append(out, &syncEntry{ent: ent, goneFrom: gone, spec: spec, targets: ts, update: req.Update})
 	}
 	return out, nil
 }
 
 // checkPinShape refuses a ref or a pin the entry's kind of source cannot have (Plan 6a §4.1): a
 // ref on a folder or archive, a pin on a folder, a commit on an archive, a git digest without
-// its commit.
-func checkPinShape(name, base string, kind source.Kind, ent manifest.Entry) error {
-	update := "re-pin it: " + errs.ShellJoin([]string{"lola", "sync", "--update", name})
+// its commit. update is the sync command that re-pins the entry.
+func checkPinShape(name, base string, kind source.Kind, ent manifest.Entry, update string) error {
+	update = "re-pin it: " + update
 	switch {
 	case ent.Ref != "" && kind != source.KindGit:
 		return errs.WithHints(fmt.Errorf("%s: its source is a %s, which has no ref", name, kind), "drop ref from its entry in "+base)
@@ -750,18 +1315,37 @@ func checkPinShape(name, base string, kind source.Kind, ent manifest.Entry) erro
 }
 
 // refuseOtherSource refuses an entry whose name the cache holds from another source or path
-// (Plan 6a §6.5): the cache keeps one source per name, for every project on the machine.
-func (e *Engine) refuseOtherSource(sc Scope, name string, spec source.Spec) error {
+// (Plan 6a §6.5): the cache keeps one source per name, for every project on the machine. again
+// is the user's sync, which the hint repeats once the name is out of the cache. A local source
+// the cache records that no longer exists, for a local entry, is not refused: its description
+// (describeSource) is returned, and the version the run publishes replaces it.
+func (e *Engine) refuseOtherSource(sc Scope, name string, spec source.Spec, again string) (string, error) {
 	o, found, err := e.Store.Origin(name)
 	if err != nil || !found {
-		return err
+		return "", err
 	}
 	if o.Type == string(spec.Kind) && source.SameLocation(spec.Kind, o.Source, spec.Location) && o.Path == spec.Path {
-		return nil
+		return "", nil
 	}
-	return errs.WithHints(fmt.Errorf("%s in your cache comes from %s, and %s asks for %s; the cache is shared by every project on this machine",
+	if o.LocalGone() && source.IsLocal(spec.Kind, spec.Location) {
+		return describeSource(o.Source, o.Path), nil
+	}
+	return "", errs.WithHints(fmt.Errorf("%s in your cache comes from %s, and %s asks for %s; the cache is shared by every project on this machine",
 		name, describeSource(o.Source, o.Path), filepath.Base(e.files(sc).manifest), describeSource(spec.Location, spec.Path)),
-		"remove it from your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name}), "then run lola sync again")
+		"remove it from your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name})+" (add -y off a terminal)", "then: "+again)
+}
+
+// goneNotices are the notices of the entries whose cached local source no longer exists, which
+// the run caches from the entry's source instead (Plan 6a §6.5).
+func goneNotices(entries []*syncEntry) []Notice {
+	var out []Notice
+	for _, se := range entries {
+		if se.goneFrom != "" {
+			out = append(out, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: your cache has it from %s, which no longer exists; caching it from %s",
+				se.ent.Name, se.goneFrom, describeSource(se.spec.Location, se.spec.Path))})
+		}
+	}
+	return out
 }
 
 // describeSource names a source and its path for a message; both may be someone else's.
@@ -834,7 +1418,7 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 		// an entry the user has not trusted must name a commit on its ref (Plan 6a §6.4).
 		if !se.covered && se.spec.Kind == source.KindGit {
 			if err := source.CheckReachable(ctx, se.spec, ent.Commit, run); err != nil {
-				return syncPinError(name, filepath.Base(e.files(sc).manifest), ent, fmt.Errorf("%s: %w", name, err))
+				return syncPinError(name, filepath.Base(e.files(sc).manifest), ent, fmt.Errorf("%s: %w", name, err), e.SyncCommand(sc, "--update", name))
 			}
 		}
 		v.Commit = ent.Commit
@@ -843,16 +1427,16 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 	}
 	st, err := e.fetchPin(ctx, name, se.spec, ent.Commit, ent.Digest, run)
 	if err != nil {
-		return syncPinError(name, filepath.Base(e.files(sc).manifest), ent, err)
+		return syncPinError(name, filepath.Base(e.files(sc).manifest), ent, err, e.SyncCommand(sc, "--update", name))
 	}
 	se.v, se.staged, se.headIfAbsent = st.Version, &st, true
 	se.v.Module.Warnings = st.LoadWarnings // what a cache hit would report, not what detection did
 	return nil
 }
 
-// syncPinError coaches a pinned fetch that failed in a way re-pinning can resolve.
-func syncPinError(name, base string, ent manifest.Entry, err error) error {
-	update := errs.ShellJoin([]string{"lola", "sync", "--update", name})
+// syncPinError coaches a pinned fetch that failed in a way re-pinning can resolve; update is the
+// sync command that re-pins the entry.
+func syncPinError(name, base string, ent manifest.Entry, err error, update string) error {
 	if mismatch, ok := errors.AsType[*digestMismatchError](err); ok {
 		return errs.WithHints(fmt.Errorf("%s: the source now serves different content than %s pins (pinned %s, got %s)",
 			name, base, untrusted.Text(ent.Digest, untrusted.MaxName), mismatch.got),
@@ -893,192 +1477,12 @@ func (e *Engine) publish(se *syncEntry) error {
 	if se.staged == nil {
 		return nil
 	}
+	se.staged.ReplaceGoneOrigin = se.goneFrom != ""
 	if _, err := e.Store.Commit(*se.staged, se.headIfAbsent); err != nil {
 		return err
 	}
 	se.staged = nil
 	return nil
-}
-
-// fillContent fills the content of each added or changed module of rep from the version the sync
-// resolved for it (Plan 6a §7.3): files against the version lock.json records, from the cache
-// (never fetched: a version the cache lost lists every file as added), MCP servers, and every
-// hook the content declares (declaredRuntimeHooks).
-func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, led *ledger.Ledger, probes *probeRun) error {
-	for i := range rep.Changes {
-		c := &rep.Changes[i]
-		k := slices.IndexFunc(entries, func(se *syncEntry) bool { return se.ent.Name == c.Module })
-		if c.Kind == trust.ChangeRemoved || k < 0 {
-			continue
-		}
-		se := entries[k]
-		var err error
-		if c.Files, c.FilesNote, err = e.fileChanges(se, led.Modules[se.ent.Name]); err != nil {
-			return err
-		}
-		for _, srv := range se.v.Module.MCPServers {
-			c.MCPServers = append(c.MCPServers, contentMCPServer(srv))
-		}
-		for _, h := range se.v.Module.DeclaredHooks {
-			c.Hooks = append(c.Hooks, ContentHook{Kind: HookKindInstall, Event: shown(h.Event), Detail: shown(h.Script)})
-		}
-		hooks, err := e.declaredRuntimeHooks(sc, se, probes)
-		if err != nil {
-			return fmt.Errorf("%s: runtime hooks: %w", se.ent.Name, err)
-		}
-		for _, h := range hooks {
-			c.Hooks = append(c.Hooks, contentHook(h))
-		}
-	}
-	return nil
-}
-
-// contentMCPServer is srv as the trust diff shows it, every string through untrusted.Text.
-func contentMCPServer(srv module.MCPServer) ContentMCPServer {
-	runs := srv.URL
-	if srv.Transport == module.TransportStdio {
-		words := []string{word(srv.Command)}
-		for _, a := range srv.Args {
-			words = append(words, word(a))
-		}
-		runs = strings.Join(words, " ")
-	}
-	out := ContentMCPServer{Name: shown(srv.Name), Transport: shown(srv.Transport), Runs: shown(runs), Env: []string{}, Headers: []string{}, Cwd: shown(srv.Cwd)}
-	for _, k := range slices.Sorted(maps.Keys(srv.Env)) {
-		out.Env = append(out.Env, shown(k+"="+srv.Env[k]))
-	}
-	for _, k := range slices.Sorted(maps.Keys(srv.Headers)) {
-		out.Headers = append(out.Headers, shown(k+": "+srv.Headers[k]))
-	}
-	return out
-}
-
-// declaredRuntimeHooks is every runtime hook and agent MCP server se's version declares, as each
-// assistant lola knows would render it, whatever the entry's targets and the user's selections
-// (Plan 6a §7.3, L1). Describing runs no assistant: one probes has not read is planned as the
-// newest version lola knows.
-func (e *Engine) declaredRuntimeHooks(sc Scope, se *syncEntry, probes *probeRun) ([]RuntimeHook, error) {
-	quiet := &probeRun{e: e, ctx: probes.ctx, versions: maps.Clone(probes.versions), exposed: probes.exposed}
-	ids := make([]string, len(e.Targets))
-	for i, t := range e.Targets {
-		ids[i] = t.ID()
-		if _, ok := quiet.versions[ids[i]]; !ok {
-			quiet.versions[ids[i]] = ""
-		}
-	}
-	ent := se.pinned()
-	intents, _, _, _, err := e.planModule(sc, se.v, ids, &ent, config.Exclusions{}, Options{}, quiet)
-	if err != nil {
-		return nil, err
-	}
-	var gated []plan.Intent
-	for _, in := range intents {
-		if in.Consent != nil {
-			gated = append(gated, in)
-		}
-	}
-	hooks, _, err := describeRuntimeHooks(gated, se.v.Meta.Digest)
-	return hooks, err
-}
-
-// contentHook is a runtime hook or agent MCP server as the trust diff shows it; its strings are
-// already safe to print (describeRuntimeHooks).
-func contentHook(h RuntimeHook) ContentHook {
-	var parts []string
-	if h.Component != "" {
-		parts = append(parts, h.Component)
-	}
-	if h.MCPServer != "" {
-		parts = append(parts, h.MCPServer+" ("+h.Type+")")
-	} else {
-		if h.Matcher != "" {
-			parts = append(parts, "matcher "+h.Matcher)
-		}
-		parts = append(parts, h.Type)
-	}
-	for _, f := range []struct{ label, value string }{{"runs", h.Command}, {"url", h.URL}, {"calls tool", h.Tool}, {"prompt", h.Prompt}} {
-		if f.value != "" {
-			parts = append(parts, f.label+" "+f.value)
-		}
-	}
-	kind := HookKindRuntime
-	if h.MCPServer != "" {
-		kind = HookKindMCPServer
-	}
-	return ContentHook{Kind: kind, Target: h.Target, Event: h.Event, Detail: strings.Join(parts, ": ")}
-}
-
-// fileChanges lists the files se's version adds, changes (content or execute bit) and removes
-// against installed's version, read from the cache. With no version installed every file is
-// added; when the cache no longer holds the installed version, or cannot read it, every file is
-// listed as added with a note saying why, and the old version is never fetched to compare: the
-// diff is the remedy for a damaged cache, so the cache never blocks it.
-func (e *Engine) fileChanges(se *syncEntry, installed *ledger.Entry) ([]FileChange, string, error) {
-	now, err := contentFiles(se.v.ContentDir, se.v.Meta.Executables)
-	if err != nil {
-		return nil, "", err
-	}
-	var before map[string]string
-	note := ""
-	if installed != nil {
-		if installed.Digest == se.v.Meta.Digest {
-			return []FileChange{}, "", nil
-		}
-		old, err := e.Store.Load(se.ent.Name, versionID(installed.Digest))
-		if err == nil {
-			before, err = contentFiles(old.ContentDir, old.Meta.Executables)
-		}
-		switch {
-		case errors.Is(err, os.ErrNotExist):
-			before, note = nil, "the version installed is not in your cache, so every file is listed as added"
-		case err != nil:
-			before, note = nil, "lola could not read the version installed from your cache ("+shown(untrusted.CleanErr(err).Error())+
-				"), so every file is listed as added"
-		}
-	}
-	out := []FileChange{}
-	for _, p := range slices.Sorted(maps.Keys(now)) {
-		switch was, ok := before[p]; {
-		case !ok:
-			out = append(out, FileChange{Path: shown(p), Change: trust.ChangeAdded})
-		case was != now[p]:
-			out = append(out, FileChange{Path: shown(p), Change: trust.ChangeChanged})
-		}
-	}
-	for _, p := range slices.Sorted(maps.Keys(before)) {
-		if _, ok := now[p]; !ok {
-			out = append(out, FileChange{Path: shown(p), Change: trust.ChangeRemoved})
-		}
-	}
-	slices.SortStableFunc(out, func(a, b FileChange) int { return strings.Compare(a.Path, b.Path) })
-	return out, note, nil
-}
-
-// contentFiles maps each regular file under dir, by slash path, to the sha256 of its bytes and
-// whether execs (the version's executables) lists it.
-func contentFiles(dir string, execs []string) (map[string]string, error) {
-	var files []string
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() {
-			return err
-		}
-		rel, err := filepath.Rel(dir, path)
-		files = append(files, filepath.ToSlash(rel))
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]string{}
-	for _, rel := range files {
-		b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
-		if err != nil {
-			return nil, err
-		}
-		sum := sha256.Sum256(b)
-		out[rel] = hex.EncodeToString(sum[:]) + fmt.Sprint(slices.Contains(execs, rel))
-	}
-	return out, nil
 }
 
 // removal is what a sync removes of the module name that lock.json records as installed: the

@@ -120,6 +120,12 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 	return spec, true, Validate(spec)
 }
 
+// IsLocal reports whether a source of kind at location is on this machine: a folder, or an
+// archive at a path rather than a URL.
+func IsLocal(kind Kind, location string) bool {
+	return kind == KindFolder || kind == KindArchive && filepath.IsAbs(location)
+}
+
 // SameLocation reports whether recorded, a location the cache or a manifest recorded for a
 // source of kind, names the source at location, a Location Parse returned. A local folder or
 // archive recorded before locations were canonicalized can name it through a symbolic link.

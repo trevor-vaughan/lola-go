@@ -669,9 +669,14 @@ func (p *planner) stopDirs(target string) ([]string, error) {
 	return stops, nil
 }
 
+// updateLedger records each change: the module keeps its artifacts and installed targets outside
+// the change's targets, and takes the change's entry, artifacts and targets on them (every
+// target it writes an artifact on among them, so the ledger loads again). A module
+// left installed on no target leaves the ledger.
 func (p *planner) updateLedger(l *ledger.Ledger, created map[ledger.FileRef]bool) {
 	for _, c := range p.req.Changes {
 		var kept []ledger.Artifact
+		var keptTargets []string
 		old := l.Modules[c.Name]
 		if old != nil {
 			for _, a := range old.Artifacts {
@@ -679,15 +684,22 @@ func (p *planner) updateLedger(l *ledger.Ledger, created map[ledger.FileRef]bool
 					kept = append(kept, a)
 				}
 			}
+			keptTargets = slices.DeleteFunc(old.InstalledTargets(), func(t string) bool { return slices.Contains(c.Targets, t) })
 		}
 		all := append(kept, p.desired[c.Name]...)
 		switch {
 		case c.Entry != nil:
 			e := *c.Entry
 			e.Artifacts = all
+			e.Targets = append(keptTargets, c.Entry.Targets...)
+			for _, a := range p.desired[c.Name] {
+				e.Targets = append(e.Targets, a.Target)
+			}
+			slices.Sort(e.Targets)
+			e.Targets = slices.Compact(e.Targets)
 			l.Modules[c.Name] = &e
-		case len(kept) > 0:
-			old.Artifacts = kept
+		case len(kept) > 0 || len(keptTargets) > 0:
+			old.Artifacts, old.Targets = kept, keptTargets
 		default:
 			delete(l.Modules, c.Name)
 		}

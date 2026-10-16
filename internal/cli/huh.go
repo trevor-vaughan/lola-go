@@ -2,8 +2,10 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
 
@@ -11,6 +13,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 )
 
 // addSource is the module picker's Add a source… entry; module names never hold a NUL.
@@ -20,20 +24,68 @@ const addSource = "\x00add"
 // empty answer, the default; the adapter turns it into a cancel instead. A terminal reports
 // end of input once and then waits for more, so after the first one every Read ends at once:
 // the form's later fields must not wait for input the run will discard.
+//
+// Accessible prompts read stdin in cooked mode, where Ctrl+C is a SIGINT that would kill lola
+// with no message (Plan 6a §3.4). While catch runs a form, a Read waits for the first of the
+// input and an interrupt, and an interrupt ends the input: the form cancels. A Go
+// read cannot be interrupted, so the read runs in a goroutine; one an interrupt leaves blocked
+// on stdin ends with the process, and nothing reads stdin after it, since the cancel ends the
+// command.
 type eofReader struct {
-	r   io.Reader
-	eof bool
+	r       io.Reader
+	eof     bool
+	sig     chan os.Signal  // set while catch runs a form
+	pending chan readResult // the read of r in progress, nil when none
+}
+
+// readResult is one Read of an eofReader's input, done in a goroutine.
+type readResult struct {
+	b   []byte
+	err error
 }
 
 func (e *eofReader) Read(p []byte) (int, error) {
 	if e.eof {
 		return 0, io.EOF
 	}
-	n, err := e.r.Read(p)
-	if errors.Is(err, io.EOF) {
-		e.eof = true
+	if e.sig == nil {
+		n, err := e.r.Read(p)
+		if errors.Is(err, io.EOF) {
+			e.eof = true
+		}
+		return n, err
 	}
-	return n, err
+	if e.pending == nil {
+		e.pending = make(chan readResult, 1)
+		buf := make([]byte, len(p))
+		go func(r io.Reader, out chan<- readResult) {
+			n, err := r.Read(buf)
+			out <- readResult{buf[:n], err}
+		}(e.r, e.pending)
+	}
+	select {
+	case res := <-e.pending:
+		e.pending = nil
+		if errors.Is(res.err, io.EOF) {
+			e.eof = true
+		}
+		return copy(p, res.b), res.err
+	case <-e.sig:
+		e.eof = true
+		return 0, io.EOF
+	}
+}
+
+// catch runs a form that reads e, taking Ctrl+C (os.Interrupt) as the end of its input while it
+// waits, so the form cancels as at end of input instead of lola dying of the signal.
+func (e *eofReader) catch(run func() error) error {
+	e.sig = make(chan os.Signal, 1)
+	signal.Notify(e.sig, os.Interrupt)
+	defer func() {
+		signal.Stop(e.sig)
+		e.sig = nil
+	}()
+	return run()
 }
 
 // huhForms is the Prompter that draws the install flow's steps as inline huh forms on stderr
@@ -94,7 +146,11 @@ func (h *huhForms) run(fields ...huh.Field) (err error) {
 			err = ErrAborted
 		}
 	}()
-	err = f.Run()
+	if h.accessible {
+		err = h.in.catch(f.Run)
+	} else {
+		err = f.Run()
+	}
 	if errors.Is(err, huh.ErrUserAborted) || h.in.eof {
 		return ErrAborted
 	}
@@ -278,6 +334,57 @@ func (h *huhForms) Components(pg ComponentPage) ([]string, error) {
 func (h *huhForms) ConfirmEmpty(module string) (bool, error) {
 	ok := false
 	return ok, h.run(huh.NewConfirm().Title("Install " + module + " with no components?").Value(&ok))
+}
+
+// Trust offers Trust all, Choose… (when there is anything to choose) and Cancel, with Cancel
+// under the cursor, so Enter alone changes nothing; Choose… opens one form of filterable
+// multi-selects, one per kind of change, with nothing preselected, since trust is security
+// consent (Plan 6a §7.5). Choosing nothing cancels.
+func (h *huhForms) Trust(st TrustStep) (engine.TrustAnswer, error) {
+	const all, choose, cancel = "all", "choose", "cancel"
+	opts := []huh.Option[string]{huh.NewOption(trustAllLabel(st.Changes), all)}
+	if len(st.Groups) > 0 {
+		opts = append(opts, huh.NewOption("Choose…", choose))
+	}
+	opts = append(opts, huh.NewOption("Cancel (the project is not changed)", cancel))
+	choice := cancel
+	if err := h.run(huh.NewSelect[string]().Title("Trust these changes?").Options(opts...).Value(&choice)); err != nil {
+		return engine.TrustAnswer{}, err
+	}
+	switch choice {
+	case all:
+		return engine.TrustAnswer{All: true}, nil
+	case cancel:
+		return engine.TrustAnswer{}, ErrAborted
+	}
+	values := make([][]string, len(st.Groups))
+	fields := make([]huh.Field, len(st.Groups))
+	for i, g := range st.Groups {
+		o := make([]huh.Option[string], len(g.Options))
+		for k, opt := range g.Options {
+			o[k] = huh.NewOption(h.cut(opt.Label), opt.Module)
+		}
+		fields[i] = h.multi(g.Title, "", o, &values[i]).Filterable(true)
+	}
+	if err := h.run(fields...); err != nil {
+		return engine.TrustAnswer{}, err
+	}
+	var chosen []string
+	for _, v := range values {
+		chosen = append(chosen, v...)
+	}
+	if len(chosen) == 0 {
+		return engine.TrustAnswer{}, ErrAborted
+	}
+	return engine.TrustAnswer{Modules: chosen}, nil
+}
+
+// trustAllLabel is the trust question's first answer for n changes.
+func trustAllLabel(n int) string {
+	if n == 1 {
+		return "Trust this change"
+	}
+	return fmt.Sprintf("Trust all %d changes", n)
 }
 
 func (h *huhForms) Confirm(question string) (bool, error) {

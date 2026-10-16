@@ -107,8 +107,9 @@ func (e *Engine) refuseTrackedLedger(ctx context.Context, sc Scope, res *Result)
 		return err
 	}
 	if tracked {
-		return errs.WithHints(fmt.Errorf("%s is tracked by git; lola keeps it private to your checkout", projectLedger),
-			"git rm --cached "+projectLedger, "if you never installed with lola in this checkout, delete it too, then run lola sync")
+		return errs.WithHints(fmt.Errorf("%s is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a "+
+			"pull decide what lola deletes", projectLedger),
+			"git rm --cached "+projectLedger, "if you never installed with lola in this checkout, delete it too, then run "+e.SyncCommand(sc))
 	}
 	return nil
 }

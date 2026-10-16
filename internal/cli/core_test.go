@@ -77,7 +77,7 @@ var _ = Describe("core commands", func() {
 			"lola.yml":  "name: example\nhooks: {post-install: \"hooks/p\\e[31m.sh\"}\n", "hooks/p\x1b[31m.sh": "#!/bin/sh\nexit 0\n"})
 		r := lola("install", mod, "-C", proj, "-n")
 		Expect(r.out).To(ContainSubstring(".claude/skills/x/ref/a?[2Jb.md"))
-		Expect(r.out).To(ContainSubstring("lola-gh (stdio) runs: gh-mcp ?]0;pwned?"))
+		Expect(r.out).To(ContainSubstring("lola-gh (stdio) runs: gh-mcp \"\\x1b]0;pwned\\a\""))
 		Expect(r.out).To(ContainSubstring("post-install hook hooks/p?[31m.sh"))
 		const control = "[\x00-\x08\x0b-\x1f\x7f]"
 		for _, args := range [][]string{{"install", mod, "-C", proj, "-n"}, {"install", mod, "-C", proj, "--allow-hooks"}} {
@@ -245,7 +245,7 @@ var _ = Describe("core commands", func() {
 
 		r = lola("install", mod, "-C", proj, "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("→ example pre-install hook scripts/setup.sh (claude-code): would-run"))
+		Expect(r.out).To(ContainSubstring("→ example pre-install hook scripts/setup.sh (claude-code): would run"), "would-run is the JSON value")
 		Expect(r.err).NotTo(ContainSubstring("setting up"))
 
 		r = lola("install", mod, "-C", proj, "--allow-hooks")
@@ -254,7 +254,12 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("✓ example pre-install hook scripts/setup.sh (claude-code): ran"))
 		Expect(r.out).To(ContainSubstring("✓ example post-install hook scripts/done.sh (claude-code): ran"))
 
-		Expect(lola("install", "example", "-C", proj).code).To(Equal(1), "--allow-hooks is consent for one run only")
+		r = lola("install", "example", "-C", proj)
+		Expect(r.code).To(Equal(0), "the same version runs no hook, so it needs no consent: %s", r.err)
+		Expect(r.err).NotTo(ContainSubstring("setting up"))
+
+		writeTree(mod, map[string]string{"commands/more.md": "More\n"})
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(1), "--allow-hooks is consent for one run only")
 	})
 
 	It("installs runtime hooks only with consent: skipped off a terminal, listed by --dry-run, recorded by --allow-runtime-hooks", func() {
@@ -579,7 +584,28 @@ var _ = Describe("core commands", func() {
 		Expect(res.Modules[0]).To(HaveKeyWithValue("update_available", true))
 		Expect(res.Modules[0]).To(HaveKeyWithValue("pin", res.Modules[0]["digest"]))
 		Expect(lola("list", "--help").out).To(And(ContainSubstring("stale (project.yml pins another version"),
-			ContainSubstring("update available: your cache has a newer version for the ref: lola install <module>")))
+			ContainSubstring("not installed (listed in project.yml: run lola sync)"),
+			ContainSubstring("update available: your cache has a newer version for the ref: lola sync --update <module>")))
+	})
+
+	It("lists an entry project.yml lists but lock.json does not record as not installed, per target", func() {
+		kit := filepath.Join(proj, "mods", "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		Expect(lola("install", kit, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(mpath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(mpath, append(b, []byte("  - name: other\n    source: mods/other\n    targets: [claude-code, opencode]\n")...), 0o644)).To(Succeed())
+
+		r := lola("list", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`other\s+claude-code\s+⚠ not installed\s`))
+		Expect(r.out).To(MatchRegexp(`other\s+opencode\s+⚠ not installed\s`))
+		Expect(lola("list", "-C", proj, "--plain").out).To(ContainSubstring("other\tclaude-code\tnot_installed\ton\tmods/other\n"))
+		var res struct{ Modules []map[string]any }
+		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
+		Expect(res.Modules).To(ContainElement(And(HaveKeyWithValue("name", "other"), HaveKeyWithValue("status", "not_installed"),
+			HaveKeyWithValue("digest", ""), HaveKeyWithValue("pin", ""), HaveKeyWithValue("update_available", false))))
 	})
 
 	It("colors per LOLA_COLOR, then NO_COLOR, and never under --plain; glyphs stay", func() {

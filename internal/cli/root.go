@@ -24,6 +24,13 @@ var version = "dev"
 // changed." A Prompter returns it for Ctrl+C, end of input in accessible mode, and Quit.
 var ErrAborted = errors.New("aborted")
 
+// abortedError is a cancelled prompt whose command says what the cancel left as it was: exit 0,
+// with its message printed in place of "aborted; nothing changed.".
+type abortedError struct{ msg string }
+
+func (e *abortedError) Error() string        { return e.msg }
+func (e *abortedError) Is(target error) bool { return target == ErrAborted }
+
 // Command group ids, in display order.
 const (
 	groupCore       = "core"
@@ -166,8 +173,8 @@ func Execute(root *cobra.Command) int {
 	switch {
 	case err == nil:
 		return 0
-	case errors.Is(err, errSyncAborted):
-		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing installed.")
+	case errors.As(err, new(*abortedError)):
+		fmt.Fprintln(root.ErrOrStderr(), err.Error())
 		return 0
 	case errors.Is(err, ErrAborted):
 		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing changed.")

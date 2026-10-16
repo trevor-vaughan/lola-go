@@ -167,6 +167,48 @@ var _ = Describe("trust record", func() {
 		})
 	})
 
+	Describe("Accept", func() {
+		entry := func(name, digest string) trust.Entry {
+			return trust.Entry{Name: name, Source: "https://example.com/" + name + ".git", Digest: digest}
+		}
+		// rec is what the user trusted; v the manifest after a pull that changed x, added y, removed
+		// w and changed the top-level targets.
+		rec := trust.View{Targets: []string{"claude-code"}, Modules: []trust.Entry{entry("u", "du"), entry("w", "dw"), entry("x", "d1")}}
+		v := trust.View{Targets: []string{"claude-code", "opencode"}, Modules: []trust.Entry{entry("u", "du"), entry("x", "d2"), entry("y", "dy")}}
+
+		It("is the view itself when every change and the targets are accepted", func() {
+			Expect(trust.Accept(rec, v, []string{"w", "x", "y"}, true)).To(Equal(v))
+		})
+
+		It("is the record itself when nothing is accepted", func() {
+			Expect(trust.Accept(rec, v, nil, false)).To(Equal(rec))
+		})
+
+		It("records the accepted entries and keeps every other entry's record", func() {
+			got := trust.Accept(rec, v, []string{"y"}, false)
+			Expect(got.Modules).To(HaveExactElements(entry("u", "du"), entry("w", "dw"), entry("x", "d1"), entry("y", "dy")),
+				"declined x keeps its old record and stays uncovered; declined w stays in the record")
+			Expect(got.Targets).To(Equal([]string{"claude-code"}), "targets are accepted only when asked")
+			got = trust.Accept(rec, v, []string{"w"}, true)
+			Expect(got.Find("w")).To(BeNil(), "an accepted removal drops the entry")
+			Expect(got.Targets).To(Equal(v.Targets))
+		})
+
+		It("records an accepted entry once, whatever the order or repetition of the names", func() {
+			Expect(trust.Accept(rec, v, []string{"y", "x", "y"}, true)).To(Equal(trust.Accept(rec, v, []string{"x", "y"}, true)))
+		})
+
+		It("saves, through Refresh, the pins lola writes for the accepted entries only", func() {
+			loaded := trust.View{Targets: []string{"claude-code"}, Modules: []trust.Entry{entry("x", ""), entry("y", "")}}
+			saved := trust.View{Targets: []string{"claude-code"}, Modules: []trust.Entry{entry("x", "dx")}}
+			saved.Modules = append(saved.Modules, entry("y", ""))
+			got := trust.Refresh(trust.Accept(trust.View{}, loaded, []string{"x"}, true), loaded, saved)
+			Expect(got.Modules).To(HaveExactElements(entry("x", "dx")), "only the accepted entry, with its pin")
+			all := trust.Refresh(trust.Accept(trust.View{}, loaded, []string{"x", "y"}, true), loaded, saved)
+			Expect(all).To(Equal(saved), "accepting everything records the saved view")
+		})
+	})
+
 	Describe("Check", func() {
 		no := false
 		pinned := manifest.Entry{Name: "kit", Source: "https://github.com/acme/kit.git", Ref: "v1", Commit: strings.Repeat("a", 40),

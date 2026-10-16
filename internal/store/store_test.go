@@ -501,6 +501,48 @@ var _ = Describe("Store", func() {
 		})
 	})
 
+	Describe("Origin.LocalGone", func() {
+		origin := func(source, typ string) store.Origin {
+			GinkgoHelper()
+			_, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "A"}), FallbackName: "example", Source: source, Type: typ, Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			o, found, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			return o
+		}
+		It("is true for a local folder that is missing", func() {
+			Expect(origin(filepath.Join(p.Staging, "nowhere"), "folder").LocalGone()).To(BeTrue())
+		})
+		It("is false for a local folder that exists", func() {
+			Expect(os.MkdirAll(p.Staging, 0o700)).To(Succeed())
+			Expect(origin(p.Staging, "folder").LocalGone()).To(BeFalse())
+		})
+		It("is false for a remote source", func() {
+			Expect(origin("https://example.invalid/example.git", "git").LocalGone()).To(BeFalse())
+		})
+		It("is false for a symbolic link that dangles: the link exists", func() {
+			link := filepath.Join(p.Staging, "dangling")
+			Expect(os.MkdirAll(p.Staging, 0o700)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(p.Staging, "nowhere"), link)).To(Succeed())
+			Expect(origin(link, "folder").LocalGone()).To(BeFalse())
+		})
+		It("is false when the location cannot be examined", func() {
+			Expect(os.MkdirAll(p.Staging, 0o700)).To(Succeed())
+			file := filepath.Join(p.Staging, "file")
+			Expect(os.WriteFile(file, nil, 0o600)).To(Succeed())
+			Expect(origin(filepath.Join(file, "below"), "folder").LocalGone()).To(BeFalse(), "ENOTDIR")
+		})
+		It("Commit refuses to replace a remote origin even when asked to", func() {
+			origin("https://example.invalid/example.git", "git")
+			st, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/b.md": "B"}), FallbackName: "example",
+				Source: "/src/example", Type: "folder", Now: now, ReplaceGoneOrigin: true})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = s.Commit(st, false)
+			Expect(err).To(MatchError(ContainSubstring(`a different module named "example" is already in your cache`)))
+		})
+	})
+
 	Describe("Pinned", func() {
 		var run string
 		BeforeEach(func() {

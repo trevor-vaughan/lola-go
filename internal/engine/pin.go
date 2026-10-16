@@ -37,7 +37,7 @@ func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, co
 	f, err := source.Fetch(ctx, fetch, run)
 	if err != nil {
 		if spec.Kind == source.KindGit {
-			err = &commitFetchError{err}
+			err = &commitFetchError{name: name, err: err}
 		}
 		return store.Staged{}, err
 	}
@@ -56,10 +56,13 @@ func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, co
 }
 
 // commitFetchError is fetchPin's failure to fetch a git commit by its SHA, which a server can
-// refuse; its message is the fetch's.
-type commitFetchError struct{ err error }
+// refuse; its message is the fetch's, naming the module once, as every fetchPin error does.
+type commitFetchError struct {
+	name string
+	err  error
+}
 
-func (e *commitFetchError) Error() string { return e.err.Error() }
+func (e *commitFetchError) Error() string { return e.name + ": " + e.err.Error() }
 func (e *commitFetchError) Unwrap() error { return e.err }
 
 // servedCommitError is fetchPin's refusal of a fetch by commit that resolved to another commit.
@@ -79,12 +82,11 @@ func (e *digestMismatchError) Error() string {
 
 // installedForRender is the version render installs for a ledger module: the folder as it is
 // now for a folder source (the cached version installed when the folder is gone), else the
-// version lock.json records, from a snapshot of the cache or fetched by its pin. Its Commit is
-// the one lock.json records.
-func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, entry *ledger.Entry, run string, res *Result) (store.Version, error) {
-	// One module that no longer loads (one installed before a new refusal, say) stops every
-	// module's render, so name the way out.
-	uninstall := "if you no longer want " + name + ", remove it: " + errs.ShellJoin([]string{"lola", "uninstall", name})
+// version digest names (the manifest's pin, or lock.json's), from a snapshot of the cache or
+// fetched by commit. Its Commit is commit.
+func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, entry *ledger.Entry, digest, commit, run string,
+	res *Result) (store.Version, error) {
+	uninstall := renderUninstall(name)
 	spec, err := e.recordedSpec(sc, name, entry)
 	if err != nil {
 		return store.Version{}, errs.WithHints(err, uninstall)
@@ -99,7 +101,7 @@ func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, 
 		res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: its source folder %s is gone; rendered the version installed",
 			name, untrusted.Text(spec.Location, untrusted.MaxName))})
 	}
-	v, ok, err := e.Store.Pinned(name, entry.Digest, run)
+	v, ok, err := e.Store.Pinned(name, digest, run)
 	if err != nil {
 		return store.Version{}, errs.WithHints(err, uninstall)
 	}
@@ -108,7 +110,7 @@ func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, 
 			return store.Version{}, errs.WithHints(fmt.Errorf("%s is no longer in your cache, and its source folder is gone", name),
 				"remove it: "+errs.ShellJoin([]string{"lola", "uninstall", name}))
 		}
-		st, err := e.fetchPin(ctx, name, spec, entry.Commit, entry.Digest, run)
+		st, err := e.fetchPin(ctx, name, spec, commit, digest, run)
 		if err == nil {
 			_, err = e.Store.Commit(st, true)
 		}
@@ -118,26 +120,49 @@ func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, 
 		v = st.Version
 		v.Module.Warnings = st.LoadWarnings // what a cache hit would report, not what detection did
 	}
-	v.Commit = entry.Commit
+	v.Commit = commit
 	return v, nil
 }
 
+// renderUninstall is the way out render names when one module stops every module's render (one
+// installed before a new refusal, say, or one whose cache record lola cannot read).
+func renderUninstall(name string) string {
+	return "if you no longer want " + name + ", remove it: " + errs.ShellJoin([]string{"lola", "uninstall", name})
+}
+
+// sourceRoot is the directory a scope's recorded relative sources are read against: the
+// project's canonical root (Plan 6a §8), or / at user scope, whose sources are recorded absolute.
+func sourceRoot(sc Scope) string {
+	if sc.Kind == target.User {
+		return "/"
+	}
+	return canonicalRoot(sc.ProjectDir)
+}
+
 // installCommand is the lola install command line for a source, its ref and path, each passed
-// through untrusted.Text because lock.json and the cache record author-chosen values. A location
-// starting with '-' is written as a relative path, which lola does not read as an option.
+// through untrusted.Text because lock.json and the cache record author-chosen values.
 func installCommand(location, ref, path string) string {
-	location = untrusted.Text(location, untrusted.MaxName)
+	args := []string{"lola", "install"}
+	for _, a := range installArgs(location, ref, path) {
+		args = append(args, untrusted.Text(a, untrusted.MaxName))
+	}
+	return errs.ShellJoin(args)
+}
+
+// installArgs is lola install's arguments for a source, its ref and path, raw. A location
+// starting with '-' is written as a relative path, which lola does not read as an option.
+func installArgs(location, ref, path string) []string {
 	if strings.HasPrefix(location, "-") {
 		location = "./" + location
 	}
-	args := []string{"lola", "install", location}
+	args := []string{location}
 	if ref != "" {
-		args = append(args, "--ref", untrusted.Text(ref, untrusted.MaxName))
+		args = append(args, "--ref", ref)
 	}
 	if path != "" {
-		args = append(args, "--path", untrusted.Text(path, untrusted.MaxName))
+		args = append(args, "--path", path)
 	}
-	return errs.ShellJoin(args)
+	return args
 }
 
 // recordedSpec is the source a ledger module was installed from: the cache's record of it,
@@ -151,11 +176,7 @@ func (e *Engine) recordedSpec(sc Scope, name string, entry *ledger.Entry) (sourc
 	if found {
 		return source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: entry.Ref}, nil
 	}
-	cwd := canonicalRoot(sc.ProjectDir)
-	if sc.Kind == target.User {
-		cwd = "/"
-	}
-	spec, isSrc, err := source.Parse(entry.Source, cwd)
+	spec, isSrc, err := source.Parse(entry.Source, sourceRoot(sc))
 	if err != nil {
 		return source.Spec{}, fmt.Errorf("%s is no longer in your cache and its recorded source %q is unusable: %w", name, entry.Source, err)
 	}

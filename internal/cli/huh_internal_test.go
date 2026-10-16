@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -76,6 +79,24 @@ func accessible(out *bytes.Buffer, answers ...string) *huhForms {
 	return &huhForms{in: &eofReader{r: &lineReader{lines: answers}}, out: out, tty: true, accessible: true}
 }
 
+// syncBuffer is a buffer a spec reads while a form writes to it from another goroutine.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
 var _ = Describe("the huh adapter in accessible mode", func() {
 	var out bytes.Buffer
 	BeforeEach(func() {
@@ -98,6 +119,37 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out.String()).To(ContainSubstring("2. ✓ User (~)\n"), "Change scope preselects the last answer")
 		Expect(out.String()).To(ContainSubstring("3. ✓ Other directory…\n"))
+	})
+
+	It("asks sync's trust question with Cancel under the cursor, and Choose… as numbered multi-selects with nothing preselected", func() {
+		st := TrustStep{Changes: 3, Groups: []TrustGroup{
+			{Title: "Changed (1)", Options: []TrustOption{{Module: "kit", Label: "~ kit rules (none) → false"}}},
+			{Title: "Added (2)", Options: []TrustOption{{Module: "a", Label: "+ a source mods/a"}, {Module: "b", Label: "+ b source mods/b"}}},
+		}}
+		_, err := accessible(&out, "").Trust(st)
+		Expect(err).To(MatchError(ErrAborted), "Enter alone is Cancel")
+		Expect(out.String()).To(ContainSubstring("Trust these changes?"))
+		Expect(out.String()).To(ContainSubstring("1. Trust all 3 changes\n2. Choose…\n3. Cancel (the project is not changed)\n"))
+
+		ans, err := accessible(&out, "1").Trust(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ans).To(Equal(engine.TrustAnswer{All: true}))
+
+		out.Reset()
+		ans, err = accessible(&out, "2", "0", "2", "0").Trust(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ans).To(Equal(engine.TrustAnswer{Modules: []string{"b"}}))
+		Expect(out.String()).To(ContainSubstring("Changed (1)"))
+		Expect(out.String()).To(ContainSubstring("1.   ~ kit rules (none) → false\n"), "nothing preselected")
+		Expect(out.String()).To(ContainSubstring("2.   + b source mods/b\n"))
+
+		_, err = accessible(&out, "2", "0", "0").Trust(st)
+		Expect(err).To(MatchError(ErrAborted), "choosing nothing is Cancel")
+
+		out.Reset()
+		_, err = accessible(&out, "").Trust(TrustStep{Changes: 1})
+		Expect(err).To(MatchError(ErrAborted))
+		Expect(out.String()).To(ContainSubstring("1. Trust this change\n2. Cancel (the project is not changed)\n"), "nothing to choose: no Choose…")
 	})
 
 	It("shows why a picker asks again in accessible mode, where huh hides descriptions", func() {
@@ -222,6 +274,47 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())
 		Expect(out.String()).To(ContainSubstring("Install m's Claude Code hooks?"))
+	})
+
+	It("accessible mode: Ctrl+C at a sync question cancels with exit 0", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj := filepath.Join(tmp, "proj")
+		kit := filepath.Join(proj, "mods", "kit", "commands", "kit.md")
+		Expect(os.MkdirAll(filepath.Dir(kit), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(proj, "mods", "kit", "lola.yml"), []byte("name: kit\n"), 0o644)).To(Succeed())
+		Expect(os.WriteFile(kit, []byte("Kit\n"), 0o644)).To(Succeed())
+		root := NewRootCmd(os.Getenv)
+		root.SetArgs([]string{"install", filepath.Join(proj, "mods", "kit"), "-C", proj, "-t", "claude-code"})
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		Expect(Execute(root)).To(Equal(0))
+		Expect(os.WriteFile(kit, []byte("Kit, pulled\n"), 0o644)).To(Succeed()) // sync asks to trust the folder's new content
+
+		// Each question waits in a lola process of its own, which the interrupt reaches.
+		for _, c := range []struct{ child, prompt, says string }{
+			{"sync", "Trust these changes?", "aborted; the project was not changed.\n"},
+			{"modules", "Install which modules?", "aborted; nothing changed.\n"},
+			{"hooks", "Run m's install hooks?", "aborted; nothing changed.\n"},
+		} {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestInterruptChild$")
+			cmd.Env = append(os.Environ(), "LOLA_SPEC_CHILD="+c.child, "LOLA_SPEC_PROJECT="+proj, "LOLA_ACCESSIBLE=1")
+			_, err := cmd.StdinPipe() // a terminal where nobody types; Wait closes it
+			Expect(err).NotTo(HaveOccurred())
+			var out syncBuffer
+			cmd.Stdout, cmd.Stderr = &out, &out
+			Expect(cmd.Start()).To(Succeed())
+			DeferCleanup(func() { Expect(cmd.Process.Kill()).To(Or(Succeed(), MatchError(os.ErrProcessDone))) })
+			waited := make(chan error, 1)
+			go func() { waited <- cmd.Wait() }()
+			Eventually(out.String, "10s").Should(ContainSubstring(c.prompt), "%s: the question waits for input", c.child)
+			Expect(cmd.Process.Signal(os.Interrupt)).To(Succeed())
+			Eventually(waited, "10s").Should(Receive(BeNil()), func() string {
+				return c.child + ": exit 0, not killed by the signal: " + out.String()
+			})
+			Expect(out.String()).To(HaveSuffix(c.says), c.child)
+		}
+		Expect(os.ReadFile(filepath.Join(proj, ".claude", "commands", "kit.md"))).To(Equal([]byte("Kit\n")), "nothing installed")
 	})
 
 	It("answers an empty source with the picks and no source to add", func() {

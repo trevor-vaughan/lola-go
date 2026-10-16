@@ -68,14 +68,33 @@ type FileRef struct {
 // ID orders and identifies refs.
 func (r FileRef) ID() string { return r.Target + "\x00" + r.Path + "\x00" + r.Key }
 
-// Entry is one installed module.
+// Entry is one installed module. HooksPending says a post-install hook of the version installed
+// was declined for want of consent and has not run since (Plan 6a §9.3 step 10). Targets are
+// the targets the module is installed on, sorted, including one that rendered none of its
+// files; an entry written before the field records none (see InstalledTargets).
 type Entry struct {
-	Source    string     `json:"source"`
-	Ref       string     `json:"ref,omitempty"`
-	Path      string     `json:"path,omitempty"`
-	Commit    string     `json:"commit,omitempty"`
-	Digest    string     `json:"digest"`
-	Artifacts []Artifact `json:"artifacts"`
+	Source       string     `json:"source"`
+	Ref          string     `json:"ref,omitempty"`
+	Path         string     `json:"path,omitempty"`
+	Commit       string     `json:"commit,omitempty"`
+	Digest       string     `json:"digest"`
+	HooksPending bool       `json:"hooks_pending,omitempty"`
+	Targets      []string   `json:"targets,omitempty"`
+	Artifacts    []Artifact `json:"artifacts"`
+}
+
+// InstalledTargets is the targets e is installed on, sorted: those it records, else, for an
+// entry written before it recorded them, those its artifacts are on.
+func (e *Entry) InstalledTargets() []string {
+	if e.Targets != nil {
+		return slices.Clone(e.Targets)
+	}
+	var out []string
+	for _, a := range e.Artifacts {
+		out = append(out, a.Target)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // Ledger is the observed state of one scope.
@@ -120,7 +139,8 @@ const restoreHint = "restore lock.json from a backup or version control, or remo
 
 // validate rejects what the JSON decoder accepts but the rest of lola cannot handle: null
 // module entries, module names that are not safe path segments, recorded sources lola would
-// not write (source.Recorded), artifacts with no target, and members lola could not have written. It records each member again as canonical JSON.
+// not write (source.Recorded), targets that are not target names or are listed twice, artifacts
+// with no target or on a target the entry does not list, and members lola could not have written. It records each member again as canonical JSON.
 func (l *Ledger) validate() error {
 	for name, e := range l.Modules {
 		if err := module.ValidateName("module", name); err != nil {
@@ -134,9 +154,20 @@ func (l *Ledger) validate() error {
 		if err := (source.Recorded{Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest}).Check(); err != nil {
 			return errs.WithHints(fmt.Errorf("module %s: %w", name, err), restoreHint)
 		}
+		for i, t := range e.Targets {
+			if err := module.ValidateName("target", t); err != nil {
+				return errs.WithHints(fmt.Errorf("module %s: %w", name, err), restoreHint)
+			}
+			if slices.Contains(e.Targets[:i], t) {
+				return errs.WithHints(fmt.Errorf("module %s: target %q is listed twice", name, t), restoreHint)
+			}
+		}
 		for i, a := range e.Artifacts {
 			if a.Target == "" {
 				return fmt.Errorf("module %q has an artifact (%s) with no target", name, a.Path)
+			}
+			if e.Targets != nil && !slices.Contains(e.Targets, a.Target) {
+				return errs.WithHints(fmt.Errorf("module %s: artifact %q is on target %q, which targets does not list", name, a.Path, a.Target), restoreHint)
 			}
 			if a.Member == nil {
 				continue
@@ -171,6 +202,7 @@ func (l *Ledger) normalize() {
 			e.Artifacts = []Artifact{}
 		}
 		sortArtifacts(e.Artifacts)
+		slices.Sort(e.Targets)
 	}
 	if l.Created == nil {
 		l.Created = []FileRef{}
@@ -197,7 +229,7 @@ func (l *Ledger) Clone() *Ledger {
 	c := &Ledger{Version: l.Version, Modules: make(map[string]*Entry, len(l.Modules)), Created: slices.Clone(l.Created)}
 	for k, e := range l.Modules {
 		ec := *e
-		ec.Artifacts = slices.Clone(e.Artifacts)
+		ec.Artifacts, ec.Targets = slices.Clone(e.Artifacts), slices.Clone(e.Targets)
 		c.Modules[k] = &ec
 	}
 	c.normalize()

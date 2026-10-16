@@ -231,6 +231,53 @@ var _ = Describe("ledger", func() {
 		Entry("a control character", `"source":"https://example.com/kit.git","ref":"v1\u001b[2J"`, "ref holds control or invisible characters"),
 	)
 
+	It("records the targets a module is installed on, sorted, and falls back to its artifacts' without them", func() {
+		l := ledger.New()
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: dg, Targets: []string{"gemini-cli", "claude-code"},
+			Artifacts: []ledger.Artifact{{Target: "claude-code", Kind: "command", Path: ".claude/commands/a.md"}}}
+		l.Modules["b"] = &ledger.Entry{Source: "/s/b", Digest: dg, Artifacts: []ledger.Artifact{
+			{Target: "opencode", Kind: "command", Path: ".opencode/commands/b.md"},
+			{Target: "claude-code", Kind: "command", Path: ".claude/commands/b.md"},
+			{Target: "claude-code", Kind: "skill", Path: ".claude/skills/b/SKILL.md"},
+		}}
+		Expect(l.Save(path)).To(Succeed())
+		Expect(os.ReadFile(path)).To(ContainSubstring("\"targets\": [\n        \"claude-code\",\n        \"gemini-cli\"\n      ]"))
+		back, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(back.Modules["a"].InstalledTargets()).To(Equal([]string{"claude-code", "gemini-cli"}), "a target with no files is installed")
+		Expect(back.Modules["b"].Targets).To(BeNil(), "an entry from before the field writes none")
+		Expect(back.Modules["b"].InstalledTargets()).To(Equal([]string{"claude-code", "opencode"}))
+
+		c := back.Clone()
+		c.Modules["a"].Targets[0] = "opencode"
+		Expect(back.Modules["a"].Targets[0]).To(Equal("claude-code"), "Clone copies the targets")
+	})
+
+	DescribeTable("refuses recorded targets lola never writes",
+		func(targets, want string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			body := `{"version":1,"modules":{"kit":{"source":"s","digest":"` + dg + `","targets":` + targets + `,"artifacts":[]}},"created":[]}`
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(And(ContainSubstring(path+": module kit: "), ContainSubstring(want))))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json")))
+		},
+		Entry("a duplicate", `["claude-code","claude-code"]`, `target "claude-code" is listed twice`),
+		Entry("an empty id", `[""]`, "target name"),
+		Entry("a path", `["../x"]`, "target name"),
+		Entry("a control character", `["claude-code\u001b[2J"]`, "target name"),
+	)
+
+	It("refuses an artifact on a target the entry does not list", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		body := `{"version":1,"modules":{"kit":{"source":"s","digest":"` + dg + `","targets":["claude-code"],` +
+			`"artifacts":[{"target":"opencode","kind":"command","path":".opencode/commands/x.md"}]}},"created":[]}`
+		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(err).To(MatchError(ContainSubstring(`module kit: artifact ".opencode/commands/x.md" is on target "opencode", which targets does not list`)))
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json")))
+	})
+
 	It("refuses a digest lola never writes", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		body := `{"version":1,"modules":{"kit":{"source":"s","digest":"sha256:abc","artifacts":[]}},"created":[]}`

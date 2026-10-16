@@ -278,6 +278,47 @@ var _ = Describe("Compute", func() {
 		})
 	})
 
+	Describe("installed targets", func() {
+		It("records the change's targets with those it does not replan, files or not", func() {
+			oc := ledger.Artifact{Target: "opencode", Kind: "command", Path: ".opencode/commands/x.md", SHA256: sum("X")}
+			led.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "sha256:old", Targets: []string{"gemini-cli", "opencode"}, Artifacts: []ledger.Artifact{oc}}
+			c := change("a", cmd(".claude/commands/x.md", "X"))
+			c.Entry.Targets = []string{tgt}
+			p, err := plan.Compute(req(false, c))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Modules["a"].Targets).To(Equal([]string{tgt, "gemini-cli", "opencode"}))
+		})
+
+		It("records every target the change writes an artifact on", func() {
+			led.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "sha256:old", Targets: []string{"opencode"}}
+			p, err := install("a", false, cmd(".claude/commands/x.md", "X"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Modules["a"].Targets).To(Equal([]string{tgt, "opencode"}))
+		})
+
+		It("keeps a module installed on a target that holds none of its files when another target leaves", func() {
+			put(".claude/commands/x.md", "X")
+			led.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "sha256:old", Targets: []string{tgt, "gemini-cli"},
+				Artifacts: []ledger.Artifact{fileArt(".claude/commands/x.md", "X")}}
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Modules["a"].Targets).To(Equal([]string{"gemini-cli"}))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(BeEmpty())
+
+			p, err = plan.Compute(req(false, plan.ModuleChange{Name: "a", Targets: []string{tgt, "gemini-cli"}}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Modules).NotTo(HaveKey("a"), "removed from every target, the module leaves lock.json")
+		})
+
+		It("infers the targets of an entry that records none from its artifacts", func() {
+			put(".claude/commands/x.md", "X")
+			own("a", fileArt(".claude/commands/x.md", "X"), ledger.Artifact{Target: "opencode", Kind: "command", Path: ".opencode/commands/x.md", SHA256: sum("X")})
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Modules["a"].Targets).To(Equal([]string{"opencode"}))
+		})
+	})
+
 	Describe("JSON members", func() {
 		It("merges into a commented .mcp.json and uninstall never removes a server lola did not write", func() {
 			user := "{\n  // mine\n  \"mcpServers\": {\n    \"github\": {\"command\": \"gh-mcp\"}\n  }\n}\n"

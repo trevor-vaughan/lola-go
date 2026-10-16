@@ -90,11 +90,14 @@ type Version struct {
 // fetch's (source.Fetched.Executables).
 // Name, when set, is the module the content must declare: content declaring another (a source
 // that renamed its module) is refused with an *OtherNameError before anything is cached.
+// ReplaceGoneOrigin lets the commit record this source for the name when the cache records a
+// local one that no longer exists (Staged.ReplaceGoneOrigin).
 type PutRequest struct {
 	Staged, FallbackName, Name      string
 	Source, Type, Path, Ref, Commit string
 	Executables                     []string
 	Now                             time.Time
+	ReplaceGoneOrigin               bool
 }
 
 // OtherNameError is Prepare's refusal of content that declares another module than
@@ -111,9 +114,16 @@ func (e *OtherNameError) Error() string {
 // hashed. Version.Commit is the commit the fetch resolved. Version.Module.Warnings are what
 // detection reported, which install shows; LoadWarnings are what a load of the cached copy
 // reports, which is all a cache hit reports, so a run that renders the staged tree uses them.
+//
+// ReplaceGoneOrigin lets Commit record this version's source for the name when the cache
+// records another that is a local folder or archive whose location no longer exists, as a moved
+// project's in-repo modules do (Plan 6a §6.5): Commit checks again, under the cache lock, that
+// the old location is still missing and that this source is local too; any other source the
+// cache records for the name is still refused.
 type Staged struct {
 	Version           Version
 	LoadWarnings      []string
+	ReplaceGoneOrigin bool
 	source, typ, path string
 	ref               string
 }
@@ -203,7 +213,8 @@ func (s *Store) Prepare(req PutRequest) (Staged, error) {
 	meta := Meta{Format: m.Format, Manifest: m.Manifest, OthersPresent: m.Shadowed, Ref: req.Ref, Commit: req.Commit,
 		FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest, Executables: execs}
 	v := Version{Name: m.Name, ID: strings.TrimPrefix(digest, "sha256:")[:12], ContentDir: req.Staged, Commit: req.Commit, Meta: meta, Module: cached}
-	return Staged{Version: v, LoadWarnings: loadWarnings, source: req.Source, typ: req.Type, path: req.Path, ref: req.Ref}, nil
+	return Staged{Version: v, LoadWarnings: loadWarnings, ReplaceGoneOrigin: req.ReplaceGoneOrigin, source: req.Source, typ: req.Type, path: req.Path,
+		ref: req.Ref}, nil
 }
 
 // Commit publishes a prepared version under the cache lock: it refuses a module whose name the
@@ -226,9 +237,12 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 		return Version{}, err
 	}
 	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path) {
-		return Version{}, errs.WithHints(fmt.Errorf("a different module named %q is already in your cache (from %s); this one is from %s",
-			sv.Name, describeOrigin(o.Source, o.Path), describeOrigin(st.source, st.path)),
-			"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", sv.Name}))
+		if !st.ReplaceGoneOrigin || !o.LocalGone() || !source.IsLocal(source.Kind(st.typ), st.source) {
+			return Version{}, errs.WithHints(fmt.Errorf("a different module named %q is already in your cache (from %s); this one is from %s",
+				sv.Name, describeOrigin(o.Source, o.Path), describeOrigin(st.source, st.path)),
+				"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", sv.Name}))
+		}
+		found = false // the source recorded is gone: this one takes its place, heads and all
 	}
 	vdir := filepath.Join(s.dir, sv.Name, "versions", sv.ID)
 	switch _, err := os.Stat(vdir); {
@@ -411,6 +425,19 @@ func (s *Store) Load(name, id string) (Version, error) {
 		return Version{}, fmt.Errorf("cached version %s/%s: %w", name, id, err)
 	}
 	return Version{Name: name, ID: id, ContentDir: content, Meta: meta, Module: m}, nil
+}
+
+// LocalGone reports whether the source o records is a local folder or archive whose location no
+// longer exists (os.Lstat reports it missing), as after its project moved. A symbolic link
+// that dangles still exists, and a location that cannot be examined (a parent that is a file, no
+// permission) is not reported gone: o is hostile input, so the caller refuses with its own
+// message instead of echoing the system's.
+func (o Origin) LocalGone() bool {
+	if !source.IsLocal(source.Kind(o.Type), o.Source) {
+		return false
+	}
+	_, err := os.Lstat(o.Source)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // Origin reads index.yml; found is false when the module is not stored.
