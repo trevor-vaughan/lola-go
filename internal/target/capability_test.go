@@ -77,6 +77,82 @@ var _ = Describe("Admit", func() {
 			Code: "frontmatter-key-dropped", Text: "color dropped: t does not support it"}))
 	})
 
+	DescribeTable("checks positive integers and maps",
+		func(src string, kept bool) {
+			shapes := target.Capabilities{Kinds: map[string]target.KindSpec{"agent": {Keys: map[string]target.Value{
+				"turns":   {Shape: target.ShapePositiveInt},
+				"options": {Shape: target.ShapeMap},
+			}}}}
+			d, fs, ok := target.Admit("t", shapes, ctx, "agent", "rev", doc("---\n"+src+"\n---\nx\n"))
+			Expect(ok).To(BeTrue())
+			if kept {
+				Expect(fs).To(BeEmpty())
+				Expect(d.Render()).To(Equal("---\n" + src + "\n---\nx\n"))
+				return
+			}
+			Expect(codes(fs)).To(Equal([]string{"warn frontmatter-value-dropped"}))
+			Expect(d.Render()).To(Equal("x\n"))
+		},
+		Entry("an integer", "turns: 3", true),
+		Entry("a whole float, which YAML readers in JavaScript load as an integer", "turns: 3.0", true),
+		Entry("zero", "turns: 0", false),
+		Entry("a negative integer", "turns: -2", false),
+		Entry("a fraction", "turns: 1.5", false),
+		Entry("infinity", "turns: .inf", false),
+		Entry("a string", "turns: \"3\"", false),
+		Entry("a map", "options: {a: 1, b: [x]}", true),
+		Entry("a list where a map belongs", "options: [a]", false),
+	)
+
+	It("describes a positive integer in its finding", func() {
+		shapes := target.Capabilities{Kinds: map[string]target.KindSpec{"agent": {Keys: map[string]target.Value{"turns": {Shape: target.ShapePositiveInt}}}}}
+		_, fs, _ := target.Admit("t", shapes, ctx, "agent", "rev", doc("---\nturns: 0\n---\nx\n"))
+		Expect(fs).To(HaveLen(1))
+		Expect(fs[0].Text).To(Equal("turns dropped: t needs a positive-integer"))
+	})
+
+	Describe("a guard key, which restricts the artifact and leaves it unrestricted when dropped", func() {
+		guard := &target.Finding{Code: "x/unenforceable", Text: "t cannot enforce it", Hint: "fix it"}
+		guarded := target.Capabilities{Kinds: map[string]target.KindSpec{"agent": {Keys: map[string]target.Value{
+			"tools": {Shape: target.ShapeStringList, Pattern: regexp.MustCompile(`^[a-z_]+$`), Guard: guard},
+			"perms": {Drop: target.SeveritySkip, Guard: guard},
+		}}}}
+		admitGuarded := func(src string) (module.Doc, []target.Finding, bool) {
+			return target.Admit("t", guarded, ctx, "agent", "rev", doc("---\n"+src+"\n---\nx\n"))
+		}
+
+		DescribeTable("keeps a value the target accepts, and drops an empty one without a finding",
+			func(src, rendered string) {
+				d, fs, ok := admitGuarded(src)
+				Expect(ok).To(BeTrue())
+				Expect(fs).To(BeEmpty())
+				Expect(d.Render()).To(Equal(rendered))
+			},
+			Entry("an accepted list", "tools: [read_file]", "---\ntools: [read_file]\n---\nx\n"),
+			Entry("an accepted empty list", "tools: []", "---\ntools: []\n---\nx\n"),
+			Entry("an empty value of a key the target never keeps", "perms: []", "x\n"),
+			Entry("a null value of a key the target never keeps", "perms:", "x\n"),
+		)
+
+		DescribeTable("skips the artifact, forceably, over a value the target cannot keep; --force renders it without the key",
+			func(src string) {
+				_, fs, ok := admitGuarded(src)
+				Expect(ok).To(BeFalse())
+				Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "t", Kind: "agent", Artifact: "rev",
+					Code: "x/unenforceable", Text: "t cannot enforce it", Hint: "fix it", Forceable: true}}))
+				ctx.Force = true
+				d, fs, ok := admitGuarded(src)
+				Expect(ok).To(BeTrue())
+				Expect(d.Render()).To(Equal("x\n"))
+				Expect(fs).To(ConsistOf(SatisfyAll(HaveField("Code", "x/unenforceable"), HaveField("Forced", true),
+					HaveField("Severity", target.SeverityWarn))))
+			},
+			Entry("a list element that does not match", "tools: [read_file, Grep]"),
+			Entry("a value of the wrong shape", "tools: Read, Grep"),
+			Entry("any value of a key the target never keeps", "perms: {write: false}"),
+		)
+	})
+
 	It("drops a key the target always drops, with the declared severity and note", func() {
 		d, fs, ok := admit("agent", "rev", "---\nname: rev\ndescription: d\n---\nx\n")
 		Expect(ok).To(BeTrue())

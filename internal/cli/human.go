@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
@@ -27,6 +28,9 @@ func stepLine(s style, st plan.Step) string {
 	dest := st.Path
 	if st.Key != "" {
 		dest += " " + st.Key
+	}
+	if st.Value != "" {
+		dest += " " + strconv.Quote(st.Value)
 	}
 	if st.Via != "" {
 		dest += " (via symlink → " + st.Via + ")"

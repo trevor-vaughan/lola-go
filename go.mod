@@ -6,6 +6,7 @@ toolchain go1.26.9
 
 require (
 	charm.land/huh/v2 v2.0.3
+	github.com/BurntSushi/toml v1.6.0
 	github.com/gofrs/flock v0.13.1
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.44.0

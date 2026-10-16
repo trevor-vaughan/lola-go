@@ -12,7 +12,7 @@ var _ = Describe("registry", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
 	It("lists every target once, in registration order, and looks them up by id", func() {
-		Expect(targets.IDs()).To(Equal([]string{"claude-code"}))
+		Expect(targets.IDs()).To(Equal([]string{"claude-code", "gemini-cli", "opencode"}))
 		for _, id := range targets.IDs() {
 			t, ok := targets.Lookup(id)
 			Expect(ok).To(BeTrue(), id)

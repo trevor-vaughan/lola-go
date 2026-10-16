@@ -148,9 +148,10 @@ ENVIRONMENT
   LOLA_COLOR=1|0   force color on or off
   NO_COLOR         disable color when set (https://no-color.org)
   HOME             user-scope root and base of the XDG defaults
-  XDG_CONFIG_HOME  config and the user-scope manifest (default ~/.config)
-  XDG_DATA_HOME    the module cache and user-scope plugin data (default ~/.local/share)
-  XDG_STATE_HOME   the user-scope ledger (default ~/.local/state)
-  XDG_CACHE_HOME   downloads (default ~/.cache)
+  PATH             where lola finds installed assistants; absolute entries only
+  XDG_CONFIG_HOME  config, the user-scope manifest and OpenCode's user scope (default ~/.config)
+  XDG_DATA_HOME    user-scope module copies and plugin data (default ~/.local/share)
+  XDG_STATE_HOME   the user-scope ledger, hook consent and locks (default ~/.local/state)
+  XDG_CACHE_HOME   the cache, downloads and assistant versions (default ~/.cache)
 `)
 }

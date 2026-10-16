@@ -29,6 +29,7 @@ func (s Scope) String() string {
 // PlanContext carries what a target needs besides the IR.
 type PlanContext struct {
 	Scope      Scope
+	Root       string // absolute scope root of this target: Root(Scope, …)
 	ContentDir string // absolute content dir of the cached module version, which artifacts are read from
 	PluginRoot string // absolute ${PLUGIN_ROOT}: the module copy (§6.4)
 	PluginData string // absolute ${PLUGIN_DATA} dir for this module and scope
@@ -42,8 +43,9 @@ type Target interface {
 	ID() string
 	// Root is the directory artifact paths are relative to.
 	Root(scope Scope, projectDir string, p paths.Paths) string
-	// Detect reports whether the assistant appears to be used under root.
-	Detect(root string) bool
+	// Detect reports whether the assistant appears to be set up under root, the target's
+	// root for scope.
+	Detect(scope Scope, root string) bool
 	// BaseDirs are root-relative artifact directories that cleanup never removes.
 	BaseDirs(scope Scope) []string
 	// Capabilities is what the target can express; Plan admits every artifact through it.

@@ -58,14 +58,35 @@ func wrong() *module.Module {
 	}
 }
 
+// alone splits m into modules of one artifact each, so a module's intents and findings are
+// that artifact's.
+func alone(m *module.Module) []*module.Module {
+	var out []*module.Module
+	for _, s := range m.Skills {
+		out = append(out, &module.Module{Name: m.Name, Skills: []module.Skill{s}})
+	}
+	for _, c := range m.Commands {
+		out = append(out, &module.Module{Name: m.Name, Commands: []module.Command{c}})
+	}
+	for _, a := range m.Agents {
+		out = append(out, &module.Module{Name: m.Name, Agents: []module.Agent{a}})
+	}
+	for _, s := range m.MCPServers {
+		out = append(out, &module.Module{Name: m.Name, MCPServers: []module.MCPServer{s}})
+	}
+	for _, r := range m.Rules {
+		out = append(out, &module.Module{Name: m.Name, Rules: []module.Rule{r}})
+	}
+	return out
+}
+
 var _ = Describe("every registered target", func() {
 	for _, t := range targets.All() {
 		for _, scope := range []target.Scope{target.Project, target.User} {
 			Context(t.ID()+" at "+scope.String()+" scope", func() {
 				var ctx target.PlanContext
 				BeforeEach(func() {
-					testenv.Isolate()
-					ctx = target.PlanContext{Scope: scope, ContentDir: "/cache/example/content",
+					ctx = target.PlanContext{Scope: scope, Root: testenv.Isolate(), ContentDir: "/cache/example/content",
 						PluginRoot: "/copies/example", PluginData: "/data/example"}
 				})
 				run := func(m *module.Module, c target.PlanContext) ([]plan.Intent, []target.Finding) {
@@ -121,17 +142,23 @@ var _ = Describe("every registered target", func() {
 					}
 				})
 
-				It("leaves skipped artifacts out, and renders the forceable ones only with Force", func() {
-					ins, fs := run(wrong(), ctx)
-					force := ctx
-					force.Force = true
-					forced, ffs := run(wrong(), force)
-					forceable := slices.ContainsFunc(fs, func(f target.Finding) bool { return f.Severity == target.SeveritySkip && f.Forceable })
-					if forceable {
-						Expect(len(forced)).To(BeNumerically(">", len(ins)))
-						Expect(ffs).To(ContainElement(HaveField("Forced", true)))
-					} else {
-						Expect(forced).To(Equal(ins))
+				It("plans nothing for a skipped artifact, and renders a forceable one only with Force", func() {
+					for _, m := range alone(wrong()) {
+						ins, fs := run(m, ctx)
+						skips := slices.DeleteFunc(slices.Clone(fs), func(f target.Finding) bool { return f.Severity != target.SeveritySkip })
+						if len(skips) == 0 {
+							continue
+						}
+						Expect(ins).To(BeEmpty(), skips[0].Describe())
+						force := ctx
+						force.Force = true
+						ins, fs = run(m, force)
+						if slices.ContainsFunc(skips, func(f target.Finding) bool { return !f.Forceable }) {
+							Expect(ins).To(BeEmpty(), skips[0].Describe())
+							continue
+						}
+						Expect(ins).NotTo(BeEmpty(), skips[0].Describe())
+						Expect(fs).To(ContainElement(HaveField("Forced", true)))
 					}
 				})
 

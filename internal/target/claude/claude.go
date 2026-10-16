@@ -28,7 +28,9 @@ func (Target) Root(scope target.Scope, projectDir string, p paths.Paths) string 
 }
 
 // Detect implements Target.
-func (Target) Detect(root string) bool { return target.HasAny(root, ".claude", "CLAUDE.md") }
+func (Target) Detect(_ target.Scope, root string) bool {
+	return target.HasAny(root, ".claude", "CLAUDE.md")
+}
 
 // BaseDirs implements Target.
 func (Target) BaseDirs(target.Scope) []string {

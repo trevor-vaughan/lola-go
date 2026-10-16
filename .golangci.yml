@@ -13,7 +13,7 @@ linters:
             - "!$test"
           allow:
             - $gostd
-            - github.com/trevor-vaughan/lola-go/internal/target
+            - github.com/trevor-vaughan/lola-go/internal/target$ # the contract only, not a sibling target
             - github.com/trevor-vaughan/lola-go/internal/module
             - github.com/trevor-vaughan/lola-go/internal/paths
             - github.com/trevor-vaughan/lola-go/internal/plan

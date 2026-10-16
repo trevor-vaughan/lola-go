@@ -11,7 +11,8 @@ explains why.
 
 ## What works today
 
-- **Assistants:** Claude Code, at project scope or user scope (`--user`).
+- **Assistants:** Claude Code, Gemini CLI and OpenCode, at project scope or user scope
+  (`--user`).
 - **Modules:** local folders in lola's native layout, with an optional `lola.yml`.
 - **Portability report:** `lola check ./my-module` shows what each assistant would drop,
   adapt or skip, without writing anything; `install` prints the same findings, and
@@ -19,11 +20,11 @@ explains why.
 - **Safety:** lola only overwrites or deletes files it wrote and nobody has changed, unless
   you pass `--force`; an existing file identical to what lola would write is adopted, not
   rewritten. JSON files keep their comments; a file lola cannot parse is never rewritten.
-  lola never edits your `CLAUDE.md` or `AGENTS.md`, and a module's install hooks run only
-  with your consent.
+  lola never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`, and a module's install hooks
+  run only with your consent.
 
-Gemini CLI, OpenCode, git and archive sources, plugin formats, marketplaces, profiles and
-templating are planned: see [docs/roadmap.md](docs/roadmap.md).
+Git and archive sources, plugin formats, marketplaces, profiles and templating are planned: see
+[docs/roadmap.md](docs/roadmap.md).
 
 ## Install
 

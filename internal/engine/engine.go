@@ -225,15 +225,16 @@ func (e *Engine) Manifest(sc Scope) (*manifest.Manifest, error) {
 	return manifest.Load(e.files(sc).manifest)
 }
 
-// refuseSymlinkedState fails when the project's .lola/ or .lola/modules is a symlink: a
-// repository can commit one, and lola would then write, rename and delete outside the
-// project. Missing directories are fine. User-scope state is the user's own and may link.
+// refuseSymlinkedState fails when the project's .lola/, .lola/modules or .lola/plugin-data
+// is a symlink: a repository can commit one, and lola would then write, rename and delete
+// outside the project. Missing directories are fine. User-scope state is the user's own and
+// may link.
 func (e *Engine) refuseSymlinkedState(sc Scope) error {
 	f := e.files(sc)
 	if f.lolaDir == "" {
 		return nil
 	}
-	for _, p := range []string{f.lolaDir, f.modules} {
+	for _, p := range []string{f.lolaDir, f.modules, f.pluginData} {
 		fi, err := os.Lstat(p)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -374,7 +375,7 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		if err != nil {
 			return nil, nil, nil, mr, err
 		}
-		pctx.Version = probes.version(t)
+		pctx.Root, pctx.Version = t.Root(sc.Kind, sc.ProjectDir, e.Paths), probes.version(t)
 		ins, fs, err := t.Plan(m, pctx)
 		if err != nil {
 			return nil, nil, nil, mr, fmt.Errorf("%s for %s: %w", m.Name, id, err)

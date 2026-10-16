@@ -24,16 +24,20 @@ type moduleCopy struct {
 
 // needsCopy reports whether the copy of name under dir must be (re)placed: its version
 // changes (prev is the ledger entry, nil when the module has none) or the copy is missing.
+// An entry that is not a real directory, such as a committed symlink, counts as missing.
 // A copy's own content is never compared: install hooks build in it (§6.4).
 func needsCopy(dir, name string, prev *ledger.Entry, digest string) (bool, error) {
 	if prev == nil || prev.Digest != digest {
 		return true, nil
 	}
-	_, err := os.Lstat(filepath.Join(dir, name))
-	if errors.Is(err, fs.ErrNotExist) {
+	fi, err := os.Lstat(filepath.Join(dir, name))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return true, nil
+	case err != nil:
+		return false, err
 	}
-	return false, err
+	return !fi.IsDir(), nil
 }
 
 // copySwap is an in-progress replacement of module copies under dir. Each replaced copy

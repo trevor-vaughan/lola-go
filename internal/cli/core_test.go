@@ -121,14 +121,23 @@ var _ = Describe("core commands", func() {
 		Expect(json.Unmarshal([]byte(lola("check", "--json").out), &rep)).To(Succeed())
 		Expect(rep.Modules[0].Name).To(Equal("example"))
 		Expect(rep.Modules[0].Findings).To(ContainElement(HaveKeyWithValue("code", "required-key-missing")))
-		Expect(rep.Findings).To(BeEmpty(), "claude is installed in this spec")
+		Expect(rep.Findings).To(ConsistOf(HaveKeyWithValue("target", "gemini-cli"), HaveKeyWithValue("target", "opencode")),
+			"claude is installed in this spec, the others are not")
 
-		r = lola("check", "--strict")
+		r = lola("check", "--strict", "-t", "claude-code")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("--strict: 1 finding(s); nothing was changed"))
 		Expect(r.err).To(ContainSubstring("hint: fix the module; lola install renders what each target supports"))
 		Expect(r.err).NotTo(ContainSubstring("--force"))
 		Expect(r.err).NotTo(ContainSubstring("rerun without --strict"))
+	})
+
+	It("shows which list member a plan adds to a shared config file", func() {
+		writeTree(mod, map[string]string{"rules/style.md": "Be brief.\n"})
+		r := lola("install", mod, "-C", proj, "-t", "gemini-cli,opencode", "--dry-run")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(`✓ create gemini-cli  .gemini/settings.json /context/includeDirectories ".gemini/lola/example"`))
+		Expect(r.out).To(ContainSubstring(`✓ create opencode    opencode.json /instructions ".opencode/lola/example/*.md"`))
 	})
 
 	It("install --no-rules is remembered in the manifest and shown by list; --rules turns them back on", func() {

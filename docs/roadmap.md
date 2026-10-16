@@ -13,7 +13,9 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
 3. **Done: target framework.** One package per target behind a contract, findings with
    severities, capability tables, probing installed assistants, a conformance suite, and
    `lola check`.
-4. **Gemini CLI and OpenCode** targets, on the framework.
+4. **Done: Gemini CLI and OpenCode.** Both targets on the framework, with capability tables,
+   probes and rules delivered through owned list members in their settings; a symlinked
+   `.lola/plugin-data` is refused and a module copy that is not a directory is replaced.
 5. **Sources and formats.** Git (`--ref` for branches, tags and full SHAs), zip/tar archives
    and archive URLs, `.claude-plugin/plugin.json` (with runtime hooks), and Agent Plugins v1
    (namespaces, untargeted packages). `init --format` defaults to `agent-plugins`.

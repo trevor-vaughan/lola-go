@@ -85,8 +85,9 @@ directory that lola creates and never deletes (`.lola/plugin-data/<module>` at p
 `$XDG_DATA_HOME/lola/plugin-data/<module>` at user scope).
 
 **Rules.** Each `rules/<rule>.md` is always-on context: your assistant loads it in every
-session. lola delivers rules where the assistant loads them natively (for Claude Code,
-`.claude/rules/lola/<module>/`) and never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`.
+session. lola delivers rules where the assistant loads them natively (see the tables below) and
+never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`. Gemini CLI reads them only in folders
+you trust, and project rules only when it starts in the project root.
 Frontmatter is removed; a `paths:` key is an error, because guidance for some files belongs in a
 skill. The rest of a rule is delivered verbatim: `${PLUGIN_ROOT}` is not expanded in rules. A
 module-root `INSTRUCTIONS.md` or `AGENTS.md` is not installed; lola warns and suggests moving it
@@ -110,17 +111,24 @@ hooks only for modules whose version changed, and `--dry-run` lists hooks withou
 - **Project scope** (default): files go into the project; state lives in `.lola/`. The project
   is the nearest parent directory with a `.lola/`, else the current directory; `-C <dir>` picks
   one explicitly.
-- **User scope** (`--user`): files go into your home directory; state lives under
-  `$XDG_CONFIG_HOME/lola/` (manifest `user.yml`) and `$XDG_STATE_HOME/lola/` (ledger
-  `lock.json`). Rules installed at user scope apply in every project.
+- **User scope** (`--user`): files go into your home directory (OpenCode's into
+  `$XDG_CONFIG_HOME/opencode/`); state lives under `$XDG_CONFIG_HOME/lola/` (manifest
+  `user.yml`) and `$XDG_STATE_HOME/lola/` (ledger `lock.json`). Rules installed at user scope
+  apply in every project.
+
+The targets are `claude-code` (Claude Code), `gemini-cli` (Gemini CLI) and `opencode`
+(OpenCode).
 
 When you do not pass `-t`, lola uses the manifest's targets. Otherwise it offers the assistants
-installed on your machine (their command, such as `claude`, is on your `PATH`): on a terminal
-you pick from them, with those already set up in the project preselected (`.claude/` or
-`CLAUDE.md` for Claude Code), or every installed assistant preselected when none is set up; off a terminal lola uses the ones both installed and set up. A
-target you name with `-t`, or that the manifest lists, is always rendered, installed or not,
-for example in a container that only prepares files. `claude-code` is the only target in this
-build.
+installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your
+`PATH`): on a terminal you pick from them, with those already set up in the project preselected,
+or every installed assistant preselected when none is set up; off a terminal lola uses the ones
+both installed and set up. An assistant is set up in a project when it has `.claude/` or
+`CLAUDE.md` (Claude Code), `.gemini/` or `GEMINI.md` (Gemini CLI), or `.opencode/`,
+`opencode.json` or `opencode.jsonc` (OpenCode); at user scope, when `~/.claude/` or
+`~/CLAUDE.md`, `~/.gemini/` or `~/GEMINI.md`, or `$XDG_CONFIG_HOME/opencode/` exists. A target
+you name with `-t`, or that the manifest lists, is always rendered, installed or not, for
+example in a container that only prepares files.
 
 lola runs an installed assistant once, with `--version`, to learn which version you have, and
 caches the answer in `$XDG_CACHE_HOME/lola/probes.json` until the binary changes. The version
@@ -136,6 +144,27 @@ What lands where for `claude-code`:
 | Agents | `.claude/agents/<agent>.md` | `~/.claude/agents/` |
 | MCP servers | `.mcp.json` → `mcpServers.<name>` | `~/.claude.json` → `mcpServers.<name>` |
 | Rules | `.claude/rules/lola/<module>/<rule>.md` | `~/.claude/rules/lola/<module>/<rule>.md` |
+
+For `gemini-cli` (user scope: the same paths under `~`):
+
+| Artifact | Project scope |
+|---|---|
+| Skills | `.gemini/skills/<skill>/`; `name` is added from the directory when missing; Gemini neither runs shell nor fills argument placeholders in skills, so lola warns when a skill has them |
+| Commands | `.gemini/commands/<command>.toml`: `description` and `prompt`, with `$ARGUMENTS` as `{{args}}`; Gemini has no single-argument placeholders, so `$ARGUMENTS[N]`, `$N` and the names listed in `arguments:` stay as written and the prompt starts with the whole argument string; Gemini has no escape, so a Claude-escaped `\$1` becomes `$1` (only a single backslash escapes; after `\\` the placeholder is still read as one); a `commands/<command>/` directory is copied alongside, and Gemini reads every `*.toml` file inside it as a namespaced command (`<command>:<file>`) |
+| Agents | `.gemini/agents/<agent>.md`, keeping only `name`, `description`, `kind` (`local` or `remote`), `display_name`, `tools` (a list of Gemini tool names such as `read_file` or `mcp_<server>_<tool>`), `model` (`gemini-…`), `temperature`, `max_turns` and `timeout_mins` (positive integers). Gemini refuses to load an agent with any other key or value of another shape, so lola drops those instead. An agent whose `tools` uses other names, such as Claude's `Read` or `mcp__server__tool`, is skipped: Gemini gives an agent without `tools` every tool, so dropping the list would lift the restriction (`--force` installs it without the list) |
+| MCP servers | `.gemini/settings.json` → `mcpServers.<name>`: `command`, `args`, `env`, `cwd`; `httpUrl` for http, `url` for sse |
+| Rules | `.gemini/lola/<module>/GEMINI.md` (the module's rules in name order), listed in `.gemini/settings.json` → `context.includeDirectories` (at user scope by absolute path, so every project's Gemini session can read that directory). Gemini loads these rules, and project MCP servers, only in a trusted folder, and project-scope ones only when `gemini` starts at the project root, not in a subdirectory |
+
+For `opencode` (user scope: the same paths under `$XDG_CONFIG_HOME/opencode/`, without
+`.opencode/`):
+
+| Artifact | Project scope |
+|---|---|
+| Skills | `.opencode/skills/<skill>/`; names are lowercase words joined by single hyphens, and a `name` in the frontmatter must equal the directory; OpenCode neither runs shell nor fills argument placeholders in skills, so lola warns when a skill has them |
+| Commands | `.opencode/commands/<command>.md`, keeping only `description`, `agent`, `model` (`provider/model`) and `subtask`; Claude counts arguments from 0 and OpenCode from 1, so `$0`, `$ARGUMENTS[0]` and the first name listed in `arguments:` become `$1`, and so on (`$ARGUMENTS` stays); OpenCode has no escape, so a Claude-escaped `\$1` or `\$ARGUMENTS` is kept but OpenCode still fills it in; OpenCode runs ``!`…` `` anywhere in a command without Claude's permission checks and never runs a ```` ```! ```` fence; a `commands/<command>/` directory is not copied, as OpenCode would read its files as commands |
+| Agents | `.opencode/agents/<agent>.md` with `mode: subagent` unless the agent sets a mode; `name` is dropped and `model` is kept only as `provider/model`. OpenCode cannot express a tool list and gives an agent without one every tool, so an agent with a non-empty `tools` is skipped (`--force` installs it without the list). OpenCode refuses to start on an invalid agent value, so lola drops a `color` other than `#rrggbb` (OpenCode 1.18 also takes theme names such as `accent`, but later versions reject them), a `mode` other than `subagent`, `primary` or `all`, a non-numeric `temperature` or `top_p`, a `steps` or `maxSteps` that is not a positive integer, a non-boolean `hidden` or `disable`, a non-string `variant` and a non-map `options`. `permission` is passed through unchecked |
+| MCP servers | `opencode.jsonc` if it exists, else `opencode.json` → `mcp.<name>`: `{"type": "local", "command": [...], "environment"}` or `{"type": "remote", "url", "headers"}`; `${VAR}` becomes `{env:VAR}`. OpenCode merges both files and `opencode.jsonc` wins, so a server of the same name in `opencode.json` is overridden by lola's |
+| Rules | `.opencode/lola/<module>/<rule>.md`, listed as `.opencode/lola/<module>/*.md` in the same file's `instructions` (at user scope by absolute path) |
 
 ## Findings
 
@@ -158,16 +187,29 @@ Each finding has a stable code, shown by `--plain` and `--json`. A forceable ski
 | Code | Severity | Forceable | Meaning |
 |---|---|---|---|
 | `kind-unsupported` | skip | no | The target has no place for this kind of artifact. |
-| `name-rejected` | skip | yes | The target rejects the artifact's name. |
+| `name-rejected` | skip | yes | The target rejects the artifact's name (for `opencode`, also a skill whose `name` differs from its directory). |
 | `required-key-missing` | skip | yes | A frontmatter key the target needs is absent, empty, or was dropped for having the wrong type. |
+| `agent-tools-unenforceable` | skip | yes | The agent restricts its tools in a way the target cannot enforce (`gemini-cli`: names that are not Gemini's; `opencode`: any non-blank `tools` value, list or string). The assistant would give the agent every tool, so it is left out unless `--force`, which installs it without the list. |
 | `frontmatter-invalid` | skip | no | The frontmatter parses but lola cannot re-encode it. |
-| `frontmatter-key-dropped` | warn | no | The target does not support a frontmatter key, so it is left out. |
-| `frontmatter-value-dropped` | warn | no | A frontmatter key has a value of the wrong type for the target, so it is left out. |
+| `frontmatter-key-dropped` | warn or info | no | The target does not support a frontmatter key, so it is left out. |
+| `frontmatter-value-dropped` | warn | no | A frontmatter key has a value of the wrong type or form for the target (for example an OpenCode agent `color: red`, or a Gemini agent `max_turns: 1.5`), so it is left out. |
 | `frontmatter/yaml-ambiguous` | warn | no | An unquoted frontmatter value that YAML parsers read differently; quote it. |
 | `version/unsupported` | warn | no | Your installed assistant is older than the version lola renders for and ignores something the module uses. |
 | `version/limited` | warn | no | Your installed assistant has a known limitation that affects this module. |
 | `module-warning` | warn | no | The module itself has a problem, such as a legacy instruction file or a skipped rule entry. |
 | `mcp-cwd-dropped` | warn | no | The target has no working-directory setting for an MCP server, so `cwd` is dropped. |
+| `command-sidecar-dropped` | warn | no | `opencode` would read a command's `commands/<command>/` files as commands, so the directory is not copied. |
+| `gemini-cli/shell-injection` | skip | yes | A command runs shell with Claude's ``!`…` `` (at a line start or after whitespace) or a ```` ```! ```` fenced block, which Gemini CLI would send to the model as text; Gemini's own syntax is `!{…}`. |
+| `gemini-cli/arguments` | info | no | `$ARGUMENTS` becomes Gemini's `{{args}}`. |
+| `gemini-cli/positional-arguments` | warn | no | Gemini CLI has no positional or named arguments: `$ARGUMENTS[N]`, `$N` and names declared in `arguments:` stay as written and the prompt starts with the whole argument string. |
+| `opencode/arguments-renumbered` | warn | no | Claude's 0-based `$N`, `$ARGUMENTS[N]` and declared names became OpenCode's 1-based `$1`, `$2`, …; check the command with a few arguments, as OpenCode may split them differently. |
+| `opencode/shell-unchecked` | warn | no | A command has ``!`…` ``, which OpenCode runs wherever it appears, without Claude's permission checks (`allowed-tools` is dropped); review the command before installing. |
+| `opencode/shell-fence` | skip | yes | A command runs shell in a ```` ```! ```` fenced block, which OpenCode does not run and would send to the model as text; use inline ``!`…` ``. |
+| `skill-shell-dropped` | warn | no | A skill runs shell with ``!`…` `` or a ```` ```! ```` block; `gemini-cli` and `opencode` do not run shell in skills, so it reaches the model as text. |
+| `skill-arguments-dropped` | warn | no | A skill uses `$ARGUMENTS`, `$ARGUMENTS[N]` or `$N`; `gemini-cli` and `opencode` do not fill argument placeholders in skills, so they reach the model as written. |
+| `opencode/escaped-arguments` | warn | no | A command has a Claude-escaped `\$N` or `\$ARGUMENTS`; OpenCode has no escape and still replaces it with arguments, so reword the text. |
+| `opencode/env-reference` | info | no | `${VAR}` in an MCP server becomes OpenCode's `{env:VAR}`. |
+| `opencode/env-default-dropped` | warn | no | OpenCode has no defaults for environment references: `${VAR:-default}` becomes `{env:VAR}`. |
 | `probe/not-found` | info | no | The assistant is not on `PATH`; lola checked against the newest version it knows. |
 | `probe/unknown-version` | info | no | The assistant's version could not be read. |
 | `probe/cache` | info | no | The version was read but could not be cached. |
@@ -197,6 +239,8 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 - Comments and formatting in JSON files survive lola's edits; only lola's own keys change.
 - lola writes through symlinked directories and shows `(via symlink → /real/path)` when a write
   leaves the project. Two destinations that resolve to the same real file are refused.
+- lola refuses a project whose `.lola/`, `.lola/modules/` or `.lola/plugin-data/` is a symlink,
+  and replaces a module copy that is not a real directory.
 - Changes are transactional: if anything fails, every file is restored.
 - `--dry-run` (`-n`) prints the plan and writes nothing.
 
@@ -217,7 +261,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 |---|---|
 | `HOME` | User-scope root; base of the XDG defaults |
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
-| `XDG_CONFIG_HOME` | User-scope manifest (default `~/.config`) |
+| `XDG_CONFIG_HOME` | User-scope manifest, and OpenCode's user-scope directory (default `~/.config`) |
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook consent and lock files (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |

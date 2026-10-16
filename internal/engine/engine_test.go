@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,10 +17,12 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/target/claude"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -38,6 +41,29 @@ var exampleModule = map[string]string{
 	"agents/critic.md":            "---\ndescription: critic\nmodel: opus\n---\nCriticize.\n",
 	"mcps.json":                   `{"mcpServers":{"lola-gh":{"command":"${PLUGIN_ROOT}/bin/gh","args":["--data","${PLUGIN_DATA}"]}}}`,
 	"rules/style.md":              "Prefer small diffs.\n",
+}
+
+// spy is claude-code recording the scope and root the engine gives Detect and Plan.
+type spy struct {
+	claude.Target
+	seen *[]string
+}
+
+func (s spy) Detect(scope target.Scope, root string) bool {
+	*s.seen = append(*s.seen, "detect "+scope.String()+" "+root)
+	return s.Target.Detect(scope, root)
+}
+
+func (s spy) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, []target.Finding, error) {
+	*s.seen = append(*s.seen, "plan "+ctx.Scope.String()+" "+ctx.Root)
+	return s.Target.Plan(m, ctx)
+}
+
+// loose is claude-code with a version pattern that matches anywhere in the output.
+type loose struct{ claude.Target }
+
+func (loose) Probe() target.Probe {
+	return target.Probe{Binaries: []string{"claude"}, VersionArgs: []string{"--version"}, VersionRE: regexp.MustCompile(`(\d+\.\d+\.\d+)`)}
 }
 
 var _ = Describe("Engine", func() {
@@ -119,6 +145,135 @@ var _ = Describe("Engine", func() {
 		Expect(m.Targets).To(Equal([]string{"claude-code"}))
 		Expect(m.Modules).To(Equal([]manifest.Entry{{Name: "example", Source: "../src/example"}}))
 		Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
+	})
+
+	It("installs into Gemini CLI next to the user's own settings, and leaves settings.json byte for byte on uninstall", func() {
+		settings := "{\n  // my theme\n  \"theme\": \"dark\",\n  \"mcpServers\": {\n    \"mine\": {\"command\": \"x\"} // keep\n  }\n}\n"
+		writeTree(proj, map[string]string{".gemini/settings.json": settings})
+		res, err := install(engine.Options{Targets: []string{"gemini-cli"}}, src)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(".gemini/skills/review/SKILL.md")).To(Equal("---\nname: review\ndescription: Review code\n---\nReview it.\n"))
+		Expect(read(".gemini/skills/review/ref/checks.md")).To(Equal("checks"))
+		Expect(read(".gemini/commands/ship.toml")).To(Equal("prompt = \"Ship {{args}}\\n\"\n"))
+		Expect(read(".gemini/agents/critic.md")).To(Equal("---\nname: critic\ndescription: critic\n---\nCriticize.\n"))
+		Expect(read(".gemini/settings.json")).To(SatisfyAll(ContainSubstring("// my theme"), ContainSubstring(`"mine": {"command": "x"}, // keep`),
+			ContainSubstring(`"lola-gh": {`), ContainSubstring(filepath.Join(proj, ".lola/plugin-data/example"))))
+		Expect(res.Findings).To(ContainElements(
+			SatisfyAll(HaveField("Code", "frontmatter-value-dropped"), HaveField("Artifact", "critic"), HaveField("Severity", target.SeverityWarn)),
+			SatisfyAll(HaveField("Code", "gemini-cli/arguments"), HaveField("Artifact", "ship"), HaveField("Severity", target.SeverityInfo))))
+		Expect(status()).To(Equal([]string{"example/gemini-cli=ok"}))
+
+		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(".gemini/settings.json")).To(Equal(settings))
+		Expect(filepath.Join(proj, ".gemini/skills/review")).NotTo(BeAnExistingFile())
+	})
+
+	It("installs into OpenCode's opencode.jsonc beside an opencode.json, and leaves both byte for byte on uninstall", func() {
+		jsonc := "{\n  // mine\n  \"theme\": \"tokyonight\",\n  \"mcp\": {\n    \"own\": {\"type\": \"remote\", \"url\": \"https://own\"}, // keep\n  },\n}\n"
+		plain := "{\"model\": \"anthropic/claude-sonnet-5-5\"}\n"
+		writeTree(proj, map[string]string{"opencode.jsonc": jsonc, "opencode.json": plain})
+		writeTree(src, map[string]string{"mcps.json": `{"mcpServers":{"lola-gh":{"command":"gh","env":{"LEVEL":"${LOG_LEVEL:-info}"}}}}`})
+		res, err := install(engine.Options{Targets: []string{"opencode"}}, src)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(".opencode/skills/review/SKILL.md")).To(Equal("---\nname: review\ndescription: Review code\n---\nReview it.\n"))
+		Expect(read(".opencode/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
+		Expect(read(".opencode/agents/critic.md")).To(Equal("---\nmode: subagent\ndescription: critic\n---\nCriticize.\n"))
+		Expect(read("opencode.jsonc")).To(SatisfyAll(ContainSubstring("// mine"), ContainSubstring("// keep"),
+			ContainSubstring(`"lola-gh": {`), ContainSubstring(`"LEVEL": "{env:LOG_LEVEL}"`)))
+		Expect(read("opencode.json")).To(Equal(plain))
+		Expect(res.Findings).To(ContainElement(SatisfyAll(HaveField("Code", "opencode/env-default-dropped"), HaveField("Artifact", "lola-gh"),
+			HaveField("Severity", target.SeverityWarn), HaveField("Module", "example"))))
+		Expect(status()).To(Equal([]string{"example/opencode=ok"}))
+
+		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read("opencode.jsonc")).To(Equal(jsonc))
+		Expect(read("opencode.json")).To(Equal(plain))
+	})
+
+	It("moves lola's opencode entries into an opencode.jsonc created later, keeping its comments", func() {
+		_, err := install(engine.Options{Targets: []string{"opencode"}}, src)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read("opencode.json")).To(ContainSubstring(`"lola-gh"`))
+		writeTree(proj, map[string]string{"opencode.jsonc": "{\n  // mine\n}\n"})
+		_, err = e.Render(ctx, sc, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(proj, "opencode.json")).NotTo(BeAnExistingFile(), "lola created it and nothing else is left in it")
+		Expect(read("opencode.jsonc")).To(SatisfyAll(ContainSubstring("// mine"), ContainSubstring(`"lola-gh"`)))
+		Expect(status()).To(Equal([]string{"example/opencode=ok"}))
+		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read("opencode.jsonc")).To(Equal("{\n  // mine\n}\n"))
+	})
+
+	It("installs OpenCode's user-scope artifacts directly under $XDG_CONFIG_HOME/opencode", func() {
+		user := engine.Scope{Kind: target.User}
+		_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"opencode"}})
+		Expect(err).NotTo(HaveOccurred())
+		oc := filepath.Join(p.ConfigHome, "opencode")
+		Expect(filepath.Join(oc, "commands/ship.md")).To(BeARegularFile())
+		Expect(filepath.Join(oc, "skills/review/SKILL.md")).To(BeARegularFile())
+		cfg, err := os.ReadFile(filepath.Join(oc, "opencode.json"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(cfg)).To(ContainSubstring(`"lola-gh"`))
+		Expect(e.Detect(user)).To(ContainElement(engine.Assistant{Target: "opencode", Marked: true}), "its config directory marks it")
+	})
+
+	It("delivers rules to gemini-cli and opencode through owned list members, and removes them without orphans", func() {
+		all := engine.Options{Targets: []string{"claude-code", "gemini-cli", "opencode"}}
+		_, err := install(all, src)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(".gemini/lola/example/GEMINI.md")).To(Equal("Prefer small diffs.\n"))
+		Expect(read(".opencode/lola/example/style.md")).To(Equal("Prefer small diffs.\n"))
+		Expect(read(".gemini/settings.json")).To(ContainSubstring("\"context\": {\n    \"includeDirectories\": [\n      \".gemini/lola/example\"\n    ]\n  }"))
+		Expect(read("opencode.json")).To(ContainSubstring("\"instructions\": [\n    \".opencode/lola/example/*.md\"\n  ]"))
+		for _, f := range []string{"GEMINI.md", "AGENTS.md", "CLAUDE.md"} {
+			Expect(filepath.Join(proj, f)).NotTo(BeAnExistingFile(), "lola never creates "+f)
+		}
+		Expect(status()).To(ConsistOf("example/claude-code=ok", "example/gemini-cli=ok", "example/opencode=ok"))
+
+		off := false
+		_, err = install(engine.Options{Rules: &off}, "example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(proj, ".gemini/lola")).NotTo(BeAnExistingFile(), "emptied rule dirs are removed")
+		Expect(filepath.Join(proj, ".opencode/lola")).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(proj, ".opencode")).To(BeADirectory(), "the assistant's own directory stays")
+		Expect(read(".gemini/settings.json")).NotTo(ContainSubstring("context"), "lola created the array, so it goes with its last member")
+		Expect(read("opencode.json")).NotTo(ContainSubstring("instructions"))
+
+		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tree(proj)).To(ConsistOf(".lola/.gitignore", ".lola/lock.json", ".lola/project.yml"))
+	})
+
+	It("adds rule members beside the user's own list entries, and leaves the files byte for byte on uninstall", func() {
+		settings := "{\n  // mine\n  \"context\": {\n    \"includeDirectories\": [\"../shared\"] // team docs\n  }\n}\n"
+		jsonc := "{\n  \"instructions\": [\n    \"CONTRIBUTING.md\", // ours\n  ],\n}\n"
+		writeTree(proj, map[string]string{".gemini/settings.json": settings, "opencode.jsonc": jsonc})
+		_, err := install(engine.Options{Targets: []string{"gemini-cli", "opencode"}}, src)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(".gemini/settings.json")).To(SatisfyAll(ContainSubstring(`"../shared"`), ContainSubstring(`".gemini/lola/example"`), ContainSubstring("// team docs")))
+		Expect(read("opencode.jsonc")).To(SatisfyAll(ContainSubstring(`"CONTRIBUTING.md"`), ContainSubstring(`".opencode/lola/example/*.md"`), ContainSubstring("// ours")))
+		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(".gemini/settings.json")).To(Equal(settings))
+		Expect(read("opencode.jsonc")).To(Equal(jsonc))
+	})
+
+	It("lists user-scope rule directories by absolute path", func() {
+		user := engine.Scope{Kind: target.User}
+		_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"gemini-cli", "opencode"}})
+		Expect(err).NotTo(HaveOccurred())
+		settings, err := os.ReadFile(filepath.Join(p.Home, ".gemini/settings.json"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(settings)).To(ContainSubstring(`"` + filepath.Join(p.Home, ".gemini/lola/example") + `"`))
+		Expect(filepath.Join(p.Home, ".gemini/lola/example/GEMINI.md")).To(BeARegularFile())
+		oc := filepath.Join(p.ConfigHome, "opencode")
+		Expect(filepath.Join(oc, "lola/example/style.md")).To(BeARegularFile())
+		cfg, err := os.ReadFile(filepath.Join(oc, "opencode.json"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(cfg)).To(ContainSubstring(`"` + filepath.Join(oc, "lola/example/*.md") + `"`))
 	})
 
 	It("keeps the scope lock outside .lola/, one per project however it is spelled, and owns .lola/.gitignore", func() {
@@ -390,11 +545,12 @@ var _ = Describe("Engine", func() {
 			Expect(rep.Modules).To(HaveLen(1))
 			m := rep.Modules[0]
 			Expect(m.Name).To(Equal("example"))
-			Expect(m.Targets).To(Equal([]string{"claude-code"}))
+			Expect(m.Targets).To(Equal([]string{"claude-code", "gemini-cli", "opencode"}))
 			Expect(m.Findings).To(ContainElement(SatisfyAll(HaveField("Kind", "module"), HaveField("Code", "module-warning"))))
 			Expect(m.Findings).To(ContainElement(SatisfyAll(HaveField("Severity", target.SeveritySkip), HaveField("Artifact", "bare"),
 				HaveField("Module", "example"))))
-			Expect(rep.Findings).To(ConsistOf(HaveField("Code", "probe/not-found")))
+			Expect(rep.Findings).To(HaveLen(3))
+			Expect(rep.Findings).To(HaveEach(HaveField("Code", "probe/not-found")))
 			names, err := e.Store.Names()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(names).To(BeEmpty(), "nothing was added to the cache")
@@ -422,7 +578,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).To(MatchError("no targets selected"))
 		_, err = install(engine.Options{Targets: []string{"vim"}}, src)
 		Expect(err).To(MatchError(`unknown target "vim"`))
-		Expect(errs.Hints(err)).To(ContainElement("valid targets: claude-code"))
+		Expect(errs.Hints(err)).To(ContainElement("valid targets: claude-code, gemini-cli, opencode"))
 	})
 
 	It("refuses --ref for a folder source", func() {
@@ -490,6 +646,19 @@ var _ = Describe("Engine", func() {
 			"user-modules directory must be 0700")
 	})
 
+	It("gives each target its scope and that scope's root, to detect, install and check", func() {
+		var seen []string
+		e.Targets = []target.Target{spy{seen: &seen}}
+		user := engine.Scope{Kind: target.User}
+		e.Detect(sc)
+		e.Detect(user)
+		_, err := install(claude, src)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = e.Check(ctx, user, proj, []string{src}, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(seen).To(Equal([]string{"detect project " + proj, "detect user " + p.Home, "plan project " + proj, "plan user " + p.Home}))
+	})
+
 	It("FindProject walks up to the nearest .lola/ and falls back to the start dir", func() {
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Join(proj, "a/b"), 0o755)).To(Succeed())
@@ -515,10 +684,10 @@ var _ = Describe("Engine", func() {
 		}
 
 		It("Detect reports installed binaries and project markers without running anything", func() {
-			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code"}}))
+			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code"}, {Target: "gemini-cli"}, {Target: "opencode"}}))
 			bin := assistant("claude", "touch \""+filepath.Join(tmp, "ran")+"\"\n")
 			Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
-			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code", Binary: bin, Marked: true}}))
+			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code", Binary: bin, Marked: true}, {Target: "gemini-cli"}, {Target: "opencode"}}))
 			Expect(filepath.Join(tmp, "ran")).NotTo(BeAnExistingFile())
 		})
 
@@ -561,6 +730,16 @@ var _ = Describe("Engine", func() {
 			b, err := os.ReadFile(p.Probes)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(b)).To(ContainSubstring(`"version": "2.1.287"`))
+		})
+
+		It("reads at most a few KiB of an assistant's version output", func() {
+			e.Targets = []target.Target{loose{}}
+			noise := filepath.Join(tmp, "noise")
+			Expect(os.WriteFile(noise, []byte(strings.Repeat("x", 64<<10)), 0o644)).To(Succeed())
+			assistant("claude", "cat \""+noise+"\"\necho 9.9.9\n")
+			res, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(probeFindings(res)).To(ConsistOf(HaveField("Code", "probe/unknown-version")), "the version came after the limit")
 		})
 
 		It("reports a version it cannot read, and stops a probe that hangs", func() {
@@ -694,6 +873,40 @@ var _ = Describe("Engine", func() {
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 			_, err = e.Render(ctx, sc, engine.Options{})
 			expectRefused(err, link)
+		})
+
+		It("refuses a .lola/plugin-data that links outside the project", func() {
+			link := plant(".lola/plugin-data")
+			_, err := install(claude, src)
+			expectRefused(err, link)
+			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
+		})
+
+		It("replaces a module copy that is not a real directory, and list reports it missing until then", func() {
+			_, err := install(claude, src)
+			Expect(err).NotTo(HaveOccurred())
+			link := plant(".lola/modules/example")
+			Expect(status()).To(Equal([]string{"example/claude-code=missing"}))
+			_, err = e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			fi, err := os.Lstat(link)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fi.IsDir()).To(BeTrue(), "the copy is a real directory again")
+			Expect(filepath.Join(link, "commands/ship.md")).To(BeARegularFile())
+			Expect(tree(outside)).To(ConsistOf("example/keep.txt"), "nothing was written or removed through the link")
+			Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
+		})
+
+		It("replaces a module copy that is a regular file", func() {
+			_, err := install(claude, src)
+			Expect(err).NotTo(HaveOccurred())
+			copyDir := filepath.Join(proj, ".lola/modules/example")
+			Expect(os.RemoveAll(copyDir)).To(Succeed())
+			Expect(os.WriteFile(copyDir, []byte("not a copy"), 0o644)).To(Succeed())
+			Expect(status()).To(Equal([]string{"example/claude-code=missing"}))
+			_, err = e.Render(ctx, sc, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filepath.Join(copyDir, "commands/ship.md")).To(BeARegularFile())
 		})
 
 		It("refuses a .lola that is itself a symlink, also for dry runs and list", func() {

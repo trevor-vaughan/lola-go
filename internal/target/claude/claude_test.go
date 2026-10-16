@@ -141,11 +141,15 @@ var _ = Describe("claude-code", func() {
 		Expect(ins).To(BeEmpty())
 	})
 
-	It("detects .claude/ or CLAUDE.md and roots user scope at $HOME", func() {
+	It("detects .claude/ or CLAUDE.md at either scope and roots user scope at $HOME", func() {
 		dir := testenv.Isolate()
-		Expect(c.Detect(dir)).To(BeFalse())
+		Expect(c.Detect(target.Project, dir)).To(BeFalse())
 		Expect(os.WriteFile(filepath.Join(dir, "CLAUDE.md"), nil, 0o644)).To(Succeed())
-		Expect(c.Detect(dir)).To(BeTrue())
+		Expect(c.Detect(target.Project, dir)).To(BeTrue())
+		home := filepath.Join(dir, "home")
+		Expect(c.Detect(target.User, home)).To(BeFalse())
+		Expect(os.Mkdir(filepath.Join(home, ".claude"), 0o700)).To(Succeed())
+		Expect(c.Detect(target.User, home)).To(BeTrue())
 		Expect(c.Root(target.User, "/proj", paths.Paths{Home: "/home/u"})).To(Equal("/home/u"))
 		Expect(c.Root(target.Project, "/proj", paths.Paths{Home: "/home/u"})).To(Equal("/proj"))
 	})

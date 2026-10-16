@@ -375,9 +375,8 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 			continue
 		}
 		stale := ok && v.Meta.Digest != entry.Digest
-		_, err = os.Lstat(filepath.Join(e.files(sc).modules, name))
-		copyMissing := errors.Is(err, fs.ErrNotExist)
-		if err != nil && !copyMissing {
+		copyMissing, err := needsCopy(e.files(sc).modules, name, entry, entry.Digest)
+		if err != nil {
 			return nil, err
 		}
 		for _, id := range allTargets(entry, man.Find(name), man) {

@@ -3,6 +3,7 @@ package target
 import (
 	"fmt"
 	"maps"
+	"math"
 	"regexp"
 	"slices"
 
@@ -30,11 +31,13 @@ type Shape string
 
 // Shapes.
 const (
-	ShapeString     Shape = "string"
-	ShapeStringList Shape = "string-list"
-	ShapeBoolMap    Shape = "bool-map"
-	ShapeBool       Shape = "bool"
-	ShapeNumber     Shape = "number"
+	ShapeString      Shape = "string"
+	ShapeStringList  Shape = "string-list"
+	ShapeBoolMap     Shape = "bool-map"
+	ShapeBool        Shape = "bool"
+	ShapeNumber      Shape = "number"
+	ShapePositiveInt Shape = "positive-integer" // a whole number above zero, written as an integer or a float
+	ShapeMap         Shape = "map"
 )
 
 // Value describes one frontmatter key.
@@ -43,7 +46,12 @@ type Value struct {
 	Pattern *regexp.Regexp // checked against a string, or each element of a string list
 	Drop    Severity       // non-empty: always remove the key, with a finding of this severity
 	Note    string         // why the key is dropped; used as the finding's text when Drop is set
-	Bounds                 // the assistant versions that read this key
+	// Guard marks a key that restricts the artifact, which the assistant leaves unrestricted
+	// without it. A value the target does not keep (any, with Drop, or one it does not accept)
+	// is dropped quietly when empty and otherwise skips the artifact, forceably, with Guard's
+	// code, text and hint; --force renders the artifact without the key.
+	Guard  *Finding
+	Bounds // the assistant versions that read this key
 }
 
 // ContentRule matches artifact bodies of one kind that the target cannot handle as written.
@@ -89,6 +97,14 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 		v, known := spec.Keys[k]
 		known = known && v.newest()
 		switch {
+		case known && v.Guard != nil && (v.Drop != "" || !v.accepts(doc.Frontmatter[k])):
+			if !blank(doc.Frontmatter[k]) {
+				g := at
+				g.Code, g.Text, g.Hint, g.Forceable = v.Guard.Code, v.Guard.Text, v.Guard.Hint, true
+				skip(g)
+			}
+			drop = append(drop, k)
+			continue
 		case known && v.Drop != "":
 			f.Severity, f.Text = v.Drop, fmt.Sprintf("%s dropped: %s", k, v.Note)
 		case known && !v.accepts(doc.Frontmatter[k]):
@@ -164,6 +180,30 @@ func invalid(at Finding, err error) Finding {
 	return at
 }
 
+// ToolsGuard is the Guard of an agent's tools key. Gemini CLI and OpenCode give an agent without
+// a tool list every tool, so a list the target cannot enforce must not be dropped quietly (user
+// decision 2026-10-09). fix is the target's own remedy, shown before the --force alternative.
+func ToolsGuard(id, fix string) *Finding {
+	return &Finding{Code: "agent-tools-unenforceable",
+		Text: id + " cannot enforce this agent's tool list; without it the agent can use every tool",
+		Hint: fix + ", or pass --force to install it unrestricted"}
+}
+
+// blank reports a frontmatter value that sets nothing: null, "", or an empty list or map.
+func blank(x any) bool {
+	switch v := x.(type) {
+	case nil:
+		return true
+	case string:
+		return v == ""
+	case []any:
+		return len(v) == 0
+	case map[string]any:
+		return len(v) == 0
+	}
+	return false
+}
+
 func (v Value) accepts(x any) bool {
 	switch v.Shape {
 	case ShapeString:
@@ -200,6 +240,19 @@ func (v Value) accepts(x any) bool {
 			return true
 		}
 		return false
+	case ShapePositiveInt:
+		switch n := x.(type) {
+		case int:
+			return n > 0
+		case uint64:
+			return n > 0
+		case float64:
+			return n > 0 && n == math.Trunc(n) && !math.IsInf(n, 1)
+		}
+		return false
+	case ShapeMap:
+		_, ok := x.(map[string]any)
+		return ok
 	}
 	return true
 }

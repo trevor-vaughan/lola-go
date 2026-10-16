@@ -1,7 +1,7 @@
 # Architecture
 
 For contributors. The design spec is `docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`;
-this page describes what is built (Plans 1 to 3).
+this page describes what is built (Plans 1 to 4).
 
 ## Pipeline
 
@@ -34,7 +34,7 @@ source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache
 | `ledger`, `manifest` | Observed and desired state, deterministic IO. |
 | `consent` | Recorded consent to run a module's install hooks, keyed by the hooks' digest. |
 | `target` | The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`, `Probe`, and helpers renderers share. No implementations. |
-| `target/claude` | The `claude-code` renderer and its capability table. One package per target. |
+| `target/claude`, `target/gemini`, `target/opencode` | The `claude-code`, `gemini-cli` and `opencode` renderers, each with its capability table and probe. One package per target. |
 | `target/conformance` | Specs every registered target must pass. |
 | `targets` | The registry: the one list of every target. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction). |
@@ -68,7 +68,7 @@ preserved; trailing line comments belong to the line they end. `ledger.created` 
 JSON files lola created, so they are deleted when lola's last member leaves them empty.
 
 **Owned array members.** `AddJSONMember` claims one string in a JSON array that users also edit
-(rule references for Gemini and OpenCode, Plan 4). The artifact records the string as `value`,
+(rule references for Gemini and OpenCode). The artifact records the string as `value`,
 which is part of its identity, so several modules can each own an entry in one array; the hash is
 over the string's canonical JSON. A member is present or absent, never hand-edited: one the user
 already listed is adopted, one the user removed is rewritten with a note, and an orphan the user
@@ -78,9 +78,16 @@ if lola created that. A value at the pointer that is not an array is a hard erro
 keeps comments that follow the last member before the closing bracket or brace, so removing
 lola's entry restores the file byte for byte.
 
-**Rules** are plain files each target writes where its assistant loads them (Claude Code:
-`.claude/rules/lola/<module>/<rule>.md`). Every artifact belongs to exactly one module; lola
-edits no user-owned instruction file, so nothing is shared between modules.
+**Rules** are plain files each target writes where its assistant loads them, never in a
+user-owned instruction file. Claude Code loads `.claude/rules/lola/<module>/<rule>.md` as is.
+Gemini CLI has no rules directory: a module's rules are joined into
+`.gemini/lola/<module>/GEMINI.md`, and that directory is an owned member of
+`context.includeDirectories` in `.gemini/settings.json` (Gemini walks it for `GEMINI.md` in
+trusted folders; observed with 0.63.0). OpenCode gets one file per rule in
+`.opencode/lola/<module>/` and one owned glob member in `instructions`. At user scope the members
+are absolute, because user settings apply in every project; OpenCode expands a wildcard only in
+the last component of an absolute entry, hence one member per module. Every artifact belongs to
+exactly one module.
 
 ## Targets
 
@@ -88,9 +95,13 @@ The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
 
 - **One package per target** (`internal/target/claude`, …) implements the contract in
   `internal/target`; `internal/targets` lists them explicitly (no `init()` registration). A
-  `depguard` rule in `.golangci.yml` lets target packages import only the contract, `module`,
-  `paths`, `plan`, the standard library and their vetted third-party packages, never the engine,
-  the CLI or lola's state.
+  `depguard` rule in `.golangci.yml` lets target packages import only the contract (exactly, not
+  a sibling target), `module`, `paths`, `plan`, the standard library and their vetted
+  third-party packages (`yaml`, `toml`, `semver`), never the engine, the CLI or lola's state.
+- **Scope and root.** `Detect(scope, root)` gets the target's root for the scope, and
+  `PlanContext.Root` carries it into `Plan`. OpenCode needs both: its user-scope root is its own
+  config directory, whose existence marks it as set up, and it writes to `opencode.jsonc` when
+  the root has one, else `opencode.json`. Targets may read the disk this way; they never write.
 - **Findings, not errors.** A target returns what it loses as `target.Finding`s with a severity:
   info, warn, or skip (that artifact is left out for that target). `Plan`'s error is only for
   failures that are not about module content. `target.Skipped` applies `--force` (forceable
@@ -107,7 +118,8 @@ The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
   (`paths.Paths.Search`; relative entries are ignored, so a repository cannot plant a binary)
   with the target's project markers, and executes nothing. Install, render and check run each
   participating assistant once with its version arguments (`Engine.ProbeTimeout`, no shell),
-  cached per binary build in `$XDG_CACHE_HOME/lola/probes.json`. The version only feeds
+  reading at most 4 KiB of its output, cached per binary build in
+  `$XDG_CACHE_HOME/lola/probes.json`. The version only feeds
   `PlanContext.Version`, which `Admit` compares with capability `Bounds` to add findings;
   rendering always follows the newest version, so output is the same on every machine.
 - **`lola check`** (`engine.Check`) stages a folder like `cache add` into a temporary directory
@@ -122,14 +134,16 @@ content from the cache version (`PlanContext.ContentDir`) and expand `${PLUGIN_R
 copy (`PlanContext.PluginRoot`), because the copy is only put in place after the plan is
 computed.
 
-At project scope the engine refuses to run when `.lola/` or `.lola/modules/` is a symlink
-(`refuseSymlinkedState`, before the lock is taken, also for dry runs and `status`): a repository
-can commit one, and the copy swap would then rename and delete directories outside the project.
+At project scope the engine refuses to run when `.lola/`, `.lola/modules/` or
+`.lola/plugin-data/` is a symlink (`refuseSymlinkedState`, before the lock is taken, also for
+dry runs and `status`): a repository can commit one, and the copy swap would then rename and
+delete directories outside the project, or plugin data directories would be created there.
 User-scope copies may live behind a symlink.
 
 Install hooks build inside copies (`npm install`, virtual environments), so a copy's content is
 never compared with the cache. A copy is replaced only when its module's version changes (the
-ledger digest differs, or there is no ledger entry) or the copy is missing (`needsCopy`). Each
+ledger digest differs, or there is no ledger entry) or the copy is missing (`needsCopy`); an
+entry that is not a real directory, such as a committed symlink, counts as missing. Each
 replaced copy is assembled as `.<module>.new`, the current one moves to `.<module>.old`, and the new one takes its place. If
 the ledger is never committed (the `after` callback of `plan.Apply` runs only after the commit),
 the old copies are restored; otherwise they are dropped. Copies of modules that leave the
@@ -205,8 +219,10 @@ ledger's.
   out can contain symlinks that redirect lola's writes elsewhere in your home directory.
   Conflict detection prevents overwriting content lola did not write, and the plan shows every
   redirected destination; review `lola install --dry-run` in repositories you do not trust.
-- **Project state.** lola refuses a `.lola/` or `.lola/modules/` that is a symlink, so a
-  repository cannot point the module-copy swap and uninstall cleanup outside the project.
+- **Project state.** lola refuses a `.lola/`, `.lola/modules/` or `.lola/plugin-data/` that is
+  a symlink, so a repository cannot point the module-copy swap, uninstall cleanup or plugin
+  data outside the project, and it replaces a module copy that is not a real directory, so a
+  committed link cannot point `${PLUGIN_ROOT}` and install hooks elsewhere.
 - **Unparseable files** are never rewritten.
 - lola's own state files are `0600`; its XDG directories `0700`.
 

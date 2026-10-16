@@ -27,7 +27,7 @@ func (e *Engine) Detect(sc Scope) []Assistant {
 	var out []Assistant
 	for _, t := range e.Targets {
 		out = append(out, Assistant{Target: t.ID(), Binary: e.findBinary(t.Probe()),
-			Marked: t.Detect(t.Root(sc.Kind, sc.ProjectDir, e.Paths))})
+			Marked: t.Detect(sc.Kind, t.Root(sc.Kind, sc.ProjectDir, e.Paths))})
 	}
 	return out
 }
@@ -106,11 +106,12 @@ func (r *probeRun) read(t target.Target) (string, *target.Finding) {
 	cmd := exec.CommandContext(ctx, bin, p.VersionArgs...)
 	cmd.Env = r.e.Environ()
 	cmd.WaitDelay = r.e.ProbeTimeout // do not wait forever on children that keep the output open
-	out, err := cmd.Output()
-	if err != nil {
+	out := &headWriter{max: probeOutputLimit}
+	cmd.Stdout = out
+	if err := cmd.Run(); err != nil {
 		return "", note("probe/unknown-version", fmt.Sprintf("%s %s failed: %v", bin, strings.Join(p.VersionArgs, " "), err))
 	}
-	m := p.VersionRE.FindSubmatch(out)
+	m := p.VersionRE.FindSubmatch(out.buf)
 	if m == nil {
 		return "", note("probe/unknown-version", fmt.Sprintf("%s %s printed no version lola recognizes", bin, strings.Join(p.VersionArgs, " ")))
 	}
@@ -120,6 +121,24 @@ func (r *probeRun) read(t target.Target) (string, *target.Finding) {
 		return v, note("probe/cache", "the version was read but could not be cached: "+err.Error())
 	}
 	return v, nil
+}
+
+// probeOutputLimit is how much of a version probe's output lola reads; a version is printed
+// first, and an assistant that prints megabytes must not grow lola's memory with it.
+const probeOutputLimit = 4 << 10
+
+// headWriter keeps the first max bytes written to it and discards the rest. It keeps
+// accepting writes so the child never blocks on a full pipe.
+type headWriter struct {
+	buf []byte
+	max int
+}
+
+func (w *headWriter) Write(p []byte) (int, error) {
+	if room := w.max - len(w.buf); room > 0 {
+		w.buf = append(w.buf, p[:min(room, len(p))]...)
+	}
+	return len(p), nil
 }
 
 // loadProbes reads the probe cache. It is lola's own disposable cache: a missing or unreadable
