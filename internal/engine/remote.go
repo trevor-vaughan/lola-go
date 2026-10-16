@@ -389,3 +389,49 @@ func scopeName(sc Scope) string {
 	}
 	return "project " + shown(sc.ProjectDir)
 }
+
+// knownScopes are the scopes lola profile --add and --update know of when no scope flag names one
+// (Plan 6b §19 P20, P22), as the read-only commands do (§3.1, D2): the project found from the
+// working directory, when there is one, then user scope. They never ask: the profile file is
+// shared by every scope. A .lola/ found in the home directory is no project (ruling R-6b3c-9):
+// user scope installs there, and a sync refuses it; the notice says it was skipped.
+func (e *Engine) knownScopes() ([]Scope, []Notice) {
+	user := Scope{Kind: target.User}
+	sc, ok := e.foundProject()
+	switch {
+	case !ok:
+		return []Scope{user}, nil
+	case e.IsHome(sc):
+		return []Scope{user}, []Notice{{Level: LevelInfo, Text: shown(sc.ProjectDir) +
+			" has .lola/, but it is your home directory, where user scope installs; it is not taken as a project"}}
+	}
+	return []Scope{sc, user}, nil
+}
+
+// IsHome reports whether sc is a project at the home directory, which is user scope's root.
+func (e *Engine) IsHome(sc Scope) bool {
+	return sc.Kind == target.Project && sc.Key() == (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}).Key()
+}
+
+// ProfileRun is the lola profile command a hint names to repeat a run of --add or --update with
+// args (Plan 6b §12.3): with the scope flags that name given, the scopes the flags named (one, or
+// for --update --scope both the project and user scope, ruling R-6b3c-2), or with none when given
+// is empty, since such a run picks its scopes itself and asks for none (§19 P20, P22). Each
+// argument goes through untrusted.Text and is quoted for the user's shell.
+func (e *Engine) ProfileRun(given []Scope, args ...string) string {
+	cmd := []string{"lola", "profile"}
+	switch len(given) {
+	case 0:
+	case 1:
+		return e.Command(given[0], "profile", args...)
+	default:
+		cmd = append(cmd, "--scope", "both")
+		if !e.FoundHere(given[0]) {
+			cmd = append(cmd, "-C", untrusted.Text(given[0].ProjectDir, untrusted.MaxName))
+		}
+	}
+	for _, a := range args {
+		cmd = append(cmd, untrusted.Text(a, untrusted.MaxName))
+	}
+	return errs.ShellJoin(cmd)
+}

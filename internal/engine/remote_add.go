@@ -12,6 +12,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
+	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -21,12 +22,17 @@ const ProfileAdd ProfileAction = "add"
 
 // ProfileAddRequest is one lola profile --add (Plan 6b §3.2): fetch Source at Ref (a git branch,
 // tag or commit) and read profiles/<Name>.yml under its root, or under Path. Name is as typed: go
-// or remote:go. Scope is the scope whose lock.json annotates the content shown.
+// or remote:go. Scope is the scope a scope flag named, nil for none: it only picks the scope whose
+// lock.json annotates the content shown, since the profile is shared by every scope and adding
+// turns nothing on (§19 P22); without it the read-only rule picks (knownScopes).
 type ProfileAddRequest struct {
-	Scope             Scope
+	Scope             *Scope
 	Name              string
 	Source, Ref, Path string
 	DryRun            bool
+	// Rerun is the run's own flags a hint that repeats it keeps beside the ones it names (--trust,
+	// -n, --json, --plain, --no-pager as given).
+	Rerun []string
 	// Pick chooses, when no Name is given, the profiles to add among the source's names (and the
 	// count of files whose names are not valid, never shown); nil means it cannot ask, and the run
 	// is refused, listing them.
@@ -47,8 +53,19 @@ type ProfileAddRequest struct {
 // syncs elsewhere go on; it is taken exclusively only to check again that no profile of that
 // name appeared, and write (ruling R-6b3b-8).
 func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *RemoteResult, err error) {
-	sc := req.Scope
+	var given []Scope
+	known, skipped := e.knownScopes()
+	sc := known[0]
+	if req.Scope != nil {
+		given, sc, skipped = []Scope{*req.Scope}, *req.Scope, nil
+	}
 	name := req.Name
+	// display is the run's flags a hint that changes its consent or its dry run keeps: --json,
+	// --plain and --no-pager as given.
+	display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" || f == "-n" })
+	// kept is the flags of the --update a refusal of a profile you have hints: --trust answered
+	// this add's content, never an update's change, so it is left out (ruling R-6b3c-8).
+	kept := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" })
 	// typed is the run's arguments, the name aside, which every hint that repeats it keeps.
 	typed := []string{"--add", untrusted.Text(req.Source, untrusted.MaxName)}
 	for _, f := range [][2]string{{"--ref", req.Ref}, {"--path", req.Path}} {
@@ -58,12 +75,9 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	if kind, bare, qualified := strings.Cut(name, ":"); qualified {
 		if kind != string(profile.KindRemote) {
-			args := append([]string{bare}, typed...)
-			if req.DryRun {
-				args = append(args, "-n")
-			}
+			args := slices.Concat([]string{bare}, typed, req.Rerun)
 			return nil, errs.WithHints(fmt.Errorf("--add keeps remote profiles; %s names another kind", untrusted.Text(name, untrusted.MaxName)),
-				"add it as a remote profile: "+e.Command(sc, "profile", args...))
+				"add it as a remote profile: "+e.ProfileRun(given, args...))
 		}
 		// remote: names a profile, never none: it does not start the picker.
 		if err := remoteName(bare); err != nil {
@@ -83,11 +97,16 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	if req.Consent == nil && !req.DryRun {
 		return nil, errs.WithHints(errors.New("lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on"),
-			"see it: "+e.Command(sc, "profile", append(typed, "-n")...),
-			"then add it unasked: "+e.Command(sc, "profile", append(typed, "--trust")...))
+			"see it: "+e.ProfileRun(given, slices.Concat(typed, []string{"-n"}, display)...),
+			"then add it unasked: "+e.ProfileRun(given, slices.Concat(typed, []string{"--trust"}, display)...))
 	}
-	// Every lola profile command refuses a tracked lock.json (Plan 6b §5, §19 S5).
+	// Every lola profile command refuses a tracked lock.json (Plan 6b §5, §19 S5). The found
+	// project only labels the content, so the run at user scope is offered too.
 	_, _, led, checked, err := e.profileScope(ctx, sc)
+	if err != nil && len(given) == 0 && sc.Kind == target.Project {
+		return nil, errs.WithHints(errors.New(untrusted.CleanErr(err).Error()), append(errs.Hints(err),
+			"or compare with user scope: "+e.ProfileRun([]Scope{{Kind: target.User}}, append(slices.Clone(typed), req.Rerun...)...))...)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -97,11 +116,11 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	defer func() { unlock() }()
 	if name != "" {
-		if err := e.refuseKept(sc, name); err != nil {
+		if err := e.refuseKept(given, name, kept); err != nil {
 			return nil, err
 		}
 	}
-	res := &RemoteResult{Profiles: []RemoteProfile{}, Notices: append(checked, e.sweepRuns()...), DryRun: req.DryRun}
+	res := &RemoteResult{Profiles: []RemoteProfile{}, Notices: slices.Concat(skipped, checked, e.sweepRuns()), DryRun: req.DryRun}
 	run, err := e.runDir()
 	if err != nil {
 		return nil, err
@@ -113,11 +132,11 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	names := []string{name}
 	if name == "" {
-		if names, err = e.pickRemote(sc, f.Dir, typed, req.DryRun, req.Pick); err != nil {
+		if names, err = e.pickRemote(given, f.Dir, typed, display, req.DryRun, req.Pick); err != nil {
 			return nil, err
 		}
 		for _, n := range names {
-			if err := e.refuseKept(sc, n); err != nil {
+			if err := e.refuseKept(given, n, kept); err != nil {
 				return nil, err
 			}
 		}
@@ -140,12 +159,15 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	if req.DryRun {
 		for _, rp := range res.Profiles {
-			args := typed
+			args := slices.DeleteFunc(slices.Concat(typed, req.Rerun), func(f string) bool { return f == "-n" })
 			if name == "" {
-				args = append([]string{rp.name}, typed...)
+				args = append([]string{rp.name}, args...)
 			}
-			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "to add " + rp.Profile + ": " + e.Command(sc, "profile", args...) +
-				" (off a terminal: --trust)"})
+			text := "to add " + rp.Profile + ": " + e.ProfileRun(given, args...)
+			if !slices.Contains(args, "--trust") {
+				text += " (off a terminal: --trust)"
+			}
+			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: text})
 		}
 		return res, nil
 	}
@@ -168,7 +190,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	var written []string
 	for i := range res.Profiles {
 		rp := &res.Profiles[i]
-		err := e.refuseKept(sc, rp.name)
+		err := e.refuseKept(given, rp.name, kept)
 		ok := false
 		if err == nil {
 			ok, err = e.writeRemote(rp.name, rp.data, rp.origin)
@@ -206,8 +228,9 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 }
 
 // refuseKept refuses to add the remote profile name when lola already keeps one of that name, or
-// when something else, which is no profile, has its place.
-func (e *Engine) refuseKept(sc Scope, name string) error {
+// when something else, which is no profile, has its place; the hint's --update keeps the scope
+// flag of the run, given (none when empty), and flags, the run's flags it keeps.
+func (e *Engine) refuseKept(given []Scope, name string, flags []string) error {
 	path := filepath.Join(e.Paths.RemoteProfiles, name)
 	fi, err := os.Lstat(path)
 	switch {
@@ -220,15 +243,16 @@ func (e *Engine) refuseKept(sc Scope, name string) error {
 			"move it out of "+shown(e.Paths.RemoteProfiles)+", then run this again")
 	}
 	q := string(profile.KindRemote) + ":" + name
-	return errs.WithHints(fmt.Errorf("you already have a remote profile %s", shown(q)), "fetch it again: "+e.Command(sc, "profile", q, "--update"))
+	return errs.WithHints(fmt.Errorf("you already have a remote profile %s", shown(q)), "fetch it again: "+e.ProfileRun(given, slices.Concat([]string{q, "--update"}, flags)...))
 }
 
 // pickRemote is the profiles of the fetched tree to add, when none was named (Plan 6b §3.2): the
 // names pick chooses among those of the tree's profiles/ that a remote profile may have (§19 S7,
 // remoteName: default never is one, and counts with the invalid names). Without pick the run is
 // refused, listing them, with the command that adds each, or for a dry run shows it (typed is the
-// run's arguments, to repeat). A choice of none is a No.
-func (e *Engine) pickRemote(sc Scope, tree string, typed []string, dry bool, pick func([]string, int) ([]string, error)) ([]string, error) {
+// run's arguments, to repeat, with the scope flag given, none when empty, and display, the run's
+// flags each hint keeps after --trust or -n). A choice of none is a No.
+func (e *Engine) pickRemote(given []Scope, tree string, typed, display []string, dry bool, pick func([]string, int) ([]string, error)) ([]string, error) {
 	all, invalid, err := profile.FetchedNames(tree)
 	if err != nil {
 		return nil, err
@@ -245,7 +269,7 @@ func (e *Engine) pickRemote(sc Scope, tree string, typed []string, dry bool, pic
 		}
 		var hints []string
 		for _, n := range names {
-			hints = append(hints, verb+n+": "+e.Command(sc, "profile", append(append([]string{n}, typed...), flag)...))
+			hints = append(hints, verb+n+": "+e.ProfileRun(given, slices.Concat([]string{n}, typed, []string{flag}, display)...))
 		}
 		return nil, errs.WithHints(fmt.Errorf("name the profile to add; the source has %s", andJoin(names)), hints...)
 	}

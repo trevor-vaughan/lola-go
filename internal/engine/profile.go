@@ -183,7 +183,7 @@ func (e *Engine) loadProfiles(sc Scope, infos []profile.Info, lists ...[]ledger.
 			return Layer{}, nil, err
 		}
 		if err != nil {
-			return Layer{}, nil, e.readd(sc, i.Name, false, err)
+			return Layer{}, nil, e.readd(sc, i.Name, err)
 		}
 		// Every entry names a remote source (Plan 6b D4): nothing to resolve beside it.
 		l := Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: p.Entries(), origin: &o}

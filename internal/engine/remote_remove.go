@@ -64,7 +64,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*
 		return nil, err
 	}
 	defer func() { unlock() }()
-	name, err := e.remoteNamed(sc, req.Name, ProfileRemove)
+	name, err := e.remoteNamed(sc, []Scope{sc}, req.Name, ProfileRemove)
 	if err != nil {
 		return nil, err
 	}
@@ -73,13 +73,9 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*
 	if req.Force {
 		again = append(again, "--force")
 	}
-	// A hint that repeats the run keeps -y, without which it refuses off a terminal.
-	yes := []string{}
-	if req.Yes {
-		yes = []string{"-y"}
-	}
+	// No hint carries -y but the one that asks for it (ruling R-6b3c-8): a -y answers the question
+	// it was given for, and a hint must not answer another.
 	confirm := slices.Concat(again, []string{"-y"})
-	again = append(again, yes...)
 	if req.Confirm == nil && !req.DryRun {
 		return nil, errs.WithHints(errors.New("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on"),
 			"confirm it: "+e.Command(sc, "profile", confirm...))
@@ -104,7 +100,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*
 			scopes = append(scopes, o)
 		}
 	}
-	forced := append([]string{q, "--remove", "--force"}, yes...)
+	forced := []string{q, "--remove", "--force"}
 	if req.DryRun {
 		forced = append(forced, "-n")
 	}
@@ -151,10 +147,10 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*
 				case profile.DefaultName: // always on: it stops extending q only when edited
 					hints = append(hints, "remove "+shown(name)+" from the extends: of "+shown(e.profilePath(s, profile.KindUser, profile.DefaultName))+" first")
 				case shown(q):
-					hints = append(hints, "turn "+u+" off first: "+e.Command(s, "profile", append([]string{u, "--off"}, yes...)...))
+					hints = append(hints, "turn "+u+" off first: "+e.Command(s, "profile", u, "--off"))
 				default:
 					kind, own, _ := strings.Cut(u, ":")
-					hints = append(hints, "turn "+u+" off first: "+e.Command(s, "profile", append([]string{u, "--off"}, yes...)...),
+					hints = append(hints, "turn "+u+" off first: "+e.Command(s, "profile", u, "--off"),
 						"or remove "+shown(name)+" from the extends: of "+shown(e.profilePath(s, profile.Kind(kind), own)))
 				}
 			}
@@ -164,11 +160,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*
 			e.SyncCommand(s) + ", which removes them"})
 	}
 	if req.DryRun {
-		text := "to remove it: " + e.Command(sc, "profile", again...)
-		if !req.Yes {
-			text += " (off a terminal: -y)"
-		}
-		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: text})
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "to remove it: " + e.Command(sc, "profile", again...) + " (off a terminal: -y)"})
 		return res, nil
 	}
 	ok, err := req.Confirm(RemoteProfile{Profile: res.Profile, File: res.File, Source: res.Source, Changes: []TrustChange{}})

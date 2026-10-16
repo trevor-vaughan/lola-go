@@ -899,7 +899,16 @@ exclusively (`lockProfiles(true)`) only to check again that what they showed sti
 write, so no question is ever asked under it and syncs elsewhere go on.
 
 **Adding a remote profile** (`Engine.AddProfile`, `internal/engine/remote_add.go`, Plan 6b
-§6.5) checks everything it can before any network contact: the name (`remote:go` taken as `go`,
+§6.5) asks no scope (§19 P22): `ProfileAddRequest.Scope` is the scope a flag named, nil for none,
+and only picks the scope the content is compared with; nil takes the first of `knownScopes`, the
+project `foundProject` finds, else user scope, the read-only commands' rule; a `.lola/` in the
+home directory is never that project (`IsHome`, ruling R-6b3c-9), and is skipped with a notice.
+Hints that repeat the run are built by `ProfileRun`, which carries the scope flag only when one
+was given, and the run's own flags (`ProfileAddRequest.Rerun`; a hint that sets `-n` or `--trust`
+itself keeps the others, and `refuseKept`'s `--update` hint never `--trust`, which answered the
+add's content, ruling R-6b3c-8); a found project that cannot be read refuses with the run at user
+scope as one more hint. It checks
+everything it can before any network contact: the name (`remote:go` taken as `go`,
 another kind refused, then `remoteName`: valid, not `default`), the source (`remoteSpec`:
 `profile.CheckRemoteSource`, which takes only `https://`, `ssh://` and git's scp form at a host
 named by name, ruling R-6b3b-6; then `source.Parse`, which never looks a URL or scp form up on
@@ -924,27 +933,81 @@ rest (`.new-`, and `.del-`, a removal's). Once the rename succeeded the profile 
 a later failure (flushing, removing the `.old-` one, or `visible` checking for a local namesake)
 is a warning notice, never a failed add or update. The run's staging is removed on every path.
 
-**Updating one** (`Engine.UpdateProfile`, `internal/engine/remote_update.go`) takes the profiles
+**Updating them** (`Engine.UpdateProfile`, `internal/engine/remote_update.go`) takes the profiles
 lock shared first (`readProfiles`, whose sweep finishes an interrupted write, so a profile left
-aside is found), resolves the name to a kept remote profile (`remoteNamed`; a bare name is the
-remote one, since only those are updated), refuses before any network contact when it cannot ask,
-and reads the kept profile (`profile.LoadRemote`), checks its recorded source again (`remoteSpec`),
-fetches `profiles/` as `--add` does and compares: an unchanged `Origin` is a notice; otherwise
-`remoteContent` diffs the old entries against the new, with the whole content of each changed one.
-Before the question, `scopeBefore` reads what the run's scope, and the other scope a user sees from
-there (user scope, or the project `foundProject` finds), want and whether they use the profile
-(`uses`: as an active layer, not one a user profile shadows, or through an active layer's
-`extends:`); a run's scope it cannot read refuses there, so nothing is kept that cannot be applied.
-After `Consent`, under the exclusive lock, it refuses when the kept profile is no longer the one
-shown, replaces it (`writeRemote`), and `scopeUse.after` reads the scopes again and keeps the
-modules whose winning entry changed (§19 P9), counting every other difference from `lock.json` as
-pending. The run's scope gets those modules as `ProfileUpdateResult.Apply`, which the CLI syncs
-after the lock is released; the other scope only gets a notice with the command that applies them
-there, or that it could not be read (R-6b3b-2). The update and its apply are two steps: the profile
-is shared by every scope, and the next sync of any scope applies it, so a sync that stops leaves
-the update kept and says so, with the update's notices (as error hints under `--json`).
+aside is found), then resolves the profiles (`updateNames`, §19 P21): `ProfileUpdateRequest.All`
+lists every remote profile (`profile.Remote`), none being a notice; otherwise each of `Names` is
+resolved to a kept remote profile (`remoteNamed`; a bare name is the remote one, since only those
+are updated), a name given twice taken once. The CLI refuses names with `--all`, neither, and a name
+given twice, since its hints keep the flags of the run (`runWithout`), but for one naming profiles
+you did not name, which drops `--trust`, `-y` and the hook flags (ruling R-6b3c-8); `--all` is in
+the per-action flag table, so other actions refuse it. It refuses before any network contact when it
+cannot ask,
+and an engine call naming neither profiles nor `All`. It asks no scope (§19 P20):
+`ProfileUpdateRequest.Scopes` are the scopes the flags named, none for no flag; none applies in
+every scope of `knownScopes` (the project `foundProject` finds, never the home directory, then user
+scope), one in that scope only (a project at the home directory, `IsHome`, is refused before the
+profiles lock is taken, hinting the run at user scope, ruling R-6b3c-9), and two (`--scope both`,
+which the CLI takes only when the project has `.lola/`, ruling R-6b3c-2) in both, the project first.
+`ProfileRun` repeats such a run with `--scope both` (and `-C <root>` for a project not found from
+here). Each of those must pass
+`profileScope`, and `scopeBefore` must read what each wants (`uses`), before any network contact: a
+scope it cannot read refuses there, so nothing is kept that cannot be applied, with `narrowUpdate`
+hinting the run narrowed to each other scope (without a scope flag, a hint naming a project leaves
+`--trust` out, and the message names that project's untrusted changes, rulings R-6b3c-7 and
+R-6b3c-8); the first scope annotates the content shown. Without a scope flag, `--trust` answers only
+the profiles' consent (ruling R-6b3c-7): the CLI never passes it to a scope's sync, so a terminal
+asks that question, and a run that cannot ask (`CannotAsk`) refuses before any network contact when
+a found project has entries you have not trusted (`refuseUnnamedTrust`, `untrustedModules`:
+`checkParts` of its project.yml and active project profiles), hinting the run with the project
+named. That check reads the project's trust before the update, and a project profile that extends
+an updated remote profile changes what the project trusts, so an unscoped `--trust` run off a
+terminal can write the profile and then have the project's sync refuse (residual, the safe way:
+nothing is trusted unasked); the stop's `apply it later` hint applies it once reviewed, and naming
+the project up front (`--project … --trust`) avoids it. Then each profile is handled on its own
+(`updateRun`): `fetch` reads the kept profile (`profile.LoadRemote`), checks its recorded source
+again (`remoteSpec`), fetches `profiles/` as
+`--add` does into a run directory of its own and compares: an unchanged `Origin` is a notice;
+otherwise `remoteContent` diffs the old entries against the new, with the whole content of each
+changed one. `Consent` is asked once per changed profile. A No is that profile's outcome
+(`ProfileOutcome`, `UpdateDeclined`) and the run goes on; a failure to fetch, read, check or write
+one is its outcome (`UpdateFailed`, with the error and its hints) and the run goes on; an error of
+`Consent` (Ctrl+C) stops the run, every later profile `UpdateSkipped`, and is returned as
+`UpdateStoppedError` with the run so far. On a Yes, `write` gives up the shared lock, takes it
+exclusively, sweeps, refuses when the kept profile is no longer the one shown, replaces it
+(`writeRemote`), and the loop takes the shared lock again before the next question (R-6b3b-8);
+failing to take it stops the run the same way, the profile written reported, and no scope is read
+without the lock (the stop's hints are each scope's whole sync). A scope that cannot be read once
+the profiles are written also stops the run, with every profile's outcome kept. The `ctx.Err()`
+branch serves engine callers: the CLI installs no signal handler, so Ctrl+C outside a question ends
+the process. Once every profile is handled, `updateScopes` has `scopeUse.after` read each scope
+again with the profiles written (`uses` takes several) and keep the modules whose winning entry
+changed (§19 P9), counting every other difference from `lock.json` as pending.
+`ProfileUpdateResult.Scopes` lists the scopes in order with those modules (`UpdateScope.Apply`),
+which the CLI syncs one after the other once the lock is released, stopping at the first that fails
+or is declined as `sync --scope both` does; an unnarrowed run adds a notice that other checkouts
+catch up at their next sync. Only a narrowed run reads the other scope a user sees from there (user
+scope, or the project `foundProject` finds) and gives it a notice with the command that applies the
+update there, or that it could not be read (R-6b3b-2, kept for that case); a narrowed scope that
+does not use the profiles says that every scope that does picks the update up at its next sync only
+when that other scope does not use them either. The update and its apply are two steps: the profile
+is shared by every scope, and the next sync of any scope applies it, so a sync that stops leaves the
+update kept and says so, with the `lola sync` of that scope and of each one not reached
+(`updateNotApplied`; a No at the sync's question is an abort whose message names them, since an
+abort prints no hints). A scope that cannot be read once the profiles are written refuses before
+anything is applied, naming the sync of every scope. A refusal of a scope keeps its error's hints
+once: the refusal is a new error, not a wrap, since `errs.Hints` walks the chain (`narrowUpdate`).
+The CLI fails a run with a failed profile once the others are applied, or with that profile's own
+error when the run named only one, and a stop (`UpdateStoppedError`) after a failure; every such
+error is an `updateError`, whose `--json` error document is the run's document beside the wrapped
+error's own fields. A run where every profile was declined, and Ctrl+C with no failure, are aborts.
 `ProfileUpdateRequest.Flags` carries the run's `--allow-hooks`, `--allow-runtime-hooks` and `-y`,
-which every hint that repeats the run keeps.
+which every hint that repeats the run, or syncs only the modules it moves, keeps; `Rerun` carries
+its `--trust`, `-n`, `--json`, `--plain` and `--no-pager`, which only hints repeating the run keep.
+A hint naming profiles the run did not name keeps neither answers nor hook flags (`-y`, `--trust`,
+`--allow-hooks`, `--allow-runtime-hooks`), and one naming a project an unscoped run did not name
+drops `--trust`.
+A whole scope's sync hint carries neither (ruling R-6b3c-8).
 
 **Removing one** (`Engine.RemoveProfile`, `internal/engine/remote_remove.go`) refuses without a way
 to ask (`-y` answers; `--force` never does), under the shared lock taken first, as for an update,
@@ -952,8 +1015,9 @@ then checks the run's scope, user scope and the project found from the working d
 (`foundProject`): through `uses`, the profile itself on, or an active profile or `default`
 extending it, refuses unless `Force`, and so does a scope it cannot read (under `--force` only a
 failure of the run's own `profileScope`, a tracked or unreadable `lock.json`, still refuses; a
-scope whose layers cannot be read becomes a warning). Its hints repeat the run's `-y` (and `-n` for
-the `--force` one), since without it they refuse off a terminal. After the question, under the
+scope whose layers cannot be read becomes a warning). No hint carries `-y` but the cannot-ask
+refusal's, which asks for it (ruling R-6b3c-8): a `-y` answers the question it was given for;
+the `--force` one keeps `-n`. After the question, under the
 exclusive lock, it checks the profile is still there with the `source.json` it read before asking
 (else `changed while you were asked`), and renames the directory aside (`.del-<name>-*`, which a
 sweep only ever removes) before removing it, so the profile is gone in one step; a failure to

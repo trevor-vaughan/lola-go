@@ -16,10 +16,11 @@ import (
 // remoteFlags are lola profile --add's own flags: its source, and the ref and --path to fetch.
 type remoteFlags struct{ source, ref, path string }
 
-// profileAdd runs lola profile [<name>] --add <source> (Plan 6b §3.2, §6.5): one scope, resolved as
-// every action's is, whose installed modules the profile's content is compared with; on a
-// terminal the picker when no name is given, then the profile and its content, paged, and the
-// question; off a terminal --trust, without which the engine refuses before any network contact.
+// profileAdd runs lola profile [<name>] --add <source> (Plan 6b §3.2, §6.5): it asks no scope (§19
+// P22); a scope flag, when given, only names the scope whose installed modules the profile's
+// content is compared with, else the engine picks; on a terminal the picker when no name is given,
+// then the profile and its content, paged, and the question; off a terminal --trust, without which
+// the engine refuses before any network contact.
 func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, rf remoteFlags, f syncFlags) error {
 	if len(args) > 1 {
 		var hints []string
@@ -28,9 +29,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 		}
 		return errs.WithHints(errors.New("--add takes one profile name; add them one at a time"), hints...)
 	}
-	// Adding turns nothing on: the scope only says whose installed modules the content is
-	// compared with (ruling R-6b3b-1).
-	scs, err := a.scopes(cmd, eng, "Compare its content with which scope? (adding turns nothing on)", false, true)
+	given, err := a.flagScope(cmd, eng, args, "--add compares the content with one")
 	if err != nil {
 		return err
 	}
@@ -38,17 +37,19 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	if err != nil {
 		return err
 	}
-	sc := scs[0].Scope
-	req := engine.ProfileAddRequest{Scope: sc, Source: rf.source, Ref: rf.ref, Path: rf.path, DryRun: f.dry}
+	req := engine.ProfileAddRequest{Source: rf.source, Ref: rf.ref, Path: rf.path, DryRun: f.dry, Rerun: rerunFlags(cmd)}
 	if len(args) == 1 {
 		req.Name = args[0]
+	}
+	if len(given) == 1 {
+		req.Scope = &given[0]
 	}
 	p := a.prompter(cmd) // never asks under --json
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
 	// Unpaged, the content is capped, naming the command that lists all of a profile's, picked or
 	// named; paged (more is ""), it is not.
 	moreFor := func(rp engine.RemoteProfile) string {
-		return eng.Command(sc, "profile", append(append([]string{rp.Profile}, profileAddArgs("", rf)[2:]...), "-n", "--json")...)
+		return eng.ProfileRun(given, append(append([]string{rp.Profile}, profileAddArgs("", rf)[2:]...), "-n", "--json")...)
 	}
 	printer := func(rps []engine.RemoteProfile) func(io.Writer, style, string) {
 		return func(w io.Writer, _ style, more string) {

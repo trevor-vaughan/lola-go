@@ -281,7 +281,7 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 	case shadowed:
 		p, _, err := profile.LoadRemote(i.Path)
 		if err != nil {
-			return nil, nil, e.readd(sc, i.Name, false, err)
+			return nil, nil, e.readd(sc, i.Name, err)
 		}
 		own, read = Layer{Entries: p.Entries()}, true
 	default:

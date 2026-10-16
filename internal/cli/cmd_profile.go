@@ -32,7 +32,7 @@ var profileFlags = map[engine.ProfileAction][]string{
 	engine.ProfileOff:    {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
 	engine.ProfileSwitch: {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
 	engine.ProfileAdd:    {"trust", "dry-run", "ref", "path"},
-	engine.ProfileUpdate: {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
+	engine.ProfileUpdate: {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks", "all"},
 	engine.ProfileRemove: {"yes", "dry-run", "force"},
 }
 
@@ -86,6 +86,19 @@ func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
 	return errs.ShellJoin(out)
 }
 
+// rerunFlags is the flags of lola profile --add or --update that a hint repeating the run keeps
+// beside the scope, the names and the flags the engine is given (Plan 6b §12.3): --trust, -n,
+// --json, --plain and --no-pager, as given.
+func rerunFlags(cmd *cobra.Command) []string {
+	var out []string
+	for _, f := range [][2]string{{"trust", "--trust"}, {"dry-run", "-n"}, {"json", "--json"}, {"plain", "--plain"}, {"no-pager", "--no-pager"}} {
+		if cmd.Flags().Changed(f[0]) {
+			out = append(out, f[1])
+		}
+	}
+	return out
+}
+
 // profileAction is the one action flag set on cmd, "" for none (Plan 6b §19 R7): cobra has
 // parsed, so the check is on canonical names; two different actions refuse, naming both, with
 // the run keeping each one of them as hints (args are its names).
@@ -119,9 +132,9 @@ func (a *app) profileCmd() *cobra.Command {
 	var f syncFlags
 	var on, off, switchTo bool
 	var add remoteFlags
-	var update, remove bool
+	var update, remove, all bool
 	cmd := &cobra.Command{
-		Use:   "profile [<name>...] [--on|--off|--switch|--add <source>|--update|--remove]",
+		Use:   "profile [<name>...] [--on|--off|--switch|--add <source>|--update [--all]|--remove]",
 		Short: "List your profiles, show one, or turn them on and off",
 		Long: "A profile is a named set of module entries, kept in $XDG_CONFIG_HOME/lola/profiles/<name>.yml;\n" +
 			"default.yml there is always on at user scope. A project may commit its own in\n" +
@@ -147,19 +160,28 @@ func (a *app) profileCmd() *cobra.Command {
 			"--ref, under --path), shows its entries with the files, MCP servers and hooks each brings,\n" +
 			"and asks before keeping it; without a name, a terminal offers the source's profiles. Every\n" +
 			"entry of a remote profile must be pinned. Adding turns nothing on, and off a terminal it\n" +
-			"needs --trust, checked before anything is fetched. --update fetches a remote profile again\n" +
-			"from the source, ref and path it was added from, shows how its entries change, asks, and\n" +
-			"applies it to the scope when the scope uses it; other scopes pick it up at their next sync.\n" +
+			"needs --trust, checked before anything is fetched. It asks no scope: the profile is shared\n" +
+			"by every scope, and a scope flag only names the scope whose installs its content is\n" +
+			"compared with, else the project found from here, else user scope.\n" +
+			"--update fetches the named remote profiles, or with --all every one you have, again from the\n" +
+			"source, ref and path each was added from, shows how each one's entries change and asks about\n" +
+			"each on its own: No keeps that one and goes on to the next, a failure is reported and the\n" +
+			"run goes on (and then fails), Ctrl+C at a question stops, keeping the ones updated. It\n" +
+			"applies them in each known scope that uses them, the project found from here (never your\n" +
+			"home directory), then user scope, stopping at the first that fails or is declined (so does\n" +
+			"--scope both); --project, --user or -C narrows it to that scope. Without a scope flag,\n" +
+			"--trust answers only for the profiles: a project's own trust is asked, or refused off a\n" +
+			"terminal. Other checkouts pick them up at their next sync.\n" +
 			"--remove deletes a remote profile, asking first (-y); it is refused while the scope, user scope\n" +
 			"or the project found from here uses it, unless --force, which never skips the question.\n\n" +
 			"Scope without an action: --project, --user, -C <dir> or --scope (both included); without them,\n" +
 			"the project with .lola/ at or above the current directory, if any, and user scope. Listing and\n" +
 			"showing never ask, and default_scope does not apply.\n" +
-			"With an action: " + strings.TrimPrefix(scopeHelp, "Scope: ") + "\n" +
+			"With --on, --off, --switch or --remove:\n" + strings.TrimPrefix(scopeHelp, "Scope: ") + "\n" +
 			"Every lola profile refuses a project whose .lola/lock.json git tracks.",
 		Example: "  lola profile\n  lola profile go\n  lola profile go --on\n  lola profile go docs --switch --user\n" +
 			"  lola profile go --off -y\n  lola profile --user --json\n  lola profile go --add https://github.com/example/profiles\n" +
-			"  lola profile go --update\n  lola profile go --remove -y",
+			"  lola profile go --update\n  lola profile --update --all\n  lola profile go --remove -y",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeProfile,
@@ -180,7 +202,7 @@ func (a *app) profileCmd() *cobra.Command {
 			case engine.ProfileAdd:
 				return a.profileAdd(cmd, eng, args, add, f)
 			case engine.ProfileUpdate:
-				return a.profileUpdate(cmd, eng, args, f)
+				return a.profileUpdate(cmd, eng, args, all, f)
 			case engine.ProfileRemove:
 				return a.profileRemove(cmd, eng, args, f)
 			default:
@@ -240,13 +262,14 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&off, string(engine.ProfileOff), false, "turn the named profiles off and apply (asks when files go; -y)")
 	cmd.Flags().BoolVar(&switchTo, string(engine.ProfileSwitch), false, "make the named profiles the active list, in order, and apply")
 	cmd.Flags().StringVar(&add.source, string(engine.ProfileAdd), "", "fetch a remote profile from this git repository or https archive, show it and ask")
-	cmd.Flags().BoolVar(&update, string(engine.ProfileUpdate), false, "fetch a remote profile again from its source, show what changed, ask, and apply it where it is on")
+	cmd.Flags().BoolVar(&update, string(engine.ProfileUpdate), false, "fetch the named remote profiles again from their sources, show what changed, ask, and apply them where they are on")
+	cmd.Flags().BoolVar(&all, "all", false, "with --update: every remote profile you have")
 	cmd.Flags().BoolVar(&remove, string(engine.ProfileRemove), false, "delete a remote profile (asks; -y; refused while it is in use, unless --force)")
 	cmd.Flags().StringVar(&add.ref, "ref", "", "with --add: the branch, tag or commit to fetch")
 	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory of the source that holds profiles/")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
-	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its profiles the run installs, a project profile taking your profile's place, and a remote profile --add or --update shows, without asking (never grants hook consent)")
+	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its profiles the run installs, a project profile taking your profile's place, and a remote profile --add or --update shows, without asking (never grants hook consent; --update without a scope flag: the profiles only)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "with --remove: remove a remote profile in use (never skips the question)")
 	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
 	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
@@ -362,19 +385,33 @@ func printProfileAction(w io.Writer, s style, action engine.ProfileAction, name 
 	printSync(w, s, name, r, nil, more)
 }
 
-// completeProfile offers the names of the profiles you can turn on, minus those already given.
+// completeProfile offers the names of the profiles you can turn on, or with --update or --remove
+// the remote ones (none with --all, nor a second for --remove, which takes one), minus those
+// already given (remote:go counting as go).
 func (a *app) completeProfile(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	remove := cmd.Flags().Changed(string(engine.ProfileRemove))
 	eng, err := a.engine()
+	if err != nil || cmd.Flags().Changed("all") || remove && len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	list, remote := eng.ProfileNames, remove || cmd.Flags().Changed(string(engine.ProfileUpdate))
+	if remote {
+		list = eng.RemoteProfileNames
+	}
+	names, err := list()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	names, err := eng.ProfileNames()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
+	// For remote profiles, remote:go names go.
+	given := slices.Clone(args)
+	if remote {
+		for i, g := range given {
+			given[i] = strings.TrimPrefix(g, "remote:")
+		}
 	}
 	var out []cobra.Completion
 	for _, n := range names {
-		if strings.HasPrefix(n, toComplete) && !slices.Contains(args, n) {
+		if strings.HasPrefix(n, toComplete) && !slices.Contains(given, n) {
 			out = append(out, n)
 		}
 	}
