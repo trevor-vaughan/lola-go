@@ -566,7 +566,7 @@ var _ = Describe("Engine", func() {
 			Expect(rep.Modules[0].Name).To(Equal("example"))
 
 			_, err = e.Check(ctx, sc, proj, []string{"nothing-here"}, nil)
-			Expect(err).To(MatchError(`"nothing-here" is neither a folder nor a module in your cache`))
+			Expect(err).To(MatchError(`"nothing-here" is neither a source nor a module in your cache`))
 			Expect(errs.Hints(err)).To(ContainElement("cached modules: lola cache list"))
 			_, err = e.Check(ctx, sc, proj, []string{"../src/example"}, []string{"vim"})
 			Expect(err).To(MatchError(`unknown target "vim"`))

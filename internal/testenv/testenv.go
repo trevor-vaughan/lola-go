@@ -2,6 +2,8 @@
 package testenv
 
 import (
+	"net/http/cgi"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,6 +58,22 @@ func Isolate() string {
 		}
 	}
 	return root
+}
+
+// ServeGit serves the bare repositories below root over loopback HTTP, with git's own
+// http-backend, for the current spec, and returns the base URL: root/x.git is cloned from
+// <url>/x.git. The backend reads no global or system git config. Call it after Isolate.
+func ServeGit(root string) string {
+	t := ginkgo.GinkgoT()
+	out, err := exec.Command("git", "--exec-path").Output()
+	if err != nil {
+		t.Fatalf("testenv: git --exec-path: %v", err)
+	}
+	h := &cgi.Handler{Path: filepath.Join(strings.TrimSpace(string(out)), "git-http-backend"), Env: []string{
+		"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_SYSTEM=" + os.DevNull}}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv.URL
 }
 
 // specTools are the programs specs, fake assistants and hook scripts invoke through PATH.

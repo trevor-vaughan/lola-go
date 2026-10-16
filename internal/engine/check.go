@@ -26,10 +26,10 @@ type CheckReport struct {
 	Findings []target.Finding `json:"findings"`
 }
 
-// Check reports, for each argument (a folder source, or a module in the cache), everything
-// the targets ids (every registered target when empty) would lose, change or skip. It renders
-// nothing and changes no state: a folder is staged in a temporary directory, never added to the
-// cache.
+// Check reports, for each argument (a source, or a module in the cache), everything the
+// targets ids (every registered target when empty) would lose, change or skip. It renders
+// nothing and changes no state: a source is staged in a temporary directory, never added to
+// the cache.
 func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []string) (*CheckReport, error) {
 	if len(ids) == 0 {
 		for _, t := range e.Targets {
@@ -82,9 +82,8 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, ts []t
 	return cm, nil
 }
 
-// loadForCheck loads arg's module: a folder source is staged the way lola cache add stages
-// it, in a temporary directory that cleanup removes; any other argument names a module in
-// the cache.
+// loadForCheck loads arg's module: a source is staged the way lola cache add stages it, in a
+// temporary directory that cleanup removes; any other argument names a module in the cache.
 func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string) (*module.Module, string, func() error, error) {
 	none := func() error { return nil }
 	spec, isSrc, err := source.Parse(arg, cwd)
@@ -97,8 +96,9 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string) (*module.Mod
 			return nil, "", none, err
 		}
 		if !ok {
-			return nil, "", none, errs.WithHints(fmt.Errorf("%q is neither a folder nor a module in your cache", arg),
-				"pass a module folder, e.g. lola check ./my-module", "cached modules: lola cache list")
+			return nil, "", none, errs.WithHints(fmt.Errorf("%q is neither a source nor a module in your cache", arg),
+				"pass a module folder or another source, e.g. lola check ./my-module", "sources are "+source.AcceptedForms,
+				"cached modules: lola cache list")
 		}
 		return v.Module, v.ContentDir, none, nil
 	}
@@ -110,7 +110,7 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string) (*module.Mod
 		return nil, "", none, err
 	}
 	cleanup := func() error { return os.RemoveAll(parent) }
-	staged, err := source.FetchFolder(ctx, spec, parent)
+	staged, err := source.Fetch(ctx, spec, parent)
 	if err != nil {
 		return nil, "", none, errors.Join(err, cleanup())
 	}

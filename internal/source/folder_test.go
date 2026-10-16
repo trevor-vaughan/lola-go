@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -40,7 +41,7 @@ func git(dir string, args ...string) {
 	Expect(err).NotTo(HaveOccurred(), string(out))
 }
 
-var _ = Describe("FetchFolder", func() {
+var _ = Describe("Fetch of a folder", func() {
 	var tmp, src, staging string
 	ctx := context.Background()
 	BeforeEach(func() {
@@ -55,7 +56,7 @@ var _ = Describe("FetchFolder", func() {
 			"node_modules/x.js": "", ".venv/bin/py": "", "__pycache__/c.pyc": "", ".lola/lock.json": "", "sub/.DS_Store": "",
 		})
 		Expect(os.Chmod(filepath.Join(src, "commands/a.md"), 0o700)).To(Succeed())
-		f, err := source.FetchFolder(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
+		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(f.Name).To(Equal("example"))
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md", "skills/s/SKILL.md"))
@@ -66,7 +67,7 @@ var _ = Describe("FetchFolder", func() {
 
 	It("uses <root>/module/ when present and --path is not given", func() {
 		writeTree(src, map[string]string{"README.md": "x", "module/commands/a.md": "A"})
-		f, err := source.FetchFolder(ctx, source.Spec{Location: src}, staging)
+		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
 		Expect(f.Name).To(Equal("example"))
@@ -74,7 +75,7 @@ var _ = Describe("FetchFolder", func() {
 
 	It("uses --path for monorepos and names the module after that directory", func() {
 		writeTree(src, map[string]string{"plugins/review/commands/a.md": "A", "plugins/other/commands/b.md": "B"})
-		f, err := source.FetchFolder(ctx, source.Spec{Location: src, Path: "plugins/review"}, staging)
+		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "plugins/review"}, staging)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
 		Expect(f.Name).To(Equal("review"))
@@ -82,14 +83,27 @@ var _ = Describe("FetchFolder", func() {
 
 	It("rejects a --path that leaves the source", func() {
 		writeTree(src, map[string]string{"commands/a.md": "A"})
-		_, err := source.FetchFolder(ctx, source.Spec{Location: src, Path: "../x"}, staging)
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "../x"}, staging)
 		Expect(err).To(MatchError(ContainSubstring("--path")))
+	})
+
+	It("coaches a --path that is not a directory, printing only the --path, made printable", func() {
+		writeTree(src, map[string]string{"commands/a.md": "A"})
+		for _, p := range []string{"nope\x1b[31mRED", "commands/a.md", "commands/a.md/x", "../x"} {
+			_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: p}, staging)
+			Expect(err).To(MatchError(ContainSubstring("--path")), p)
+			Expect(err.Error()).NotTo(ContainSubstring("\x1b"), p)
+			Expect(err.Error()).NotTo(ContainSubstring(tmp), p)
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--path is relative to")), p)
+		}
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "nope\x1b[31mRED"}, staging)
+		Expect(err).To(MatchError(ContainSubstring(`--path "nope?[31mRED"`)))
 	})
 
 	It("refuses symlinks and leaves nothing staged", func() {
 		writeTree(src, map[string]string{"commands/a.md": "A"})
 		Expect(os.Symlink("/etc/passwd", filepath.Join(src, "commands", "b.md"))).To(Succeed())
-		_, err := source.FetchFolder(ctx, source.Spec{Location: src}, staging)
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
 		Expect(err).To(MatchError(ContainSubstring("commands/b.md: symbolic links are not allowed")))
 		entries, _ := os.ReadDir(staging)
 		Expect(entries).To(BeEmpty())
@@ -101,7 +115,7 @@ var _ = Describe("FetchFolder", func() {
 		git(src, "add", ".")
 		git(src, "commit", "-q", "-m", "init")
 		writeTree(src, map[string]string{"commands/new.md": "N", "secret.md": "S"})
-		f, err := source.FetchFolder(ctx, source.Spec{Location: src}, staging)
+		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md", "commands/new.md", ".gitignore"))
 	})
@@ -113,7 +127,7 @@ var _ = Describe("FetchFolder", func() {
 		git(src, "commit", "-q", "-m", "init")
 		pwned := filepath.Join(tmp, "PWNED")
 		git(src, "config", "core.fsmonitor", "touch "+pwned+"; true")
-		f, err := source.FetchFolder(ctx, source.Spec{Location: src}, staging)
+		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
 		Expect(pwned).NotTo(BeAnExistingFile())
@@ -122,7 +136,7 @@ var _ = Describe("FetchFolder", func() {
 	It("refuses a source that contains the staging directory", func() {
 		writeTree(src, map[string]string{"commands/a.md": "A"})
 		inner := filepath.Join(src, "inner")
-		_, err := source.FetchFolder(ctx, source.Spec{Location: src}, inner)
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, inner)
 		Expect(err).To(MatchError(ContainSubstring("inside it")))
 		_, err = os.Lstat(inner)
 		Expect(err).To(HaveOccurred()) // inner must not exist
@@ -133,7 +147,7 @@ var _ = Describe("FetchFolder", func() {
 		writeTree(outside, map[string]string{"commands/a.md": "A"})
 		Expect(os.MkdirAll(src, 0o755)).To(Succeed())
 		Expect(os.Symlink(outside, filepath.Join(src, "module"))).To(Succeed())
-		_, err := source.FetchFolder(ctx, source.Spec{Location: src}, staging)
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
 		Expect(err).To(MatchError(ContainSubstring("module: symbolic links are not allowed")))
 	})
 
@@ -142,7 +156,7 @@ var _ = Describe("FetchFolder", func() {
 		writeTree(outside, map[string]string{"review/commands/a.md": "A"})
 		Expect(os.MkdirAll(src, 0o755)).To(Succeed())
 		Expect(os.Symlink(outside, filepath.Join(src, "plugins"))).To(Succeed())
-		_, err := source.FetchFolder(ctx, source.Spec{Location: src, Path: "plugins/review"}, staging)
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "plugins/review"}, staging)
 		Expect(err).To(MatchError(ContainSubstring("plugins: symbolic links are not allowed")))
 	})
 })

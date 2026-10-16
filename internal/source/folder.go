@@ -1,14 +1,12 @@
 package source
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -27,37 +25,13 @@ type Fetched struct {
 	Commit string
 }
 
-// FetchFolder copies the module root of a folder source into a new directory under
+// fetchFolder copies the module root of a folder source into a new directory under
 // stagingParent. In a git work tree only `git ls-files --cached --others --exclude-standard`
 // content is copied. Symlinks are refused.
-func FetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched, error) {
-	root := spec.Location
-	name := filepath.Base(root)
-	var subpath string // Track the relative path from spec.Location to root for symlink checking
-
-	if spec.Path != "" {
-		if !filepath.IsLocal(spec.Path) {
-			return Fetched{}, fmt.Errorf("--path %q must be a relative path inside the source", spec.Path)
-		}
-		subpath = spec.Path
-		root = filepath.Join(root, spec.Path)
-		name = filepath.Base(root)
-	} else if fi, err := os.Stat(filepath.Join(root, "module")); err == nil && fi.IsDir() {
-		subpath = "module"
-		root = filepath.Join(root, "module")
-	}
-
-	// Check for symlinks in the sub-path components (but not in spec.Location itself)
-	if subpath != "" {
-		if err := checkNoSymlinks(spec.Location, subpath); err != nil {
-			return Fetched{}, err
-		}
-	}
-
-	if fi, err := os.Stat(root); err != nil {
+func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched, error) {
+	root, name, err := folderRoot(spec.Location, spec.Path, filepath.Base(spec.Location))
+	if err != nil {
 		return Fetched{}, err
-	} else if !fi.IsDir() {
-		return Fetched{}, fmt.Errorf("%s is not a directory", root)
 	}
 
 	// Check containment BEFORE creating the staging directory
@@ -69,45 +43,86 @@ func FetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched,
 			"install from a directory that does not contain lola's cache")
 	}
 
-	if err := os.MkdirAll(stagingParent, 0o700); err != nil {
-		return Fetched{}, err
-	}
-	files, err := listFiles(ctx, root)
+	dst, err := copyTree(ctx, root, stagingParent, listDetect)
 	if err != nil {
-		return Fetched{}, err
-	}
-	dst, err := os.MkdirTemp(stagingParent, "fetch-*")
-	if err != nil {
-		return Fetched{}, err
-	}
-	if err := copyFiles(root, dst, files); err != nil {
-		_ = os.RemoveAll(dst)
 		return Fetched{}, err
 	}
 	return Fetched{Dir: dst, Name: name}, nil
 }
 
-// checkNoSymlinks validates that no component of the relative path subpath (relative to root)
-// is a symlink. Returns an error with the first symlinked component.
-func checkNoSymlinks(root, subpath string) error {
-	components := strings.Split(filepath.ToSlash(subpath), "/")
-	var current string
-	for _, comp := range components {
-		if current == "" {
-			current = comp
-		} else {
-			current = filepath.Join(current, comp)
+// listing says how copyTree enumerates a tree's files (design §3).
+type listing int
+
+const (
+	listDetect listing = iota // a folder source: git ls-files in a git work tree, else a walk
+	listWalk                  // a tree lola unpacked, which git must never read: a directory walk
+	listGit                   // a clone lola made: git ls-files of what is committed
+)
+
+// copyTree copies the files of root, as listed by mode, into a new directory under
+// stagingParent and returns it. Ignored names are skipped and symlinks refused.
+func copyTree(ctx context.Context, root, stagingParent string, mode listing) (string, error) {
+	if err := os.MkdirAll(stagingParent, 0o700); err != nil {
+		return "", err
+	}
+	files, err := listFiles(ctx, root, mode)
+	if err != nil {
+		return "", err
+	}
+	dst, err := os.MkdirTemp(stagingParent, "fetch-*")
+	if err != nil {
+		return "", err
+	}
+	if err := copyFiles(root, dst, files); err != nil {
+		return "", errors.Join(err, os.RemoveAll(dst))
+	}
+	return dst, nil
+}
+
+// pathHint coaches a --path of a folder or git source that picks no directory.
+const pathHint = "--path is relative to the source's root: the folder itself, or the top of the git repository"
+
+// folderRoot applies the folder and git module-root rule (design §3.1) to the tree at base:
+// --path, else module/ when it is a directory, else base itself. The fallback name is
+// baseName unless --path picks the root. Errors show the --path as given, never base, which
+// for git is lola's scratch directory.
+func folderRoot(base, subpath, baseName string) (string, string, error) {
+	if subpath == "" {
+		if fi, err := os.Stat(filepath.Join(base, "module")); err == nil && fi.IsDir() {
+			return checkedRoot(base, "module", baseName, "module/")
 		}
-		full := filepath.Join(root, current)
-		fi, err := os.Lstat(full)
-		if err != nil {
-			return err
+		if fi, err := os.Stat(base); err != nil {
+			return "", "", err
+		} else if !fi.IsDir() {
+			return "", "", fmt.Errorf("%s is not a directory", printable(base, maxName))
 		}
-		if fi.Mode()&fs.ModeSymlink != 0 {
-			return fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", filepath.ToSlash(current))
+		return base, baseName, nil
+	}
+	shown := fmt.Sprintf("--path %q", printable(subpath, maxName))
+	if !filepath.IsLocal(subpath) {
+		return "", "", errs.WithHints(fmt.Errorf("%s must be a relative path inside the source", shown), pathHint)
+	}
+	return checkedRoot(base, subpath, filepath.Base(filepath.Join(base, subpath)), shown)
+}
+
+// checkedRoot returns base/subpath and name once no component of subpath is a symlink and it
+// is a directory. shown names subpath in errors.
+func checkedRoot(base, subpath, name, shown string) (string, string, error) {
+	current := ""
+	for _, comp := range strings.Split(filepath.ToSlash(subpath), "/") {
+		current = filepath.Join(current, comp)
+		fi, err := os.Lstat(filepath.Join(base, current))
+		switch {
+		case err != nil && !errors.Is(err, fs.ErrNotExist):
+			return "", "", fmt.Errorf("%s: %w", shown, cleanErr(err))
+		case err == nil && fi.Mode()&fs.ModeSymlink != 0:
+			return "", "", fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source",
+				printable(filepath.ToSlash(current), maxName))
+		case err != nil || !fi.IsDir():
+			return "", "", errs.WithHints(fmt.Errorf("%s is not a directory in the source", shown), pathHint)
 		}
 	}
-	return nil
+	return filepath.Join(base, subpath), name, nil
 }
 
 func isWithin(parent, child string) (bool, error) {
@@ -148,16 +163,21 @@ func ignored(rel string) bool {
 }
 
 // listFiles returns root-relative paths of candidate files.
-func listFiles(ctx context.Context, root string) ([]string, error) {
-	out, err := gitCommand(ctx, root, "rev-parse", "--is-inside-work-tree").Output()
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err == nil && strings.TrimSpace(string(out)) == "true" {
-		return gitFiles(ctx, root)
+func listFiles(ctx context.Context, root string, mode listing) ([]string, error) {
+	switch mode {
+	case listGit:
+		return gitFiles(ctx, root, "--cached")
+	case listDetect:
+		out, err := gitCommand(ctx, root, "rev-parse", "--is-inside-work-tree").Output()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err == nil && strings.TrimSpace(string(out)) == "true" {
+			return gitFiles(ctx, root, "--cached", "--others", "--exclude-standard")
+		}
 	}
 	var files []string
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || p == root {
 			return err
 		}
@@ -179,23 +199,15 @@ func listFiles(ctx context.Context, root string) ([]string, error) {
 	return files, err
 }
 
-// gitCommand builds a git invocation for an UNTRUSTED source repository. Its .git/config is
-// attacker-controlled, so options that make git execute configured programs (core.fsmonitor)
-// or write to the repository are disabled on the command line, which outranks repository config.
-func gitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	full := append([]string{"-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-C", dir}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-	return cmd
-}
-
-func gitFiles(ctx context.Context, root string) ([]string, error) {
-	cmd := gitCommand(ctx, root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ".")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+// gitFiles lists the files under root that git ls-files selects with which.
+func gitFiles(ctx context.Context, root string, which ...string) ([]string, error) {
+	args := append(append([]string{"ls-files", "-z"}, which...), "--", ".")
+	cmd := gitCommand(ctx, root, args...)
+	stderr := &headWriter{limit: maxStderr + 1}
+	cmd.Stderr = stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("git ls-files in %s: %w: %s", root, err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("git ls-files in the source failed: %w: %s", err, printable(strings.TrimSpace(stderr.String()), maxStderr))
 	}
 	var files []string
 	for _, f := range strings.Split(string(out), "\x00") {
@@ -215,16 +227,16 @@ func copyFiles(root, dst string, files []string) error {
 		case os.IsNotExist(err):
 			continue // tracked by git but deleted in the work tree
 		case err != nil:
-			return err
+			return fmt.Errorf("%s: %w", printable(filepath.ToSlash(rel), maxName), cleanErr(err))
 		case fi.Mode()&fs.ModeSymlink != 0:
-			return fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", filepath.ToSlash(rel))
+			return fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", printable(filepath.ToSlash(rel), maxName))
 		case fi.IsDir():
 			continue // a git submodule entry
 		case !fi.Mode().IsRegular():
-			return fmt.Errorf("%s: not a regular file", filepath.ToSlash(rel))
+			return fmt.Errorf("%s: not a regular file", printable(filepath.ToSlash(rel), maxName))
 		}
 		if err := copyFile(src, filepath.Join(dst, rel), fi); err != nil {
-			return err
+			return fmt.Errorf("%s: %w", printable(filepath.ToSlash(rel), maxName), cleanErr(err))
 		}
 	}
 	return nil
@@ -244,7 +256,7 @@ func copyFile(src, dst string, fi fs.FileInfo) (err error) {
 		return err
 	}
 	if !os.SameFile(fi, opened) || !opened.Mode().IsRegular() {
-		return fmt.Errorf("%s changed while lola was reading it; refusing it", src)
+		return errors.New("changed while lola was reading it; refusing it")
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err

@@ -12,7 +12,7 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
 | `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (your cache has a newer version), or `skipped` (nothing of the module could be rendered for that target); and whether the module's rules are on. |
 | `lola render` | Render every installed module again from your cache. Removes files a module no longer ships. |
-| `lola check [module-or-folder...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
+| `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
 | `lola init [dir]` | Scaffold a module: `lola.yml`, one skill, one command. |
 | `lola cache add\|rm\|list\|info\|update\|search` | Manage your cache. Bare `lola cache` lists it. |
@@ -22,25 +22,102 @@ Every command has aliases (for example `rm` for `uninstall`); `lola help` lists 
 
 ## Sources and the cache
 
-A **source** is a directory path or a `file://` URL to a directory. Git, archive and marketplace
-sources are planned. lola copies the module into your **cache**
+A **source** is where a module comes from. lola copies the module into your **cache**
 (`$XDG_CACHE_HOME/lola/modules/`, normally `~/.cache/lola/modules/`), so a source can move or
-disappear without breaking installs.
+disappear without breaking installs. lola recognizes these forms, first match first:
+
+| You pass | lola reads it as |
+|---|---|
+| An existing directory | a folder |
+| An existing file ending in `.zip`, `.tar`, `.tar.gz` or `.tgz` (any case) | an archive |
+| A `file://` URL | a folder or an archive, by what the path is |
+| An `https://` URL whose path ends in an archive suffix | an archive, downloaded |
+| Any other `https://` or `ssh://` URL, or `user@host:path` | a git repository |
+| An `http://` URL | as `https://`, but only for `localhost`, `127.0.0.0/8` or `::1` |
+
+Anything else is not a source: a bare name means a module in your cache. Marketplace sources are
+planned. lola refuses, with a hint:
+
+- an argument, `--ref` or recorded location that starts with `-`;
+- git's `<transport>::<address>` remote-helper syntax and `git://` URLs;
+- credentials in a URL: any user name or password in an `http(s)` URL (GitHub and GitLab take a
+  token as the user name), and any query string or fragment (presigned URLs carry secrets
+  there). The URL is written to `.lola/project.yml` and your cache, where a secret would be
+  committed. For git, let a credential helper or `ssh-agent` supply credentials; for a private
+  archive, download it and install the file. A user name in an `ssh://` URL or in
+  `git@host:path` is fine, but a password never is, and the `user:password@host:path` form is
+  refused (git would pass the password to ssh as part of the remote path). `file://` URLs
+  follow the same rules, and `?` or `#` in `git@host:path` is refused like a URL's query or
+  fragment. No error repeats a URL's password, query or fragment, or the user name of an
+  `http(s)` or `file` URL, not even for a URL that does not parse or the target of a redirect (an `ssh`
+  user name is no secret and may appear);
+- an existing file that is not an archive, and a local archive that is not a regular file (a
+  symlink, pipe or device named like an archive).
 
 Adding a module to the cache normalizes it: the cached copy holds exactly one `lola.yml`,
 generated from the module's metadata. lola reads the first of `lola.yaml`, `lola.yml`,
 `.lola.yaml` and `.lola.yml`, and warns about each one it ignores.
 
-- In a git work tree, lola copies the files git would track (`.gitignore` is respected; new,
-  unstaged files are included).
+For every kind of source:
+
 - `.git`, `.venv`, `node_modules`, `.lola`, `__pycache__` and `.DS_Store` are never copied.
-- A directory `module/` inside the source is used as the module root. `--path <dir>` picks a
-  different root, for monorepos.
 - Symlinks inside a module are refused.
+- `--path <dir>` picks the module root inside the source, for monorepos.
+
+**Folders.** In a git work tree, lola copies the files git would track (`.gitignore` is
+respected; new, unstaged files are included). A directory `module/` inside the source is the
+module root unless you pass `--path`. `--ref` is refused.
+
+**Git.** lola runs your `git` (it must be on `PATH`) with a shallow clone of the default
+branch, or of `--ref`: a branch name, a tag name, or a full 40- or 64-character commit SHA.
+lola never guesses: a ref that names both a branch and a tag is an error, an abbreviated SHA
+is an error, and a hex-looking branch name is a branch. A commit that no branch or tag points
+to needs a server that serves such commits (servers speaking git protocol v2 do). Only committed
+files are copied; the module root is `--path`, else `module/`, else the repository root. lola
+records the commit it fetched.
+
+- Your git config, credential helpers and `ssh-agent` are used. Git hooks, `core.fsmonitor`,
+  the `ext::` transport and Git LFS filters are switched off for the repository lola fetches.
+- **Git LFS files are not fetched.** A module receives LFS pointer files as they are committed.
+- git never prompts for a user name or password (`GIT_TERMINAL_PROMPT=0`). ssh still can: it
+  asks on the terminal for a key passphrase or an unknown host key. Load your key into
+  `ssh-agent` and add the host to `known_hosts` first, or the fetch waits until it gives up
+  after 5 minutes. A child process that keeps git's output open (ssh prompting, a stalled
+  https helper) delays that stop by at most 5 more seconds.
+
+**Archives.** zip, tar and gzip tar, chosen by the file name's suffix. `--ref` is refused.
+The module root is the first of:
+
+1. `--path`, relative to the archive's root as `tar tf` or `unzip -l` show it;
+2. the shallowest directory holding `lola.yaml`, `lola.yml`, `.lola.yaml`, `.lola.yml`,
+   `plugin.json` or `.claude-plugin/`;
+3. the parent of the shallowest `skills/`, `commands/`, `agents/` or `rules/` directory;
+4. the archive's single top-level directory, if that is all it holds;
+5. the archive's root.
+
+Two different candidates at the same depth are an error; pick one with `--path`. Without a
+`lola.yml` name, the module is named after its root directory, or after the archive file
+(without its suffix) when the root is the archive's root.
+
+An archive may hold only regular files and directories. lola refuses the whole archive if any
+entry is absolute, contains `..` or a backslash, is a link or device, or repeats a path. Files
+keep only their execute bit (`0755` or `0644`). Limits, which are not configurable:
+
+| Limit | Value |
+|---|---|
+| Entries | 20,000 |
+| Zip central directory | about 19.5 MiB (1 KiB for each of 20,000 entries), checked before it is read |
+| Unpacked size | 512 MiB in total |
+| Compression ratio of one zip entry | 200 to 1 |
+| Download size | 256 MiB |
+| Download time | 2 minutes |
+| Redirects | 5, never from `https` to `http`, and never to `http` off loopback |
 
 Once a module is cached, `lola install <name>` uses the cached copy without touching the source.
-`lola cache update` fetches every cached module again; `lola list` then shows `stale` projects,
-and `lola render` brings them up to date.
+`lola cache update` fetches every cached module again: a git branch (or the default branch) may
+have moved, a local archive is read again, and an archive URL is downloaded again. The content
+digest decides whether anything changed; `lola list` then shows `stale` projects, and
+`lola render` brings them up to date.
 
 Installing a module also gives it a **module copy**: `.lola/modules/<module>/` in the project,
 or `$XDG_DATA_HOME/lola/user-modules/<module>/` at user scope. `${PLUGIN_ROOT}` (below) points
@@ -265,5 +342,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook consent and lock files (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive downloads (git reads them itself) |
+| `GIT_*`, `SSH_AUTH_SOCK` | Passed to git, except the variables that pick a repository or add config behind lola's back (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, …) |
 
 Relative XDG values are ignored, as the XDG specification requires.

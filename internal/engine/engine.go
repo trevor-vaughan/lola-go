@@ -297,10 +297,7 @@ func (e *Engine) lock(sc Scope) (func(), error) {
 
 // Fetch copies a source into the store (cache add, and install of a source).
 func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (v store.Version, err error) {
-	if spec.Ref != "" && spec.Kind == source.KindFolder {
-		return store.Version{}, fmt.Errorf("--ref applies to git sources only; %s is a folder", spec.Location)
-	}
-	f, err := source.FetchFolder(ctx, spec, e.Paths.Staging)
+	f, err := source.Fetch(ctx, spec, e.Paths.Staging)
 	if err != nil {
 		return store.Version{}, err
 	}
@@ -347,7 +344,8 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 		return manifest.Entry{}, store.Version{}, false, err
 	}
 	src := spec.Location
-	if sc.Kind == target.Project && !filepath.IsAbs(r.Arg) && !strings.HasPrefix(r.Arg, "file://") {
+	// A local path typed relative to the project is recorded that way; a URL is kept as given.
+	if sc.Kind == target.Project && filepath.IsAbs(spec.Location) && !filepath.IsAbs(r.Arg) && !strings.HasPrefix(r.Arg, "file://") {
 		if rel, err := filepath.Rel(sc.ProjectDir, spec.Location); err == nil {
 			src = rel
 		}

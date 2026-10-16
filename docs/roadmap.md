@@ -16,9 +16,13 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
 4. **Done: Gemini CLI and OpenCode.** Both targets on the framework, with capability tables,
    probes and rules delivered through owned list members in their settings; a symlinked
    `.lola/plugin-data` is refused and a module copy that is not a directory is replaced.
-5. **Sources and formats.** Git (`--ref` for branches, tags and full SHAs), zip/tar archives
-   and archive URLs, `.claude-plugin/plugin.json` (with runtime hooks), and Agent Plugins v1
-   (namespaces, untargeted packages). `init --format` defaults to `agent-plugins`.
+5. **Sources and formats**, in two plans:
+   - **5a. Done: sources.** Git (`--ref` for branches, tags and full SHAs), zip/tar archives
+     and archive URLs
+     (`docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`).
+   - **5b. Formats.** `.claude-plugin/plugin.json` (with runtime hooks under consent), Agent
+     Plugins v1 (namespaces, untargeted packages), and `init --format agent-plugins` as the
+     default. It gets its own design, which reworks MVP spec §5.2 and §5.3.
 6. **Marketplaces, `sync` and profiles.** `lola market`, `@market/module`, `lola sync`, and
    stackable named sets of modules ([#223](https://github.com/LobsterTrap/lola/issues/223)).
 7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,

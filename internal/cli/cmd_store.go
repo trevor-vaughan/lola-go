@@ -161,12 +161,16 @@ func printModuleView(w io.Writer, s style, mv moduleView) {
 
 func (a *app) cacheAddCmd() *cobra.Command {
 	var ref, path string
-	g := argGuide{noun: "source", find: "a module directory (" + source.AcceptedForms + ")", usage: "lola cache add <source> [--ref ref] [--path dir]",
-		examples: []string{"lola cache add ./my-module", "lola cache add ./monorepo --path plugins/review"}}
+	g := argGuide{noun: "source", find: source.AcceptedForms, usage: "lola cache add <source> [--ref ref] [--path dir]",
+		examples: []string{"lola cache add ./my-module", "lola cache add ./monorepo --path plugins/review",
+			"lola cache add git@github.com:acme/review.git --ref main", "lola cache add https://example.com/review-1.2.0.zip"}}
 	cmd := &cobra.Command{
 		Use:     "add <source>",
 		Aliases: []string{"get"},
 		Short:   "Fetch a module into your cache without installing it",
+		Long: "Fetch a module into your cache without installing it. Sources:\n" + source.AcceptedForms + ".\n" +
+			"--ref picks a git branch, tag or full commit SHA; --path picks the module root inside\n" +
+			"the source. lola cache update fetches every cached module from its source again.",
 		Example: g.example(),
 		Args:    cobra.MatchAll(g.args(1), cobra.MaximumNArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
