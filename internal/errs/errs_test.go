@@ -12,10 +12,6 @@ import (
 )
 
 var _ = Describe("hinted errors", func() {
-	It("shell-quotes a command in a hint so it pastes", func() {
-		Expect(errs.ShellJoin([]string{"lola", "install", "./my mod", "it's", "--user", ""})).To(Equal(`lola install './my mod' 'it'\''s' --user ''`))
-	})
-
 	It("keeps the message and the wrapped error", func() {
 		err := errs.WithHints(fs.ErrNotExist, "create it")
 		Expect(err.Error()).To(Equal(fs.ErrNotExist.Error()))

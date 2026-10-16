@@ -3,6 +3,8 @@ version: '3'
 includes:
   go:
     taskfile: .taskfiles/go.yml
+  e2e:
+    taskfile: .taskfiles/e2e.yml
 
 vars:
   APP_NAME: '{{.APP_NAME | default "lola"}}'
@@ -43,6 +45,11 @@ tasks:
     desc: "Alias for go:vuln"
     cmds:
       - task: go:vuln
+
+  e2e-migrate:
+    desc: "Alias for e2e:migrate (needs podman or docker; not part of check)"
+    cmds:
+      - task: e2e:migrate
 
   check:
     desc: Run all quality gates (lint, test, cross, vuln)

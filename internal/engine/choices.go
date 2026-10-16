@@ -134,6 +134,15 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		if err != nil {
 			return nil, err
 		}
+		if len(r.Targets) > 0 {
+			man, led, _, err := e.load(sc, true)
+			if err != nil {
+				return nil, err
+			}
+			if v, err = e.installedVersion(v, man.Find(v.Name), led.Modules[v.Name]); err != nil {
+				return nil, err
+			}
+		}
 		if prev, dup := asked[v.Name]; dup && prev.ID != v.ID {
 			return nil, errs.WithHints(fmt.Errorf("module arguments resolve to two versions of %s", untrusted.Text(v.Name, untrusted.MaxName)),
 				"name each module once, with one --ref")

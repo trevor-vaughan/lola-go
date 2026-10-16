@@ -5,6 +5,7 @@ package untrusted
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -43,11 +44,14 @@ func Text(s string, limit int) string {
 	return b.String()
 }
 
-// CleanErr returns err without the file name an *fs.PathError carries, so an error built
-// from untrusted names prints only names that went through Text.
+// CleanErr returns err without the file names an *fs.PathError or *os.LinkError carries, so an
+// error built from untrusted names prints only names that went through Text.
 func CleanErr(err error) error {
 	if pe, ok := errors.AsType[*fs.PathError](err); ok {
 		return pe.Err
+	}
+	if le, ok := errors.AsType[*os.LinkError](err); ok {
+		return le.Err
 	}
 	return err
 }

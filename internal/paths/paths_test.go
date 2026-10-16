@@ -33,6 +33,7 @@ var _ = Describe("Resolve", func() {
 		Expect(p.UserLock).To(Equal("/h/.local/state/lola/.lock"))
 		Expect(p.Locks).To(Equal("/h/.local/state/lola/locks"))
 		Expect(p.Consent).To(Equal("/h/.local/state/lola/consent.json"))
+		Expect(p.Trash).To(Equal("/h/.local/state/lola/trash"))
 		Expect(p.Store).To(Equal("/h/.cache/lola/modules"))
 		Expect(p.StoreLock).To(Equal("/h/.cache/lola/.lock"))
 		Expect(p.Staging).To(Equal("/h/.cache/lola/.staging"))

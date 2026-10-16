@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -155,6 +156,14 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(lola("init", "Bad_Name").err).To(ContainSubstring("module name"))
 		writeTree(filepath.Join(tmp, "hidden"), map[string]string{".lola.yml": "name: hidden\n"})
 		Expect(lola("init", "hidden").err).To(ContainSubstring("already a module (it has .lola.yml)"))
+	})
+
+	It("init suggests an install command with the directory quoted for the shell", func() {
+		dir := filepath.Join(tmp, "it's here", "fresh")
+		r := lola("init", dir)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("try it: " + errs.ShellJoin([]string{"lola", "install", dir, "-t", "claude-code"})))
+		Expect(r.out).NotTo(ContainSubstring("lola install " + dir))
 	})
 
 	It("init writes nothing when any scaffold path already exists", func() {

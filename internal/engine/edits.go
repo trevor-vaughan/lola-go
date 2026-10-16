@@ -43,9 +43,9 @@ func (spec *InstallSpec) AddFlagEdits(edits []SelectionEdit, global bool) error 
 		var each []string
 		for _, si := range spec.Scopes {
 			if si.Scope.Kind == target.User {
-				each = append(each, "--scope user")
+				each = append(each, errs.ShellJoin([]string{"--scope", "user"}))
 			} else {
-				each = append(each, "--scope project -C "+errs.ShellJoin([]string{untrusted.Text(si.Scope.ProjectDir, untrusted.MaxName)}))
+				each = append(each, errs.ShellJoin([]string{"--scope", "project", "-C", untrusted.Text(si.Scope.ProjectDir, untrusted.MaxName)}))
 			}
 		}
 		return errs.WithHints(fmt.Errorf("%s with more than one scope does not say which scope's selections it changes", edits[0]),

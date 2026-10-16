@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/trevor-vaughan/lola-go/internal/source"
 )
@@ -25,7 +22,7 @@ func localSettingsExposed(ctx context.Context, dir string) string {
 	cantCheck := func(why string) string {
 		return fmt.Sprintf("lola could not check that git ignores %s (%s)", localSettings, why)
 	}
-	inTree, err := inWorkTree(dir)
+	inTree, err := source.InWorkTree(dir)
 	switch {
 	case err != nil:
 		return cantCheck(err.Error())
@@ -62,20 +59,4 @@ func localSettingsExposed(ctx context.Context, dir string) string {
 		return cantCheck(fmt.Sprintf("git check-ignore exited with status %d", code))
 	}
 	return ""
-}
-
-// inWorkTree reports whether dir or a parent holds .git, the way git finds a repository.
-func inWorkTree(dir string) (bool, error) {
-	for d := dir; ; d = filepath.Dir(d) {
-		_, err := os.Lstat(filepath.Join(d, ".git"))
-		if err == nil {
-			return true, nil
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			return false, err
-		}
-		if filepath.Dir(d) == d {
-			return false, nil
-		}
-	}
 }

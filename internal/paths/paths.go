@@ -19,6 +19,7 @@ type Paths struct {
 	Locks          string   // StateHome/lola/locks: one lock file per project, outside the project's .lola/
 	SelectionsLock string   // StateHome/lola/locks/selections.lock: taken before any scope lock
 	Consent        string   // StateHome/lola/consent.json: install hook consent (§9.1)
+	Trash          string   // StateHome/lola/trash: lola migrate's backups and removed files, one directory per run
 	Store          string   // CacheHome/lola/modules: the cache
 	StoreLock      string   // CacheHome/lola/.lock
 	Staging        string   // CacheHome/lola/.staging: same filesystem as Store, so renames never cross devices
@@ -58,6 +59,7 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.Locks = filepath.Join(p.StateHome, "lola", "locks")
 	p.SelectionsLock = filepath.Join(p.Locks, "selections.lock")
 	p.Consent = filepath.Join(p.StateHome, "lola", "consent.json")
+	p.Trash = filepath.Join(p.StateHome, "lola", "trash")
 	p.Store = filepath.Join(p.CacheHome, "lola", "modules")
 	p.StoreLock = filepath.Join(p.CacheHome, "lola", ".lock")
 	p.Staging = filepath.Join(p.CacheHome, "lola", ".staging")

@@ -1,0 +1,1 @@
+{"mcpServers": {"review-gh": {"command": "gh-mcp", "args": ["--stdio"]}}}

@@ -65,7 +65,7 @@ func withRetry(err error, fetched []string) error {
 	if len(fetched) == 0 {
 		return err
 	}
-	return errs.WithHints(err, "fetched modules stay in your cache; retry with: lola install "+strings.Join(fetched, " "))
+	return errs.WithHints(err, "fetched modules stay in your cache; retry with: "+errs.ShellJoin(append([]string{"lola", "install"}, fetched...)))
 }
 
 // Install installs reqs at one scope: InstallAll with a single scope given by flag.
@@ -84,6 +84,9 @@ type ScopeInstall struct {
 	ScopeChoice
 	Targets []string
 	Edits   []SelectionEdit
+	// Replace lists unowned destinations at this scope the install overwrites instead of
+	// refusing them as conflicts (plan.Replaceable): lola migrate's backed-up Python files.
+	Replace []plan.Replaceable
 }
 
 // InstallSpec is an install of the same modules at one or more scopes, applied together.
@@ -95,6 +98,10 @@ type InstallSpec struct {
 	Modules     []InstallRequest
 	GlobalEdits []SelectionEdit
 	Options     Options
+	// BeforeWrite, when set, runs once every scope's plan is computed and every refusal and
+	// prompt has passed, before anything is written: its error stops the install with nothing
+	// written. lola migrate backs up the paths the plan replaces there. A dry run never calls it.
+	BeforeWrite func(*InstallResult) error
 }
 
 // ScopeResult says which scope an install acted on and where that choice came from.
@@ -122,6 +129,7 @@ type scopePlan struct {
 	changes  []plan.ModuleChange
 	copies   []moduleCopy
 	entries  []manifest.Entry
+	replace  []plan.Replaceable
 }
 
 // resolvedRequest is an install argument resolved at a scope.
@@ -195,7 +203,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 			return nil, err
 		}
 		unlocks = append(unlocks, unlock)
-		plans[i] = &scopePlan{sc: si.Scope, man: man, led: led, targets: si.Targets, given: si.Targets}
+		plans[i] = &scopePlan{sc: si.Scope, man: man, led: led, targets: si.Targets, given: si.Targets, replace: si.Replace}
 	}
 	for k, si := range spec.Scopes {
 		sp := plans[k]
@@ -208,6 +216,13 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 		for _, id := range sp.targets {
 			if _, err := e.target(id); err != nil {
 				return nil, err
+			}
+		}
+		for _, r := range spec.Modules {
+			for _, id := range r.Targets {
+				if _, err := e.target(id); err != nil {
+					return nil, err
+				}
 			}
 		}
 		for i, r := range spec.Modules {
@@ -248,7 +263,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 	var preps []*prepared
 	for _, sp := range plans {
 		n := len(res.Steps)
-		pr, err := e.prepare(sp.sc, sp.led, sp.changes, sp.copies, opts, res)
+		pr, err := e.prepare(sp.sc, sp.led, sp.changes, sp.copies, sp.replace, opts, res)
 		if err != nil {
 			return nil, withRetry(err, fetched)
 		}
@@ -259,6 +274,11 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 	}
 	if opts.DryRun {
 		return out, nil
+	}
+	if spec.BeforeWrite != nil {
+		if err := spec.BeforeWrite(out); err != nil {
+			return nil, withRetry(err, fetched)
+		}
 	}
 	if len(saves) > 0 {
 		if err := config.Save(sel.Path, saves); err != nil {
@@ -361,7 +381,13 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	man := sp.man
 	modTargets := sp.targets
 	prev := man.Find(v.Name)
-	if prev != nil && len(given) == 0 && len(prev.Targets) > 0 {
+	if len(r.Targets) > 0 {
+		var err error
+		if v, err = e.installedVersion(v, prev, sp.led.Modules[v.Name]); err != nil {
+			return err
+		}
+		modTargets, ent.Targets = addedTargets(man, prev, sp.targets, r.Targets)
+	} else if prev != nil && len(given) == 0 && len(prev.Targets) > 0 {
 		modTargets, ent.Targets = prev.Targets, prev.Targets
 	} else if len(given) > 0 && len(man.Targets) > 0 && !slices.Equal(given, man.Targets) {
 		ent.Targets = given
@@ -402,6 +428,66 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 		hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true})
 	sp.entries = append(sp.entries, ent)
 	return nil
+}
+
+// installedVersion is the version a request that adds targets (InstallRequest.Targets)
+// installs: for a module the scope's manifest has (prev) and its ledger records (installed),
+// the version installed there, so adding an assistant never upgrades the module on the others;
+// otherwise v, the version the request resolved to. An installed version the cache no longer
+// holds is refused.
+func (e *Engine) installedVersion(v store.Version, prev *manifest.Entry, installed *ledger.Entry) (store.Version, error) {
+	if prev == nil || installed == nil || installed.Digest == v.Meta.Digest {
+		return v, nil
+	}
+	id := strings.TrimPrefix(installed.Digest, "sha256:")
+	if len(id) >= 12 {
+		id = id[:12]
+	}
+	iv, err := e.Store.Load(v.Name, id)
+	if err == nil {
+		return iv, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		err = fmt.Errorf("the version of %s installed here (%s) is no longer in the cache", untrusted.Text(v.Name, untrusted.MaxName),
+			untrusted.Text(id, untrusted.MaxName))
+	}
+	return store.Version{}, errs.WithHints(untrusted.CleanErr(err),
+		"lola render installs the cached version of "+untrusted.Text(v.Name, untrusted.MaxName)+" here again; run it, then add the assistants")
+}
+
+// addedTargets are a module's targets when a request adds some (InstallRequest.Targets): the
+// targets its manifest entry already installs on (none when it has no entry), then the added
+// ones. The entry records them unless they are the manifest's targets (scopeTargets, for a
+// manifest that has none yet).
+func addedTargets(man *manifest.Manifest, prev *manifest.Entry, scopeTargets, add []string) ([]string, []string) {
+	var ts []string
+	if prev != nil {
+		ts = slices.Clone(prev.Targets)
+		if len(ts) == 0 {
+			ts = slices.Clone(man.Targets)
+		}
+	}
+	for _, id := range add {
+		if !slices.Contains(ts, id) {
+			ts = append(ts, id)
+		}
+	}
+	defaults := man.Targets
+	if len(defaults) == 0 {
+		defaults = scopeTargets
+	}
+	if sameSet(ts, defaults) {
+		return ts, nil
+	}
+	return ts, ts
+}
+
+// sameSet reports whether a and b hold the same strings.
+func sameSet(a, b []string) bool {
+	x, y := slices.Clone(a), slices.Clone(b)
+	slices.Sort(x)
+	slices.Sort(y)
+	return slices.Equal(slices.Compact(x), slices.Compact(y))
 }
 
 // makePluginData creates ${PLUGIN_DATA} for modules whose rendered artifacts reference it. A
@@ -456,7 +542,7 @@ func (e *Engine) where(sc Scope) string {
 func (e *Engine) notInstalled(sc Scope, name string) error {
 	var hints []string
 	if _, found, err := e.Store.Origin(name); err == nil && found {
-		hints = append(hints, "still in your cache: lola cache rm "+name)
+		hints = append(hints, "still in your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name}))
 	}
 	list := "lola list"
 	if sc.Kind == target.User {
@@ -505,7 +591,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	for i := range res.Modules {
 		name := res.Modules[i].Name
 		if _, found, err := e.Store.Origin(name); err == nil && found {
-			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "still in your cache: lola cache rm " + name})
+			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "still in your cache: " + errs.ShellJoin([]string{"lola", "cache", "rm", name})})
 		}
 		if dir := filepath.Join(e.files(sc).pluginData, name); dirExists(dir) {
 			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: name + ": plugin data kept at " + dir})
@@ -545,7 +631,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 		if err != nil {
 			// One module that no longer loads (one installed before a new refusal, say) stops
 			// every module's render, so name the way out.
-			return nil, errs.WithHints(err, "if you no longer want "+name+", remove it: lola uninstall "+name)
+			return nil, errs.WithHints(err, "if you no longer want "+name+", remove it: "+errs.ShellJoin([]string{"lola", "uninstall", name}))
 		}
 		if !ok {
 			o, found, err := e.Store.Origin(name)
@@ -567,7 +653,14 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 					return nil, fmt.Errorf("%s is no longer in your cache and its recorded source %q is unusable: %w", name, entry.Source, err)
 				}
 				if !isSrc {
-					return nil, errs.WithHints(fmt.Errorf("%s is no longer in your cache", name), "fetch it again: lola install "+entry.Source)
+					args := []string{"lola", "install", untrusted.Text(entry.Source, untrusted.MaxName)}
+					if entry.Ref != "" {
+						args = append(args, "--ref", untrusted.Text(entry.Ref, untrusted.MaxName))
+					}
+					if entry.Path != "" {
+						args = append(args, "--path", untrusted.Text(entry.Path, untrusted.MaxName))
+					}
+					return nil, errs.WithHints(fmt.Errorf("%s is no longer in your cache", name), "fetch it again: "+errs.ShellJoin(args))
 				}
 				spec.Ref, spec.Path = entry.Ref, entry.Path
 				v, err = e.Fetch(ctx, spec)

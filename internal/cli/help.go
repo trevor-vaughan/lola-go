@@ -148,11 +148,12 @@ ENVIRONMENT
   LOLA_COLOR=1|0   force color on or off
   NO_COLOR         disable color when set (https://no-color.org)
   LOLA_ACCESSIBLE  1 asks install's questions as numbered line prompts (also TERM=dumb)
+  LOLA_HOME        the Python lola's home, which lola migrate reads (default ~/.lola)
   HOME             user-scope root and base of the XDG defaults
   PATH             where lola finds installed assistants; absolute entries only
   XDG_CONFIG_HOME  config.yaml, selections.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
   XDG_DATA_HOME    user-scope module copies and plugin data (default ~/.local/share)
-  XDG_STATE_HOME   the user-scope ledger, hook consent and locks (default ~/.local/state)
+  XDG_STATE_HOME   the user-scope ledger, hook consent, locks and lola migrate's trash (default ~/.local/state)
   XDG_CACHE_HOME   the cache, downloads and assistant versions (default ~/.cache)
 `)
 }

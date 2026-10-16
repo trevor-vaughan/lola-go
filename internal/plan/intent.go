@@ -101,7 +101,32 @@ type Step struct {
 	Member json.RawMessage `json:"member,omitempty"` // the owned array element as written (fsx.ReadableJSON), for other array members
 	Via    string          `json:"via,omitempty"`    // resolved destination when it is outside the scope root
 	Forced string          `json:"forced,omitempty"` // "unowned", "hand-edited" or "missing" when --force overrode a conflict or restored a member
-	Note   string          `json:"note,omitempty"`
+	// Replaced is set when the step overwrites (or, identical, adopts) an unowned destination
+	// the request listed as replaceable, instead of refusing it as a conflict.
+	Replaced bool   `json:"replaced,omitempty"`
+	Note     string `json:"note,omitempty"`
+}
+
+// Replaceable is a destination the caller lets a plan overwrite although lola did not write it
+// (lola migrate's files of the Python lola, which it backs up first): a file, a directory
+// (every file under it), or with Key a JSON member at that pointer. It never covers a
+// destination a module owns, nor one reached through a symbolic link below the target's root.
+type Replaceable struct {
+	Target string
+	Path   string // slash-separated, relative to the target's root
+	Key    string
+	Dir    bool
+}
+
+// covers reports whether r lists the destination of target's path and key.
+func (r Replaceable) covers(target, path, key string) bool {
+	if r.Target != target || r.Key != key {
+		return false
+	}
+	if r.Dir {
+		return key == "" && strings.HasPrefix(path, r.Path+"/")
+	}
+	return r.Path == path
 }
 
 // Conflict is a destination lola refuses to touch. Value is the array element, a string or,

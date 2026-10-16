@@ -4,7 +4,9 @@ For contributors. The design spec is `docs/superpowers/specs/2026-10-08-lola-go-
 this page describes what is built (Plans 1 to 4; 5a, sources, designed in
 `docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`; 5b, module formats and runtime
 hooks, designed in `docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md`; and 5c, the
-interactive install flow, designed in `docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md`).
+interactive install flow, designed in
+`docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md`; and `lola migrate`, designed
+in `docs/superpowers/specs/2026-10-12-migrate-from-python-lola-design.md`).
 
 ## Pipeline
 
@@ -38,7 +40,7 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 | `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members, and array elements of any JSON value), mode normalization. |
 | `module` | The IR, frontmatter parsing, name rules, format detection and the Claude plugin and Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened module JSON reading, rules, hook validation, and normalization. |
 | `untrusted` | Makes text lola did not write safe to print: control characters, Unicode format characters and line separators replaced, length capped, OS errors without their path. |
-| `source` | Source parsing and validation, the folder, git and archive fetchers, and `GitCommand`, the one hardened way lola runs git (also for the engine's git-ignore check). |
+| `source` | Source parsing and validation, the folder, git and archive fetchers, and `GitCommand`, the one hardened way lola runs git (also for the engine's git-ignore check and migrate's git-tracked guard, with `InWorkTree`). |
 | `store` | The cache's storage: content-addressed versions, per-ref heads, the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, deterministic IO. |
 | `consent` | Recorded consent to a module's install hooks (key `<module>`) and runtime hooks (key `<module>/runtime-hooks/<settings-file hash>`), each recording a digest. |
@@ -48,9 +50,10 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 | `targets` | The registry: the one list of every target. |
 | `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction). |
 | `engine` | Install, uninstall, render, status, fetch, update, search; module copies, install hooks, runtime hook consent and the git-ignore check; install scope resolution, the component resolver, selection edits and `InstallChoices`. |
+| `migrate` | `lola migrate`: strict reading of the Python lola's `installed.yml` and `source.yml`, the plan (destinations, outcomes, recorded paths), the trash, and running the installs and the cleanup over the engine. |
 | `cli` | Commands, help, aliases, completion, output and prompts; the install flow and its `Prompter`, with the huh adapter. |
 | `errs` | Errors that carry coaching hints. |
-| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git server. |
+| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, no `LOLA_HOME`, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git server. |
 
 ## Selections and the install flow
 
@@ -136,6 +139,14 @@ Targets return **intents** (`WriteFile`, `CopyTree`, `SetJSON`, `AddJSONMember`)
 
 The result is byte-exact `FileChange`s and the ledger that applying them produces. A dry run is
 exactly this computation.
+
+**Replaceable paths.** `Request.Replace` (from `ScopeInstall.Replace`) lists unowned
+destinations the caller lets the plan overwrite instead of refusing: a file, every file below a
+directory, or a JSON member at one pointer. Only the "exists and was not written by lola" case
+changes: the step is an update marked `Replaced`. Ownership still wins (a module's path, or its
+own hand-edited file, stays a conflict), and a path with a symbolic link between the target's
+root and it (`fsx.Linked`) is never replaceable. lola migrate passes the Python lola's recorded
+paths after its guards, and backs up exactly the steps marked replaced.
 
 Hashes: files are hashed by bytes, JSON members by their canonical JSON (sorted keys, no
 comments). JSON edits operate on the hujson AST so bytes outside the edited member are
@@ -364,7 +375,9 @@ directories), and a logical symlink whose target was deleted is removed. The man
 written last, through the `after` callback; if it fails, the already-applied files stay and the
 error is returned.
 
-`.lola/` itself is created when the scope lock is taken, with a `.gitignore` lola owns. On
+`.lola/` itself is created when the scope lock is taken; its `.gitignore`, which lola owns, is
+written when a scope is committed, so a refusal or cancel never touches a `.lola/` that
+already existed (the Python lola's, for example). On
 release `.lola/` is removed only if this command created it and nothing was recorded (no
 `project.yml`, and an empty or absent ledger), so a failed or empty first run leaves no trace.
 
@@ -495,3 +508,65 @@ registry. Specs named after Python bugs pin the fixes (`corrupt JSON config is n
 overwritten`, …). Git specs serve real repositories over loopback HTTP through `git http-backend`
 (`testenv.ServeGit`); archive specs build hostile archives with the standard library's writers.
 No spec uses the network. `task test MODE=llm` prints only failures.
+
+**The migrate container suite** (`task e2e:migrate`, `e2e/migrate/`) checks `lola migrate`
+against the real Python lola. `scripts/e2e-migrate.sh` builds an image once (python:3.13-slim,
+pinned by digest, plus the Python lola from upstream at the commit the design was checked
+against, its packages and build backend installed from `e2e/migrate/requirements.txt` with
+`--require-hashes`) by `run` and `commit`, because buildah cannot mount a build context where
+overlay mounts nest; the image is named after the base digest, that commit and a hash of
+`build-image.sh` and `requirements.txt`. The container's main process is a
+loopback smart-HTTP git server, so both lolas fetch a real git source. The Venom suite has the
+Python lola install fixtures, snapshots the tree, runs lola-go's `migrate` (mounted read-only),
+and `check.py` verifies the design's §12.7 assertions, including the §6 oracle: every path the
+Python lola wrote ends up lola's, in the trash, kept, reported, or byte-identical for an
+unmappable record. It needs podman or docker,
+venom and the network on first use, skips without a container runtime, and is not part of
+`task check`; CI would run it as a separate job on a runner with podman (`task e2e:migrate
+MODE=llm`), caching the image between runs.
+
+## lola migrate
+
+`internal/migrate` adapts the Python lola's state to the engine; the CLI only renders its
+`Result`. `Load` reads `installed.yml` and each named module's `.lola/source.yml` as untrusted
+YAML (1 MiB, known keys with unknown ones as warnings, single-component names, no control or
+format characters, aliases followed under a budget of 100000 names, counting list items, mapping
+keys and records, since PyYAML writes them) and marks a `project_path` the design refuses as a
+problem rather than an error. `NewPlan` groups records into destinations (Plan 5c §14), decides
+each record's outcome, maps its source to what `lola install` takes, finds modules already
+migrated by source in the destination's manifest, lists the paths each assistant recorded and what
+is never migrated, and resolves each install's source once, through `InstallChoices`, pinning it
+to that cached version (`InstallRequest.Version`). It verifies rather than emulates the Python
+lola's module-root rules: a record listing a component the resolved version lacks is unmappable,
+as is one whose source lola-go cannot fetch (hint: rerun once it is reachable), so lola-go never
+reads `$LOLA_HOME/modules/<m>` to guess where the Python lola found the module. A module's records
+at one destination migrate all or none, since an install would replace the Python lola's module
+copy under a record left behind. The CLI computes the plan once and hands it to both the preview
+and the confirmed run, so the run installs what the preview showed.
+
+`Migrate` runs in phases so that nothing is written on a refusal or a cancel: a dry-run
+`InstallAll` per destination (with the recorded paths that pass the guards as replaceable;
+`coachClash` rewrites its refusal, naming each guarded recorded path a conflict lies at with its
+guard, and each clash between two modules); the MCP entries left in place, across all
+destinations, and the module copies and Python home they reference (each recorded module copy on
+its own); the decisions per recorded path (owned → kept; guarded → kept, unless `--force` writes
+it; written by the plan → replaced; else moved, or kept with `--keep-python`), refusing an install
+that would swap out a `.lola/modules/<m>` neither the ledger nor a migrated record accounts for,
+or that git tracks (read with `--literal-pathspecs`) or is a symbolic link, unless `--force` backs
+it up; a consent pass, an `InstallAll` whose `BeforeWrite` stops it, so every hook question is
+answered before anything is written; then, per destination, the real `InstallAll` with
+`BeforeWrite` deciding again under the scope lock and copying into the trash the replaced paths
+and every file a `--force` step writes over (where it really is, past the symbolic links on its
+way; a directory copied in the same pass that holds it is its backup), the moves (each checked
+against the ledger after the install), and the leftover files of replaced directories (unlinked
+when they match the backup, read through `os.Root`, keeping a link lola-go writes through; listed
+as kept instead with `--keep-python`). The Python home moves last. The trash journals each entry
+in `manifest.txt`, synced, before it copies or moves; it refuses to write through a symbolic link
+inside it, and a move across file systems syncs the copy's directories before removing the
+original.
+
+Two engine additions serve it: `InstallRequest.Targets` adds targets to what a module's
+manifest entry has, since modules at one destination were installed for different
+assistants, keeping a module the manifest has at the version its ledger records (in
+`InstallChoices` too, so the plan checks that version), and `InstallSpec.BeforeWrite` runs
+after every refusal and prompt, before any write.

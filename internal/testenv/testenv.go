@@ -12,10 +12,10 @@ import (
 	"github.com/onsi/ginkgo/v2"
 )
 
-// Isolate points HOME, every XDG base dir and git's config/identity at a fresh temp dir
-// for the current spec and returns that dir. PATH becomes <dir>/bin, where a spec may put
-// fake assistant binaries, followed by a separate temp dir that symlinks only the tools specs and
-// their hook scripts run (specTools). Sharing no directory with the developer's PATH means a
+// Isolate points HOME, every XDG base dir and git's config/identity at a fresh temp dir for
+// the current spec, clears LOLA_HOME (the Python lola's home) and returns that dir. PATH
+// becomes <dir>/bin, where a spec may put fake assistant binaries, followed by a separate temp
+// dir that symlinks only the tools specs and their hook scripts run (specTools). Sharing no directory with the developer's PATH means a
 // real assistant is never found, wherever it is installed. Values are restored after the spec.
 func Isolate() string {
 	t := ginkgo.GinkgoT()
@@ -43,6 +43,7 @@ func Isolate() string {
 		"GIT_COMMITTER_EMAIL": "lola-test@invalid",
 		"NO_COLOR":            "1",
 		"LOLA_COLOR":          "",
+		"LOLA_HOME":           "", // the Python lola's home, which lola migrate reads
 	}
 	for k, v := range env {
 		t.Setenv(k, v)

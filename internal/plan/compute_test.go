@@ -576,6 +576,101 @@ var _ = Describe("Compute", func() {
 		Expect(p.Ledger.Modules["a"].Artifacts[0].Resolved).To(Equal(filepath.Join(outside, "x.md")))
 	})
 
+	Describe("replaceable paths", func() {
+		replace := func(force bool, rs []plan.Replaceable, intents ...plan.Intent) (*plan.Plan, error) {
+			r := req(force, change("a", intents...))
+			r.Replace = rs
+			return plan.Compute(r)
+		}
+		file := func(path string) plan.Replaceable { return plan.Replaceable{Target: tgt, Path: path} }
+		dir := func(path string) plan.Replaceable { return plan.Replaceable{Target: tgt, Path: path, Dir: true} }
+
+		It("overwrites an unowned file listed as replaceable instead of refusing it, and marks the step", func() {
+			put(".claude/commands/x.md", "theirs")
+			p, err := replace(false, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionUpdate), "Path": Equal(".claude/commands/x.md"),
+				"Replaced": BeTrue(), "Forced": BeEmpty()})))
+			Expect(p.Files).To(HaveLen(1))
+			Expect(string(p.Files[0].Data)).To(Equal("ours"))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(HaveLen(1))
+		})
+
+		It("marks the step replaced when it adopts an identical unowned file listed as replaceable", func() {
+			put(".claude/commands/x.md", "ours")
+			put(".claude/commands/y.md", "ours")
+			p, err := replace(false, []plan.Replaceable{file(".claude/commands/x.md")},
+				cmd(".claude/commands/x.md", "ours"), cmd(".claude/commands/y.md", "ours"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ConsistOf(
+				MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionAdopt), "Path": Equal(".claude/commands/x.md"), "Replaced": BeTrue()}),
+				MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionAdopt), "Path": Equal(".claude/commands/y.md"), "Replaced": BeFalse()}),
+			))
+		})
+
+		It("overwrites every unowned file under a replaceable directory", func() {
+			put(".claude/skills/r/SKILL.md", "theirs")
+			put(".claude/skills/r/ref/a.md", "theirs")
+			p, err := replace(false, []plan.Replaceable{dir(".claude/skills/r")},
+				cmd(".claude/skills/r/SKILL.md", "ours"), cmd(".claude/skills/r/ref/a.md", "ours"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(HaveEach(HaveField("Replaced", BeTrue())))
+		})
+
+		It("replaces an MCP entry only at the listed pointer", func() {
+			put(".mcp.json", `{"mcpServers":{"gh":{"command":"old"},"db":{"command":"old"}}}`)
+			_, err := replace(false, []plan.Replaceable{{Target: tgt, Path: ".mcp.json", Key: "/mcpServers/gh"}},
+				mcp("gh", `{"command":"new"}`))
+			Expect(err).NotTo(HaveOccurred())
+			_, err = replace(false, []plan.Replaceable{{Target: tgt, Path: ".mcp.json", Key: "/mcpServers/gh"}},
+				mcp("db", `{"command":"new"}`))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Key", "/mcpServers/db")))
+		})
+
+		It("still refuses unowned paths that are not listed, naming them with the --force hint", func() {
+			put(".claude/commands/x.md", "theirs")
+			put(".claude/commands/y.md", "theirs")
+			_, err := replace(false, []plan.Replaceable{file(".claude/commands/x.md"), dir(".claude/commands/x")},
+				cmd(".claude/commands/x.md", "ours"), cmd(".claude/commands/y.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Path", ".claude/commands/y.md")))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force")))
+		})
+
+		It("never replaces a path a lola module owns, even when it is listed", func() {
+			put(".claude/commands/x.md", "edited")
+			own("other", fileArt(".claude/commands/x.md", "X"))
+			_, err := replace(true, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", ContainSubstring(`owned by module "other"`))))
+
+			own("a", fileArt(".claude/commands/x.md", "X"))
+			delete(led.Modules, "other")
+			_, err = replace(false, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", "hand-edited since lola wrote it")), "its own hand-edited file stays a conflict")
+		})
+
+		It("never replaces through a symbolic link or a symlinked parent", func() {
+			outside, err := filepath.EvalSymlinks(GinkgoT().TempDir())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(filepath.Join(outside, "x.md"), []byte("theirs"), 0o644)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(root, ".claude", "commands"), 0o755)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(outside, "x.md"), filepath.Join(root, ".claude", "commands", "x.md"))).To(Succeed())
+			_, err = replace(false, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Path", ".claude/commands/x.md")))
+
+			Expect(os.Symlink(outside, filepath.Join(root, ".claude", "skills"))).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(outside, "SKILL.md"), []byte("theirs"), 0o644)).To(Succeed())
+			_, err = replace(false, []plan.Replaceable{dir(".claude/skills")}, cmd(".claude/skills/SKILL.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Path", ".claude/skills/SKILL.md")))
+			Expect(os.ReadFile(filepath.Join(outside, "SKILL.md"))).To(Equal([]byte("theirs")))
+		})
+
+		It("does not match a sibling that shares the directory's name as a prefix", func() {
+			put(".claude/skills/rx/SKILL.md", "theirs")
+			_, err := replace(false, []plan.Replaceable{dir(".claude/skills/r")}, cmd(".claude/skills/rx/SKILL.md", "ours"))
+			Expect(conflicts(err)).To(HaveLen(1))
+		})
+	})
+
 	It("Observe reports current hashes and absence", func() {
 		put(".claude/commands/x.md", "X")
 		Expect(plan.Observe(root, fileArt(".claude/commands/x.md", "X"))).To(Equal(sum("X")))

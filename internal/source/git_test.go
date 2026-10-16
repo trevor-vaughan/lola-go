@@ -132,6 +132,16 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(errs.Hints(err)).To(ContainElement("use the full 40-character commit SHA"))
 	})
 
+	It("quotes the repository in the ls-remote hint for the user's shell", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
+		git(tmp, "clone", "-q", "--bare", r.work, filepath.Join(tmp, "srv", "it's.git"))
+		url := strings.TrimSuffix(r.url, "example.git") + "it's.git"
+		_, err := fetch(url, "nope", "")
+		Expect(err).To(MatchError(url + " has no branch or tag named nope"))
+		Expect(errs.Hints(err)).To(ConsistOf("list them: " + errs.ShellJoin([]string{"git", "ls-remote", "--heads", "--tags", url})))
+		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("--tags " + url)))
+	})
+
 	It("a hex-looking branch name is not treated as a commit", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "first"})
 		first := r.rev("HEAD")
@@ -167,6 +177,14 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(f.Name).To(Equal("review"))
 		Expect(listTree(f.Dir)).To(ConsistOf("agents/x.md"))
+	})
+
+	It("takes --path . as the repository's top, not its module/, named after the repository", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A", "module/commands/b.md": "B"})
+		f, err := fetch(r.url, "", ".")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Name).To(Equal("example"))
+		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md", "module/commands/b.md"))
 	})
 
 	It("coaches a --path that is not a directory, without lola's scratch directory or raw escapes", func() {

@@ -16,6 +16,7 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 | `lola search <query>` | Search your cache by name, description and keyword. |
 | `lola init [dir] [--format agent-plugins\|lola]` | Scaffold a module named after the directory: by default an Agent Plugins package (`plugin.json`, one skill, one `dev.getlola` command); `--format lola` writes `lola.yml`, one skill and one command. It never overwrites a file and refuses a directory holding a module or a symbolic link on the way to a file it would write. |
 | `lola cache add\|rm\|list\|info\|update\|search` | Manage your cache. Bare `lola cache` lists it. |
+| `lola migrate` | Move from the Python lola: install what it installed, with lola, and clean up after it ([Coming from the Python lola](#coming-from-the-python-lola)). |
 | `lola version`, `lola completion <shell>`, `lola help` | The usual. |
 
 Every command has aliases (for example `rm` for `uninstall`); `lola help` lists them.
@@ -68,15 +69,16 @@ For every kind of source:
 
 **Folders.** In a git work tree, lola copies the files git would track (`.gitignore` is
 respected; new, unstaged files are included). A directory `module/` inside the source is the
-module root unless you pass `--path`. `--ref` is refused.
+module root unless you pass `--path`; `--path .` picks the folder itself. `--ref` is refused.
 
 **Git.** lola runs your `git` (it must be on `PATH`) with a shallow clone of the default
 branch, or of `--ref`: a branch name, a tag name, or a full 40- or 64-character commit SHA.
 lola never guesses: a ref that names both a branch and a tag is an error, an abbreviated SHA
 is an error, and a hex-looking branch name is a branch. A commit that no branch or tag points
 to needs a server that serves such commits (servers speaking git protocol v2 do). Only committed
-files are copied; the module root is `--path`, else `module/`, else the repository root. lola
-records the commit it fetched.
+files are copied; the module root is `--path`, else `module/`, else the repository root.
+`--path .` picks the repository root and names the module after the repository. lola records
+the commit it fetched.
 
 - Your git config, credential helpers and `ssh-agent` are used. Git hooks, `core.fsmonitor`,
   the `ext::` transport and Git LFS filters are switched off for the repository lola fetches.
@@ -601,6 +603,12 @@ project gets `--scope project -C <root>` and the user scope gets `--scope user`.
 flag for several project roots in one run; `--scope both` still installs into one project
 and your user scope.
 
+Equivalent commands, and commands inside hints, are quoted to paste into a POSIX shell (bash,
+zsh) on Linux and macOS, and into PowerShell 7.3 or later on Windows. There an argument goes
+in single quotes when it holds anything beyond letters, digits and `_ - . / : = +`, or starts
+with `-` and holds a `.` (`-t 'claude-code,gemini-cli'`). Windows PowerShell 5.1 drops empty
+arguments (`''`) and mangles embedded `"` when it runs a program.
+
 When the `-C` path contains control or format characters, the line is shown with them
 replaced by `?`, followed by a note that it is not copyable as shown.
 
@@ -784,6 +792,91 @@ Each finding has a stable code, shown by `--plain` and `--json`. A forceable ski
 lola only reports what its own rendering loses. For general advice on writing skills, commands
 and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenjam/skillsaw).
 
+## Coming from the Python lola
+
+lola does not read the Python lola's state (`~/.lola/installed.yml`, its module registry and
+marketplaces), and the Python lola does not read lola's. `lola migrate` moves you over once:
+
+```
+lola migrate --dry-run    # the plan; writes nothing
+lola migrate              # the plan, then "Migrate?" (default No); off a terminal, add -y
+```
+
+It reads the Python lola's home (`$LOLA_HOME`, else `~/.lola`) and, for every project and for
+user scope where the Python lola installed a module for Claude Code, Gemini CLI or OpenCode,
+installs the same module with lola, from the same source (with its ref and content directory
+as `--ref` and `--path`; a content directory of `/` is `--path .` for a folder or git source),
+on the same assistants; a module lola already has there stays at the version it has. Before it
+plans anything else, lola fetches each source and checks that the module it finds there has
+every skill, command, agent and MCP server the Python lola recorded (a skill it renamed to
+`<module>_<skill>` counts as `<skill>`); if not, lola found a different module root (the hint
+gives the `--path` to try) or the source no longer ships it
+(the hint says what to do with the Python lola's files), and the record is not migrated. A
+source lola cannot fetch (offline, say) leaves its records unmigrated the same way, with the hint
+to rerun `lola migrate` once the source is reachable; the module's other records in that place
+stay with them, and the rest of the plan goes on. An
+archive's content directory below `/` cannot be mapped (the Python lola looked it up below the
+module it found in the archive); install such a module yourself with `--path`. Then it cleans
+up:
+
+- **Replace with backup.** A file the Python lola recorded and lola now writes (a skill, a command
+  and its sidecar directory, an agent, an MCP server entry at the same place) is copied into the
+  trash first, then lola installs over it. The Python lola transformed what it wrote, so lola
+  cannot tell your edits from its own: the copy keeps them. A file in a replaced directory that
+  lola does not write is then removed if it still matches the copy, and kept and listed if it
+  changed; with `--keep-python` every such file stays and is listed.
+- **Moved to the trash.** A recorded file lola does not write (a renamed component, OpenCode's
+  command sidecars and legacy `.opencode/command/` and `.opencode/agent/` files) and the module
+  copies in `.lola/modules/` go to the trash. A module copy stays while something the Python lola
+  left in place still uses it.
+- **Kept and listed.** Symbolic links (and paths below one), files git tracks (read by their
+  literal names, so `*` or `[` in a name is no pattern; unless `--force`; inside a git work tree
+  where git is missing or fails, they stay), anything a lola module owns, and, with
+  `--keep-python`, everything lola did not replace. When lola would write such a file (one git
+  tracks, or one below a symbolic link), the plan refuses and names the file and why it is kept:
+  `--force` backs it up into the trash and replaces it, reported as replaced; for a symbolic link
+  you can instead replace the link with a directory.
+- **The Python home** goes to the trash last, only when every record migrated, nothing failed, and
+  it holds nothing but what the Python lola writes there. While a `~/.lola` stays, lola sees a
+  project at `~` and refuses to install there; the output says why it stayed.
+
+**Not migrated, never changed** (each is listed with its file, and how to remove it by hand):
+installs for Cursor, Copilot and OpenClaw (their files stay exactly as they are); modules with
+no recorded source or a source lola cannot fetch (`git://`, `.tar.bz2`, …); instruction
+blocks (`<!-- lola:module:<name>:start -->` in `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, and at
+user scope `~/.claude/CLAUDE.md`, `~/GEMINI.md`, `$XDG_CONFIG_HOME/opencode/AGENTS.md`), which
+keep working; Gemini's skill sections in `GEMINI.md`; MCP entries lola does not write (the
+Python lola put Claude Code's user-scope servers in `~/.mcp.json`, lola uses `~/.claude.json`);
+plugin data (`.lola/plugin-data/<module>`), which MCP servers keep using; marketplaces; and
+`.lola-req`. lola keeps rules as files of their own instead of blocks in your instruction files
+([decisions](decisions.md)), so move a module's `AGENTS.md` to `rules/` to ship it with lola.
+A module's installs in one project (or at user scope) migrate together or not at all: when one
+of them cannot be migrated (say, the module is also installed for Cursor there), the others stay
+with it, since they share the Python lola's copy of the module.
+
+**Before anything is written** every destination is planned and every hook question asked: a
+conflict lola may not resolve (a file in the way that the Python lola did not record, or a
+directory in `.lola/modules/` that an install would replace and no migrated record accounts for,
+or one it would swap out that git tracks or that is a symbolic link; `--force` backs such a copy
+up and reports it replaced), a hook without consent, or a cancelled prompt changes nothing.
+`--force` overwrites such files as `lola install --force` does, after copying each into the trash,
+and lists them as replaced. When two modules the Python lola installed in one place ship a
+component of the same name, the Python lola skipped one; lola refuses, naming both modules and the
+component, and gives the Python lola's `lola uninstall <module> -a <assistant> <project>` command
+for the module it skipped the component in: run it with the Python lola, then rerun
+`lola migrate`, which migrates the other module. After that, one destination that fails stops
+before it writes and the others go on; rerunning finishes the job, and a second run says "nothing
+to migrate". Like `lola install --dry-run`, the plan fetches the modules into your cache; the run
+you confirm installs exactly the versions the plan showed, and refuses one removed from the cache
+in the meantime.
+
+**The trash** is `$XDG_STATE_HOME/lola/trash/<UTC time>/`: one directory per destination
+(`user`, or a hash of the project's path) mirroring each path below the project or your home,
+the Python home as `python-home/`, and `manifest.txt`, one `original<TAB>trash path` line per
+entry. Restoring is a move back; lola never deletes the trash. lola refuses to write through a
+symbolic link inside the trash ("nothing was moved"), and a move across file systems syncs the
+copy's directories before it removes the original.
+
 ## Files lola keeps
 
 | File | Purpose | Commit it? |
@@ -795,6 +888,7 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
+| `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
 changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
@@ -825,11 +919,19 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 - Exit status: `0` on success or when you decline a prompt; `1` on any error.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
-- Without a terminal, `uninstall` and `cache rm` need `-y`.
+- Without a terminal, `uninstall`, `cache rm` and `migrate` need `-y`.
 - `install --json` adds `scopes` (each with `scope`, `root` and `scope_source`), and per
   module `scope`, `skipped` (component names, `[]` when none) and `saved_to` (the
   `selections.yaml` it wrote, or `""`), and `equivalent_commands` (`[]` when no step was shown).
   `list --json` and `check --json` carry `skipped` per module.
+- `migrate --json`: `dry_run`, `nothing_to_migrate`, `python_home`, `trash` (`""` when nothing
+  was put there), `home` (`action` `move`, `keep` or `none`, with `reason` and `trash`),
+  `unmappable` and `not_migrated` (each entry with its `hints`), `warnings`, and per
+  destination its `status` (`planned`, `migrated`, `unchanged` or `failed`, with `error` and
+  `hints`), `installs`, `replaced` and `moved` (each `path`, `key`, `kind`, `trash`), `kept`
+  (`path`, `reason`), its own `unmappable` and `not_migrated`, and the install's `steps`,
+  `modules`, `findings` and `notices`. A step that replaces a recorded file has
+  `"replaced": true`.
 
 ## Environment
 
@@ -838,11 +940,12 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `HOME` | User-scope root; base of the XDG defaults |
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
+| `LOLA_HOME` | The Python lola's home, which `lola migrate` reads (default `~/.lola`; must be absolute) |
 | `LOLA_ACCESSIBLE` | `1` draws the install flow as numbered line prompts (screen readers) |
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
-| `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, and lock files (default `~/.local/state`) |
+| `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, lock files and `lola migrate`'s trash (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive downloads (git reads them itself) |
 | `GIT_*`, `SSH_AUTH_SOCK` | Passed to git, except the variables that pick a repository or add config behind lola's back (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, …) |

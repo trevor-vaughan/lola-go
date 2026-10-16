@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
@@ -196,7 +197,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			return a.emit(cmd, func(w io.Writer, s style) {
 				printModuleView(w, s, mv)
 				if !s.plain {
-					fmt.Fprintln(w, s.ok("cached "+mv.Name+"; install it with: lola install "+mv.Name))
+					fmt.Fprintln(w, s.ok("cached "+mv.Name+"; install it with: "+errs.ShellJoin([]string{"lola", "install", mv.Name})))
 				}
 			}, mv)
 		},
@@ -462,7 +463,7 @@ func (a *app) initCmd() *cobra.Command {
 				for _, f := range s.Files {
 					fmt.Fprintln(w, "    "+f)
 				}
-				fmt.Fprintln(w, st.info("try it: lola install "+dir+" -t claude-code"))
+				fmt.Fprintln(w, st.info("try it: "+errs.ShellJoin([]string{"lola", "install", dir, "-t", "claude-code"})))
 			}, s)
 		},
 	}

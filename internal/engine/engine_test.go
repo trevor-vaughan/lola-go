@@ -883,6 +883,52 @@ var _ = Describe("Engine", func() {
 		Expect(names).To(Equal([]string{"example"}))
 	})
 
+	It("coaches fetching a module gone from the cache and its source with the recorded source quoted for the shell", func() {
+		hostile := filepath.Join(tmp, "it's src", "example")
+		writeTree(hostile, exampleModule)
+		_, err := install(claude, "../it's src/example")
+		Expect(err).NotTo(HaveOccurred())
+		ok, err := e.Store.Remove("example")
+		Expect(ok).To(BeTrue())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.RemoveAll(hostile)).To(Succeed())
+		_, err = e.Render(ctx, sc, engine.Options{})
+		Expect(err).To(MatchError("example is no longer in your cache"))
+		Expect(errs.Hints(err)).To(ConsistOf("fetch it again: " + errs.ShellJoin([]string{"lola", "install", "../it's src/example"})))
+		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("install ../it's src")))
+	})
+
+	Describe("coaching a module gone from the cache whose recorded source is not a source", func() {
+		recordAndRender := func(source, ref, path string) error {
+			_, err := install(claude, src)
+			Expect(err).NotTo(HaveOccurred())
+			lock := filepath.Join(proj, ".lola", "lock.json")
+			l, err := ledger.Load(lock)
+			Expect(err).NotTo(HaveOccurred())
+			l.Modules["example"].Source, l.Modules["example"].Ref, l.Modules["example"].Path = source, ref, path
+			Expect(l.Save(lock)).To(Succeed())
+			ok, err := e.Store.Remove("example")
+			Expect(ok).To(BeTrue())
+			Expect(err).NotTo(HaveOccurred())
+			_, err = e.Render(ctx, sc, engine.Options{})
+			Expect(err).To(MatchError("example is no longer in your cache"))
+			return err
+		}
+
+		It("never prints a control byte of the recorded source raw", func() {
+			err := recordAndRender("gone\x1b[31mRED\x1b]0;pwned\x07", "", "")
+			Expect(errs.Hints(err)).To(ConsistOf("fetch it again: " + errs.ShellJoin([]string{"lola", "install", "gone?[31mRED?]0;pwned?"})))
+			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("\x1b")))
+			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("\x07")))
+		})
+
+		It("names the recorded ref and path, sanitized, so the command fetches the same module", func() {
+			err := recordAndRender("gone", "v1\x1b", "plugins/it's")
+			Expect(errs.Hints(err)).To(ConsistOf("fetch it again: " +
+				errs.ShellJoin([]string{"lola", "install", "gone", "--ref", "v1?", "--path", "plugins/it's"})))
+		})
+	})
+
 	It("never removes a .lola/ that existed before a failed command", func() {
 		// Create .lola/ before any operation
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())

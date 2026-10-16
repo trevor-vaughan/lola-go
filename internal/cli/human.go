@@ -43,11 +43,18 @@ func stepLine(s style, st plan.Step) string {
 	if st.Via != "" {
 		dest += " (via symlink → " + st.Via + ")"
 	}
+	forced := st.Forced
+	if st.Replaced {
+		forced = "replaced"
+	}
 	if s.plain {
-		return strings.Join([]string{string(st.Action), st.Module, st.Target, st.Kind, dest, st.Forced, st.Note}, "\t")
+		return strings.Join([]string{string(st.Action), st.Module, st.Target, st.Kind, dest, forced, st.Note}, "\t")
 	}
 	line := fmt.Sprintf("%-6s %-11s %s", st.Action, st.Target, dest)
-	if st.Forced != "" {
+	switch {
+	case st.Replaced:
+		line += " [replaces a file lola did not write]"
+	case st.Forced != "":
 		line += " [forced: " + st.Forced + "]"
 	}
 	if st.Note != "" {

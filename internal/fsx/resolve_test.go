@@ -65,3 +65,35 @@ var _ = Describe("Resolve", func() {
 		}
 	})
 })
+
+var _ = Describe("Linked", func() {
+	var root string
+	BeforeEach(func() {
+		d, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		root = filepath.Join(d, "proj")
+		Expect(os.MkdirAll(filepath.Join(root, ".claude", "skills"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(root, ".claude", "skills", "a.md"), nil, 0o644)).To(Succeed())
+	})
+
+	It("reports a symbolic link at the path or between the root and it, and nothing for plain or missing paths", func() {
+		Expect(fsx.Linked(root, ".claude/skills/a.md")).To(BeFalse())
+		Expect(fsx.Linked(root, ".claude/missing/a.md")).To(BeFalse())
+		Expect(os.Symlink(filepath.Join(root, ".claude", "skills"), filepath.Join(root, ".claude", "linked"))).To(Succeed())
+		Expect(fsx.Linked(root, ".claude/linked/a.md")).To(BeTrue())
+		Expect(fsx.Linked(root, ".claude/linked")).To(BeTrue())
+		Expect(os.Symlink("nowhere", filepath.Join(root, "dangling"))).To(Succeed())
+		Expect(fsx.Linked(root, "dangling")).To(BeTrue())
+	})
+
+	It("does not count a symbolic link at or above the root", func() {
+		link := filepath.Join(filepath.Dir(root), "link")
+		Expect(os.Symlink(root, link)).To(Succeed())
+		Expect(fsx.Linked(link, ".claude/skills/a.md")).To(BeFalse())
+	})
+
+	It("refuses a path that leaves the root", func() {
+		_, err := fsx.Linked(root, "../x")
+		Expect(err).To(HaveOccurred())
+	})
+})

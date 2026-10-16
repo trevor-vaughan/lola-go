@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -59,6 +61,22 @@ func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	cmd.Env = gitEnv(os.Environ())
 	cmd.WaitDelay = 5 * time.Second // do not wait forever on children that keep the output open
 	return cmd
+}
+
+// InWorkTree reports whether dir or a parent holds .git, the way git finds a repository.
+func InWorkTree(dir string) (bool, error) {
+	for d := dir; ; d = filepath.Dir(d) {
+		_, err := os.Lstat(filepath.Join(d, ".git"))
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return false, err
+		}
+		if filepath.Dir(d) == d {
+			return false, nil
+		}
+	}
 }
 
 // headWriter keeps the first limit bytes written to it and discards the rest, while still
@@ -178,7 +196,7 @@ func checkout(ctx context.Context, spec Spec, scratch string) error {
 		_, err := runGit(ctx, scratch, "checkout", "-q", "--detach", "FETCH_HEAD")
 		return err
 	}
-	hints := []string{"list them: git ls-remote --heads --tags " + shown}
+	hints := []string{"list them: " + errs.ShellJoin([]string{"git", "ls-remote", "--heads", "--tags", shown})}
 	if shortSHARE.MatchString(ref) {
 		hints = append([]string{"use the full 40-character commit SHA"}, hints...)
 	}

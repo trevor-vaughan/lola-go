@@ -7,7 +7,8 @@ uninstall cleanly, without touching anything it did not write.
 
 This is a Go rewrite of [LobsterTrap/lola](https://github.com/LobsterTrap/lola). It is
 deliberately not command-compatible with the Python CLI; [docs/decisions.md](docs/decisions.md)
-explains why.
+explains why. Coming from the Python lola? `lola migrate` installs what it installed and
+moves its files to a trash you can restore from ([docs/usage.md](docs/usage.md#coming-from-the-python-lola)).
 
 ## What works today
 

@@ -25,6 +25,8 @@ type Request struct {
 	Ledger   *ledger.Ledger // observed state; never mutated
 	Changes  []ModuleChange
 	Force    bool
+	// Replace lists unowned destinations the plan overwrites instead of refusing (Replaceable).
+	Replace []Replaceable
 }
 
 // Plan is a checked set of changes plus the ledger that results from applying them.
@@ -408,7 +410,13 @@ func (p *planner) want(owner string, in Intent) error {
 		step.Action, step.Forced = ActionAdopt, "unowned"
 		p.conflict(art, "exists and was not written by lola; owning it would remove it on uninstall", true)
 	case cur == want && !modeDiffers:
-		step.Action = ActionAdopt
+		// Adopting an identical file the request lists as replaceable takes it over just as
+		// overwriting it would, so the step says so.
+		replace, err := p.replaceable(in)
+		if err != nil {
+			return err
+		}
+		step.Action, step.Replaced = ActionAdopt, replace
 	case cur == want && modeDiffers:
 		step.Action = ActionUpdate
 		step.Note = "mode changed"
@@ -433,7 +441,16 @@ func (p *planner) want(owner string, in Intent) error {
 		step.Action, step.Forced = ActionUpdate, "hand-edited"
 		p.conflict(art, "hand-edited since lola wrote it", true)
 	default:
-		step.Action, step.Forced = ActionUpdate, "unowned"
+		replace, err := p.replaceable(in)
+		if err != nil {
+			return err
+		}
+		step.Action = ActionUpdate
+		if replace {
+			step.Replaced = true
+			break
+		}
+		step.Forced = "unowned"
 		p.conflict(art, "exists and was not written by lola", true)
 	}
 	if f.res.Outside {
@@ -444,6 +461,16 @@ func (p *planner) want(owner string, in Intent) error {
 		return nil
 	}
 	return p.edit(f, in, art)
+}
+
+// replaceable reports whether the request lists in's unowned destination as replaceable and
+// no symbolic link lies between the target's root and it.
+func (p *planner) replaceable(in Intent) (bool, error) {
+	if !slices.ContainsFunc(p.req.Replace, func(r Replaceable) bool { return r.covers(in.Target, in.Path, in.Pointer) }) {
+		return false, nil
+	}
+	linked, err := fsx.Linked(p.req.Roots[in.Target], in.Path)
+	return err == nil && !linked, err
 }
 
 func (p *planner) edit(f *file, in Intent, art ledger.Artifact) error {

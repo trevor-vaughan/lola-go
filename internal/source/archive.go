@@ -434,5 +434,5 @@ func shallowest(tree string, cands map[string]int) (string, error) {
 	}
 	slices.Sort(names)
 	return "", errs.WithHints(fmt.Errorf("the archive holds several module roots at the same depth: %s", strings.Join(names, ", ")),
-		"choose one with --path, e.g. --path "+names[0])
+		"choose one with --path, e.g. "+errs.ShellJoin([]string{"--path", names[0]}))
 }

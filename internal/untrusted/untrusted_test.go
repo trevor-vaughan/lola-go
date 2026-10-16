@@ -1,7 +1,12 @@
 package untrusted_test
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
 	"strings"
+	"syscall"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,5 +35,21 @@ var _ = Describe("Text", func() {
 	It("caps the text", func() {
 		Expect(untrusted.Text(strings.Repeat("x", 300), untrusted.MaxName)).To(Equal(strings.Repeat("x", untrusted.MaxName) + "…"))
 		Expect(untrusted.Text("abé", 3)).To(Equal("ab?…"))
+	})
+})
+
+var _ = Describe("CleanErr", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("drops the names of an *fs.PathError and of an *os.LinkError", func() {
+		pe := &fs.PathError{Op: "open", Path: "/x\x1b", Err: syscall.EACCES}
+		le := &os.LinkError{Op: "rename", Old: "/a\x1b", New: "/b\x1b", Err: syscall.EACCES}
+		Expect(untrusted.CleanErr(pe)).To(Equal(syscall.EACCES))
+		Expect(untrusted.CleanErr(fmt.Errorf("wrapped: %w", le))).To(Equal(syscall.EACCES))
+	})
+
+	It("keeps any other error", func() {
+		err := errors.New("plain")
+		Expect(untrusted.CleanErr(err)).To(BeIdenticalTo(err))
 	})
 })

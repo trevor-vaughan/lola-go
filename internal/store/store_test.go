@@ -210,6 +210,16 @@ var _ = Describe("Store", func() {
 		Expect(errs.Hints(err)).To(ContainElement("remove the cached one first: lola cache rm example"))
 	})
 
+	It("never prints a control byte of either origin raw when refusing a same-named module", func() {
+		_, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "x"}), FallbackName: "example",
+			Source: "/src\x1b]0;pwned\x07/example", Path: "sub\x1b[31m", Type: "folder", Now: now})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "y"}), FallbackName: "example",
+			Source: "/elsewhere\x1b[2J/example", Type: "folder", Now: now})
+		Expect(err).To(MatchError(`a different module named "example" is already in your cache (from /src?]0;pwned?/example (path sub?[31m)); ` +
+			"this one is from /elsewhere?[2J/example"))
+	})
+
 	It("stores nothing when the staged dir is not a module", func() {
 		_, err := put(map[string]string{"README.md": "x"}, "")
 		Expect(err).To(MatchError(ContainSubstring("no module found")))

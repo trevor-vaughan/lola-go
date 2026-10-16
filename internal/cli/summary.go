@@ -159,9 +159,10 @@ func entryText(e config.Entry) string {
 }
 
 // equivalents are the commands that do what this run does off a terminal (§4.5, §14): a lola
-// cache add for each source added, then one lola install line per destination, shell-quoted and
-// without --dry-run. With more than one destination every project line names its root with -C;
-// a single project line does so only when the root is not the project found from here.
+// cache add for each source added, then one lola install line per destination, quoted for the
+// user's shell (errs.ShellJoin) and without --dry-run. With more than one destination every
+// project line names its root with -C; a single project line does so only when the root is not
+// the project found from here.
 func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 	var out []string
 	for _, a := range fl.added {

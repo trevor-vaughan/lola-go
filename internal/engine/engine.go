@@ -149,6 +149,12 @@ func newResult(dry bool) *Result {
 // InstallRequest is one install argument (§7.1) with its --ref and --path.
 type InstallRequest struct {
 	Arg, Ref, Path string
+	// Targets, when set, are added to the targets the module already has in a scope's manifest
+	// (none for a new module), instead of using the scope's targets: lola migrate installs each
+	// module on the assistants the Python lola installed it for. A module the manifest already
+	// has stays at the version installed there (InstallChoices lists that version too), so
+	// adding an assistant never upgrades it.
+	Targets []string
 	// Version, when set, is the cached version InstallChoices resolved this argument to: the
 	// install uses it instead of fetching the source or reading the head again, so it installs
 	// exactly what the pickers listed.
@@ -260,6 +266,11 @@ func (e *Engine) Manifest(sc Scope) (*manifest.Manifest, error) {
 	return manifest.Load(e.files(sc).manifest)
 }
 
+// Ledger loads the scope's ledger: what lola wrote there, and for which module.
+func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
+	return ledger.Load(e.files(sc).ledger)
+}
+
 // refuseSymlinkedState fails when the project's .lola/, .lola/modules or .lola/plugin-data
 // is a symlink: a repository can commit one, and lola would then write, rename and delete
 // outside the project. Missing directories are fine. User-scope state is the user's own and
@@ -285,6 +296,24 @@ func (e *Engine) refuseSymlinkedState(sc Scope) error {
 	return nil
 }
 
+// ownGitignore writes .lola/.gitignore, which lola owns, at project scope. commit calls it, so
+// a refusal or a cancel never writes it into a .lola/ that already existed.
+func (e *Engine) ownGitignore(sc Scope) error {
+	f := e.files(sc)
+	if f.lolaDir == "" {
+		return nil
+	}
+	gi := filepath.Join(f.lolaDir, ".gitignore")
+	cur, err := os.ReadFile(gi)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if bytes.Equal(cur, []byte(lolaGitignore)) {
+		return nil
+	}
+	return fsx.WriteFileAtomic(gi, []byte(lolaGitignore), 0o644)
+}
+
 // lock creates the scope's state directory and takes its exclusive lock.
 func (e *Engine) lock(sc Scope) (func(), error) {
 	f := e.files(sc)
@@ -297,16 +326,7 @@ func (e *Engine) lock(sc Scope) (func(), error) {
 		if err := os.MkdirAll(f.lolaDir, 0o755); err != nil {
 			return nil, err
 		}
-		gi := filepath.Join(f.lolaDir, ".gitignore")
-		cur, err := os.ReadFile(gi)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-		if !bytes.Equal(cur, []byte(lolaGitignore)) {
-			if err := fsx.WriteFileAtomic(gi, []byte(lolaGitignore), 0o644); err != nil {
-				return nil, err
-			}
-		}
+		var err error
 		if lockFile, err = e.projectLock(f.lolaDir); err != nil {
 			return nil, err
 		}
@@ -509,7 +529,7 @@ func StrictError(finds []target.Finding, rerun string, offerForce bool) error {
 // after it is committed. Runtime hooks get consent before anything is planned.
 func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy,
 	opts Options, res *Result, after func(*plan.Plan) error) error {
-	pr, err := e.prepare(sc, led, changes, copies, opts, res)
+	pr, err := e.prepare(sc, led, changes, copies, nil, opts, res)
 	if err != nil || opts.DryRun {
 		return err
 	}
@@ -527,9 +547,10 @@ type prepared struct {
 }
 
 // prepare runs everything that may refuse or ask before a scope is written: runtime hook
-// consent, --strict, the plan (conflicts) and install hook consent. It writes nothing but
-// recorded consents.
-func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy, opts Options, res *Result) (*prepared, error) {
+// consent, --strict, the plan (conflicts, except on the replaceable destinations) and install
+// hook consent. It writes nothing but recorded consents.
+func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy, replace []plan.Replaceable,
+	opts Options, res *Result) (*prepared, error) {
 	if err := e.consentRuntimeHooks(sc, changes, opts, res); err != nil {
 		return nil, err
 	}
@@ -538,7 +559,8 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 			return nil, err
 		}
 	}
-	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes, Force: opts.Force}
+	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes, Force: opts.Force,
+		Replace: replace}
 	for _, t := range e.Targets {
 		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
 		req.BaseDirs[t.ID()] = t.BaseDirs(sc.Kind)
@@ -563,6 +585,9 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 // under the scope lock, then post-install hooks.
 func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, after func(*plan.Plan) error) error {
 	sc, p := pr.sc, pr.plan
+	if err := e.ownGitignore(sc); err != nil {
+		return err
+	}
 	dir := e.files(sc).modules
 	perm := fs.FileMode(0o755)
 	if sc.Kind == target.User {

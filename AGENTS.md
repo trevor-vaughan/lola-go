@@ -6,6 +6,8 @@ Guidance for coding agents working on lola (Go).
 
 - `task build` -> `bin/lola`; `task test` (add `MODE=llm` for failures only); `task lint`;
   `task vuln`; `task cross` (Windows/macOS build + vet); `task check` runs all gates. Artifacts go to `.test-output/`.
+  `task e2e:migrate` runs the `lola migrate` container suite (podman or docker, venom,
+  network); it is not part of `check`.
 
 ## Rules
 
