@@ -129,7 +129,7 @@ type InstallResult struct {
 // loaded is the manifest as read under the lock, for the trust refresh (saveManifest); trust is
 // the project's trust record (nil at user scope). untrustedTargets refuses a module that would
 // install to top-level targets the record does not cover (nil when it covers them, or -t was
-// given).
+// given). layers is the scope's layers (Plan 6b §6.2), read once, before anything is fetched.
 type scopePlan struct {
 	sc               Scope
 	man              *manifest.Manifest
@@ -137,6 +137,7 @@ type scopePlan struct {
 	trust            *trust.Record
 	untrustedTargets error
 	led              *ledger.Ledger
+	layers           []Layer
 	targets          []string
 	given            []string
 	resolved         []resolvedRequest
@@ -234,8 +235,14 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		if err != nil {
 			return nil, err
 		}
-		plans[i] = &scopePlan{sc: si.Scope, man: man, loaded: man.Clone(), trust: rec, led: led, targets: si.Targets, given: si.Targets,
-			replace: si.Replace}
+		// The scope's profiles are read before anything is fetched: one that does not load refuses
+		// the install, and their entries give the precedence notices (Plan 6b §7, §10).
+		layers, _, err := e.layers(si.Scope, man, led)
+		if err != nil {
+			return nil, err
+		}
+		plans[i] = &scopePlan{sc: si.Scope, man: man, loaded: man.Clone(), trust: rec, led: led, layers: layers, targets: si.Targets,
+			given: si.Targets, replace: si.Replace}
 		if len(si.Targets) == 0 && rec != nil && len(man.Targets) > 0 && !slices.Equal(rec.View.Targets, man.Targets) {
 			plans[i].untrustedTargets = e.untrustedTargets(si.Scope, rec, spec.Modules)
 		}
@@ -332,6 +339,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 				return nil, e.withRetry(spec, err, fetched)
 			}
 		}
+		res.Notices = append(res.Notices, overridesProfiles(sp.layers, sp.entries)...)
 	}
 	for i := range res.Modules {
 		if !opts.DryRun && slices.ContainsFunc(saves, func(c config.Change) bool { return c.Module == res.Modules[i].Name }) {
@@ -907,8 +915,15 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
 		return nil, err
 	}
+	layers, _, err := e.layers(sc, man, led)
+	if err != nil {
+		return nil, err
+	}
 	var changes []plan.ModuleChange
 	for _, name := range names {
+		if err := e.refuseProfileModule(sc, layers, name); err != nil {
+			return nil, err
+		}
 		entry, ment := led.Modules[name], man.Find(name)
 		if entry == nil && ment == nil {
 			return nil, e.notInstalled(sc, name)
@@ -965,12 +980,12 @@ func dirExists(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// Render re-plans every installed module at the version its manifest entry pins (lock.json's
-// when it pins none), removing orphans and refusing to overwrite hand edits. A git or archive
-// module is rendered from a snapshot of that cached version, fetched by its pin when the cache no
+// Render re-plans every installed module at the version its winning layer's entry pins
+// (lock.json's when it pins none, Plan 6b §6.4), removing orphans and refusing to overwrite hand
+// edits. A git or archive module is rendered from a snapshot of that cached version, fetched by its pin when the cache no
 // longer holds it; a folder module is read from its folder. Render never reads a cache head, so
 // lola cache update never changes what is installed, and it never acts on what the user has not
-// trusted: a module the manifest no longer lists, asks for another source, does not cover in the
+// trusted: a module no layer lists any more, asks for another source, does not cover in the
 // trust record, or a folder whose content changed is left as installed, with a warn finding
 // that names the remedy (Plan 6a §10.3, §10.7).
 func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result, err error) {
@@ -987,7 +1002,12 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 	if err != nil {
 		return nil, err
 	}
-	res.Notices = append(res.Notices, e.sweepRuns()...)
+	layers, notices, err := e.layers(sc, man, led)
+	if err != nil {
+		return nil, err
+	}
+	want, _ := desired(layers)
+	res.Notices = append(append(res.Notices, notices...), e.sweepRuns()...)
 	run, err := e.runDir()
 	if err != nil {
 		return nil, err
@@ -1001,7 +1021,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 	staged := map[string]*store.Staged{}
 	var names []string
 	for _, name := range sortedNames(led) {
-		out, st, err := e.renderCheck(ctx, sc, man, rec, name, led.Modules[name], run)
+		out, st, err := e.renderCheck(ctx, sc, man, find(want, name), rec, name, led.Modules[name], run)
 		if err != nil {
 			return nil, errs.WithHints(err, renderUninstall(name))
 		}
@@ -1016,20 +1036,28 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 	var changes []plan.ModuleChange
 	var copies []moduleCopy
 	for _, name := range names {
-		entry := led.Modules[name]
+		entry, w := led.Modules[name], find(want, name)
+		var ment *manifest.Entry
+		from := entry.From // a module no layer wants keeps the layer it came from
+		if w != nil {
+			ment, from = &w.Entry, ""
+			if w.profile {
+				from = w.From
+			}
+		}
 		var v store.Version
 		if st := staged[name]; st != nil {
 			v, err = e.renderStaged(st, entry)
 		} else {
-			digest, commit, repin := e.renderPin(sc, name, entry, man.Find(name))
+			digest, commit, file, repin := e.renderPin(sc, name, entry, w)
 			if v, err = e.installedForRender(ctx, sc, name, entry, digest, commit, run, res); err != nil {
-				err = e.renderError(sc, name, man.Find(name), repin, err)
+				err = renderError(name, w, file, repin, err)
 			}
 		}
 		if err != nil {
 			return nil, err
 		}
-		ts := allTargets(entry, man.Find(name), man)
+		ts := allTargets(entry, ment, man)
 		if len(opts.Targets) > 0 {
 			ts = slices.DeleteFunc(ts, func(t string) bool { return !slices.Contains(opts.Targets, t) })
 		}
@@ -1040,13 +1068,13 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 		if err != nil {
 			return nil, err
 		}
-		intents, finds, notes, mr, err := e.planModule(sc, v, ts, man.Find(name), x, opts, probes)
+		intents, finds, notes, mr, err := e.planModule(sc, v, ts, ment, x, opts, probes)
 		if err != nil {
 			return nil, err
 		}
 		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
-			Entry: &ledger.Entry{Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Commit, Digest: v.Meta.Digest, Targets: mr.Targets}})
+			Entry: &ledger.Entry{From: from, Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Commit, Digest: v.Meta.Digest, Targets: mr.Targets}})
 		replace, err := needsCopy(e.files(sc).modules, name, entry, v.Meta.Digest)
 		if err != nil {
 			return nil, err
@@ -1066,30 +1094,51 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 // module copy is gone), modified (a destination differs from what lola wrote), stale (the
 // manifest pins another version than the one installed), skipped (the target rendered nothing
 // of the module), unreadable (the version installed is cached but does not load), or ok; and
-// each entry of the manifest lock.json does not record, not_installed, per effective target.
-// A module copy's content is not compared: hooks build in it. It reads no network, never the
-// trust record, and changes nothing (Plan 6a §10.5).
-func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
+// each entry a layer wants that lock.json does not record, not_installed, per effective target.
+// Each row names the layer its module comes from (From): the layer whose entry wins now, else
+// the one lock.json recorded. A module copy's content is not compared: hooks build in it. It
+// reads no network, never the trust record, and changes nothing (Plan 6a §10.5). It refuses a
+// project whose lock.json git tracks, since a committed one could name active profiles (Plan 6b
+// §5, §19 S5); the notices are the active profiles that no longer exist, and git missing.
+func (e *Engine) Status(ctx context.Context, sc Scope) ([]StatusRow, []Notice, error) {
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	checked := newResult(true)
+	if err := e.refuseTrackedLedger(ctx, sc, checked); err != nil {
+		return nil, nil, err
+	}
+	layers, notices, err := e.layers(sc, man, led)
+	if err != nil {
+		return nil, nil, err
+	}
+	notices = append(notices, checked.Notices...)
 	sel, err := e.selections()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	rows := []StatusRow{}
 	names := sortedNames(led)
-	for _, ent := range desired(man) {
-		if led.Modules[ent.Name] == nil {
-			names = append(names, ent.Name)
+	want, _ := desired(layers)
+	for _, w := range want {
+		if led.Modules[w.Name] == nil {
+			names = append(names, w.Name)
 		}
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		entry, ment := led.Modules[name], man.Find(name)
+		entry, w := led.Modules[name], find(want, name)
+		var ment *manifest.Entry
+		from := filepath.Base(e.files(sc).manifest)
+		if entry != nil && entry.From != "" {
+			from = entry.From
+		}
+		if w != nil {
+			ment, from = &w.Entry, w.From
+		}
 		if entry == nil {
-			rows = append(rows, e.notInstalledRows(man, ment)...)
+			rows = append(rows, e.notInstalledRows(man, *w)...)
 			continue
 		}
 		pin, ref := "", entry.Ref
@@ -1097,7 +1146,7 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 			pin, ref = ment.Digest, ment.Ref
 		}
 		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest))
-		base := StatusRow{Name: name, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
+		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
 			UpdateAvailable: update, Skipped: []string{}}
 		var v store.Version
 		err := fs.ErrNotExist
@@ -1120,13 +1169,13 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 		if ok {
 			x, err := exclusions(sel, sc, name)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			skipped = resolveComponents(v.Module, x, true).skipped
 		}
 		copyMissing, err := needsCopy(e.files(sc).modules, name, entry, entry.Digest)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, id := range allTargets(entry, ment, man) {
 			if ok && !module.Supports(v.Module.Targets, id) {
@@ -1134,7 +1183,7 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 			}
 			t, err := e.target(id)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			root := t.Root(sc.Kind, sc.ProjectDir, e.Paths)
 			status, n := "ok", 0
@@ -1145,7 +1194,7 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 				n++
 				h, err := plan.Observe(root, a)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if h == "" {
 					status = "missing"
@@ -1172,12 +1221,13 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 	for i := range rows {
 		rows[i].Scope = sc.Kind.String()
 	}
-	return rows, nil
+	return rows, notices, nil
 }
 
-// notInstalledRows are the list rows of ment, an entry of man lock.json does not record: one
-// per effective target, with no digest installed.
-func (e *Engine) notInstalledRows(man *manifest.Manifest, ment *manifest.Entry) []StatusRow {
+// notInstalledRows are the list rows of w, an entry a layer wants that lock.json does not
+// record: one per effective target, with no digest installed.
+func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted) []StatusRow {
+	ment := &w.Entry
 	ts := ment.Targets
 	if len(ts) == 0 {
 		ts = man.Targets
@@ -1191,36 +1241,51 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, ment *manifest.Entry) 
 	}
 	var rows []StatusRow
 	for _, t := range ts {
-		rows = append(rows, StatusRow{Name: ment.Name, Target: t, Status: status, Rules: ment.RulesOn(), Source: ment.Source, Ref: ment.Ref,
+		rows = append(rows, StatusRow{Name: ment.Name, From: w.From, Target: t, Status: status, Rules: ment.RulesOn(), Source: ment.Source, Ref: ment.Ref,
 			Pin: ment.Digest, UpdateAvailable: update, Skipped: []string{}})
 	}
 	return rows
 }
 
-// InstallCoaching is what lola install without arguments says about sc (Plan 6a §10.2): when its
-// manifest lists modules lock.json does not record, the notice a terminal shows before the
-// pickers and the hint the missing-argument error adds off one, both naming the sync that
-// installs them; "" when there are none. It reads the manifest and the ledger only.
+// InstallCoaching is what lola install without arguments says about sc (Plan 6a §10.2, Plan 6b
+// §7): when its layers want modules lock.json does not record, the notice a terminal shows
+// before the pickers and the hint the missing-argument error adds off one, both naming the
+// layers that list them and the sync that installs them; "" when there are none. It reads the
+// manifest, the ledger and the active profiles only.
 func (e *Engine) InstallCoaching(sc Scope) (notice, hint string, err error) {
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
 		return "", "", err
 	}
-	n := 0
-	for _, ent := range desired(man) {
-		if led.Modules[ent.Name] == nil {
-			n++
+	layers, _, err := e.layers(sc, man, led)
+	if err != nil {
+		return "", "", err
+	}
+	want, _ := desired(layers)
+	n, from := 0, map[string]bool{}
+	for _, w := range want {
+		if led.Modules[w.Name] == nil {
+			n, from[w.From] = n+1, true
 		}
 	}
 	if n == 0 {
 		return "", "", nil
 	}
-	base := filepath.Base(e.files(sc).manifest)
+	var files []string
+	for _, l := range layers {
+		if from[l.Name] {
+			files = append(files, l.Name)
+		}
+	}
+	base, lists := andJoin(files), "lists"
+	if len(files) > 1 {
+		lists = "list"
+	}
 	what := fmt.Sprintf("%d modules in %s are not installed", n, base)
 	if n == 1 {
 		what = "1 module in " + base + " is not installed"
 	}
-	return what + " → " + e.SyncCommand(sc), "install what " + base + " lists: " + e.SyncCommand(sc), nil
+	return what + " → " + e.SyncCommand(sc), "install what " + base + " " + lists + ": " + e.SyncCommand(sc), nil
 }
 
 // versionID is the cache version id of a digest: its first 12 hex digits ("" when it has none).

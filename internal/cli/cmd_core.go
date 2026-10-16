@@ -76,7 +76,7 @@ func (a *app) completeInstalled(cmd *cobra.Command, _ []string, toComplete strin
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	rows, err := eng.Status(sc)
+	rows, _, err := eng.Status(cmd.Context(), sc)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -221,7 +221,9 @@ func (a *app) listCmd() *cobra.Command {
 			"missing (a file lola wrote, or the module copy, is gone); stale (project.yml pins another version\n" +
 			"than the one installed: run lola sync); not installed (listed in project.yml: run lola sync); or\n" +
 			"skipped (nothing of the module could be rendered for the target).\n" +
-			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.\n\n" +
+			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.\n" +
+			"FROM, shown when a profile is involved, names where the module comes from: project.yml, user.yml\n" +
+			"or a profile (profile:default, profile:user:<name>).\n\n" +
 			"Scope: --project, --user, -C <dir> or --scope (both included); without them, the project with\n" +
 			".lola/ at or above the current directory, if any, and user scope. list never asks, and\n" +
 			"default_scope does not apply. Every row names its scope.",
@@ -245,10 +247,10 @@ func (a *app) listCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rows := []engine.StatusRow{}
+			rows, notices := []engine.StatusRow{}, []engine.Notice{}
 			var scopes []engine.Scope
 			for i, c := range scs {
-				got, err := eng.Status(c.Scope)
+				got, notes, err := eng.Status(cmd.Context(), c.Scope)
 				if err != nil && len(scs) == 2 && c.Source == engine.SourceDiscovered {
 					// No flag chose these scopes, so one that cannot be read must not hide the other.
 					return errs.WithHints(err, "list the other scope: "+eng.Command(scs[1-i].Scope, "list"))
@@ -261,11 +263,15 @@ func (a *app) listCmd() *cobra.Command {
 						rows = append(rows, r)
 					}
 				}
+				notices = append(notices, notes...)
 				scopes = append(scopes, c.Scope)
 			}
 			return a.emit(cmd, func(w io.Writer, s style) {
 				printStatus(w, s, scopes, rows, func(sc engine.Scope) string { return eng.Command(sc, "install") })
-			}, map[string]any{"modules": rows})
+				for _, n := range notices {
+					fmt.Fprintln(w, noticeLine(s, n))
+				}
+			}, map[string]any{"modules": rows, "notices": notices})
 		},
 	}
 	addTargetFlag(cmd, &targets, "only show these assistants")
@@ -274,7 +280,7 @@ func (a *app) listCmd() *cobra.Command {
 
 // printStatus prints the rows of every scope list read: a table whose rows each name their
 // scope, then a line per scope with nothing installed, coaching install (the command install
-// names for a scope). --plain rows are name, target, status, rules, source, scope.
+// names for a scope). --plain rows are name, target, status, rules, source, scope, from.
 func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, install func(engine.Scope) string) {
 	if s.plain {
 		for _, r := range rows {
@@ -282,7 +288,7 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 			if !r.Rules {
 				rules = "off"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source, r.Scope)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source, r.Scope, r.From)
 		}
 		return
 	}
@@ -302,14 +308,20 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 		}
 		return
 	}
-	// The SKIPPED column (components selections.yaml excludes) appears only when one is.
+	// The SKIPPED column (components selections.yaml excludes) appears only when one is, and
+	// FROM only when a module comes from a profile.
 	skipped := slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return len(r.Skipped) > 0 })
+	profiled := slices.ContainsFunc(rows, func(r engine.StatusRow) bool { return strings.HasPrefix(r.From, "profile:") })
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	head := "SCOPE\tMODULE\tTARGET\tSTATUS\tRULES"
 	if skipped {
 		head += "\tSKIPPED"
 	}
-	fmt.Fprintln(tw, head+"\tSOURCE")
+	head += "\tSOURCE"
+	if profiled {
+		head += "\tFROM"
+	}
+	fmt.Fprintln(tw, head)
 	for _, r := range rows {
 		status := s.ok(r.Status)
 		switch r.Status {
@@ -330,7 +342,11 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 		if skipped {
 			rules += "\t" + strconv.Itoa(len(r.Skipped))
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", r.Scope, r.Name, r.Target, status, rules, r.Source)
+		line := strings.Join([]string{r.Scope, r.Name, r.Target, status, rules, r.Source}, "\t")
+		if profiled {
+			line += "\t" + r.From
+		}
+		fmt.Fprintln(tw, line)
 	}
 	_ = tw.Flush()
 	for _, line := range empty {

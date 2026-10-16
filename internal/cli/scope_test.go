@@ -265,7 +265,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(r.out).To(MatchRegexp(`\nuser\s+example\s+claude-code\s+✓ ok`))
 		p := &scripted{}
 		r = lolaP(p, "list", "--plain")
-		Expect(r.out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\nexample\tclaude-code\tok\ton\t" + mod + "\tuser\n"))
+		Expect(r.out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\nexample\tclaude-code\tok\ton\t" + mod + "\tuser\tuser.yml\n"))
 		Expect(p.calls).To(BeEmpty(), "list never asks for a scope on a terminal")
 
 		By("the flags decide, --scope both included")

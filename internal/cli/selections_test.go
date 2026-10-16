@@ -52,7 +52,7 @@ var _ = Describe("selections.yaml in list, check and render", func() {
 		}
 		Expect(json.Unmarshal([]byte(lola("ls", "-C", proj, "--json").out), &v)).To(Succeed())
 		Expect(v.Modules[0].Skipped).To(Equal([]string{"command/test"}))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\tproject\n"), "--plain rows keep their columns, the scope last")
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\tproject\tproject.yml\n"), "--plain rows keep their columns, scope and from last")
 	})
 
 	It("says a dry run would skip, since it saves nothing", func() {
@@ -78,6 +78,25 @@ var _ = Describe("selections.yaml in list, check and render", func() {
 		Expect(r.out).NotTo(ContainSubstring("agent bare"))
 		Expect(lola("check", mod, "-t", "claude-code", "--plain").out).To(ContainSubstring("skipped\texample\tagent/bare\n"))
 		Expect(lola("check", mod, "-t", "claude-code", "--strict").code).To(Equal(0))
+	})
+
+	It("check reads the selections of the scope --user or -C names", func() {
+		GinkgoT().Chdir(tmp)
+		skip("agent/bare")
+		r := lola("check", mod, "-t", "claude-code", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ example: skipped in selections.yaml: agent/bare"))
+		r = lola("check", mod, "-t", "claude-code", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring("skipped in selections.yaml"), "the project's selections are not user scope's")
+
+		Expect(os.WriteFile(selections, []byte("version: 1\nuser:\n  example:\n    skip: [command/test]\n"), 0o600)).To(Succeed())
+		r = lola("check", mod, "-t", "claude-code", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ example: skipped in selections.yaml: command/test"))
+		r = lola("check", mod, "-t", "claude-code", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring("skipped in selections.yaml"), "user scope's selections are not the project's")
 	})
 
 	It("reports an invalid selections.yaml with its key path and a hint", func() {

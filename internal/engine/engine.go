@@ -176,8 +176,11 @@ type VersionRef struct {
 
 // StatusRow is one module × target line of `lola list`.
 type StatusRow struct {
-	Scope  string `json:"scope"` // project or user
-	Name   string `json:"name"`
+	Scope string `json:"scope"` // project or user
+	Name  string `json:"name"`
+	// From is the layer the module comes from (Plan 6b §7): project.yml, user.yml,
+	// profile:user:go or profile:default.
+	From   string `json:"from"`
 	Target string `json:"target"`
 	Status string `json:"status"` // ok, modified, missing, stale, skipped, unreadable
 	Rules  bool   `json:"rules"`  // false when the manifest entry says rules: false

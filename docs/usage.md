@@ -10,9 +10,9 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 |---|---|
 | `lola install [<source\|name>...]` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. With no argument on a terminal, walks you through the choices ([Choosing what to install](#choosing-what-to-install)). |
 | `lola sync [<module>...]` | Make the project (or `--user`) match its manifest: install every entry at the version it pins, render the modules already installed, and remove the ones the manifest no longer lists. Names limit the run to those modules. Shows and asks about changes to `project.yml` you have not trusted yet, entry by entry, paging the diff on a terminal ([Sync, pins and trust](#sync-pins-and-trust)). `--scope both` syncs the project, then user scope. |
-| `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
-| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`: run `lola sync`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. Without a scope flag it shows the project found from here, if any, and user scope; every row names its scope ([Choosing a scope](#choosing-a-scope)). |
-| `lola render` | Render every installed module again at the version `project.yml` pins (the one installed when it pins none; a folder module from its folder). Removes files a module no longer ships. Leaves as installed, with a warning, a module it may not act on ([Sync, pins and trust](#sync-pins-and-trust)). |
+| `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. Refuses a module an active [profile](#profiles) or `default.yml` lists, naming it: the next sync would install it again. |
+| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`: run `lola sync`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. Entries of [profiles](#profiles) are listed as the manifest's are, and when any module comes from a profile a `FROM` column names its layer. Without a scope flag it shows the project found from here, if any, and user scope; every row names its scope ([Choosing a scope](#choosing-a-scope)). Like `render`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could turn profiles on. |
+| `lola render` | Render every installed module again at the version `project.yml` pins (the one installed when it pins none; a folder module from its folder). A module a [profile](#profiles) lists renders at the profile's pin, else at the version `lock.json` records; one no layer lists any more is left as installed at project scope. Removes files a module no longer ships. Leaves as installed, with a warning, a module it may not act on ([Sync, pins and trust](#sync-pins-and-trust)). |
 | `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
 | `lola init [dir] [--format agent-plugins\|lola]` | Scaffold a module named after the directory: by default an Agent Plugins package (`plugin.json`, one skill, one `dev.getlola` command); `--format lola` writes `lola.yml`, one skill and one command. It never overwrites a file and refuses a directory holding a module or a symbolic link on the way to a file it would write. |
@@ -490,10 +490,70 @@ and output that is not a terminal never page. `lola sync` reads `pager` only whe
 page, so off a terminal a malformed `pager` value does not stop it; like any malformed key, it
 still fails a command that reads `default_scope` (one without a scope flag).
 
-**`lola install` without arguments** says how many modules `project.yml` lists that are not
-installed, on a terminal before the module picker (`1 module in project.yml is not installed →
-lola sync --project`), and off a terminal as a hint of its missing-argument error
-(`install what project.yml lists: lola sync --project`).
+**`lola install` without arguments** says how many modules `project.yml` (and any active
+[profile](#profiles); `default.yml` at user scope) lists that are not installed, on a terminal
+before the module picker (`1 module in project.yml is not installed → lola sync --project`;
+`2 modules in profile:default and user.yml are not installed → lola sync --user`), and off a
+terminal as a hint of its missing-argument error (`install what project.yml lists: lola sync
+--project`). `lola install <module>` writes the scope's manifest as always; when a profile lists
+the module with another entry, it says the manifest's entry now wins (`gopls: user.yml overrides
+profile:default`).
+
+## Profiles
+
+A **profile** is a named set of module entries, kept apart from any `project.yml` or `user.yml`.
+This version reads your own profiles, in `$XDG_CONFIG_HOME/lola/profiles/<name>.yml`.
+
+**`default.yml`** is always on at user scope, and never at project scope: `lola sync --user`
+installs what it lists as well as what `user.yml` lists. Turning it off means renaming or
+deleting it. A profile with any other name is used only when the scope's active profile list in
+`lock.json` (`profiles`) names it, as `user:<name>`; this version has no command that changes
+that list. An active profile whose file is gone is a warning (`profile user:go is on but no
+longer exists`), and the run treats it as off. `lola uninstall` refuses a module an active
+profile lists (`<module> is wanted by profile user:go`), since the next sync would install it
+again. The warning and the refusal suggest `lola profile --user user:go --off` (with the scope's
+flag), a command this version does not have yet: to turn the profile off, remove its item from
+`profiles` in the scope's `lock.json`. For a module `default.yml` lists, the refusal says to
+remove it from `default.yml`.
+
+A profile has the shape of a manifest, with an optional `description`:
+
+```yaml
+version: 1
+description: Go tooling          # optional, at most 256 bytes
+targets: [claude-code]           # optional; entries without targets use these
+modules:
+  - name: go-style
+    source: https://github.com/example/go-style
+    ref: v1.2.0
+  - name: notes
+    source: ../notes             # relative to this file's directory
+```
+
+- **Precedence.** At user scope: `default`, then the active profiles in list order, then
+  `user.yml`. At project scope: the active profiles in order, then `project.yml`; `user.yml` never
+  applies to a project. When two of them list one module, the later one's entry wins whole (no
+  field is merged), with a notice when they differ: `gopls: user.yml overrides profile:user:go
+  (v2.0 over v1.2)`. `lock.json` records the profile that won (`from`).
+- **Targets.** An entry without `targets` uses its profile's `targets`, else the scope manifest's.
+- **Folders.** A relative folder or archive path resolves against the profile file's directory.
+  Your profiles are trusted as `user.yml` is: their entries are never asked about, and their
+  folders may be anywhere, even at project scope.
+- **Pins.** lola never writes a profile. An unpinned git or archive entry installs what its ref
+  serves when it is first synced, and `lock.json` keeps that version, which later syncs and
+  `render` install, until `lola sync --update <module>` (with the scope's flag) resolves the ref
+  again. To fix a version for good, write `commit` and `digest` into the profile yourself; a pinned profile entry
+  installs that pin, and `lola sync --update <module>` refuses it (`edit the pin in <path>`),
+  while `lola sync --update` without names leaves it at its pin, with a notice.
+- **No manifest needed.** A scope with no `user.yml` (or `project.yml`) but a profile that lists
+  modules syncs as if the manifest were empty, and so does one whose profile is gone but whose
+  modules are still installed (they are removed); with none of these, `lola sync` still refuses.
+- **Reading.** A profile is read as strictly as `project.yml`: one YAML document of at most 1 MiB,
+  version first (a newer lola's file asks you to upgrade lola), known keys only, at most 512
+  entries, each checked as a manifest entry, and every refusal names the file and line. A profile
+  may be a symbolic link (a dotfile manager's), as `user.yml` may; one that is not a regular file
+  (a directory, a FIFO) is refused. `profiles/` may hold at most
+  256 entries; a file whose name is not a valid module name followed by `.yml` is not a profile.
 
 ## Module layout
 
@@ -1303,12 +1363,13 @@ copy's directories before it removes the original.
 | File | Purpose | Commit it? |
 |---|---|---|
 | `.lola/project.yml` | The manifest: which modules and targets you want, and for git and archive modules the version (pin) installed. lola edits only the entries it changes and keeps your comments and order, but it writes the whole file again, so blank lines between entries are dropped and indentation becomes two spaces. | Yes |
-| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), and (`hooks_pending`) a post-install hook you have not let run yet. | No (gitignored for you) |
+| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, the active [profiles](#profiles) (`profiles`) and the profile each module came from (`from`). | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](#profiles); `default.yml` is always on at user scope. lola never writes them. | Yours to keep |
 | `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote or you trusted in `lola sync` (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
 
@@ -1368,7 +1429,9 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   module `scope`, `skipped` (component names, `[]` when none) and `saved_to` (the
   `selections.yaml` it wrote, or `""`), and `equivalent_commands` (`[]` when no step was shown).
   `list --json` and `check --json` carry `skipped` per module; `list --json` rows carry `scope`
-  (`project` or `user`), and `list --plain` rows end with it.
+  (`project` or `user`) and `from` (the [layer](#profiles) the module comes from: `project.yml`,
+  `user.yml`, `profile:default`, `profile:user:<name>`), and `list --plain` rows end with the two.
+  `list --json` has `notices` (`[]` when none), as `--plain` has `notice` rows.
 - `sync --json`: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`,
   `equivalent_commands` (in a dry run that is not in sync, the command that applies it off a
   terminal, as `install --json` has; otherwise `[]`), and the plan's `modules`, `steps`,

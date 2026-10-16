@@ -187,23 +187,19 @@ type SyncResult struct {
 	OffTerminal        string      `json:"-"`
 }
 
-// desired is the set of modules a scope should have installed: in 6a, the manifest's entries
-// in name order. Plan 6b adds the entries of active profiles here and nowhere else.
-func desired(man *manifest.Manifest) []manifest.Entry {
-	out := man.Clone().Modules
-	slices.SortFunc(out, func(a, b manifest.Entry) int { return strings.Compare(a.Name, b.Name) })
-	return out
-}
-
 // syncEntry is one desired entry of a sync: validated (spec, targets), then resolved to a
 // version. v is read from a snapshot of the cache or a staged fetch in the run directory; staged
 // is set while the version is not in the cache, and headIfAbsent says its commit must not move
 // a head (a pinned fetch, or any in a project dry run). pin is set when the sync writes a new pin for the entry. covered says
 // the trust record covers the entry (always at user scope); folderChanged says it is a covered
 // folder at project scope whose content is not the version lock.json records, and
-// notInstalled that lock.json records none.
+// notInstalled that lock.json records none. from is the profile layer the entry won from
+// (Wanted.From), "" for the scope's manifest, and file that profile's path; ledgerPin says its
+// pin is the one lock.json records for a profile's unpinned entry.
 type syncEntry struct {
 	ent           manifest.Entry
+	from, file    string
+	ledgerPin     bool
 	goneFrom      string // the description (describeSource) of the local source the cache records for the name, which no longer exists
 	covered       bool
 	folderChanged bool
@@ -245,30 +241,37 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, err
 	}
 	defer unlock()
-	if err := e.refuseMissingManifest(sc); err != nil {
+	res := &SyncResult{Result: newResult(opts.DryRun), Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
+		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}}, EquivalentCommands: []string{}}
+	// A committed lock.json is refused before the profiles it names are read (Plan 6b §19 S5).
+	if err := e.refuseTrackedLedger(ctx, sc, res.Result); err != nil {
 		return nil, err
 	}
-	limit, err := e.limitTo(sc, man, led, req.Modules)
+	layers, layerNotices, err := e.layers(sc, man, led)
 	if err != nil {
 		return nil, err
 	}
-	res := &SyncResult{Result: newResult(opts.DryRun), Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
-		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}}, EquivalentCommands: []string{}}
-	res.Notices = append(res.Notices, e.sweepRuns()...)
+	want, overrides := desired(layers)
+	if err := e.refuseMissingManifest(sc, want, led); err != nil {
+		return nil, err
+	}
+	limit, err := e.limitTo(sc, layers, want, led, req.Modules)
+	if err != nil {
+		return nil, err
+	}
+	res.Notices = append(append(append(res.Notices, layerNotices...), overrides...), e.sweepRuns()...)
 	run, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
-	if err := e.refuseTrackedLedger(ctx, sc, res.Result); err != nil {
-		return nil, err
-	}
 
-	entries, err := e.validateSync(sc, man, req, limit)
+	entries, kept, err := e.validateSync(sc, man, want, led, req, limit)
 	if err != nil {
 		return nil, err
 	}
-	if n, ok := outOfSync(man, led, limit, e.SyncCommand(sc)); ok {
+	res.Notices = append(res.Notices, kept...)
+	if n, ok := outOfSync(want, led, limit, e.SyncCommand(sc)); ok {
 		res.Notices = append(res.Notices, n)
 	}
 	res.Notices = append(res.Notices, goneNotices(entries)...)
@@ -282,16 +285,18 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		// Coverage is the entry's own (§7.2): it decides containment and whether content the
 		// entry pins may be cached before the question. Top-level targets the record does not
 		// cover are a change of the report, which an entry that installs to them waits on.
+		// A profile's entry is the user's own, trusted as user.yml is (Plan 6b §8.2).
 		for _, se := range entries {
-			se.covered = rec.View.Covers(se.ent)
+			se.covered = se.from != "" || rec.View.Covers(se.ent)
 		}
 		if err := e.containLocalSources(sc, entries); err != nil {
 			return nil, err
 		}
 		// The record covers what a folder entry says, not what the folder holds: a covered folder
 		// is read now (no network), and its content needs trust unless it is the version installed.
+		// A profile's folder is the user's own (Plan 6b §4.3).
 		for _, se := range entries {
-			if !se.covered || se.spec.Kind != source.KindFolder {
+			if !se.covered || se.spec.Kind != source.KindFolder || se.from != "" {
 				continue
 			}
 			if err := e.resolveSync(ctx, sc, se, run); err != nil {
@@ -312,7 +317,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	// The removals are listed now, from lock.json and the manifest alone, and a run that cannot
 	// ask for an answer it needs is refused here, once, before anything is fetched (Plan 6a §9.3
 	// step 4).
-	if res.Removals, err = e.syncRemovals(sc, man, led, entries, limit); err != nil {
+	if res.Removals, err = e.syncRemovals(sc, want, led, entries, limit); err != nil {
 		return nil, err
 	}
 	trustMissing, removalsMissing := needTrust && req.Trust == nil, len(res.Removals) > 0 && req.ConfirmRemovals == nil
@@ -438,7 +443,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	res.Modules, res.Findings, res.Notices = sp.modules, append(res.Findings, sp.findings...), append(res.Notices, sp.notices...)
 	pinned := pinsOf(entries)
 	for _, se := range entries {
-		if se.pin != nil {
+		if se.pin != nil && se.from == "" {
 			res.Pins = append(res.Pins, *se.pin)
 		}
 	}
@@ -577,11 +582,12 @@ func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) s
 	return e.SyncCommand(req.Scope, append([]string{"--trust"}, run.rerun(yes...)...)...)
 }
 
-// pinsOf is each entry of the run with the new pin the sync writes for it.
+// pinsOf is each manifest entry of the run with the new pin the sync writes for it. A profile is
+// never written (Plan 6b §6.4, D7): lock.json records the version its entry installs.
 func pinsOf(entries []*syncEntry) []manifest.Entry {
 	var out []manifest.Entry
 	for _, se := range entries {
-		if se.pin != nil {
+		if se.pin != nil && se.from == "" {
 			out = append(out, se.pinned())
 		}
 	}
@@ -626,7 +632,8 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, se
 			}
 		}
 		sp.changes = append(sp.changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
-			Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: se.v.Commit, Digest: se.v.Meta.Digest, Targets: mr.Targets}})
+			Entry: &ledger.Entry{From: se.from, Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: se.v.Commit, Digest: se.v.Meta.Digest,
+				Targets: mr.Targets}})
 		replace, err := needsCopy(e.files(sc).modules, name, installed, se.v.Meta.Digest)
 		if err != nil {
 			return syncPlan{}, err
@@ -969,10 +976,10 @@ func andJoin(items []string) string {
 	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 }
 
-// syncRemovals is what the run removes (Plan 6a §9.3 step 9), from lock.json and the manifest
+// syncRemovals is what the run removes (Plan 6a §9.3 step 9), from lock.json and the layers
 // alone: the targets each entry of the run no longer has, then each installed module of the run
-// the manifest no longer lists, whole.
-func (e *Engine) syncRemovals(sc Scope, man *manifest.Manifest, led *ledger.Ledger, entries []*syncEntry, limit syncLimit) ([]Removal, error) {
+// no layer wants (want), whole.
+func (e *Engine) syncRemovals(sc Scope, want []Wanted, led *ledger.Ledger, entries []*syncEntry, limit syncLimit) ([]Removal, error) {
 	out := []Removal{}
 	for _, se := range entries {
 		r, err := e.removal(sc, se.ent.Name, led.Modules[se.ent.Name], se.targets)
@@ -984,7 +991,7 @@ func (e *Engine) syncRemovals(sc Scope, man *manifest.Manifest, led *ledger.Ledg
 		}
 	}
 	for _, name := range sortedNames(led) {
-		if man.Find(name) == nil && limit.has(name) {
+		if find(want, name) == nil && limit.has(name) {
 			r, err := e.removal(sc, name, led.Modules[name], nil)
 			if err != nil {
 				return nil, err
@@ -1006,7 +1013,8 @@ func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry) error {
 	var root string
 	for _, se := range entries {
 		local := source.IsLocal(se.spec.Kind, se.spec.Location)
-		if !local || se.covered && !lexicallyInside(sc, se.ent.Source) {
+		// A profile's folder is the user's own, as user.yml's are (Plan 6b §4.3, §19 R5).
+		if !local || se.from != "" || se.covered && !lexicallyInside(sc, se.ent.Source) {
 			continue
 		}
 		if root == "" {
@@ -1105,11 +1113,11 @@ func (e *Engine) folderEdits(sc Scope, rep *TrustReport, entries []*syncEntry) e
 	return nil
 }
 
-// needsPin reports whether a sync writes a pin for the entry: a git or archive entry under
-// --update or without one; a folder is never pinned. Each needs the user's trust at project
-// scope (Plan 6a §7.3).
+// needsPin reports whether a sync writes a pin for the entry into the manifest: a git or archive
+// manifest entry under --update or without one; a folder is never pinned, and a profile never
+// written (Plan 6b §6.4). Each needs the user's trust at project scope (Plan 6a §7.3).
 func needsPin(se *syncEntry) bool {
-	return se.spec.Kind != source.KindFolder && (se.update || se.ent.Digest == "")
+	return se.from == "" && se.spec.Kind != source.KindFolder && (se.update || se.ent.Digest == "")
 }
 
 // sortedNames is the ledger's module names in order.
@@ -1122,9 +1130,16 @@ func sortedNames(led *ledger.Ledger) []string {
 	return names
 }
 
-// refuseMissingManifest refuses a sync of a scope with no manifest: there is nothing it could
-// make the scope match. An existing manifest with no modules means "remove everything".
-func (e *Engine) refuseMissingManifest(sc Scope) error {
+// refuseMissingManifest refuses a sync of a scope with no manifest and no profile in play: nothing
+// a layer wants (want), no active profile and no module a profile installed (led). There is
+// nothing it could make the scope match. A scope with no manifest that a profile wants modules
+// in, or once did, syncs as an empty manifest (Plan 6b §6.2, §10, §19 R4), so the modules of a
+// profile that is gone are removed; an existing manifest with no modules means "remove
+// everything".
+func (e *Engine) refuseMissingManifest(sc Scope, want []Wanted, led *ledger.Ledger) error {
+	if len(want) > 0 || len(led.Profiles) > 0 || slices.ContainsFunc(sortedNames(led), func(n string) bool { return led.Modules[n].From != "" }) {
+		return nil
+	}
 	path := e.files(sc).manifest
 	_, err := os.Lstat(path)
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
@@ -1144,20 +1159,27 @@ type syncLimit struct{ names []string }
 
 func (l syncLimit) has(name string) bool { return len(l.names) == 0 || slices.Contains(l.names, name) }
 
-// limitTo is the run names limit sync to, each of them an entry of the scope's manifest or a
-// module installed there that the manifest no longer lists; any other name is refused before
-// anything else, listing both.
-func (e *Engine) limitTo(sc Scope, man *manifest.Manifest, led *ledger.Ledger, names []string) (syncLimit, error) {
+// limitTo is the run names limit sync to, each of them an entry a layer wants (want) or a module
+// installed there that no layer wants any more; any other name is refused before anything else,
+// listing both.
+func (e *Engine) limitTo(sc Scope, layers []Layer, want []Wanted, led *ledger.Ledger, names []string) (syncLimit, error) {
 	var l syncLimit
 	for _, name := range names {
-		if man.Find(name) == nil && led.Modules[name] == nil {
-			base := filepath.Base(e.files(sc).manifest)
+		if find(want, name) == nil && led.Modules[name] == nil {
+			base := layers[len(layers)-1].Name
+			if len(layers) > 1 {
+				var profiles []string
+				for _, ly := range layers[:len(layers)-1] {
+					profiles = append(profiles, ly.Name)
+				}
+				base += " or a profile (" + strings.Join(profiles, ", ") + ")"
+			}
 			listed, gone := []string{}, []string{}
-			for _, ent := range desired(man) {
-				listed = append(listed, shown(ent.Name))
+			for _, w := range want {
+				listed = append(listed, shown(w.Name))
 			}
 			for _, n := range sortedNames(led) {
-				if man.Find(n) == nil {
+				if find(want, n) == nil {
 					gone = append(gone, shown(n))
 				}
 			}
@@ -1203,19 +1225,19 @@ func runReport(rep trust.Report, limit syncLimit, entries []*syncEntry) trust.Re
 // by a local check of the manifest against lock.json (Plan 6a §9.3 step 11): an entry not
 // installed or pinned to another version than the one installed, and a module installed but no
 // longer listed. ok is false for an unlimited run and when there are none.
-func outOfSync(man *manifest.Manifest, led *ledger.Ledger, limit syncLimit, sync string) (n Notice, ok bool) {
+func outOfSync(want []Wanted, led *ledger.Ledger, limit syncLimit, sync string) (n Notice, ok bool) {
 	if len(limit.names) == 0 {
 		return Notice{}, false
 	}
 	var names []string
-	for _, ent := range desired(man) {
-		in := led.Modules[ent.Name]
-		if !limit.has(ent.Name) && (in == nil || ent.Digest != "" && ent.Digest != in.Digest) {
-			names = append(names, ent.Name)
+	for _, w := range want {
+		in := led.Modules[w.Name]
+		if !limit.has(w.Name) && (in == nil || w.Digest != "" && w.Digest != in.Digest) {
+			names = append(names, w.Name)
 		}
 	}
 	for _, name := range sortedNames(led) {
-		if !limit.has(name) && man.Find(name) == nil {
+		if !limit.has(name) && find(want, name) == nil {
 			names = append(names, name)
 		}
 	}
@@ -1248,50 +1270,79 @@ func nameList(names []string) string {
 // validateSync checks every entry of the run before anything is fetched or asked (Plan 6a §9.3
 // step 2), stopping at the first failure: the source parses and passes source.Validate with the
 // entry's ref and path; the pin fits the source's kind; the cache holds no other source under
-// the name (§6.5); the effective targets are known.
-func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, req SyncRequest, limit syncLimit) ([]*syncEntry, error) {
-	base := filepath.Base(e.files(sc).manifest)
+// the name (§6.5); the effective targets are known: the entry's, else (a profile's entry has its
+// profile's already) the manifest's (Plan 6b §6.2). Errors name the file the entry is in.
+//
+// lola never writes a profile (Plan 6b §6.4, D7): a profile's unpinned git or archive entry
+// takes the pin lock.json records for its source, ref and path, as a manifest entry takes the
+// one sync wrote into it, until --update resolves its ref again. Which layer won before (from)
+// does not matter: a planted lock.json sets it too, so resolveSync checks reachability instead. --update naming a profile's
+// pinned entry is refused, since its pin is in a file lola does not write; an --update that names
+// no module leaves those entries at their pins, with a notice each (kept).
+func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, led *ledger.Ledger, req SyncRequest,
+	limit syncLimit) (_ []*syncEntry, kept []Notice, _ error) {
 	var out []*syncEntry
-	for _, ent := range desired(man) {
-		name := ent.Name
+	for _, w := range want {
+		ent, name, update := w.Entry, w.Name, req.Update
 		if !limit.has(name) {
 			continue
 		}
+		base, from, file := filepath.Base(w.path), "", ""
+		if w.profile {
+			base, from, file = shown(w.path), w.From, w.path
+			editPin := "edit the pin in " + shown(w.path)
+			switch in := led.Modules[name]; {
+			case ent.Digest != "" && update && len(limit.names) > 0:
+				return nil, nil, errs.WithHints(fmt.Errorf("%s: its pin is in %s, which lola never writes", name, shown(w.path)),
+					editPin+", then: "+e.SyncCommand(sc, name))
+			case ent.Digest != "" && update:
+				update = false
+				kept = append(kept, Notice{Level: LevelInfo, Text: name + ": --update leaves the pin " + w.From + " sets; " + editPin})
+			case ent.Digest == "" && !update && in != nil && in.Digest != "" && in.Source == ent.Source && in.Ref == ent.Ref && in.Path == ent.Path &&
+				!source.IsFolderForm(ent.Source):
+				ent.Commit, ent.Digest = in.Commit, in.Digest
+			}
+		}
 		spec, ok, err := source.Parse(ent.Source, sourceRoot(sc))
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if !ok {
-			return nil, errs.WithHints(fmt.Errorf("%s: %s is not a source", name, untrusted.Text(ent.Source, untrusted.MaxName)),
+			return nil, nil, errs.WithHints(fmt.Errorf("%s: %s is not a source", name, untrusted.Text(ent.Source, untrusted.MaxName)),
 				"sources are "+source.AcceptedForms)
 		}
 		spec.Ref, spec.Path = ent.Ref, ent.Path
 		if err := source.Validate(spec); err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
-		if err := checkPinShape(name, base, spec.Kind, ent, e.SyncCommand(sc, "--update", name)); err != nil {
-			return nil, err
+		repin := e.SyncCommand(sc, "--update", name)
+		if w.profile && w.Digest != "" {
+			repin = "edit the pin in " + shown(w.path)
+		}
+		if err := checkPinShape(name, base, spec.Kind, ent, repin); err != nil {
+			return nil, nil, err
 		}
 		gone, err := e.refuseOtherSource(sc, name, spec, e.SyncCommand(sc, req.rerun()...))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ts := ent.Targets
 		if len(ts) == 0 {
 			ts = man.Targets
 		}
 		if len(ts) == 0 {
-			return nil, errs.WithHints(fmt.Errorf("%s: %s gives it no targets", name, base),
+			return nil, nil, errs.WithHints(fmt.Errorf("%s: %s gives it no targets", name, base),
 				"list the assistants in "+base+", for example targets: [claude-code]")
 		}
 		for _, id := range ts {
 			if _, err := e.target(id); err != nil {
-				return nil, fmt.Errorf("%s: %w", name, err)
+				return nil, nil, fmt.Errorf("%s: %w", name, err)
 			}
 		}
-		out = append(out, &syncEntry{ent: ent, goneFrom: gone, spec: spec, targets: ts, update: req.Update})
+		out = append(out, &syncEntry{ent: ent, from: from, file: file, ledgerPin: w.profile && w.Digest == "" && ent.Digest != "", goneFrom: gone,
+			spec: spec, targets: ts, update: update})
 	}
-	return out, nil
+	return out, kept, nil
 }
 
 // checkPinShape refuses a ref or a pin the entry's kind of source cannot have (Plan 6a §4.1): a
@@ -1415,10 +1466,13 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 	}
 	if found {
 		// The cache may hold a commit from a branch nobody reviewed, cached for another project:
-		// an entry the user has not trusted must name a commit on its ref (Plan 6a §6.4).
-		if !se.covered && se.spec.Kind == source.KindGit {
+		// an entry the user has not trusted must name a commit on its ref (Plan 6a §6.4). So must
+		// a profile's pin read from a project's lock.json, which a file planted in the checkout
+		// could name (Plan 6b §11, S5).
+		if (!se.covered || se.ledgerPin && sc.Kind == target.Project) && se.spec.Kind == source.KindGit {
 			if err := source.CheckReachable(ctx, se.spec, ent.Commit, run); err != nil {
-				return syncPinError(name, filepath.Base(e.files(sc).manifest), ent, fmt.Errorf("%s: %w", name, err), e.SyncCommand(sc, "--update", name))
+				base, repin := e.pinnedIn(sc, se)
+				return syncPinError(name, base, ent, fmt.Errorf("%s: %w", name, err), repin)
 			}
 		}
 		v.Commit = ent.Commit
@@ -1427,11 +1481,25 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 	}
 	st, err := e.fetchPin(ctx, name, se.spec, ent.Commit, ent.Digest, run)
 	if err != nil {
-		return syncPinError(name, filepath.Base(e.files(sc).manifest), ent, err, e.SyncCommand(sc, "--update", name))
+		base, repin := e.pinnedIn(sc, se)
+		return syncPinError(name, base, ent, err, repin)
 	}
 	se.v, se.staged, se.headIfAbsent = st.Version, &st, true
 	se.v.Module.Warnings = st.LoadWarnings // what a cache hit would report, not what detection did
 	return nil
+}
+
+// pinnedIn is where an entry's pin is written, for a pinned fetch's error: the manifest, whose
+// pin sync --update rewrites; lock.json for a profile's unpinned entry, which --update resolves
+// again; or the profile itself, which only the user edits (Plan 6b §6.4).
+func (e *Engine) pinnedIn(sc Scope, se *syncEntry) (file, repin string) {
+	switch {
+	case se.from == "":
+		return filepath.Base(e.files(sc).manifest), e.SyncCommand(sc, "--update", se.ent.Name)
+	case se.ledgerPin:
+		return "lock.json", e.SyncCommand(sc, "--update", se.ent.Name)
+	}
+	return shown(se.file), "edit the pin in " + shown(se.file)
 }
 
 // syncPinError coaches a pinned fetch that failed in a way re-pinning can resolve; update is the

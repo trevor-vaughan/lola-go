@@ -29,6 +29,7 @@ var _ = Describe("Resolve", func() {
 		Expect(p.Selections).To(Equal("/h/.config/lola/selections.yaml"))
 		Expect(p.SelectionsLock).To(Equal("/h/.local/state/lola/locks/selections.lock"))
 		Expect(p.UserManifest).To(Equal("/h/.config/lola/user.yml"))
+		Expect(p.UserProfiles).To(Equal("/h/.config/lola/profiles"))
 		Expect(p.UserLedger).To(Equal("/h/.local/state/lola/lock.json"))
 		Expect(p.UserLock).To(Equal("/h/.local/state/lola/.lock"))
 		Expect(p.Locks).To(Equal("/h/.local/state/lola/locks"))

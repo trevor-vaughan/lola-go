@@ -80,7 +80,7 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		Expect(exists(".claude/commands/ship.md")).To(BeFalse())
 		Expect(exists(".claude/skills/review/SKILL.md")).To(BeTrue())
 		Expect(res.Modules[0].Skipped).To(Equal([]string{"command/ship", "agent/critic"}))
-		rows, err := e.Status(sc)
+		rows, _, err := e.Status(ctx, sc)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows[0].Status).To(Equal("ok"))
 		Expect(rows[0].Skipped).To(Equal([]string{"command/ship", "agent/critic"}))

@@ -528,7 +528,7 @@ var _ = Describe("Engine and the trust record", func() {
 		Expect(err).To(MatchError(ContainSubstring("lola stopped there and did not install into the user scope")))
 		Expect(errs.Hints(err)).To(ContainElement("fetched modules stay in your cache; retry with: lola install --project example; lola install --user example"),
 			"a retry at each scope")
-		rows, err := e.Status(engine.Scope{Kind: target.User})
+		rows, _, err := e.Status(ctx, engine.Scope{Kind: target.User})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows).To(BeEmpty())
 	})
@@ -615,7 +615,7 @@ var _ = Describe("Engine and the trust record", func() {
 	Describe("installing from its source over an entry a pull changed", func() {
 		// installedTargets is what lock.json installed example on, sorted.
 		installedTargets := func() []string {
-			rows, err := e.Status(sc)
+			rows, _, err := e.Status(ctx, sc)
 			Expect(err).NotTo(HaveOccurred())
 			var out []string
 			for _, r := range rows {

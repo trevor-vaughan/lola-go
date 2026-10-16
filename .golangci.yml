@@ -21,6 +21,32 @@ linters:
             - go.yaml.in/yaml/v3
             - github.com/BurntSushi/toml
             - golang.org/x/mod/semver
+        # Profiles are read, never fetched or written (Plan 6b §6.1): no network, no engine,
+        # no state but the profile files themselves.
+        profile:
+          list-mode: strict
+          files:
+            - "**/internal/profile/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/trevor-vaughan/lola-go/internal/errs
+            - github.com/trevor-vaughan/lola-go/internal/manifest
+            - github.com/trevor-vaughan/lola-go/internal/module # name rules
+            - github.com/trevor-vaughan/lola-go/internal/paths
+            - github.com/trevor-vaughan/lola-go/internal/untrusted
+            - github.com/trevor-vaughan/lola-go/internal/yamldoc
+            - go.yaml.in/yaml/v3
+        # The active-list names lock.json stores: a leaf the ledger imports, so it reads no YAML.
+        activeprofile:
+          list-mode: strict
+          files:
+            - "**/internal/activeprofile/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/trevor-vaughan/lola-go/internal/module # name rules
+            - github.com/trevor-vaughan/lola-go/internal/untrusted
     errcheck:
       exclude-functions:
         # Human output: a failed write to stdout/stderr has no better channel to report on.
