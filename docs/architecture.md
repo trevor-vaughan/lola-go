@@ -37,18 +37,19 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 |---|---|
 | `paths` | XDG resolution from an injected `getenv`; no globals. `ProjectKey`, the canonical form of a project directory that the project lock and `selections.yaml` share. |
 | `config` | `config.yaml` and `selections.yaml`: strict loading of untrusted, hand-edited YAML, selectors, effective exclusions, and locked node-preserving writes. |
+| `yamldoc` | Reading a hand-edited YAML file as one untrusted document (non-blocking open, regular files only, size cap, one document, no anchors, aliases or merge keys) and the node helpers `config` and `manifest` edit with. |
 | `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members, and array elements of any JSON value), mode normalization. |
 | `module` | The IR, frontmatter parsing, name rules, format detection and the Claude plugin and Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened module JSON reading, rules, hook validation, and normalization. |
 | `untrusted` | Makes text lola did not write safe to print: control characters, Unicode format characters and line separators replaced, length capped, OS errors without their path. |
-| `source` | Source parsing and validation, the folder, git and archive fetchers, and `GitCommand`, the one hardened way lola runs git (also for the engine's git-ignore check and migrate's git-tracked guard, with `InWorkTree`). |
-| `store` | The cache's storage: content-addressed versions, per-ref heads, the cache lock. (Internal name; user-facing text says "cache".) |
-| `ledger`, `manifest` | Observed and desired state, deterministic IO. |
+| `source` | Source parsing and validation (also of sources recorded in `project.yml` and `lock.json`, `Recorded`), the folder, git and archive fetchers with their executables, the reachability check of a pinned commit, and `GitCommand`, the one hardened way lola runs git (also for the engine's git-ignore check and migrate's git-tracked guard, with `InWorkTree`). |
+| `store` | The cache's storage: content-addressed versions with their executables, per-ref heads with their commits, digest-checked puts, snapshots of a pinned version (`Pinned`), the cache lock. (Internal name; user-facing text says "cache".) |
+| `ledger`, `manifest` | Observed and desired state, validated at load; the ledger written deterministically, the manifest edited in place (`manifest.Edit`) with its pins. |
 | `consent` | Recorded consent to a module's install hooks (key `<module>`) and runtime hooks (key `<module>/runtime-hooks/<settings-file hash>`), each recording a digest. |
 | `target` | The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`, `Probe`, and helpers renderers share. No implementations. |
 | `target/claude`, `target/gemini`, `target/opencode` | The `claude-code`, `gemini-cli` and `opencode` renderers, each with its capability table and probe. One package per target. |
 | `target/conformance` | Specs every registered target must pass. |
 | `targets` | The registry: the one list of every target. |
-| `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction). |
+| `plan` | Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and manifest). |
 | `engine` | Install, uninstall, render, status, fetch, update, search; module copies, install hooks, runtime hook consent and the git-ignore check; install scope resolution, the component resolver, selection edits and `InstallChoices`. |
 | `migrate` | `lola migrate`: strict reading of the Python lola's `installed.yml` and `source.yml`, the plan (destinations, outcomes, recorded paths), the trash, and running the installs and the cleanup over the engine. |
 | `cli` | Commands, help, aliases, completion, output and prompts; the install flow and its `Prompter`, with the huh adapter. |
@@ -102,24 +103,31 @@ survive, also in a comments-only or null document; a section or project key a re
 is dropped unless it carries a comment, then it stays as an empty mapping), writes atomically at a symlink's target with mode 0600, and never overwrites a file
 that does not load.
 
-**Choices and the flow.** `InstallChoices` computes everything the pickers show: per
-destination the assistants and the manifest's fixed targets; per cached module (sorted by
-source, then name) its components with first-line descriptions, and per destination whether it
-is installed, what is excluded and which components are installed now. `Choices.Preview` applies a run's edits to a
-copy of the selections with the same `applyEdits`, so the summary shows exactly what the
-install will do; `ModuleChoice.Diff` turns that into `+ ~ - =`. `Choices.Versions` and
-`ModuleChoice.ID` record the cached versions listed; `installFlow` keeps them as pins
-(`InstallRequest.Version`) through every "Change …" step, and `pinnedVersion` stops the run
-when a pinned version left the cache. Two arguments resolving to different versions of one
-module are refused when the choices are computed. The CLI's `installFlow` only
-fills answers: each step asks the `Prompter` (one method per step and one for the review menu)
-unless a flag or the situation answers it, component picks become `--skip`/`--unskip` edits,
-and the equivalent commands are built from the same spec. `Prompter` implementations: the huh
-adapter (inline forms on stderr; accessible line prompts under `LOLA_ACCESSIBLE=1` or
-`TERM=dumb`, with an `eofReader` that turns end of input into a cancel), the non-interactive
-one, and the specs' scripted one. In accessible mode every prompt, hook consent included, reads
-through the `eofReader`, so end of input is `ErrAborted`. Specs parse the equivalent commands back through the real
-command tree and compare the plans.
+**Choices and the flow.** `InstallChoices` computes everything the pickers show: per destination
+the assistants and the manifest's fixed targets; per cached module (sorted by source, then name)
+its components with first-line descriptions, and per destination whether it is installed, what
+is excluded and which components are installed now. `Choices.Preview` applies a run's edits to a
+copy of the selections with the same `applyEdits`, so the summary shows exactly what the install
+will do; `ModuleChoice.Diff` turns that into `+ ~ - =`. `Choices.Versions` and `ModuleChoice.ID`
+record the cached versions listed; `installFlow` keeps them as pins (`InstallRequest.Version`)
+through every "Change …" step, and `pinnedVersion` stops the run when a pinned version left the
+cache. Two arguments resolving to different versions of one module are refused when the choices
+are computed. For a module picked from the cache, `listedVersion` lists, per scope, the head of
+the ref that scope's entry records (the default branch's for an entry without a ref); a scope
+with no entry takes the listed head and records its ref. When no version can be listed (the
+entry's ref has no cached head, a ref-less entry whose default branch is not cached, scopes
+resolving to two versions, a git head cached before pins with no commit for `pinCommit`) the
+module is left out of `Choices.Modules` and `Choices.Warnings` names the command that installs
+it. A kept pick that `listedVersion` no longer returns is refused while the choices are
+computed, before the summary, as is a module argument whose git version `pinCommit` could not
+pin. The CLI's `installFlow` only fills answers: each step asks the `Prompter` (one method per
+step and one for the review menu) unless a flag or the situation answers it, component picks
+become `--skip`/`--unskip` edits, and the equivalent commands are built from the same spec.
+`Prompter` implementations: the huh adapter (inline forms on stderr; accessible line prompts
+under `LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that turns end of input into a
+cancel), the non-interactive one, and the specs' scripted one. In accessible mode every prompt,
+hook consent included, reads through the `eofReader`, so end of input is `ErrAborted`. Specs
+parse the equivalent commands back through the real command tree and compare the plans.
 
 ## Plans and the ledger
 
@@ -267,8 +275,10 @@ computed.
 At project scope the engine refuses to run when `.lola/`, `.lola/modules/` or
 `.lola/plugin-data/` is a symlink (`refuseSymlinkedState`, before the lock is taken, also for
 dry runs and `status`): a repository can commit one, and the copy swap would then rename and
-delete directories outside the project, or plugin data directories would be created there.
-User-scope copies may live behind a symlink.
+delete directories outside the project, or plugin data directories would be created there. The
+same check refuses a symlinked `.lola/project.yml`, which the manifest write would otherwise
+replace outside the project. User-scope copies and `user.yml` may live behind a symlink;
+`manifest.Edit` then writes at the link's target.
 
 Install hooks build inside copies (`npm install`, virtual environments), so a copy's content is
 never compared with the cache. A copy is replaced only when its module's version changes (the
@@ -367,13 +377,27 @@ files keep the "was missing; rewritten" rule.
 `plan.Apply` runs under the scope lock: `$XDG_STATE_HOME/lola/locks/<hash>.lock` for a project,
 named after the resolved `.lola/` path, or `$XDG_STATE_HOME/lola/.lock` at user scope. The lock
 lives outside `.lola/`, so removing an empty `.lola/` never unlinks a lock another process is
-waiting on. Apply stages every new file next to its destination, moves each existing
-destination aside, renames the staged files in, and writes the ledger. The ledger write is part
-of the transaction: any failure up to and including it restores everything in reverse order.
-Afterwards backups are removed, emptied directories are pruned (never past a target's base
-directories), and a logical symlink whose target was deleted is removed. The manifest is
-written last, through the `after` callback; if it fails, the already-applied files stay and the
-error is returned.
+waiting on. Apply stages every new file next to its destination, moves each existing destination
+aside, renames the staged files in, writes the ledger, and then, when the command changes it,
+the manifest: staged next to it (at a symlink's target), the current one backed up with a hard
+link (a copy where links fail) and left in place, the new one renamed over it, and the directory
+synced, so a crash never leaves the scope without a manifest. The ledger and manifest writes are
+part of the transaction: any failure up to and including them restores files, ledger and
+manifest in reverse order. Afterwards backups are removed, emptied directories are pruned (never
+past a target's base directories), and a logical symlink whose target was deleted is removed;
+the `after` callback then runs.
+
+The manifest's bytes come from `manifest.Edit`, run under the scope lock before `Apply`: it
+reads the file again (refusing one that does not load) and edits the yaml.v3 node tree, touching
+only the entries and fields the command changes and appending new entries, so comments and order
+survive. It decodes and validates the bytes it produces as `manifest.Load` would, so nothing it
+could not load again (a commit from a corrupt cache index, say) is written. The file is encoded
+again (yaml.v3, two-space indent), so blank lines between entries are dropped and indentation is
+normalized. `manifest.Load` and `ledger.Load` check every recorded source, ref, path, commit and
+digest (`source.Recorded`) and refuse text that would not print as it is (`untrusted.IsPlain`),
+before anything reaches git; `manifest.Load` reads through `yamldoc.Read`, the reader
+`config.yaml` and `selections.yaml` use (non-blocking open, regular files only, 1 MiB, one
+document, no anchors, aliases or merge keys), and reads `version` before the strict decode.
 
 `.lola/` itself is created when the scope lock is taken; its `.gitignore`, which lola owns, is
 written when a scope is committed, so a refusal or cancel never touches a `.lola/` that
@@ -398,7 +422,7 @@ archive  → extract into scratch ─────────┐
 URL      → download → extract ───────────┴ listing: directory walk (never git)
 folder   → (in place) ──────────────────── listing: git ls-files in a work tree, else a walk
             ↓
-         module root → copy (ignore list, no symlinks) → Fetched{Dir, Name, Commit}
+         module root → copy (ignore list, no symlinks) → Fetched{Dir, Name, Commit, Executables}
 ```
 
 Each remote kind produces a local tree in a scratch directory under the staging directory,
@@ -408,18 +432,26 @@ inside an archive is never handed to git, and an archive extracted below the use
 repository is never filtered by that repository's ignore rules.
 
 - **git.** Every git command starts with `-c core.hooksPath=/dev/null -c
-  protocol.ext.allow=never -c core.fsmonitor=false` and empty LFS filters; user input appears
-  only after `--` or as `--branch=<ref>`. The environment sets `GIT_TERMINAL_PROMPT=0` and
-  `GIT_PROTOCOL_FROM_USER=0` and drops the variables that select or configure a repository
-  (`GIT_DIR`, `GIT_CONFIG_PARAMETERS`, …); the folder fetcher's `git ls-files` uses the same
-  prefix and environment. A ref resolves through `git ls-remote` with full ref names, matched
-  exactly. A full SHA that names no branch or tag is fetched with `init --object-format`,
-  `fetch --depth 1` and `checkout --detach`; clones run with `-q`, so a failure shows git's
-  errors, not its progress. One 5-minute context covers the fetch; `WaitDelay` (5 s) makes git
-  stop on time even when a child keeps its output open, and a timeout is coached by the
-  location's transport (ssh prompts, or the network for https). git's stderr, which carries a
-  remote's `remote:` lines, goes to a `headWriter` that keeps only its first 4 KiB and discards
-  the rest, so a chatty or hostile remote cannot grow lola's memory.
+  protocol.ext.allow=never -c core.fsmonitor=false -c core.autocrlf=false` and empty LFS
+  filters; user input appears only after `--` or as `--branch=<ref>`. Clones use
+  `--no-checkout`; before any checkout lola writes `$GIT_DIR/info/attributes` (`* -text -eol
+  -filter -ident -working-tree-encoding`, which outranks `.gitattributes`) and lists the tree
+  with `ls-tree -r -z`: a mode `120000` entry inside the module path (`--path`, or the whole
+  tree without one) or on the way to it is refused (Windows without `core.symlinks` would check
+  it out as a plain file; links elsewhere never reach the module), as is a `--path` that is no
+  directory of the tree in its exact letter case (a case-insensitive checkout would find it),
+  and `100755` entries are the version's executables. Then `reset --hard` (or
+  `checkout --detach` for a SHA) writes the bytes as committed. The environment sets
+  `GIT_TERMINAL_PROMPT=0` and `GIT_PROTOCOL_FROM_USER=0` and drops the variables that select or
+  configure a repository (`GIT_DIR`, `GIT_CONFIG_PARAMETERS`, …); the folder fetcher's
+  `git ls-files` uses the same prefix and environment. A ref resolves through `git ls-remote`
+  with full ref names, matched exactly. A full SHA that names no branch or tag is fetched with
+  `init --object-format`, `fetch --depth 1` and `checkout --detach`; clones run with `-q`, so a
+  failure shows git's errors, not its progress. One 5-minute context covers the fetch;
+  `WaitDelay` (5 s) makes git stop on time even when a child keeps its output open, and a
+  timeout is coached by the location's transport (ssh prompts, or the network for https). git's
+  stderr, which carries a remote's `remote:` lines, goes to a `headWriter` that keeps only its
+  first 4 KiB and discards the rest, so a chatty or hostile remote cannot grow lola's memory.
 - **Archives.** Extraction writes through an `os.Root` opened on the scratch directory, so no
   entry resolves outside it even if a name check has a bug. Only regular files and directories
   are created, files with `O_EXCL`; every entry is copied through a reader capped at its
@@ -441,29 +473,64 @@ repository is never filtered by that repository's ignore rules.
   The redirect target of a failed download and refused `git://` URLs are not echoed at all; OS
   errors lose their path.
 
+Every fetch reports its **executables** from the source's own metadata: git's tree modes, an
+archive's entry modes, a folder's file system. The digest takes execute bits from that list,
+never from the file system lola copied to, so a platform without execute bits digests the same
+content the same.
+
+**Reachability.** A pinned git commit must be reachable from the entry's ref:
+`source.CheckReachable` resolves the ref as a fetch does, fetches its history with
+`--filter=tree:0` into a separate, freshly initialized scratch repository with
+`GIT_NO_LAZY_FETCH=1`, and asks `git merge-base --is-ancestor`; a commit that is absent or not an
+ancestor is refused. It is skipped when the ref is the commit itself.
+
 ## Cache
 
 ```
 $XDG_CACHE_HOME/lola/modules/<name>/
-  index.yml                # source, type, path, heads: [{ref, digest}]
+  index.yml                # source, type, path, heads: [{ref, digest, commit}]
   versions/<digest12>/
     content/               # the normalized module: native layout + one generated lola.yml
-    .lola-origin           # format, manifest, others_present, ref, commit, fetched_at, digest
+    .lola-origin           # format, manifest, others_present, ref, commit, fetched_at, digest, executables
 ```
+
+The digest is sha256 over, for each regular file under `content/` in byte order of its slash
+path, `path NUL octal(mode) NUL decimal(length) NUL content`, where mode is `0755` for a path in
+the version's `executables` and `0644` otherwise (the generated `lola.yml` never is). A change to
+its input, or to the bytes a fetch and `module.Normalize` produce for unchanged content, bumps
+`manifest.Version`; a golden-digest spec guards it. A head records the commit its fetch
+resolved; `.lola-origin`'s `commit` is only the first fetch's, which may be another commit with
+the same content. Putting content the cache already holds rewrites the version's `executables` when
+they differ, so a version cached before execute bits were recorded is repaired by the next fetch
+of it (`cache update`, or `install` of its source).
 
 `cache add` detects the staged module's format and reads it (`module.Detect`), normalizes it
 (`module.Normalize`: one generated `lola.yml`, every other lola manifest removed), digests the
-result, and renames the version into
-place in whole from `$XDG_CACHE_HOME/lola/.staging/` (same filesystem), under
-`$XDG_CACHE_HOME/lola/.lock`. `.lola-origin` records the detected format and which manifests
-were read and ignored. Module names and version ids read back from the cache are validated
-before they are used in a path. The IR is re-derived from `content/`, never stored.
+result, and renames the version into place in whole from `$XDG_CACHE_HOME/lola/.staging/` (same
+filesystem), under `$XDG_CACHE_HOME/lola/.lock`. `.lola-origin` records the detected format and
+which manifests were read and ignored. Module names and version ids read back from the cache are
+validated before they are used in a path; a head's commit must be empty or a full SHA, and a
+version's recorded digest must be the one its id abbreviates, or the cache coaches
+`lola cache rm`. The IR is re-derived from `content/`, never stored.
 
-Installs run from their module copies, so the cache is re-fetchable: `render` looks up the head
-for each installed module's ref and, if it is missing (for example after `lola cache rm`),
-fetches again from the cache's recorded source or the source in the ledger, failing with a hint
-only if neither is usable. `status` reports `stale` when the head's digest differs from the
-ledger's.
+Installs run from their module copies, so the cache is re-fetchable. `render` installs the
+version the ledger records, never a head, so `cache update` changes no installation: for a git
+or archive module `Store.Pinned` copies that version's `content/` into a **snapshot** in the
+command's private `run-*` staging directory, hashes the copy with the recorded executables, and
+loads the module from it, so the IR, the intents and the module copy all come from the bytes
+that were hashed. On a miss (after `lola cache rm`, say) `fetchPin` fetches it again from the
+cache's recorded source or the ledger's: a git commit must be reachable from the ref and is
+fetched by SHA; the content must declare the module's name and have the recorded digest
+(`PutRequest.Name`, `PutRequest.Digest`) or nothing is cached; the head for the ref is set only
+if it has none (`HeadIfAbsent`). A folder module is read from its folder (the version installed
+when the folder is gone), and refused, with nothing cached, when it now declares another name.
+When the version cannot be obtained (a git entry with no recorded commit, a fetch that serves
+another commit, other content than the recorded digest) the error carries two hints: `lola
+install <source> [--ref r] [--path p]` (`installCommand`), which installs what the source serves
+now, and `lola uninstall <name>`. `install` pins git and archive
+entries (`commit` from the fetch or head, `digest`); folders are never pinned. `status` reports
+`stale` when the manifest's pin differs from the ledger's digest, and `update_available` when the
+cache head for the entry's ref differs from the pin (or from the ledger's digest when unpinned).
 
 ## Security model
 
@@ -488,7 +555,12 @@ ledger's.
 - **Fetched sources.** Residual risks: lola honors the user's environment and git config
   (credential helpers, `insteadOf`, proxies) by design; git follows an initial http redirect
   itself, possibly to plain http; and a server can serve different content for the same ref.
-  `cache update` and content digests make a change visible but do not prevent it. Names,
+  `cache update` and content digests make a change visible but do not prevent it; a version
+  fetched again for an install must match its recorded digest, and a git commit must be on its
+  ref. Checkouts convert nothing and run no filter program a repository's attributes name.
+- **Recorded sources.** `project.yml` and `lock.json` may be someone else's: their sources,
+  refs, paths, commits and digests are checked when they are loaded, before any git run, for
+  every command that reads them (`list` included). Names,
   paths, manifest metadata and runtime hook fields pass through `untrusted.Text` before lola
   prints them; other text a module contains (frontmatter keys quoted in finding texts, for
   example) is not yet sanitized.

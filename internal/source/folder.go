@@ -20,10 +20,14 @@ import (
 var ignoredNames = map[string]bool{".git": true, ".venv": true, "node_modules": true, ".lola": true, "__pycache__": true, ".DS_Store": true}
 
 // Fetched is module content staged for the store. Dir is a fresh directory the caller owns.
+// Executables are the files the source's own metadata marks executable (git's tree modes, an
+// archive's entry modes, a folder's file system), as sorted slash paths relative to Dir: the
+// digest takes execute bits from them, never from the file system lola copied to (Plan 6a §5.2).
 type Fetched struct {
-	Dir    string
-	Name   string // fallback module name: the base name of the module root's folder
-	Commit string
+	Dir         string
+	Name        string // fallback module name: the base name of the module root's folder
+	Commit      string
+	Executables []string
 }
 
 // fetchFolder copies the module root of a folder source into a new directory under
@@ -44,11 +48,11 @@ func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched,
 			"install from a directory that does not contain lola's cache")
 	}
 
-	dst, err := copyTree(ctx, root, stagingParent, listDetect)
+	dst, execs, err := copyTree(ctx, root, stagingParent, listDetect)
 	if err != nil {
 		return Fetched{}, err
 	}
-	return Fetched{Dir: dst, Name: name}, nil
+	return Fetched{Dir: dst, Name: name, Executables: execs}, nil
 }
 
 // listing says how copyTree enumerates a tree's files (design §3).
@@ -61,23 +65,47 @@ const (
 )
 
 // copyTree copies the files of root, as listed by mode, into a new directory under
-// stagingParent and returns it. Ignored names are skipped and symlinks refused.
-func copyTree(ctx context.Context, root, stagingParent string, mode listing) (string, error) {
+// stagingParent and returns it with the sorted slash paths of the copied files the file
+// system marks executable. Ignored names are skipped and symlinks refused.
+func copyTree(ctx context.Context, root, stagingParent string, mode listing) (string, []string, error) {
 	if err := os.MkdirAll(stagingParent, 0o700); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	files, err := listFiles(ctx, root, mode)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	dst, err := os.MkdirTemp(stagingParent, "fetch-*")
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	if err := copyFiles(root, dst, files); err != nil {
-		return "", errors.Join(err, os.RemoveAll(dst))
+	execs, err := copyFiles(root, dst, files)
+	if err != nil {
+		return "", nil, errors.Join(err, os.RemoveAll(dst))
 	}
-	return dst, nil
+	slices.Sort(execs)
+	return dst, execs, nil
+}
+
+// executablesUnder returns, of all (slash paths relative to a tree), the ones below the
+// module root rel ("." for the tree itself) that were copied into dst, relative to rel, sorted.
+func executablesUnder(all []string, rel, dst string) []string {
+	prefix := ""
+	if rel != "." {
+		prefix = rel + "/"
+	}
+	out := []string{}
+	for _, p := range all {
+		sub, ok := strings.CutPrefix(p, prefix)
+		if !ok {
+			continue
+		}
+		if fi, err := os.Lstat(filepath.Join(dst, filepath.FromSlash(sub))); err == nil && fi.Mode().IsRegular() {
+			out = append(out, sub)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // pathHint coaches a --path of a folder or git source that picks no directory.
@@ -223,7 +251,10 @@ func gitFiles(ctx context.Context, root string, which ...string) ([]string, erro
 	return slices.Compact(files), nil
 }
 
-func copyFiles(root, dst string, files []string) error {
+// copyFiles copies files from root to dst and returns the slash paths of those the file
+// system marks executable.
+func copyFiles(root, dst string, files []string) ([]string, error) {
+	execs := []string{}
 	for _, rel := range files {
 		src := filepath.Join(root, rel)
 		fi, err := os.Lstat(src)
@@ -231,19 +262,22 @@ func copyFiles(root, dst string, files []string) error {
 		case os.IsNotExist(err):
 			continue // tracked by git but deleted in the work tree
 		case err != nil:
-			return fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
+			return nil, fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
 		case fi.Mode()&fs.ModeSymlink != 0:
-			return fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
+			return nil, fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
 		case fi.IsDir():
 			continue // a git submodule entry
 		case !fi.Mode().IsRegular():
-			return fmt.Errorf("%s: not a regular file", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
+			return nil, fmt.Errorf("%s: not a regular file", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
 		}
 		if err := copyFile(src, filepath.Join(dst, rel), fi); err != nil {
-			return fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
+			return nil, fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
+		}
+		if fsx.NormalizeMode(fi.Mode()) == 0o755 {
+			execs = append(execs, filepath.ToSlash(rel))
 		}
 	}
-	return nil
+	return execs, nil
 }
 
 // copyFile copies src, which the caller found (with Lstat) to be the regular file fi. The

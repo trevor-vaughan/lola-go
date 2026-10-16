@@ -65,6 +65,14 @@ var _ = Describe("Fetch of a folder", func() {
 		Expect(filepath.Dir(f.Dir)).To(Equal(staging))
 	})
 
+	It("records the files the file system marks executable, relative to the module root", func() {
+		writeTree(src, map[string]string{"module/bin/run.sh": "#!/bin/sh\n", "module/commands/a.md": "A", "README.md": ""})
+		Expect(os.Chmod(filepath.Join(src, "module/bin/run.sh"), 0o750)).To(Succeed())
+		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Executables).To(Equal([]string{"bin/run.sh"}))
+	})
+
 	It("uses <root>/module/ when present and --path is not given", func() {
 		writeTree(src, map[string]string{"README.md": "x", "module/commands/a.md": "A"})
 		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)

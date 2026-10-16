@@ -81,7 +81,10 @@ var _ = Describe("store, search and init commands", func() {
 
 		Expect(lola("cache", "update").out).To(ContainSubstring("→ example (default): unchanged"))
 		writeTree(mod, map[string]string{"commands/ship.md": "Ship v2\n"})
-		Expect(lola("cache", "update", "example").out).To(MatchRegexp(`✓ example \(default\): [0-9a-f]{12} → [0-9a-f]{12} \(run lola render to apply\)`))
+		r = lola("cache", "update", "example")
+		Expect(r.out).To(MatchRegexp(`✓ example \(default\): [0-9a-f]{12} → [0-9a-f]{12}\n`))
+		Expect(r.out).To(ContainSubstring("installed modules keep the versions they were installed at; upgrade one with lola install <module>"))
+		Expect(r.out).NotTo(ContainSubstring("lola render"))
 
 		r = lola("cache", "rm", "example")
 		Expect(r.code).To(Equal(1))
@@ -287,6 +290,57 @@ var _ = Describe("store, search and init commands", func() {
 			r := lola("cache", "rm", "nope", "-y")
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(ContainSubstring("nope is not in your cache"))
+		})
+	})
+
+	Describe("with a cache index lola refuses", func() {
+		var entry, index, id string
+		BeforeEach(func() {
+			Expect(lola("cache", "add", mod).code).To(Equal(0))
+			entry = filepath.Join(tmp, "cache", "lola", "modules", "example")
+			index = filepath.Join(entry, "index.yml")
+			vers, err := filepath.Glob(filepath.Join(entry, "versions", "*"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(vers).To(HaveLen(1))
+			id = filepath.Base(vers[0])
+		})
+
+		DescribeTable("cache rm removes the entry",
+			func(index func(id string) string) {
+				Expect(os.WriteFile(filepath.Join(entry, "index.yml"), []byte(index(id)), 0o600)).To(Succeed())
+				r := lola("cache", "rm", "example", "-y")
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.out).To(ContainSubstring("removed example from your cache"))
+				Expect(entry).NotTo(BeAnExistingFile())
+			},
+			Entry("whose head records a commit that is not a full SHA", func(id string) string {
+				return "source: /src/example\ntype: folder\nheads:\n  - {ref: \"\", digest: " + id + ", commit: nope}\n"
+			}),
+			Entry("whose head digest is not a version id", func(string) string {
+				return "source: /src/example\ntype: folder\nheads:\n  - {ref: \"\", digest: ../../../outside}\n"
+			}),
+			Entry("that is not valid YAML", func(string) string { return "heads: [\n" }),
+		)
+
+		It("cache rm of an absent module still fails", func() {
+			Expect(os.WriteFile(index, []byte("heads: [\n"), 0o600)).To(Succeed())
+			r := lola("cache", "rm", "nope", "-y")
+			Expect(r.code).To(Equal(1))
+			Expect(r.err).To(ContainSubstring("nope is not in your cache"))
+			Expect(entry).To(BeADirectory())
+		})
+
+		It("follows the refusal's hint: cache rm, then install again", func() {
+			Expect(os.WriteFile(index, []byte("source: "+mod+"\ntype: folder\nheads:\n  - {ref: \"\", digest: "+id+", commit: nope}\n"), 0o600)).To(Succeed())
+			r := lola("install", "example", "-t", "claude-code", "-C", proj, "--allow-hooks")
+			Expect(r.code).To(Equal(1))
+			Expect(r.err).To(ContainSubstring(`records commit "nope"`))
+			Expect(r.err).To(ContainSubstring("hint: remove it from your cache, then install it again from its source: lola cache rm example"))
+			r = lola("cache", "rm", "example", "-y")
+			Expect(r.code).To(Equal(0), r.err)
+			r = lola("install", mod, "-t", "claude-code", "-C", proj, "--allow-hooks")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).To(BeAnExistingFile())
 		})
 	})
 })

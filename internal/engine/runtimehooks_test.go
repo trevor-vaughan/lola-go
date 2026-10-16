@@ -629,9 +629,8 @@ var _ = Describe("runtime hooks", func() {
 		writeTree(native, map[string]string{"commands/ship.md": "Ship\n"})
 		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: native}}, claudeOnly)
 		Expect(err).NotTo(HaveOccurred())
-		v, _, err := e.Current("ship")
-		Expect(err).NotTo(HaveOccurred())
-		writeTree(v.ContentDir, map[string]string{"commands/ship/notes.md": "---\nhooks: {Stop: [{hooks: [{type: prompt, prompt: p}]}]}\n---\nN\n"})
+		// The folder now holds what an older lola installed and this one refuses.
+		writeTree(native, map[string]string{"commands/ship/notes.md": "---\nhooks: {Stop: [{hooks: [{type: prompt, prompt: p}]}]}\n---\nN\n"})
 		_, err = e.Render(ctx, sc, claudeOnly)
 		Expect(err).To(MatchError(ContainSubstring("frontmatter hooks")))
 		Expect(errs.Hints(err)).To(ContainElements("put hooks in the command itself", ContainSubstring("lola uninstall ship")))

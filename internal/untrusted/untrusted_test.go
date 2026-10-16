@@ -53,3 +53,19 @@ var _ = Describe("CleanErr", func() {
 		Expect(untrusted.CleanErr(err)).To(BeIdenticalTo(err))
 	})
 })
+
+var _ = Describe("IsPlain", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("accepts text that Text prints as it is, whatever its length", func() {
+		for _, s := range []string{"", "https://example.com/a.git", "v1.2.0", "café", strings.Repeat("x", 1000)} {
+			Expect(untrusted.IsPlain(s)).To(BeTrue(), "%q", s)
+		}
+	})
+
+	It("refuses every character Text replaces, and newlines", func() {
+		for _, s := range []string{"a\nb", "a\x1bb", "a\x00", "a\x7f", "a\u009b", "a\xff", "a\u202eb", "a\u200b", "a\u2028", "a\u2029", "\ufeffa"} {
+			Expect(untrusted.IsPlain(s)).To(BeFalse(), "%q", s)
+		}
+	})
+})

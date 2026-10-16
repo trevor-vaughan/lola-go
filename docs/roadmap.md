@@ -35,8 +35,17 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      `default_scope`); remembered exclusions in `selections.yaml`, written by the pickers and
      by `--skip`/`--only`/`--unskip` and honored by `render` and `check`
      (`docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md`).
-6. **Marketplaces, `sync` and profiles.** `lola market`, `@market/module`, `lola sync`, and
-   stackable named sets of modules ([#223](https://github.com/LobsterTrap/lola/issues/223)).
+6. **`sync`, profiles, marketplaces and `clean`**, one plan each, in this order:
+   - **6a. `lola sync`** with content pins in the manifest and trust for a pulled
+     `project.yml`, delivered as 6a.1 pins (done: hardened manifest and ledger loading, pins
+     written by `install`, machine-independent digests, `render` from the version installed),
+     6a.2 trust, 6a.3 the command
+     (`docs/superpowers/specs/2026-10-12-plan-6a-sync-design.md`).
+   - **6b. Profiles:** stackable named sets of modules
+     ([#223](https://github.com/LobsterTrap/lola/issues/223)).
+   - **6c. Marketplaces:** `lola market` and `@market/module`, reading the Claude marketplace
+     JSON catalog format, and the Python lola's YAML catalogs for migrated users.
+   - **6d. `lola clean`:** move files lola does not manage out of its destinations.
 7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
    using the jet engine, which needs dependency vetting before the plan starts.
 8. **End-to-end suites, container, and the full documentation set.** Venom suites against the
@@ -54,6 +63,5 @@ After the MVP:
   [#128](https://github.com/LobsterTrap/lola/issues/128)).
 - Targets: Copilot, Cursor, OpenClaw, Codex, Antigravity, Windsurf, Kiro and pi (APM's range);
   editor-only assistants need a probe that does not rely on `PATH`.
-- The Claude marketplace JSON catalog format.
 - `install --pre-install` / `--post-install` flags.
 - Release automation (goreleaser/CI), Windows, and `cache clean`.

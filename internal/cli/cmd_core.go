@@ -212,7 +212,9 @@ func (a *app) listCmd() *cobra.Command {
 		Aliases: []string{"ls"},
 		Short:   "List installed modules and their status per target",
 		Long: "List installed modules per target. Status is ok; modified (a file lola wrote was edited);\n" +
-			"missing (a file lola wrote, or the module copy, is gone); or stale (your cache has a newer version: run lola render).",
+			"missing (a file lola wrote, or the module copy, is gone); stale (project.yml pins another version\n" +
+			"than the one installed); or skipped (nothing of the module could be rendered for the target).\n" +
+			"→ update available: your cache has a newer version for the ref: lola install <module>.",
 		Example: "  lola list\n  lola list --user\n  lola list --json",
 		GroupID: groupCore,
 		Args:    cobra.NoArgs,
@@ -276,6 +278,9 @@ func printStatus(w io.Writer, s style, sc engine.Scope, rows []engine.StatusRow)
 		case "missing":
 			status = s.bad(r.Status)
 		}
+		if r.UpdateAvailable {
+			status += " → update available"
+		}
 		rules := "on"
 		if !r.Rules {
 			rules = s.warn("off")
@@ -295,8 +300,9 @@ func (a *app) renderCmd() *cobra.Command {
 		Use:     "render",
 		Aliases: []string{"update"},
 		Short:   "Render every installed module again from your cache",
-		Long: "Re-render every installed module from the cached version for its ref, removing files the\n" +
-			"module no longer ships. Files edited by hand are reported and kept unless --force.\n" +
+		Long: "Re-render every installed module at the version it was installed at (a folder module from its\n" +
+			"folder), fetching that version again if your cache lost it, and remove files the module no\n" +
+			"longer ships. Files edited by hand are reported and kept unless --force.\n" +
 			"Claude Code runtime hooks whose consent no longer matches (a new version, or a moved\n" +
 			"project) are asked about again, and removed unless you consent.",
 		Example: "  lola render\n  lola render --dry-run\n  lola render -t claude-code --force",

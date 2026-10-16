@@ -195,6 +195,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 	probes := e.newProbeRun(ctx)
 	var fetched []string
 	have := map[int]store.Version{} // a source fetched for one scope is not fetched again for the next
+	haveRef := map[int]string{}     // ... unless the next scope's entry records another ref
 	plans := make([]*scopePlan, len(spec.Scopes))
 	for _, i := range lockOrder(spec.Scopes) {
 		si := spec.Scopes[i]
@@ -226,18 +227,49 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 			}
 		}
 		for i, r := range spec.Modules {
+			ref := entryRef(sp.man, r.Arg)
+			if r.Ref != "" {
+				ref = r.Ref
+			}
+			// A scope with no entry installs the listed version and records the ref of the head
+			// that holds it: its pin must be reachable from the ref its entry records. An entry
+			// without a ref tracks the default branch and keeps doing so.
+			if ref == "" && r.Version != nil && sp.man.Find(r.Arg) == nil {
+				if r.Ref, err = e.listedRef(*r.Version); err != nil {
+					return nil, withRetry(err, fetched)
+				}
+				ref = r.Ref
+			}
 			pre := have[i]
+			if haveRef[i] != ref {
+				pre = store.Version{}
+			}
 			if pre.Name == "" && r.Version != nil {
 				if pre, err = e.pinnedVersion(r); err != nil {
 					return nil, withRetry(err, fetched)
 				}
+				// The pickers list the head of the entry's ref; any other version is not what was confirmed.
+				if r.Ref == "" && sp.man.Find(r.Arg) != nil {
+					if head, ok, err := e.Store.Head(r.Arg, ref); err != nil {
+						return nil, withRetry(err, fetched)
+					} else if ok && head.ID != pre.ID {
+						which := "records ref " + untrusted.Text(ref, untrusted.MaxName)
+						if ref == "" {
+							which = "tracks the default branch"
+						}
+						return nil, errs.WithHints(fmt.Errorf("%s was listed at version %s, but %s %s, whose cached version is %s",
+							untrusted.Text(r.Arg, untrusted.MaxName), untrusted.Text(pre.ID, untrusted.MaxName), si.Scope.Key(),
+							which, untrusted.Text(head.ID, untrusted.MaxName)),
+							"run lola install again to list the current versions")
+					}
+				}
 			}
-			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre)
+			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, entryRef(sp.man, r.Arg))
 			if err != nil {
 				return nil, withRetry(err, fetched)
 			}
 			if didFetch {
-				fetched, have[i] = append(fetched, v.Name), v
+				fetched, have[i], haveRef[i] = append(fetched, v.Name), v, ref
 			}
 			sp.resolved = append(sp.resolved, resolvedRequest{req: r, ent: ent, v: v})
 		}
@@ -286,18 +318,14 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 		}
 	}
 	for i, sp := range plans {
-		err := e.commit(ctx, preps[i], opts, res, func(*plan.Plan) error {
-			if len(sp.man.Targets) == 0 {
-				sp.man.Targets = sp.targets
-			}
-			for _, ent := range sp.entries {
-				sp.man.Upsert(ent)
-			}
-			if err := sp.man.Save(e.files(sp.sc).manifest); err != nil {
-				return err
-			}
-			return e.makePluginData(sp.sc, sp.changes)
-		})
+		change := manifest.Change{Set: sp.entries}
+		if len(sp.man.Targets) == 0 {
+			change.Targets = sp.targets
+		}
+		man, err := e.editManifest(sp.sc, change)
+		if err == nil {
+			err = e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
+		}
 		if err != nil && len(saves) > 0 {
 			err = errApplied(err, sel.Path)
 		}
@@ -306,6 +334,15 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 		}
 	}
 	return out, nil
+}
+
+// editManifest is the manifest edit of a scope's change, for commit to stage with the ledger.
+func (e *Engine) editManifest(sc Scope, c manifest.Change) (*plan.ManifestWrite, error) {
+	dst, data, err := manifest.Edit(e.files(sc).manifest, c)
+	if err != nil {
+		return nil, err
+	}
+	return &plan.ManifestWrite{Path: dst, Data: data}, nil
 }
 
 // root is a scope's project root as results report it: "" at user scope.
@@ -381,11 +418,15 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	man := sp.man
 	modTargets := sp.targets
 	prev := man.Find(v.Name)
+	installed := sp.led.Modules[v.Name]
+	keepPin := false
 	if len(r.Targets) > 0 {
 		var err error
-		if v, err = e.installedVersion(v, prev, sp.led.Modules[v.Name]); err != nil {
+		if v, err = e.installedVersion(v, prev, installed); err != nil {
 			return err
 		}
+		// Adding assistants to an installed module never moves it, nor its pin.
+		keepPin = prev != nil && installed != nil
 		modTargets, ent.Targets = addedTargets(man, prev, sp.targets, r.Targets)
 	} else if prev != nil && len(given) == 0 && len(prev.Targets) > 0 {
 		modTargets, ent.Targets = prev.Targets, prev.Targets
@@ -408,6 +449,18 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 			ent.Rules = opts.Rules
 		}
 	}
+	var commit string
+	if keepPin {
+		commit, ent.Commit, ent.Digest = installed.Commit, prev.Commit, prev.Digest
+	} else {
+		var err error
+		if commit, err = e.pinCommit(v, ent.Ref); err != nil {
+			return err
+		}
+		if !e.isFolder(v.Name) {
+			ent.Commit, ent.Digest = commit, v.Meta.Digest
+		}
+	}
 	x, err := exclusions(sel, sp.sc, v.Name)
 	if err != nil {
 		return err
@@ -419,7 +472,7 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	mr.Scope, mr.Root = sp.sc.Kind.String(), root(sp.sc)
 	res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: modTargets, Intents: intents,
-		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: v.Meta.Commit, Digest: v.Meta.Digest}})
+		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest}})
 	replace, err := needsCopy(e.files(sp.sc).modules, v.Name, sp.led.Modules[v.Name], v.Meta.Digest)
 	if err != nil {
 		return err
@@ -428,6 +481,75 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 		hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true})
 	sp.entries = append(sp.entries, ent)
 	return nil
+}
+
+// entryRef is the ref man records for the module named arg, or "".
+func entryRef(man *manifest.Manifest, arg string) string {
+	if ent := man.Find(arg); ent != nil {
+		return ent.Ref
+	}
+	return ""
+}
+
+// listedRef is the ref of the cache head that holds the listed version v, as the pickers
+// chose it (Current): the default branch's ("") when it holds v, else the first head that
+// does. It is "" when no head holds v (a version fetched without a head, or since moved).
+func (e *Engine) listedRef(v VersionRef) (string, error) {
+	o, _, err := e.Store.Origin(v.Name)
+	if err != nil {
+		return "", err
+	}
+	ref := ""
+	for _, h := range o.Heads {
+		if h.Digest != v.ID {
+			continue
+		}
+		if h.Ref == "" {
+			return "", nil
+		}
+		if ref == "" {
+			ref = h.Ref
+		}
+	}
+	return ref, nil
+}
+
+// isFolder reports whether the cache has name from a folder source, which is never pinned.
+func (e *Engine) isFolder(name string) bool {
+	o, found, err := e.Store.Origin(name)
+	return err == nil && found && o.Type == string(source.KindFolder)
+}
+
+// pinCommit is the commit a git version is pinned at (Plan 6a §4.1): the one the fetch or the
+// head that produced v resolved, else that of the cache's head for ref that holds v (a version
+// listed by the pickers carries no commit). It is "" for other sources, and a git version no
+// head for ref records a commit for is refused: its heads predate pins, or another ref's.
+func (e *Engine) pinCommit(v store.Version, ref string) (string, error) {
+	commit, git, err := e.headCommit(v, ref)
+	if err != nil || !git || commit != "" {
+		return commit, err
+	}
+	return "", errs.WithHints(fmt.Errorf("%s: your cache does not record which commit its version %s came from", v.Name, v.ID),
+		"fetch it again, then install it: "+errs.ShellJoin([]string{"lola", "cache", "update", v.Name})+", then "+
+			errs.ShellJoin([]string{"lola", "install", v.Name}))
+}
+
+// headCommit is pinCommit's commit without the refusal: git reports whether v is a git
+// version, and commit is "" for one no head for ref records a commit for.
+func (e *Engine) headCommit(v store.Version, ref string) (commit string, git bool, err error) {
+	o, found, err := e.Store.Origin(v.Name)
+	if err != nil || !found || o.Type != string(source.KindGit) {
+		return "", false, err
+	}
+	if v.Commit != "" {
+		return v.Commit, true, nil
+	}
+	for _, h := range o.Heads {
+		if h.Digest == v.ID && h.Commit != "" && h.Ref == ref {
+			commit = h.Commit
+		}
+	}
+	return commit, true, nil
 }
 
 // installedVersion is the version a request that adds targets (InstallRequest.Targets)
@@ -445,6 +567,7 @@ func (e *Engine) installedVersion(v store.Version, prev *manifest.Entry, install
 	}
 	iv, err := e.Store.Load(v.Name, id)
 	if err == nil {
+		iv.Commit = installed.Commit
 		return iv, nil
 	}
 	if errors.Is(err, fs.ErrNotExist) {
@@ -574,18 +697,29 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts})
 		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}, Skipped: []string{}})
 	}
-	err = e.execute(ctx, sc, led, changes, nil, opts, res, func(p *plan.Plan) error {
-		for _, name := range names {
-			left := p.Ledger.Modules[name]
-			if left == nil {
-				man.Remove(name)
-			} else if ment := man.Find(name); ment != nil {
-				ment.Targets = allTargets(left, nil, &manifest.Manifest{})
-			}
-		}
-		return man.Save(e.files(sc).manifest)
-	})
+	pr, err := e.prepare(sc, led, changes, nil, nil, opts, res)
 	if err != nil {
+		return nil, err
+	}
+	if opts.DryRun {
+		return res, nil
+	}
+	var change manifest.Change
+	for _, name := range names {
+		left := pr.plan.Ledger.Modules[name]
+		if left == nil {
+			change.Remove = append(change.Remove, name)
+		} else if ment := man.Find(name); ment != nil {
+			kept := *ment
+			kept.Targets = allTargets(left, nil, &manifest.Manifest{})
+			change.Set = append(change.Set, kept)
+		}
+	}
+	mw, err := e.editManifest(sc, change)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.commit(ctx, pr, opts, res, mw, nil); err != nil {
 		return nil, err
 	}
 	for i := range res.Modules {
@@ -604,9 +738,12 @@ func dirExists(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// Render re-plans every installed module from the store head for its manifest ref,
-// removing orphans and refusing to overwrite hand edits.
-func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, error) {
+// Render re-plans every installed module at the version lock.json records, removing orphans
+// and refusing to overwrite hand edits. A git or archive module is rendered from a snapshot of
+// that cached version, fetched by its pin when the cache no longer holds it; a folder module is
+// read from its folder. Render never reads a cache head, so lola cache update never changes
+// what is installed (Plan 6a §10.3, §10.7).
+func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result, err error) {
 	man, led, unlock, err := e.load(sc, opts.DryRun)
 	if err != nil {
 		return nil, err
@@ -616,6 +753,11 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 	if err != nil {
 		return nil, err
 	}
+	run, err := e.runDir()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
 	res := newResult(opts.DryRun)
 	probes := e.newProbeRun(ctx)
 	names := make([]string, 0, len(led.Modules))
@@ -627,47 +769,9 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 	var copies []moduleCopy
 	for _, name := range names {
 		entry := led.Modules[name]
-		v, ok, err := e.Store.Head(name, entry.Ref)
+		v, err := e.installedForRender(ctx, sc, name, entry, run, res)
 		if err != nil {
-			// One module that no longer loads (one installed before a new refusal, say) stops
-			// every module's render, so name the way out.
-			return nil, errs.WithHints(err, "if you no longer want "+name+", remove it: "+errs.ShellJoin([]string{"lola", "uninstall", name}))
-		}
-		if !ok {
-			o, found, err := e.Store.Origin(name)
-			if err != nil {
-				return nil, err
-			}
-			if found {
-				v, err = e.Fetch(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: entry.Ref})
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				cwd := sc.ProjectDir
-				if sc.Kind == target.User {
-					cwd = "/"
-				}
-				spec, isSrc, err := source.Parse(entry.Source, cwd)
-				if err != nil {
-					return nil, fmt.Errorf("%s is no longer in your cache and its recorded source %q is unusable: %w", name, entry.Source, err)
-				}
-				if !isSrc {
-					args := []string{"lola", "install", untrusted.Text(entry.Source, untrusted.MaxName)}
-					if entry.Ref != "" {
-						args = append(args, "--ref", untrusted.Text(entry.Ref, untrusted.MaxName))
-					}
-					if entry.Path != "" {
-						args = append(args, "--path", untrusted.Text(entry.Path, untrusted.MaxName))
-					}
-					return nil, errs.WithHints(fmt.Errorf("%s is no longer in your cache", name), "fetch it again: "+errs.ShellJoin(args))
-				}
-				spec.Ref, spec.Path = entry.Ref, entry.Path
-				v, err = e.Fetch(ctx, spec)
-				if err != nil {
-					return nil, err
-				}
-			}
+			return nil, err
 		}
 		ts := allTargets(entry, man.Find(name), man)
 		if len(opts.Targets) > 0 {
@@ -686,7 +790,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 		}
 		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
-			Entry: &ledger.Entry{Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Meta.Commit, Digest: v.Meta.Digest}})
+			Entry: &ledger.Entry{Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Commit, Digest: v.Meta.Digest}})
 		replace, err := needsCopy(e.files(sc).modules, name, entry, v.Meta.Digest)
 		if err != nil {
 			return nil, err
@@ -703,7 +807,10 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (*Result, e
 
 // Status reports each installed module × target: missing (an owned destination or the
 // module copy is gone), modified (a destination differs from what lola wrote), stale (the
-// store head differs), skipped (the target rendered nothing of the module), or ok. A module copy's content is not compared: hooks build in it.
+// manifest pins another version than the one installed), skipped (the target rendered nothing
+// of the module), unreadable (the version installed is cached but does not load), or ok. A
+// module copy's content is not compared: hooks build in it. It reads no network and changes
+// nothing (Plan 6a §10.5).
 func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
@@ -720,17 +827,31 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		entry := led.Modules[name]
-		v, ok, err := e.Store.Head(name, entry.Ref)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			// The cached head cannot be loaded (corrupt, unknown key): report it and keep going.
-			for _, id := range allTargets(entry, man.Find(name), man) {
-				rows = append(rows, StatusRow{Name: name, Target: id, Status: "unreadable", Rules: man.Find(name).RulesOn(),
-					Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Skipped: []string{}})
+		entry, ment := led.Modules[name], man.Find(name)
+		pin, ref := "", entry.Ref
+		if ment != nil {
+			pin, ref = ment.Digest, ment.Ref
+		}
+		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest))
+		base := StatusRow{Name: name, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
+			UpdateAvailable: update, Skipped: []string{}}
+		var v store.Version
+		err := fs.ErrNotExist
+		if id := versionID(entry.Digest); id != "" {
+			v, err = e.Store.Load(name, id)
+		}
+		ok := err == nil
+		if uerr != nil || err != nil && !errors.Is(err, fs.ErrNotExist) {
+			// The cache's record of the module or the version installed cannot be loaded
+			// (corrupt, unknown key): report it and keep going.
+			for _, id := range allTargets(entry, ment, man) {
+				r := base
+				r.Target, r.Status = id, "unreadable"
+				rows = append(rows, r)
 			}
 			continue
 		}
-		stale := ok && v.Meta.Digest != entry.Digest
+		stale := pin != "" && pin != entry.Digest
 		skipped := []string{}
 		if ok {
 			x, err := exclusions(sel, sc, name)
@@ -743,7 +864,7 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, id := range allTargets(entry, man.Find(name), man) {
+		for _, id := range allTargets(entry, ment, man) {
 			if ok && !module.Supports(v.Module.Targets, id) {
 				continue
 			}
@@ -779,9 +900,35 @@ func (e *Engine) Status(sc Scope) ([]StatusRow, error) {
 			if status == "ok" && stale {
 				status = "stale"
 			}
-			rows = append(rows, StatusRow{Name: name, Target: id, Status: status, Rules: man.Find(name).RulesOn(),
-				Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Skipped: skipped})
+			r := base
+			r.Target, r.Status, r.Skipped = id, status, skipped
+			rows = append(rows, r)
 		}
 	}
 	return rows, nil
+}
+
+// versionID is the cache version id of a digest: its first 12 hex digits ("" when it has none).
+func versionID(digest string) string {
+	id := strings.TrimPrefix(digest, "sha256:")
+	if len(id) < 12 {
+		return ""
+	}
+	return id[:12]
+}
+
+// updateAvailable reports whether the cache head for ref of name holds another version than
+// digest. It reads the cache index only, and a folder's head never counts: a folder is read
+// again by every render.
+func (e *Engine) updateAvailable(name, ref, digest string) (bool, error) {
+	o, found, err := e.Store.Origin(name)
+	if err != nil || !found || o.Type == string(source.KindFolder) {
+		return false, err
+	}
+	for _, h := range o.Heads {
+		if h.Ref == ref {
+			return h.Digest != versionID(digest), nil
+		}
+	}
+	return false, nil
 }

@@ -3,10 +3,12 @@ package manifest_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -21,30 +23,129 @@ var _ = Describe("manifest", func() {
 		Expect(m).To(Equal(&manifest.Manifest{Version: 1}))
 	})
 
-	It("upserts, finds, removes, and saves sorted by name", func() {
-		m := &manifest.Manifest{Version: 1, Targets: []string{"claude-code"}}
-		m.Upsert(manifest.Entry{Name: "zeta", Source: "../zeta"})
-		m.Upsert(manifest.Entry{Name: "alpha", Source: "https://x/a.git", Ref: "v1"})
-		m.Upsert(manifest.Entry{Name: "zeta", Source: "../zeta", Targets: []string{"claude-code"}})
-		Expect(m.Find("zeta").Targets).To(Equal([]string{"claude-code"}))
+	It("finds entries by name", func() {
+		m := &manifest.Manifest{Version: 1, Modules: []manifest.Entry{{Name: "a", Source: "../a"}}}
+		Expect(m.Find("a")).To(HaveField("Source", "../a"))
 		Expect(m.Find("nope")).To(BeNil())
-		Expect(m.Save(path)).To(Succeed())
-		Expect(os.ReadFile(path)).To(MatchYAML(`
+	})
+
+	Describe("Edit", func() {
+		sha1 := strings.Repeat("a", 40)
+		digest := "sha256:" + strings.Repeat("0", 64)
+		write := func(content string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+		}
+		edit := func(c manifest.Change) string {
+			dst, b, err := manifest.Edit(path, c)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dst).To(Equal(path))
+			return string(b)
+		}
+		commented := `# the team's modules
 version: 1
 targets: [claude-code]
 modules:
-  - name: alpha
-    source: https://x/a.git
-    ref: v1
+  # pinned by hand-review
   - name: zeta
-    source: ../zeta
-    targets: [claude-code]
+    source: https://example.com/zeta.git
+    ref: v1 # what --update follows
+  - name: alpha
+    source: tools/alpha # a folder
+`
+
+		It("changes only the fields of the entries it sets, keeping comments and order", func() {
+			write(commented)
+			out := edit(manifest.Change{Set: []manifest.Entry{
+				{Name: "zeta", Source: "https://example.com/zeta.git", Ref: "v1", Commit: sha1, Digest: digest},
+				{Name: "alpha", Source: "tools/alpha"},
+			}})
+			Expect(out).To(Equal(`# the team's modules
+version: 1
+targets: [claude-code]
+modules:
+  # pinned by hand-review
+  - name: zeta
+    source: https://example.com/zeta.git
+    ref: v1 # what --update follows
+    commit: ` + sha1 + `
+    digest: ` + digest + `
+  - name: alpha
+    source: tools/alpha # a folder
 `))
-		Expect(m.Remove("alpha")).To(BeTrue())
-		Expect(m.Remove("alpha")).To(BeFalse())
-		back, err := manifest.Load(path)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(back.Modules).To(HaveLen(2))
+		})
+
+		It("appends a new entry and deletes a removed one with its comment", func() {
+			write(commented)
+			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "beta", Source: "../beta", Targets: []string{"gemini-cli"}}},
+				Remove: []string{"zeta"}})
+			Expect(out).NotTo(ContainSubstring("zeta"))
+			Expect(out).NotTo(ContainSubstring("hand-review"))
+			Expect(out).To(ContainSubstring("# the team's modules"))
+			Expect(strings.Index(out, "alpha")).To(BeNumerically("<", strings.Index(out, "beta")))
+			Expect(out).To(ContainSubstring("targets: [gemini-cli]"))
+		})
+
+		It("drops fields an entry no longer has and writes rules: false", func() {
+			write(commented)
+			off := false
+			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "zeta", Source: "https://example.com/zeta.git", Rules: &off}}})
+			Expect(out).NotTo(ContainSubstring("ref:"))
+			Expect(out).To(ContainSubstring("rules: false"))
+		})
+
+		It("starts a new file with the version, the targets and the entries", func() {
+			out := edit(manifest.Change{Targets: []string{"claude-code"}, Set: []manifest.Entry{{Name: "kit", Source: "https://example.com/kit.git", Ref: "1.0"}}})
+			Expect(out).To(MatchYAML(`
+version: 1
+targets: [claude-code]
+modules:
+  - name: kit
+    source: https://example.com/kit.git
+    ref: "1.0"
+`))
+			write(out)
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.Find("kit").Ref).To(Equal("1.0"))
+		})
+
+		It("keeps a file of comments and gives it a version", func() {
+			write("# notes for the team\n")
+			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "../kit"}}})
+			Expect(out).To(HavePrefix("# notes for the team\n"))
+			Expect(out).To(ContainSubstring("version: 1"))
+		})
+
+		It("never edits a file that does not load", func() {
+			write("version: 1\nmodules:\n  - name: kit\n    source: https://example.com/kit.git\n    ref: --upload-pack=x\n")
+			_, _, err := manifest.Edit(path, manifest.Change{Set: []manifest.Entry{{Name: "other", Source: "../other"}}})
+			Expect(err).To(MatchError(ContainSubstring("starts with '-'")))
+			write("version: 1\nmodules: [\n")
+			_, _, err = manifest.Edit(path, manifest.Change{})
+			Expect(err).To(MatchError(ContainSubstring("does not parse")))
+		})
+
+		It("refuses to produce a file it could not load again", func() {
+			write(commented)
+			_, _, err := manifest.Edit(path, manifest.Change{Set: []manifest.Entry{
+				{Name: "zeta", Source: "https://example.com/zeta.git", Ref: "v1", Commit: "nope", Digest: digest}}})
+			Expect(err).To(MatchError(And(ContainSubstring("module zeta"), ContainSubstring("commit"))))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("nothing was written")))
+			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("fix it by hand")))
+			Expect(os.ReadFile(path)).To(Equal([]byte(commented)))
+		})
+
+		It("writes a symlinked manifest at the link's target", func() {
+			real := filepath.Join(filepath.Dir(filepath.Dir(path)), "shared", "project.yml")
+			Expect(os.MkdirAll(filepath.Dir(real), 0o755)).To(Succeed())
+			Expect(os.WriteFile(real, []byte(commented), 0o600)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.Symlink(real, path)).To(Succeed())
+			dst, _, err := manifest.Edit(path, manifest.Change{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dst).To(Equal(mustEval(real)))
+		})
 	})
 
 	It("rejects unknown keys and newer versions", func() {
@@ -66,4 +167,111 @@ modules:
 			Expect(err.Error()).To(ContainSubstring(path), "error should name the file")
 		}
 	})
+
+	Describe("reading the file", func() {
+		write := func(content string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+		}
+
+		It("refuses a newer version before it reads the other keys", func() {
+			write("version: 9\nprofiles: [a]\n")
+			_, err := manifest.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("newer lola (manifest version 9)")))
+		})
+
+		It("refuses a file over 1 MiB", func() {
+			write("version: 1\n# " + strings.Repeat("x", 1<<20) + "\n")
+			_, err := manifest.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("is larger than 1048576 bytes")))
+		})
+
+		It("refuses a FIFO in place of the file without blocking on it", func() {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			mkfifo(path)
+			done := make(chan error, 1)
+			go func() { _, err := manifest.Load(path); done <- err }()
+			Eventually(done, "5s").Should(Receive(MatchError(ContainSubstring("is not a regular file"))))
+		})
+
+		It("refuses a second YAML document", func() {
+			write("version: 1\n---\nversion: 1\n")
+			_, err := manifest.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("holds more than one YAML document")))
+		})
+
+		It("refuses anchors, aliases and merge keys", func() {
+			write("version: 1\nmodules:\n  - &m\n    name: a\n    source: https://x/a.git\n  - *m\n")
+			_, err := manifest.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("anchors, aliases and merge keys (<<) are not supported")))
+		})
+
+		It("reads a file holding only comments as an empty manifest", func() {
+			write("# nothing yet\n")
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m).To(Equal(&manifest.Manifest{Version: 1}))
+		})
+	})
+
+	Describe("entry fields", func() {
+		sha1 := strings.Repeat("a", 40)
+		digest := "sha256:" + strings.Repeat("0", 64)
+		write := func(content string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+		}
+		entry := func(fields string) string {
+			return "version: 1\nmodules:\n  - name: kit\n" + fields
+		}
+
+		It("loads pins and saves them back", func() {
+			write(entry("    source: https://example.com/kit.git\n    ref: v1\n    commit: " + sha1 + "\n    digest: " + digest + "\n"))
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.Find("kit")).To(And(HaveField("Commit", sha1), HaveField("Digest", digest)))
+		})
+
+		It("accepts a pinned archive and an unpinned folder", func() {
+			write("version: 1\nmodules:\n  - name: a\n    source: https://example.com/a.tgz\n    digest: " + digest +
+				"\n  - name: b\n    source: tools/b\n")
+			_, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		DescribeTable("refuses, naming the file, the entry and the field",
+			func(content, msg string) {
+				write(content)
+				_, err := manifest.Load(path)
+				Expect(err).To(MatchError(And(ContainSubstring(path), ContainSubstring(msg))))
+				Expect(errs.Hints(err)).NotTo(BeEmpty())
+			},
+			Entry("a hostile ref", entry("    source: https://example.com/kit.git\n    ref: --upload-pack=touch PWNED\n"),
+				`module kit: ref "--upload-pack=touch PWNED" starts with '-'`),
+			Entry("a remote helper source", entry("    source: ext::sh -c touch PWNED\n"), "module kit: source"),
+			Entry("a git:// source", entry("    source: git://example.com/kit.git\n"), "module kit: a git:// source is refused"),
+			Entry("a path leaving the source", entry("    source: https://example.com/kit.git\n    path: ../x\n"),
+				`module kit: path "../x" must be a relative path inside the source`),
+			Entry("a short commit", entry("    source: https://example.com/kit.git\n    commit: abc\n    digest: "+digest+"\n"),
+				"module kit: commit"),
+			Entry("a commit without a digest", entry("    source: https://example.com/kit.git\n    commit: "+sha1+"\n"),
+				"module kit: commit without digest"),
+			Entry("a commit that is not the full-SHA ref", entry("    source: https://example.com/kit.git\n    ref: "+strings.Repeat("b", 40)+
+				"\n    commit: "+sha1+"\n    digest: "+digest+"\n"), "module kit: commit must equal ref"),
+			Entry("a pinned folder", entry("    source: tools/kit\n    digest: "+digest+"\n"),
+				"module kit: tools/kit is a folder, and folders are never pinned"),
+			Entry("a name used twice", "version: 1\nmodules:\n  - name: kit\n    source: a/kit\n  - name: kit\n    source: b/kit\n",
+				"module kit is listed twice"),
+			Entry("a control character in a target", "version: 1\ntargets: [\"claude\\u202ecode\"]\n",
+				"targets holds control or invisible characters"),
+			Entry("a control character in an entry's target", entry("    source: a/kit\n    targets: [\"x\\ny\"]\n"),
+				"module kit: targets holds control or invisible characters"),
+		)
+	})
 })
+
+func mustEval(p string) string {
+	r, err := filepath.EvalSymlinks(p)
+	Expect(err).NotTo(HaveOccurred())
+	return r
+}

@@ -10,8 +10,8 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 |---|---|
 | `lola install [<source\|name>...]` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. With no argument on a terminal, walks you through the choices ([Choosing what to install](#choosing-what-to-install)). |
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
-| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (your cache has a newer version), or `skipped` (nothing of the module could be rendered for that target); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. |
-| `lola render` | Render every installed module again from your cache. Removes files a module no longer ships. |
+| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref; whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. |
+| `lola render` | Render every installed module again at the version it was installed at (a folder module from its folder). Removes files a module no longer ships. |
 | `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
 | `lola init [dir] [--format agent-plugins\|lola]` | Scaffold a module named after the directory: by default an Agent Plugins package (`plugin.json`, one skill, one `dev.getlola` command); `--format lola` writes `lola.yml`, one skill and one command. It never overwrites a file and refuses a directory holding a module or a symbolic link on the way to a file it would write. |
@@ -52,6 +52,11 @@ planned. lola refuses, with a hint:
   fragment. No error repeats a URL's password, query or fragment, or the user name of an
   `http(s)` or `file` URL, not even for a URL that does not parse or the target of a redirect (an `ssh`
   user name is no secret and may appear);
+- a source, `--ref` or `--path` that the scope's manifest (`project.yml` or `user.yml`) or
+  `lock.json` could not load again (a control or invisible character, such as a zero-width
+  joiner in a folder name, a source over 4096 bytes or a ref over 256 bytes), before anything is
+  fetched or written; the hint names the field to fix, or, for a module named from your cache
+  whose recorded source is the problem, `lola cache rm <name>`;
 - an existing file that is not an archive, and a local archive that is not a regular file (a
   symlink, pipe or device named like an archive).
 
@@ -117,16 +122,40 @@ keep only their execute bit (`0755` or `0644`). Limits, which are not configurab
 | Download time | 2 minutes |
 | Redirects | 5, never from `https` to `http`, and never to `http` off loopback |
 
-Once a module is cached, `lola install <name>` uses the cached copy without touching the source.
-`lola cache update` fetches every cached module again: a git branch (or the default branch) may
-have moved, a local archive is read again, and an archive URL is downloaded again. The content
-digest decides whether anything changed; `lola list` then shows `stale` projects, and
-`lola render` brings them up to date.
+Once a module is cached, `lola install <name>` uses the cached copy without touching the source:
+the cache's newest version for the ref the project already records for it (`--ref` picks
+another). `lola cache update` fetches every cached module again: a git branch (or the default
+branch) may have moved, a local archive is read again, and an archive URL is downloaded again.
+The content digest decides whether anything changed. Installed modules keep the versions they
+were installed at: `lola list` shows `→ update available`, and `lola install <name>` installs
+the new version.
+
+**Pins.** When lola installs a git or archive module, it records the version in the module's
+entry in the scope's manifest (`project.yml`, or `user.yml` at user scope): `digest`, the sha256
+of the module's content, and for git `commit`, the commit the fetch resolved. `ref` stays what
+you asked for. A folder module is never pinned. A manifest or `lock.json` may come from someone
+else, so lola checks every entry when it reads them and refuses, before running git, a source or
+ref that git would read as an option, a git remote helper (`ext::…`), `git://`, a path that
+leaves its source, a commit or digest lola would not write (a `commit` on an archive or a folder
+included), and any control or invisible character.
+
+A git checkout holds the bytes as committed on every machine: lola turns off line-ending
+conversion and every `.gitattributes` conversion and filter for its checkouts, and refuses a
+symbolic link inside the module's `--path` (anywhere in the repository when there is no
+`--path`) or on the way to it, before checking anything out; a link elsewhere in the repository
+is allowed. A git `--path` must name a directory of the repository in its exact letter case, so
+a case-insensitive file system never checks out another one in its place. Execute bits come from
+the source itself (git's file modes, an archive's entry modes, a folder's files), never from the
+file system lola copied to, so the same module has the same digest on Linux, macOS and Windows.
 
 Installing a module also gives it a **module copy**: `.lola/modules/<module>/` in the project,
 or `$XDG_DATA_HOME/lola/user-modules/<module>/` at user scope. `${PLUGIN_ROOT}` (below) points
 there, so removing a module with `lola cache rm` never breaks an installed one; `lola render`
-fetches the source again if it needs to. Hooks may build inside the copy: lola leaves its content
+fetches the version installed again if it needs to: a git module by its commit, which must still
+be on its ref, and an archive whose content must still match. When it cannot (a git version with
+no recorded commit, or a fetch that returns another commit or other content), it says so and
+suggests `lola install <source> [--ref r] [--path p]`, which installs what the source serves
+now, or `lola uninstall <name>`. Hooks may build inside the copy: lola leaves its content
 alone, replaces the copy only for a new version or when it is gone, and then runs the hooks again.
 
 ## Module layout
@@ -584,7 +613,18 @@ only when a step was shown; `-y` applies without it. The install uses exactly th
 the pickers listed, for source arguments and for modules picked from the cache, and keeps
 them through the menu's "Change …" steps. If a listed version was removed from your cache in
 the meantime, the run stops and asks you to run `lola install` again. Two arguments that
-resolve to different versions of one module are refused. When nothing would change, lola says
+resolve to different versions of one module are refused.
+
+For each module picked from your cache, the version listed for a scope is the newest one your
+cache holds for the ref that scope's `project.yml` entry records (the default branch's when the
+entry has no ref). A scope with no entry takes the version lola lists and records its ref. A
+module whose version cannot be listed is left out of the module list, with a `⚠` warning that
+names the command installing it: its entry's ref has no version in your cache, the scopes'
+entries resolve to two versions, its entry has no ref and the default branch is not cached, or
+your cache fetched it before lola recorded commits (`lola cache update <name>` fetches it again).
+A module argument that resolves to such a version is refused before the summary.
+A pick kept through "Change scope" that no longer matches a scope's entry ref is refused before
+the summary, not after you confirm. When nothing would change, lola says
 `already up to date`. Runtime hook consent is asked during the install, as always.
 
 The summary lists, per destination and assistant, each module's components: `+` added, `~`
@@ -881,7 +921,7 @@ copy's directories before it removes the original.
 
 | File | Purpose | Commit it? |
 |---|---|---|
-| `.lola/project.yml` | The manifest: which modules and targets you want. | Yes |
+| `.lola/project.yml` | The manifest: which modules and targets you want, and for git and archive modules the version (pin) installed. lola edits only the entries it changes and keeps your comments and order, but it writes the whole file again, so blank lines between entries are dropped and indentation becomes two spaces. | Yes |
 | `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes. | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
@@ -905,8 +945,9 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 - Comments and formatting in JSON files survive lola's edits; only lola's own keys change.
 - lola writes through symlinked directories and shows `(via symlink → /real/path)` when a write
   leaves the project. Two destinations that resolve to the same real file are refused.
-- lola refuses a project whose `.lola/`, `.lola/modules/` or `.lola/plugin-data/` is a symlink,
-  and replaces a module copy that is not a real directory.
+- lola refuses a project whose `.lola/`, `.lola/modules/`, `.lola/plugin-data/` or
+  `.lola/project.yml` is a symlink, and replaces a module copy that is not a real directory. At
+  user scope a symlinked `user.yml` is followed and edited at its target.
 - Changes are transactional: if anything fails, every file is restored.
 - `--dry-run` (`-n`) prints the plan and writes nothing.
 

@@ -225,8 +225,8 @@ func (a *app) cacheRmCmd() *cobra.Command {
 				return err
 			}
 			for _, n := range args {
-				// Presence only: an unloadable entry must stay removable.
-				if _, found, err := eng.Store.Origin(n); err != nil {
+				// Presence only: an entry whose index or versions lola refuses must stay removable.
+				if found, err := eng.Store.Has(n); err != nil {
 					return err
 				} else if !found {
 					return engine.NotStored(n)
@@ -330,9 +330,10 @@ func (a *app) cacheInfoCmd() *cobra.Command {
 
 func (a *app) cacheUpdateCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:               "update [module...]",
-		Short:             "Fetch cached modules again from their recorded sources",
-		Long:              "Re-fetch every ref of the modules (all modules if none are named). Projects pick up the\nnew versions with lola render; lola list shows them as stale until then.",
+		Use:   "update [module...]",
+		Short: "Fetch cached modules again from their recorded sources",
+		Long: "Re-fetch every ref of the modules (all modules if none are named). Installed modules keep the\n" +
+			"versions they were installed at; lola install <module> installs the new version.",
 		Example:           "  lola cache update\n  lola cache update my-module",
 		ValidArgsFunction: a.completeStored,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -340,12 +341,12 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			ups, err := eng.Update(cmd.Context(), args)
+			up, err := eng.Update(cmd.Context(), args)
 			if err != nil {
 				return err
 			}
 			return a.emit(cmd, func(w io.Writer, s style) {
-				for _, u := range ups {
+				for _, u := range up.Updates {
 					ref := u.Ref
 					if ref == "" {
 						ref = "(default)"
@@ -354,12 +355,15 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 					case s.plain:
 						fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", u.Name, u.Ref, u.From, u.To)
 					case u.Changed:
-						fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s: %s → %s (run lola render to apply)", u.Name, ref, u.From, u.To)))
+						fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s: %s → %s", u.Name, ref, u.From, u.To)))
 					default:
 						fmt.Fprintln(w, s.info(fmt.Sprintf("%s %s: unchanged", u.Name, ref)))
 					}
 				}
-			}, map[string]any{"updates": ups})
+				for _, n := range up.Notices {
+					fmt.Fprintln(w, noticeLine(s, n))
+				}
+			}, up)
 		},
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/module"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 )
 
 // Version is the ledger schema version this binary writes.
@@ -114,9 +115,12 @@ func Load(path string) (*Ledger, error) {
 	return l, nil
 }
 
+// restoreHint coaches a lock.json lola could not have written.
+const restoreHint = "restore lock.json from a backup or version control, or remove the module's entry from it and reinstall the module"
+
 // validate rejects what the JSON decoder accepts but the rest of lola cannot handle: null
-// module entries, module names that are not safe path segments, artifacts with no target, and
-// members lola could not have written. It records each member again as canonical JSON.
+// module entries, module names that are not safe path segments, recorded sources lola would
+// not write (source.Recorded), artifacts with no target, and members lola could not have written. It records each member again as canonical JSON.
 func (l *Ledger) validate() error {
 	for name, e := range l.Modules {
 		if err := module.ValidateName("module", name); err != nil {
@@ -124,6 +128,11 @@ func (l *Ledger) validate() error {
 		}
 		if e == nil {
 			return fmt.Errorf("module %q has no entry", name)
+		}
+		// lock.json may have been planted or committed: its source and ref reach git, so they
+		// pass the rules project.yml's do (Plan 6a §4.3).
+		if err := (source.Recorded{Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest}).Check(); err != nil {
+			return errs.WithHints(fmt.Errorf("module %s: %w", name, err), restoreHint)
 		}
 		for i, a := range e.Artifacts {
 			if a.Target == "" {
@@ -140,7 +149,7 @@ func (l *Ledger) validate() error {
 			c, err := fsx.CanonicalJSON(a.Member)
 			if err != nil || !strings.ContainsRune("{[-0123456789tf", rune(c[0])) {
 				return errs.WithHints(fmt.Errorf("module %q has an artifact (%q) whose member is not a JSON object, array, number or boolean", name, a.Path),
-					"restore lock.json from a backup or version control, or remove the module's entry from it and reinstall the module")
+					restoreHint)
 			}
 			e.Artifacts[i].Member = c
 		}

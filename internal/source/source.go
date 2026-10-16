@@ -246,9 +246,8 @@ func validate(spec Spec) error {
 		return errs.WithHints(fmt.Errorf("archive %s does not end in an archive suffix", untrusted.Text(spec.Location, untrusted.MaxName)),
 			"archive names end in "+archiveSuffixList())
 	}
-	if strings.HasPrefix(spec.Ref, "-") {
-		return errs.WithHints(fmt.Errorf("ref %q starts with '-'", untrusted.Text(spec.Ref, untrusted.MaxName)),
-			"a branch, tag or commit never starts with '-'")
+	if err := checkRef(spec.Ref); err != nil {
+		return err
 	}
 	if spec.Kind == KindGit && spec.Ref != "" && !fullSHARE.MatchString(spec.Ref) {
 		// A local check with no network access, so it needs no caller's deadline.

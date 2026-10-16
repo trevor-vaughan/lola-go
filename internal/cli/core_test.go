@@ -1,6 +1,8 @@
 package cli_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -488,6 +490,36 @@ var _ = Describe("core commands", func() {
 		r := lola("del", "example", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(home, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("lists the pin and an available update, keeping --plain's columns", func() {
+		archive := filepath.Join(tmp, "kit.zip")
+		writeZip := func(body string) {
+			var buf bytes.Buffer
+			zw := zip.NewWriter(&buf)
+			for name, content := range map[string]string{"kit/lola.yml": "name: kit\n", "kit/commands/k.md": body} {
+				w, err := zw.Create(name)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = w.Write([]byte(content))
+				Expect(err).NotTo(HaveOccurred())
+			}
+			Expect(zw.Close()).To(Succeed())
+			Expect(os.WriteFile(archive, buf.Bytes(), 0o644)).To(Succeed())
+		}
+		writeZip("v1\n")
+		Expect(lola("install", archive, "-C", proj).code).To(Equal(0))
+		writeZip("v2\n")
+		Expect(lola("cache", "update", "kit").code).To(Equal(0))
+
+		Expect(lola("list", "-C", proj).out).To(MatchRegexp(`kit\s+claude-code\s+✓ ok → update available\s`))
+		Expect(lola("list", "-C", proj, "--plain").out).To(Equal("kit\tclaude-code\tok\ton\t" + archive + "\n"))
+		var res struct{ Modules []map[string]any }
+		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
+		Expect(res.Modules).To(HaveLen(1))
+		Expect(res.Modules[0]).To(HaveKeyWithValue("update_available", true))
+		Expect(res.Modules[0]).To(HaveKeyWithValue("pin", res.Modules[0]["digest"]))
+		Expect(lola("list", "--help").out).To(And(ContainSubstring("stale (project.yml pins another version"),
+			ContainSubstring("update available: your cache has a newer version for the ref: lola install <module>")))
 	})
 
 	It("colors per LOLA_COLOR, then NO_COLOR, and never under --plain; glyphs stay", func() {

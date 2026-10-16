@@ -62,6 +62,7 @@ type installFlow struct {
 	droppedModule, droppedScope int             // component picks dropped because their module or destination was removed; reset after each summary
 	asked                       map[string]bool // modules whose picks came from a component page
 	shown                       map[string]bool // steps whose picker ran
+	warned                      map[string]bool // choice warnings printed, each once per run
 }
 
 // runInstall runs the install flow.
@@ -95,7 +96,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	}
 	p := a.prompter(cmd)
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
-		edits: edits, shown: map[string]bool{}, asked: map[string]bool{}}
+		edits: edits, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
 	if !fl.ask && len(args) == 0 {
 		return g.args(1)(cmd, args)
 	}
@@ -354,7 +355,17 @@ func (fl *installFlow) ensureChoices() error {
 	}
 	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests()})
 	fl.choices = ch
-	return err
+	if err != nil {
+		return err
+	}
+	s := fl.a.style(fl.cmd)
+	for _, w := range ch.Warnings {
+		if !fl.warned[w] {
+			fl.warned[w] = true
+			fmt.Fprintln(fl.cmd.ErrOrStderr(), s.warn(w))
+		}
+	}
+	return nil
 }
 
 // requests are the module arguments and the modules picked from the cache, pinned to the

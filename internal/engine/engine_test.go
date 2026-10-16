@@ -477,13 +477,15 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(proj, ".claude/rules/lola")).NotTo(BeAnExistingFile(), "emptied rule dirs are removed")
 	})
 
-	It("render picks up a new store head; list shows stale, modified and missing", func() {
+	It("render reads a folder source again; list never calls a folder stale, and shows modified and missing", func() {
 		_, err := install(claude, src)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(src, map[string]string{"commands/ship.md": "Ship faster\n"})
 		_, err = e.Fetch(ctx, sourceSpec(src))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(status()).To(Equal([]string{"example/claude-code=stale"}))
+		rows, err := e.Status(sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rows).To(ConsistOf(And(HaveField("Status", "ok"), HaveField("Pin", ""), HaveField("UpdateAvailable", false))))
 		_, err = e.Render(ctx, sc, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".claude/commands/ship.md")).To(Equal("Ship faster\n"))
@@ -653,6 +655,54 @@ var _ = Describe("Engine", func() {
 		Expect(err).To(MatchError(ContainSubstring("--ref applies to git sources only")))
 	})
 
+	It("refuses a folder whose name project.yml could not load again, before anything is fetched or written", func() {
+		odd := filepath.Join(tmp, "src", "ab\u200ccd")
+		writeTree(odd, exampleModule)
+		writeTree(odd, map[string]string{"lola.yml": "name: example\n"})
+		_, err := install(claude, odd)
+		Expect(err).To(MatchError(ContainSubstring("source holds control or invisible characters")))
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("rename a folder")))
+		Expect(tree(proj)).To(BeEmpty())
+		Expect(tree(p.Store)).To(BeEmpty())
+		Expect(tree(p.Staging)).To(BeEmpty())
+	})
+
+	It("names user.yml when the user scope could not record a source", func() {
+		odd := filepath.Join(tmp, "src", "ab\u200ccd")
+		writeTree(odd, exampleModule)
+		writeTree(odd, map[string]string{"lola.yml": "name: example\n"})
+		_, err := e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: odd}}, claude)
+		Expect(err).To(MatchError(ContainSubstring("in user.yml or lock.json")))
+	})
+
+	It("coaches fixing --path when it is the field project.yml could not load again", func() {
+		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: src, Path: "a\u202eb"}}, claude)
+		Expect(err).To(MatchError(ContainSubstring("path holds control or invisible characters")))
+		Expect(errs.Hints(err)).To(ConsistOf(ContainSubstring("--path")))
+		Expect(tree(proj)).To(BeEmpty())
+	})
+
+	It("coaches removing a cached module whose recorded source project.yml could not load again", func() {
+		_, err := install(claude, src)
+		Expect(err).NotTo(HaveOccurred())
+		index := filepath.Join(p.Store, "example", "index.yml")
+		b, err := os.ReadFile(index)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(index, []byte(strings.Replace(string(b), "example", "ex\u200cample", 1)), 0o600)).To(Succeed())
+		_, err = e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: "example"}}, claude)
+		Expect(err).To(MatchError(ContainSubstring("source holds control or invisible characters")))
+		Expect(errs.Hints(err)).To(ConsistOf("remove it from your cache, then install it again from its source: " +
+			errs.ShellJoin([]string{"lola", "cache", "rm", "example"})))
+	})
+
+	It("still installs from a folder whose name is plain", func() {
+		_, err := install(claude, src)
+		Expect(err).NotTo(HaveOccurred())
+		man, err := e.Manifest(sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(man.Find("example")).NotTo(BeNil())
+	})
+
 	It("skips targets a module does not declare, with a notice", func() {
 		writeTree(src, map[string]string{"lola.yml": "name: example\ntargets: [opencode]\n"})
 		res, err := install(claude, src)
@@ -673,8 +723,7 @@ var _ = Describe("Engine", func() {
 	It("rejects uninstall with a malicious module name and leaves the project intact", func() {
 		testFile := filepath.Join(proj, "important.txt")
 		Expect(os.WriteFile(testFile, []byte("keep this"), 0o644)).To(Succeed())
-		man := &manifest.Manifest{Version: 1, Modules: []manifest.Entry{{Name: "../..", Source: src}}}
-		Expect(man.Save(filepath.Join(proj, ".lola", "project.yml"))).To(Succeed())
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\nmodules:\n  - name: ../..\n    source: " + src + "\n"})
 		_, err := e.Uninstall(ctx, sc, []string{"../.."}, engine.Options{})
 		Expect(err).To(HaveOccurred(), "should reject invalid module name")
 		Expect(testFile).To(BeAnExistingFile(), "important file should not be deleted")
@@ -894,12 +943,13 @@ var _ = Describe("Engine", func() {
 		Expect(os.RemoveAll(hostile)).To(Succeed())
 		_, err = e.Render(ctx, sc, engine.Options{})
 		Expect(err).To(MatchError("example is no longer in your cache"))
-		Expect(errs.Hints(err)).To(ConsistOf("fetch it again: " + errs.ShellJoin([]string{"lola", "install", "../it's src/example"})))
+		Expect(errs.Hints(err)).To(ConsistOf("fetch it again: "+errs.ShellJoin([]string{"lola", "install", "../it's src/example"}),
+			ContainSubstring("lola uninstall example")))
 		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("install ../it's src")))
 	})
 
 	Describe("coaching a module gone from the cache whose recorded source is not a source", func() {
-		recordAndRender := func(source, ref, path string) error {
+		record := func(source, ref, path string) {
 			_, err := install(claude, src)
 			Expect(err).NotTo(HaveOccurred())
 			lock := filepath.Join(proj, ".lola", "lock.json")
@@ -910,22 +960,23 @@ var _ = Describe("Engine", func() {
 			ok, err := e.Store.Remove("example")
 			Expect(ok).To(BeTrue())
 			Expect(err).NotTo(HaveOccurred())
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).To(MatchError("example is no longer in your cache"))
-			return err
 		}
 
-		It("never prints a control byte of the recorded source raw", func() {
-			err := recordAndRender("gone\x1b[31mRED\x1b]0;pwned\x07", "", "")
-			Expect(errs.Hints(err)).To(ConsistOf("fetch it again: " + errs.ShellJoin([]string{"lola", "install", "gone?[31mRED?]0;pwned?"})))
+		It("refuses a recorded source holding control bytes without printing them", func() {
+			record("gone\x1b[31mRED\x1b]0;pwned\x07", "", "")
+			_, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).To(MatchError(ContainSubstring("module example: source holds control or invisible characters")))
+			Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
 			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("\x1b")))
-			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("\x07")))
 		})
 
-		It("names the recorded ref and path, sanitized, so the command fetches the same module", func() {
-			err := recordAndRender("gone", "v1\x1b", "plugins/it's")
-			Expect(errs.Hints(err)).To(ConsistOf("fetch it again: " +
-				errs.ShellJoin([]string{"lola", "install", "gone", "--ref", "v1?", "--path", "plugins/it's"})))
+		It("names the recorded ref and path, so the command fetches the same module", func() {
+			record("gone", "v1", "plugins/it's")
+			_, err := e.Render(ctx, sc, engine.Options{})
+			Expect(err).To(MatchError("example is no longer in your cache"))
+			Expect(errs.Hints(err)).To(ConsistOf("fetch it again: "+
+				errs.ShellJoin([]string{"lola", "install", "gone", "--ref", "v1", "--path", "plugins/it's"}),
+				ContainSubstring("lola uninstall example")))
 		})
 	})
 
@@ -1039,6 +1090,38 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(outside, "example/commands/ship.md")).To(BeARegularFile())
 		})
+
+		It("refuses a project.yml that is a symbolic link at project scope, writing nothing", func() {
+			real := filepath.Join(outside, "project.yml")
+			Expect(os.WriteFile(real, []byte("version: 1 # theirs\n"), 0o600)).To(Succeed())
+			link := filepath.Join(proj, ".lola", "project.yml")
+			Expect(os.MkdirAll(filepath.Dir(link), 0o755)).To(Succeed())
+			Expect(os.Symlink(real, link)).To(Succeed())
+			_, err := install(claude, src)
+			Expect(err).To(MatchError(link + " is a symlink, and lola keeps the project manifest in a regular file"))
+			Expect(errs.Hints(err)).To(ContainElement("replace it with a regular file holding the same content, then rerun"))
+			Expect(os.ReadFile(real)).To(Equal([]byte("version: 1 # theirs\n")))
+			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
+			Expect(filepath.Join(proj, ".lola", "lock.json")).NotTo(BeAnExistingFile())
+			_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
+			Expect(err).To(MatchError(ContainSubstring("is a symlink")))
+			Expect(os.ReadFile(real)).To(Equal([]byte("version: 1 # theirs\n")))
+		})
+
+		It("still edits a symlinked user-scope manifest at its target", func() {
+			real := filepath.Join(outside, "user.yml")
+			Expect(os.WriteFile(real, []byte("version: 1 # dotfiles\n"), 0o600)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Dir(p.UserManifest), 0o700)).To(Succeed())
+			Expect(os.Symlink(real, p.UserManifest)).To(Succeed())
+			_, err := e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: src}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			b, err := os.ReadFile(real)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).To(And(ContainSubstring("# dotfiles"), ContainSubstring("name: example")))
+			fi, err := os.Lstat(p.UserManifest)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fi.Mode() & os.ModeSymlink).NotTo(BeZero())
+		})
 	})
 
 	Describe("install hooks", func() {
@@ -1142,6 +1225,63 @@ var _ = Describe("Engine", func() {
 			Expect(res.Notices).To(ContainElement(HaveField("Text",
 				"post-install hook hooks/post.sh of example failed for claude-code: exit status 4; the installation was kept")))
 			Expect(res.Modules[0].Hooks[1]).To(HaveField("Status", engine.HookFailed))
+		})
+
+		It("a failed sync leaves the project as it was", func() {
+			// The install form of §14 spec 24: a failing pre-install hook, and (at user scope, where
+			// the manifest may be a link into another directory than the ledger) a manifest write
+			// that fails inside plan.Apply after the files and the ledger were written.
+			if os.Geteuid() == 0 {
+				Skip("root ignores directory permissions")
+			}
+			snapshot := func(roots ...string) map[string]string {
+				out := map[string]string{}
+				for _, root := range roots {
+					Expect(filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+						if err != nil || d.IsDir() {
+							return err
+						}
+						if d.Type()&os.ModeSymlink != 0 {
+							l, err := os.Readlink(p)
+							out[p] = "-> " + l
+							return err
+						}
+						b, err := os.ReadFile(p)
+						out[p] = string(b)
+						return err
+					})).To(Succeed())
+				}
+				return out
+			}
+			allow := engine.Options{Targets: claude.Targets, AllowHooks: true}
+			_, err := install(allow, src)
+			Expect(err).NotTo(HaveOccurred())
+			before := snapshot(proj)
+
+			writeTree(src, map[string]string{"commands/ship.md": "v2\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
+			_, err = install(allow, src)
+			Expect(err).To(MatchError(ContainSubstring("pre-install hook hooks/pre.sh of example failed")))
+			Expect(snapshot(proj)).To(Equal(before))
+
+			writeTree(src, map[string]string{"hooks/pre.sh": "#!/bin/sh\n"})
+			user := engine.Scope{Kind: target.User}
+			userInstall := func() error {
+				_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, allow)
+				return err
+			}
+			Expect(userInstall()).To(Succeed())
+			shared := filepath.Join(tmp, "shared")
+			Expect(os.MkdirAll(shared, 0o755)).To(Succeed())
+			Expect(os.Rename(p.UserManifest, filepath.Join(shared, "user.yml"))).To(Succeed())
+			Expect(os.Symlink(filepath.Join(shared, "user.yml"), p.UserManifest)).To(Succeed())
+			userRoots := []string{p.Home, p.ConfigHome, p.StateHome, shared, filepath.Join(p.DataHome, "lola", "user-modules")}
+			before = snapshot(userRoots...)
+
+			writeTree(src, map[string]string{"commands/ship.md": "v3\n"})
+			Expect(os.Chmod(shared, 0o555)).To(Succeed())
+			DeferCleanup(os.Chmod, shared, os.FileMode(0o755))
+			Expect(userInstall()).To(MatchError(ContainSubstring("permission denied")))
+			Expect(snapshot(userRoots...)).To(Equal(before))
 		})
 
 		It("dry-run lists the hooks and runs none; render runs them only for a new version", func() {

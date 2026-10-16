@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
+	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
 // Section kinds of selections.yaml.
@@ -74,11 +75,11 @@ func LoadSelections(path string) (*Selections, error) {
 // document that holds only null (with or without comments) comes back with no root mapping.
 func loadSelections(path string) (*Selections, *yaml.Node, error) {
 	s := &Selections{Path: path, global: Section{}, user: Section{}}
-	d, err := readDoc(path)
+	d, _, err := yamldoc.Read(path, Version)
 	if err != nil {
 		return nil, nil, err
 	}
-	root := rootOf(d)
+	root := yamldoc.Root(d)
 	if root == nil {
 		return s, d, nil
 	}

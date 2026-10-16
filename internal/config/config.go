@@ -5,28 +5,20 @@
 package config
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
-	"io"
-	"io/fs"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
+	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
 // Version is the schema version of both files.
 const Version = 1
-
-// maxFile caps either file.
-const maxFile = 1 << 20
 
 // Scope values of default_scope and --scope.
 const (
@@ -43,8 +35,8 @@ type Config struct {
 // LoadConfig reads config.yaml; a missing or empty file is the default configuration.
 func LoadConfig(path string) (*Config, error) {
 	c := &Config{}
-	d0, err := readDoc(path)
-	root := rootOf(d0)
+	d0, _, err := yamldoc.Read(path, Version)
+	root := yamldoc.Root(d0)
 	if err != nil || root == nil {
 		return c, err
 	}
@@ -66,86 +58,6 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	return c, nil
-}
-
-// readDoc reads path as one YAML document node: nil for a missing or empty file. A file that
-// holds only comments reads as `version: 1` under those comments, so a rewrite keeps them. It
-// refuses a file that is not regular, one over maxFile, a second document, and anchors,
-// aliases and merge keys, which would make one entry stand for another and which lola could
-// not keep when it rewrites the file.
-func readDoc(path string) (*yaml.Node, error) {
-	// Opened without blocking, then checked: opening a FIFO for reading would otherwise wait for
-	// a writer, and checking the open file leaves no gap for a swap. Regular files ignore the flag.
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	fi, err := f.Stat()
-	if err == nil && !fi.Mode().IsRegular() {
-		err = errs.WithHints(fmt.Errorf("%s is not a regular file", path), "replace it with a YAML file, or remove it")
-	}
-	var b []byte
-	if err == nil {
-		b, err = io.ReadAll(io.LimitReader(f, maxFile+1))
-	}
-	if err = errors.Join(err, f.Close()); err != nil {
-		return nil, err
-	}
-	if len(b) > maxFile {
-		return nil, errs.WithHints(fmt.Errorf("%s is larger than %d bytes", path, maxFile), "shorten it; lola never writes one this large")
-	}
-	dec := yaml.NewDecoder(bytes.NewReader(b))
-	var d yaml.Node
-	if err := dec.Decode(&d); errors.Is(err, io.EOF) {
-		if len(bytes.TrimSpace(b)) == 0 {
-			return nil, nil
-		}
-		// Only comments: yaml.v3 drops them with an empty document, so give them one.
-		text := string(b)
-		if !strings.HasSuffix(text, "\n") {
-			text += "\n"
-		}
-		if err := yaml.Unmarshal([]byte(text+"version: 1\n"), &d); err != nil {
-			return nil, err
-		}
-		return &d, nil
-	} else if err != nil {
-		return nil, errs.WithHints(fmt.Errorf("%s: does not parse: %s", path, untrusted.Text(err.Error(), 2*untrusted.MaxName)),
-			"fix it by hand, or move it aside (lola starts a new one) and rerun")
-	}
-	var extra yaml.Node
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, errs.WithHints(fmt.Errorf("%s: holds more than one YAML document", path), "remove every --- line after the first document")
-	}
-	if n := special(&d); n != nil {
-		return nil, errs.WithHints(fmt.Errorf("%s:%d: anchors, aliases and merge keys (<<) are not supported", path, n.Line),
-			"write each entry out in full")
-	}
-	return &d, nil
-}
-
-// rootOf returns a document's root node, or nil for no document or an empty one.
-func rootOf(d *yaml.Node) *yaml.Node {
-	if d == nil || len(d.Content) == 0 || isNull(d.Content[0]) {
-		return nil
-	}
-	return d.Content[0]
-}
-
-// special returns the first node under n that is an anchor, an alias or a merge key.
-func special(n *yaml.Node) *yaml.Node {
-	if n.Anchor != "" || n.Kind == yaml.AliasNode || n.Tag == "!!merge" {
-		return n
-	}
-	for _, c := range n.Content {
-		if s := special(c); s != nil {
-			return s
-		}
-	}
-	return nil
 }
 
 // doc reports validation errors for one file.

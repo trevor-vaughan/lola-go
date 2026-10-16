@@ -48,6 +48,18 @@ func Isolate() string {
 	for k, v := range env {
 		t.Setenv(k, v)
 	}
+	// Specs run from a git hook or `git rebase --exec` inherit variables that point git at the
+	// caller's repository, so a fixture's git commands would write into it. These are `git
+	// rev-parse --local-env-vars`, plus GIT_NAMESPACE and GIT_CEILING_DIRECTORIES.
+	for _, k := range []string{"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+		"GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_INDEX_FILE",
+		"GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX", "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
+		"GIT_NAMESPACE", "GIT_CEILING_DIRECTORIES"} {
+		t.Setenv(k, "") // restores the caller's value after the spec
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatalf("testenv: %v", err)
+		}
+	}
 	for _, dir := range []string{"home", "bin"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
 			t.Fatalf("testenv: %v", err)

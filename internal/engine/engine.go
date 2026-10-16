@@ -171,11 +171,15 @@ type VersionRef struct {
 type StatusRow struct {
 	Name   string `json:"name"`
 	Target string `json:"target"`
-	Status string `json:"status"` // ok, modified, missing, stale, skipped
+	Status string `json:"status"` // ok, modified, missing, stale, skipped, unreadable
 	Rules  bool   `json:"rules"`  // false when the manifest entry says rules: false
 	Source string `json:"source"`
 	Ref    string `json:"ref,omitempty"`
-	Digest string `json:"digest"`
+	Digest string `json:"digest"` // the version installed
+	Pin    string `json:"pin"`    // the digest the manifest pins; "" when unpinned
+	// UpdateAvailable is true when the cache head for the entry's ref holds another version
+	// than the pin (the version installed, when unpinned); never for a folder.
+	UpdateAvailable bool `json:"update_available"`
 	// Skipped lists the components selections.yaml excludes at this scope (kind/name).
 	Skipped []string `json:"skipped"`
 }
@@ -271,16 +275,16 @@ func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
 	return ledger.Load(e.files(sc).ledger)
 }
 
-// refuseSymlinkedState fails when the project's .lola/, .lola/modules or .lola/plugin-data
-// is a symlink: a repository can commit one, and lola would then write, rename and delete
-// outside the project. Missing directories are fine. User-scope state is the user's own and
-// may link.
+// refuseSymlinkedState fails when the project's .lola/, .lola/modules, .lola/plugin-data or
+// .lola/project.yml is a symlink: a repository can commit one, and lola would then write,
+// rename and delete outside the project. Missing paths are fine. User-scope state is the
+// user's own and may link.
 func (e *Engine) refuseSymlinkedState(sc Scope) error {
 	f := e.files(sc)
 	if f.lolaDir == "" {
 		return nil
 	}
-	for _, p := range []string{f.lolaDir, f.modules, f.pluginData} {
+	for _, p := range []string{f.lolaDir, f.modules, f.pluginData, f.manifest} {
 		fi, err := os.Lstat(p)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -289,6 +293,10 @@ func (e *Engine) refuseSymlinkedState(sc Scope) error {
 			return err
 		}
 		if fi.Mode()&fs.ModeSymlink != 0 {
+			if p == f.manifest {
+				return errs.WithHints(fmt.Errorf("%s is a symlink, and lola keeps the project manifest in a regular file", p),
+					"replace it with a regular file holding the same content, then rerun")
+			}
 			return errs.WithHints(fmt.Errorf("%s is a symlink, and lola keeps its state in real directories", p),
 				"replace it with a directory: rm "+p+", then rerun")
 		}
@@ -351,27 +359,43 @@ func (e *Engine) lock(sc Scope) (func(), error) {
 }
 
 // Fetch copies a source into the store (cache add, and install of a source).
-func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (v store.Version, err error) {
+func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (store.Version, error) {
+	return e.fetchAs(ctx, spec, "")
+}
+
+// fetchAs is Fetch for content that must declare the module name, when name is set: content
+// declaring another is refused before anything is cached (store.PutRequest.Name).
+func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name string) (v store.Version, err error) {
 	f, err := source.Fetch(ctx, spec, e.Paths.Staging)
 	if err != nil {
 		return store.Version{}, err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(f.Dir)) }()
-	return e.Store.Put(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Now: e.Now()})
+	return e.Store.Put(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Name: name, Source: spec.Location, Type: string(spec.Kind),
+		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now()})
 }
 
 // resolve implements §7.1 for this build: a stored name first (no network), then a source.
 // have, when it names a module, is the version this request already resolved to (fetched for
 // another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
-func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version) (manifest.Entry, store.Version, bool, error) {
+// entryRef is the ref the scope's manifest records for a name argument: without --ref the
+// name resolves to the cache head for it (Plan 6a §10.1).
+func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef string) (manifest.Entry, store.Version, bool, error) {
 	if module.ValidateName("module", r.Arg) == nil {
+		if r.Ref == "" {
+			r.Ref = entryRef
+		}
 		o, found, err := e.Store.Origin(r.Arg)
 		if err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
 		if found && r.Version != nil && r.Version.Name != r.Arg {
 			return manifest.Entry{}, store.Version{}, false, pinMismatch(r)
+		}
+		if found {
+			if err := e.recordable(sc, r.Arg, source.Recorded{Source: o.Source, Ref: r.Ref, Path: o.Path}, true); err != nil {
+				return manifest.Entry{}, store.Version{}, false, err
+			}
 		}
 		if found && have.Name == r.Arg {
 			return manifest.Entry{Name: r.Arg, Source: o.Source, Ref: r.Ref, Path: o.Path}, have, false, nil
@@ -411,13 +435,6 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			return manifest.Entry{}, store.Version{}, false, pinMismatch(r)
 		}
 	}
-	v, fetched := have, false
-	if v.Name == "" {
-		if v, err = e.Fetch(ctx, spec); err != nil {
-			return manifest.Entry{}, store.Version{}, false, err
-		}
-		fetched = true
-	}
 	src := spec.Location
 	// A local path typed relative to the project is recorded that way; a URL is kept as given.
 	if sc.Kind == target.Project && filepath.IsAbs(spec.Location) && !filepath.IsAbs(r.Arg) && !strings.HasPrefix(r.Arg, "file://") {
@@ -425,7 +442,43 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			src = rel
 		}
 	}
+	if err := e.recordable(sc, r.Arg, source.Recorded{Source: src, Ref: r.Ref, Path: r.Path}, false); err != nil {
+		return manifest.Entry{}, store.Version{}, false, err
+	}
+	v, fetched := have, false
+	if v.Name == "" {
+		if v, err = e.Fetch(ctx, spec); err != nil {
+			return manifest.Entry{}, store.Version{}, false, err
+		}
+		fetched = true
+	}
 	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, fetched, nil
+}
+
+// recordable refuses an install whose source, ref or path sc's manifest and ledger could not
+// load again (source.Recorded.Check), before anything is fetched or written: recording one
+// would leave every later command refusing the scope until the files were edited by hand.
+// cached says the source and path are the cache's record of the module arg names, which the
+// user fixes by removing it from the cache. The hint fits the first field refused.
+func (e *Engine) recordable(sc Scope, arg string, rec source.Recorded, cached bool) error {
+	err := rec.Check()
+	if err == nil {
+		return nil
+	}
+	var hint string
+	switch {
+	case cached && (source.Recorded{Source: rec.Source, Path: rec.Path}).Check() != nil:
+		hint = "remove it from your cache, then install it again from its source: " + errs.ShellJoin([]string{"lola", "cache", "rm", arg})
+	case (source.Recorded{Source: rec.Source}).Check() != nil:
+		hint = "use a shorter source, or rename a folder or file whose name holds control or invisible characters, then install it again"
+	case (source.Recorded{Source: rec.Source, Ref: rec.Ref}).Check() != nil:
+		hint = "for --ref, use a shorter branch or tag name without control or invisible characters, or the full commit SHA"
+	default:
+		hint = "for --path, give a relative path inside the source without control or invisible characters"
+	}
+	f := e.files(sc)
+	return errs.WithHints(fmt.Errorf("cannot record %s in %s or %s: %w", untrusted.Text(arg, untrusted.MaxName),
+		filepath.Base(f.manifest), filepath.Base(f.ledger), err), hint)
 }
 
 // pinMismatch refuses a request whose pinned version belongs to another module or source than
@@ -533,7 +586,7 @@ func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, chan
 	if err != nil || opts.DryRun {
 		return err
 	}
-	return e.commit(ctx, pr, opts, res, after)
+	return e.commit(ctx, pr, opts, res, nil, after)
 }
 
 // prepared is a scope's computed plan whose every refusal and prompt has passed: what commit
@@ -581,9 +634,9 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 	return &prepared{sc: sc, plan: p, jobs: jobs, changes: changes, copies: copies}, nil
 }
 
-// commit applies a prepared scope: module copies, pre-install hooks, the plan with after
-// under the scope lock, then post-install hooks.
-func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, after func(*plan.Plan) error) error {
+// commit applies a prepared scope: module copies, pre-install hooks, the plan with the
+// manifest edit man (nil: none) under the scope lock, after (when set), then post-install hooks.
+func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man *plan.ManifestWrite, after func(*plan.Plan) error) error {
 	sc, p := pr.sc, pr.plan
 	if err := e.ownGitignore(sc); err != nil {
 		return err
@@ -601,8 +654,11 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 		return errors.Join(err, sw.rollback())
 	}
 	committed := false
-	err = plan.Apply(p, e.files(sc).ledger, func() error {
+	err = plan.Apply(p, e.files(sc).ledger, man, func() error {
 		committed = true
+		if after == nil {
+			return nil
+		}
 		return after(p)
 	})
 	if !committed {

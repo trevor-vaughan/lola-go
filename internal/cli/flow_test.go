@@ -843,6 +843,22 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 	})
 
+	It("says once on stderr why a cached module is left out of the picker, though Change scope lists again", func() {
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"),
+			[]byte("modules:\n  - name: deploy\n    source: "+deploy+"\n    ref: v9\n"), 0o644)).To(Succeed())
+		p := &scripted{
+			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project"), scopes("project")},
+			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+			components: []func(cli.ComponentPage) ([]string, error){keep(), keep()},
+			review:     []string{cli.ReviewScope, cli.ReviewApply},
+		}
+		r := lolaP(p, "install", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.moduleSteps[0].Options).To(HaveLen(1), "deploy is left out")
+		Expect(strings.Count(r.err, "⚠ deploy is not listed: your cache has no version of ref v9")).To(Equal(1), r.err)
+	})
+
 	It("offers Apply, Change components and Quit when only the component picker ran", func() {
 		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
 		r := lolaP(p, "install", "review-kit", "--scope", "project", "-n")

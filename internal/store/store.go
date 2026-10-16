@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -22,13 +23,16 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Head maps a fetched ref ("" = the source's default) to its newest version id.
+// Head maps a fetched ref ("" = the source's default) to its newest version id, with the
+// commit the fetch that set it resolved (git only; empty in heads written before Plan 6a).
 type Head struct {
 	Ref    string `yaml:"ref"`
 	Digest string `yaml:"digest"`
+	Commit string `yaml:"commit,omitempty"`
 }
 
 // Origin is where a stored module comes from (index.yml).
@@ -49,6 +53,9 @@ type Meta struct {
 	Commit        string   `yaml:"commit,omitempty"`
 	FetchedAt     string   `yaml:"fetched_at"`
 	Digest        string   `yaml:"digest"`
+	// Executables are the content's files the source marks executable, sorted; Digest reads
+	// execute bits from them (Plan 6a §5.2).
+	Executables []string `yaml:"executables,omitempty"`
 }
 
 // Cache file names.
@@ -68,18 +75,44 @@ func checkID(name, id string) error {
 	return nil
 }
 
-// Version is one stored, immutable copy of a module.
+// Version is one stored, immutable copy of a module. Commit is the commit the fetch or head
+// that produced it resolved, when known; Meta.Commit is only the first fetch's, which may be
+// another commit with the same content.
 type Version struct {
 	Name, ID, ContentDir string
+	Commit               string
 	Meta                 Meta
 	Module               *module.Module
 }
 
-// PutRequest describes freshly fetched content. Staged must be under paths.Staging.
+// PutRequest describes freshly fetched content. Staged must be under paths.Staging;
+// Executables are the fetch's (source.Fetched.Executables). Digest, when set, is the digest
+// the content must have (a pin): other content is refused before anything is cached.
+// HeadIfAbsent sets the head for Ref only when it has none, so a pinned fetch never moves one.
+// Name, when set, is the module the content must declare: content declaring another (a source
+// that renamed its module) is refused with an *OtherNameError before anything is cached.
 type PutRequest struct {
-	Staged, FallbackName            string
+	Staged, FallbackName, Name      string
 	Source, Type, Path, Ref, Commit string
+	Executables                     []string
+	Digest                          string
+	HeadIfAbsent                    bool
 	Now                             time.Time
+}
+
+// DigestMismatchError is Put's refusal of content whose digest is not PutRequest.Digest.
+type DigestMismatchError struct{ Name, Got, Want string }
+
+func (e *DigestMismatchError) Error() string {
+	return fmt.Sprintf("%s: the content fetched has digest %s, not the pinned %s", e.Name, e.Got, untrusted.Text(e.Want, untrusted.MaxName))
+}
+
+// OtherNameError is Put's refusal of content that declares another module than
+// PutRequest.Name.
+type OtherNameError struct{ Want, Declared string }
+
+func (e *OtherNameError) Error() string {
+	return fmt.Sprintf("%s: its source now declares module %q", e.Want, untrusted.Text(e.Declared, untrusted.MaxName))
 }
 
 // Store is the machine-wide module store. targets are the target ids a module's per-entry
@@ -124,6 +157,9 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	if err != nil {
 		return Version{}, err
 	}
+	if req.Name != "" && m.Name != req.Name {
+		return Version{}, &OtherNameError{Want: req.Name, Declared: m.Name}
+	}
 	if err := s.normalize(req.Staged, m); err != nil {
 		return Version{}, err
 	}
@@ -137,9 +173,13 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 		return Version{}, errs.WithHints(fmt.Errorf("lola could not cache %s faithfully: %w", m.Name, err),
 			"this is a bug in lola, not in the module: please report it, with the module's source")
 	}
-	digest, err := Digest(req.Staged)
+	execs := keptExecutables(req.Staged, req.Executables)
+	digest, err := Digest(req.Staged, execs)
 	if err != nil {
 		return Version{}, err
+	}
+	if req.Digest != "" && digest != req.Digest {
+		return Version{}, &DigestMismatchError{Name: m.Name, Got: digest, Want: req.Digest}
 	}
 	id := strings.TrimPrefix(digest, "sha256:")[:12]
 	unlock, err := s.lockStore()
@@ -161,7 +201,7 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	switch _, err := os.Stat(vdir); {
 	case errors.Is(err, fs.ErrNotExist):
 		if err := s.addVersion(req, vdir, Meta{Format: m.Format, Manifest: m.Manifest, OthersPresent: m.Shadowed,
-			Ref: req.Ref, Commit: req.Commit, FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest}); err != nil {
+			Ref: req.Ref, Commit: req.Commit, FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest, Executables: execs}); err != nil {
 			return Version{}, err
 		}
 	case err != nil:
@@ -170,11 +210,26 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 		if err := os.RemoveAll(req.Staged); err != nil {
 			return Version{}, err
 		}
+		// A version cached before execute bits were recorded can have this id (a platform with
+		// execute bits digested the same modes from the file system) and no executables in its
+		// record; without them its digest can never be checked again, so record them now.
+		var meta Meta
+		if err := readYAML(filepath.Join(vdir, originFile), &meta); err != nil {
+			return Version{}, err
+		}
+		if !slices.Equal(meta.Executables, execs) {
+			meta.Executables = execs
+			if err := writeYAML(filepath.Join(vdir, originFile), meta); err != nil {
+				return Version{}, err
+			}
+		}
 	}
 	if !found {
 		o = Origin{Source: req.Source, Type: req.Type, Path: req.Path}
 	}
-	o.Heads = setHead(o.Heads, req.Ref, id)
+	if !req.HeadIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == req.Ref }) {
+		o.Heads = setHead(o.Heads, Head{Ref: req.Ref, Digest: id, Commit: req.Commit})
+	}
 	if err := writeYAML(filepath.Join(s.dir, m.Name, indexFile), o); err != nil {
 		return Version{}, err
 	}
@@ -185,7 +240,24 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	// A cached load runs no format adapter, so only detection saw what the adapter warned
 	// about; its warnings include everything the cached load warns about.
 	v.Module.Warnings = m.Warnings
+	v.Commit = req.Commit
 	return v, nil
+}
+
+// keptExecutables is the sorted subset of execs that are regular files of the normalized
+// content at dir, without the generated lola.yml, which is never executable.
+func keptExecutables(dir string, execs []string) []string {
+	var out []string
+	for _, p := range execs {
+		if p == "lola.yml" {
+			continue
+		}
+		if fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(p))); err == nil && fi.Mode().IsRegular() {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // addVersion assembles content/ and .lola-origin in staging, then renames the whole version
@@ -208,10 +280,10 @@ func (s *Store) addVersion(req PutRequest, vdir string, meta Meta) (err error) {
 	return os.Rename(build, vdir)
 }
 
-func setHead(heads []Head, ref, id string) []Head {
-	out := []Head{{Ref: ref, Digest: id}}
+func setHead(heads []Head, head Head) []Head {
+	out := []Head{head}
 	for _, h := range heads {
-		if h.Ref != ref {
+		if h.Ref != head.Ref {
 			out = append(out, h)
 		}
 	}
@@ -228,10 +300,64 @@ func (s *Store) Head(name, ref string) (Version, bool, error) {
 	for _, h := range o.Heads {
 		if h.Ref == ref {
 			v, err := s.Load(name, h.Digest)
+			v.Commit = h.Commit
 			return v, err == nil, err
 		}
 	}
 	return Version{}, false, nil
+}
+
+// Pinned returns the cached version whose digest is digest, read from a snapshot: its
+// content/ is copied into a new directory under dir (the run's private staging) and hashed
+// there with the recorded executables, and the version's module is loaded from that copy, so
+// everything the caller derives from it comes from the bytes that were hashed (Plan 6a §6.1).
+// found is false when the cache does not hold it. A snapshot whose digest, or whose recorded
+// digest, is not digest is refused and removed.
+func (s *Store) Pinned(name, digest, dir string) (v Version, found bool, err error) {
+	hexits, ok := strings.CutPrefix(digest, "sha256:")
+	if !ok || len(hexits) != 64 || strings.Trim(hexits, "0123456789abcdef") != "" {
+		return Version{}, false, fmt.Errorf("%s: %q is not a digest", name, untrusted.Text(digest, untrusted.MaxName))
+	}
+	id := hexits[:12]
+	if err := module.ValidateName("module", name); err != nil {
+		return Version{}, false, err
+	}
+	vdir := filepath.Join(s.dir, name, "versions", id)
+	var meta Meta
+	switch err := readYAML(filepath.Join(vdir, originFile), &meta); {
+	case errors.Is(err, fs.ErrNotExist):
+		return Version{}, false, nil
+	case err != nil:
+		return Version{}, false, err
+	}
+	snap, err := os.MkdirTemp(dir, "snapshot-*")
+	if err != nil {
+		return Version{}, false, err
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, os.RemoveAll(snap))
+		}
+	}()
+	// Content the copy or the digest refuses (a symbolic link) is no version lola cached;
+	// their errors would name the snapshot, which is removed.
+	got := ""
+	if err := os.CopyFS(snap, os.DirFS(filepath.Join(vdir, "content"))); err == nil {
+		got, _ = Digest(snap, meta.Executables)
+	}
+	if got != digest || meta.Digest != digest {
+		return Version{}, false, errs.WithHints(fmt.Errorf("cached version %s/%s does not match its digest %s", name, id, digest), removeHint(name))
+	}
+	m, err := module.Load(snap, name, s.targets)
+	if err != nil {
+		return Version{}, false, fmt.Errorf("cached version %s/%s: %w", name, id, err)
+	}
+	return Version{Name: name, ID: id, ContentDir: snap, Meta: meta, Module: m}, true, nil
+}
+
+// removeHint coaches removing a cached module whose bytes or records lola refuses.
+func removeHint(name string) string {
+	return "remove it from your cache, then install it again from its source: " + errs.ShellJoin([]string{"lola", "cache", "rm", name})
 }
 
 // Load reads a stored version and re-derives its IR from content/.
@@ -246,6 +372,10 @@ func (s *Store) Load(name, id string) (Version, error) {
 	var meta Meta
 	if err := readYAML(filepath.Join(vdir, originFile), &meta); err != nil {
 		return Version{}, err
+	}
+	if hexits, ok := strings.CutPrefix(meta.Digest, "sha256:"+id); !ok || len(hexits) != 64-len(id) || strings.Trim(hexits, "0123456789abcdef") != "" {
+		return Version{}, errs.WithHints(fmt.Errorf("cached version %s/%s records digest %q, which is not this version's",
+			name, id, untrusted.Text(meta.Digest, untrusted.MaxName)), removeHint(name))
 	}
 	content := filepath.Join(vdir, "content")
 	m, err := module.Load(content, name, s.targets)
@@ -272,6 +402,10 @@ func (s *Store) Origin(name string) (Origin, bool, error) {
 		if err := checkID(name, h.Digest); err != nil {
 			return Origin{}, false, err
 		}
+		if h.Commit != "" && !source.IsFullCommit(h.Commit) {
+			return Origin{}, false, errs.WithHints(fmt.Errorf("cache entry %s: the head for ref %q records commit %q, which is not a full commit SHA",
+				name, untrusted.Text(h.Ref, untrusted.MaxName), untrusted.Text(h.Commit, untrusted.MaxName)), removeHint(name))
+		}
 	}
 	return o, true, nil
 }
@@ -294,6 +428,19 @@ func (s *Store) Names() ([]string, error) {
 	return out, nil
 }
 
+// Has reports whether the cache holds an entry for name. It never reads index.yml, so an
+// entry whose index lola refuses is still present (and removable).
+func (s *Store) Has(name string) (bool, error) {
+	if err := module.ValidateName("module", name); err != nil {
+		return false, err
+	}
+	_, err := os.Lstat(filepath.Join(s.dir, name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // Remove deletes every stored version of name; it reports whether anything was stored.
 func (s *Store) Remove(name string) (bool, error) {
 	if err := module.ValidateName("module", name); err != nil {
@@ -304,11 +451,10 @@ func (s *Store) Remove(name string) (bool, error) {
 		return false, err
 	}
 	defer unlock()
-	dir := filepath.Join(s.dir, name)
-	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
-		return false, nil
+	if found, err := s.Has(name); !found || err != nil {
+		return false, err
 	}
-	return true, os.RemoveAll(dir)
+	return true, os.RemoveAll(filepath.Join(s.dir, name))
 }
 
 func writeYAML(path string, v any) error {

@@ -12,6 +12,12 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
+// dg and dg2 are digests of the form the cache computes.
+const (
+	dg  = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+	dg2 = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+)
+
 var _ = Describe("ledger", func() {
 	var path string
 	BeforeEach(func() { path = filepath.Join(testenv.Isolate(), ".lola", "lock.json") })
@@ -26,12 +32,12 @@ var _ = Describe("ledger", func() {
 
 	It("writes deterministic, sorted output with mode 0600 and round-trips", func() {
 		l := ledger.New()
-		l.Modules["b"] = &ledger.Entry{Source: "/s/b", Digest: "sha256:2", Artifacts: []ledger.Artifact{
+		l.Modules["b"] = &ledger.Entry{Source: "/s/b", Digest: dg2, Artifacts: []ledger.Artifact{
 			{Target: "claude-code", Kind: "skill", Path: ".claude/skills/z/SKILL.md", SHA256: "1"},
 			{Target: "claude-code", Kind: "mcp", Path: ".mcp.json", Key: "/mcpServers/gh", SHA256: "2"},
 			{Target: "claude-code", Kind: "command", Path: ".claude/commands/a.md", SHA256: "3"},
 		}}
-		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "sha256:1"}
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: dg}
 		l.Created = []ledger.FileRef{{Target: "claude-code", Path: "CLAUDE.md"}, {Target: "claude-code", Path: ".mcp.json"}}
 		Expect(l.Save(path)).To(Succeed())
 		first, _ := os.ReadFile(path)
@@ -57,7 +63,7 @@ var _ = Describe("ledger", func() {
 		theirs.Value = ".gemini/lola/b"
 		Expect(mine.ID()).NotTo(Equal(theirs.ID()))
 		l := ledger.New()
-		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "d", Artifacts: []ledger.Artifact{mine}}
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: dg, Artifacts: []ledger.Artifact{mine}}
 		l.Created = []ledger.FileRef{
 			{Target: "gemini-cli", Path: ".gemini/settings.json", Key: "/context/includeDirectories"},
 			{Target: "gemini-cli", Path: ".gemini/settings.json"},
@@ -78,7 +84,7 @@ var _ = Describe("ledger", func() {
   "modules": {
     "a": {
       "source": "/s/a",
-      "digest": "sha256:1",
+      "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
       "artifacts": [
         {
           "target": "gemini-cli",
@@ -121,7 +127,7 @@ var _ = Describe("ledger", func() {
 		Expect(string(group.Element())).To(Equal(`{"hooks":[{"command":"x","type":"command"}]}`))
 		Expect(ledger.Artifact{Path: "x"}.Element()).To(BeNil())
 		l := ledger.New()
-		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "d", Artifacts: []ledger.Artifact{group, other}}
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: dg, Artifacts: []ledger.Artifact{group, other}}
 		Expect(l.Save(path)).To(Succeed())
 		Expect(os.ReadFile(path)).To(ContainSubstring(`"member": {`))
 		back, err := ledger.Load(path)
@@ -131,7 +137,7 @@ var _ = Describe("ledger", func() {
 
 	It("loads a member another tool reformatted, such as a pretty-printer writing && unescaped, and saves it back canonical", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
-		body := "{\n    \"version\": 1,\n    \"modules\": {\"a\": {\"source\": \"s\", \"digest\": \"d\", \"artifacts\": [\n" +
+		body := "{\n    \"version\": 1,\n    \"modules\": {\"a\": {\"source\": \"s\", \"digest\": \"" + dg + "\", \"artifacts\": [\n" +
 			"        {\"target\": \"claude-code\", \"kind\": \"runtime-hook\", \"path\": \".claude/settings.local.json\", \"key\": \"/hooks/Stop\", \"sha256\": \"1\",\n" +
 			"         \"member\": {\"matcher\": \"Bash\",\n            \"hooks\": [ {\"type\": \"command\", \"command\": \"a && b > c\"} ]}}]}},\n    \"created\": []\n}\n"
 		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
@@ -148,7 +154,7 @@ var _ = Describe("ledger", func() {
 	DescribeTable("refuses a member it could not have written",
 		func(artifact, want string) {
 			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
-			body := `{"version":1,"modules":{"a":{"source":"s","digest":"d","artifacts":[` + artifact + `]}},"created":[]}`
+			body := `{"version":1,"modules":{"a":{"source":"s","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","artifacts":[` + artifact + `]}},"created":[]}`
 			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
 			_, err := ledger.Load(path)
 			Expect(err).To(MatchError(path + `: module "a" has an artifact (".claude/settings.local.json") ` + want))
@@ -165,7 +171,7 @@ var _ = Describe("ledger", func() {
 
 	It("coaches a refused member: restore lock.json, or reinstall", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
-		body := `{"version":1,"modules":{"a":{"source":"s","digest":"d","artifacts":[` +
+		body := `{"version":1,"modules":{"a":{"source":"s","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","artifacts":[` +
 			`{"target":"t","kind":"k","path":"p","key":"/hooks/Stop","member":"x"}]}},"created":[]}`
 		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
 		_, err := ledger.Load(path)
@@ -185,9 +191,9 @@ var _ = Describe("ledger", func() {
 	It("rejects malformed entries at load instead of panicking", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		for body, want := range map[string]string{
-			`{"version":1,"modules":{"x":null}}`:                                                    "x",
-			`{"version":1,"modules":{"bad\nname":{"digest":"d"}}}`:                                  "invalid",
-			`{"version":1,"modules":{"x":{"digest":"d","artifacts":[{"kind":"file","path":"p"}]}}}`: "target",
+			`{"version":1,"modules":{"x":null}}`: "x",
+			`{"version":1,"modules":{"bad\nname":{"source":"s","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}}`:                                  "invalid",
+			`{"version":1,"modules":{"x":{"source":"s","digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000","artifacts":[{"kind":"file","path":"p"}]}}}`: "target",
 		} {
 			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
 			_, err := ledger.Load(path)
@@ -204,5 +210,32 @@ var _ = Describe("ledger", func() {
 		c.Modules["b"] = &ledger.Entry{}
 		Expect(l.Modules["a"].Artifacts[0].Path).To(Equal("x"))
 		Expect(l.Modules).NotTo(HaveKey("b"))
+	})
+
+	DescribeTable("refuses a recorded source lola never writes, before anything reads it",
+		func(fields, want string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			body := `{"version":1,"modules":{"kit":{` + fields + `,"digest":"` + dg + `","artifacts":[]}},"created":[]}`
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(And(ContainSubstring(path+": module kit: "), ContainSubstring(want))))
+			Expect(errs.Hints(err)).To(ContainElement(And(ContainSubstring("restore lock.json"), ContainSubstring("reinstall"))))
+		},
+		Entry("a ref read as an option", `"source":"https://example.com/kit.git","ref":"--upload-pack=touch PWNED"`, "starts with '-'"),
+		Entry("a remote helper", `"source":"ext::sh -c touch PWNED"`, "git remote helper"),
+		Entry("a source read as an option", `"source":"--upload-pack=touch PWNED"`, "starts with '-'"),
+		Entry("git://", `"source":"git://example.com/kit.git"`, "git:// source is refused"),
+		Entry("a path leaving the source", `"source":"https://example.com/kit.git","path":"../x"`, "must be a relative path inside the source"),
+		Entry("a short commit", `"source":"https://example.com/kit.git","commit":"abc"`, "is not a full commit SHA"),
+		Entry("an empty source", `"source":""`, "source is empty"),
+		Entry("a control character", `"source":"https://example.com/kit.git","ref":"v1\u001b[2J"`, "ref holds control or invisible characters"),
+	)
+
+	It("refuses a digest lola never writes", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		body := `{"version":1,"modules":{"kit":{"source":"s","digest":"sha256:abc","artifacts":[]}},"created":[]}`
+		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(err).To(MatchError(ContainSubstring("module kit: digest")))
 	})
 })

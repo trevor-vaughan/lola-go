@@ -130,16 +130,67 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 				return nil, err
 			}
 		}
-		_, v, _, err := e.resolve(ctx, sc, req.Cwd, r, pinned)
-		if err != nil {
-			return nil, err
+		// Without --ref a name takes the ref each scope's entry records; scopes must agree.
+		refs := []string{r.Ref}
+		if r.Ref == "" && module.ValidateName("module", r.Arg) == nil {
+			if refs, err = e.entryRefs(r.Arg, req.Scopes); err != nil {
+				return nil, err
+			}
 		}
+		var v store.Version
+		for _, ref := range refs {
+			rr := r
+			rr.Ref = ref
+			_, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "")
+			if err != nil {
+				return nil, err
+			}
+			if v.Name != "" && v.ID != rv.ID {
+				return nil, twoVersions(rv.Name)
+			}
+			v = rv
+		}
+		// A version listed earlier (a pick kept when Change scope asks again) must be the one
+		// every scope takes; InstallAll would refuse it only after confirmation.
+		if r.Version != nil && r.Ref == "" && r.Arg == pinned.Name {
+			lv, u, err := e.listedVersion(pinned, req.Scopes)
+			if err != nil {
+				return nil, err
+			}
+			if u == nil && lv.ID != pinned.ID {
+				u = &unlisted{why: fmt.Sprintf("a scope's entry records a ref whose cached version is %s, not %s, the version listed",
+					untrusted.Text(lv.ID, untrusted.MaxName), untrusted.Text(pinned.ID, untrusted.MaxName)),
+					fix: oneScopeAtATime(untrusted.Text(pinned.Name, untrusted.MaxName), req.Scopes)}
+			}
+			if u != nil {
+				return nil, errs.WithHints(fmt.Errorf("%s: %s", untrusted.Text(pinned.Name, untrusted.MaxName), u.why), u.fix, "run lola install again to pick again")
+			}
+		}
+		// Adding targets to an installed module keeps it, and its pin (planInstallModule).
+		keep := false
 		if len(r.Targets) > 0 {
 			man, led, _, err := e.load(sc, true)
 			if err != nil {
 				return nil, err
 			}
-			if v, err = e.installedVersion(v, man.Find(v.Name), led.Modules[v.Name]); err != nil {
+			prev, installed := man.Find(v.Name), led.Modules[v.Name]
+			if v, err = e.installedVersion(v, prev, installed); err != nil {
+				return nil, err
+			}
+			keep = prev != nil && installed != nil
+		}
+		// InstallAll, given the version listed (which carries no commit), would refuse a git
+		// version it cannot pin only after confirmation.
+		if keep {
+			refs = nil
+		}
+		for _, ref := range refs {
+			if ref == "" {
+				if ref, err = e.listedRef(VersionRef{Name: v.Name, ID: v.ID}); err != nil {
+					return nil, err
+				}
+			}
+			if _, err := e.pinCommit(store.Version{Name: v.Name, ID: v.ID}, ref); err != nil {
 				return nil, err
 			}
 		}
@@ -195,6 +246,18 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		v := c.Version
 		if a, ok := asked[v.Name]; ok {
 			v = a
+		} else {
+			// Installing a cached module takes the head of the ref each scope's entry records,
+			// so that is the version listed (Plan 6a §10.1); one that cannot be listed is
+			// left out, with a warning, so the others can still be picked.
+			var u *unlisted
+			if v, u, err = e.listedVersion(v, req.Scopes); err != nil {
+				return nil, err
+			}
+			if u != nil {
+				ch.Warnings = append(ch.Warnings, untrusted.Text(c.Version.Name, untrusted.MaxName)+" is not listed: "+u.why+"; "+u.fix)
+				continue
+			}
 		}
 		mc := moduleChoice(v, c.Origin)
 		for _, st := range states {
@@ -210,6 +273,96 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (*Choic
 		return cmp.Or(cmp.Compare(a.Source, b.Source), cmp.Compare(a.Name, b.Name))
 	})
 	return ch, nil
+}
+
+// entryRefs is the distinct refs the scopes' entries for name record, "" for a scope with no
+// entry or no ref; it is [""] when there are no scopes.
+func (e *Engine) entryRefs(name string, scopes []ScopeChoice) ([]string, error) {
+	refs := []string{}
+	for _, s := range scopes {
+		man, err := e.Manifest(s.Scope)
+		if err != nil {
+			return nil, err
+		}
+		if ref := entryRef(man, name); !slices.Contains(refs, ref) {
+			refs = append(refs, ref)
+		}
+	}
+	if len(refs) == 0 {
+		refs = append(refs, "")
+	}
+	return refs, nil
+}
+
+// unlisted says why no version of a module can be listed for the scopes, and how to install it.
+type unlisted struct{ why, fix string }
+
+// listedVersion is the version of def's module that installing it into every scope takes: the
+// head of the ref each scope's entry records (the default branch's for an entry without one),
+// else def for a scope with no entry. When no version can be listed (a ref whose head is not
+// cached, or scopes that resolve to different versions) it says why instead, so nothing the
+// install would refuse after confirmation is offered.
+func (e *Engine) listedVersion(def store.Version, scopes []ScopeChoice) (store.Version, *unlisted, error) {
+	name := untrusted.Text(def.Name, untrusted.MaxName)
+	v, listed := def, false
+	for _, s := range scopes {
+		man, err := e.Manifest(s.Scope)
+		if err != nil {
+			return store.Version{}, nil, err
+		}
+		rv := def
+		ent := man.Find(def.Name)
+		if ent != nil {
+			head, ok, err := e.Store.Head(def.Name, ent.Ref)
+			if err != nil {
+				return store.Version{}, nil, err
+			}
+			if !ok {
+				which := "ref " + untrusted.Text(ent.Ref, untrusted.MaxName)
+				if ent.Ref == "" {
+					which = "the default branch its entry tracks"
+				}
+				return store.Version{}, &unlisted{why: "your cache has no version of " + which,
+					fix: "install it by name, which fetches it: " + errs.ShellJoin([]string{"lola", "install", name})}, nil
+			}
+			rv = head
+		}
+		// InstallAll pins the version at the commit of the head it records as the entry's ref.
+		ref := ""
+		if ent != nil {
+			ref = ent.Ref
+		} else if ref, err = e.listedRef(VersionRef{Name: rv.Name, ID: rv.ID}); err != nil {
+			return store.Version{}, nil, err
+		}
+		if commit, git, err := e.headCommit(store.Version{Name: rv.Name, ID: rv.ID}, ref); err != nil {
+			return store.Version{}, nil, err
+		} else if git && commit == "" {
+			return store.Version{}, &unlisted{why: "your cache does not record which commit its version " + rv.ID + " came from",
+				fix: "fetch it again: " + errs.ShellJoin([]string{"lola", "cache", "update", name})}, nil
+		}
+		if listed && rv.ID != v.ID {
+			return store.Version{}, &unlisted{why: "the scopes record refs of it that resolve to two versions", fix: oneScopeAtATime(name, scopes)}, nil
+		}
+		v, listed = rv, true
+	}
+	return v, nil, nil
+}
+
+// oneScopeAtATime coaches installing name into each of scopes on its own.
+func oneScopeAtATime(name string, scopes []ScopeChoice) string {
+	one := []string{}
+	for _, s := range scopes {
+		if c := errs.ShellJoin([]string{"lola", "install", name, "--scope", s.Scope.Kind.String()}); !slices.Contains(one, c) {
+			one = append(one, c)
+		}
+	}
+	return "install it into one scope at a time: " + strings.Join(one, ", then ")
+}
+
+// twoVersions refuses scopes whose entries record refs that resolve to different versions.
+func twoVersions(name string) error {
+	return errs.WithHints(fmt.Errorf("the scopes record refs of %s that resolve to two versions", untrusted.Text(name, untrusted.MaxName)),
+		"install it into one scope at a time")
 }
 
 // pinnedVersion loads the cached version r.Version names. A version removed from the cache

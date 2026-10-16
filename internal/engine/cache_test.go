@@ -39,16 +39,19 @@ var _ = Describe("store operations", func() {
 		Expect(errs.Hints(err)).To(Equal([]string{"cached modules: lola cache list"}))
 	})
 
-	It("Update re-fetches each head and reports whether it moved", func() {
-		ups, err := e.Update(ctx, nil)
+	It("Update re-fetches each head, reports whether it moved, and says installs keep their versions", func() {
+		up, err := e.Update(ctx, nil)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(ups).To(HaveLen(1))
-		Expect(ups[0].Changed).To(BeFalse())
+		Expect(up.Updates).To(HaveLen(1))
+		Expect(up.Updates[0].Changed).To(BeFalse())
+		Expect(up.Notices).To(BeEmpty())
 		writeTree(src, map[string]string{"commands/a.md": "B"})
-		ups, err = e.Update(ctx, []string{"example"})
+		up, err = e.Update(ctx, []string{"example"})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(ups[0].Changed).To(BeTrue())
-		Expect(ups[0].To).NotTo(Equal(ups[0].From))
+		Expect(up.Updates[0].Changed).To(BeTrue())
+		Expect(up.Updates[0].To).NotTo(Equal(up.Updates[0].From))
+		Expect(up.Notices).To(Equal([]engine.Notice{{Level: engine.LevelInfo,
+			Text: "installed modules keep the versions they were installed at; upgrade one with lola install <module>"}}))
 		_, err = e.Update(ctx, []string{"nope"})
 		Expect(err).To(MatchError("nope is not in your cache"))
 	})

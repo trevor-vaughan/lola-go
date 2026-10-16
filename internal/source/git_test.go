@@ -77,6 +77,17 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(entries).To(HaveLen(1)) // the clone is gone
 	})
 
+	It("records the files committed as executable, relative to the module root", func() {
+		r := newRemote(tmp, map[string]string{"plugins/x/bin/run.sh": "#!/bin/sh\n", "plugins/x/commands/a.md": "A", "run.sh": ""})
+		for _, x := range []string{"plugins/x/bin/run.sh", "run.sh"} {
+			Expect(os.Chmod(filepath.Join(r.work, x), 0o755)).To(Succeed())
+		}
+		r.commit(nil)
+		f, err := fetch(r.url, "", "plugins/x")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Executables).To(Equal([]string{"bin/run.sh"}))
+	})
+
 	It("fetches a branch, a tag and an annotated tag", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "v1"})
 		git(r.work, "tag", "v1")
@@ -167,6 +178,80 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(entries).To(BeEmpty())
 	})
 
+	It("a symlink in a git tree is refused before checkout", func() {
+		// Without --path the whole tree is the module path, so a link outside module/, where
+		// the copy never looks, is refused too: only the tree listing, which runs before any
+		// checkout, can see it. On Windows with core.symlinks=false a checked-out link is a
+		// plain file the copy cannot tell apart.
+		r := newRemote(tmp, map[string]string{"module/commands/a.md": "A", "skills/x/commands/a.md": "A"})
+		Expect(os.Symlink("/etc/passwd", filepath.Join(r.work, "docs-link"))).To(Succeed())
+		Expect(os.Symlink("/etc/passwd", filepath.Join(r.work, "skills", "x", "commands", "b.md"))).To(Succeed())
+		r.commit(nil)
+		for _, c := range []struct{ path, link string }{{"", "docs-link"}, {"skills/x", "skills/x/commands/b.md"}} {
+			for _, ref := range []string{"", "main", r.rev("HEAD")} {
+				_, err := fetch(r.url, ref, c.path)
+				Expect(err).To(MatchError(ContainSubstring(c.link+": symbolic links are not allowed in module content")), "ref %q, path %q", ref, c.path)
+				entries, _ := os.ReadDir(staging)
+				Expect(entries).To(BeEmpty())
+			}
+		}
+	})
+
+	It("a symlink outside the module path is allowed", func() {
+		r := newRemote(tmp, map[string]string{"skills/x/commands/a.md": "A", "skills/y/commands/a.md": "A"})
+		Expect(os.Symlink("/etc/passwd", filepath.Join(r.work, "docs-link"))).To(Succeed())
+		Expect(os.Symlink("x", filepath.Join(r.work, "skills", "x-link"))).To(Succeed())
+		Expect(os.Symlink("/etc/passwd", filepath.Join(r.work, "skills", "y", "commands", "b.md"))).To(Succeed())
+		r.commit(nil)
+		for _, ref := range []string{"", "main", r.rev("HEAD")} {
+			for _, path := range []string{"skills/x", "./skills/x/"} {
+				f, err := fetch(r.url, ref, path)
+				Expect(err).NotTo(HaveOccurred(), "ref %q, path %q", ref, path)
+				Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
+			}
+		}
+	})
+
+	It("a symlinked ancestor of the module path is refused before checkout", func() {
+		r := newRemote(tmp, map[string]string{"real/x/commands/a.md": "A"})
+		Expect(os.Symlink("real", filepath.Join(r.work, "skills"))).To(Succeed())
+		r.commit(nil)
+		for _, ref := range []string{"", "main", r.rev("HEAD")} {
+			for _, path := range []string{"skills/x", "skills"} {
+				_, err := fetch(r.url, ref, path)
+				Expect(err).To(MatchError(ContainSubstring("skills: symbolic links are not allowed in module content")), "ref %q, path %q", ref, path)
+				entries, _ := os.ReadDir(staging)
+				Expect(entries).To(BeEmpty())
+			}
+		}
+	})
+
+	It("copies bytes as committed, whatever the attributes and the line-ending settings", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A\nB\n", ".gitattributes": "* text eol=crlf\n"})
+		global := filepath.Join(tmp, "gitconfig")
+		Expect(os.WriteFile(global, []byte("[core]\n\tautocrlf = true\n"), 0o644)).To(Succeed())
+		GinkgoT().Setenv("GIT_CONFIG_GLOBAL", global)
+		for _, ref := range []string{"", "main", r.rev("HEAD")} {
+			f, err := fetch(r.url, ref, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read(f, "commands/a.md")).To(Equal("A\nB\n"), "ref %q", ref)
+		}
+	})
+
+	It("never runs a filter program a repository's attributes name", func() {
+		pwned := filepath.Join(tmp, "PWNED")
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A\n", ".gitattributes": "* filter=evil ident\n"})
+		global := filepath.Join(tmp, "gitconfig")
+		Expect(os.WriteFile(global, []byte("[filter \"evil\"]\n\tsmudge = touch "+pwned+" && cat\n"), 0o644)).To(Succeed())
+		GinkgoT().Setenv("GIT_CONFIG_GLOBAL", global)
+		for _, ref := range []string{"", "main", r.rev("HEAD")} {
+			f, err := fetch(r.url, ref, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read(f, "commands/a.md")).To(Equal("A\n"))
+			Expect(pwned).NotTo(BeAnExistingFile(), "ref %q", ref)
+		}
+	})
+
 	It("uses module/ and --path like a folder", func() {
 		r := newRemote(tmp, map[string]string{"README.md": "", "module/commands/a.md": "A", "plugins/review/agents/x.md": "X"})
 		f, err := fetch(r.url, "", "")
@@ -194,6 +279,19 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
 		Expect(err.Error()).NotTo(ContainSubstring(staging))
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--path is relative to")))
+	})
+
+	It("refuses a --path in another letter case than the tree's before checkout, coaching the exact path", func() {
+		// On a case-insensitive file system the checkout would find skills/x, while the tree
+		// listing that checks for links matches paths case-exactly.
+		r := newRemote(tmp, map[string]string{"skills/Review It/commands/a.md": "A"})
+		for _, ref := range []string{"", "main", r.rev("HEAD")} {
+			_, err := fetch(r.url, ref, "skills/review it")
+			Expect(err).To(MatchError(ContainSubstring(`--path "skills/review it" is not a directory in the source`)), "ref %q", ref)
+			Expect(errs.Hints(err)).To(ContainElement("use its exact letter case: "+errs.ShellJoin([]string{"--path", "skills/Review It"})), "ref %q", ref)
+			entries, _ := os.ReadDir(staging)
+			Expect(entries).To(BeEmpty())
+		}
 	})
 
 	It("is not redirected by GIT_DIR or other repository-selecting variables", func() {

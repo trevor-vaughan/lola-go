@@ -22,11 +22,14 @@ import (
 const gitTimeout = 5 * time.Minute
 
 // scrubbedGitVars select or reconfigure a repository behind lola's back; when lola runs from
-// a git hook they point at the user's own repository. GIT_CONFIG_KEY_* and GIT_CONFIG_VALUE_*
-// go too.
+// a git hook they point at the user's own repository. They cover `git rev-parse
+// --local-env-vars`, plus GIT_NAMESPACE and GIT_CEILING_DIRECTORIES. GIT_CONFIG_KEY_* and
+// GIT_CONFIG_VALUE_* go too.
 var scrubbedGitVars = map[string]bool{"GIT_DIR": true, "GIT_WORK_TREE": true, "GIT_INDEX_FILE": true, "GIT_OBJECT_DIRECTORY": true,
 	"GIT_ALTERNATE_OBJECT_DIRECTORIES": true, "GIT_COMMON_DIR": true, "GIT_NAMESPACE": true, "GIT_CEILING_DIRECTORIES": true,
-	"GIT_CONFIG_PARAMETERS": true, "GIT_CONFIG_COUNT": true}
+	"GIT_CONFIG_PARAMETERS": true, "GIT_CONFIG_COUNT": true, "GIT_CONFIG": true, "GIT_IMPLICIT_WORK_TREE": true,
+	"GIT_GRAFT_FILE": true, "GIT_NO_REPLACE_OBJECTS": true, "GIT_REPLACE_REF_BASE": true, "GIT_PREFIX": true,
+	"GIT_SHALLOW_FILE": true}
 
 // shortSHARE is an abbreviated commit id, which --ref does not accept.
 var shortSHARE = regexp.MustCompile(`^[0-9a-f]{4,39}$`)
@@ -50,10 +53,12 @@ func gitEnv(environ []string) []string {
 // source, or the user's project, whose repository a clone may have configured. Its config is
 // attacker-controlled, so everything that makes git run a configured program (hooks,
 // fsmonitor, the ext transport, LFS filters) or write to the repository is switched off on the
-// command line, which outranks repository config.
+// command line, which outranks repository config. Line endings are never converted, so a
+// checkout holds the bytes as committed on every machine (Plan 6a §5.2).
 func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	full := []string{"-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
-		"-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false", "-c", "core.untrackedCache=false"}
+		"-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false", "-c", "core.untrackedCache=false",
+		"-c", "core.autocrlf=false"}
 	if dir != "" {
 		full = append(full, "-C", dir)
 	}
@@ -99,7 +104,13 @@ func (w *headWriter) String() string { return w.buf.String() }
 // runGit runs a git command and returns its stdout. A failure carries git's stderr, made
 // safe to print by untrusted.Text, and coaching for the usual causes.
 func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
+	return runGitEnv(ctx, nil, dir, args...)
+}
+
+// runGitEnv is runGit with env added to the command's environment.
+func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([]byte, error) {
 	cmd := GitCommand(ctx, dir, args...)
+	cmd.Env = append(cmd.Env, env...)
 	stderr := &headWriter{limit: maxStderr + 1}
 	cmd.Stderr = stderr
 	out, err := cmd.Output()
@@ -130,7 +141,8 @@ func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
 func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fetched, error) {
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	if err := checkout(ctx, spec, scratch); err != nil {
+	execs, err := checkout(ctx, spec, scratch)
+	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			hint := "the server did not answer in time: check your network and the URL, then try again"
 			if strings.HasPrefix(strings.ToLower(spec.Location), "ssh://") || !strings.Contains(spec.Location, "://") { // ssh:// or scp form
@@ -148,25 +160,61 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 	if err != nil {
 		return Fetched{}, err
 	}
-	dir, err := copyTree(ctx, root, stagingParent, listGit)
+	dir, _, err := copyTree(ctx, root, stagingParent, listGit)
 	if err != nil {
 		return Fetched{}, err
 	}
-	return Fetched{Dir: dir, Name: name, Commit: strings.TrimSpace(string(head))}, nil
+	rel, err := filepath.Rel(scratch, root)
+	if err != nil {
+		return Fetched{}, errors.Join(err, os.RemoveAll(dir))
+	}
+	return Fetched{Dir: dir, Name: name, Commit: strings.TrimSpace(string(head)), Executables: executablesUnder(execs, filepath.ToSlash(rel), dir)}, nil
 }
+
+// noConversion is $GIT_DIR/info/attributes for every checkout: it outranks the repository's
+// .gitattributes, so no end-of-line conversion, filter program, ident expansion or encoding
+// change applies, and a checkout holds the bytes as committed (Plan 6a §5.2).
+const noConversion = "* -text -eol -filter -ident -working-tree-encoding\n"
 
 // checkout puts spec's ref of its repository into the empty directory scratch: the default
 // branch, the one branch or tag named ref, or the full commit SHA ref. It never guesses.
-func checkout(ctx context.Context, spec Spec, scratch string) error {
-	url, ref, shown, shownRef := spec.Location, spec.Ref, untrusted.Text(spec.Location, untrusted.MaxName), untrusted.Text(spec.Ref, untrusted.MaxName)
-	clone := []string{"clone", "-q", "--depth", "1", "--no-recurse-submodules"}
-	if ref == "" {
-		_, err := runGit(ctx, "", append(clone, "--", url, scratch)...)
-		return err
+// Before anything is checked out it pins the attributes (noConversion) and reads the tree
+// (checkTree); it returns the tree's executables.
+func checkout(ctx context.Context, spec Spec, scratch string) ([]string, error) {
+	url, ref := spec.Location, spec.Ref
+	clone := []string{"clone", "-q", "--depth", "1", "--no-recurse-submodules", "--no-checkout"}
+	name, err := remoteRef(ctx, url, ref)
+	switch {
+	case err != nil:
+		return nil, err
+	case ref != "" && name == ref:
+		return checkoutCommit(ctx, url, ref, spec.Path, scratch)
+	case ref != "":
+		clone = append(clone, "--branch="+ref)
 	}
+	if _, err := runGit(ctx, "", append(clone, "--", url, scratch)...); err != nil {
+		return nil, err
+	}
+	execs, err := prepareCheckout(ctx, scratch, "HEAD", spec.Path)
+	if err != nil {
+		return nil, err
+	}
+	_, err = runGit(ctx, scratch, "reset", "-q", "--hard", "HEAD")
+	return execs, err
+}
+
+// remoteRef names what ref is on the repository at url: "" for the default branch (ref ""),
+// refs/heads/<ref> or refs/tags/<ref> for the one branch or tag of that name, or ref itself
+// for a full commit SHA that no branch or tag is named. It refuses a branch and a tag of one
+// name, and any other ref. It never guesses.
+func remoteRef(ctx context.Context, url, ref string) (string, error) {
+	if ref == "" {
+		return "", nil
+	}
+	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
 	out, err := runGit(ctx, "", "ls-remote", "--", url, "refs/heads/"+ref, "refs/tags/"+ref)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var branch, tag bool
 	for line := range strings.Lines(string(out)) {
@@ -176,31 +224,102 @@ func checkout(ctx context.Context, spec Spec, scratch string) error {
 	}
 	switch {
 	case branch && tag:
-		return errs.WithHints(fmt.Errorf("%s has both a branch and a tag named %s; lola does not guess which you mean", shown, shownRef),
+		return "", errs.WithHints(fmt.Errorf("%s has both a branch and a tag named %s; lola does not guess which you mean", shown, shownRef),
 			"pin the commit you want with --ref <full commit SHA>")
-	case branch || tag:
-		_, err := runGit(ctx, "", append(clone, "--branch="+ref, "--", url, scratch)...)
-		return err
+	case branch:
+		return "refs/heads/" + ref, nil
+	case tag:
+		return "refs/tags/" + ref, nil
 	case fullSHARE.MatchString(ref):
-		format := "sha1"
-		if len(ref) == 64 {
-			format = "sha256"
-		}
-		if _, err := runGit(ctx, scratch, "init", "-q", "--object-format="+format); err != nil {
-			return err
-		}
-		if _, err := runGit(ctx, scratch, "fetch", "-q", "--depth", "1", "--", url, ref); err != nil {
-			return errs.WithHints(fmt.Errorf("%s did not serve commit %s; servers using git protocol v0 refuse a commit "+
-				"that no branch or tag points to: %w", shown, shownRef, err), "use --ref with a branch or tag that contains the commit")
-		}
-		_, err := runGit(ctx, scratch, "checkout", "-q", "--detach", "FETCH_HEAD")
-		return err
+		return ref, nil
 	}
 	hints := []string{"list them: " + errs.ShellJoin([]string{"git", "ls-remote", "--heads", "--tags", shown})}
 	if shortSHARE.MatchString(ref) {
 		hints = append([]string{"use the full 40-character commit SHA"}, hints...)
 	}
-	return errs.WithHints(fmt.Errorf("%s has no branch or tag named %s", shown, shownRef), hints...)
+	return "", errs.WithHints(fmt.Errorf("%s has no branch or tag named %s", shown, shownRef), hints...)
+}
+
+// checkoutCommit fetches the one commit ref (a full SHA) into a new repository at scratch and
+// checks it out; sub is the module path, as for prepareCheckout.
+func checkoutCommit(ctx context.Context, url, ref, sub, scratch string) ([]string, error) {
+	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
+	format := "sha1"
+	if len(ref) == 64 {
+		format = "sha256"
+	}
+	if _, err := runGit(ctx, scratch, "init", "-q", "--object-format="+format); err != nil {
+		return nil, err
+	}
+	if _, err := runGit(ctx, scratch, "fetch", "-q", "--depth", "1", "--", url, ref); err != nil {
+		return nil, errs.WithHints(fmt.Errorf("%s did not serve commit %s; servers using git protocol v0 refuse a commit "+
+			"that no branch or tag points to: %w", shown, shownRef, err), "use --ref with a branch or tag that contains the commit")
+	}
+	execs, err := prepareCheckout(ctx, scratch, "FETCH_HEAD", sub)
+	if err != nil {
+		return nil, err
+	}
+	_, err = runGit(ctx, scratch, "checkout", "-q", "--detach", "FETCH_HEAD")
+	return execs, err
+}
+
+// prepareCheckout readies the repository at scratch for checking out rev: it writes
+// noConversion as $GIT_DIR/info/attributes and returns checkTree's executables for the
+// module path sub (the source's --path, "" for the whole tree).
+func prepareCheckout(ctx context.Context, scratch, rev, sub string) ([]string, error) {
+	info := filepath.Join(scratch, ".git", "info")
+	if err := os.MkdirAll(info, 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(info, "attributes"), []byte(noConversion), 0o600); err != nil {
+		return nil, err
+	}
+	return checkTree(ctx, scratch, rev, sub)
+}
+
+// checkTree lists rev's tree. It refuses a symbolic link (mode 120000) inside the module path
+// sub ("" or "." for the whole tree) or on the way to it, which a checkout on Windows without
+// core.symlinks would write as a plain file the copy cannot tell from one; a link elsewhere in
+// the repository never reaches the module and is allowed (Plan 6a §5.2). It returns
+// the paths whose mode is 100755: the execute bits as committed, whatever the platform checks
+// out. Gitlinks (160000) are skipped, as the copy skips them. A module path that is no
+// directory of the tree, letter case included, is refused too: a case-insensitive file system
+// would check out another case's directory as it, past the link check above.
+func checkTree(ctx context.Context, repo, rev, sub string) ([]string, error) {
+	out, err := runGit(ctx, repo, "ls-tree", "-r", "-z", "--full-tree", rev)
+	if err != nil {
+		return nil, err
+	}
+	mod := path.Clean(filepath.ToSlash(sub))
+	var execs []string
+	found, otherCase := mod == "." || !filepath.IsLocal(sub), ""
+	for _, rec := range strings.Split(string(out), "\x00") {
+		meta, p, ok := strings.Cut(rec, "\t")
+		if ok && !found {
+			if strings.HasPrefix(p, mod+"/") {
+				found = true
+			} else if len(p) > len(mod) && p[len(mod)] == '/' && strings.EqualFold(p[:len(mod)], mod) {
+				otherCase = p[:len(mod)]
+			}
+		}
+		switch {
+		case !ok:
+		case strings.HasPrefix(meta, "120000 ") &&
+			(mod == "." || p == mod || strings.HasPrefix(p, mod+"/") || strings.HasPrefix(mod, p+"/")):
+			return nil, fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source",
+				untrusted.Text(p, untrusted.MaxName))
+		case strings.HasPrefix(meta, "100755 "):
+			execs = append(execs, p)
+		}
+	}
+	if !found {
+		hint := pathHint
+		if otherCase != "" {
+			hint = "use its exact letter case: " + errs.ShellJoin([]string{"--path", untrusted.Text(otherCase, untrusted.MaxName)})
+		}
+		return nil, errs.WithHints(fmt.Errorf("--path %q is not a directory in the source", untrusted.Text(sub, untrusted.MaxName)), hint)
+	}
+	return execs, nil
 }
 
 // repoName is the fallback module name of a clone's root: the location's last path segment

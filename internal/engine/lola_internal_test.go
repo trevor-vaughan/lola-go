@@ -36,7 +36,7 @@ func TestShouldRemoveLola(t *testing.T) {
 			name: "dir with ledger that has one module",
 			setup: func(dir string) error {
 				l := ledger.New()
-				l.Modules["example"] = &ledger.Entry{}
+				l.Modules["example"] = &ledger.Entry{Source: "../example"}
 				return l.Save(filepath.Join(dir, "lock.json"))
 			},
 			want:    false,
