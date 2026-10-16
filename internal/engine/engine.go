@@ -700,8 +700,9 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 }
 
 // commit applies a prepared scope: module copies, pre-install hooks, the plan with the
-// manifest edit man (nil: none) under the scope lock, after (when set), then post-install hooks.
-func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man *plan.ManifestWrite, after func(*plan.Plan) error) error {
+// manifest edits man (none when empty) under the scope lock, after (when set), then
+// post-install hooks.
+func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man []plan.ManifestWrite, after func(*plan.Plan) error) error {
 	sc, p := pr.sc, pr.plan
 	if err := e.ownGitignore(sc); err != nil {
 		return err

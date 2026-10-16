@@ -77,11 +77,10 @@ type ContentHook struct {
 func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, led *ledger.Ledger, probes *probeRun) error {
 	for i := range rep.Changes {
 		c := &rep.Changes[i]
-		k := slices.IndexFunc(entries, func(se *syncEntry) bool { return se.ent.Name == c.Module })
-		if c.Kind == trust.ChangeRemoved || k < 0 || entries[k].v.ContentDir == "" {
+		se := entryOf(entries, *c)
+		if c.Kind == trust.ChangeRemoved || se == nil || se.v.ContentDir == "" {
 			continue
 		}
-		se := entries[k]
 		now, err := e.contentHooks(sc, se.v, se.pinned(), probes)
 		if err != nil {
 			return fmt.Errorf("%s: runtime hooks: %w", se.ent.Name, err)

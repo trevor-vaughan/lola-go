@@ -178,4 +178,161 @@ modules:
 			Expect(err).To(MatchError(p.UserProfiles + " holds more than 256 files"))
 		})
 	})
+
+	Describe("project profiles", func() {
+		var root string
+		BeforeEach(func() {
+			root = filepath.Join(p.Home, "proj")
+			Expect(os.MkdirAll(filepath.Join(root, ".lola", "profiles"), 0o755)).To(Succeed())
+		})
+		writeProject := func(name, content string) string {
+			GinkgoHelper()
+			path := filepath.Join(root, ".lola", "profiles", name)
+			Expect(os.WriteFile(path, []byte(content), 0o644)).To(Succeed())
+			return path
+		}
+		symlinks := func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links need privileges on Windows")
+			}
+		}
+
+		It("lists a project's profiles by name, and ignores the default.yml a project cannot define", func() {
+			writeProject("go.yml", "")
+			writeProject("docs.yml", "")
+			def := writeProject("default.yml", "version: 1\n")
+			writeProject("Bad Name.yml", "")
+			writeProject("README.md", "")
+			infos, invalid, ignored, err := profile.Project(root)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(invalid).To(Equal(1))
+			Expect(ignored).To(Equal(def))
+			Expect(infos).To(Equal([]profile.Info{
+				{Name: "docs", Kind: profile.KindProject, Path: filepath.Join(root, ".lola", "profiles", "docs.yml")},
+				{Name: "go", Kind: profile.KindProject, Path: filepath.Join(root, ".lola", "profiles", "go.yml")},
+			}))
+			Expect(infos[1].Qualified()).To(Equal("project:go"))
+		})
+
+		It("lists none without .lola/ or .lola/profiles/, and refuses more than 256 files", func() {
+			Expect(os.RemoveAll(filepath.Join(root, ".lola"))).To(Succeed())
+			infos, _, _, err := profile.Project(root)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(infos).To(BeEmpty())
+			Expect(os.MkdirAll(filepath.Join(root, ".lola"), 0o755)).To(Succeed())
+			infos, _, _, err = profile.Project(root)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(infos).To(BeEmpty())
+			Expect(os.MkdirAll(filepath.Join(root, ".lola", "profiles"), 0o755)).To(Succeed())
+			for i := range 257 {
+				writeProject(fmt.Sprintf("p%d.yml", i), "")
+			}
+			_, _, _, err = profile.Project(root)
+			Expect(err).To(MatchError(filepath.Join(root, ".lola", "profiles") + " holds more than 256 files"))
+		})
+
+		It("a crafted profile file refuses at load", func() {
+			for content, want := range map[string]string{
+				"version: 2\nextends: [go]\n": "written by a newer lola (profile version 2); upgrade lola",
+				"version: 1\nshell: rm -rf\n": "field shell not found",
+				"version: 1\nmodules:\n  - name: a\n    source: \"https://x/a\\u0007.git\"\n": ":3: module a: source holds control or invisible characters",
+				"version: 1\ndescription: " + strings.Repeat("x", 257) + "\n":                 ":2: description is longer than 256 bytes",
+			} {
+				path := writeProject("bad.yml", content)
+				_, err := profile.LoadProject(path)
+				Expect(err).To(MatchError(And(HavePrefix(path), ContainSubstring(want))), content)
+				Expect(err.Error()).NotTo(ContainSubstring("\x07"))
+				Expect(errs.Hints(err)).To(ContainElement("fix it by hand, or restore it from version control"))
+			}
+
+			symlinks()
+			real := filepath.Join(p.Home, "elsewhere.yml")
+			Expect(os.WriteFile(real, []byte("version: 1\n"), 0o600)).To(Succeed())
+			link := filepath.Join(root, ".lola", "profiles", "go.yml")
+			Expect(os.Symlink(real, link)).To(Succeed())
+			_, err := profile.LoadProject(link)
+			Expect(err).To(MatchError(link + " is a symbolic link; a project's profile must be a file of its own"))
+			Expect(profile.Load(link)).NotTo(BeNil(), "a user profile may be a link (P7); a project's may not")
+		})
+
+		It("writes pins into the bytes it read, keeping comments and other keys, and never over a file changed since", func() {
+			commit, digest := strings.Repeat("a", 40), "sha256:"+strings.Repeat("b", 64)
+			path := writeProject("go.yml", `version: 1
+description: Go tooling # shared by the team
+targets: [claude-code]
+modules:
+  # the language server
+  - name: gopls
+    source: https://example.com/gopls.git
+    ref: v1.2.0
+  - name: style
+    source: ../../mods/style
+`)
+			pr, err := profile.LoadProject(path)
+			Expect(err).NotTo(HaveOccurred())
+			out, err := pr.Pin(path, []manifest.Entry{{Name: "gopls", Commit: commit, Digest: digest}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(out)).To(Equal(`version: 1
+description: Go tooling # shared by the team
+targets: [claude-code]
+modules:
+  # the language server
+  - name: gopls
+    source: https://example.com/gopls.git
+    ref: v1.2.0
+    commit: ` + commit + `
+    digest: ` + digest + `
+  - name: style
+    source: ../../mods/style
+`))
+			Expect(os.ReadFile(path)).NotTo(Equal(out), "Pin returns the bytes; the caller writes them")
+
+			Expect(os.WriteFile(path, []byte("version: 1\nmodules:\n  - {name: gopls, source: https://evil.example/gopls.git}\n"), 0o644)).To(Succeed())
+			_, err = pr.Pin(path, []manifest.Entry{{Name: "gopls", Commit: commit, Digest: digest}})
+			Expect(err).To(MatchError(path + " changed while lola was running; not writing its pins"))
+		})
+
+		It("checks just before a write that nothing moved since the profile was read", func() {
+			path := writeProject("go.yml", "version: 1\nmodules:\n  - {name: a, source: https://example.com/a.git}\n")
+			pr, err := profile.LoadProject(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pr.Unchanged(root, path)).To(Succeed())
+
+			Expect(os.WriteFile(path, []byte("version: 1\nmodules:\n  - {name: a, source: https://evil.example/a.git}\n"), 0o644)).To(Succeed())
+			Expect(pr.Unchanged(root, path)).To(MatchError(ContainSubstring(path + " changed while lola was running")))
+
+			symlinks()
+			Expect(os.WriteFile(path, []byte("version: 1\nmodules:\n  - {name: a, source: https://example.com/a.git}\n"), 0o644)).To(Succeed())
+			Expect(pr.Unchanged(root, path)).To(Succeed())
+			profiles, elsewhere := filepath.Join(root, ".lola", "profiles"), filepath.Join(p.Home, "elsewhere")
+			Expect(os.Rename(profiles, elsewhere)).To(Succeed())
+			Expect(os.Symlink(elsewhere, profiles)).To(Succeed())
+			Expect(pr.Unchanged(root, path)).To(MatchError(ContainSubstring("is not a directory of the project's own")),
+				"the same bytes, reached through a link swapped in for .lola/profiles")
+		})
+
+		It("refuses a .lola/ or .lola/profiles/ that is a symbolic link or not a directory, before listing it", func() {
+			symlinks()
+			elsewhere := filepath.Join(p.Home, "elsewhere")
+			Expect(os.MkdirAll(filepath.Join(elsewhere, "profiles"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(elsewhere, "profiles", "go.yml"), nil, 0o600)).To(Succeed())
+
+			profiles := filepath.Join(root, ".lola", "profiles")
+			Expect(os.RemoveAll(profiles)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(elsewhere, "profiles"), profiles)).To(Succeed())
+			_, _, _, err := profile.Project(root)
+			Expect(err).To(MatchError(ContainSubstring(profiles + " is not a directory of the project's own")))
+
+			Expect(os.Remove(profiles)).To(Succeed())
+			Expect(os.WriteFile(profiles, nil, 0o600)).To(Succeed())
+			_, _, _, err = profile.Project(root)
+			Expect(err).To(MatchError(ContainSubstring(profiles + " is not a directory of the project's own")))
+
+			Expect(os.RemoveAll(filepath.Join(root, ".lola"))).To(Succeed())
+			Expect(os.Symlink(elsewhere, filepath.Join(root, ".lola"))).To(Succeed())
+			_, _, _, err = profile.Project(root)
+			Expect(err).To(MatchError(ContainSubstring(filepath.Join(root, ".lola") + " is not a directory of the project's own")))
+			Expect(errs.Hints(err)).To(Equal([]string{"make it a directory, or remove it"}))
+		})
+	})
 })

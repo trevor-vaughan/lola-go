@@ -39,7 +39,9 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
   selectors, effective exclusions, and locked node-preserving writes.
 - `yamldoc`: Reading a hand-edited YAML file as one untrusted document (non-blocking open, regular
   files only, size cap, one document, no anchors, aliases or merge keys) and the node helpers
-  `config` and `manifest` edit with.
+  `config` and `manifest` edit with. `ReadNoFollow` reads a file someone else committed: never
+  through a symbolic link (`O_NOFOLLOW` where the system has it, and on every system the file
+  opened must be the one `os.Lstat` finds).
 - `fsx`: Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object
   members, and array elements of any JSON value), mode normalization.
 - `module`: The IR, frontmatter parsing, name rules, format detection and the Claude plugin and
@@ -64,14 +66,20 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
   `yamldoc.Read` (following a symbolic link, as for `user.yml`, §19 P7), version first, known keys
   only, at most 512 entries each checked as a manifest entry (`manifest.Entry.Validate`), every
   refusal with the file and line; `Entries` gives entries without targets the profile's
-  `targets`. No network, no writes; depguard holds its imports.
+  `targets`. `Project` lists a project's committed profiles in `<root>/.lola/profiles/` the
+  same way, after refusing a `.lola/` or `.lola/profiles/` that is a symbolic link, not a
+  directory, or resolves outside the root (`fsx.Resolve`, §19 S3); a `default.yml` there is no
+  profile, and its path is returned for listings to warn about (a project cannot define
+  `default`). `LoadProject` reads one as `Load` does but refuses a symbolic link and opens it with
+  `yamldoc.ReadNoFollow`, coaching "restore it from version control". No network, no writes;
+  depguard holds its imports.
 - `activeprofile`: The qualified names a scope's active profile list stores in `lock.json`
   (`user:go`, `project:go`, `remote:go`; never `default`), at most 64: a leaf with no YAML, so
   `ledger` imports it and `profile` may import `ledger` later without a cycle.
 - `trust`: The trust record (`trust.json`): per project key, the view of `project.yml` lola wrote
-  and its hash; strict, permission-checked reads, locked per-project saves, coverage, the per-field
-  refresh, and `Check`: the status and the typed field changes of a manifest against its record. No
-  dependency on `engine`.
+  and of each project profile, and its hash; strict, permission-checked reads, locked per-project
+  saves, coverage, the per-field refresh, and `Check`: the status and the typed field changes of a
+  manifest against its record. No dependency on `engine`.
 - `consent`: Recorded consent to a module's install hooks (key `<module>`) and runtime hooks (key
   `<module>/runtime-hooks/<settings-file hash>`), each recording a digest.
 - `target`: The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`,
@@ -481,12 +489,15 @@ files keep the "was missing; rewritten" rule.
 named after the resolved `.lola/` path, or `$XDG_STATE_HOME/lola/.lock` at user scope. The lock
 lives outside `.lola/`, so removing an empty `.lola/` never unlinks a lock another process is
 waiting on. Apply stages every new file next to its destination, moves each existing destination
-aside, renames the staged files in, writes the ledger, and then, when the command changes it,
-the manifest: staged next to it (at a symlink's target), the current one backed up with a hard
-link (a copy where links fail) and left in place, the new one renamed over it, and the directory
-synced, so a crash never leaves the scope without a manifest. The ledger and manifest writes are
-part of the transaction: any failure up to and including them restores files, ledger and
-manifest in reverse order. Afterwards backups are removed, emptied directories are pruned (never
+aside, renames the staged files in, writes the ledger, and then, when the command changes them,
+each manifest in turn (`project.yml`, then the project profiles a sync writes pins into, Plan 6b
+§6.4): staged next to it (at a symlink's target), the current one backed up with a hard link (a
+copy where links fail) and left in place, the new one renamed over it, and the directory synced,
+so a crash never leaves the scope without a manifest. The ledger and manifest writes are part of
+the transaction: any failure up to and including them restores files, ledger and manifests in
+reverse order. A `ManifestWrite` may carry a `Check`, run just before it is staged: a profile's
+(`Profile.Unchanged`) refuses the apply when `.lola/` or `.lola/profiles/` stopped being the
+project's own directories, or the file no longer holds the bytes the run read (ruling R-6b3a-4). Afterwards backups are removed, emptied directories are pruned (never
 past a target's base directories), and a logical symlink whose target was deleted is removed;
 the `after` callback then runs.
 
@@ -496,7 +507,9 @@ only the entries and fields the command changes and appending new entries, so co
 survive. It decodes and validates the bytes it produces as `manifest.Load` would, so nothing it
 could not load again (a commit from a corrupt cache index, say) is written. The file is encoded
 again (yaml.v3, two-space indent), so blank lines between entries are dropped and indentation is
-normalized. `manifest.Load` and `ledger.Load` check every recorded source, ref, path, commit and
+normalized. `manifest.EditDocument` is that node edit alone; `profile.Profile.Pin` uses it for a
+project profile's pins, on the bytes the run read and checked (refusing a file that changed since,
+§19 S6), and checks the result loads as a profile. `manifest.Load` and `ledger.Load` check every recorded source, ref, path, commit and
 digest (`source.Recorded`) and refuse text that would not print as it is (`untrusted.IsPlain`),
 before anything reaches git; `manifest.Load` reads through `yamldoc.Read`, the reader
 `config.yaml` and `selections.yaml` use (non-blocking open, regular files only, 1 MiB, one
@@ -669,6 +682,17 @@ to them. A project with no record covers nothing: there is no seeding from `lock
 ruling, 2026-10-13: lola-go is unreleased, so no older project needs it). User scope has no
 record; `user.yml` is the user's own, and the engine never loads one for it.
 
+A project's profiles (`.lola/profiles/<name>.yml`, Plan 6b §8.1) are committed too. The view
+gains `profiles`, a map from each profile's name to its **part**: its entries, sorted by name,
+each with the targets it installs to (its own, else the profile's), so a change to a profile's
+`targets` is a change to every entry it gives them to. `profiles` is omitted when empty, so a view
+without profiles hashes as in 6a. `View.Part(key)` is one file's part (`""`: `project.yml`'s
+targets and entries) and `WithPart` puts one back; `Check` compares a view with the record's
+`project.yml` part only, and a profile is checked against a record holding its part.
+`Accept` and `Refresh` take the key of the part they change and carry every other part as it is
+(§19 R2), so trusting one profile's entries never touches `project.yml`'s record or another
+profile's.
+
 - **Reading.** The version is decoded on its own first, as `manifest.Load` reads `project.yml`'s: a
   newer one is refused with the hint `upgrade lola` (not for a key the newer lola added) and a
   negative one as unreadable. Then strict JSON with unknown keys and trailing data refused, at most
@@ -685,15 +709,17 @@ record; `user.yml` is the user's own, and the engine never loads one for it.
   the file larger than the 4 MiB a read accepts is refused, which leaves the file as it was.
 - **Refresh.** Every manifest write goes through `engine.saveManifest(sc, loaded, change, rec,
   apply)`: it edits the manifest, hands the edit to `apply` (the commit, which stages it with
-  the ledger), and after a successful apply at project scope saves `trust.Refresh(record,
+  the ledger), and after a successful apply at project scope saves `trust.Refresh(record, "",
   view(loaded), view(loaded.Applied(change)))`. Every field the write changed takes its new
   value, an added entry is recorded whole, a removed one is dropped, and every other field keeps
   its trust state: a write never covers a field it left alone, and a field changed in an entry
   the record does not hold is not recorded. `loaded` is a clone of the manifest read under the
   scope lock. A failed save leaves lola's own edits uncovered (fail closed) and the error says
   what the caller applied (an uninstall says it removed what was asked), and which scopes of the
-  same install it then did not reach.
-- **Accept.** A sync records what the user accepted with `trust.Accept(record, view(loaded),
+  same install it then did not reach. An apply that writes no manifest or profile (an uninstall
+  of some targets of a module `project.yml` does not list) saves no record: it has nothing new to
+  cover.
+- **Accept.** A sync records what the user accepted with `trust.Accept(record, "", view(loaded),
   modules, targets)`: the entries named take their view in the loaded manifest (an entry the view
   lacks is dropped), the top-level targets when `targets` is set, and every other entry keeps its
   record. Accepting every change and the targets returns the view itself, which is what an
@@ -764,18 +790,21 @@ What a scope wants is a stack of **layers** (`internal/engine/profile.go`, Plan 
 first: at user scope `default` (when `profiles/default.yml` exists), the active profiles in
 `lock.json`'s order, then `user.yml`; at project scope the active profiles, then `project.yml`
 (`user.yml` is never a project layer, D6). `Engine.layers` resolves the active list against
-`profile.Visible` and reads each profile once per run (§19 S6); a stored name with no file is a
+`Engine.visible` (`profile.Visible`, and at project scope `profile.Project`) and reads each
+profile once per run (§19 S6); a stored name with no file is a
 warning naming `lola profile <scope flag> <name> --off` (built by `Engine.Command`, e.g.
 `lola profile --user user:go --off`) and counts as off, and a profile that does not load
-refuses the run. A profile's relative local sources are made absolute against its directory
-(§19 R5) before anything else sees them, so `lock.json` records them absolute. `desired(layers)`
+refuses the run. A profile's relative local sources are resolved against its directory (§19 R5)
+before anything else sees them: made absolute for the user's own profiles, so `lock.json`
+records them absolute, and joined to `.lola/profiles` for a project's, so they stay relative to
+the root as `project.yml`'s are. `desired(layers)`
 walks the layers in order; a later entry replaces an earlier one of the same name whole and,
 when they differ, adds a notice. Each `Wanted` carries its entry, `From` (the layer's name:
 `project.yml`, `user.yml`, `profile:user:go`, `profile:default`) and `Over` (the layers it
 replaced).
 
-lola never writes a profile (D7, §19 R1): `pinsOf`, `Pins` and `needsPin` cover manifest
-entries only. `validateSync` gives a profile's unpinned git or archive entry the commit and
+lola never writes a profile of the user's own (D7, §19 R1): `pinsOf`, `Pins` and `needsPin`
+cover the manifest's entries and project profiles' only (`syncEntry.own` is the rest). `validateSync` gives a profile's unpinned git or archive entry the commit and
 digest `lock.json` records for the same source, ref and path, whichever layer won before
 (`syncEntry.ledgerPin`; `from` is not compared, since a planted `lock.json` sets it too), so it installs as a pinned entry does until `--update` resolves its ref
 again; the version installed is what `planSync` records anyway. At project scope such a pin is
@@ -783,6 +812,41 @@ checked like an untrusted entry's: its commit must be reachable from the ref eve
 hit, since an untracked `lock.json` planted in the checkout could name any commit (§11, S5). `--update` naming a profile's pinned entry is refused with
 `edit the pin in <path>`; an unlimited `--update` leaves such entries at their pins with an info
 notice. A pinned fetch's error names where the pin lives (`pinnedIn`).
+
+**Project profiles** (`.lola/profiles/<name>.yml`, Plan 6b §4.1, §8.1) are committed, so their
+layers (`Layer.Key`, the profile's name) are read with `profile.LoadProject` and treated as
+`project.yml` is, not as the user's own: a sync's `syncEntry.key` marks their entries. Coverage is
+the profile's part of the trust record (`rec.View.Part(key).Covers`); `containLocalSources`
+checks their local sources against the project (§19 R5); a covered folder's content is read and
+compared like a manifest folder's; an unpinned git or archive entry is pinned, with the user's
+trust, and the pin written back into the profile (§19 R1), and `sync --update` re-pins it. The
+trust check (`trustParts`, `checkParts`) covers `project.yml` and every project profile of the
+run's layers (the active ones and those being turned on), each with the entries of it that win
+only (ruling R-6b3a-3, narrowing R2): an entry a later layer shadows is neither checked nor
+accepted, and its record is left out of the check, so it is reviewed, with the content it
+installs, on whatever run makes it win (a sync after `project.yml` drops the module, or an
+activation that turns a higher profile off; P9's moved modules include it). Each change of a
+profile names it (`trust.Change.Profile`, `project:<name>`), and every other part of the record
+is carried (§19 R2). `saveTrust` drops, on every save, the parts of profiles whose file is no
+longer in `.lola/profiles` (R-6b3a-5), never reporting them removed. Any project-scope run with
+an active profile lists `.lola/profiles`, so a symbolic link there refuses it even when only the
+user's own profiles are on. A trust answer is per module: `acceptance.modules` holds the
+accepted entries per part, and `acceptance.record` accepts them part by part. `saveManifest`
+takes the profiles' pins too (`profileEdit`): `Profile.Pin` edits the bytes the run read, the
+apply writes them with `project.yml` and `lock.json`, and the record is refreshed per part.
+`render` checks a project profile's winning entry against its part as it checks a manifest entry. `SyncNames` (completion)
+leaves project profiles out of the layers, since it runs no git and a committed `lock.json` could
+name them; `InstallCoaching` refuses a tracked `lock.json` before it reads them.
+
+A project profile with the name of an active `user:` profile replaces it only through an
+activation that names it (D8, §4.4, ruling R-6b3a-1): `--on project:go` puts it in `user:go`'s
+place in the list (`activeList`), and `--switch` naming it drops `user:go`. `replaced` finds
+these pairs between the old and new lists, and `replacingOf` adds them to the activation's trust
+report (`TrustReport.Replacements`, with the modules each changes); a pending replacement forces
+the trust question, which for an activation is all or none (P10). `lola sync` never swaps them:
+`syncLayers` keeps the list and adds `replacementNotices` (`project:go also exists → lola profile
+project:go --on`), as activations and the listing do. Nothing about a declined replacement is
+stored.
 
 `Status` (`lola list`) reads the same layers: a row's `From` is the layer whose entry wins now,
 else the one `lock.json` recorded (the manifest's base name when it recorded none); a profile's
@@ -793,14 +857,17 @@ layers' notices (missing profiles) and refuses a project whose `lock.json` git t
 `Render` reads the layers too (Plan 6b §7): `renderCheck` judges each installed module by its
 winning entry, so a profile's module is not "not in manifest" at project scope, and a module no
 layer lists is left out naming the layer `lock.json` recorded (`profile:user:go no longer lists
-it`). A profile's entry skips the trust and folder-content checks, as at user scope, except
-that one without targets of its own is left out when `project.yml`'s top-level targets, which it
-installs to, are not the ones the trust record covers, and one rendering `lock.json`'s pin of a
-git source is left out unless that commit is reachable from its ref (`source.CheckReachable`,
-as sync checks a `ledgerPin`), since an untracked `lock.json` planted in the checkout could name
-any commit. `renderPin`
-installs the winning entry's pin, else `lock.json`'s version, and names where a failing pin
-lives (an edit of the profile, or `sync --update` for the manifest). Render keeps or sets each
+it`). The user's own profile's entry skips the trust and folder-content checks, as at user
+scope, except that one without targets of its own is left out when `project.yml`'s top-level
+targets, which it installs to, are not the ones the trust record covers. A project profile's
+entry is checked against its profile's part of the record, and its folder content as
+`project.yml`'s is. Every unpinned git entry, whichever layer it comes from, renders `lock.json`'s
+pin, so it is left out unless that commit is reachable from its ref (`source.CheckReachable`, as
+sync checks a `ledgerPin`): an untracked `lock.json` planted in the checkout could name any
+commit, for the user's own entry, trusted unpinned, and for a `project.yml` or project profile
+entry that declined removals recorded unpinned alike. `renderPin` installs the winning entry's
+pin, else `lock.json`'s version, and names where a failing pin lives: an edit of the user's own
+profile, or `sync --update` for the manifest's or a project profile's. Render keeps or sets each
 module's `from`, warns about missing profiles, and removes nothing for them.
 
 `Profiles` and `ProfileState` (`internal/engine/profileview.go`) are what `lola profile` reads,
@@ -808,10 +875,13 @@ per scope. Both refuse a project whose `lock.json` git tracks before reading any
 (§19 S5). `Profiles` reads the profiles directory's listing and `lock.json`, never a profile file
 (§19 S8): each visible profile with its kind, path and 1-based position in the active list
 (`default` is always active and has none), a missing-profile warning per stored name with no
-file, and the invalid-name count as a warning. `ProfileState` resolves a typed name
-(`resolveProfile`, §4.4 for the user kinds: a bare name is the user's profile, `default` is
-`default.yml` at user scope only, `user:go` names its kind; `project:` and `remote:` names are
-unknown until 6b.3, §19 P8; an unknown name lists the profiles the scope can use), then builds
+file, the invalid-name count of each profiles directory as a warning, and a project's ignored
+`default.yml`. `ProfileState` resolves a typed name (`resolveProfile`, §4.4: a bare name is, at
+project scope, the project's profile or the user's, refused naming both qualified names and
+files when both exist, with a hint per kind repeating the typed command with the name qualified
+(D8), and at user scope the user's; `default` is `default.yml` at user scope only;
+`user:go` and `project:go` name their kind; `remote:` names are unknown until 6b.3b, §19 P8; an
+unknown name lists the profiles the scope can use), then builds
 the scope's layers with the profile appended to the active list when it is off, as `--on`
 would, and reports each of its modules' winning layer (`From`) and the layers that entry replaced
 (`Overrides`, from `Wanted.Over`). The profile is read once, by `layers`. Over several scopes,
@@ -948,7 +1018,13 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
 under the same scope lock, after the tracked-`lock.json` refusal. `startActivation` lists the
 profiles directory once, and `activeList` resolves each typed name (`resolveProfile`; only when
 that finds none, `--off` also takes a stored name whose file is gone, as typed or as
-`user:<name>`), refuses a name given twice, refuses `--off`/`--switch` of `default` (hint: rename
+`user:<name>` or `project:<name>`; a bare `--off` name that would match both, or that resolves to
+a profile that is off while the other kind's is on with its file gone, is refused saying which
+is on and which file is gone: both on and gone hints the typed `--off` per kind, one on and gone
+hints turning it off and, when the other is the project's, turning that on in its place; a bare
+`--off` name both kinds' files define, `resolveProfile`'s `ambiguousProfileError` carrying both,
+is refused naming the one that is on with only its `--off` hint when one is, and is a `neither …
+is on` notice when neither is, D8), refuses a name given twice, refuses `--off`/`--switch` of `default` (hint: rename
 or delete `default.yml`) and any action on it at project scope, makes `--on default` a notice,
 and builds the new list: `--on` appends in typed order (`by: on`), `--off` removes, `--switch`
 replaces it in typed order (`by: switch`), at most 64. A list whose names do not change returns

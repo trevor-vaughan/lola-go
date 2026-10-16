@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -194,7 +195,7 @@ func (a *app) syncCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and the trust diff, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals (only removals: it never trusts changes)")
-	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml without asking (never bypasses a refusal or grants hook consent)")
+	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its active profiles without asking (never bypasses a refusal or grants hook consent)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be (never skips a prompt)")
 	cmd.Flags().BoolVar(&f.update, "update", false, "fetch the refs again and re-pin the modules of the run")
 	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
@@ -308,11 +309,15 @@ func (a *app) completeSync(cmd *cobra.Command, args []string, toComplete string)
 }
 
 // trustStep is the trust picker for rep (Plan 6a §7.5): its change count, and an option per
-// changed entry, grouped by kind in the diff's order (! source host changed, ~ changed, + added,
-// - removed), each "<glyph> <module> <one-line summary>". The top-level targets have no option
-// of their own: accepting an entry that installs to them accepts them.
+// changed module, grouped by kind in the diff's order (! source host changed, ~ changed, + added,
+// - removed), each "<glyph> <module> <one-line summary>", the module followed by the files it
+// changed in when a project profile is one of them (Plan 6b §8.1). A module whose entries changed
+// in several files is offered once, summarized by its first change: choosing it trusts all of
+// them. The top-level targets have no option of their own: accepting an entry that installs to
+// them accepts them. A project profile an activation puts in place of an active one counts as a
+// change; an activation offers no Choose… (§4.4, P10).
 func trustStep(rep engine.TrustReport) TrustStep {
-	st := TrustStep{Changes: len(rep.Changes)}
+	st := TrustStep{Changes: len(rep.Changes) + len(rep.Replacements)}
 	if rep.Targets != nil {
 		st.Changes++ // the diff's targets row
 	}
@@ -327,9 +332,24 @@ func trustStep(rep engine.TrustReport) TrustStep {
 	} {
 		var opts []TrustOption
 		for _, c := range rep.Changes {
-			if g.of(c) {
-				opts = append(opts, TrustOption{Module: c.Module, Label: g.glyph + " " + c.Module + " " + trustSummary(c, rep.Targets)})
+			if !g.of(c) || slices.ContainsFunc(st.Groups, func(tg TrustGroup) bool {
+				return slices.ContainsFunc(tg.Options, func(o TrustOption) bool { return o.Module == c.Module })
+			}) || slices.ContainsFunc(opts, func(o TrustOption) bool { return o.Module == c.Module }) {
+				continue
 			}
+			// The files whose changes choosing it trusts, when a project profile is one of them.
+			var files []string
+			for _, o := range rep.Changes {
+				file := cmp.Or(o.Profile, "project.yml")
+				if o.Module == c.Module && !slices.Contains(files, file) {
+					files = append(files, file)
+				}
+			}
+			module := c.Module
+			if len(files) > 1 || c.Profile != "" {
+				module += " (" + strings.Join(files, ", ") + ")"
+			}
+			opts = append(opts, TrustOption{Module: c.Module, Label: g.glyph + " " + module + " " + trustSummary(c, rep.Targets)})
 		}
 		if len(opts) > 0 {
 			st.Groups = append(st.Groups, TrustGroup{Title: fmt.Sprintf("%s (%d)", g.title, len(opts)), Options: opts})
@@ -396,7 +416,7 @@ func trustEcho(st TrustStep, rep engine.TrustReport, ans engine.TrustAnswer) str
 	}
 	var left []string
 	for _, c := range rep.Changes {
-		if !slices.Contains(ans.Modules, c.Module) {
+		if !slices.Contains(ans.Modules, c.Module) && !slices.Contains(left, c.Module) {
 			left = append(left, c.Module)
 		}
 	}

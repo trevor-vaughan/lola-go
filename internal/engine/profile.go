@@ -13,31 +13,43 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Layer is one file of module entries a scope wants (Plan 6b §6.2): a profile or the scope's
 // manifest. Name is what lock.json's from and every notice call it: the manifest's base name
 // (project.yml, user.yml) or ledger.FromProfile of the profile's qualified name. Path is its
-// file. A profile layer's entries come from profile.Entries, with relative local sources made
-// absolute against the profile's directory (§19 R5).
+// file. A profile layer's entries come from profile.Entries, with relative local sources resolved
+// against the profile's directory (§19 R5): made absolute for the user's own profiles, and kept
+// relative to the project root, as project.yml's are, for a project's. Key is a project
+// profile's name, its part of the trust record (§8.1), and read its parse, whose bytes a sync
+// writes pins into (§6.4); "" and nil for any other layer.
 type Layer struct {
 	Name    string
 	Path    string
 	Profile bool
+	Key     string
 	Entries []manifest.Entry
+	read    *profile.Profile
 }
 
 // Wanted is the entry of one module that a scope's layers want: the entry of the last layer
 // that lists it, whole (§6.2), From that layer's Name and Over the layers whose entry it
-// replaced, lowest first. path is the winning layer's file, and profile says it is a profile.
+// replaced, lowest first. path is the winning layer's file, profile says it is a profile and key
+// is a project profile's name (Layer.Key).
 type Wanted struct {
 	manifest.Entry
 	From    string
 	Over    []string
 	path    string
 	profile bool
+	key     string
 }
+
+// own reports whether the entry is the user's own: from a profile of theirs, not the project's,
+// trusted as user.yml is (Plan 6b §8.2, §4.3).
+func (w *Wanted) own() bool { return w.profile && w.key == "" }
 
 // desired is the set of modules a scope should have installed, in name order (Plan 6b §6.2): the
 // layers' entries, lowest layer first, an entry of a later layer replacing an earlier one of the
@@ -51,7 +63,7 @@ func desiredNoting(layers []Layer, noted func(module string) bool) ([]Wanted, []
 	var notices []Notice
 	for _, l := range layers {
 		for _, ent := range l.Entries {
-			w := &Wanted{Entry: ent, From: l.Name, path: l.Path, profile: l.Profile}
+			w := &Wanted{Entry: ent, From: l.Name, path: l.Path, profile: l.Profile, key: l.Key}
 			w.Targets = slices.Clone(ent.Targets)
 			if prev := won[ent.Name]; prev != nil {
 				w.Over = append(slices.Clone(prev.Over), prev.From)
@@ -134,11 +146,22 @@ func (e *Engine) loadProfiles(sc Scope, infos []profile.Info, lists ...[]ledger.
 	}
 	if infos == nil {
 		var err error
-		if infos, _, err = profile.Visible(e.Paths, sc.Kind == target.User); err != nil {
+		if infos, _, err = e.visible(sc); err != nil {
 			return nil, err
 		}
 	}
 	load := func(i profile.Info) (Layer, error) {
+		if i.Kind == profile.KindProject {
+			p, err := profile.LoadProject(i.Path)
+			if err != nil {
+				return Layer{}, err
+			}
+			ents := p.Entries()
+			for k := range ents {
+				ents[k].Source = besideProfile(ents[k].Source, profile.ProjectDir)
+			}
+			return Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Key: i.Name, Entries: ents, read: p}, nil
+		}
 		p, err := profile.Load(i.Path)
 		if err != nil {
 			return Layer{}, err
@@ -212,9 +235,157 @@ func (e *Engine) layers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([
 	return pl.assemble(e.manifestLayer(sc, man), led.Profiles), pl.notices, nil
 }
 
-// besideProfile is a profile entry's source with a relative local path made absolute against
-// dir, the profile's directory (Plan 6b §4.3, §19 R5). URLs, git's scp form and absolute paths
-// are kept as written.
+// visible is the profiles sc can use, by name (Plan 6b §4.1): the user's, with default at user
+// scope (profile.Visible), and at project scope the project's (profile.Project). Neither file is
+// read. notices are what a listing says about the directories: how many files have names that
+// are not valid profile names, never the names (§4.3, §19 S7), and a project's default.yml, which
+// is not a profile.
+func (e *Engine) visible(sc Scope) ([]profile.Info, []Notice, error) {
+	infos, invalid, err := profile.Visible(e.Paths, sc.Kind == target.User)
+	if err != nil {
+		return nil, nil, err
+	}
+	notices := invalidNotices(e.Paths.UserProfiles, invalid)
+	if sc.Kind != target.Project {
+		return infos, notices, nil
+	}
+	project, invalid, ignored, err := profile.Project(sc.ProjectDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	notices = append(notices, invalidNotices(filepath.Join(sc.ProjectDir, profile.ProjectDir), invalid)...)
+	if ignored != "" {
+		notices = append(notices, Notice{Level: LevelWarn, Text: "a project cannot define default; rename " + shown(ignored)})
+	}
+	infos = append(infos, project...)
+	slices.SortStableFunc(infos, func(a, b profile.Info) int { return strings.Compare(a.Name, b.Name) })
+	return infos, notices, nil
+}
+
+// invalidNotices is the warning about the n files in dir whose names are not valid profile
+// names, if any.
+func invalidNotices(dir string, n int) []Notice {
+	switch {
+	case n == 1:
+		return []Notice{{Level: LevelWarn, Text: "1 file with an invalid name in " + shown(dir) + " is not a profile"}}
+	case n > 1:
+		return []Notice{{Level: LevelWarn, Text: fmt.Sprintf("%d files with invalid names in %s are not profiles", n, shown(dir))}}
+	}
+	return nil
+}
+
+// replacing is an activation's replacement of active user profiles by project profiles of the
+// same name (Plan 6b §4.4, D8; ruling R-6b3a-1): report is what the trust report shows of them.
+// lola sync never makes one; only lola profile project:<name> --on, or --switch naming it, does.
+type replacing struct {
+	report []Replacement
+}
+
+// add puts the replacements in rep, a project scope's trust report: each is a change of its own,
+// so a report with one is not trusted. A nil r adds nothing.
+func (r *replacing) add(rep *TrustReport) {
+	if r == nil {
+		return
+	}
+	rep.Replacements = slices.Clone(r.report)
+	if rep.Status == trust.StatusTrusted {
+		rep.Status = trust.StatusChanged
+	}
+}
+
+// replaced is the replacements an activation makes (D8): each active user:<name> of old that the
+// new list drops while it gains project:<name>, as {user:<name>, project:<name>}.
+func replaced(old, list []ledger.Active) [][2]string {
+	has := func(l []ledger.Active, q string) bool {
+		return slices.ContainsFunc(l, func(a ledger.Active) bool { return a.Name == q })
+	}
+	var out [][2]string
+	for _, a := range old {
+		kind, name, _ := strings.Cut(a.Name, ":")
+		q := string(profile.KindProject) + ":" + name
+		if kind == string(profile.KindUser) && !has(list, a.Name) && has(list, q) && !has(old, q) {
+			out = append(out, [2]string{a.Name, q})
+		}
+	}
+	return out
+}
+
+// replacingOf is the report of the replacements pairs an activation makes (replaced), each with
+// the modules whose winning entry it changes between old and want, the desired sets of the old
+// and the new list; nil when there are none.
+func replacingOf(pairs [][2]string, old, want []Wanted) *replacing {
+	if len(pairs) == 0 {
+		return nil
+	}
+	r := &replacing{}
+	for _, p := range pairs {
+		mods := []string{}
+		for _, w := range want {
+			if o := find(old, w.Name); w.From == ledger.FromProfile(p[1]) && (o == nil || o.From != w.From || !sameEntry(o.Entry, w.Entry)) {
+				mods = append(mods, shown(w.Name))
+			}
+		}
+		for _, o := range old {
+			if w := find(want, o.Name); o.From == ledger.FromProfile(p[0]) && (w == nil || w.From != o.From) && !slices.Contains(mods, shown(o.Name)) {
+				mods = append(mods, shown(o.Name))
+			}
+		}
+		slices.Sort(mods)
+		r.report = append(r.report, Replacement{Profile: shown(p[1]), Replaces: shown(p[0]), Modules: mods})
+	}
+	return r
+}
+
+// replacements is, for the active list active at project scope, each project profile of infos
+// that has the name of an active user profile and is not active itself (Plan 6b §4.4, D8), as
+// {user:<name>, project:<name>}.
+func replacements(infos []profile.Info, active []ledger.Active) [][2]string {
+	var out [][2]string
+	for _, a := range active {
+		kind, name, _ := strings.Cut(a.Name, ":")
+		if kind != string(profile.KindUser) {
+			continue
+		}
+		q := string(profile.KindProject) + ":" + name
+		if slices.ContainsFunc(infos, func(i profile.Info) bool { return i.Qualified() == q }) &&
+			!slices.ContainsFunc(active, func(o ledger.Active) bool { return o.Name == q }) {
+			out = append(out, [2]string{a.Name, q})
+		}
+	}
+	return out
+}
+
+// replacementNotices is the notice of each project profile with the name of an active user
+// profile (replacements): lola never swaps them on its own, so it says how to (R-6b3a-1).
+func (e *Engine) replacementNotices(sc Scope, pending [][2]string) []Notice {
+	var out []Notice
+	for _, p := range pending {
+		out = append(out, Notice{Level: LevelWarn, Text: shown(p[1]) + " also exists → " + e.Command(sc, "profile", p[1], "--on")})
+	}
+	return out
+}
+
+// syncLayers is layers for a sync, with a notice for each project profile that has the name of
+// an active user profile (replacements): a sync never swaps one for the other (Plan 6b §4.4,
+// ruling R-6b3a-1). Each profile is read once.
+func (e *Engine) syncLayers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([]Layer, []Notice, error) {
+	if sc.Kind != target.Project || len(led.Profiles) == 0 {
+		return e.layers(sc, man, led)
+	}
+	infos, _, err := e.visible(sc)
+	if err != nil {
+		return nil, nil, err
+	}
+	pl, err := e.loadProfiles(sc, infos, led.Profiles)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pl.assemble(e.manifestLayer(sc, man), led.Profiles), append(pl.notices, e.replacementNotices(sc, replacements(infos, led.Profiles))...), nil
+}
+
+// besideProfile is a profile entry's source with a relative local path joined to dir, the
+// profile's directory (Plan 6b §4.3, §19 R5): absolute for a user's profile, relative to the
+// project root for a project's. URLs, git's scp form and absolute paths are kept as written.
 func besideProfile(src, dir string) string {
 	if strings.Contains(src, "://") || source.Host(src) != "" || filepath.IsAbs(src) {
 		return src

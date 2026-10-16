@@ -116,7 +116,7 @@ func (fl *installFlow) missingArgument() error {
 	}
 	var hints []string
 	for _, c := range res.Scopes {
-		_, hint, cerr := fl.eng.InstallCoaching(c.Scope)
+		_, hint, cerr := fl.eng.InstallCoaching(fl.cmd.Context(), c.Scope)
 		if cerr != nil {
 			return cerr
 		}
@@ -301,7 +301,7 @@ func (fl *installFlow) coach() error {
 	}
 	s := fl.a.style(fl.cmd)
 	for _, c := range fl.scopes {
-		notice, _, err := fl.eng.InstallCoaching(c.Scope)
+		notice, _, err := fl.eng.InstallCoaching(fl.cmd.Context(), c.Scope)
 		if err != nil {
 			return err
 		}

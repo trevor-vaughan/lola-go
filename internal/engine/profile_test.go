@@ -301,7 +301,7 @@ var _ = Describe("profiles", func() {
 	It("install coaches about every layer's modules and says when its entry overrides a profile's", func() {
 		a, c := mod("a", "a", "A"), mod("c", "c", "C")
 		writeProfile("default", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: "+a+"}\n  - {name: c, source: "+c+"}\n")
-		notice, hint, err := e.InstallCoaching(user)
+		notice, hint, err := e.InstallCoaching(ctx, user)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notice).To(Equal("2 modules in profile:default are not installed → lola sync --user"))
 		Expect(hint).To(Equal("install what profile:default lists: lola sync --user"))
@@ -313,7 +313,7 @@ var _ = Describe("profiles", func() {
 
 		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
 			"  - {name: a, source: " + a + ", targets: [claude-code, opencode]}\n  - {name: b, source: ../b}\n"})
-		notice, hint, err = e.InstallCoaching(user)
+		notice, hint, err = e.InstallCoaching(ctx, user)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notice).To(Equal("2 modules in profile:default and user.yml are not installed → lola sync --user"))
 		Expect(hint).To(Equal("install what profile:default and user.yml list: lola sync --user"))
@@ -448,6 +448,88 @@ var _ = Describe("profiles", func() {
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
 			Text: "example: --update leaves the pin profile:default sets; edit the pin in " + def}))
 		Expect(pinned()).To(And(HaveField("Commit", first), HaveField("Digest", v1)), "the profile's pin is installed")
+
+		// A project profile is the project's: its unpinned entry is pinned, with the user's trust,
+		// in the profile itself, as project.yml's are (§19 R1).
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+			"  # the team's review tooling\n  - {name: example, source: " + url + "}\n"})
+		team := filepath.Join(proj, ".lola", "profiles", "team.yml")
+		own := files()
+		activate(sc, "project:team")
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(err).To(MatchError(ContainSubstring("the pins it would write for example")), "pinning needs trust")
+		res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
+			return engine.TrustAnswer{All: true}, nil
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Pins).To(ConsistOf(And(HaveField("Module", "example"), HaveField("Profile", "project:team"), HaveField("Commit", second),
+			HaveField("Written", true))))
+		b, err := os.ReadFile(team)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(And(ContainSubstring("# the team's review tooling"), ContainSubstring("commit: "+second)), "written in place, comments kept")
+		res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(err).NotTo(HaveOccurred(), "lola's own pin is trusted")
+		Expect(res.InSync).To(BeTrue())
+
+		third := push("commands/ship.md", "Ship it fastest\n")
+		res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"example"}, Update: true,
+			Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Pins).To(ConsistOf(And(HaveField("Profile", "project:team"), HaveField("Commit", third), HaveField("Reason", engine.PinUpdate))))
+		Expect(os.ReadFile(team)).To(ContainSubstring("commit: " + third))
+		Expect(files()).To(Equal(own), "the user's profiles are still never written")
+	})
+
+	It("writes a project profile's pins in the apply's transaction, never over a file that moved", func() {
+		if os.Geteuid() == 0 {
+			Skip("root ignores directory permissions")
+		}
+		work, bare := filepath.Join(tmp, "work"), filepath.Join(tmp, "srv", "example.git")
+		writeTree(work, exampleModule)
+		gitIn(work, "init", "-q", "-b", "main")
+		gitIn(work, "add", "-A")
+		gitIn(work, "commit", "-q", "-m", "init")
+		gitIn(tmp, "clone", "-q", "--bare", work, bare)
+		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/example.git"
+		content := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url + "}\n"
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": content})
+		team, profiles := filepath.Join(proj, ".lola", "profiles", "team.yml"), filepath.Join(proj, ".lola", "profiles")
+		activate(sc, "project:team")
+		before, err := os.ReadFile(ledgerPath(sc))
+		Expect(err).NotTo(HaveOccurred())
+		unchanged := func() {
+			GinkgoHelper()
+			Expect(os.ReadFile(ledgerPath(sc))).To(Equal(before), "lock.json")
+			r, err := e.Trust.Load(proj)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(r.View.Profiles).To(BeEmpty(), "no trust recorded")
+			Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
+		}
+
+		// The profile changes while the user answers: what was checked is not what would be written.
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
+			Expect(os.WriteFile(team, []byte(content+"# edited\n"), 0o644)).To(Succeed())
+			return engine.TrustAnswer{All: true}, nil
+		}})
+		Expect(err).To(MatchError(ContainSubstring(team + " changed while lola was running; not writing its pins")))
+		unchanged()
+		Expect(os.WriteFile(team, []byte(content), 0o644)).To(Succeed())
+
+		// The profile cannot be written: nothing of the apply stays.
+		Expect(os.Chmod(profiles, 0o555)).To(Succeed())
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
+		Expect(err).To(HaveOccurred())
+		Expect(os.Chmod(profiles, 0o755)).To(Succeed())
+		unchanged()
+		Expect(os.ReadFile(team)).To(Equal([]byte(content)))
+
+		// The record cannot be saved after the apply: the error names the profile lola wrote.
+		Expect(os.RemoveAll(p.TrustLock)).To(Succeed())
+		Expect(os.MkdirAll(p.TrustLock, 0o700)).To(Succeed()) // a lock that cannot be taken
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
+		Expect(err).To(MatchError(ContainSubstring("lock.json and " + filepath.Join(".lola", "profiles", "team.yml") +
+			" were updated, but lola could not record that you trust what it wrote to " + filepath.Join(".lola", "profiles", "team.yml") + ": ")))
+		Expect(os.ReadFile(team)).To(ContainSubstring("commit: "), "the apply stands")
 	})
 
 	It("checks that a profile's pin read from a project's lock.json is on its ref", func() {
@@ -485,6 +567,48 @@ var _ = Describe("profiles", func() {
 		b, err := os.ReadFile(filepath.Join(proj, ".claude", "commands", "ship.md"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).NotTo(ContainSubstring("attacker"))
+	})
+
+	It("checks that a project profile's entry recorded unpinned, read from a project's lock.json, is on its ref", func() {
+		work, bare := filepath.Join(tmp, "work"), filepath.Join(tmp, "srv", "example.git")
+		writeTree(work, exampleModule)
+		gitIn(work, "init", "-q", "-b", "main")
+		gitIn(work, "add", "-A")
+		gitIn(work, "commit", "-q", "-m", "init")
+		gitIn(work, "checkout", "-q", "-b", "fork")
+		writeTree(work, map[string]string{"commands/ship.md": "Ship to the attacker\n"})
+		gitIn(work, "commit", "-q", "-am", "fork")
+		forked := gitIn(work, "rev-parse", "HEAD")
+		gitIn(tmp, "clone", "-q", "--bare", work, bare)
+		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/example.git"
+		writeTree(proj, map[string]string{"mods/gone/lola.yml": "name: gone\n", "mods/gone/commands/gone.md": "Gone\n",
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: gone, source: mods/gone}\n"})
+		_, err := sync(sc)
+		Expect(err).NotTo(HaveOccurred())
+
+		// A pull drops gone and adds project:team, turned on; declining the removal records team's
+		// entry unpinned, since lola wrote no pin for it.
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n",
+			".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url + ", ref: main}\n"})
+		activate(sc, "project:team")
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, ConfirmRemovals: func([]engine.Removal) (bool, error) { return false, nil },
+			Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
+		Expect(errors.As(err, new(*engine.RemovalsDeclinedError))).To(BeTrue(), "%v", err)
+
+		// The fork's commit is cached (another project), and a planted lock.json names it.
+		v, err := e.Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url, Ref: "fork"})
+		Expect(err).NotTo(HaveOccurred())
+		led, err := e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		led.Modules["example"] = &ledger.Entry{From: "profile:project:team", Source: url, Ref: "main", Commit: forked, Digest: v.Meta.Digest,
+			Targets: []string{"claude-code"}}
+		Expect(led.Save(ledgerPath(sc))).To(Succeed())
+		res, err := e.Render(ctx, sc, engine.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Findings).To(ContainElement(And(HaveField("Module", "example"), HaveField("Code", engine.CodeNotTrusted),
+			HaveField("Text", ContainSubstring("lock.json pins it to "+forked)),
+			HaveField("Hint", "re-pin it: lola sync --project --update example"))), "render leaves it as installed")
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile(), "the fork's ship.md is never rendered")
 	})
 
 	It("lists the profiles a scope can use, with their place in the active list", func() {

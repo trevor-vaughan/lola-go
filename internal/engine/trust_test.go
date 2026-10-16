@@ -508,6 +508,18 @@ var _ = Describe("Engine and the trust record", func() {
 		Expect(loadManifest().Find("example")).To(BeNil())
 	})
 
+	It("records nothing after an uninstall that writes no manifest, so a record it cannot write does not fail it", func() {
+		Expect(install(engine.Options{Targets: []string{"claude-code", "gemini-cli"}}, other)).To(Succeed())
+		pull(manifest.Change{Remove: []string{"other"}})
+		Expect(os.RemoveAll(p.TrustLock)).To(Succeed())
+		Expect(os.MkdirAll(p.TrustLock, 0o700)).To(Succeed()) // a lock that cannot be taken
+		_, err := e.Uninstall(ctx, sc, []string{"other"}, engine.Options{Targets: []string{"gemini-cli"}})
+		Expect(err).NotTo(HaveOccurred())
+		led, err := e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["other"].InstalledTargets()).To(Equal([]string{"claude-code"}))
+	})
+
 	// both installs at the project and the user scope together, as the install pickers do.
 	both := func(args ...string) error {
 		var reqs []engine.InstallRequest

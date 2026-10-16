@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
-	"github.com/trevor-vaughan/lola-go/internal/target"
 )
 
 // ProfileAction is what lola profile does to a scope's active list (Plan 6b §3.2, §6.3).
@@ -34,13 +34,15 @@ type ProfileChange struct {
 // Activation is what an activation's sync reports beside the sync's own result (Plan 6b §12.2,
 // §19 R14): Profiles, the scope's active list after the run (the old one when it applied
 // nothing), and Changes, what the change of list loads, replaces and unloads. Named is the
-// qualified name each typed name resolved to, in order, and Files each one's file ("" for one
-// whose file is gone), for human output.
+// qualified name each typed name resolved to, in order, Files each one's file ("" for one
+// whose file is gone), and Turned whether the run turns each on or off (false for one already
+// as asked, which a notice reports), for human output.
 type Activation struct {
 	Profiles []string      `json:"profiles"`
 	Changes  []LayerChange `json:"changes"`
 	Named    []string      `json:"-"`
 	Files    []string      `json:"-"`
+	Turned   []bool        `json:"-"`
 }
 
 // The kinds of LayerChange.
@@ -67,26 +69,90 @@ type LayerChange struct {
 
 // activeList is the scope's active list after ch (Plan 6b §3.2, §4.4), infos being the profiles
 // sc can use: each typed name resolved to its qualified name (resolveProfile; when that finds
-// none, --off also takes a name the list holds whose file is gone, as typed or as user:<name>),
-// a name given twice refused, --on appending in order, --off removing, --switch replacing the
-// list. default is never in the list: --on of it is a notice, --off and --switch of it are
-// refused with the edit that turns it off, and at project scope it is refused. A profile already
-// on, or not on, is a notice. named is the qualified names in the order typed, files their files.
-func (e *Engine) activeList(sc Scope, infos []profile.Info, led *ledger.Ledger, ch ProfileChange) (list []ledger.Active, named, files []string,
+// none, --off also takes a name the list holds whose file is gone, as typed or as user:<name> or
+// project:<name>, refusing a bare name that matches both, and refusing as well a bare name that
+// resolves to a profile that is off while the other kind's is on with its file gone, D8; --off of
+// a bare name both kinds define is refused naming the one that is on when only one is, and is a
+// notice when neither is), a name typed twice refused before any is resolved and one resolved
+// twice after, --on appending in order, --off removing, --switch replacing the list, --on
+// putting a project profile in place of the user's active namesake (D8). default is never in the
+// list: --on of it is a notice, --off and --switch of it are refused with the edit that turns it
+// off, and at project scope it is refused. A profile already on, or not on, is a notice; --off's
+// come in the order typed. named is the qualified names in the order typed, files their files.
+// flags is the run's flags, which a hint for an ambiguous name keeps.
+func (e *Engine) activeList(sc Scope, infos []profile.Info, led *ledger.Ledger, ch ProfileChange, flags []string) (list []ledger.Active, named, files []string,
 	notices []Notice, err error) {
 	isActive := func(q string) bool {
 		return slices.ContainsFunc(led.Profiles, func(a ledger.Active) bool { return a.Name == q })
 	}
+	typed := append(append(slices.Clone(ch.Names), "--"+string(ch.Action)), flags...)
+	for k, n := range ch.Names {
+		if slices.Contains(ch.Names[:k], n) {
+			return nil, nil, nil, nil, errs.WithHints(fmt.Errorf("%s is named twice", shown(n)), "name each profile once")
+		}
+	}
 	for _, n := range ch.Names {
 		q := ""
-		i, err := e.resolveProfile(sc, infos, n)
-		if _, unknown := errors.AsType[*unknownProfileError](err); unknown && ch.Action == ProfileOff {
-			for _, stored := range []string{n, string(profile.KindUser) + ":" + n} {
-				if isActive(stored) && activeprofile.Check(stored) == nil {
-					q, err = stored, nil
-					break
+		i, err := e.resolveProfile(sc, infos, n, typed)
+		// For --off, the names the list holds for n, as typed or with its kind: a profile whose
+		// file is gone is turned off by them.
+		var stored []string
+		if ch.Action == ProfileOff {
+			for _, s := range []string{n, string(profile.KindUser) + ":" + n, string(profile.KindProject) + ":" + n} {
+				if isActive(s) && activeprofile.Check(s) == nil && !slices.Contains(stored, s) {
+					stored = append(stored, s)
 				}
 			}
+		}
+		// --off of an ambiguous name is refused naming the one that is on, with only its --off,
+		// when one is; when neither is, nothing would change whichever was meant: a notice, as
+		// --off of a profile that is off is. Both on keeps resolveProfile's refusal.
+		if amb, ok := errors.AsType[*ambiguousProfileError](err); ok && ch.Action == ProfileOff {
+			on := slices.DeleteFunc(slices.Clone(amb.found), func(f profile.Info) bool { return !isActive(f.Qualified()) })
+			off := slices.DeleteFunc(slices.Clone(amb.found), func(f profile.Info) bool { return isActive(f.Qualified()) })
+			switch len(on) {
+			case 0:
+				notices = append(notices, Notice{Level: LevelInfo, Text: fmt.Sprintf("neither %s nor %s is on",
+					shown(amb.found[0].Qualified()), shown(amb.found[1].Qualified()))})
+				continue
+			case 1:
+				err = errs.WithHints(fmt.Errorf("%s is ambiguous: %s %s (%s) is on and %s %s (%s) is off", shown(n),
+					ownedBy(on[0].Kind, false), shown(on[0].Qualified()), shown(on[0].Path),
+					ownedBy(off[0].Kind, false), shown(off[0].Qualified()), shown(off[0].Path)),
+					"turn it off: "+e.Command(sc, "profile", qualifiedArgs(typed, n, on[0].Qualified())...))
+			}
+		}
+		_, unknown := errors.AsType[*unknownProfileError](err)
+		// A bare name is ambiguous when two active profiles hold it, or when it resolves to a profile
+		// that is off while the other kind's, on, has lost its file (D8): refused, never guessed.
+		otherOn := err == nil && !strings.Contains(n, ":") && !isActive(i.Qualified()) &&
+			slices.ContainsFunc(stored, func(s string) bool { return s != i.Qualified() })
+		switch {
+		case unknown && len(stored) == 1:
+			q, err = stored[0], nil
+		case unknown && len(stored) == 2:
+			var hints []string
+			for _, kind := range []profile.Kind{profile.KindUser, profile.KindProject} {
+				hints = append(hints, ownedBy(kind, true)+": "+e.Command(sc, "profile", qualifiedArgs(typed, n, string(kind)+":"+n)...))
+			}
+			err = errs.WithHints(fmt.Errorf("%s is ambiguous: %s and %s are both on, and neither file exists any more", shown(n),
+				shown(string(profile.KindUser)+":"+n), shown(string(profile.KindProject)+":"+n)), hints...)
+		case otherOn:
+			on := stored[slices.IndexFunc(stored, func(s string) bool { return s != i.Qualified() })]
+			kind, _, _ := strings.Cut(on, ":")
+			// The file a profile of that kind and name is read from (profile.Visible, profile.Project).
+			gone := filepath.Join(e.Paths.UserProfiles, n+".yml")
+			if kind == string(profile.KindProject) {
+				gone = filepath.Join(sc.ProjectDir, profile.ProjectDir, n+".yml")
+			}
+			hints := []string{"turn it off: " + e.Command(sc, "profile", qualifiedArgs(typed, n, on)...)}
+			// --on of the project's puts it in place of the user's (D8); --on of the user's would
+			// leave the project's on, so it is no way to use the user's instead.
+			if i.Kind == profile.KindProject {
+				hints = append(hints, "to use the project's instead: "+e.Command(sc, "profile", i.Qualified(), "--on"))
+			}
+			err = errs.WithHints(fmt.Errorf("%s is ambiguous: %s is on but its file %s is gone, and %s (%s) is off", shown(n),
+				shown(on), shown(gone), shown(i.Qualified()), shown(i.Path)), hints...)
 		}
 		if err != nil {
 			return nil, nil, nil, nil, err
@@ -106,14 +172,27 @@ func (e *Engine) activeList(sc Scope, infos []profile.Info, led *ledger.Ledger, 
 			return nil, nil, nil, nil, errs.WithHints(fmt.Errorf("%s is named twice", shown(q)), "name each profile once")
 		}
 		named, files = append(named, q), append(files, shown(i.Path))
+		if ch.Action == ProfileOff && !isActive(q) {
+			notices = append(notices, Notice{Level: LevelInfo, Text: shown(q) + " is not on"})
+		}
 	}
 	switch ch.Action {
 	case ProfileOn:
 		list = slices.Clone(led.Profiles)
 		for _, q := range named {
-			if !isActive(q) {
-				list = append(list, ledger.Active{Name: q, By: ledger.ByOn})
+			if isActive(q) {
+				continue
 			}
+			// A project profile named in place of the user's active namesake takes its place in
+			// the list (Plan 6b §4.4, D8; ruling R-6b3a-1), unless that one is named too.
+			kind, name, _ := strings.Cut(q, ":")
+			mine := string(profile.KindUser) + ":" + name
+			if k := slices.IndexFunc(list, func(a ledger.Active) bool { return a.Name == mine }); kind == string(profile.KindProject) && k >= 0 &&
+				!slices.Contains(named, mine) {
+				list[k] = ledger.Active{Name: q, By: ledger.ByOn}
+				continue
+			}
+			list = append(list, ledger.Active{Name: q, By: ledger.ByOn})
 		}
 		for _, q := range named {
 			if isActive(q) {
@@ -123,11 +202,6 @@ func (e *Engine) activeList(sc Scope, infos []profile.Info, led *ledger.Ledger, 
 		}
 	case ProfileOff:
 		list = slices.DeleteFunc(slices.Clone(led.Profiles), func(a ledger.Active) bool { return slices.Contains(named, a.Name) })
-		for _, q := range named {
-			if !isActive(q) {
-				notices = append(notices, Notice{Level: LevelInfo, Text: shown(q) + " is not on"})
-			}
-		}
 	case ProfileSwitch:
 		for _, q := range named {
 			list = append(list, ledger.Active{Name: q, By: ledger.BySwitch})
@@ -222,18 +296,26 @@ type activation struct {
 }
 
 // startActivation computes the new active list of an activation (activeList, Plan 6b §6.3 step
-// 2) from one listing of the profiles directory.
-func (e *Engine) startActivation(sc Scope, led *ledger.Ledger, ch ProfileChange) (*activation, []Notice, error) {
-	infos, _, err := profile.Visible(e.Paths, sc.Kind == target.User)
+// 2) from one listing of the profiles directory. flags is the run's flags, for hints that repeat
+// it (rerun, and -n in a dry run).
+func (e *Engine) startActivation(sc Scope, led *ledger.Ledger, ch ProfileChange, flags []string) (*activation, []Notice, error) {
+	infos, _, err := e.visible(sc)
 	if err != nil {
 		return nil, nil, err
 	}
-	list, named, files, notices, err := e.activeList(sc, infos, led, ch)
+	list, named, files, notices, err := e.activeList(sc, infos, led, ch, flags)
 	if err != nil {
 		return nil, nil, err
+	}
+	turned := make([]bool, len(named))
+	for i, q := range named {
+		on := func(l []ledger.Active) bool {
+			return slices.ContainsFunc(l, func(a ledger.Active) bool { return a.Name == q })
+		}
+		turned[i] = on(led.Profiles) != on(list)
 	}
 	act := &activation{infos: infos, list: list, changed: !slices.Equal(activeNames(list), activeNames(led.Profiles)),
-		report: &Activation{Profiles: activeNames(list), Changes: []LayerChange{}, Named: named, Files: files}}
+		report: &Activation{Profiles: activeNames(list), Changes: []LayerChange{}, Named: named, Files: files, Turned: turned}}
 	if !act.changed {
 		act.report.Profiles = activeNames(led.Profiles)
 	}

@@ -95,6 +95,32 @@ var _ = Describe("trust record", func() {
 		Expect(empty).To(Equal("44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"), "sha256 of {}")
 	})
 
+	It("a trust view without profiles hashes as in 6a", func() {
+		v := trust.ViewOf(man)
+		h, err := v.Hash()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(h).To(Equal("3c2b3f96f5f1ded8cfe03aecc90c7410abba8003d4ac210f657e958782e1c018"), "the hash 6a (48dfc2a) computes for this view")
+		b, err := json.Marshal(v)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).NotTo(ContainSubstring("profiles"), "an empty profiles key is left out")
+		v.Profiles = map[string]trust.ProfileView{}
+		Expect(v.Hash()).To(Equal(h), "an empty map hashes as none")
+		v.Profiles["go"] = trust.ProfileView{Modules: []trust.Entry{{Name: "gopls", Source: "https://example.com/gopls.git"}}}
+		Expect(v.Hash()).NotTo(Equal(h), "a profile's part is hashed")
+	})
+
+	It("saves and loads the profiles' parts, each sorted by name", func() {
+		v := trust.ViewOf(man).WithPart("go", trust.View{Modules: []trust.Entry{{Name: "zz", Source: "https://example.com/zz.git"},
+			{Name: "aa", Source: "mods/aa", Targets: []string{"claude-code"}}}})
+		Expect(s.Save(root, v)).To(Succeed())
+		r, err := s.Load(root)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(r.View.Part("go").Modules).To(HaveExactElements(
+			trust.Entry{Name: "aa", Source: "mods/aa", Targets: []string{"claude-code"}}, trust.Entry{Name: "zz", Source: "https://example.com/zz.git"}))
+		Expect(r.View.Part("")).To(Equal(trust.ViewOf(man)), "project.yml's part is as it was")
+		Expect(r.View.Part("docs")).To(Equal(trust.View{}), "a profile never recorded has an empty part")
+	})
+
 	DescribeTable("covers an entry only when every view field equals the record's",
 		func(change func(e *manifest.Entry)) {
 			Expect(s.Save(root, trust.ViewOf(man))).To(Succeed())
@@ -130,7 +156,7 @@ var _ = Describe("trust record", func() {
 			loaded := view(pulledX, entry("y", "dy")) // and a pulled entry y
 			saved := view(pulledX, entry("y", "dy"), entry("z", "dz"))
 			saved.Modules[0].Digest = "d2" // lola re-pinned x and added z
-			got := trust.Refresh(rec, loaded, saved)
+			got := trust.Refresh(rec, "", loaded, saved)
 			Expect(got.Find("z")).To(Equal(new(entry("z", "dz"))), "an added entry is recorded whole")
 			Expect(got.Find("y")).To(BeNil(), "a pulled entry lola left alone is not recorded")
 			Expect(got.Find("x")).To(Equal(new(entry("x", "d2"))), "the re-pin is recorded, the pulled ref is not")
@@ -141,10 +167,10 @@ var _ = Describe("trust record", func() {
 		It("drops a removed entry, takes changed top-level targets, and keeps unchanged ones' trust state", func() {
 			rec := trust.View{Targets: []string{"claude-code"}, Modules: []trust.Entry{entry("x", "d1"), entry("w", "dw")}}
 			loaded := trust.View{Targets: []string{"opencode"}, Modules: []trust.Entry{entry("x", "d1")}}
-			got := trust.Refresh(rec, loaded, trust.View{Targets: []string{"opencode"}})
+			got := trust.Refresh(rec, "", loaded, trust.View{Targets: []string{"opencode"}})
 			Expect(got.Modules).To(ConsistOf(entry("w", "dw")), "x was removed; w was not part of the write")
 			Expect(got.Targets).To(Equal([]string{"claude-code"}), "pulled targets the write left alone stay untrusted")
-			got = trust.Refresh(rec, loaded, trust.View{Targets: []string{"cursor"}})
+			got = trust.Refresh(rec, "", loaded, trust.View{Targets: []string{"cursor"}})
 			Expect(got.Targets).To(Equal([]string{"cursor"}))
 		})
 
@@ -156,14 +182,14 @@ var _ = Describe("trust record", func() {
 				{Targets: []string{"opencode"}, Modules: []trust.Entry{entry("x", "d1")}},
 				loaded,
 			} {
-				Expect(trust.Refresh(loaded, loaded, saved)).To(Equal(saved))
+				Expect(trust.Refresh(loaded, "", loaded, saved)).To(Equal(saved))
 			}
 		})
 
 		It("records nothing for a changed entry the record does not hold", func() {
 			loaded := view(entry("x", "d1"))
 			saved := view(entry("x", "d2"))
-			Expect(trust.Refresh(trust.View{}, loaded, saved).Modules).To(BeEmpty())
+			Expect(trust.Refresh(trust.View{}, "", loaded, saved).Modules).To(BeEmpty())
 		})
 	})
 
@@ -177,35 +203,65 @@ var _ = Describe("trust record", func() {
 		v := trust.View{Targets: []string{"claude-code", "opencode"}, Modules: []trust.Entry{entry("u", "du"), entry("x", "d2"), entry("y", "dy")}}
 
 		It("is the view itself when every change and the targets are accepted", func() {
-			Expect(trust.Accept(rec, v, []string{"w", "x", "y"}, true)).To(Equal(v))
+			Expect(trust.Accept(rec, "", v, []string{"w", "x", "y"}, true)).To(Equal(v))
 		})
 
 		It("is the record itself when nothing is accepted", func() {
-			Expect(trust.Accept(rec, v, nil, false)).To(Equal(rec))
+			Expect(trust.Accept(rec, "", v, nil, false)).To(Equal(rec))
 		})
 
 		It("records the accepted entries and keeps every other entry's record", func() {
-			got := trust.Accept(rec, v, []string{"y"}, false)
+			got := trust.Accept(rec, "", v, []string{"y"}, false)
 			Expect(got.Modules).To(HaveExactElements(entry("u", "du"), entry("w", "dw"), entry("x", "d1"), entry("y", "dy")),
 				"declined x keeps its old record and stays uncovered; declined w stays in the record")
 			Expect(got.Targets).To(Equal([]string{"claude-code"}), "targets are accepted only when asked")
-			got = trust.Accept(rec, v, []string{"w"}, true)
+			got = trust.Accept(rec, "", v, []string{"w"}, true)
 			Expect(got.Find("w")).To(BeNil(), "an accepted removal drops the entry")
 			Expect(got.Targets).To(Equal(v.Targets))
 		})
 
 		It("records an accepted entry once, whatever the order or repetition of the names", func() {
-			Expect(trust.Accept(rec, v, []string{"y", "x", "y"}, true)).To(Equal(trust.Accept(rec, v, []string{"x", "y"}, true)))
+			Expect(trust.Accept(rec, "", v, []string{"y", "x", "y"}, true)).To(Equal(trust.Accept(rec, "", v, []string{"x", "y"}, true)))
 		})
 
 		It("saves, through Refresh, the pins lola writes for the accepted entries only", func() {
 			loaded := trust.View{Targets: []string{"claude-code"}, Modules: []trust.Entry{entry("x", ""), entry("y", "")}}
 			saved := trust.View{Targets: []string{"claude-code"}, Modules: []trust.Entry{entry("x", "dx")}}
 			saved.Modules = append(saved.Modules, entry("y", ""))
-			got := trust.Refresh(trust.Accept(trust.View{}, loaded, []string{"x"}, true), loaded, saved)
+			got := trust.Refresh(trust.Accept(trust.View{}, "", loaded, []string{"x"}, true), "", loaded, saved)
 			Expect(got.Modules).To(HaveExactElements(entry("x", "dx")), "only the accepted entry, with its pin")
-			all := trust.Refresh(trust.Accept(trust.View{}, loaded, []string{"x", "y"}, true), loaded, saved)
+			all := trust.Refresh(trust.Accept(trust.View{}, "", loaded, []string{"x", "y"}, true), "", loaded, saved)
 			Expect(all).To(Equal(saved), "accepting everything records the saved view")
+		})
+	})
+
+	Describe("parts", func() {
+		entry := func(name, digest string) trust.Entry {
+			return trust.Entry{Name: name, Source: "https://example.com/" + name + ".git", Digest: digest}
+		}
+		rec := trust.View{Targets: []string{"claude-code"}, Modules: []trust.Entry{entry("x", "d1")},
+			Profiles: map[string]trust.ProfileView{"go": {Modules: []trust.Entry{entry("g", "dg")}}, "docs": {Modules: []trust.Entry{entry("d", "dd")}}}}
+
+		It("accepting one profile's trust leaves the others' records unchanged", func() {
+			got := trust.Accept(rec, "go", trust.View{Modules: []trust.Entry{entry("g", "dg2"), entry("h", "dh")}}, []string{"g", "h"}, false)
+			Expect(got.Part("go").Modules).To(HaveExactElements(entry("g", "dg2"), entry("h", "dh")))
+			Expect(got.Part("docs")).To(Equal(rec.Part("docs")), "another profile's record is carried")
+			Expect(got.Part("")).To(Equal(rec.Part("")), "project.yml's record is carried")
+
+			got = trust.Accept(rec, "", trust.View{Targets: []string{"opencode"}, Modules: []trust.Entry{entry("x", "d2")}}, []string{"x"}, true)
+			Expect(got.Part("")).To(Equal(trust.View{Targets: []string{"opencode"}, Modules: []trust.Entry{entry("x", "d2")}}))
+			Expect(got.Profiles).To(Equal(rec.Profiles), "accepting project.yml's changes touches no profile")
+			Expect(rec.Part("go").Modules).To(HaveExactElements(entry("g", "dg")), "the record given is not changed")
+		})
+
+		It("refreshes one profile's part and drops a profile left with no entries", func() {
+			loaded := trust.View{Modules: []trust.Entry{entry("g", "")}}
+			got := trust.Refresh(rec, "go", loaded, trust.View{Modules: []trust.Entry{entry("g", "dg3")}})
+			Expect(got.Part("go").Modules).To(HaveExactElements(entry("g", "dg3")))
+			Expect(got.Part("docs")).To(Equal(rec.Part("docs")))
+			got = trust.Accept(rec, "docs", trust.View{}, []string{"d"}, false)
+			Expect(got.Profiles).NotTo(HaveKey("docs"), "an accepted removal of a profile's last entry drops the profile")
+			Expect(got.Profiles).To(HaveKey("go"))
 		})
 	})
 

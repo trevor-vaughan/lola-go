@@ -1,6 +1,7 @@
 package plan_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -170,7 +171,7 @@ var _ = Describe("Apply", func() {
 		manPath := filepath.Join(root, ".lola", "project.yml")
 		write(".lola/project.yml", "version: 1\n")
 		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{change("x.md", "X")}}
-		Expect(plan.Apply(p, ledgerPath, &plan.ManifestWrite{Path: manPath, Data: []byte("version: 1\ntargets: [claude-code]\n")}, func() error {
+		Expect(plan.Apply(p, ledgerPath, []plan.ManifestWrite{{Path: manPath, Data: []byte("version: 1\ntargets: [claude-code]\n")}}, func() error {
 			Expect(os.ReadFile(manPath)).To(Equal([]byte("version: 1\ntargets: [claude-code]\n")))
 			return nil
 		})).To(Succeed())
@@ -182,7 +183,7 @@ var _ = Describe("Apply", func() {
 
 	It("creates a missing manifest directory private to the user, as the manifest's other writes do", func() {
 		manPath := filepath.Join(root, "config", "lola", "user.yml")
-		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, &plan.ManifestWrite{Path: manPath, Data: []byte("version: 1\n")}, nil)).To(Succeed())
+		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, []plan.ManifestWrite{{Path: manPath, Data: []byte("version: 1\n")}}, nil)).To(Succeed())
 		for _, dir := range []string{filepath.Join(root, "config"), filepath.Join(root, "config", "lola")} {
 			fi, err := os.Stat(dir)
 			Expect(err).NotTo(HaveOccurred())
@@ -206,13 +207,67 @@ var _ = Describe("Apply", func() {
 		DeferCleanup(os.Chmod, filepath.Join(root, "shared"), os.FileMode(0o755))
 
 		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{change("keep.md", "replaced"), change("new.md", "N")}}
-		err = plan.Apply(p, ledgerPath, &plan.ManifestWrite{Path: filepath.Join(root, "shared", "project.yml"), Data: []byte("version: 1\n")},
+		err = plan.Apply(p, ledgerPath, []plan.ManifestWrite{{Path: filepath.Join(root, "shared", "project.yml"), Data: []byte("version: 1\n")}},
 			func() error { Fail("after must not run"); return nil })
 		Expect(err).To(HaveOccurred())
 		Expect(os.ReadFile(filepath.Join(root, "keep.md"))).To(Equal([]byte("original")))
 		Expect(filepath.Join(root, "new.md")).NotTo(BeAnExistingFile())
 		Expect(os.ReadFile(ledgerPath)).To(Equal(oldLedger))
 		Expect(os.ReadFile(filepath.Join(root, "shared", "project.yml"))).To(Equal([]byte("version: 1 # mine\n")))
+		Expect(leftovers()).To(BeEmpty())
+	})
+
+	It("writes several manifests in order, and restores the ones written when a later one fails", func() {
+		if os.Geteuid() == 0 {
+			Skip("root ignores directory permissions")
+		}
+		manPath, profPath := filepath.Join(root, ".lola", "project.yml"), filepath.Join(root, ".lola", "profiles", "go.yml")
+		write(".lola/project.yml", "version: 1 # mine\n")
+		write(".lola/profiles/go.yml", "version: 1 # profile\n")
+		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, []plan.ManifestWrite{{Path: manPath, Data: []byte("version: 1\n")},
+			{Path: profPath, Data: []byte("version: 1\ndescription: pinned\n")}}, nil)).To(Succeed())
+		Expect(os.ReadFile(manPath)).To(Equal([]byte("version: 1\n")))
+		Expect(os.ReadFile(profPath)).To(Equal([]byte("version: 1\ndescription: pinned\n")))
+
+		Expect(os.Chmod(filepath.Dir(profPath), 0o555)).To(Succeed())
+		DeferCleanup(os.Chmod, filepath.Dir(profPath), os.FileMode(0o755))
+		err := plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, []plan.ManifestWrite{{Path: manPath, Data: []byte("version: 1 # new\n")},
+			{Path: profPath, Data: []byte("version: 1 # new\n")}}, func() error { Fail("after must not run"); return nil })
+		Expect(err).To(HaveOccurred())
+		Expect(os.ReadFile(manPath)).To(Equal([]byte("version: 1\n")), "the manifest written first is restored")
+		Expect(os.ReadFile(profPath)).To(Equal([]byte("version: 1\ndescription: pinned\n")))
+		Expect(leftovers()).To(BeEmpty())
+	})
+
+	It("runs a manifest's check just before writing it, and refuses the apply when it fails", func() {
+		manPath, profPath := filepath.Join(root, ".lola", "project.yml"), filepath.Join(root, ".lola", "profiles", "go.yml")
+		write(".lola/project.yml", "version: 1 # mine\n")
+		write(".lola/profiles/go.yml", "version: 1 # profile\n")
+		var order []string
+		err := plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, []plan.ManifestWrite{
+			{Path: manPath, Data: []byte("version: 1\n"), Check: func() error { order = append(order, "project.yml"); return nil }},
+			{Path: profPath, Data: []byte("version: 1\n"), Check: func() error {
+				order = append(order, "go.yml")
+				Expect(os.ReadFile(manPath)).To(Equal([]byte("version: 1\n")), "checked after the earlier write, just before its own")
+				return errors.New("go.yml changed")
+			}}}, func() error { Fail("after must not run"); return nil })
+		Expect(err).To(MatchError("go.yml changed"))
+		Expect(order).To(Equal([]string{"project.yml", "go.yml"}))
+		Expect(os.ReadFile(manPath)).To(Equal([]byte("version: 1 # mine\n")), "restored")
+		Expect(os.ReadFile(profPath)).To(Equal([]byte("version: 1 # profile\n")))
+		Expect(leftovers()).To(BeEmpty())
+	})
+
+	It("restores a manifest written twice to its bytes before the apply", func() {
+		manPath := filepath.Join(root, ".lola", "project.yml")
+		write(".lola/project.yml", "version: 1 # mine\n")
+		err := plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, []plan.ManifestWrite{
+			{Path: manPath, Data: []byte("version: 1 # first\n")},
+			{Path: manPath, Data: []byte("version: 1 # second\n")},
+			{Path: manPath, Data: []byte("version: 1 # third\n"), Check: func() error { return errors.New("project.yml changed") }}},
+			func() error { Fail("after must not run"); return nil })
+		Expect(err).To(MatchError("project.yml changed"))
+		Expect(os.ReadFile(manPath)).To(Equal([]byte("version: 1 # mine\n")), "not the first write's bytes")
 		Expect(leftovers()).To(BeEmpty())
 	})
 })

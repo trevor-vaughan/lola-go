@@ -28,10 +28,25 @@ const MaxFile = 1 << 20
 // those comments, so a rewrite keeps them. It refuses a file that is not regular, one over
 // MaxFile, a second document, and anchors, aliases and merge keys, which would make one entry
 // stand for another and which lola could not keep when it rewrites the file.
-func Read(path string, version int) (*yaml.Node, []byte, error) {
+func Read(path string, version int) (*yaml.Node, []byte, error) { return read(path, version, false) }
+
+// ReadNoFollow is Read for a file someone else may have committed, which must not lead lola
+// elsewhere (Plan 6b §19 S3): path itself must not be a symbolic link. It is opened with
+// O_NOFOLLOW where the system has it, and on every system the file opened must be the one
+// os.Lstat finds at path, so a link, or one swapped in while it reads, is refused. The caller
+// coaches a link it finds first.
+func ReadNoFollow(path string, version int) (*yaml.Node, []byte, error) {
+	return read(path, version, true)
+}
+
+func read(path string, version int, noFollow bool) (*yaml.Node, []byte, error) {
 	// Opened without blocking, then checked: opening a FIFO for reading would otherwise wait for
 	// a writer, and checking the open file leaves no gap for a swap. Regular files ignore the flag.
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	flags := os.O_RDONLY | syscall.O_NONBLOCK
+	if noFollow {
+		flags |= oNoFollow
+	}
+	f, err := os.OpenFile(path, flags, 0)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}
@@ -39,6 +54,12 @@ func Read(path string, version int) (*yaml.Node, []byte, error) {
 		return nil, nil, err
 	}
 	fi, err := f.Stat()
+	if err == nil && noFollow {
+		if checked, lerr := os.Lstat(path); lerr != nil || !os.SameFile(fi, checked) {
+			err = errs.WithHints(errors.Join(fmt.Errorf("%s changed while lola was reading it", untrusted.Text(path, untrusted.MaxName)), lerr),
+				"run the command again once nothing else is changing it")
+		}
+	}
 	if err == nil && !fi.Mode().IsRegular() {
 		err = errs.WithHints(fmt.Errorf("%s is not a regular file", path), "replace it with a YAML file, or remove it")
 	}

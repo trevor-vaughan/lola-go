@@ -46,12 +46,16 @@ func (a *app) profileCmd() *cobra.Command {
 		Use:   "profile [<name>...] [--on|--off|--switch]",
 		Short: "List your profiles, show one, or turn them on and off",
 		Long: "A profile is a named set of module entries, kept in $XDG_CONFIG_HOME/lola/profiles/<name>.yml;\n" +
-			"default.yml there is always on at user scope. Without a name, list the profiles each scope can\n" +
-			"use and where each stands in the scope's active list. With a name, show the profile and, per\n" +
-			"scope, the layer each of its modules comes from: the last layer listing a module wins, at user\n" +
-			"scope default, then the active profiles in order, then user.yml; at project scope the active\n" +
-			"profiles, then project.yml. For a profile that is off, it shows what turning it on would give.\n" +
-			"A name is the profile's file name; user:<name> says it is yours.\n\n" +
+			"default.yml there is always on at user scope. A project may commit its own in\n" +
+			".lola/profiles/<name>.yml: they are used at its project scope only, and their entries are\n" +
+			"reviewed before use, and pinned, as project.yml's are. Without a name, list the profiles each\n" +
+			"scope can use and where each stands in the scope's active list. With a name, show the profile\n" +
+			"and, per scope, the layer each of its modules comes from: the last layer listing a module\n" +
+			"wins, at user scope default, then the active profiles in order, then user.yml; at project\n" +
+			"scope the active profiles, then project.yml. For a profile that is off, it shows what turning\n" +
+			"it on would give.\n" +
+			"A name is the profile's file name; user:<name> says it is yours, project:<name> the project's.\n" +
+			"A name both define is refused at project scope until you qualify it.\n\n" +
 			"--on turns the named profiles on, appended to the scope's active list in the order given;\n" +
 			"--off turns them off; --switch makes them the active list, in order (default stays on). Each\n" +
 			"applies the change at once, as lola sync does for the modules it changes: the modules no\n" +
@@ -140,7 +144,7 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&switchTo, string(engine.ProfileSwitch), false, "make the named profiles the active list, in order, and apply")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals (only removals: it never trusts changes)")
-	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml the run installs without asking (never grants hook consent)")
+	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its profiles the run installs, and a project profile taking your profile's place, without asking (never grants hook consent)")
 	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
 	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
 	// Aliases for muscle memory from other tools (Plan 6b §3.3): systemctl and conda, nvm and
@@ -182,8 +186,8 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	}, res)
 }
 
-// printProfileAction prints an action's summary (Plan 6b §12.1): where each named profile, with
-// its file, now stands, each module it loads (+), replaces (~) or unloads (-) with the layer it comes from and
+// printProfileAction prints an action's summary (Plan 6b §12.1): where each named profile the run
+// turns on or off, with its file, now stands (one already as asked is its notice alone), each module it loads (+), replaces (~) or unloads (-) with the layer it comes from and
 // the layers it overrides, then the sync's own lines. --plain adds a row per change: change,
 // action, module, from and the overridden layers, comma-separated.
 func printProfileAction(w io.Writer, s style, action engine.ProfileAction, name string, r *engine.SyncResult, more string) {
@@ -204,6 +208,9 @@ func printProfileAction(w io.Writer, s style, action engine.ProfileAction, name 
 		fmt.Fprintln(w, "Active profiles → "+list)
 	default:
 		for i, q := range act.Named {
+			if !act.Turned[i] {
+				continue
+			}
 			state := "off"
 			if k := slices.Index(act.Profiles, q); k >= 0 {
 				state = fmt.Sprintf("on, %s of %d", engine.Ordinal(k+1), len(act.Profiles))

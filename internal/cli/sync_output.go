@@ -104,7 +104,8 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 }
 
 // printPins lists the pins a sync writes, each once with its new digest in full (the diff and
-// JSON have the commit and the previous digest); --plain rows are pin, module, digest, reason.
+// JSON have the commit and the previous digest), naming the project profile a pin is written into
+// (Plan 6b §6.4); --plain rows are pin, module, digest, reason.
 func printPins(w io.Writer, s style, pins []engine.Pin) {
 	if len(pins) == 0 {
 		return
@@ -117,9 +118,13 @@ func printPins(w io.Writer, s style, pins []engine.Pin) {
 	}
 	fmt.Fprintln(w, "pins:")
 	for _, p := range pins {
-		line := p.Module + " pinned " + p.Digest
+		module := p.Module
+		if p.Profile != "" {
+			module += " (" + p.Profile + ")"
+		}
+		line := module + " pinned " + p.Digest
 		if p.Reason == engine.PinUpdate {
-			line = p.Module + " re-pinned " + p.Digest + " (--update)"
+			line = module + " re-pinned " + p.Digest + " (--update)"
 		}
 		fmt.Fprintln(w, "  "+s.info(line))
 	}
@@ -165,24 +170,43 @@ func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 // printTrustDiff shows how the manifest differs from what the user last trusted (Plan 6a §7.5):
 // a header naming the cause; a source that changed host first, marked !, then the other modules
 // in module-name order, each marked ~ changed, + added or - removed, with its fields and the
-// content it brings; then the top-level targets. Every value has been through untrusted.Text. --plain rows are trust, module, change.
-// A report with no change prints nothing.
+// content it brings; then the top-level targets; then each project profile's changes in the
+// same order under a line naming the profile (Plan 6b §8.1). A project profile replacing an
+// active one comes first, on a line of its own with the modules it changes (§4.4). Every value
+// has been through untrusted.Text. --plain rows are trust, module, change and the profile (""
+// for project.yml), after a replace row (profile, the one it replaces) per replacement. A report
+// with no change prints nothing.
 func printTrustDiff(w io.Writer, s style, name string, rep engine.TrustReport, more string) {
-	if len(rep.Changes) == 0 && rep.Targets == nil {
+	if len(rep.Changes) == 0 && rep.Targets == nil && len(rep.Replacements) == 0 {
 		return
 	}
 	if s.plain {
+		for _, r := range rep.Replacements {
+			fmt.Fprintf(w, "replace\t%s\t%s\n", r.Profile, r.Replaces)
+		}
 		for _, c := range rep.Changes {
-			fmt.Fprintf(w, "trust\t%s\t%s\n", c.Module, c.Kind)
+			fmt.Fprintf(w, "trust\t%s\t%s\t%s\n", c.Module, c.Kind, c.Profile)
 		}
 		if rep.Targets != nil {
-			fmt.Fprintf(w, "trust\t\ttargets\n")
+			fmt.Fprintf(w, "trust\t\ttargets\t\n")
 		}
 		return
 	}
 	// The header names the cause, so a re-pin the user asked for is not framed as someone else's
-	// change.
+	// change, and the file: the project's profiles when only they changed.
+	if rep.Targets == nil && !slices.ContainsFunc(rep.Changes, func(c engine.TrustChange) bool { return c.Profile == "" }) {
+		var files []string
+		for _, c := range rep.Changes {
+			if f := engine.ProfileFile(c.Profile); !slices.Contains(files, f) {
+				files = append(files, f)
+			}
+		}
+		slices.Sort(files) // in the order of the sections below
+		name = strings.Join(files, ", ")
+	}
 	switch {
+	case len(rep.Changes) == 0 && rep.Targets == nil: // only a replacement: no file to name
+		fmt.Fprintln(w, "an activation would put a project profile in place of one of yours; it needs your trust for:")
 	case rep.Status == trust.StatusNew:
 		fmt.Fprintf(w, "%s has not been trusted on this machine (a fresh clone, or a moved project):\n", name)
 	case rep.ManifestChanged:
@@ -190,18 +214,47 @@ func printTrustDiff(w io.Writer, s style, name string, rep engine.TrustReport, m
 	default:
 		fmt.Fprintf(w, "%s is unchanged; lola sync needs your trust for:\n", name)
 	}
-	var first, rest []engine.TrustChange
+	for _, r := range rep.Replacements {
+		line := "  ~ " + r.Profile + " now replaces " + r.Replaces
+		if len(r.Modules) > 0 {
+			line += " (" + strings.Join(r.Modules, ", ") + ")"
+		}
+		fmt.Fprintln(w, line)
+	}
+	// Each file's changes, project.yml's first: a host change first, then the rest in order.
+	files := []string{""}
 	for _, c := range rep.Changes {
-		if c.HostChanged {
-			first = append(first, c)
-		} else {
-			rest = append(rest, c)
+		if !slices.Contains(files, c.Profile) {
+			files = append(files, c.Profile)
 		}
 	}
-	for _, c := range append(first, rest...) {
-		printTrustChange(w, c, more)
+	slices.Sort(files)
+	for _, file := range files {
+		var first, rest []engine.TrustChange
+		for _, c := range rep.Changes {
+			switch {
+			case c.Profile != file:
+			case c.HostChanged:
+				first = append(first, c)
+			default:
+				rest = append(rest, c)
+			}
+		}
+		if file != "" {
+			fmt.Fprintf(w, "  in profile %s (%s):\n", file, engine.ProfileFile(file))
+		}
+		for _, c := range append(first, rest...) {
+			printTrustChange(w, c, more)
+		}
+		if file == "" {
+			printTargetsChange(w, rep.Targets)
+		}
 	}
-	switch t := rep.Targets; {
+}
+
+// printTargetsChange is the diff's row for a change to the top-level targets, if any.
+func printTargetsChange(w io.Writer, t *trust.FieldChange) {
+	switch {
 	case t == nil:
 	case t.From == nil: // a side that is absent is the + or -, never "(none) →"
 		fmt.Fprintf(w, "  + %-13s %s\n", "targets", shownValue(t.To))

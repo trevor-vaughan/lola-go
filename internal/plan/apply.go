@@ -13,17 +13,20 @@ import (
 )
 
 // ManifestWrite is a manifest edit Apply writes in the same transaction as the ledger: Data
-// at Path, mode 0600.
+// at Path, mode 0600. A project profile lola writes pins into is one too (Plan 6b §6.4). Check,
+// when set, runs just before Data is staged: an error refuses the apply, which restores what it
+// changed (a profile checks that nothing moved since it was read, ruling R-6b3a-4).
 type ManifestWrite struct {
-	Path string
-	Data []byte
+	Path  string
+	Data  []byte
+	Check func() error
 }
 
-// Apply makes p's file changes, writes ledger to ledgerPath and, when man is set, the
-// manifest, then runs after. Any failure up to and including the manifest write restores
-// every touched file, the ledger and the manifest, and removes everything staged. The caller
+// Apply makes p's file changes, writes ledger to ledgerPath and then each manifest edit of man,
+// in order, then runs after. Any failure up to and including the last manifest write restores
+// every touched file, the ledger and the manifests, and removes everything staged. The caller
 // holds the scope lock.
-func Apply(p *Plan, ledgerPath string, man *ManifestWrite, after func() error) error {
+func Apply(p *Plan, ledgerPath string, man []ManifestWrite, after func() error) error {
 	tx := &txn{}
 	if err := tx.run(p, ledgerPath, man); err != nil {
 		if rbErr := tx.rollback(); rbErr != nil {
@@ -54,7 +57,7 @@ type txn struct {
 	newLedger string            // path to newly created ledger file, empty if ledger existed
 }
 
-func (t *txn) run(p *Plan, ledgerPath string, man *ManifestWrite) error {
+func (t *txn) run(p *Plan, ledgerPath string, man []ManifestWrite) error {
 	t.staged = map[string]string{}
 	for _, fc := range p.Files {
 		if fc.Delete {
@@ -85,20 +88,30 @@ func (t *txn) run(p *Plan, ledgerPath string, man *ManifestWrite) error {
 	} else {
 		t.newLedger = ledgerPath
 	}
-	if err := p.Ledger.Save(ledgerPath); err != nil || man == nil {
+	if err := p.Ledger.Save(ledgerPath); err != nil {
 		return err
 	}
-	// The manifest follows the ledger, staged next to it. The current one stays in place until
+	// Each manifest follows the ledger, staged next to it. The current one stays in place until
 	// the new one is renamed over it, so a crash never leaves the scope without its manifest;
 	// rollback renames the backup over it. Directories it needs are private to the user, as
 	// user.yml's always were.
-	if err := t.mkdirAll(filepath.Dir(man.Path), 0o700); err != nil {
-		return err
+	for _, m := range man {
+		if m.Check != nil {
+			if err := m.Check(); err != nil {
+				return err
+			}
+		}
+		if err := t.mkdirAll(filepath.Dir(m.Path), 0o700); err != nil {
+			return err
+		}
+		if err := t.stage(FileChange{Abs: m.Path, Data: m.Data, Mode: 0o600}); err != nil {
+			return err
+		}
+		if err := t.replace(m.Path); err != nil {
+			return err
+		}
 	}
-	if err := t.stage(FileChange{Abs: man.Path, Data: man.Data, Mode: 0o600}); err != nil {
-		return err
-	}
-	return t.replace(man.Path)
+	return nil
 }
 
 // replace puts the staged content for abs in place with one rename over the current file,
@@ -252,8 +265,9 @@ func (t *txn) rollback() error {
 	for _, b := range slices.Backward(t.backups) {
 		errs = append(errs, os.Rename(b.bak, b.abs))
 	}
-	// A backup that is still a link to abs (nothing replaced it yet) survives the rename.
-	for _, b := range t.kept {
+	// A backup that is still a link to abs (nothing replaced it yet) survives the rename. Last
+	// first, so a file written twice ends with its backup from before the first write.
+	for _, b := range slices.Backward(t.kept) {
 		errs = append(errs, os.Rename(b.bak, b.abs))
 		if err := os.Remove(b.bak); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			errs = append(errs, err)

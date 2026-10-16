@@ -45,12 +45,13 @@ func newLeftOut(name, code, text string, hints ...string) *leftOut {
 // 6b §7): the first check that applies leaves it out as installed. At project scope: a module no
 // layer lists any more; an entry that asks for another source, ref or path than lock.json
 // records, or a folder whose cache records another source (at user scope too); a manifest entry
-// rec does not cover, or that installs to top-level targets rec does not cover; a manifest
-// folder whose content does not load or is not the version installed, which it reads into run
-// and returns staged, uncached, when render may install it. A profile's entry is the user's own,
-// trusted as at user scope, except for project.yml's top-level targets it installs to when it
-// has none, and for the pin lock.json gives an unpinned git entry, whose commit must be on its
-// ref (which needs the network).
+// rec does not cover, or that installs to top-level targets rec does not cover; the pin
+// lock.json gives an unpinned git entry, whose commit must be on its ref (which needs the
+// network); a manifest folder whose content does not load or is not the version installed,
+// which it reads into run and returns staged, uncached, when render may install it. The entry of
+// the user's own profile is trusted as at user scope, except for project.yml's top-level targets
+// it installs to when it has none, and for that pin. A project profile's entry is checked as a
+// manifest entry is, against its profile's part of rec (Plan 6b §7, §8.1).
 func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manifest, w *Wanted, rec *trust.Record, name string,
 	entry *ledger.Entry, run string) (*leftOut, *store.Staged, error) {
 	base := filepath.Base(e.files(sc).manifest)
@@ -75,26 +76,32 @@ func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manife
 	if sc.Kind != target.Project {
 		return nil, nil, nil
 	}
-	if w.profile {
+	if w.own() {
 		// The user's own entry, but one without targets installs to project.yml's, which a pull
 		// can change (Plan 6a §10.3).
 		if len(ment.Targets) == 0 && !slices.Equal(rec.View.Targets, man.Targets) {
 			return newLeftOut(name, CodeNotTrusted, "it installs to the targets of "+filepath.Base(e.files(sc).manifest)+
 				", which changed since you last trusted them", review), nil, nil
 		}
-		// An unpinned entry renders lock.json's pin, which an untracked lock.json planted in the
-		// checkout could name: its commit must be on the entry's ref, as sync checks (Plan 6b §11).
-		if spec, ok, err := source.Parse(entry.Source, sourceRoot(sc)); w.Digest == "" && err == nil && ok && spec.Kind == source.KindGit {
-			spec.Ref, spec.Path = entry.Ref, entry.Path
-			if err := source.CheckReachable(ctx, spec, entry.Commit, run); err != nil {
-				return newLeftOut(name, CodeNotTrusted, "lock.json pins it to "+shown(entry.Commit)+", which lola could not find on its ref: "+
-					shown(untrusted.CleanErr(err).Error()), "re-pin it: "+e.SyncCommand(sc, "--update", name)), nil, nil
-			}
+	} else {
+		part := &trust.Record{View: rec.View.Part(w.key), Exists: rec.Exists}
+		if !part.View.Covers(*ment) || len(ment.Targets) == 0 && !slices.Equal(rec.View.Targets, man.Targets) {
+			return newLeftOut(name, CodeNotTrusted, base+" "+untrustedWhy(part, name), review), nil, nil
 		}
-		return nil, nil, nil
 	}
-	if !rec.View.Covers(*ment) || len(ment.Targets) == 0 && !slices.Equal(rec.View.Targets, man.Targets) {
-		return newLeftOut(name, CodeNotTrusted, base+" "+untrustedWhy(rec, name), review), nil, nil
+	// An unpinned entry renders lock.json's pin, which an untracked lock.json planted in the
+	// checkout could name: its commit must be on the entry's ref, as sync checks. That is the user's
+	// own entry, trusted unpinned, and a project file's entry that declined removals recorded
+	// unpinned alike (Plan 6b §11).
+	if spec, ok, err := source.Parse(entry.Source, sourceRoot(sc)); w.Digest == "" && err == nil && ok && spec.Kind == source.KindGit {
+		spec.Ref, spec.Path = entry.Ref, entry.Path
+		if err := source.CheckReachable(ctx, spec, entry.Commit, run); err != nil {
+			return newLeftOut(name, CodeNotTrusted, "lock.json pins it to "+shown(entry.Commit)+", which lola could not find on its ref: "+
+				shown(untrusted.CleanErr(err).Error()), "re-pin it: "+e.SyncCommand(sc, "--update", name)), nil, nil
+		}
+	}
+	if w.own() {
+		return nil, nil, nil
 	}
 	spec, ok, err := source.Parse(ment.Source, sourceRoot(sc))
 	if err != nil || !ok || spec.Kind != source.KindFolder {
@@ -147,16 +154,18 @@ func (e *Engine) renderStaged(st *store.Staged, entry *ledger.Entry) (store.Vers
 }
 
 // renderPin is the version render installs for a module whose winning entry w pins one (Plan 6a
-// §10.3): the pin, else lock.json's version, which is also what a profile's unpinned entry
+// §10.3): the pin, else lock.json's version, which is also what an unpinned profile entry
 // installs (Plan 6b §6.4). file is where the pin is and repin how to change it, which coach a
-// pinned fetch that fails: sync --update for a manifest's pin, an edit for a profile's; "" when
-// render installs lock.json's version.
+// pinned fetch that fails: sync --update for the pin of a manifest or a project profile, an edit
+// for the user's own profile's; "" when render installs lock.json's version.
 func (e *Engine) renderPin(sc Scope, name string, entry *ledger.Entry, w *Wanted) (digest, commit, file, repin string) {
 	switch {
 	case w == nil || w.Digest == "":
 		return entry.Digest, entry.Commit, "", ""
-	case w.profile:
+	case w.own():
 		return w.Digest, w.Commit, shown(w.path), "edit the pin in " + shown(w.path)
+	case w.key != "":
+		return w.Digest, w.Commit, projectProfileFile(w.key), e.SyncCommand(sc, "--update", name)
 	}
 	return w.Digest, w.Commit, filepath.Base(e.files(sc).manifest), e.SyncCommand(sc, "--update", name)
 }

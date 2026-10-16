@@ -124,6 +124,111 @@ var _ = Describe("profiles", func() {
 		Expect(r.err).To(Equal("error: no profile nope for user scope\n  hint: profiles user scope can use: user:base, default, user:go\n"))
 	})
 
+	It("lists a project's profiles and turns one on with the user's trust", func() {
+		proj := filepath.Join(tmp, "proj")
+		writeTree(proj, map[string]string{"mods/b/lola.yml": "name: b\n", "mods/b/commands/b.md": "B\n",
+			".lola/profiles/docs.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: b, source: ../../mods/b}\n",
+			".lola/profiles/go.yml":   "version: 1\n"})
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		GinkgoT().Chdir(proj)
+
+		r := lola("profile", "--project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`\nproject\s+docs\s+project\s+off\s+` + filepath.Join(proj, ".lola", "profiles", "docs.yml") + `\n`))
+		Expect(r.out).To(MatchRegexp(`\nproject\s+go\s+project\s+off\s+`))
+		Expect(r.out).To(MatchRegexp(`\nproject\s+go\s+user\s+off\s+`))
+
+		r = lola("profile", "go", "--on")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: go is ambiguous: your profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") +
+			") and the project's project:go (" + filepath.Join(proj, ".lola", "profiles", "go.yml") + ") are both named go\n" +
+			"  hint: yours: lola profile --project user:go --on\n  hint: the project's: lola profile --project project:go --on\n"))
+		r = lola("profile", "go", "--on", "-n", "--allow-hooks")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(HaveSuffix("  hint: yours: lola profile --project user:go --on --allow-hooks -n\n"+
+			"  hint: the project's: lola profile --project project:go --on --allow-hooks -n\n"), "a dry run's hints stay dry")
+		r = lola("profile", "go")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: go is ambiguous: your profile user:go ("+filepath.Join(p.UserProfiles, "go.yml")+
+			") and the project's project:go ("+filepath.Join(proj, ".lola", "profiles", "go.yml")+") are both named go\n"+
+			"  hint: yours: lola profile --project user:go\n  hint: the project's: lola profile --project project:go\n"),
+			"the state form's hints show state")
+
+		r = lola("profile", "docs", "--on")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("  in profile project:docs (.lola/profiles/docs.yml):\n  + b             mods/b\n"))
+		Expect(r.err).To(ContainSubstring("error: lola profile needs your trust for .lola/profiles/docs.yml, which has not been trusted on this machine"))
+		Expect(r.err).To(ContainSubstring("hint: then accept them: lola profile --project project:docs --on --trust\n"))
+		r = lola("profile", "project:docs", "--on", "--trust")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(proj, ".claude", "commands", "b.md")).To(BeARegularFile())
+		r = lola("profile", "docs", "--project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(HavePrefix("Profile project:docs (" + filepath.Join(proj, ".lola", "profiles", "docs.yml") + ")\n"))
+	})
+
+	It("puts a project profile in place of your active one only when you turn it on, as its own change", func() {
+		proj := filepath.Join(tmp, "proj")
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: " + c + "}\n"})
+		GinkgoT().Chdir(tmp)
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		r := lola("profile", "go", "--on", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		writeTree(proj, map[string]string{"mods/b/lola.yml": "name: b\n", "mods/b/commands/b.md": "B\n",
+			".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: b, source: ../../mods/b}\n"})
+
+		r = lola("sync", "-C", proj, "--trust", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("project:go also exists → lola profile -C " + proj + " project:go --on\n"))
+		r = lola("profile", "-C", proj)
+		Expect(r.out).To(ContainSubstring("⚠ project:go also exists → lola profile -C " + proj + " project:go --on\n"))
+
+		r = lola("profile", "project:go", "--on", "-C", proj, "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("  ~ project:go now replaces user:go (b, c)\n"))
+		Expect(r.err).To(ContainSubstring("error: lola profile needs your trust for project:go replacing user:go and .lola/profiles/go.yml, which has not been trusted on this machine, "))
+
+		Expect(lola("profile", "project:go", "--on", "-C", proj, "-n", "--plain").out).To(ContainSubstring("replace\tproject:go\tuser:go\n"))
+		var dry struct {
+			Trust struct {
+				Replacements []map[string]any `json:"replacements"`
+			} `json:"trust"`
+		}
+		Expect(json.Unmarshal([]byte(lola("profile", "project:go", "--on", "-C", proj, "-n", "--json").out), &dry)).To(Succeed())
+		Expect(dry.Trust.Replacements).To(ConsistOf(And(HaveKeyWithValue("profile", "project:go"), HaveKeyWithValue("replaces", "user:go"))))
+		var plain struct {
+			Trust struct {
+				Replacements []any `json:"replacements"`
+			} `json:"trust"`
+		}
+		Expect(json.Unmarshal([]byte(lola("sync", "-C", proj, "-n", "--json").out), &plain)).To(Succeed())
+		Expect(plain.Trust.Replacements).To(BeEmpty())
+		Expect(plain.Trust.Replacements).NotTo(BeNil(), "an empty array, never absent or null")
+
+		conf := &confirming{trusts: []engine.TrustAnswer{{}}}
+		lolaAsking(conf, "profile", "project:go", "--on", "-C", proj)
+		Expect(conf.steps[0].Changes).To(Equal(2))
+		Expect(conf.steps[0].Groups).To(BeEmpty(), "all or none")
+
+		r = lola("profile", "project:go", "--on", "-C", proj, "--trust", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(lola("profile", "-C", proj, "--plain").out).To(ContainSubstring("project\tgo\tproject\ton\t1\t"))
+	})
+
+	It("names a replacement that is the only change it needs trust for", func() {
+		proj := filepath.Join(tmp, "proj")
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: " + c + "}\n"})
+		GinkgoT().Chdir(tmp)
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(lola("profile", "go", "--on", "-C", proj).code).To(Equal(0))
+		// A project:go with no entries asks nothing of its own: the replacement is the only change.
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
+		r := lola("profile", "project:go", "--switch", "-C", proj, "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("an activation would put a project profile in place of one of yours; it needs your trust for:\n  ~ project:go now replaces user:go (c)\n"))
+		Expect(r.err).NotTo(MatchRegexp(`(?m)^ is unchanged`))
+	})
+
 	It("keeps the listing's columns aligned when ACTIVE is colored", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		GinkgoT().Setenv("LOLA_COLOR", "1")
@@ -249,6 +354,32 @@ var _ = Describe("profiles", func() {
 		Expect(after.Profiles).To(Equal([]ledger.Active{{Name: "user:go", By: ledger.ByOn}}))
 		Expect(after.Modules).To(Equal(before.Modules), "only the list changed")
 		Expect(after.Created).To(Equal(before.Created))
+	})
+
+	It("heads only the profiles a run turns on or off; one it leaves is its notice alone", func() {
+		writeTree(p.UserProfiles, map[string]string{"api.yml": "version: 1\n", "go.yml": "version: 1\n"})
+		Expect(lola("sync", "--user").code).To(Equal(0))
+		Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+		api, goFile := filepath.Join(p.UserProfiles, "api.yml"), filepath.Join(p.UserProfiles, "go.yml")
+
+		r := lola("profile", "api", "go", "--on", "--user", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("Profile user:api (" + api + ") → on, 2nd of 2\n" +
+			"→ user:go is already on (1st of 2)\n" +
+			"→ to apply: lola profile --user user:api user:go --on\n" +
+			"→ no files to change\n"))
+		r = lola("profile", "go", "--on", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("→ user:go is already on (1st of 1)\n✓ no files to change\n"))
+
+		r = lola("profile", "api", "go", "--off", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("Profile user:go (" + goFile + ") → off\n" +
+			"→ user:api is not on\n" +
+			"✓ no files to change\n"))
+		r = lola("profile", "api", "--off", "--user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("→ user:api is not on\n✓ no files to change\n"))
 	})
 
 	It("a No to an activation's removals names the activation to run again", func() {

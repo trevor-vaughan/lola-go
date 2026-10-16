@@ -67,25 +67,25 @@ func Ordinal(n int) string {
 	return strconv.Itoa(n) + suffix
 }
 
-// profileScope is what lola profile reads of a scope: the profiles it can use and how many files
-// of the profiles directory have invalid names, and its lock.json. A project whose lock.json git
-// tracks is refused before the profiles it names are read (Plan 6b §5, §19 S5); a warning that
-// git is missing is in notices.
-func (e *Engine) profileScope(ctx context.Context, sc Scope) (infos []profile.Info, invalid int, led *ledger.Ledger, notices []Notice, err error) {
+// profileScope is what lola profile reads of a scope: the profiles it can use, with what a
+// listing says about their directories (visible), and its lock.json. A project whose lock.json
+// git tracks is refused before the profiles it names are read (Plan 6b §5, §19 S5); a warning
+// that git is missing is in notices, after the listing's.
+func (e *Engine) profileScope(ctx context.Context, sc Scope) (infos []profile.Info, listing []Notice, led *ledger.Ledger, notices []Notice, err error) {
 	if err := e.refuseSymlinkedState(sc); err != nil {
-		return nil, 0, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	checked := newResult(true)
 	if err := e.refuseTrackedLedger(ctx, sc, checked); err != nil {
-		return nil, 0, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if led, err = e.Ledger(sc); err != nil {
-		return nil, 0, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	if infos, invalid, err = profile.Visible(e.Paths, sc.Kind == target.User); err != nil {
-		return nil, 0, nil, nil, err
+	if infos, listing, err = e.visible(sc); err != nil {
+		return nil, nil, nil, nil, err
 	}
-	return infos, invalid, led, checked.Notices, nil
+	return infos, listing, led, checked.Notices, nil
 }
 
 // Profiles is every profile sc can use, in name order (Plan 6b §3.2 "lola profile"), with its
@@ -93,7 +93,7 @@ func (e *Engine) profileScope(ctx context.Context, sc Scope) (infos []profile.In
 // profile file (§19 S8). An active profile whose file is gone is a notice, as in a sync (§10),
 // and files whose names are not valid profile names are a count, never shown (§4.3, §19 S7).
 func (e *Engine) Profiles(ctx context.Context, sc Scope) ([]ProfileRow, []Notice, error) {
-	infos, invalid, led, notices, err := e.profileScope(ctx, sc)
+	infos, listing, led, notices, err := e.profileScope(ctx, sc)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -106,13 +106,10 @@ func (e *Engine) Profiles(ctx context.Context, sc Scope) ([]ProfileRow, []Notice
 			notices = append(notices, e.goneProfile(sc, a.Name))
 		}
 	}
-	switch {
-	case invalid == 1:
-		notices = append(notices, Notice{Level: LevelWarn, Text: "1 file with an invalid name in " + shown(e.Paths.UserProfiles) + " is not a profile"})
-	case invalid > 1:
-		notices = append(notices, Notice{Level: LevelWarn, Text: fmt.Sprintf("%d files with invalid names in %s are not profiles", invalid, shown(e.Paths.UserProfiles))})
+	if sc.Kind == target.Project {
+		notices = append(notices, e.replacementNotices(sc, replacements(infos, led.Profiles))...)
 	}
-	return rows, notices, nil
+	return rows, append(notices, listing...), nil
 }
 
 // ProfileNames is the names of the profiles you can turn on or off, for completion: your own
@@ -182,7 +179,7 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 	if err != nil {
 		return nil, nil, err
 	}
-	i, err := e.resolveProfile(sc, infos, name)
+	i, err := e.resolveProfile(sc, infos, name, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -225,18 +222,64 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 	return st, append(notices, pl.notices...), nil
 }
 
+// ownedBy is whose a profile of kind is, as an ambiguous name's refusal says it: "your profile"
+// or "the project's", or as a hint's label, "yours" or "the project's".
+func ownedBy(kind profile.Kind, label bool) string {
+	switch {
+	case kind == profile.KindUser && label:
+		return "yours"
+	case kind == profile.KindUser:
+		return "your profile"
+	case kind == profile.KindProject:
+		return "the project's"
+	}
+	return string(kind)
+}
+
+// qualifiedArgs is args, what the user typed after lola profile, with name replaced by q, its
+// qualified name, and q kept once where the user also typed it: the command a hint gives for an
+// ambiguous name. nil args, the state form, is q alone.
+func qualifiedArgs(args []string, name, q string) []string {
+	if args == nil {
+		return []string{q}
+	}
+	out := []string{}
+	for _, a := range args {
+		if a == name {
+			a = q
+		}
+		if a != q || !slices.Contains(out, q) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // unknownProfileError is a profile name that names no profile a scope can use.
 type unknownProfileError struct{ error }
 
 func (e *unknownProfileError) Unwrap() error { return e.error }
 
+// ambiguousProfileError is a bare profile name both a user and a project profile define (D8),
+// with the two profiles, so --off can say which of them is on.
+type ambiguousProfileError struct {
+	error
+	found []profile.Info
+}
+
+func (e *ambiguousProfileError) Unwrap() error { return e.error }
+
 // resolveProfile is the profile a name typed on the command line names in sc (Plan 6b §4.4),
-// among infos, the profiles sc can use: a bare name is the user's profile of that name (project
-// and remote profiles, which it would also look in, come with Plan 6b.3); default is default.yml,
-// at user scope only; a qualified name (user:go) names its kind. Any other name is refused,
-// listing the profiles sc can use; project: and remote: names are refused so until their kinds
-// are read (§19 P8).
-func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string) (profile.Info, error) {
+// among infos, the profiles sc can use: a bare name is, at project scope, the project's profile
+// or the user's of that name, and at user scope the user's (remote profiles, which it would also
+// look in, come with Plan 6b.3b); a bare name both a project and a user profile define is
+// ambiguous and refused, naming both profiles and their files and hinting, for each, the user's
+// command with the name qualified (D8); default is default.yml, at user scope only; a qualified
+// name (user:go, project:go) names its kind. Any other name is refused, listing the profiles sc
+// can use; remote: names are refused so until their kind is read (§19 P8). args is what the
+// user typed after lola profile, the names and the action flag, or nil for the state form of a
+// single name.
+func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string, args []string) (profile.Info, error) {
 	kind, bare, qualified := strings.Cut(name, ":")
 	if !qualified {
 		bare, kind = name, ""
@@ -250,10 +293,25 @@ func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string) (pr
 			return infos[k], nil
 		}
 	}
-	if (kind == "" || kind == string(profile.KindUser)) && module.ValidateName("profile", bare) == nil {
-		if k := slices.IndexFunc(infos, func(i profile.Info) bool { return i.Kind == profile.KindUser && i.Name == bare }); k >= 0 {
-			return infos[k], nil
+	var found []profile.Info
+	if module.ValidateName("profile", bare) == nil {
+		for _, i := range infos {
+			if i.Name == bare && i.Kind != profile.KindDefault && (kind == "" || kind == string(i.Kind)) {
+				found = append(found, i)
+			}
 		}
+	}
+	switch len(found) {
+	case 1:
+		return found[0], nil
+	case 2:
+		var named, hints []string
+		for _, i := range found {
+			named = append(named, ownedBy(i.Kind, false)+" "+shown(i.Qualified())+" ("+shown(i.Path)+")")
+			hints = append(hints, ownedBy(i.Kind, true)+": "+e.Command(sc, "profile", qualifiedArgs(args, name, i.Qualified())...))
+		}
+		return profile.Info{}, &ambiguousProfileError{errs.WithHints(fmt.Errorf("%s is ambiguous: %s and %s are both named %s", shown(bare),
+			named[0], named[1], shown(bare)), hints...), found}
 	}
 	var names []string
 	for _, i := range infos {
@@ -266,6 +324,9 @@ func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string) (pr
 	hint := "profiles " + where + " can use: " + strings.Join(names, ", ")
 	if len(names) == 0 {
 		hint = "write one: " + shown(filepath.Join(e.Paths.UserProfiles, "<name>.yml"))
+		if sc.Kind == target.Project {
+			hint += ", or the project's: " + shown(filepath.Join(sc.ProjectDir, profile.ProjectDir, "<name>.yml"))
+		}
 	}
 	return profile.Info{}, &unknownProfileError{errs.WithHints(fmt.Errorf("no profile %s for %s", untrusted.Text(name, untrusted.MaxName), where), hint)}
 }

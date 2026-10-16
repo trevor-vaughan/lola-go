@@ -47,10 +47,70 @@ type Entry struct {
 	Rules   *bool    `json:"rules,omitempty"`
 }
 
-// View is a manifest's top-level targets and entries, modules sorted by name (§7.2).
+// View is a manifest's top-level targets and entries, modules sorted by name (§7.2), and the
+// views of the project's profiles that the user trusted or lola wrote, by profile name (Plan 6b
+// §8.1). Profiles is omitted when empty, so a view without profiles hashes as in Plan 6a.
 type View struct {
-	Targets []string `json:"targets,omitempty"`
-	Modules []Entry  `json:"modules,omitempty"`
+	Targets  []string               `json:"targets,omitempty"`
+	Modules  []Entry                `json:"modules,omitempty"`
+	Profiles map[string]ProfileView `json:"profiles,omitempty"`
+}
+
+// ProfileView is a project profile's part of a view (Plan 6b §8.1): its entries, sorted by name,
+// each with the targets it installs to, its own or else the profile's, so a change to a
+// profile's targets is a change to every entry it gives them to.
+type ProfileView struct {
+	Modules []Entry `json:"modules,omitempty"`
+}
+
+// Part is the part of v that one file gives: for key "", project.yml's top-level targets and
+// entries; for any other key, the entries of the project profile of that name, without targets.
+// It shares nothing with v.
+func (v View) Part(key string) View {
+	if key == "" {
+		return View{Targets: slices.Clone(v.Targets), Modules: cloneEntries(v.Modules)}
+	}
+	return View{Modules: cloneEntries(v.Profiles[key].Modules)}
+}
+
+// WithPart is v with the part key gives replaced by part, Part's inverse: every other part is
+// kept as it is. A profile's part with no entries leaves the profile out.
+func (v View) WithPart(key string, part View) View {
+	out := View{Targets: slices.Clone(v.Targets), Modules: cloneEntries(v.Modules)}
+	for k, pv := range v.Profiles {
+		if k != key {
+			out.setProfile(k, pv.Modules)
+		}
+	}
+	if key == "" {
+		out.Targets, out.Modules = slices.Clone(part.Targets), cloneEntries(part.Modules)
+	} else {
+		out.setProfile(key, part.Modules)
+	}
+	out.sort()
+	return out
+}
+
+// setProfile records a copy of modules as profile key's part, unless there are none.
+func (v *View) setProfile(key string, modules []Entry) {
+	if len(modules) == 0 {
+		return
+	}
+	if v.Profiles == nil {
+		v.Profiles = map[string]ProfileView{}
+	}
+	v.Profiles[key] = ProfileView{Modules: cloneEntries(modules)}
+}
+
+func cloneEntries(es []Entry) []Entry {
+	if es == nil {
+		return nil
+	}
+	out := make([]Entry, len(es))
+	for i, e := range es {
+		out[i] = e.clone()
+	}
+	return out
 }
 
 // EntryOf is the view of one manifest entry.
@@ -70,7 +130,11 @@ func ViewOf(m *manifest.Manifest) View {
 }
 
 func (v *View) sort() {
-	slices.SortFunc(v.Modules, func(a, b Entry) int { return strings.Compare(a.Name, b.Name) })
+	byName := func(a, b Entry) int { return strings.Compare(a.Name, b.Name) }
+	slices.SortFunc(v.Modules, byName)
+	for _, pv := range v.Profiles {
+		slices.SortFunc(pv.Modules, byName)
+	}
 }
 
 // Hash is the hex sha256 of the view's canonical JSON.
@@ -109,12 +173,17 @@ func (a Entry) equal(b Entry) bool {
 
 func sameRules(a, b *bool) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
 
-// Refresh is the view r after a write by lola turned loaded into saved (§7.4): every top-level
-// or module field the write changed takes its saved value, an entry the write added is recorded
-// whole and one it removed is dropped. Every other field keeps its trust state, so an entry r
-// does not cover stays uncovered unless the write made every field match; a field changed in an
-// entry r does not hold at all is not recorded.
-func Refresh(r, loaded, saved View) View {
+// Refresh is the record r after a write by lola turned loaded into saved (§7.4), loaded and
+// saved being the views of the file whose part of r key names (Part): every top-level or module
+// field the write changed takes its saved value, an entry the write added is recorded whole and
+// one it removed is dropped. Every other field keeps its trust state, so an entry r does not
+// cover stays uncovered unless the write made every field match; a field changed in an entry r
+// does not hold at all is not recorded. Every other part of r is kept as it is (Plan 6b §19 R2).
+func Refresh(r View, key string, loaded, saved View) View {
+	return r.WithPart(key, refresh(r.Part(key), loaded, saved))
+}
+
+func refresh(r, loaded, saved View) View {
 	out := View{Targets: slices.Clone(r.Targets)}
 	for _, e := range r.Modules {
 		if saved.Find(e.Name) != nil || loaded.Find(e.Name) == nil {
@@ -139,12 +208,17 @@ func Refresh(r, loaded, saved View) View {
 	return out
 }
 
-// Accept is the record r after the user trusted, in the view v of the manifest as loaded, the
-// entries named in modules (an entry v lacks is dropped from the record), and the top-level
-// targets when targets is set (§7.4). Every other entry keeps its record, so a declined or
-// unnamed entry stays as covered, or as uncovered, as it was. Accepting every change of v and
-// its targets returns v.
-func Accept(r, v View, modules []string, targets bool) View {
+// Accept is the record r after the user trusted, in the view v of the file as loaded whose part
+// of r key names (Part), the entries named in modules (an entry v lacks is dropped from the
+// record), and the top-level targets when targets is set (§7.4). Every other entry keeps its
+// record, so a declined or unnamed entry stays as covered, or as uncovered, as it was, and so
+// does every other part of r (Plan 6b §19 R2). Accepting every change of v and its targets makes
+// v that part.
+func Accept(r View, key string, v View, modules []string, targets bool) View {
+	return r.WithPart(key, accept(r.Part(key), v, modules, targets))
+}
+
+func accept(r, v View, modules []string, targets bool) View {
 	out := View{Targets: slices.Clone(r.Targets)}
 	if targets {
 		out.Targets = slices.Clone(v.Targets)
@@ -213,9 +287,11 @@ type FieldChange struct {
 // Change is how one module's entry differs from the record: added (every field it has, from
 // nil), removed (every field it had, to nil) or changed (each differing field). HostChanged says
 // a changed source names another host, scheme or kind of place (local or remote); ContentFixed
-// says the entry pins its content by digest.
+// says the entry pins its content by digest. Profile names the project profile whose entry it is
+// (project:<name>, Plan 6b §8.1), "" for project.yml's: Check leaves it for the caller to set.
 type Change struct {
 	Module       string        `json:"module"`
+	Profile      string        `json:"profile,omitempty"`
 	Kind         string        `json:"change"`
 	HostChanged  bool          `json:"host_changed"`
 	ContentFixed bool          `json:"content_fixed"`
@@ -230,7 +306,9 @@ type Report struct {
 	Changes []Change
 }
 
-// Check compares v, the view of a manifest, with the record r (§7.3).
+// Check compares v, the view of a manifest, with the record r (§7.3): with r's project.yml part
+// (View.Part("")), never its profiles'. A profile's view is checked against a record holding
+// that profile's part.
 func Check(r *Record, v View) Report {
 	v.Modules = slices.Clone(v.Modules)
 	v.sort()

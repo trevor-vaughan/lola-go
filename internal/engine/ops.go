@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,6 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
+	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
@@ -379,7 +381,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 			change.Targets = sp.targets
 		}
 		updated := "the project's files, lock.json and project.yml were updated"
-		err := e.saveManifest(sp.sc, sp.loaded, change, sp.trust, updated, syncAgain(e.SyncCommand(sp.sc)), func(man *plan.ManifestWrite) error {
+		err := e.saveManifest(sp.sc, sp.loaded, change, nil, sp.trust, updated, syncAgain(e.SyncCommand(sp.sc)), func(man []plan.ManifestWrite) error {
 			return e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
 		})
 		if err != nil && len(saves) > 0 {
@@ -509,27 +511,89 @@ func (e *Engine) trustRecord(sc Scope) (*trust.Record, error) {
 	return e.Trust.Load(sc.ProjectDir)
 }
 
+// profileEdit is the pins a sync writes into one project profile (Plan 6b §6.4, §19 R1): layer
+// is the profile as the run read it, and pins its entries, as the layer has them, with their new
+// pins.
+type profileEdit struct {
+	layer Layer
+	pins  []manifest.Entry
+}
+
 // saveManifest is every manifest write (Plan 6a §7.4). It edits the scope's manifest by c, the
-// change lola makes to loaded (the manifest as read under the scope lock), and hands the edit to
-// apply, which commits it with the ledger. After a successful apply at project scope it
-// refreshes rec, the project's trust record, per field (trust.Refresh): what this write changed
-// becomes trusted, and nothing else does. A record that cannot be written leaves lola's own
-// edits uncovered, which later commands refuse: the error says what was applied (the caller's
-// applied) and how to get them trusted (its hint).
-func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, rec *trust.Record, applied, hint string,
-	apply func(*plan.ManifestWrite) error) error {
-	dst, data, err := manifest.Edit(e.files(sc).manifest, c)
-	if err != nil {
+// change lola makes to loaded (the manifest as read under the scope lock), unless c changes
+// nothing, writes the pins of profiles into those project profiles (Plan 6b §6.4), and hands the
+// edits to apply, which commits them with the ledger. After a successful apply at project scope
+// that wrote a manifest or profile it refreshes rec, the project's trust record, per field
+// (trust.Refresh), in project.yml's part and each profile's: what this write changed becomes
+// trusted, and nothing else does. A record
+// that cannot be written leaves lola's own edits uncovered, which later commands refuse: the
+// error says what was applied (the caller's applied) and how to get them trusted (its hint).
+func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, profiles []profileEdit, rec *trust.Record,
+	applied, hint string, apply func([]plan.ManifestWrite) error) error {
+	var writes []plan.ManifestWrite
+	edited := c.Targets != nil || len(c.Set) > 0 || len(c.Remove) > 0
+	if edited {
+		dst, data, err := manifest.Edit(e.files(sc).manifest, c)
+		if err != nil {
+			return err
+		}
+		writes = append(writes, plan.ManifestWrite{Path: dst, Data: data})
+	}
+	for _, p := range profiles {
+		data, err := p.layer.read.Pin(p.layer.Path, p.pins)
+		if err != nil {
+			return err
+		}
+		read, path := p.layer.read, p.layer.Path
+		writes = append(writes, plan.ManifestWrite{Path: path, Data: data, Check: func() error { return read.Unchanged(sc.ProjectDir, path) }})
+	}
+	// Nothing written leaves the record nothing new to cover.
+	if err := apply(writes); err != nil || rec == nil || len(writes) == 0 {
 		return err
 	}
-	if err := apply(&plan.ManifestWrite{Path: dst, Data: data}); err != nil || rec == nil {
-		return err
+	view := rec.View
+	if edited {
+		view = trust.Refresh(view, "", trust.ViewOf(loaded), trust.ViewOf(loaded.Applied(c)))
 	}
-	view := trust.Refresh(rec.View, trust.ViewOf(loaded), trust.ViewOf(loaded.Applied(c)))
-	if err := e.Trust.Save(sc.ProjectDir, view); err != nil {
-		return errs.WithHints(fmt.Errorf("%s, but lola could not record that you trust what it wrote to project.yml: %w", applied, err), hint)
+	for _, p := range profiles {
+		was := &manifest.Manifest{Modules: p.layer.Entries}
+		view = trust.Refresh(view, p.layer.Key, trust.ViewOf(was), trust.ViewOf(was.Applied(manifest.Change{Set: p.pins})))
+	}
+	if err := e.saveTrust(sc, view); err != nil {
+		var files []string
+		if edited {
+			files = append(files, filepath.Base(e.files(sc).manifest))
+		}
+		for _, p := range profiles {
+			files = append(files, projectProfileFile(p.layer.Key))
+		}
+		return errs.WithHints(fmt.Errorf("%s, but lola could not record that you trust what it wrote to %s: %w", applied, andJoin(files), err), hint)
 	}
 	return nil
+}
+
+// saveTrust saves view as the trust record of sc, a project, without the parts of profiles
+// whose file is no longer in .lola/profiles (ruling R-6b3a-5): those are dropped, never reported
+// removed, so a deleted profile's record does not stay in trust.json for good.
+func (e *Engine) saveTrust(sc Scope, view trust.View) error {
+	for _, key := range slices.Sorted(maps.Keys(view.Profiles)) {
+		if _, err := os.Lstat(filepath.Join(sc.ProjectDir, profile.ProjectDir, key+".yml")); errors.Is(err, fs.ErrNotExist) {
+			view = view.WithPart(key, trust.View{})
+		}
+	}
+	return e.Trust.Save(sc.ProjectDir, view)
+}
+
+// ProfileFile is how output names the file of the project profile q (project:<name>):
+// .lola/profiles/<name>.yml.
+func ProfileFile(q string) string {
+	return projectProfileFile(strings.TrimPrefix(q, string(profile.KindProject)+":"))
+}
+
+// projectProfileFile is how output names the file of the project profile key,
+// .lola/profiles/<key>.yml, through untrusted.Text: never a path to open.
+func projectProfileFile(key string) string {
+	return shown(filepath.Join(profile.ProjectDir, key+".yml"))
 }
 
 // syncAgain is the hint of every command whose trust record cannot be written after the project
@@ -960,8 +1024,8 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		}
 	}
 	removed := "lola removed what you uninstalled from the project's files, lock.json and project.yml"
-	if err := e.saveManifest(sc, man, change, rec, removed, syncAgain(e.SyncCommand(sc)),
-		func(mw *plan.ManifestWrite) error { return e.commit(ctx, pr, opts, res, mw, nil) }); err != nil {
+	if err := e.saveManifest(sc, man, change, nil, rec, removed, syncAgain(e.SyncCommand(sc)),
+		func(mw []plan.ManifestWrite) error { return e.commit(ctx, pr, opts, res, mw, nil) }); err != nil {
 		return nil, err
 	}
 	for i := range res.Modules {
@@ -1251,10 +1315,15 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted) []StatusRow 
 // §7): when its layers want modules lock.json does not record, the notice a terminal shows
 // before the pickers and the hint the missing-argument error adds off one, both naming the
 // layers that list them and the sync that installs them; "" when there are none. It reads the
-// manifest, the ledger and the active profiles only.
-func (e *Engine) InstallCoaching(sc Scope) (notice, hint string, err error) {
+// manifest, the ledger and the active profiles only, and refuses a project whose lock.json git
+// tracks before reading the profiles it names, as every command that reads them does (Plan 6b
+// §5, §19 S5).
+func (e *Engine) InstallCoaching(ctx context.Context, sc Scope) (notice, hint string, err error) {
 	man, led, _, err := e.load(sc, true)
 	if err != nil {
+		return "", "", err
+	}
+	if err := e.refuseTrackedLedger(ctx, sc, newResult(true)); err != nil {
 		return "", "", err
 	}
 	layers, _, err := e.layers(sc, man, led)

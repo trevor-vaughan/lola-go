@@ -1,6 +1,7 @@
 // Package profile reads profiles (Plan 6b §4): named, shareable sets of module entries in the
 // shape of manifest entries. This version reads the user's own profiles and default, from
-// paths.UserProfiles. It does no network access and writes no file.
+// paths.UserProfiles, and a project's committed profiles, from <root>/.lola/profiles, which it
+// treats as someone else's (§19 S3). It does no network access and writes no file.
 package profile
 
 import (
@@ -17,6 +18,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
@@ -42,7 +44,11 @@ type Kind string
 const (
 	KindUser    Kind = "user"    // $XDG_CONFIG_HOME/lola/profiles/<name>.yml
 	KindDefault Kind = "default" // $XDG_CONFIG_HOME/lola/profiles/default.yml, user scope only
+	KindProject Kind = "project" // <root>/.lola/profiles/<name>.yml, committed with the project
 )
+
+// ProjectDir is where a project keeps its profiles, relative to its root.
+const ProjectDir = ".lola" + string(filepath.Separator) + "profiles"
 
 // DefaultName is the name of the profile that is always on in user scope.
 const DefaultName = "default"
@@ -70,13 +76,89 @@ func (i Info) Qualified() string {
 // naming it; a missing one holds none.
 func Visible(p paths.Paths, userScope bool) ([]Info, int, error) {
 	dir := p.UserProfiles
+	names, invalid, err := list(dir)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := []Info{}
+	for _, name := range names {
+		kind := KindUser
+		if name == DefaultName {
+			if !userScope {
+				continue
+			}
+			kind = KindDefault
+		}
+		out = append(out, Info{Name: name, Kind: kind, Path: filepath.Join(dir, name+".yml")})
+	}
+	return out, invalid, nil
+}
+
+// Project is the profiles of the project rooted at root (Plan 6b §4.1), in name order, read from
+// the listing of <root>/.lola/profiles alone, as Visible reads the user's, with the count of
+// files whose names are not valid. A project cannot define default: a default.yml there is no
+// profile, and ignored is its path, for listings to warn about ("" when there is none). The
+// directory is committed, so it and .lola/ must be directories of the project's own: a symbolic
+// link, or a path that resolves outside root, is refused before anything is listed (§19 S3). A
+// missing one holds none.
+func Project(root string) (infos []Info, invalid int, ignored string, err error) {
+	if found, err := ownDirs(root); err != nil || !found {
+		return []Info{}, 0, "", err
+	}
+	dir := filepath.Join(root, ProjectDir)
+	names, invalid, err := list(dir)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	infos = []Info{}
+	for _, name := range names {
+		path := filepath.Join(dir, name+".yml")
+		if name == DefaultName {
+			ignored = path
+			continue
+		}
+		infos = append(infos, Info{Name: name, Kind: KindProject, Path: path})
+	}
+	return infos, invalid, ignored, nil
+}
+
+// ownDirs checks that .lola/ and .lola/profiles/ under root are directories of the project's
+// own (§19 S3): not symbolic links, not other files, and not resolving outside root. found is
+// false when either is missing.
+func ownDirs(root string) (found bool, err error) {
+	for _, rel := range []string{".lola", ProjectDir} {
+		path := filepath.Join(root, rel)
+		fi, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
+			return false, errs.WithHints(fmt.Errorf("%s is not a directory of the project's own: lola reads a project's profiles only from %s inside it",
+				untrusted.Text(path, untrusted.MaxName), ProjectDir), "make it a directory, or remove it")
+		}
+	}
+	if r, err := fsx.Resolve(root, ProjectDir); err != nil || r.Outside {
+		return false, errs.WithHints(errors.Join(fmt.Errorf("%s resolves outside the project", untrusted.Text(filepath.Join(root, ProjectDir), untrusted.MaxName)), err),
+			"make it a directory, or remove it")
+	}
+	return true, nil
+}
+
+// list is the names of the profiles in dir, in name order, from its listing alone: each file
+// named <name>.yml whose name follows the module-name rules, and the count of those whose name
+// does not (§4.3, §19 S7). A file not named <name>.yml is not a profile. A directory holding more
+// than MaxFiles entries is refused, naming it; a missing one holds none.
+func list(dir string) ([]string, int, error) {
 	unreadable := func(err error) error {
-		return errs.WithHints(fmt.Errorf("cannot list %s: %s", dir, untrusted.Text(err.Error(), 2*untrusted.MaxName)),
-			"make "+dir+" a directory lola can read, or remove it")
+		return errs.WithHints(fmt.Errorf("cannot list %s: %s", untrusted.Text(dir, untrusted.MaxName), untrusted.Text(err.Error(), 2*untrusted.MaxName)),
+			"make "+untrusted.Text(dir, untrusted.MaxName)+" a directory lola can read, or remove it")
 	}
 	f, err := os.Open(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return []Info{}, 0, nil
+		return nil, 0, nil
 	}
 	if err != nil {
 		return nil, 0, unreadable(err)
@@ -89,9 +171,11 @@ func Visible(p paths.Paths, userScope bool) ([]Info, int, error) {
 		return nil, 0, unreadable(err)
 	}
 	if len(des) > MaxFiles {
-		return nil, 0, errs.WithHints(fmt.Errorf("%s holds more than %d files", dir, MaxFiles), "move the profiles you do not use out of it")
+		return nil, 0, errs.WithHints(fmt.Errorf("%s holds more than %d files", untrusted.Text(dir, untrusted.MaxName), MaxFiles),
+			"move the profiles you do not use out of it")
 	}
-	out, invalid := []Info{}, 0
+	var names []string
+	invalid := 0
 	for _, de := range des {
 		name, ok := strings.CutSuffix(de.Name(), ".yml")
 		if !ok {
@@ -101,17 +185,10 @@ func Visible(p paths.Paths, userScope bool) ([]Info, int, error) {
 			invalid++
 			continue
 		}
-		kind := KindUser
-		if name == DefaultName {
-			if !userScope {
-				continue
-			}
-			kind = KindDefault
-		}
-		out = append(out, Info{Name: name, Kind: kind, Path: filepath.Join(dir, de.Name())})
+		names = append(names, name)
 	}
-	slices.SortFunc(out, func(a, b Info) int { return strings.Compare(a.Name, b.Name) })
-	return out, invalid, nil
+	slices.Sort(names)
+	return names, invalid, nil
 }
 
 // Profile is a profile file as read. Entries without targets of their own use Targets (Entries).
@@ -120,6 +197,8 @@ type Profile struct {
 	Description string           `yaml:"description,omitempty"`
 	Targets     []string         `yaml:"targets,omitempty,flow"`
 	Modules     []manifest.Entry `yaml:"modules,omitempty"`
+	read        []byte           // the bytes it was read from
+	hint        string           // how to fix the file
 }
 
 // Load reads the profile at path once (Plan 6b §4.3, §6.1): through yamldoc.Read, as user.yml is
@@ -128,15 +207,40 @@ type Profile struct {
 // first, so a newer lola's profile is refused for its version; then every key known and every
 // field checked, each refusal naming the file and the line. A missing file is an error that wraps fs.ErrNotExist; an empty one holds no modules.
 func Load(path string) (*Profile, error) {
-	d, b, err := yamldoc.Read(path, Version)
+	return load(path, yamldoc.Read, "fix it by hand; lola never writes it")
+}
+
+// LoadProject reads the project profile at path once, as Load reads a user's, except that the
+// file is someone else's (Plan 6b §6.1, §19 S3): it must be a regular file, never a symbolic
+// link, and it is opened without following one (yamldoc.ReadNoFollow). Its refusals coach the
+// fix a committed file takes.
+func LoadProject(path string) (*Profile, error) {
+	const hint = "fix it by hand, or restore it from version control"
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		return nil, errs.WithHints(fmt.Errorf("%s is a symbolic link; a project's profile must be a file of its own", untrusted.Text(path, untrusted.MaxName)),
+			"replace it with the file it points to", hint)
+	}
+	return load(path, yamldoc.ReadNoFollow, hint)
+}
+
+// load reads the profile at path with read, every refusal coached with hint.
+func load(path string, read func(string, int) (*yaml.Node, []byte, error), hint string) (*Profile, error) {
+	d, b, err := read(path, Version)
 	if err != nil {
 		// yamldoc's hints are for files lola writes; a profile's cause is kept as text only.
-		return nil, fixHint(errors.New(err.Error()))
+		return nil, errs.WithHints(errors.New(err.Error()), hint)
 	}
 	if b == nil {
 		return nil, fmt.Errorf("%s: %w", path, fs.ErrNotExist)
 	}
-	p := &Profile{Version: Version}
+	return parse(path, d, b, hint)
+}
+
+// parse decodes and checks the profile document d, read from path as b; every refusal is
+// coached with hint.
+func parse(path string, d *yaml.Node, b []byte, hint string) (*Profile, error) {
+	fixHint := func(err error) error { return errs.WithHints(err, hint) }
+	p := &Profile{Version: Version, read: b, hint: hint}
 	root := yamldoc.Root(d)
 	if root == nil {
 		return p, nil
@@ -160,9 +264,6 @@ func Load(path string) (*Profile, error) {
 	}
 	return p, nil
 }
-
-// fixHint coaches a profile lola refused to read.
-func fixHint(err error) error { return errs.WithHints(err, "fix it by hand; lola never writes it") }
 
 // check applies the field rules of Plan 6b §4.3 to a decoded profile, root being its document's
 // mapping: each error starts with the line it is about and a colon.
@@ -202,6 +303,65 @@ func (p *Profile) check(root *yaml.Node) error {
 		if err := e.Validate(); err != nil {
 			return fmt.Errorf("%d: module %s: %w", line, e.Name, err)
 		}
+	}
+	return nil
+}
+
+// Pin is the file at path, from which p was read, with each entry of pins taking its commit and
+// digest (Plan 6b §6.4, §19 R1): the bytes p was read from, so what lola writes is what the run
+// checked (§19 S6), with those fields alone edited and comments and every other key kept. pins
+// name modules p lists. A file that no longer holds those bytes is refused, never overwritten,
+// and so is a result that would not load again.
+func (p *Profile) Pin(path string, pins []manifest.Entry) ([]byte, error) {
+	_, now, err := yamldoc.ReadNoFollow(path, Version)
+	if err != nil {
+		return nil, errs.WithHints(errors.New(err.Error()), p.hint)
+	}
+	if !bytes.Equal(now, p.read) {
+		return nil, errs.WithHints(fmt.Errorf("%s changed while lola was running; not writing its pins", untrusted.Text(path, untrusted.MaxName)),
+			"run the command again")
+	}
+	var c manifest.Change
+	for _, pin := range pins {
+		i := slices.IndexFunc(p.Modules, func(e manifest.Entry) bool { return e.Name == pin.Name })
+		if i < 0 {
+			return nil, fmt.Errorf("%s lists no module %s to pin", untrusted.Text(path, untrusted.MaxName), untrusted.Text(pin.Name, untrusted.MaxName))
+		}
+		ent := p.Modules[i]
+		ent.Commit, ent.Digest = pin.Commit, pin.Digest
+		c.Set = append(c.Set, ent)
+	}
+	var d yaml.Node
+	if err := yaml.Unmarshal(p.read, &d); err != nil {
+		return nil, err
+	}
+	out, err := manifest.EditDocument(&d, c)
+	if err != nil {
+		return nil, err
+	}
+	var check yaml.Node
+	if err := yaml.Unmarshal(out, &check); err != nil {
+		return nil, err
+	}
+	if _, err := parse(path, &check, out, p.hint); err != nil {
+		return nil, errs.WithHints(fmt.Errorf("not writing %s, which lola could not load again: %w", untrusted.Text(path, untrusted.MaxName), err),
+			"nothing was written")
+	}
+	return out, nil
+}
+
+// Unchanged checks, just before lola writes the profile at path of the project at root, that
+// nothing moved since p was read (ruling R-6b3a-4): .lola/ and .lola/profiles/ are still
+// directories of the project's own, and the file still holds the bytes p was read from. Any
+// change refuses the write.
+func (p *Profile) Unchanged(root, path string) error {
+	if found, err := ownDirs(root); err != nil || !found {
+		return errors.Join(fmt.Errorf("%s changed while lola was running; not writing its pins", untrusted.Text(path, untrusted.MaxName)), err)
+	}
+	_, now, err := yamldoc.ReadNoFollow(path, Version)
+	if err != nil || !bytes.Equal(now, p.read) {
+		return errs.WithHints(errors.Join(fmt.Errorf("%s changed while lola was running; not writing its pins", untrusted.Text(path, untrusted.MaxName)), err),
+			"run the command again")
 	}
 	return nil
 }

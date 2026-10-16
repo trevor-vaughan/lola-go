@@ -31,6 +31,7 @@ linters:
           allow:
             - $gostd
             - github.com/trevor-vaughan/lola-go/internal/errs
+            - github.com/trevor-vaughan/lola-go/internal/fsx # a project's profiles directory stays inside it
             - github.com/trevor-vaughan/lola-go/internal/manifest
             - github.com/trevor-vaughan/lola-go/internal/module # name rules
             - github.com/trevor-vaughan/lola-go/internal/paths
