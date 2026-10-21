@@ -1,0 +1,31 @@
+.golangci.yml
+  s_dd02d4728fd2f8::t_8bfad83edc8c29 3,5-16,100-102
+docs/architecture.md
+  s_dd02d4728fd2f8::t_bf286c6fd10a11 97-99,104-108,111
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_f65633458699fd 66-67,77-82,104,174,185,389-390
+internal/market/lolayaml.go
+  s_dd02d4728fd2f8::t_b561df4d34687c 57-59,64-66,120-131,152-153,186-187,190,192-197,199-218
+internal/market/mapping.go
+  s_dd02d4728fd2f8::t_00b824f9b36c98 150-155,209-212
+internal/market/market.go
+  s_dd02d4728fd2f8::t_22e739f56ccc4a 34-40,109-114,122-123
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_d54c9f4ad39104 134-139,178-193,209-220,247,258,312-318,407-410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e92bdcec9ec2d7f216f092183628f6fa35ce4ae",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
