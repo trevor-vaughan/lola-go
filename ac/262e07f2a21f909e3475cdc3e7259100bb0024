@@ -1,0 +1,29 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_29ef725926265e 1355-1356,1367
+docs/decisions.md
+  s_dd02d4728fd2f8::t_c4049fdab6f6ba 109
+docs/usage.md
+  s_dd02d4728fd2f8::t_a02fa4ed34a46c 929-930
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_4139ea1d1a11e2 281,290
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_45bf4ad5a55a7d 207-208,270-271,273-276,279-296,298-319
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_89f17992a03d89 420-423,446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac262e07f2a21f909e3475cdc3e7259100bb0024",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
