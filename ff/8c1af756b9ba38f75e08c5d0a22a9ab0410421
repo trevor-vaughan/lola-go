@@ -1,0 +1,99 @@
+internal/market/registry.go
+  s_dd02d4728fd2f8::t_83f0fb774a9572 1-13,14-75,77-239,241-260
+  s_dd02d4728fd2f8::t_e73933ac4d6594 261-264
+internal/market/market_suite_test.go
+  s_dd02d4728fd2f8::t_448de1a58140bf 1-13
+internal/market/mapping.go
+  s_dd02d4728fd2f8::t_e30a51cc336c57 1-62,64-309
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_a64dfedd9f2e73 1-495
+  s_dd02d4728fd2f8::t_8a08b50c57a909 496-498
+internal/market/lolayaml.go
+  s_dd02d4728fd2f8::t_567be7bdbe2e37 1-174
+  s_dd02d4728fd2f8::t_c314dc5e9960bd 175
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_de8fd1b6c89260 1-345,348-382,386-456
+internal/market/market.go
+  s_dd02d4728fd2f8::t_d12e13534660c7 1-52,86-190,191-198,199-229
+.golangci.yml
+  s_dd02d4728fd2f8::t_aaf723548fb23f 42-62
+docs/architecture.md
+  s_dd02d4728fd2f8::t_e602cec4ba1a5a 44-46,97-116
+  s_dd02d4728fd2f8::t_931f1e9a3e4b81 47-48,1312-1335,1341-1351,1355-1360,1392-1397,1399-1400
+internal/yamldoc/yamldoc.go
+  s_dd02d4728fd2f8::t_237da1508b8aec 106-151
+internal/yamldoc/yamldoc_test.go
+  s_dd02d4728fd2f8::t_5a32a2b8c552a5 30-57
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_b79796b839222f 1-119,121-123,125-168,170-178
+internal/cli/market_output.go
+  s_dd02d4728fd2f8::t_16cf544a7ca601 1-187
+  s_dd02d4728fd2f8::t_1172a19bf2a01a 188
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_972d670bec3f23 1-211,221-245,254-301,304-381,389-393
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_850133f4760a5e 1-34,53-61,63-75,79,82-87,89,91-176,182,186,188-322
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_62d77b8a4c1845 1-217,219-236,238-240,242-243,247,249-256,267,269-290,293-299,301-424,427-428,431-561,565-566,568-610,612-623,625-680,682-713,715-743,754,760-785,788-793,797-800,802-810,820-837,839-1024,1026-1037,1039
+  s_dd02d4728fd2f8::t_feb445215b33ff 1038,1040-1043
+docs/decisions.md
+  s_dd02d4728fd2f8::t_740a8f4ac376e5 98-107
+docs/roadmap.md
+  s_dd02d4728fd2f8::t_10f9835e9b5566 58-63
+docs/usage.md
+  s_dd02d4728fd2f8::t_df8934784b547f 17,42-44,878-968,1750-1751,1793-1794,1913,1922-1923
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_8eb7d9b95d3fce 93
+internal/cli/cmd_profile.go
+  s_dd02d4728fd2f8::t_f5436521836d98 69-71,73
+internal/cli/flow_test.go
+  s_dd02d4728fd2f8::t_4b7381183afb58 36,46,95-98
+internal/cli/help.go
+  s_dd02d4728fd2f8::t_6e46fa2b6a1cb2 227,230
+internal/cli/huh.go
+  s_dd02d4728fd2f8::t_eedbf9beed4c47 421-434
+internal/cli/prompter.go
+  s_dd02d4728fd2f8::t_46da81ac4dd817 37-46,199
+internal/cli/store_test.go
+  s_dd02d4728fd2f8::t_b0bc4aec33b564 371,391-392,397-398,405
+internal/engine/remote.go
+  s_dd02d4728fd2f8::t_76b8c87e849457 208-218,222,226,235,238,251-256,259,265,270-272,274-276,279-280,285-299,302,311-314,319,322,338,347-356,371-379,389,398-399,407
+internal/fsx/atomic.go
+  s_dd02d4728fd2f8::t_541b4fc6f0dc23 7-8,51-81
+internal/fsx/atomic_test.go
+  s_dd02d4728fd2f8::t_d390e3b48b7444 43-61
+internal/migrate/plan.go
+  s_dd02d4728fd2f8::t_4de730d44cf253 148
+internal/migrate/plan_test.go
+  s_dd02d4728fd2f8::t_821a9cd3267de0 436
+internal/paths/paths.go
+  s_dd02d4728fd2f8::t_578b5d292a797b 23-25,71-73
+internal/paths/paths_test.go
+  s_dd02d4728fd2f8::t_d7b37635bfc48b 32-34
+internal/profile/remote.go
+  s_dd02d4728fd2f8::t_e828825375cafa 17,161
+internal/source/archive.go
+  s_dd02d4728fd2f8::t_564a652f99dd34 73
+internal/source/download.go
+  s_dd02d4728fd2f8::t_c77bf1ecf22683 11,24-39,42-52,55,66,68,78,88,93,107,109,112,116,120-123,126-149
+internal/source/download_internal_test.go
+  s_dd02d4728fd2f8::t_55e224e0deb282 22,24,29,31,40
+internal/source/download_test.go
+  s_dd02d4728fd2f8::t_d718ff7c7f0446 171-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff8c1af756b9ba38f75e08c5d0a22a9ab0410421",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
