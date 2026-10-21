@@ -1,0 +1,21 @@
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_618274d6bd4c95 524-534
+internal/engine/market_verbs.go
+  s_dd02d4728fd2f8::t_f3a295e490737c 120-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eafb59ed9243fdae63eb4495b530a024897a7a4b",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
