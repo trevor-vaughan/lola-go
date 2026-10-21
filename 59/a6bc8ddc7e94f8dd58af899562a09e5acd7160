@@ -1,0 +1,52 @@
+internal/engine/market_verbs.go
+  s_dd02d4728fd2f8::t_a3f76c1e881f39 1-134
+internal/engine/market_remove.go
+  s_dd02d4728fd2f8::t_e122dc8871c19f 1-119
+docs/architecture.md
+  s_dd02d4728fd2f8::t_78d07e33e01557 1355-1361,1366-1367
+  s_dd02d4728fd2f8::t_6142ba0dbd4114 1336-1340,1352-1354,1407
+docs/decisions.md
+  s_dd02d4728fd2f8::t_95508e82a4aaa9 108-109
+docs/usage.md
+  s_dd02d4728fd2f8::t_a7caef7b8236d1 17,895,927-942,1724-1727
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_579c3b879cf161 15,21,29,114,116,137-142,153,158,162-165,189-190,225-232,238,271-324,397-398,401-402
+  s_dd02d4728fd2f8::t_f376605ac550a1 37-59,69,83-85,87-88,95,97,208-211,213,215,217
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_f34251cdc33187 8,117-120,122-124,126-130,188-290,294-297
+  s_dd02d4728fd2f8::t_d7a183e3752f4d 121,125,178
+  s_dd02d4728fd2f8::t_1df958cf871db2 291-293
+internal/cli/store_test.go
+  s_dd02d4728fd2f8::t_6267576cdae1b1 393,399
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_d4c89866ba2792 394-499
+  s_dd02d4728fd2f8::t_f295a90423e25d 212-220,246-253,302-303,382-388
+internal/market/mapping.go
+  s_dd02d4728fd2f8::t_d5b928f4b3cb0d 63
+internal/market/market.go
+  s_dd02d4728fd2f8::t_727901b53b709b 53-85
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_23ba5790cb6a89 346-347,383-385
+internal/market/registry.go
+  s_dd02d4728fd2f8::t_596d1c0a36f097 76,240
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_d915817779b827 223,246,249-251,253,262-271,273,296-297,305,430-431,434,570-572,575,619,632,689,752,755-758,760-761,763-767,794,802,806,811,821-829,848,1035
+internal/source/download.go
+  s_dd02d4728fd2f8::t_fd7cc76683f373 124-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "59a6bc8ddc7e94f8dd58af899562a09e5acd7160",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
