@@ -1,0 +1,23 @@
+docs/usage.md
+  s_cbbd2b04d86e3c::t_a31737fb97260d 2087-2089
+internal/cli/cmd_tidy.go
+  s_cbbd2b04d86e3c::t_188502103daa85 60-62
+internal/cli/store_test.go
+  s_cbbd2b04d86e3c::t_00679dae4082dd 394-395,404-420
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a1788c0fa9a77eae6bc7bf2ffbecb561e4b0e8f",
+  "prompts": {},
+  "sessions": {
+    "s_cbbd2b04d86e3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2f96a18-7fc6-4f93-8ec0-53b32267f45e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
