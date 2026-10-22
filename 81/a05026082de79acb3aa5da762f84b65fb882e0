@@ -1,0 +1,27 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_6f12db8582fe0e 1494-1495
+internal/cli/cmd_migrate.go
+  s_dd02d4728fd2f8::t_785d2ce07f7350 52
+internal/migrate/plan.go
+  s_dd02d4728fd2f8::t_42362044461835 143-145,169
+internal/migrate/plan_test.go
+  s_dd02d4728fd2f8::t_a480187b5da2c5 43,242
+internal/migrate/run_test.go
+  s_dd02d4728fd2f8::t_d3dad72769af8d 108,904-912
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "81a05026082de79acb3aa5da762f84b65fb882e0",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
