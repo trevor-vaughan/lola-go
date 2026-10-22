@@ -1,0 +1,19 @@
+internal/cli/tidy_test.go
+  s_cbbd2b04d86e3c::t_d6fe5357811224 263-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ef2db2feb53e4cd22541b30b8955996ca9113ab",
+  "prompts": {},
+  "sessions": {
+    "s_cbbd2b04d86e3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2f96a18-7fc6-4f93-8ec0-53b32267f45e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
