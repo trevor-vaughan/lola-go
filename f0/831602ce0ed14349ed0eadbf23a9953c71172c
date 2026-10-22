@@ -1,0 +1,51 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_0c707b858f422a 1487-1501
+docs/decisions.md
+  s_dd02d4728fd2f8::t_35c62aad32cc25 118
+docs/usage.md
+  s_dd02d4728fd2f8::t_55df81f509e58a 1048-1056
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_bc46efb2e2b726 152-153
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_c05f7cee151e04 557,835
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_1677d8c319b52f 685,691-696
+internal/engine/choices.go
+  s_dd02d4728fd2f8::t_d3125b38730b05 36-37,130-137,171,205,228,247,293,355,389,400,407-408,443,446,468,472
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_df246045ef90f4 629,652-655,659-666,673-679,733-784
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_81451f851f2c8a 35-41,43,49,53,56,58,61,63,181-185,254,257,262-264,1030,1126,1248
+internal/engine/remote_add.go
+  s_dd02d4728fd2f8::t_9c044f9da33baa 56
+internal/engine/remote_update.go
+  s_dd02d4728fd2f8::t_99b6e702beef22 425
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_246332292727f0 297
+internal/engine/unresolved.go
+  s_dd02d4728fd2f8::t_5dbb3f1e32128b 9,14-17,24,27-32,34-36,40,47-123
+internal/manifest/edit.go
+  s_dd02d4728fd2f8::t_f0675b8c932369 80-82,86-87,102-103
+internal/manifest/manifest.go
+  s_dd02d4728fd2f8::t_6a367931b338f9 92,187-189,191-193
+internal/manifest/manifest_test.go
+  s_dd02d4728fd2f8::t_966bcec5335311 232-233,259-266
+internal/profile/profile_test.go
+  s_dd02d4728fd2f8::t_8438679210862d 132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f0831602ce0ed14349ed0eadbf23a9953c71172c",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
