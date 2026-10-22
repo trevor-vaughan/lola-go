@@ -1,0 +1,18 @@
+docs/usage.md
+  h_df0b3bca5e796d 2031-2032
+internal/engine/sync.go
+  h_df0b3bca5e796d 632-644
+internal/engine/sync_test.go
+  h_df0b3bca5e796d 1357-1365
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f62174001d9215304825b7316bd007d50a20ebb8",
+  "prompts": {},
+  "humans": {
+    "h_df0b3bca5e796d": {
+      "author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
