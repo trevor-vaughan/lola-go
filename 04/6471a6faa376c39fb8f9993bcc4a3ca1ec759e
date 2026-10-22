@@ -1,0 +1,160 @@
+internal/engine/market_browse.go
+  s_dd02d4728fd2f8::t_c5ffc7dfdee4ec 1-8,10-36,37-63,64-78,94-97,98-112,116-118,120-125
+  s_dd02d4728fd2f8::t_eca93112384c5b 9,79-93,113-115,119
+internal/cli/marketflow_test.go
+  s_dd02d4728fd2f8::t_9b06e27828e43c 1-70,92-128,161-177
+  s_dd02d4728fd2f8::t_fbc6d072ae515c 71-91
+  s_dd02d4728fd2f8::t_95844bddb677c1 129-160
+docs/architecture.md
+  s_dd02d4728fd2f8::t_38ededbabee732 1419-1421,1424-1426,1429-1431
+  s_dd02d4728fd2f8::t_431da66a2b63ee 1348-1350,1432-1438,1442
+  s_dd02d4728fd2f8::t_ce2ec313a5c9dc 1494-1495,1497
+  s_dd02d4728fd2f8::t_c79e27fabe41a4 1422-1423,1427-1428
+  s_dd02d4728fd2f8::t_233906e7fb28d0 1439-1441
+  s_dd02d4728fd2f8::t_fcd852fc767699 1390,1392-1406
+  s_dd02d4728fd2f8::t_a59df03fbd7dd9 1498-1504
+docs/decisions.md
+  s_dd02d4728fd2f8::t_c11d2aeeaa9319 122
+  s_dd02d4728fd2f8::t_cb940821c1a228 124
+  s_dd02d4728fd2f8::t_e6c53d9ba1bef1 114
+  s_dd02d4728fd2f8::t_f581472c14fe22 123
+  s_dd02d4728fd2f8::t_7303510dce9a4f 120
+  s_dd02d4728fd2f8::t_8ac5093a38cf28 125-126
+docs/usage.md
+  s_dd02d4728fd2f8::t_363b5b01c76a19 946,948-949,1045-1050,1054-1055,1522-1529
+  s_dd02d4728fd2f8::t_6dfec806332029 270-277,1062-1066,1825-1827
+  s_dd02d4728fd2f8::t_df392cf11c4c4c 19,947,1051-1053
+  s_dd02d4728fd2f8::t_413f49af49a8f2 157,1037-1044
+  s_dd02d4728fd2f8::t_ca77220d90ff7b 969-970
+  s_dd02d4728fd2f8::t_91a05c48d023e2 278-280
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_eb81edb6f26e4a 92-126,178-181,455-457
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_441726e309bd23 144-147
+internal/cli/cmd_store.go
+  s_dd02d4728fd2f8::t_9b21a35fc9c802 183-185,390-398,403,420-422,426,436,450,461-465,469
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_4ca5c287654bd0 4,54-57,112-114,118-120,124-125,127-138,142-143,155-157,167-170,218-242,243-276,558-564,581-585,592-601,617,624-631,633,642-655,667,669-670,673,675-676,681-715,744-746,1080-1082
+  s_dd02d4728fd2f8::t_5fa8b52939beb1 374-375,528-529
+  s_dd02d4728fd2f8::t_6bbddf5a7699ec 121-123,126,139-141,144-154,158-160,164-166,171-217,677-680
+  s_dd02d4728fd2f8::t_074209368bbfd9 161-163,632,635,638-641,661-666,668,671-672,674
+  s_dd02d4728fd2f8::t_7470aa292232cc 384-388,402-419
+internal/cli/flow_test.go
+  s_dd02d4728fd2f8::t_46de0790e94a2c 37,48,101-104
+internal/cli/huh.go
+  s_dd02d4728fd2f8::t_091885fdb18110 243-245,280-338
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_33bc61eeedc1ee 69,217,221-223,389,445-446
+  s_dd02d4728fd2f8::t_9684e167c626a4 131-137
+  s_dd02d4728fd2f8::t_5afc65941462e5 140-154
+internal/cli/prompter.go
+  s_dd02d4728fd2f8::t_8366a16197d473 40-42,116-121,124-125,130-145,224
+internal/engine/cache.go
+  s_dd02d4728fd2f8::t_b94c40e73327b4 26-28,34-35,155-160,177,180-195
+  s_dd02d4728fd2f8::t_eaf19c0290e26e 136
+internal/engine/cache_test.go
+  s_dd02d4728fd2f8::t_1eb6c25e55daf9 67,72
+internal/engine/choices.go
+  s_dd02d4728fd2f8::t_c503bb97993b68 53-55,139-140,315-318
+  s_dd02d4728fd2f8::t_d693e4df86b5fb 36-37,50-52,144,177,204,208-210
+  s_dd02d4728fd2f8::t_42b943d20b2a96 314
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_5de848ec5b4897 100-103,943-944
+  s_dd02d4728fd2f8::t_eb1691d72402c7 518,942
+internal/engine/market_remove.go
+  s_dd02d4728fd2f8::t_0d979bffe68da2 11,62,101,116,119-134,136-154
+  s_dd02d4728fd2f8::t_4fcededd8b7c14 13,105-115,117-118,135
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_76fe314a664dde 98
+  s_dd02d4728fd2f8::t_559cb2a032b4a6 20,354-396
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_e1fbe84ae03c4d 259-264,266-267,269-282,304-313,319-321,323-333
+  s_dd02d4728fd2f8::t_f4f5b7f003f1dc 33,43,47,93,98-99,103-107,334-409,411-421,463-475
+  s_dd02d4728fd2f8::t_5bde216a2f2fa3 182-199,484-485
+  s_dd02d4728fd2f8::t_80d432aa6ca303 283-287,289-303,314-318,322
+  s_168308efb570db::t_e13e1d6fe2e7c9 7,422-441
+  s_dd02d4728fd2f8::t_aa9dc966f58b7c 219-222,238,241-246
+  s_dd02d4728fd2f8::t_4950a383c0f205 265,268,288
+  s_dd02d4728fd2f8::t_5c58f4de6f07da 410,442-462
+internal/engine/market_install.go
+  s_dd02d4728fd2f8::t_9daf6656522602 125,127-129,131-132
+  s_dd02d4728fd2f8::t_38c628cd07d747 223-228,359,361,364,394
+  s_dd02d4728fd2f8::t_38f2ad63279e54 4,26,33,70,79,122,126,196,198,218,229-230,243-250,291,305-307,332-340,360,365-393
+internal/engine/market_sync.go
+  s_dd02d4728fd2f8::t_36e1c81ab04652 1-12,15-22,27-28,29-30,34-39,41-44,53-54,63-102,105-114,117-128,130-142,144-148,151-169,172-178
+  s_168308efb570db::t_7004b677d9b8b7 143
+  s_dd02d4728fd2f8::t_60a7aacba9d27c 13-14,23-26,31-33,40,45-52,55-62,103-104,115-116,129,149-150,170-171
+docs/roadmap.md
+  s_dd02d4728fd2f8::t_89e8131c197891 62-63,66
+  s_dd02d4728fd2f8::t_6251d183c565e5 64-65
+internal/cli/cmd_sync.go
+  s_dd02d4728fd2f8::t_bdddd017e4c7c4 117-118,216
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_35f1bb9f789155 50-52,240,307-318,404,408,1656,1741-1751,1753-1754,1756,1845-1849
+  s_dd02d4728fd2f8::t_ff62139fdf4fd1 1735-1740
+  s_dd02d4728fd2f8::t_67a26bfd144f81 1752
+  s_dd02d4728fd2f8::t_ab8896953baab4 880,1707,1792,1982
+internal/source/download_test.go
+  s_dd02d4728fd2f8::t_2d2ec019cc4699 188-190
+internal/cli/summary.go
+  s_dd02d4728fd2f8::t_4a1fe5b7905cf7 98-100
+internal/engine/sync_test.go
+  s_dd02d4728fd2f8::t_90b97cbb514bc0 307-323
+internal/source/components.go
+  s_dd02d4728fd2f8::t_a241e530121197 1-158
+  s_dd02d4728fd2f8::t_f28cce0b2a4d18 159-170
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_236d6840fc0df0 540-544
+internal/market/market.go
+  s_dd02d4728fd2f8::t_df0fdbfa70fc83 120-121,129
+internal/source/fetch.go
+  s_dd02d4728fd2f8::t_e02dae067bfa9e 23-42
+internal/source/folder_test.go
+  s_dd02d4728fd2f8::t_920f0c9a3e17ce 8,182-214
+internal/source/source.go
+  s_dd02d4728fd2f8::t_9614f7d42bc333 43-44,52
+internal/engine/engine.go
+  s_dd02d4728fd2f8::t_49d58310a5e7ac 428-429,469,478,484
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_d92ffefc2b53da 797-798,1191-1192
+internal/engine/pin.go
+  s_dd02d4728fd2f8::t_f8f3faa3ed04e6 48,177,187
+internal/ledger/ledger.go
+  s_dd02d4728fd2f8::t_36c3b478ed5c07 89-91,189-193
+internal/manifest/edit.go
+  s_dd02d4728fd2f8::t_c8870899ba6b25 48,74,194-206
+internal/manifest/manifest.go
+  s_dd02d4728fd2f8::t_8ff8abffd80ae1 41-44,146-150
+internal/manifest/manifest_test.go
+  s_dd02d4728fd2f8::t_e625fe0d5f8299 13,161-181
+internal/store/store.go
+  s_dd02d4728fd2f8::t_3fbf2a809effe2 43-46,104-105,134,163-166,168-171,226,248,251,280,465-469
+internal/trust/trust.go
+  s_dd02d4728fd2f8::t_d8243009b03eb3 54-56,143,200,300-302,315,441-443,447-455
+internal/trust/trust_test.go
+  s_dd02d4728fd2f8::t_ee3512819dfe7e 18,367-378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "046471a6faa376c39fb8f9993bcc4a3ca1ec759e",
+  "prompts": {},
+  "sessions": {
+    "s_168308efb570db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa19741982f5d6c66",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
