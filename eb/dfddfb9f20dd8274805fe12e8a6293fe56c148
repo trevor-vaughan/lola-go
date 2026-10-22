@@ -1,0 +1,21 @@
+internal/engine/tidy_git.go
+  s_dd02d4728fd2f8::t_5b28e999118431 1-167
+internal/engine/tidy_label.go
+  s_dd02d4728fd2f8::t_c21d9211ff61ef 1-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ebdfddfb9f20dd8274805fe12e8a6293fe56c148",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
