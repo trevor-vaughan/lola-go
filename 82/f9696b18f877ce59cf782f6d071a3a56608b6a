@@ -1,0 +1,35 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_233906e7fb28d0 1426-1428
+docs/decisions.md
+  s_dd02d4728fd2f8::t_f581472c14fe22 122
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_ff62139fdf4fd1 1735-1740
+internal/engine/marketinstall_test.go
+  s_168308efb570db::t_e13e1d6fe2e7c9 7,416-435
+internal/engine/market_sync.go
+  s_168308efb570db::t_7004b677d9b8b7 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82f9696b18f877ce59cf782f6d071a3a56608b6a",
+  "prompts": {},
+  "sessions": {
+    "s_168308efb570db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa19741982f5d6c66",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
