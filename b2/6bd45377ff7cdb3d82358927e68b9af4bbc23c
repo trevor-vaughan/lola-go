@@ -1,0 +1,25 @@
+.golangci.yml
+  s_ad8e7d52cd540d::t_79e6d0f098fe0f 103-131
+AGENTS.md
+  s_ad8e7d52cd540d::t_dcc854af83cc7d 19-20
+go.mod
+  s_ad8e7d52cd540d::t_13bb1cc3204e6b 14,16,49,57
+go.sum
+  s_ad8e7d52cd540d::t_63b91298b43e7b 96-99,102-103,108-109,143-145,147-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b26bd45377ff7cdb3d82358927e68b9af4bbc23c",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
