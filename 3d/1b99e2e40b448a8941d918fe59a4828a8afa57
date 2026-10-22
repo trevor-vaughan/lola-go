@@ -1,0 +1,33 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_677dfeb0585db3 1440-1441
+docs/decisions.md
+  s_dd02d4728fd2f8::t_dbdd687b2ee106 124
+docs/usage.md
+  s_dd02d4728fd2f8::t_b7d4124ed6f866 273-278,282-283,1070-1074
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_8896e85c1063da 512-518,559-569
+internal/engine/market_internal_test.go
+  s_dd02d4728fd2f8::t_16794e18f82ebc 22,57-62
+internal/engine/market_sync.go
+  s_dd02d4728fd2f8::t_b58a75834219f6 104-105,116-117,143-149,156,158,169-171,184
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_c11c9ae182b0a4 406-407,450,471-472
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_c7387a956e2a0b 1852-1853
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3d1b99e2e40b448a8941d918fe59a4828a8afa57",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
