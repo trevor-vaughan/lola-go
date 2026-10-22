@@ -1,0 +1,21 @@
+docs/usage.md
+  s_cbbd2b04d86e3c::t_ec8acec3dae835 2051-2073
+internal/cli/help.go
+  s_cbbd2b04d86e3c::t_2dfe1fb6f87b9a 247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64e79f371e2810f1eaa86eed1c0b35d8af9a3ac4",
+  "prompts": {},
+  "sessions": {
+    "s_cbbd2b04d86e3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2f96a18-7fc6-4f93-8ec0-53b32267f45e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
