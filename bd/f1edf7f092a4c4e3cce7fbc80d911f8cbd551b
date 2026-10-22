@@ -1,0 +1,14 @@
+internal/cli/cmd_profile.go
+  h_df0b3bca5e796d 196-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bdf1edf7f092a4c4e3cce7fbc80d911f8cbd551b",
+  "prompts": {},
+  "humans": {
+    "h_df0b3bca5e796d": {
+      "author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
