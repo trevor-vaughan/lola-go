@@ -1,0 +1,37 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_f3c872cab61d6b 1682-1691
+docs/decisions.md
+  s_dd02d4728fd2f8::t_11b2791c7f398c 119
+docs/usage.md
+  s_dd02d4728fd2f8::t_0ed53008e62ac3 1939-1952,1956
+e2e/migrate/migrate.venom.yml
+  s_dd02d4728fd2f8::t_2b4e61cf2d0b49 39,80-83,89,110
+e2e/migrate/scripts/python-setup.sh
+  s_dd02d4728fd2f8::t_04a6772b078c24 6-7
+internal/cli/migrate_test.go
+  s_dd02d4728fd2f8::t_45041022b0f01c 120,129,152-155,157,165
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_753a8d096ff00c 159-162,634-713,744-747,775-780,1004,1262
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_80244c42ba996f 74-104
+internal/migrate/run.go
+  s_dd02d4728fd2f8::t_c82c351ad3344f 1232-1233,1236
+internal/migrate/run_test.go
+  s_dd02d4728fd2f8::t_b683a1cf467731 798-800,803,808-813,826,832,846,862,866-867,872,874-875,886-887,890-895,899,903-904,917,934-945
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "755939bd6b961d366f52e99c92d93fe9022abafd",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
