@@ -1,0 +1,32 @@
+docs/architecture.md
+  h_df0b3bca5e796d 1675-1681,1694-1695
+docs/decisions.md
+  h_df0b3bca5e796d 119,130
+docs/usage.md
+  h_df0b3bca5e796d 1889,1948-1957,1983-1984,2030
+internal/cli/cmd_migrate.go
+  h_df0b3bca5e796d 30-31,35-36,66-67,88
+internal/cli/migrate_test.go
+  h_df0b3bca5e796d 78-94,171,174,192-207,246,248-249
+internal/migrate/market.go
+  h_df0b3bca5e796d 61,63-65,71,110-119,130-134,138,146-149,152-154,244-251
+internal/migrate/read.go
+  h_df0b3bca5e796d 508-513
+internal/migrate/run.go
+  h_df0b3bca5e796d 1254-1257
+internal/migrate/run_test.go
+  h_df0b3bca5e796d 7,859,867,890-891,905,936-979
+internal/source/source.go
+  h_df0b3bca5e796d 90,211-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bfce022c8f289a7425bd60ce99ae701cda4585d7",
+  "prompts": {},
+  "humans": {
+    "h_df0b3bca5e796d": {
+      "author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
