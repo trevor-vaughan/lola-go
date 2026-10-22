@@ -1,0 +1,23 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_e1c554e5fce9e0 1785
+internal/engine/tidy_refusal_test.go
+  s_dd02d4728fd2f8::t_c97dcc693c176c 89,93-99
+internal/engine/tidy_select.go
+  s_dd02d4728fd2f8::t_e018c1c2bcc59a 54-55,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21a4f171212845c3d3039cf28d0dce4414684a11",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
