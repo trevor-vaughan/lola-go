@@ -1,0 +1,18 @@
+docs/usage.md
+  h_df0b3bca5e796d 796
+internal/cli/profile_update.go
+  h_df0b3bca5e796d 131,191,292,342,347-348,382
+internal/cli/remoteprofile_test.go
+  h_df0b3bca5e796d 313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5fe8908a54a76cdb9e064eb776f5c6fc7b9f1e7",
+  "prompts": {},
+  "humans": {
+    "h_df0b3bca5e796d": {
+      "author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
