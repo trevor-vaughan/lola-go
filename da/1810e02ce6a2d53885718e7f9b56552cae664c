@@ -1,0 +1,61 @@
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_c909ba4322a382 254-338
+docs/usage.md
+  s_dd02d4728fd2f8::t_22528ed10c524d 19,936-939,959-960,1027,1039-1050,1512-1519
+docs/decisions.md
+  s_dd02d4728fd2f8::t_22528ed10c524d 122
+internal/cli/marketflow_test.go
+  s_dd02d4728fd2f8::t_c909ba4322a382 1-177
+internal/cli/cmd_store.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 183-185,390-398,403,420-422,426,436,450,461-465,469
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 92-126,178-181,455-457
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 4,54-57,112-114,118-276,558-564,581-585,592-601,617,624-633,635-653,661-715,744-746,1080-1082
+internal/cli/flow_test.go
+  s_dd02d4728fd2f8::t_c909ba4322a382 37,48,101-103
+  s_dd02d4728fd2f8::t_6fbaf8976d32e6 104
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 100-102,517,941-942
+  s_dd02d4728fd2f8::t_8a41172a092f54 943
+internal/engine/cache_test.go
+  s_dd02d4728fd2f8::t_c909ba4322a382 67,72
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_c909ba4322a382 98
+internal/cli/huh.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 243-245,280-337
+  s_dd02d4728fd2f8::t_49f2a31a58bac4 338
+internal/engine/market_remove.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 11,13,62,101,105-153
+  s_dd02d4728fd2f8::t_159159e7eac97e 154
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_c909ba4322a382 69,217,221-223,442,500-501
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 144-147
+internal/engine/market_browse.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 1-130
+docs/architecture.md
+  s_dd02d4728fd2f8::t_22528ed10c524d 1418-1430
+internal/engine/choices.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 53-55,139-140,314-318
+internal/engine/cache.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 26-28,34-35,155-160,177,180-195
+internal/cli/prompter.go
+  s_dd02d4728fd2f8::t_22528ed10c524d 40-42,116-121,124-125,130-145,224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "da1810e02ce6a2d53885718e7f9b56552cae664c",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
