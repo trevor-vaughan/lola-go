@@ -1,0 +1,69 @@
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_453dcdcb485a60 584-629
+  s_dd02d4728fd2f8::t_03998ae9fac045 769,771-783,785-788,807,817,821
+  s_dd02d4728fd2f8::t_761ec7c4b18b12 218-219,250-319
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_78a0e37e181728 116,297-307,309-311,313,320-354
+  s_dd02d4728fd2f8::t_a5929e98c13082 4,97,112-113,355,452,454,456-458,462
+  s_dd02d4728fd2f8::t_ef403a30ca62d6 206-207,217-231,549-552
+docs/architecture.md
+  s_dd02d4728fd2f8::t_76ec0b70962bb0 1329
+  s_dd02d4728fd2f8::t_956da8913e96a2 136-137,1372-1379
+docs/usage.md
+  s_dd02d4728fd2f8::t_10ec63b8d76d53 500-501,946-947,960-961,977-978,983-984,2077
+  s_dd02d4728fd2f8::t_b2c4c24f059ad4 925-933,970-973,1057-1058
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_cb0d0b72617959 133,217-225
+  s_dd02d4728fd2f8::t_e3527ec3228d70 264-265,279
+internal/cli/market_output.go
+  s_dd02d4728fd2f8::t_ea547fb78ecef7 7,11-12,72-77,119,134,154-173,179-181,185-187,234,237,239-262
+internal/cli/output.go
+  s_dd02d4728fd2f8::t_808ffa828e75e5 10,25-39
+internal/cli/pager.go
+  s_dd02d4728fd2f8::t_e0161f6f16bdd3 21-23
+internal/cli/root.go
+  s_dd02d4728fd2f8::t_a89e4ce9d346b6 122
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_34f82f68b32cb7 491,537-540,764-776,1063-1065,1143-1145
+  s_dd02d4728fd2f8::t_125e0cde945174 143-146,148,153-155,471-486,505,824-829,831,836-838,841-842,870-873,921,926-937,939-940,1084-1101
+internal/engine/market_verbs.go
+  s_dd02d4728fd2f8::t_b05b7e3e30a328 35,38,112,120
+internal/testenv/testenv.go
+  s_dd02d4728fd2f8::t_77482597148928 57
+internal/module/names.go
+  s_dd02d4728fd2f8::t_072f0041015a42 6-7,9,16-18,20-21,24-25,29-83
+internal/cli/huh.go
+  s_dd02d4728fd2f8::t_38c11b507dbecf 483-484,492
+internal/cli/prompter.go
+  s_dd02d4728fd2f8::t_31808e2add4f1c 38-39,46-48,50
+internal/engine/market_install.go
+  s_dd02d4728fd2f8::t_2aa731e7da5649 87
+internal/engine/market_remove.go
+  s_dd02d4728fd2f8::t_0c80e61e9c2a7e 57-64,94
+internal/market/address.go
+  s_dd02d4728fd2f8::t_f462c263147632 52-53,55-74,81-82,84
+internal/module/agentplugins_test.go
+  s_dd02d4728fd2f8::t_77a2533e4c3fa7 213
+internal/module/claude_test.go
+  s_dd02d4728fd2f8::t_4c7dbe8a68e3d3 265
+internal/module/components_test.go
+  s_dd02d4728fd2f8::t_b04c11b2d6d22c 271,413
+internal/module/names_test.go
+  s_dd02d4728fd2f8::t_b12b934a6d844d 25-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ff24ac83b1278548657de7e9b8fce26bef66e62",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

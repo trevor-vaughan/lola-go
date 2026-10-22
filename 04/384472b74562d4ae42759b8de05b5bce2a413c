@@ -1,0 +1,88 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_4fb7815e743906 168-171,1113-1115
+  s_dd02d4728fd2f8::t_5f5fd386a4d057 173
+  s_dd02d4728fd2f8::t_d40f58492b55a7 1346-1351
+  s_dd02d4728fd2f8::t_683772b3903c96 863-866
+docs/usage.md
+  s_dd02d4728fd2f8::t_9592bb922c014d 3-4,14,23
+  s_dd02d4728fd2f8::t_7321c4594c6e1e 985-988,2092
+  s_dd02d4728fd2f8::t_47134c355ca3ba 1977-1980
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_469fca6512b5be 79,295
+  s_dd02d4728fd2f8::t_053fd01aefcbf0 230,424
+internal/cli/cmd_misc.go
+  s_dd02d4728fd2f8::t_733f71f35b54e1 11-23,34
+internal/cli/core_test.go
+  s_dd02d4728fd2f8::t_a92c009764ad2f 15,683-693
+  s_dd02d4728fd2f8::t_fd8451b9ae3b41 537-577
+internal/cli/help.go
+  s_dd02d4728fd2f8::t_67c62d94391315 8,20-23,36-38,191,197,201-203,208-221
+  s_dd02d4728fd2f8::t_afd189e0042f89 250
+internal/cli/help_test.go
+  s_dd02d4728fd2f8::t_337896a3f5cff9 29-45
+internal/cli/profile_test.go
+  s_dd02d4728fd2f8::t_541565dc0d0588 458
+internal/cli/root.go
+  s_dd02d4728fd2f8::t_e0785e1e750aa4 93-101,111,123
+internal/cli/store_test.go
+  s_dd02d4728fd2f8::t_d49831bfaedfb8 414-424
+internal/cli/summary.go
+  s_dd02d4728fd2f8::t_49b55c1baeab27 63
+internal/engine/engine_test.go
+  s_dd02d4728fd2f8::t_5eb3af02f97548 91,403,495-514,590,888,1184,1187,1206,1364
+  s_dd02d4728fd2f8::t_e4ac71a7a9c800 515-536
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_c221a432d99660 1220-1223,1242-1244,1405-1415,1424,1432,1436,1440
+internal/engine/profile_test.go
+  s_dd02d4728fd2f8::t_0aa2bf9fe146c8 171,220,222,229
+internal/engine/projectprofile_test.go
+  s_dd02d4728fd2f8::t_d0f3a662eafd15 184
+internal/engine/remoteprofile_test.go
+  s_dd02d4728fd2f8::t_a192f5e54c9eaf 544
+internal/engine/selections_test.go
+  s_dd02d4728fd2f8::t_92046136838ba7 83
+internal/engine/sources_test.go
+  s_dd02d4728fd2f8::t_4529dfaf6d5d00 252,1062
+internal/engine/trust_test.go
+  s_dd02d4728fd2f8::t_cc8c53be46fa8e 543,630
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_aee36ca634672b 130-132
+internal/cli/market_output.go
+  s_dd02d4728fd2f8::t_9ed8699ba7351d 96-103,142-153,174-178,182-184,188-233,235-236,238
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_936341edc9b92c 11,13,15,308,312,314-319,356-395
+internal/cli/cmd_sync.go
+  s_dd02d4728fd2f8::t_013cb62a89b8d9 218
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_cad78f37488476 83-88,90-95,110-116
+internal/cli/install_test.go
+  s_dd02d4728fd2f8::t_7ebec6ede35063 203
+internal/engine/engine.go
+  s_dd02d4728fd2f8::t_7dbef4ed86b236 110-111,714-725
+internal/engine/runtimehooks_test.go
+  s_dd02d4728fd2f8::t_5b24b9df32cdfb 544-545
+internal/plan/compute.go
+  s_dd02d4728fd2f8::t_89f5962285565b 366,368,375-376,575-576,578,581
+internal/plan/compute_test.go
+  s_dd02d4728fd2f8::t_09200558389ae2 193-195,207,209,211,553-554,558
+internal/plan/intent.go
+  s_dd02d4728fd2f8::t_835468766857cc 134-135,139
+internal/cli/flow_test.go
+  s_dd02d4728fd2f8::t_9bd629c0002c85 735-736
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04384472b74562d4ae42759b8de05b5bce2a413c",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
