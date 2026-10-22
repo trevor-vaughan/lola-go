@@ -1,0 +1,43 @@
+.golangci.yml
+  s_dd02d4728fd2f8::t_80b46cb308a81e 82-92
+docs/architecture.md
+  s_dd02d4728fd2f8::t_a39c4af94e1db9 165-169
+internal/migrate/run.go
+  s_dd02d4728fd2f8::t_7a1d4d60005ca3 24,154,202,828
+internal/migrate/run_internal_test.go
+  s_dd02d4728fd2f8::t_1eacbfc26626cd 15,48
+internal/trash/dirsync_unix.go
+  s_dd02d4728fd2f8::t_94e83094a3ab4d 3
+internal/trash/dirsync_windows.go
+  s_dd02d4728fd2f8::t_2f903d52bfdcd8 3
+internal/trash/fifo_other_test.go
+  s_dd02d4728fd2f8::t_134f9e77bd7a3a 1-9
+internal/trash/fifo_unix_test.go
+  s_dd02d4728fd2f8::t_7fb228f50d8c41 1-13
+internal/trash/helpers_test.go
+  s_dd02d4728fd2f8::t_0d49ed96159ceb 1-21
+internal/trash/trash.go
+  s_dd02d4728fd2f8::t_07a70c35021ecd 1-4,23,309-311,327-332
+internal/trash/trash_internal_test.go
+  s_dd02d4728fd2f8::t_17a70e71a88218 1
+internal/trash/trash_suite_test.go
+  s_dd02d4728fd2f8::t_9d224d06b98de8 1-13
+internal/trash/trash_test.go
+  s_dd02d4728fd2f8::t_ee4761d2a4fcb3 1,13,16,30-31,35,55,174,178,182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7daca866cb9cfdbeb77624f2ff4410f8ad467197",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
