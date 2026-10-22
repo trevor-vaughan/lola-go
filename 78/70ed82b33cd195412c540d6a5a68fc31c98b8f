@@ -1,0 +1,14 @@
+e2e/tidy/scripts/setup.sh
+  h_df0b3bca5e796d 7-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7870ed82b33cd195412c540d6a5a68fc31c98b8f",
+  "prompts": {},
+  "humans": {
+    "h_df0b3bca5e796d": {
+      "author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
