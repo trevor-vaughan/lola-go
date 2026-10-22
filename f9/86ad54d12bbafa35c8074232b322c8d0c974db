@@ -1,0 +1,14 @@
+internal/cli/cmd_tidy.go
+  h_df0b3bca5e796d 209-214,259-269,275-278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f986ad54d12bbafa35c8074232b322c8d0c974db",
+  "prompts": {},
+  "humans": {
+    "h_df0b3bca5e796d": {
+      "author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
