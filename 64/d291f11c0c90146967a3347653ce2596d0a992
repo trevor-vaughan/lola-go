@@ -1,0 +1,23 @@
+internal/market/market.go
+  s_dd02d4728fd2f8::t_14f405c7fa1a58 81
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_2c6c002633258f 401-403,410-412
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_14f405c7fa1a58 531-532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64d291f11c0c90146967a3347653ce2596d0a992",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
