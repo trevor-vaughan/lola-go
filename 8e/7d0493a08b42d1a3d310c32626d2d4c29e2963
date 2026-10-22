@@ -1,0 +1,37 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_0ff83c1298462f 1754-1758
+internal/engine/tidy.go
+  s_dd02d4728fd2f8::t_b84cf28cfe571b 72-74,139,162-166,171,247,251,315-318,322-323,325,466-467
+internal/engine/tidy_apply.go
+  s_dd02d4728fd2f8::t_ad0dd4bf9b087e 8,11,75-81,163,165,256-269
+internal/engine/tidy_apply_test.go
+  s_dd02d4728fd2f8::t_002d214c41c7f4 12,18,274-305,346-347
+internal/engine/tidy_git_test.go
+  s_dd02d4728fd2f8::t_105e67152e51d8 180-190
+internal/engine/tidy_refusal_test.go
+  s_dd02d4728fd2f8::t_1d6485854a28ff 56,58-60,62,80-81,89-95,166-176,273-279
+internal/engine/tidy_scan.go
+  s_dd02d4728fd2f8::t_201b3ac77871d1 4,90-98,203-205,212,248-249,465-471,495-498,520-523,533,539,541,544
+internal/engine/tidy_select.go
+  s_dd02d4728fd2f8::t_e5070f46d9361d 51,56-62,84,104,107,119-120,217
+internal/engine/tidy_test.go
+  s_dd02d4728fd2f8::t_30a099170b9d42 582-583
+internal/paths/paths.go
+  s_dd02d4728fd2f8::t_c7f2966945aff4 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e7d0493a08b42d1a3d310c32626d2d4c29e2963",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
