@@ -1,0 +1,23 @@
+internal/engine/tidy_test.go
+  s_dd02d4728fd2f8::t_893617c6e4cc69 317-335
+internal/engine/tidy_scan.go
+  s_dd02d4728fd2f8::t_27aeb1fc64a698 205-206,209,213,216,516-519,524
+internal/engine/tidy.go
+  s_dd02d4728fd2f8::t_27aeb1fc64a698 274-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "991a00a134b7a8191bad557c6f519df7e8ad0085",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
