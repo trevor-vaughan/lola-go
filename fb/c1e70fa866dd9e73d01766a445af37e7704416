@@ -1,0 +1,109 @@
+internal/engine/market_browse.go
+  s_dd02d4728fd2f8::t_c5ffc7dfdee4ec 1-8,10-36,37-81,97-100,101-115,119-121,123-128
+  s_dd02d4728fd2f8::t_eca93112384c5b 9,82-96,116-118,122
+internal/cli/marketflow_test.go
+  s_dd02d4728fd2f8::t_9b06e27828e43c 1-70,92-128,161-177
+  s_dd02d4728fd2f8::t_fbc6d072ae515c 71-91
+  s_dd02d4728fd2f8::t_95844bddb677c1 129-160
+docs/architecture.md
+  s_dd02d4728fd2f8::t_38ededbabee732 1406-1408,1411-1413,1416-1418
+  s_dd02d4728fd2f8::t_431da66a2b63ee 1348-1350,1419-1425,1429
+  s_dd02d4728fd2f8::t_ce2ec313a5c9dc 1481-1482,1484
+  s_dd02d4728fd2f8::t_c79e27fabe41a4 1409-1410,1414-1415
+  s_dd02d4728fd2f8::t_233906e7fb28d0 1426-1428
+docs/decisions.md
+  s_dd02d4728fd2f8::t_c11d2aeeaa9319 121
+  s_dd02d4728fd2f8::t_cb940821c1a228 123
+  s_dd02d4728fd2f8::t_e6c53d9ba1bef1 114
+  s_dd02d4728fd2f8::t_c96a59c56896ae 120
+  s_dd02d4728fd2f8::t_f581472c14fe22 122
+docs/usage.md
+  s_dd02d4728fd2f8::t_363b5b01c76a19 944,946-947,967-968,1035-1042,1046-1047,1514-1521
+  s_dd02d4728fd2f8::t_6dfec806332029 270-278,1054-1058,1817-1819
+  s_dd02d4728fd2f8::t_df392cf11c4c4c 19,945,1043-1045
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_eb81edb6f26e4a 92-126,178-181,455-457
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_441726e309bd23 144-147
+internal/cli/cmd_store.go
+  s_dd02d4728fd2f8::t_9b21a35fc9c802 183-185,390-398,403,420-422,426,436,450,461-465,469
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_4ca5c287654bd0 4,54-57,112-114,118-120,124-125,127-138,142-143,155-157,167-170,218-242,243-276,535-541,558-562,569-578,594,601-608,610,619-632,644,646-647,650,652-653,658-692,721-723,1057-1059
+  s_dd02d4728fd2f8::t_5fa8b52939beb1 374-375,505-506
+  s_dd02d4728fd2f8::t_6bbddf5a7699ec 121-123,126,139-141,144-154,158-160,164-166,171-217,654-657
+  s_dd02d4728fd2f8::t_074209368bbfd9 161-163,609,612,615-618,638-643,645,648-649,651
+internal/cli/flow_test.go
+  s_dd02d4728fd2f8::t_46de0790e94a2c 37,48,101-104
+internal/cli/huh.go
+  s_dd02d4728fd2f8::t_091885fdb18110 243-245,280-338
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_33bc61eeedc1ee 69,202,206-208,374,430-431
+  s_dd02d4728fd2f8::t_9684e167c626a4 131-137
+internal/cli/prompter.go
+  s_dd02d4728fd2f8::t_8366a16197d473 40-42,116-121,124-125,130-145,224
+internal/engine/cache.go
+  s_dd02d4728fd2f8::t_b94c40e73327b4 26-28,34-35,155-160,177,180-195
+internal/engine/cache_test.go
+  s_dd02d4728fd2f8::t_1eb6c25e55daf9 67,72
+internal/engine/choices.go
+  s_dd02d4728fd2f8::t_c503bb97993b68 53-55,139-140,315-318
+  s_dd02d4728fd2f8::t_d693e4df86b5fb 36-37,50-52,144,177,204,208-210
+  s_dd02d4728fd2f8::t_42b943d20b2a96 314
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_5de848ec5b4897 100-103,518-520,944-946
+internal/engine/market_remove.go
+  s_dd02d4728fd2f8::t_0d979bffe68da2 11,62,101,116,119-134,136-154
+  s_dd02d4728fd2f8::t_4fcededd8b7c14 13,105-115,117-118,135
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_76fe314a664dde 97
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_e1fbe84ae03c4d 254-277,299-308,314-316,318-328
+  s_dd02d4728fd2f8::t_f4f5b7f003f1dc 33,43,47,93,98-99,103-107,222,329-415,436-448
+  s_dd02d4728fd2f8::t_5bde216a2f2fa3 182-199,457-458
+  s_dd02d4728fd2f8::t_80d432aa6ca303 278-298,309-313,317
+  s_168308efb570db::t_e13e1d6fe2e7c9 7,416-435
+internal/engine/market_install.go
+  s_dd02d4728fd2f8::t_9daf6656522602 132,135-141,143-144
+  s_dd02d4728fd2f8::t_38c628cd07d747 37-40,114,210,235-241,351-353,356-362
+internal/engine/market_sync.go
+  s_dd02d4728fd2f8::t_36e1c81ab04652 1-25,26-119,121-152
+  s_168308efb570db::t_7004b677d9b8b7 120
+docs/roadmap.md
+  s_dd02d4728fd2f8::t_89e8131c197891 62-66
+internal/cli/cmd_sync.go
+  s_dd02d4728fd2f8::t_bdddd017e4c7c4 117-118,216
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_35f1bb9f789155 50-52,240,307-318,404,408,1656,1741-1751,1753-1754,1756,1845-1849
+  s_dd02d4728fd2f8::t_ff62139fdf4fd1 1735-1740
+  s_dd02d4728fd2f8::t_67a26bfd144f81 1752
+internal/source/download_test.go
+  s_dd02d4728fd2f8::t_2d2ec019cc4699 188-190
+internal/cli/summary.go
+  s_dd02d4728fd2f8::t_4a1fe5b7905cf7 98-100
+internal/engine/sync_test.go
+  s_dd02d4728fd2f8::t_90b97cbb514bc0 307-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fbc1e70fa866dd9e73d01766a445af37e7704416",
+  "prompts": {},
+  "sessions": {
+    "s_168308efb570db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa19741982f5d6c66",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
