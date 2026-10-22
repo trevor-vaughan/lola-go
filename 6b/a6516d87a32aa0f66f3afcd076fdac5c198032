@@ -1,0 +1,57 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_fcd852fc767699 1390,1392-1406
+docs/decisions.md
+  s_dd02d4728fd2f8::t_7303510dce9a4f 120,124
+docs/usage.md
+  s_dd02d4728fd2f8::t_413f49af49a8f2 157,1035-1042
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_7470aa292232cc 384-388,402-419
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_5afc65941462e5 140-154
+internal/engine/cache.go
+  s_dd02d4728fd2f8::t_eaf19c0290e26e 136
+internal/engine/engine.go
+  s_dd02d4728fd2f8::t_49d58310a5e7ac 428-429,469,478,484
+internal/engine/market_install.go
+  s_dd02d4728fd2f8::t_38f2ad63279e54 4,26,33,70,79,122,126,196,198,218,229-230,243-250,291,305-307,332-340,360,365-393
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_559cb2a032b4a6 20,354-396
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_aa9dc966f58b7c 219-222,238,241-246
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_d92ffefc2b53da 797-798,1191-1192
+internal/engine/pin.go
+  s_dd02d4728fd2f8::t_f8f3faa3ed04e6 48,177,187
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_ab8896953baab4 880,1707,1792,1982
+internal/ledger/ledger.go
+  s_dd02d4728fd2f8::t_36c3b478ed5c07 89-91,189-193
+internal/manifest/edit.go
+  s_dd02d4728fd2f8::t_c8870899ba6b25 48,74,194-206
+internal/manifest/manifest.go
+  s_dd02d4728fd2f8::t_8ff8abffd80ae1 41-44,146-150
+internal/manifest/manifest_test.go
+  s_dd02d4728fd2f8::t_e625fe0d5f8299 13,161-181
+internal/store/store.go
+  s_dd02d4728fd2f8::t_3fbf2a809effe2 43-46,104-105,134,163-166,168-171,226,248,251,280,465-469
+internal/trust/trust.go
+  s_dd02d4728fd2f8::t_d8243009b03eb3 54-56,143,200,300-302,315,441-443,447-455
+internal/trust/trust_test.go
+  s_dd02d4728fd2f8::t_ee3512819dfe7e 18,367-378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ba6516d87a32aa0f66f3afcd076fdac5c198032",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
