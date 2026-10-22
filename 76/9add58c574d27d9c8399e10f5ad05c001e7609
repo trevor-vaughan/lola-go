@@ -1,0 +1,56 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_a02139e51a0d19 1478-1492
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 32-33,175,1015-1016,1112,1233-1234
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_436ed4768bbc94 606-731
+internal/engine/remote_update.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 15,425,844-847
+internal/manifest/manifest.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 9,90-95,101-103,109,112-116,121-122,130-133,138-140,144-214
+  s_dd02d4728fd2f8::t_3eeae944b7c146 215
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 297
+docs/usage.md
+  s_dd02d4728fd2f8::t_a02139e51a0d19 1043-1051
+internal/engine/market_sync.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 9,72-80
+  s_dd02d4728fd2f8::t_273b45dbe2f3d3 81
+internal/engine/unresolved.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 1-43
+internal/profile/profile_test.go
+  s_dd02d4728fd2f8::t_436ed4768bbc94 4,124-153
+  s_dd02d4728fd2f8::t_c4d75f1efa7a13 154-155
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 151-152
+internal/engine/remote_add.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 56
+internal/manifest/edit.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 95-99
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_436ed4768bbc94 673-674,685-699,738-740
+  s_dd02d4728fd2f8::t_c5dbe470105ac2 741
+docs/decisions.md
+  s_dd02d4728fd2f8::t_a02139e51a0d19 118
+internal/manifest/manifest_test.go
+  s_dd02d4728fd2f8::t_436ed4768bbc94 4,215-256
+  s_dd02d4728fd2f8::t_4228e48beb9818 257-258
+internal/profile/profile.go
+  s_dd02d4728fd2f8::t_a02139e51a0d19 316-321,328-330,375,388-391,401-403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "769add58c574d27d9c8399e10f5ad05c001e7609",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
