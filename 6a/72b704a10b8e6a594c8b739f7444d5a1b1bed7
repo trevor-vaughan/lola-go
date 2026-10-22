@@ -1,0 +1,71 @@
+AGENTS.md
+  s_cbbd2b04d86e3c::t_d75038e634f99f 9-10
+docs/architecture.md
+  s_cbbd2b04d86e3c::t_b9bd7a32b92732 1662-1667,1669-1670,1676,1800,1810-1817
+  s_cbbd2b04d86e3c::t_8de624ffb7b7d6 1803-1806,1825-1829
+  s_cbbd2b04d86e3c::t_dabe54f1e2cbb9 1668,1671-1675,1801-1802,1808-1809,1818-1824
+docs/decisions.md
+  s_cbbd2b04d86e3c::t_2f4a3b46e62836 142
+  s_cbbd2b04d86e3c::t_a4bbdd2dc3fb59 140-141
+docs/roadmap.md
+  s_cbbd2b04d86e3c::t_42f0ae274273a0 73-75
+internal/cli/cmd_tidy.go
+  s_cbbd2b04d86e3c::t_221e857d459ad6 136-137
+  s_cbbd2b04d86e3c::t_723dd217b0379e 169-172,187-204,207-211,216-217
+internal/cli/tidy_test.go
+  s_cbbd2b04d86e3c::t_8e8ca1e9959cb6 245-254
+  s_cbbd2b04d86e3c::t_06c93c75aa6255 296
+  s_cbbd2b04d86e3c::t_dbce6353cc9332 169,175-176,187-202
+  s_cbbd2b04d86e3c::t_0a8acc51095a30 231-244
+  s_cbbd2b04d86e3c::t_d6fe5357811224 263-275
+internal/engine/tidy.go
+  s_cbbd2b04d86e3c::t_0b17b941b7e5d9 54-55,60
+internal/engine/tidy_select.go
+  s_cbbd2b04d86e3c::t_cf6f2e3f1a1e2c 64,68,140-141,153,178-180,211,222,224-225
+  s_cbbd2b04d86e3c::t_879c2549cba26f 57,104
+  s_cbbd2b04d86e3c::t_5c8bbbba70dcfe 241
+internal/engine/tidy_refusal_test.go
+  s_cbbd2b04d86e3c::t_122f8b7bd206ff 78,88,189,204,215,267,294,301,320
+  s_cbbd2b04d86e3c::t_3fb20318839713 161-162,174-176
+internal/cli/huh_internal_test.go
+  s_cbbd2b04d86e3c::t_a6df215910ce40 589-590
+  s_cbbd2b04d86e3c::t_d428cf638e820b 377-380,549-551
+internal/cli/prompter.go
+  s_cbbd2b04d86e3c::t_63be6c474cf6d9 47-48,66-68
+internal/cli/huh.go
+  s_cbbd2b04d86e3c::t_e0b4f0e7810519 538-540,542-543,545-546,548-559,562-572
+docs/usage.md
+  s_cbbd2b04d86e3c::t_ec8acec3dae835 2051-2073
+internal/cli/help.go
+  s_cbbd2b04d86e3c::t_2dfe1fb6f87b9a 247
+e2e/tidy/scripts/check.py
+  s_cbbd2b04d86e3c::t_1587575253eeca 1,3-15,35-58,64,70,77-78,83,88,93-101,103
+e2e/tidy/scripts/setup.sh
+  s_cbbd2b04d86e3c::t_409926c3083edf 6,26-28
+  h_df0b3bca5e796d 7-9
+e2e/tidy/tidy.venom.yml
+  s_cbbd2b04d86e3c::t_00b3cbe4d9531f 36,48,54,66,69-70,79,82,84-88,92,94-95,110,114-116,118,121,126,129,131-135,139-140,151,154,158-162,168
+scripts/e2e-tidy.sh
+  s_cbbd2b04d86e3c::t_3424421d3f2ba2 7-9,61-63,65,70,78-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6a72b704a10b8e6a594c8b739f7444d5a1b1bed7",
+  "prompts": {},
+  "humans": {
+    "h_df0b3bca5e796d": {
+      "author": "LLM (riotbox) <llm@riotbox>"
+    }
+  },
+  "sessions": {
+    "s_cbbd2b04d86e3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2f96a18-7fc6-4f93-8ec0-53b32267f45e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
