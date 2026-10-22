@@ -1,0 +1,63 @@
+internal/engine/engine.go
+  s_dd02d4728fd2f8::t_ec2bf11d1135e2 91-93,707
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_09c8087d515aaf 225,230,419,424
+internal/cli/scope_test.go
+  s_dd02d4728fd2f8::t_1788e617d55a8c 98-104
+internal/cli/scope.go
+  s_dd02d4728fd2f8::t_1ff92f884d70dd 26-28,35,45
+internal/cli/cmd_migrate.go
+  s_dd02d4728fd2f8::t_d642a445d6e093 55
+internal/cli/cmd_profile.go
+  s_dd02d4728fd2f8::t_8decb8189b16bd 94-99,309
+internal/plan/compute.go
+  s_dd02d4728fd2f8::t_c646afc41c49cd 28-30,544,580-585,587
+internal/cli/profile_remove.go
+  s_dd02d4728fd2f8::t_6ac9e501cc71b1 23
+internal/cli/install_test.go
+  s_dd02d4728fd2f8::t_3fe144fff30b15 55-56,59-68
+internal/engine/replace_test.go
+  s_dd02d4728fd2f8::t_ac594cd3ca2fbc 46
+internal/cli/cmd_sync.go
+  s_dd02d4728fd2f8::t_93bdc6969c173b 140,214-218
+docs/usage.md
+  s_dd02d4728fd2f8::t_c2c14e2cbf81e7 198,1668,1789-1792,1971-1974
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_cfb7d670c250b0 486,808-815,851,853-854,1093-1094
+internal/engine/engine_test.go
+  s_dd02d4728fd2f8::t_db03992fc35af2 495-515,595-600,607,609-616
+internal/plan/compute_test.go
+  s_dd02d4728fd2f8::t_257e06bc14f899 41,257-259
+internal/engine/selections_test.go
+  s_dd02d4728fd2f8::t_f85c68a90ec874 73
+internal/migrate/run_test.go
+  s_dd02d4728fd2f8::t_b33faeedd444ea 270,273
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_4ec3d3a7a83f61 68-69,71-73
+internal/cli/core_test.go
+  s_dd02d4728fd2f8::t_52471c165d0a30 469,471,473-474,477-485,527-529,536-560
+internal/engine/scope.go
+  s_dd02d4728fd2f8::t_42f039bdf90548 34-36,176,178,180-188
+internal/plan/intent.go
+  s_dd02d4728fd2f8::t_39a7509b73a88a 10,145-152
+internal/engine/scope_test.go
+  s_dd02d4728fd2f8::t_069be99d90f867 130-135,137-144
+docs/architecture.md
+  s_dd02d4728fd2f8::t_85b5f9b96e340e 858-862
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34f8206ab1aed4ec1f2e31e9f1d0b1118c0cfd20",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
