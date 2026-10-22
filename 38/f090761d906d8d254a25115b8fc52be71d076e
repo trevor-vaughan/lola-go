@@ -1,0 +1,43 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_ee756ab36f328b 1485,1493-1495
+internal/cli/cmd_profile.go
+  s_dd02d4728fd2f8::t_66be94aedb2355 252
+internal/cli/profile_remove.go
+  s_dd02d4728fd2f8::t_ed1708b308429d 28
+internal/engine/choices.go
+  s_dd02d4728fd2f8::t_83e880eb27e48a 134
+internal/engine/market_remove.go
+  s_dd02d4728fd2f8::t_53adaf60cf81c6 8,137-144
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_13f4b4631cbbd6 733-747
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_cb87a87ca86429 185,1030,1126,1248
+internal/engine/profileview.go
+  s_dd02d4728fd2f8::t_ee518020f1ca3a 203-206
+internal/engine/remote_add.go
+  s_dd02d4728fd2f8::t_2e146814d262c4 56
+internal/engine/remote_remove.go
+  s_dd02d4728fd2f8::t_28b13e8120606d 34-36,61,63
+internal/engine/remote_update.go
+  s_dd02d4728fd2f8::t_f465c6284748f0 163,426,845
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_9fbef2eb0618ef 297
+internal/engine/unresolved.go
+  s_dd02d4728fd2f8::t_1b1f1d01ff6048 12,16-18,20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "38f090761d906d8d254a25115b8fc52be71d076e",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
