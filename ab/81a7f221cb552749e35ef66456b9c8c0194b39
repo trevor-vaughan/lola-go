@@ -1,0 +1,40 @@
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_93a2be70c1b054 513,696,984-986
+  s_dd02d4728fd2f8::t_8569569f374fe1 9,14,101-102,512,514,523-531,689-695,697
+docs/architecture.md
+  s_dd02d4728fd2f8::t_887d4e12332338 117-118,126-129,1363-1364
+docs/decisions.md
+  s_dd02d4728fd2f8::t_3013e786d27930 117
+docs/usage.md
+  s_dd02d4728fd2f8::t_f3de5ea938e1bc 966-969,976-982
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_974c529f2b13d6 151-153
+internal/cli/market_output.go
+  s_dd02d4728fd2f8::t_13ccb02f161cda 78-82,122-128,149-166
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_bc91d8b7d5eeb9 18,332-357
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_9546c108e9d092 9,139-140,156-161,164,466-471,473-478,484-541
+internal/market/mapping.go
+  s_dd02d4728fd2f8::t_534a1faa99876a 288-289,309-359
+internal/market/market.go
+  s_dd02d4728fd2f8::t_b82a1bd115ade6 67,75,112-123
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_f3468c3d39027d 387-441
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ab81a7f221cb552749e35ef66456b9c8c0194b39",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
