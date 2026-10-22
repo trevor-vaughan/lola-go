@@ -1,0 +1,27 @@
+AGENTS.md
+  s_dd02d4728fd2f8::t_2e4bb7037076be 26-28
+docs/architecture.md
+  s_dd02d4728fd2f8::t_00fe6a3f3c9ab7 1617-1620
+docs/decisions.md
+  s_dd02d4728fd2f8::t_c6a8bcf31219f7 135-139
+docs/roadmap.md
+  s_dd02d4728fd2f8::t_ce022eabd1a131 38,69-75
+docs/usage.md
+  s_dd02d4728fd2f8::t_7374b570f08577 2248-2249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e47867ad22b20e5ce9a5af24688345c9e8956a55",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
