@@ -1,0 +1,23 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_330b12c0f8be73 71-72
+internal/source/git.go
+  s_dd02d4728fd2f8::t_2c8100d635e277 14,132-135,148-162
+internal/source/git_test.go
+  s_dd02d4728fd2f8::t_dfe2ad96c9aabc 92,94-95,98,100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a86f65787a8a7e397713db717c634e2d16c0903",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
