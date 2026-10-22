@@ -1,0 +1,25 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_30096e70ced9e5 1350-1354
+docs/usage.md
+  s_dd02d4728fd2f8::t_c221c88d2ce1dc 991-995
+internal/cli/market_output.go
+  s_dd02d4728fd2f8::t_651cc44b92b1da 142-145,147,153-158,160,176-178,182-187,190-198,200-204,207-214,217,219,221,228-229,237-238,240-247,250
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_7fdae14f4c1b57 359-362,373,380-386,394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bbf349a8c8fd47f75256c92fa759d90d48e4479a",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
