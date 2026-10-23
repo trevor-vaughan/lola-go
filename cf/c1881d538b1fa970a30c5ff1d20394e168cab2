@@ -1,0 +1,33 @@
+internal/module/attrs_test.go
+  s_ad8e7d52cd540d::t_298ad9c0a32a47 1-61,64-89,93,95,97-99,101-103,105-172,176-179,189-207,209,211,213-221
+  s_ad8e7d52cd540d::t_3ed8d7824b8d14 222
+internal/fsx/jsonc.go
+  s_ad8e7d52cd540d::t_6ec1e472636290 241-252
+internal/module/attrs.go
+  s_ad8e7d52cd540d::t_d7d5177edec9eb 1-10,12-51,53-60,62-75,77-79,81-91,93-95,97-98,100-102,104-108,111-112,114-115,116-119,121-136,138-139,141-233,236-240,248-316,321-338,341-350,352-353,356-357,359-361,366-368,370-378,380,382-394,396-397,399-405,407-418,420-428,430,432-435,437-444,446-448,450-452
+  s_ad8e7d52cd540d::t_c855d602aff8cc 454
+internal/engine/templates_test.go
+  s_ad8e7d52cd540d::t_198ecc5440d3b2 133-142,154-159
+internal/module/load.go
+  s_ad8e7d52cd540d::t_6f75d68a41e59f 66-67,72-73,123-125
+internal/module/module.go
+  s_ad8e7d52cd540d::t_d347ac49420cfc 29,50,68
+internal/module/template.go
+  s_ad8e7d52cd540d::t_22b09f247f6875 73,75-88,92,95,97-98,103,114,119,121-123,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cfc1881d538b1fa970a30c5ff1d20394e168cab2",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
