@@ -1,0 +1,21 @@
+docs/architecture.md
+  s_35f2683d3ca978::t_24521cac23fc40 1835-1838
+e2e/migrate/migrate.venom.yml
+  s_35f2683d3ca978::t_362a8bacb60ca9 80,87,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e859fbe74722b47136a3f4ce8cb959a0b79c17e",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
