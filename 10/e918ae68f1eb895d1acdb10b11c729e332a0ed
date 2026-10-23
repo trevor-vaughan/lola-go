@@ -1,0 +1,19 @@
+scripts/e2e.sh
+  s_35f2683d3ca978::t_f01b31b91b4c1a 14-17,65-69,77-93,104,108,114,117-118,123,125-127,133-136,150,159,162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "10e918ae68f1eb895d1acdb10b11c729e332a0ed",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
