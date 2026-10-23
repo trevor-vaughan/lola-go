@@ -1,0 +1,26 @@
+e2e/common/jsoncheck.py
+  s_35f2683d3ca978::t_ef72c3660e9329 1-25,32-55
+  s_35f2683d3ca978::t_4bfb644aa981ef 56-59,61-65
+  s_35f2683d3ca978::t_4c32979610f7e5 26-31,60
+e2e/install/install.venom.yml
+  s_35f2683d3ca978::t_2be48766ce72ce 36-352
+  s_35f2683d3ca978::t_0eea66f2d5225d 353-539
+docs/architecture.md
+  s_35f2683d3ca978::t_d98bc3d9627ab8 1863-1873
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b551659fd64a2bbfddeec61316a3bab2cdbdbb3a",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
