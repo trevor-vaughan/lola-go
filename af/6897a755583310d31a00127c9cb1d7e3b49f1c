@@ -1,0 +1,26 @@
+internal/fsx/jsonc.go
+  s_ad8e7d52cd540d::t_20cf95d4f66120 243-244,248-251
+docs/usage.md
+  s_ad8e7d52cd540d::t_5c5e55b51787b7 1373-1377
+internal/module/attrs.go
+  s_ad8e7d52cd540d::t_b7208f7789300d 7,156,158,160,174-175,177-179,187-188,238,253,256,265,281,289,294,322-325,338-351,356,361-363,366,372-375,383,388-410,412,422-424,451
+internal/module/attrs_test.go
+  s_ad8e7d52cd540d::t_abbb974e533838 89,187-195
+  s_ad8e7d52cd540d::t_768e3097c4c0de 87-88,96-98,105-106,128-135,215,217-218,237-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af6897a755583310d31a00127c9cb1d7e3b49f1c",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
