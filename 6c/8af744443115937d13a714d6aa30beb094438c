@@ -1,0 +1,45 @@
+internal/engine/check.go
+  s_ad8e7d52cd540d::t_34867f44989c40 12,68-76,79,90,102-109,111-113,124
+  s_ad8e7d52cd540d::t_88ea1ad0e37fad 110
+internal/engine/content.go
+  s_ad8e7d52cd540d::t_005913f7ee389d 86-88,268,273,288,298
+  s_ad8e7d52cd540d::t_74204cf5e278dc 99-100,102-103,112-116,138-140,146
+internal/engine/engine.go
+  s_ad8e7d52cd540d::t_b9bfdd293806fa 106-108,597-598
+  s_ad8e7d52cd540d::t_4dbcf6b1a520e2 644-648
+  s_ad8e7d52cd540d::t_c6942c2e0d605b 596
+internal/engine/ops.go
+  s_ad8e7d52cd540d::t_7f0af6d345176d 830,1232
+internal/engine/remote.go
+  s_ad8e7d52cd540d::t_141bfa09dd01a4 157-159
+internal/engine/sync.go
+  s_ad8e7d52cd540d::t_9c0d8b080a06fb 904
+internal/engine/templates.go
+  s_ad8e7d52cd540d::t_e8a36d8040bc3b 11,616-617,621-642,647-669
+  s_ad8e7d52cd540d::t_a369bc90fc4d56 467-470,475-478,490,516-520
+  s_ad8e7d52cd540d::t_bf9500a4293f4b 618-620,643-646
+internal/engine/templates_test.go
+  s_ad8e7d52cd540d::t_157aa14c2076b9 20,765-769,772-787,789,791-800
+  s_ad8e7d52cd540d::t_a6b98fa5dc2e30 28,801-872
+  s_ad8e7d52cd540d::t_ed106a2130ea50 770-771,788,790
+internal/ledger/ledger.go
+  s_ad8e7d52cd540d::t_30185b5fc6eb84 98,104-107,109-110,113
+internal/module/vars.go
+  s_ad8e7d52cd540d::t_c3333e4d39fc6d 110-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6c8af744443115937d13a714d6aa30beb094438c",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
