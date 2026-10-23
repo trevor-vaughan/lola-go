@@ -1,0 +1,19 @@
+internal/templating/differential_test.go
+  s_cc87cd7874167c::t_c1509474640078 29-32,65-66,72,74-75,83-85,94-95,145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd785e714da9301f23b01106b3b215be33158ef0",
+  "prompts": {},
+  "sessions": {
+    "s_cc87cd7874167c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af14c0f12b4d87c3d",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
