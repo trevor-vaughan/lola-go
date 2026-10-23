@@ -1,0 +1,199 @@
+third_party/liquid/.gitignore
+  s_ad8e7d52cd540d::t_c828f215001645 1-5
+third_party/liquid/values/mapslicevalue.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-45
+third_party/liquid/SECURITY.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-114
+go.mod
+  s_ad8e7d52cd540d::t_07f58fe5a3faac 14,16,49,57,59-61
+third_party/liquid/Makefile
+  s_ad8e7d52cd540d::t_c828f215001645 1-214
+third_party/liquid/values/drop.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-40
+third_party/liquid/drops.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-17
+third_party/liquid/evaluator/evaluator.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-34
+third_party/liquid/render/nodes.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-74
+third_party/liquid/parser/error.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-84
+third_party/liquid/.github/workflows/test.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-180
+third_party/liquid/values/range.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-27
+third_party/liquid/expressions/expressions.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-88
+third_party/liquid/parser/token.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-72
+third_party/liquid/values/structvalue.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-138
+third_party/liquid/expressions/scanner.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-802
+third_party/liquid/filters/standard_filters.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-622
+third_party/liquid/parser/grammar.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/.github/PULL_REQUEST_TEMPLATE.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-8
+third_party/liquid/tags/render_tag.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-494
+third_party/liquid/template.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-66
+third_party/liquid/render/tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-25
+third_party/liquid/go.mod
+  s_ad8e7d52cd540d::t_c828f215001645 1-223
+third_party/liquid/docs/loop-semantics.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-52
+third_party/liquid/expressions/filters.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-136
+third_party/liquid/expressions/scanner.rl
+  s_ad8e7d52cd540d::t_c828f215001645 1-212
+third_party/liquid/expressions/statements.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-59
+third_party/liquid/render/file_template_store.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-50
+third_party/liquid/parser/config.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-16
+third_party/liquid/expressions/parser.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-86
+third_party/liquid/scripts/test_ruby_liquid.rb
+  s_ad8e7d52cd540d::t_c828f215001645 1-97
+third_party/liquid/tags/template_path.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-22
+.golangci.yml
+  s_ad8e7d52cd540d::t_07f58fe5a3faac 103-139,154-155,166-168
+AGENTS.md
+  s_ad8e7d52cd540d::t_07f58fe5a3faac 19-20
+third_party/liquid/values/parsedate.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-66
+third_party/liquid/values/compare.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-121
+third_party/liquid/.markdownlint.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-4
+third_party/liquid/liquid.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-40
+third_party/liquid/.appveyor.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-20
+third_party/liquid/BENCHMARKS.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-69
+third_party/liquid/expressions/config.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-13
+third_party/liquid/filters/sort_filters.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-78
+third_party/liquid/render/node_context.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-66
+third_party/liquid/tags/standard_tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-83
+third_party/liquid/parser/scanner.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-150
+third_party/liquid/values/call.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-113
+third_party/liquid/tags/iteration_tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-354
+third_party/liquid/values/sort.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-80
+third_party/liquid/PATCHES.md
+  s_ad8e7d52cd540d::t_35ee242c511f9f 1-56
+third_party/liquid/values/convert.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-308
+third_party/liquid/render/autoescape.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/docs/TemplateStoreExample.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-59
+third_party/liquid/render/error.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/expressions/context.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-57
+third_party/liquid/tags/include_tag.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-49
+third_party/liquid/values/predicates.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-23
+third_party/liquid/values/value.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-277
+third_party/liquid/.github/ISSUE_TEMPLATE/feature-request.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-62
+third_party/liquid/README.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-349
+third_party/liquid/render/context.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-320
+third_party/liquid/scripts/shopify-liquid
+  s_ad8e7d52cd540d::t_c828f215001645 1-12
+third_party/liquid/values/arrays.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-25
+third_party/liquid/expressions/y.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-857
+third_party/liquid/.pre-commit-config.yaml
+  s_ad8e7d52cd540d::t_c828f215001645 1-58
+third_party/liquid/.github/ISSUE_TEMPLATE/bug-report.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-68
+third_party/liquid/.github/workflows/lint.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-29
+third_party/liquid/scripts/coverage
+  s_ad8e7d52cd540d::t_c828f215001645 1-12
+third_party/liquid/engine.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-197
+third_party/liquid/render/compiler.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-110
+third_party/liquid/parser/tokentype_string.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-16
+third_party/liquid/LICENSE
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/expressions/builders.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-71
+third_party/liquid/parser/parser.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-120
+third_party/liquid/.all-contributorsrc
+  s_ad8e7d52cd540d::t_c828f215001645 1-271
+third_party/liquid/CHANGELOG.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-736
+third_party/liquid/parser/ast.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-75
+third_party/liquid/render/blocks.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-126
+third_party/liquid/.golangci.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-183
+third_party/liquid/render/trimwriter.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-75
+third_party/liquid/docs/FRender.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-165
+third_party/liquid/tags/control_flow_tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-140
+third_party/liquid/tools.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-10
+third_party/liquid/values/docs.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-8
+third_party/liquid/render/render.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-211
+third_party/liquid/.github/ISSUE_TEMPLATE/config.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-5
+third_party/liquid/expressions/functional.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-32
+third_party/liquid/CONTRIBUTING.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-97
+third_party/liquid/expressions/expressions.y
+  s_ad8e7d52cd540d::t_c828f215001645 1-212
+third_party/liquid/render/config.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-49
+go.sum
+  s_ad8e7d52cd540d::t_e4f7c30a44bb69 96-97,100-101,106-107,141-143,145-146
+third_party/liquid/go.sum
+  s_ad8e7d52cd540d::t_f90ee87e55db4f 1-996
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b778d8071d858c9a3975c53d11edb81b10479416",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
