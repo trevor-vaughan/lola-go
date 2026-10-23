@@ -1,0 +1,21 @@
+internal/engine/marketinstall_test.go
+  s_ad8e7d52cd540d::t_be5f499dcd2a58 779
+internal/templating/bind_test.go
+  s_ad8e7d52cd540d::t_b6d39e0b564333 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "763c0ad43f8b4e265a2369d1a2a72072a3147d59",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
