@@ -1,0 +1,52 @@
+docs/architecture.md
+  s_ad8e7d52cd540d::t_85f3fd9c10c61f 62-64,375-378,385-387,395-399,402-416,421-425,435-439,442-445,449
+  s_ad8e7d52cd540d::t_2d2350c21b7e07 61,379-381,388-391,440-441,446-448
+docs/template_engine_analysis.md
+  s_ad8e7d52cd540d::t_0737395702aac7 127-130
+docs/usage.md
+  s_ad8e7d52cd540d::t_85a4c70898e8f5 1268-1278,1280-1281,1295-1323,1328-1329,1332,1966-1968,2352-2353
+  s_ad8e7d52cd540d::t_ff72026af7acb8 1324-1327,1330-1331
+internal/module/components.go
+  s_ad8e7d52cd540d::t_a0fcc63d1ba052 142-144
+internal/module/partials.go
+  s_ad8e7d52cd540d::t_3e39b2817dda97 11-13,19,35-36,38-40,42-43,49-50,53,56-58,60-73,78,84-86,90-108,140
+internal/module/partials_test.go
+  s_ad8e7d52cd540d::t_c535edf4e2144f 12,51,55-56,68-73,110-134
+internal/templating/names.go
+  s_ad8e7d52cd540d::t_8048c76816f4b4 1-21
+internal/templating/store.go
+  s_ad8e7d52cd540d::t_c7f43e0bac48df 19-20
+internal/engine/templates.go
+  s_ad8e7d52cd540d::t_62679e30ecb774 330,332
+internal/engine/templates_test.go
+  s_ad8e7d52cd540d::t_5e8648a73c6649 7,194-211
+internal/templating/partials_test.go
+  s_ad8e7d52cd540d::t_2e0ca1fe573fa5 219-222,235-255,264,266-267
+  s_ad8e7d52cd540d::t_748be1d83b5b7f 170-200
+internal/templating/regions.go
+  s_ad8e7d52cd540d::t_67b5fcea840c1e 131-151,154,156-158,161-163,165,170-171,183,185,192-193,200-205
+internal/templating/regions_test.go
+  s_ad8e7d52cd540d::t_b9de0ba08c3165 149,151,158
+internal/templating/screen.go
+  s_ad8e7d52cd540d::t_b11c35b27c4d15 73-75,127,145
+internal/templating/error.go
+  s_ad8e7d52cd540d::t_f968afb80b3908 38-39
+internal/templating/graph.go
+  s_ad8e7d52cd540d::t_0f4f2222237ff9 37,176-178,204-207,216-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "12f0c5d6fddb20569cb3b9e7e1c6e48a5bb1a51f",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

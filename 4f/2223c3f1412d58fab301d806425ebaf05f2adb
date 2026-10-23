@@ -1,0 +1,67 @@
+internal/module/partials.go
+  s_ad8e7d52cd540d::t_2cd1414fdf52d6 1-10,14-18,20-21,22-36,39,43,46-50,53,54,56-57,61,76-79,81-85,89-91,111-118,120
+internal/module/partials_test.go
+  s_ad8e7d52cd540d::t_993619983c5ea3 1-11,13-50,52-54,57-67,74-109,135-143
+internal/module/agentplugins.go
+  s_ad8e7d52cd540d::t_955fe0ee869d5d 607
+internal/module/claude.go
+  s_ad8e7d52cd540d::t_b6e65d9463df5f 237-238,241,244,251,302-309,327-329,341,343-351,380
+internal/module/claude_test.go
+  s_ad8e7d52cd540d::t_415dc8dd74f611 456-469
+internal/module/fifo_unix_test.go
+  s_ad8e7d52cd540d::t_c490b8f87de773 52-79
+internal/module/load.go
+  s_ad8e7d52cd540d::t_c87e7b3db0eedc 100-102
+internal/module/module.go
+  s_ad8e7d52cd540d::t_d98c8b3d3e91d2 135-136
+internal/module/template.go
+  s_ad8e7d52cd540d::t_01f2534a8b8436 59-60,69-75,77,83,86,101,109-110,116,121-124,180
+internal/module/template_test.go
+  s_ad8e7d52cd540d::t_243e804f38fd84 13,358,383-394,415-417
+internal/templating/store.go
+  s_ad8e7d52cd540d::t_153563f5995c7d 1-17,20-70
+  s_ad8e7d52cd540d::t_b859c736573bfe 71-81
+internal/templating/store_internal_test.go
+  s_ad8e7d52cd540d::t_cf91a935122eb0 7,15,24,27,31-66
+  s_ad8e7d52cd540d::t_8e971618148fbc 67-68
+internal/engine/templates.go
+  s_ad8e7d52cd540d::t_22951519a8e334 162,197,227
+internal/templating/bind_test.go
+  s_ad8e7d52cd540d::t_f683ffce37d09d 32
+internal/templating/differential_test.go
+  s_ad8e7d52cd540d::t_5517a8953af6c5 191
+internal/templating/error.go
+  s_ad8e7d52cd540d::t_fe201c69f4f04d 81-83
+internal/templating/errors_test.go
+  s_ad8e7d52cd540d::t_a516e6ca147c7e 54
+internal/templating/filters_test.go
+  s_ad8e7d52cd540d::t_e41c203d4d82b1 44
+internal/templating/panic_internal_test.go
+  s_ad8e7d52cd540d::t_96df8c00750c67 22,30,43
+internal/templating/regions_internal_test.go
+  s_ad8e7d52cd540d::t_7189257035de4a 21,43,53
+internal/templating/regions_test.go
+  s_ad8e7d52cd540d::t_894ed98b65a60b 26,54,116,133
+internal/templating/render_test.go
+  s_ad8e7d52cd540d::t_e7b3ea6e329d73 28,61,68,76,124,142,150,158
+internal/templating/screen_test.go
+  s_ad8e7d52cd540d::t_b1d568e76a6bb4 27
+internal/templating/templating.go
+  s_ad8e7d52cd540d::t_4f32756998b992 11-12,53,66,70-71,80,82,90-91,96,127,145,156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4f2223c3f1412d58fab301d806425ebaf05f2adb",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
