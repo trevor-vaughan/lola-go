@@ -1,0 +1,19 @@
+scripts/e2e.sh
+  s_bc1009d408948f::t_389c05a52056a5 123-139,153-157,170,188-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1cae4ae0c069751936bd604192f8fc3a00f9c5a",
+  "prompts": {},
+  "sessions": {
+    "s_bc1009d408948f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a66262996e650ccec",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
