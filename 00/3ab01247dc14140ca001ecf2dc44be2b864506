@@ -1,0 +1,47 @@
+internal/templating/store.go
+  s_ad8e7d52cd540d::t_153563f5995c7d 1-70
+  s_ad8e7d52cd540d::t_b859c736573bfe 71-81
+internal/templating/store_internal_test.go
+  s_ad8e7d52cd540d::t_cf91a935122eb0 7,15,24,27,31-66
+  s_ad8e7d52cd540d::t_8e971618148fbc 67-68
+internal/engine/templates.go
+  s_ad8e7d52cd540d::t_22951519a8e334 162,197,227
+internal/templating/bind_test.go
+  s_ad8e7d52cd540d::t_f683ffce37d09d 32
+internal/templating/differential_test.go
+  s_ad8e7d52cd540d::t_5517a8953af6c5 191
+internal/templating/error.go
+  s_ad8e7d52cd540d::t_fe201c69f4f04d 81-83
+internal/templating/errors_test.go
+  s_ad8e7d52cd540d::t_a516e6ca147c7e 54
+internal/templating/filters_test.go
+  s_ad8e7d52cd540d::t_e41c203d4d82b1 44
+internal/templating/panic_internal_test.go
+  s_ad8e7d52cd540d::t_96df8c00750c67 22,30,43
+internal/templating/regions_internal_test.go
+  s_ad8e7d52cd540d::t_7189257035de4a 21,43,53
+internal/templating/regions_test.go
+  s_ad8e7d52cd540d::t_894ed98b65a60b 26,54,116,133
+internal/templating/render_test.go
+  s_ad8e7d52cd540d::t_e7b3ea6e329d73 28,61,68,76,124,142,150,158
+internal/templating/screen_test.go
+  s_ad8e7d52cd540d::t_b1d568e76a6bb4 27
+internal/templating/templating.go
+  s_ad8e7d52cd540d::t_4f32756998b992 11-12,53,66,70-71,80,82,90-91,96,127,145,156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "003ab01247dc14140ca001ecf2dc44be2b864506",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
