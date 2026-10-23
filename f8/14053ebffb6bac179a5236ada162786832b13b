@@ -1,0 +1,24 @@
+internal/templating/screen.go
+  s_ad8e7d52cd540d::t_3172781f720505 4,74-75,104-105,111-114,116,223
+internal/templating/screen_test.go
+  s_ad8e7d52cd540d::t_78cf0841502f51 32,94-106,115-117,130-131
+  s_ad8e7d52cd540d::t_78c23bafd24f19 118-129
+internal/templating/bind.go
+  s_ad8e7d52cd540d::t_41a501c55a6745 5-6,23-24,70-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f814053ebffb6bac179a5236ada162786832b13b",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

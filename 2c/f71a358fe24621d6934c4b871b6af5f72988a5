@@ -1,0 +1,209 @@
+.golangci.yml
+  s_ad8e7d52cd540d::t_79e6d0f098fe0f 103-122,131-139
+  s_ad8e7d52cd540d::t_9d58321e51ee1f 123-130,154-155,166-168
+AGENTS.md
+  s_ad8e7d52cd540d::t_dcc854af83cc7d 19-20
+go.mod
+  s_ad8e7d52cd540d::t_13bb1cc3204e6b 14,16,49,57
+  s_ad8e7d52cd540d::t_1a560271194515 59-61
+go.sum
+  s_ad8e7d52cd540d::t_63b91298b43e7b 96-97,100-101,106-107,141-143,145-146
+third_party/liquid/.all-contributorsrc
+  s_ad8e7d52cd540d::t_6923a7403450e3 1-271
+third_party/liquid/.appveyor.yml
+  s_ad8e7d52cd540d::t_20fb5300497588 1-20
+third_party/liquid/.github/ISSUE_TEMPLATE/bug-report.yml
+  s_ad8e7d52cd540d::t_4cac81f922da43 1-68
+third_party/liquid/.github/ISSUE_TEMPLATE/config.yml
+  s_ad8e7d52cd540d::t_4eda63c00a5e77 1-5
+third_party/liquid/.github/ISSUE_TEMPLATE/feature-request.yml
+  s_ad8e7d52cd540d::t_16de8ed22a6f61 1-62
+third_party/liquid/.github/PULL_REQUEST_TEMPLATE.md
+  s_ad8e7d52cd540d::t_7b30856560962f 1-8
+third_party/liquid/.github/workflows/lint.yml
+  s_ad8e7d52cd540d::t_703e25fa7c1967 1-29
+third_party/liquid/.github/workflows/test.yml
+  s_ad8e7d52cd540d::t_147443c442419a 1-180
+third_party/liquid/.gitignore
+  s_ad8e7d52cd540d::t_097ccbd4c5a607 1-5
+third_party/liquid/.golangci.yml
+  s_ad8e7d52cd540d::t_ab5b2944a0be3d 1-183
+third_party/liquid/.markdownlint.yml
+  s_ad8e7d52cd540d::t_4a01f99140f8fa 1-4
+third_party/liquid/.pre-commit-config.yaml
+  s_ad8e7d52cd540d::t_b843d3387b9ad8 1-58
+third_party/liquid/BENCHMARKS.md
+  s_ad8e7d52cd540d::t_7b0f6ec77517c0 1-69
+third_party/liquid/CHANGELOG.md
+  s_ad8e7d52cd540d::t_84399e365a4d23 1-736
+third_party/liquid/CONTRIBUTING.md
+  s_ad8e7d52cd540d::t_da0c5ce5ab3568 1-97
+third_party/liquid/LICENSE
+  s_ad8e7d52cd540d::t_c58dcc7cd1d5b8 1-21
+third_party/liquid/Makefile
+  s_ad8e7d52cd540d::t_6ec6c29fc751cc 1-214
+third_party/liquid/PATCHES.md
+  s_ad8e7d52cd540d::t_82d73c259598d3 1-41,51-56
+third_party/liquid/README.md
+  s_ad8e7d52cd540d::t_feb14bb1f9e299 1-349
+third_party/liquid/SECURITY.md
+  s_ad8e7d52cd540d::t_a973aff7e8a3e2 1-114
+third_party/liquid/docs/FRender.md
+  s_ad8e7d52cd540d::t_062c7d05a0d589 1-165
+third_party/liquid/docs/TemplateStoreExample.md
+  s_ad8e7d52cd540d::t_7202e239ca6e30 1-59
+third_party/liquid/docs/loop-semantics.md
+  s_ad8e7d52cd540d::t_796cb31005bebb 1-52
+third_party/liquid/drops.go
+  s_ad8e7d52cd540d::t_e703a2ce3e901c 1-17
+third_party/liquid/engine.go
+  s_ad8e7d52cd540d::t_00fa25340adf68 1-197
+third_party/liquid/evaluator/evaluator.go
+  s_ad8e7d52cd540d::t_2571f72b5932e9 1-34
+third_party/liquid/expressions/builders.go
+  s_ad8e7d52cd540d::t_60beb89f17b5dd 1-71
+third_party/liquid/expressions/config.go
+  s_ad8e7d52cd540d::t_90352d1a0cb70f 1-13
+third_party/liquid/expressions/context.go
+  s_ad8e7d52cd540d::t_c10a74ad4df759 1-57
+third_party/liquid/expressions/expressions.go
+  s_ad8e7d52cd540d::t_7fbe9d230fbf71 1-88
+third_party/liquid/expressions/expressions.y
+  s_ad8e7d52cd540d::t_141850ca09a192 1-212
+third_party/liquid/expressions/filters.go
+  s_ad8e7d52cd540d::t_598c738e7a7e4c 1-136
+third_party/liquid/expressions/functional.go
+  s_ad8e7d52cd540d::t_9a6c4bdff2bc8b 1-32
+third_party/liquid/expressions/parser.go
+  s_ad8e7d52cd540d::t_a7b43742b4ebf3 1-86
+third_party/liquid/expressions/scanner.go
+  s_ad8e7d52cd540d::t_013855d8b48fe8 1-802
+third_party/liquid/expressions/scanner.rl
+  s_ad8e7d52cd540d::t_85bc296dd508d9 1-212
+third_party/liquid/expressions/statements.go
+  s_ad8e7d52cd540d::t_d0a1cf000ea910 1-59
+third_party/liquid/expressions/y.go
+  s_ad8e7d52cd540d::t_d045f17c2c9e75 1-857
+third_party/liquid/filters/sort_filters.go
+  s_ad8e7d52cd540d::t_1bb4a55e93b5b2 1-78
+third_party/liquid/filters/standard_filters.go
+  s_ad8e7d52cd540d::t_9d8e4fc8c7986b 1-622
+third_party/liquid/go.mod
+  s_ad8e7d52cd540d::t_0eb6bb47c4a00d 1-223
+third_party/liquid/go.sum
+  s_ad8e7d52cd540d::t_4caf68484817ae 1-996
+third_party/liquid/liquid.go
+  s_ad8e7d52cd540d::t_bb5559f4b76bfa 1-40
+third_party/liquid/parser/ast.go
+  s_ad8e7d52cd540d::t_58530b6213529e 1-75
+third_party/liquid/parser/config.go
+  s_ad8e7d52cd540d::t_ef8c5e64c9d476 1-16
+third_party/liquid/parser/error.go
+  s_ad8e7d52cd540d::t_7baa244c86738c 1-84
+third_party/liquid/parser/grammar.go
+  s_ad8e7d52cd540d::t_39eda39799cf2f 1-21
+third_party/liquid/parser/parser.go
+  s_ad8e7d52cd540d::t_724a81f454a445 1-120
+third_party/liquid/parser/scanner.go
+  s_ad8e7d52cd540d::t_b1a0cd5ef265d5 1-150
+third_party/liquid/parser/token.go
+  s_ad8e7d52cd540d::t_18d801c47251d0 1-72
+third_party/liquid/parser/tokentype_string.go
+  s_ad8e7d52cd540d::t_d0e8a9d47800e9 1-16
+third_party/liquid/render/autoescape.go
+  s_ad8e7d52cd540d::t_18cecff6527ebe 1-21
+third_party/liquid/render/blocks.go
+  s_ad8e7d52cd540d::t_e0409755aa2ea8 1-126
+third_party/liquid/render/compiler.go
+  s_ad8e7d52cd540d::t_795348f9f8edbd 1-110
+third_party/liquid/render/config.go
+  s_ad8e7d52cd540d::t_ca4d289830891f 1-49
+third_party/liquid/render/context.go
+  s_ad8e7d52cd540d::t_2d29305eee22ff 1-320
+third_party/liquid/render/error.go
+  s_ad8e7d52cd540d::t_a0f787b0164f05 1-21
+third_party/liquid/render/file_template_store.go
+  s_ad8e7d52cd540d::t_9d73d02aff80c8 1-50
+third_party/liquid/render/node_context.go
+  s_ad8e7d52cd540d::t_f40eb0c70d604d 1-66
+third_party/liquid/render/nodes.go
+  s_ad8e7d52cd540d::t_8daede84806490 1-74
+third_party/liquid/render/render.go
+  s_ad8e7d52cd540d::t_8a2938aa90a6ab 1-211
+third_party/liquid/render/tags.go
+  s_ad8e7d52cd540d::t_46f0253c47f4a4 1-25
+third_party/liquid/render/trimwriter.go
+  s_ad8e7d52cd540d::t_22db246bb63b47 1-75
+third_party/liquid/scripts/coverage
+  s_ad8e7d52cd540d::t_5ab5ddb62bbc0f 1-12
+third_party/liquid/scripts/shopify-liquid
+  s_ad8e7d52cd540d::t_7ba8110c08cf24 1-12
+third_party/liquid/scripts/test_ruby_liquid.rb
+  s_ad8e7d52cd540d::t_740d13b939de33 1-97
+third_party/liquid/tags/control_flow_tags.go
+  s_ad8e7d52cd540d::t_8294a057c42db6 1-140
+third_party/liquid/tags/include_tag.go
+  s_ad8e7d52cd540d::t_d8dfb7549849b2 1-49
+third_party/liquid/tags/iteration_tags.go
+  s_ad8e7d52cd540d::t_c07c5ffc1bec75 1-354
+third_party/liquid/tags/render_tag.go
+  s_ad8e7d52cd540d::t_a824c261523ff7 1-494
+third_party/liquid/tags/standard_tags.go
+  s_ad8e7d52cd540d::t_47aead115195c1 1-83
+third_party/liquid/tags/template_path.go
+  s_ad8e7d52cd540d::t_405a0f6df5a676 1-22
+third_party/liquid/template.go
+  s_ad8e7d52cd540d::t_43fc129df03985 1-66
+third_party/liquid/tools.go
+  s_ad8e7d52cd540d::t_77b90feff3d5ee 1-10
+third_party/liquid/values/arrays.go
+  s_ad8e7d52cd540d::t_7085108b915bbd 1-25
+third_party/liquid/values/call.go
+  s_ad8e7d52cd540d::t_5c621d90edfd78 1-113
+third_party/liquid/values/compare.go
+  s_ad8e7d52cd540d::t_c8efdccf1fa464 1-121
+third_party/liquid/values/convert.go
+  s_ad8e7d52cd540d::t_06d68f5bbe800b 1-308
+third_party/liquid/values/docs.go
+  s_ad8e7d52cd540d::t_efd10c0a7d430a 1-8
+third_party/liquid/values/drop.go
+  s_ad8e7d52cd540d::t_b68fe6d3dc800e 1-40
+third_party/liquid/values/mapslicevalue.go
+  s_ad8e7d52cd540d::t_f5609f334fee3e 1-45
+third_party/liquid/values/parsedate.go
+  s_ad8e7d52cd540d::t_efda1a4f1248e0 1-66
+third_party/liquid/values/predicates.go
+  s_ad8e7d52cd540d::t_0f970cd694e3d5 1-23
+third_party/liquid/values/range.go
+  s_ad8e7d52cd540d::t_f5129176af3258 1-27
+third_party/liquid/values/sort.go
+  s_ad8e7d52cd540d::t_156031dd5a85b5 1-80
+third_party/liquid/values/structvalue.go
+  s_ad8e7d52cd540d::t_a4cc97822a689a 1-138
+third_party/liquid/values/value.go
+  s_ad8e7d52cd540d::t_56e745131964f1 1-277
+internal/templating/error.go
+  s_ad8e7d52cd540d::t_c02b27ce99de6a 67-68
+internal/templating/panic_internal_test.go
+  s_ad8e7d52cd540d::t_e87cda213575a1 13-21,23-29,31-35
+internal/templating/render_test.go
+  s_ad8e7d52cd540d::t_da446aad56d216 8,103,114,116,157-167
+internal/templating/templating.go
+  s_ad8e7d52cd540d::t_624e0d9cf21f4b 79-81,101-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2cf71a358fe24621d6934c4b871b6af5f72988a5",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

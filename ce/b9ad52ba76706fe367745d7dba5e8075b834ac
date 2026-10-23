@@ -1,0 +1,20 @@
+internal/templating/differential_test.go
+  s_ad8e7d52cd540d::t_fc11182d69b4d8 1-28,33-64,67-71,73,76-82,86-93,96-144,146-206
+  s_ad8e7d52cd540d::t_de7fdda6ad9fd1 207-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ceb9ad52ba76706fe367745d7dba5e8075b834ac",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
