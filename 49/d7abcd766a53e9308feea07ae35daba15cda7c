@@ -1,0 +1,25 @@
+e2e/common/gitserve.py
+  s_ad8e7d52cd540d::t_b9d9304a876667 3-7,12,16-17,23-24
+e2e/common/hint.py
+  s_ad8e7d52cd540d::t_ec3392dfd05f7f 1-49
+e2e/migrate/migrate.venom.yml
+  s_ad8e7d52cd540d::t_0552efa6c68cb9 21,41,53,127
+scripts/e2e-migrate.sh
+  s_ad8e7d52cd540d::t_8f2a85efa0701f 59-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "49d7abcd766a53e9308feea07ae35daba15cda7c",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
