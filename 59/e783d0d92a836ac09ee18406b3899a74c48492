@@ -1,0 +1,45 @@
+internal/templating/graph.go
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 1-197
+internal/templating/store_internal_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 20-26,28-29,64-69,75
+internal/templating/regions.go
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 96,107-113,131-156,159,161-163,166-168,170,173-193,195-210,213-222,224-230,232-235,237-259
+internal/engine/templates_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 7,168-185,523-524
+internal/engine/templates.go
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 204,319,329,331,418-419
+internal/templating/partials_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 1-211
+internal/templating/regions_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 100-113,149,151,158,177
+internal/templating/regions_internal_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 6,63-78
+  s_ad8e7d52cd540d::t_a44202d2bb7ddd 79-80
+internal/engine/templates_name_internal_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 25,31
+internal/templating/screen.go
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 17,23-47,49,70,73-75,77,81,85,91,94,106,108,110,115,117,121,123,126-128,131,134-145,160-164,179-182,203,205-206,210
+internal/templating/store.go
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 6,22-24,27-29,31
+internal/templating/filters_internal_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 5,26-36
+  s_ad8e7d52cd540d::t_81bacb3f5837d9 37-38
+internal/templating/templating.go
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 45-46,52,66,146-147,154-158,162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "59e783d0d92a836ac09ee18406b3899a74c48492",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
