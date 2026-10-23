@@ -1,0 +1,19 @@
+e2e/common/hint.py
+  s_35f2683d3ca978::t_f8f9f5a57bba2f 7-8,18,30,35-43,45-46,60-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b2e2f144a20efa33180758f5bf7ef42bc132b4d1",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
