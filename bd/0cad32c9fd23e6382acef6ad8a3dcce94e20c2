@@ -1,0 +1,32 @@
+scripts/e2e.sh
+  s_ad8e7d52cd540d::t_d22911eea50ffb 1-13,18-64,70-76,94-103,105-107,109,110-113,115-116,119-122,140-149,151-152,158-163,165-166,168-169,171-187,190-210
+  s_ad8e7d52cd540d::t_daea98fcc6f371 211-212
+e2e/image/requirements.txt
+  s_ad8e7d52cd540d::t_83eeecb38d9e33 1,5
+e2e/migrate/migrate.venom.yml
+  s_ad8e7d52cd540d::t_ecc656799d424d 2-7,13,44,56,75,88,125,130,134,140
+e2e/tidy/scripts/setup.sh
+  s_ad8e7d52cd540d::t_ba9ebcab5a4c15 4
+e2e/tidy/tidy.venom.yml
+  s_ad8e7d52cd540d::t_ea12aeba2c8f49 2-5,152
+.taskfiles/e2e.yml
+  s_ad8e7d52cd540d::t_9858713798be03 3-6,23,25-26
+AGENTS.md
+  s_ad8e7d52cd540d::t_74bad69040802d 9-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd0cad32c9fd23e6382acef6ad8a3dcce94e20c2",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

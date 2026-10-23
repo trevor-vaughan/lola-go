@@ -1,0 +1,42 @@
+docs/architecture.md
+  s_35f2683d3ca978::t_c70d59026ae7ea 1820,1845-1854,1856-1858
+  s_35f2683d3ca978::t_addcee06f9d326 1821-1844
+e2e/migrate/migrate.venom.yml
+  s_35f2683d3ca978::t_b8a00aaaff610a 60-79,81-86,88-90,92-96
+  s_35f2683d3ca978::t_362a8bacb60ca9 80,87,91
+AGENTS.md
+  s_35f2683d3ca978::t_580817ed81dbd0 25-32
+docs/usage.md
+  s_35f2683d3ca978::t_15d4f61f97cbf4 2504-2508
+internal/cli/confirm_test.go
+  s_35f2683d3ca978::t_1e34248a09dfa2 148,190,193,203,206
+e2e/common/hint.py
+  s_35f2683d3ca978::t_f8f9f5a57bba2f 7-8,18,30,35-43,45-46,60-61
+scripts/e2e.sh
+  s_35f2683d3ca978::t_f01b31b91b4c1a 14-17,65-69,77-93,104,108,114,117-118,150,164,167
+  s_bc1009d408948f::t_389c05a52056a5 123-139,153-157,170,188-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "26896d35aca86a3a29c606eecb17dffaa3d4338a",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_bc1009d408948f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a66262996e650ccec",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
