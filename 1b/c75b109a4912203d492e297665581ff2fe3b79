@@ -1,0 +1,23 @@
+AGENTS.md
+  s_35f2683d3ca978::t_580817ed81dbd0 25-32
+docs/usage.md
+  s_35f2683d3ca978::t_15d4f61f97cbf4 2504-2508
+internal/cli/confirm_test.go
+  s_35f2683d3ca978::t_1e34248a09dfa2 148,190,193,203,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1bc75b109a4912203d492e297665581ff2fe3b79",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
