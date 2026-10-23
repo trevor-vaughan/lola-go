@@ -1,0 +1,22 @@
+internal/plan/compute.go
+  s_ad8e7d52cd540d::t_2f2b0bceca7ffe 170-171,176-179
+  s_ad8e7d52cd540d::t_6dd97128da43bf 13,180
+internal/plan/compute_test.go
+  s_ad8e7d52cd540d::t_3e272abf906926 168-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a9aa16e8a362eab735e701e40aab86bd43fbaf0",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
