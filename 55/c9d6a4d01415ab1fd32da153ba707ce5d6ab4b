@@ -1,0 +1,21 @@
+docs/architecture.md
+  s_ad8e7d52cd540d::t_2d2350c21b7e07 61,379-381,388-391,440-441,446-448
+docs/usage.md
+  s_ad8e7d52cd540d::t_ff72026af7acb8 1324-1327,1330-1331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "55c9d6a4d01415ab1fd32da153ba707ce5d6ab4b",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
