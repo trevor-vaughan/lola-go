@@ -1,0 +1,27 @@
+docs/architecture.md
+  s_ad8e7d52cd540d::t_ba85435ac63a9a 1823,1826-1827
+e2e/image/build-image.sh
+  s_ad8e7d52cd540d::t_0b21ed318ff2e6 2,4-6,23
+e2e/image/pins.env
+  s_ad8e7d52cd540d::t_4198d7d7c7e448 1-9
+scripts/e2e-migrate.sh
+  s_ad8e7d52cd540d::t_98ce9b99d40240 7,14-15,33,38
+scripts/e2e-tidy.sh
+  s_ad8e7d52cd540d::t_3773f32acfe378 17-18,36,41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8835ed24a317ac4245556be0eed9aec883d10a72",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
