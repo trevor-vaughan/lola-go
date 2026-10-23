@@ -1,0 +1,35 @@
+e2e/template/fixtures/bad/commands/c.md.liquid
+  s_35f2683d3ca978::t_f19cdd67aa6cf9 1-4
+e2e/template/fixtures/bad/lola.yml
+  s_35f2683d3ca978::t_309b63f4788db4 1-2
+e2e/template/fixtures/expected/claude-code/review.md
+  s_35f2683d3ca978::t_486fdfcf9104d2 1-6
+e2e/template/fixtures/expected/opencode/review.md
+  s_35f2683d3ca978::t_2eaacfd575df14 1-5
+e2e/template/fixtures/spin/commands/spin.md.liquid
+  s_35f2683d3ca978::t_c92191c844d0c6 1
+e2e/template/fixtures/tpl/_partials/header.liquid
+  s_35f2683d3ca978::t_6cd911bc6a8fc9 1
+e2e/template/fixtures/tpl/commands/review.md.liquid
+  s_35f2683d3ca978::t_e0f6347ecfdb6f 1-5
+e2e/template/fixtures/tpl/commands/review.targets.yaml
+  s_35f2683d3ca978::t_a180d05bef23b7 1
+e2e/template/fixtures/tpl/lola.yml
+  s_35f2683d3ca978::t_772c4d38b20fd9 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d999a3a9313b934e89114aef1ea8dccfa25e84bc",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
