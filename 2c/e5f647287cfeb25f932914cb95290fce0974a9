@@ -1,0 +1,43 @@
+internal/templating/filters.go
+  s_ad8e7d52cd540d::t_4d0eafc6ec835e 97-105,126-127,129,137-145,261
+internal/templating/filters_test.go
+  s_ad8e7d52cd540d::t_f085aa0fb6cb1b 119-129
+internal/module/load.go
+  s_ad8e7d52cd540d::t_bf0361b49aac08 358,360-361,372,374-375,382-383,386
+internal/module/template.go
+  s_ad8e7d52cd540d::t_fdde2d45769f35 90-93,96-100
+  s_ad8e7d52cd540d::t_cd0bb1e12aefb0 13,71,76-77,85-86,94-95,103-104
+internal/module/template_test.go
+  s_ad8e7d52cd540d::t_08b149189415ed 181-192
+  s_ad8e7d52cd540d::t_5cc95c4ac9db0b 180
+  s_ad8e7d52cd540d::t_f689387053055d 85
+  s_ad8e7d52cd540d::t_c15915cce69a82 135-157
+internal/module/fifo_unix_test.go
+  s_ad8e7d52cd540d::t_cbd55c1ff93bbc 6-7,10,12-15,21-35
+internal/templating/regions_internal_test.go
+  s_ad8e7d52cd540d::t_210f993917289c 1-61
+internal/templating/regions_test.go
+  s_ad8e7d52cd540d::t_57ae665999cdc2 56,97-100,102-104,106-108,111
+internal/templating/screen.go
+  s_ad8e7d52cd540d::t_f4b733d51332af 95-97,120-138
+internal/templating/templating.go
+  s_ad8e7d52cd540d::t_303619cb9f321c 74-75,77,79
+internal/module/agentplugins.go
+  s_ad8e7d52cd540d::t_30786057aba97a 339-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ce5f647287cfeb25f932914cb95290fce0974a9",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
