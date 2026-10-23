@@ -1,0 +1,38 @@
+internal/cli/confirm_test.go
+  s_ad8e7d52cd540d::t_a3127c419d8335 1-147,149-189,191-192,194-202,204-205,207-262
+  s_ad8e7d52cd540d::t_934f0bcfbc6e8e 263-264
+internal/cli/cmd_core.go
+  s_ad8e7d52cd540d::t_8b239bf1b718bd 248-249
+internal/cli/cmd_migrate.go
+  s_ad8e7d52cd540d::t_989a8a339ea57d 68-69
+internal/cli/cmd_store.go
+  s_ad8e7d52cd540d::t_c6fe58418f6726 307-309
+internal/cli/prompt.go
+  s_ad8e7d52cd540d::t_88e23931cc052b 4,7,24-34,36-42,44-49,51-83
+docs/architecture.md
+  s_ad8e7d52cd540d::t_ba85435ac63a9a 1823,1826-1827
+e2e/image/build-image.sh
+  s_ad8e7d52cd540d::t_0b21ed318ff2e6 2,4-6,23
+e2e/image/pins.env
+  s_ad8e7d52cd540d::t_4198d7d7c7e448 1-9
+scripts/e2e-migrate.sh
+  s_ad8e7d52cd540d::t_98ce9b99d40240 7,14-15,33,38
+scripts/e2e-tidy.sh
+  s_ad8e7d52cd540d::t_3773f32acfe378 17-18,36,41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74ce7816ba097bcab76c5f9c0b2c04eb8b4249d1",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
