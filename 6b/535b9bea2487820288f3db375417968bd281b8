@@ -1,0 +1,32 @@
+e2e/install/install.venom.yml
+  s_35f2683d3ca978::t_a6cf9c1547c41e 1-35
+e2e/install/scripts/setup.sh
+  s_35f2683d3ca978::t_97bb138320a4ea 1-43
+  s_35f2683d3ca978::t_16b44ab0227216 44-45
+e2e/install/fixtures/kit/agents/critic.md
+  s_35f2683d3ca978::t_084563fcf60c61 1-5
+e2e/install/fixtures/kit/commands/deploy.md
+  s_35f2683d3ca978::t_43ec75de8f4a9d 1-4
+e2e/install/fixtures/kit/mcps.json
+  s_35f2683d3ca978::t_3eb80291c921f8 1
+e2e/install/fixtures/kit/rules/style.md
+  s_35f2683d3ca978::t_0f943f05c87e5f 1
+e2e/install/fixtures/kit/skills/lint/SKILL.md
+  s_35f2683d3ca978::t_6c7201fd7e5087 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b535b9bea2487820288f3db375417968bd281b8",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
