@@ -1,0 +1,21 @@
+docs/architecture.md
+  s_35f2683d3ca978::t_a266f10e10147f 1902-1903
+e2e/market/market.venom.yml
+  s_35f2683d3ca978::t_02b4fdaf25c0a7 102-112,122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee8dd1ad928c77de1102d6e2ecd05b29c932c470",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
