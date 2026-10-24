@@ -1,0 +1,31 @@
+docs/architecture.md
+  s_35f2683d3ca978::t_e2aeb2578912bb 1845-1846,1872-1873
+e2e/common/hint.py
+  s_35f2683d3ca978::t_54213064b750a4 1-3,5-6,12,37-39,52-54,56,58,60,65,69
+e2e/install/install.venom.yml
+  s_35f2683d3ca978::t_3e002ed2b7876f 423,426-436,537,543-551
+e2e/template/template.venom.yml
+  s_35f2683d3ca978::t_e65034b0593663 56,77
+internal/cli/hints_test.go
+  s_35f2683d3ca978::t_675ab080016e33 84,91
+internal/engine/engine.go
+  s_35f2683d3ca978::t_fe45234d998d99 517
+internal/engine/hints_test.go
+  s_35f2683d3ca978::t_8d75a8ba7dd9b2 79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43f7bb06c5debd67915d65ed40ade2bee1dd6326",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
