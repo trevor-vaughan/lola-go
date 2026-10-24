@@ -1,0 +1,29 @@
+e2e/common/tls.sh
+  s_35f2683d3ca978::t_e9b445894e52e9 1,5-6,8-64
+  s_35f2683d3ca978::t_2784c6e8f9301a 2-4,7
+docs/architecture.md
+  s_35f2683d3ca978::t_9662b83649cb24 1834,1849-1852
+  s_35f2683d3ca978::t_d428840962c471 1836-1837,1853-1855
+e2e/common/gitserve.py
+  s_35f2683d3ca978::t_de2b0c82757e4c 5,8,11,16-17,61-66
+  s_35f2683d3ca978::t_0bfd375815ff37 6
+scripts/e2e.sh
+  s_35f2683d3ca978::t_a12289dd3328e5 12-14,169
+  s_35f2683d3ca978::t_a8ba4b4fb935f6 15-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f2424f1b2660469f0ad7f795621e14e167fa1559",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
