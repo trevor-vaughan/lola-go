@@ -1,0 +1,25 @@
+docs/release.md
+  s_6ad43f32d8d900::t_c996eeb07ac65d 1-52
+docs/architecture.md
+  s_6ad43f32d8d900::t_90017dcb617d70 510,1805-1806
+docs/testing.md
+  s_6ad43f32d8d900::t_cb94a1928177d4 6
+third_party/liquid/PATCHES.md
+  s_6ad43f32d8d900::t_9856d71a0ba5dc 47-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "005e86feb3e76a1b36b3cba26b807184c62ee6a1",
+  "prompts": {},
+  "sessions": {
+    "s_6ad43f32d8d900": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3274ad15-09ec-4684-a849-eddc1c1d23de",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
