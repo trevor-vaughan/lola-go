@@ -1,0 +1,83 @@
+docs/architecture.md
+  s_35f2683d3ca978::t_8a7e16b9a28db7 1026
+docs/usage.md
+  s_35f2683d3ca978::t_138707aba60b66 213-215,452-456
+e2e/market/market.venom.yml
+  s_35f2683d3ca978::t_ffa3ec4a732407 103,105,107-115,183-184
+e2e/team/team.venom.yml
+  s_35f2683d3ca978::t_827cae06e52ec5 78,133,135,333,336,380,456-457,466-467,474-475,489-499
+e2e/template/template.venom.yml
+  s_35f2683d3ca978::t_cfd66cb6adebb8 120
+internal/cli/cmd_store.go
+  s_35f2683d3ca978::t_29957f08b63c7a 258,303,393,416
+internal/cli/flow.go
+  s_35f2683d3ca978::t_c7e4ca09f455e0 634,1106-1107
+internal/cli/hints_test.go
+  s_35f2683d3ca978::t_48f6b36594511c 6,63,71,86,102-183
+internal/cli/sync_test.go
+  s_35f2683d3ca978::t_dec40122ae585b 157-159,681-683
+internal/cli/template_test.go
+  s_35f2683d3ca978::t_b65d3f5cb576d1 64-65,82,98
+internal/engine/cache.go
+  s_35f2683d3ca978::t_858630ff347ac3 38-42,46-48,57-70,74-76,82,129-131,151
+internal/engine/check.go
+  s_35f2683d3ca978::t_9513c58a6165ab 179
+internal/engine/engine.go
+  s_35f2683d3ca978::t_b021bbddc93ad3 620
+internal/engine/engine_test.go
+  s_35f2683d3ca978::t_404bce92554431 1178-1179,1184,1198,1213,1243-1244
+internal/engine/gitignore.go
+  s_35f2683d3ca978::t_1c294d24832932 115-116,118-121,123-124
+internal/engine/hints.go
+  s_35f2683d3ca978::t_32dd79d1d3fb59 100-102,107
+internal/engine/hints_test.go
+  s_35f2683d3ca978::t_3d0d40f0cf86ff 51,54,61-64,72-75,82-86,93-189
+internal/engine/market_test.go
+  s_35f2683d3ca978::t_b06ab17512e436 687
+internal/engine/marketinstall_test.go
+  s_35f2683d3ca978::t_ee18952688d188 366
+internal/engine/ops.go
+  s_35f2683d3ca978::t_659f02d6549657 113-114,188,1074
+internal/engine/profile.go
+  s_35f2683d3ca978::t_be96510194a438 581-583,595
+internal/engine/profile_test.go
+  s_35f2683d3ca978::t_33a1a9ee3c43be 749
+internal/engine/remoteprofile_test.go
+  s_35f2683d3ca978::t_8c970a66e0c5b6 812-813,1129,1869
+internal/engine/sources_test.go
+  s_35f2683d3ca978::t_0f547c9c9b583e 758,781,798,846,874,995,1020
+internal/engine/sync.go
+  s_35f2683d3ca978::t_672a977f661f76 455,507,551,1320-1331,1340,1347-1351,1394-1396,1426-1427,1489,1505
+internal/engine/sync_test.go
+  s_35f2683d3ca978::t_1b1529b8b89cba 376-377,382,411,444,451-455,782,953,956,1831
+internal/engine/templates.go
+  s_35f2683d3ca978::t_c20d5b816b7de9 88-90,95,122-126
+internal/engine/templates_hint_internal_test.go
+  s_35f2683d3ca978::t_08330a400a457e 30,32-33,37,39,43
+internal/engine/templates_test.go
+  s_35f2683d3ca978::t_44f339a90aa928 841,919,1029
+internal/market/mapping.go
+  s_35f2683d3ca978::t_7e98f2c99a8b6f 4,53-58
+internal/profile/remote_test.go
+  s_35f2683d3ca978::t_a3aff5303b61da 228-229
+internal/source/remote.go
+  s_35f2683d3ca978::t_ac38e3a02cec58 39-50,65,70,74-75,85-86,96-97,125-126
+internal/store/store.go
+  s_35f2683d3ca978::t_39738d96863e58 229-243,265-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9dfef6858afe2561c724617ce7c581e5c48d6961",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
