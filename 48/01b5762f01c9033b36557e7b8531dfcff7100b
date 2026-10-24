@@ -1,0 +1,21 @@
+e2e/template/template.venom.yml
+  s_35f2683d3ca978::t_151297f66de5d5 1-164
+docs/architecture.md
+  s_35f2683d3ca978::t_ed04d3cf88902c 1874-1881
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4801b5762f01c9033b36557e7b8531dfcff7100b",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
