@@ -1,0 +1,19 @@
+e2e/team/team.venom.yml
+  s_35f2683d3ca978::t_22a2bd36c8e526 14,57,84,88-96,99,116,120-128,131,157,161-169,172,241-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ef6dabab239cb9315ef10b2718e2bd4c97d5e31",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
