@@ -1,0 +1,21 @@
+docs/decisions.md
+  s_35f2683d3ca978::t_d96e06f1b25713 143-145
+e2e/install/install.venom.yml
+  s_35f2683d3ca978::t_10c381825afd4b 580
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "248d3da2467f4215e4efc4706c41a86634751004",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
