@@ -1,0 +1,19 @@
+scripts/e2e.sh
+  s_35f2683d3ca978::t_8291b90cae7d2b 123-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "48d09f67b7c53a7dc22d75f057c629288102d213",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
