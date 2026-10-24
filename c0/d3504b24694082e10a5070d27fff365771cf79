@@ -1,0 +1,43 @@
+docs/guides/templating.md
+  s_6ad43f32d8d900::t_db4deb070df33f 35-36
+  s_6ad43f32d8d900::t_970751bc36112e 1-34,37-253
+docs/usage.md
+  s_6ad43f32d8d900::t_0aaba693a26c26 771-772
+  s_6ad43f32d8d900::t_3ff93401ad8a18 770
+  s_6ad43f32d8d900::t_9b7a2f8fba9f22 8-13,106,268,393,588,614,736,742,768-769,773-776,778-785,869,998,1123,1185,1191-1193,1195,1243,1262,1265,1287,1351,1354,1356
+README.md
+  s_6ad43f32d8d900::t_f32d655ee779ea 11,35,37,40,42,47,94-96
+docs/decisions.md
+  s_6ad43f32d8d900::t_a4d005e083d959 145
+docs/guides/authoring-modules.md
+  s_6ad43f32d8d900::t_4e328219a6f028 1-374
+docs/guides/marketplaces.md
+  s_6ad43f32d8d900::t_92a43571fba84c 1-235
+docs/guides/migrating.md
+  s_6ad43f32d8d900::t_136199d36b96d1 1-122
+docs/guides/profiles.md
+  s_6ad43f32d8d900::t_81fa5a74b62f04 1-379
+docs/guides/sync-and-trust.md
+  s_6ad43f32d8d900::t_8c10d7a443a8b8 1-295
+docs/guides/tidying.md
+  s_6ad43f32d8d900::t_1def0466603f7d 1-127
+docs/testing.md
+  s_6ad43f32d8d900::t_72cb8770f9cf2a 1-5,7-248
+  s_6ad43f32d8d900::t_03a22aaedaf40d 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c0d3504b24694082e10a5070d27fff365771cf79",
+  "prompts": {},
+  "sessions": {
+    "s_6ad43f32d8d900": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3274ad15-09ec-4684-a849-eddc1c1d23de",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
