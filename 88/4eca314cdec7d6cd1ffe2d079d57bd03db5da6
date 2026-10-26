@@ -1,0 +1,95 @@
+AGENTS.md
+  s_f884505fd5c3e6::t_beec6ccbf7d4da 41-42
+README.md
+  s_f884505fd5c3e6::t_fce559b2852fc8 85
+docs/architecture.md
+  s_f884505fd5c3e6::t_67c03d4831bf58 632-635,661-662,713-715,934-951,953-954,959-961,976,1093,1108,1253,1266,1316-1322,1423-1427,1523-1524,1772-1778
+  s_6c657de1929f08::t_c9d1533432164b 952,955-958,962-975
+docs/decisions.md
+  s_f884505fd5c3e6::t_ad488f03d98465 55,66,94,96,130,132,146
+  s_6c657de1929f08::t_bc9ce5d15b1678 147
+docs/guides/authoring-modules.md
+  s_f884505fd5c3e6::t_d18cc34c23e69e 227-229,237-238,240-242,358-360,362,369
+docs/guides/migrating.md
+  s_f884505fd5c3e6::t_42123fe2c8bed1 105-106
+docs/guides/profiles.md
+  s_f884505fd5c3e6::t_2a1eb1ecb29b5a 34-36,179,232,241-242,246,259,265,278,282-286
+  s_6c657de1929f08::t_fd01a681edb658 180-183,207-213
+docs/guides/sync-and-trust.md
+  s_f884505fd5c3e6::t_4432a13c4ba9c6 72-74,180-184,187-188,204-206,216-220,225-230
+  s_6c657de1929f08::t_0ab5e3cd5348ac 207-210,221-222
+docs/usage.md
+  s_f884505fd5c3e6::t_83a675d61be015 46,88,99-101,212,298,568,991-993,1153-1165,1173-1174,1180-1189,1199-1205,1209-1211,1273,1316,1322,1382-1384
+  s_6c657de1929f08::t_f1e429c8e98333 1166-1172,1175-1179,1190-1198,1206-1208
+internal/engine/trustkinds.go
+  s_6c657de1929f08::t_6b52aebca7eded 4,6,37,39-40,111-113,115-117,119-123,148,151,155,159,170-171,174,180-183,185,191,196,200,204,206-208,248-250,255,258-263,277-354
+  s_6c657de1929f08::t_e34558e9113187 38,118,190,205,247
+internal/engine/engine.go
+  s_6c657de1929f08::t_3945e9d10f47ed 81-83,121-123,202-203,752
+internal/engine/remote.go
+  s_6c657de1929f08::t_c5faf19d84b777 55
+internal/engine/hooks.go
+  s_6c657de1929f08::t_d33ffc8e587723 87-89,118-119
+internal/engine/trustkinds_test.go
+  s_6c657de1929f08::t_ddce0b0b948609 8,22-33,133-175,224,239-265,367,369-373,380-381,383-389,442-487
+internal/engine/ops.go
+  s_6c657de1929f08::t_ca830adc76703f 437
+internal/engine/profile.go
+  s_6c657de1929f08::t_2e4f376ca4d154 189-194
+internal/engine/remoteprofile_test.go
+  s_6c657de1929f08::t_8bc0eb5a8985f7 1181-1202
+internal/engine/runtimehooks.go
+  s_6c657de1929f08::t_6531837f2e2f0c 203,226-227
+internal/engine/remote_update.go
+  s_6c657de1929f08::t_ff7371c81b3cf3 8,60-63,301-306,388-390,393,529,991-1024
+internal/engine/sync.go
+  s_6c657de1929f08::t_2862137d3cabc7 507-513,516-521,535,758,809,1028-1050,1315-1316,1385
+internal/migrate/run_test.go
+  s_6c657de1929f08::t_a5fb9e0b1fe21b 755-777
+internal/migrate/run.go
+  s_6c657de1929f08::t_a381c99180e43e 257-263,265,278-279,283-284,292-294,296-297
+internal/cli/cmd_core.go
+  s_6c657de1929f08::t_392d7b0873af3f 211,463
+internal/cli/cmd_migrate.go
+  s_6c657de1929f08::t_e3969d8d2f463e 95
+internal/cli/cmd_profile.go
+  s_6c657de1929f08::t_c184c9c33951fc 234-239,319
+internal/cli/cmd_sync.go
+  s_6c657de1929f08::t_ba9aa1819f054e 16,67-129,226-245,247-251,297,369-371,386-388,541-578
+internal/cli/help.go
+  s_6c657de1929f08::t_d120e81d2390dc 162-164
+internal/cli/profile_update.go
+  s_6c657de1929f08::t_9ad7719e6a7c31 90-97,99-104,110-138,170-174
+internal/cli/remoteprofile_test.go
+  s_6c657de1929f08::t_6ea664dae8fca3 263-308,580,586-590
+internal/cli/scope_test.go
+  s_6c657de1929f08::t_8168168161e343 290,300
+internal/cli/trust.go
+  s_6c657de1929f08::t_8f69c2a4d7789e 38-57,61-65,86-94,97,100,107,113-122,126,144-148,169-170,172,174-175
+internal/cli/trust_test.go
+  s_6c657de1929f08::t_baa6c46fbf2b6c 139-162,164-182,184-192,194-219,256-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "884eca314cdec7d6cd1ffe2d079d57bd03db5da6",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_f884505fd5c3e6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab7a9332160a990c7",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
