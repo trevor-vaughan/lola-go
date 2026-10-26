@@ -1,0 +1,63 @@
+internal/engine/scripts.go
+  s_6c657de1929f08::t_cc8fc3adb7d526 1-3,5-9,12-13,15,16-40,52-53,71-110,130-134,142-145,147-170,172,181-186,188-200,202-203,205-211,218-228,230-232,236
+  s_6c657de1929f08::t_ce04f21dcd4e38 543-552,554-555
+  s_6c657de1929f08::t_3dc3a12067fb5e 4,10,14,41,54-70,117,120-129,187,201,204,229,233,238-241,273,278-279,310,312-316,318,320,325-333,336-347,367-370,373-374,376-398,400-401,403-409,413-466,482,483-497,502-542,553
+internal/engine/scripts_test.go
+  s_6c657de1929f08::t_d16822fe1044ff 1-4,9-10,15-18,20-122,198
+  s_6c657de1929f08::t_b169483f4d65b5 199-210,766
+  s_6c657de1929f08::t_5a50d0141a42de 123,126,129-149
+  s_6c657de1929f08::t_139485df7a46f3 7-8,13-14,19,211-306,317-426,435-483,644-647,650-727,729-731,733,739-740,742,750-752,755-756,762-765
+internal/cli/pager.go
+  s_6c657de1929f08::t_9e2029be7293e0 42
+internal/cli/scripts_test.go
+  s_6c657de1929f08::t_8443b3cc2c87f3 1-3,5-6,8-46
+  s_6c657de1929f08::t_678fb1a6c6abba 4,7,47-91
+internal/config/config.go
+  s_6c657de1929f08::t_ed7fd684a54a7f 9,35-37,40-50,77-78,85-101
+internal/config/config_test.go
+  s_6c657de1929f08::t_4dc8c8173b0852 44,49,57,61,68,73-80,84,90,120,126,133
+internal/engine/check.go
+  s_6c657de1929f08::t_04e5a303be084f 77
+internal/engine/engine.go
+  s_6c657de1929f08::t_8da7a5d0c22cd5 150-153,393-395,895-896,907
+  s_6c657de1929f08::t_91cf4e29d5dbc6 143,217-219,235,885-886,889,893-894,941-943,952,957-958,960
+internal/engine/market_sync.go
+  s_6c657de1929f08::t_3831b18fca9115 44
+internal/engine/ops.go
+  s_6c657de1929f08::t_bda74412c860e2 82
+  s_6c657de1929f08::t_33664e70c4077a 83-84
+internal/engine/scope.go
+  s_6c657de1929f08::t_6b35465aad852c 154
+internal/manifest/edit.go
+  s_6c657de1929f08::t_dfaf6f2d4698bd 33-34
+internal/manifest/manifest.go
+  s_6c657de1929f08::t_3ef11038e2f4d9 71-86,128-140,142-146,166-173
+internal/manifest/manifest_test.go
+  s_6c657de1929f08::t_fa4fd10768381f 5,56-66,68-73,120-132
+internal/cli/prompt.go
+  s_6c657de1929f08::t_7f1b91d30bccd5 87-91,93,98,101,106
+internal/consent/consent.go
+  s_6c657de1929f08::t_542338b2023794 8-9,28-35
+internal/engine/hooks.go
+  s_6c657de1929f08::t_69c82a9fb389f4 51-52,150-156,160-168,187-189,193,232-236,238-242,248,261-265,270-272,279,281,287
+internal/engine/sync.go
+  s_6c657de1929f08::t_2daed7b028c511 509-511,524-526,541
+internal/ledger/ledger.go
+  s_6c657de1929f08::t_fed2ac43097b4c 80-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a4326f7a4bcc74a243b99d68727cfa36433a2e8",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
