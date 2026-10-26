@@ -1,0 +1,29 @@
+e2e/install/install.venom.yml
+  s_6c657de1929f08::t_f52c93eb67b2ad 434,439
+e2e/market/market.venom.yml
+  s_6c657de1929f08::t_aa5932a3cd65d3 193,196
+e2e/team/team.venom.yml
+  s_6c657de1929f08::t_b24511d9616132 78,107,133,135,218,272,345,348,530-579
+e2e/template/template.venom.yml
+  s_6c657de1929f08::t_4c6024ed43647e 53
+internal/migrate/run.go
+  s_6c657de1929f08::t_534de6ac4ae905 66-68,176-177,187-189,206,264,272,276,280,286,289,298-308
+internal/migrate/run_test.go
+  s_6c657de1929f08::t_ba03892d038ca2 720-754
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c13e4773e544cc2b4887375a5ee956302ae22aad",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
