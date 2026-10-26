@@ -1,0 +1,35 @@
+AGENTS.md
+  s_f884505fd5c3e6::t_beec6ccbf7d4da 41-42
+README.md
+  s_f884505fd5c3e6::t_fce559b2852fc8 85
+docs/architecture.md
+  s_f884505fd5c3e6::t_67c03d4831bf58 632-635,661-662,713-715,934-963,1080,1095,1240,1253,1303-1309,1410-1414,1510-1511,1759-1765
+docs/decisions.md
+  s_f884505fd5c3e6::t_ad488f03d98465 55,66,94,96,130,132,146-147
+docs/guides/authoring-modules.md
+  s_f884505fd5c3e6::t_d18cc34c23e69e 227-229,237-238,240-242,358-360,362,369
+docs/guides/migrating.md
+  s_f884505fd5c3e6::t_42123fe2c8bed1 105-106
+docs/guides/profiles.md
+  s_f884505fd5c3e6::t_2a1eb1ecb29b5a 34-36,179-182,206-208,227,236-237,241,254,260,273,277-281
+docs/guides/sync-and-trust.md
+  s_f884505fd5c3e6::t_4432a13c4ba9c6 72-74,180-184,187-188,204-208,214-219,222-227
+docs/usage.md
+  s_f884505fd5c3e6::t_83a675d61be015 46,88,99-101,212,298,568,991-993,1153-1197,1259,1302,1308,1368-1370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e220632560e03a7209669bbc4848e28ef51c9d8",
+  "prompts": {},
+  "sessions": {
+    "s_f884505fd5c3e6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab7a9332160a990c7",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
