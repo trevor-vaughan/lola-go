@@ -1,0 +1,37 @@
+internal/cli/cmd_core.go
+  s_6c657de1929f08::t_12902b2bc72c75 184-189,210-211
+internal/cli/cmd_info.go
+  s_6c657de1929f08::t_904acca9a88b79 142,153-155,245,249-250,254-267,274
+internal/cli/flow.go
+  s_6c657de1929f08::t_9620ade7e5b93f 9,27,1098-1106,1110-1111
+internal/cli/human.go
+  s_6c657de1929f08::t_ba04cf1bafd669 251-280
+internal/cli/scripts_test.go
+  s_6c657de1929f08::t_f80e8da5b23988 92-176
+internal/cli/summary.go
+  s_6c657de1929f08::t_b3e9a4207cbcb4 199-203
+internal/engine/info.go
+  s_6c657de1929f08::t_0aee4aa22f76d9 18,192-203,303-304,324-327,335-341,361-365,427-500,871-878
+internal/engine/info_test.go
+  s_6c657de1929f08::t_f978b9ab1d2c42 500-539
+internal/engine/scripts.go
+  s_6c657de1929f08::t_2531b5bccb5263 53-55,58-60,238-240,270,295-296,301
+internal/engine/trustkinds_test.go
+  s_6c657de1929f08::t_a9ce2401939fdb 376-387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "30e7905d700c09bc6183aeef0e139d86d04142e6",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
