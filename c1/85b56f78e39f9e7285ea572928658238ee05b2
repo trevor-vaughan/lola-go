@@ -1,0 +1,44 @@
+internal/engine/trustkinds.go
+  s_6c657de1929f08::t_e34558e9113187 38,118,190,205,247
+  s_6c657de1929f08::t_6b52aebca7eded 4,6,37,39-40,111-113,115-117,119-123,148,151,155,159,170-171,174,180-183,185,191,196,200,204,206-208,248-250,255,258-263,277-354
+internal/engine/engine.go
+  s_6c657de1929f08::t_3945e9d10f47ed 81-83,121-123,202-203,752
+internal/engine/hooks.go
+  s_6c657de1929f08::t_d33ffc8e587723 87-89,118-119
+internal/engine/ops.go
+  s_6c657de1929f08::t_ca830adc76703f 437
+internal/engine/profile.go
+  s_6c657de1929f08::t_2e4f376ca4d154 189-194
+internal/engine/remote.go
+  s_6c657de1929f08::t_c5faf19d84b777 55
+internal/engine/remote_update.go
+  s_6c657de1929f08::t_ff7371c81b3cf3 8,60-63,301-306,388-390,393,529,991-1024
+internal/engine/remoteprofile_test.go
+  s_6c657de1929f08::t_8bc0eb5a8985f7 1181-1202
+internal/engine/runtimehooks.go
+  s_6c657de1929f08::t_6531837f2e2f0c 203,226-227
+internal/engine/sync.go
+  s_6c657de1929f08::t_2862137d3cabc7 507-513,516-521,535,758,809,1028-1050,1315-1316,1385
+internal/engine/trustkinds_test.go
+  s_6c657de1929f08::t_ddce0b0b948609 8,22-33,133-175,224,239-265,367,369-373,380-381,383-389,442-487
+internal/migrate/run.go
+  s_6c657de1929f08::t_a381c99180e43e 257-263,265,278-279,283-284,292-294,296-297
+internal/migrate/run_test.go
+  s_6c657de1929f08::t_a5fb9e0b1fe21b 755-777
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c185b56f78e39f9e7285ea572928658238ee05b2",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
