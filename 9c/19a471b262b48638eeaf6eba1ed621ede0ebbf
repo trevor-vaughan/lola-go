@@ -1,0 +1,78 @@
+internal/engine/info_test.go
+  s_6c657de1929f08::t_3c6ac9fe05e645 1-6,8-19,21-42,48-49,55-123,146-153,166-171,174-189,192-202,210-211,346-367,369-382,386-428
+  s_6c657de1929f08::t_5b2bff25dc0a4d 429-431
+  s_6c657de1929f08::t_bd583bf9137ef9 43-44,47,50,54,254-262,264-265,267-299,322-332,336-342,344-345
+internal/engine/info.go
+  s_6c657de1929f08::t_4825afed60a000 1-4,6,8-9,11-17,19-151,153-158,162-169,171-175,177-181,183-213,217-224,235,237-241,248-255,259-277,282-290,293-297,301,304-316,318-320,322-324,325,334-336,337-340
+  s_6c657de1929f08::t_b7036f5ddfe393 341-342,360-362,376-378,383-395,398-400,401-439,445-448,473-489,491-493,495-502,638-640,642,644-646,648-649,653-660,666-672,678,680-682,685,687,689-690,692,694-699,701,704-707,736,738-752,754-756,760-768,770,772-784
+  s_6c657de1929f08::t_a45b86de30e479 18,159,214-216,225,228-232,242-247,331-333,350-357,359,647,650-652,661-665,753
+internal/cli/cmd_store.go
+  s_6c657de1929f08::t_7851edf2de74b0 65,88,157,244,246
+  s_6c657de1929f08::t_e44c51282a850f 49,61
+internal/engine/choices.go
+  s_6c657de1929f08::t_81a2c04732772c 537-539,543
+internal/engine/engine.go
+  s_6c657de1929f08::t_b2a7fe638903ff 242-244,562,633-639
+internal/engine/market_install.go
+  s_6c657de1929f08::t_8d82ddfe88b5f0 314-322,326,331,335,347
+internal/engine/runtimehooks.go
+  s_6c657de1929f08::t_194dfc3d77f66e 56,107
+internal/engine/scope.go
+  s_6c657de1929f08::t_93151f4f0e2ecf 186-187,191-196
+internal/cli/cmd_info.go
+  s_6c657de1929f08::t_e62d22927ad0f3 1-16,18-76,78,83,85-141,143-158,161-170,176-185,191-211,215-227,234-236
+  s_6c657de1929f08::t_1eeb059adc5d4f 237-239,241-243,258,260
+internal/cli/info_test.go
+  s_6c657de1929f08::t_fa1e33484ae35c 1-34,46-165,182-238,241-260,262-299,301-335,337
+  s_6c657de1929f08::t_d5ec4482fa5491 336,338-339
+internal/cli/cmd_core.go
+  s_6c657de1929f08::t_135a7d5333ce41 131
+internal/cli/cmd_profile.go
+  s_6c657de1929f08::t_a3f6ed382a4f91 74-80
+internal/cli/core_test.go
+  s_6c657de1929f08::t_de32fb899b190e 104,106,127,131,246
+internal/cli/hints_test.go
+  s_6c657de1929f08::t_32ff0d1717d025 147-148
+internal/cli/store_test.go
+  s_6c657de1929f08::t_227669768506b7 75,104,113,117,132,144,160,170,189,194-203,207-208,210-215,244,248,250,342,395,472
+internal/engine/engine_test.go
+  s_6c657de1929f08::t_8ebae06f956fd5 1491
+internal/engine/hooks.go
+  s_6c657de1929f08::t_0c964f7de3543d 179
+internal/engine/templates.go
+  s_6c657de1929f08::t_cd62b363da3f92 607-609,637
+internal/engine/templates_test.go
+  s_6c657de1929f08::t_cf1c54f6991774 919,930,1037
+internal/engine/trustkinds_test.go
+  s_6c657de1929f08::t_479cc7e3f04289 127,223
+e2e/install/install.venom.yml
+  s_6c657de1929f08::t_1342f5ac702d25 501,511
+docs/architecture.md
+  s_6c657de1929f08::t_3af5d98b3375f4 172-174,637-638,717-718
+docs/guides/templating.md
+  s_6c657de1929f08::t_a5a3b5b792a272 238-240,251
+docs/roadmap.md
+  s_6c657de1929f08::t_a38c067d724240 84
+docs/usage.md
+  s_6c657de1929f08::t_ce519598a4561a 401-418,425-428,433,444-488,493-494,570-571,602,1523
+internal/engine/remote_update.go
+  s_6c657de1929f08::t_bc478da327f72c 312,542-544,557,1027-1031
+internal/engine/remoteprofile_test.go
+  s_6c657de1929f08::t_b58a01680c8da1 1242,1261-1305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c19a471b262b48638eeaf6eba1ed621ede0ebbf",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
