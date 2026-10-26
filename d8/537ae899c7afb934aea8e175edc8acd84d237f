@@ -1,0 +1,29 @@
+docs/architecture.md
+  s_6c657de1929f08::t_120977754e41f2 669-704
+docs/decisions.md
+  s_6c657de1929f08::t_af18fff4e04806 151
+docs/guides/authoring-modules.md
+  s_6c657de1929f08::t_4f1a95e1707069 244-253
+docs/guides/sync-and-trust.md
+  s_6c657de1929f08::t_b2835f3f9e6195 231-241
+docs/usage.md
+  s_6c657de1929f08::t_229dc8fa34f0de 46-47,70-73,75-76,217,429-431,434,495-496,1215-1216,1259-1309,1319,1455,1459,1467,1543-1547
+internal/engine/scripts.go
+  s_6c657de1929f08::t_7500da33e85dd2 248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d8537ae899c7afb934aea8e175edc8acd84d237f",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
