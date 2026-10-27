@@ -1,0 +1,24 @@
+docs/architecture.md
+  s_ad8e7d52cd540d::t_2a4559d1a72109 393-395,398
+cmd/lola/templates_test.go
+  s_ad8e7d52cd540d::t_5936db5ed64455 38
+docs/usage.md
+  s_ad8e7d52cd540d::t_90ea130ef7fd88 1270-1271,1276-1277,1286-1291
+  s_ad8e7d52cd540d::t_d14e4a7c64f3c0 1235-1243,1256-1258,1292,1931-1933
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e594c198e29017a638a35e1009c4a777caa3ff1",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
