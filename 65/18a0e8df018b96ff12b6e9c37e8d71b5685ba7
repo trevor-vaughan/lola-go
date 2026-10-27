@@ -1,0 +1,23 @@
+e2e/team/scripts/setup.sh
+  s_6c657de1929f08::t_77159782fefcab 5,14-16,21-22,69-77,89-90
+e2e/team/team.venom.yml
+  s_6c657de1929f08::t_ef2d1cc4b5e860 12-13,37-38,44,610-694
+e2e/team/fixtures/team-script.yml
+  s_6c657de1929f08::t_77159782fefcab 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6518a0e8df018b96ff12b6e9c37e8d71b5685ba7",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
