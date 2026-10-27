@@ -1,0 +1,31 @@
+scripts/e2e-tidy.sh
+  s_cbbd2b04d86e3c::t_113aa62b70e2be 1-88
+e2e/tidy/tidy.venom.yml
+  s_cbbd2b04d86e3c::t_d895d8b692ed99 1-177
+Taskfile.yml
+  s_cbbd2b04d86e3c::t_e2c4e48ecd6d91 54-58
+.taskfiles/e2e.yml
+  s_cbbd2b04d86e3c::t_e2c4e48ecd6d91 33-40
+e2e/tidy/scripts/check.py
+  s_cbbd2b04d86e3c::t_f3dec610055275 1-107
+e2e/tidy/scripts/setup.sh
+  s_cbbd2b04d86e3c::t_b087a948ae2804 1-38
+e2e/tidy/fixtures/ship/commands/ship.md
+  s_cbbd2b04d86e3c::t_9e2929a8daa5ff 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b883f911362cba2c01c4320a2003a33a09532266",
+  "prompts": {},
+  "sessions": {
+    "s_cbbd2b04d86e3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2f96a18-7fc6-4f93-8ec0-53b32267f45e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
