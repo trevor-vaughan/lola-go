@@ -1,0 +1,45 @@
+internal/cli/help.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 227
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 477,523-526,750-762,1028-1030,1091-1093
+internal/engine/market_verbs.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 35,38,112,120
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_337043bdf93405 514-559,699,701-713,715-718,737,747,751
+docs/architecture.md
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 170,1329-1337
+internal/testenv/testenv.go
+  s_dd02d4728fd2f8::t_337043bdf93405 57
+docs/usage.md
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 500-501,943-944,957-958,970-979,2071-2072
+internal/cli/root.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 122
+internal/cli/output.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 10,25-37
+  s_dd02d4728fd2f8::t_29f31c11b536ac 38-39
+internal/cli/pager.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 21-23
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_337043bdf93405 4,11,13,15,97,112-113,116,282-390,447,449,451-453,457
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 130-133,217-225
+internal/cli/market_output.go
+  s_dd02d4728fd2f8::t_4c38f57f213e3b 7,11-12,72-77,96-103,119,134,142-296
+  s_dd02d4728fd2f8::t_6e5b35d999e95e 297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7995a0c547fda0df275b2d2a10b7c5d1f9169425",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
