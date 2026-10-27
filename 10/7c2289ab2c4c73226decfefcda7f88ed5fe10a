@@ -1,0 +1,37 @@
+internal/cli/tidy_test.go
+  s_8d03b9505d742a::t_9ed7edd80b73b8 178
+  s_8d03b9505d742a::t_edc468101cc656 205-207,212
+internal/cli/flow.go
+  s_8d03b9505d742a::t_2066c711864f9c 257-259,261,870-876
+internal/cli/huh.go
+  s_8d03b9505d742a::t_3fd49f13dd11b0 13,225,237,250-295,342,447-448,452,640,643-649
+  s_8d03b9505d742a::t_349ff11ca550fd 359-361,363-374,376-394,396-400,402-403,405-411
+internal/cli/prompter.go
+  s_8d03b9505d742a::t_39a5c1c0c1d955 12-15,95-96,98-99
+internal/cli/cmd_tidy.go
+  s_8d03b9505d742a::t_2066c711864f9c 172-173,213
+internal/cli/huh_internal_test.go
+  s_8d03b9505d742a::t_5431bf65247a0c 12,14
+  s_8d03b9505d742a::t_94db2d364bde3a 135,137
+  s_8d03b9505d742a::t_a050fde8bd8fa9 173,175-208,210-215,217-238
+internal/cli/scope.go
+  s_8d03b9505d742a::t_2066c711864f9c 67-70
+internal/cli/marketflow_test.go
+  s_8d03b9505d742a::t_a36eadf3a384e1 143,146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "107c2289ab2c4c73226decfefcda7f88ed5fe10a",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
