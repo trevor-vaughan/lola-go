@@ -1,0 +1,26 @@
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_f20418970f31ef 210,235
+  s_dd02d4728fd2f8::t_9b1eaf7dc479ae 208-209,222-223
+  s_dd02d4728fd2f8::t_139fc00b589237 236
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_c21627a564d1ce 72,167-176,184,195
+internal/market/lolayaml.go
+  s_dd02d4728fd2f8::t_c21627a564d1ce 24-26,48
+  s_dd02d4728fd2f8::t_139fc00b589237 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c79b215ed67d67b9fac6909379e47e27f50f7d0",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
