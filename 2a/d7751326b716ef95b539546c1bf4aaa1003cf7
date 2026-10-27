@@ -1,0 +1,46 @@
+internal/templating/store.go
+  s_ad8e7d52cd540d::t_808a6fe72df950 1-81
+internal/templating/templating.go
+  s_ad8e7d52cd540d::t_808a6fe72df950 11-12,53,66,70-71,80,82,90-91,96,127,145,156
+internal/templating/store_internal_test.go
+  s_ad8e7d52cd540d::t_65f73e6bc02a66 7,15,24,27,31-66
+  s_ad8e7d52cd540d::t_c54126ea35ec25 67-68
+internal/templating/differential_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 191
+internal/templating/regions_internal_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 21,43,53
+internal/templating/render_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 28,61,68,76,124,142,150,158
+internal/templating/panic_internal_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 22,30,43
+internal/templating/regions_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 26,54,116,133
+internal/templating/bind_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 32
+internal/templating/filters_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 44
+internal/templating/errors_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 54
+internal/templating/screen_test.go
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 27
+internal/engine/templates.go
+  s_ad8e7d52cd540d::t_808a6fe72df950 162,197,227
+internal/templating/error.go
+  s_ad8e7d52cd540d::t_808a6fe72df950 81-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ad7751326b716ef95b539546c1bf4aaa1003cf7",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
