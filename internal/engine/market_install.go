@@ -311,20 +311,28 @@ func resolvedLine(addr string, ent manifest.Entry, commit string) string {
 // @<market>/<entry>, Plan 6c §3.3), as an install would, without installing it: --ref replaces the
 // catalog's ref; --path is refused, as the catalog gives the path. display is the run's output
 // flags, which every hint keeps.
-func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []string) (_ store.Version, err error) {
+func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []string) (store.Version, error) {
+	v, _, _, err := e.addEntry(ctx, arg, ref, path, display)
+	return v, err
+}
+
+// addEntry is AddEntry, which also returns the ref the version was cached under and the commit
+// the catalog pins it at ("" for none: --ref replaces the catalog's pin, and a catalog may give
+// none), which lola info's next step installs by (Plan 9 §4.3).
+func (e *Engine) addEntry(ctx context.Context, arg, ref, path string, display []string) (_ store.Version, cachedRef, commit string, err error) {
 	reqs := []InstallRequest{{Arg: arg, Ref: ref, Path: path}}
 	unlock, err := e.resolveMarkets(reqs, false, display)
 	if err != nil {
-		return store.Version{}, err
+		return store.Version{}, "", "", err
 	}
 	defer unlock()
 	p := reqs[0].market
 	if p == nil {
-		return store.Version{}, fmt.Errorf("%s is not a marketplace address, @<marketplace>/<module>", untrusted.Text(arg, untrusted.MaxName))
+		return store.Version{}, "", "", fmt.Errorf("%s is not a marketplace address, @<marketplace>/<module>", untrusted.Text(arg, untrusted.MaxName))
 	}
 	run, err := e.runDir()
 	if err != nil {
-		return store.Version{}, err
+		return store.Version{}, "", "", err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
 	spec, commit := p.spec(ref)
@@ -336,7 +344,7 @@ func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []
 		}
 		err = errs.WithHints(err, errs.ShellJoin(cmd))
 	}
-	return v, nameTaken(err, display)
+	return v, spec.Ref, commit, nameTaken(err, display)
 }
 
 // checkEntry loads the entry a marketplace address names for lola check (Plan 6c §3.3): fetched

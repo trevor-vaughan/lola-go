@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -44,6 +45,27 @@ var _ = Describe("git and archive sources", func() {
 		r = lola("install", "example", "--ref", "v1", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+	})
+
+	It("refuses an annotated tag object's SHA, hinting the run at the commit it points to", func() {
+		work := filepath.Join(tmp, "work")
+		writeTree(work, map[string]string{"commands/ship.md": "Ship\n"})
+		for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"add", "-A"}, {"commit", "-q", "-m", "init"}, {"tag", "-a", "-m", "release", "v1"}} {
+			Expect(exec.Command("git", append([]string{"-C", work}, args...)...).Run()).To(Succeed())
+		}
+		Expect(exec.Command("git", "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "example.git")).Run()).To(Succeed())
+		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/example.git"
+		commit, tag := gitIn(work, "rev-parse", "HEAD"), gitIn(work, "rev-parse", "v1")
+		for args, hint := range map[string]string{"cache add " + url: "lola cache add " + url + " --plain --ref " + commit,
+			"info " + url + " -C " + proj:    "lola info " + url + " --plain --root " + proj + " --ref " + commit,
+			"install " + url + " -C " + proj: "lola install " + url + " --plain --root " + proj + " --ref " + commit} {
+			r := lola(append(strings.Fields(args), "--ref", tag, "--plain")...)
+			Expect(r.code).To(Equal(1), args)
+			Expect(r.err).To(HavePrefix("error: "+tag+" is the annotated tag v1, not a commit; it points to commit "+commit+"\n"+
+				"  hint: "+hint+"\n"), args)
+			r = lola(shellWords(hint)[1:]...)
+			Expect(r.code).To(Equal(0), r.err)
+		}
 	})
 
 	It("checks and installs a local archive", func() {

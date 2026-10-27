@@ -32,6 +32,46 @@ func (e *Engine) Detect(sc Scope) []Assistant {
 	return out
 }
 
+// TargetChoice is what decides the assistants an install plans for at a scope off a terminal,
+// with no -t (Plan 5c §5.3): the scope manifest's targets when it lists any, else the installed
+// assistants set up there. Installed is the assistants found on PATH and SetUp those of them whose
+// project markers the scope has.
+type TargetChoice struct {
+	Manifest, Installed, SetUp []string
+}
+
+// DefaultTargets is sc's TargetChoice for an install of reqs, reading the scope's manifest as that
+// install would (InstallManifest), whose error it returns as it is.
+func (e *Engine) DefaultTargets(sc Scope, reqs []InstallRequest) (TargetChoice, error) {
+	man, err := e.InstallManifest(sc, reqs)
+	if err != nil {
+		return TargetChoice{}, err
+	}
+	c := TargetChoice{Manifest: man.Targets}
+	for _, as := range e.Detect(sc) {
+		if as.Binary == "" {
+			continue
+		}
+		c.Installed = append(c.Installed, as.Target)
+		if as.Marked {
+			c.SetUp = append(c.SetUp, as.Target)
+		}
+	}
+	return c, nil
+}
+
+// NoneHere is why c gives no assistant ("" when it gives some): none is installed, or none of
+// those installed is set up in the scope.
+func (c TargetChoice) NoneHere() string {
+	switch {
+	case len(c.Manifest) > 0 || len(c.SetUp) > 0:
+		return ""
+	case len(c.Installed) == 0:
+		return "no assistant found on your PATH, so lola does not know where to install"
+	}
+	return "none of your installed assistants (" + strings.Join(c.Installed, ", ") + ") is set up here, so lola does not know where to install"
+}
+
 // findBinary returns the first of p.Binaries that is an executable regular file in a
 // directory of e.Paths.Search, which holds only absolute PATH entries.
 func (e *Engine) findBinary(p target.Probe) string {

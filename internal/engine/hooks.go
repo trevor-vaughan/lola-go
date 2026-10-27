@@ -70,17 +70,30 @@ func hookScripts(dir string, hooks []module.Hook) ([]HookScript, string, error) 
 			if h.Event != event {
 				continue
 			}
-			b, err := os.ReadFile(filepath.Join(dir, h.Script))
+			sum, err := fileSHA256(filepath.Join(dir, h.Script))
 			if err != nil {
 				return nil, "", err
 			}
-			sum := sha256.Sum256(b)
-			s := HookScript{Event: h.Event, Script: shown(h.Script), SHA256: hex.EncodeToString(sum[:]), path: h.Script}
+			s := HookScript{Event: h.Event, Script: shown(h.Script), SHA256: sum, path: h.Script}
 			fmt.Fprintf(all, "%s\x00%s\x00%s\n", s.Event, s.path, s.SHA256)
 			out = append(out, s)
 		}
 	}
 	return out, "sha256:" + hex.EncodeToString(all.Sum(nil)), nil
+}
+
+// fileSHA256 is the hex sha256 of the file at path, read as a stream.
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // allowed decides whether a module's hooks without a recorded consent for their digest may run:
@@ -125,10 +138,18 @@ func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts 
 	return true, nil
 }
 
+// hookConsentError refuses a pre-install hook without consent. Its hints review the version and
+// consent to it; a retry without consent would refuse again, so withRetry adds none.
+type hookConsentError struct{ module string }
+
+func (e *hookConsentError) Error() string {
+	return e.module + " has a pre-install hook, and lola runs hooks only with your consent"
+}
+
 // planHooks prepares the hooks of every copy that runs them, before anything is written. A
-// dry run lists them as would-run. Without consent a pre-install hook is an error, whose hint is
-// the run with --trust covering hooks too (opts.Rerun), and a post-install hook is declined with
-// a warning.
+// dry run lists them as would-run. Without consent a pre-install hook is an error, whose hints
+// are lola info of the version the copy installs (moduleCopy.review) and the run with --trust
+// covering hooks too (opts.Rerun), and a post-install hook is declined with a warning.
 func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Result) ([]*hookJob, error) {
 	var jobs []*hookJob
 	for _, c := range copies {
@@ -140,6 +161,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 			return nil, err
 		}
 		i := slices.IndexFunc(res.Modules, func(m ModuleResult) bool { return m.Name == c.name })
+		res.Modules[i].hooksKept = c.forced && !c.pending
 		j := &hookJob{name: c.name, dir: filepath.Join(e.files(sc).modules, c.name), targets: c.targets, scripts: scripts, result: &res.Modules[i]}
 		pre := slices.ContainsFunc(scripts, func(s HookScript) bool { return s.Event == PreInstall })
 		ok, err := e.Consent.Granted(c.name, digest)
@@ -162,11 +184,15 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 				continue // the copy is kept as it is, with what its hooks built when they ran
 			}
 			if pre {
-				hints := []string{"review it: " + errs.ShellJoin([]string{"lola", "cache", "info", c.name})}
+				review := c.review
+				if review == nil {
+					review = []string{c.name}
+				}
+				hints := []string{"review it: " + e.Command(sc, "info", append(slices.Clone(review), opts.Display...)...)}
 				if opts.Rerun != nil {
 					hints = append(hints, "then consent to it: "+opts.Rerun(opts.Trust|TrustHooks))
 				}
-				return nil, errs.WithHints(fmt.Errorf("%s has a pre-install hook, and lola runs hooks only with your consent", c.name), hints...)
+				return nil, errs.WithHints(&hookConsentError{module: c.name}, hints...)
 			}
 			// The hook stays pending in lock.json: sync replaces the copy from the hashed version
 			// and asks again (Plan 6a §11.3).

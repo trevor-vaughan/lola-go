@@ -144,8 +144,8 @@ var _ = Describe("hints", func() {
 			func(string) []string {
 				return []string{"cached modules: lola cache list --json"}
 			}),
-		Entry("cache info of a module not in your cache, under --json",
-			func(string) []string { return []string{"cache", "info", "nope", "--json"} },
+		Entry("info of an argument that is neither a module in your cache nor a source, under --json",
+			func(string) []string { return []string{"info", "nope", "--json"} },
 			func(string) []string { return []string{"cached modules: lola cache list --json"} }),
 		Entry("cache rm of a module not in your cache, under --plain",
 			func(string) []string { return []string{"cache", "rm", "nope", "-y", "--plain"} },

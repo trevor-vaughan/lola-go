@@ -72,7 +72,7 @@ var _ = Describe("store, search and init commands", func() {
 		r = lola("cache", "ls")
 		Expect(r.out).To(MatchRegexp(`(?m)^example\s+1\.2\.0\s+1\s+` + regexpQuote(mod) + `$`))
 
-		r = lola("cache", "show", "example", "--json")
+		r = lola("info", "example", "--json")
 		var info map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
 		Expect(info["format"]).To(Equal("lola"))
@@ -101,7 +101,7 @@ var _ = Describe("store, search and init commands", func() {
 	It("cache info warns about a manifest that normalization ignored", func() {
 		writeTree(mod, map[string]string{".lola.yml": "name: other\n"})
 		Expect(lola("cache", "add", mod).code).To(Equal(0))
-		r := lola("cache", "info", "example", "--json")
+		r := lola("info", "example", "--json")
 		var info map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
 		Expect(info["warnings"]).To(ContainElement(".lola.yml was ignored: lola.yml takes precedence"))
@@ -110,11 +110,11 @@ var _ = Describe("store, search and init commands", func() {
 	It("lola cache info shows vars, templates, partials and attribute files cleaned; JSON has [] for each when none", func() {
 		Expect(lola("cache", "add", mod).code).To(Equal(0))
 		var info map[string]any
-		Expect(json.Unmarshal([]byte(lola("cache", "info", "example", "--json").out), &info)).To(Succeed())
+		Expect(json.Unmarshal([]byte(lola("info", "example", "--json").out), &info)).To(Succeed())
 		for _, k := range []string{"vars", "templates", "partials", "attributes"} {
 			Expect(info).To(HaveKeyWithValue(k, []any{}), k)
 		}
-		Expect(lola("cache", "info", "example").out).NotTo(ContainSubstring("vars:"))
+		Expect(lola("info", "example").out).NotTo(ContainSubstring("vars:"))
 
 		kit := filepath.Join(tmp, "kit")
 		writeTree(kit, map[string]string{
@@ -129,7 +129,7 @@ var _ = Describe("store, search and init commands", func() {
 		})
 		r := lola("cache", "add", kit)
 		Expect(r.code).To(Equal(0), r.err)
-		r = lola("cache", "info", "kit", "--json")
+		r = lola("info", "kit", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
 		Expect(info["vars"]).To(Equal([]any{
@@ -141,7 +141,7 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(info["templates"]).To(Equal([]any{"commands/ship.md.liquid", "skills/s/ref/x.md.liquid"}))
 		Expect(info["partials"]).To(Equal([]any{"_partials/head.liquid"}))
 		Expect(info["attributes"]).To(Equal([]any{"agents/a.targets.yaml", "commands/ship.targets.yaml"}))
-		out := lola("cache", "info", "kit").out
+		out := lola("info", "kit").out
 		Expect(out).To(ContainSubstring(`, language = "` + untrusted.Text("g\u202eo", untrusted.MaxName) + `", strict = false, tools = ["rg", "` +
 			untrusted.Text("j\u202eq", untrusted.MaxName) + `"]` + "\n"))
 		Expect(out).To(ContainSubstring("  templates:  commands/ship.md.liquid, skills/s/ref/x.md.liquid\n"))
@@ -157,7 +157,7 @@ var _ = Describe("store, search and init commands", func() {
 			"commands/c.md.liquid": "{{ vars.temperature }}\n"})
 		r := lola("cache", "add", kit)
 		Expect(r.code).To(Equal(0), r.err)
-		r = lola("cache", "info", "kit", "--json")
+		r = lola("info", "kit", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var info map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
@@ -167,7 +167,7 @@ var _ = Describe("store, search and init commands", func() {
 			map[string]any{"name": "temperature", "type": "number", "default": 0.7},
 		}), "the JSON default is a number")
 		Expect(r.out).To(ContainSubstring(`"default": 1e+21`))
-		Expect(lola("cache", "info", "kit").out).To(ContainSubstring("big = 1000000000000000000000.0, count = 3, temperature = 0.7\n"))
+		Expect(lola("info", "kit").out).To(ContainSubstring("big = 1000000000000000000000.0, count = 3, temperature = 0.7\n"))
 	})
 
 	It("a vars override's hint runs and shows the vars the module declares", func() {
@@ -186,17 +186,33 @@ var _ = Describe("store, search and init commands", func() {
 		}
 		Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
 		Expect(refusal.Error).To(Equal("project.yml: modules[kit].vars.lang: kit declares no var lang; it declares language"))
-		Expect(refusal.Hints).To(Equal([]string{"lola cache info kit --json --no-pager"}))
+		Expect(refusal.Hints).To(Equal([]string{"lola info -C " + proj + " kit --json --no-pager"}))
 		words := shellWords(refusal.Hints[0])
 		r = lola(words[1:]...)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(`"name": "language"`))
+		var info struct {
+			Install []struct {
+				Command string         `json:"command"`
+				Refusal map[string]any `json:"refusal"`
+			} `json:"install"`
+		}
+		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
+		Expect(info.Install[0].Refusal).To(HaveKeyWithValue("error", "kit: project.yml has not been trusted on this machine"),
+			"info shows the refusal an install here would meet, and no install")
+		Expect(info.Install[0].Command).To(BeEmpty())
 
 		r = lola("sync", "-C", proj, "--trust", "--plain")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("hint: lola cache info kit --plain\n"), "the run's --plain too")
-		r = lola("cache", "info", "kit", "--plain")
+		Expect(r.err).To(ContainSubstring("hint: lola info -C "+proj+" kit --plain\n"), "the run's --plain too")
+		r = lola("info", "-C", proj, "kit", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("refusal\tproject\tkit: project.yml has not been trusted on this machine\n"))
+		Expect(r.out).NotTo(ContainSubstring("install\t"))
+		r = lola("info", "-C", proj, "kit")
+		Expect(r.out).To(ContainSubstring("  ✗ installing here would refuse: kit: project.yml has not been trusted on this machine\n" +
+			"    hint: review and apply it: lola sync -C " + proj + " kit\n"))
+		Expect(r.out).NotTo(ContainSubstring("install it:"))
 	})
 
 	It("refuses to remove a module that is not stored", func() {
@@ -225,13 +241,13 @@ var _ = Describe("store, search and init commands", func() {
 		})
 		r := lola("cache", "add", plugin)
 		Expect(r.code).To(Equal(0), r.err)
-		for _, out := range []string{r.out, lola("cache", "show", "meta").out, lola("cache", "show", "meta", "--plain").out,
+		for _, out := range []string{r.out, lola("info", "meta").out, lola("info", "meta", "--plain").out,
 			lola("search", "tidy").out, lola("search", "tidy", "--plain").out, lola("search", "tidy", "--json").out} {
 			Expect(out).NotTo(ContainSubstring("\a"))
 		}
-		Expect(lola("cache", "show", "meta").out).To(ContainSubstring("meta 1.0?]0;x?\n  tidy?[2J?desc\n"))
+		Expect(lola("info", "meta").out).To(ContainSubstring("meta 1.0?]0;x?\n  tidy?[2J?desc\n"))
 		var info map[string]any
-		Expect(json.Unmarshal([]byte(lola("cache", "show", "meta", "--json").out), &info)).To(Succeed())
+		Expect(json.Unmarshal([]byte(lola("info", "meta", "--json").out), &info)).To(Succeed())
 		Expect(info["description"]).To(Equal("tidy?[2J?desc"))
 		Expect(info["version"]).To(Equal("1.0?]0;x?"))
 		var found map[string][]map[string]any
@@ -323,7 +339,7 @@ var _ = Describe("store, search and init commands", func() {
 
 	It("completes stored module names and target ids", func() {
 		Expect(lola("cache", "add", mod).code).To(Equal(0))
-		Expect(lola("__complete", "cache", "info", "ex").out).To(HavePrefix("example\n"))
+		Expect(lola("__complete", "info", "ex").out).To(HavePrefix("example\n"))
 		Expect(lola("__complete", "install", "x", "-t", "").out).To(HavePrefix("claude-code\n"))
 	})
 
@@ -376,7 +392,7 @@ var _ = Describe("store, search and init commands", func() {
 		It("cache rm removes it", func() {
 			r := lola("cache", "rm", "example", "-y")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(lola("cache", "info", "example").code).To(Equal(1))
+			Expect(lola("info", "example").code).To(Equal(1))
 		})
 
 		It("cache rm of an absent module still fails", func() {
@@ -453,11 +469,11 @@ var _ = Describe("published alias table", func() {
 			"lola uninstall":    {"remove", "rm", "erase", "delete", "del"},
 			"lola list":         {"ls"},
 			"lola render":       {"update"},
+			"lola info":         {"show", "view"},
 			"lola search":       {"find"},
 			"lola cache add":    {"get"},
 			"lola cache rm":     {"remove", "uninstall", "erase", "delete", "del"},
 			"lola cache list":   {"ls"},
-			"lola cache info":   {"show", "view"},
 			"lola cache search": {"find"},
 			"lola version":      {"ver"},
 			"lola market":       {"marketplace", "markets"},

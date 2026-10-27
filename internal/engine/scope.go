@@ -183,10 +183,16 @@ func (e *Engine) ResolveScope(req ScopeRequest) (ScopeResolution, error) {
 			hints = append(hints, req.Run+" "+f)
 		}
 	}
-	return ScopeResolution{}, errs.WithHints(fmt.Errorf("lola %s needs a scope: no .lola/ project was found in %s or above it, and %s sets no "+
-		"default_scope (default_scope: %s)", req.Command, untrusted.Text(req.Cwd, untrusted.MaxName), untrusted.Text(e.Paths.Config, untrusted.MaxName), values),
+	return ScopeResolution{}, errs.WithHints(&noScopeError{fmt.Sprintf("lola %s needs a scope: no .lola/ project was found in %s or above it, and %s sets no "+
+		"default_scope (default_scope: %s)", req.Command, untrusted.Text(req.Cwd, untrusted.MaxName), untrusted.Text(e.Paths.Config, untrusted.MaxName), values)},
 		hints...)
 }
+
+// noScopeError is ResolveScope's refusal of a run that names no scope where none is found or
+// configured, which lola info shows as its no-scope section instead (Plan 9 §4.4).
+type noScopeError struct{ msg string }
+
+func (e *noScopeError) Error() string { return e.msg }
 
 // oneScope refuses two scopes, which why names, for a command that acts on one (!Both).
 func (req ScopeRequest) oneScope(why string) error {

@@ -71,7 +71,13 @@ func refuseProfileFlags(cmd *cobra.Command, args []string, act engine.ProfileAct
 // value, a bool only as it was given (never false made true), quoted for the shell: what a hint
 // offers to run instead.
 func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
-	out := strings.Fields(cmd.CommandPath())
+	return runAs(strings.Fields(cmd.CommandPath()), cmd, args, drop...)
+}
+
+// runAs is runWithout as the command words: the run's flags, kept the same way, on another
+// command (lola info's next step is an install).
+func runAs(words []string, cmd *cobra.Command, args []string, drop ...string) string {
+	out := slices.Clone(words)
 	for _, a := range args {
 		out = append(out, untrusted.Text(a, untrusted.MaxName))
 	}

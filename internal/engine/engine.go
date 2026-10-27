@@ -153,6 +153,11 @@ type MCPRun struct {
 	Name      string `json:"name"`
 	Transport string `json:"transport"`
 	Runs      string `json:"runs"`
+	// name is the server's name as the module gives it, and argv and url what it runs as Runs
+	// shows it, expanded and uncleaned: lola info shows them per assistant.
+	name string
+	argv []string
+	url  string
 }
 
 // ModuleResult summarizes one module of an operation.
@@ -172,6 +177,9 @@ type ModuleResult struct {
 	Market *manifest.MarketRef `json:"market,omitempty"`
 
 	renderedWith *ledger.RenderedWith // what its templates rendered with, which lock.json records
+	// hooksKept says an install without consent keeps the module's copy and runs none of its
+	// hooks: the copy holds the version already and no post-install hook is pending.
+	hooksKept bool
 }
 
 // Notice levels.
@@ -231,8 +239,9 @@ type InstallRequest struct {
 }
 
 // VersionRef names one cached version of a module. commit is the commit a marketplace entry's
-// version was fetched at, which the cache's heads may not record: a catalog's commit pin never
-// moves one (Plan 6c §6.4).
+// version, or the git version lola info showed, was fetched at, which the cache's heads may not
+// record: a catalog's commit pin never moves one (Plan 6c §6.4), and info's install pins the
+// commit in place of the ref it fetched (Plan 9 §4.3).
 type VersionRef struct {
 	Name   string `json:"name"`
 	ID     string `json:"id"`
@@ -502,11 +511,13 @@ func canonicalRoot(dir string) string {
 // have, when it names a module, is the version this request already resolved to (fetched for
 // another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
 // entryRef is the ref the scope's manifest records for a name argument: without --ref the
-// name resolves to the cache head for it (Plan 6a §10.1). Fetches stage in the run directory run.
+// name resolves to the cache head for it (Plan 6a §10.1). A full-SHA ref, either one, is recorded
+// lower-cased (R-9-31). Fetches stage in the run directory run.
 // display is the run's output flags, which the `lola cache list` hint of the not-a-source
 // refusal keeps.
 func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef, run string,
 	display []string) (manifest.Entry, store.Version, bool, error) {
+	r.Ref, entryRef = source.RecordedRef(r.Ref), source.RecordedRef(entryRef)
 	if r.market != nil {
 		return e.resolveEntry(ctx, sc, r, have, run)
 	}
@@ -550,9 +561,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 		return manifest.Entry{}, store.Version{}, false, err
 	}
 	if !ok {
-		return manifest.Entry{}, store.Version{}, false, errs.WithHints(
-			fmt.Errorf("%q is neither a module in your cache nor a source; sources are %s", r.Arg, source.AcceptedForms),
-			"cached modules: "+errs.ShellJoin(append([]string{"lola", "cache", "list"}, display...)))
+		return manifest.Entry{}, store.Version{}, false, notASource(r.Arg, display)
 	}
 	spec.Ref, spec.Path = r.Ref, r.Path
 	if r.Version != nil {
@@ -577,12 +586,61 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	}
 	v, fetched := have, false
 	if v.Name == "" {
+		if v, err = e.cachedCommit(spec, run); err != nil {
+			return manifest.Entry{}, store.Version{}, false, err
+		}
+	}
+	if v.Name == "" {
 		if v, err = e.fetchAs(ctx, spec, "", "", run); err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
 		fetched = true
 	}
 	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, fetched, nil
+}
+
+// cachedCommit is the cached version of the git source spec at spec.Ref when that is a full commit
+// SHA in any case (Plan 9 R-9-21, R-9-27): a module the cache holds from exactly that location, path and component
+// selection, whose version records that commit as the one its fetch resolved. Its content is
+// hashed again into the run directory run before it is used (store.Pinned). A version that is
+// not cached, or any other ref, is the zero Version: the source is fetched.
+func (e *Engine) cachedCommit(spec source.Spec, run string) (store.Version, error) {
+	commit, ok := source.CommitRef(spec.Ref)
+	if spec.Kind != source.KindGit || !ok {
+		return store.Version{}, nil
+	}
+	names, err := e.Store.Names()
+	if err != nil {
+		return store.Version{}, err
+	}
+	for _, name := range names {
+		o, found, err := e.Store.Origin(name)
+		if err != nil || !found || o.Type != string(source.KindGit) || o.Source != spec.Location || o.Path != spec.Path ||
+			!o.Components.Equal(spec.Components) {
+			continue // an index lola cannot read is no version of this source
+		}
+		digest, err := e.Store.AtCommit(name, commit)
+		if err != nil {
+			return store.Version{}, err
+		}
+		if digest == "" {
+			continue // another name of this source, cached at other commits
+		}
+		v, found, err := e.Store.Pinned(name, digest, run)
+		if err != nil || !found {
+			return store.Version{}, err
+		}
+		v.Commit = commit
+		return v, nil
+	}
+	return store.Version{}, nil
+}
+
+// notASource refuses arg, an argument of install or info that is neither a module in the cache
+// nor a source, hinting the cache's listing with the run's output flags (display).
+func notASource(arg string, display []string) error {
+	return errs.WithHints(fmt.Errorf("%q is neither a module in your cache nor a source; sources are %s", arg, source.AcceptedForms),
+		"cached modules: "+errs.ShellJoin(append([]string{"lola", "cache", "list"}, display...)))
 }
 
 // recordable refuses an install whose source, ref or path sc's manifest and ledger could not
@@ -670,16 +728,19 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		mr.Targets = append(mr.Targets, id)
 	}
 	for _, s := range m.MCPServers {
-		runs := target.Expand(s.URL, pctx)
+		url := target.Expand(s.URL, pctx)
+		runs := url
+		var argv []string
 		if s.Transport == module.TransportStdio {
 			// Each argument quoted unless plain, so where one ends stays visible, as consent shows argv.
 			words := make([]string, 0, len(s.Args)+1)
 			for _, w := range append([]string{s.Command}, s.Args...) {
-				words = append(words, word(target.Expand(w, pctx)))
+				argv = append(argv, target.Expand(w, pctx))
+				words = append(words, word(argv[len(argv)-1]))
 			}
-			runs = strings.Join(words, " ")
+			runs, url = strings.Join(words, " "), ""
 		}
-		mr.MCPServers = append(mr.MCPServers, MCPRun{Name: shown(s.Name), Transport: shown(s.Transport), Runs: shown(runs)})
+		mr.MCPServers = append(mr.MCPServers, MCPRun{Name: shown(s.Name), Transport: shown(s.Transport), Runs: shown(runs), name: s.Name, argv: argv, url: url})
 	}
 	var overrides map[string]any
 	if ment != nil {

@@ -218,6 +218,58 @@ var _ = Describe("Store", func() {
 		Expect(got.Commit).To(Equal(full))
 	})
 
+	It("a head whose ref is a full commit SHA serves that ref only when it records that commit", func() {
+		v, err := put(map[string]string{"commands/a.md": "x"}, "")
+		Expect(err).NotTo(HaveOccurred())
+		sha, other := strings.Repeat("a", 40), strings.Repeat("b", 40)
+		index := filepath.Join(p.Store, "example", "index.yml")
+		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: git\nheads:\n  - {ref: "+sha+", digest: "+v.ID+", commit: "+other+"}\n"), 0o600)).To(Succeed())
+		_, ok, err := s.Head("example", sha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeFalse(), "a head written before refs were commits, holding another commit")
+		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: git\nheads:\n  - {ref: "+sha+", digest: "+v.ID+", commit: "+sha+"}\n"), 0o600)).To(Succeed())
+		_, ok, err = s.Head("example", strings.ToUpper(sha))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue(), "a commit in capitals is that commit")
+	})
+
+	It("a 64-hex commit in capitals is served by the head and the version that record it", func() {
+		sha := strings.Repeat("ab", 32)
+		v, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "x"}), FallbackName: "example", Source: "/src/example",
+			Type: "git", Ref: strings.ToUpper(sha), Commit: sha, Now: now})
+		Expect(err).NotTo(HaveOccurred())
+		o, _, err := s.Origin("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(o.Heads).To(ConsistOf(HaveField("Ref", sha)), "a full-SHA ref is recorded lower-cased")
+		Expect(v.Meta.Ref).To(Equal(sha))
+		got, ok, err := s.Head("example", strings.ToUpper(sha))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(got.Commit).To(Equal(sha))
+		digest, err := s.AtCommit("example", sha)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(digest).To(Equal(v.Meta.Digest))
+	})
+
+	DescribeTable("a version whose record names the commit but no digest of that version is no version at the commit",
+		func(digest func(v store.Version) string) {
+			sha := strings.Repeat("ab", 20)
+			v, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "x"}), FallbackName: "example", Source: "/src/example",
+				Type: "git", Ref: "main", Commit: sha, Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			record := filepath.Join(p.Store, "example", "versions", v.ID, ".lola-origin")
+			b, err := os.ReadFile(record)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(record, []byte(strings.ReplaceAll(string(b), v.Meta.Digest, digest(v))), 0o600)).To(Succeed())
+			got, err := s.AtCommit("example", sha)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(BeEmpty(), "the source is fetched instead")
+		},
+		Entry("a malformed digest", func(store.Version) string { return "sha256:not-hex" }),
+		Entry("a digest in capitals", func(v store.Version) string { return strings.ToUpper(v.Meta.Digest) }),
+		Entry("another version's digest", func(store.Version) string { return "sha256:" + strings.Repeat("0", 64) }),
+	)
+
 	It("refuses a cached version whose recorded digest is not its id's", func() {
 		v, err := put(map[string]string{"commands/a.md": "x"}, "")
 		Expect(err).NotTo(HaveOccurred())

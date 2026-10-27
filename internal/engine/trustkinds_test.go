@@ -124,7 +124,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		pull("kit")
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: k}})
 		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(errs.Hints(err)).To(Equal([]string{"review it: lola cache info kit",
+		Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project kit",
 			"then consent to it: lola sync --project --trust=entries,profiles,hooks"}))
 		Expect(ran()).To(BeNil())
 		Expect(trusts("kit")).To(BeFalse())
@@ -220,7 +220,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 				Display: []string{"--plain"}})
 			return err
 		}, "kit has a pre-install hook, and lola runs hooks only with your consent",
-			[]string{"review it: lola cache info kit", "then consent to it: lola sync --project --trust=entries,hooks --plain"}),
+			[]string{"review it: lola info --project kit --plain", "then consent to it: lola sync --project --trust=entries,hooks --plain"}),
 		Entry("entries+hooks", func() error {
 			kit("{pre-install: hooks/pre.sh}")
 			pull("kit")

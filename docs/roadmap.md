@@ -81,7 +81,7 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
    7.1 the sandbox, 7.2 whole-file `.md.liquid` templates, 7.3 partials and 7.4 per-target
    attribute files and module vars (done: `.targets.yaml`/`.targets.jsonc` merged per target and
    bound as `attrs`, `lola.yml` vars overridden by entries, trusted with them, recorded in
-   `rendered_with`, and shown by `lola cache info`), then 7.5 relaxed the author rules (done: a
+   `rendered_with`, and shown by `lola info`), then 7.5 relaxed the author rules (done: a
    frontmatter value refuses only when it renders a line break without `| json`, no key guard,
    missing `attrs` keys read as nil, numbers in attributes and vars, missing partials refused
    only when included, `..` in quoted strings, and the math filters)

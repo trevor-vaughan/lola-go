@@ -78,7 +78,8 @@ func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error 
 	_, targets := errors.AsType[*untrustedTargetsError](err)
 	_, conflicts := errors.AsType[*plan.ConflictError](err)
 	_, template := errors.AsType[*TemplateError](err) // the same install refuses the same way
-	if len(fetched) == 0 || targets || conflicts || template || errors.Is(err, ErrNotTrusted) {
+	_, hook := errors.AsType[*hookConsentError](err)
+	if len(fetched) == 0 || targets || conflicts || template || hook || errors.Is(err, ErrNotTrusted) {
 		return err
 	}
 	cmds := make([]string, len(spec.Scopes))
@@ -851,9 +852,19 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	if err != nil {
 		return err
 	}
+	review := []string{r.Arg}
+	if commit != "" {
+		review = append(review, "--ref", commit)
+	}
+	if r.Path != "" {
+		review = append(review, "--path", r.Path)
+	}
+	for _, t := range mr.Targets {
+		review = append(review, "--target", t)
+	}
 	sp.copies = append(sp.copies, moduleCopy{name: v.Name, src: v.ContentDir, replace: true,
 		hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true, forced: !replace && !addsTargets(installed, mr.Targets),
-		pending: installed != nil && installed.HooksPending && declaresPostInstall(v.Module.DeclaredHooks)})
+		pending: installed != nil && installed.HooksPending && declaresPostInstall(v.Module.DeclaredHooks), review: review})
 	sp.entries = append(sp.entries, ent)
 	return nil
 }

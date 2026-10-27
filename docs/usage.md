@@ -398,6 +398,108 @@ pass a module folder or another source, e.g. lola check ./my-module; sources are
 
 JSON: `modules` (each `name`, `targets`, `findings`, `skipped`) and `findings`.
 
+### `lola info`
+
+```
+lola info <source|@market/module|module> [-t <assistant>…] [--ref <ref>] [--path <dir>]
+```
+
+Aliases: `show`, `view`. Show a module before you install it, running nothing: no install hook,
+runtime hook or MCP server. The argument is what `lola install` takes: a module in your cache,
+`@market/module`, or a source. A source or a marketplace entry is fetched into your cache as
+`lola cache add` fetches it, so installing the cached name afterwards fetches nothing. It prints:
+
+1. The module's identity: name, version, description, source, type, path, digest, format and
+   cached heads.
+2. Its contents: skills, commands, agents, MCP servers, rules, install hooks, warnings, the
+   [vars](guides/templating.md#vars) it declares with their defaults, and its
+   [templates](guides/templating.md#templates), [partials](guides/templating.md#partials) and
+   [attribute files](guides/templating.md#attribute-files).
+3. What would run code, and when: each install hook with its sha256 (what consent is recorded
+   for) and its first 5 lines, each cut at 200 characters; the runtime hooks (hook sets, and
+   hooks and agents' MCP servers in components' frontmatter) each assistant would run, as the
+   consent question shows them; and each MCP server with the command line or URL the assistant
+   would run, for each assistant that can express it. Without a plan (no scope, no assistant, or
+   a refusal) they are shown as the module declares them, `${CLAUDE_PLUGIN_ROOT}` and its kin
+   unexpanded. Author text is shown on one line.
+4. What installing it here would do, for each scope `lola install` would pick without asking:
+   the plan `lola install -n` prints (files per assistant, findings, `new project at <dir>` for
+   a project without `.lola/`), each consent the install would meet (`hooks`, `runtime-hooks`)
+   and whether you gave it already, and the `--trust=` kinds still needed. When installing there
+   would be refused (an untrusted `project.yml` entry, a conflict, any refusal that coaches), it
+   shows that refusal with its hints instead, and no install; any other failure (an unreadable
+   file) is `lola info`'s own error. A copy of the version already installed, whose hooks would
+   not run without consent, needs no `hooks` trust.
+5. The install of exactly the version shown, with `--trust=` the kinds still needed (none: no
+   `--trust`), keeping your output flags, scope flags, `-C` and `-t`; there is none when
+   installing at any scope would be refused. A git source, and a marketplace entry from git
+   without a component selection, is named as its git source at the full commit SHA fetched, in
+   place of a branch or tag you gave, since a branch can move before you install (`--path` as the
+   source needs); a commit your cache holds installs without fetching. An archive, a folder, a
+   cached name and any other entry (one that selects components among them) are named by the
+   cached name at the head shown (`--ref <ref>` for a head other than the default branch's),
+   which installs from your cache without touching the source; a cached git module without a
+   component selection whose entry in the scope records another ref is named by its source at
+   the commit shown instead, so that installing it pins that commit in the entry (to follow a
+   branch again, install with `--ref <branch>`). What stays open: if you fetch a cached head
+   again yourself (`lola cache update`, an install of the source at a branch) or run `lola market
+   --update` between `lola info` and the install, a hint by cached name installs the new head.
+
+   ```
+   → install it: lola install https://example.com/kit.git --ref 4f0c2a9e1b7d3c5a6e8f9012ab34cd56ef7890ab --project --trust=hooks
+   ```
+
+| Flag | What it does |
+|---|---|
+| `-t`, `--target <assistant>` | Plan for these assistants, as `lola install -t` would (repeatable or comma-separated). |
+| `--ref <ref>` | The git branch, tag or full commit SHA to fetch. |
+| `--path <dir>` | The module root inside the source (monorepos); refused with `@market/module`. |
+
+Scope: `--scope` (`both` shows one plan per scope), `--user`, `--project` or `-C`; else the
+project with `.lola/` at or above the current directory; else `default_scope` in `config.yaml`.
+`lola info` never asks for a scope, on a terminal or off it, and never guesses one. With none,
+it shows sections 1 to 3 and the consent it knows without a scope (`runtime-hooks` are needed
+but their record is unknown, as it is kept per settings file), says why, and hints the runs that
+name a scope, exiting 0:
+
+```
+no scope: no .lola/ was found in /work/x or above it, and config.yaml sets no default_scope
+  hint: lola info ./kit --project
+  hint: lola info ./kit --user
+```
+
+`--project` is not hinted in your home directory, where the user scope installs. Without `-t` and
+with no assistant set up in the scope, it says which assistants are installed and hints the run
+with `-t` and each of them (`lola info ./kit --project -t claude-code`); with none installed it
+says so and hints nothing.
+
+Refusals: no argument: `lola info needs a module or source`, hinting `cached modules: lola cache
+list`; an argument that is neither: `"./nope" is neither a module in your cache nor a source;
+sources are …`, hinting `cached modules: lola cache list`; `--path` with `@market/module`; and a
+fetch failure or another module of that name in your cache, as `lola cache add`'s.
+
+JSON: one document. The module's identity and contents: `name`, `description`, `version`,
+`digest`, `format`, `source`, `type`, `heads` (each `ref`, `digest`), `skills`, `commands`,
+`agents`, `mcp_servers`, `rules`, `hooks`, `warnings`, `vars` (`[{"name", "type", "default"}]`,
+`type` one of `string`, `boolean`, `number`, `list`; a number's `default` is a JSON number),
+`templates`, `partials` and `attributes` (paths in the module), each `[]` when none, and `path`
+(the module root inside the source) when it has one. Then `runs`: `install_hooks` (each `event`,
+`script`, `sha256`, `first_lines`), `runtime_hooks` (as `lola install` reports them) and
+`mcp_servers` (each `name`, `target`, `command`, `args`, `url`). Then `install`, one element per
+scope: `scope` (`""` without one), `targets`, `steps`, `findings`, `consent` (each `kind`, `item`,
+`recorded`: `yes`, `no` or `unknown`), `trust_needed` (kinds), `digest` (the version it
+installs), `command` (the next step; `""` without a plan, and in every element when installing at
+any scope would be refused) and, when installing there would be
+refused, `refusal` (`error`, `hints`), and `new_project` (`true` when the install would create `.lola/`
+at the scope's directory). A runtime hook shown as declared has `status` `unknown`. Last,
+`no_scope` (the sentence, only when no scope resolved), `no_assistant` (the sentence, only when a
+scope has no assistant to plan for) and `hints` (`[]` unless no scope or no assistant resolved).
+
+`--plain` rows are the module's, then `hook` (event, script, sha256), `runtime-hook` (as
+`lola install --plain` prints them), `mcp` (name, assistant, command line, URL), `refusal`
+(scope, error) each followed by its `hint` rows, `consent`, the steps, `install`, `no_scope` or
+`no_assistant` (the sentence), and `hint` rows.
+
 ### `lola search`
 
 ```
@@ -473,7 +575,8 @@ ref (`--path` is refused: the catalog gives it).
 Refusals: no source: `lola cache add needs a source`; another module of that name in your cache,
 as `lola install`'s.
 
-JSON: the module, as `lola cache info` prints it, with `path` when `--path` gave one.
+JSON: the module's identity and contents, as [`lola info`](#lola-info) starts its document, with
+`path` when `--path` gave one.
 
 #### `lola cache rm`
 
@@ -504,26 +607,7 @@ lola cache list
 
 Alias: `ls`. List the modules in your cache.
 
-JSON: `modules` (each as `lola cache info` prints it) and `warnings`.
-
-#### `lola cache info`
-
-```
-lola cache info <module>
-```
-
-Aliases: `show`, `view`. Show a cached module's metadata, source, artifacts and refused hooks, the
-[vars](guides/templating.md#vars) it declares, with their defaults, and its
-[templates](guides/templating.md#templates), [partials](guides/templating.md#partials) and
-[attribute files](guides/templating.md#attribute-files).
-
-Refusals: `nope is not in your cache`, hinting `cached modules: lola cache list`.
-
-JSON: `name`, `description`, `version`, `digest`, `format`, `source`, `type`, `heads` (each
-`ref`, `digest`), `skills`, `commands`, `agents`, `mcp_servers`, `rules`, `hooks`, `warnings`,
-`vars` (`[{"name", "type", "default"}]`, `type` one of `string`, `boolean`, `number`, `list`; a
-number's `default` is a JSON number), `templates`, `partials` and `attributes` (paths in the
-module), each `[]` when none, and `path` (the module root inside the source) when it has one.
+JSON: `modules` (each the identity and contents of [`lola info`](#lola-info)) and `warnings`.
 
 #### `lola cache update`
 
@@ -668,12 +752,24 @@ module root unless you pass `--path`; `--path .` picks the folder itself. `--ref
 
 **Git.** lola runs your `git` (it must be on `PATH`) with a shallow clone of the default
 branch, or of `--ref`: a branch name, a tag name, or a full 40- or 64-character commit SHA.
-lola never guesses: a ref that names both a branch and a tag is an error, an abbreviated SHA
-is an error, and a hex-looking branch name is a branch. A commit that no branch or tag points
-to needs a server that serves such commits (servers speaking git protocol v2 do). Only committed
-files are copied; the module root is `--path`, else `module/`, else the repository root.
+lola never guesses:
+
+- A ref that names both a branch and a tag is an error, and so is an abbreviated SHA.
+- A full commit SHA, in any case, is always that commit, never a branch or tag of that name.
+  lola records and shows it lower-cased. A server that serves another commit for it is refused.
+- The SHA of an annotated tag object is refused; the error names the commit the tag points to,
+  and the hint is your run at that commit.
+- Any other hex-looking name is a branch or tag.
+
+A commit that no branch or tag points to needs a server that serves such commits (servers
+speaking git protocol v2 do). Only committed files are copied; the module root is `--path`,
+else `module/`, else the repository root.
 `--path .` picks the repository root and names the module after the repository. lola records
-the commit it fetched.
+the commit it fetched. A source is fetched again on every install, with one exception: an
+install at a full commit SHA that your cache already holds for exactly that source (the same
+location, `--path` and selection, the version a fetch of that commit recorded) fetches nothing;
+lola hashes the cached version again and installs it. A branch, a tag or a short SHA always
+fetches.
 
 - Your git config, credential helpers and `ssh-agent` are used. Git hooks, `core.fsmonitor`,
   the `ext::` transport and Git LFS filters are switched off for the repository lola fetches.
@@ -1438,7 +1534,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   an activation that puts a project profile in place of yours.
 - Text a module or a manifest chose (names, paths, hook scripts such as `modules[].hooks[].script`
   and the scripts of install hooks, `mcp_servers[].runs`, module warnings, the trust diff, and the
-  module file names in `lola cache info`, human or `--json`) shows control and invisible characters
+  module file names in `lola info`, human or `--json`) shows control and invisible characters
   as `?` in JSON as on a terminal. `runs` and a hook's `script` are for reading, not an exact
   command line to run. A step's `path`, `member` and `value` are the exception: they are what lola
   wrote, raw but for JSON's escaping; so are `lola tidy`'s `path` and `trash`, the paths it found,

@@ -604,8 +604,9 @@ func resolvedVars(m *module.Module, ment *manifest.Entry) map[string]any {
 
 // checkVars refuses an override in ment (nil for none), the entry from the layer from ("" for
 // the scope's manifest), of a var m does not declare or of another type than its default (Plan 7
-// §4.2), before anything renders. The hint shows m's vars with the run's output flags, when the
-// cache's current version of m is the one planned, digest: lola cache info shows no other.
+// §4.2), before anything renders. The hint shows m's vars with the run's scope and output flags,
+// when the cache's current version of m is the one planned, digest: lola info of a cached name
+// shows no other.
 func (e *Engine) checkVars(sc Scope, m *module.Module, ment *manifest.Entry, from, digest string, display []string) error {
 	if ment == nil {
 		return nil
@@ -633,8 +634,7 @@ func (e *Engine) checkVars(sc Scope, m *module.Module, ment *manifest.Entry, fro
 		if cur, _, cerr := e.Current(m.Name); cerr != nil || digest == "" || cur.Meta.Digest != digest {
 			return &varsRefusal{err.Error()}
 		}
-		hint := errs.ShellJoin(append([]string{"lola", "cache", "info", untrusted.Text(m.Name, untrusted.MaxName)}, display...))
-		return errs.WithHints(&varsRefusal{err.Error()}, hint) // the cache is not a scope's: no scope flags
+		return errs.WithHints(&varsRefusal{err.Error()}, e.Command(sc, "info", append([]string{m.Name}, display...)...))
 	}
 	return nil
 }

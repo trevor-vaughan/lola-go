@@ -534,11 +534,13 @@ func twoVersions(name string) error {
 		"install it into one scope at a time")
 }
 
-// pinnedVersion loads the cached version r.Version names. A version removed from the cache
-// since the pickers listed it, or an invalid reference, is refused with a way forward.
+// pinnedVersion loads the cached version r.Version names, with the commit it was fetched at when
+// the reference carries one. A version removed from the cache since the pickers listed it, or an
+// invalid reference, is refused with a way forward.
 func (e *Engine) pinnedVersion(r InstallRequest) (store.Version, error) {
 	v, err := e.Store.Load(r.Version.Name, r.Version.ID)
 	if err == nil {
+		v.Commit = cmp.Or(r.Version.commit, v.Commit)
 		return v, nil
 	}
 	if errors.Is(err, fs.ErrNotExist) {

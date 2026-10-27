@@ -125,7 +125,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if err := fl.expandMarkets(); err != nil {
 		return err
 	}
-	return fl.run()
+	return tagRefHint(cmd, args, fl.run())
 }
 
 // expandMarkets replaces each argument that means an entry of your marketplaces with that
@@ -834,11 +834,11 @@ func (fl *installFlow) ensureAssistants() error {
 			answer[name] = fl.f.targets
 			continue
 		}
-		man, err := fl.eng.InstallManifest(c.Scope, fl.requests())
+		choice, err := fl.eng.DefaultTargets(c.Scope, fl.requests())
 		if err != nil {
 			return fl.eng.CoachUnresolved(err, []engine.Scope{c.Scope}, fl.f.dry, outputFlags(fl.cmd))
 		}
-		fixed := man.Targets
+		fixed := choice.Manifest
 		if fl.choices != nil {
 			for _, s := range fl.choices.Scopes {
 				if s.Scope.Key() == name {
@@ -850,23 +850,13 @@ func (fl *installFlow) ensureAssistants() error {
 			answer[name] = nil
 			continue
 		}
-		var inst, marked []string
-		for _, as := range fl.eng.Detect(c.Scope) {
-			if as.Binary == "" {
-				continue
-			}
-			inst = append(inst, as.Target)
-			if as.Marked {
-				marked = append(marked, as.Target)
-			}
-		}
-		switch {
+		inst, marked := choice.Installed, choice.SetUp
+		choice.Manifest = nil // the pickers' fixed targets decided above
+		switch why := choice.NoneHere(); {
 		case len(inst) == 0:
-			return errs.WithHints(errors.New("no assistant found on your PATH, so lola does not know where to install"),
-				withTarget(targets.IDs())...)
+			return errs.WithHints(errors.New(why), withTarget(targets.IDs())...)
 		case !fl.ask && len(marked) == 0:
-			return errs.WithHints(fmt.Errorf("none of your installed assistants (%s) is set up here, so lola does not know where to install",
-				strings.Join(inst, ", ")), withTarget(inst)...)
+			return errs.WithHints(errors.New(why), withTarget(inst)...)
 		case !fl.ask:
 			answer[name] = marked
 		case len(inst) == 1:

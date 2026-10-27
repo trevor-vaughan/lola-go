@@ -498,7 +498,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.zip_cache}} {{.container}} sh -c '{{.lola}} cache info kit --json > /tmp/i12-zip-info.json'"
+        script: "{{.runtime}} exec {{.zip_cache}} {{.container}} sh -c '{{.lola}} info kit --json > /tmp/i12-zip-info.json'"
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -508,7 +508,7 @@ testcases:
           - result.systemoutjson.type ShouldEqual archive
           - result.systemoutjson.source ShouldEqual /work/kit.zip
       - type: exec
-        script: "{{.runtime}} exec {{.tar_cache}} {{.container}} sh -c '{{.lola}} cache info kit --json > /tmp/i12-tar-info.json'"
+        script: "{{.runtime}} exec {{.tar_cache}} {{.container}} sh -c '{{.lola}} info kit --json > /tmp/i12-tar-info.json'"
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -608,3 +608,37 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldBeEmpty
+
+  # Needs I10 (kit.git in git_cache). Reason G, W: a real git server's request log across two runs.
+  - name: I17 info fetches once; the install by its hint makes no request
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir /work/proj5 && wc -l < /run/gitserve/requests.log > /tmp/i17.before'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} sh -c '{{.lola}} info http://127.0.0.1:8765/kit.git --ref main -C /work/proj5 --scope project -t claude-code --json > /tmp/i17.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test $(wc -l < /run/gitserve/requests.log) -gt $(cat /tmp/i17.before) && wc -l < /run/gitserve/requests.log > /tmp/i17.count'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 -c 'import json; d = json.load(open(\"/tmp/i17.json\")); json.dump({\"hints\": [d[\"install\"][0][\"command\"]]}, open(\"/tmp/i17-hint.json\", \"w\")); print(d[\"install\"][0][\"command\"])'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "lola install http://127.0.0.1:8765/kit.git --ref {{.v2}} --json --root /work/proj5 --scope project --target claude-code"
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} sh -c '{{.hint}} /tmp/i17-hint.json > /tmp/i17-install.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/i17.count'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i17-install.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.modules.modules0.name ShouldEqual kit

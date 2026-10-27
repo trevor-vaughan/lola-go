@@ -26,6 +26,10 @@ type moduleCopy struct {
 	runHooks bool
 	forced   bool
 	pending  bool
+	// review is the lola info arguments that show exactly the version the copy installs, which a
+	// refused pre-install hook's hint names: the install's argument at the commit it resolved,
+	// its --path and targets. nil names the module.
+	review []string
 }
 
 // keepUnhooked keeps every forced copy no hook job of jobs runs in as it is: it was to be

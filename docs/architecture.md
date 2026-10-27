@@ -169,7 +169,9 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 - `plan`: Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and
   manifest).
 - `engine`: Install, uninstall, render, sync (`desired`, the trust report, containment, removals),
-  tidy, status, fetch, update, search; run staging, module copies, install hooks, runtime hook consent,
+  tidy, status, fetch, update, search, `Info` (lola info: a version's view, `ModuleView`, which cache add
+  and cache list print too, the code it runs, and install's dry run pinned to it, with the consent it
+  meets); run staging, module copies, install hooks, runtime hook consent,
   the git-ignore and tracked-ledger checks; every manifest write with its trust refresh
   (`saveManifest`) and the refusals of untrusted entries; install scope resolution, the component
   resolver, selection edits and `InstallChoices`.
@@ -632,7 +634,8 @@ reruns its hooks; edits inside a copy are not reported.
 the engine decides consent per module: a recorded consent for the same digest (sha256 over each
 hook's event, script path and script sha256), a `--trust=hooks` (its grant recorded
 only after the receipt, [Trust kinds](#trust-kinds)), or the CLI's prompt, whose yes is recorded
-in `$XDG_STATE_HOME/lola/consent.json` when given. Without consent a
+in `$XDG_STATE_HOME/lola/consent.json` with the run's grants, after its receipt is answered yes and
+before the first write. Without consent a
 `pre-install` hook is an error and a `post-install` hook is declined with a warning.
 
 Hooks run once per target, in the module copy, with the parent environment plus `LOLA_MODULE_NAME`,
@@ -711,8 +714,8 @@ rendered, so absolute paths are in it), then the module version's content digest
 recorded in `consent.json` under `<module>/runtime-hooks/<sha256 of the settings file's absolute
 path, symlinks resolved>`, which cannot collide with an install hook entry because module names have
 no `/`, and gives each project and scope its own consent. A recorded digest, a
-`--trust=runtime-hooks` (recorded after the receipt) or a yes from the CLI's prompt (recorded when given)
-keeps the intents; a dry run makes
+`--trust=runtime-hooks` or a yes from the CLI's prompt (each recorded after the run's receipt is answered
+yes, before the first write) keeps the intents; a dry run makes
 the same decision without asking or recording; otherwise the intents are dropped with
 `<target>/runtime-hooks-declined`, per settings hooks and per component. Dropping them is what makes
 consent fail closed: the planner sees the module's installed groups and components as orphans and

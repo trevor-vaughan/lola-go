@@ -1239,7 +1239,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(err).To(MatchError("remote:go changed while you were asked; it was not updated"))
 			_, written := errors.AsType[*engine.UpdateStoppedError](err)
 			Expect(written).To(BeFalse(), "nothing was written")
-			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go --update -y --trust=profiles,hooks --json"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go remote:docs --update -y --trust=profiles,hooks --json"}))
 			Expect(docs()).To(Equal("version: 1\ndescription: docs\n"))
 
 			// A later one changed: what was written is kept and named, and nothing is applied.
@@ -1256,6 +1256,51 @@ var _ = Describe("remote profiles", func() {
 			Expect(stopped.Result.Scopes).To(BeEmpty(), "nothing is applied")
 			Expect(file()).To(Equal(pinned() + "description: go 2\n"))
 			Expect(docs()).To(Equal("version: 1\ndescription: docs\n"))
+		})
+
+		It("a staged update stopped at a refused profile hints the run of every profile it did not write, with the run's flags", func() {
+			publish(map[string]string{"profiles/go.yml": pinned(), "profiles/docs.yml": "version: 1\ndescription: docs\n",
+				"profiles/web.yml": "version: 1\ndescription: web\n"})
+			for _, name := range []string{"docs", "web"} {
+				_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Scope: &user, Name: name, Source: src, Consent: yes})
+				Expect(err).NotTo(HaveOccurred())
+			}
+			req := engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go", "docs", "web"}, Flags: []string{"-y"},
+				Trust: engine.TrustProfiles, Rerun: []string{"--trust=profiles", "--plain"}}
+			stage := func(n int) *engine.ProfileUpdateResult {
+				GinkgoHelper()
+				publish(map[string]string{"profiles/go.yml": pinned() + fmt.Sprintf("description: go %d\n", n),
+					"profiles/docs.yml": fmt.Sprintf("version: 1\ndescription: docs %d\n", n), "profiles/web.yml": fmt.Sprintf("version: 1\ndescription: web %d\n", n)})
+				req.Batch = &engine.TrustBatch{}
+				res, err := e.UpdateProfile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+				return res
+			}
+			touch := func(name string) {
+				GinkgoHelper()
+				o, err := profile.ReadOrigin(filepath.Join(p.RemoteProfiles, name))
+				Expect(err).NotTo(HaveOccurred())
+				o.Commit = strings.Repeat("0", 40)
+				b, err := json.Marshal(o)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, name, "source.json"), b, 0o600)).To(Succeed())
+			}
+
+			res := stage(1)
+			touch("go")
+			err := e.CommitStaged(req, res)
+			Expect(err).To(MatchError("remote:go changed while you were asked; it was not updated"))
+			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go remote:docs remote:web --update -y --trust=profiles --plain"}),
+				"the profiles after the refused one were not written either")
+
+			res = stage(2)
+			touch("docs")
+			err = e.CommitStaged(req, res)
+			Expect(err).To(MatchError("remote:docs changed while you were asked; it was not updated"))
+			Expect(errs.Hints(err)).To(Equal([]string{"apply what was updated at user scope: lola sync --user --plain",
+				"run it again: lola profile --user remote:docs remote:web --update -y --trust=profiles --plain"}))
+			stopped, _ := errors.AsType[*engine.UpdateStoppedError](err)
+			Expect(stopped.Result.Updated()).To(Equal([]string{"remote:go"}))
 		})
 
 		It("commits a staged profile it wrote as written when what follows the write fails, with a warning", func() {

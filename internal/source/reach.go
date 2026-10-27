@@ -20,7 +20,7 @@ func CheckReachable(ctx context.Context, spec Spec, commit, stagingParent string
 	if err := Validate(spec); err != nil {
 		return err
 	}
-	if spec.Ref == commit {
+	if ref, _ := CommitRef(spec.Ref); ref == commit {
 		return nil
 	}
 	if !fullSHARE.MatchString(commit) {

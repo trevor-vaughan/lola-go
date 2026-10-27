@@ -283,10 +283,11 @@ func (e *Entry) Validate() error {
 	if err := plainTargets(e.Targets); err != nil {
 		return err
 	}
+	refCommit, isCommit := source.CommitRef(e.Ref)
 	switch {
 	case e.Commit != "" && e.Digest == "":
 		return errs.WithHints(errors.New("commit without digest"), "to pin a commit by hand, write it as ref: <full commit SHA> and drop commit")
-	case source.IsFullCommit(e.Ref) && (e.Commit != "" || e.Digest != "") && e.Commit != e.Ref:
+	case isCommit && (e.Commit != "" || e.Digest != "") && e.Commit != refCommit:
 		return errs.WithHints(errors.New("commit must equal ref, a full commit SHA"), "drop commit and digest, and lola pins the commit again")
 	case (e.Commit != "" || e.Digest != "") && source.IsFolderForm(e.Source):
 		return errs.WithHints(fmt.Errorf("%s is a folder, and folders are never pinned", untrusted.Text(e.Source, untrusted.MaxName)), "drop commit and digest")

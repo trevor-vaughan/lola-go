@@ -1488,7 +1488,7 @@ var _ = Describe("Engine", func() {
 		It("without consent, a pre-install hook aborts before anything is written and a post-install hook is skipped with a warning", func() {
 			_, err := install(engine.Options{Targets: claude.Targets, Ask: ask(false)}, src)
 			Expect(err).To(MatchError("example has a pre-install hook, and lola runs hooks only with your consent"))
-			Expect(errs.Hints(err)).To(ContainElement("review it: lola cache info example"))
+			Expect(errs.Hints(err)).To(ContainElement("review it: lola info --project " + src + " --target claude-code"))
 			Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
 			Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 			Expect(hookLog()).To(BeNil())

@@ -296,6 +296,9 @@ const noConversion = "* -text -eol -filter -ident -working-tree-encoding\n"
 // Before anything is checked out it pins the attributes (noConversion) and reads the tree
 // (checkTree); it returns the tree's executables.
 func checkout(ctx context.Context, spec Spec, scratch string) ([]string, error) {
+	if commit, ok := CommitRef(spec.Ref); ok {
+		spec.Ref = commit
+	}
 	url, ref := spec.Location, spec.Ref
 	clone := []string{"clone", "-q", "--depth", "1", "--no-recurse-submodules", "--no-checkout"}
 	name, err := remoteRef(ctx, spec)
@@ -318,12 +321,16 @@ func checkout(ctx context.Context, spec Spec, scratch string) ([]string, error) 
 	return execs, err
 }
 
-// remoteRef names what spec's ref is on its repository: "" for the default branch (ref ""),
-// refs/heads/<ref> or refs/tags/<ref> for the one branch or tag of that name, or ref itself
-// for a full commit SHA that no branch or tag is named. It refuses a branch and a tag of one
-// name, and any other ref. It never guesses.
+// remoteRef names what spec's ref is on its repository: "" for the default branch (ref ""), ref
+// itself for a full commit SHA, which is always that commit and never looked up as a branch or
+// tag of that name (Plan 9 R-9-U10: a pin cannot be moved by pushing a branch named like it), or
+// refs/heads/<ref> or refs/tags/<ref> for the one branch or tag of that name. It refuses a branch
+// and a tag of one name, and any other ref. It never guesses.
 func remoteRef(ctx context.Context, spec Spec) (string, error) {
 	url, ref := spec.Location, spec.Ref
+	if commit, ok := CommitRef(ref); ok {
+		return commit, nil
+	}
 	if ref == "" {
 		return "", nil
 	}
@@ -346,8 +353,6 @@ func remoteRef(ctx context.Context, spec Spec) (string, error) {
 		return "refs/heads/" + ref, nil
 	case tag:
 		return "refs/tags/" + ref, nil
-	case fullSHARE.MatchString(ref):
-		return ref, nil
 	}
 	hints := []string{"list them: " + errs.ShellJoin([]string{"git", "ls-remote", "--heads", "--tags", shown})}
 	if shortSHARE.MatchString(ref) {
@@ -357,7 +362,8 @@ func remoteRef(ctx context.Context, spec Spec) (string, error) {
 }
 
 // checkoutCommit fetches the one commit spec.Ref (a full SHA) into a new repository at scratch and
-// checks it out at spec.Path, the module path, as for prepareCheckout.
+// checks it out at spec.Path, the module path, as for prepareCheckout. A checkout whose HEAD is
+// any other commit is refused.
 func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, error) {
 	url, ref, sub := spec.Location, spec.Ref, spec.Path
 	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
@@ -376,12 +382,24 @@ func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, e
 		return nil, errs.WithHints(fmt.Errorf("%s did not serve commit %s; servers using git protocol v0 refuse a commit "+
 			"that no branch or tag points to: %w", shown, shownRef, err), "use --ref with a branch or tag that contains the commit")
 	}
+	if err := tagObject(ctx, scratch, ref); err != nil {
+		return nil, err
+	}
 	execs, err := prepareCheckout(ctx, scratch, "FETCH_HEAD", sub)
 	if err != nil {
 		return nil, err
 	}
-	_, err = runGit(ctx, scratch, "checkout", "-q", "--detach", "FETCH_HEAD")
-	return execs, err
+	if _, err := runGit(ctx, scratch, "checkout", "-q", "--detach", "FETCH_HEAD"); err != nil {
+		return nil, err
+	}
+	head, err := runGit(ctx, scratch, "rev-parse", "HEAD")
+	if err != nil {
+		return nil, err
+	}
+	if got := strings.TrimSpace(string(head)); got != ref {
+		return nil, fmt.Errorf("%s served commit %s for %s; lola installs only the commit asked for", shown, untrusted.Text(got, untrusted.MaxName), shownRef)
+	}
+	return execs, nil
 }
 
 // prepareCheckout readies the repository at scratch for checking out rev: it writes
@@ -458,4 +476,37 @@ func repoName(loc string) string {
 		_, p, _ = strings.Cut(rest, "/")
 	}
 	return strings.TrimSuffix(path.Base(strings.TrimRight(p, "/")), ".git")
+}
+
+// tagObject refuses ref, fetched into the repository at scratch, when it names an annotated tag
+// object rather than a commit (TagObjectError), which a checkout would peel to its commit.
+func tagObject(ctx context.Context, scratch, ref string) error {
+	kind, err := runGit(ctx, scratch, "cat-file", "-t", ref)
+	if err != nil || strings.TrimSpace(string(kind)) != "tag" {
+		return err
+	}
+	body, err := runGit(ctx, scratch, "cat-file", "tag", ref)
+	if err != nil {
+		return err
+	}
+	commit, err := runGit(ctx, scratch, "rev-parse", ref+"^{commit}")
+	if err != nil {
+		return err
+	}
+	name := ""
+	for line := range strings.Lines(string(body)) {
+		if t, ok := strings.CutPrefix(strings.TrimSpace(line), "tag "); ok {
+			name = t
+			break
+		}
+	}
+	return &TagObjectError{Ref: ref, Tag: untrusted.Text(name, untrusted.MaxName), Commit: strings.TrimSpace(string(commit))}
+}
+
+// TagObjectError refuses a --ref that is the SHA of an annotated tag object, not a commit: Tag
+// is the tag's name and Commit the commit it points to, which a run at that commit would fetch.
+type TagObjectError struct{ Ref, Tag, Commit string }
+
+func (e *TagObjectError) Error() string {
+	return e.Ref + " is the annotated tag " + e.Tag + ", not a commit; it points to commit " + e.Commit
 }

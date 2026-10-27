@@ -53,6 +53,7 @@ type RuntimeHook struct {
 	Fields         string   `json:"fields,omitempty"`           // every other field, as JSON
 	GroupFields    string   `json:"group_fields,omitempty"`     // the matcher group's fields other than matcher and hooks, as JSON
 	Status         string   `json:"status"`
+	settings       string   // the settings file, root-relative, whose consent covers the hook
 }
 
 // consentRuntimeHooks decides, per module and settings file, whether the intents that install
@@ -103,7 +104,7 @@ func (e *Engine) consentRuntimeHooks(sc Scope, changes []plan.ModuleChange, opts
 				return err
 			}
 			for j := range hooks {
-				hooks[j].Status = status
+				hooks[j].Status, hooks[j].settings = status, d.settings
 			}
 			if mr := slices.IndexFunc(res.Modules, func(m ModuleResult) bool { return m.Name == c.Name }); mr >= 0 {
 				res.Modules[mr].RuntimeHooks = append(res.Modules[mr].RuntimeHooks, hooks...)

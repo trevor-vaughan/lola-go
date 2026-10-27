@@ -916,7 +916,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n  strict: false\n  tools: [rg]\n",
 			"commands/c.md.liquid": "{{ vars.language }}\n"})
 		writeTree(filepath.Join(proj, "mods", "bare"), map[string]string{"commands/b.md": "b\n"})
-		_, err := e.AddSource(ctx, proj, "mods/kit", "", "", nil) // lola cache info shows the version refused
+		_, err := e.AddSource(ctx, proj, "mods/kit", "", "", nil) // lola info shows the version refused
 		Expect(err).NotTo(HaveOccurred())
 		for vars, want := range map[string]string{
 			"{lang: rust}":           "project.yml: modules[kit].vars.lang: kit declares no var lang; it declares language, strict, tools",
@@ -927,7 +927,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 			writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: mods/kit, vars: " + vars + "}\n"})
 			_, err := sync(engine.Options{Display: []string{"--json"}})
 			Expect(err).To(MatchError(want), vars)
-			Expect(errs.Hints(err)).To(Equal([]string{"lola cache info kit --json"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola info --project kit --json"}))
 			Expect(exists(".claude/commands/c.md")).To(BeFalse(), "nothing renders")
 
 			rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil)
@@ -1034,7 +1034,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		project("{temperature: hot}")
 		_, err = sync(engine.Options{})
 		Expect(err).To(MatchError("project.yml: modules[kit].vars.temperature: kit's default is a number; this is a string"))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola cache info kit"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola info --project kit"}))
 
 		project("{temperature: 1}")
 		_, err = sync(engine.Options{})

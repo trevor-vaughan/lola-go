@@ -309,7 +309,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		}
 		unlock()
 		unlock = func() {}
-		replaced, warn, err := u.write(&res.Profiles[i], was)
+		replaced, warn, err := u.write(&res.Profiles[i], was, []string{q})
 		switch {
 		case replaced:
 			res.Profiles[i].Written, out.Outcome = true, UpdateUpdated
@@ -539,7 +539,9 @@ func (u *updateRun) fetch(name string) (_ *RemoteProfile, was profile.Origin, _ 
 // write replaces the kept remote profile rp.name with rp under the exclusive profiles lock, once
 // it is still the one whose origin was shown (was), crash-safe (writeRemote; ruling R-6b3b-8).
 // written reports that the new profile is in place; a failure after that is warn, not an error.
-func (u *updateRun) write(rp *RemoteProfile, was profile.Origin) (written bool, warn *Notice, err error) {
+// A profile that changed meanwhile is refused, hinting the update of again, the qualified names
+// of the profiles the refusal leaves unwritten.
+func (u *updateRun) write(rp *RemoteProfile, was profile.Origin, again []string) (written bool, warn *Notice, err error) {
 	e := u.e
 	unlock, err := e.lockProfiles(true)
 	if err != nil {
@@ -552,7 +554,7 @@ func (u *updateRun) write(rp *RemoteProfile, was profile.Origin) (written bool, 
 	q := string(profile.KindRemote) + ":" + rp.name
 	if _, now, err := profile.LoadRemote(e.profilePath(u.sc, profile.KindRemote, rp.name)); err != nil || now != was {
 		return false, nil, errs.WithHints(errors.Join(fmt.Errorf("%s changed while you were asked; it was not updated", shown(q)), err),
-			"run it again: "+e.ProfileRun(u.given, append([]string{q, "--update"}, u.flags...)...))
+			"run it again: "+e.ProfileRun(u.given, slices.Concat(again, []string{"--update"}, u.flags)...))
 	}
 	written, err = e.writeRemote(rp.name, rp.data, rp.origin)
 	if !written {
@@ -1012,17 +1014,22 @@ func (e *Engine) stage(rp RemoteProfile, was profile.Origin, out int) {
 
 // CommitStaged writes every profile the update req staged, in the order it asked about them,
 // under the exclusive profiles lock, each refused when it changed since it was read
-// (updateRun.write, whose hint repeats req), then forgets them; DropStaged forgets them unwritten
-// (a No at the command's receipt). A warning of a write is added to res, the update's result. The
-// first refusal stops it: before any write, it is the error; after one, it is an
-// UpdateStoppedError carrying res with what was written, the refused profile and those after it
-// skipped, and nothing applied: its hints sync each scope of the update.
+// (updateRun.write, whose hint repeats req's update for every profile the refusal leaves
+// unwritten: the refused one and each staged after it), then forgets them; DropStaged forgets
+// them unwritten (a No at the command's receipt). A warning of a write is added to res, the
+// update's result. The first refusal stops it: before any write, it is the error; after one,
+// it is an UpdateStoppedError carrying res with what was written, the refused profile and those
+// after it skipped, and nothing applied: its hints sync each scope of the update.
 func (e *Engine) CommitStaged(req ProfileUpdateRequest, res *ProfileUpdateResult) error {
 	defer e.DropStaged()
 	staged := slices.SortedFunc(maps.Values(e.staged), func(a, b stagedRemote) int { return cmp.Compare(a.out, b.out) })
 	u := &updateRun{e: e, given: req.Scopes, sc: Scope{Kind: target.User}, flags: slices.Concat(req.Flags, req.Rerun)}
 	for i, s := range staged {
-		written, warn, err := u.write(&s.rp, s.was)
+		var unwritten []string // a refusal stops here, leaving this profile and every later one as they were
+		for _, r := range staged[i:] {
+			unwritten = append(unwritten, string(profile.KindRemote)+":"+r.rp.name)
+		}
+		written, warn, err := u.write(&s.rp, s.was, unwritten)
 		if warn != nil {
 			res.Notices = append(res.Notices, *warn)
 		}

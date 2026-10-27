@@ -371,6 +371,12 @@ modules:
 			Expect(m.Find("kit")).To(And(HaveField("Commit", sha1), HaveField("Digest", digest)))
 		})
 
+		It("loads a full-SHA ref in capitals pinned to that commit", func() {
+			write(entry("    source: https://example.com/kit.git\n    ref: " + strings.ToUpper(sha1) + "\n    commit: " + sha1 + "\n    digest: " + digest + "\n"))
+			_, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
 		It("accepts a pinned archive and an unpinned folder", func() {
 			write("version: 1\nmodules:\n  - name: a\n    source: https://example.com/a.tgz\n    digest: " + digest +
 				"\n  - name: b\n    source: tools/b\n")
@@ -396,6 +402,8 @@ modules:
 			Entry("a commit without a digest", entry("    source: https://example.com/kit.git\n    commit: "+sha1+"\n"),
 				"module kit: commit without digest"),
 			Entry("a commit that is not the full-SHA ref", entry("    source: https://example.com/kit.git\n    ref: "+strings.Repeat("b", 40)+
+				"\n    commit: "+sha1+"\n    digest: "+digest+"\n"), "module kit: commit must equal ref"),
+			Entry("a commit that is not the full-SHA ref in capitals", entry("    source: https://example.com/kit.git\n    ref: "+strings.Repeat("B", 40)+
 				"\n    commit: "+sha1+"\n    digest: "+digest+"\n"), "module kit: commit must equal ref"),
 			Entry("a pinned folder", entry("    source: tools/kit\n    digest: "+digest+"\n"),
 				"module kit: tools/kit is a folder, and folders are never pinned"),

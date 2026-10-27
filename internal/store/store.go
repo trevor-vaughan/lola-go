@@ -70,6 +70,9 @@ const (
 // idRE is the form of a version id: the first 12 hex digits of the content digest.
 var idRE = regexp.MustCompile(`^[0-9a-f]{12}$`)
 
+// digestRE is the form of a content digest as Digest computes it.
+var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
 // checkID refuses a version id that is not one lola writes, before it reaches a path.
 func checkID(name, id string) error {
 	if !idRE.MatchString(id) {
@@ -219,11 +222,12 @@ func (s *Store) Prepare(req PutRequest) (Staged, error) {
 	// about; its warnings include everything the cached load warns about.
 	loadWarnings := cached.Warnings
 	cached.Warnings = m.Warnings
-	meta := Meta{Format: m.Format, Manifest: m.Manifest, OthersPresent: m.Shadowed, Ref: req.Ref, Commit: req.Commit,
+	ref := source.RecordedRef(req.Ref)
+	meta := Meta{Format: m.Format, Manifest: m.Manifest, OthersPresent: m.Shadowed, Ref: ref, Commit: req.Commit,
 		FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest, Executables: execs}
 	v := Version{Name: m.Name, ID: strings.TrimPrefix(digest, "sha256:")[:12], ContentDir: req.Staged, Commit: req.Commit, Meta: meta, Module: cached}
 	return Staged{Version: v, LoadWarnings: loadWarnings, ReplaceGoneOrigin: req.ReplaceGoneOrigin, source: req.Source, typ: req.Type, path: req.Path,
-		ref: req.Ref, components: req.Components.Clone()}, nil
+		ref: ref, components: req.Components.Clone()}, nil
 }
 
 // NameTakenError refuses a module whose name the cache holds from another source or path: the
@@ -357,20 +361,61 @@ func setHead(heads []Head, head Head) []Head {
 	return out
 }
 
-// Head returns the newest version fetched for ref.
+// Head returns the newest version fetched for ref. A ref that is a full commit SHA, in any case,
+// is served only by a head that records that commit as the one its fetch resolved (R-9-27).
 func (s *Store) Head(name, ref string) (Version, bool, error) {
 	o, found, err := s.Origin(name)
 	if err != nil || !found {
 		return Version{}, false, err
 	}
+	commit, isCommit := source.CommitRef(ref)
 	for _, h := range o.Heads {
-		if h.Ref == ref {
+		if isCommit && strings.ToLower(h.Ref) == commit && h.Commit == commit || !isCommit && h.Ref == ref {
 			v, err := s.Load(name, h.Digest)
 			v.Commit = h.Commit
 			return v, err == nil, err
 		}
 	}
 	return Version{}, false, nil
+}
+
+// AtCommit is the digest of name's version whose recorded commit is commit (the commit a fetch
+// resolved, which a head or the version itself records; never a head's ref), "" when none. A
+// version whose record holds no well-formed digest with its id is none.
+func (s *Store) AtCommit(name, commit string) (string, error) {
+	o, found, err := s.Origin(name)
+	if err != nil || !found || commit == "" {
+		return "", err
+	}
+	ids := []string{}
+	for _, h := range o.Heads {
+		if h.Commit == commit {
+			ids = append(ids, h.Digest)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(s.dir, name, "versions"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", err
+	}
+	for _, ent := range entries {
+		ids = append(ids, ent.Name())
+	}
+	for _, id := range ids {
+		if checkID(name, id) != nil {
+			continue
+		}
+		var meta Meta
+		if readYAML(filepath.Join(s.dir, name, "versions", id, originFile), &meta) != nil {
+			continue // a record lola cannot read names no commit: the source is fetched instead
+		}
+		if !digestRE.MatchString(meta.Digest) || meta.Digest[len("sha256:"):][:12] != id {
+			continue // a record that names no digest of this version: the source is fetched instead
+		}
+		if meta.Commit == commit || slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Commit == commit && h.Digest == id }) {
+			return meta.Digest, nil
+		}
+	}
+	return "", nil
 }
 
 // Pinned returns the cached version whose digest is digest, read from a snapshot: its

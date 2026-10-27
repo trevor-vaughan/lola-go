@@ -1,12 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
-	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -49,7 +47,7 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 		Long: "Your cache is lola's machine-wide copy of fetched modules ($XDG_CACHE_HOME/lola/modules).\n" +
 			"Installing renders from it; removing a module here does not touch installed files.\n" +
 			"With no subcommand, lists the cache.",
-		Example:                    "  lola cache add ./my-module\n  lola cache list\n  lola cache info my-module",
+		Example:                    "  lola cache add ./my-module\n  lola cache list\n  lola info my-module",
 		GroupID:                    groupStore,
 		Args:                       cobra.ArbitraryArgs,
 		ValidArgsFunction:          aliasCompletions,
@@ -61,118 +59,11 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 			return groupRunE(cmd, args)
 		},
 	}
-	cache.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheInfoCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd())
+	cache.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd())
 	root.AddCommand(cache)
 }
 
-// moduleView is a stored version as shown by cache add and cache info.
-type moduleView struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Version     string        `json:"version"`
-	Digest      string        `json:"digest"`
-	Format      string        `json:"format"`
-	Source      string        `json:"source"`
-	Type        string        `json:"type"`
-	Path        string        `json:"path,omitempty"`
-	Heads       []headView    `json:"heads"`
-	Skills      []string      `json:"skills"`
-	Commands    []string      `json:"commands"`
-	Agents      []string      `json:"agents"`
-	MCPServers  []string      `json:"mcp_servers"`
-	Rules       []string      `json:"rules"`
-	Hooks       []module.Hook `json:"hooks"`
-	Warnings    []string      `json:"warnings"`
-	// Plan 7: the vars the module declares, its template files, partials and attribute files,
-	// each author text, cleaned.
-	Vars       []varView `json:"vars"`
-	Templates  []string  `json:"templates"`
-	Partials   []string  `json:"partials"`
-	Attributes []string  `json:"attributes"`
-}
-
-// maxVarText is the longest var default cache info shows, as a var holds at most 4096 bytes.
-const maxVarText = 4096
-
-// varView is a var a module declares: its name, type (string, boolean or list) and default.
-type varView struct {
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Default any    `json:"default"`
-	text    string // name = default, as the human view shows it
-}
-
-type headView struct {
-	Ref    string `json:"ref"`
-	Digest string `json:"digest"`
-}
-
-func newModuleView(v store.Version, o store.Origin) moduleView {
-	m := v.Module
-	mv := moduleView{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName), Version: untrusted.Text(m.Version, untrusted.MaxName), Digest: v.Meta.Digest, Format: v.Meta.Format,
-		Source: o.Source, Type: o.Type, Path: o.Path, Heads: []headView{}, Skills: []string{}, Commands: []string{}, Agents: []string{},
-		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}, Vars: []varView{}, Templates: []string{},
-		Partials: []string{}, Attributes: []string{}}
-	for _, h := range o.Heads {
-		mv.Heads = append(mv.Heads, headView{Ref: h.Ref, Digest: h.Digest})
-	}
-	for _, s := range m.Skills {
-		mv.Skills = append(mv.Skills, s.Name)
-	}
-	for _, c := range m.Commands {
-		mv.Commands = append(mv.Commands, c.Name)
-	}
-	for _, ag := range m.Agents {
-		mv.Agents = append(mv.Agents, ag.Name)
-	}
-	for _, s := range m.MCPServers {
-		mv.MCPServers = append(mv.MCPServers, s.Name)
-	}
-	for _, r := range m.Rules {
-		mv.Rules = append(mv.Rules, r.Name)
-	}
-	for _, h := range m.DeclaredHooks {
-		mv.Hooks = append(mv.Hooks, module.Hook{Event: h.Event, Script: untrusted.Text(h.Script, len(h.Script))})
-	}
-	for _, name := range slices.Sorted(maps.Keys(m.Vars)) {
-		vv := varView{Name: untrusted.Text(name, untrusted.MaxName), text: untrusted.Text(name, untrusted.MaxName) + " = " + module.VarText(m.Vars[name])}
-		switch d := m.Vars[name].(type) {
-		case bool:
-			vv.Type, vv.Default = "boolean", d
-		case int64, float64:
-			vv.Type, vv.Default = "number", d
-		case []string:
-			items := []string{}
-			for _, item := range d {
-				items = append(items, untrusted.Text(item, maxVarText))
-			}
-			vv.Type, vv.Default = "list", items
-		default: // a string
-			vv.Type, vv.Default = "string", untrusted.Text(fmt.Sprint(d), maxVarText)
-		}
-		mv.Vars = append(mv.Vars, vv)
-	}
-	for _, t := range m.Templates() {
-		mv.Templates = append(mv.Templates, untrusted.Text(t.File, untrusted.MaxName))
-	}
-	slices.Sort(mv.Templates)
-	for _, p := range slices.Sorted(maps.Keys(m.Partials)) {
-		mv.Partials = append(mv.Partials, untrusted.Text(p, untrusted.MaxName))
-	}
-	for _, f := range m.AttributeFiles() {
-		mv.Attributes = append(mv.Attributes, untrusted.Text(f, untrusted.MaxName))
-	}
-	mv.Warnings = append(mv.Warnings, m.Warnings...)
-	for _, n := range v.Meta.OthersPresent {
-		// A version fresh from cache add already carries its detection warnings.
-		if w := module.ShadowWarning(v.Meta.Manifest, n); !slices.Contains(mv.Warnings, w) {
-			mv.Warnings = append(mv.Warnings, w)
-		}
-	}
-	return mv
-}
-
-func printModuleView(w io.Writer, s style, mv moduleView) {
+func printModuleView(w io.Writer, s style, mv engine.ModuleView) {
 	if s.plain {
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", mv.Name, mv.Version, mv.Digest, mv.Format, mv.Source)
 		return
@@ -195,7 +86,7 @@ func printModuleView(w io.Writer, s style, mv moduleView) {
 	}
 	vars := make([]string, len(mv.Vars)) // language = "go"
 	for i, v := range mv.Vars {
-		vars[i] = v.text
+		vars[i] = v.Line()
 	}
 	for _, kv := range []struct {
 		k string
@@ -258,13 +149,13 @@ func (a *app) cacheAddCmd() *cobra.Command {
 				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path, outputFlags(cmd))
 			}
 			if err != nil {
-				return err
+				return tagRefHint(cmd, args, err)
 			}
 			o, _, err := eng.Store.Origin(v.Name)
 			if err != nil {
 				return err
 			}
-			mv := newModuleView(v, o)
+			mv := engine.NewModuleView(v, o)
 			return a.emit(cmd, func(w io.Writer, s style) {
 				printModuleView(w, s, mv)
 				if !s.plain {
@@ -351,9 +242,9 @@ func (a *app) cacheListRun(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	views := []moduleView{}
+	views := []engine.ModuleView{}
 	for _, c := range cached {
-		views = append(views, newModuleView(c.Version, c.Origin))
+		views = append(views, engine.NewModuleView(c.Version, c.Origin))
 	}
 	return a.emit(cmd, func(w io.Writer, s style) {
 		printSkipped(cmd.ErrOrStderr(), s, warnings)
@@ -374,30 +265,6 @@ func (a *app) cacheListRun(cmd *cobra.Command, _ []string) error {
 		}
 		_ = tw.Flush()
 	}, map[string]any{"modules": views, "warnings": warnings})
-}
-
-func (a *app) cacheInfoCmd() *cobra.Command {
-	g := argGuide{noun: "module", find: "lola cache list", usage: "lola cache info <module>", examples: []string{"lola cache info my-module"}}
-	return &cobra.Command{
-		Use:               "info <module>",
-		Aliases:           []string{"show", "view"},
-		Short:             "Show a cached module's metadata, source, artifacts and refused hooks",
-		Example:           g.example(),
-		Args:              cobra.MatchAll(g.args(1), cobra.MaximumNArgs(1)),
-		ValidArgsFunction: a.completeStored,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			eng, err := a.engine()
-			if err != nil {
-				return err
-			}
-			v, o, err := eng.Current(args[0], outputFlags(cmd)...)
-			if err != nil {
-				return err
-			}
-			mv := newModuleView(v, o)
-			return a.emit(cmd, func(w io.Writer, s style) { printModuleView(w, s, mv) }, mv)
-		},
-	}
 }
 
 func (a *app) cacheUpdateCmd() *cobra.Command {
@@ -581,4 +448,14 @@ func (a *app) initCmd() *cobra.Command {
 	_ = cmd.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(engine.InitFormats(), cobra.ShellCompDirectiveNoFileComp))
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	return cmd
+}
+
+// tagRefHint is err, the failure of a run of cmd with args and a --ref, hinting that run at the
+// commit an annotated tag object points to when the --ref named the tag object (R-9-27, RR4).
+func tagRefHint(cmd *cobra.Command, args []string, err error) error {
+	t, ok := errors.AsType[*source.TagObjectError](err)
+	if !ok {
+		return err
+	}
+	return errs.WithHints(err, runWithout(cmd, args, "ref")+" --ref "+t.Commit)
 }
