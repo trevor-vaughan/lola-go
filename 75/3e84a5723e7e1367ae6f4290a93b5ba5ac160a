@@ -1,0 +1,45 @@
+internal/engine/remote_add.go
+  s_6c657de1929f08::t_add1248d55469c 131,135
+internal/engine/remote_update.go
+  s_6c657de1929f08::t_add1248d55469c 513,517
+internal/engine/sources_test.go
+  s_6c657de1929f08::t_7ea8f525b3db94 736-737
+internal/engine/engine.go
+  s_6c657de1929f08::t_add1248d55469c 495,499
+internal/engine/cache.go
+  s_6c657de1929f08::t_add1248d55469c 141,145
+internal/engine/info.go
+  s_6c657de1929f08::t_add1248d55469c 303,307
+internal/engine/ops.go
+  s_6c657de1929f08::t_add1248d55469c 200,204,1228,1232
+internal/engine/check.go
+  s_6c657de1929f08::t_add1248d55469c 157,182,186-190,194,200,204
+internal/engine/staging.go
+  s_6c657de1929f08::t_add1248d55469c 12-13,21-84,86-97,101-102,125-126,128-135,143-163
+internal/engine/market_install.go
+  s_6c657de1929f08::t_add1248d55469c 333,337
+internal/engine/sync.go
+  s_6c657de1929f08::t_add1248d55469c 428,432
+internal/engine/staging_internal_test.go
+  s_6c657de1929f08::t_7ea8f525b3db94 1-112
+internal/engine/choices.go
+  s_6c657de1929f08::t_add1248d55469c 138,142
+internal/engine/market.go
+  s_6c657de1929f08::t_add1248d55469c 709,713,1002,1006,1264,1268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "753e84a5723e7e1367ae6f4290a93b5ba5ac160a",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
