@@ -1,0 +1,27 @@
+docs/architecture.md
+  s_8d03b9505d742a::t_4dbd632903aac7 179-180
+docs/guides/migrating.md
+  s_8d03b9505d742a::t_4dbd632903aac7 20,86-87,126-181
+docs/decisions.md
+  s_8d03b9505d742a::t_4dbd632903aac7 153
+docs/testing.md
+  s_8d03b9505d742a::t_4dbd632903aac7 162-164
+docs/usage.md
+  s_8d03b9505d742a::t_4dbd632903aac7 749-754,757-760,763-765,1754-1758
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "81612696d56f20d99d1e26d3361f807f3d6d5836",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
