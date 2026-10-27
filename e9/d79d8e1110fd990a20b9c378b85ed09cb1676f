@@ -1,0 +1,65 @@
+docs/architecture.md
+  s_8d03b9505d742a::t_739b2a53014d5e 179-180
+docs/decisions.md
+  s_8d03b9505d742a::t_9ee4609cff58cb 153
+docs/guides/migrating.md
+  s_8d03b9505d742a::t_1b13581f48df49 20,86-87,126-170
+docs/testing.md
+  s_8d03b9505d742a::t_cf1e07156477a4 158-160
+docs/usage.md
+  s_8d03b9505d742a::t_54b939d148a931 749-754,757-760,763-765,1740-1744
+e2e/migrate/migrate.venom.yml
+  s_8d03b9505d742a::t_3dcd43b0f4cd3e 8,15,183-233
+e2e/migrate/scripts/python-setup-c.sh
+  s_8d03b9505d742a::t_879afb81042227 1-18
+internal/cli/cmd_migrate.go
+  s_8d03b9505d742a::t_42c3754f64af37 6-7,9,14-15,18,24,42-46,50-51,68-75,84-89,93,98,116,129-130,134-200,281-286,293,310-334,402-405,443,451-453
+internal/cli/confirm_test.go
+  s_8d03b9505d742a::t_bd153d97a27fa7 110,112
+internal/cli/flow_test.go
+  s_8d03b9505d742a::t_2381e10495bc44 41-42,56-57,122-129
+internal/cli/huh.go
+  s_8d03b9505d742a::t_a34dadb36f3d44 9,589-626
+internal/cli/huh_internal_test.go
+  s_8d03b9505d742a::t_934c6b87e9fca5 374-406
+internal/cli/migrate_test.go
+  s_8d03b9505d742a::t_7a1d59579a2193 13,97-191
+internal/cli/prompter.go
+  s_8d03b9505d742a::t_258c5aeae01d5a 50-72,281-284
+internal/migrate/helpers_test.go
+  s_8d03b9505d742a::t_f3c7c1fe310cb3 72-80
+internal/migrate/plan.go
+  s_8d03b9505d742a::t_a83e3f2db8baea 49-50,52-59,83-85,89-95,155-159,168-169,171,173-177,180,186,191,201,209-216,218-221,226-227,245,247-248,256-263,269,274-275,279,294-295,381,394-418,423-433,435-446,448,455-456,605-606,673-674,684
+internal/migrate/plan_test.go
+  s_8d03b9505d742a::t_69750d86efef8a 37,41,44,48,244,463-569
+internal/migrate/read.go
+  s_8d03b9505d742a::t_8459382ab74ff1 37-38,45,432,439-443,445,450-452,454,456,464,470,472,474,477,479
+internal/migrate/read_test.go
+  s_8d03b9505d742a::t_142da2099a8ddd 274-290
+internal/migrate/remap.go
+  s_8d03b9505d742a::t_b0402feb11ebc1 1-252
+internal/migrate/remap_internal_test.go
+  s_8d03b9505d742a::t_18d92da8b8c314 1-49
+internal/migrate/remap_test.go
+  s_8d03b9505d742a::t_8279eb90873374 1-59
+internal/migrate/run.go
+  s_8d03b9505d742a::t_f945154176aaa0 30-33,37-38,49,75-90,227,249,479-481,700-703,709-724
+internal/migrate/run_test.go
+  s_8d03b9505d742a::t_fad77ab931ebd2 85,107,110,114,116,267-276,853,1044,1145,1148-1153,1157-1164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e9d79d8e1110fd990a20b9c378b85ed09cb1676f",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
