@@ -1,0 +1,26 @@
+internal/cli/help.go
+  s_8d03b9505d742a::t_fa6aa240dfe741 252
+internal/cli/conventions_test.go
+  s_8d03b9505d742a::t_23d84c99559b06 65-78
+  s_8d03b9505d742a::t_1ee60fa28140d5 5-6
+internal/cli/cmd_market.go
+  s_8d03b9505d742a::t_2157c2ae9bb91d 167
+  s_8d03b9505d742a::t_25782a69dab4da 131
+  s_8d03b9505d742a::t_0db08678c3269a 156-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5913f0b8ad1a0a76c837f295bbfe8b6cc99c631b",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
