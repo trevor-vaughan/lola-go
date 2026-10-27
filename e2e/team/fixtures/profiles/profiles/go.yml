@@ -1,0 +1,9 @@
+version: 1
+description: Go tooling
+targets: [claude-code]
+modules:
+  - name: fmt
+    source: https://git.lola.test:8443/fmt.git
+    ref: main
+    commit: e01efb650866f2a561be1b052ce4a73849db8d5d
+    digest: sha256:80d5b20a7147c3753aaabacac3f66cd39a49f59c59bf929f65af368fec814b90

@@ -174,9 +174,9 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string, display []st
 			return nil, "", none, err
 		}
 		if !ok {
-			return nil, "", none, errs.WithHints(fmt.Errorf("%q is neither a source nor a module in your cache", arg),
-				"pass a module folder or another source, e.g. lola check ./my-module", "sources are "+source.AcceptedForms,
-				"cached modules: lola cache list")
+			return nil, "", none, errs.WithHints(fmt.Errorf("%q is neither a source nor a module in your cache; "+
+				"pass a module folder or another source, e.g. lola check ./my-module; sources are %s", arg, source.AcceptedForms),
+				"cached modules: "+errs.ShellJoin(append([]string{"lola", "cache", "list"}, display...)))
 		}
 		return v.Module, v.ContentDir, none, nil
 	}

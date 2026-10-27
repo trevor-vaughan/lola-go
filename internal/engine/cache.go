@@ -35,34 +35,51 @@ type SearchHit struct {
 	Install     string   `json:"install"`
 }
 
-// NotStored is the error for a module that is not in the cache.
-func NotStored(name string) error {
-	return errs.WithHints(fmt.Errorf("%s is not in your cache", name), "cached modules: lola cache list")
+// NotStored is the error for a module that is not in the cache, hinting the listing with the
+// run's output flags (display).
+func NotStored(name string, display ...string) error {
+	return errs.WithHints(fmt.Errorf("%s is not in your cache", name),
+		"cached modules: "+errs.ShellJoin(append([]string{"lola", "cache", "list"}, display...)))
 }
 
 // AddSource fetches a source into the cache: lola cache add, and the install flow's Add a
-// source…. Adding to the cache installs nothing.
-func (e *Engine) AddSource(ctx context.Context, cwd, arg, ref, path string) (store.Version, error) {
+// source…. Adding to the cache installs nothing. display is the run's output flags, which its
+// hints keep.
+func (e *Engine) AddSource(ctx context.Context, cwd, arg, ref, path string, display []string) (store.Version, error) {
 	spec, ok, err := source.Parse(arg, cwd)
 	if err != nil {
 		return store.Version{}, err
 	}
 	if !ok {
-		return store.Version{}, errs.WithHints(fmt.Errorf("%q is not a source", arg), "sources are "+source.AcceptedForms)
+		return store.Version{}, fmt.Errorf("%q is not a source; sources are %s", arg, source.AcceptedForms)
 	}
 	spec.Ref, spec.Path = ref, path
-	return e.Fetch(ctx, spec)
+	v, err := e.Fetch(ctx, spec)
+	return v, nameTaken(err, display)
+}
+
+// nameTaken replaces the hint of the cache's refusal of a second source for a name with one that
+// keeps the run's output flags (display). It does so only for the refusal as the cache made it,
+// its words and its one hint: one a caller wrapped with more words or more hints keeps its
+// hints, which belong to that caller. Any other error is returned as it is.
+func nameTaken(err error, display []string) error {
+	taken, ok := errors.AsType[*store.NameTakenError](err)
+	if !ok || err.Error() != taken.Error() || !slices.Equal(errs.Hints(err), []string{taken.RemoveHint()}) {
+		return err
+	}
+	return errs.WithHints(taken, taken.RemoveHint(display...))
 }
 
 // Current returns a stored module's origin and the version used for its metadata: the
-// default-ref head if there is one, else the first head.
-func (e *Engine) Current(name string) (store.Version, store.Origin, error) {
+// default-ref head if there is one, else the first head. display is the run's output flags,
+// which the refusal of a module not in the cache keeps in its hint.
+func (e *Engine) Current(name string, display ...string) (store.Version, store.Origin, error) {
 	o, found, err := e.Store.Origin(name)
 	if err != nil {
 		return store.Version{}, store.Origin{}, err
 	}
 	if !found || len(o.Heads) == 0 {
-		return store.Version{}, store.Origin{}, NotStored(name)
+		return store.Version{}, store.Origin{}, NotStored(name, display...)
 	}
 	id := o.Heads[0].Digest
 	for _, h := range o.Heads {
@@ -109,8 +126,9 @@ type UpdateResult struct {
 
 // Update re-fetches every ref that has a head, for the named modules or all of them (§6.2).
 // Moving a head changes no installation: render installs the version lock.json records (Plan
-// 6a §10.7), which a notice says when a head moved.
-func (e *Engine) Update(ctx context.Context, names []string) (_ *UpdateResult, err error) {
+// 6a §10.7), which a notice says when a head moved. display is the run's output flags, which
+// its hints keep.
+func (e *Engine) Update(ctx context.Context, names []string, display ...string) (_ *UpdateResult, err error) {
 	swept := e.sweepRuns()
 	run, err := e.runDir()
 	if err != nil {
@@ -130,7 +148,7 @@ func (e *Engine) Update(ctx context.Context, names []string) (_ *UpdateResult, e
 			return nil, err
 		}
 		if !found {
-			return nil, NotStored(n)
+			return nil, NotStored(n, display...)
 		}
 		for _, h := range o.Heads {
 			v, err := e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: h.Ref, Components: o.Components}, "", n, run)

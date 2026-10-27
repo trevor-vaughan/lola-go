@@ -245,8 +245,8 @@ func (a *app) uninstallCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				printResult(cmd.ErrOrStderr(), style{}, "", preview)
-				if err := a.confirm(cmd, args, false, "Uninstall "+strings.Join(args, ", ")+"?"); err != nil {
+				show := func(w io.Writer) { printResult(w, style{}, "", preview) }
+				if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", preview, show); err != nil {
 					return err
 				}
 			}
@@ -295,6 +295,9 @@ func (a *app) listCmd() *cobra.Command {
 			}
 			req, err := a.scopeRequest(cwd, false)
 			if err != nil {
+				return err
+			}
+			if err := eng.CheckTargets(targets); err != nil {
 				return err
 			}
 			scs, err := eng.ResolveReadScope(req)

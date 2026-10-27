@@ -108,7 +108,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 	if req.DryRun {
 		forced = append(forced, "-n")
 	}
-	force := "or remove it anyway: " + e.Command(sc, "profile", forced...)
+	force := "or remove it anyway: " + e.Command(sc, "profile", append(forced, req.Display...)...)
 	// A profile that does not load fails every check that reads it; their hints would name this
 	// very removal, so only --force is offered.
 	_, _, loadErr := profile.LoadRemote(e.profilePath(sc, profile.KindRemote, name))
@@ -151,10 +151,11 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 				case profile.DefaultName: // always on: it stops extending q only when edited
 					hints = append(hints, "remove "+shown(name)+" from the extends: of "+shown(e.profilePath(s, profile.KindUser, profile.DefaultName))+" first")
 				case shown(q):
-					hints = append(hints, "turn "+u+" off first: "+e.Command(s, "profile", u, "--off"))
+					hints = append(hints, "turn the profile off first: "+e.Command(s, "profile", append([]string{u, "--off"}, req.Display...)...))
 				default:
+					// The label is lola's own: the profile's name, author text, is in the command only.
 					kind, own, _ := strings.Cut(u, ":")
-					hints = append(hints, "turn "+u+" off first: "+e.Command(s, "profile", u, "--off"),
+					hints = append(hints, "turn the profile off first: "+e.Command(s, "profile", append([]string{u, "--off"}, req.Display...)...),
 						"or remove "+shown(name)+" from the extends: of "+shown(e.profilePath(s, profile.Kind(kind), own)))
 				}
 			}

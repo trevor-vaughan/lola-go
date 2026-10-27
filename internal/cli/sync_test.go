@@ -154,16 +154,16 @@ var _ = Describe("lola sync", func() {
 		r := lola("sync", "-C", proj, "-y")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring(".lola/project.yml changed since lola last wrote it or you last trusted it:\n  + other         mods/other\n"))
-		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust for changes to .lola/project.yml, and there is no terminal to ask on\n" +
-			"  hint: see them: lola sync --project -n\n  hint: then accept them: lola sync --project --trust -y\n" +
-			"  hint: -y confirms removals only; accept the changes with --trust\n"))
+		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust for changes to .lola/project.yml, and there is no terminal to ask on; " +
+			"-y confirms removals only; accept the changes with --trust\n" +
+			"  hint: see them: lola sync --project -n\n  hint: then accept them: lola sync --project --trust -y\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).NotTo(BeAnExistingFile())
 
 		r = lola("sync", "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
 		var out map[string]any
 		Expect(json.Unmarshal([]byte(r.err), &out)).To(Succeed(), "under --json stderr holds only the error: %s", r.err)
-		Expect(out["hints"]).To(ContainElement("then accept them: lola sync --project --trust"))
+		Expect(out["hints"]).To(ContainElement("then accept them: lola sync --project --json --trust"))
 
 		r = lola("sync", "-C", proj, "--trust")
 		Expect(r.code).To(Equal(0), r.err)
@@ -678,9 +678,9 @@ var _ = Describe("lola sync", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(".lola/project.yml is unchanged; lola sync needs your trust for:\n" +
 			"  ~ arch          re-pin from " + filepath.Join(proj, "mods", "arch.zip") + " (--update; not fetched yet)\n" +
-			"error: lola sync needs your trust for the pins it would write for arch, and there is no terminal to ask on\n" +
-			"  hint: see them: lola sync --project --update -n\n  hint: then accept them: lola sync --project --update --trust -y\n" +
-			"  hint: -y confirms removals only; accept the changes with --trust\n"))
+			"error: lola sync needs your trust for the pins it would write for arch, and there is no terminal to ask on; " +
+			"-y confirms removals only; accept the changes with --trust\n" +
+			"  hint: see them: lola sync --project --update -n\n  hint: then accept them: lola sync --project --update --trust -y\n"))
 	})
 
 	It("asks the trust question after the diff on stderr, and a Cancel installs nothing", func() {

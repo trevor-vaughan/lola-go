@@ -1,0 +1,610 @@
+name: lola install, list, render and uninstall across sources, scopes and assistants
+# Run by scripts/e2e.sh (task e2e -- install) in the shared e2e container: this checkout's lola-go
+# at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, and a git server on
+# 127.0.0.1:8765 serving /srv/git. Every step is {{.runtime}} exec [<options>] {{.container}}
+# <argv>; any $, glob, &&, redirection or pipe sits inside a single-quoted sh -c or python3 -c,
+# and no step names a host path. Cases run in order and read the state earlier ones leave (Plan 8
+# §4.1's Needs column); a case whose state is missing fails. No assistant is on PATH.
+#
+# One module name, kit, comes from four sources (a folder, git, a zip and a gzip tar), and your
+# cache refuses a second source for a name it holds; the git and archive cases therefore give
+# lola a cache of their own (git_cache, zip_cache, tar_cache), as another user's would be.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-install
+  lola: /opt/lola-go/lola-go
+  hint: python3 /e2e-common/hint.py
+  jsoncheck: python3 /e2e-common/jsoncheck.py
+  snapshot: python3 /e2e-common/snapshot.py
+  # kit.git's commits (setup.sh asserts them) and the digest lola records for v1's content
+  v1: 36bd2cbb9f26019c8451a526f02b9e5f956b52a6
+  v2: 2d57547c538f5908c932c7a90cf107630ac005f3
+  v1_digest: sha256:29429e4d39f8b499ef306a0d597791cba76960e36a028c587794b4f0763334b0
+  git_cache: -e XDG_CACHE_HOME=/home/tester/.cache-git
+  zip_cache: -e XDG_CACHE_HOME=/home/tester/.cache-zip
+  tar_cache: -e XDG_CACHE_HOME=/home/tester/.cache-tar
+
+testcases:
+  - name: The fixtures are built, and kit.git's commits are the ones recorded
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh {{.v1}} {{.v2}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "fixture ready"
+
+  - name: Q1 The quickstart workflow runs as written
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir -p /work/qs/my-project"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec -w /work/qs {{.container}} {{.lola}} init my-module"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ created module my-module in my-module (agent-plugins)"
+      - type: exec
+        script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} install ../my-module --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ installed my-module (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} list"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "my-module  claude-code  ✓ ok"
+      - type: exec
+        script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} sh -c 'echo \"Say hello twice.\" >> ../my-module/skills/hello/SKILL.md'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} install ../my-module"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldContainSubstring \"scope: project (found .lola/ at /work/qs/my-project)\""
+          - result.systemout ShouldContainSubstring "✓ update claude-code .claude/skills/hello/SKILL.md"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/qs/my-project/.claude/skills/hello/SKILL.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Say hello twice."
+      - type: exec
+        script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} uninstall my-module -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ uninstalled my-module (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} find /work/qs/my-project/.claude ! -type d"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldBeEmpty
+
+  - name: I1 init's try-it hint, run from the module's parent, needs a scope off a terminal
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} init /work/authored > /tmp/i1.out; echo exit=$?; cat /tmp/i1.out'"
+        assertions:
+          - result.systemout ShouldStartWith "exit=0"
+          - result.systemout ShouldContainSubstring "✓ created module authored in /work/authored (agent-plugins)"
+          - "result.systemout ShouldContainSubstring \"→ try it: lola install /work/authored -t claude-code\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'find /work/authored -type f | sort | paste -sd \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "/work/authored/dev.getlola/commands/hello.md /work/authored/plugin.json /work/authored/skills/hello/SKILL.md"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          hint = [l.split("→ try it: ", 1)[1] for l in open("/tmp/i1.out").read().splitlines() if "→ try it: " in l]
+          json.dump({"hints": hint}, open("/tmp/i1.json", "w"))
+          print(hint)
+          '
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec -w /work {{.container}} {{.hint}} /tmp/i1.json"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"error: lola install needs a scope: no .lola/ project was found in /work or above it, and /home/tester/.config/lola/config.yaml sets no default_scope (default_scope: project, user or both)\""
+          - "result.systemerr ShouldContainSubstring \"hint: lola install /work/authored --target claude-code --project\""
+
+  - name: I2 check reports per assistant with no assistant installed, writing nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/i2-before.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} check /work/authored"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"→ claude-code: claude is not on PATH; checked against the newest version lola knows\""
+          - "result.systemout ShouldContainSubstring \"→ gemini-cli: gemini is not on PATH; checked against the newest version lola knows\""
+          - "result.systemout ShouldContainSubstring \"→ opencode: opencode is not on PATH; checked against the newest version lola knows\""
+          - "result.systemout ShouldContainSubstring \"✓ authored: claude-code renders everything\""
+          - "result.systemout ShouldContainSubstring \"→ authored: gemini-cli command hello: $ARGUMENTS becomes {{args}}\""
+          - "result.systemout ShouldContainSubstring \"✓ authored: opencode renders everything\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} check /work/authored --json > /tmp/i2.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i2.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.modules.modules0.name ShouldEqual authored
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/i2-after.json /work /home/tester && cmp /tmp/i2-before.json /tmp/i2-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: I3 A folder installs for three assistants at project scope
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/kit -C /work/proj --scope project -t claude-code -t gemini-cli -t opencode > /tmp/i3.out && cat /tmp/i3.out'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/agents/critic.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/commands/deploy.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/rules/lola/kit/style.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/skills/lint/SKILL.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create claude-code .mcp.json /mcpServers/kit-tools\""
+          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/agents/critic.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/commands/deploy.toml\""
+          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/lola/kit/GEMINI.md\""
+          - result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/settings.json /context/includeDirectories"
+          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/settings.json /mcpServers/kit-tools\""
+          - "result.systemout ShouldContainSubstring \"✓ create gemini-cli  .gemini/skills/lint/SKILL.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/agents/critic.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/commands/deploy.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/lola/kit/style.md\""
+          - "result.systemout ShouldContainSubstring \"✓ create opencode    .opencode/skills/lint/SKILL.md\""
+          - result.systemout ShouldContainSubstring "✓ create opencode    opencode.json /instructions"
+          - "result.systemout ShouldContainSubstring \"✓ create opencode    opencode.json /mcp/kit-tools\""
+          - result.systemout ShouldNotContainSubstring "✓ update"
+          - result.systemout ShouldContainSubstring "✓ installed kit (claude-code, gemini-cli, opencode)"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          lines = open("/tmp/i3.out", encoding="utf-8").read().splitlines()
+          assert len(lines) == 20, len(lines)
+          assert sum(l.startswith("  ✓ create ") for l in lines) == 17, lines
+          assert lines[17:19] == ["kit MCP servers:", "    kit-tools (stdio) runs: kit-mcp --stdio"], lines[17:19]
+          print("ok the install printed its 17 creates and the MCP server")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the install printed its 17 creates and the MCP server"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/proj && ls .claude/commands/deploy.md .gemini/commands/deploy.toml .opencode/commands/deploy.md .mcp.json opencode.json .gemini/settings.json && cat .lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"targets: [claude-code, gemini-cli, opencode]\n\""
+          - "result.systemout ShouldContainSubstring \"  - name: kit\n    source: /e2e/fixtures/kit\n\""
+
+  - name: I4 Off a terminal with no .lola/ and no scope it refuses, coached
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir /work/empty && {{.snapshot}} /tmp/i4-before.json /work/empty /home/tester'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec -w /work/empty {{.container}} sh -c '{{.lola}} install /e2e/fixtures/kit -t claude-code --json > /tmp/i4.out 2> /tmp/i4.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i4.out /tmp/i4.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"lola install needs a scope: no .lola/ project was found in /work/empty or above it, and /home/tester/.config/lola/config.yaml sets no default_scope (default_scope: project, user or both)\""
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola install /e2e/fixtures/kit --json --target claude-code --project"
+          - result.systemoutjson.hints.hints1 ShouldEqual "lola install /e2e/fixtures/kit --json --target claude-code --user"
+          - result.systemoutjson.hints.hints2 ShouldEqual "lola install /e2e/fixtures/kit --json --target claude-code --scope both"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/i4-after.json /work/empty /home/tester && cmp /tmp/i4-before.json /tmp/i4-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec -w /work/empty {{.container}} sh -c '{{.hint}} /tmp/i4.err > /tmp/i4-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i4-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.scopes.scopes0.root ShouldEqual /work/empty
+          - result.systemoutjson.scopes.scopes0.scope_source ShouldEqual flag
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -f /work/empty/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: I5 list shows each module and target from the installed state
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C /work/proj --json > /tmp/i5.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/i5.json > /dev/null && python3 -c "
+          import json
+          rows = json.load(open(\"/tmp/i5.json\"))[\"modules\"]
+          got = [(r[\"name\"], r[\"target\"], r[\"status\"], r[\"scope\"], r[\"from\"]) for r in rows]
+          assert got == [(\"kit\", t, \"ok\", \"project\", \"project.yml\") for t in (\"claude-code\", \"gemini-cli\", \"opencode\")], got
+          print(\"ok three rows\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok three rows"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import subprocess
+          out = subprocess.run(["/opt/lola-go/lola-go", "list", "-C", "/work/proj", "--plain"], capture_output=True, text=True, check=True).stdout
+          want = "".join("kit\t%s\tok\ton\t/e2e/fixtures/kit\tproject\tproject.yml\n" % t for t in ("claude-code", "gemini-cli", "opencode"))
+          assert out == want, repr(out)
+          print("ok plain rows")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok plain rows"
+
+  - name: I6 An edited file is modified, and render refuses to overwrite it, coached
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'echo \"My edit.\" >> /work/proj/.claude/commands/deploy.md'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "kit     claude-code  ⚠ modified"
+          - result.systemout ShouldContainSubstring "kit     gemini-cli   ✓ ok"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} render -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 1
+          - result.systemout ShouldBeEmpty
+          - 'result.systemerr ShouldStartWith "error: refusing to change anything: 1 conflict, which --force overrides"'
+          - 'result.systemerr ShouldContainSubstring "  claude-code: .claude/commands/deploy.md: hand-edited since lola wrote it"'
+          - 'result.systemerr ShouldEndWith "  hint: lola render --root /work/proj --force"'
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} render -C /work/proj --json > /tmp/i6.out 2> /tmp/i6.err; echo exit=$? $(tail -n 1 /work/proj/.claude/commands/deploy.md)'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1 My edit."
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} refusal /tmp/i6.out /tmp/i6.err > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/i6.err\"))
+          assert doc[\"error\"] == \"refusing to change anything: 1 conflict, which --force overrides\\n  claude-code: .claude/commands/deploy.md: hand-edited since lola wrote it\", doc
+          assert doc[\"hints\"] == [\"lola render --json --root /work/proj --force\"], doc
+          print(\"ok the refusal names the edited file\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the refusal names the edited file"
+
+  - name: I7 The --force render the hint names restores the file
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/i6.err > /tmp/i7.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i7.json"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cmp /work/proj/.claude/commands/deploy.md /e2e/fixtures/kit/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C /work/proj --plain | cut -f 1-3 | paste -sd \" \" | tr \"\\t\" \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "kit claude-code ok kit gemini-cli ok kit opencode ok"
+
+  - name: I8 uninstall --json off a terminal refuses in one line carrying the plan
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/i8-before.json /work/proj /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} uninstall kit -C /work/proj --json < /dev/null > /tmp/i8.out 2> /tmp/i8.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i8.out /tmp/i8.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lola uninstall needs confirmation, and there is no terminal to ask on"
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola uninstall kit --json --root /work/proj -y"
+          - result.systemoutjson.dry_run ShouldBeTrue
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          steps = json.load(open("/tmp/i8.err"))["steps"]
+          assert len(steps) == 17 and {s["action"] for s in steps} == {"delete"}, steps
+          print("ok 17 delete steps")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok 17 delete steps"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/i8-after.json /work/proj /home/tester && cmp /tmp/i8-before.json /tmp/i8-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: I9 The hint uninstalls exactly the plan it carried
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/i8.err > /tmp/i9.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/i9.json > /dev/null && python3 -c "
+          import json
+          assert json.load(open(\"/tmp/i9.json\"))[\"steps\"] == json.load(open(\"/tmp/i8.err\"))[\"steps\"]
+          print(\"ok the steps the refusal carried\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the steps the refusal carried"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/proj && find . ! -type d | sort | paste -sd \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "./.lola/.gitignore ./.lola/lock.json ./.lola/project.yml"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C /work/proj --json > /tmp/i9-list.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i9-list.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.modules ShouldBeEmpty
+
+  - name: I10 A git source installs at a tag
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} {{.lola}} install http://127.0.0.1:8765/kit.git --ref v1 -C /work/proj --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ installed kit (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} sh -c '{{.lola}} list -C /work/proj --json > /tmp/i10.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i10.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.modules.modules0.source ShouldEqual http://127.0.0.1:8765/kit.git
+          - result.systemoutjson.modules.modules0.pin ShouldEqual {{.v1_digest}}
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /work/proj/.lola/project.yml"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"ref: v1\""
+          - "result.systemout ShouldContainSubstring \"commit: {{.v1}}\""
+
+  - name: I11 An update on the branch shows once fetched, and sync moves to it after trust
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} {{.lola}} install http://127.0.0.1:8765/kit.git --ref main -C /work/proj --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh advance {{.v1}} {{.v2}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "main at v2"
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} {{.lola}} cache update kit"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "29429e4d39f8 → 6ab218f060f6"
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} {{.lola}} list -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "kit     claude-code  ✓ ok → update available"
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} sh -c '{{.lola}} sync --update kit -C /work/proj -y --json > /tmp/i11.out 2> /tmp/i11.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i11.out /tmp/i11.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lola sync needs your trust for the pins it would write for kit, and there is no terminal to ask on; -y confirms removals only; accept the changes with --trust"
+          - result.systemoutjson.hints ShouldHaveLength 2
+          - result.systemoutjson.trust.status ShouldEqual changed
+          - result.systemoutjson.trust.changes.changes0.module ShouldEqual kit
+          - "result.systemoutjson.hints.hints0 ShouldEqual \"see them: lola sync -C /work/proj kit --update --json -n\""
+          - "result.systemoutjson.hints.hints1 ShouldEqual \"then accept them: lola sync -C /work/proj kit --update --json --trust -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/i11-before.json /work/proj /home/tester/.local/state"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} sh -c '{{.hint}} /tmp/i11.err > /tmp/i11-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/i11-after.json /work/proj /home/tester/.local/state && cmp /tmp/i11-before.json /tmp/i11-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i11-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+          - result.systemoutjson.pins.pins0.commit ShouldEqual {{.v2}}
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'tail -n 1 /work/proj/.claude/commands/deploy.md'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with kit."
+      - type: exec
+        script: "{{.runtime}} exec {{.git_cache}} {{.container}} sh -c '{{.hint}} /tmp/i11.err 1 > /tmp/i11-accept.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i11-accept.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeFalse
+          - result.systemoutjson.pins.pins0.commit ShouldEqual {{.v2}}
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'tail -n 1 /work/proj/.claude/commands/deploy.md; grep commit: /work/proj/.lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "Deploy with kit v2."
+          - "result.systemout ShouldEndWith \"commit: {{.v2}}\""
+
+  - name: I12 Archives made by the system's zip and tar install
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir /work/proj3 /work/proj3-tar"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.zip_cache}} {{.container}} {{.lola}} install /work/kit.zip -C /work/proj3 --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ create claude-code .claude/commands/deploy.md"
+      - type: exec
+        script: "{{.runtime}} exec {{.tar_cache}} {{.container}} {{.lola}} install /work/kit.tar.gz -C /work/proj3-tar --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ create claude-code .claude/commands/deploy.md"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cmp /work/proj3/.claude/skills/lint/SKILL.md /e2e/fixtures/kit/skills/lint/SKILL.md && cmp /work/proj3-tar/.claude/skills/lint/SKILL.md /e2e/fixtures/kit/skills/lint/SKILL.md'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.zip_cache}} {{.container}} sh -c '{{.lola}} cache info kit --json > /tmp/i12-zip-info.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i12-zip-info.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.type ShouldEqual archive
+          - result.systemoutjson.source ShouldEqual /work/kit.zip
+      - type: exec
+        script: "{{.runtime}} exec {{.tar_cache}} {{.container}} sh -c '{{.lola}} cache info kit --json > /tmp/i12-tar-info.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i12-tar-info.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.type ShouldEqual archive
+          - result.systemoutjson.source ShouldEqual /work/kit.tar.gz
+
+  - name: I13 User scope is separate from the project
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/kit --user -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ create claude-code .claude.json /mcpServers/kit-tools"
+          - result.systemout ShouldContainSubstring "✓ installed kit (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cmp /home/tester/.claude/commands/deploy.md /e2e/fixtures/kit/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C /work/proj --scope both --plain | tr \"\\t\" \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "kit claude-code ok on http://127.0.0.1:8765/kit.git project project.yml"
+          - result.systemout ShouldContainSubstring "kit claude-code ok on /e2e/fixtures/kit user user.yml"
+
+  - name: I14 cache rm --json off a terminal refuses in one line
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} cache rm kit --json < /dev/null > /tmp/i14.out 2> /tmp/i14.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/i14.out /tmp/i14.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lola cache rm needs confirmation, and there is no terminal to ask on"
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola cache rm kit --json -y"
+          - result.systemoutjson.would_remove ShouldHaveLength 1
+          - result.systemoutjson.would_remove.would_remove0 ShouldEqual kit
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} cache list --plain | cut -f 1,3 | paste -sd \" \" | tr \"\\t\" \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "kit folder my-module folder"
+
+  - name: I15 After the hint removes it, a bare name is no longer a source
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/i14.err > /tmp/i15-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i15-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.removed.removed0 ShouldEqual kit
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir /work/proj4 && {{.lola}} install kit -C /work/proj4 --scope project -t claude-code --json > /tmp/i15.out 2> /tmp/i15.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} refusal /tmp/i15.out /tmp/i15.err > /dev/null && python3 -c "
+          import json
+          error = json.load(open(\"/tmp/i15.err\"))[\"error\"]
+          assert error == \"\\\"kit\\\" is neither a module in your cache nor a source; sources are a directory or archive (.zip, .tar, .tar.gz, .tgz) path or file:// URL, an https:// archive URL, or a git URL (https://, ssh:// or user@host:path)\", error
+          hints = json.load(open(\"/tmp/i15.err\"))[\"hints\"]
+          assert hints == [\"cached modules: lola cache list --json\"], hints
+          print(\"ok the refusal names the cache\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the refusal names the cache"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/i15.err > /tmp/i15-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/i15-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring kit
+
+  - name: I16 A terminal confirms through accessible line prompts
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"y\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} uninstall kit --user\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"Uninstall kit? [y/N]\""
+          - result.systemout ShouldContainSubstring "✓ uninstalled kit (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'find /home/tester/.claude ! -type d && test ! -e /home/tester/.claude.json'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldBeEmpty

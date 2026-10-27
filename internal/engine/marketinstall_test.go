@@ -363,7 +363,7 @@ var _ = Describe("installing from a marketplace", func() {
   "skills": ["./skills/a"]}]}`})
 		_, err := e.AddMarket(ctx, engine.MarketAddRequest{Source: whole})
 		Expect(err).NotTo(HaveOccurred())
-		_, err = e.AddSource(ctx, proj, whole, "", "")
+		_, err = e.AddSource(ctx, proj, whole, "", "", nil)
 		Expect(err).NotTo(HaveOccurred())
 		groups, _, err := e.MarketGroups(nil)
 		Expect(err).NotTo(HaveOccurred())

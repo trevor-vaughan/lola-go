@@ -661,7 +661,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
 			r = lola("profile", "go", "--delete", "--user", "-y")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn remote:go off first: lola profile --user remote:go --off\n"+
+			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn the profile off first: lola profile --user remote:go --off\n"+
 				"  hint: or remove it anyway: lola profile --user remote:go --remove --force\n"), "the run's -y answers this removal only")
 
 			// --force answers the question on a terminal too (user decision, 2026-10-22).

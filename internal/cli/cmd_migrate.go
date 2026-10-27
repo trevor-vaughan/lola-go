@@ -65,8 +65,8 @@ func (a *app) migrateCmd() *cobra.Command {
 			}
 			// --force answers the question, as -y does; never the hooks' consent (ruling R-6c3-4).
 			if !yes && !force {
-				printMigration(cmd.ErrOrStderr(), style{}, preview)
-				if err := a.confirm(cmd, nil, false, "Migrate?"); err != nil {
+				show := func(w io.Writer) { printMigration(w, style{}, preview) }
+				if err := a.confirm(cmd, nil, "Migrate?", preview, show); err != nil {
 					return err
 				}
 			}

@@ -44,9 +44,17 @@ bytes as unpatched liquid).
 Under the `replace`, govulncheck reports this module as `./third_party/liquid` with no version,
 so it cannot match advisories for `github.com/osteele/liquid`; it still matches liquid's own
 dependencies (`osteele/tuesday`, `gopkg.in/yaml.v2`) by version. Advisories for
-`github.com/osteele/liquid` are therefore checked by hand (https://pkg.go.dev/vuln/ and the
-project's GitHub security advisories) whenever this copy is touched and before each lola
-release.
+`github.com/osteele/liquid` are therefore checked by hand whenever this copy is touched and
+before each lola release, as item 3 of the release checklist (`docs/release.md`) says, and each
+check is recorded here: its date, the advisory IDs read and each verdict.
+
+- **2026-10-24**, release checklist item 3, on `mvp` `de03ad7`: no advisory exists for
+  `github.com/osteele/liquid` in any of the three sources. The GitHub advisory database
+  (`/advisories?ecosystem=go&affects=github.com/osteele/liquid`), the Go vulnerability database
+  (`vuln.go.dev/index/modules.json` has no entry for the module) and the repository's security
+  advisories (`/repos/osteele/liquid/security-advisories`) each returned none; OSV agrees. The
+  same queries for `github.com/gin-gonic/gin` returned its advisories, so the queries work.
+  Verdict: nothing applies; the tag is not blocked.
 
 ## When to drop this copy
 

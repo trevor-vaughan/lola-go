@@ -631,7 +631,7 @@ func (fl *installFlow) ensureModules() error {
 			continue
 		}
 		if ans.AddSource {
-			v, err := fl.eng.AddSource(fl.cmd.Context(), fl.cwd, ans.Source, ans.Ref, "")
+			v, err := fl.eng.AddSource(fl.cmd.Context(), fl.cwd, ans.Source, ans.Ref, "", outputFlags(fl.cmd))
 			if err != nil {
 				writeError(fl.cmd.ErrOrStderr(), err, false)
 				step.Problem = "could not add " + untrusted.Text(ans.Source, untrusted.MaxName) + "; try another source"
@@ -1103,8 +1103,8 @@ func (fl *installFlow) pickEdits(key string) []engine.SelectionEdit {
 
 // spec builds the install from the answers.
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
-	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{DryRun: fl.f.dry, Force: fl.f.force, Strict: fl.f.strict,
-		ForceRun: forceRun(fl.cmd, fl.args)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
+	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
+		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
 	}

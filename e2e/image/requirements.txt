@@ -1,8 +1,8 @@
-# Every Python package the container suite's image installs, pinned with hashes (pip
+# Every Python package the e2e image installs, pinned with hashes (pip
 # --require-hashes). The Python lola's runtime dependencies are its own requirements.txt at
 # 91a2885 (uv export --frozen --no-dev), without its "-e ." line; its build backend (hatchling,
 # hatch-vcs) and their dependencies were resolved in the pinned base image under that file's
-# packaging pin. scripts/e2e-migrate.sh names the image after this file, so a change rebuilds it.
+# packaging pin. scripts/e2e.sh names the image after this file, so a change rebuilds it.
 click==8.4.1 \
     --hash=sha256:482be17c6991b8c19c5429a1e995d9b0efdbb63172824c41f99965dc0ade8ec2 \
     --hash=sha256:918b5633eddf6b41c32d4f454bf0de810065c74e3f7dbf8ee5452f8be88d3e96

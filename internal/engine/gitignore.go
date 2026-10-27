@@ -112,9 +112,19 @@ func (e *Engine) refuseTrackedLedger(ctx context.Context, sc Scope, res *Result)
 	return nil
 }
 
-// trackedLedger refuses the project scope sc, whose ledger git tracks.
+// trackedLedger refuses the project scope sc, whose ledger git tracks, hinting the git command
+// that untracks it from the working directory: with -C <root> unless that is the project root.
+// A root untrusted.Text would change gets no hint: the command could not be printed as it runs.
 func (e *Engine) trackedLedger(sc Scope) error {
-	return errs.WithHints(fmt.Errorf("%s is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a "+
-		"pull decide what lola deletes", projectLedger),
-		"git rm --cached "+projectLedger, "if you never installed with lola in this checkout, delete it too, then run "+e.SyncCommand(sc))
+	refusal := fmt.Errorf("%s is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a "+
+		"pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run %s",
+		projectLedger, e.SyncCommand(sc))
+	untrack := []string{"git", "rm", "--cached", projectLedger}
+	if cwd, err := e.Getwd(); err != nil || canonicalRoot(cwd) != canonicalRoot(sc.ProjectDir) {
+		if untrusted.Text(sc.ProjectDir, untrusted.MaxName) != sc.ProjectDir {
+			return refusal
+		}
+		untrack = []string{"git", "-C", sc.ProjectDir, "rm", "--cached", projectLedger}
+	}
+	return errs.WithHints(refusal, errs.ShellJoin(untrack))
 }

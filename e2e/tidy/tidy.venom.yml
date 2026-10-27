@@ -1,11 +1,13 @@
 name: lola tidy across file systems
-# Run by scripts/e2e-tidy.sh (task e2e:tidy), which starts the container this suite execs into:
-# this checkout's lola-go at /opt/lola-go/lola-go, the fixture and scripts at /e2e, and /work/proj
-# and /home/tester/.local/state (XDG_STATE_HOME, where the trash is) on two tmpfs mounts.
+# Run by scripts/e2e.sh (task e2e -- tidy) in the shared e2e container: this checkout's lola-go
+# at /opt/lola-go/lola-go, the suite at /e2e, and /work and /home/tester/.local/state
+# (XDG_STATE_HOME, where the trash is) on two tmpfs mounts. Every step is
+# {{.runtime}} exec {{.container}} <argv>; any $, glob, &&, redirection or pipe sits inside a
+# single-quoted sh -c or python3 -c, and no step names a host path.
 vars:
   root: "."
   runtime: podman
-  container: lola-tidy-e2e
+  container: lola-e2e-tidy
   lola: /opt/lola-go/lola-go
   proj: /work/proj
   state: /home/tester/.local/state
@@ -148,7 +150,7 @@ testcases:
           - result.systemout ShouldContainSubstring "Instructions."
           - result.systemout ShouldContainSubstring "Ship"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C {{.proj}} --plain | tr '\\t' ' '"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C {{.proj}} --plain | tr \"\\t\" \" \"'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "ship claude-code ok"

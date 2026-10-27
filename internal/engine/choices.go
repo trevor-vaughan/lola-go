@@ -210,7 +210,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		for _, ref := range refs {
 			rr := r
 			rr.Ref = ref
-			ent, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "", run)
+			ent, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "", run, req.Display)
 			if err != nil {
 				return nil, err
 			}

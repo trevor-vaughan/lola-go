@@ -684,7 +684,7 @@ var _ = Describe("marketplaces", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Updates[0]).To(And(HaveField("Error", why), HaveField("Hints", []string{"git ls-remote -- " + missing})))
 
-		_, err = e.AddSource(ctx, tmp, missing, "", "")
+		_, err = e.AddSource(ctx, tmp, missing, "", "", nil)
 		Expect(err).To(MatchError(why), "a module's fetch says the same")
 		Expect(errs.Hints(err)).To(Equal([]string{"git ls-remote -- " + missing}))
 	})

@@ -46,7 +46,7 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 	cache := &cobra.Command{
 		Use:   "cache",
 		Short: "Manage your module cache",
-		Long: "Your cache is lola's machine-wide copy of fetched modules ($XDG_DATA_HOME/lola/modules).\n" +
+		Long: "Your cache is lola's machine-wide copy of fetched modules ($XDG_CACHE_HOME/lola/modules).\n" +
 			"Installing renders from it; removing a module here does not touch installed files.\n" +
 			"With no subcommand, lists the cache.",
 		Example:                    "  lola cache add ./my-module\n  lola cache list\n  lola cache info my-module",
@@ -224,7 +224,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			"lola cache add git@github.com:acme/review.git --ref main", "lola cache add https://example.com/review-1.2.0.zip",
 			"lola cache add @acme/formatter"}}
 	cmd := &cobra.Command{
-		Use:     "add <source>",
+		Use:     "add <source|@market/module>",
 		Aliases: []string{"get"},
 		Short:   "Fetch a module into your cache without installing it",
 		Long: "Fetch a module into your cache without installing it. Sources:\n" + source.AcceptedForms + ".\n" +
@@ -255,7 +255,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			if isAddr {
 				v, err = eng.AddEntry(cmd.Context(), args[0], ref, path, outputFlags(cmd))
 			} else {
-				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path)
+				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path, outputFlags(cmd))
 			}
 			if err != nil {
 				return err
@@ -300,12 +300,13 @@ func (a *app) cacheRmCmd() *cobra.Command {
 				if found, err := eng.Store.Has(n); err != nil {
 					return err
 				} else if !found {
-					return engine.NotStored(n)
+					return engine.NotStored(n, outputFlags(cmd)...)
 				}
 			}
 			if !yes {
-				fmt.Fprintf(cmd.ErrOrStderr(), "will remove from your cache: %s\n", strings.Join(args, ", "))
-				if err := a.confirm(cmd, args, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
+				show := func(w io.Writer) { fmt.Fprintf(w, "will remove from your cache: %s\n", strings.Join(args, ", ")) }
+				plan := map[string]any{"would_remove": args}
+				if err := a.confirm(cmd, args, "Remove "+strings.Join(args, ", ")+" from your cache?", plan, show); err != nil {
 					return err
 				}
 			}
@@ -389,7 +390,7 @@ func (a *app) cacheInfoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			v, o, err := eng.Current(args[0])
+			v, o, err := eng.Current(args[0], outputFlags(cmd)...)
 			if err != nil {
 				return err
 			}
@@ -412,7 +413,7 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			up, err := eng.Update(cmd.Context(), args)
+			up, err := eng.Update(cmd.Context(), args, outputFlags(cmd)...)
 			if err != nil {
 				return err
 			}
@@ -524,19 +525,38 @@ func (a *app) searchCmd() *cobra.Command {
 
 func (a *app) initCmd() *cobra.Command {
 	var format string
+	var yes bool
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
 		Short: "Create a new module in a directory (default: the current one)",
 		Long: "Scaffold a module named after the directory. The default format is an Agent Plugins package:\n" +
 			"plugin.json, a portable skill and a dev.getlola command. --format lola writes the native layout:\n" +
-			"lola.yml, one skill and one command.",
-		Example: "  lola init my-module\n  lola init my_module --format lola\n  lola install ./my-module -t claude-code",
+			"lola.yml, one skill and one command.\n" +
+			"With no dir, lola init asks before scaffolding the current directory; -y answers yes.",
+		Example: "  lola init my-module\n  lola init my_module --format lola\n  lola init -y\n  lola install ./my-module -t claude-code",
 		GroupID: groupCore,
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {
 				dir = args[0]
+			} else if !yes {
+				// A bare init scaffolds wherever you happen to be: ask first (ruling R-8-U8).
+				plan, err := engine.PlanInit(dir, format)
+				if err != nil {
+					return err
+				}
+				// The name is validated; the directories above it may come from a clone or an archive.
+				path := untrusted.Text(plan.Path, untrusted.MaxName)
+				show := func(w io.Writer) {
+					fmt.Fprintf(w, "will create module %s in %s (%s):\n", plan.Name, path, plan.Format)
+					for _, f := range plan.Files {
+						fmt.Fprintln(w, "    "+f)
+					}
+				}
+				if err := a.confirm(cmd, nil, "Create module "+plan.Name+" in "+path+"?", plan, show); err != nil {
+					return err
+				}
 			}
 			s, err := engine.Init(dir, format)
 			if err != nil {
@@ -559,5 +579,6 @@ func (a *app) initCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&format, "format", engine.InitFormats()[0], "the module format: "+strings.Join(engine.InitFormats(), " or "))
 	_ = cmd.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(engine.InitFormats(), cobra.ShellCompDirectiveNoFileComp))
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	return cmd
 }

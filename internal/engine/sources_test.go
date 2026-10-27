@@ -755,7 +755,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			push(map[string]string{"commands/deploy.md": "Deploy\n"})
-			_, err = e.AddSource(ctx, proj, url, "", "")
+			_, err = e.AddSource(ctx, proj, url, "", "", nil)
 			Expect(err).NotTo(HaveOccurred())
 			ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}}})
 			Expect(err).NotTo(HaveOccurred())
@@ -778,7 +778,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			push(map[string]string{"commands/deploy.md": "Deploy\n"})
-			_, err = e.AddSource(ctx, proj, url, "", "")
+			_, err = e.AddSource(ctx, proj, url, "", "", nil)
 			Expect(err).NotTo(HaveOccurred())
 			ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}}})
 			Expect(err).NotTo(HaveOccurred())
@@ -795,7 +795,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			push(map[string]string{"commands/deploy.md": "Deploy\n"})
-			def, err := e.AddSource(ctx, proj, url, "", "")
+			def, err := e.AddSource(ctx, proj, url, "", "", nil)
 			Expect(err).NotTo(HaveOccurred())
 			before, err := os.ReadFile(filepath.Join(proj, ".lola", "project.yml"))
 			Expect(err).NotTo(HaveOccurred())
@@ -843,7 +843,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 				_, err := e.Install(ctx, usr, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
 				Expect(err).NotTo(HaveOccurred())
 				push(map[string]string{"commands/deploy.md": "Deploy\n"})
-				_, err = e.AddSource(ctx, proj, url, "", "")
+				_, err = e.AddSource(ctx, proj, url, "", "", nil)
 				Expect(err).NotTo(HaveOccurred())
 			})
 			DescribeTable("refuses a name argument at listing when a scope without an entry would take another version",
@@ -871,7 +871,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			It("leaves out of the cache picker, with a warning, a module whose entry's ref has no cached head, still listing the others", func() {
 				other := filepath.Join(tmp, "other")
 				writeTree(other, exampleModule)
-				_, err := e.AddSource(ctx, proj, other, "", "")
+				_, err := e.AddSource(ctx, proj, other, "", "", nil)
 				Expect(err).NotTo(HaveOccurred())
 				path := filepath.Join(proj, ".lola", "project.yml")
 				Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
@@ -992,7 +992,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 
 		Context("when the cache's git head predates pins", func() {
 			BeforeEach(func() {
-				_, err := e.AddSource(ctx, proj, url, "", "")
+				_, err := e.AddSource(ctx, proj, url, "", "", nil)
 				Expect(err).NotTo(HaveOccurred())
 				index := filepath.Join(e.Paths.Store, "example", "index.yml")
 				b, err := os.ReadFile(index)
@@ -1017,7 +1017,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		})
 
 		It("refuses to pin a version only another ref's head holds, coaching cache update", func() {
-			def, err := e.AddSource(ctx, proj, url, "", "")
+			def, err := e.AddSource(ctx, proj, url, "", "", nil)
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "example", Ref: "v1", Version: &engine.VersionRef{Name: "example", ID: def.ID}}}, claude)
 			Expect(err).To(MatchError(ContainSubstring("example: your cache does not record which commit its version")))

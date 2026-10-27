@@ -342,8 +342,7 @@ func Validate(spec Spec) error {
 			return err
 		}
 		if u.Scheme != "https" && u.Scheme != "http" {
-			return errs.WithHints(fmt.Errorf("archive %s is neither a file nor an https:// URL", displayURL(u)),
-				"sources are "+AcceptedForms)
+			return fmt.Errorf("archive %s is neither a file nor an https:// URL; sources are %s", displayURL(u), AcceptedForms)
 		}
 	}
 	if spec.Kind == KindArchive && archiveSuffix(spec.Location) == "" {
@@ -389,8 +388,7 @@ func validateGitLocation(loc string) error {
 		}
 		shown = displayURL(u)
 		if u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "ssh" {
-			return errs.WithHints(fmt.Errorf("git source %s is not an https://, ssh:// or user@host:path URL", shown),
-				"sources are "+AcceptedForms)
+			return fmt.Errorf("git source %s is not an https://, ssh:// or user@host:path URL; sources are %s", shown, AcceptedForms)
 		}
 		if err := checkURL(u, KindGit); err != nil {
 			return err
@@ -416,8 +414,8 @@ func checkLocation(loc string) error {
 			"for a path, write "+errs.ShellJoin([]string{"./" + untrusted.Text(loc, untrusted.MaxName)}))
 	}
 	if remoteHelperRE.MatchString(loc) {
-		return errs.WithHints(fmt.Errorf("source %q names a git remote helper (<transport>::<address>), which lola never runs",
-			untrusted.Text(loc, untrusted.MaxName)), "sources are "+AcceptedForms)
+		return fmt.Errorf("source %q names a git remote helper (<transport>::<address>), which lola never runs; sources are %s",
+			untrusted.Text(loc, untrusted.MaxName), AcceptedForms)
 	}
 	if len(loc) >= 6 && strings.EqualFold(loc[:6], "git://") {
 		// No location in the message: a git:// URL can carry a user name or a query.

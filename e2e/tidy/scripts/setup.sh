@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the lola tidy suite's static fixture inside its container (no lola migrate run).
 #
-# /work/proj, a git work tree on its own tmpfs: a committed .mcp.json and command, the module
+# /work/proj, a git work tree on the /work tmpfs: a committed .mcp.json and command, the module
 # ship installed by lola-go, residue shaped as the Python lola leaves it (its module copy under
 # .lola/modules, the files it wrote into .claude and a skill directory with a subdirectory in
 # .gemini), an instruction file and a kept agent, and a .claude/skills link out of the project.

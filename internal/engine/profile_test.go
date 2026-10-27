@@ -326,10 +326,10 @@ var _ = Describe("profiles", func() {
 
 		_, err = e.Uninstall(ctx, user, []string{"a"}, engine.Options{})
 		Expect(err).To(MatchError("a is wanted by profile user:go"), "user.yml lists it too: uninstalling would leave it installed")
-		Expect(errs.Hints(err)).To(Equal([]string{"turn user:go off: lola profile --user user:go --off"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"turn the profile off: lola profile --user user:go --off"}))
 		_, err = e.Uninstall(ctx, user, []string{"b", "c"}, engine.Options{})
-		Expect(err).To(MatchError("c is wanted by profile default"))
-		Expect(errs.Hints(err)).To(Equal([]string{"remove it from " + def + ", which is always on at user scope"}))
+		Expect(err).To(MatchError("c is wanted by profile default; remove it from " + def + ", which is always on at user scope"))
+		Expect(errs.Hints(err)).To(BeEmpty())
 		Expect(os.ReadFile(p.UserLedger)).To(Equal(before), "a refusal changes nothing")
 		Expect(command(p.Home, "b")).To(Equal("B\n"))
 
@@ -746,7 +746,7 @@ var _ = Describe("profiles", func() {
 		activate(sc, "user:go")
 		gitIn(proj, "init", "-q")
 		gitIn(proj, "add", "-f", ".lola/lock.json")
-		tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"
+		tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"
 		_, _, err := e.Profiles(ctx, sc)
 		Expect(err).To(MatchError(tracked))
 		_, _, err = e.ProfileState(ctx, []engine.Scope{sc}, "go")
@@ -873,7 +873,7 @@ var _ = Describe("profiles", func() {
 		}
 		_, err := turn(user, engine.ProfileSwitch, names...)
 		Expect(err).To(MatchError("at most 64 profiles can be on in a scope"))
-		Expect(errs.Hints(err)).To(Equal([]string{"turn some off: lola profile --user <name>… --off"}))
+		Expect(errs.Hints(err)).To(BeEmpty(), "no command names the profiles to turn off")
 		Expect(turn(user, engine.ProfileSwitch, names[:64]...)).Error().NotTo(HaveOccurred())
 		Expect(activeList(user)).To(HaveLen(64))
 		_, err = turn(user, engine.ProfileOn, names[64])

@@ -97,13 +97,14 @@ func (e *Engine) fromHere(location string) string {
 
 // installFolder is the lola install command that records the folder module at location as the
 // user's own (Plan 6a §7.5, §10.3): the folder relative to the working directory, written
-// ./<folder> so it never reads as an option or a cached name, with the scope's flags.
-func (e *Engine) installFolder(sc Scope, location string) string {
+// ./<folder> so it never reads as an option or a cached name, with the scope's flags and the
+// run's output flags, display.
+func (e *Engine) installFolder(sc Scope, location string, display ...string) string {
 	arg := e.fromHere(location)
 	if !filepath.IsAbs(arg) && arg != ".." && !strings.HasPrefix(arg, ".."+string(filepath.Separator)) {
 		arg = "." + string(filepath.Separator) + arg
 	}
-	return e.Command(sc, "install", arg)
+	return e.Command(sc, "install", append([]string{arg}, display...)...)
 }
 
 // reviewFolder is the git command that shows the commits that changed the folder at location

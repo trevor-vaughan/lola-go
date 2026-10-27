@@ -225,7 +225,8 @@ var _ = Describe("remote profiles", func() {
 		} {
 			err := source.CheckRemote(src, profile.RemoteWho)
 			Expect(err).To(MatchError(ContainSubstring(want)), src)
-			Expect(errs.Hints(err)).To(Equal([]string{"use the repository's https:// or ssh:// URL (or user@host:path), with its host name"}), src)
+			Expect(err).To(MatchError(HaveSuffix(" (or user@host:path), with its host name")), src)
+			Expect(errs.Hints(err)).To(BeEmpty(), src)
 		}
 		for _, src := range []string{"https://example.com/a.git", "https://lola.test:8443/a.git", "ssh://git@example.com/a.git",
 			"git@example.com:a.git", "https://8.8.8.8/a.git", "https://example.com/a.tar.gz", "https://1x.example.com/a.git",

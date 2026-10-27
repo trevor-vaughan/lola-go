@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
@@ -221,13 +222,16 @@ type SyncResult struct {
 // profile's name (Wanted.key), "" for any other layer; ledgerPin says its pin is the one
 // lock.json records for the unpinned entry of the user's own profile.
 type syncEntry struct {
-	ent           manifest.Entry
-	from, file    string
-	key           string
-	via           *trust.ExtendsView // the remote profile the entry comes from through extends: (Wanted.via)
-	ledgerPin     bool
-	goneFrom      string // the description (describeSource) of the local source the cache records for the name, which no longer exists
-	covered       bool
+	ent        manifest.Entry
+	from, file string
+	key        string
+	via        *trust.ExtendsView // the remote profile the entry comes from through extends: (Wanted.via)
+	ledgerPin  bool
+	goneFrom   string // the description (describeSource) of the local source the cache records for the name, which no longer exists
+	covered    bool
+	// sameSource says the record holds the entry with this Source and Path, whatever else of it
+	// changed: its location was trusted, so containment need not check it again (ruling R-8-U7).
+	sameSource    bool
 	folderChanged bool
 	notInstalled  bool
 	spec          source.Spec
@@ -442,9 +446,13 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		// The entry of a profile of the user's own is trusted as user.yml is (Plan 6b §8.2); a
 		// project profile's is covered by that profile's part of the record (§8.1).
 		for _, se := range entries {
-			se.covered = se.own() || rec.View.Part(se.key).CoversEntry(se.view())
+			part := rec.View.Part(se.key)
+			se.covered = se.own() || part.CoversEntry(se.view())
+			if r := part.Find(se.ent.Name); r != nil {
+				se.sameSource = r.Source == se.ent.Source && r.Path == se.ent.Path
+			}
 		}
-		if err := e.containLocalSources(sc, entries); err != nil {
+		if err := e.containLocalSources(sc, entries, req.Display); err != nil {
 			return nil, err
 		}
 		// The record covers what a folder entry says, not what the folder holds: a covered folder
@@ -496,7 +504,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			report.ManifestChanged = manifestChanged
 			repl.add(&report)
 			folderChanges(&report, entries, led)
-			if err := e.folderEdits(sc, &report, entries); err != nil {
+			if err := e.folderEdits(sc, &report, entries, req.Display); err != nil {
 				return nil, err
 			}
 			notFixed(&report, entries)
@@ -540,7 +548,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		res.Trust.ManifestChanged = manifestChanged
 		repl.add(&res.Trust)
 		folderChanges(&res.Trust, entries, led)
-		if err := e.folderEdits(sc, &res.Trust, entries); err != nil {
+		if err := e.folderEdits(sc, &res.Trust, entries, req.Display); err != nil {
 			return nil, err
 		}
 		notFixed(&res.Trust, entries)
@@ -1300,37 +1308,34 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		}
 		answers = append(answers, "your confirmation to remove "+strings.Join(names, ", "))
 	}
-	hints = append(hints, "see them: "+e.commandOf(req, "-n"))
+	// Each hint repeats the run in its output format (Plan 8 §9.2).
+	again := func(extra ...string) string { return e.commandOf(req, append(slices.Clone(req.Display), extra...)...) }
+	hints = append(hints, "see them: "+again("-n"))
 	switch {
 	case trustMissing && (removalsMissing || yesGiven):
-		hints = append(hints, "then accept them: "+e.commandOf(req, "--trust", "-y"))
-	case trustMissing && (len(req.Modules) == 1 || req.Profiles != nil):
-		hints = append(hints, "then accept them: "+e.commandOf(req, "--trust"))
+		hints = append(hints, "then accept them: "+again("--trust", "-y"))
 	case trustMissing:
-		flags := req
-		flags.Modules = nil
-		hints = append(hints, "then accept them: "+e.commandOf(req, "--trust"),
-			"or accept some: "+e.SyncCommand(sc, flags.rerun("--trust")...)+" <module>…")
+		hints = append(hints, "then accept them: "+again("--trust"))
 	case trustGiven:
-		hints = append(hints, "then confirm them: "+e.commandOf(req, "--trust", "-y"))
+		hints = append(hints, "then confirm them: "+again("--trust", "-y"))
 	default:
-		hints = append(hints, "then confirm them: "+e.commandOf(req, "-y"))
+		hints = append(hints, "then confirm them: "+again("-y"))
 	}
 	for _, se := range entries {
 		// An install of the folder would take all of it, never the entry's selection.
 		if trustMissing && se.folderChanged && se.spec.Components == nil {
-			hints = append(hints, "edited it yourself? "+e.installFolder(sc, se.spec.Location))
+			hints = append(hints, "edited it yourself? "+e.installFolder(sc, se.spec.Location, req.Display...))
 		}
-	}
-	if trustMissing && yesGiven {
-		hints = append(hints, "-y confirms removals only; accept the changes with --trust")
 	}
 	run := "lola sync"
 	if req.Profiles != nil {
 		run = "lola profile"
 	}
-	return errs.WithHints(&TrustRefusalError{Report: rep, Removals: removals,
-		msg: run + " needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"}, hints...)
+	msg := run + " needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"
+	if trustMissing && yesGiven {
+		msg += "; -y confirms removals only; accept the changes with --trust"
+	}
+	return errs.WithHints(&TrustRefusalError{Report: rep, Removals: removals, msg: msg}, hints...)
 }
 
 // andJoin joins phrases as prose: "a", "a and b", "a, b and c".
@@ -1369,18 +1374,21 @@ func (e *Engine) syncRemovals(sc Scope, want []Wanted, led *ledger.Ledger, entri
 
 // containLocalSources refuses an entry whose local folder or archive resolves outside the
 // project (Plan 6a §8): a pulled project.yml, or a pulled link, must not make lola read the
-// user's other files. It checks every entry the trust record does not cover, and every covered
-// one whose source as written names a path inside the project, which a pulled link can lead
-// out of; a covered source outside the project is one the user installed. Locations are
-// canonical (source.Parse); a root or location that cannot be resolved is refused, never let
-// through.
-func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry) error {
+// user's other files. It checks every entry whose Source and Path the trust record does not
+// hold, and every one whose source as written (a relative one joined to the project) names a
+// path inside the project, which a pulled link can lead out of; a held source outside the
+// project is one the user installed or trusted. Locations are canonical (source.Parse); a root
+// or location that cannot be resolved is refused, never let through. display is the run's
+// output flags, which the install it hints keeps.
+func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry, display []string) error {
 	var root string
 	for _, se := range entries {
 		local := source.IsLocal(se.spec.Kind, se.spec.Location)
 		// A folder of the user's own profile is theirs, as user.yml's are; a project profile's is
-		// checked as project.yml's are (Plan 6b §4.3, §19 R5).
-		if !local || se.own() || se.covered && !lexicallyInside(sc, se.ent.Source) {
+		// checked as project.yml's are (Plan 6b §4.3, §19 R5). An entry whose location the record
+		// trusts is not checked again unless it is written inside the project, where a pulled link
+		// could lead it out.
+		if !local || se.own() || (se.covered || se.sameSource) && !lexicallyInside(sc, se.ent.Source) {
 			continue
 		}
 		if root == "" {
@@ -1402,16 +1410,18 @@ func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry) error {
 			}
 			// Validation refused any other source the cache has for the name, except a local one
 			// that is gone, which the install replaces (§6.5): the install works as hinted.
-			return errs.WithHints(refused, "install it yourself if you trust it: "+e.Command(sc, "install", installArgs(se.spec.Location, "", se.ent.Path)...))
+			return errs.WithHints(refused, "install it yourself if you trust it: "+
+				e.Command(sc, "install", append(installArgs(se.spec.Location, "", se.ent.Path), display...)...))
 		}
 	}
 	return nil
 }
 
 // lexicallyInside reports whether a local source, as written in the manifest, names a path
-// inside the project root before any symbolic link is followed: a relative path that does not
-// climb out, or an absolute path or file URL below the root as given or as resolved. A file URL
-// that does not parse counts as inside, so it is checked.
+// inside the project root before any symbolic link is followed: a relative path joined to the
+// root, an absolute path or a file URL, below the root as given or as resolved, compared as the
+// OS compares paths (paths.KeyID). A file URL that does not parse counts as inside, so it is
+// checked.
 func lexicallyInside(sc Scope, src string) bool {
 	p := src
 	if strings.HasPrefix(src, "file://") {
@@ -1426,10 +1436,11 @@ func lexicallyInside(sc Scope, src string) bool {
 		}
 	}
 	if !filepath.IsAbs(p) {
-		return filepath.IsLocal(p)
+		p = filepath.Join(sc.ProjectDir, p) // ../<project>/x names the project too
 	}
 	for _, root := range []string{sc.ProjectDir, canonicalRoot(sc.ProjectDir)} {
-		if rel, err := filepath.Rel(root, p); err == nil && filepath.IsLocal(rel) {
+		// Compared as the OS compares paths, so a case variant of the root is the root.
+		if rel, err := filepath.Rel(paths.KeyID(root), paths.KeyID(p)); err == nil && filepath.IsLocal(rel) {
 			return true
 		}
 	}
@@ -1462,7 +1473,7 @@ func folderChanges(rep *TrustReport, entries []*syncEntry, led *ledger.Ledger) {
 // folderEdits gives each folder whose content changed the diff's lines (Plan 6a §7.5): how to
 // review the edits when the folder is in a git work tree, and how to record the content as the
 // user's own when they made the edits.
-func (e *Engine) folderEdits(sc Scope, rep *TrustReport, entries []*syncEntry) error {
+func (e *Engine) folderEdits(sc Scope, rep *TrustReport, entries []*syncEntry, display []string) error {
 	for i := range rep.Changes {
 		c := &rep.Changes[i]
 		se := entryOf(entries, *c)
@@ -1478,7 +1489,7 @@ func (e *Engine) folderEdits(sc Scope, rep *TrustReport, entries []*syncEntry) e
 			c.ReviewEdits = "review the edits: " + e.reviewFolder(loc)
 		}
 		if se.spec.Components == nil { // an install of the folder would take all of it
-			c.InstallOwn = "edited it yourself? " + e.installFolder(sc, loc)
+			c.InstallOwn = "edited it yourself? " + e.installFolder(sc, loc, display...)
 		}
 	}
 	return nil
@@ -1738,8 +1749,8 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if !ok {
-			return nil, nil, errs.WithHints(fmt.Errorf("%s: %s is not a source", name, untrusted.Text(ent.Source, untrusted.MaxName)),
-				"sources are "+source.AcceptedForms)
+			return nil, nil, fmt.Errorf("%s: %s is not a source; sources are %s", name, untrusted.Text(ent.Source, untrusted.MaxName),
+				source.AcceptedForms)
 		}
 		// A remote profile's entry names a remote source (D4): Parse never looks a URL or scp form
 		// up on disk, and a path that still reads as local, a Windows drive, is refused (ruling

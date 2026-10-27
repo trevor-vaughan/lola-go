@@ -1,0 +1,8 @@
+name: general
+description: Modules for the market suite
+version: "1.0"
+modules:
+  - name: lint
+    description: Lint the project
+    version: "1.0"
+    repository: https://git.lola.test:8443/lint.git

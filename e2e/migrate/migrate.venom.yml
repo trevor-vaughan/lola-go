@@ -1,13 +1,17 @@
 name: lola migrate against the real Python lola
-# Run by scripts/e2e-migrate.sh (task e2e:migrate), which starts the container this suite execs
-# into: the Python lola at the pinned upstream commit, this checkout's lola-go at
-# /opt/lola-go/lola-go, the fixtures and scripts at /e2e, and a git server on 127.0.0.1:8765
-# serving /srv/git.
+# Run by scripts/e2e.sh (task e2e -- migrate) in the shared e2e container: the Python lola at the
+# pinned upstream commit, this checkout's lola-go at /opt/lola-go/lola-go, the suite at /e2e,
+# e2e/common at /e2e-common, and a git server on 127.0.0.1:8765 serving /srv/git. Every step is
+# {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob, &&, redirection or pipe sits
+# inside a single-quoted sh -c or python3 -c, and no step names a host path.
+# Scenario B's steps give the Python lola and lola-go the home /home/b with its own XDG
+# directories (b_env).
 vars:
   root: "."
   runtime: podman
-  container: lola-migrate-e2e
+  container: lola-e2e-migrate
   lola: /opt/lola-go/lola-go
+  b_env: -e HOME=/home/b -e XDG_CONFIG_HOME=/home/b/.config -e XDG_DATA_HOME=/home/b/.local/share -e XDG_CACHE_HOME=/home/b/.cache -e XDG_STATE_HOME=/home/b/.local/state
 
 testcases:
   - name: The Python lola installs folder, git and zip modules for four assistants and at user scope
@@ -18,7 +22,7 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "python lola installed"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/before.json /work/proj /home/tester"
+        script: "{{.runtime}} exec {{.container}} python3 /e2e-common/snapshot.py /tmp/before.json /work/proj /home/tester"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "snapshot:"
@@ -38,7 +42,7 @@ testcases:
           - 'result.systemout ShouldContainSubstring "not registered: off (git+http://127.0.0.1:8765/market.git): it is disabled in the Python lola"'
           - 'result.systemout ShouldContainSubstring "lola migrate gives the command that registers it once its run finds the catalog file the Python lola read"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/dry.json /work/proj /home/tester && {{.runtime}} exec {{.container}} cmp /tmp/before.json /tmp/dry.json"
+        script: "{{.runtime}} exec {{.container}} sh -c 'python3 /e2e-common/snapshot.py /tmp/dry.json /work/proj /home/tester && cmp /tmp/before.json /tmp/dry.json'"
         assertions:
           - result.code ShouldEqual 0
 
@@ -50,7 +54,44 @@ testcases:
           - result.code ShouldEqual 1
           - result.systemerr ShouldContainSubstring "lola migrate -y"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/refused.json /work/proj /home/tester && {{.runtime}} exec {{.container}} cmp /tmp/before.json /tmp/refused.json"
+        script: "{{.runtime}} exec {{.container}} sh -c 'python3 /e2e-common/snapshot.py /tmp/refused.json /work/proj /home/tester && cmp /tmp/before.json /tmp/refused.json'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: G1 Off a terminal under --json the refusal is one JSON line carrying the plan, and writes nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} migrate -n --json > /tmp/g1-dry.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} migrate --json < /dev/null > /tmp/g1.out 2> /tmp/g1.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          out, err = open("/tmp/g1.out").read(), open("/tmp/g1.err").read()
+          assert out == "", "stdout: " + out
+          assert err.endswith("\n") and err.count("\n") == 1, "stderr: " + err
+          doc, dry = json.loads(err), json.load(open("/tmp/g1-dry.json"))
+          assert doc.pop("error") == "lola migrate needs confirmation, and there is no terminal to ask on", doc
+          assert doc.pop("hints") == ["lola migrate --json -y"], doc
+          assert doc == dry, (doc, dry)
+          def nulls(v, at):
+              if v is None:
+                  raise AssertionError("null at " + at)
+              for k, x in (v.items() if isinstance(v, dict) else enumerate(v) if isinstance(v, list) else []):
+                  nulls(x, at + "/" + str(k))
+          nulls(doc, ""); nulls(dry, "")
+          print("ok the refusal carries the plan migrate -n --json prints")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the refusal carries the plan migrate -n --json prints"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'python3 /e2e-common/snapshot.py /tmp/g1.json /work/proj /home/tester && cmp /tmp/before.json /tmp/g1.json'"
         assertions:
           - result.code ShouldEqual 0
 
@@ -69,7 +110,7 @@ testcases:
           - result.systemout ShouldContainSubstring "ok every path the Python lola wrote is lola-go's, in the trash, kept, reported or untouched"
           - result.systemout ShouldContainSubstring "ok the unmappable records' files are byte-identical"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain | tr '\\t' ' '"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C /work/proj --plain | tr \"\\t\" \" \"'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "review claude-code ok"
@@ -82,7 +123,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} market --plain | tr '\\t' ' '"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} market --plain | tr \"\\t\" \" \"'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "general lola-yaml 1 0 "
@@ -119,22 +160,22 @@ testcases:
   - name: A home with only what migrates moves to the trash
     steps:
       - type: exec
-        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} bash /e2e/scripts/python-setup-b.sh"
+        script: "{{.runtime}} exec {{.b_env}} {{.container}} bash /e2e/scripts/python-setup-b.sh"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "python lola installed"
       - type: exec
-        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} sh -c 'python3 /e2e/scripts/snapshot.py /tmp/b-before.json /home/b && {{.lola}} migrate -y --json > /tmp/b.json'"
+        script: "{{.runtime}} exec {{.b_env}} {{.container}} sh -c 'python3 /e2e-common/snapshot.py /tmp/b-before.json /home/b && {{.lola}} migrate -y --json > /tmp/b.json'"
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} python3 /e2e/scripts/check.py /tmp/b-before.json /tmp/b.json --home-action move"
+        script: "{{.runtime}} exec {{.b_env}} {{.container}} python3 /e2e/scripts/check.py /tmp/b-before.json /tmp/b.json --home-action move"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldNotContainSubstring "FAIL"
           - result.systemout ShouldContainSubstring "ok the Python home action is move"
       - type: exec
-        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} {{.lola}} migrate -y"
+        script: "{{.runtime}} exec {{.b_env}} {{.container}} {{.lola}} migrate -y"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "nothing to migrate"

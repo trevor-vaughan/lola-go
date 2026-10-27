@@ -336,7 +336,7 @@ func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []
 		}
 		err = errs.WithHints(err, errs.ShellJoin(cmd))
 	}
-	return v, err
+	return v, nameTaken(err, display)
 }
 
 // checkEntry loads the entry a marketplace address names for lola check (Plan 6c §3.3): fetched

@@ -754,6 +754,17 @@ var _ = Describe("core commands", func() {
 			ContainSubstring("update available: your cache has a newer version for the ref: lola sync --update <module>")))
 	})
 
+	It("list refuses an unknown -t as install, check and render do, writing nothing to stdout", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		r := lola("list", "-C", proj, "-t", "claude-code,nosuch")
+		Expect(r.code).To(Equal(1))
+		Expect(r.out).To(BeEmpty())
+		Expect(r.err).To(Equal("error: unknown target \"nosuch\"\n  hint: valid targets: claude-code, gemini-cli, opencode\n"))
+		r = lola("list", "-C", proj, "-t", "nosuch", "--json")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal(`{"error":"unknown target \"nosuch\"","hints":["valid targets: claude-code, gemini-cli, opencode"]}` + "\n"))
+	})
+
 	It("lists an entry project.yml lists but lock.json does not record as not installed, per target", func() {
 		kit := filepath.Join(proj, "mods", "kit")
 		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})

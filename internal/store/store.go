@@ -226,6 +226,21 @@ func (s *Store) Prepare(req PutRequest) (Staged, error) {
 		ref: req.Ref, components: req.Components.Clone()}, nil
 }
 
+// NameTakenError refuses a module whose name the cache holds from another source or path: the
+// cache keeps one source per name.
+type NameTakenError struct {
+	Name string
+	msg  string
+}
+
+func (e *NameTakenError) Error() string { return e.msg }
+
+// RemoveHint is the hint that clears the way for e's module: removing the cached one, with the
+// run's output flags (display).
+func (e *NameTakenError) RemoveHint(display ...string) string {
+	return "remove the cached one first: " + errs.ShellJoin(append([]string{"lola", "cache", "rm", e.Name}, display...))
+}
+
 // Commit publishes a prepared version under the cache lock: it refuses a module whose name the
 // cache already holds from another source or path (checked again here, since another process may
 // have cached the name since the caller checked), copies the staged tree into a new version
@@ -247,9 +262,9 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 	}
 	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path || !o.Components.Equal(st.components)) {
 		if !st.ReplaceGoneOrigin || !o.LocalGone() || !source.IsLocal(source.Kind(st.typ), st.source) {
-			return Version{}, errs.WithHints(fmt.Errorf("a different module named %q is already in your cache (from %s); this one is from %s",
-				sv.Name, describeOrigin(o.Source, o.Path, o.Components), describeOrigin(st.source, st.path, st.components)),
-				"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", sv.Name}))
+			taken := &NameTakenError{Name: sv.Name, msg: fmt.Sprintf("a different module named %q is already in your cache (from %s); this one is from %s",
+				sv.Name, describeOrigin(o.Source, o.Path, o.Components), describeOrigin(st.source, st.path, st.components))}
+			return Version{}, errs.WithHints(taken, taken.RemoveHint())
 		}
 		found = false // the source recorded is gone: this one takes its place, heads and all
 	}

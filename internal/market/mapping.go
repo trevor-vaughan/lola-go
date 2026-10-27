@@ -1,6 +1,7 @@
 package market
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"path"
@@ -49,7 +50,12 @@ func remoteSource(field, loc string) *skip {
 			untrusted.Text(loc, untrusted.MaxName), untrusted.Text(scheme, untrusted.MaxName))
 	}
 	if err := source.CheckRemote(loc, who); err != nil {
-		return skipped("local or private source", "%s", err.Error())
+		// The reason alone: what to give instead is for the catalog's author, not for you.
+		reason := err.Error()
+		if re, ok := errors.AsType[*source.RemoteError](err); ok {
+			reason = re.Reason
+		}
+		return skipped("local or private source", "%s", reason)
 	}
 	return nil
 }

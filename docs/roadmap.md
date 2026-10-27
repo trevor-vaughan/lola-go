@@ -72,7 +72,7 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      keep-list, MCP entries backed up before the edit, a cross-device trash move that removes only
      what matches the copy, names and `--all` with every refusal coached) and 6d.2 (done: the
      move and keep pickers with the review's equivalent command, the `--protect`/`--unprotect`
-     flag aliases, and the `e2e:tidy` container suite across two file systems)
+     flag aliases, and the `task e2e -- tidy` container suite across two file systems)
      (`docs/superpowers/specs/2026-10-22-plan-6d-tidy-design.md`).
 7. **Done: templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
    using Liquid templates through `osteele/liquid`, chosen over jet because a recursive jet
@@ -86,8 +86,18 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
    missing `attrs` keys read as nil, numbers in attributes and vars, missing partials refused
    only when included, `..` in quoted strings, and the math filters)
    (`docs/superpowers/specs/2026-10-22-plan-7-templating-design.md`).
-8. **End-to-end suites, container, and the full documentation set.** Venom suites against the
-   built binary in a container.
+8. **Done: end-to-end suites, container, and the full documentation set.** Venom suites against
+   the built binary in a container, delivered as 8.1 the shared runner (done: `task e2e [--
+   <suite>...]` discovering every suite, one pinned image, a container with no network and no
+   capabilities, the `migrate` and `tidy` suites moved onto it, and a confirmation refused under
+   `--json` printing one line that carries its plan), 8.2 the `install` and `template` suites
+   (done: the README quickstart run as written, every source kind, user scope, a pseudo-terminal,
+   templates compared byte for byte, and every refusal's hint run), 8.3 the `team` and `market`
+   suites (done: sync and trust from a clone, project, user and remote profiles, remote profiles
+   over HTTPS at a host named by name with a test CA, and marketplaces end to end) and 8.4 the
+   documentation set (done: `docs/usage.md` one section per command, the guides in
+   `docs/guides/`, `docs/testing.md` and the release checklist `docs/release.md`)
+   (`docs/superpowers/specs/2026-10-23-plan-8-e2e-docs-design.md`).
 
 After the MVP:
 

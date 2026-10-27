@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
@@ -19,22 +21,67 @@ func interactive(cmd *cobra.Command) bool {
 	return isTTY(cmd.InOrStdin()) && isTTY(cmd.ErrOrStderr())
 }
 
-// confirm asks before a destructive action; yes skips it. The summary was already printed. Off a
-// terminal the refusal hints the run (args are its names) with -y.
-func (a *app) confirm(cmd *cobra.Command, args []string, yes bool, question string) error {
-	if yes {
-		return nil
+// confirm asks question before a destructive action, after show prints the plan on stderr; the
+// injected Prompter or the huh adapter asks, under --json too, since the result goes to stdout.
+// Off a terminal it refuses, hinting the run (args are its names) with -y. Under --json that
+// refusal is all lola prints: one JSON line carrying plan, the plan it would have asked about
+// (what -n --json prints, where the command has -n; Plan 8 §9.1), so a script reads the plan
+// without a second run.
+func (a *app) confirm(cmd *cobra.Command, args []string, question string, plan any, show func(io.Writer)) error {
+	var p Prompter
+	if a.newPrompter != nil {
+		p = a.newPrompter(cmd)
+	} else {
+		p = a.huhPrompter(cmd)
 	}
-	if !interactive(cmd) {
-		// -y answers exactly this question, the one the plan just printed asks.
-		return errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()),
-			runWithout(cmd, args, "yes")+" -y")
+	if p.Interactive() {
+		show(cmd.ErrOrStderr())
+		ok, err := p.Confirm(question)
+		if err == nil && !ok {
+			return ErrAborted
+		}
+		return err
 	}
-	ok, err := a.ask(cmd, question)
-	if err == nil && !ok {
-		return ErrAborted
+	// -y answers exactly this question, the one the plan asks.
+	err := errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()),
+		runWithout(cmd, args, "yes")+" -y")
+	if !a.json {
+		show(cmd.ErrOrStderr())
+		return err
 	}
-	return err
+	fields, ferr := planFields(plan)
+	if ferr != nil {
+		return ferr
+	}
+	return &confirmRefusal{error: err, plan: fields}
+}
+
+// confirmRefusal is confirm's refusal under --json: its JSON line carries the plan's keys.
+type confirmRefusal struct {
+	error
+	plan map[string]any
+}
+
+func (e *confirmRefusal) Unwrap() error              { return e.error }
+func (e *confirmRefusal) JSONFields() map[string]any { return e.plan }
+
+// planFields is what -n --json prints for plan, where the command has -n, key by key, each
+// value the bytes encoding/json writes for it there, so a refusal and the dry run cannot drift.
+// Like that document, it carries paths lola would write raw and author text already cleaned.
+func planFields(plan any) (map[string]any, error) {
+	b, err := json.Marshal(plan)
+	if err != nil {
+		return nil, err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return nil, err
+	}
+	fields := make(map[string]any, len(raw))
+	for k, v := range raw {
+		fields[k] = v
+	}
+	return fields, nil
 }
 
 // hookOptions sets the hook options of a command. Install hooks (§9.1): --allow-hooks grants

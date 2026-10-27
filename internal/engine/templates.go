@@ -85,13 +85,14 @@ func (e *TemplateError) JSONFields() map[string]any {
 }
 
 // checkHint is the lola check command that lists every template refusal of the module ent
-// installs, at sc with the run's output flags: its marketplace address, its local path, or its
-// git URL when the entry gives no ref or path, which lola check cannot take; "" when no check
-// reaches the version refused. A pinned entry gets one only when fresh, a fresh install, pinned
-// it: lola check fetches the newest version, never a pin. A timeout or the run budget gets none:
-// check refuses the same way. Nor does an address untrusted.Text would change, which would not
-// name the version refused.
-func (e *Engine) checkHint(sc Scope, err error, ent *manifest.Entry, display []string, fresh bool) string {
+// installs, at sc with the assistants the run was given (targets, its -t) and its output flags
+// (display): its marketplace address, its local path, or its git URL when the entry gives no
+// ref or path, which lola check cannot take; "" when no check reaches the version refused. A
+// pinned entry gets one only when fresh, a fresh install, pinned it: lola check fetches the
+// newest version, never a pin. A timeout or the run budget gets none: check refuses the same
+// way. Nor does an address untrusted.Text would change, which would not name the version
+// refused.
+func (e *Engine) checkHint(sc Scope, err error, ent *manifest.Entry, targets, display []string, fresh bool) string {
 	te, ok := errors.AsType[*TemplateError](err)
 	switch {
 	case !ok || te.Code == codeTemplateTimeout || te.Code == codeTemplateRunBudget:
@@ -118,7 +119,11 @@ func (e *Engine) checkHint(sc Scope, err error, ent *manifest.Entry, display []s
 	if addr == "" || untrusted.Text(addr, untrusted.MaxName) != addr {
 		return ""
 	}
-	return e.Command(sc, "check", append([]string{addr}, display...)...)
+	args := []string{addr}
+	for _, t := range targets {
+		args = append(args, "--target", t)
+	}
+	return e.Command(sc, "check", append(args, display...)...)
 }
 
 // finding is the refusal as lola check reports it: a skip of its component for its target.

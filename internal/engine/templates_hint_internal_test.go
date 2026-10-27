@@ -27,20 +27,20 @@ var _ = Describe("the check hint", func() {
 			"a pinned market entry":                  {Name: "kit", Source: "https://example.com/plugins.git", Market: market, Commit: commit, Digest: "sha256:x"},
 			"an address untrusted.Text would change": {Name: "kit", Source: "https://example.com/plugins.git", Market: &manifest.MarketRef{Name: "ac\x1bme"}},
 		} {
-			Expect(e.checkHint(sc, refused, ent, []string{"--json"}, false)).To(BeEmpty(), what)
+			Expect(e.checkHint(sc, refused, ent, nil, []string{"--json"}, false)).To(BeEmpty(), what)
 		}
-		Expect(e.checkHint(sc, refused, nil, nil, false)).To(BeEmpty(), "a module no layer wants")
-		Expect(e.checkHint(sc, refused, &manifest.Entry{Name: "kit", Source: tmp}, []string{"--json"}, false)).To(Equal("lola check --user " + tmp + " --json"))
+		Expect(e.checkHint(sc, refused, nil, nil, nil, false)).To(BeEmpty(), "a module no layer wants")
+		Expect(e.checkHint(sc, refused, &manifest.Entry{Name: "kit", Source: tmp}, nil, []string{"--json"}, false)).To(Equal("lola check --user " + tmp + " --json"))
 
 		By("a fresh install, whose pin is the version a check fetches")
 		Expect(e.checkHint(sc, refused, &manifest.Entry{Name: "kit", Source: "https://example.com/kit.git", Commit: commit, Digest: "sha256:x"},
-			[]string{"--json"}, true)).To(Equal("lola check --user https://example.com/kit.git --json"))
+			nil, []string{"--json"}, true)).To(Equal("lola check --user https://example.com/kit.git --json"))
 		Expect(e.checkHint(sc, refused, &manifest.Entry{Name: "kit", Source: "https://example.com/plugins.git", Market: market, Commit: commit, Digest: "sha256:x"},
-			nil, true)).To(Equal("lola check --user @acme/kit"))
+			nil, nil, true)).To(Equal("lola check --user @acme/kit"))
 
 		By("a timeout and the run budget, which lola check refuses the same way")
 		for _, code := range []string{codeTemplateTimeout, codeTemplateRunBudget} {
-			Expect(e.checkHint(sc, &TemplateError{Module: "kit", Code: code}, &manifest.Entry{Name: "kit", Source: tmp}, nil, true)).To(BeEmpty(), code)
+			Expect(e.checkHint(sc, &TemplateError{Module: "kit", Code: code}, &manifest.Entry{Name: "kit", Source: tmp}, nil, nil, true)).To(BeEmpty(), code)
 		}
 	})
 })

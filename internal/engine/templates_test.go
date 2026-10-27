@@ -838,7 +838,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		Expect(rendersRust("mods/kit")).To(BeTrue(), "the entry's source")
 		Expect(rendersRust(filepath.Join(proj, "mods", "kit"))).To(BeTrue(), "however it is written")
 		Expect(rendersRust("other/kit")).To(BeFalse(), "a module of the same name from another source gets its defaults")
-		_, err := e.AddSource(ctx, proj, "mods/kit", "", "")
+		_, err := e.AddSource(ctx, proj, "mods/kit", "", "", nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rendersRust("kit")).To(BeTrue(), "the cache's kit came from the entry's source")
 
@@ -916,7 +916,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n  strict: false\n  tools: [rg]\n",
 			"commands/c.md.liquid": "{{ vars.language }}\n"})
 		writeTree(filepath.Join(proj, "mods", "bare"), map[string]string{"commands/b.md": "b\n"})
-		_, err := e.AddSource(ctx, proj, "mods/kit", "", "") // lola cache info shows the version refused
+		_, err := e.AddSource(ctx, proj, "mods/kit", "", "", nil) // lola cache info shows the version refused
 		Expect(err).NotTo(HaveOccurred())
 		for vars, want := range map[string]string{
 			"{lang: rust}":           "project.yml: modules[kit].vars.lang: kit declares no var lang; it declares language, strict, tools",
@@ -1026,7 +1026,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 	It("a number var's override must be a number, and cache info, rendered_with and the trust prompt show it", func() {
 		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\nvars:\n  temperature: 0.7\n",
 			"commands/c.md.liquid": "{{ vars.temperature }}\n"})
-		_, err := e.AddSource(ctx, proj, "mods/kit", "", "")
+		_, err := e.AddSource(ctx, proj, "mods/kit", "", "", nil)
 		Expect(err).NotTo(HaveOccurred())
 		project := func(vars string) {
 			writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: mods/kit, vars: " + vars + "}\n"})

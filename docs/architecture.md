@@ -507,7 +507,7 @@ rendering. A partial inherits the includer's bindings; its own `assign`s stay in
 patch (`PATCHES.md`: chained right-trims flush liquid's trim buffer), under a `replace`.
 `govulncheck` therefore reports the module as `./third_party/liquid` with no version and cannot
 match advisories for `github.com/osteele/liquid` to it: those advisories are checked by hand
-whenever the copy is touched and before each lola release.
+whenever the copy is touched and before each lola release ([release.md](release.md), item 3).
 
 ## Targets
 
@@ -1023,11 +1023,12 @@ profile's.
   `Render`, `InstallAll`, `InstallChoices` (so the pickers refuse what the install would) and
   `Uninstall`; `Status` (`lola list`) only reads and does not. It runs `git ls-files
   --error-unmatch -- .lola/lock.json` through `GitCommand` (`ledgerTracked`): tracked is refused
-  (hint `git rm --cached .lola/lock.json`), a git failure in a work tree is refused (fail closed,
-  with a hint to make `git status` work there; `dubious ownership` is the common cause), and git
-  missing from `PATH` is a warning notice (a picker warning in `InstallChoices`). This is what
-  makes the ledger this checkout's own, which the install-by-source targets above and every
-  removal rely on.
+  (hint `git rm --cached .lola/lock.json`, as `git -C <root> rm --cached …` unless run from the
+  root, and none when `untrusted.Text` would change the root), a git failure in a work tree is
+  refused (fail closed, with a hint to make `git status` work there; `dubious ownership` is the
+  common cause), and git missing from `PATH` is a warning notice (a picker warning in
+  `InstallChoices`). This is what makes the ledger this checkout's own, which the
+  install-by-source targets above and every removal rely on.
 - **Canonical locations.** `source.Parse` resolves a folder or local archive with
   `filepath.EvalSymlinks(filepath.Clean(p))`, once (an archive link whose target has a different
   archive suffix is refused, since the suffix picks the extractor); `install` records a relative
@@ -1361,8 +1362,9 @@ and removal questions as `lola sync`, `-y` and `--trust` as answers. The summary
 
 `Uninstall` refuses a module any profile layer lists (`refuseProfileModule`), even when the
 manifest lists it too, since uninstalling would leave it wanted: each profile's hint is
-`turn <name> off: lola profile <scope flag> <name> --off`, and `default`'s is the edit of
-`default.yml`. `InstallCoaching` counts the not-installed entries of every layer and names the
+`turn the profile off: lola profile <scope flag> <name> --off`, keeping the run's output flags,
+and for `default`, which no command turns off, the error text names the edit of `default.yml`
+and adds no hint. `InstallCoaching` counts the not-installed entries of every layer and names the
 layers they come from;
 `InstallAll` reads each scope's layers under its lock, before anything is fetched (a profile
 that does not load refuses the install), and adds the precedence notice of each entry it writes
@@ -1398,11 +1400,12 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
    the changes, limited to the run (`runReport`: the named entries' changes, and the top-level
    targets only when a named entry installs to them). Coverage (`Covers`) is the entry's own; a
    profile's entry is the user's own and always covered.
-4. Containment (never for a profile's entry, which is the user's, §19 R5): an uncovered folder or
-   local archive, and a covered one whose source as written
-   names a path inside the project (`lexicallyInside`: a pulled link can lead it out), must
-   resolve inside the project's real root (`source.IsWithin`), else the run is refused before any
-   diff, whatever `--trust` or `-y` say. Each covered manifest folder is then read (no network): content
+4. Containment (never for a profile's entry, which is the user's, §19 R5): a folder or local
+   archive whose Source and Path the record does not hold, and any one whose source as written (a
+   relative one joined to the project, compared through `paths.KeyID`) names a path inside the
+   project (`lexicallyInside`: a pulled link can lead it out), must resolve inside the project's
+   real root (`source.IsWithin`), else the run is refused before any diff, whatever `--trust` or
+   `-y` say. Each covered manifest folder is then read (no network): content
    that is not the version `lock.json` records, or any content when it records none, marks the
    entry `folderChanged`, a trust change (`folderChanges`; an addition, `not installed yet`, when
    it records none: `notInstalled`). The removals are listed now
@@ -1799,7 +1802,8 @@ the engine's.
 - **Templates are untrusted input.** They render in the sandbox of [Templates](#templates): no
   file, environment, network or Go method is reachable, every value and the output are capped,
   and the output is checked and consented as a literal file with those bytes would be. The
-  vendored liquid copy is outside `govulncheck`'s reach; its advisories are checked by hand.
+  vendored liquid copy is outside `govulncheck`'s reach; its advisories are checked by hand
+  ([release.md](release.md), item 3).
 - **Unparseable files** are never rewritten, `selections.yaml` and `trust.json` included.
 - **User files are untrusted.** `config.yaml` and `selections.yaml` are size-capped and strictly
   validated; their keys and values reach the terminal only through `untrusted.Text`.
@@ -1807,46 +1811,11 @@ the engine's.
 
 ## Testing
 
-Ginkgo/Gomega specs per package; every spec calls `testenv.Isolate()`, which also replaces
-`PATH` with the spec's own `bin/` (where specs put fake assistants) followed by a per-spec
-directory of symlinks to the few tools specs need (`sh`, `git`, …), so a developer's real assistant
-is never found. CLI specs run the real command tree in-process with buffered, non-terminal streams.
-Convention specs walk the live command tree, and the conformance suite walks the live target
-registry. Specs named after Python bugs pin the fixes (`corrupt JSON config is never
-overwritten`, …). Git specs serve real repositories over loopback HTTP through `git http-backend`
-(`testenv.ServeGit`); archive specs build hostile archives with the standard library's writers.
-No spec uses the network. `task test MODE=llm` prints only failures.
-
-**The migrate container suite** (`task e2e:migrate`, `e2e/migrate/`) checks `lola migrate`
-against the real Python lola. `scripts/e2e-migrate.sh` builds an image once (python:3.13-slim,
-pinned by digest, plus the Python lola from upstream at the commit the design was checked
-against, its packages and build backend installed from `e2e/migrate/requirements.txt` with
-`--require-hashes`) by `run` and `commit`, because buildah cannot mount a build context where
-overlay mounts nest; the image is named after the base digest, that commit and a hash of
-`build-image.sh` and `requirements.txt`. The container's main process is a
-loopback smart-HTTP git server, so both lolas fetch a real git source. The Venom suite has the
-Python lola install fixtures, snapshots the tree, runs lola-go's `migrate` (mounted read-only),
-and `check.py` verifies the design's §12.7 assertions, including the §6 oracle: every path the
-Python lola wrote ends up lola's, in the trash, kept, reported, or byte-identical for an
-unmappable record. It needs podman or docker,
-venom and the network on first use, skips without a container runtime, and is not part of
-`task check`; CI would run it as a separate job on a runner with podman (`task e2e:migrate
-MODE=llm`), caching the image between runs.
-
-**The tidy container suite** (`task e2e:tidy`, `e2e/tidy/`) runs `lola tidy` where the trash is
-on another file system, which unit specs never reach: `scripts/e2e-tidy.sh` uses the migrate
-suite's image (same recipe, same tag, built by whichever suite runs first) and mounts the
-project (`/work/proj`) and `XDG_STATE_HOME` as two tmpfs file systems, running as root, which
-owns both and the image's directories, so git trusts the repository. `scripts/setup.sh` builds a
-static fixture (a committed `.mcp.json` and command, a module lola-go installed, residue shaped
-as the Python lola leaves it with a `.gemini/skills` directory unit, an instruction file, a `.claude/skills` link out of the project, and
-a dotfiles-style `~/.claude` link inside `$HOME`); `scripts/check.py` checks a `--json` result
-(exactly these units moved, each crossed file systems, `manifest.txt` names every trash path) and
-restores a run by `mv` from its manifest, comparing each trash copy and each restored item,
-a skill directory with a subdirectory included, with a snapshot of its tree and contents taken
-before the run. The run container has no network, no capabilities and no privilege gain, and
-mounts a copy of `e2e/tidy` made under `$OUT`. Like the migrate suite it skips without a
-container runtime and is not part of `task check`.
+Ginkgo specs run in-process on every `task check`, isolated from your home and assistants by
+`testenv.Isolate()`; the end-to-end suites under `e2e/` run the release-built binary in a
+hardened container (`task e2e`), before each release. [testing.md](testing.md) describes both:
+the conventions, the git and archive harnesses, the runner, container and helpers, how to add a
+suite or a case, and what is untested by design.
 
 ## lola migrate
 
@@ -1893,6 +1862,9 @@ through the same root only the files and links whose fingerprint matches the cop
 (`UnlinkIfBackedUp`'s rule) and the directories then empty; what remains was created or changed
 after the copy and comes back as a `*trash.ChangedError` with the trash path. `CopyBytes` writes
 given bytes, never reading the original, as a new 0600 file (Plan 6d §6.1).
+Migrate reports such a partial move with the trash path of the part moved (the Python home's
+`reason` says `moved in part`); that branch has no spec, as no fixture can time a change
+between the copy and the removal ([testing.md](testing.md#untested-by-design)).
 
 Marketplaces (Plan 6c §6.9): `Load` also reads `market/<name>.yml` (`name`, `url`, `enabled`,
 with the same guards; a file whose name would not print as itself is skipped with a warning;

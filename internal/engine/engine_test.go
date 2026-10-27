@@ -643,7 +643,7 @@ var _ = Describe("Engine", func() {
 
 	It("explains what was searched when an argument is neither stored nor a source", func() {
 		_, err := install(claude, "nope")
-		Expect(err).To(MatchError(`"nope" is neither a module in your cache nor a source`))
+		Expect(err).To(MatchError(`"nope" is neither a module in your cache nor a source; sources are ` + source.AcceptedForms))
 		Expect(errs.Hints(err)).To(ContainElement("cached modules: lola cache list"))
 	})
 
@@ -771,11 +771,20 @@ var _ = Describe("Engine", func() {
 			Expect(rep.Modules[0].Name).To(Equal("example"))
 
 			_, err = e.Check(ctx, sc, proj, []string{"nothing-here"}, nil, nil)
-			Expect(err).To(MatchError(`"nothing-here" is neither a source nor a module in your cache`))
+			Expect(err).To(MatchError(`"nothing-here" is neither a source nor a module in your cache; pass a module folder or another source, ` +
+				"e.g. lola check ./my-module; sources are " + source.AcceptedForms))
 			Expect(errs.Hints(err)).To(ContainElement("cached modules: lola cache list"))
 			_, err = e.Check(ctx, sc, proj, []string{"../src/example"}, []string{"vim"}, nil)
 			Expect(err).To(MatchError(`unknown target "vim"`))
 		})
+	})
+
+	It("CheckTargets refuses an id that names no target, with the valid ones as its hint", func() {
+		Expect(e.CheckTargets(nil)).To(Succeed())
+		Expect(e.CheckTargets([]string{"claude-code", "opencode"})).To(Succeed())
+		err := e.CheckTargets([]string{"claude-code", "vim"})
+		Expect(err).To(MatchError(`unknown target "vim"`))
+		Expect(errs.Hints(err)).To(Equal([]string{"valid targets: claude-code, gemini-cli, opencode"}))
 	})
 
 	It("requires targets and validates them", func() {
@@ -1175,14 +1184,13 @@ var _ = Describe("Engine", func() {
 			before := ledgerBytes()
 			Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
 			_, err := e.Render(ctx, sc, engine.Options{})
-			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"))
-			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
-				"if you never installed with lola in this checkout, delete it too, then run lola sync --project"}))
+			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"))
+			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json"}))
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile(), "nothing rendered")
 			Expect(ledgerBytes()).To(Equal(before))
 			for _, dry := range []bool{false, true} {
 				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: dry}})
-				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"), "sync, dry run: %v", dry)
+				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"), "sync, dry run: %v", dry)
 				Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile(), "nothing synced")
 				Expect(ledgerBytes()).To(Equal(before))
 			}
@@ -1196,7 +1204,7 @@ var _ = Describe("Engine", func() {
 		It("refuses list too, since a committed lock.json could name active profiles", func() {
 			gitIn(proj, "add", "-f", ".lola/lock.json")
 			_, _, err := e.Status(ctx, sc, nil)
-			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"))
+			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"))
 			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
 			rows, notices, err := e.Status(ctx, sc, nil)
 			Expect(err).NotTo(HaveOccurred())
@@ -1211,7 +1219,7 @@ var _ = Describe("Engine", func() {
 			led.Profiles = []ledger.Active{{Name: "user:go", By: ledger.ByOn}}
 			Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 			gitIn(proj, "add", "-f", ".lola/lock.json")
-			tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"
+			tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"
 
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(tracked), "sync")
@@ -1241,9 +1249,8 @@ var _ = Describe("Engine", func() {
 			ledger, man := ledgerBytes(), read(".lola/project.yml")
 			refused := func(err error) {
 				GinkgoHelper()
-				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"))
-				Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
-					"if you never installed with lola in this checkout, delete it too, then run lola sync --project"}))
+				Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"))
+				Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json"}))
 				Expect(ledgerBytes()).To(Equal(ledger))
 				Expect(read(".lola/project.yml")).To(Equal(man))
 				Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())

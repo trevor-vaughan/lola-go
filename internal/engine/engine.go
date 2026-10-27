@@ -314,6 +314,17 @@ func shouldRemoveLola(dir string) (bool, error) {
 	return false, nil
 }
 
+// CheckTargets refuses the first id that names no target, as install, check and render do, so a
+// command that only filters by target (lola list) coaches the same way.
+func (e *Engine) CheckTargets(ids []string) error {
+	for _, id := range ids {
+		if _, err := e.target(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (e *Engine) target(id string) (target.Target, error) {
 	for _, t := range e.Targets {
 		if t.ID() == id {
@@ -466,7 +477,10 @@ func canonicalRoot(dir string) string {
 // another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
 // entryRef is the ref the scope's manifest records for a name argument: without --ref the
 // name resolves to the cache head for it (Plan 6a §10.1). Fetches stage in the run directory run.
-func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef, run string) (manifest.Entry, store.Version, bool, error) {
+// display is the run's output flags, which the `lola cache list` hint of the not-a-source
+// refusal keeps.
+func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef, run string,
+	display []string) (manifest.Entry, store.Version, bool, error) {
 	if r.market != nil {
 		return e.resolveEntry(ctx, sc, r, have, run)
 	}
@@ -511,8 +525,8 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	}
 	if !ok {
 		return manifest.Entry{}, store.Version{}, false, errs.WithHints(
-			fmt.Errorf("%q is neither a module in your cache nor a source", r.Arg),
-			"sources are "+source.AcceptedForms, "cached modules: lola cache list")
+			fmt.Errorf("%q is neither a module in your cache nor a source; sources are %s", r.Arg, source.AcceptedForms),
+			"cached modules: "+errs.ShellJoin(append([]string{"lola", "cache", "list"}, display...)))
 	}
 	spec.Ref, spec.Path = r.Ref, r.Path
 	if r.Version != nil {
@@ -614,7 +628,7 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		pctx.Root, pctx.Version = t.Root(sc.Kind, sc.ProjectDir, e.Paths), probes.version(t)
 		rendered, err := e.renderTemplates(probes.ctx, m, run.data(id, sc, resolvedVars(m, ment)), run)
 		if err != nil {
-			if h := e.checkHint(sc, err, ment, opts.Display, opts.freshPin); h != "" {
+			if h := e.checkHint(sc, err, ment, opts.Targets, opts.Display, opts.freshPin); h != "" {
 				err = errs.WithHints(err, h)
 			}
 			return nil, nil, nil, mr, err

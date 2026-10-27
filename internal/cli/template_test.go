@@ -61,8 +61,8 @@ var _ = Describe("template refusals (Plan 7 §11)", func() {
 		Expect(tpl).To(Equal(map[string]any{"module": "kit", "target": "claude-code", "scope": "project", "kind": "command", "artifact": "ship",
 			"file": "commands/ship.md.liquid", "line": float64(2), "code": "template-undefined-variable", "reason": "undefined variable in {{ targt }}",
 			"included_from": "", "rendered": false}))
-		Expect(hints).To(Equal([]string{"lola check --project " + mod + " --json --no-pager"}))
-		works(hints[0], "--json", "--no-pager")
+		Expect(hints).To(Equal([]string{"lola check --project " + mod + " --target claude-code --json --no-pager"}))
+		works(hints[0], "--target", "--json", "--no-pager")
 
 		By("a git URL, pinned at install")
 		work := filepath.Join(tmp, "work")
@@ -79,7 +79,7 @@ var _ = Describe("template refusals (Plan 7 §11)", func() {
 		git(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "kit.git"))
 		srv := testenv.ServeGit(filepath.Join(tmp, "srv"))
 		_, hints = refusal(lola("install", srv+"/kit.git", "-t", "claude-code", "--json"))
-		Expect(hints).To(Equal([]string{"lola check --project " + srv + "/kit.git --json"}))
+		Expect(hints).To(Equal([]string{"lola check --project " + srv + "/kit.git --target claude-code --json"}))
 		works(hints[0], "--json")
 		_, hints = refusal(lola("install", srv+"/kit.git", "--ref", "main", "-t", "claude-code", "--json"))
 		Expect(hints).To(BeEmpty(), "lola check takes no --ref, so no check reaches that version")
@@ -95,7 +95,7 @@ var _ = Describe("template refusals (Plan 7 §11)", func() {
 		r := lola("market", "acme", "--add", srv+"/plugins.git")
 		Expect(r.code).To(Equal(0), r.out+r.err)
 		_, hints = refusal(lola("install", "@acme/mk", "-t", "claude-code", "--json", "--no-pager"))
-		Expect(hints).To(Equal([]string{"lola check --project @acme/mk --json --no-pager"}))
+		Expect(hints).To(Equal([]string{"lola check --project @acme/mk --target claude-code --json --no-pager"}))
 		works(hints[0], "--json", "--no-pager")
 
 		By("a module a project sync has not trusted yet, refused while the trust diff renders it")

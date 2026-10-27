@@ -110,8 +110,8 @@ type ScopeInstall struct {
 }
 
 // InstallSpec is an install of the same modules at one or more scopes, applied together.
-// Options.Targets is not used: each scope has its own. GlobalEdits change the global section
-// of selections.yaml.
+// Each scope has its own targets; Options.Targets is only the assistants the user gave (-t),
+// which a hint repeats. GlobalEdits change the global section of selections.yaml.
 type InstallSpec struct {
 	Cwd         string
 	Scopes      []ScopeInstall
@@ -185,7 +185,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	for _, si := range spec.Scopes {
 		scopes = append(scopes, si.Scope)
 	}
-	defer func() { err = e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display) }()
+	defer func() { err = nameTaken(e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display), opts.Display) }()
 	swept := e.sweepRuns()
 	run, err := e.runDir()
 	if err != nil {
@@ -360,7 +360,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 					}
 				}
 			}
-			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, entryRef(sp.man, r.Arg), run)
+			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, entryRef(sp.man, r.Arg), run, spec.Options.Display)
 			if err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}
@@ -1071,7 +1071,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	}
 	var changes []plan.ModuleChange
 	for _, name := range names {
-		if err := e.refuseProfileModule(sc, layers, name); err != nil {
+		if err := e.refuseProfileModule(sc, layers, name, opts.Display); err != nil {
 			return nil, err
 		}
 		entry, ment := led.Modules[name], man.Find(name)

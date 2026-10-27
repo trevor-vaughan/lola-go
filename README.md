@@ -8,7 +8,8 @@ uninstall cleanly, without touching anything it did not write.
 This is a Go rewrite of [LobsterTrap/lola](https://github.com/LobsterTrap/lola). It is
 deliberately not command-compatible with the Python CLI; [docs/decisions.md](docs/decisions.md)
 explains why. Coming from the Python lola? `lola migrate` installs what it installed and
-moves its files to a trash you can restore from ([docs/usage.md](docs/usage.md#coming-from-the-python-lola)).
+moves its files to a trash you can restore from
+([docs/guides/migrating.md](docs/guides/migrating.md#coming-from-the-python-lola)).
 
 ## What works today
 
@@ -28,9 +29,23 @@ moves its files to a trash you can restore from ([docs/usage.md](docs/usage.md#c
 - **Cleanup:** `lola tidy` moves what lola does not manage out of the assistants' directories
   and MCP server lists into a trash you can restore from, never an instruction file, nor what git
   tracks or your keep-list names unless you say so.
-
-Marketplaces, profiles and templating are planned: see
-[docs/roadmap.md](docs/roadmap.md).
+- **Sync and trust:** commit `.lola/project.yml`, and a teammate's `lola sync` installs every
+  module at the commit and digest it pins. A fresh clone, a changed pin or a removal is shown
+  and waits for your trust; `-y` never gives it
+  ([Sync, pins and trust](docs/guides/sync-and-trust.md#sync-pins-and-trust)).
+- **Profiles:** named sets of modules you turn on and off per scope: your own, a project's
+  committed ones, or remote ones fetched from a source
+  ([Profiles](docs/guides/profiles.md#profiles)).
+- **Marketplaces:** `lola market --add` registers a Claude Code `marketplace.json` or a Python
+  lola catalog; `lola install @market/module` installs an entry and records its real source, so
+  a teammate needs no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)).
+- **Templating:** a module's `.md.liquid` files render per assistant, with partials, attribute
+  files and vars a manifest entry can override ([Templates](docs/guides/templating.md#templates)).
+- **Search:** `lola search` finds modules in your cache and in every marketplace catalog you
+  have fetched ([`lola search`](docs/usage.md#lola-search)).
+- **Migration:** `lola migrate` installs what the Python lola installed and moves its files to
+  a trash you can restore from
+  ([Coming from the Python lola](docs/guides/migrating.md#coming-from-the-python-lola)).
 
 ## Install
 
@@ -47,20 +62,41 @@ task build          # writes bin/lola
 ## Quickstart
 
 ```sh
-lola init my-module                         # plugin.json, one skill, one command (Agent Plugins)
-mkdir my-project && cd my-project
-lola install ../my-module --scope project -t claude-code   # renders into .claude/, records .lola/project.yml
-lola list                                   # my-module  claude-code  ✓ ok
-# edit ../my-module, then pick up the change:
-lola install ../my-module                   # no --scope: a terminal asks (nothing preselected); a script uses the .lola/ found
-lola uninstall my-module -y                 # removes exactly what lola wrote
+export PATH="$PWD/bin:$PATH"          # in the lola-go checkout, after task build
+mkdir my-project
+lola init my-module                   # plugin.json, one skill, one command (Agent Plugins)
+cd my-project
+# renders into .claude/ and records .lola/project.yml:
+lola install ../my-module --scope project -t claude-code
+lola list                             # my-module  claude-code  ✓ ok
+echo "Say hello twice." >> ../my-module/skills/hello/SKILL.md   # edit the module
+lola install ../my-module             # no --scope: a terminal asks; a script uses the .lola/ found
+lola uninstall my-module -y           # removes exactly what lola wrote
 ```
+
+A teammate gets your modules from the `.lola/project.yml` you commit. A clone is not trusted
+yet, so off a terminal the first sync shows what it would install and refuses with two hints
+(on a terminal it asks):
+
+```sh
+git clone https://example.com/acme/api.git && cd api
+lola sync                   # error: lola sync needs your trust for .lola/project.yml, …
+lola sync --project -n      # see them: the plan, nothing written
+lola sync --project --trust # then accept them: trust and install
+lola sync                   # ✓ already in sync
+lola list
+```
+
+A teammate's sync refuses a local source outside the project, such as `../my-module` above:
+share a module through a git repository or an `https://` archive.
 
 ## Learn more
 
 - `lola help` prints concise help on a terminal; piped (`lola help | less`) it prints the
   full reference, including every alias.
-- [docs/usage.md](docs/usage.md): commands, scopes, files and the output contract.
+- [docs/usage.md](docs/usage.md): every command, scopes, files and the output contract.
+- [docs/guides/](docs/guides/): authoring modules, templating, sync and trust, profiles,
+  marketplaces, migrating from the Python lola, and tidying.
 - [docs/architecture.md](docs/architecture.md): how lola works, for contributors.
 - [docs/decisions.md](docs/decisions.md) and [docs/roadmap.md](docs/roadmap.md): where this
   build departs from the upstream ADRs, and what comes next.

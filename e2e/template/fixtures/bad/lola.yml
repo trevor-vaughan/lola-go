@@ -1,0 +1,2 @@
+name: bad
+vars: {x: "a\nb"}

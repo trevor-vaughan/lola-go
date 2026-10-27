@@ -1,0 +1,9 @@
+version: 1
+description: My own tooling
+targets: [claude-code]
+modules:
+  - name: lint
+    source: http://127.0.0.1:8765/lint.git
+    ref: main
+    commit: 5d8c4b06e46226fce8c1682714dd33c1738ca2ee
+    digest: sha256:1f0b4ed76b4fc4cbc02759ef8ce462b3ee94785762389955a5e9d13c6b121bcf

@@ -61,8 +61,9 @@ var _ = Describe("profiles", func() {
 		Expect(lola("sync", "--user").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c", "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: c is wanted by profile default\n"))
-		Expect(r.err).To(ContainSubstring("hint: remove it from " + filepath.Join(p.UserProfiles, "default.yml") + ", which is always on at user scope"))
+		Expect(r.err).To(ContainSubstring("error: c is wanted by profile default; remove it from " +
+			filepath.Join(p.UserProfiles, "default.yml") + ", which is always on at user scope\n"))
+		Expect(r.err).NotTo(ContainSubstring("hint:"))
 		Expect(lola("uninstall", "--user", "a", "-y").code).To(Equal(0))
 	})
 
