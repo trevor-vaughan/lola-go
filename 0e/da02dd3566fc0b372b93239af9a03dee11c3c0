@@ -1,0 +1,19 @@
+internal/cli/clean_test.go
+  s_6c657de1929f08::t_715783e133ea36 72-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0eda02dd3566fc0b372b93239af9a03dee11c3c0",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
