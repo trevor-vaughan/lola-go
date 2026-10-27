@@ -1,0 +1,21 @@
+internal/fsx/jsonc.go
+  s_dd02d4728fd2f8::t_7ff3cea4223fe7 12-13,396
+internal/fsx/jsonc_test.go
+  s_dd02d4728fd2f8::t_c2eac4041c6540 90-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7bf08b2fbaf63e6816543380545037547588465",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
