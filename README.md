@@ -32,7 +32,7 @@ Marketplaces, profiles and templating are planned: see
 ## Install
 
 You need Go 1.26 or later, [Task](https://taskfile.dev), and git. `go.mod` pins toolchain
-go1.26.9, which fixes a reachable standard-library vulnerability; Go fetches it automatically
+go1.26.10, which fixes a reachable standard-library vulnerability; Go fetches it automatically
 unless `GOTOOLCHAIN=local` is set, as some distribution packages do (`go env -w
 GOTOOLCHAIN=auto` re-enables it).
 
