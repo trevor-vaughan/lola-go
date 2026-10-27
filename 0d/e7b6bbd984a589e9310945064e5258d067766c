@@ -1,0 +1,39 @@
+internal/cli/huh.go
+  s_8d03b9505d742a::t_ebed57eb0d0f14 9,589-625
+  s_8d03b9505d742a::t_5f3063e9cf45d6 626
+internal/migrate/remap.go
+  s_8d03b9505d742a::t_1b7cb05ced527d 190-192,288-293,311
+internal/cli/prompter.go
+  s_8d03b9505d742a::t_ebed57eb0d0f14 50-72,281-284
+internal/cli/huh_internal_test.go
+  s_8d03b9505d742a::t_64b3ba6c2417cd 374-406
+internal/migrate/run.go
+  s_8d03b9505d742a::t_ebed57eb0d0f14 77-80
+internal/migrate/plan_test.go
+  s_8d03b9505d742a::t_391c368edeae0d 553-559
+internal/cli/flow_test.go
+  s_8d03b9505d742a::t_64b3ba6c2417cd 41-42,56-57,122-129
+internal/cli/cmd_migrate.go
+  s_8d03b9505d742a::t_ebed57eb0d0f14 6-7,14-15,18,24,42-46,50-51,68-75,84-88,93,98,116,129-130,134-200,310-312,404-405,451-453
+internal/cli/migrate_test.go
+  s_8d03b9505d742a::t_64b3ba6c2417cd 13
+  s_8d03b9505d742a::t_2949a00cf4bed0 128-227
+internal/cli/confirm_test.go
+  s_8d03b9505d742a::t_64b3ba6c2417cd 112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0de7b6bbd984a589e9310945064e5258d067766c",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
