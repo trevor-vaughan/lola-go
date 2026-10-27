@@ -1,0 +1,33 @@
+e2e/market/fixtures/other-kit/commands/deploy.md
+  s_35f2683d3ca978::t_ccbbd778b8a9a5 1-4
+e2e/market/fixtures/market/general.yml
+  s_35f2683d3ca978::t_ccbbd778b8a9a5 1-8
+e2e/market/fixtures/mk/kit/commands/deploy.md
+  s_35f2683d3ca978::t_ccbbd778b8a9a5 1-4
+e2e/market/fixtures/mk/.claude-plugin/marketplace.json
+  s_35f2683d3ca978::t_ccbbd778b8a9a5 1-8
+e2e/market/scripts/setup.sh
+  s_35f2683d3ca978::t_8b19997be50858 1-48
+e2e/market/fixtures/lint/commands/lint.md
+  s_35f2683d3ca978::t_ccbbd778b8a9a5 1-4
+e2e/market/fixtures/other-kit/lola.yml
+  s_35f2683d3ca978::t_ccbbd778b8a9a5 1
+e2e/market/market.venom.yml
+  s_35f2683d3ca978::t_587e1b5b201792 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "31ebdf7dc7919523377a8d46f706f4e26b2bee35",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
