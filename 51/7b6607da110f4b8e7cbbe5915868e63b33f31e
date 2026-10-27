@@ -1,0 +1,99 @@
+internal/engine/choices.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 36-37,50-52,140,170-177,200,204-206,245-247,266-270
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 115-154,349-370,383-413,437-447,499-543,545
+  s_dd02d4728fd2f8::t_3ab133b714e1f1 544
+internal/engine/runtimehooks_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 67
+internal/engine/sources_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 230,566-567
+internal/engine/sync_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 307-323
+internal/market/address.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 1-95
+internal/engine/render.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 110,118-122,143
+internal/cli/core_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 488-489
+internal/engine/engine_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 646,671,681,685,688,835
+docs/decisions.md
+  s_dd02d4728fd2f8::t_cade1b9476270d 118-121
+internal/manifest/manifest_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 13,161-178
+  s_dd02d4728fd2f8::t_8a86faaae7f03e 179-181
+internal/engine/market_install.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 1-418
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 450
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 864,1266-1267,1423-1425,1694,1759,1763,1766,1777,1784,1789-1791,1940-1941,1947-1948
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 527-565
+internal/market/market.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 112
+internal/engine/selections_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 124,129,134
+internal/cli/cmd_profile.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 69-71,78,83-86
+internal/ledger/ledger.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 89-91,189-192
+  s_dd02d4728fd2f8::t_6d0215e2cc10ae 193
+internal/store/store.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 43-46,104-105,134,163-166,168-171,226,248,251,280,465-469
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 210-217,307,342-346,349-354,358-369,757-759,794,797-798,1191-1192
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 1-272
+docs/architecture.md
+  s_dd02d4728fd2f8::t_cade1b9476270d 131-133,739-740,1384-1417
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 20-21,354-396,403-472,478-485,487,503-511
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 16,71-76,206-215,217-221,235-252,361-362
+internal/manifest/manifest.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 41-44,146-148
+  s_dd02d4728fd2f8::t_50cafe7dc29532 149-150
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 98-99,101,104,111-116,413-418,433
+internal/engine/cache.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 133
+internal/cli/cmd_store.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 16,170,172-173,180-182,194-206
+docs/usage.md
+  s_dd02d4728fd2f8::t_cade1b9476270d 11,42-44,157,987-1035
+internal/trust/trust.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 54-56,143,200,300-302,315,441-443,447-453
+  s_dd02d4728fd2f8::t_6fa39f5a771c41 454-455
+internal/engine/market_internal_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 1-62
+internal/engine/engine.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 8,105-112,134-136,181-183,186-188,190-192,411,416-419,427-429,442-443,449-451,469,478,484,519
+internal/engine/pin.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 26-30,34,49,51-52,57,100,181,188-192,194
+internal/trust/trust_test.go
+  s_dd02d4728fd2f8::t_8ee993155364ae 18,367-374
+  s_dd02d4728fd2f8::t_68a0c445322f77 375-378
+internal/engine/check.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 11,37-39,60,70-72,105-108,110,114-121,141-147
+internal/cli/summary.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 98-100
+internal/manifest/edit.go
+  s_dd02d4728fd2f8::t_cade1b9476270d 48,74,194-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "517b6607da110f4b8e7cbbe5915868e63b33f31e",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
