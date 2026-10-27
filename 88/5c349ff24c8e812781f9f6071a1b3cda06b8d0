@@ -1,0 +1,22 @@
+internal/migrate/run_test.go
+  s_dd02d4728fd2f8::t_9dfb0daa2325ca 992-1015
+internal/migrate/market.go
+  s_dd02d4728fd2f8::t_10068409ea8f63 70,88-90,95,111
+  s_dd02d4728fd2f8::t_f431ebd57fc67a 56-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "885c349ff24c8e812781f9f6071a1b3cda06b8d0",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
