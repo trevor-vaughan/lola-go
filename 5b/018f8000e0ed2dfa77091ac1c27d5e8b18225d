@@ -1,0 +1,23 @@
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_efce5c209fb895 181-182,191-193,204,207-221
+  s_dd02d4728fd2f8::t_733bd1338e6e26 222
+internal/cli/marketflow_test.go
+  s_dd02d4728fd2f8::t_7ffecb498550a7 5,8-9,74-93
+  s_dd02d4728fd2f8::t_c23f00013ba00f 94-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b018f8000e0ed2dfa77091ac1c27d5e8b18225d",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
