@@ -1,0 +1,31 @@
+scripts/e2e.sh
+  s_35f2683d3ca978::t_5bfd967f7c7d18 16-18
+  s_35f2683d3ca978::t_2f26f931ad4e19 11-15,33-34,80-81,191-193,212-213
+e2e/tidy/tidy.venom.yml
+  s_35f2683d3ca978::t_47c1a115fddf3c 9
+e2e/migrate/migrate.venom.yml
+  s_35f2683d3ca978::t_47c1a115fddf3c 11
+docs/architecture.md
+  s_35f2683d3ca978::t_abbc3f7394c8e2 1833-1842
+internal/cli/prompt.go
+  s_35f2683d3ca978::t_abbc3f7394c8e2 27-29
+AGENTS.md
+  s_35f2683d3ca978::t_ef77f608e7a2cf 28-29
+  s_35f2683d3ca978::t_abbc3f7394c8e2 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb1a1fa8a983932caa7ba9bde076a43fe20d9368",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
