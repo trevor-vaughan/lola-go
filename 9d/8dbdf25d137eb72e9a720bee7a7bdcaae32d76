@@ -1,0 +1,33 @@
+internal/target/gemini/gemini.go
+  s_8d03b9505d742a::t_d0a1c997408640 62
+  s_8d03b9505d742a::t_022ae76c53674e 99-100
+internal/target/opencode/opencode.go
+  s_8d03b9505d742a::t_5d333763035a57 141
+internal/target/conformance/coaching_test.go
+  s_8d03b9505d742a::t_7101ebb0cebe97 149-209
+  s_8d03b9505d742a::t_2b78d5c73b4b84 223-231
+  s_8d03b9505d742a::t_585cbefeecc2d8 34-36
+  s_8d03b9505d742a::t_ad47dbecc749d2 22-26
+internal/target/opencode/opencode_test.go
+  s_8d03b9505d742a::t_47f44b1709abf9 144-145
+internal/target/gemini/gemini_test.go
+  s_8d03b9505d742a::t_75dbb245cd212e 208-209
+  s_8d03b9505d742a::t_1f791aa621b2d7 176
+  s_8d03b9505d742a::t_3faf4781d94383 139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d8dbdf25d137eb72e9a720bee7a7bdcaae32d76",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
