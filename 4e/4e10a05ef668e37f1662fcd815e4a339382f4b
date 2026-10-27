@@ -1,0 +1,37 @@
+README.md
+  s_8d03b9505d742a::t_ae9ed79e84369e 98
+  s_8d03b9505d742a::t_b1a05ca41e9e10 46-47
+  s_8d03b9505d742a::t_23deb8b8ede5bc 8-10
+  s_8d03b9505d742a::t_6620187ffeb37c 37-41
+docs/usage.md
+  s_8d03b9505d742a::t_3e45e1a67acd56 11
+  s_8d03b9505d742a::t_c75368a42424db 372,376-382,385-386,391-394
+  s_8d03b9505d742a::t_0bf9b636706127 341,344-360
+  s_8d03b9505d742a::t_7117816d9dde54 428-429
+  s_8d03b9505d742a::t_e2e0f4dedf19d0 1736
+docs/guides/marketplaces.md
+  s_8d03b9505d742a::t_6cc04be9c45d6a 189
+  s_8d03b9505d742a::t_48f30a7eafb4d8 4-5
+  s_8d03b9505d742a::t_e2d4b008122d48 68-78
+  s_8d03b9505d742a::t_6c7230676c76e9 34
+  s_8d03b9505d742a::t_da61a604e803a3 136
+  s_8d03b9505d742a::t_8c447646d5e104 85-86
+  s_8d03b9505d742a::t_bda2a158996747 38-39
+  s_8d03b9505d742a::t_74e0e999f76cbf 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e4e10a05ef668e37f1662fcd815e4a339382f4b",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
