@@ -1,0 +1,39 @@
+docs/architecture.md
+  s_dd02d4728fd2f8::t_589feb10a663f5 1349-1351,1433-1444,1500-1506
+docs/decisions.md
+  s_dd02d4728fd2f8::t_589feb10a663f5 123-126
+internal/cli/cmd_sync.go
+  s_dd02d4728fd2f8::t_589feb10a663f5 117-118,216
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_589feb10a663f5 50-52,240,307-318,404,408,1659,1738-1757,1759,1851-1855
+internal/engine/market_sync.go
+  s_dd02d4728fd2f8::t_589feb10a663f5 1-190
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_b47d5d3977e96a 512-518,559-569
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_b47d5d3977e96a 7,20,34,44,48,94,99-100,104-108,223,348-506
+  s_dd02d4728fd2f8::t_2e513a9001477b 507
+docs/usage.md
+  s_dd02d4728fd2f8::t_589feb10a663f5 270-283,1070-1076,1835-1837
+internal/engine/market_internal_test.go
+  s_dd02d4728fd2f8::t_b47d5d3977e96a 22,57-61
+  s_dd02d4728fd2f8::t_f95cf6712e97c9 62
+docs/roadmap.md
+  s_dd02d4728fd2f8::t_589feb10a663f5 62-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3efb3513262b43d8da3771fbd34171ac13fa54b9",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
