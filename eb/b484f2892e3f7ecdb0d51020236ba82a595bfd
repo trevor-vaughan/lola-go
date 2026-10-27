@@ -1,0 +1,61 @@
+internal/cli/migrate_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 89,272
+internal/migrate/run_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 720-794
+internal/cli/cmd_core.go
+  s_6c657de1929f08::t_74ff47324d62dd 136,180,182-184,190-193,211,421-422,431,436-439,449-451,463
+internal/migrate/run.go
+  s_6c657de1929f08::t_74ff47324d62dd 66-68,161-162,178-179,189-191,208,211-212,214,226,259-260,263-269,271,284-285,289-298,302-312,646-648,652
+internal/cli/prompt.go
+  s_6c657de1929f08::t_74ff47324d62dd 87-91,96-100,102-103,105-114,117-118
+internal/cli/help.go
+  s_6c657de1929f08::t_74ff47324d62dd 162-165
+internal/cli/profile_add.go
+  s_6c657de1929f08::t_74ff47324d62dd 40-41
+internal/cli/trust.go
+  s_6c657de1929f08::t_74ff47324d62dd 1-184
+internal/cli/core_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 85,253,281,302,324,332,355,414,432,439
+internal/cli/profile_update.go
+  s_6c657de1929f08::t_74ff47324d62dd 42,47-59,61,90-97,99-105,110-143,175-179,181,241,392,455-456,464-474
+internal/cli/scope_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 172-175,183,290,300
+internal/cli/cmd_profile.go
+  s_6c657de1929f08::t_74ff47324d62dd 31-33,35,82-90,107-108,110,119-121,123-126,165,196,207,227-243,323
+internal/cli/profile_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 147
+internal/cli/cmd_sync.go
+  s_6c657de1929f08::t_74ff47324d62dd 16,62-142,179-180,186,192,206,210,214,219-222,239-258,260-264,310,327-328,382-384,386-388,554-592
+internal/cli/trust_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 1-496
+internal/cli/sync_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 503,860
+internal/cli/flow.go
+  s_6c657de1929f08::t_74ff47324d62dd 24-27,398-399
+internal/cli/hints_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 79
+internal/cli/remoteprofile_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 151,168,263-344,368,374,391,395,464,470,513,529,536,541,616,620-624,626,667,671-672,674,797
+internal/cli/cmd_migrate.go
+  s_6c657de1929f08::t_74ff47324d62dd 16-17,37,42-45,63,79-80,95
+internal/cli/store_test.go
+  s_6c657de1929f08::t_fe144bc6a53d5b 336,428,434
+internal/cli/summary.go
+  s_6c657de1929f08::t_74ff47324d62dd 203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ebb484f2892e3f7ecdb0d51020236ba82a595bfd",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
