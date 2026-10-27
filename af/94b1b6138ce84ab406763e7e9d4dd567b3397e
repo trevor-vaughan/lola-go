@@ -1,0 +1,39 @@
+internal/market/lolayaml.go
+  s_dd02d4728fd2f8::t_9fd839d875dd13 1-219
+internal/market/market_test.go
+  s_dd02d4728fd2f8::t_975435ad03c9af 1-494
+internal/market/market.go
+  s_dd02d4728fd2f8::t_9fd839d875dd13 1-231
+internal/market/market_suite_test.go
+  s_dd02d4728fd2f8::t_975435ad03c9af 1-13
+docs/architecture.md
+  s_dd02d4728fd2f8::t_c5968ca45f6fca 44-46,96-120
+internal/market/claude.go
+  s_dd02d4728fd2f8::t_9fd839d875dd13 1-503
+internal/yamldoc/yamldoc_test.go
+  s_dd02d4728fd2f8::t_eead24bd39ddea 30-57
+internal/market/mapping.go
+  s_dd02d4728fd2f8::t_9fd839d875dd13 1-319
+internal/market/registry.go
+  s_dd02d4728fd2f8::t_9fd839d875dd13 1-264
+.golangci.yml
+  s_dd02d4728fd2f8::t_c5968ca45f6fca 3,5-23,61-81,107-109
+internal/yamldoc/yamldoc.go
+  s_dd02d4728fd2f8::t_c5968ca45f6fca 106-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af94b1b6138ce84ab406763e7e9d4dd567b3397e",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
