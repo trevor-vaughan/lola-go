@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofrs/flock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -99,7 +100,7 @@ var _ = Describe("Store", func() {
 		var err error
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		s = store.New(p, targets.IDs())
+		s = store.New(p, targets.IDs(), func() time.Time { return now })
 	})
 
 	It("stores a version, moves the staged dir, and records the index and the version's .lola-origin", func() {
@@ -118,7 +119,8 @@ var _ = Describe("Store", func() {
 		o, found, err := s.Origin("example")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found).To(BeTrue())
-		Expect(o).To(Equal(store.Origin{Source: "/src/example", Type: "folder", Heads: []store.Head{{Ref: "", Digest: v.ID}}}))
+		Expect(o).To(Equal(store.Origin{Source: "/src/example", Type: "folder", Heads: []store.Head{{Ref: "", Digest: v.ID}},
+			LastUsed: map[string]string{v.ID: "2026-10-08"}}))
 		fi, err := os.Stat(filepath.Join(p.Store, "example", "index.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
@@ -734,6 +736,97 @@ var _ = Describe("Store", func() {
 		Expect(s.Remove("example")).To(BeFalse())
 		Expect(s.Names()).To(Equal([]string{"alpha"}))
 	})
+
+	// Plan 9 spec 40 (A14): Used records a version's use under the cache lock, at most once a day.
+	DescribeTable("last_used is written at most once a day under the cache lock",
+		func(later time.Duration, writes bool) {
+			v, err := put(map[string]string{"commands/a.md": "A"}, "")
+			Expect(err).NotTo(HaveOccurred())
+			index := filepath.Join(p.Store, "example", "index.yml")
+			before, err := os.Stat(index)
+			Expect(err).NotTo(HaveOccurred())
+			was := now
+			DeferCleanup(func() { now = was })
+			now = now.Add(later)
+			held := flock.New(p.StoreLock)
+			Expect(held.Lock()).To(Succeed())
+			done := make(chan error, 1)
+			go func() { done <- s.Used("example", v.ID) }()
+			if writes {
+				Consistently(done, "200ms").ShouldNot(Receive(), "it waits for the cache lock")
+			}
+			Expect(held.Unlock()).To(Succeed())
+			Eventually(done).Should(Receive(BeNil()))
+			after, err := os.Stat(index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.SameFile(before, after)).To(Equal(!writes), "index.yml is rewritten only on a new day")
+			o, _, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(o.LastUsed).To(Equal(map[string]string{v.ID: now.UTC().Format("2006-01-02")}))
+		},
+		Entry("the same fake day: one write, at the fetch", 3*time.Hour, false),
+		Entry("the next fake day: a second write", 24*time.Hour, true),
+	)
+
+	DescribeTable("a last_used lola did not write is dropped on read, and the module still loads",
+		func(line string) {
+			v, err := put(map[string]string{"commands/a.md": "A"}, "")
+			Expect(err).NotTo(HaveOccurred())
+			index := filepath.Join(p.Store, "example", "index.yml")
+			b, err := os.ReadFile(index)
+			Expect(err).NotTo(HaveOccurred())
+			b = regexp.MustCompile(`(?m)^last_used:\n.*\n`).ReplaceAll(b, []byte("last_used:\n    "+v.ID+": 2026-10-01\n    "+line+"\n"))
+			Expect(os.WriteFile(index, b, 0o600)).To(Succeed())
+			o, found, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(o.LastUsed).To(Equal(map[string]string{v.ID: "2026-10-01"}))
+			got, found, err := s.Head("example", "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(got.ID).To(Equal(v.ID))
+			was := now
+			DeferCleanup(func() { now = was })
+			now = now.Add(24 * time.Hour)
+			Expect(s.Used("example", v.ID)).To(Succeed())
+			b, err = os.ReadFile(index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).NotTo(ContainSubstring(line), "what lola writes back is valid")
+		},
+		Entry("an id that is not one", "../x: 2026-10-08"),
+		Entry("a day that is not one", "0123456789ab: yesterday"),
+	)
+
+	It("Used records nothing, and does not fail, for a module or a version the cache does not hold", func() {
+		v, err := put(map[string]string{"commands/a.md": "A"}, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Used("absent", v.ID)).To(Succeed())
+		Expect(filepath.Join(p.Store, "absent")).NotTo(BeAnExistingFile())
+		Expect(os.RemoveAll(filepath.Join(p.Store, "example", "versions", v.ID))).To(Succeed())
+		was := now
+		DeferCleanup(func() { now = was })
+		now = now.Add(24 * time.Hour)
+		Expect(s.Used("example", v.ID)).To(Succeed())
+		o, _, err := s.Origin("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(o.LastUsed[v.ID]).NotTo(Equal(now.UTC().Format("2006-01-02")), "a removed version's use is not recorded")
+	})
+
+	It("Used fails when it cannot write index.yml, for the caller to go on without it", func() {
+		if os.Geteuid() == 0 {
+			Skip("root writes in a read-only directory")
+		}
+		v, err := put(map[string]string{"commands/a.md": "A"}, "")
+		Expect(err).NotTo(HaveOccurred())
+		mod := filepath.Join(p.Store, "example")
+		Expect(os.Chmod(mod, 0o500)).To(Succeed())
+		DeferCleanup(os.Chmod, mod, os.FileMode(0o700))
+		was := now
+		DeferCleanup(func() { now = was })
+		now = now.Add(24 * time.Hour)
+		Expect(s.Used("example", v.ID)).NotTo(Succeed())
+	})
+
 })
 
 var _ = Describe("Digest", func() {

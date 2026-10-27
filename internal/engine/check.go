@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -155,7 +154,7 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 // loadForCheck loads arg's module: a source, or a marketplace address, is staged the way lola
 // cache add stages it, in a temporary directory that cleanup removes; any other argument names a
 // module in the cache.
-func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string, display []string) (*module.Module, string, func() error, error) {
+func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string, display []string) (_ *module.Module, _ string, _ func() error, err error) {
 	none := func() error { return nil }
 	_, isAddr, err := market.ParseAddress(arg)
 	if err != nil {
@@ -180,28 +179,29 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string, display []st
 		}
 		return v.Module, v.ContentDir, none, nil
 	}
-	if err := os.MkdirAll(e.Paths.Tmp, 0o700); err != nil {
-		return nil, "", none, err
-	}
-	parent, err := os.MkdirTemp(e.Paths.Tmp, "check-")
+	parent, cleanup, err := scratch(e.Paths.Tmp, checkPrefix)
 	if err != nil {
 		return nil, "", none, err
 	}
-	cleanup := func() error { return os.RemoveAll(parent) }
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, cleanup())
+		}
+	}()
 	if isAddr {
 		m, dir, err := e.checkEntry(ctx, arg, parent, display)
 		if err != nil {
-			return nil, "", none, errors.Join(err, cleanup())
+			return nil, "", none, err
 		}
 		return m, dir, cleanup, nil
 	}
 	staged, err := source.Fetch(ctx, spec, parent)
 	if err != nil {
-		return nil, "", none, errors.Join(err, cleanup())
+		return nil, "", none, err
 	}
 	m, err := module.Detect(staged.Dir, staged.Name, targets.IDs())
 	if err != nil {
-		return nil, "", none, errors.Join(err, cleanup())
+		return nil, "", none, err
 	}
 	return m, staged.Dir, cleanup, nil
 }

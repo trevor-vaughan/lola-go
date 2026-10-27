@@ -197,11 +197,11 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	}
 	defer func() { err = nameTaken(e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display), opts.Display) }()
 	swept := e.sweepRuns()
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	var unlocks []func()
 	defer func() {
 		for i := len(unlocks) - 1; i >= 0; i-- {
@@ -381,6 +381,12 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 					again = r.Arg // its name would install it without its marketplace
 				}
 				fetched, have[i], haveRef[i] = append(fetched, again), v, ref
+			}
+			// Installing a version is a use of it, however the run found it; a dry run, and so lola
+			// info's plan, is none (Plan 9 §6.3). Recording it is best effort: a cache whose
+			// index.yml cannot be written still installs.
+			if !opts.DryRun {
+				_ = e.Store.Used(v.Name, v.ID)
 			}
 			sp.resolved = append(sp.resolved, resolvedRequest{req: r, ent: ent, v: v})
 			if r.market != nil {
@@ -1218,11 +1224,11 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 	}
 	want, _ := desired(layers)
 	res.Notices = append(append(res.Notices, notices...), e.sweepRuns()...)
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	rec, err := e.trustRecord(sc)
 	if err != nil {
 		return nil, err

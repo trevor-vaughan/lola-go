@@ -128,11 +128,11 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		}
 	}
 	res := &RemoteResult{Profiles: []RemoteProfile{}, Notices: slices.Concat(skipped, checked, e.sweepRuns()), DryRun: req.DryRun, Trusted: []Consent{}}
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	f, err := fetchProfiles(ctx, spec, run)
 	if err != nil {
 		return nil, err

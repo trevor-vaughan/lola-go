@@ -733,7 +733,8 @@ var _ = Describe("Engine with git and archive sources", func() {
 			defer servedMu.Unlock()
 			Expect(seen).NotTo(BeEmpty(), "the version was fetched again")
 			for _, names := range seen {
-				Expect(names).To(ConsistOf(MatchRegexp(`^run-`)), "every temporary tree of the fetch is inside the run's directory")
+				Expect(names).To(ConsistOf(MatchRegexp(`^run-[0-9]+$`), MatchRegexp(`^run-[0-9]+\.lock$`)),
+					"every temporary tree of the fetch is inside the run's directory, held by the lock beside it")
 			}
 		})
 

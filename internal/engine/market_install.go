@@ -330,11 +330,11 @@ func (e *Engine) addEntry(ctx context.Context, arg, ref, path string, display []
 	if p == nil {
 		return store.Version{}, "", "", fmt.Errorf("%s is not a marketplace address, @<marketplace>/<module>", untrusted.Text(arg, untrusted.MaxName))
 	}
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return store.Version{}, "", "", err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	spec, commit := p.spec(ref)
 	v, err := e.cacheEntry(ctx, p, spec, commit, run)
 	if renamed, ok := errors.AsType[*RenamedEntryError](err); ok && renamed.Source != nil {

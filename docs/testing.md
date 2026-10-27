@@ -173,7 +173,9 @@ the suite records; the git and archive cases each give lola a cache of their own
 cache refuses a second source for a name it holds. Each refusal case reads its one JSON line
 with `jsoncheck.py` and runs its first hint with `hint.py`; a trust refusal's second hint,
 which applies what the first one shows, runs too. `uninstall` and `cache rm` under `--json` off a
-terminal refuse in one line carrying the plan, and their hints apply it.
+terminal refuse in one line carrying the plan, and their hints apply it. Case I17 runs `lola info`
+of a git source and then the install its next step names, as the hint runner runs hints, and
+checks from the request log that info fetched and the install made no request.
 
 The **template** suite installs a module whose command uses a var, a partial, an attribute file and
 a filter in frontmatter, and compares both assistants' renders byte for byte with
@@ -189,8 +191,14 @@ in accessible mode. A project profile committed to the repository is trusted bef
 `uninstall` refuses a module an active profile lists, a user profile turns on and off, a remote
 profile is fetched by git over HTTPS from `git.lola.test` with the test CA, loopback and
 plain-http profile sources are refused before any request, and a tracked `lock.json` stops
-`render`. `scripts/setup.sh` builds `kit.git`, `lint.git`, `fmt.git`, `profiles.git` and
-`team.git`, refuses unless their commits are the SHAs the suite records, and runs `tls.sh`.
+`render`. Through `script`'s pseudo-terminal, case T14 answers a bare `--trust` run's one receipt
+No (nothing written) and then yes, and case T15 answers a hook's question yes in `sync --scope
+both`'s collect pass and checks that the hook ran on that consent. Case T16 pulls a commit that
+adds the project's pre-install script, checks that the sync refuses until the hint's
+`--trust=scripts`, then pulls an edit of the script and checks that the next sync refuses for the
+script alone and that the edited script never ran. `scripts/setup.sh` builds `kit.git`,
+`lint.git`, `fmt.git`, `profiles.git` and `team.git`, refuses unless their commits are the SHAs
+the suite records, and runs `tls.sh`.
 
 The **market** suite registers a folder marketplace and a Python-lola YAML catalog over git,
 searches them, installs a relative entry and a git entry, which lola maps only from `https://`

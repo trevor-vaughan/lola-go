@@ -59,7 +59,7 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 			return groupRunE(cmd, args)
 		},
 	}
-	cache.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd())
+	cache.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd(), a.cacheCleanCmd())
 	root.AddCommand(cache)
 }
 
@@ -219,6 +219,114 @@ func (a *app) cacheRmCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	return cmd
+}
+
+func (a *app) cacheCleanCmd() *cobra.Command {
+	var unusedFor string
+	var all, dry, yes bool
+	cmd := &cobra.Command{
+		Use:   "clean",
+		Short: "Remove what your cache no longer needs",
+		Long: "Remove the cached versions no head points to (superseded by a newer fetch of their ref) and\n" +
+			"the scratch of lola runs that no longer run. --unused-for 30d (or 2w, weeks of 7 days) also\n" +
+			"removes every version no run used for that long, current ones included, and a module whose\n" +
+			"last version goes; cache_unused_for: in config.yaml sets that age for every clean, and\n" +
+			"--unused-for never turns it off for one run. --all removes every module, marketplace\n" +
+			"catalog and scratch but what a running lola holds. Installed modules keep working: a project\n" +
+			"whose version was removed fetches it again on its next render, and a marketplace whose\n" +
+			"catalog was removed needs lola market <name> --update before you install from it.",
+		Example: "  lola cache clean\n  lola cache clean --unused-for 30d -n\n  lola cache clean --all -y",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.Flags().Changed("unused-for") && unusedFor == "" {
+				_, err := engine.ParseUnusedFor(unusedFor) // given empty, it must not read as not given
+				return err
+			}
+			eng, err := a.engine()
+			if err != nil {
+				return err
+			}
+			plan, err := eng.PlanClean(engine.CleanRequest{UnusedFor: unusedFor, All: all})
+			if err != nil {
+				return err
+			}
+			if dry {
+				return a.emit(cmd, func(w io.Writer, s style) { printClean(w, s, plan, false) }, plan)
+			}
+			if len(plan.Removed) > 0 && !yes {
+				show := func(w io.Writer) { printClean(w, style{}, plan, false) }
+				if err := a.confirm(cmd, nil, "Remove these from your cache?", plan, show); err != nil {
+					return err
+				}
+			}
+			res, err := eng.ApplyClean(plan)
+			if err != nil {
+				return err
+			}
+			planned := len(plan.Removed) > 0
+			return a.emit(cmd, func(w io.Writer, s style) { printClean(w, s, res, planned) }, res)
+		},
+	}
+	cmd.Flags().StringVar(&unusedFor, "unused-for", "", "also remove versions no run used for this long: <n>d, <n>w or never")
+	cmd.Flags().BoolVar(&all, "all", false, "remove every module, catalog and scratch a running lola does not hold")
+	cmd.MarkFlagsMutuallyExclusive("all", "unused-for")
+	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print what would be removed and remove nothing")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
+	return cmd
+}
+
+// printClean prints a clean's plan (dry run) or its result: each item removed, or that would be,
+// with its reason and size, the total, and each item kept and why; --plain rows are action
+// (remove, removed or kept), reason, path and bytes. planned is set for a result whose plan
+// listed items to remove, so a result that removed none of them says so.
+func printClean(w io.Writer, s style, res *engine.CleanResult, planned bool) {
+	act := "removed"
+	if res.DryRun {
+		act = "remove"
+	}
+	if s.plain {
+		for _, it := range res.Removed {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%d\n", act, it.Reason, untrusted.Text(it.Path, len(it.Path)), it.Bytes)
+		}
+		for _, k := range res.Kept {
+			fmt.Fprintf(w, "kept\t%s\t%s\t0\n", k.Reason, untrusted.Text(k.Path, len(k.Path)))
+		}
+		for _, n := range res.Notices {
+			fmt.Fprintln(w, noticeLine(s, n))
+		}
+		return
+	}
+	for _, k := range res.Kept {
+		fmt.Fprintln(w, s.info(fmt.Sprintf("kept %s (%s)", untrusted.Text(k.Path, len(k.Path)), k.Reason)))
+	}
+	for _, n := range res.Notices {
+		fmt.Fprintln(w, noticeLine(s, n))
+	}
+	if len(res.Removed) == 0 && planned {
+		fmt.Fprintln(w, s.info("nothing removed"))
+		return
+	}
+	if len(res.Removed) == 0 {
+		fmt.Fprintln(w, s.ok("nothing to clean"))
+		return
+	}
+	if res.DryRun {
+		fmt.Fprintln(w, "will remove from your cache:")
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, it := range res.Removed {
+		line := fmt.Sprintf("    %s\t%s\t%s", untrusted.Text(it.Path, len(it.Path)), it.Reason, sizeText(it.Bytes))
+		if !res.DryRun {
+			line = s.ok("removed " + line[4:])
+		}
+		fmt.Fprintln(tw, line)
+	}
+	_ = tw.Flush()
+	if res.DryRun {
+		fmt.Fprintf(w, "  total: %s\n", sizeText(res.BytesFreed))
+		return
+	}
+	fmt.Fprintln(w, s.ok("freed "+sizeText(res.BytesFreed)+" of your cache"))
 }
 
 func (a *app) cacheListCmd() *cobra.Command {

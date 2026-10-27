@@ -30,7 +30,9 @@ Guidance for coding agents working on lola (Go).
   via `style`. Author-chosen text reaches output only through `untrusted.Text` or
   `untrusted.CleanErr`, except JSON `steps[].path`, `steps[].member` and `steps[].value`, which
   carry what lola wrote, `lola tidy`'s JSON `path` and `trash`, which carry paths lola
-  wrote, moved or found in its destinations, and `lola init`'s JSON `path`, the directory lola
+  wrote, moved or found in its destinations, `lola cache clean`'s JSON `path`, which carries
+  a path in its cache as it is on disk unless it holds control or format characters, which are
+  replaced, and `lola init`'s JSON `path`, the directory lola
   writes to, raw but for JSON's escaping of control characters.
 - **Vocabulary.** User-facing text (messages, hints, help, docs) says "cache", never "store" or
   "origin" (ADR #245). Internal identifiers (package `store`, `store.Origin`) keep their names.

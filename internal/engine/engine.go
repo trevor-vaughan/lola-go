@@ -83,11 +83,14 @@ type Engine struct {
 	staged map[string]stagedRemote
 }
 
-// New returns an Engine over the real store and every registered target.
+// New returns an Engine over the real store and every registered target. The store dates
+// last_used by e.Now, read at each use, so a spec that replaces Now fakes the day (Plan 9 A14).
 func New(p paths.Paths) *Engine {
-	return &Engine{Paths: p, Store: store.New(p, targets.IDs()), Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
+	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
 		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
 		TemplateBudget: TemplateBudget{RunOutput: 32 << 20, RunTime: 20 * time.Second}}
+	e.Store = store.New(p, targets.IDs(), func() time.Time { return e.Now() })
+	return e
 }
 
 // Options apply to install, uninstall and render.
@@ -489,11 +492,11 @@ func (e *Engine) lock(sc Scope) (func(), error) {
 // It does not sweep (sweepRuns): it has no notices to report a failed sweep in, and the next
 // install, render or cache update sweeps.
 func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (_ store.Version, err error) {
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return store.Version{}, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	return e.fetchAs(ctx, spec, "", "", run)
 }
 

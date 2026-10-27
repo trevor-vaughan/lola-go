@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -136,11 +135,11 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	// pickers read such a manifest as that install does.
 	replacing := replacingNames(req.Modules)
 	swept := e.sweepRuns()
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	sel, err := e.selections()
 	if err != nil {
 		return nil, err

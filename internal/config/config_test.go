@@ -78,6 +78,35 @@ var _ = Describe("config.yaml", func() {
 		Expect(c.PostInstall).To(Equal(config.Script{Path: "/opt/ci/after.sh", Line: 3, Key: "post_install"}))
 	})
 
+	DescribeTable("reads cache_unused_for (Plan 9 §6.2)",
+		func(value string, want config.Age) {
+			write("version: 1\ncache_unused_for: " + value + "\n")
+			c, err := config.LoadConfig(path, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.CacheUnusedFor).To(Equal(want))
+		},
+		Entry("days", "30d", config.Age{N: 30}),
+		Entry("weeks", "2w", config.Age{N: 2, Weeks: true}),
+		Entry("never", "never", config.Age{Never: true}),
+	)
+
+	// Spec 44's config.yaml row; its flag row is the CLI's.
+	DescribeTable("an invalid age is refused naming the value",
+		func(value, msg string) {
+			write("version: 1\n\ncache_unused_for: " + value + "\n")
+			_, err := config.LoadConfig(path, "")
+			Expect(err).To(MatchError(path + ":3: cache_unused_for: " + msg + "; write a whole number of days or weeks, such as 30d or 2w, or never"))
+			Expect(errs.Hints(err)).To(BeEmpty())
+		},
+		Entry("no unit", "30", `"30" is not an age`),
+		Entry("another unit", "3m", `"3m" is not an age`),
+		Entry("zero", "0d", `"0d" is not an age`),
+		Entry("a sign", "+3d", `"+3d" is not an age`),
+		Entry("too large to count", "99999999999999999999d", `"99999999999999999999d" is not an age`),
+		Entry("empty", "", "must be an age, not empty"),
+		Entry("a list", "[2w]", "must be an age, not a list"),
+	)
+
 	DescribeTable("refuses invalid files, naming the file, line and key with a hint",
 		func(content, msg, hint string) {
 			write(content)
@@ -87,7 +116,7 @@ var _ = Describe("config.yaml", func() {
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring(hint)))
 		},
 		Entry("an unknown scope", "version: 1\ndefault_scope: everywhere\n", `:2: default_scope: "everywhere" is not a scope`, "project, user or both"),
-		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "known keys: default_scope, pager, post_install, pre_install, version"),
+		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "known keys: cache_unused_for, default_scope, pager, post_install, pre_install, version"),
 		Entry("no version", "default_scope: user\n", ":1: missing key version", "add version: 1"),
 		Entry("a newer version", "version: 2\n", ":1: version: version 2 is not supported", "upgrade lola"),
 		Entry("a version that is not a number", "version: one\n", ":1: version: must be the number 1", "write version: 1"),

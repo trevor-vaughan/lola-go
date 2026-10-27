@@ -510,11 +510,11 @@ func (u *updateRun) fetch(name string) (_ *RemoteProfile, was profile.Origin, _ 
 	if err != nil {
 		return nil, was, nil, e.readd(sc, name, errors.New(shown(filepath.Join(filepath.Dir(path), profile.OriginFile))+": "+err.Error()))
 	}
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, was, nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	f, err := fetchProfiles(u.ctx, spec, run)
 	if err != nil {
 		return nil, was, nil, err

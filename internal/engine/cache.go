@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -139,11 +138,11 @@ type UpdateResult struct {
 // its hints keep.
 func (e *Engine) Update(ctx context.Context, names []string, display ...string) (_ *UpdateResult, err error) {
 	swept := e.sweepRuns()
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	if len(names) == 0 {
 		var err error
 		if names, err = e.Store.Names(); err != nil {

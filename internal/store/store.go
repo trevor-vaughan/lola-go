@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,6 +45,9 @@ type Origin struct {
 	// (source.Components): a fetch of the name again applies it.
 	Components *source.Components `yaml:"components,omitempty"`
 	Heads      []Head             `yaml:"heads"`
+	// LastUsed is the UTC day (YYYY-MM-DD) a run last used each version, by id (Plan 9 §6.3):
+	// lola cache clean --unused-for removes the versions unused that long.
+	LastUsed map[string]string `yaml:"last_used,omitempty"`
 }
 
 // Meta describes one stored version (.lola-origin); its values are those of the first fetch.
@@ -67,6 +71,9 @@ const (
 	originFile = ".lola-origin"
 )
 
+// dayLayout is the form of a last_used day.
+const dayLayout = "2006-01-02"
+
 // idRE is the form of a version id: the first 12 hex digits of the content digest.
 var idRE = regexp.MustCompile(`^[0-9a-f]{12}$`)
 
@@ -75,7 +82,7 @@ var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // checkID refuses a version id that is not one lola writes, before it reaches a path.
 func checkID(name, id string) error {
-	if !idRE.MatchString(id) {
+	if !ValidID(id) {
 		return fmt.Errorf("cache entry %s: version id %q is invalid (expected 12 hex digits)", name, id)
 	}
 	return nil
@@ -139,15 +146,92 @@ type Staged struct {
 
 // Store is the machine-wide module store. targets are the target ids a module's per-entry
 // targets may name. normalize is module.Normalize; specs replace it to break the cached copy.
+// now is the clock last_used days are read from.
 type Store struct {
 	dir, lock string
 	targets   []string
 	normalize func(dir string, m *module.Module) error
+	now       func() time.Time
 }
 
-// New returns the store at p.Store for modules rendered to the targets ids.
-func New(p paths.Paths, targets []string) *Store {
-	return &Store{dir: p.Store, lock: p.StoreLock, targets: targets, normalize: module.Normalize}
+// New returns the store at p.Store for modules rendered to the targets ids, dating last_used by
+// now.
+func New(p paths.Paths, targets []string, now func() time.Time) *Store {
+	return &Store{dir: p.Store, lock: p.StoreLock, targets: targets, normalize: module.Normalize, now: now}
+}
+
+// today is the UTC day last_used records for a use now.
+func (s *Store) today() string { return s.now().UTC().Format(dayLayout) }
+
+// Lock takes the cache lock exclusively for a caller that changes many entries in one critical
+// section (lola cache clean); the returned function releases it. Its holder calls none of the
+// store's methods that take the lock themselves (Commit, Used, Remove), which would wait for it.
+func (s *Store) Lock() (func(), error) { return s.lockStore() }
+
+// ValidID reports whether id is a version id lola writes, so a caller may join it into a path.
+func ValidID(id string) bool { return idRE.MatchString(id) }
+
+// Restore puts back in name's index.yml, for lola cache clean holding the cache lock (Lock), the
+// heads and last_used that before recorded for the versions ids: Cleaned dropped them, and the
+// clean failed before it removed those versions (Plan 9 A28).
+func (s *Store) Restore(name string, before Origin, ids []string) error {
+	o, found, err := s.Origin(name)
+	if err != nil || !found {
+		return err
+	}
+	for _, h := range before.Heads {
+		if slices.Contains(ids, h.Digest) && !slices.ContainsFunc(o.Heads, func(c Head) bool { return c.Ref == h.Ref }) {
+			o.Heads = setHead(o.Heads, h)
+		}
+	}
+	for _, id := range ids {
+		if day, ok := before.LastUsed[id]; ok {
+			if o.LastUsed == nil {
+				o.LastUsed = map[string]string{}
+			}
+			o.LastUsed[id] = day
+		}
+	}
+	return writeYAML(filepath.Join(s.dir, name, indexFile), o)
+}
+
+// Cleaned records in name's index.yml what lola cache clean, holding the cache lock (Lock), did:
+// it removed the versions ids, so the heads that point to them go, with their last_used; and it
+// saw every version still cached, so each one without a last_used is dated today (Plan 9 §6.3).
+// It writes index.yml only when that changes it, and never for a module the cache no longer holds.
+func (s *Store) Cleaned(name string, ids []string) error {
+	o, found, err := s.Origin(name)
+	if err != nil || !found {
+		return err
+	}
+	changed := false
+	heads := slices.DeleteFunc(slices.Clone(o.Heads), func(h Head) bool { return slices.Contains(ids, h.Digest) })
+	if len(heads) != len(o.Heads) {
+		o.Heads, changed = heads, true
+	}
+	for _, id := range ids {
+		if _, ok := o.LastUsed[id]; ok {
+			delete(o.LastUsed, id)
+			changed = true
+		}
+	}
+	vs, err := os.ReadDir(filepath.Join(s.dir, name, "versions"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	for _, v := range vs {
+		if !ValidID(v.Name()) || slices.Contains(ids, v.Name()) || o.LastUsed[v.Name()] != "" {
+			continue
+		}
+		if o.LastUsed == nil {
+			o.LastUsed = map[string]string{}
+		}
+		o.LastUsed[v.Name()], changed = s.today(), true
+	}
+	if !changed {
+		return nil
+	}
+	return writeYAML(filepath.Join(s.dir, name, indexFile), o)
 }
 
 func (s *Store) lockStore() (func(), error) {
@@ -301,6 +385,10 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 	if !headIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == st.ref }) {
 		o.Heads = setHead(o.Heads, Head{Ref: st.ref, Digest: sv.ID, Commit: sv.Commit})
 	}
+	if o.LastUsed == nil {
+		o.LastUsed = map[string]string{}
+	}
+	o.LastUsed[sv.ID] = s.today()
 	if err := writeYAML(filepath.Join(s.dir, sv.Name, indexFile), o); err != nil {
 		return Version{}, err
 	}
@@ -463,7 +551,42 @@ func (s *Store) Pinned(name, digest, dir string) (v Version, found bool, err err
 	if err != nil {
 		return Version{}, false, fmt.Errorf("cached version %s/%s: %w", name, id, err)
 	}
+	// Recording the use is best effort: a cache whose index.yml cannot be written still serves
+	// its versions as it did before last_used (Plan 9 §6.3).
+	_ = s.Used(name, id)
 	return Version{Name: name, ID: id, ContentDir: snap, Meta: meta, Module: m}, true, nil
+}
+
+// Used records that a run used name's version id today (last_used, Plan 9 §6.3). It writes
+// index.yml, under the cache lock, at most once per version per day, and never for a version or
+// module the cache no longer holds.
+func (s *Store) Used(name, id string) error {
+	if err := checkID(name, id); err != nil {
+		return err
+	}
+	today := s.today()
+	if o, found, err := s.Origin(name); err != nil || !found || o.LastUsed[id] == today {
+		return err
+	}
+	unlock, err := s.lockStore()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	o, found, err := s.Origin(name)
+	if err != nil || !found || o.LastUsed[id] == today {
+		return err
+	}
+	if _, err := os.Lstat(filepath.Join(s.dir, name, "versions", id)); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if o.LastUsed == nil {
+		o.LastUsed = map[string]string{}
+	}
+	o.LastUsed[id] = today
+	return writeYAML(filepath.Join(s.dir, name, indexFile), o)
 }
 
 // removeHint coaches removing a cached module whose bytes or records lola refuses.
@@ -536,6 +659,12 @@ func (s *Store) Origin(name string) (Origin, bool, error) {
 				name, untrusted.Text(h.Ref, untrusted.MaxName), untrusted.Text(h.Commit, untrusted.MaxName)), removeHint(name))
 		}
 	}
+	// A last_used entry lola did not write is dropped, never refused: its key reaches no path, and
+	// its version counts as first seen on the next clean's day (Plan 9 §6.3, R-9-44).
+	maps.DeleteFunc(o.LastUsed, func(id, day string) bool {
+		_, err := time.Parse(dayLayout, day)
+		return !ValidID(id) || err != nil
+	})
 	return o, true, nil
 }
 

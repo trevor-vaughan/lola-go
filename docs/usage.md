@@ -608,6 +608,76 @@ run with `-y`.
 JSON: `removed`, the names. The refusal off a terminal carries `would_remove`, the names it
 would have removed, beside `error` and `hints`.
 
+#### `lola cache clean`
+
+```
+lola cache clean [--unused-for <age>] [--all] [-n] [-y]
+```
+
+Remove what your cache no longer needs. Asks first.
+
+| Form | Removes |
+|---|---|
+| bare | Superseded versions (each version no head points to: a newer fetch of its ref replaced it) and scratch: each `.staging/run-*` and `tmp/check-*` that no running lola holds, a `run-*.lock` or `check-*.lock` left without its directory, and a `.staging/clean-*` a killed clean left. Every module keeps its heads. With `cache_unused_for` set in `config.yaml`, also what `--unused-for` with that age removes. |
+| `--unused-for <n>d` or `<n>w` | Also every version no run used for at least that many days (`1w` is 7 days), current heads included: a head whose version goes is dropped, and a module whose last version goes is removed whole. |
+| `--unused-for never` | What bare removes, without the configured age. |
+| `--all` | Every module, every marketplace catalog and all scratch, except scratch a running lola holds. The cache's lock file and `probes.json` stay. |
+
+| Flag | What it does |
+|---|---|
+| `--unused-for <age>` | `<n>d` (days), `<n>w` (weeks) or `never`; not with `--all`. |
+| `--all` | Remove everything but held scratch; not with `--unused-for`. |
+| `-n`, `--dry-run` | Print what would be removed and remove nothing. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+A version is used when a run installs it (`install`), fetches it (`install` or `info` of a
+source, `cache add`, `cache update`, `sync`, `render` fetching it again, `profile --update`) or
+renders the version a project records (`render`, `sync`, `profile --on`, `--switch`,
+`--update`, their dry runs included); `index.yml` records the day (UTC) as `last_used`, at most
+once a day. `lola info` and `install -n` of a cached name, `cache list`, `check`, `list` and
+`cache clean -n` record nothing. A version cached before lola recorded uses counts as used the
+day a clean first sees it, as does one whose `last_used` entry is not a day lola wrote. A cache
+whose `index.yml` lola cannot write (a read-only cache) still installs and renders; the use is
+not recorded.
+
+On a terminal clean prints each item with its reason and size, and the total, then asks `Remove
+these from your cache?`; under `-n` it prints the same and asks nothing. With nothing to remove it
+prints `✓ nothing to clean` and asks nothing. Each item is checked again before it goes: one that
+changed since the plan (a head moved onto it, a run used it, it is gone, a directory above it is no
+longer a real directory) is kept and reported; when every item changed, clean prints `→ nothing
+removed`. A module whose `index.yml`, or an entry, clean
+cannot read, when it plans or when it checks again, is kept as `unreadable`, and the clean goes
+on. `index.yml` stops naming a version
+before the version is removed, and a clean that fails part way puts back the heads of the
+versions it did not remove, so no head names a removed version; its error (under `--json`, with
+`removed` and `bytes_freed`) says what it had removed. Clean sets items aside only in a
+`.staging` that is a real directory. What a clean cannot delete after setting it aside is a
+warning, `bytes_freed` counts only what was deleted, and the next `lola cache clean` retries it.
+
+Risk: removing a version a project records makes that project's next `render` fetch it again,
+and a source that moved or is gone fails as it does after `lola cache rm`. Removing catalogs
+(`--all`) leaves your marketplaces registered but not fetched: installing from one refuses with
+`marketplace <name> is not fetched: its catalog is not in your cache`, hinting `lola market <name>
+--update`. `lola sync --update` fetches again only the catalogs of marketplaces that entries
+installed in the scope came from; for any other, run `lola market <name> --update`.
+
+Refusals: `--all` with `--unused-for` (cobra's `if any flags in the group [all unused-for] are set
+none of the others can be`); an age that is not one: `--unused-for "3x" is not an age; write a
+whole number of days or weeks, such as 30d or 2w, or never` (`--unused-for ""` too, which never
+falls back to the configured age; in `config.yaml`, with its file, line and key); off a terminal
+without `-y`: `lola cache clean needs confirmation, and there is no terminal to ask on`, hinting
+the run with `-y`.
+
+JSON: `removed` (each `module`, `version`, `reason`, `path`, `bytes`), `kept` (each `module`,
+`version`, `reason`, `path`), `bytes_freed`, `dry_run` and `notices`. `reason` is `superseded`,
+`unused`, `scratch` or `all` for a removed item, `in use` (scratch a running lola holds),
+`changed` or `unreadable` for a kept one; `module` and `version` are `""` for scratch and
+catalogs, and `version` is `""` for a module `--all` removes; `path` is relative to
+`$XDG_CACHE_HOME/lola`, as it is on disk when it is plain text, with control and format
+characters replaced otherwise. The refusal off a terminal carries the keys `-n --json` prints
+beside `error` and `hints`. `--plain` rows: `remove` (under `-n`), `removed` or `kept`, then the
+reason, the path and the bytes, and a `notice` row per notice.
+
 #### `lola cache list`
 
 ```
@@ -1215,6 +1285,7 @@ default_scope: project   # project | user | both; read off a terminal only
 pager: true              # false prints sync's consent diff without a pager
 pre_install: ~/bin/lola-pre.sh     # your own install scripts: absolute or ~/…, no trust asked
 post_install: ~/bin/lola-post.sh
+cache_unused_for: 30d    # lola cache clean also removes versions unused this long (<n>d, <n>w, never)
 ```
 
 `selections.yaml` is the one place that says which components you do not want. `install`,
@@ -1479,7 +1550,7 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
-| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, and your install scripts `pre_install` and `post_install`. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, and `cache_unused_for`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](guides/profiles.md#profiles); `default.yml` is always on at user scope. lola never writes them. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/keep.yaml` | Your [keep-list](guides/tidying.md#tidying): per scope, what `lola tidy` never offers. Written by `--keep` and `--unkeep`; safe to edit by hand. | Yours to keep |
@@ -1558,11 +1629,12 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   [partial](guides/templating.md#partials), whose `file` it is; else `""`) and `rendered` (true when the rendered
   output, not the template, was refused); for `template-run-budget` the target, kind, artifact
   and file are `""`. Under `--json`, a confirmation refused off a terminal (`uninstall`, `cache rm`,
-  `migrate` and a bare `init` without `-y`) prints only that line, which adds the plan it would
+  `cache clean`, `migrate` and a bare `init` without `-y`) prints only that line, which adds the plan it would
   have asked about: for `uninstall` and `migrate` the keys their `-n --json` prints (`modules`,
   `steps`, `findings`, `notices` and `dry_run` for `uninstall`), for `cache rm` `would_remove`,
   the names, and for `init` the keys its `-y --json` prints (`name`, `path`, `format`, `files`);
-  its hint is the run with `-y`.
+  its hint is the run with `-y`. `cache clean` does the same with the keys its `-n --json` prints
+  (`removed`, `kept`, `bytes_freed`, `dry_run`, `notices`).
 - Human output says a hook or install script `would run` in a dry run; `--json` and `--plain`
   keep the value `would-run`.
 - Every result that carries `modules` carries `scripts`: each install script the run ran, would
@@ -1575,7 +1647,8 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   too); `1` on any error. `lola render` leaving modules out exits `0` unless `--strict`.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
-- Without a terminal, `uninstall`, `cache rm`, `migrate` and a bare `init` need `-y`; `tidy`
+- Without a terminal, `uninstall`, `cache rm`, `cache clean` (when it has something to remove),
+  `migrate` and a bare `init` need `-y`; `tidy`
   needs names or `--all`, and `-y`. `sync` needs `-y` to
   remove anything and `--trust` to accept changes to `project.yml` (`--trust <module>…` for some),
   including the pin it writes back for an unpinned entry you trusted before; `-y` never trusts.

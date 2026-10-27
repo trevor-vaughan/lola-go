@@ -425,11 +425,11 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	limit.only = act != nil
 	res.Notices = append(append(append(res.Notices, layerNotices...), overrides...), e.sweepRuns()...)
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 
 	entries, kept, err := e.validateSync(sc, man, want, led, req, limit, catalogs)
 	if err != nil {

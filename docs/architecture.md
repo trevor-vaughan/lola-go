@@ -193,7 +193,8 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 
 ## Selections and the install flow
 
-**Files.** `internal/config` reads `$XDG_CONFIG_HOME/lola/config.yaml` (`default_scope`, `pager`) and
+**Files.** `internal/config` reads `$XDG_CONFIG_HOME/lola/config.yaml` (`default_scope`, `pager`,
+`pre_install`, `post_install`, `cache_unused_for`) and
 `selections.yaml` once per command. Both are untrusted: at most 1 MiB, one YAML document, no
 anchors, aliases or merge keys, known keys only, `version: 1`, module names through `ValidateName`,
 known kinds, valid `path.Match` globs (no control or format characters in a selector name, from the
@@ -851,7 +852,8 @@ folder   → (in place) ──────────────────�
 for `cache add` and Add a source…, `Update` and `Render`; `migrate` goes through `InstallAll`)
 creates its own `run-*` under `$XDG_CACHE_HOME/lola/.staging/` (mode `0700`, `Engine.runDir`)
 and removes it on every return path. All but `Fetch`, which reports no notices, first remove
-`run-*` directories last modified more than a day ago (`Engine.sweepRuns`); the sweep is best
+`run-*` directories last modified more than a day ago whose lock no live run holds
+(`Engine.sweepRuns`, A28); the sweep is best
 effort, and what it cannot remove is a warning notice, never a refusal. Everything
 temporary goes inside: fetch scratch (`scratch-*`), fetched copies (`fetch-*`), the
 reachability check's repository, version builds (`version-*`, assembled beside the staged tree
@@ -931,7 +933,8 @@ ancestor is refused. It is skipped when the ref is the commit itself.
 
 ```
 $XDG_CACHE_HOME/lola/modules/<name>/
-  index.yml                # source, type, path, heads: [{ref, digest, commit}]
+  index.yml                # source, type, path, heads: [{ref, digest, commit}],
+                           #   last_used: {<digest12>: YYYY-MM-DD}
   versions/<digest12>/
     content/               # the normalized module: native layout + one generated lola.yml
     .lola-origin           # format, manifest, others_present, ref, commit, fetched_at,
@@ -977,6 +980,58 @@ than the recorded digest) the error carries two hints: `lola install <source> [-
 never pinned. `status` reports `stale` when the manifest's pin differs from the ledger's digest, and
 `update_available` when the cache head for the entry's ref differs from the pin (or from the
 ledger's digest when unpinned).
+
+`last_used` is the UTC day a run last used each version (Plan 9 §6.3). `Store.Commit` writes it
+for every version it commits, `Store.Pinned` for the version `render`, `sync` and `profile` read,
+and `InstallAll` (`Store.Used`) for the version each request resolves, outside a dry run, so
+`lola info`'s plan records none. `Store.Used` reads the index without the lock and, only when the
+day differs, takes `.lock`, reads it again and writes it: at most one write per version per day.
+The store's clock is the engine's `Now`, read at each use, so specs fake the day. Recording is best
+effort: `Store.Pinned` and `InstallAll` go on when `Store.Used` cannot lock or write the index (a
+read-only cache). An entry read back whose id or day is not one lola writes is dropped, never
+refused (R-9-44): its key reaches no path, and its version counts as first seen by the next clean.
+
+Each staging command's `run-*` directory under `.staging/`, and `lola check`'s `check-*` under
+`tmp/`, is held by an exclusive flock on `<dir>.lock` beside it for the run's life (R-9-9,
+`scratch` in `internal/engine/staging.go`): the lock file is created and locked before the
+directory exists, and the run removes the directory, then releases and removes the lock. A lock
+file another lola removed between its creation and its locking is detected (`os.SameFile` of the
+locked descriptor and the path) and another name is taken. `sweepRuns` removes a `run-*` older
+than a day only when it can take its lock without waiting, so a run waiting at a prompt for longer
+keeps its scratch (A28).
+
+`lola cache clean` is `engine.PlanClean`, which writes nothing, and `engine.ApplyClean`, which
+applies the plan the user confirmed (`internal/engine/clean.go`). The plan lists superseded
+versions (no head points to them), with an age (`--unused-for`, else `config.yaml`'s
+`cache_unused_for`) the versions unused that long, heads included, and the scratch whose lock it
+can take without waiting; `--all` lists every entry of `modules/`, `markets/`, `.staging/` and
+`tmp/` but held scratch. A module whose `index.yml` it cannot read, or an entry it cannot read,
+is kept as `unreadable` and planning goes on. Apply takes the markets lock (for `--all`), then
+the cache lock (`Store.Lock`) for its whole removal. Under it, first, every item is checked again:
+every directory between the cache's root and it is still a real directory (`realDirs`, `Lstat`),
+it is still there, a superseded version still headless, an unused one still unused; one that
+changed is kept and reported, as is every item of a module whose directory is not real (one
+check per module decides both its items and its index); a module whose index it cannot read
+again, or one of whose versions it cannot examine, is kept as `unreadable` with all its items and
+its index unwritten, and the clean goes on; `.staging`, the rename target, must be a real
+directory too. Then, before any rename, each module's index drops the heads and `last_used` of its
+versions that go and dates every version without one (`Store.Cleaned`), so a kill leaves no head
+naming a removed version; an index write that fails, or a rename, puts back, from the index read
+before, the heads and `last_used` of the versions not known to be gone (`Store.Restore`), and a
+failed rename's error is a `CleanError` whose JSON carries `removed` and `bytes_freed`. Then each item is renamed into a
+`.staging/clean-<x>/` of its own (same file system); a scratch item's lock is held across the
+rename of its directory and released before its lock file is removed (Windows refuses to remove
+an open file), and a lock alone is held across its own rename except on Windows. A module whose
+last version went is renamed aside whole. At the end the `clean-<x>` directory is deleted;
+`bytes_freed` subtracts what is left of it, which is a warning notice that the next clean
+retries, as it removes a `clean-<x>` a killed clean left. Module names and version ids
+read from disk are validated before they are joined into a path; every listing uses `os.Lstat`,
+so a link is removed as a link and never followed, and sizes count regular files only. A `path`
+is shown as it is on disk when it is plain text, which every validated name and every name lola
+makes is, and through `untrusted.Text` on one line otherwise. No other path holds the cache lock
+while it takes the markets or profiles lock (the cache lock is taken only inside `Store`), so the
+markets-then-cache order cannot deadlock. A reader that loses a version mid-copy fails its digest
+check, and its rerun fetches the version again, as after `lola cache rm`.
 
 Attribute files (`internal/module/attrs.go`) are untrusted data: read as regular files under 64 KiB,
 YAML is built from `yamldoc.Decode`'s node tree by tag (only `!!str`, `!!bool`, `!!int`, `!!float`,

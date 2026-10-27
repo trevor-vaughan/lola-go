@@ -112,4 +112,4 @@ After the MVP:
 - Targets: Copilot, Cursor, OpenClaw, Codex, Antigravity, Windsurf, Kiro and pi (APM's range);
   editor-only assistants need a probe that does not rely on `PATH`.
 - `install --pre-install` / `--post-install` flags.
-- Release automation (goreleaser/CI), Windows, and `cache clean`.
+- Release automation (goreleaser/CI) and Windows.

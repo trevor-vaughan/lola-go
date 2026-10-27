@@ -300,11 +300,11 @@ type installBy struct{ arg, ref, path string }
 // (§4.4).
 func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error) {
 	req.Ref = source.RecordedRef(req.Ref) // the next step echoes a full-SHA ref lower-cased (R-9-31)
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	v, o, by, err := e.infoVersion(ctx, req, run)
 	if err != nil {
 		return nil, err

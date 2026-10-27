@@ -35,6 +35,49 @@ type Config struct {
 	// PreInstall and PostInstall are the user's own install scripts (Plan 9 §5.1), which wrap every
 	// module copy a run installs or replaces; Path "" for none.
 	PreInstall, PostInstall Script
+	// CacheUnusedFor is the age at which a bare lola cache clean also removes a cached version
+	// nobody used (Plan 9 §6.2); the zero Age for none.
+	CacheUnusedFor Age
+}
+
+// Age is how long a cached version went unused, as lola cache clean --unused-for and
+// cache_unused_for: config.yaml write it (Plan 9 §6.2): N days, or N weeks of 7 days; Never
+// turns a configured age off. The zero Age is none.
+type Age struct {
+	N     int
+	Weeks bool
+	Never bool
+}
+
+// AgeForms says what ParseAge accepts, for a refusal of a value it does not.
+const AgeForms = "write a whole number of days or weeks, such as 30d or 2w, or never"
+
+// ParseAge reads an age: a positive whole number then d (days) or w (weeks), or never.
+func ParseAge(s string) (Age, bool) {
+	if s == "never" {
+		return Age{Never: true}, true
+	}
+	num, unit := s[:max(len(s)-1, 0)], s[max(len(s)-1, 0):]
+	if unit != "d" && unit != "w" || num == "" || strings.Trim(num, "0123456789") != "" {
+		return Age{}, false
+	}
+	n, err := strconv.Atoi(num)
+	if err != nil || n <= 0 {
+		return Age{}, false
+	}
+	return Age{N: n, Weeks: unit == "w"}, true
+}
+
+// Covers reports whether a version unused for days whole days is unused for at least a; never
+// for none or never.
+func (a Age) Covers(days int) bool {
+	if a.Never || a.N <= 0 {
+		return false
+	}
+	if a.Weeks {
+		return days/7 >= a.N
+	}
+	return days >= a.N
 }
 
 // Script is an install script config.yaml names: its absolute path, ~ expanded, and the line and
@@ -76,6 +119,17 @@ func LoadConfig(path, home string) (*Config, error) {
 		},
 		"pre_install":  func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PreInstall) },
 		"post_install": func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PostInstall) },
+		"cache_unused_for": func(n *yaml.Node, at string) error {
+			if n.Kind != yaml.ScalarNode || n.Tag == "!!null" {
+				return d.fail(n, at, "must be an age, not "+kindName(n)+"; "+AgeForms)
+			}
+			age, ok := ParseAge(n.Value)
+			if !ok {
+				return d.fail(n, at, fmt.Sprintf("%q is not an age; %s", untrusted.Text(n.Value, untrusted.MaxName), AgeForms))
+			}
+			c.CacheUnusedFor = age
+			return nil
+		},
 	}, "version"); err != nil {
 		return nil, err
 	}
