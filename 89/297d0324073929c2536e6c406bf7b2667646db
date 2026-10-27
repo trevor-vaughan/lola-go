@@ -3,14 +3,44 @@ internal/engine/lastused_test.go
   s_6c657de1929f08::t_9bead9c1084241 132
 internal/engine/engine.go
   s_6c657de1929f08::t_063dbecfe38525 86-87,89,92-93
+  s_6c657de1929f08::t_d3d31db1aacbcf 495,499
 internal/engine/ops.go
   s_6c657de1929f08::t_72428637d0a083 385-391
+  s_6c657de1929f08::t_e0435e0a421531 200,204,1228,1232
 internal/store/store.go
   s_6c657de1929f08::t_5115e1b071d829 47-49,73-75,148,153,156-159,162-164,316-319,482-484,488-519,590-599
 internal/store/store_internal_test.go
   s_6c657de1929f08::t_72396ae07b4bb9 23
 internal/store/store_test.go
   s_6c657de1929f08::t_dd5450532e3d80 18,103,122-123,739-787
+internal/engine/info.go
+  s_6c657de1929f08::t_5310467c7c313c 303,307
+internal/engine/check.go
+  s_6c657de1929f08::t_dfcaec21f3aecd 182
+  s_6c657de1929f08::t_f2d5b5296d32d9 157,186-190,194,200,204
+internal/engine/sync.go
+  s_6c657de1929f08::t_e5fe54aca1a399 428,432
+internal/engine/staging_internal_test.go
+  s_6c657de1929f08::t_17a0a26425c31b 1-6,8-86
+  s_6c657de1929f08::t_a2c4cec3bc0cd8 7,89-111
+  s_6c657de1929f08::t_b3cd38639b5771 87-88,112
+internal/engine/market.go
+  s_6c657de1929f08::t_308cd8d1411dab 709,713,1002,1006,1264,1268
+internal/engine/remote_update.go
+  s_6c657de1929f08::t_39d94fdab1fbd4 513,517
+internal/engine/choices.go
+  s_6c657de1929f08::t_a31002a506e2c2 138,142
+internal/engine/cache.go
+  s_6c657de1929f08::t_0ca44a0a52955f 141,145
+internal/engine/market_install.go
+  s_6c657de1929f08::t_ca154360e56f7c 333,337
+internal/engine/sources_test.go
+  s_6c657de1929f08::t_2959804b399781 736-737
+internal/engine/remote_add.go
+  s_6c657de1929f08::t_e208d80b731bfa 131,135
+internal/engine/staging.go
+  s_6c657de1929f08::t_fa88e34e1799c3 101-102,125-132,134-135,143-173
+  s_6c657de1929f08::t_de903a8d70f8ba 12-13,21-94,96-97
 ---
 {
   "schema_version": "authorship/3.0.0",
