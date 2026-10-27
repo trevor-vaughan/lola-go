@@ -1,0 +1,24 @@
+internal/module/vars_test.go
+  s_ad8e7d52cd540d::t_0a7ade303c04c8 10,42-44,74-81,89-99
+  s_ad8e7d52cd540d::t_843c6a0617b238 100
+internal/module/vars.go
+  s_ad8e7d52cd540d::t_6dba95381d8ec7 38-39,41,47-49,61-67,107-112,116-117
+docs/usage.md
+  s_ad8e7d52cd540d::t_2f7b9014af42c7 1399-1400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "087336042ea8f5ee0ab1e3078b4a2f113d7c0f34",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
