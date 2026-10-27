@@ -1,0 +1,33 @@
+internal/migrate/run_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 975
+internal/engine/market_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 830-837,839-857,876,880-883,897-898,901
+internal/cli/market_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 229,496,498,500-503,505,507-510,666
+internal/engine/market_verbs.go
+  s_8d03b9505d742a::t_0b297e3b72b80c 14-16,28-45,47-50,61-67,87,94,96,98,103,106,109,113,115,117,120,122,125,131,133-134,142,147,149,151-152,154,157,162,173
+internal/market/market_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 546-547
+e2e/market/market.venom.yml
+  s_8d03b9505d742a::t_0b297e3b72b80c 151
+internal/market/market.go
+  s_8d03b9505d742a::t_0b297e3b72b80c 147-148,231
+internal/cli/cmd_market.go
+  s_8d03b9505d742a::t_0b297e3b72b80c 39,254-257,299-301,305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f348913c90bfcbe234c2e1da472d32b63861dc91",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
