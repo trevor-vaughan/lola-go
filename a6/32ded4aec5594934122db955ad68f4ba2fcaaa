@@ -1,0 +1,30 @@
+e2e/image/requirements.txt
+  s_35f2683d3ca978::t_28f7b912c4c648 1-115
+e2e/image/pins.env
+  s_35f2683d3ca978::t_b0da44df4f4e40 1-9
+scripts/e2e-tidy.sh
+  s_35f2683d3ca978::t_b0da44df4f4e40 17-18,36,41
+scripts/e2e-migrate.sh
+  s_35f2683d3ca978::t_b0da44df4f4e40 7,14-15,33,38
+e2e/image/build-image.sh
+  s_35f2683d3ca978::t_b0da44df4f4e40 2,4-6,23
+  s_35f2683d3ca978::t_28f7b912c4c648 1,3,7-22,24-27
+docs/architecture.md
+  s_35f2683d3ca978::t_b0da44df4f4e40 1823,1826-1827
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a632ded4aec5594934122db955ad68f4ba2fcaaa",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
