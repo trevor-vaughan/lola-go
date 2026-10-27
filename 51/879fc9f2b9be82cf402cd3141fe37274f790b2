@@ -1,0 +1,43 @@
+e2e/team/fixtures/kit/commands/deploy.md
+  s_35f2683d3ca978::t_195a82bb606904 1-4
+e2e/team/fixtures/profiles/profiles/go.yml
+  s_35f2683d3ca978::t_195a82bb606904 1-9
+e2e/team/fixtures/team/README.md
+  s_35f2683d3ca978::t_195a82bb606904 1-3
+e2e/team/team.venom.yml
+  s_35f2683d3ca978::t_195a82bb606904 1-46
+e2e/team/fixtures/fmt/commands/fmt.md
+  s_35f2683d3ca978::t_195a82bb606904 1-4
+e2e/team/fixtures/team-drop.yml
+  s_35f2683d3ca978::t_195a82bb606904 1-3
+e2e/team/fixtures/mine.yml
+  s_35f2683d3ca978::t_195a82bb606904 1-9
+e2e/team/fixtures/team-pin.yml
+  s_35f2683d3ca978::t_195a82bb606904 1-8
+e2e/team/scripts/setup.sh
+  s_35f2683d3ca978::t_195a82bb606904 1-79
+e2e/team/fixtures/lint/commands/lint.md
+  s_35f2683d3ca978::t_195a82bb606904 1-4
+e2e/team/fixtures/team/.lola/.gitignore
+  s_35f2683d3ca978::t_a029df9e75e91a 1-3
+e2e/team/fixtures/team/.lola/profiles/review.yml
+  s_35f2683d3ca978::t_cff365667a47e8 1-8
+e2e/team/fixtures/team/.lola/project.yml
+  s_35f2683d3ca978::t_bffacffb119444 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51879fc9f2b9be82cf402cd3141fe37274f790b2",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
