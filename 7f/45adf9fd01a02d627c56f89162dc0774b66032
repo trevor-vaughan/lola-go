@@ -1,0 +1,41 @@
+internal/engine/ops.go
+  s_6c657de1929f08::t_68460431fea013 83-84,87-93,96
+internal/engine/engine.go
+  s_6c657de1929f08::t_68460431fea013 135-140,214-216,232,842,882-884,886-887,921-924,933,938-941,943,963,983
+internal/engine/scripts.go
+  s_6c657de1929f08::t_68460431fea013 4,14,16,42,45-61,102-113,160,163,171,185,188,213,217,219,221-442,453
+internal/engine/sync.go
+  s_6c657de1929f08::t_68460431fea013 508-510,522-525,540
+internal/cli/scripts_test.go
+  s_6c657de1929f08::t_0c280576913285 4,7,47-89
+  s_6c657de1929f08::t_ebd34238730157 90-91
+internal/engine/scripts_test.go
+  s_6c657de1929f08::t_0c280576913285 5-6,12,17,209-602
+  s_6c657de1929f08::t_7d86fa93f27a62 603
+internal/consent/consent.go
+  s_6c657de1929f08::t_68460431fea013 8-9,28-33
+  s_6c657de1929f08::t_19381a325547d2 34-35
+internal/engine/hooks.go
+  s_6c657de1929f08::t_68460431fea013 51-52,150-156,160-168,187-189,193,232-236,238-242,248,261-265,270-272,279,281,287
+internal/cli/prompt.go
+  s_6c657de1929f08::t_68460431fea013 87-91,93,97-102
+  s_6c657de1929f08::t_4456f68675553e 103
+internal/ledger/ledger.go
+  s_6c657de1929f08::t_68460431fea013 80-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f45adf9fd01a02d627c56f89162dc0774b66032",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
