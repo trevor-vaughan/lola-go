@@ -1,0 +1,37 @@
+internal/migrate/helpers_test.go
+  s_8d03b9505d742a::t_a5e609d2e65e1f 72-80
+internal/migrate/plan_test.go
+  s_8d03b9505d742a::t_a5e609d2e65e1f 37
+  s_8d03b9505d742a::t_2abbffdbea6fcc 588-657
+internal/migrate/remap_test.go
+  s_8d03b9505d742a::t_a5e609d2e65e1f 7
+  s_8d03b9505d742a::t_2abbffdbea6fcc 34-59
+internal/migrate/plan.go
+  s_8d03b9505d742a::t_b293ee60170a83 413-437,442-452,454,461-462,624-625,692-693,703
+  s_8d03b9505d742a::t_ac38c9ddf74b81 9,50-51,53-60,84-85,90-96,158-159,179-186,190,199,210,220,228-235,237-240,245-246,264,266-267,275-282,288,293-294,298,313-314,400
+internal/migrate/run.go
+  s_8d03b9505d742a::t_b293ee60170a83 30-33,38
+internal/migrate/run_test.go
+  s_8d03b9505d742a::t_2abbffdbea6fcc 267-276
+  s_8d03b9505d742a::t_a5e609d2e65e1f 85
+internal/migrate/remap.go
+  s_8d03b9505d742a::t_23a07feea2687e 32-40,212-283,308-338,340
+  s_8d03b9505d742a::t_b293ee60170a83 16
+  s_8d03b9505d742a::t_779394e902fadb 339
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "558092d56075a4b757b2967aa41f5b8332529cac",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
