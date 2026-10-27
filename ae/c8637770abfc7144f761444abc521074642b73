@@ -1,0 +1,31 @@
+e2e/market/market.venom.yml
+  s_35f2683d3ca978::t_08c916fdf272aa 183,206-210,276-277,284-286
+  s_35f2683d3ca978::t_2d1837515980fb 211,275,278-283
+e2e/common/snapshot.py
+  s_35f2683d3ca978::t_0d345eff924e97 5-10,16-25
+  s_35f2683d3ca978::t_9a4529f2379a69 26
+e2e/team/team.venom.yml
+  s_35f2683d3ca978::t_d60e5411333637 234,237-241,268-269,292-296,299,364-368,371
+  s_35f2683d3ca978::t_560e24e16e067a 14-15,89,92,113,116,146,149
+  s_35f2683d3ca978::t_1e8210cbe2328e 475-477
+scripts/e2e.sh
+  s_35f2683d3ca978::t_5f78fd4b361652 17
+  s_35f2683d3ca978::t_d7f460c9253cd1 19-20
+  s_35f2683d3ca978::t_d3aacade5624b2 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aec8637770abfc7144f761444abc521074642b73",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
