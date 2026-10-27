@@ -1,0 +1,29 @@
+internal/cli/flow.go
+  s_8d03b9505d742a::t_28bc573cb2b93b 36-38,66-67,371,386-395,399,402,416-417,438,466-470,834-835,841,855,871,882,884,908,915
+internal/cli/flow_test.go
+  s_8d03b9505d742a::t_806a310a9d9f06 7,59-60,135-137,178-180,370-380,407,417,419,421,424-440,453,537,693,814
+internal/cli/huh.go
+  s_8d03b9505d742a::t_2994f3d6846785 11,104-105,117-118,634-638,640-654,656-658,661-673
+internal/cli/huh_internal_test.go
+  s_8d03b9505d742a::t_fdb2fed8f8ab7d 407-408,411,420-444
+internal/cli/prompter.go
+  s_8d03b9505d742a::t_04b7dadb914e3d 252-254,256
+internal/cli/summary.go
+  s_8d03b9505d742a::t_c74f8f59feedb7 13,94-98,105-109,111,128-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1a8494f8d35184e8f3e1b06fc379b408ddbece8",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
