@@ -1,0 +1,53 @@
+internal/cli/cmd_market.go
+  s_8d03b9505d742a::t_4db5013ac1dd04 246
+internal/cli/cmd_store.go
+  s_8d03b9505d742a::t_624e0ead48f6d0 59
+internal/cli/help.go
+  s_8d03b9505d742a::t_9377ad1c7c3d4e 27-29,42,76,191-199,257-259,264
+internal/cli/output.go
+  s_8d03b9505d742a::t_3b6d3435d18863 55-66,87-88,96
+internal/cli/pager.go
+  s_8d03b9505d742a::t_14a454cbb742a9 16,20-26,29-37,40-46,49-57,59-66,69-79,82-85,87-102,104-111,114,116,118-121,129,131
+internal/cli/pager_test.go
+  s_8d03b9505d742a::t_3c190c5cf588c6 93,97-127,147
+internal/cli/root.go
+  s_8d03b9505d742a::t_1d266dda089d93 69,100,132,142,225,227
+internal/cli/viewer_internal_test.go
+  s_8d03b9505d742a::t_1ca83c83974e4c 8,232-341
+internal/testenv/testenv.go
+  s_8d03b9505d742a::t_96d4b6bd3d4749 58-60
+internal/cli/cmd_profile.go
+  s_53d2d5c66fc705::t_c3246be7abdfa4 358,362
+internal/cli/cmd_sync.go
+  s_53d2d5c66fc705::t_f4f401af037ad1 90,98,207-209,243,260,281,308,310,326-327,335,340,359
+internal/cli/profile_add.go
+  s_53d2d5c66fc705::t_782e8a2794e104 47-49,51,55,86
+internal/cli/profile_update.go
+  s_53d2d5c66fc705::t_6c495f51971959 60-63,65,69,111,152,173
+internal/config/config.go
+  s_53d2d5c66fc705::t_1dc48c00850817 34,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5909584a8b6d048eb4cd1989c852d9f26d99320",
+  "prompts": {},
+  "sessions": {
+    "s_53d2d5c66fc705": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae61a2594c833caab",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
