@@ -1,0 +1,33 @@
+internal/engine/tidy.go
+  s_cbbd2b04d86e3c::t_eb6eef49f32705 68
+docs/architecture.md
+  s_cbbd2b04d86e3c::t_22ad9c79881cf5 1805,1816-1819,1825-1828
+  s_cbbd2b04d86e3c::t_2749c1d9b3405c 1809
+  s_cbbd2b04d86e3c::t_20c258a25ab7b6 1822-1824
+  s_cbbd2b04d86e3c::t_79c8fe3756b0d6 1806-1807
+  s_cbbd2b04d86e3c::t_b4390eaf9c8b31 1808
+  s_cbbd2b04d86e3c::t_cbeb7d9f9e31b1 1810-1811
+docs/usage.md
+  s_cbbd2b04d86e3c::t_1144b94cebfc5c 2055-2056,2070
+  s_cbbd2b04d86e3c::t_2749c1d9b3405c 2058
+  s_cbbd2b04d86e3c::t_cbeb7d9f9e31b1 2059-2061
+  s_cbbd2b04d86e3c::t_b4390eaf9c8b31 2057
+scripts/e2e-tidy.sh
+  s_cbbd2b04d86e3c::t_2749c1d9b3405c 61-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d604b40d22a24e71c4b7b4dc5d787dafdb806435",
+  "prompts": {},
+  "sessions": {
+    "s_cbbd2b04d86e3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a2f96a18-7fc6-4f93-8ec0-53b32267f45e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
