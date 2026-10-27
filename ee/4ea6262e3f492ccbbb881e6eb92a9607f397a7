@@ -1,0 +1,22 @@
+internal/cli/core_test.go
+  s_dd02d4728fd2f8::t_9fb349a7a7fda5 518-540
+  s_dd02d4728fd2f8::t_98a7090d8f5aa0 9
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_65acd272713d99 4,18,237-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee4ea6262e3f492ccbbb881e6eb92a9607f397a7",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
