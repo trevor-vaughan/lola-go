@@ -190,10 +190,10 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m8.out /tmp/m8.err"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemoutjson.error ShouldEqual "lola sync needs your trust for the pins it would write for lint, and there is no terminal to ask on; -y confirms removals only; accept the changes with --trust"
+          - result.systemoutjson.error ShouldEqual "lola sync needs your trust for the pins it would write for lint, and there is no terminal to ask on; -y confirms removals only; accept them with --trust=entries"
           - result.systemoutjson.hints ShouldHaveLength 2
           - "result.systemoutjson.hints.hints0 ShouldEqual \"see them: lola sync -C /work/proj lint --update --json -n\""
-          - "result.systemoutjson.hints.hints1 ShouldEqual \"then accept them: lola sync -C /work/proj lint --update --json --trust -y\""
+          - "result.systemoutjson.hints.hints1 ShouldEqual \"then accept them: lola sync -C /work/proj lint --update --trust=entries --json -y\""
       - type: exec
         script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.hint}} /tmp/m8.err > /tmp/m8-see.json'"
         assertions:

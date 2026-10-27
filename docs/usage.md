@@ -43,8 +43,7 @@ project with `.lola/` at or above the current directory, then `default_scope` in
 | `--global` | Save `--skip`, `--only` and `--unskip` in the global section of `selections.yaml`. |
 | `--no-rules`, `--rules` | Leave the module's always-on rules out, remembered in the manifest; `--rules` puts them back. |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
+| `--trust=<kinds>` | Consent without asking to the kinds named, recorded as a yes at the prompt is: `hooks` (install hooks), `runtime-hooks` (Claude Code runtime hooks), `scripts`, or `all` for the three ([Trust kinds](#trust-kinds)). |
 | `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be, without the review menu ([Safety rules](#safety-rules)). |
 | `-n`, `--dry-run` | Print the plan and write nothing, not even `selections.yaml`. |
 | `-y`, `--yes` | Apply after the pickers without the review menu. |
@@ -86,11 +85,9 @@ both` syncs the project, then user scope.
 
 | Flag | What it does |
 |---|---|
-| `--trust` | Accept the changes to `project.yml` and its active profiles without asking; it never bypasses a refusal or grants hook consent. |
+| `--trust[=<kinds>]` | Trust without asking what the run would ask about, of the kinds named: `entries` (the changes to `project.yml`), `profiles` (its active profiles'), `scripts`, `hooks`, `runtime-hooks`, or `all`; bare `--trust` is `entries,profiles`, which run no code. It never bypasses a refusal ([Trust kinds](#trust-kinds)). |
 | `-y`, `--yes` | Confirm removals, and only removals: it never trusts changes. |
 | `--update` | Fetch the refs again and re-pin the modules of the run. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
 | `--force` | Overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals. |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. |
 
@@ -99,7 +96,9 @@ Refusals:
 - Changes to trust off a terminal: `lola sync needs your trust for .lola/project.yml, which has
   not been trusted on this machine, and there is no terminal to ask on` (after a pull, `your trust
   for changes to .lola/project.yml`), hinting `see them: lola sync --project -n` and `then
-  accept them: lola sync --project --trust`.
+  accept them: lola sync --project --trust=entries` (the kinds missing: `--trust=profiles` for a
+  project profile's changes, `--trust=entries,hooks` when a module's pre-install hook would refuse
+  too).
 - Removals off a terminal: `lola sync needs your confirmation to remove my-module, and there is no
   terminal to ask on`, hinting `see them: lola sync --project -n` and `then confirm them: lola
   sync --project -y`.
@@ -210,8 +209,7 @@ files a module no longer ships. Leaves as installed, with a warning, a module it
 |---|---|
 | `-t`, `--target <assistant>` | Only render for these assistants. |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
-| `--allow-hooks` | Run the install hooks of updated modules without asking, for this run. |
-| `--allow-runtime-hooks` | Install Claude Code runtime hooks that need consent without asking; the consent is recorded. |
+| `--trust=<kinds>` | Consent without asking to the install hooks of updated modules (`hooks`), the runtime hooks that need it (`runtime-hooks`), or `all`; recorded as a yes is ([Trust kinds](#trust-kinds)). |
 | `--force` | Overwrite or delete hand-edited files and render skipped artifacts that can be. |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
 
@@ -297,11 +295,9 @@ the project found from here, if any, and user scope. One action per run. Refuses
 | `--update` | Fetch the named remote profiles, or `--all`, again, show what changed, ask, and apply them where they are on. Alias: `--upgrade`. |
 | `--all` | With `--update`: every remote profile you have. |
 | `--remove` | Delete a remote profile; asks (`-y`), and is refused while it is in use unless `--force`. Aliases: `--rm`, `--delete`, `--del`, `--erase`, `--uninstall`. |
-| `--trust` | Accept the changes to `project.yml` and its profiles the run installs, a project profile taking your profile's place, and a remote profile `--add` or `--update` shows, without asking (never hook consent; `--update` without a scope flag: the profiles only). |
+| `--trust[=<kinds>]` | Trust without asking, by kind ([Trust kinds](#trust-kinds)): `entries` and `profiles` (the changes to `project.yml` and its profiles the run installs, a project profile taking your profile's place, a remote profile `--add` or `--update` shows), `scripts`, `hooks`, `runtime-hooks`, or `all`. `--add` takes `profiles` only (bare `--trust` there is `profiles`); `--update` without a scope flag applies only `profiles` to the update and the other kinds to each scope's sync. |
 | `-y`, `--yes` | Confirm removals, and `--remove`; it never trusts changes. |
 | `--force` | With `--remove`: remove a remote profile in use, without asking. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
 | `-n`, `--dry-run` | Print what the action would change, ask nothing and write nothing. |
 
 Refusals:
@@ -569,8 +565,7 @@ the Python lola](guides/migrating.md#coming-from-the-python-lola)). It shows the
 | `--keep-python` | Install, and replace with a backup, but move nothing else to the trash. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 | `--force` | Also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
+| `--trust=<kinds>` | Consent without asking to the kinds named, recorded as a yes at the prompt is: `hooks` (install hooks), `runtime-hooks` (Claude Code runtime hooks), `scripts`, or `all` for the three ([Trust kinds](#trust-kinds)). |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
 
 Refusals: off a terminal without `-y`: `lola migrate needs confirmation, and there is no
@@ -993,8 +988,9 @@ replaced by `?`, followed by a note that it is not copyable as shown.
 
 Ctrl+C at any step cancels: "aborted; nothing changed". Nothing is written before Apply,
 except that Add a source… (and a source you name as an argument) is fetched into your
-cache, which installs nothing. After Apply, a runtime-hook consent you give (or
-`--allow-runtime-hooks`) is recorded in `consent.json` when you give it, before
+cache, which installs nothing. After Apply, a runtime-hook consent you give at the prompt
+is recorded in `consent.json` when you give it (one `--trust=runtime-hooks` gives is recorded
+once its receipt is answered), before
 `selections.yaml` and the installed files are written; if the run then stops (a refusal, or
 a later prompt you decline), that consent stays recorded and nothing else is written.
 `--dry-run` runs the steps and the summary and writes nothing, not even `selections.yaml`.
@@ -1154,6 +1150,70 @@ scope](#choosing-a-scope)); no assistant found, or none of your installed ones s
 run with `-t` and each assistant (every one lola knows, or the installed ones). Copy the
 equivalent commands from an interactive run to repeat it.
 
+### Trust kinds
+
+Every question lola asks before it runs or installs something you did not write has a kind, and
+`--trust` answers the kinds you name, on `sync`, `profile`, `install`, `render` and `migrate`:
+
+| Kind | Covers | Recorded in |
+|---|---|---|
+| `entries` | The changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write | `trust.json` |
+| `profiles` | A project profile's changes, a project profile taking your profile's place, a remote profile `--add` or `--update` shows | `trust.json` |
+| `scripts` | Nothing yet: no command asks for it | `consent.json` |
+| `hooks` | A module's install hooks, by the digest of their scripts | `consent.json` |
+| `runtime-hooks` | A module's Claude Code runtime hooks and agent MCP servers, per settings file | `consent.json` |
+
+Write the kinds after `=`, as a comma list or the flag repeated (`--trust=entries,hooks`); help
+shows `--trust[=entries,profiles]` where a bare `--trust` grants those, and `--trust=<kinds>` where
+it grants none. `--trust hooks` is bare `--trust` and a module named `hooks`: lola refuses an
+argument right after a bare `--trust` that names kinds (in any case, or a list such as
+`hooks,scripts`; after `--` it is a name), hinting your run with `--trust=` the kinds you wrote,
+never the ones a bare `--trust` would add. `--trust=entries,profiles` written out is those two
+kinds, so `profile --add` refuses it. Bare `--trust` is `entries,profiles`, the kinds that run no code; `all` is
+every kind the command takes. A kind the command never asks is refused, naming the ones it takes:
+`install`, `render` and `migrate` take `scripts`, `hooks` and `runtime-hooks` (bare `--trust` is
+refused there, beside other kinds too), `profile --add` takes `profiles`, and `sync` and the other
+`profile` actions take all five. An unknown kind is refused, hinting the closest one within two
+edits (a stray comma, the value without it). `profile --update` without a scope flag refuses
+`--trust=entries`, which would answer nothing there, hinting the run with `--project` and with
+`--scope both`.
+
+What the kinds cover is listed once, before anything is written, as a receipt on stderr:
+
+```
+trusting, as --trust=entries,hooks allows:
+  → entries: targets (new), kit (new)
+  → hooks: kit pre-install (new)
+Proceed? [y/N]
+```
+
+On a terminal lola then asks once (`-y` answers; No installs and records nothing; fetched content
+stays in the cache); what the kinds do not cover is asked item by item first, as without the flag.
+`profile --add`, which takes no `-y`, asks it on a terminal too. A command asks one receipt for
+everything it does: `sync --scope both` runs each scope up to its receipt, shows one, and applies
+the scopes only after its yes, and `profile --update` with `--trust` does the same for the
+profiles and each scope's sync, writing no profile before it (a scope's sync refused before the
+receipt still keeps the update, after a receipt of the profiles; a Cancel or a No to its removals
+updates nothing; a profile another lola run replaced while you were asked is not updated, and
+the profiles written before it are named, not applied). Each scope records its grants just before it is applied, and one whose content
+changed after the receipt is refused (`what --trust covers changed after you answered its receipt;
+nothing more was written`). Off a terminal the run proceeds,
+and under `--json` nothing is printed: the document's `trusted` key lists the same items, and so
+does the error document of a run that fails after it recorded them (for several scopes or
+destinations, what all of them recorded so far, `[]` for none). A run whose
+answers the kinds do not cover is refused off a terminal, and its hint is your run with
+`--trust=` the kinds you gave and exactly the ones missing; a post-install hook or runtime hook
+without consent is declined with a warning that names the run with its kind. `-y` and `--force`
+never give consent of any kind.
+
+A grant by `--trust` is recorded as a yes at the prompt is, once the receipt is answered: a later
+run on the same machine with the same digests asks nothing and needs no flag, and a changed
+script, hook set or runtime-hook group asks again. A yes at a hook's own question is recorded at
+the same point, with them (just before the first write when nothing is covered). A No, a refusal,
+Ctrl+C or `-n` records nothing, neither the flag's grants nor those yes answers. On a CI machine whose `$XDG_STATE_HOME` persists between jobs, one job's
+`--trust=hooks` therefore covers later jobs that install the same hooks; give each job a fresh
+`XDG_STATE_HOME` when you want consent per job.
+
 ## Findings
 
 When a target cannot express part of a module, lola tells you instead of failing the whole
@@ -1215,7 +1275,7 @@ the run, `lola check` included: they are never skip findings.
 | `opencode/escaped-arguments` | warn | no | A command has a Claude-escaped `\$N` or `\$ARGUMENTS`; OpenCode has no escape and still replaces it with arguments, so reword the text. |
 | `opencode/env-reference` | info | no | `${VAR}` in an MCP server becomes OpenCode's `{env:VAR}`. |
 | `opencode/env-default-dropped` | warn | no | OpenCode has no defaults for environment references: `${VAR:-default}` becomes `{env:VAR}`. |
-| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; rerun with `--allow-runtime-hooks`, or answer the prompt on a terminal. |
+| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; its hint is your run with `--trust=` the kinds you gave and `runtime-hooks`, or answer the prompt on a terminal. |
 | `claude-code/allowed-tools` | warn | no | A skill, command or agent pre-approves tools with `allowed-tools`; Claude Code runs them without asking. Installed as written. |
 | `claude-code/permission-mode` | warn | no | An agent sets the permission mode Claude Code runs it in with `permissionMode`; the finding names the mode. Claude Code v2.1.267+ ignores `bypassPermissions` in a subagent's frontmatter. Installed as written. |
 | `claude-code/runtime-hook-path-unsafe` | skip | yes, unless a path holds a quote, `$`, a backquote or `\` | A shell-form hook needs the module copy and plugin-data paths to hold only letters, digits and `/ . _ + -`, or an exec-form command contains `=` or starts with `-`. |
@@ -1258,14 +1318,13 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   Anything else is a **conflict**: lola lists every conflict and changes nothing.
   The refusal lists each conflicting file, by assistant and path, one per line, and why.
   `--force` overrides conflicts and lists each overridden file in the summary; the refusal's hint
-  is your run with `--force` added, keeping its other flags but `-y`, `--trust` and the hook
-  flags. `--force` also answers the destructive question itself (`install`'s review menu,
+  is your run with `--force` added, keeping its other flags but `-y` and `--trust`. `--force` also answers the destructive question itself (`install`'s review menu,
   `sync`'s removals, `uninstall`, `lola profile --remove`, `lola migrate`), on a terminal or off
   one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules says which
   (`with --force it also removes, without asking: other (whole module)`). It never answers a
   consent question: a forced run that needs your trust for a
   pulled `project.yml`, or consent to a module's hooks, still asks, or off a terminal refuses
-  with the hint that adds `--trust` or the hook flag.
+  with the hint that adds the `--trust=` kinds missing.
   Every hint that repeats your run for another reason (another scope, `-t`, `--force`) drops
   them the same way, and a flag you gave as false is never repeated as true. A refusal for want
   of a terminal to confirm on hints your run with `-y`, which answers that question. A hand-edited file lola would delete
@@ -1325,6 +1384,9 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   its hint is the run with `-y`.
 - Human output says a hook `would run` in a dry run; `--json` and `--plain` keep the value
   `would-run`.
+- `sync`, `profile`, `install`, `render` and `migrate` under `--json` carry `trusted`: each item
+  the run's `--trust` covered, `{kind, item, change}` with `change` `new` or `changed`, `[]` when
+  none; under `-n`, what it would cover ([Trust kinds](#trust-kinds)).
 - Exit status: `0` on success or when you decline a prompt (Ctrl+C included, in accessible mode
   too); `1` on any error. `lola render` leaving modules out exits `0` unless `--strict`.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows

@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,11 +37,11 @@ type ProfileUpdateRequest struct {
 	Names  []string
 	All    bool
 	DryRun bool
-	// Flags is the run's --allow-hooks, --allow-runtime-hooks and -y as given, in canonical
-	// form: a hint that repeats the run, or syncs only what it moves, keeps them.
+	// Flags is the run's -y as given: a hint that repeats the run, or syncs only what it moves,
+	// keeps it.
 	Flags []string
-	// Rerun is the run's own other flags (--trust, -n, --json, --plain, --no-pager as given),
-	// which a hint that repeats the run keeps too.
+	// Rerun is the run's own other flags (--trust for the kinds given, -n, --json, --plain,
+	// --no-pager as given), which a hint that repeats the run keeps too.
 	Rerun []string
 	// CannotAsk says no question can be asked (off a terminal, or --json). Without a scope flag,
 	// --trust answers only the profiles' consent, never a found project's trust (ruling
@@ -49,8 +51,17 @@ type ProfileUpdateRequest struct {
 	// Consent shows how one profile changes and asks whether to keep the new one (Plan 6b §8.2):
 	// it is called once per profile that changed, so a No keeps that one and the run goes on to
 	// the next; an error stops the run (Ctrl+C). nil means it cannot ask: the run is refused
-	// before any network contact. The CLI passes one that says yes for --trust, after showing it.
+	// before any network contact, unless Trust covers profiles: then Show, when set, shows each
+	// as a record, and Receipt, when set, is shown every profile that changed once, before any is
+	// written (Plan 9 §3.4).
 	Consent func([]RemoteProfile) (bool, error)
+	Trust   TrustKinds
+	Show    func([]RemoteProfile)
+	Receipt func([]Consent) (bool, error)
+	// Batch, when set, makes the update one of a command's runs (TrustBatch): what --trust covers
+	// goes to it instead of Receipt, and every profile kept is staged, not written: each scope's
+	// sync reads it, and CommitStaged writes it once the command's receipt is answered (CR3).
+	Batch *TrustBatch
 }
 
 // What became of one remote profile of lola profile --update (Plan 6b §19 P21), as
@@ -121,7 +132,8 @@ type UpdateScope struct {
 }
 
 // UpdateStoppedError is a lola profile --update stopped by Err (Plan 6b §19 P21): an error of its
-// consent such as Ctrl+C, or of taking the profiles lock again after a write. What it wrote is
+// consent such as Ctrl+C, of taking the profiles lock again after a write, or of a later staged
+// profile that changed before CommitStaged wrote it. What it wrote is
 // kept, nothing after was fetched or asked about, and nothing is applied. Result is the run so
 // far: each profile's outcome (UpdateSkipped from where it stopped) and what each scope would
 // apply.
@@ -184,7 +196,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		}
 		// Another scope is another question: none of the run's answers (-y, --trust, the hook
 		// flags) travels into it (ruling R-6cux-4).
-		display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" })
+		display := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
 		return nil, errs.WithHints(err, "update at user scope only: "+e.ProfileRun([]Scope{{Kind: target.User}}, slices.Concat(args, display)...))
 	}
 	// The profiles lock comes first, and its sweep finishes an interrupted --update before the
@@ -198,13 +210,15 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	if err != nil {
 		return nil, err
 	}
-	res := &ProfileUpdateResult{RemoteResult: RemoteResult{Profiles: []RemoteProfile{}, Notices: append([]Notice{}, skipped...), DryRun: req.DryRun},
+	res := &ProfileUpdateResult{RemoteResult: RemoteResult{Profiles: []RemoteProfile{}, Notices: append([]Notice{}, skipped...), DryRun: req.DryRun,
+		Trusted: []Consent{}},
 		Updates: []ProfileOutcome{}, Scopes: []UpdateScope{}}
 	if len(names) == 0 {
 		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "you have no remote profiles to update"})
 		return res, nil
 	}
-	// run is the arguments of the run as a hint repeats it, with extra before the run's flags.
+	// run is the arguments of the run as a hint repeats it, with extra before the run's flags;
+	// trusting is the run with --trust covering profiles too, which answers its question.
 	var qs []string
 	for _, n := range names {
 		qs = append(qs, string(profile.KindRemote)+":"+n)
@@ -218,10 +232,15 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		}
 		return slices.Concat(args, extra, req.Flags, req.Rerun)
 	}
-	if req.Consent == nil && !req.DryRun {
+	trusting := func() []string {
+		arg := (req.Trust | TrustProfiles).Arg()
+		return slices.DeleteFunc(run(arg), func(f string) bool { return trustArg(f) && f != arg })
+	}
+	covered := req.Trust.Covers(TrustProfiles)
+	if req.Consent == nil && !covered && !req.DryRun {
 		return nil, errs.WithHints(errors.New("lola profile --update shows how each profile changes and asks before keeping it, and there is no terminal to ask on"),
 			"see it: "+e.ProfileRun(given, run("-n")...),
-			"then update it unasked: "+e.ProfileRun(given, run("--trust")...))
+			"then update it unasked: "+e.ProfileRun(given, trusting()...))
 	}
 	// Every lola profile command refuses a tracked lock.json (Plan 6b §5, §19 S5), in every scope
 	// it applies in; the first annotates the content shown.
@@ -278,6 +297,47 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	var stop error
 	var written []string // the qualified names written, as lock.json stores them
 	locked := true       // the profiles lock is held, so the scopes can be read
+	// keep writes the profile res.Profiles[i], q, whose outcome is res.Updates[k] (out until it is
+	// appended), under the exclusive lock, then takes the shared one again for the next question;
+	// without it the run stops there, and reads no scope.
+	keep := func(i, k int, q string, was profile.Origin, out *ProfileOutcome) {
+		if req.Batch != nil {
+			e.stage(res.Profiles[i], was, k)
+			res.Profiles[i].Written, out.Outcome = true, UpdateUpdated
+			written = append(written, q)
+			return
+		}
+		unlock()
+		unlock = func() {}
+		replaced, warn, err := u.write(&res.Profiles[i], was)
+		switch {
+		case replaced:
+			res.Profiles[i].Written, out.Outcome = true, UpdateUpdated
+			written = append(written, q)
+		default:
+			out.fail(err)
+		}
+		if warn != nil {
+			res.Notices = append(res.Notices, *warn)
+		}
+		if relock, err := e.lockProfiles(false); err != nil {
+			var hints []string
+			for _, s := range scopes {
+				hints = append(hints, "apply what was updated "+scopeAt(s)+": "+e.SyncCommand(s))
+			}
+			stop, locked = errs.WithHints(err, hints...), false
+		} else {
+			unlock = relock
+		}
+	}
+	// trusted is each profile --trust covers: its outcome's index, its profile's and what it
+	// replaces, kept once the receipt is answered (Plan 9 §3.4).
+	type trustedUpdate struct {
+		out, profile int
+		q            string
+		was          profile.Origin
+	}
+	var trusted []trustedUpdate
 	for k, name := range names {
 		q := qs[k]
 		out := ProfileOutcome{Profile: shown(q), File: shown(e.profilePath(sc, profile.KindRemote, name)), Hints: []string{}}
@@ -297,13 +357,23 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			out.Outcome = UpdateUpToDate
 		case req.DryRun:
 			res.Profiles = append(res.Profiles, *rp)
+			if covered {
+				res.Trusted = append(res.Trusted, Consent{Kind: TrustProfiles.String(), Item: rp.Profile, Change: ConsentChanged})
+			}
 			again := slices.DeleteFunc(slices.Concat([]string{q, "--update"}, req.Flags, req.Rerun), func(f string) bool { return f == "-n" })
 			text := "to update " + shown(q) + ": " + e.ProfileRun(given, again...)
-			if !slices.Contains(again, "--trust") {
-				text += " (off a terminal: --trust)"
+			if !covered {
+				text += " (off a terminal: " + TrustProfiles.Arg() + ")"
 			}
 			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: text})
 			out.Outcome = UpdateWould
+		case covered:
+			res.Profiles = append(res.Profiles, *rp)
+			if req.Show != nil {
+				req.Show([]RemoteProfile{*rp})
+			}
+			res.Trusted = append(res.Trusted, Consent{Kind: TrustProfiles.String(), Item: rp.Profile, Change: ConsentChanged})
+			trusted = append(trusted, trustedUpdate{out: len(res.Updates), profile: len(res.Profiles) - 1, q: q, was: was})
 		default:
 			res.Profiles = append(res.Profiles, *rp)
 			ok, err := req.Consent([]RemoteProfile{*rp})
@@ -313,34 +383,31 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			case !ok:
 				out.Outcome = UpdateDeclined
 			default:
-				// Replace it under the exclusive lock, then ask about the next under the shared one.
-				unlock()
-				unlock = func() {}
-				replaced, warn, err := u.write(rp, was)
-				switch {
-				case replaced:
-					res.Profiles[len(res.Profiles)-1].Written, out.Outcome = true, UpdateUpdated
-					written = append(written, q)
-				default:
-					out.fail(err)
-				}
-				if warn != nil {
-					res.Notices = append(res.Notices, *warn)
-				}
-				// The shared lock again for the next question; without it the run stops here, and
-				// reads no scope.
-				if relock, err := e.lockProfiles(false); err != nil {
-					var hints []string
-					for _, s := range scopes {
-						hints = append(hints, "apply what was updated "+scopeAt(s)+": "+e.SyncCommand(s))
-					}
-					stop, locked = errs.WithHints(err, hints...), false
-				} else {
-					unlock = relock
-				}
+				keep(len(res.Profiles)-1, len(res.Updates), q, was, &out)
 			}
 		}
 		res.Updates = append(res.Updates, out)
+	}
+	if len(trusted) > 0 && req.Batch != nil && stop == nil {
+		req.Batch.add(res.Trusted, nil)
+	}
+	if len(trusted) > 0 {
+		ok, err := stop == nil, error(nil)
+		if ok && req.Batch == nil && req.Receipt != nil {
+			ok, err = req.Receipt(slices.Clone(res.Trusted))
+		}
+		for _, t := range trusted {
+			switch {
+			case err != nil:
+				stop, res.Updates[t.out].Outcome = err, UpdateSkipped
+			case stop != nil:
+				res.Updates[t.out].Outcome = UpdateSkipped
+			case !ok:
+				res.Updates[t.out].Outcome = UpdateDeclined
+			default:
+				keep(t.profile, t.out, t.q, t.was, &res.Updates[t.out])
+			}
+		}
 	}
 	if len(written) > 0 && locked {
 		if err := e.updateScopes(res, scopes, uses, theirs, written, len(given) != 1); err != nil {
@@ -358,16 +425,16 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 // updateNames is the remote profiles an update names (Plan 6b §19 P21): with All, every remote
 // profile you have (none is no error: the run says so); otherwise Names, each resolved as
 // remoteNamed does (sc, given), a name given twice taken once. Neither is refused; the CLI
-// refuses it first, with hints that keep the run's flags but the answers (-y, --trust and the
-// hook flags), which a hint naming profiles you never named does not carry.
+// refuses it first, with hints that keep the run's flags but the answers (-y and --trust), which a
+// hint naming profiles you never named does not carry.
 func (e *Engine) updateNames(sc Scope, given []Scope, req ProfileUpdateRequest) ([]string, error) {
 	switch {
 	case req.All:
 		return e.RemoteProfileNames()
 	case len(req.Names) == 0:
-		// A hint for profiles never named answers no question for them: no -y, --trust or hook
-		// flag (ruling R-6b3c-8).
-		display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" })
+		// A hint for profiles never named answers no question for them: no -y or --trust (ruling
+		// R-6b3c-8).
+		display := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
 		return nil, errs.WithHints(errors.New("--update needs the remote profiles to update, or --all"),
 			"update every one: "+e.ProfileRun(given, append([]string{"--update", "--all"}, display...)...))
 	}
@@ -462,7 +529,7 @@ func (u *updateRun) fetch(name string) (_ *RemoteProfile, was profile.Origin, _ 
 	}
 	rp := &RemoteProfile{Profile: shown(q), File: shown(path), Source: shown(o.Source), Ref: shown(o.Ref), Path: shown(o.Path), Commit: shown(o.Commit),
 		Digest: shown(o.Digest), PreviousCommit: shown(was.Commit), PreviousDigest: shown(was.Digest), ComparedWith: scopeName(sc),
-		Description: shown(p.Description), name: name, data: b, origin: o}
+		Description: shown(p.Description), name: name, data: b, origin: o, entries: p.Entries()}
 	if rp.Changes, err = e.remoteContent(u.ctx, sc, q, u.led, old.Entries(), p.Entries(), run, u.probes, u.templates, outputOnly(u.flags)); err != nil {
 		return nil, was, nil, err
 	}
@@ -484,7 +551,7 @@ func (u *updateRun) write(rp *RemoteProfile, was profile.Origin) (written bool, 
 	}
 	q := string(profile.KindRemote) + ":" + rp.name
 	if _, now, err := profile.LoadRemote(e.profilePath(u.sc, profile.KindRemote, rp.name)); err != nil || now != was {
-		return false, nil, errs.WithHints(errors.Join(fmt.Errorf("%s changed while you were asked; nothing was updated", shown(q)), err),
+		return false, nil, errs.WithHints(errors.Join(fmt.Errorf("%s changed while you were asked; it was not updated", shown(q)), err),
 			"run it again: "+e.ProfileRun(u.given, append([]string{q, "--update"}, u.flags...)...))
 	}
 	written, err = e.writeRemote(rp.name, rp.data, rp.origin)
@@ -551,21 +618,19 @@ func (e *Engine) updateScopes(res *ProfileUpdateResult, scopes []Scope, uses []s
 // message after prefix, with its hints, then the run (args, the arguments that repeat it) narrowed
 // to each other scope it would apply in (Plan 6b §19 P20). A run a flag narrowed to one scope has
 // none, and is err itself when there is no prefix. A run narrowed to one scope is another question,
-// so it carries none of the run's answers: -y, --trust and the hook flags (ruling R-6cux-4). A run
+// so it carries none of the run's answers: -y and --trust in any form (ruling R-6cux-4). A run
 // with no scope flag (unscoped) says, of a project, which changes there you have not trusted
 // (rulings R-6b3c-7, R-6b3c-8), since its --trust never answered them.
 func narrowUpdate(err error, prefix string, scopes []Scope, failed int, unscoped bool, e *Engine, args []string) error {
 	msg := prefix + untrusted.CleanErr(err).Error()
-	run := slices.DeleteFunc(slices.Clone(args), func(a string) bool {
-		return a == "-y" || a == "--trust" || a == "--allow-hooks" || a == "--allow-runtime-hooks"
-	})
+	run := slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "-y" || trustArg(a) })
 	var narrowed []string
 	for i, s := range scopes {
 		if i == failed {
 			continue
 		}
 		if unscoped && s.Kind == target.Project {
-			if mods, err := e.untrustedModules(s); err == nil && len(mods) > 0 {
+			if mods, _, err := e.untrustedModules(s); err == nil && len(mods) > 0 {
 				msg += "; project " + shown(s.ProjectDir) + " has changes you have not trusted (" + andJoin(mods) +
 					"), which its sync asks about: the command for it leaves --trust out, which you add once you have reviewed them"
 			}
@@ -584,7 +649,7 @@ func narrowUpdate(err error, prefix string, scopes []Scope, failed int, unscoped
 // active profiles you have not trusted (ruling R-6b3c-7): --trust answers only the profiles'
 // consent there, never that project's trust, so its sync would refuse after the profiles were
 // kept. It names the project and the modules, and hints the run (run, its arguments) with the
-// project named, alone or with --scope both, and --trust.
+// project named, alone or with --scope both, and --trust covering the kinds they need too.
 func (e *Engine) refuseUnnamedTrust(req ProfileUpdateRequest, scopes []Scope, run func(...string) []string) error {
 	if !req.CannotAsk || len(req.Scopes) > 0 {
 		return nil
@@ -593,17 +658,16 @@ func (e *Engine) refuseUnnamedTrust(req ProfileUpdateRequest, scopes []Scope, ru
 		if s.Kind != target.Project {
 			continue
 		}
-		mods, err := e.untrustedModules(s)
+		mods, need, err := e.untrustedModules(s)
 		if err != nil {
 			return err
 		}
 		if len(mods) == 0 {
 			continue
 		}
-		args := run()
-		if !slices.Contains(args, "--trust") {
-			args = append(args, "--trust")
-		}
+		// The run with --trust covering the kinds the project's changes need too (Plan 9 §3.5).
+		arg := (req.Trust | need).Arg()
+		args := append(slices.DeleteFunc(run(), trustArg), arg)
 		return errs.WithHints(fmt.Errorf("project %s has changes you have not trusted (%s), which its sync asks about, and no flag named it: "+
 			"--trust then answers only for the remote profiles", shown(s.ProjectDir), andJoin(mods)),
 			"name it, and trust them: "+e.ProfileRun([]Scope{s}, args...),
@@ -614,19 +678,19 @@ func (e *Engine) refuseUnnamedTrust(req ProfileUpdateRequest, scopes []Scope, ru
 
 // untrustedModules is the modules of sc's project.yml and active project profiles whose entries
 // differ from what you trusted (Plan 6a §7, Plan 6b §8.1), through untrusted.Text: what a sync of
-// that project asks about before it installs them.
-func (e *Engine) untrustedModules(sc Scope) ([]string, error) {
+// that project asks about before it installs them; and the kinds of trust they need.
+func (e *Engine) untrustedModules(sc Scope) ([]string, TrustKinds, error) {
 	man, err := e.Manifest(sc)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	layers, _, _, err := e.uses(sc)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	rec, err := e.Trust.Load(sc.ProjectDir)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	rep := checkParts(rec, trustParts(man, layers, nil))
 	var out []string
@@ -638,7 +702,7 @@ func (e *Engine) untrustedModules(sc Scope) ([]string, error) {
 	if rep.Targets != nil {
 		out = append(out, "project.yml's targets")
 	}
-	return out, nil
+	return out, neededTrust(rep, nil, nil), nil
 }
 
 // subject names the remote profiles qs for a message: remote:go, or remote:go and remote:docs;
@@ -927,3 +991,64 @@ func scopeAt(sc Scope) string {
 	}
 	return "in project " + shown(sc.ProjectDir)
 }
+
+// stagedRemote is a remote profile an update in a batch keeps without writing it: the layer each
+// scope's sync reads in its place, and what CommitStaged writes; out is its outcome's index in
+// the update's result.
+type stagedRemote struct {
+	rp  RemoteProfile
+	was profile.Origin
+	out int
+}
+
+// stage keeps rp, whose outcome is the update's out-th, in place of the remote profile at its
+// path for the rest of the command (CR3).
+func (e *Engine) stage(rp RemoteProfile, was profile.Origin, out int) {
+	if e.staged == nil {
+		e.staged = map[string]stagedRemote{}
+	}
+	e.staged[e.profilePath(Scope{Kind: target.User}, profile.KindRemote, rp.name)] = stagedRemote{rp: rp, was: was, out: out}
+}
+
+// CommitStaged writes every profile the update req staged, in the order it asked about them,
+// under the exclusive profiles lock, each refused when it changed since it was read
+// (updateRun.write, whose hint repeats req), then forgets them; DropStaged forgets them unwritten
+// (a No at the command's receipt). A warning of a write is added to res, the update's result. The
+// first refusal stops it: before any write, it is the error; after one, it is an
+// UpdateStoppedError carrying res with what was written, the refused profile and those after it
+// skipped, and nothing applied: its hints sync each scope of the update.
+func (e *Engine) CommitStaged(req ProfileUpdateRequest, res *ProfileUpdateResult) error {
+	defer e.DropStaged()
+	staged := slices.SortedFunc(maps.Values(e.staged), func(a, b stagedRemote) int { return cmp.Compare(a.out, b.out) })
+	u := &updateRun{e: e, given: req.Scopes, sc: Scope{Kind: target.User}, flags: slices.Concat(req.Flags, req.Rerun)}
+	for i, s := range staged {
+		written, warn, err := u.write(&s.rp, s.was)
+		if warn != nil {
+			res.Notices = append(res.Notices, *warn)
+		}
+		if written {
+			continue
+		}
+		if i == 0 {
+			return err
+		}
+		var hints []string
+		for _, sc := range res.Scopes {
+			hints = append(hints, "apply what was updated "+scopeAt(sc.Of)+": "+e.SyncCommand(sc.Of, outputOnly(u.flags)...))
+		}
+		for _, r := range staged[i:] {
+			res.Updates[r.out].Outcome = UpdateSkipped
+			for p := range res.Profiles {
+				if res.Profiles[p].name == r.rp.name {
+					res.Profiles[p].Written = false
+				}
+			}
+		}
+		res.Scopes = []UpdateScope{}
+		return &UpdateStoppedError{Result: res, Err: errs.WithHints(err, hints...)}
+	}
+	return nil
+}
+
+// DropStaged forgets the staged profiles.
+func (e *Engine) DropStaged() { e.staged = nil }

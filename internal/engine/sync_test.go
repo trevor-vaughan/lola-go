@@ -374,12 +374,12 @@ var _ = Describe("Sync", func() {
 				req.ConfirmRemovals = confirm // -y
 				_, err := sync(req)
 				Expect(err).To(MatchError("lola sync needs your trust for "+want+", and there is no terminal to ask on; "+
-					"-y confirms removals only; accept the changes with --trust"), name)
+					"-y confirms removals only; accept them with --trust=entries"), name)
 				flags := ""
 				if req.Update {
 					flags = " --update"
 				}
-				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project" + flags + " -n", "then accept them: lola sync --project" + flags + " --trust -y"}), name)
+				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project" + flags + " -n", "then accept them: lola sync --project" + flags + " --trust=entries -y"}), name)
 				refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 				Expect(ok).To(BeTrue(), name)
 				Expect(requests.Load()).To(BeZero(), "%s: the git server saw no request", name)
@@ -407,7 +407,7 @@ var _ = Describe("Sync", func() {
 			// The last case of the map above is either pulled entry: its pins may or may not be named.
 			Expect(err).To(MatchError(And(HavePrefix("lola sync needs your trust for changes to .lola/project.yml"),
 				HaveSuffix(", and there is no terminal to ask on"))))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project --force -n", "then accept them: lola sync --project --force --trust"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project --force -n", "then accept them: lola sync --project --force --trust=entries"}))
 			Expect(requests.Load()).To(BeZero())
 			Expect(state()).To(Equal(before))
 
@@ -438,18 +438,18 @@ var _ = Describe("Sync", func() {
 			}{
 				{"neither --trust nor -y", engine.SyncRequest{},
 					"your trust for changes to .lola/project.yml; and your confirmation to remove other",
-					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust -y"}, true, true},
+					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust=entries -y"}, true, true},
 				{"-y alone", engine.SyncRequest{ConfirmRemovals: confirm}, "your trust for changes to .lola/project.yml",
-					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust -y"},
+					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust=entries -y"},
 					true, false},
-				{"--trust alone", engine.SyncRequest{Trust: yes}, "your confirmation to remove other",
-					[]string{"see them: lola sync --project -n", "then confirm them: lola sync --project --trust -y"}, false, true},
+				{"--trust alone", engine.SyncRequest{Options: engine.Options{Trust: engine.TrustEntries}}, "your confirmation to remove other",
+					[]string{"see them: lola sync --project --trust=entries -n", "then confirm them: lola sync --project --trust=entries -y"}, false, true},
 			} {
 				requests.Store(0)
 				_, err := sync(c.req)
 				msg := "lola sync needs " + c.msg + ", and there is no terminal to ask on"
 				if c.req.ConfirmRemovals != nil && c.trust {
-					msg += "; -y confirms removals only; accept the changes with --trust"
+					msg += "; -y confirms removals only; accept them with --trust=entries"
 				}
 				Expect(err).To(MatchError(msg), c.name)
 				Expect(errs.Hints(err)).To(Equal(c.hints), c.name)
@@ -471,7 +471,7 @@ var _ = Describe("Sync", func() {
 				Expect(removals).To(BeEmpty(), c.name)
 			}
 
-			// Every hint leads to lola sync --project --trust -y, which applies: no refusal loop.
+			// Every hint leads to lola sync --project --trust=entries -y, which applies: no refusal loop.
 			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: confirm})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(lockFile().Modules).NotTo(HaveKey("other"))
@@ -812,7 +812,7 @@ var _ = Describe("Sync", func() {
 			install(sc, engine.InstallRequest{Arg: src})
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}})
 
-			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{AllowHooks: true, AllowRuntimeHooks: true}})
+			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{Trust: engine.TrustHooks | engine.TrustRuntimeHooks}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(asked).To(HaveLen(1))
 			c := asked[0].Changes[0]
@@ -860,7 +860,7 @@ var _ = Describe("Sync", func() {
 					`"d":{"command":"d-mcp"}}}`})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "old.sh"), 0o755)).To(Succeed())
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "pre.sh"), 0o755)).To(Succeed())
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, AllowHooks: true})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.Remove(filepath.Join(kit, "hooks", "old.sh"))).To(Succeed())
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: hooks/pre.sh, post-install: hooks/new.sh}\n", "hooks/new.sh": "#!/bin/sh\n",
@@ -948,13 +948,13 @@ var _ = Describe("Sync", func() {
 			before := state()
 			_, err := sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("lola sync needs your trust for the changed content of kit, and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust",
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust=entries",
 				"edited it yourself? lola install --project ./mods/kit"}))
 			// Each hint repeating the run carries its flags.
 			_, err = sync(engine.SyncRequest{Update: true})
-			Expect(errs.Hints(err)).To(ContainElement("then accept them: lola sync --project --update --trust"))
+			Expect(errs.Hints(err)).To(ContainElement("then accept them: lola sync --project --update --trust=entries"))
 			_, err = sync(engine.SyncRequest{Modules: []string{"kit"}})
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project kit -n", "then accept them: lola sync --project kit --trust",
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project kit -n", "then accept them: lola sync --project kit --trust=entries",
 				"edited it yourself? lola install --project ./mods/kit"}))
 			_, err = sync(engine.SyncRequest{})
 			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
@@ -1041,7 +1041,7 @@ var _ = Describe("Sync", func() {
 			kit := filepath.Join(proj, "mods", "kit")
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {post-install: hooks/post.sh}\n", "hooks/post.sh": "#!/bin/sh\n", "commands/k.md": "K\n"})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "post.sh"), 0o755)).To(Succeed())
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, AllowHooks: true})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
 			Expect(err).NotTo(HaveOccurred())
 			writeTree(kit, map[string]string{"hooks/post.sh": "#!/bin/sh\ntouch /tmp/evil\n"})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "post.sh"), 0o755)).To(Succeed())
@@ -1121,7 +1121,7 @@ var _ = Describe("Sync", func() {
 			})
 			install(sc, engine.InstallRequest{Arg: src})
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}})
-			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{AllowRuntimeHooks: true}})
+			_, err := sync(engine.SyncRequest{Trust: yes, Options: engine.Options{Trust: engine.TrustRuntimeHooks}})
 			Expect(err).NotTo(HaveOccurred())
 			b, err := json.Marshal(asked[0])
 			Expect(err).NotTo(HaveOccurred())
@@ -1163,7 +1163,7 @@ var _ = Describe("Sync", func() {
 		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: mods/kit\n"), 0o600)).To(Succeed())
 		_, err := sync(engine.SyncRequest{})
-		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -C " + proj + " -n", "then accept them: lola sync -C " + proj + " --trust -y"}),
+		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -C " + proj + " -n", "then accept them: lola sync -C " + proj + " --trust=entries -y"}),
 			"the trust and the removal of example are both missing")
 
 		digest := "sha256:" + strings.Repeat("a", 64)
@@ -1827,7 +1827,7 @@ var _ = Describe("Sync", func() {
 
 			_, err := sync(engine.SyncRequest{ConfirmRemovals: confirm})
 			Expect(err).To(MatchError("lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, " +
-				"and there is no terminal to ask on; -y confirms removals only; accept the changes with --trust"))
+				"and there is no terminal to ask on; -y confirms removals only; accept them with --trust=entries"))
 			Expect(state()).To(Equal(before))
 
 			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
@@ -1973,8 +1973,8 @@ var _ = Describe("Sync", func() {
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: hooks/pre.sh}\n", "hooks/pre.sh": "#!/bin/sh\nexit 0\n",
 				"commands/fix.md": "Fix.\n"})
 			Expect(os.Chmod(filepath.Join(kit, "hooks", "pre.sh"), 0o755)).To(Succeed())
-			allow := engine.Options{AllowHooks: true}
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, AllowHooks: true})
+			allow := engine.Options{Trust: engine.TrustHooks}
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
 			Expect(err).NotTo(HaveOccurred())
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "example", Source: url, Ref: "v1"}}}) // a pin to write
 			writeTree(kit, map[string]string{"commands/fix.md": "Fix v2.\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
@@ -1984,6 +1984,11 @@ var _ = Describe("Sync", func() {
 			after := state()
 			maps.DeleteFunc(after, func(k, _ string) bool { return strings.HasPrefix(k, filepath.Dir(p.Store)) })
 			maps.DeleteFunc(before, func(k, _ string) bool { return strings.HasPrefix(k, filepath.Dir(p.Store)) })
+			// --trust=hooks recorded its consent once the receipt was answered, before the hook ran
+			// (Plan 9 R-9-3): consent is state, not the project's.
+			Expect(after[p.Consent]).NotTo(Equal(before[p.Consent]))
+			delete(after, p.Consent)
+			delete(before, p.Consent)
 			Expect(after).To(Equal(before))
 
 			// A manifest rename that fails inside plan.Apply, after the files and the ledger: user.yml

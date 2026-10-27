@@ -75,7 +75,7 @@ testcases:
           assert doc["trust"]["status"] == "new", doc["trust"]
           assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("kit", "added")], doc["trust"]["changes"]
           assert doc["removals"] == [], doc["removals"]
-          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust"], doc["hints"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json"], doc["hints"]
           print("ok the first sync asks to trust kit")
           '
         assertions:
@@ -104,7 +104,7 @@ testcases:
           - result.systemoutjson.dry_run ShouldBeTrue
           - result.systemoutjson.trust.status ShouldEqual new
           - result.systemoutjson.equivalent_commands ShouldHaveLength 1
-          - result.systemoutjson.equivalent_commands.equivalent_commands0 ShouldEqual "lola sync -C /work/proj --trust"
+          - result.systemoutjson.equivalent_commands.equivalent_commands0 ShouldEqual "lola sync -C /work/proj --trust=entries"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t2-after.json /work /home/tester"
         assertions:
@@ -130,9 +130,9 @@ testcases:
           {{.runtime}} exec {{.container}} python3 -c '
           import json
           t1, t3 = json.load(open("/tmp/t1.err")), json.load(open("/tmp/t3.err"))
-          assert t3["error"] == t1["error"] + "; -y confirms removals only; accept the changes with --trust", t3["error"]
+          assert t3["error"] == t1["error"] + "; -y confirms removals only; accept them with --trust=entries", t3["error"]
           assert (t3["trust"], t3["removals"]) == (t1["trust"], t1["removals"]), t3
-          assert t3["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust -y"], t3["hints"]
+          assert t3["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json -y"], t3["hints"]
           print("ok -y is refused as T1 was")
           '
         assertions:
@@ -215,7 +215,7 @@ testcases:
           assert change["fields"] == [
               {"field": "commit", "from": "{{.kit_v1}}", "to": "{{.kit_v2}}"},
               {"field": "digest", "from": "{{.kit_v1_digest}}", "to": "{{.kit_v2_digest}}"}], change["fields"]
-          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust"], doc["hints"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json"], doc["hints"]
           print("ok the pin change asks for trust")
           '
         assertions:
@@ -269,7 +269,7 @@ testcases:
           assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("kit", "removed")], doc["trust"]
           assert doc["removals"] == [{"module": "kit", "targets": ["claude-code"], "whole_module": True,
               "paths": [{"target": "claude-code", "path": ".claude/commands/deploy.md"}]}], doc["removals"]
-          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust -y"], doc["hints"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json -y"], doc["hints"]
           print("ok the removal asks for -y")
           '
         assertions:
@@ -342,10 +342,10 @@ testcases:
           {{.runtime}} exec {{.container}} python3 -c '
           import json
           doc = json.load(open("/tmp/t8.err"))
-          assert doc["error"] == "lola profile needs your trust for changes to .lola/profiles/review.yml, and there is no terminal to ask on; -y confirms removals only; accept the changes with --trust", doc["error"]
+          assert doc["error"] == "lola profile needs your trust for changes to .lola/profiles/review.yml, and there is no terminal to ask on; -y confirms removals only; accept them with --trust=profiles", doc["error"]
           assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("lint", "added")], doc["trust"]["changes"]
           assert doc["hints"] == ["see them: lola profile -C /work/proj project:review --on --json -n",
-              "then accept them: lola profile -C /work/proj project:review --on --json --trust -y"], doc["hints"]
+              "then accept them: lola profile -C /work/proj project:review --on --trust=profiles --json -y"], doc["hints"]
           print("ok turning the profile on asks to trust it")
           '
         assertions:
@@ -527,3 +527,80 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} render -C /work/proj"
         assertions:
           - result.code ShouldEqual 0
+
+  - name: T14 A covered run on a terminal shows one receipt and asks once
+    # Plan 9 §9.5 T14 (Reason P, Needs T4): bare --trust covers the clone's entries, so the
+    # terminal is asked nothing but the receipt's one question; No writes nothing, and yes
+    # applies what it listed.
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git clone -q http://127.0.0.1:8765/team.git /work/proj3"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t14-before.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"n\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync --project -C /work/proj3 --trust\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "trusting, as --trust=entries,profiles allows:"
+          - "result.systemout ShouldContainSubstring \"  → entries: targets (new), kit (new)\""
+          - result.systemout ShouldContainSubstring "Proceed? [y/N]"
+          - result.systemout ShouldNotContainSubstring "Trust all"
+          - result.systemout ShouldContainSubstring "aborted; the project was not changed."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t14-after.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} --compare /tmp/t14-before.json /tmp/t14-after.json /home/tester/.local/state/lola/locks/"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual unchanged
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"y\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync --project -C /work/proj3 --trust\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"  → entries: targets (new), kit (new)\""
+          - result.systemout ShouldContainSubstring "Proceed? [y/N]"
+          - result.systemout ShouldContainSubstring "✓ synced kit (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj3 -n --json > /tmp/t14.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t14.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.in_sync ShouldBeTrue
+          - result.systemoutjson.trust.status ShouldEqual trusted
+          - result.systemoutjson.trusted ShouldBeEmpty
+
+  - name: T15 A terminal yes to a hook in sync --scope both is the consent its apply runs on
+    # Final review I1: the project's hook is asked in the collect pass and answered yes on the
+    # terminal; the apply pass after the one receipt asks nothing, runs the hook and records it.
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/hk/.lola /work/hk/mods/hk/commands && printf \"name: hk\\nhooks: {pre-install: pre.sh}\\n\" > /work/hk/mods/hk/lola.yml && printf \"Hk\\n\" > /work/hk/mods/hk/commands/hk.md && printf \"#!/bin/sh\\necho ran >> /tmp/t15.log\\n\" > /work/hk/mods/hk/pre.sh && chmod 755 /work/hk/mods/hk/pre.sh && printf \"version: 1\\ntargets: [claude-code]\\nmodules:\\n  - {name: hk, source: ./mods/hk}\\n\" > /work/hk/.lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"y\\ny\\ny\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync --scope both -C /work/hk --trust\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "Run hk's install hooks?"
+          - result.systemout ShouldContainSubstring "Proceed? [y/N]"
+          - result.systemout ShouldContainSubstring "✓ synced hk (claude-code)"
+          - result.systemout ShouldNotContainSubstring "only with your consent"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /tmp/t15.log"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual ran
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} sync --project -C /work/hk"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring "✓ synced hk"

@@ -102,7 +102,8 @@ or one it would swap out that git tracks or that is a symbolic link; `--force` b
 up and reports it replaced), a hook without consent, or a cancelled prompt changes nothing.
 `--force` overwrites such files as `lola install --force` does, after copying each into the trash,
 and lists them as replaced; it also answers `Migrate?`, so its refusal's hint `lola migrate --force`
-runs off a terminal, though never a hook's consent (`--allow-hooks`, `--allow-runtime-hooks`). When two modules the Python lola installed in one place ship a
+runs off a terminal, though never a hook's consent (`--trust=hooks`, `--trust=runtime-hooks`, which
+it lists in one receipt for every destination before anything is written). When two modules the Python lola installed in one place ship a
 component of the same name, the Python lola skipped one; lola refuses, naming both modules and the
 component, and gives the Python lola's `lola uninstall <module> -a <assistant> <project>` command
 for the module it skipped the component in: run it with the Python lola, then rerun

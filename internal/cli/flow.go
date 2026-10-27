@@ -21,9 +21,10 @@ import (
 
 // installFlags are lola install's flags.
 type installFlags struct {
-	targets, skips, onlys, unskips                                            []string
-	ref, path                                                                 string
-	dry, force, strict, rules, noRules, allowHooks, allowRuntime, global, yes bool
+	targets, skips, onlys, unskips                  []string
+	ref, path                                       string
+	dry, force, strict, rules, noRules, global, yes bool
+	trust                                           engine.TrustKinds
 }
 
 // addedSource is a source added to the cache during the run (Add a source…).
@@ -394,7 +395,8 @@ func (fl *installFlow) run() error {
 			break
 		}
 	}
-	fl.a.hookOptions(fl.cmd, &spec.Options, fl.f.allowHooks, fl.f.allowRuntime)
+	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), trustRun(fl.cmd, fl.args)
+	fl.a.hookOptions(fl.cmd, &spec.Options)
 	spec.Options.Display = outputFlags(fl.cmd)
 	// The summary, when a picker ran, already showed where each address resolved, before Apply.
 	if !fl.a.json && (!fl.ask || len(fl.shown) == 0) {
@@ -1104,7 +1106,7 @@ func (fl *installFlow) pickEdits(key string) []engine.SelectionEdit {
 // spec builds the install from the answers.
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
-		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
+		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args), Trust: fl.f.trust}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
 	}

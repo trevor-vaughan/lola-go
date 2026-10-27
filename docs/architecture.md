@@ -629,9 +629,10 @@ reruns its hooks; edits inside a copy are not reported.
 
 `pre-install` and `post-install` scripts must be executable regular files inside the module
 (checked when the module is loaded). After the plan is computed and before anything is written,
-the engine decides consent per module: `--allow-hooks` (this run only), a recorded consent for
-the same digest (sha256 over each hook's event, script path and script sha256), or the CLI's
-prompt, whose yes is recorded in `$XDG_STATE_HOME/lola/consent.json`. Without consent a
+the engine decides consent per module: a recorded consent for the same digest (sha256 over each
+hook's event, script path and script sha256), a `--trust=hooks` (its grant recorded
+only after the receipt, [Trust kinds](#trust-kinds)), or the CLI's prompt, whose yes is recorded
+in `$XDG_STATE_HOME/lola/consent.json` when given. Without consent a
 `pre-install` hook is an error and a `post-install` hook is declined with a warning.
 
 Hooks run once per target, in the module copy, with the parent environment plus `LOLA_MODULE_NAME`,
@@ -657,8 +658,8 @@ still in sync). A forced copy whose hook is not pending (`moduleCopy.pending`) i
 without a notice or a `pre-install` refusal when consent is missing. A planted
 `hooks_pending` in an untracked `lock.json` therefore runs nothing the user did not consent to
 for those bytes. The declined-hook notice names `lola sync <m>`, and off a terminal
-`lola sync <m> --allow-hooks`, with the scope's flags. A pending hook is offered only to a run
-that names its module or gives `--allow-hooks` (`planSync`'s `named`): any other run plans the
+`lola sync <m> --trust=hooks`, with the scope's flags. A pending hook is offered only to a run
+that names its module or gives `--trust=hooks` (`planSync`'s `named`): any other run plans the
 copy as it is, asks nothing, and adds the notice `pending post-install hook for <m> → lola sync
 <m>`, so an unrelated full sync never stops at the hook question.
 
@@ -709,8 +710,9 @@ JSON, and each component's target, kind, name, canonical hooks and canonical inl
 rendered, so absolute paths are in it), then the module version's content digest. Consent is
 recorded in `consent.json` under `<module>/runtime-hooks/<sha256 of the settings file's absolute
 path, symlinks resolved>`, which cannot collide with an install hook entry because module names have
-no `/`, and gives each project and scope its own consent. A recorded digest, `--allow-runtime-hooks`
-or a yes from the CLI's prompt keeps the intents (the latter two record the digest); a dry run makes
+no `/`, and gives each project and scope its own consent. A recorded digest, a
+`--trust=runtime-hooks` (recorded after the receipt) or a yes from the CLI's prompt (recorded when given)
+keeps the intents; a dry run makes
 the same decision without asking or recording; otherwise the intents are dropped with
 `<target>/runtime-hooks-declined`, per settings hooks and per component. Dropping them is what makes
 consent fail closed: the planner sees the module's installed groups and components as orphans and
@@ -929,6 +931,58 @@ read the same way (`module.ParseVars` from `lola.yml`'s node and, through `manif
 each entry); `planModule` checks an entry's overrides against the declaration (`checkVars`) before
 anything renders and binds the declared vars with the overrides (`resolvedVars`).
 
+## Trust kinds
+
+`--trust[=kind,…]` is one flag (`internal/cli/trust.go`, `trustFlag`) on every command that can
+ask a consent question; `engine.TrustKinds` (`internal/engine/trustkinds.go`) is the set, a bit per
+kind in canonical order (`entries`, `profiles`, `scripts`, `hooks`, `runtime-hooks`), and
+`CommandTrust` the kinds each command asks. `ParseTrust` turns the flag's values into kinds before
+any network contact: a bare `--trust` reaches it as `TrustBareValue` (pflag's `NoOptDefVal`) and is
+`entries,profiles` within the command's kinds; `all` is the command's kinds; an unknown, empty or
+untaken kind is a `TrustFlagError` whose `Fix` is the kinds of the run its hint offers. pflag gives
+a `NoOptDefVal` flag its default unless the value is joined by `=`, so `--trust hooks` is bare
+`--trust` and an argument: `trustFlag.Set` records how many positional arguments pflag had read
+(`FlagSet.Args()`), and `parse` refuses a kind-named argument at that index, unless after `--`
+(`TrustArgument`). `TrustKinds.Arg` writes kinds after `=`, never `all`, and every hint writes it.
+
+`Options.Trust` covers items as they are planned: sync's trust report by kind (`TrustReport.split`,
+`consents`), install hooks (`allowed`), runtime hooks (`runtimeHookConsent`), and a remote
+profile's `--add` or `--update` (`consentRemote`). A covered item goes to `Result.Trusted` (a
+`Consent`: kind, item, `new` or `changed`) and, for consent.json, a pending `grant`; an uncovered
+one is asked as without the flag, its yes a pending `grant` too (A23), or refused or declined (`Result.needs` keeps the kinds that would
+refuse, for a dry run's command). `confirmTrusted` runs once per engine run before the first write
+(`InstallAll` before `BeforeWrite`, `execute`, `Sync` before the apply): it shows the items to
+`Options.Receipt` (No is `ErrDeclined`) and only then writes the grants, the flag's and the
+terminal's alike (A2, A23); entries and profiles are recorded in trust.json with the apply, as
+before. A later failure of the run is a `TrustedError`, whose JSON carries the grants written
+(A22). The CLI's receipt prints them grouped by kind
+on stderr and asks `Proceed?` on a terminal unless `-y`; under `--json` it prints nothing, as
+`trusted` carries them. `Options.Rerun` is the user's run for a given set of kinds: sync builds it
+(`commandOf`), the CLI passes `runWithout` for install, render and migrate, and a refusal for want
+of trust hints it with the kinds given plus the missing one.
+
+A command that runs the engine more than once shows one receipt (R-9-5): each run gets a
+`TrustBatch` in `Options.Batch`, which takes its items and grants at its receipt and stops it with
+`ErrBatched`; the command asks the one receipt, then the runs go again, asking nothing, each with
+the batch in `Options.Expect`: it records its own grants just before its own apply, when each is
+one the batch holds by key and digest (entries and profiles items by label), else it fails with
+`ErrTrustChanged`, writing nothing (R-9-16), so one module at two versions in two scopes records
+each digest before each apply. A terminal yes to an install or runtime hook in the first run is
+one of the batch's grants: the second run, which asks nothing, takes a hook whose key and digest
+the batch holds as consented (`allowed`, `runtimeHookConsent`) and records it the same way, while
+a hook changed in between is refused as one never answered. `lola migrate` does so per
+destination; `sync --scope both` and
+`profile --update` (with `--trust`) also replay each scope's trust and removal answers in the
+second run (`syncPass`). A failure carries what was recorded so far as `trusted`
+(`syncedScopesError`, `updateError`, migrate's `TrustedError`). `profile --update` keeps the profiles it
+accepts staged in the engine (`Engine.staged`, read by `loadProfiles` in place of the files) until
+`CommitStaged` writes them after that receipt, in the order they were asked about, each refused
+when its `source.json` changed since it was read; a refusal after a write stops the run as an
+`UpdateStoppedError` that names what was written and applies nothing. `trustFlag` gives a bare `--trust` a value with a
+NUL byte (`TrustBareValue`), which no argument can hold, so `--trust=entries,profiles` is never
+taken for it; help shows `[=entries,profiles]` or `=<kinds>` through an annotation
+(`trustShownKey`, `aliasedFlagUsages`).
+
 ## Trust record
 
 `project.yml` is committed and someone else's after a pull, so lola keeps its own account of what it
@@ -1045,7 +1099,7 @@ profile's.
   install's equivalent commands use to decide `-C`), else `-C <root>`; a command without a scope
   flag would ask for its scope on a terminal (Plan 6b §12.3). Then the names and flags, each through
   `untrusted.Text` and `errs.ShellJoin`. A hint that repeats the user's run carries its names,
-  `--update` and `--force`, and the hook flags only when given (`SyncRequest.rerun`); the
+  `--update` and `--force`, and `--trust=` the kinds given (`SyncRequest.rerun`); the
   "… and N more" of a capped file list or dry-run plan names the user's run with `-n --json`
   (`Engine.ListAll`). An install's `retry with: lola install <names>` (`withRetry`) is built per
   scope with `Command`, and left off a refusal for want of trust (`ErrNotTrusted`, the untrusted
@@ -1060,7 +1114,7 @@ profile's.
   run) say what to do in the message. The refusal of no scope hints `ScopeRequest.Run`, the run
   without its scope flags (`scopeFlags`), plus each scope flag the command takes; install's
   no-assistant refusals hint the run plus `-t <id>`, and a project at the home directory
-  `InstallSpec.UserRun`. Every such rerun drops `consentFlags` (`-y`, `--trust`, the hook flags:
+  `InstallSpec.UserRun`. Every such rerun drops `consentFlags` (`-y` and `--trust`:
   rulings R-6b3c-8, R-6cux-4), and `runWithout` repeats a bool only as given (`--x=false` against
   a true default, nothing for a false one). `confirm`'s refusal off a terminal hints the run with
   `-y`. `lola migrate` needs no case of its
@@ -1205,7 +1259,7 @@ lists every remote profile (`profile.Remote`), none being a notice; otherwise ea
 resolved to a kept remote profile (`remoteNamed`; a bare name is the remote one, since only those
 are updated), a name given twice taken once. The CLI refuses names with `--all`, neither, and a name
 given twice, since its hints keep the flags of the run (`runWithout`), but for one naming profiles
-you did not name, which drops `--trust`, `-y` and the hook flags (ruling R-6b3c-8); `--all` is in
+you did not name, which drops `--trust` and `-y` (ruling R-6b3c-8); `--all` is in
 the per-action flag table, so other actions refuse it. It refuses before any network contact when it
 cannot ask,
 and an engine call naming neither profiles nor `All`. It asks no scope (§19 P20):
@@ -1218,7 +1272,7 @@ which the CLI takes only when the project has `.lola/`, ruling R-6b3c-2) in both
 here). Each of those must pass
 `profileScope`, and `scopeBefore` must read what each wants (`uses`), before any network contact: a
 scope it cannot read refuses there, so nothing is kept that cannot be applied, with `narrowUpdate`
-hinting the run narrowed to each other scope without `-y`, `--trust` or the hook flags, which were
+hinting the run narrowed to each other scope without `-y` or `--trust`, which were
 given for the run as a whole (ruling R-6cux-4; without a scope flag, the message names a found
 project's untrusted changes, rulings R-6b3c-7 and R-6b3c-8); the first scope annotates the content shown. Without a scope flag, `--trust` answers only
 the profiles' consent (ruling R-6b3c-7): the CLI never passes it to a scope's sync, so a terminal
@@ -1268,12 +1322,13 @@ The CLI fails a run with a failed profile once the others are applied, or with t
 error when the run named only one, and a stop (`UpdateStoppedError`) after a failure; every such
 error is an `updateError`, whose `--json` error document is the run's document beside the wrapped
 error's own fields. A run where every profile was declined, and Ctrl+C with no failure, are aborts.
-`ProfileUpdateRequest.Flags` carries the run's `--allow-hooks`, `--allow-runtime-hooks` and `-y`,
-which every hint that repeats the run, or syncs only the modules it moves, keeps; `Rerun` carries
-its `--trust`, `-n`, `--json`, `--plain` and `--no-pager`, which only hints repeating the run keep.
-A hint naming profiles the run did not name keeps neither answers nor hook flags (`-y`, `--trust`,
-`--allow-hooks`, `--allow-runtime-hooks`), and one naming a project an unscoped run did not name
-drops `--trust`.
+`ProfileUpdateRequest.Flags` carries the run's `-y`, which every hint that repeats the run, or
+syncs only the modules it moves, keeps; `Rerun` carries its `--trust=<kinds>`, `-n`, `--json`,
+`--plain` and `--no-pager`, which only hints repeating the run keep (the CLI's sync hints keep the
+`--trust` kinds that answer a sync). `Trust` covers the profiles' question when it has `profiles`:
+each changed profile is shown through `Show`, and every one reaches one `Receipt` before any is
+written. A hint naming profiles the run did not name keeps no answer (`-y`, `--trust` in any
+form), and one naming a project an unscoped run did not name drops `--trust`.
 A whole scope's sync hint carries neither (ruling R-6b3c-8).
 
 **Removing one** (`Engine.RemoveProfile`, `internal/engine/remote_remove.go`) refuses without a way
@@ -1374,8 +1429,11 @@ that differs from the highest profile's (`overridesProfiles`).
 
 `Engine.Sync` (`internal/engine/sync.go`) makes one scope match its manifest. The CLI adapts it:
 it answers the two questions (`SyncRequest.Trust`, `SyncRequest.ConfirmRemovals`) through the
-Prompter on a terminal (`Prompter.Trust`, the picker, and `Confirm`), with `--trust` (which still
-prints the diff it accepted) answering All and `-y` confirming, and nil (cannot ask) otherwise.
+Prompter on a terminal (`Prompter.Trust`, the picker, and `Confirm`), `-y` confirming, and nil
+(cannot ask) otherwise. `--trust`'s `entries` and `profiles` kinds (`Options.Trust`) answer the
+changes of their kind without asking: the engine splits the report (`TrustReport.split`), shows
+the covered part through `SyncRequest.Show` (the diff the CLI prints as a record) and asks `Trust`
+only about the rest, merging the answer with `TrustAnswer.Kinds`.
 `SyncRequest.Modules` limits the run to the modules named (`syncLimit`); `Update` re-pins the run's
 git and archive entries. The steps, in order, under the scope lock (none in a dry run):
 
@@ -1471,8 +1529,8 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
 11. `in_sync` is set when there is no step, pin, removal or module copy to replace and no
     active list an activation changes (one that moves no module still writes it); `Changed`
     names the modules the run changed. After a trust answer, `Equivalent` is the command that
-    gives it off a terminal: the user's run with `--trust` for Trust all; for a partial answer,
-    `lola sync --trust <names>` naming every accepted entry (a field-only change renders nothing
+    gives it off a terminal: the user's run with `--trust=` the kinds given and the report's for
+    Trust all; for a partial answer, `lola sync <names> --trust=…` naming every accepted entry (a field-only change renders nothing
     but changes the record) and every changed module; `-y` when removals were confirmed. The
     CLI prints it after the removals are answered, when it asked the question.
 
@@ -1720,6 +1778,13 @@ the engine's.
 
 ## Security model
 
+- **Trust kinds cannot widen.** Each kind answers a fixed set of questions; bare `--trust` covers
+  only `entries,profiles`, which run no code; a kind a command never asks is refused; a hint adds
+  exactly the kinds its refusal misses and never writes `all`; `-y` and `--force` grant none. A
+  grant is recorded only after the receipt's yes, so a No, a refusal or `-n` leaves no consent.
+  **Residual risk:** a grant by `--trust` is recorded as a yes is, so on a machine whose
+  `$XDG_STATE_HOME` persists (a CI runner), one job's `--trust=hooks` covers later jobs installing
+  the same hook bytes; the digest keys bound it, and a fresh `XDG_STATE_HOME` per job removes it.
 - **Hooks run code, with consent.** Install hooks run as the user, unconfined (sandboxing is on
   the roadmap), only after consent tied to the exact scripts. A changed script asks again; a
   changed file that a script runs does not, which the user docs say. Runtime hooks reach

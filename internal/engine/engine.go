@@ -78,6 +78,9 @@ type Engine struct {
 	// (Plan 7 §5.4), timed with Now; specs lower them.
 	TemplateLimits templating.Limits
 	TemplateBudget TemplateBudget
+	// staged is the remote profiles an update in a batch keeps until the command's receipt is
+	// answered (CommitStaged), by path; the layers of the command's syncs read them in place.
+	staged map[string]stagedRemote
 }
 
 // New returns an Engine over the real store and every registered target.
@@ -107,19 +110,33 @@ type Options struct {
 	// refusal of its vars names (checkVars).
 	entryFrom string
 
-	// Install hooks (§9.1). AllowHooks grants consent for this run. Ask, when set, asks the
-	// user about hooks without a recorded consent; a yes is recorded. HookOutput receives
-	// the hooks' stdout and stderr.
-	AllowHooks bool
+	// Trust is the kinds of trust the run's --trust grants (Plan 9 §3.4): an item of a kind it
+	// covers is not asked about but shown once to Receipt, which, when set, is called before the
+	// first write and may answer No (ErrDeclined); the grants are recorded only after it.
+	Trust   TrustKinds
+	Receipt func([]Consent) (bool, error)
+	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
+	// a refusal for want of trust hints; nil gives no such hint.
+	Rerun func(TrustKinds) string
+	// Batch, when set, takes the run's covered items and grants at its receipt instead, which then
+	// stops the run with ErrBatched: the caller asks one receipt for several runs (TrustBatch).
+	Batch *TrustBatch
+	// Expect, when set, is the batch whose one receipt the user answered: the run asks no receipt,
+	// and records its grants just before its own apply only when each is one the batch holds, by
+	// key and digest, and each entries or profiles item one it showed; else it is ErrTrustChanged,
+	// with nothing of it written (R-9-16).
+	Expect *TrustBatch
+
+	// Install hooks (§9.1). Ask, when set, asks the user about hooks without a recorded consent
+	// that Trust does not cover; a yes is recorded. HookOutput receives the hooks' stdout and
+	// stderr.
 	Ask        func(module string, hooks []HookScript) (bool, error)
 	HookOutput io.Writer
 
 	// Runtime hooks (Plan 5b design §7.3), which an assistant runs on its own events.
-	// AllowRuntimeHooks grants and records consent to the hooks the summary lists;
-	// AskRuntimeHooks, when set, asks the user about hooks without a recorded consent, and a
-	// yes is recorded. AllowHooks never covers them.
-	AllowRuntimeHooks bool
-	AskRuntimeHooks   func(module string, hooks []RuntimeHook) (bool, error)
+	// AskRuntimeHooks, when set, asks the user about hooks without a recorded consent that Trust
+	// does not cover, and a yes is recorded.
+	AskRuntimeHooks func(module string, hooks []RuntimeHook) (bool, error)
 
 	// Display is the run's output flags (--json, --plain, --no-pager as given), which every
 	// command a marketplace hint or notice names keeps (Plan 6c §11.3), as does the uninstall a
@@ -177,9 +194,18 @@ type Result struct {
 	Findings []target.Finding `json:"findings"`
 	Notices  []Notice         `json:"notices"`
 	DryRun   bool             `json:"dry_run"`
+	// Trusted is what the run's --trust covers (Plan 9 §3.4, §8), and under -n what it would:
+	// [] when nothing, and nil, so absent from the JSON, for a command that takes no --trust.
+	Trusted []Consent `json:"trusted,omitzero"`
 	// remedies are the hints of the modules render left out, in module order, which a --strict
 	// refusal names instead of its generic advice (Plan 6a §10.3).
 	remedies []string
+	// grants are the consent.json records Trusted's items give, written after the receipt; needs
+	// is the kinds of trust the run met an item of that would be refused without it (R-9-6).
+	grants []grant
+	needs  TrustKinds
+	// recorded is the items whose grants confirmTrusted wrote, which a later failure carries.
+	recorded []Consent
 }
 
 func newResult(dry bool) *Result {
@@ -722,10 +748,13 @@ func strictError(finds []target.Finding, rerun string, offerForce bool, remedies
 func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy,
 	opts Options, res *Result, after func(*plan.Plan) error) error {
 	pr, err := e.prepare(sc, led, changes, copies, nil, opts, res)
-	if err != nil || opts.DryRun {
+	if err != nil {
 		return err
 	}
-	return e.commit(ctx, pr, opts, res, nil, after)
+	if err := e.confirmTrusted(opts, res); err != nil || opts.DryRun {
+		return err
+	}
+	return res.afterGrants(e.commit(ctx, pr, opts, res, nil, after))
 }
 
 // prepared is a scope's computed plan whose every refusal and prompt has passed: what commit

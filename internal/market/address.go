@@ -80,7 +80,7 @@ func closeTo(names []string, name string) []string {
 	var found []near
 	for _, n := range names {
 		have := strings.ToLower(n)
-		if d := distance(have, want); d <= 2 || strings.Contains(have, want) {
+		if d := Distance(have, want); d <= 2 || strings.Contains(have, want) {
 			found = append(found, near{name: n, dist: d})
 		}
 	}
@@ -92,8 +92,9 @@ func closeTo(names []string, name string) []string {
 	return out
 }
 
-// distance is the Levenshtein distance between a and b, by bytes: entry names are ASCII.
-func distance(a, b string) int {
+// Distance is the Levenshtein distance between a and b, by bytes: entry names and kinds of trust
+// are ASCII.
+func Distance(a, b string) int {
 	prev := make([]int, len(b)+1)
 	for j := range prev {
 		prev[j] = j

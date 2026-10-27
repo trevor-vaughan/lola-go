@@ -28,11 +28,11 @@ var profileActions = []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff,
 // §19 P13), in the order a refusal checks them: a flag the run's action does not take, or any of
 // them without an action, is refused, since a flag that does nothing must not look accepted.
 var profileFlags = map[engine.ProfileAction][]string{
-	engine.ProfileOn:     {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
-	engine.ProfileOff:    {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
-	engine.ProfileSwitch: {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"},
+	engine.ProfileOn:     {"yes", "trust", "dry-run"},
+	engine.ProfileOff:    {"yes", "trust", "dry-run"},
+	engine.ProfileSwitch: {"yes", "trust", "dry-run"},
 	engine.ProfileAdd:    {"trust", "dry-run", "ref", "path"},
-	engine.ProfileUpdate: {"yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks", "all"},
+	engine.ProfileUpdate: {"yes", "trust", "dry-run", "all"},
 	engine.ProfileRemove: {"yes", "dry-run", "force"},
 }
 
@@ -79,6 +79,15 @@ func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
 		list, isList := f.Value.(pflag.SliceValue)
 		switch {
 		case slices.Contains(drop, f.Name):
+		case f.Name == "trust":
+			// as parsed, its kinds after =, never all (Plan 9 §3.2); before it is parsed, as given (M4)
+			if t, ok := f.Value.(*trustFlag); ok && t.kinds != 0 {
+				out = append(out, t.kinds.Arg())
+			} else if ok {
+				for _, a := range t.args() {
+					out = append(out, untrusted.Text(a, untrusted.MaxName))
+				}
+			}
 		case f.Value.Type() == "bool" && f.Value.String() == "true":
 			out = append(out, "--"+f.Name)
 		case f.Value.Type() == "bool" && f.DefValue == "true":
@@ -95,10 +104,10 @@ func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
 	return errs.ShellJoin(out)
 }
 
-// consentFlags are the flags that answer a question of the run they are given to (-y, --trust,
-// the hook flags), which a hint repeating the run for another reason drops: it may ask another
+// consentFlags are the flags that answer a question of the run they are given to (-y and --trust
+// of any kind), which a hint repeating the run for another reason drops: it may ask another
 // question, and only you can answer it (ruling R-6b3c-8, R-6cux-4).
-var consentFlags = []string{"yes", "trust", "allow-hooks", "allow-runtime-hooks"}
+var consentFlags = []string{"yes", "trust"}
 
 // forceRun is the user's run, with its names args, repeated with --force and none of its
 // consentFlags: what a refusal of conflicts --force overrides hints (engine.Options.ForceRun).
@@ -107,11 +116,14 @@ func forceRun(cmd *cobra.Command, args []string) string {
 }
 
 // rerunFlags is the flags of lola profile --add or --update that a hint repeating the run keeps
-// beside the scope, the names and the flags the engine is given (Plan 6b §12.3): --trust, -n,
-// --json, --plain and --no-pager, as given.
-func rerunFlags(cmd *cobra.Command) []string {
+// beside the scope, the names and the flags the engine is given (Plan 6b §12.3): --trust for the
+// kinds given (trust), -n, --json, --plain and --no-pager, as given.
+func rerunFlags(cmd *cobra.Command, trust engine.TrustKinds) []string {
 	var out []string
-	for _, f := range [][2]string{{"trust", "--trust"}, {"dry-run", "-n"}, {"json", "--json"}, {"plain", "--plain"}, {"no-pager", "--no-pager"}} {
+	if trust != 0 {
+		out = append(out, trust.Arg())
+	}
+	for _, f := range [][2]string{{"dry-run", "-n"}, {"json", "--json"}, {"plain", "--plain"}, {"no-pager", "--no-pager"}} {
 		if given(cmd, f[0]) {
 			out = append(out, f[1])
 		}
@@ -150,6 +162,7 @@ func profileAction(cmd *cobra.Command, args []string) (engine.ProfileAction, err
 
 func (a *app) profileCmd() *cobra.Command {
 	var f syncFlags
+	var trust trustFlag
 	var on, off, switchTo bool
 	var add remoteFlags
 	var update, remove, all bool
@@ -180,7 +193,7 @@ func (a *app) profileCmd() *cobra.Command {
 			"--ref, under --path), shows its entries with the files, MCP servers and hooks each brings,\n" +
 			"and asks before keeping it; without a name, a terminal offers the source's profiles. Every\n" +
 			"entry of a remote profile must be pinned. Adding turns nothing on, and off a terminal it\n" +
-			"needs --trust, checked before anything is fetched. It asks no scope: the profile is shared\n" +
+			"needs --trust (profiles), checked before anything is fetched. It asks no scope: the profile is shared\n" +
 			"by every scope, and a scope flag only names the scope whose installs its content is\n" +
 			"compared with, else the project found from here, else user scope.\n" +
 			"--update fetches the named remote profiles, or with --all every one you have, again from the\n" +
@@ -191,7 +204,7 @@ func (a *app) profileCmd() *cobra.Command {
 			"home directory), then user scope, stopping at the first that fails or is declined (so does\n" +
 			"--scope both); --project, --user or -C narrows it to that scope. Without a scope flag,\n" +
 			"--trust answers only for the profiles: a project's own trust is asked, or refused off a\n" +
-			"terminal. Other checkouts pick them up at their next sync.\n" +
+			"terminal. Other checkouts pick them up at their next sync.\n" + trustHelp("profile") + "\n" +
 			"--remove deletes a remote profile, asking first (-y); it is refused while the scope, user scope\n" +
 			"or the project found from here uses it, unless --force, which also answers the question\n" +
 			"(never trust or hook consent).\n\n" +
@@ -210,6 +223,23 @@ func (a *app) profileCmd() *cobra.Command {
 			act, err := profileAction(cmd, args)
 			if err != nil {
 				return err
+			}
+			// --trust first, so a hint for another flag repeats it as parsed; an action that takes
+			// none refuses it below.
+			if slices.Contains(profileFlags[act], "trust") {
+				command := "profile"
+				if act == engine.ProfileAdd {
+					command = "profile --add"
+				}
+				if f.trust, err = trust.parse(cmd, args, command, "profile"); err != nil {
+					return err
+				}
+			}
+			// Without a scope flag an update answers only the profiles' question with --trust, never a
+			// project's (ruling R-6b3c-7): entries written there would answer nothing (CR8).
+			if act == engine.ProfileUpdate && trust.names(engine.TrustEntries) && a.scopeFlag == "" && !a.user && !a.project && a.root == "" {
+				return errs.WithHints(errors.New("--trust=entries trusts a project's changes, which lola profile --update answers only in a scope a flag names"),
+					"name the project: "+runWithout(cmd, args)+" --project", "or with user scope too: "+runWithout(cmd, args)+" --scope both")
 			}
 			if err := refuseProfileFlags(cmd, args, act); err != nil {
 				return err
@@ -290,10 +320,8 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory of the source that holds profiles/")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
-	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its profiles the run installs, a project profile taking your profile's place, and a remote profile --add or --update shows, without asking (never grants hook consent; --update without a scope flag: the profiles only)")
+	addTrustFlag(cmd, &trust, "profile", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles; --add takes profiles only (recorded as a yes is; --update without a scope flag: profiles only)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "with --remove: remove a remote profile in use, without asking (never answers a consent question)")
-	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
-	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
 	// Aliases for muscle memory from other tools (Plan 6b §3.3): systemctl and conda, nvm and
 	// kubectl. Additive and stable; the published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{

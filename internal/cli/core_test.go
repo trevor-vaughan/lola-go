@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -82,7 +83,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("lola-gh (stdio) runs: gh-mcp \"\\x1b]0;pwned\\a\""))
 		Expect(r.out).To(ContainSubstring("post-install hook hooks/p?[31m.sh"))
 		const control = "[\x00-\x08\x0b-\x1f\x7f]"
-		for _, args := range [][]string{{"install", mod, "-C", proj, "-n"}, {"install", mod, "-C", proj, "--allow-hooks"}} {
+		for _, args := range [][]string{{"install", mod, "-C", proj, "-n"}, {"install", mod, "-C", proj, "--trust=hooks"}} {
 			r := lola(args...)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out+r.err).NotTo(MatchRegexp(control), strings.Join(args, " "))
@@ -233,7 +234,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.err).To(ContainSubstring("none of the others can be"))
 	})
 
-	It("runs install hooks only with consent: refused off a terminal, listed by --dry-run, run with --allow-hooks", func() {
+	It("runs install hooks only with consent: refused off a terminal, listed by --dry-run, run with --trust=hooks", func() {
 		writeTree(mod, map[string]string{
 			"lola.yml":         "name: example\nhooks: {pre-install: scripts/setup.sh, post-install: scripts/done.sh}\n",
 			"scripts/setup.sh": "#!/bin/sh\necho \"setting up for $LOLA_ASSISTANT\"\n",
@@ -242,7 +243,7 @@ var _ = Describe("core commands", func() {
 		r := lola("install", mod, "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(ContainSubstring("hint: then rerun with --allow-hooks, or on a terminal answer the prompt"))
+		Expect(r.err).To(ContainSubstring("hint: review it: lola cache info example\n  hint: then consent to it: lola install " + mod + " --root " + proj + " --trust=hooks\n"))
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
 		r = lola("install", mod, "-C", proj, "--dry-run")
@@ -250,18 +251,31 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("→ example pre-install hook scripts/setup.sh (claude-code): would run"), "would-run is the JSON value")
 		Expect(r.err).NotTo(ContainSubstring("setting up"))
 
-		r = lola("install", mod, "-C", proj, "--allow-hooks")
+		r = lola("install", mod, "-C", proj, "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(ContainSubstring("setting up for claude-code"), "hook output goes to stderr")
 		Expect(r.out).To(ContainSubstring("✓ example pre-install hook scripts/setup.sh (claude-code): ran"))
 		Expect(r.out).To(ContainSubstring("✓ example post-install hook scripts/done.sh (claude-code): ran"))
 
 		r = lola("install", "example", "-C", proj)
-		Expect(r.code).To(Equal(0), "the same version runs no hook, so it needs no consent: %s", r.err)
-		Expect(r.err).NotTo(ContainSubstring("setting up"))
+		Expect(r.code).To(Equal(0), "the consent given is recorded, so nothing asks again: %s", r.err)
+		Expect(r.err).To(ContainSubstring("setting up for claude-code"))
 
 		writeTree(mod, map[string]string{"commands/more.md": "More\n"})
-		Expect(lola("install", mod, "-C", proj).code).To(Equal(1), "--allow-hooks is consent for one run only")
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0), "the consent is recorded by the hooks' digest, which a new command leaves as it is")
+		writeTree(mod, map[string]string{"scripts/setup.sh": "#!/bin/sh\necho changed\n"})
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(1), "a changed hook asks again")
+
+		// render refuses a hook its copy runs again without consent, hinting itself with --trust=hooks.
+		writeTree(mod, map[string]string{"scripts/setup.sh": "#!/bin/sh\necho \"setting up for $LOLA_ASSISTANT\"\n"})
+		pp, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.Remove(pp.Consent)).To(Succeed())
+		Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "example"))).To(Succeed(), "render copies the module again, which runs its hooks")
+		r = lola("render", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola render --root "+proj+" --trust=hooks\n"), "the hint is the command refused")
 	})
 
 	It("install --force on a hooked module still refuses for hook consent off a terminal", func() {
@@ -276,9 +290,9 @@ var _ = Describe("core commands", func() {
 		Expect(mark).NotTo(BeAnExistingFile(), "the hook did not run")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
-		r = lola("install", mod, "-C", proj, "--force", "--allow-hooks")
+		r = lola("install", mod, "-C", proj, "--force", "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(mark).To(BeAnExistingFile(), "--allow-hooks is the consent")
+		Expect(mark).To(BeAnExistingFile(), "--trust=hooks is the consent")
 	})
 
 	It("sync --force on a hooked module still refuses for hook consent off a terminal", func() {
@@ -297,12 +311,12 @@ var _ = Describe("core commands", func() {
 		Expect(mark).NotTo(BeAnExistingFile(), "the hook did not run")
 		Expect(filepath.Join(other, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
-		r = lola("sync", "-C", other, "--force", "--trust", "--allow-hooks")
+		r = lola("sync", "-C", other, "--force", "--trust", "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(mark).To(BeAnExistingFile(), "--allow-hooks is the consent")
+		Expect(mark).To(BeAnExistingFile(), "--trust=hooks is the consent")
 	})
 
-	It("installs runtime hooks only with consent: skipped off a terminal, listed by --dry-run, recorded by --allow-runtime-hooks", func() {
+	It("installs runtime hooks only with consent: skipped off a terminal, listed by --dry-run, recorded by --trust=runtime-hooks", func() {
 		plugin := filepath.Join(tmp, "deploy")
 		writeTree(plugin, map[string]string{
 			".claude-plugin/plugin.json": `{"name":"deploy"}`,
@@ -319,15 +333,15 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("    Stop, matcher m?[2J: http\n      sends data to: https://h.example/x\n      header: A: $T\n      sends env: T\n      group fields: {\"x\":1}\n"))
 		Expect(r.out).NotTo(ContainSubstring("\x1b"))
 
-		r = lola("install", plugin, "-C", proj, "--allow-hooks")
+		r = lola("install", plugin, "-C", proj, "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("⚠ deploy: claude-code: runtime hooks skipped: they run inside claude-code with your permissions"))
-		Expect(r.out).To(ContainSubstring("hint: review the hooks listed above, then rerun with --allow-runtime-hooks, or answer the prompt on a terminal"))
+		Expect(r.out).To(ContainSubstring("hint: review the hooks listed above, then consent to them: lola install " + plugin + " --root " + proj + " --trust=hooks,runtime-hooks"))
 		Expect(r.out).To(ContainSubstring("deploy runtime hooks for claude-code (declined):"))
 		Expect(settings).NotTo(BeAnExistingFile())
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 
-		r = lola("install", "deploy", "-C", proj, "--allow-runtime-hooks", "--json")
+		r = lola("install", "deploy", "-C", proj, "--trust=runtime-hooks", "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		var res struct {
 			Modules []struct {
@@ -350,7 +364,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("→ deploy: claude-code: a Stop hook group lola installed in .claude/settings.local.json is missing"))
 		Expect(lola("render", "-C", proj, "--strict").code).To(Equal(0), "--strict does not escalate drift")
 		Expect(r.out).To(ContainSubstring("hint: run with --force to restore it"))
-		r = lola("render", "-C", proj, "--allow-runtime-hooks", "--dry-run")
+		r = lola("render", "-C", proj, "--trust=runtime-hooks", "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
 	})
 
@@ -409,7 +423,7 @@ var _ = Describe("core commands", func() {
 			writeTree(plugin, map[string]string{
 				"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"prompt","prompt":"` + "\u009b" + `Xy` + strings.Repeat("é", 100) + `"}]}]}}`,
 			})
-			r := lola("install", plugin, "-C", proj, "--allow-runtime-hooks")
+			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks")
 			Expect(r.code).To(Equal(0), r.err)
 			var line string
 			for _, l := range strings.Split(r.out, "\n") {
@@ -427,14 +441,14 @@ var _ = Describe("core commands", func() {
 
 		It("shows & < > as themselves in the human step line, so a shell operator reads as one", func() {
 			writeTree(plugin, map[string]string{"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"prompt","prompt":"a && b > c"}]}]}}`})
-			r := lola("install", plugin, "-C", proj, "--allow-runtime-hooks")
+			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring(`.claude/settings.local.json /hooks/Stop {"hooks":[{"prompt":"a && b > c","type":"prompt"}]}`))
 			Expect(r.out).NotTo(ContainSubstring(`\u00`))
 		})
 
 		It("carries the whole group in the --json step, uncut", func() {
-			r := lola("install", plugin, "-C", proj, "--allow-runtime-hooks", "--json")
+			r := lola("install", plugin, "-C", proj, "--trust=runtime-hooks", "--json")
 			Expect(r.code).To(Equal(0), r.err)
 			var res struct {
 				Steps []struct {
@@ -688,7 +702,7 @@ var _ = Describe("core commands", func() {
 		r := lola("sync", "-C", proj, "--force")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("lola sync needs your trust for "))
-		Expect(r.err).To(ContainSubstring("hint: then accept them: lola sync -C " + proj + " --force --trust\n"))
+		Expect(r.err).To(ContainSubstring("hint: then accept them: lola sync -C " + proj + " --force --trust=entries\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
 	})
 

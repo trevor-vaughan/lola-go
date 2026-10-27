@@ -224,8 +224,9 @@ consent: on a terminal it shows each script with its sha256 and asks (default No
 remembers a yes until a hook script changes. Before a hook runs, lola replaces the module copy
 from the version it verified, so hooks never run in an edited copy; reinstalling the same version
 with no hook to run (no consent, say) keeps the copy and what its hooks built. Consent covers the
-hook scripts themselves, not other files they run, so review those too. `--allow-hooks` consents for one
-run; `-y` never does.
+hook scripts themselves, not other files they run, so review those too. `--trust=hooks` consents
+without asking, listed in the run's receipt first, and is recorded as a yes is (until a hook script
+changes); `-y` and `--force` never consent.
 Without consent a `pre-install` hook stops the install before anything is written, and a
 `post-install` hook is skipped with a warning. A failing `pre-install` hook installs nothing; a
 failing `post-install` hook leaves the installation in place with a warning. `lola render` runs
@@ -233,11 +234,12 @@ hooks only for modules whose version changed or that gain a target, and `--dry-r
 (`would run`). A `post-install` hook skipped without your consent stays **pending** in
 `lock.json` (`hooks_pending`): `lola sync <module>` replaces the module copy from the version lola
 hashed, so an edited copy never runs, and asks again showing the scripts; off a terminal,
-`lola sync <module> --allow-hooks` runs it. A sync that does not name the module, and is not
-given `--allow-hooks`, asks nothing about the hook and says
+`lola sync <module> --trust=hooks` runs it. A sync that does not name the module, and is not
+given `--trust=hooks`, asks nothing about the hook and says
 `pending post-install hook for <module> → lola sync --project <module>` (off a terminal, with the
-`--allow-hooks` form); a dry run says so too, and, naming the module, shows the hook it would
-run.
+`--trust=hooks` form); a dry run says so too, and, naming the module, shows the hook it would
+run. A `pre-install` hook refused off a terminal hints your run with `--trust=` the kinds you gave
+and `hooks`.
 
 ## Runtime hooks
 
@@ -353,18 +355,18 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
   (`steps[].member`).
 - If the prompt fails (input closes, for example), the run stops: nothing is written and nothing
   is recorded.
-- Off a terminal, `--allow-runtime-hooks` records consent to the hooks the summary lists.
-  `--allow-hooks` is for install hooks and never covers runtime hooks, and `-y` never grants
-  consent.
+- `--trust=runtime-hooks` consents to the hooks the summary lists without asking, and the consent
+  is recorded once the run's receipt is answered. `--trust=hooks` is for install hooks and never
+  covers runtime hooks, and `-y` never grants consent.
 - `--dry-run` makes the decision a real run would make (a recorded consent or
-  `--allow-runtime-hooks` installs the hooks; anything else declines them), lists the hooks,
+  `--trust=runtime-hooks` installs the hooks; anything else declines them), lists the hooks,
   and never asks or records.
 - Consent is recorded per module and settings file (the absolute path of
   `.claude/settings.local.json` or `~/.claude/settings.json`, symlinks resolved), and covers the
   hooks as lola renders them, paths included, and the module version they come from. A new
   version asks again, and so does another project, the other scope, or the same project after
   you move it: off a terminal, its hooks are removed until you consent with
-  `--allow-runtime-hooks`. Consenting in one project leaves the others' consent alone.
+  `--trust=runtime-hooks`. Consenting in one project leaves the others' consent alone.
 - Without consent the hooks are skipped with `claude-code/runtime-hooks-declined`, and the rest
   of the module installs (`--strict` makes that an error). Hooks lola installed under an earlier
   consent are removed: they never keep running under a consent that did not cover them.

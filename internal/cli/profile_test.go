@@ -144,10 +144,10 @@ var _ = Describe("profiles", func() {
 		Expect(r.err).To(Equal("error: go is ambiguous: your profile user:go (" + filepath.Join(p.UserProfiles, "go.yml") +
 			") and the project's project:go (" + filepath.Join(proj, ".lola", "profiles", "go.yml") + ") are both named go\n" +
 			"  hint: yours: lola profile --project user:go --on\n  hint: the project's: lola profile --project project:go --on\n"))
-		r = lola("profile", "go", "--on", "-n", "--allow-hooks")
+		r = lola("profile", "go", "--on", "-n", "--trust=hooks")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HaveSuffix("  hint: yours: lola profile --project user:go --on --allow-hooks -n\n"+
-			"  hint: the project's: lola profile --project project:go --on --allow-hooks -n\n"), "a dry run's hints stay dry")
+		Expect(r.err).To(HaveSuffix("  hint: yours: lola profile --project user:go --on --trust=hooks -n\n"+
+			"  hint: the project's: lola profile --project project:go --on --trust=hooks -n\n"), "a dry run's hints stay dry")
 		r = lola("profile", "go")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: go is ambiguous: your profile user:go ("+filepath.Join(p.UserProfiles, "go.yml")+
@@ -159,7 +159,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("  in profile project:docs (.lola/profiles/docs.yml):\n  + b             mods/b\n"))
 		Expect(r.err).To(ContainSubstring("error: lola profile needs your trust for .lola/profiles/docs.yml, which has not been trusted on this machine"))
-		Expect(r.err).To(ContainSubstring("hint: then accept them: lola profile --project project:docs --on --trust\n"))
+		Expect(r.err).To(ContainSubstring("hint: then accept them: lola profile --project project:docs --on --trust=profiles\n"))
 		r = lola("profile", "project:docs", "--on", "--trust")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(proj, ".claude", "commands", "b.md")).To(BeARegularFile())
@@ -284,10 +284,6 @@ var _ = Describe("profiles", func() {
 			"error: --trust applies to --on, --off, --switch, --add and --update only\n  hint: drop it: lola profile go\n"),
 		Entry("-n", []string{"-n", "--user"},
 			"error: --dry-run applies to --on, --off, --switch, --add, --update and --remove only\n  hint: drop it: lola profile go --user\n"),
-		Entry("--allow-hooks", []string{"--allow-hooks"},
-			"error: --allow-hooks applies to --on, --off, --switch and --update only\n  hint: drop it: lola profile go\n"),
-		Entry("--allow-runtime-hooks", []string{"--allow-runtime-hooks"},
-			"error: --allow-runtime-hooks applies to --on, --off, --switch and --update only\n  hint: drop it: lola profile go\n"),
 		Entry("--ref", []string{"--on", "--ref", "v1"}, "error: --ref applies to --add only\n  hint: drop it: lola profile go --on\n"),
 		Entry("--path", []string{"--path", "x"}, "error: --path applies to --add only\n  hint: drop it: lola profile go\n"),
 		Entry("-y with --add", []string{"--add", "https://example.com/p.git", "-y"},

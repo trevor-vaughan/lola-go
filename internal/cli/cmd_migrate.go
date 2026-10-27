@@ -13,7 +13,8 @@ import (
 )
 
 func (a *app) migrateCmd() *cobra.Command {
-	var dry, yes, force, allowHooks, allowRuntime, keep bool
+	var dry, yes, force, keep bool
+	var trust trustFlag
 	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Move from the Python lola: install its modules with lola and clean up",
@@ -33,11 +34,20 @@ func (a *app) migrateCmd() *cobra.Command {
 			"\n" +
 			"lola migrate shows the plan and asks (default No); off a terminal it needs -y.\n" +
 			"--force also overwrites other files in the way and moves files git tracks, and answers\n" +
-			"the question as -y does (never hook consent). A second run has nothing to do.",
+			"the question as -y does (never hook consent). A second run has nothing to do.\n" + trustHelp("migrate"),
 		Example: "  lola migrate --dry-run\n  lola migrate\n  lola migrate -y --keep-python",
 		GroupID: groupAdditional,
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		// Arguments reach RunE so that a kind written after a bare --trust is coached
+		// (trust.parse); any other is refused as cobra.NoArgs refuses it.
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			kinds, err := trust.parse(cmd, args, "migrate", "module")
+			if err != nil {
+				return err
+			}
+			if err := cobra.NoArgs(cmd, args); err != nil {
+				return err
+			}
 			eng, err := a.engine()
 			if err != nil {
 				return err
@@ -55,7 +65,7 @@ func (a *app) migrateCmd() *cobra.Command {
 				return err
 			}
 			opts := migrate.Options{KeepPython: keep}
-			opts.Force, opts.DryRun, opts.ForceRun, opts.Display = force, true, forceRun(cmd, nil), outputFlags(cmd)
+			opts.Force, opts.DryRun, opts.ForceRun, opts.Display, opts.Trust = force, true, forceRun(cmd, nil), outputFlags(cmd), kinds
 			preview, err := migrate.Migrate(cmd.Context(), eng, p, opts)
 			if err != nil {
 				return err
@@ -71,7 +81,8 @@ func (a *app) migrateCmd() *cobra.Command {
 				}
 			}
 			opts.DryRun = false
-			a.hookOptions(cmd, &opts.Options, allowHooks, allowRuntime)
+			opts.Receipt, opts.Rerun = a.receipt(cmd, kinds, yes), trustRun(cmd, nil) // --force never answers consent
+			a.hookOptions(cmd, &opts.Options)
 			res, err := migrate.Migrate(cmd.Context(), eng, p, opts)
 			if res == nil {
 				return err
@@ -86,8 +97,7 @@ func (a *app) migrateCmd() *cobra.Command {
 	f.BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	f.BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	f.BoolVar(&force, "force", false, "also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking (never answers hook consent)")
-	f.BoolVar(&allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
-	f.BoolVar(&allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
+	addTrustFlag(cmd, &trust, "migrate", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
 	f.BoolVar(&keep, "keep-python", false, "install and replace with backup, but move nothing else to the trash")
 	return cmd
 }

@@ -229,9 +229,9 @@ var _ = Describe("remote profiles", func() {
 			"to use the project's instead: lola profile --project project:go --on"}))
 		// Both hints keep the run's flags.
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOff, Names: []string{"go"}},
-			Options: engine.Options{DryRun: true, AllowHooks: true}})
-		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --project remote:go --off --allow-hooks -n",
-			"to use the project's instead: lola profile --project project:go --on --allow-hooks -n"}))
+			Options: engine.Options{DryRun: true, Trust: engine.TrustHooks}})
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --project remote:go --off --trust=hooks -n",
+			"to use the project's instead: lola profile --project project:go --on --trust=hooks -n"}))
 
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"project:go"}},
 			ConfirmRemovals: yes})
@@ -316,7 +316,7 @@ var _ = Describe("remote profiles", func() {
 		err = failed(e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, DryRun: true}))
 		Expect(err).To(MatchError(ContainSubstring("changed since you added it")))
 		Expect(errs.Hints(err)).To(Equal(readd))
-		err = failed(e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, DryRun: true, Flags: []string{"--allow-hooks", "-y"}}))
+		err = failed(e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, DryRun: true, Flags: []string{"-y"}, Trust: engine.TrustHooks, Rerun: []string{"--trust=hooks"}}))
 		Expect(errs.Hints(err)).To(ContainElement("remove it: lola profile --user remote:go --remove --force"), "an update's -y never answers a removal")
 
 		// Shadowed by a profile of yours, its state reads it alone, and coaches the same.
@@ -718,7 +718,7 @@ var _ = Describe("remote profiles", func() {
 			_, err := add(engine.ProfileAddRequest{Name: "go", Ref: "main"})
 			Expect(err).To(MatchError("lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on"))
 			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user go --add " + src + " --ref main -n",
-				"then add it unasked: lola profile --user go --add " + src + " --ref main --trust"}))
+				"then add it unasked: lola profile --user go --add " + src + " --ref main --trust=profiles"}))
 			Expect(requests.Load()).To(BeZero())
 			Expect(kept()).To(BeEmpty())
 
@@ -742,11 +742,11 @@ var _ = Describe("remote profiles", func() {
 			res, err := e.AddProfile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Profiles[0].ComparedWith).To(Equal("user scope"), "no project is found from here")
-			Expect(res.Notices).To(ContainElement(HaveField("Text", "to add remote:go: lola profile go --add "+src+" (off a terminal: --trust)")))
+			Expect(res.Notices).To(ContainElement(HaveField("Text", "to add remote:go: lola profile go --add "+src+" (off a terminal: --trust=profiles)")))
 			req.DryRun = false
 			_, err = e.AddProfile(ctx, req)
 			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile go --add " + src + " -n",
-				"then add it unasked: lola profile go --add " + src + " --trust"}), "no scope flag was given, and none is needed")
+				"then add it unasked: lola profile go --add " + src + " --trust=profiles"}), "no scope flag was given, and none is needed")
 
 			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 			req.Consent = accept(new([]engine.RemoteProfile))
@@ -765,7 +765,7 @@ var _ = Describe("remote profiles", func() {
 			gitIn(proj, "init", "-q")
 			gitIn(proj, "add", "-f", ".lola/lock.json")
 			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, Name: "go", Consent: accept(new([]engine.RemoteProfile)),
-				Rerun: []string{"--trust"}})
+				Rerun: []string{"--trust=profiles"}})
 			Expect(err).To(MatchError(HavePrefix(".lola/lock.json is tracked by git")))
 			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
 				"or compare with user scope: lola profile --user go --add " + src}), "each hint once, the run's flags kept but --trust")
@@ -951,8 +951,8 @@ var _ = Describe("remote profiles", func() {
 			var seen []engine.RemoteProfile
 			_, err := add(engine.ProfileAddRequest{Consent: accept(&seen)})
 			Expect(err).To(MatchError("name the profile to add; the source has docs and go"))
-			Expect(errs.Hints(err)).To(Equal([]string{"add docs: lola profile --user docs --add " + src + " --trust",
-				"add go: lola profile --user go --add " + src + " --trust"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"add docs: lola profile --user docs --add " + src + " --trust=profiles",
+				"add go: lola profile --user go --add " + src + " --trust=profiles"}))
 			var offered []string
 			_, err = add(engine.ProfileAddRequest{Consent: accept(&seen), Pick: func(names []string, invalid int) ([]string, error) {
 				offered = names
@@ -970,25 +970,26 @@ var _ = Describe("remote profiles", func() {
 
 		It("keeps the run's flags in every hint without a scope flag, and never an add's --trust in an update's", func() {
 			yes := func([]engine.RemoteProfile) (bool, error) { return true, nil }
-			rerun := []string{"--trust", "--json", "--no-pager"}
+			rerun := []string{"--trust=profiles", "--json", "--no-pager"}
 			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, Name: "user:go", Consent: yes, Rerun: rerun})
-			Expect(errs.Hints(err)).To(Equal([]string{"add it as a remote profile: lola profile go --add " + src + " --trust --json --no-pager"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"add it as a remote profile: lola profile go --add " + src + " --trust=profiles --json --no-pager"}))
 			_, err = e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, Name: "go", Rerun: []string{"--json", "--no-pager"}})
 			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile go --add " + src + " -n --json --no-pager",
-				"then add it unasked: lola profile go --add " + src + " --trust --json --no-pager"}))
+				"then add it unasked: lola profile go --add " + src + " --trust=profiles --json --no-pager"}))
 			_, err = e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, Consent: yes, Rerun: rerun})
-			Expect(errs.Hints(err)).To(Equal([]string{"add docs: lola profile docs --add " + src + " --trust --json --no-pager",
-				"add go: lola profile go --add " + src + " --trust --json --no-pager"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"add docs: lola profile docs --add " + src + " --trust=profiles --json --no-pager",
+				"add go: lola profile go --add " + src + " --trust=profiles --json --no-pager"}))
 			dry := []string{"-n", "--json", "--no-pager"}
 			_, err = e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, DryRun: true, Rerun: dry})
 			Expect(errs.Hints(err)).To(Equal([]string{"see docs: lola profile docs --add " + src + " -n --json --no-pager",
 				"see go: lola profile go --add " + src + " -n --json --no-pager"}))
 			res, err := e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, Name: "go", DryRun: true, Rerun: dry})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Notices).To(ContainElement(HaveField("Text", "to add remote:go: lola profile go --add "+src+" --json --no-pager (off a terminal: --trust)")))
-			res, err = e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, Name: "go", DryRun: true, Rerun: []string{"--trust", "-n", "--json"}})
+			Expect(res.Notices).To(ContainElement(HaveField("Text", "to add remote:go: lola profile go --add "+src+" --json --no-pager (off a terminal: --trust=profiles)")))
+			res, err = e.AddProfile(ctx, engine.ProfileAddRequest{Source: src, Name: "go", DryRun: true, Trust: engine.TrustProfiles,
+				Rerun: []string{"--trust=profiles", "-n", "--json"}})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Notices).To(ContainElement(HaveField("Text", "to add remote:go: lola profile go --add "+src+" --trust --json")),
+			Expect(res.Notices).To(ContainElement(HaveField("Text", "to add remote:go: lola profile go --add "+src+" --trust=profiles --json")),
 				"a command that has --trust is not told to add it")
 			Expect(requests.Load()).NotTo(BeZero())
 
@@ -1177,26 +1178,131 @@ var _ = Describe("remote profiles", func() {
 			return string(b)
 		}
 
+		It("an update in a batch stages the profiles, which each scope's sync reads, and writes them only when committed", func() {
+			_, err := turn(user, engine.ProfileOn, "go")
+			Expect(err).NotTo(HaveOccurred())
+			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
+			batch := &engine.TrustBatch{}
+			res, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Trust: engine.TrustProfiles,
+				Batch: batch})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(batch.Items).To(Equal([]engine.Consent{{Kind: "profiles", Item: "remote:go", Change: engine.ConsentChanged}}))
+			Expect(applied(res)).To(Equal([]string{"example"}), "the staged profile moves example")
+			Expect(file()).To(Equal(pinned()), "nothing is written before the command's one receipt")
+
+			scope := &engine.TrustBatch{}
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Modules: applied(res), Options: engine.Options{Batch: scope}})
+			Expect(err).To(MatchError(engine.ErrBatched), "the sync reads the staged profile and stops at its receipt")
+			Expect(e.CommitStaged(engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}}, res)).To(Succeed())
+			Expect(file()).To(Equal(pinned() + "    rules: false\n"))
+			res2, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Modules: applied(res)})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res2.Changed).To(Equal([]string{"example"}))
+		})
+
+		It("commits the staged profiles with the run's hints, and names what it wrote when a later one changed", func() {
+			publish(map[string]string{"profiles/go.yml": pinned(), "profiles/docs.yml": "version: 1\ndescription: docs\n"})
+			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Scope: &user, Name: "docs", Source: src, Consent: yes})
+			Expect(err).NotTo(HaveOccurred())
+			docs := func() string {
+				GinkgoHelper()
+				b, err := os.ReadFile(filepath.Join(p.RemoteProfiles, "docs", "profile.yml"))
+				Expect(err).NotTo(HaveOccurred())
+				return string(b)
+			}
+			req := engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go", "docs"}, Flags: []string{"-y"},
+				Trust: engine.TrustProfiles | engine.TrustHooks, Rerun: []string{"--trust=profiles,hooks", "--json"}}
+			stage := func(n int) *engine.ProfileUpdateResult {
+				GinkgoHelper()
+				publish(map[string]string{"profiles/go.yml": pinned() + fmt.Sprintf("description: go %d\n", n),
+					"profiles/docs.yml": fmt.Sprintf("version: 1\ndescription: docs %d\n", n)})
+				req.Batch = &engine.TrustBatch{}
+				res, err := e.UpdateProfile(ctx, req)
+				Expect(err).NotTo(HaveOccurred())
+				return res
+			}
+			// touch changes the pin a profile's source.json records, as another lola run would.
+			touch := func(name string) {
+				GinkgoHelper()
+				o, err := profile.ReadOrigin(filepath.Join(p.RemoteProfiles, name))
+				Expect(err).NotTo(HaveOccurred())
+				o.Commit = strings.Repeat("0", 40)
+				b, err := json.Marshal(o)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, name, "source.json"), b, 0o600)).To(Succeed())
+			}
+
+			// The first profile changed since it was read: nothing was written, and the hint is the run.
+			res := stage(1)
+			touch("go")
+			err = e.CommitStaged(req, res)
+			Expect(err).To(MatchError("remote:go changed while you were asked; it was not updated"))
+			_, written := errors.AsType[*engine.UpdateStoppedError](err)
+			Expect(written).To(BeFalse(), "nothing was written")
+			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go --update -y --trust=profiles,hooks --json"}))
+			Expect(docs()).To(Equal("version: 1\ndescription: docs\n"))
+
+			// A later one changed: what was written is kept and named, and nothing is applied.
+			res = stage(2)
+			touch("docs")
+			err = e.CommitStaged(req, res)
+			stopped, ok := errors.AsType[*engine.UpdateStoppedError](err)
+			Expect(ok).To(BeTrue(), "%v", err)
+			Expect(stopped).To(MatchError("remote:docs changed while you were asked; it was not updated"))
+			Expect(errs.Hints(stopped)).To(Equal([]string{"apply what was updated at user scope: lola sync --user --json",
+				"run it again: lola profile --user remote:docs --update -y --trust=profiles,hooks --json"}))
+			Expect(stopped.Result.Updated()).To(Equal([]string{"remote:go"}))
+			Expect(stopped.Result.Updates[1]).To(And(HaveField("Profile", "remote:docs"), HaveField("Outcome", engine.UpdateSkipped)))
+			Expect(stopped.Result.Scopes).To(BeEmpty(), "nothing is applied")
+			Expect(file()).To(Equal(pinned() + "description: go 2\n"))
+			Expect(docs()).To(Equal("version: 1\ndescription: docs\n"))
+		})
+
+		It("commits a staged profile it wrote as written when what follows the write fails, with a warning", func() {
+			if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+				Skip("needs a directory its owner cannot delete from")
+			}
+			stuck := filepath.Join(p.RemoteProfiles, "go", "stuck")
+			writeTree(stuck, map[string]string{"f": ""})
+			Expect(os.Chmod(stuck, 0o500)).To(Succeed())
+			DeferCleanup(func() {
+				left, err := filepath.Glob(filepath.Join(p.RemoteProfiles, "*", "stuck"))
+				Expect(err).NotTo(HaveOccurred())
+				for _, d := range left {
+					Expect(os.Chmod(d, 0o700)).To(Succeed())
+				}
+			})
+			publish(map[string]string{"profiles/go.yml": pinned() + "description: new\n"})
+			req := engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Trust: engine.TrustProfiles, Batch: &engine.TrustBatch{}}
+			res, err := e.UpdateProfile(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(e.CommitStaged(req, res)).To(Succeed())
+			Expect(res.Notices).To(ContainElement(And(HaveField("Level", engine.LevelWarn), HaveField("Text", HavePrefix("remote:go is written, but: ")))))
+			Expect(file()).To(Equal(pinned() + "description: new\n"))
+		})
+
 		It("profile --add off a terminal without --trust refuses before network contact", func() {
 			_, err := update(user, "go", nil)
 			Expect(err).To(MatchError("lola profile --update shows how each profile changes and asks before keeping it, and there is no terminal to ask on"))
 			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user remote:go --update -n",
-				"then update it unasked: lola profile --user remote:go --update --trust"}))
-			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Flags: []string{"--allow-runtime-hooks", "-y"}})
-			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user remote:go --update -n --allow-runtime-hooks -y",
-				"then update it unasked: lola profile --user remote:go --update --trust --allow-runtime-hooks -y"}), "hints keep the run's flags")
+				"then update it unasked: lola profile --user remote:go --update --trust=profiles"}))
+			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Flags: []string{"-y"},
+				Trust: engine.TrustRuntimeHooks, Rerun: []string{"--trust=runtime-hooks"}})
+			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user remote:go --update -n -y --trust=runtime-hooks",
+				"then update it unasked: lola profile --user remote:go --update --trust=profiles,runtime-hooks -y"}), "hints keep the run's flags")
 			Expect(requests.Load()).To(BeZero())
 
 			publish(map[string]string{"profiles/go.yml": pinned() + "description: new\n"})
-			res, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, DryRun: true, Flags: []string{"--allow-hooks"}})
+			res, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, DryRun: true, Trust: engine.TrustHooks,
+				Rerun: []string{"--trust=hooks"}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
-				Text: "to update remote:go: lola profile --user remote:go --update --allow-hooks (off a terminal: --trust)"}))
+				Text: "to update remote:go: lola profile --user remote:go --update --trust=hooks (off a terminal: --trust=profiles)"}))
 			res, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, DryRun: true,
-				Rerun: []string{"--trust", "-n"}})
+				Trust: engine.TrustProfiles, Rerun: []string{"--trust=profiles", "-n"}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
-				Text: "to update remote:go: lola profile --user remote:go --update --trust"}), "a command that has --trust is not told to add it")
+				Text: "to update remote:go: lola profile --user remote:go --update --trust=profiles"}), "a command that has --trust is not told to add it")
 		})
 
 		It("shows how the entries change, replaces the profile, and names what to apply where it is on", func() {
@@ -1420,7 +1526,8 @@ var _ = Describe("remote profiles", func() {
 
 		It("without a scope flag, applies in the project found from here, then user scope, and notes other checkouts", func() {
 			everywhere := func(consent func([]engine.RemoteProfile) (bool, error)) (*engine.ProfileUpdateResult, error) {
-				return e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, Consent: consent, Flags: []string{"--allow-hooks"}})
+				return e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, Consent: consent, Trust: engine.TrustHooks,
+					Rerun: []string{"--trust=hooks"}})
 			}
 			_, err := turn(user, engine.ProfileOn, "go")
 			Expect(err).NotTo(HaveOccurred())
@@ -1434,8 +1541,8 @@ var _ = Describe("remote profiles", func() {
 			activate(sc, "remote:go")
 			publish(map[string]string{"profiles/go.yml": pinned()})
 			_, err = everywhere(nil)
-			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile remote:go --update -n --allow-hooks",
-				"then update it unasked: lola profile remote:go --update --trust --allow-hooks"}), "no scope flag was given, and none is needed")
+			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile remote:go --update -n --trust=hooks",
+				"then update it unasked: lola profile remote:go --update --trust=profiles,hooks"}), "no scope flag was given, and none is needed")
 			res, err = everywhere(yes)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Profiles[0].ComparedWith).To(Equal("project " + proj))
@@ -1501,7 +1608,8 @@ var _ = Describe("remote profiles", func() {
 			// With the project named (--scope both), the run's answers were given for both scopes
 			// together: a run narrowed to one is another question, so they do not travel into it.
 			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{sc, user}, Names: []string{"go"}, Consent: yes,
-				Flags: []string{"--allow-hooks", "--allow-runtime-hooks", "-y"}, Rerun: []string{"--trust", "--plain"}})
+				Flags: []string{"-y"}, Trust: engine.TrustProfiles | engine.TrustHooks | engine.TrustRuntimeHooks,
+				Rerun: []string{"--trust=profiles,hooks,runtime-hooks", "--plain"}})
 			Expect(errs.Hints(err)).To(ContainElement("or update it in project " + proj + " only: lola profile --project remote:go --update --plain"))
 			Expect(err.Error()).NotTo(ContainSubstring("has changes you have not trusted"))
 		})
@@ -1511,12 +1619,12 @@ var _ = Describe("remote profiles", func() {
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: planted, source: " + url + "}\n"})
 			activate(sc, "remote:go")
 			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
-			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, CannotAsk: true, Consent: yes, Flags: []string{"--allow-hooks"},
-				Rerun: []string{"--trust"}})
+			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, CannotAsk: true, Consent: yes,
+				Trust: engine.TrustProfiles | engine.TrustHooks, Rerun: []string{"--trust=profiles,hooks"}})
 			Expect(err).To(MatchError("project " + proj + " has changes you have not trusted (planted and project.yml's targets), which its sync asks about, and no flag named it: " +
 				"--trust then answers only for the remote profiles"))
-			Expect(errs.Hints(err)).To(Equal([]string{"name it, and trust them: lola profile --project remote:go --update --allow-hooks --trust",
-				"or with user scope too: lola profile --scope both remote:go --update --allow-hooks --trust"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"name it, and trust them: lola profile --project remote:go --update --trust=entries,profiles,hooks",
+				"or with user scope too: lola profile --scope both remote:go --update --trust=entries,profiles,hooks"}))
 			Expect(requests.Load()).To(BeZero(), "refused before any network contact")
 			Expect(file()).To(Equal(pinned()))
 
@@ -1559,7 +1667,7 @@ var _ = Describe("remote profiles", func() {
 			requests.Store(0)
 			refused := "project scope at " + p.Home + " is your home directory, where user scope installs"
 			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{home}, Names: []string{"go"}, Consent: yes,
-				Flags: []string{"--allow-hooks", "-y"}, Rerun: []string{"--trust", "--json"}})
+				Flags: []string{"-y"}, Trust: engine.TrustProfiles | engine.TrustHooks, Rerun: []string{"--trust=profiles,hooks", "--json"}})
 			Expect(err).To(MatchError(refused))
 			Expect(errs.Hints(err)).To(Equal([]string{"update at user scope only: lola profile --user remote:go --update --json"}),
 				"another scope is another question: no answer travels into it")
@@ -1588,7 +1696,7 @@ var _ = Describe("remote profiles", func() {
 
 		It("refuses an engine call that names no profile and no --all", func() {
 			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Consent: yes,
-				Flags: []string{"--allow-hooks", "--allow-runtime-hooks", "-y"}, Rerun: []string{"--trust", "--json", "--plain"}})
+				Flags: []string{"-y"}, Trust: engine.TrustAll, Rerun: []string{"--trust=entries,profiles,scripts,hooks,runtime-hooks", "--json", "--plain"}})
 			Expect(err).To(MatchError("--update needs the remote profiles to update, or --all"))
 			Expect(errs.Hints(err)).To(Equal([]string{"update every one: lola profile --user --update --all --json --plain"}),
 				"no answer is given for profiles never named")
@@ -1639,7 +1747,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "docs", "source.json"), b, 0o600)).To(Succeed())
 			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, All: true, Flags: []string{"-y"}})
 			Expect(errs.Hints(err)).To(Equal([]string{"see it: lola profile --user --update --all -n -y",
-				"then update it unasked: lola profile --user --update --all --trust -y"}))
+				"then update it unasked: lola profile --user --update --all --trust=profiles -y"}))
 			asked = nil
 			res, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, All: true, Consent: answers(nil)})
 			Expect(err).NotTo(HaveOccurred())
@@ -1683,7 +1791,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(err).NotTo(HaveOccurred())
 			activate(sc, "remote:go")
 			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
-			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, Flags: []string{"--allow-hooks"},
+			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Names: []string{"go"}, Trust: engine.TrustHooks, Rerun: []string{"--trust=hooks"},
 				Consent: func([]engine.RemoteProfile) (bool, error) {
 					writeTree(p.UserProfiles, map[string]string{"broken.yml": "version: 1\nshell: x\n"})
 					activate(user, "remote:go", "user:broken")
@@ -1731,13 +1839,13 @@ var _ = Describe("remote profiles", func() {
 
 			// A profile changed while you were asked is not replaced; the hint keeps the run's flags.
 			activate(user, "remote:go")
-			err = failed(e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Flags: []string{"--allow-hooks", "-y"},
-				Consent: func([]engine.RemoteProfile) (bool, error) {
+			err = failed(e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Flags: []string{"-y"}, Trust: engine.TrustHooks,
+				Rerun: []string{"--trust=hooks"}, Consent: func([]engine.RemoteProfile) (bool, error) {
 					keep("go", pinned()+"description: another update\n")
 					return true, nil
 				}}))
-			Expect(err).To(MatchError("remote:go changed while you were asked; nothing was updated"))
-			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go --update --allow-hooks -y"}))
+			Expect(err).To(MatchError("remote:go changed while you were asked; it was not updated"))
+			Expect(errs.Hints(err)).To(Equal([]string{"run it again: lola profile --user remote:go --update -y --trust=hooks"}))
 			Expect(file()).To(Equal(pinned() + "description: another update\n"))
 		})
 

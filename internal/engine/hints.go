@@ -60,19 +60,24 @@ func (e *Engine) commandOf(req SyncRequest, extra ...string) string {
 }
 
 // rerun is the names and flags of the user's sync that a hint repeating it carries (Plan 6a
-// §11.3): the names, --update and --force as given, and the hook flags only when given.
+// §11.3): the names, --update and --force as given, and --trust for the kinds given (Plan 9 §3.5).
 func (req SyncRequest) rerun(extra ...string) []string {
 	out := append([]string{}, req.Modules...)
 	for _, f := range []struct {
 		on   bool
 		flag string
-	}{{req.Update, "--update"}, {req.Options.Force, "--force"}, {req.Options.AllowHooks, "--allow-hooks"},
-		{req.Options.AllowRuntimeHooks, "--allow-runtime-hooks"}} {
+	}{{req.Update, "--update"}, {req.Options.Force, "--force"}, {req.Options.Trust != 0, req.Options.Trust.Arg()}} {
 		if f.on {
 			out = append(out, f.flag)
 		}
 	}
 	return append(out, extra...)
+}
+
+// trusting is req with --trust granting kinds: the run a hint that answers its trust names.
+func (req SyncRequest) trusting(kinds TrustKinds) SyncRequest {
+	req.Options.Trust = kinds
+	return req
 }
 
 // ListAll is the command a capped list of sync's output names (Plan 6a §7.5, §11.3): the user's

@@ -247,6 +247,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		return nil, err
 	}
 	res := newResult(opts.DryRun)
+	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
 	res.Notices = append(res.Notices, swept...)
 	out := &InstallResult{Result: res, Scopes: []ScopeResult{}}
 	probes := e.newProbeRun(ctx)
@@ -429,6 +430,11 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		}
 		preps = append(preps, pr)
 	}
+	// What --trust covers is shown once, before the first write, then recorded (Plan 9 §3.4).
+	if err := e.confirmTrusted(opts, res); err != nil {
+		return nil, err
+	}
+	defer func() { err = res.afterGrants(err) }() // a failure from here on carries the grants written
 	if opts.DryRun {
 		return out, nil
 	}
@@ -1152,6 +1158,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 	}
 	defer unlock()
 	res := newResult(opts.DryRun)
+	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
 	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
 		return nil, err
 	}

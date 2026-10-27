@@ -83,29 +83,52 @@ func hookScripts(dir string, hooks []module.Hook) ([]HookScript, string, error) 
 	return out, "sha256:" + hex.EncodeToString(all.Sum(nil)), nil
 }
 
-// allowed decides whether a module's hooks may run: --allow-hooks grants consent for this
-// run, a recorded consent for the same digest grants it again, and otherwise opts.Ask may
-// ask the user, whose yes is recorded.
-func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts Options) (bool, error) {
-	if opts.AllowHooks {
+// allowed decides whether a module's hooks without a recorded consent for their digest may run:
+// a --trust covering hooks grants it; so does, in a batch's apply pass (opts.Expect), the grant
+// for name and digest the batch holds, a terminal yes of its collect pass; otherwise opts.Ask may
+// ask the user. Each grant is recorded only once the run's receipt is answered yes, before the
+// first write (R-9-3, A23). A dry run
+// decides the same way but asks nothing and records nothing. A grant by --trust is added to res.Trusted, once per event the
+// module hooks.
+func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts Options, res *Result) (bool, error) {
+	if opts.Trust.Covers(TrustHooks) {
+		change, err := e.consentChange(name)
+		if err != nil {
+			return false, err
+		}
+		var events []string
+		for _, s := range scripts {
+			if !slices.Contains(events, s.Event) {
+				events = append(events, s.Event)
+			}
+		}
+		for i, ev := range events {
+			var g *grant
+			if i == 0 {
+				g = &grant{key: name, digest: digest}
+			}
+			res.cover(TrustHooks, shown(name)+" "+ev, change, g)
+		}
 		return true, nil
 	}
-	ok, err := e.Consent.Granted(name, digest)
-	if err != nil || ok {
-		return ok, err
+	if g := (grant{key: name, digest: digest}); opts.Expect != nil && slices.Contains(opts.Expect.grants, g) {
+		res.grants = append(res.grants, g)
+		return true, nil
 	}
-	if opts.Ask == nil {
+	if opts.DryRun || opts.Ask == nil {
 		return false, nil
 	}
-	if ok, err = opts.Ask(name, scripts); err != nil || !ok {
+	if ok, err := opts.Ask(name, scripts); err != nil || !ok {
 		return false, err
 	}
-	return true, e.Consent.Grant(name, digest)
+	res.grants = append(res.grants, grant{key: name, digest: digest})
+	return true, nil
 }
 
 // planHooks prepares the hooks of every copy that runs them, before anything is written. A
-// dry run lists them as would-run. Without consent a pre-install hook is an error and a
-// post-install hook is declined with a warning.
+// dry run lists them as would-run. Without consent a pre-install hook is an error, whose hint is
+// the run with --trust covering hooks too (opts.Rerun), and a post-install hook is declined with
+// a warning.
 func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Result) ([]*hookJob, error) {
 	var jobs []*hookJob
 	for _, c := range copies {
@@ -118,12 +141,19 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 		}
 		i := slices.IndexFunc(res.Modules, func(m ModuleResult) bool { return m.Name == c.name })
 		j := &hookJob{name: c.name, dir: filepath.Join(e.files(sc).modules, c.name), targets: c.targets, scripts: scripts, result: &res.Modules[i]}
+		pre := slices.ContainsFunc(scripts, func(s HookScript) bool { return s.Event == PreInstall })
+		ok, err := e.Consent.Granted(c.name, digest)
+		if err == nil && !ok {
+			if pre && (!c.forced || c.pending) {
+				res.needs |= TrustHooks // a kept copy runs nothing, so needs nothing
+			}
+			ok, err = e.allowed(c.name, scripts, digest, opts, res)
+		}
+		if err != nil {
+			return nil, err
+		}
 		status := HookWouldRun
 		if !opts.DryRun {
-			ok, err := e.allowed(c.name, scripts, digest, opts)
-			if err != nil {
-				return nil, err
-			}
 			if ok {
 				jobs = append(jobs, j)
 				continue
@@ -131,12 +161,15 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 			if c.forced && !c.pending {
 				continue // the copy is kept as it is, with what its hooks built when they ran
 			}
-			if slices.ContainsFunc(scripts, func(s HookScript) bool { return s.Event == PreInstall }) {
-				return nil, errs.WithHints(fmt.Errorf("%s has a pre-install hook, and lola runs hooks only with your consent", c.name),
-					"review it: "+errs.ShellJoin([]string{"lola", "cache", "info", c.name}), "then rerun with --allow-hooks, or on a terminal answer the prompt")
+			if pre {
+				hints := []string{"review it: " + errs.ShellJoin([]string{"lola", "cache", "info", c.name})}
+				if opts.Rerun != nil {
+					hints = append(hints, "then consent to it: "+opts.Rerun(opts.Trust|TrustHooks))
+				}
+				return nil, errs.WithHints(fmt.Errorf("%s has a pre-install hook, and lola runs hooks only with your consent", c.name), hints...)
 			}
 			// The hook stays pending in lock.json: sync replaces the copy from the hashed version
-			// and asks again, which a rerun with --allow-hooks alone never did (Plan 6a §11.3).
+			// and asks again (Plan 6a §11.3).
 			status = HookDeclined
 			text := c.name + ": post-install hook skipped without your consent"
 			if c.forced {
@@ -144,7 +177,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 			}
 			text += "; review and run it: " + e.SyncCommand(sc, c.name)
 			if opts.Ask == nil {
-				text += ", or consent without asking: " + e.SyncCommand(sc, c.name, "--allow-hooks")
+				text += ", or consent without asking: " + e.SyncCommand(sc, c.name, TrustHooks.Arg())
 			}
 			res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: text})
 		}

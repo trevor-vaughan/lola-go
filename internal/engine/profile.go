@@ -186,6 +186,12 @@ func (e *Engine) loadProfiles(sc Scope, infos []profile.Info, lists ...[]ledger.
 		if l, ok := remotes[i.Qualified()]; ok {
 			return l, l.origin, nil
 		}
+		if s, ok := e.staged[i.Path]; ok { // an update staged it, to be written after the receipt
+			o := s.rp.origin
+			l := Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: s.rp.entries, origin: &o}
+			remotes[i.Qualified()] = l
+			return l, &o, nil
+		}
 		p, o, err := profile.LoadRemote(i.Path)
 		if errors.Is(err, fs.ErrNotExist) {
 			return Layer{}, nil, err

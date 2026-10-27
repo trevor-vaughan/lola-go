@@ -50,7 +50,7 @@ testcases:
           [change] = doc[\"trust\"][\"changes\"]
           assert (change[\"module\"], change[\"change\"]) == (\"tpl\", \"changed\"), change
           assert change[\"fields\"] == [{\"field\": \"vars\", \"from\": None, \"to\": \"team = \\\"platform\\\"\"}], change
-          assert doc[\"hints\"][:2] == [\"see them: lola sync -C /work/proj --json -n\", \"then accept them: lola sync -C /work/proj --json --trust\"], doc
+          assert doc[\"hints\"][:2] == [\"see them: lola sync -C /work/proj --json -n\", \"then accept them: lola sync -C /work/proj --trust=entries --json\"], doc
           print(\"ok the trust refusal shows the vars\")
           "'
         assertions:

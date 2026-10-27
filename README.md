@@ -82,7 +82,7 @@ yet, so off a terminal the first sync shows what it would install and refuses wi
 git clone https://example.com/acme/api.git && cd api
 lola sync                   # error: lola sync needs your trust for .lola/project.yml, …
 lola sync --project -n      # see them: the plan, nothing written
-lola sync --project --trust # then accept them: trust and install
+lola sync --project --trust=entries # then accept them: trust and install
 lola sync                   # ✓ already in sync
 lola list
 ```

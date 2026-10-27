@@ -61,7 +61,7 @@ type RuntimeHook struct {
 // "<module>/runtime-hooks/<sha256 of the settings file's resolved absolute path>" for a digest
 // of the rendered hooks and the module version, so a new version, a changed rendering, another
 // project or the other scope asks again. A recorded consent for the digest grants it;
-// otherwise AllowRuntimeHooks or a yes from AskRuntimeHooks grants and records it. A dry run
+// otherwise a --trust covering runtime hooks or a yes from AskRuntimeHooks (runtimeHookConsent). A dry run
 // decides the same way but never asks or records. Without consent those intents leave the plan, so hooks installed under an
 // earlier consent are removed (fail closed), with a runtime-hooks-declined warning.
 func (e *Engine) consentRuntimeHooks(sc Scope, changes []plan.ModuleChange, opts Options, res *Result) error {
@@ -98,7 +98,7 @@ func (e *Engine) consentRuntimeHooks(sc Scope, changes []plan.ModuleChange, opts
 			if err != nil {
 				return fmt.Errorf("%s: runtime hooks: %w", c.Name, err)
 			}
-			status, err := e.runtimeHookConsent(key, c.Name, digest, hooks, opts)
+			status, err := e.runtimeHookConsent(key, c.Name, d.settings, digest, hooks, opts, res)
 			if err != nil {
 				return err
 			}
@@ -114,7 +114,7 @@ func (e *Engine) consentRuntimeHooks(sc Scope, changes []plan.ModuleChange, opts
 			c.Intents = slices.DeleteFunc(c.Intents, func(in plan.Intent) bool {
 				return in.Consent != nil && in.Target == d.target && in.Consent.Settings == d.settings
 			})
-			res.Findings = append(res.Findings, declinedFindings(c.Name, gated[d])...)
+			res.Findings = append(res.Findings, declinedFindings(c.Name, gated[d], opts)...)
 		}
 	}
 	return nil
@@ -143,8 +143,13 @@ func (e *Engine) writesClaudeHooks(sc Scope, in plan.Intent) (bool, error) {
 }
 
 // declinedFindings reports what declined consent leaves out: a target's settings hook groups,
-// and each component that carries hooks.
-func declinedFindings(module string, gated []plan.Intent) []target.Finding {
+// and each component that carries hooks. The hint is the run with --trust covering runtime hooks
+// too (opts.Rerun), or, without one, the flag to add.
+func declinedFindings(module string, gated []plan.Intent, opts Options) []target.Finding {
+	consent := "rerun with " + (TrustRuntimeHooks).Arg()
+	if opts.Rerun != nil {
+		consent = "consent to them: " + opts.Rerun(opts.Trust|TrustRuntimeHooks)
+	}
 	var out []target.Finding
 	seen := map[string]bool{}
 	for _, in := range gated {
@@ -158,7 +163,7 @@ func declinedFindings(module string, gated []plan.Intent) []target.Finding {
 		}
 		seen[id] = true
 		text := "runtime hooks skipped: they run inside " + in.Target + " with your permissions, and lola installs them only with your consent"
-		hint := "review the hooks listed above, then rerun with --allow-runtime-hooks, or answer the prompt on a terminal"
+		hint := "review the hooks listed above, then " + consent
 		if name != "" {
 			var what []string
 			if in.Consent.Hooks != nil {
@@ -166,7 +171,7 @@ func declinedFindings(module string, gated []plan.Intent) []target.Finding {
 			}
 			if in.Consent.MCPServers != nil {
 				what = append(what, "inline MCP servers")
-				hint = "review the hooks and MCP servers listed above, then rerun with --allow-runtime-hooks, or answer the prompt on a terminal"
+				hint = "review the hooks and MCP servers listed above, then " + consent
 			}
 			text = "skipped: its " + strings.Join(what, " and ") + " run inside " + in.Target + " with your permissions, and lola installs them only with your consent"
 		}
@@ -192,20 +197,30 @@ func (e *Engine) consentKey(sc Scope, module, targetID, settings string) (string
 	return module + "/runtime-hooks/" + hex.EncodeToString(sum[:]), nil
 }
 
-// runtimeHookConsent returns the consent status of module's runtime hooks with digest,
-// recording a consent that is granted now under key. A dry run decides like a real run but
-// never asks or records.
-func (e *Engine) runtimeHookConsent(key, module, digest string, hooks []RuntimeHook, opts Options) (string, error) {
+// runtimeHookConsent returns the consent status of module's runtime hooks with digest in the
+// settings file at settings (root-relative), keyed by key: a recorded consent grants it; a --trust
+// covering runtime hooks grants it, added to res.Trusted and recorded only after the receipt
+// (R-9-3, A2); in a batch's apply pass (opts.Expect), the grant for key and digest the batch
+// holds, a terminal yes of its collect pass, grants it and is recorded the same way; otherwise
+// AskRuntimeHooks may ask, and a yes is recorded with them (A23). A dry run
+// decides like a real run but never asks or records.
+func (e *Engine) runtimeHookConsent(key, module, settings, digest string, hooks []RuntimeHook, opts Options, res *Result) (string, error) {
 	ok, err := e.Consent.Granted(key, digest)
 	switch {
 	case err != nil:
 		return "", err
 	case ok:
 		return RuntimeHooksConsented, nil
-	case opts.AllowRuntimeHooks && opts.DryRun:
+	case opts.Trust.Covers(TrustRuntimeHooks):
+		change, err := e.consentChange(key)
+		if err != nil {
+			return "", err
+		}
+		res.cover(TrustRuntimeHooks, shown(module)+" in "+shown(settings), change, &grant{key: key, digest: digest})
 		return RuntimeHooksConsented, nil
-	case opts.AllowRuntimeHooks:
-		return RuntimeHooksConsented, e.Consent.Grant(key, digest)
+	case opts.Expect != nil && slices.Contains(opts.Expect.grants, grant{key: key, digest: digest}):
+		res.grants = append(res.grants, grant{key: key, digest: digest})
+		return RuntimeHooksConsented, nil
 	case opts.DryRun || opts.AskRuntimeHooks == nil:
 		return RuntimeHooksDeclined, nil
 	}
@@ -213,7 +228,8 @@ func (e *Engine) runtimeHookConsent(key, module, digest string, hooks []RuntimeH
 	if err != nil || !yes {
 		return RuntimeHooksDeclined, err
 	}
-	return RuntimeHooksConsented, e.Consent.Grant(key, digest)
+	res.grants = append(res.grants, grant{key: key, digest: digest})
+	return RuntimeHooksConsented, nil
 }
 
 // describeRuntimeHooks lists the handlers of the hooks gated intents install, for consent:

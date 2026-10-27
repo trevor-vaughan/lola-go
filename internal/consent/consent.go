@@ -63,6 +63,16 @@ func (s *Store) Granted(module, digest string) (bool, error) {
 	return f.Modules[module] == digest, nil
 }
 
+// Recorded reports whether some consent to key, under any digest, is recorded.
+func (s *Store) Recorded(key string) (bool, error) {
+	f, err := s.load()
+	if err != nil {
+		return false, err
+	}
+	_, ok := f.Modules[key]
+	return ok, nil
+}
+
 // Grant records consent to module's hooks with this digest, replacing an earlier one.
 func (s *Store) Grant(module, digest string) error {
 	f, err := s.load()

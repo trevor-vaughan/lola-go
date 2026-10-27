@@ -38,8 +38,11 @@ type SyncRequest struct {
 	// pins the sync would write and the folders whose content changed (Plan 6a §7.5): all of
 	// them, or the entries the answer names. nil means it cannot ask: a sync that needs the
 	// question is refused before any network contact. The CLI passes a Trust that answers All
-	// for --trust; -y never sets it.
+	// for --trust; -y never sets it. It is asked only about the changes of the kinds
+	// Options.Trust does not cover (Plan 9 §3.4); Show, when set, is shown the changes it covers,
+	// as a record, before they reach the receipt.
 	Trust func(TrustReport) (TrustAnswer, error)
+	Show  func(TrustReport)
 	// ConfirmRemovals asks the user to confirm the removals the sync would make. nil means it
 	// cannot ask: a sync with removals is refused. The CLI passes an always-yes ConfirmRemovals
 	// for -y.
@@ -54,11 +57,13 @@ type SyncRequest struct {
 }
 
 // TrustAnswer is the user's answer to the trust question (Plan 6a §9.2): All accepts every change
-// of the run; otherwise Modules names the accepted entries, as the report names them. An answer
-// accepting nothing is a Cancel.
+// of the run; otherwise Modules names the accepted entries, as the report names them, and Kinds
+// accepts every change of the kinds --trust covers (Plan 9 §3.4). An answer accepting nothing is
+// a Cancel.
 type TrustAnswer struct {
 	All     bool
 	Modules []string
+	Kinds   TrustKinds
 }
 
 // Removal is what a sync removes from one module (Plan 6a §9.3 step 9): the whole module, which
@@ -299,6 +304,7 @@ func (se *syncEntry) pinned() manifest.Entry {
 func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err error) {
 	sc, opts := req.Scope, req.Options
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, req.Display) }()
+	opts.Rerun = func(k TrustKinds) string { return e.commandOf(req.trusting(k), req.Display...) }
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); sc.Kind == target.Project && sc.Key() == home.Key() {
 		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
 			untrusted.Text(e.Paths.Home, untrusted.MaxName)), "sync the user scope: "+e.SyncCommand(Scope{Kind: target.User}))
@@ -311,6 +317,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	defer unlockProfiles()
 	res := &SyncResult{Result: newResult(opts.DryRun), Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
 		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}, Replacements: []Replacement{}}, EquivalentCommands: []string{}}
+	res.Trusted = []Consent{}
 	// A committed lock.json is refused before the profiles it names are read (Plan 6b §19 S5).
 	if err := e.refuseTrackedLedger(ctx, sc, res.Result); err != nil {
 		return nil, err
@@ -436,6 +443,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	var rec *trust.Record
 	var early trust.Report
 	manifestChanged, needTrust := false, false
+	var need TrustKinds // the kinds of trust the changes known before any fetch need
 	if sc.Kind == target.Project {
 		if rec, err = e.Trust.Load(sc.ProjectDir); err != nil {
 			return nil, err
@@ -472,6 +480,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		early = runReport(checkParts(rec, trustParts(man, layers, nil)), limit, entries)
 		manifestChanged = early.Status != trust.StatusTrusted
 		needTrust = manifestChanged || repl != nil || slices.ContainsFunc(entries, func(se *syncEntry) bool { return se.folderChanged || needsPin(se) })
+		need = neededTrust(early, repl, entries)
 	} else {
 		for _, se := range entries {
 			se.covered = true
@@ -483,23 +492,33 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if res.Removals, err = e.syncRemovals(sc, want, led, entries, limit); err != nil {
 		return nil, err
 	}
-	// --force answers the removals, never the trust question (user decision, 2026-10-22).
-	trustMissing, removalsMissing := needTrust && req.Trust == nil, len(res.Removals) > 0 && req.ConfirmRemovals == nil && !opts.Force
+	// --force answers the removals, never the trust question (user decision, 2026-10-22); --trust
+	// answers it for the kinds it covers (Plan 9 §3.4).
+	var missing TrustKinds
+	if needTrust && req.Trust == nil {
+		missing = need &^ opts.Trust
+	}
+	trustMissing, removalsMissing := missing != 0, len(res.Removals) > 0 && req.ConfirmRemovals == nil && !opts.Force
 	if !opts.DryRun && (trustMissing || removalsMissing) {
 		report := TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}}
 		if sc.Kind == target.Project {
 			report.Status = early.Status
 		}
-		if trustMissing {
-			// An uncovered folder is read for the refusal too: it is local, containment has passed,
-			// and its content stays in the run's staging.
-			for _, se := range entries {
-				if se.spec.Kind == source.KindFolder && se.v.ContentDir == "" {
-					if err := e.resolveSync(ctx, sc, se, run); err != nil {
-						return nil, err
-					}
+		// A folder is read for the refusal too: it is local, containment has passed, and its
+		// content stays in the run's staging. Its pre-install hooks refuse the next run too, so the
+		// hint answers them with the rest (§3.5), a refusal for removals alone included (CR10).
+		for _, se := range entries {
+			if se.spec.Kind == source.KindFolder && se.v.ContentDir == "" {
+				if err := e.resolveSync(ctx, sc, se, run); err != nil {
+					return nil, err
 				}
 			}
+		}
+		hooks, err := e.hookNeeds(entries, led)
+		if err != nil {
+			return nil, err
+		}
+		if trustMissing {
 			report = trustReport(early)
 			report.ManifestChanged = manifestChanged
 			repl.add(&report)
@@ -513,11 +532,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				return nil, err
 			}
 		}
+		missing |= hooks &^ opts.Trust
 		removals := []Removal{}
 		if removalsMissing {
 			removals = res.Removals
 		}
-		return nil, e.syncRefusal(sc, req, report, removals, trustMissing, removalsMissing, entries)
+		return nil, e.syncRefusal(sc, req, report, removals, missing, removalsMissing, entries)
 	}
 
 	for _, se := range entries {
@@ -573,15 +593,33 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, err
 	}
 	var acc *acceptance
+	// answered is what the terminal's answer alone accepted: a No to the removals records it (Plan
+	// 6a X6), never what --trust covered, whose grant waits for the receipt (R4, R-9-16).
+	var answered *acceptance
 	if sc.Kind == target.Project && res.Trust.Status != trust.StatusTrusted {
+		// The changes --trust covers go to the receipt; the user is asked about the rest (§3.4).
+		covered, asked := res.Trust.split(opts.Trust)
+		res.Trusted = append(res.Trusted, covered.consents()...)
 		switch {
 		case opts.DryRun:
-		case req.Trust == nil: // refused at step 4 already; kept so no path applies untrusted content
-			return nil, e.syncRefusal(sc, req, res.Trust, []Removal{}, true, false, entries)
+		case asked.kinds() != 0 && req.Trust == nil: // refused at step 4 already; kept so no path applies untrusted content
+			return nil, e.syncRefusal(sc, req, res.Trust, []Removal{}, asked.kinds(), false, entries)
 		default:
-			ans, err := req.Trust(res.Trust)
-			if err != nil {
-				return nil, err
+			if covered.kinds() != 0 && req.Show != nil {
+				req.Show(covered)
+			}
+			ans := TrustAnswer{All: true, Kinds: opts.Trust & TrustBare}
+			if asked.kinds() != 0 {
+				given, err := req.Trust(asked)
+				if err != nil {
+					return nil, err
+				}
+				ans.All, ans.Modules = given.All, given.Modules
+				if answered, err = accept(savedRep, asked, given, entries); errors.Is(err, ErrDeclined) {
+					answered = nil
+				} else if err != nil {
+					return nil, err
+				}
 			}
 			// An activation commits its new list with the apply, so it applies all it planned or
 			// nothing: an answer leaving some entries as installed is refused.
@@ -646,14 +684,14 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if len(res.Removals) > 0 && !opts.DryRun && !opts.Force {
 		if req.ConfirmRemovals == nil { // refused at step 4 already; kept so no path removes unasked
 			return nil, e.syncRefusal(sc, req, TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}},
-				res.Removals, false, true, entries)
+				res.Removals, 0, true, entries)
 		}
 		yes, err := req.ConfirmRemovals(slices.Clone(res.Removals))
 		if err != nil {
 			return nil, err
 		}
 		if !yes {
-			return nil, e.declineRemovals(req, man, layers, led, rec, acc, entries)
+			return nil, e.declineRemovals(req, man, layers, led, rec, answered, entries)
 		}
 	}
 	res.Findings = append(res.Findings, probes.findings...)
@@ -698,28 +736,34 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	slices.Sort(res.Changed)
 	res.Changed = slices.Compact(res.Changed)
-	if opts.DryRun {
+	if err := e.confirmTrusted(opts, res.Result); err != nil || opts.DryRun {
+		if err != nil {
+			return nil, err
+		}
 		// A dry run ends with the command that applies it: the user's own run without -n, and
-		// the flags that answer its questions off a terminal (never --allow-hooks: consent is the
-		// user's to give).
+		// the flags that answer its questions off a terminal: --trust for the kinds given and the
+		// kinds the run would be refused without (R-9-6), and -y for its removals.
 		needTrust := res.Trust.Status != trust.StatusTrusted && res.Trust.Status != TrustStatusNotApplicable
 		if !res.InSync || needTrust {
 			res.ToApply = e.commandOf(req)
-			var answers []string
+			missing := res.needs
 			if needTrust {
-				answers = append(answers, "--trust")
+				missing |= res.Trust.kinds()
 			}
+			missing &^= opts.Trust
+			var answers []string
 			if len(res.Removals) > 0 && !opts.Force {
 				answers = append(answers, "-y")
 			}
 			res.EquivalentCommands = []string{res.ToApply}
-			if len(answers) > 0 {
-				res.OffTerminal = e.commandOf(req, answers...)
+			if missing != 0 || len(answers) > 0 {
+				res.OffTerminal = e.commandOf(req.trusting(opts.Trust|missing), answers...)
 				res.EquivalentCommands = []string{res.OffTerminal}
 			}
 		}
 		return res, nil
 	}
+	defer func() { err = res.afterGrants(err) }() // a failure from here on carries the grants written
 	apply := func(mw []plan.ManifestWrite) error {
 		return e.commit(ctx, pr, opts, res.Result, mw, func(*plan.Plan) error { return e.makePluginData(sc, changes) })
 	}
@@ -764,12 +808,20 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 }
 
 // equivalent is the command that gives a run's trust answer (acc) off a terminal (Plan 6a §7.5,
-// §19 X2): Trust all is the user's own run with --trust; a partial answer names every entry it
-// accepted, whose record changes even when nothing is rendered, and every module the run changed,
-// so a run limited to them applies the same plan and records the same trust. -y is added when the
-// run's removals were confirmed.
+// §19 X2): Trust all is the user's own run with --trust for the kinds given and the kinds of the
+// changes it accepted (Plan 9 §3.5); a partial answer names every entry it accepted, whose record
+// changes even when nothing is rendered, and every module the run changed, so a run limited to
+// them applies the same plan and records the same trust. -y is added when the run's removals
+// were confirmed.
 func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) string {
-	run := req
+	run := req.trusting(req.Options.Trust | res.Trust.kinds())
+	var yes []string
+	if len(res.Removals) > 0 && !req.Options.Force {
+		yes = append(yes, "-y")
+	}
+	if req.Profiles != nil {
+		return e.commandOf(run, yes...)
+	}
 	if !acc.all {
 		run.Modules = slices.Clone(res.Changed)
 		for _, m := range acc.names() {
@@ -778,14 +830,7 @@ func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) s
 		slices.Sort(run.Modules)
 		run.Modules = slices.Compact(run.Modules)
 	}
-	var yes []string
-	if len(res.Removals) > 0 && !req.Options.Force {
-		yes = append(yes, "-y")
-	}
-	if req.Profiles != nil {
-		return e.commandOf(req, append([]string{"--trust"}, yes...)...)
-	}
-	return e.SyncCommand(req.Scope, append([]string{"--trust"}, run.rerun(yes...)...)...)
+	return e.SyncCommand(req.Scope, run.rerun(yes...)...)
 }
 
 // pinsOf is each entry of the run from the file part names (syncEntry.part: "" for the scope's
@@ -898,7 +943,7 @@ type syncPlan struct {
 // §9.3 step 10): its intents for its effective targets and selections, the change that renders
 // them over the targets lock.json has it on, and its module copy, replaced (running its hooks)
 // when its version changes, the copy is gone or it adds a target, or to offer a pending post-install hook to a run
-// that names its module (named) or gives --allow-hooks.
+// that names its module (named) or gives --trust covering hooks.
 func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, templates *templateRun, sel *config.Selections, opts Options,
 	probes *probeRun, named []string) (syncPlan, error) {
 	sp := syncPlan{modules: []ModuleResult{}}
@@ -934,13 +979,13 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, te
 		replace = replace || addsTargets(installed, mr.Targets)
 		// A pending post-install hook runs only in a copy replaced from the hashed version, after
 		// the consent keyed on those bytes (Plan 6a §9.3 step 10, C1), and is offered only to a
-		// run that names its module or gives --allow-hooks: any other run keeps it pending,
-		// asking nothing, and says how to run it.
+		// run that names its module or gives --trust covering hooks: any other run keeps it
+		// pending, asking nothing, and says how to run it.
 		pending := installed != nil && installed.HooksPending && declaresPostInstall(se.v.Module.DeclaredHooks)
-		if pending && !replace && !opts.AllowHooks && !slices.Contains(named, name) {
+		if pending && !replace && !opts.Trust.Covers(TrustHooks) && !slices.Contains(named, name) {
 			text := "pending post-install hook for " + name + " → " + e.SyncCommand(sc, name)
 			if opts.Ask == nil {
-				text += " (off a terminal: " + e.SyncCommand(sc, name, "--allow-hooks") + ")"
+				text += " (off a terminal: " + e.SyncCommand(sc, name, TrustHooks.Arg()) + ")"
 			}
 			sp.notices = append(sp.notices, Notice{Level: LevelWarn, Text: text})
 			pending = false
@@ -1025,9 +1070,9 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 	for _, se := range entries {
 		names[shown(se.ent.Name)] = se.ent.Name
 	}
-	acc := &acceptance{all: ans.All, modules: map[string][]string{}, targets: rep.Targets != nil && ans.All}
+	acc := &acceptance{all: ans.All, modules: map[string][]string{}, targets: rep.Targets != nil && (ans.All || ans.Kinds.Covers(TrustEntries))}
 	for _, c := range rep.Changes {
-		if !ans.All && !slices.Contains(ans.Modules, c.Module) {
+		if !ans.All && !slices.Contains(ans.Modules, c.Module) && !ans.Kinds.Covers(c.kind()) {
 			if !slices.Contains(acc.leave, c.Module) {
 				acc.leave = append(acc.leave, c.Module)
 			}
@@ -1040,7 +1085,7 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 		}
 	}
 	// A replacement comes only with an activation, whose answer is all or none (Plan 6b §4.4, P10).
-	replaced := len(rep.Replacements) > 0 && ans.All
+	replaced := len(rep.Replacements) > 0 && (ans.All || ans.Kinds.Covers(TrustProfiles))
 	if len(acc.modules) == 0 && !acc.targets && !replaced {
 		return nil, ErrDeclined
 	}
@@ -1249,10 +1294,11 @@ func shownValue(v any) any {
 // names never runs into the next answer. The hints repeat the user's run (req) at its
 // scope with the flags that answer, so the user is never sent from one refusal to the next. The
 // error carries the report and the removals for the caller to show.
-func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removals []Removal, trustMissing, removalsMissing bool,
+func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removals []Removal, missing TrustKinds, removalsMissing bool,
 	entries []*syncEntry) error {
 	var answers, hints []string
-	yesGiven, trustGiven := req.ConfirmRemovals != nil, req.Trust != nil
+	// missing may hold only the hook kind, which the hint adds and the message does not name.
+	trustMissing, yesGiven := missing&TrustBare != 0, req.ConfirmRemovals != nil
 	if trustMissing {
 		manifestPath := e.files(sc).manifest
 		name := filepath.Join(filepath.Base(filepath.Dir(manifestPath)), filepath.Base(manifestPath))
@@ -1308,18 +1354,20 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		}
 		answers = append(answers, "your confirmation to remove "+strings.Join(names, ", "))
 	}
-	// Each hint repeats the run in its output format (Plan 8 §9.2).
-	again := func(extra ...string) string { return e.commandOf(req, append(slices.Clone(req.Display), extra...)...) }
-	hints = append(hints, "see them: "+again("-n"))
+	// Each hint repeats the run in its output format (Plan 8 §9.2), with --trust as given; the
+	// one that accepts the changes adds exactly the kinds missing (Plan 9 §3.5).
+	again := func(r SyncRequest, extra ...string) string {
+		return e.commandOf(r, append(slices.Clone(req.Display), extra...)...)
+	}
+	hints = append(hints, "see them: "+again(req, "-n"))
+	accepting := req.trusting(req.Options.Trust | missing)
 	switch {
 	case trustMissing && (removalsMissing || yesGiven):
-		hints = append(hints, "then accept them: "+again("--trust", "-y"))
+		hints = append(hints, "then accept them: "+again(accepting, "-y"))
 	case trustMissing:
-		hints = append(hints, "then accept them: "+again("--trust"))
-	case trustGiven:
-		hints = append(hints, "then confirm them: "+again("--trust", "-y"))
+		hints = append(hints, "then accept them: "+again(accepting))
 	default:
-		hints = append(hints, "then confirm them: "+again("-y"))
+		hints = append(hints, "then confirm them: "+again(accepting, "-y"))
 	}
 	for _, se := range entries {
 		// An install of the folder would take all of it, never the entry's selection.
@@ -1333,7 +1381,7 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 	}
 	msg := run + " needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"
 	if trustMissing && yesGiven {
-		msg += "; -y confirms removals only; accept the changes with --trust"
+		msg += "; -y confirms removals only; accept them with " + missing.Arg()
 	}
 	return errs.WithHints(&TrustRefusalError{Report: rep, Removals: removals, msg: msg}, hints...)
 }

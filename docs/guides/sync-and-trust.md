@@ -69,8 +69,9 @@ branch never changes what sync installs, nor does `lola cache update`.
   flags (a file list's says `… and N more (…)`, without the module), and ends
   with the command that applies it, and, when that needs answers, the form for no terminal:
   `→ to apply: lola sync review-kit` and
-  `→ off a terminal: lola sync review-kit --trust -y` (your own names and flags, never
-  `--allow-hooks`, which is your consent to give).
+  `→ off a terminal: lola sync review-kit --trust=entries -y` (your own names and flags, and
+  `--trust=` the kinds you gave and the kinds the run would be refused without: `entries`,
+  `profiles`, and `hooks` for a pre-install hook without your consent).
 - **One source per name.** Your cache keeps one source per module name for every project on the
   machine. An entry whose name your cache holds from another source or path (a pulled
   `project.yml` that moved a folder, say) is refused before anything is fetched:
@@ -176,14 +177,15 @@ you trusted again from what it already fetched, so what it applies is what it sh
   a removed entry never does. When they are not accepted, every entry that installs to them stays as installed too. When
   they are the only change, the question offers only Trust all and Cancel;
 - once the removals, if any, are answered, lola prints the command that does the same off a
-  terminal: after *Trust all*, your own run with `--trust`; after *Choose…*, one naming every
-  entry you trusted (even one whose change only the record holds, such as a new `ref` at the
-  same commit) and every module the run changed:
-  `→ the same off a terminal: lola sync --trust lint-pack review-kit` (with `-y` when you
-  confirmed removals; nothing after a No).
+  terminal: after *Trust all*, your own run with `--trust=` the kinds of the changes; after
+  *Choose…*, one naming every entry you trusted (even one whose change only the record holds,
+  such as a new `ref` at the same commit) and every module the run changed:
+  `→ the same off a terminal: lola sync lint-pack review-kit --trust=entries` (with `-y` when
+  you confirmed removals; nothing after a No).
 
 `--trust <module>…` is that answer as a flag: in a run limited to those modules, `--trust`
-accepts every change of the run.
+accepts every change of the run (a module named like a kind of trust, `hooks` say, is refused
+right after a bare `--trust`: write it first, or after `--`).
 
 - The record is written once the sync has applied, so a failure asks again next time. Cancel or
   Ctrl+C prints `aborted; the project was not changed.` (your cache may already hold versions you
@@ -199,22 +201,33 @@ accepts every change of the run.
   leaves out `The changes you trusted are recorded` when they were all such changes).
   When `lola render` would now install what you trusted, the message ends with
   `lola render would install what you trusted.`
-- Off a terminal (or under `--json`), `--trust` accepts the changes and prints the diff it
-  accepted on stderr (except under `--json`, whose `trust` holds it). Without the answers it needs
+- `--trust` takes [kinds](../usage.md#trust-kinds): `entries` answers for `project.yml`,
+  `profiles` for its project profiles, and bare `--trust` is both. It prints the diff it accepted
+  on stderr, then the receipt of everything its kinds cover (`trusting, as --trust=entries
+  allows:`), and on a terminal asks `Proceed?` once (`-y` answers; No installs and records
+  nothing; fetched content stays in the cache); off a terminal it goes on, and under `--json` it
+  prints neither (`trust` and `trusted` hold them). `--scope both` asks one receipt for both
+  scopes and applies neither before its yes. Without the answers it needs
   the run is refused once, before any network contact, naming every one:
   `lola sync needs your trust for changes to .lola/project.yml; and your confirmation to remove
   old-mod, and there is no terminal to ask on`, with the diff (fields only for git and archive
   entries, since nothing was fetched, each entry it would pin by name, and a new or changed
   folder with its content, read from your disk) and the removals on stderr, and the hints
-  `see them: lola sync --project -n` and `then accept them: lola sync --project --trust -y`, with
-  your other flags; each keeps the run's `--json`, `--plain` and `--no-pager`. `-y` confirms
-  removals only, which the error says when you gave it (`…; -y confirms removals only; accept
-  the changes with --trust`); `--trust` alone with removals hints `then confirm them: lola sync
-  --project --trust -y`.
+  `see them: lola sync --project -n` and `then accept them: lola sync --project --trust=entries
+  -y`, with your other flags and `--trust=` exactly the kinds missing beside those you gave; each
+  keeps the run's `--json`, `--plain` and `--no-pager`. `-y` confirms removals only, which the
+  error says when you gave it (`…; -y confirms removals only; accept them with --trust=entries`);
+  `--trust` alone with removals hints `then confirm them: lola sync --project
+  --trust=entries,profiles -y`, and a refusal of removals alone adds `--trust=hooks` when a
+  pre-install hook without your consent would refuse the next run.
 - A pin sync writes is a change you trust, even for an entry you trusted before: re-pinning
   with `--update`, and writing back the pin of an unpinned entry, need your answer or `--trust`.
-- Neither an answer, `--trust` nor `-y` consents to install hooks, runtime hooks or an agent's MCP
-  servers: lola still asks for each, or takes `--allow-hooks` and `--allow-runtime-hooks`.
+- Neither an answer, bare `--trust` nor `-y` consents to install hooks, runtime hooks or an agent's
+  MCP servers: lola still asks for each, or takes `--trust=hooks` and `--trust=runtime-hooks`.
+  Every kind's grant is recorded as a yes at the prompt is, once the receipt is answered, so a
+  later run with the same digests asks nothing. On a CI machine whose `$XDG_STATE_HOME`
+  persists between jobs, one job's `--trust=hooks` covers the next job that installs the same
+  hooks; run each job with a fresh `XDG_STATE_HOME` for consent per job.
 - A project with no record in `trust.json` (a fresh clone, a moved directory, a deleted state
   directory) has every entry untrusted: the first sync shows them all and asks once. A manifest
   with no modules and no targets has nothing to trust.

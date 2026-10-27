@@ -84,42 +84,38 @@ func planFields(plan any) (map[string]any, error) {
 	return fields, nil
 }
 
-// hookOptions sets the hook options of a command. Install hooks (§9.1): --allow-hooks grants
-// consent for the run, and hook output goes to stderr. Runtime hooks (Plan 5b design §7.3):
-// --allow-runtime-hooks grants and records consent. Otherwise, on a terminal, lola asks per
-// module, defaulting to No.
-func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options, allow, allowRuntime bool) {
-	opts.AllowHooks, opts.HookOutput, opts.AllowRuntimeHooks = allow, cmd.ErrOrStderr(), allowRuntime
+// hookOptions sets the hook options of a command: install hooks' output goes to stderr (§9.1),
+// and on a terminal lola asks per module, defaulting to No, about the install hooks (§9.1) and
+// runtime hooks (Plan 5b design §7.3) that opts.Trust does not cover; the engine asks only
+// about those.
+func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
+	opts.HookOutput = cmd.ErrOrStderr()
 	if !interactive(cmd) || a.json {
 		return
 	}
-	if !allow {
-		opts.Ask = func(module string, hooks []engine.HookScript) (bool, error) {
-			w := cmd.ErrOrStderr()
-			fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
-			for _, h := range hooks {
-				fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256)
-			}
-			fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
-			return a.ask(cmd, "Run "+module+"'s install hooks?")
+	opts.Ask = func(module string, hooks []engine.HookScript) (bool, error) {
+		w := cmd.ErrOrStderr()
+		fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
+		for _, h := range hooks {
+			fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256)
 		}
+		fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
+		return a.ask(cmd, "Run "+module+"'s install hooks?")
 	}
-	if !allowRuntime {
-		opts.AskRuntimeHooks = func(module string, hooks []engine.RuntimeHook) (bool, error) {
-			w := cmd.ErrOrStderr()
-			what := "Claude Code hooks"
-			if slices.ContainsFunc(hooks, func(h engine.RuntimeHook) bool { return h.MCPServer != "" }) {
-				what = "Claude Code hooks and agent MCP servers"
-			}
-			fmt.Fprintf(w, "%s has %s:\n", module, what)
-			for _, h := range hooks {
-				for _, line := range runtimeHookLines(h) {
-					fmt.Fprintln(w, "    "+line)
-				}
-			}
-			fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
-			return a.ask(cmd, "Install "+module+"'s "+what+"?")
+	opts.AskRuntimeHooks = func(module string, hooks []engine.RuntimeHook) (bool, error) {
+		w := cmd.ErrOrStderr()
+		what := "Claude Code hooks"
+		if slices.ContainsFunc(hooks, func(h engine.RuntimeHook) bool { return h.MCPServer != "" }) {
+			what = "Claude Code hooks and agent MCP servers"
 		}
+		fmt.Fprintf(w, "%s has %s:\n", module, what)
+		for _, h := range hooks {
+			for _, line := range runtimeHookLines(h) {
+				fmt.Fprintln(w, "    "+line)
+			}
+		}
+		fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
+		return a.ask(cmd, "Install "+module+"'s "+what+"?")
 	}
 }
 

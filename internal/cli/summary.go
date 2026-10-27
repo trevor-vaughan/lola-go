@@ -200,7 +200,7 @@ func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 		on   bool
 		flag string
 	}{{fl.f.rules, "--rules"}, {fl.f.noRules, "--no-rules"}, {fl.f.force, "--force"}, {fl.f.strict, "--strict"},
-		{fl.f.allowHooks, "--allow-hooks"}, {fl.f.allowRuntime, "--allow-runtime-hooks"}} {
+		{fl.f.trust != 0, fl.f.trust.Arg()}} {
 		if b.on {
 			tail = append(tail, b.flag)
 		}

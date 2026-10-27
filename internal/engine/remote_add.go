@@ -38,9 +38,13 @@ type ProfileAddRequest struct {
 	// is refused, listing them.
 	Pick func(names []string, invalid int) ([]string, error)
 	// Consent shows the profiles and asks whether to add them (Plan 6b §8.2). nil means it cannot
-	// ask: the run is refused before any network contact. The CLI passes one that says yes for
-	// --trust, after showing them.
+	// ask: unless Trust covers profiles, the run is refused before any network contact. When it
+	// does, Show, when set, shows them as a record, and Receipt, when set, is shown them once,
+	// before anything is written (Plan 9 §3.4).
 	Consent func([]RemoteProfile) (bool, error)
+	Trust   TrustKinds
+	Show    func([]RemoteProfile)
+	Receipt func([]Consent) (bool, error)
 }
 
 // AddProfile fetches a remote profile and adds it (Plan 6b §3.2, §6.5): the name and every source
@@ -63,11 +67,11 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	name := req.Name
 	// display is the run's flags a hint that changes its consent or its dry run keeps: --json,
 	// --plain and --no-pager as given.
-	display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" || f == "-n" })
+	display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return trustArg(f) || f == "-n" })
 	// kept is the flags of a hint that repeats the run for another reason, the --update of a
 	// profile you have or the add at user scope: --trust answered this add's question, never
 	// that one, so it is left out (rulings R-6b3c-8, R-6cux-4).
-	kept := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" })
+	kept := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
 	// typed is the run's arguments, the name aside, which every hint that repeats it keeps.
 	typed := []string{"--add", untrusted.Text(req.Source, untrusted.MaxName)}
 	for _, f := range [][2]string{{"--ref", req.Ref}, {"--path", req.Path}} {
@@ -97,10 +101,11 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	if err != nil {
 		return nil, err
 	}
-	if req.Consent == nil && !req.DryRun {
+	covered := req.Trust.Covers(TrustProfiles)
+	if req.Consent == nil && !covered && !req.DryRun {
 		return nil, errs.WithHints(errors.New("lola profile --add shows the profile and asks before adding it, and there is no terminal to ask on"),
 			"see it: "+e.ProfileRun(given, slices.Concat(typed, []string{"-n"}, display)...),
-			"then add it unasked: "+e.ProfileRun(given, slices.Concat(typed, []string{"--trust"}, display)...))
+			"then add it unasked: "+e.ProfileRun(given, slices.Concat(typed, []string{TrustProfiles.Arg()}, display)...))
 	}
 	// Every lola profile command refuses a tracked lock.json (Plan 6b §5, §19 S5). The found
 	// project only labels the content, so the run at user scope is offered too.
@@ -122,7 +127,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 			return nil, err
 		}
 	}
-	res := &RemoteResult{Profiles: []RemoteProfile{}, Notices: slices.Concat(skipped, checked, e.sweepRuns()), DryRun: req.DryRun}
+	res := &RemoteResult{Profiles: []RemoteProfile{}, Notices: slices.Concat(skipped, checked, e.sweepRuns()), DryRun: req.DryRun, Trusted: []Consent{}}
 	run, err := e.runDir()
 	if err != nil {
 		return nil, err
@@ -163,6 +168,11 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		}
 		res.Profiles = append(res.Profiles, rp)
 	}
+	if covered {
+		for _, rp := range res.Profiles {
+			res.Trusted = append(res.Trusted, Consent{Kind: TrustProfiles.String(), Item: rp.Profile, Change: ConsentNew})
+		}
+	}
 	if req.DryRun {
 		for _, rp := range res.Profiles {
 			args := slices.DeleteFunc(slices.Concat(typed, req.Rerun), func(f string) bool { return f == "-n" })
@@ -170,14 +180,14 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 				args = append([]string{rp.name}, args...)
 			}
 			text := "to add " + rp.Profile + ": " + e.ProfileRun(given, args...)
-			if !slices.Contains(args, "--trust") {
-				text += " (off a terminal: --trust)"
+			if !covered {
+				text += " (off a terminal: " + TrustProfiles.Arg() + ")"
 			}
 			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: text})
 		}
 		return res, nil
 	}
-	ok, err := req.Consent(slices.Clone(res.Profiles))
+	ok, err := consentRemote(slices.Clone(res.Profiles), res.Trusted, covered, req.Consent, req.Show, req.Receipt)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +267,7 @@ func (e *Engine) refuseKept(given []Scope, name string, flags []string) error {
 // remoteName: default never is one, and counts with the invalid names). Without pick the run is
 // refused, listing them, with the command that adds each, or for a dry run shows it (typed is the
 // run's arguments, to repeat, with the scope flag given, none when empty, and display, the run's
-// flags each hint keeps after --trust or -n). A choice of none is a No.
+// flags each hint keeps after --trust=profiles or -n). A choice of none is a No.
 func (e *Engine) pickRemote(given []Scope, tree string, typed, display []string, dry bool, pick func([]string, int) ([]string, error)) ([]string, error) {
 	all, invalid, err := profile.FetchedNames(tree)
 	if err != nil {
@@ -269,7 +279,7 @@ func (e *Engine) pickRemote(given []Scope, tree string, typed, display []string,
 		return nil, errs.WithHints(errors.New("the source has no profiles"), "a profile source holds profiles/<name>.yml at its root, or under --path")
 	}
 	if pick == nil {
-		verb, flag := "add ", "--trust"
+		verb, flag := "add ", TrustProfiles.Arg()
 		if dry {
 			verb, flag = "see ", "-n"
 		}

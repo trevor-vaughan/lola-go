@@ -82,11 +82,12 @@ var _ = Describe("lola migrate", func() {
 		r := lola("migrate", "--force")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("review has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola migrate --force --trust=hooks\n"), "the hint is the command refused")
 		Expect(r.err).NotTo(ContainSubstring("needs confirmation"), "--force answered Migrate? (ruling R-6c3-4)")
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("python ship\n"), "nothing was written")
 		Expect(mark).NotTo(BeAnExistingFile())
 
-		r = lola("migrate", "--force", "--allow-hooks")
+		r = lola("migrate", "--force", "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(mark).To(BeAnExistingFile())
 		Expect(r.out).To(ContainSubstring("✓ migrated project " + proj))
@@ -269,7 +270,7 @@ var _ = Describe("lola migrate", func() {
 	It("is listed with the additional commands, with its flags in help", func() {
 		Expect(lola("help").out).To(MatchRegexp(`(?s)Additional:.*migrate`))
 		out := lola("migrate", "--help").out
-		for _, f := range []string{"--dry-run", "--yes", "--force", "--allow-hooks", "--allow-runtime-hooks", "--keep-python"} {
+		for _, f := range []string{"--dry-run", "--yes", "--force", "--trust", "--keep-python"} {
 			Expect(out).To(ContainSubstring(f))
 		}
 	})
