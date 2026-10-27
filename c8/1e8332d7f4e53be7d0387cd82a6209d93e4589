@@ -1,0 +1,44 @@
+internal/engine/engine_test.go
+  s_35f2683d3ca978::t_07cc3a201bd6d0 646,774-775
+internal/source/fetch_test.go
+  s_35f2683d3ca978::t_07cc3a201bd6d0 6,34-35,45-46
+internal/source/source_test.go
+  s_35f2683d3ca978::t_07cc3a201bd6d0 207-218,222-223
+internal/engine/cache.go
+  s_35f2683d3ca978::t_53f0ea287d16e4 54
+internal/engine/engine.go
+  s_35f2683d3ca978::t_53f0ea287d16e4 517-518
+internal/cli/hints_test.go
+  s_35f2683d3ca978::t_07cc3a201bd6d0 90,97,145
+internal/source/source.go
+  s_35f2683d3ca978::t_53f0ea287d16e4 345,391,417-418
+internal/engine/check.go
+  s_35f2683d3ca978::t_53f0ea287d16e4 177-178
+internal/engine/sync_test.go
+  s_35f2683d3ca978::t_07cc3a201bd6d0 2099
+internal/engine/hints_test.go
+  s_35f2683d3ca978::t_07cc3a201bd6d0 92,167,219-247
+  s_35f2683d3ca978::t_8de1aeb05fae8e 248
+docs/decisions.md
+  s_35f2683d3ca978::t_53f0ea287d16e4 143-145
+internal/engine/sync.go
+  s_35f2683d3ca978::t_53f0ea287d16e4 1752-1753
+e2e/install/install.venom.yml
+  s_35f2683d3ca978::t_07cc3a201bd6d0 580,582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c81e8332d7f4e53be7d0387cd82a6209d93e4589",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
