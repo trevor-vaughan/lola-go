@@ -1,0 +1,22 @@
+e2e/migrate/scripts/python-setup-c.sh
+  s_8d03b9505d742a::t_081423920a802a 1-22
+e2e/migrate/migrate.venom.yml
+  s_8d03b9505d742a::t_9e397cc182e5fc 8,15
+  s_8d03b9505d742a::t_081423920a802a 183-235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2cabd7a1dc4777f32dd4681c4414378416c9170f",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
