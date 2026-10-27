@@ -1,0 +1,25 @@
+docs/usage.md
+  s_ad8e7d52cd540d::t_daffd890cd108f 1704
+internal/target/capability.go
+  s_ad8e7d52cd540d::t_f4b63d2eca21f7 54-58
+internal/target/conformance/consent_test.go
+  s_ad8e7d52cd540d::t_7d3616e6ffdf07 41-46,65,88,96-99,138-140
+internal/target/gemini/gemini.go
+  s_ad8e7d52cd540d::t_16858ab2304b84 75-77,79-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "27c8ade1a1d1c437c62ed431dd4bb23ae8c5e4b8",
+  "prompts": {},
+  "sessions": {
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
