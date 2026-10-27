@@ -1,0 +1,103 @@
+docs/architecture.md
+  s_8d03b9505d742a::t_2bccb7be1c8c4b 179-180,1528,1704-1728
+docs/decisions.md
+  s_8d03b9505d742a::t_89db7d7a312fb8 61,153
+docs/guides/migrating.md
+  s_8d03b9505d742a::t_8e3793697c7419 20,86-87,126-170
+docs/guides/profiles.md
+  s_8d03b9505d742a::t_a4558f7a2c82ae 171
+docs/guides/sync-and-trust.md
+  s_8d03b9505d742a::t_c9f5dd820600c2 297-310
+docs/testing.md
+  s_8d03b9505d742a::t_e0df5fbaec436e 23,28-30,158-160
+docs/usage.md
+  s_8d03b9505d742a::t_469d242460d194 17-18,733-738,741-744,747-749,1295,1660-1667,1723-1727,1743-1744,1746-1747
+e2e/migrate/migrate.venom.yml
+  s_8d03b9505d742a::t_63df28aef44d54 8,15,183-233
+e2e/migrate/scripts/python-setup-c.sh
+  s_8d03b9505d742a::t_9d9578c74eae00 1-18
+go.mod
+  s_8d03b9505d742a::t_e19b9c21b9958a 8-9
+internal/cli/cmd_market.go
+  s_8d03b9505d742a::t_c3c495fff4a7b5 224
+internal/cli/cmd_migrate.go
+  s_8d03b9505d742a::t_f90fe7006d2262 6-7,9,14-15,18,24,42-46,50-51,68-75,84-89,93,98,116,129-130,134-200,281-286,293,310-334,402-405,443,451-453
+internal/cli/cmd_profile.go
+  s_8d03b9505d742a::t_6c7a0d3ab51265 358,362
+internal/cli/cmd_store.go
+  s_8d03b9505d742a::t_3a19627d3b08fd 59
+internal/cli/cmd_sync.go
+  s_8d03b9505d742a::t_ccb7a066bb0eb3 90,98,207-209,243,260,281,308,310,326-327,335,340,359
+internal/cli/confirm_test.go
+  s_8d03b9505d742a::t_1c30328e4b6eca 110,112
+internal/cli/flow_test.go
+  s_8d03b9505d742a::t_59c1fac495a6d7 41-42,56-57,122-129
+internal/cli/help.go
+  s_8d03b9505d742a::t_5dec039013e167 27-29,42,76,191-199,258-259,264
+internal/cli/huh.go
+  s_8d03b9505d742a::t_7292aad9081648 9,589-626
+internal/cli/huh_internal_test.go
+  s_8d03b9505d742a::t_18fdab64be7c2f 374-406
+internal/cli/human.go
+  s_8d03b9505d742a::t_b2ae583a2f8fd3 27-35
+internal/cli/migrate_test.go
+  s_8d03b9505d742a::t_f7fd7ebb141cb1 13,97-191
+internal/cli/output.go
+  s_8d03b9505d742a::t_c0906f53162a13 40-53,55-66,87-88,96
+internal/cli/pager.go
+  s_8d03b9505d742a::t_2211ad23b112f9 16,20-26,29-36,39-45,48-56,58-65,68-78,81-84,86-101,103-110,113,115,117-120,128,130
+internal/cli/pager_test.go
+  s_8d03b9505d742a::t_77d44381bace96 93,97-127,147
+internal/cli/profile_add.go
+  s_8d03b9505d742a::t_4dfaed1810bf80 47-49,51,55,86
+internal/cli/profile_update.go
+  s_8d03b9505d742a::t_74d70004d44b0e 60-63,65,69,111,152,173
+internal/cli/prompter.go
+  s_8d03b9505d742a::t_0a2191474e42f4 50-72,281-284
+internal/cli/root.go
+  s_8d03b9505d742a::t_0a1ca1391ff40e 69,100,132,142,225,227
+internal/cli/viewer.go
+  s_8d03b9505d742a::t_2363638023d68c 1-133
+internal/cli/viewer_internal_test.go
+  s_8d03b9505d742a::t_62cd180a8bcf3e 1-337
+internal/config/config.go
+  s_8d03b9505d742a::t_3af913f0617988 34,116
+internal/migrate/helpers_test.go
+  s_8d03b9505d742a::t_b1f0856a278397 72-80
+internal/migrate/plan.go
+  s_8d03b9505d742a::t_710422d0dc82fd 49-50,52-59,83-85,89-95,155-159,168-169,171,173-177,180,186,191,201,209-216,218-221,226-227,245,247-248,256-263,269,274-275,279,294-295,381,394-418,423-433,435-446,448,455-456,605-606,673-674,684
+internal/migrate/plan_test.go
+  s_8d03b9505d742a::t_38af4a6427f20f 37,41,44,48,244,463-569
+internal/migrate/read.go
+  s_8d03b9505d742a::t_78e6ba1f0a626b 37-38,45,432,439-443,445,450-452,454,456,464,470,472,474,477,479
+internal/migrate/read_test.go
+  s_8d03b9505d742a::t_0c406e1e72e37b 274-290
+internal/migrate/remap.go
+  s_8d03b9505d742a::t_bcc3f3fe4a4d00 1-252
+internal/migrate/remap_internal_test.go
+  s_8d03b9505d742a::t_c48e88690765d5 1-49
+internal/migrate/remap_test.go
+  s_8d03b9505d742a::t_cc57910b92f37a 1-59
+internal/migrate/run.go
+  s_8d03b9505d742a::t_e93b2a961802a3 30-33,37-38,49,75-90,227,249,479-481,700-703,709-724
+internal/migrate/run_test.go
+  s_8d03b9505d742a::t_3a3f775d124863 85,107,110,114,116,267-276,853,1044,1145,1148-1153,1157-1164
+internal/testenv/testenv.go
+  s_8d03b9505d742a::t_1d2c2605560c78 58-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73c789a2cbb9099341a479c3e4dcdb368e64a703",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
