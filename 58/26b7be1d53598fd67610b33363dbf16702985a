@@ -1,0 +1,35 @@
+e2e/template/fixtures/tpl/commands/review.md.liquid
+  s_35f2683d3ca978::t_5cd1f480ef1759 1-5
+e2e/template/fixtures/spin/commands/spin.md.liquid
+  s_35f2683d3ca978::t_5cd1f480ef1759 1
+e2e/template/fixtures/expected/claude-code/review.md
+  s_35f2683d3ca978::t_5cd1f480ef1759 1-6
+e2e/template/fixtures/bad/lola.yml
+  s_35f2683d3ca978::t_5cd1f480ef1759 1-2
+e2e/template/fixtures/tpl/commands/review.targets.yaml
+  s_35f2683d3ca978::t_5cd1f480ef1759 1
+e2e/template/fixtures/tpl/lola.yml
+  s_35f2683d3ca978::t_5cd1f480ef1759 1-2
+e2e/template/fixtures/bad/commands/c.md.liquid
+  s_35f2683d3ca978::t_5cd1f480ef1759 1-4
+e2e/template/fixtures/expected/opencode/review.md
+  s_35f2683d3ca978::t_5cd1f480ef1759 1-5
+e2e/template/fixtures/tpl/_partials/header.liquid
+  s_35f2683d3ca978::t_5cd1f480ef1759 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5826b7be1d53598fd67610b33363dbf16702985a",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
