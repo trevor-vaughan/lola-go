@@ -6,8 +6,8 @@ Guidance for coding agents working on lola (Go).
 
 - `task build` -> `bin/lola`; `task test` (add `MODE=llm` for failures only); `task lint`;
   `task vuln`; `task cross` (Windows/macOS build + vet); `task check` runs all gates. Artifacts go to `.test-output/`.
-  `task e2e:migrate` runs the `lola migrate` container suite (podman or docker, venom,
-  network); it is not part of `check`.
+  `task e2e:migrate` runs the `lola migrate` container suite and `task e2e:tidy` the `lola tidy`
+  one (podman or docker, venom, network); neither is part of `check`.
 
 ## Rules
 
@@ -23,8 +23,9 @@ Guidance for coding agents working on lola (Go).
 - **Output.** Every command emits through `app.emit`. JSON keys are snake_case; arrays are never
   `null`. Human output may use `✓ ⚠ ✗ →`; color only via `style`. Author-chosen text reaches
   output only through `untrusted.Text` or `untrusted.CleanErr`, except JSON `steps[].path`,
-  `steps[].member` and `steps[].value`, which carry what lola wrote, raw but for JSON's escaping
-  of control characters.
+  `steps[].member` and `steps[].value`, which carry what lola wrote, and `lola tidy`'s JSON
+  `path` and `trash`, which carry paths lola wrote, moved or found in its destinations, raw but
+  for JSON's escaping of control characters.
 - **Vocabulary.** User-facing text (messages, hints, help, docs) says "cache", never "store" or
   "origin" (ADR #245). Internal identifiers (package `store`, `store.Origin`) keep their names.
 - **Aliases** are additive and stable: never repurpose one, never collide with a sibling, use the

@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
+	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
 // str is s as a JSON string member.
@@ -17,6 +18,8 @@ func str(s string) []byte {
 }
 
 var _ = Describe("JSONC edits", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
 	DescribeTable("JSONSet preserves every byte outside the edited member",
 		func(src, ptr, val, want string) {
 			got, err := fsx.JSONSet([]byte(src), ptr, []byte(val))
@@ -49,6 +52,59 @@ var _ = Describe("JSONC edits", func() {
 			"{\n  \"x\": 1,\n  \"mcpServers\": {\n    \"gh\": {}\n  }\n}\n", "/mcpServers/gh", "{\n  \"x\": 1\n}\n"),
 		Entry("is a no-op when the member is missing", "{\"a\":1}", "/b/c", "{\"a\":1}"),
 	)
+
+	DescribeTable("deleting an MCP member removes its own comments and keeps every other byte, section comments included, and an emptied server map",
+		func(src, ptr, want string) {
+			got, err := fsx.JSONDeleteMember([]byte(src), ptr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(got)).To(Equal(want))
+		},
+		Entry("middle member: its own comment and its line go; the section comment above a blank line stays",
+			"{\n  \"mcpServers\": {\n    \"a\": 1,\n\n    // section: legacy\n\n    // about b\n    \"b\": 2, // b trailing\n    \"c\": 3\n  }\n}\n", "/mcpServers/b",
+			"{\n  \"mcpServers\": {\n    \"a\": 1,\n\n    // section: legacy\n\n    \"c\": 3\n  }\n}\n"),
+		Entry("own comments run up to the previous member",
+			"{\n  \"s\": {\n    \"a\": 1, // a trailing\n    // one\n    /* two */\n    \"b\": 2,\n    \"c\": 3\n  }\n}", "/s/b",
+			"{\n  \"s\": {\n    \"a\": 1, // a trailing\n    \"c\": 3\n  }\n}"),
+		Entry("a block comment holding a blank line is never cut in half",
+			"{\n  \"s\": {\n    \"a\": 1,\n    /* keep\n\n       together */\n    \"b\": 2\n  }\n}", "/s/b",
+			"{\n  \"s\": {\n    \"a\": 1\n  }\n}"),
+		Entry("last member: the previous line's comment and the comments before the closing brace stay",
+			"{\n  \"s\": {\n    \"a\": 1, // c\n    \"b\": 2 // d\n    // after\n  }\n}", "/s/b",
+			"{\n  \"s\": {\n    \"a\": 1 // c\n    // after\n  }\n}"),
+		Entry("first member: the comment on the opening line stays",
+			"{\n  \"s\": { // servers\n    // about a\n    \"a\": 1,\n    \"b\": 2\n  }\n}", "/s/a",
+			"{\n  \"s\": { // servers\n    \"b\": 2\n  }\n}"),
+		Entry("the only member: the server map stays, emptied, and so does every other key",
+			"{\n  \"x\": 1,\n  \"mcpServers\": {\n    \"gh\": {\"command\": \"gh\"}\n  }\n}\n", "/mcpServers/gh",
+			"{\n  \"x\": 1,\n  \"mcpServers\": {\n  }\n}\n"),
+		Entry("a key with an escaped pointer token", "{\"s\": {\"a/b\": 1, \"c\": 2}}", "/s/a~1b", "{\"s\": {\"c\": 2}}"),
+		Entry("a block comment that starts on the member's last line goes whole, never cut at its line break",
+			"{\"s\": {\n  \"a\": 1,\n  \"b\": 2, /* about\n  b */\n  \"c\": 3\n}}", "/s/b",
+			"{\"s\": {\n  \"a\": 1,\n  \"c\": 3\n}}"),
+		Entry("last member: a comment between the previous value and its comma stays",
+			"{\"s\": {\n  \"a\": 1 /* keep */,\n  \"b\": 2\n}}", "/s/b", "{\"s\": {\n  \"a\": 1 /* keep */\n}}"),
+		Entry("last member: a trailing comma stays", "{\"s\": {\"a\": 1, \"b\": 2,}}", "/s/b", "{\"s\": {\"a\": 1,}}"),
+		Entry("is a no-op when the member is missing", "{\"a\":1}", "/a/b", "{\"a\":1}"),
+	)
+
+	It("a member JSONDeleteMember cannot remove safely is refused with its key through untrusted.Text", func() {
+		_, err := fsx.JSONDeleteMember([]byte("{\"s\": {\"x\": 1e999, \"b\\u001b\": 3}}"), "/s/b\x1b")
+		Expect(err).To(MatchError(HavePrefix("removing /s/b? would change more than that member, so it was not removed: ")))
+	})
+
+	It("JSONMembers lists an object's members in file order, a name written twice included, with canonical values", func() {
+		ms, found, err := fsx.JSONMembers([]byte("{\"s\": {\n  // c\n  \"b\": {\"y\": 2, \"x\": 1},\n  \"a\": 1,\n  \"b\": [],\n}}"), "/s")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeTrue())
+		Expect(ms).To(Equal([]fsx.JSONMember{{Name: "b", Value: []byte(`{"x":1,"y":2}`)}, {Name: "a", Value: []byte("1")}, {Name: "b", Value: []byte("[]")}}))
+		_, found, err = fsx.JSONMembers([]byte(`{"t": 1}`), "/s")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found).To(BeFalse())
+		_, _, err = fsx.JSONMembers([]byte(`{"s": [1]}`), "/s")
+		Expect(err).To(MatchError(ContainSubstring("not an object")))
+		_, _, err = fsx.JSONMembers([]byte(`{"s": `), "/s")
+		Expect(err).To(HaveOccurred())
+	})
 
 	DescribeTable("JSONAddMember appends one string and preserves the rest",
 		func(src, ptr, member, want string, wantCreated bool) {

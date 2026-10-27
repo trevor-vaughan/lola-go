@@ -1,6 +1,6 @@
 //go:build !windows
 
-package migrate
+package trash
 
 import (
 	"errors"

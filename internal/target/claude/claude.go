@@ -41,6 +41,20 @@ func (Target) BaseDirs(target.Scope) []string {
 	return []string{".claude/skills", ".claude/commands", ".claude/agents", ".claude/rules"}
 }
 
+// Destinations implements Target. Rules live in lola's own .claude/rules/lola, never beside
+// the user's rules.
+func (Target) Destinations(scope target.Scope, _ string) (target.Destinations, error) {
+	mcpFile := ".mcp.json"
+	if scope == target.User {
+		mcpFile = ".claude.json"
+	}
+	return target.Destinations{
+		Dirs: []target.DestDir{{Kind: "skill", Path: ".claude/skills"}, {Kind: "command", Path: ".claude/commands", Ext: ".md"},
+			{Kind: "agent", Path: ".claude/agents", Ext: ".md"}, {Kind: "rule", Path: ".claude/rules/lola"}},
+		Servers: []target.ServerMap{{File: mcpFile, Pointer: "/mcpServers"}},
+	}, nil
+}
+
 // caps: Claude Code takes every artifact kind and keeps every frontmatter key as authored,
 // except that an agent's description must be a string. It is the only target with runtime
 // hooks (Plan 5b design §7.1).

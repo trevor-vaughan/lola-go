@@ -25,6 +25,9 @@ moves its files to a trash you can restore from ([docs/usage.md](docs/usage.md#c
   rewritten. JSON files keep their comments; a file lola cannot parse is never rewritten.
   lola never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`, and a module's install hooks
   run, and its Claude Code runtime hooks are installed, only with your consent.
+- **Cleanup:** `lola tidy` moves what lola does not manage out of the assistants' directories
+  and MCP server lists into a trash you can restore from, never an instruction file, nor what git
+  tracks or your keep-list names unless you say so.
 
 Marketplaces, profiles and templating are planned: see
 [docs/roadmap.md](docs/roadmap.md).

@@ -1,0 +1,177 @@
+name: lola tidy across file systems
+# Run by scripts/e2e-tidy.sh (task e2e:tidy), which starts the container this suite execs into:
+# this checkout's lola-go at /opt/lola-go/lola-go, the fixture and scripts at /e2e, and /work/proj
+# and /home/tester/.local/state (XDG_STATE_HOME, where the trash is) on two tmpfs mounts.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-tidy-e2e
+  lola: /opt/lola-go/lola-go
+  proj: /work/proj
+  state: /home/tester/.local/state
+
+testcases:
+  - name: The project and the trash are on different file systems, and git reads the project
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "fixture ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(stat -c %d {{.proj}})\" != \"$(stat -c %d {{.state}})\" && echo two file systems'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "two file systems"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git -C {{.proj}} ls-files"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring ".mcp.json"
+          - result.systemout ShouldContainSubstring ".claude/commands/team.md"
+
+  - name: A dry run's JSON lists candidates, locked and skipped items, and moves nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C {{.proj}} -t claude-code -t gemini-cli -n --json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+          - result.systemoutjson.trash ShouldEqual ""
+          - result.systemoutjson.root ShouldEqual "{{.proj}}"
+          - result.systemout ShouldNotContainSubstring null
+          - result.systemout ShouldNotContainSubstring legacy-server
+          - result.systemout ShouldContainSubstring {{.proj}}/.claude/commands/deploy.md
+          - result.systemout ShouldContainSubstring {{.proj}}/.claude/commands/tmp-1.md
+          - result.systemout ShouldContainSubstring {{.proj}}/.claude/agents/scratch.md
+          - result.systemout ShouldContainSubstring {{.proj}}/.claude/agents/notes.md
+          - result.systemout ShouldContainSubstring {{.proj}}/.gemini/skills/lint
+          - result.systemout ShouldNotContainSubstring {{.proj}}/.claude/commands/ship.md
+          - result.systemout ShouldContainSubstring /mcpServers/legacy
+          - 'result.systemout ShouldContainSubstring "tracked by git"'
+          - 'result.systemout ShouldContainSubstring "is or holds an instruction file"'
+          - 'result.systemout ShouldContainSubstring "leads outside the root"'
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola tidy -C {{.proj}} --all -t claude-code -t gemini-cli -y --json"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'ls {{.proj}}/.claude/commands {{.proj}}/.claude/agents; ls {{.state}}/lola/trash 2>&1'"
+        assertions:
+          - result.code ShouldNotEqual 0
+          - result.systemout ShouldContainSubstring "deploy.md"
+          - result.systemout ShouldContainSubstring "scratch.md"
+          - result.systemout ShouldContainSubstring "No such file or directory"
+
+  - name: Off a terminal without names it refuses with the --all -y hint and moves nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C {{.proj}} -t claude-code -t gemini-cli"
+        assertions:
+          - result.code ShouldEqual 1
+          - 'result.systemerr ShouldContainSubstring "lola tidy needs names or --all when it cannot ask (off a terminal or with --json): 5 items can move"'
+          - 'result.systemerr ShouldContainSubstring "hint: lola tidy -C {{.proj}} --all -t claude-code -t gemini-cli -y"'
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -f {{.proj}}/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: --all -y moves exactly the unlocked set across file systems
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py snapshot /tmp/all-snap.json {{.proj}}/.claude/commands/deploy.md {{.proj}}/.claude/commands/tmp-1.md {{.proj}}/.claude/agents/scratch.md {{.proj}}/.gemini/skills/lint"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "snapshot of 4 paths"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} tidy -C {{.proj}} -t claude-code -t gemini-cli --keep agent/notes --all -y --json > /tmp/all.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py moved /tmp/all.json /tmp/all-snap.json command/deploy command/tmp-1 agent/scratch skill/lint"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring "FAIL"
+          - result.systemout ShouldContainSubstring "ok moved exactly agent/scratch, command/deploy, command/tmp-1, skill/lint"
+          - result.systemout ShouldContainSubstring "ok command/deploy crossed file systems into the trash"
+          - result.systemout ShouldContainSubstring "ok skill/lint crossed file systems into the trash"
+          - result.systemout ShouldContainSubstring "ok skill/lint's trash copy holds the original's tree and contents"
+          - result.systemout ShouldContainSubstring "ok manifest.txt names every trash path once"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cat ~/.config/lola/keep.yaml; ls {{.proj}}/.claude/commands {{.proj}}/.claude/agents'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "- agent/notes"
+          - result.systemout ShouldContainSubstring "team.md"
+          - result.systemout ShouldContainSubstring "ship.md"
+          - result.systemout ShouldContainSubstring "CLAUDE.md"
+          - result.systemout ShouldContainSubstring "notes.md"
+
+  - name: The trash's manifest.txt restores what moved with mv
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py restore /tmp/all.json /tmp/all-snap.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring "FAIL"
+          - result.systemout ShouldContainSubstring "ok restored {{.proj}}/.claude/commands/deploy.md with its tree and contents"
+          - result.systemout ShouldContainSubstring "ok restored {{.proj}}/.claude/agents/scratch.md with its tree and contents"
+          - result.systemout ShouldContainSubstring "ok restored {{.proj}}/.gemini/skills/lint with its tree and contents"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat {{.proj}}/.gemini/skills/lint/refs/a.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Reference A."
+
+  - name: --all --force adds the tracked units but never a kept, locked or linked-out one
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py snapshot /tmp/force-snap.json {{.proj}}/.claude/commands/deploy.md {{.proj}}/.claude/commands/tmp-1.md {{.proj}}/.claude/commands/team.md {{.proj}}/.claude/agents/scratch.md {{.proj}}/.gemini/skills/lint {{.proj}}/.mcp.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "snapshot of 6 paths"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} tidy -C {{.proj}} -t claude-code -t gemini-cli --all --force --json > /tmp/force.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py moved /tmp/force.json /tmp/force-snap.json command/deploy command/tmp-1 command/team agent/scratch mcp/legacy skill/lint"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring "FAIL"
+          - result.systemout ShouldContainSubstring "ok moved exactly agent/scratch, command/deploy, command/team, command/tmp-1, mcp/legacy, skill/lint"
+          - result.systemout ShouldContainSubstring "ok mcp/legacy's trash copy holds the original's tree and contents"
+          - result.systemout ShouldContainSubstring "ok mcp/legacy crossed file systems into the trash"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test -L {{.proj}}/.claude/skills && cat {{.proj}}/.claude/skills/shared/SKILL.md {{.proj}}/.claude/agents/notes.md {{.proj}}/.claude/commands/CLAUDE.md {{.proj}}/.claude/commands/ship.md'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "Shared skill."
+          - result.systemout ShouldContainSubstring "My notes."
+          - result.systemout ShouldContainSubstring "Instructions."
+          - result.systemout ShouldContainSubstring "Ship"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C {{.proj}} --plain | tr '\\t' ' '"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "ship claude-code ok"
+
+  - name: At user scope a dotfiles-style ~/.claude link is tidied through and stays a link
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'python3 /e2e/scripts/check.py snapshot /tmp/user-snap.json ~/dotfiles/claude/commands/stale.md'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "snapshot of 1 paths"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} tidy --user -t claude-code --all -y --json > /tmp/user.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py moved /tmp/user.json /tmp/user-snap.json command/stale"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring "FAIL"
+          - result.systemout ShouldContainSubstring "ok command/stale crossed file systems into the trash"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test -L ~/.claude && test -d ~/dotfiles/claude/commands && echo link kept'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "link kept"

@@ -107,9 +107,14 @@ func (e *Engine) refuseTrackedLedger(ctx context.Context, sc Scope, res *Result)
 		return err
 	}
 	if tracked {
-		return errs.WithHints(fmt.Errorf("%s is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a "+
-			"pull decide what lola deletes", projectLedger),
-			"git rm --cached "+projectLedger, "if you never installed with lola in this checkout, delete it too, then run "+e.SyncCommand(sc))
+		return e.trackedLedger(sc)
 	}
 	return nil
+}
+
+// trackedLedger refuses the project scope sc, whose ledger git tracks.
+func (e *Engine) trackedLedger(sc Scope) error {
+	return errs.WithHints(fmt.Errorf("%s is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a "+
+		"pull decide what lola deletes", projectLedger),
+		"git rm --cached "+projectLedger, "if you never installed with lola in this checkout, delete it too, then run "+e.SyncCommand(sc))
 }

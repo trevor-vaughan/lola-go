@@ -36,6 +36,8 @@ type scripted struct {
 	profiles   []func(cli.ProfileStep) ([]string, error)
 	names      []string
 	entries    []string
+	tidyPick   []func(cli.TidyPickStep) ([]string, error)
+	tidyKeep   []func(cli.TidyKeepStep) ([]string, error)
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -47,6 +49,8 @@ type scripted struct {
 	profileSteps   []cli.ProfileStep
 	nameSteps      []cli.MarketNameStep
 	entrySteps     []cli.MarketEntryStep
+	tidyPickSteps  []cli.TidyPickStep
+	tidyKeepSteps  []cli.TidyKeepStep
 }
 
 func pop[T any](q *[]T, step string) T {
@@ -102,6 +106,14 @@ func (s *scripted) MarketName(st cli.MarketNameStep) (string, error) {
 func (s *scripted) MarketEntry(st cli.MarketEntryStep) (string, error) {
 	s.calls, s.entrySteps = append(s.calls, "market-entry"), append(s.entrySteps, st)
 	return pop(&s.entries, "market-entry"), nil
+}
+func (s *scripted) TidyPick(st cli.TidyPickStep) ([]string, error) {
+	s.calls, s.tidyPickSteps = append(s.calls, "tidy-pick"), append(s.tidyPickSteps, st)
+	return pop(&s.tidyPick, "tidy-pick")(st)
+}
+func (s *scripted) TidyKeep(st cli.TidyKeepStep) ([]string, error) {
+	s.calls, s.tidyKeepSteps = append(s.calls, "tidy-keep"), append(s.tidyKeepSteps, st)
+	return pop(&s.tidyKeep, "tidy-keep")(st)
 }
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)

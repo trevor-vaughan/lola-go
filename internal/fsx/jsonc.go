@@ -3,11 +3,14 @@ package fsx
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/tailscale/hujson"
+
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // JSONPointerTokens splits an RFC 6901 pointer into unescaped reference tokens.
@@ -77,6 +80,48 @@ func lookup(root *hujson.Value, toks []string) (*hujson.Value, string) {
 		cur = &obj.Members[i].Value
 	}
 	return cur, indent
+}
+
+// JSONMember is one member of a JSON object: its name and its value as canonical JSON.
+type JSONMember struct {
+	Name  string
+	Value []byte
+}
+
+// JSONMembers lists the members of the object at ptr in file order, a name written twice
+// included, which decoding into a map would hide. found is false when there is no value at ptr;
+// a value there that is not an object is an error.
+func JSONMembers(b []byte, ptr string) (members []JSONMember, found bool, err error) {
+	toks, err := JSONPointerTokens(ptr)
+	if err != nil {
+		return nil, false, err
+	}
+	root, err := parseJSONC(b)
+	if err != nil {
+		return nil, false, err
+	}
+	cur, _ := lookup(&root, toks)
+	if cur == nil {
+		return nil, false, nil
+	}
+	obj, ok := cur.Value.(*hujson.Object)
+	if !ok {
+		return nil, true, fmt.Errorf("the value at %s is not an object", ptr)
+	}
+	for _, m := range obj.Members {
+		name, ok := m.Name.Value.(hujson.Literal)
+		if !ok {
+			return nil, true, fmt.Errorf("a member name at %s is not a string", ptr)
+		}
+		v := m.Value
+		v.BeforeExtra, v.AfterExtra = nil, nil
+		c, err := CanonicalJSON(v.Pack())
+		if err != nil {
+			return nil, true, err
+		}
+		members = append(members, JSONMember{Name: name.String(), Value: c})
+	}
+	return members, true, nil
 }
 
 // JSONHasMember reports whether the array at ptr contains member, a JSON value; elements
@@ -290,6 +335,162 @@ func JSONDelete(b []byte, ptr string) ([]byte, error) {
 		}
 	}
 	return root.Pack(), nil
+}
+
+// JSONDeleteMember removes the member at ptr from its object and nothing else: no parent is
+// pruned, so an emptied object stays. The member's own comments go with it: the comment lines
+// directly above it, up to the nearest blank line or the previous member, and the rest of its
+// last line. Every other byte stays. The result is parsed again and must hold the object's
+// members less the one removed; otherwise JSONDeleteMember fails and the caller writes nothing.
+// A missing member is not an error.
+func JSONDeleteMember(b []byte, ptr string) ([]byte, error) {
+	toks, err := JSONPointerTokens(ptr)
+	if err != nil {
+		return nil, err
+	}
+	root, err := parseJSONC(b)
+	if err != nil {
+		return nil, err
+	}
+	parentPtr := ""
+	if len(toks) > 1 {
+		parentPtr = ptr[:strings.LastIndex(ptr, "/")]
+	}
+	parent, _ := lookup(&root, toks[:len(toks)-1])
+	if parent == nil {
+		return b, nil
+	}
+	obj, ok := parent.Value.(*hujson.Object)
+	if !ok {
+		return b, nil
+	}
+	i := memberIndex(obj, toks[len(toks)-1])
+	if i < 0 {
+		return b, nil
+	}
+	it := objectItems(obj)
+	gone := *it.before(i)
+	keep := withoutOwnComments(string(gone))
+	if i < it.n-1 {
+		next := it.before(i + 1)
+		if _, rest := splitAtLineEnd(*next); rest == "" {
+			*next = gone
+		} else {
+			*next = hujson.Extra(keep + rest)
+		}
+	} else {
+		_, rest := splitAtLineEnd(*it.tail)
+		if i > 0 && *it.after(i) == nil {
+			// The member before becomes the last with no trailing comma: what stood between its
+			// value and its comma moves before the closing brace.
+			keep = string(*it.after(i - 1)) + keep
+			*it.after(i - 1) = nil
+		} else if i > 0 && *it.after(i - 1) == nil {
+			*it.after(i - 1) = hujson.Extra{}
+		}
+		*it.tail = hujson.Extra(keep + rest)
+	}
+	obj.Members = slices.Delete(obj.Members, i, i+1)
+	out := root.Pack()
+	if err := sameMembersLess(b, out, parentPtr, i); err != nil {
+		return nil, fmt.Errorf("removing %s would change more than that member, so it was not removed: %w", untrusted.Text(ptr, untrusted.MaxName), err)
+	}
+	return out, nil
+}
+
+// sameMembersLess checks that out parses and that the object at ptr ("" for the root) holds in's
+// members but the i-th, in order and with the same values.
+func sameMembersLess(in, out []byte, ptr string, i int) error {
+	members := func(b []byte) ([]JSONMember, error) {
+		if ptr == "" {
+			v, err := parseJSONC(b)
+			if err != nil {
+				return nil, err
+			}
+			var ms []JSONMember
+			for _, m := range v.Value.(*hujson.Object).Members {
+				name, _ := m.Name.Value.(hujson.Literal)
+				mv := m.Value
+				mv.BeforeExtra, mv.AfterExtra = nil, nil
+				c, err := CanonicalJSON(mv.Pack())
+				if err != nil {
+					return nil, err
+				}
+				ms = append(ms, JSONMember{Name: name.String(), Value: c})
+			}
+			return ms, nil
+		}
+		ms, _, err := JSONMembers(b, ptr)
+		return ms, err
+	}
+	before, err := members(in)
+	if err != nil {
+		return err
+	}
+	after, err := members(out)
+	if err != nil {
+		return err
+	}
+	want := slices.Delete(slices.Clone(before), i, i+1)
+	if !slices.EqualFunc(want, after, func(a, b JSONMember) bool { return a.Name == b.Name && bytes.Equal(a.Value, b.Value) }) {
+		return errors.New("the edited file does not hold the other members as they were")
+	}
+	return nil
+}
+
+// lineBreaks are the positions of the line breaks in extra that are not inside a block comment;
+// ok is false when a block comment does not end.
+func lineBreaks(extra string) (breaks []int, ok bool) {
+	for i := 0; i < len(extra); i++ {
+		switch {
+		case strings.HasPrefix(extra[i:], "/*"):
+			end := strings.Index(extra[i+2:], "*/")
+			if end < 0 {
+				return breaks, false
+			}
+			i += end + 3
+		case strings.HasPrefix(extra[i:], "//"):
+			end := strings.IndexByte(extra[i:], '\n')
+			if end < 0 {
+				return breaks, true
+			}
+			i += end - 1
+		case extra[i] == '\n':
+			breaks = append(breaks, i)
+		}
+	}
+	return breaks, true
+}
+
+// splitAtLineEnd splits extra at its first line break outside a block comment: the rest of the
+// previous line, and the rest from the line break on ("" when there is none).
+func splitAtLineEnd(e hujson.Extra) (string, string) {
+	s := string(e)
+	breaks, _ := lineBreaks(s)
+	if len(breaks) == 0 {
+		return s, ""
+	}
+	return s[:breaks[0]], s[breaks[0]:]
+}
+
+// withoutOwnComments is extra, the text in front of a member's name, cut before the member's
+// own comment lines: the non-blank lines directly above the name, up to the first blank line or
+// the line that ends the previous member. A line break inside a block comment does not count,
+// so a block comment is never cut. Without a line break the member shares its line, and nothing
+// is kept.
+func withoutOwnComments(extra string) string {
+	breaks, ok := lineBreaks(extra)
+	if !ok {
+		return extra
+	}
+	if len(breaks) == 0 {
+		return ""
+	}
+	j := len(breaks) - 1
+	for j > 0 && strings.TrimSpace(extra[breaks[j-1]+1:breaks[j]]) != "" {
+		j--
+	}
+	return extra[:breaks[j]]
 }
 
 func memberIndex(obj *hujson.Object, name string) int {

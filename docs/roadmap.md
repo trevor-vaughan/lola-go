@@ -35,7 +35,7 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      `default_scope`); remembered exclusions in `selections.yaml`, written by the pickers and
      by `--skip`/`--only`/`--unskip` and honored by `render` and `check`
      (`docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md`).
-6. **`sync`, profiles, marketplaces and `clean`**, one plan each, in this order:
+6. **`sync`, profiles, marketplaces and `tidy`**, one plan each, in this order:
    - **6a. `lola sync`** with content pins in the manifest and trust for a pulled
      `project.yml`, delivered as 6a.1 pins (done: hardened manifest and ledger loading, pins
      written by `install`, machine-independent digests, `render` from the version installed),
@@ -66,7 +66,14 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      every file refuses one before trust and network, coached per entry, `lola install @m/x`
      replacing such an entry, and `lola migrate` registering the Python lola's marketplaces)
      (`docs/superpowers/specs/2026-10-21-plan-6c-marketplaces-design.md`).
-   - **6d. `lola clean`:** move files lola does not manage out of its destinations.
+   - **6d. `lola tidy`:** move what lola does not manage out of its destinations into the
+     trash, delivered as 6d.1 the engine and the command (done: declared destinations per
+     target, ownership from the ledgers, hard locks, git tracking asked per work tree, the
+     keep-list, MCP entries backed up before the edit, a cross-device trash move that removes only
+     what matches the copy, names and `--all` with every refusal coached) and 6d.2 (done: the
+     move and keep pickers with the review's equivalent command, the `--protect`/`--unprotect`
+     flag aliases, and the `e2e:tidy` container suite across two file systems)
+     (`docs/superpowers/specs/2026-10-22-plan-6d-tidy-design.md`).
 7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
    using the jet engine, which needs dependency vetting before the plan starts.
 8. **End-to-end suites, container, and the full documentation set.** Venom suites against the

@@ -51,6 +51,11 @@ tasks:
     cmds:
       - task: e2e:migrate
 
+  e2e-tidy:
+    desc: "Alias for e2e:tidy (needs podman or docker; not part of check)"
+    cmds:
+      - task: e2e:tidy
+
   check:
     desc: Run all quality gates (lint, test, cross, vuln)
     deps: [lint, test, cross, vuln]

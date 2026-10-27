@@ -127,7 +127,8 @@ func offerAddresses(g engine.MarketGroup) []string {
 }
 
 func (a *app) addCoreCommands(root *cobra.Command) {
-	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.profileCmd(), a.marketCmd(), a.checkCmd())
+	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.tidyCmd(), a.profileCmd(), a.marketCmd(),
+		a.checkCmd())
 }
 
 func (a *app) installCmd() *cobra.Command {

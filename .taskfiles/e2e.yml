@@ -30,3 +30,11 @@ tasks:
       MODE: '{{.MODE}}'
       TEST_DIR: '{{.OUT_DIR}}'
     cmd: bash "{{.ROOT_DIR}}/scripts/e2e-migrate.sh"
+
+  tidy:
+    desc: Run lola tidy across two file systems in a container (MODE=human|llm); artifacts in .test-output/e2e-tidy/
+    dir: '{{.ROOT_DIR}}'
+    env:
+      MODE: '{{.MODE}}'
+      TEST_DIR: '{{.OUT_DIR}}'
+    cmd: bash "{{.ROOT_DIR}}/scripts/e2e-tidy.sh"

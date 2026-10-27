@@ -41,6 +41,16 @@ func (Target) BaseDirs(target.Scope) []string {
 	return []string{".gemini/skills", ".gemini/commands", ".gemini/agents", ".gemini"}
 }
 
+// Destinations implements Target. .gemini itself holds Gemini's own settings, so only its
+// component directories are declared.
+func (Target) Destinations(target.Scope, string) (target.Destinations, error) {
+	return target.Destinations{
+		Dirs: []target.DestDir{{Kind: "skill", Path: ".gemini/skills"}, {Kind: "command", Path: ".gemini/commands", Ext: ".toml"},
+			{Kind: "agent", Path: ".gemini/agents", Ext: ".md"}, {Kind: "rule", Path: ".gemini/lola"}},
+		Servers: []target.ServerMap{{File: ".gemini/settings.json", Pointer: "/mcpServers"}},
+	}, nil
+}
+
 var agentName = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 // positional reports Claude's single-argument placeholders, which Gemini cannot fill. Its

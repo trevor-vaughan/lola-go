@@ -21,6 +21,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/trash"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -150,7 +151,7 @@ type runner struct {
 	e     *engine.Engine
 	st    *State
 	opts  Options
-	trash *Trash
+	trash *trash.Trash
 	// holds names the MCP entries left in place that reference a path (a module copy, the
 	// Python home): such a path stays (§12.5).
 	holds map[string][]string
@@ -198,7 +199,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	if err := r.consent(p); err != nil {
 		return nil, err
 	}
-	if r.trash, err = OpenTrash(e.Paths.Trash, e.Now()); err != nil {
+	if r.trash, err = trash.OpenTrash(e.Paths.Trash, e.Now()); err != nil {
 		return nil, err
 	}
 	rep.DryRun, rep.Trash = false, r.trash.Dir
@@ -214,9 +215,14 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	rep.Markets = r.registerMarkets(p.Markets)
 	rep.Home = r.home(p, rep)
 	if rep.Home.Action == HomeMove {
-		to, err := r.trash.Move("python-home", filepath.Dir(st.Home), st.Home)
+		to, err := r.move("python-home", filepath.Dir(st.Home), st.Home)
 		if err != nil {
 			rep.Home = HomeResult{Path: st.Home, Action: HomeKeep, Reason: "moving it failed: " + untrusted.CleanErr(err).Error()}
+			if _, ok := errors.AsType[*trash.ChangedError](err); ok {
+				// Part of the home is gone from its place already: say where its copy is.
+				rep.Home.Trash = to
+				rep.Home.Reason = "moved in part (its copy is in " + untrusted.Text(to, untrusted.MaxName) + "): " + untrusted.CleanErr(err).Error()
+			}
 			failed = append(failed, "the Python home")
 		} else {
 			rep.Home.Trash = to
@@ -762,8 +768,11 @@ func (r *runner) cleanup(d *Destination, dc decision, post *ledger.Ledger, dr *D
 			dr.report(dc, "")
 			return nil
 		}
-		to, err := r.trash.Move(d.ID, d.Root, dc.rec.Abs())
+		to, err := r.move(d.ID, d.Root, dc.rec.Abs())
 		if err != nil {
+			if _, ok := errors.AsType[*trash.ChangedError](err); ok {
+				dr.report(dc, to) // part of it is in the trash already
+			}
 			return err
 		}
 		dr.report(dc, to)
@@ -771,6 +780,16 @@ func (r *runner) cleanup(d *Destination, dc decision, post *ledger.Ledger, dr *D
 		dr.report(dc, "")
 	}
 	return nil
+}
+
+// move moves orig into dest's subdirectory of the trash, through its parent directory.
+func (r *runner) move(dest, base, orig string) (string, error) {
+	parent, err := os.OpenRoot(filepath.Dir(orig))
+	if err != nil {
+		return "", fmt.Errorf("cannot move %s into the trash: %w", untrusted.Text(orig, untrusted.MaxName), untrusted.CleanErr(err))
+	}
+	to, err := r.trash.Move(dest, base, parent, filepath.Base(orig))
+	return to, errors.Join(err, parent.Close())
 }
 
 // leftovers removes, from a replaced directory, every file lola-go does not own whose content
@@ -824,7 +843,7 @@ func (r *runner) leftovers(dc decision, post *ledger.Ledger, dr *DestResult) (er
 			dr.Kept = append(dr.Kept, Kept{Path: untrusted.Text(filepath.Join(abs, filepath.FromSlash(p)), untrusted.MaxName), Reason: keptByKeepPython})
 			return nil
 		}
-		gone, err := UnlinkIfBackedUp(dir, backup, p)
+		gone, err := trash.UnlinkIfBackedUp(dir, backup, p)
 		if err != nil || gone {
 			return err
 		}

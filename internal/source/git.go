@@ -71,16 +71,23 @@ func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 
 // InWorkTree reports whether dir or a parent holds .git, the way git finds a repository.
 func InWorkTree(dir string) (bool, error) {
+	wt, err := WorkTree(dir)
+	return wt != "", err
+}
+
+// WorkTree is the nearest of dir and its parents that holds .git, the way git finds a
+// repository, or "" when none does. It runs no git.
+func WorkTree(dir string) (string, error) {
 	for d := dir; ; d = filepath.Dir(d) {
 		_, err := os.Lstat(filepath.Join(d, ".git"))
 		if err == nil {
-			return true, nil
+			return d, nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			return false, err
+			return "", err
 		}
 		if filepath.Dir(d) == d {
-			return false, nil
+			return "", nil
 		}
 	}
 }

@@ -41,6 +41,33 @@ type Prompter interface {
 	// MarketEntry asks which marketplace entry a bare name your cache lacks means (Plan 6c §3.3),
 	// answering its address.
 	MarketEntry(MarketEntryStep) (string, error)
+	// TidyPick asks which of lola tidy's candidates move to the trash (Plan 6d §3.4): a
+	// filterable multi-select, nothing preselected, answering the IDs of the options chosen.
+	TidyPick(TidyPickStep) ([]string, error)
+	// TidyKeep asks which keep-list entries, for the candidates TidyPick left, to add: a
+	// filterable multi-select, nothing preselected, answering the IDs of the options chosen.
+	TidyKeep(TidyKeepStep) ([]string, error)
+}
+
+// TidyOption is one item lola tidy's pickers offer: ID names it to the command, and Label is
+// "<target>  <kind>/<name>  <path>[ → <link target>]", an MCP server with its server label only,
+// already made safe to print.
+type TidyOption struct {
+	ID, Label string
+}
+
+// TidyPickStep offers lola tidy's candidates. Locked are the items the scan locked, each as its
+// label and reason, already made safe to print.
+type TidyPickStep struct {
+	Options []TidyOption
+	Locked  []string
+}
+
+// TidyKeepStep offers the keep-list entries for the candidates TidyPick did not choose: each
+// option's ID is an escaped literal selector, and its Label the selector and the assistants whose
+// items it keeps, already made safe to print.
+type TidyKeepStep struct {
+	Options []TidyOption
 }
 
 // MarketNameStep asks for the name of a marketplace: Why the name it has will not do, Value the
@@ -223,6 +250,8 @@ func (noPrompter) Confirm(string) (bool, error)                 { return false, 
 func (noPrompter) Profiles(ProfileStep) ([]string, error)       { return nil, errNoTerminal }
 func (noPrompter) MarketName(MarketNameStep) (string, error)    { return "", errNoTerminal }
 func (noPrompter) MarketEntry(MarketEntryStep) (string, error)  { return "", errNoTerminal }
+func (noPrompter) TidyPick(TidyPickStep) ([]string, error)      { return nil, errNoTerminal }
+func (noPrompter) TidyKeep(TidyKeepStep) ([]string, error)      { return nil, errNoTerminal }
 func (noPrompter) Trust(TrustStep) (engine.TrustAnswer, error) {
 	return engine.TrustAnswer{}, errNoTerminal
 }

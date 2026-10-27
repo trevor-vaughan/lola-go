@@ -9,7 +9,7 @@ linters:
     forbidigo:
       analyze-types: true
       forbid:
-        - pattern: ^source\.(Parse|Fetch|FetchFile|CheckReachable|GitCommand|InWorkTree|IsWithin|SameLocation)$
+        - pattern: ^source\.(Parse|Fetch|FetchFile|CheckReachable|GitCommand|InWorkTree|WorkTree|IsWithin|SameLocation)$
           pkg: ^github\.com/trevor-vaughan/lola-go/internal/source$
           msg: internal/market classifies sources from their text alone; the engine looks them up and fetches
         - pattern: ^yamldoc\.(Read|ReadNoFollow)$
@@ -79,6 +79,17 @@ linters:
               desc: the market package reads no files; the engine does (Plan 6c §6.1)
             - pkg: io/fs
               desc: the market package reads no files; the engine does (Plan 6c §6.1)
+        # The trash moves and copies what lola takes out of a destination; it decides nothing, so it
+        # needs no state, no engine and no target (Plan 6d §6.1).
+        trash:
+          list-mode: strict
+          files:
+            - "**/internal/trash/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/trevor-vaughan/lola-go/internal/errs
+            - github.com/trevor-vaughan/lola-go/internal/untrusted
         # The active-list names lock.json stores: a leaf the ledger imports, so it reads no YAML.
         activeprofile:
           list-mode: strict

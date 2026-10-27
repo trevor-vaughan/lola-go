@@ -35,8 +35,10 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 
 - `paths`: XDG resolution from an injected `getenv`; no globals. `ProjectKey`, the canonical form of
   a project directory that the project lock and `selections.yaml` share.
-- `config`: `config.yaml` and `selections.yaml`: strict loading of untrusted, hand-edited YAML,
-  selectors, effective exclusions, and locked node-preserving writes.
+- `config`: `config.yaml`, `selections.yaml` and `keep.yaml` (`lola tidy`'s keep-list: a `user`
+  list and per-project lists of selectors, project keys canonical as in `selections.yaml`):
+  strict loading of untrusted, hand-edited YAML, selectors, effective exclusions, and locked
+  node-preserving writes.
 - `yamldoc`: Reading a hand-edited YAML file as one untrusted document (non-blocking open, regular
   files only, size cap, one document, no anchors, aliases or merge keys) and the node helpers
   `config` and `manifest` edit with. `ReadNoFollow` reads a file someone else committed: never
@@ -46,7 +48,10 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
   which yaml.v3 refuses only when it decodes into a Go value; it applies no version rule.
 - `fsx`: Atomic writes, reading a file lola wrote without following a link (`ReadOwn`), symlink-aware
   destination resolution, comment-preserving JSONC edits (object
-  members, and array elements of any JSON value), mode normalization.
+  members, and array elements of any JSON value), mode normalization. `JSONDeleteMember` removes
+  one member with its own comments (the lines directly above it, up to a blank line or the
+  previous member) and nothing else: no parent is pruned, so an emptied server map stays (Plan 6d
+  §4.5); `JSONDelete` prunes empty parents for lola's own members.
 - `module`: The IR, frontmatter parsing, name rules, format detection and the Claude plugin and
   Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened
   module JSON reading, rules, hook validation, and normalization.
@@ -157,13 +162,16 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
 - `plan`: Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and
   manifest).
 - `engine`: Install, uninstall, render, sync (`desired`, the trust report, containment, removals),
-  status, fetch, update, search; run staging, module copies, install hooks, runtime hook consent,
+  tidy, status, fetch, update, search; run staging, module copies, install hooks, runtime hook consent,
   the git-ignore and tracked-ledger checks; every manifest write with its trust refresh
   (`saveManifest`) and the refusals of untrusted entries; install scope resolution, the component
   resolver, selection edits and `InstallChoices`.
 - `migrate`: `lola migrate`: strict reading of the Python lola's `installed.yml` and `source.yml`,
-  the plan (destinations, outcomes, recorded paths), the trash, and running the installs and the
-  cleanup over the engine.
+  the plan (destinations, outcomes, recorded paths), and running the installs and the cleanup over
+  the engine.
+- `trash`: The trash: one run directory under `$XDG_STATE_HOME/lola/trash` per command, its
+  `manifest.txt` journal, copies and moves into it, and `UnlinkIfBackedUp`. Only `errs` and
+  `untrusted` besides the standard library (depguard).
 - `cli`: Commands, help, aliases, completion, output and prompts; the install flow and its
   `Prompter`, with the huh adapter. Long help (`renderHelp`) prints the global flags once, in its
   preamble, and drops each command's `Global Flags:` block (`globalFlagsBlock`, the text the
@@ -357,6 +365,16 @@ The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
   `PlanContext.Root` carries it into `Plan`. OpenCode needs both: its user-scope root is its own
   config directory, whose existence marks it as set up, and it writes to `opencode.jsonc` when
   the root has one, else `opencode.json`. Targets may read the disk this way; they never write.
+- **Destinations.** `Destinations(scope, root)` declares, pure like `Plan`, where the target
+  writes: directories whose direct entries are units of one kind (`DestDir`: kind, path, and the
+  extension stripped from a file's name) and the JSON objects of MCP servers (`ServerMap`: file
+  and pointer). `lola tidy` sweeps only these (Plan 6d §4.1). Rules are declared in lola's own
+  namespace directory (`.claude/rules/lola`, `.gemini/lola`, `.opencode/lola`), never the user's
+  `.claude/rules`; `.gemini` and `.opencode` themselves, which hold the assistants' settings, are
+  never declared. A conformance spec ties them to `Plan` both ways: every file and MCP intent
+  lies in a declared destination of its kind (a direct entry, or for skills and rules one level
+  further down), and every declared destination receives one; `OpAddJSONMember` intents are
+  exempt.
 - **Findings, not errors.** A target returns what it loses as `target.Finding`s with a severity:
   info, warn, or skip (that artifact is left out for that target). `Plan`'s error is only for
   failures that are not about module content. `target.Skipped` applies `--force` (forceable
@@ -1596,7 +1614,18 @@ the engine's.
   question, so the diff can show it. `render` still renders the versions `lock.json` records,
   which a pull cannot change because the ledger is private, and a tracked `lock.json` is refused
   by `sync`, `render`, `install` and `uninstall`. Step paths in `--json` output stay raw
-  (JSON-escaped): `lola migrate` reads them as paths.
+  (JSON-escaped): `lola migrate` reads them as paths. So do `lola tidy`'s item `path` and
+  `trash`, which scripts restore from; every other string it prints went through
+  `untrusted.Text`, and MCP servers show only their server label (a program's base name or a
+  URL's host), never arguments, environment, headers or a URL's other parts.
+- **Tidy** moves only direct entries of declared destinations and direct members of declared
+  server maps, never into a destination a link redirects onto the root, another destination,
+  git's or lola's files or another project, never an instruction file, and never deletes: what it
+  takes is in the trash. Residual: the rename into the trash is path-based (`os.Root.Rename`
+  works within one root and `renameat` would need a new dependency), so a process running as you,
+  or a git checkout, that swaps a path component between the re-check and the rename can redirect
+  it; across file systems such a process can change an entry between the fingerprint and its
+  removal.
 - **Unparseable files** are never rewritten, `selections.yaml` and `trust.json` included.
 - **User files are untrusted.** `config.yaml` and `selections.yaml` are size-capped and strictly
   validated; their keys and values reach the terminal only through `untrusted.Text`.
@@ -1629,6 +1658,21 @@ unmappable record. It needs podman or docker,
 venom and the network on first use, skips without a container runtime, and is not part of
 `task check`; CI would run it as a separate job on a runner with podman (`task e2e:migrate
 MODE=llm`), caching the image between runs.
+
+**The tidy container suite** (`task e2e:tidy`, `e2e/tidy/`) runs `lola tidy` where the trash is
+on another file system, which unit specs never reach: `scripts/e2e-tidy.sh` uses the migrate
+suite's image (same recipe, same tag, built by whichever suite runs first) and mounts the
+project (`/work/proj`) and `XDG_STATE_HOME` as two tmpfs file systems, running as root, which
+owns both and the image's directories, so git trusts the repository. `scripts/setup.sh` builds a
+static fixture (a committed `.mcp.json` and command, a module lola-go installed, residue shaped
+as the Python lola leaves it with a `.gemini/skills` directory unit, an instruction file, a `.claude/skills` link out of the project, and
+a dotfiles-style `~/.claude` link inside `$HOME`); `scripts/check.py` checks a `--json` result
+(exactly these units moved, each crossed file systems, `manifest.txt` names every trash path) and
+restores a run by `mv` from its manifest, comparing each trash copy and each restored item,
+a skill directory with a subdirectory included, with a snapshot of its tree and contents taken
+before the run. The run container has no network, no capabilities and no privilege gain, and
+mounts a copy of `e2e/tidy` made under `$OUT`. Like the migrate suite it skips without a
+container runtime and is not part of `task check`.
 
 ## lola migrate
 
@@ -1668,8 +1712,13 @@ when they match the backup, read through `os.Root`, keeping a link lola-go write
 as kept instead with `--keep-python`). Then the Python lola's marketplaces are registered (below),
 and the Python home moves last. The trash journals each entry
 in `manifest.txt`, synced, before it copies or moves; it refuses to write through a symbolic link
-inside it, and a move across file systems syncs the copy's directories before removing the
-original.
+inside it. `trash.Move` takes the entry's parent as an `os.Root` and its name: the parent's
+path names the entry in the manifest and for the rename. Across file systems it copies through
+that root (no link followed, no path resolved again), syncs the copy's directories, then removes
+through the same root only the files and links whose fingerprint matches the copy
+(`UnlinkIfBackedUp`'s rule) and the directories then empty; what remains was created or changed
+after the copy and comes back as a `*trash.ChangedError` with the trash path. `CopyBytes` writes
+given bytes, never reading the original, as a new 0600 file (Plan 6d §6.1).
 
 Marketplaces (Plan 6c §6.9): `Load` also reads `market/<name>.yml` (`name`, `url`, `enabled`,
 with the same guards; a file whose name would not print as itself is skipped with a warning;
@@ -1703,3 +1752,92 @@ manifest entry has, since modules at one destination were installed for differen
 assistants, keeping a module the manifest has at the version its ledger records (in
 `InstallChoices` too, so the plan checks that version), and `InstallSpec.BeforeWrite` runs
 after every refusal and prompt, before any write.
+
+## lola tidy
+
+The design is `docs/superpowers/specs/2026-10-22-plan-6d-tidy-design.md`. `Engine.Tidy`
+(`internal/engine/tidy*.go`) moves what lola does not manage out of a scope's destinations into
+the trash; the CLI only adapts it, and asks through the request's `Choose` and `Confirm`
+callbacks (nil: lola cannot ask), as sync asks through `ConfirmRemovals`.
+
+**Order.** Argument refusals (`--all` with names, a name also given to `--keep`); refused
+symlinked `.lola/` state; the scope lock unless dry; the ledger check (`ledgerTracked`: git
+tracking `.lola/lock.json`, or git unable to say, refuses, also with `--force`); `lock.json`;
+keep.yaml with the run's `--keep` added and `--unkeep` removed (an `--unkeep` the section lacks
+refuses); the targets (`-t`, else `project.yml`'s as far as the trust record covers them, as
+`FixedTargets` does, else with a notice, plus every target the ledger records); the scan; the
+selection; the review; the moves; keep.yaml's edits under `keep.lock`, taken after the scope
+lock, so a run waiting on the scope lock reads the keep-list this run left; then the scope lock
+released. A project whose destination resolves where a user-scope one does, or holds one or lies
+inside one (a project at `$HOME`, a link between them), loads the user ledger too, under the user
+lock taken after the project's; an item it owns is hinted with `lola uninstall --user`.
+
+**Scan** (`tidyScanner`). Each target's `Destinations` is resolved with `fsx.Resolve`.
+Destination-level locks skip a whole directory or MCP file with a notice: resolving onto the
+root or above it, or outside it (`link_out`), first; then overlapping another destination still
+in play, `<root>/.git` (and a gitfile's `gitdir:`), `<root>/.lola` or lola's own XDG directories,
+each compared as written and resolved (`link_overlap`); a `.lola` directory found walking up
+from it below the target's root, the root itself never counting (`other_project`, with a
+`lola tidy -C` hint); an MCP file that is not a regular file, does not parse (`fsx.JSONMembers`)
+or names a server twice. Units are the direct entries (`os.Lstat`, never followed) and the
+direct server-map members. A unit is owned, and listed only for refusals, when a ledger artifact
+lies at or below it, compared both resolved (a link unit's path goes through its parent only)
+and logically below the root, so a link lola writes through is owned; an MCP member is owned when
+an artifact records that file and pointer. Unit-level hard locks: reserved names,
+instruction files at any depth (`filepath.WalkDir`, which never follows links), fifos, sockets
+and devices, walk errors, paths `manifest.txt` cannot record, names no selector names exactly.
+Git is asked per work tree (`source.WorkTree`, which runs no git) of each destination's resolved
+directory, once, with `--literal-pathspecs ls-files -z`, over the links on the way to the
+destinations (a tracked one skips its destination, `tracked_link`) and, without
+`--include-tracked`, the units and MCP files; a unit is tracked when an output path equals its
+path or lies below it. A git that is missing, fails or prints what lola cannot parse locks
+everything it was asked about. Keep entries lock what they match last.
+
+**Selection** (`tidySelect`). Names choose among candidates; a name matching none refuses with
+each reason it matches (owned, tracked, kept, a hard lock) or "matches nothing", each with the
+hint that lifts it, none for a hard lock. Without names or `--all`: an empty scan says "nothing
+to tidy"; a dry run lists every candidate; `--keep`/`--unkeep` alone moves nothing; `--force`
+refuses, hinting `--all --force`; a nil `Choose` (off a terminal, or `--json`) refuses, hinting
+`--all -y`, saying it "cannot ask (off a terminal or with --json)", as a named run without `-y`
+does (R-6d2-7); else `Choose` answers unit identities, refused before anything happens when one is
+not a candidate, or a keep answer is not a candidate's escaped literal selector, and
+`tidyEquivalent` keeps the equivalent command only when its selectors (with `-t` narrowed if
+needed) select exactly the choice, with the keep answers as `--keep`; `Hidden` marks one that
+exists but that `untrusted.Text` would alter. The review is skipped with `-y` or `--force`; a
+nil `Confirm` refuses, hinting `-y`. Hints are built by `tidyRun`: the scope's flags
+(`RootArgs`), names, then the run flags as given, and the output flags `--json`, `--plain` and
+`--no-pager` as given (`TidyRequest.Display`, R-6d2-5). A dry run's closing hint adds `--all`
+to a run without names only off a terminal or with `--force` (`TidyRequest.Interactive`); on
+one, the run without names opens the picker.
+
+**The picker** (`internal/cli/cmd_tidy.go`, `huh.go`). On a terminal the CLI sets `Choose` to
+`tidyChoose`, which asks two `Prompter` steps over the scan: `TidyPick` offers every candidate
+(option IDs index `TidyScan.Candidates`; labels are `tidyLabel`, already through
+`untrusted.Text`, an MCP unit showing its key and a server label, never its value) with the
+locked items and their reasons in the description, cut to the terminal height so that up to
+three option rows stay visible (a note listing all of them in accessible mode, where huh prints
+no description). `TidyKeep` offers one option per `TidyUnit.Literal`
+selector of the candidates left, labelled with the selector and the assistants it covers, and
+none for a selector one of whose candidates was ticked to move, since a keep entry keeps every
+assistant's item of that name (R-6d2-6, R-6d2-8). No selector is named both to move and to
+keep, and both layers enforce it: `tidyChoose` offers no keep option for a selector of an item
+ticked to move, and `tidyEquivalent` keeps no command when a keep answer is a selector of a
+moved item. Ticks map back to `UnitID`s and to selectors; ticking nothing in both is
+`ErrAborted`. huh v2.0.3 toggles every option whose label equals the one under the cursor, so
+`tidyOptions` keeps whole any labels the width would cut alike and numbers (` [n]`) labels still
+equal in full. The engine then validates the answer (`offered`),
+and `Confirm` prints the review with `Command`, "lola cannot show the equivalent command: it
+holds characters lola does not print or a word too long to print" when `Hidden`, or "no single
+command selects this set", only after the picker ran. `--force` and `--keep`/`--unkeep` without
+names never reach `Choose`, so the picker never runs beside an `--unkeep` and a keep answer
+cannot conflict with one (R-6d2-1 holds by construction, R-6d2-2).
+
+**Apply** (`tidyScanner.apply`). Every destination is resolved again and checked again; each
+chosen unit is `Lstat`ed through an `os.Root` of its destination, must be the same file
+(`os.SameFile`, same type), and gets its unit locks and one git query again; then `trash.Move`
+through that root, mirrored below the resolved scope root in the trash's `user` or project-hash
+subdirectory. MCP files are read again; a member goes only when it still holds the value the scan
+recorded; the re-read bytes go to the trash with `trash.CopyBytes` (0600) and the edit is
+written with `fsx.WriteFileAtomic` to the resolved path. A unit that changed is skipped with a
+notice; the first failed move stops the run, which reports what moved and still writes the keep
+edits. Tidy writes no `lock.json`, manifest or trust record.

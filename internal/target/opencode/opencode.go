@@ -61,6 +61,20 @@ func (Target) BaseDirs(scope target.Scope) []string {
 	return []string{".opencode/skills", ".opencode/commands", ".opencode/agents", ".opencode"}
 }
 
+// Destinations implements Target. The server map is in the config file Plan writes to.
+func (Target) Destinations(scope target.Scope, root string) (target.Destinations, error) {
+	cfg, err := config(root)
+	if err != nil {
+		return target.Destinations{}, err
+	}
+	d := dir(scope)
+	return target.Destinations{
+		Dirs: []target.DestDir{{Kind: "skill", Path: d + "skills"}, {Kind: "command", Path: d + "commands", Ext: ".md"},
+			{Kind: "agent", Path: d + "agents", Ext: ".md"}, {Kind: "rule", Path: d + "lola"}},
+		Servers: []target.ServerMap{{File: cfg, Pointer: "/mcp"}},
+	}, nil
+}
+
 // escaped is a Claude-escaped placeholder, whose $ follows exactly one backslash, that OpenCode,
 // which has no escape, still replaces.
 var escaped = regexp.MustCompile(`(?:^|[^\\])\\\$(?:\d|ARGUMENTS)`)

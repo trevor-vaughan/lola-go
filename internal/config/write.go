@@ -80,6 +80,12 @@ func Save(path string, changes []Change) error {
 		}
 		setEntry(sec, c.Module, c.Entry)
 	}
+	return writeDoc(path, d, "nothing was installed")
+}
+
+// writeDoc encodes d and writes it atomically to path at mode 0600, or at the target of the
+// symbolic link path is; outcome says what a failed write means for the run.
+func writeDoc(path string, d *yaml.Node, outcome string) error {
 	var b bytes.Buffer
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
@@ -103,7 +109,7 @@ func Save(path string, changes []Change) error {
 	if err := fsx.WriteFileAtomic(dst, b.Bytes(), 0o600); err != nil {
 		return errs.WithHints(fmt.Errorf("could not write %s: %w", untrusted.Text(dst, untrusted.MaxName), untrusted.CleanErr(err)),
 			"close any program that holds it open and check its directory's permissions, then rerun",
-			"nothing was installed")
+			outcome)
 	}
 	return nil
 }

@@ -391,12 +391,31 @@ var _ = Describe("published alias table", func() {
 			"lola market --add":     {"get"},
 			"lola market --update":  {"upgrade", "refresh"},
 			"lola market --remove":  {"rm", "delete", "del", "erase"},
+			"lola tidy --keep":      {"protect"},
+			"lola tidy --unkeep":    {"unprotect"},
 		}))
 		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("--on (--enable, --activate) "),
 			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade) "), ContainSubstring("--remove (--rm, --delete, --del, --erase, --uninstall) ")))
 		Expect(lola("help", "market", "--short").out).To(And(ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade, --refresh) "), ContainSubstring("--remove (--rm, --delete, --del, --erase) ")))
+	})
+
+	It("the published alias tables include tidy's flags and no alias for tidy", func() {
+		for _, c := range commands() {
+			if c.CommandPath() == "lola tidy" {
+				Expect(c.Aliases).To(BeEmpty())
+			}
+		}
+		Expect(lola("help", "tidy", "--short").out).To(And(ContainSubstring("--keep (--protect) stringArray "),
+			ContainSubstring("--unkeep (--unprotect) stringArray ")))
+		proj := GinkgoT().TempDir()
+		r := lola("tidy", "-C", proj, "-t", "claude-code", "--protect", "skill/notes")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("keep-list: added skill/notes"))
+		r = lola("tidy", "-C", proj, "-t", "claude-code", "--unprotect", "skill/notes")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("keep-list: removed skill/notes"))
 	})
 
 	It("JSON array keys are [] in an empty environment", func() {
@@ -409,6 +428,18 @@ var _ = Describe("published alias table", func() {
 			Expect(r.code).To(Equal(0), strings.Join(args, " ")+": "+r.err)
 			Expect(r.out).NotTo(ContainSubstring("null"), strings.Join(args, " "))
 		}
+	})
+
+	It("the JSON-arrays spec covers tidy", func() {
+		proj := GinkgoT().TempDir()
+		r := lola("tidy", "-n", "-t", "claude-code", "-C", proj, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring("null"))
+		Expect(r.out).To(ContainSubstring("nothing to tidy"))
+		r = lola("tidy", "-n", "-C", proj, "--json")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(`"hints":[]`), "the no-targets refusal")
+		Expect(r.err).NotTo(ContainSubstring("null"))
 	})
 
 	It("lola --version is lola version, in every output format, and is no flag of a subcommand", func() {

@@ -1,4 +1,7 @@
-package migrate
+// Package trash is lola's trash: one directory per run under $XDG_STATE_HOME/lola/trash, where
+// lola moves or copies what it takes out of a destination, with a manifest.txt that says where
+// each item came from (migrate design §6). lola never empties it.
+package trash
 
 import (
 	"bytes"
@@ -9,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -17,7 +21,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Trash is one run's directory under $XDG_STATE_HOME/lola/trash (design §6): named after
+// Trash is one run's directory under $XDG_STATE_HOME/lola/trash (migrate design §6): named after
 // the UTC time and created exclusively, with one subdirectory per destination and
 // manifest.txt, whose lines are original-path<TAB>trash-path. Each line is appended and synced
 // before its copy or move, so the manifest names everything that may have left its place.
@@ -28,6 +32,10 @@ type Trash struct {
 	used     bool
 	// rename is os.Rename; specs replace it to simulate a move across file systems.
 	rename func(oldpath, newpath string) error
+	// copyTree is copyFrom; specs replace it to change the original after the copy.
+	copyTree func(parent *os.Root, name, to string) error
+	// walk is walkEntry; specs replace it to change the original after the walk.
+	walk func(parent *os.Root, name string) ([]string, map[string]bool, error)
 }
 
 // trashLayout is the timestamp format of a trash directory's name.
@@ -62,7 +70,7 @@ func OpenTrash(base string, now time.Time) (*Trash, error) {
 		if err := errors.Join(syncDir(dir), syncDir(base)); err != nil {
 			return nil, fail(errors.Join(err, f.Close()))
 		}
-		return &Trash{Dir: dir, manifest: f, rename: os.Rename}, nil
+		return &Trash{Dir: dir, manifest: f, rename: os.Rename, copyTree: copyFrom, walk: walkEntry}, nil
 	}
 }
 
@@ -100,9 +108,18 @@ func copyFailed(orig string, err error) error {
 	return fmt.Errorf("cannot move %s into the trash: %w", untrusted.Text(orig, untrusted.MaxName), untrusted.CleanErr(err))
 }
 
-// Move moves orig into dest's subdirectory and returns the trash path. Across file systems it
-// copies, syncs, then removes the original.
-func (t *Trash) Move(dest, base, orig string) (string, error) {
+// Move moves name, an entry of the directory parent, into dest's subdirectory and returns the
+// trash path. parent's name is the path the caller opened it at, resolved or not: the manifest
+// records the entry below it, and the rename uses it. Across file systems Move copies the entry, reading it
+// through parent so no link is followed and no path is resolved again, syncs the copy, then,
+// through parent, removes only the files and links that match the copy and the directories
+// that are then empty. What remains was created or changed after the copy: it stays in place
+// and Move returns the trash path with a *ChangedError naming it.
+func (t *Trash) Move(dest, base string, parent *os.Root, name string) (string, error) {
+	if name == "" || name == "." || name == ".." || !filepath.IsLocal(name) || filepath.Base(name) != name {
+		return "", fmt.Errorf("%s is not one path component", untrusted.Text(name, untrusted.MaxName))
+	}
+	orig := filepath.Join(parent.Name(), name)
 	to, err := t.record(dest, base, orig)
 	if err != nil {
 		return "", err
@@ -110,11 +127,137 @@ func (t *Trash) Move(dest, base, orig string) (string, error) {
 	err = t.rename(orig, to)
 	if errors.Is(err, syscall.EXDEV) {
 		// The original goes only once the whole backup, its directory entries too, is on disk.
-		if err = copyPath(orig, to); err == nil {
+		if err = t.copyTree(parent, name, to); err == nil {
 			if err = syncTree(t.Dir, to); err == nil {
-				err = os.RemoveAll(orig)
+				err := t.removeBackedUp(parent, name, to)
+				if _, changed := errors.AsType[*ChangedError](err); err == nil || changed {
+					return to, err
+				}
+				return to, fmt.Errorf("cannot remove %s after copying it into the trash, which holds the copy at %s: %w",
+					untrusted.Text(orig, untrusted.MaxName), untrusted.Text(to, untrusted.MaxName), untrusted.CleanErr(err))
 			}
 		}
+	}
+	if err != nil {
+		return "", copyFailed(orig, err)
+	}
+	return to, nil
+}
+
+// ChangedError is a move across file systems that left entries in place: they were created or
+// changed after the copy, so the trash does not hold them as they are.
+type ChangedError struct {
+	Path string   // the moved entry
+	Left []string // what stays, by path, sorted
+}
+
+func (e *ChangedError) Error() string {
+	return fmt.Sprintf("%s changed while lola moved it: %d entries created or changed after the copy stay in place",
+		untrusted.Text(e.Path, untrusted.MaxName), len(e.Left))
+}
+
+// walkEntry lists name, an entry of parent, and everything below it in walk order, marking the
+// directories; a link is listed, never followed.
+func walkEntry(parent *os.Root, name string) ([]string, map[string]bool, error) {
+	dirs := map[string]bool{}
+	fi, err := parent.Lstat(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !fi.IsDir() {
+		return []string{name}, dirs, nil
+	}
+	var walked []string
+	err = fs.WalkDir(parent.FS(), name, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		walked = append(walked, p)
+		dirs[p] = d.IsDir()
+		return nil
+	})
+	return walked, dirs, err
+}
+
+// removeBackedUp removes, through parent, the entry name wherever it matches its copy at to:
+// files and links whose fingerprint matches, then directories, deepest first, that are empty.
+// A directory left holding anything the walk did not list (made after it) counts as changed.
+func (t *Trash) removeBackedUp(parent *os.Root, name, to string) error {
+	backup, err := os.OpenRoot(filepath.Dir(to))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = backup.Close() }()
+	walked, dirs, err := t.walk(parent, name)
+	if err != nil {
+		return err
+	}
+	var left []string
+	for i := len(walked) - 1; i >= 0; i-- {
+		p := walked[i]
+		fi, err := parent.Lstat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if dirs[p] && fi.IsDir() { // a directory swapped for a link is not opened through it when seen at Lstat
+			f, err := parent.Open(p)
+			if err != nil {
+				return err
+			}
+			rest, err := f.Readdirnames(1)
+			_ = f.Close()
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+			if len(rest) > 0 {
+				abs := filepath.Join(parent.Name(), p)
+				if !slices.ContainsFunc(left, func(l string) bool { return strings.HasPrefix(l, abs+string(filepath.Separator)) }) {
+					left = append(left, abs)
+				}
+				continue
+			}
+			if err := parent.Remove(p); err != nil {
+				return err
+			}
+			continue
+		}
+		gone := false
+		if fi.Mode()&fs.ModeSymlink != 0 || fi.Mode().IsRegular() {
+			gone, err = UnlinkIfBackedUp(parent, backup, p)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+		}
+		if !gone {
+			left = append(left, filepath.Join(parent.Name(), p))
+		}
+	}
+	if len(left) == 0 {
+		return nil
+	}
+	slices.Sort(left)
+	return &ChangedError{Path: filepath.Join(parent.Name(), name), Left: left}
+}
+
+// CopyBytes records orig as Copy does, then writes exactly data, never reading orig, to its
+// trash path: a new file at mode 0600, synced. It returns the trash path.
+func (t *Trash) CopyBytes(dest, base, orig string, data []byte) (string, error) {
+	to, err := t.record(dest, base, orig)
+	if err != nil {
+		return "", err
+	}
+	out, err := os.OpenFile(to, newFile, 0o600)
+	if err == nil {
+		err = writeCopy(bytes.NewReader(data), out)
+	}
+	if err == nil {
+		err = syncTree(t.Dir, to)
 	}
 	if err != nil {
 		return "", copyFailed(orig, err)
@@ -215,23 +358,64 @@ func copyPath(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer func() { _ = f.Close() }()
-		now, err := f.Stat()
-		if err != nil {
-			return err
-		}
-		if !os.SameFile(fi, now) {
-			return fmt.Errorf("%s changed while lola copied it", untrusted.Text(src, untrusted.MaxName))
-		}
-		out, err := os.OpenFile(dst, newFile, fi.Mode().Perm())
-		if err != nil {
-			return err
-		}
-		return writeCopy(f, out)
+		return copyFile(f, fi, src, dst)
 	case fi.IsDir():
-		return copyDir(src, dst, fi.Mode().Perm())
+		from, err := os.OpenRoot(src)
+		if err != nil {
+			return err
+		}
+		return errors.Join(copyDir(from, src, dst, fi.Mode().Perm()), from.Close())
 	}
 	return notCopyable(src)
+}
+
+// copyFrom is copyPath for name, an entry of parent, read through parent: no link on the way
+// is followed and no path is resolved again.
+func copyFrom(parent *os.Root, name, dst string) error {
+	src := filepath.Join(parent.Name(), name)
+	fi, err := parent.Lstat(name)
+	if err != nil {
+		return err
+	}
+	switch {
+	case fi.Mode()&fs.ModeSymlink != 0:
+		target, err := parent.Readlink(name)
+		if err != nil {
+			return err
+		}
+		return os.Symlink(target, dst)
+	case fi.Mode().IsRegular():
+		f, err := parent.Open(name)
+		if err != nil {
+			return err
+		}
+		return copyFile(f, fi, src, dst)
+	case fi.IsDir():
+		from, err := parent.OpenRoot(name)
+		if err != nil {
+			return err
+		}
+		return errors.Join(copyDir(from, src, dst, fi.Mode().Perm()), from.Close())
+	}
+	return notCopyable(src)
+}
+
+// copyFile copies f, opened for the regular file fi at src, to the new file dst with fi's
+// permissions, and closes f. It refuses a file that is no longer the one fi describes.
+func copyFile(f *os.File, fi fs.FileInfo, src, dst string) error {
+	defer func() { _ = f.Close() }()
+	now, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(fi, now) {
+		return fmt.Errorf("%s changed while lola copied it", untrusted.Text(src, untrusted.MaxName))
+	}
+	out, err := os.OpenFile(dst, newFile, fi.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	return writeCopy(f, out)
 }
 
 func notCopyable(p string) error {
@@ -250,14 +434,9 @@ func writeCopy(r io.Reader, out *os.File) error {
 	return errors.Join(err, out.Close())
 }
 
-// copyDir copies the tree at src into the new directory dst, reading and writing through an
-// os.Root on each, so no symbolic link is followed out of either.
-func copyDir(src, dst string, perm fs.FileMode) (err error) {
-	from, err := os.OpenRoot(src)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, from.Close()) }()
+// copyDir copies the tree from, the directory at src, into the new directory dst, reading
+// and writing through an os.Root on each, so no symbolic link is followed out of either.
+func copyDir(from *os.Root, src, dst string, perm fs.FileMode) (err error) {
 	if err := os.Mkdir(dst, perm|0o700); err != nil {
 		return err
 	}
@@ -303,22 +482,36 @@ func copyDir(src, dst string, perm fs.FileMode) (err error) {
 }
 
 // UnlinkIfBackedUp removes name, a file or symbolic link in dir, when backup (dir's copy in
-// the trash) holds the same content at name (§12.8): it was backed up with the directory, so it
-// is unlinked rather than moved a second time. One that differs from its backup, or that the
-// backup lacks, is kept (false). Both are read through os.Root, so no link is followed out.
+// the trash) holds the same content at name (migrate design §12.8): it was backed up with the
+// directory, so it is unlinked rather than moved a second time. One that differs from its
+// backup, or that the backup lacks, is kept (false). Both are read through os.Root, so no link
+// is followed out.
 func UnlinkIfBackedUp(dir, backup *os.Root, name string) (bool, error) {
 	a, err := fingerprint(dir, name)
 	if err != nil {
 		return false, err
 	}
-	b, err := fingerprint(backup, name)
+	fi, err := backup.Lstat(name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
+	if err != nil {
+		return false, err
+	}
+	if !fi.Mode().IsRegular() && fi.Mode()&fs.ModeSymlink == 0 {
+		return false, nil // the backup holds a directory or another kind there: it differs
+	}
+	b, err := fingerprint(backup, name)
 	if err != nil || !bytes.Equal(a, b) {
 		return false, err
 	}
 	return true, dir.Remove(name)
+}
+
+// within reports whether child is parent or lies below it, lexically.
+func within(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	return err == nil && !filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // fingerprint identifies a file by its content's sha256, a symbolic link by its target.
