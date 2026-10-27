@@ -1,0 +1,76 @@
+internal/fsx/atomic_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 43-61
+internal/migrate/plan_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 436
+internal/source/download_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 171-211
+internal/source/download_internal_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 22,24,29,31,40
+internal/paths/paths_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 32-34
+internal/cli/flow_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 36,46,95-97
+  s_dd02d4728fd2f8::t_fc97d20f291d0c 98
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 1-198
+internal/cli/store_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 371,391-392,397-398,405
+internal/engine/market_test.go
+  s_dd02d4728fd2f8::t_ec44397b26caa9 1-409
+docs/architecture.md
+  s_dd02d4728fd2f8::t_c958d1c2740096 47-48,1317-1368,1400-1409
+docs/decisions.md
+  s_dd02d4728fd2f8::t_b8c0c72a292ea9 98-110
+docs/roadmap.md
+  s_dd02d4728fd2f8::t_84e0ac8069f6bd 58-63
+docs/usage.md
+  s_dd02d4728fd2f8::t_bb353cec648f4b 17,42-44,878-971,1753-1754,1796-1797,1916,1925-1926
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_d665a0a03f0a66 93
+internal/cli/cmd_market.go
+  s_dd02d4728fd2f8::t_43eb4f93be85e2 1-340
+internal/cli/cmd_profile.go
+  s_dd02d4728fd2f8::t_075214f1ae5a77 69-71,73
+internal/cli/help.go
+  s_dd02d4728fd2f8::t_9f0d3d3062be1d 227,230
+internal/cli/huh.go
+  s_dd02d4728fd2f8::t_3faabcc5857fac 421-434
+internal/cli/market_output.go
+  s_dd02d4728fd2f8::t_cb3b1855ccd974 1-187
+internal/cli/prompter.go
+  s_dd02d4728fd2f8::t_d611fed4e1f04d 37-46,199
+internal/engine/market.go
+  s_dd02d4728fd2f8::t_3a9e7d168e6fc8 1-1073
+internal/engine/remote.go
+  s_dd02d4728fd2f8::t_b7e01906c6276e 208-218,222,226,235,238,251-256,259,265,270-272,274-276,279-280,285-299,302,311-314,319,322,338,347-356,371-379,389,398-399,407
+internal/fsx/atomic.go
+  s_dd02d4728fd2f8::t_b4c5ba0230f0e2 7-8,51-81
+internal/market/market.go
+  s_dd02d4728fd2f8::t_131567a39f502e 201-208
+internal/migrate/plan.go
+  s_dd02d4728fd2f8::t_146a0865a42797 148
+internal/paths/paths.go
+  s_dd02d4728fd2f8::t_380976d814be5b 23-25,71-73
+internal/profile/remote.go
+  s_dd02d4728fd2f8::t_5a4e8094ab0f25 17,161
+internal/source/archive.go
+  s_dd02d4728fd2f8::t_99608e05dd4992 73
+internal/source/download.go
+  s_dd02d4728fd2f8::t_b27b765b53ac9e 11,24-39,42-52,55,66,68,78,88,93,107,109,112,116,120-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "483e4a6b1bb4e965204e3d616945303fff6e06b7",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
