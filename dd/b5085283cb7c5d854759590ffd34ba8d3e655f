@@ -1,0 +1,19 @@
+internal/engine/clean.go
+  s_5dbb4e69896b5f::t_efae85289f59e9 446-455
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ddb5085283cb7c5d854759590ffd34ba8d3e655f",
+  "prompts": {},
+  "sessions": {
+    "s_5dbb4e69896b5f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a7db1d1ab8556f709",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
