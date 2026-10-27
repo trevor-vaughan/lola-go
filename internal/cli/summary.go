@@ -196,6 +196,11 @@ func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 	if fl.f.global {
 		tail = append(tail, "--global")
 	}
+	for _, f := range []struct{ flag, given string }{{"--pre-install", fl.f.preInstall}, {"--post-install", fl.f.postInstall}} {
+		if f.given != "" {
+			tail = append(tail, f.flag, f.given)
+		}
+	}
 	for _, b := range []struct {
 		on   bool
 		flag string

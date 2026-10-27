@@ -64,8 +64,9 @@ type RuntimeHook struct {
 // project or the other scope asks again. A recorded consent for the digest grants it;
 // otherwise a --trust covering runtime hooks or a yes from AskRuntimeHooks (runtimeHookConsent). A dry run
 // decides the same way but never asks or records. Without consent those intents leave the plan, so hooks installed under an
-// earlier consent are removed (fail closed), with a runtime-hooks-declined warning.
-func (e *Engine) consentRuntimeHooks(sc Scope, changes []plan.ModuleChange, opts Options, res *Result) error {
+// earlier consent are removed (fail closed), with a runtime-hooks-declined warning, whose hint
+// grants unasked too, the other kinds the run would be refused for (unaskedKinds).
+func (e *Engine) consentRuntimeHooks(sc Scope, changes []plan.ModuleChange, opts Options, unasked TrustKinds, res *Result) error {
 	type dest struct{ target, settings string }
 	for i := range changes {
 		c := &changes[i]
@@ -115,7 +116,7 @@ func (e *Engine) consentRuntimeHooks(sc Scope, changes []plan.ModuleChange, opts
 			c.Intents = slices.DeleteFunc(c.Intents, func(in plan.Intent) bool {
 				return in.Consent != nil && in.Target == d.target && in.Consent.Settings == d.settings
 			})
-			res.Findings = append(res.Findings, declinedFindings(c.Name, gated[d], opts)...)
+			res.Findings = append(res.Findings, declinedFindings(c.Name, gated[d], opts, unasked)...)
 		}
 	}
 	return nil
@@ -145,11 +146,11 @@ func (e *Engine) writesClaudeHooks(sc Scope, in plan.Intent) (bool, error) {
 
 // declinedFindings reports what declined consent leaves out: a target's settings hook groups,
 // and each component that carries hooks. The hint is the run with --trust covering runtime hooks
-// too (opts.Rerun), or, without one, the flag to add.
-func declinedFindings(module string, gated []plan.Intent, opts Options) []target.Finding {
-	consent := "rerun with " + (TrustRuntimeHooks).Arg()
+// too, and unasked (opts.Rerun), or, without one, the flags to add.
+func declinedFindings(module string, gated []plan.Intent, opts Options, unasked TrustKinds) []target.Finding {
+	consent := "rerun with " + (TrustRuntimeHooks | unasked).Arg()
 	if opts.Rerun != nil {
-		consent = "consent to them: " + opts.Rerun(opts.Trust|TrustRuntimeHooks)
+		consent = "consent to them: " + opts.Rerun(opts.Trust|TrustRuntimeHooks|unasked)
 	}
 	var out []target.Finding
 	seen := map[string]bool{}

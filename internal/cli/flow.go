@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -23,6 +24,7 @@ import (
 type installFlags struct {
 	targets, skips, onlys, unskips                  []string
 	ref, path                                       string
+	preInstall, postInstall                         string // --pre-install and --post-install, as given
 	dry, force, strict, rules, noRules, global, yes bool
 	trust                                           engine.TrustKinds
 }
@@ -1093,10 +1095,20 @@ func (fl *installFlow) pickEdits(key string) []engine.SelectionEdit {
 	return out
 }
 
+// flagScript is the script --pre-install or --post-install names, given, made absolute against the
+// directory lola runs in (Plan 9 §5.1, A1); none for "".
+func (fl *installFlow) flagScript(given string) engine.FlagScript {
+	if given == "" || filepath.IsAbs(given) {
+		return engine.FlagScript{Given: given, Path: given}
+	}
+	return engine.FlagScript{Given: given, Path: filepath.Join(fl.cwd, given)}
+}
+
 // spec builds the install from the answers.
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
-		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args), Trust: fl.f.trust}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
+		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
+		PostInstall: fl.flagScript(fl.f.postInstall)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
 	}

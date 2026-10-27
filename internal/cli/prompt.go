@@ -84,15 +84,30 @@ func planFields(plan any) (map[string]any, error) {
 	return fields, nil
 }
 
-// hookOptions sets the hook options of a command: install hooks' output goes to stderr (§9.1),
-// and on a terminal lola asks per module, defaulting to No, about the install hooks (§9.1) and
-// runtime hooks (Plan 5b design §7.3) that opts.Trust does not cover; the engine asks only
-// about those.
+// askScript shows the project's install script q, beside the project's root, and asks whether to
+// run it, or, with no copy for it to wrap now (q.Later), to trust it for later runs.
+func (a *app) askScript(cmd *cobra.Command, q engine.ScriptQuestion) (bool, error) {
+	w := cmd.ErrOrStderr()
+	fmt.Fprintf(w, "The project at %s has a %s script. It runs as you, unconfined, for every module lola installs there:\n", q.Root, q.Event)
+	fmt.Fprintf(w, "    %s (sha256 %s)\n", q.Path, q.SHA256)
+	fmt.Fprintln(w, "  Consent covers only the script listed, not other files it runs; review those too.")
+	if q.Later {
+		return a.ask(cmd, "Trust this project's "+q.Event+" script for later runs?")
+	}
+	return a.ask(cmd, "Run this project's "+q.Event+" script?")
+}
+
+// hookOptions sets the hook options of a command: install hooks' and scripts' output goes to
+// stderr (§9.1), a refusal for want of trust names the command, and on a terminal lola asks,
+// defaulting to No, about the project's install scripts (Plan 9 §5.4), and per module about the
+// install hooks (§9.1) and runtime hooks (Plan 5b design §7.3), that opts.Trust does not cover;
+// the engine asks only about those.
 func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
-	opts.HookOutput = cmd.ErrOrStderr()
+	opts.HookOutput, opts.Run = cmd.ErrOrStderr(), cmd.CommandPath()
 	if !interactive(cmd) || a.json {
 		return
 	}
+	opts.AskScript = func(q engine.ScriptQuestion) (bool, error) { return a.askScript(cmd, q) }
 	opts.Ask = func(module string, hooks []engine.HookScript) (bool, error) {
 		w := cmd.ErrOrStderr()
 		fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)

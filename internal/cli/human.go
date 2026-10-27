@@ -248,6 +248,40 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 			}
 		}
 	}
+	printScripts(w, s, r.Scripts)
+}
+
+// printScripts lists the install scripts of a run in run order (Plan 9 §5.6): each with its module,
+// event, source and target, and its status; a dry run's project script the run has no trust for
+// says it needs --trust=scripts. A --plain row is "script", module, event, source, path, target
+// and status.
+func printScripts(w io.Writer, s style, scripts []engine.ScriptRun) {
+	for _, sr := range scripts {
+		if s.plain {
+			fmt.Fprintf(w, "script\t%s\t%s\t%s\t%s\t%s\t%s\n", sr.Module, sr.Event, sr.Source, sr.Path, sr.Target, sr.Status)
+			continue
+		}
+		status := sr.Status
+		if status == engine.HookWouldRun {
+			status = "would run" // JSON and --plain keep the would-run value
+		}
+		if sr.NeedsTrust() {
+			status += ", needs " + engine.TrustScripts.Arg()
+		}
+		source := sr.Source
+		if sr.Root() != "" {
+			source += " at " + sr.Root() // the path is from that root (S1)
+		}
+		line := fmt.Sprintf("%s %s script %s (%s, %s): %s", sr.Module, sr.Event, sr.Path, source, sr.Target, status)
+		switch sr.Status {
+		case engine.HookRan:
+			fmt.Fprintln(w, s.ok(line))
+		case engine.HookWouldRun:
+			fmt.Fprintln(w, s.info(line))
+		default:
+			fmt.Fprintln(w, s.warn(line))
+		}
+	}
 }
 
 // printDone prints the closing "✓ <verb> <module>" line of each module a run wrote.

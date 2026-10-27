@@ -74,7 +74,7 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 	// A manifest or profile that cannot be read leaves every module its defaults, and says so:
 	// check is the author's tool, and an unrelated broken file must not stop it.
 	var want []Wanted
-	man, err := manifest.Load(e.files(sc).manifest)
+	man, err := e.Manifest(sc)
 	var layers []Layer
 	if err == nil {
 		layers, _, err = e.layers(sc, man, led)

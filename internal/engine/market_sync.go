@@ -41,7 +41,7 @@ type syncCatalogs struct {
 func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (*syncCatalogs, func(), []Notice, error) {
 	none := func() {}
 	out := &syncCatalogs{fetched: map[string]market.Catalog{}, failed: map[string]bool{}, untrusted: map[string]bool{}}
-	man, err := manifest.Load(e.files(sc).manifest)
+	man, err := e.Manifest(sc)
 	if err != nil {
 		return out, none, nil, nil // the scope's load refuses it
 	}

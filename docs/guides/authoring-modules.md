@@ -238,8 +238,23 @@ hashed, so an edited copy never runs, and asks again showing the scripts; off a 
 given `--trust=hooks`, asks nothing about the hook and says
 `pending post-install hook for <module> → lola sync --project <module>` (off a terminal, with the
 `--trust=hooks` form); a dry run says so too, and, naming the module, shows the hook it would
-run. A `pre-install` hook refused off a terminal hints your run with `--trust=` the kinds you gave
-and `hooks`.
+run. A `pre-install` hook refused off a terminal hints first `review it: lola info …` of exactly the
+version the run would install, read from your cache with no fetch the run did not make (a git
+module as its source at the commit, anything else by its cached name at the head that holds it;
+no such hint when no `lola info` can show that version), then your run with `--trust=` the kinds
+you gave, `hooks`, and any other kind the run would still be refused for (`scripts`, for the
+project's untrusted pre-install script).
+
+**Install scripts wrap your hooks.** The user's own scripts (`pre_install` and `post_install` in
+`config.yaml`), a project's (in its `.lola/project.yml`, run with the project's trust) and
+`lola install --pre-install`/`--post-install` run around every copy of your module an install
+writes, whether or not it has hooks: the pre-install scripts before your `pre-install` hook, the
+post-install ones after your `post-install` hook, once per assistant, in the module copy with the
+same environment plus `LOLA_SCRIPT_SOURCE` (`user`, `project` or `flag`). A hook should not count
+on running first or last, nor rewrite files outside the module copy that a script may read: lola
+hashes each script again just before it runs it and does not run one that changed: a pre-install
+script stops the install, nothing written, and a post-install one is skipped with a warning
+([Install scripts](../usage.md#install-scripts)).
 
 ## Runtime hooks
 

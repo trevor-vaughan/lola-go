@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,10 +32,22 @@ const (
 type Config struct {
 	DefaultScope string // "", project, user or both
 	Pager        bool   // page consent diffs on a terminal (Plan 6b §9); pager: false turns it off
+	// PreInstall and PostInstall are the user's own install scripts (Plan 9 §5.1), which wrap every
+	// module copy a run installs or replaces; Path "" for none.
+	PreInstall, PostInstall Script
 }
 
-// LoadConfig reads config.yaml; a missing or empty file is the default configuration.
-func LoadConfig(path string) (*Config, error) {
+// Script is an install script config.yaml names: its absolute path, ~ expanded, and the line and
+// key that name it, which a refusal of the script names.
+type Script struct {
+	Path string
+	Line int
+	Key  string
+}
+
+// LoadConfig reads config.yaml; a missing or empty file is the default configuration. home
+// expands a script path's leading ~/.
+func LoadConfig(path, home string) (*Config, error) {
 	c := &Config{Pager: true}
 	d0, _, err := yamldoc.Read(path, Version)
 	root := yamldoc.Root(d0)
@@ -61,10 +74,29 @@ func LoadConfig(path string) (*Config, error) {
 			}
 			return n.Decode(&c.Pager)
 		},
+		"pre_install":  func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PreInstall) },
+		"post_install": func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PostInstall) },
 	}, "version"); err != nil {
 		return nil, err
 	}
 	return c, nil
+}
+
+// script reads an install script's path into s: absolute, or ~/… with home's ~ expanded.
+func (d doc) script(n *yaml.Node, at, home string, s *Script) error {
+	const hint = "write an absolute path, or one that starts with ~/"
+	p, err := d.scalar(n, at, hint)
+	if err != nil {
+		return err
+	}
+	if rest, ok := strings.CutPrefix(p, "~/"); ok && home != "" {
+		p = filepath.Join(home, rest)
+	}
+	if !filepath.IsAbs(p) {
+		return d.fail(n, at, fmt.Sprintf("%q is not an absolute path", untrusted.Text(p, untrusted.MaxName)), hint)
+	}
+	*s = Script{Path: filepath.Clean(p), Line: n.Line, Key: at}
+	return nil
 }
 
 // doc reports validation errors for one file.

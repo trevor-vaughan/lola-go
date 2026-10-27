@@ -39,7 +39,7 @@ func (a *app) pager(cmd *cobra.Command, eng *engine.Engine) (*pager, error) {
 	if a.json || a.plain || a.noPager || !outTTY || !errTTY {
 		return p, nil
 	}
-	cfg, err := config.LoadConfig(eng.Paths.Config)
+	cfg, err := config.LoadConfig(eng.Paths.Config, eng.Paths.Home)
 	if err != nil {
 		return nil, err
 	}

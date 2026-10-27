@@ -305,6 +305,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	sc, opts := req.Scope, req.Options
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, req.Display) }()
 	opts.Rerun = func(k TrustKinds) string { return e.commandOf(req.trusting(k), req.Display...) }
+	opts.askScripts = true
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); sc.Kind == target.Project && sc.Key() == home.Key() {
 		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
 			untrusted.Text(e.Paths.Home, untrusted.MaxName)), "sync the user scope: "+e.SyncCommand(Scope{Kind: target.User}))
@@ -505,8 +506,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			report.Status = early.Status
 		}
 		// A folder is read for the refusal too: it is local, containment has passed, and its
-		// content stays in the run's staging. Its pre-install hooks refuse the next run too, so the
-		// hint answers them with the rest (§3.5), a refusal for removals alone included (CR10).
+		// content stays in the run's staging. Its pre-install hooks, and the project's pre-install
+		// script around its install, refuse the next run too, so the hint answers them with the rest
+		// (§3.5), a refusal for removals alone included (CR10).
 		for _, se := range entries {
 			if se.spec.Kind == source.KindFolder && se.v.ContentDir == "" {
 				if err := e.resolveSync(ctx, sc, se, run); err != nil {
@@ -515,6 +517,10 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 		}
 		hooks, err := e.hookNeeds(entries, led)
+		if err != nil {
+			return nil, err
+		}
+		scripts, err := e.scriptNeeds(sc)
 		if err != nil {
 			return nil, err
 		}
@@ -532,7 +538,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				return nil, err
 			}
 		}
-		missing |= hooks &^ opts.Trust
+		missing |= (hooks | scripts) &^ opts.Trust
 		removals := []Removal{}
 		if removalsMissing {
 			removals = res.Removals
@@ -588,7 +594,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
-	sp, err := e.planSync(sc, entries, led, templates, sel, opts, probes, req.Modules)
+	sp, err := e.planSync(sc, entries, led, templates, sel, opts, probes, req.Modules, man.PostInstall != "")
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +654,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				if err != nil {
 					return nil, err
 				}
-				if sp, err = e.planSync(sc, entries, led, fresh, sel, opts, probes, req.Modules); err != nil {
+				if sp, err = e.planSync(sc, entries, led, fresh, sel, opts, probes, req.Modules, man.PostInstall != ""); err != nil {
 					return nil, err
 				}
 			}
@@ -718,7 +724,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	keepUnhooked(copies, pr.jobs, opts)
 	// A changed active list is a change the apply writes, even when it moves no module.
-	res.InSync = len(res.Steps) == 0 && len(res.Pins) == 0 && len(res.Removals) == 0 &&
+	// So is a pending project post-install script that runs alone (Plan 9 §5.5).
+	res.InSync = len(res.Steps) == 0 && len(res.Pins) == 0 && len(res.Removals) == 0 && len(pr.scripts.alone) == 0 &&
 		!slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.replace }) && (act == nil || !act.changed)
 	for _, st := range res.Steps {
 		res.Changed = append(res.Changed, st.Module)
@@ -734,6 +741,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			res.Changed = append(res.Changed, c.name)
 		}
 	}
+	for _, j := range pr.scripts.alone {
+		res.Changed = append(res.Changed, j.name)
+	}
 	slices.Sort(res.Changed)
 	res.Changed = slices.Compact(res.Changed)
 	if err := e.confirmTrusted(opts, res.Result); err != nil || opts.DryRun {
@@ -743,8 +753,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		// A dry run ends with the command that applies it: the user's own run without -n, and
 		// the flags that answer its questions off a terminal: --trust for the kinds given and the
 		// kinds the run would be refused without (R-9-6), and -y for its removals.
+		// A sync in sync applies a trust it needs too: its project's scripts' (Plan 9 §7).
 		needTrust := res.Trust.Status != trust.StatusTrusted && res.Trust.Status != TrustStatusNotApplicable
-		if !res.InSync || needTrust {
+		if !res.InSync || needTrust || res.needs&^opts.Trust != 0 {
 			res.ToApply = e.commandOf(req)
 			missing := res.needs
 			if needTrust {
@@ -943,9 +954,10 @@ type syncPlan struct {
 // §9.3 step 10): its intents for its effective targets and selections, the change that renders
 // them over the targets lock.json has it on, and its module copy, replaced (running its hooks)
 // when its version changes, the copy is gone or it adds a target, or to offer a pending post-install hook to a run
-// that names its module (named) or gives --trust covering hooks.
+// that names its module (named) or gives --trust covering hooks; a pending project post-install
+// script likewise, while project.yml still names one (postScript).
 func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, templates *templateRun, sel *config.Selections, opts Options,
-	probes *probeRun, named []string) (syncPlan, error) {
+	probes *probeRun, named []string, postScript bool) (syncPlan, error) {
 	sp := syncPlan{modules: []ModuleResult{}}
 	for _, se := range entries {
 		name := se.ent.Name
@@ -990,9 +1002,19 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, te
 			sp.notices = append(sp.notices, Notice{Level: LevelWarn, Text: text})
 			pending = false
 		}
+		// A pending project post-install script runs alone in the copy as it is, only with consent for
+		// its current digest, and is offered only to a run that names its module or gives --trust
+		// covering scripts (Plan 9 §5.5, A4); any other run keeps it pending and says how to run it.
+		offer := installed != nil && installed.ScriptsPending && postScript && !replace && !pending && sc.Kind == target.Project
+		noticed := offer && !opts.Trust.Covers(TrustScripts) && !slices.Contains(named, name)
+		if noticed {
+			sp.notices = append(sp.notices, e.pendingScriptNotice(sc, name, opts))
+			offer = false
+		}
+		shows := se.v
 		sp.copies = append(sp.copies, moduleCopy{name: name, src: se.v.ContentDir, replace: replace || pending,
 			hooks: se.v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace || pending, forced: pending && !replace,
-			pending: pending})
+			pending: pending, pendingScript: offer, scriptNotice: noticed, shows: &shows, again: []string{"sync", name}})
 	}
 	return sp, nil
 }

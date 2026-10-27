@@ -329,6 +329,39 @@ modules:
 			Expect(profile.Load(link)).NotTo(BeNil(), "a user profile may be a link (P7); a project's may not")
 		})
 
+		It("names a profile in a directory holding control or format characters only as text that cannot drive the terminal", func() {
+			dir := filepath.Join(p.Home, "evil\x1b[31m\u202eproj", ".lola", "profiles")
+			Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+			path := filepath.Join(dir, "bad.yml")
+			shown := strings.NewReplacer("\x1b", "?", "\u202e", "?").Replace(path)
+			check := func(err error, want, why string) {
+				GinkgoHelper()
+				Expect(err).To(MatchError(And(ContainSubstring(shown), ContainSubstring(want))), why)
+				Expect(err.Error()).NotTo(Or(ContainSubstring("\x1b"), ContainSubstring("\u202e")), why)
+			}
+			for content, want := range map[string]string{
+				"version: 2\n":                                             "written by a newer lola",
+				"version: 1\nshell: rm -rf\n":                              "field shell not found",
+				"version: 1\ndescription: [a, b]\n":                        "cannot unmarshal",
+				"version: 1\n---\nversion: 1\n":                            "holds more than one YAML document",
+				"version: 1\nextends: [a, a]\n":                            ":2: extends lists a twice",
+				"version: 1\nmodules:\n  - {name: f, source: '@acme/f'}\n": ":3: f's source is @acme/f",
+			} {
+				Expect(os.WriteFile(path, []byte(content), 0o644)).To(Succeed())
+				_, err := profile.LoadProject(path)
+				check(err, want, content)
+			}
+			Expect(os.Remove(path)).To(Succeed())
+			_, err := profile.LoadProject(path)
+			check(err, "file does not exist", "missing")
+			Expect(err).To(MatchError(fs.ErrNotExist))
+
+			Expect(os.WriteFile(path, []byte("version: 1\nextends: [nope]\n"), 0o644)).To(Succeed())
+			pr, err := profile.LoadProject(path)
+			Expect(err).NotTo(HaveOccurred())
+			check(pr.ExtendsError(path, 0), ":2: extends: nope is not a remote profile you have", "extends")
+		})
+
 		It("writes pins into the bytes it read, keeping comments and other keys, and never over a file changed since", func() {
 			commit, digest := strings.Repeat("a", 40), "sha256:"+strings.Repeat("b", 64)
 			path := writeProject("go.yml", `version: 1

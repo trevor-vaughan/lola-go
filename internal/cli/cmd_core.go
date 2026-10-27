@@ -181,6 +181,12 @@ func (a *app) installCmd() *cobra.Command {
 			"Claude Code runtime hooks (a plugin's hooks) are installed only with your consent too:\n" +
 			"lola lists them and asks on a terminal (default No), and --trust=runtime-hooks consents\n" +
 			"without asking. It holds until the module version, the hooks or the project path changes.\n" +
+			"Install scripts wrap every module copy the install writes, once per assistant, around its\n" +
+			"hooks: pre_install and post_install in config.yaml (yours), in .lola/project.yml (the\n" +
+			"project's, run only in that project's scope, and only with --trust=scripts or a yes on a\n" +
+			"terminal, until the script changes) and --pre-install/--post-install (this run's). Each\n" +
+			"runs from its absolute path, with the module copy as working directory, the hook\n" +
+			"environment and LOLA_SCRIPT_SOURCE=user, project or flag.\n" +
 			trustHelp("install"),
 		Example:           g.example(),
 		GroupID:           groupCore,
@@ -190,6 +196,14 @@ func (a *app) installCmd() *cobra.Command {
 			var err error
 			if f.trust, err = trust.parse(cmd, args, "install", "module"); err != nil {
 				return err
+			}
+			// A script path a hint repeats must print as itself, on one line (RR4).
+			for _, s := range []struct{ flag, given string }{{"--pre-install", f.preInstall}, {"--post-install", f.postInstall}} {
+				if s.given != "" && !untrusted.IsPlain(s.given) {
+					// Text keeps a line break and cleans \r to ?, so a \n made \r shows as ?, on one line.
+					return fmt.Errorf("%s %s holds a control character or a line break; lola runs only a script whose path is plain text",
+						s.flag, untrusted.Text(strings.ReplaceAll(s.given, "\n", "\r"), len(s.given)))
+				}
 			}
 			return a.runInstall(cmd, g, args, f)
 		},
@@ -201,6 +215,8 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.global, "global", false, "save --skip, --only and --unskip in the global section of selections.yaml, for every scope")
 	cmd.Flags().StringVar(&f.ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&f.path, "path", "", "module root inside the source (monorepos)")
+	cmd.Flags().StringVar(&f.preInstall, "pre-install", "", "a script to run before each module copy the install writes, once per assistant (yours: no trust asked)")
+	cmd.Flags().StringVar(&f.postInstall, "post-install", "", "a script to run after each module copy the install writes, once per assistant (yours: no trust asked)")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")

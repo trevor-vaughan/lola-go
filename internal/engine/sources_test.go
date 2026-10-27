@@ -311,6 +311,126 @@ var _ = Describe("Engine with git and archive sources", func() {
 		Expect(info.Runs.InstallHooks).To(ConsistOf(HaveField("SHA256", hex.EncodeToString(sum[:]))), "the review shows the hook the install would run")
 	})
 
+	Describe("a pre-install refusal's review hint", func() {
+		var url, v1, v2, d1, d2 string
+		var requests atomic.Int64
+		hook := func(text string) string { return "#!/bin/sh\necho " + text + "\n" }
+		BeforeEach(func() {
+			work := filepath.Join(tmp, "hooked")
+			writeTree(work, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: setup.sh}\n", "setup.sh": hook("v1"), "commands/ship.md": "Ship\n"})
+			Expect(os.Chmod(filepath.Join(work, "setup.sh"), 0o755)).To(Succeed())
+			gitIn(work, "init", "-q", "-b", "main")
+			gitIn(work, "add", "-A")
+			gitIn(work, "commit", "-q", "-m", "v1")
+			gitIn(work, "tag", "v1")
+			v1 = gitIn(work, "rev-parse", "HEAD")
+			writeTree(work, map[string]string{"setup.sh": hook("v2")})
+			gitIn(work, "commit", "-q", "-am", "v2")
+			v2 = gitIn(work, "rev-parse", "HEAD")
+			gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "kit.git"))
+			url = testenv.ServeGitWith(filepath.Join(tmp, "srv"), func(*http.Request) { requests.Add(1) }) + "/kit.git"
+			old, err := e.Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url, Ref: "v1"}) // a head for the tag v1
+			Expect(err).NotTo(HaveOccurred())
+			head, err := e.Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url}) // the cache's default head: v2
+			Expect(err).NotTo(HaveOccurred())
+			d1, d2 = old.Meta.Digest, head.Meta.Digest
+		})
+		// pinned is project.yml listing kit at main, pinned at v1, behind the cache's head.
+		pinned := func() string {
+			return "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + url + "\n    ref: main\n    commit: " + v1 + "\n    digest: " + d1 + "\n"
+		}
+
+		DescribeTable("names exactly the version the refused run would install, which lola info shows from the cache",
+			func(run func() error, want func() (ref, digest string), tail string) {
+				err := run()
+				Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+				ref, digest := want()
+				Expect(errs.Hints(err)[0]).To(Equal("review it: lola info --project "+url+" --ref "+ref+tail), "an install's keeps its targets")
+				before := requests.Load()
+				info, err := e.Info(ctx, engine.InfoRequest{Cwd: proj, Arg: url, Ref: ref, Scope: engine.ScopeRequest{Project: true, Cwd: proj},
+					Targets: claude.Targets, Rerun: func(...string) string { return "" }, Install: func(string, string, string, engine.TrustKinds) string { return "" }})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(info.Digest).To(Equal(digest))
+				Expect(requests.Load()).To(Equal(before), "the review fetches nothing the run did not")
+			},
+			Entry("sync of an entry pinned behind the cache's head", func() error {
+				writeTree(proj, map[string]string{".lola/project.yml": pinned()})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+				return err
+			}, func() (string, string) { return v1, d1 }, ""),
+			Entry("render replacing its copy", func() error {
+				writeTree(proj, map[string]string{".lola/project.yml": pinned()})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks}})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(os.Remove(e.Paths.Consent)).To(Succeed())
+				Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "kit"))).To(Succeed())
+				_, err = e.Render(ctx, sc, engine.Options{})
+				return err
+			}, func() (string, string) { return v1, d1 }, ""),
+			Entry("profile --on of a project profile listing it", func() error {
+				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n",
+					".lola/profiles/review.yml": strings.Replace(pinned(), "targets: [claude-code]\n", "", 1)})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"review"}},
+					Options: engine.Options{Trust: engine.TrustEntries | engine.TrustProfiles}})
+				return err
+			}, func() (string, string) { return v1, d1 }, ""),
+			Entry("migrate's install of the cached name", func() error {
+				_, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: "kit", Targets: claude.Targets}},
+					Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc}, Targets: claude.Targets}}})
+				return err
+			}, func() (string, string) { return v2, d2 }, " --target claude-code"),
+			Entry("install of the cached name at a tag", func() error {
+				_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "kit", Ref: "v1"}}, claude)
+				return err
+			}, func() (string, string) { return v1, d1 }, " --target claude-code"),
+		)
+
+		It("is left out when no lola info command shows that version, and the consent hint stays", func() {
+			folder := filepath.Join(tmp, "kitdir")
+			writeTree(folder, map[string]string{"lola.yml": "name: fkit\nhooks: {pre-install: setup.sh}\n", "setup.sh": hook("a"), "commands/ship.md": "Ship\n"})
+			Expect(os.Chmod(filepath.Join(folder, "setup.sh"), 0o755)).To(Succeed())
+			a, err := e.Fetch(ctx, sourceSpec(folder))
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(folder, map[string]string{"setup.sh": hook("b")})
+			_, err = e.Fetch(ctx, sourceSpec(folder)) // the folder's head moves to b
+			Expect(err).NotTo(HaveOccurred())
+			opts := claude
+			opts.Rerun = func(k engine.TrustKinds) string { return "lola install fkit " + k.Arg() }
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "fkit", Version: &engine.VersionRef{Name: "fkit", ID: a.ID}}}, opts)
+			Expect(err).To(MatchError("fkit has a pre-install hook, and lola runs hooks only with your consent"))
+			Expect(errs.Hints(err)).To(Equal([]string{"then consent to it: lola install fkit --trust=hooks"}))
+		})
+
+		It("without a run to repeat, a listed version no ref names gets no consent hint: installing the name again installs another", func() {
+			folder := filepath.Join(tmp, "kitdir")
+			writeTree(folder, map[string]string{"lola.yml": "name: fkit\nhooks: {pre-install: setup.sh}\n", "setup.sh": hook("a"), "commands/ship.md": "Ship\n"})
+			Expect(os.Chmod(filepath.Join(folder, "setup.sh"), 0o755)).To(Succeed())
+			a, err := e.Fetch(ctx, sourceSpec(folder))
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(folder, map[string]string{"setup.sh": hook("b")})
+			_, err = e.Fetch(ctx, sourceSpec(folder))
+			Expect(err).NotTo(HaveOccurred())
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "fkit", Version: &engine.VersionRef{Name: "fkit", ID: a.ID}}}, claude)
+			Expect(err).To(MatchError("fkit has a pre-install hook, and lola runs hooks only with your consent"))
+			Expect(errs.Hints(err)).To(BeEmpty())
+		})
+
+		It("a refusal with no run to repeat still hints the run that consents", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, claude)
+			Expect(err).To(HaveOccurred())
+			Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project " + url + " --ref " + v1 + " --target claude-code",
+				"then consent to it: lola install --project " + url + " --ref v1 --target claude-code --trust=hooks"}))
+
+			writeTree(proj, map[string]string{".lola/project.yml": pinned()})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.Remove(e.Paths.Consent)).To(Succeed())
+			Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "kit"))).To(Succeed())
+			_, err = e.Render(ctx, sc, engine.Options{})
+			Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project " + url + " --ref " + v1, "then consent to it: lola render --project --trust=hooks"}))
+		})
+	})
+
 	It("adds a git source's default branch to the cache", func() {
 		url, commit := serveRepo()
 		spec, ok, err := source.Parse(url, proj)

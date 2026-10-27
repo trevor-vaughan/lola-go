@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/consent"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
@@ -496,5 +497,67 @@ var _ = Describe("lola info", func() {
 			Expect(info.Runs.RuntimeHooks).To(ContainElement(HaveField("Command", HaveSuffix("/user-modules/kit/stop.sh"))), "the user plan's")
 			Expect(info.Runs.MCPServers).To(ContainElement(HaveField("Name", "tools")))
 		})
+	})
+
+	It("info finds a project script's recorded consent under the project's own root, whatever it prints", func() {
+		odd := filepath.Join(tmp, "pro\nj")
+		writeTree(odd, map[string]string{"ci/check.sh": "#!/bin/sh\n", ".lola/project.yml": "version: 1\npre_install: ci/check.sh\n"})
+		Expect(os.Chmod(filepath.Join(odd, "ci", "check.sh"), 0o755)).To(Succeed())
+		b, err := os.ReadFile(filepath.Join(odd, "ci", "check.sh"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(e.Consent.Grant(consent.ScriptKey(odd, engine.PreInstall), "sha256:"+sha256Hex(b))).To(Succeed())
+		req := claudeHere()
+		req.Cwd, req.Scope.Cwd = odd, odd
+		info, err := e.Info(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Runs.Scripts).To(ContainElement(And(HaveField("Source", engine.ScriptProject), HaveField("NeedsTrust", false))))
+	})
+
+	It("info lists the scripts that would wrap the module", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		marker := filepath.Join(tmp, "ran")
+		writeTree(tmp, map[string]string{"bin/pre.sh": "#!/bin/sh\ntouch " + marker + "\n", "bin/post.sh": "#!/bin/sh\ntouch " + marker + "\n",
+			"proj/ci/check.sh": "#!/bin/sh\ntouch " + marker + "\n", "proj/.lola/project.yml": "version: 1\npre_install: ci/check.sh\n",
+			"config/lola/config.yaml": "version: 1\npre_install: " + filepath.Join(tmp, "bin", "pre.sh") + "\npost_install: " + filepath.Join(tmp, "bin", "post.sh") + "\n"})
+		for _, f := range []string{"bin/pre.sh", "bin/post.sh", "proj/ci/check.sh"} {
+			Expect(os.Chmod(filepath.Join(tmp, f), 0o755)).To(Succeed())
+		}
+		Expect(p.Config).To(Equal(filepath.Join(tmp, "config", "lola", "config.yaml")))
+		sum := func(path string) string {
+			b, err := os.ReadFile(path)
+			Expect(err).NotTo(HaveOccurred())
+			return sha256Hex(b)
+		}
+		user := []engine.InfoScript{
+			{Event: engine.PreInstall, Source: engine.ScriptUser, Path: filepath.Join(tmp, "bin", "pre.sh"), SHA256: sum(filepath.Join(tmp, "bin", "pre.sh"))},
+			{Event: engine.PostInstall, Source: engine.ScriptUser, Path: filepath.Join(tmp, "bin", "post.sh"), SHA256: sum(filepath.Join(tmp, "bin", "post.sh"))},
+		}
+		info, err := e.Info(ctx, claudeHere())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Runs.Scripts).To(HaveExactElements(user[0],
+			And(HaveField("Event", engine.PreInstall), HaveField("Source", engine.ScriptProject), HaveField("Path", "ci/check.sh"),
+				HaveField("SHA256", sum(filepath.Join(proj, "ci", "check.sh"))), HaveField("NeedsTrust", true), HaveField("Root()", proj)),
+			user[1]), "in run order")
+		Expect(info.Install[0].Consent).To(ContainElement(engine.InfoConsent{Kind: "scripts", Item: "pre-install ci/check.sh", Recorded: engine.RecordedNo}))
+		Expect(info.Install[0].TrustNeeded).To(ContainElement("scripts"))
+		Expect(installBy.kinds.Covers(engine.TrustScripts)).To(BeTrue(), "the next step trusts the project's script")
+
+		// once its consent is recorded the project's script needs no trust (M4)
+		Expect(e.Consent.Grant(consent.ScriptKey(proj, engine.PreInstall), "sha256:"+sum(filepath.Join(proj, "ci", "check.sh")))).To(Succeed())
+		info, err = e.Info(ctx, claudeHere())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Runs.Scripts[1]).To(HaveField("NeedsTrust", false))
+		Expect(info.Install[0].TrustNeeded).NotTo(ContainElement("scripts"))
+
+		// without a scope only your own are known, and the install needs no trust for them
+		req := request(engine.ScopeRequest{})
+		req.Cwd, req.Scope.Cwd = tmp, tmp
+		info, err = e.Info(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.NoScope).NotTo(BeEmpty())
+		Expect(info.Runs.Scripts).To(Equal(user))
+		Expect(info.Install[0].TrustNeeded).NotTo(ContainElement("scripts"))
+		Expect(marker).NotTo(BeAnExistingFile(), "info runs no script")
 	})
 })

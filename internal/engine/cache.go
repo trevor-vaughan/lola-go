@@ -81,14 +81,23 @@ func (e *Engine) Current(name string, display ...string) (store.Version, store.O
 	if !found || len(o.Heads) == 0 {
 		return store.Version{}, store.Origin{}, NotStored(name, display...)
 	}
-	id := o.Heads[0].Digest
+	v, err := e.Store.Load(name, currentHead(o))
+	return v, o, err
+}
+
+// currentHead is the digest of o's current version, which Current and lola info of its name
+// show: the default-ref head's if there is one, else the first head's; "" for none.
+func currentHead(o store.Origin) string {
+	id := ""
+	if len(o.Heads) > 0 {
+		id = o.Heads[0].Digest
+	}
 	for _, h := range o.Heads {
 		if h.Ref == "" {
 			id = h.Digest
 		}
 	}
-	v, err := e.Store.Load(name, id)
-	return v, o, err
+	return id
 }
 
 // Cached is a stored module's current version with its origin.

@@ -41,12 +41,12 @@ var _ = Describe("config.yaml", func() {
 	write := func(s string) { Expect(os.WriteFile(path, []byte(s), 0o600)).To(Succeed()) }
 
 	It("defaults when the file is missing or empty", func() {
-		c, err := config.LoadConfig(path)
+		c, err := config.LoadConfig(path, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.DefaultScope).To(BeEmpty())
 		Expect(c.Pager).To(BeTrue())
 		write("# nothing yet\n")
-		c, err = config.LoadConfig(path)
+		c, err = config.LoadConfig(path, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.DefaultScope).To(BeEmpty())
 		Expect(c.Pager).To(BeTrue())
@@ -54,32 +54,40 @@ var _ = Describe("config.yaml", func() {
 
 	It("reads pager (Plan 6b §9)", func() {
 		write("version: 1\npager: false\n")
-		c, err := config.LoadConfig(path)
+		c, err := config.LoadConfig(path, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.Pager).To(BeFalse())
 		write("version: 1\npager: true\n")
-		c, err = config.LoadConfig(path)
+		c, err = config.LoadConfig(path, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.Pager).To(BeTrue())
 	})
 
 	It("reads default_scope", func() {
 		write("# lola settings. Safe to edit by hand.\nversion: 1\ndefault_scope: both   # project | user | both\n")
-		c, err := config.LoadConfig(path)
+		c, err := config.LoadConfig(path, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.DefaultScope).To(Equal("both"))
+	})
+
+	It("reads pre_install and post_install, expanding ~/ (Plan 9 §5.1)", func() {
+		write("version: 1\npre_install: ~/bin/pre.sh\npost_install: /opt/ci/after.sh\n")
+		c, err := config.LoadConfig(path, "/home/u")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.PreInstall).To(Equal(config.Script{Path: "/home/u/bin/pre.sh", Line: 2, Key: "pre_install"}))
+		Expect(c.PostInstall).To(Equal(config.Script{Path: "/opt/ci/after.sh", Line: 3, Key: "post_install"}))
 	})
 
 	DescribeTable("refuses invalid files, naming the file, line and key with a hint",
 		func(content, msg, hint string) {
 			write(content)
-			_, err := config.LoadConfig(path)
+			_, err := config.LoadConfig(path, "")
 			Expect(err).To(MatchError(ContainSubstring(path + ":")))
 			Expect(err).To(MatchError(ContainSubstring(msg)))
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring(hint)))
 		},
 		Entry("an unknown scope", "version: 1\ndefault_scope: everywhere\n", `:2: default_scope: "everywhere" is not a scope`, "project, user or both"),
-		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "known keys: default_scope, pager, version"),
+		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "known keys: default_scope, pager, post_install, pre_install, version"),
 		Entry("no version", "default_scope: user\n", ":1: missing key version", "add version: 1"),
 		Entry("a newer version", "version: 2\n", ":1: version: version 2 is not supported", "upgrade lola"),
 		Entry("a version that is not a number", "version: one\n", ":1: version: must be the number 1", "write version: 1"),
@@ -90,22 +98,39 @@ var _ = Describe("config.yaml", func() {
 		Entry("a key written twice", "version: 1\nversion: 1\n", ":2: version: is written twice", "keep one"),
 	)
 
+	// Spec 33's config.yaml rows: what config.yaml refuses as it is read; a script missing, irregular or
+	// not executable is refused where a run plans it (the engine's rows).
+	DescribeTable("a missing, irregular or non-executable configured script is refused naming file, line and key",
+		func(content, msg, hint string) {
+			write(content)
+			_, err := config.LoadConfig(path, "/home/u")
+			Expect(err).To(MatchError(path + msg))
+			Expect(errs.Hints(err)).To(HaveExactElements(hint))
+		},
+		Entry("config.yaml: a relative path", "version: 1\npre_install: bin/pre.sh\n", `:2: pre_install: "bin/pre.sh" is not an absolute path`,
+			"write an absolute path, or one that starts with ~/"),
+		Entry("config.yaml: no path", "version: 1\npost_install:\n", ":2: post_install: must be a non-empty value, not empty",
+			"write an absolute path, or one that starts with ~/"),
+		Entry("config.yaml: a list", "version: 1\npost_install: [/a, /b]\n", ":2: post_install: must be a non-empty value, not a list",
+			"write an absolute path, or one that starts with ~/"),
+	)
+
 	It("refuses a file over 1 MiB without reading it all", func() {
 		write("version: 1\n# " + strings.Repeat("x", 1<<20) + "\n")
-		_, err := config.LoadConfig(path)
+		_, err := config.LoadConfig(path, "")
 		Expect(err).To(MatchError(ContainSubstring("is larger than 1048576 bytes")))
 	})
 
 	It("refuses a directory in place of the file", func() {
 		Expect(os.Mkdir(path, 0o700)).To(Succeed())
-		_, err := config.LoadConfig(path)
+		_, err := config.LoadConfig(path, "")
 		Expect(err).To(MatchError(ContainSubstring("is not a regular file")))
 	})
 
 	It("refuses a FIFO in place of the file without blocking on it", func() {
 		mkfifo(path)
 		done := make(chan error, 1)
-		go func() { _, err := config.LoadConfig(path); done <- err }()
+		go func() { _, err := config.LoadConfig(path, ""); done <- err }()
 		Eventually(done, "5s").Should(Receive(MatchError(ContainSubstring("is not a regular file"))))
 	})
 })

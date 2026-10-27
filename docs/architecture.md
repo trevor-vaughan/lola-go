@@ -666,6 +666,60 @@ that names its module or gives `--trust=hooks` (`planSync`'s `named`): any other
 copy as it is, asks nothing, and adds the notice `pending post-install hook for <m> → lola sync
 <m>`, so an unrelated full sync never stops at the hook question.
 
+### Install scripts
+
+`internal/engine/scripts.go` adds the user's (`config.Config.PreInstall`/`PostInstall`, absolute
+or `~/` expanded at load), the project's (`manifest.Manifest.PreInstall`/`PostInstall`, which
+`manifest.LoadUser` refuses in `user.yml`) and the run's (`Options.PreInstall`/`PostInstall`,
+made absolute by the CLI against its working directory) scripts around every module copy a run
+installs or replaces. `planHooks` returns a `hookJob` for each such copy, its `scripts` the hooks
+that run in it (none when it has none or they were declined), so a module without hooks is
+wrapped too; a forced copy whose hooks do not run gets no job, `keepUnhooked` keeps it, and
+nothing wraps it. `prepare` checks the scripts (`installScripts`) before anything is asked, when
+any copy may be written, then `planScripts` decides each project script's trust once (a recorded
+consent under `consent.ScriptKey(<resolved project dir>, <event>)` for `sha256:<script sha256>`,
+`--trust=scripts` through the receipt, a batch's `Expect`, or `Options.AskScript`), and `commit`
+runs them through `runHooks`: per job, the pre-install scripts in order user, project, flag
+before its hooks, and the post-install ones in order flag, project, user after them, once per
+target.
+
+Each script is held as an absolute, resolved path from planning on: the project's refused when its
+path is not plain text (a newline would forge prompt lines and split `--plain` rows), is absolute
+(it would name one machine's checkout) or has a `..` component (`filepath.Join` cleans `link/..` lexically, so lola would run another file than a shell
+reading the path finds), then resolved under the canonical project root, contained in it
+(`source.IsWithin`), not itself a link, and shown from then on as its path from that root beside
+the root (S1, A27); every script path is shown on one line (`oneLine`). The
+user's and the flag's resolved with `EvalSymlinks`. `runHook` executes that path (never
+`filepath.Join(j.dir, …)`, so a file of the same relative name in the module copy never runs),
+with `Cmd.Dir` the module copy and `LOLA_SCRIPT_SOURCE` added; a module hook's environment drops
+any `LOLA_SCRIPT_SOURCE` inherited from lola's own. The digest taken at planning is
+checked again (`Lstat` regular file, sha256 equal) just before each exec; a mismatch is a failure
+of that script (pre: the run stops and the copies roll back; post: a warning). The window between
+that check and `exec` remains, the class module hooks have.
+
+Project scripts are planned only when the scope is that project (A9). A `Sync` also plans them
+when it writes no copy (`Options.askScripts`, R-9-33), reading only the project's (`runOrder` of
+`projectScripts`): an untrusted pre-install script is asked about for later runs
+(`ScriptQuestion.Later`) or refused off a terminal, and its dry run's command adds
+`--trust=scripts` (`Result.needs`); a post-install one is not asked about, only warned of. A
+declined post-install script stays in the run's list (`installScript.declined`) so `runScripts`
+records it in run order. A mark whose script project.yml no longer names is cleared. A project
+post-install script declined for want of trust sets `ledger.Entry.ScriptsPending` on every copy
+it would have wrapped; `planSync` offers a pending one (`moduleCopy.pendingScript`) only to a run
+that names the module or gives `--trust=scripts`, and `planScripts` runs it alone, per target, in
+the existing copy (it is not replaced: consent covers the script, not the module's bytes) only
+with consent for the script's current digest; otherwise the copy keeps its mark and the notice
+`pending post-install script for <m> → lola sync <m>`. `prepare` keeps the mark of a copy whose
+script runs alone, and `commit` clears it, saving `lock.json` again, only once the script ran on
+every target, so a failed one is offered again. A dry run plans a pending script as the run does:
+counted as a change (`scriptPlan.alone`) when trusted, else listed as needing trust with the notice.
+
+A refusal for want of trust hints every kind the run would still be refused for: `prepare` decides
+them before anything asks (`unaskedKinds`: a pre-install hook, and the project's pre-install
+script, without a recorded consent, when the run cannot ask about that kind), and the hook
+refusal's and the declined runtime hooks' hints add them, so the run a hint names is not refused for
+the next kind (N1).
+
 ## Runtime hooks
 
 `target/claude` renders each matcher group of a module's runtime hooks as one `AddJSONMember` intent

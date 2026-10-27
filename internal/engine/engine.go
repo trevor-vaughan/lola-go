@@ -109,6 +109,10 @@ type Options struct {
 	// entryFrom is the layer the entry planned comes from, "" for the scope's manifest, which a
 	// refusal of its vars names (checkVars).
 	entryFrom string
+	// askScripts says the run is a sync, which asks about its project's install scripts even when
+	// it writes no copy for them to wrap: a pulled project.yml that adds or changes one asks (Plan
+	// 9 §7).
+	askScripts bool
 
 	// Trust is the kinds of trust the run's --trust grants (Plan 9 §3.4): an item of a kind it
 	// covers is not asked about but shown once to Receipt, which, when set, is called before the
@@ -132,11 +136,21 @@ type Options struct {
 	// stderr.
 	Ask        func(module string, hooks []HookScript) (bool, error)
 	HookOutput io.Writer
+	// AskScript, when set, asks the user to trust a project's install script without a recorded
+	// consent that Trust does not cover (Plan 9 §5.4); a yes is recorded once the run's receipt is
+	// answered yes (A23). Run is the user's
+	// command, "lola install", which a refusal for want of that trust names.
+	AskScript func(ScriptQuestion) (bool, error)
+	Run       string
 
 	// Runtime hooks (Plan 5b design §7.3), which an assistant runs on its own events.
 	// AskRuntimeHooks, when set, asks the user about hooks without a recorded consent that Trust
 	// does not cover, and a yes is recorded.
 	AskRuntimeHooks func(module string, hooks []RuntimeHook) (bool, error)
+
+	// PreInstall and PostInstall are install's --pre-install and --post-install scripts (Plan 9
+	// §5.1), which wrap every module copy the run installs or replaces; Given "" for none.
+	PreInstall, PostInstall FlagScript
 
 	// Display is the run's output flags (--json, --plain, --no-pager as given), which every
 	// command a marketplace hint or notice names keeps (Plan 6c §11.3), as does the uninstall a
@@ -201,7 +215,9 @@ type Result struct {
 	Steps    []plan.Step      `json:"steps"`
 	Findings []target.Finding `json:"findings"`
 	Notices  []Notice         `json:"notices"`
-	DryRun   bool             `json:"dry_run"`
+	// Scripts is each install script for each module and target, in run order (Plan 9 §5.6).
+	Scripts []ScriptRun `json:"scripts"`
+	DryRun  bool        `json:"dry_run"`
 	// Trusted is what the run's --trust covers (Plan 9 §3.4, §8), and under -n what it would:
 	// [] when nothing, and nil, so absent from the JSON, for a command that takes no --trust.
 	Trusted []Consent `json:"trusted,omitzero"`
@@ -217,7 +233,7 @@ type Result struct {
 }
 
 func newResult(dry bool) *Result {
-	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, DryRun: dry}
+	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, Scripts: []ScriptRun{}, DryRun: dry}
 }
 
 // InstallRequest is one install argument (§7.1) with its --ref and --path.
@@ -375,6 +391,9 @@ func (e *Engine) target(id string) (target.Target, error) {
 
 // Manifest loads the scope's manifest.
 func (e *Engine) Manifest(sc Scope) (*manifest.Manifest, error) {
+	if sc.Kind == target.User {
+		return manifest.LoadUser(e.files(sc).manifest)
+	}
 	return manifest.Load(e.files(sc).manifest)
 }
 
@@ -824,6 +843,7 @@ type prepared struct {
 	sc      Scope
 	plan    *plan.Plan
 	jobs    []*hookJob
+	scripts scriptPlan // the install scripts that wrap jobs, and the pending ones that run alone
 	changes []plan.ModuleChange
 	copies  []moduleCopy
 }
@@ -863,7 +883,36 @@ func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, cha
 // hook consent. It writes nothing but recorded consents.
 func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy, replace []plan.Replaceable,
 	opts Options, res *Result) (*prepared, error) {
-	if err := e.consentRuntimeHooks(sc, changes, opts, res); err != nil {
+	// Install scripts are checked before anything is asked (Plan 9 §5.5), when a copy may be
+	// installed or replaced for them to wrap; planScripts plans them once hooks decided which.
+	// A sync that writes no copy asks only about its project's scripts, and a pending one runs alone:
+	// your own and the flag's wrap nothing, so nothing checks them (I2, RR3).
+	var all []installScript
+	read := true
+	switch {
+	case slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.runHooks }):
+		var err error
+		if all, err = e.installScripts(sc, opts); err != nil {
+			return nil, err
+		}
+	case opts.askScripts && sc.Kind == target.Project || slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.pendingScript }):
+		ps, err := e.projectScripts(sc)
+		if err == nil {
+			all, err = runOrder(ps)
+		}
+		if err != nil {
+			return nil, err
+		}
+	default:
+		read = false
+	}
+	// A pending project post-install script whose key project.yml no longer has is pending no more.
+	postKept := !read || slices.ContainsFunc(all, func(s installScript) bool { return s.source == ScriptProject && s.event == PostInstall })
+	unasked, err := e.unaskedKinds(copies, all, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.consentRuntimeHooks(sc, changes, opts, unasked, res); err != nil {
 		return nil, err
 	}
 	if opts.Strict {
@@ -889,7 +938,11 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 	}
 	res.Steps = append(res.Steps, p.Steps...)
 	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules)...)
-	jobs, err := e.planHooks(sc, copies, opts, res)
+	jobs, err := e.planHooks(sc, copies, opts, unasked, res)
+	if err != nil {
+		return nil, err
+	}
+	sp, err := e.planScripts(sc, all, jobs, copies, opts, res)
 	if err != nil {
 		return nil, err
 	}
@@ -901,18 +954,23 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		if entry == nil {
 			continue
 		}
-		ran := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name })
+		ran := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name && len(j.scripts) > 0 })
 		post := declaresPostInstall(c.hooks)
 		kept := !c.runHooks || c.forced && !ran
 		declined := !kept && !ran && post
 		entry.HooksPending = declined || kept && post && led.Modules[c.name] != nil && led.Modules[c.name].HooksPending
+		// So does the project's post-install script declined for want of trust (Plan 9 §5.5),
+		// on a copy it would have wrapped; a copy nothing wraps keeps its mark, which a pending
+		// script that runs alone clears only once it has run (commit).
+		wrapped := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name })
+		entry.ScriptsPending = wrapped && sp.declinedPost || !wrapped && postKept && led.Modules[c.name] != nil && led.Modules[c.name].ScriptsPending
 	}
-	return &prepared{sc: sc, plan: p, jobs: jobs, changes: changes, copies: copies}, nil
+	return &prepared{sc: sc, plan: p, jobs: jobs, scripts: sp, changes: changes, copies: copies}, nil
 }
 
-// commit applies a prepared scope: module copies, pre-install hooks, the plan with the
-// manifest edits man (none when empty) under the scope lock, after (when set), then
-// post-install hooks.
+// commit applies a prepared scope: module copies, pre-install scripts and hooks, the plan with
+// the manifest edits man (none when empty) under the scope lock, after (when set), then
+// post-install hooks and scripts, and the pending post-install scripts that run alone.
 func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man []plan.ManifestWrite, after func(*plan.Plan) error) error {
 	sc, p := pr.sc, pr.plan
 	if err := e.ownGitignore(sc); err != nil {
@@ -927,7 +985,7 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 	if err != nil {
 		return err
 	}
-	if err := e.runHooks(ctx, sc, pr.jobs, PreInstall, opts, res); err != nil {
+	if err := e.runHooks(ctx, sc, pr.jobs, pr.scripts.run, PreInstall, opts, res); err != nil {
 		return errors.Join(err, sw.rollback())
 	}
 	committed := false
@@ -947,6 +1005,19 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 			errs = append(errs, os.RemoveAll(filepath.Join(dir, c.Name)))
 		}
 	}
-	errs = append(errs, e.runHooks(ctx, sc, pr.jobs, PostInstall, opts, res))
+	errs = append(errs, e.runHooks(ctx, sc, pr.jobs, pr.scripts.run, PostInstall, opts, res))
+	// A pending script that ran alone on every target is pending no more; one that failed or
+	// changed stays pending, so the next sync naming its module offers it again.
+	cleared := false
+	for _, j := range pr.scripts.alone {
+		from := len(res.Scripts)
+		errs = append(errs, e.runScripts(ctx, sc, j, pr.scripts.pending, PostInstall, opts, res))
+		if !slices.ContainsFunc(res.Scripts[from:], func(s ScriptRun) bool { return s.Status != HookRan }) {
+			p.Ledger.Modules[j.name].ScriptsPending, cleared = false, true
+		}
+	}
+	if cleared {
+		errs = append(errs, p.Ledger.Save(e.files(sc).ledger))
+	}
 	return errors.Join(errs...)
 }

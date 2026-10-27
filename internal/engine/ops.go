@@ -79,12 +79,21 @@ func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error 
 	_, conflicts := errors.AsType[*plan.ConflictError](err)
 	_, template := errors.AsType[*TemplateError](err) // the same install refuses the same way
 	_, hook := errors.AsType[*hookConsentError](err)
-	if len(fetched) == 0 || targets || conflicts || template || hook || errors.Is(err, ErrNotTrusted) {
+	_, script := errors.AsType[*scriptError](err)
+	_, scriptConsent := errors.AsType[*scriptConsentError](err)
+	if len(fetched) == 0 || targets || conflicts || template || hook || script || scriptConsent || errors.Is(err, ErrNotTrusted) {
 		return err
+	}
+	// The retry keeps the run's own scripts, the gate the user gave it (RR1).
+	args := slices.Clone(fetched)
+	for _, f := range []struct{ flag, given string }{{"--pre-install", spec.Options.PreInstall.Given}, {"--post-install", spec.Options.PostInstall.Given}} {
+		if f.given != "" {
+			args = append(args, f.flag, f.given)
+		}
 	}
 	cmds := make([]string, len(spec.Scopes))
 	for i, si := range spec.Scopes {
-		cmds[i] = e.Command(si.Scope, "install", fetched...)
+		cmds[i] = e.Command(si.Scope, "install", args...)
 	}
 	return errs.WithHints(err, "fetched modules stay in your cache; retry with: "+strings.Join(cmds, "; "))
 }
@@ -852,6 +861,9 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	if err != nil {
 		return err
 	}
+	// A refusal reviews exactly the version installed: a source at the commit it resolved; a
+	// cached name, or an address, whose catalog may have moved since, as the cache shows it
+	// (reviewOf). It consents by the install again, while that installs the same version.
 	review := []string{r.Arg}
 	if commit != "" {
 		review = append(review, "--ref", commit)
@@ -859,12 +871,35 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	if r.Path != "" {
 		review = append(review, "--path", r.Path)
 	}
+	var shows *store.Version
+	if r.market != nil || r.Arg == v.Name && module.ValidateName("module", r.Arg) == nil {
+		shows = &v
+	}
+	again := []string{"install", r.Arg}
+	if r.Ref != "" {
+		again = append(again, "--ref", r.Ref)
+	}
+	if r.Path != "" {
+		again = append(again, "--path", r.Path)
+	}
 	for _, t := range mr.Targets {
+		again = append(again, "--target", t)
 		review = append(review, "--target", t)
+	}
+	if r.Version != nil && r.Ref == "" {
+		// A listed version no ref names: installing the name again reads its current head.
+		o, _, err := e.Store.Origin(r.Version.Name)
+		if err != nil {
+			return err
+		}
+		if currentHead(o) != r.Version.ID {
+			again = nil
+		}
 	}
 	sp.copies = append(sp.copies, moduleCopy{name: v.Name, src: v.ContentDir, replace: true,
 		hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true, forced: !replace && !addsTargets(installed, mr.Targets),
-		pending: installed != nil && installed.HooksPending && declaresPostInstall(v.Module.DeclaredHooks), review: review})
+		pending: installed != nil && installed.HooksPending && declaresPostInstall(v.Module.DeclaredHooks), review: review, again: again,
+		shows: shows, reviewTargets: mr.Targets})
 	sp.entries = append(sp.entries, ent)
 	return nil
 }
@@ -1262,7 +1297,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 		}
 		replace = replace || addsTargets(entry, mr.Targets) // a target its hooks never ran for
 		copies = append(copies, moduleCopy{name: name, src: v.ContentDir, replace: replace,
-			hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace})
+			hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace, shows: &v, again: []string{"render"}})
 	}
 	res.Findings = append(res.Findings, probes.findings...)
 	if err := e.execute(ctx, sc, led, changes, copies, opts, res, func(*plan.Plan) error { return e.makePluginData(sc, changes) }); err != nil {

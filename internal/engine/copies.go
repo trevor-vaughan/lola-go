@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"github.com/trevor-vaughan/lola-go/internal/store"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,9 +28,18 @@ type moduleCopy struct {
 	forced   bool
 	pending  bool
 	// review is the lola info arguments that show exactly the version the copy installs, which a
-	// refused pre-install hook's hint names: the install's argument at the commit it resolved,
-	// its --path and targets. nil names the module.
-	review []string
+	// refused pre-install hook's or script's hint names; nil when no lola info command shows it.
+	// shows, when set, is that version instead, whose arguments reviewOf finds when a refusal
+	// needs them, with reviewTargets added. again is the command, and its arguments, that
+	// installs the copy: the consent hint of a run that gives no Rerun.
+	review, again []string
+	shows         *store.Version
+	reviewTargets []string
+	// pendingScript offers the project's post-install script, pending on the copy since it was
+	// declined (ledger.Entry.ScriptsPending), to run alone in the copy as it is (Plan 9 §5.5, A4).
+	pendingScript bool
+	// scriptNotice says the run keeps that script pending on the copy, and its notice says so.
+	scriptNotice bool
 }
 
 // keepUnhooked keeps every forced copy no hook job of jobs runs in as it is: it was to be

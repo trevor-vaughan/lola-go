@@ -139,7 +139,7 @@ func recordedText(recorded, scope string) string {
 // printInfo prints lola info's five sections: the module, what would run code, what installing
 // it would do at each scope, and the install of the version shown, or the hints that resolve a
 // missing scope or assistant. A --plain row is the module's, then one per install hook
-// ("hook", event, script, sha256), runtime hook (as lola install's "runtime-hook" row), MCP
+// ("hook", event, script, sha256), install script ("script", event, source, path, sha256, needs_trust), runtime hook (as lola install's "runtime-hook" row), MCP
 // server ("mcp", name, target, command line, URL), refusal of a plan ("refusal", scope, error)
 // followed by its hints ("hint", command), consent item ("consent", scope, kind, item,
 // recorded), step, next step ("install", command), why no scope or assistant resolved
@@ -149,6 +149,9 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 	if s.plain {
 		for _, h := range info.Runs.InstallHooks {
 			fmt.Fprintf(w, "hook\t%s\t%s\t%s\n", h.Event, h.Script, h.SHA256)
+		}
+		for _, sr := range info.Runs.Scripts {
+			fmt.Fprintf(w, "script\t%s\t%s\t%s\t%s\t%t\n", sr.Event, sr.Source, sr.Path, sr.SHA256, sr.NeedsTrust)
 		}
 		printRuntimeHooks(w, s, engine.ModuleResult{Name: info.Name, RuntimeHooks: info.Runs.RuntimeHooks})
 		for _, m := range info.Runs.MCPServers {
@@ -239,21 +242,40 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 }
 
 // printRuns prints what in a module would run code: its install hooks with their sha256 and first
-// lines, then the runtime hooks and MCP servers per assistant, as rendered when planned, else as
+// lines, between the install scripts that would wrap them, then the runtime hooks and MCP servers per assistant, as rendered when planned, else as
 // the module declares them; a heading starts each run of one assistant's rendered or declared
 // hooks.
 func printRuns(w io.Writer, r engine.InfoRuns, planned bool) {
-	if len(r.InstallHooks)+len(r.RuntimeHooks)+len(r.MCPServers) == 0 {
-		fmt.Fprintln(w, "runs code: nothing (no install hooks, runtime hooks or MCP servers)")
+	if len(r.InstallHooks)+len(r.RuntimeHooks)+len(r.MCPServers)+len(r.Scripts) == 0 {
+		fmt.Fprintln(w, "runs code: nothing (no install hooks, install scripts, runtime hooks or MCP servers)")
 		return
 	}
 	fmt.Fprintln(w, "runs code:")
+	// In run order: the pre-install scripts, the hooks, then the post-install scripts.
+	scripts := func(event string) {
+		for _, sr := range r.Scripts {
+			if sr.Event != event {
+				continue
+			}
+			when := "around its install"
+			if sr.NeedsTrust {
+				when += " with your trust"
+			}
+			source := sr.Source
+			if sr.Root() != "" {
+				source += " at " + sr.Root()
+			}
+			fmt.Fprintf(w, "  %s script %s (%s, sha256 %s), %s\n", sr.Event, sr.Path, source, sr.SHA256, when)
+		}
+	}
+	scripts(engine.PreInstall)
 	for _, h := range r.InstallHooks {
 		fmt.Fprintf(w, "  %s hook %s (sha256 %s), on install with your consent:\n", h.Event, h.Script, h.SHA256)
 		for _, l := range h.FirstLines {
 			fmt.Fprintln(w, "    | "+l)
 		}
 	}
+	scripts(engine.PostInstall)
 	for i, h := range r.RuntimeHooks {
 		if i == 0 || h.Target != r.RuntimeHooks[i-1].Target || (h.Status == engine.RecordedUnknown) != (r.RuntimeHooks[i-1].Status == engine.RecordedUnknown) {
 			if h.Status == engine.RecordedUnknown {

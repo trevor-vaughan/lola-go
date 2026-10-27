@@ -9,7 +9,8 @@ name: lola sync, trust and profiles for a team sharing a project
 # column); a case whose state is missing fails. No assistant is on PATH.
 #
 # team.git is the project a teammate clones: main lists kit pinned at v1 and commits the
-# project profile review (lint); the branch next pins kit at v2, then drops it. A refused or
+# project profile review (lint); the branch next pins kit at v2, then drops it; the branch
+# scripts adds the project's pre-install script ci/check.sh, then edits it. A refused or
 # dry run still takes lola's lock files in $XDG_STATE_HOME/lola/locks, so "nothing written"
 # compares snapshots of /work and /home/tester but for those files and lola's cache
 # ($HOME/.cache), which snapshot.py always leaves out (a refused sync fetches into it).
@@ -33,12 +34,14 @@ vars:
   team_main: 2abf98ab50ced3f56b6278e706d6cca1173442d0
   team_pin: 1ce48b2d5d28628d63c5e7795861e9e605bdecfb
   team_drop: cec62fcf8a30c468caef468788137050cf18495d
+  team_script: 133da36fb7171f41ee45dbad7cde9bb45516134b
+  team_script_edit: 30341d6136ed0cdabad38618cd5ef37f62c63246
 
 testcases:
   - name: The fixtures are built, every commit is the one recorded, and git.lola.test serves HTTPS
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh {{.kit_v1}} {{.kit_v2}} {{.lint}} {{.fmt}} {{.profiles}} {{.team_main}} {{.team_pin}} {{.team_drop}}"
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh {{.kit_v1}} {{.kit_v2}} {{.lint}} {{.fmt}} {{.profiles}} {{.team_main}} {{.team_pin}} {{.team_drop}} {{.team_script}} {{.team_script_edit}}"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "fixture ready"
@@ -604,3 +607,92 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldNotContainSubstring "✓ synced hk"
+
+  - name: T16 An edited project script needs trust again after a pull
+    # Plan 9 §9.5 T16 (Reasons W, G): a pull that adds the project's pre-install script makes the
+    # next sync off a terminal refuse, though it installs nothing (Plan 9 §7), until the hint's
+    # --trust=scripts records the script's digest; a pull that edits it refuses again, for the
+    # script alone. A fresh clone (proj4), trusted and synced, so earlier cases' state is not read.
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'git clone -q http://127.0.0.1:8765/team.git /work/proj4 && {{.lola}} sync -C /work/proj4 --trust --json > /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'git -C /work/proj4 fetch -q origin scripts && git -C /work/proj4 merge -q --ff-only {{.team_script}}'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t16-before.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj4 --json > /tmp/t16.out 2> /tmp/t16.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t16.out /tmp/t16.err"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/t16.err"))
+          assert doc["error"] == "lola sync needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on", doc["error"]
+          assert doc["hints"][1] == "then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          print("ok")'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual ok
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t16-after.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} --compare /tmp/t16-before.json /tmp/t16-after.json /home/tester/.local/state/lola/locks/"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual unchanged
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t16.err 1 > /tmp/t16-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/t16-hint.json"))
+          assert doc["trusted"] == [{"kind": "scripts", "item": "pre-install ci/check.sh", "change": "new"}], doc["trusted"]
+          assert doc["in_sync"] is True, doc["in_sync"]
+          print("ok")'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual ok
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test ! -e /tmp/t16.log && {{.lola}} sync -C /work/proj4 --json > /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'git -C /work/proj4 fetch -q origin scripts && git -C /work/proj4 merge -q --ff-only {{.team_script_edit}}'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj4 --json > /tmp/t16b.out 2> /tmp/t16b.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/t16b.err"))
+          assert doc["error"] == "lola sync needs your trust for the pre-install script ci/check.sh of this project (changed), and there is no terminal to ask on", doc["error"]
+          assert doc["hints"][1] == "then consent to it: lola sync -C /work/proj4 --trust=scripts --json", doc["hints"]
+          print("ok")'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual ok
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /tmp/t16.log"
+        assertions:
+          - result.code ShouldEqual 0

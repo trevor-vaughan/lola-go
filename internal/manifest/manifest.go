@@ -68,6 +68,22 @@ type Manifest struct {
 	Version int      `yaml:"version"`
 	Targets []string `yaml:"targets,omitempty,flow"`
 	Modules []Entry  `yaml:"modules,omitempty"`
+	// PreInstall and PostInstall are a project's install scripts (Plan 9 §5.1), paths relative to
+	// the project directory as written, which wrap every module copy a run of the project's scope
+	// installs or replaces; "" for none. Only project.yml takes them (LoadUser).
+	PreInstall  string `yaml:"pre_install,omitempty"`
+	PostInstall string `yaml:"post_install,omitempty"`
+	// preLine and postLine are the lines that name them, which a refusal of a script names.
+	preLine, postLine int
+}
+
+// ScriptLine is the line of the file that names the script of key, pre_install or post_install;
+// 0 when none does.
+func (m *Manifest) ScriptLine(key string) int {
+	if key == "pre_install" {
+		return m.preLine
+	}
+	return m.postLine
 }
 
 // Load reads path; a missing or empty file is an empty manifest. The file may be someone
@@ -76,6 +92,7 @@ type Manifest struct {
 // does not know.
 func Load(path string) (*Manifest, error) {
 	m := &Manifest{Version: Version}
+	shown := untrusted.Text(path, untrusted.MaxName)
 	d, b, err := yamldoc.Read(path, Version)
 	if err != nil {
 		return nil, err
@@ -88,10 +105,10 @@ func Load(path string) (*Manifest, error) {
 		Version int `yaml:"version"`
 	}
 	if err := root.Decode(&v); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w", shown, err)
 	}
 	if v.Version > Version {
-		return nil, fmt.Errorf("%s was written by a newer lola (manifest version %d); upgrade lola", path, v.Version)
+		return nil, fmt.Errorf("%s was written by a newer lola (manifest version %d); upgrade lola", shown, v.Version)
 	}
 	err = m.decode(b, root)
 	if ue, ok := errors.AsType[*UnresolvedError](err); ok {
@@ -99,12 +116,31 @@ func Load(path string) (*Manifest, error) {
 		return nil, ue
 	}
 	if ve, ok := errors.AsType[*module.VarError](err); ok {
-		err = fmt.Errorf("%s:%d: %s", path, ve.Line, ve.Reason)
+		err = fmt.Errorf("%s:%d: %s", shown, ve.Line, ve.Reason)
 	} else if err != nil {
-		err = fmt.Errorf("%s: %w", path, err)
+		err = fmt.Errorf("%s: %w", shown, err)
 	}
 	if err != nil {
 		return nil, errs.WithHints(err, "fix it by hand, or restore it from version control")
+	}
+	return m, nil
+}
+
+// LoadUser is Load for user.yml, which refuses install scripts: the user's own are in config.yaml
+// (Plan 9 §5.1).
+func LoadUser(path string) (*Manifest, error) {
+	m, err := Load(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range []struct {
+		key, path string
+		line      int
+	}{{"pre_install", m.PreInstall, m.preLine}, {"post_install", m.PostInstall, m.postLine}} {
+		if s.path != "" {
+			return nil, errs.WithHints(fmt.Errorf("%s:%d: %s: user.yml takes no install scripts; your own go in config.yaml", untrusted.Text(path, untrusted.MaxName), s.line, s.key),
+				"move it to config.yaml as an absolute path or ~/…")
+		}
 	}
 	return m, nil
 }
@@ -127,6 +163,14 @@ func (m *Manifest) decode(b []byte, root *yaml.Node) error {
 func (m *Manifest) validate(root *yaml.Node) error {
 	if err := plainTargets(m.Targets); err != nil {
 		return err
+	}
+	if root != nil {
+		if n := yamldoc.Value(root, "pre_install"); n != nil {
+			m.preLine = n.Line
+		}
+		if n := yamldoc.Value(root, "post_install"); n != nil {
+			m.postLine = n.Line
+		}
 	}
 	seen := map[string]bool{}
 	var unresolved []Unresolved
@@ -253,8 +297,9 @@ type UnresolvedError struct {
 }
 
 func (e *UnresolvedError) Error() string {
+	shown := untrusted.Text(e.Path, untrusted.MaxName)
 	line := func(u Unresolved) string {
-		s := fmt.Sprintf("%s:%d: %s's source is @%s/%s", e.Path, u.Line, u.Name, u.Market, u.Module)
+		s := fmt.Sprintf("%s:%d: %s's source is @%s/%s", shown, u.Line, u.Name, u.Market, u.Module)
 		if len(e.Entries) == 1 {
 			s += ", a marketplace address; a file must record the module's real source"
 		}
@@ -267,7 +312,7 @@ func (e *UnresolvedError) Error() string {
 		return line(e.Entries[0])
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s records %d marketplace addresses as sources; a file must record each module's real source", e.Path, len(e.Entries))
+	fmt.Fprintf(&b, "%s records %d marketplace addresses as sources; a file must record each module's real source", shown, len(e.Entries))
 	for _, u := range e.Entries {
 		b.WriteString("\n  " + line(u))
 	}

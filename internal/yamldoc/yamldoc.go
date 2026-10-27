@@ -46,32 +46,43 @@ func read(path string, version int, noFollow bool) (*yaml.Node, []byte, error) {
 	if noFollow {
 		flags |= oNoFollow
 	}
+	// The path may name a directory someone else chose (a cloned project), so every error names
+	// it as shown, and an I/O error keeps only its cause.
+	shown := untrusted.Text(path, untrusted.MaxName)
+	cannotRead := func(err error) error { return fmt.Errorf("cannot read %s: %w", shown, untrusted.CleanErr(err)) }
 	f, err := os.OpenFile(path, flags, 0)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, cannotRead(err)
 	}
 	fi, err := f.Stat()
-	if err == nil && noFollow {
+	if err != nil {
+		err = cannotRead(err)
+	} else if noFollow {
 		if checked, lerr := os.Lstat(path); lerr != nil || !os.SameFile(fi, checked) {
-			err = errs.WithHints(errors.Join(fmt.Errorf("%s changed while lola was reading it", untrusted.Text(path, untrusted.MaxName)), lerr),
+			err = errs.WithHints(errors.Join(fmt.Errorf("%s changed while lola was reading it", shown), untrusted.CleanErr(lerr)),
 				"run the command again once nothing else is changing it")
 		}
 	}
 	if err == nil && !fi.Mode().IsRegular() {
-		err = errs.WithHints(fmt.Errorf("%s is not a regular file", path), "replace it with a YAML file, or remove it")
+		err = errs.WithHints(fmt.Errorf("%s is not a regular file", shown), "replace it with a YAML file, or remove it")
 	}
 	var b []byte
 	if err == nil {
-		b, err = io.ReadAll(io.LimitReader(f, MaxFile+1))
+		if b, err = io.ReadAll(io.LimitReader(f, MaxFile+1)); err != nil {
+			err = cannotRead(err)
+		}
 	}
-	if err = errors.Join(err, f.Close()); err != nil {
+	if cerr := f.Close(); cerr != nil {
+		err = errors.Join(err, cannotRead(cerr))
+	}
+	if err != nil {
 		return nil, nil, err
 	}
 	if len(b) > MaxFile {
-		return nil, nil, errs.WithHints(fmt.Errorf("%s is larger than %d bytes", path, MaxFile), "shorten it; lola never writes one this large")
+		return nil, nil, errs.WithHints(fmt.Errorf("%s is larger than %d bytes", shown, MaxFile), "shorten it; lola never writes one this large")
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	var d yaml.Node
@@ -89,15 +100,15 @@ func read(path string, version int, noFollow bool) (*yaml.Node, []byte, error) {
 		}
 		return &d, b, nil
 	} else if err != nil {
-		return nil, nil, errs.WithHints(fmt.Errorf("%s: does not parse: %s", path, untrusted.Text(err.Error(), 2*untrusted.MaxName)),
+		return nil, nil, errs.WithHints(fmt.Errorf("%s: does not parse: %s", shown, untrusted.Text(err.Error(), 2*untrusted.MaxName)),
 			"fix it by hand, or move it aside (lola starts a new one) and rerun")
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, nil, errs.WithHints(fmt.Errorf("%s: holds more than one YAML document", path), "remove every --- line after the first document")
+		return nil, nil, errs.WithHints(fmt.Errorf("%s: holds more than one YAML document", shown), "remove every --- line after the first document")
 	}
 	if n := special(&d); n != nil {
-		return nil, nil, errs.WithHints(fmt.Errorf("%s:%d: anchors, aliases and merge keys (<<) are not supported", path, n.Line),
+		return nil, nil, errs.WithHints(fmt.Errorf("%s:%d: anchors, aliases and merge keys (<<) are not supported", shown, n.Line),
 			"write each entry out in full")
 	}
 	return &d, b, nil

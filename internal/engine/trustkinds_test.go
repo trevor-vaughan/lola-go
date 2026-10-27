@@ -373,6 +373,18 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		}, func(n *int) engine.SyncRequest {
 			return engine.SyncRequest{Scope: sc, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { *n++; return engine.TrustAnswer{All: true}, nil }}
 		}),
+		Entry("scripts", engine.TrustEntries|engine.TrustScripts, func() {
+			kit("")
+			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\npre_install: ci/check.sh\nmodules:\n  - {name: kit, source: ./mods/kit}\n",
+				"ci/check.sh": script})
+			Expect(os.Chmod(filepath.Join(proj, "ci", "check.sh"), 0o755)).To(Succeed())
+		}, func() {
+			writeTree(proj, map[string]string{"ci/check.sh": script + "true\n"})
+		}, func(n *int) engine.SyncRequest {
+			// a copy the sync writes again, for the script to wrap
+			Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "kit"))).To(Succeed())
+			return engine.SyncRequest{Scope: sc, Options: engine.Options{AskScript: func(engine.ScriptQuestion) (bool, error) { *n++; return true, nil }}}
+		}),
 		Entry("hooks", engine.TrustEntries|engine.TrustHooks, func() { kit("{pre-install: hooks/pre.sh}"); pull("kit") }, func() {
 			writeTree(proj, map[string]string{"mods/kit/hooks/pre.sh": script + "true\n"})
 		}, func(n *int) engine.SyncRequest {

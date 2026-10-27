@@ -1,0 +1,9 @@
+version: 1
+targets: [claude-code]
+pre_install: ci/check.sh
+modules:
+  - name: kit
+    source: http://127.0.0.1:8765/kit.git
+    ref: main
+    commit: 245348b25c023ecf1b98e50033a4abb6256a2e64
+    digest: sha256:9fb233673b21f0f03e6075250d2711ac10ce2a393e628b4adb9a3d0f3fc122df

@@ -188,7 +188,24 @@ type InfoRuns struct {
 	InstallHooks []InfoHook      `json:"install_hooks"`
 	RuntimeHooks []RuntimeHook   `json:"runtime_hooks"`
 	MCPServers   []InfoMCPServer `json:"mcp_servers"`
+	Scripts      []InfoScript    `json:"scripts"`
 }
+
+// InfoScript is an install script that would wrap the module's install (Plan 9 §5.6), in run
+// order: its event and source, its path as configured, through untrusted.Text, its sha256, and
+// whether it needs trust: a project's without a recorded consent for its digest (§5.4).
+type InfoScript struct {
+	Event      string `json:"event"`
+	Source     string `json:"source"`
+	Path       string `json:"path"`
+	SHA256     string `json:"sha256"`
+	NeedsTrust bool   `json:"needs_trust"`
+	root       string
+}
+
+// Root is the canonical root of the project whose script s is, which human output shows beside its
+// path (S1); "" for another source's.
+func (s InfoScript) Root() string { return s.root }
 
 // add appends each of hooks and servers that runs does not hold yet, compared by what info shows
 // of them: a runtime hook's exported fields, never the settings file its consent covers, so a
@@ -281,13 +298,19 @@ type installBy struct{ arg, ref, path string }
 // consent it would meet (Plan 9 §4). It runs nothing: no install hook, runtime hook, MCP server
 // or script; templates render only in the plan's sandbox. Without a scope it never guesses one
 // (§4.4).
-func (e *Engine) Info(ctx context.Context, req InfoRequest) (*Info, error) {
+func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error) {
 	req.Ref = source.RecordedRef(req.Ref) // the next step echoes a full-SHA ref lower-cased (R-9-31)
-	v, o, by, err := e.infoVersion(ctx, req)
+	run, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	info := &Info{ModuleView: NewModuleView(v, o), Runs: InfoRuns{InstallHooks: []InfoHook{}, RuntimeHooks: []RuntimeHook{}, MCPServers: []InfoMCPServer{}},
+	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	v, o, by, err := e.infoVersion(ctx, req, run)
+	if err != nil {
+		return nil, err
+	}
+	info := &Info{ModuleView: NewModuleView(v, o), Runs: InfoRuns{InstallHooks: []InfoHook{}, RuntimeHooks: []RuntimeHook{}, MCPServers: []InfoMCPServer{},
+		Scripts: []InfoScript{}},
 		Install: []InfoInstall{}, Hints: []string{}}
 	hooks, hookConsent, err := e.infoHooks(v)
 	if err != nil {
@@ -307,11 +330,22 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (*Info, error) {
 			info.Hints = append(info.Hints, req.Rerun("--project"))
 		}
 		info.Hints = append(info.Hints, req.Rerun("--user"))
+		// Without a scope only your own scripts are known: config.yaml's (§4.4).
+		if info.Runs.Scripts, err = e.infoScripts([]Scope{{Kind: target.User}}, false); err != nil {
+			return nil, err
+		}
 		info.Install = append(info.Install, unplanned("", v, hookConsent, declared))
 		info.Runs.MCPServers, info.Runs.RuntimeHooks = mcpServers(v.Module, e.targetIDs()), declared
 		return info, nil
 	}
 	if err != nil {
+		return nil, err
+	}
+	var scopes []Scope
+	for _, c := range res.Scopes {
+		scopes = append(scopes, c.Scope)
+	}
+	if info.Runs.Scripts, err = e.infoScripts(scopes, true); err != nil {
 		return nil, err
 	}
 	pinned, commit, err := e.pinEntryRef(by, v, o, res.Scopes)
@@ -333,7 +367,11 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (*Info, error) {
 		if info.NoAssistant != "" {
 			info.Hints = hints
 			for _, c := range res.Scopes {
-				in := unplanned(c.Scope.Kind.String(), v, hookConsent, declared)
+				scripts, err := e.scriptConsent(c.Scope)
+				if err != nil {
+					return nil, err
+				}
+				in := unplanned(c.Scope.Kind.String(), v, append(slices.Clone(hookConsent), scripts...), declared)
 				in.root = root(c.Scope)
 				info.Install = append(info.Install, in)
 			}
@@ -395,7 +433,84 @@ func refusal(err error) bool {
 	_, conflict := errors.AsType[*plan.ConflictError](err)
 	_, targets := errors.AsType[*untrustedTargetsError](err)
 	_, template := errors.AsType[*TemplateError](err)
-	return conflict || targets || template || errors.Is(err, ErrNotTrusted) || len(errs.Hints(err)) > 0
+	_, script := errors.AsType[*scriptError](err)
+	return conflict || targets || template || script || errors.Is(err, ErrNotTrusted) || len(errs.Hints(err)) > 0
+}
+
+// infoScripts is the install scripts that would wrap an install at scopes, in run order, each
+// once (§4.3 item 3): your own from config.yaml, and a project's in its scope. A script install
+// would refuse is left out when planned, since the plan of its scope reports the refusal;
+// without a plan its refusal is info's.
+func (e *Engine) infoScripts(scopes []Scope, planned bool) ([]InfoScript, error) {
+	out := []InfoScript{}
+	for _, sc := range scopes {
+		scripts, err := e.installScripts(sc, Options{})
+		if _, refused := errors.AsType[*scriptError](err); refused && planned {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range scripts {
+			is := InfoScript{Event: s.event, Source: s.source, Path: s.shown, SHA256: s.sha256, root: oneLine(s.root)}
+			if s.source == ScriptProject {
+				g := s.grant()
+				granted, err := e.Consent.Granted(g.key, g.digest)
+				if err != nil {
+					return nil, err
+				}
+				is.NeedsTrust = !granted
+			}
+			if !slices.Contains(out, is) {
+				out = append(out, is)
+			}
+		}
+	}
+	rank := func(s InfoScript) int { // pre-install user, project; post-install project, user
+		r := 0
+		if s.Source == ScriptProject {
+			r = 1
+		}
+		if s.Event == PostInstall {
+			r = 3 - r
+		}
+		return r
+	}
+	slices.SortStableFunc(out, func(a, b InfoScript) int { return cmp.Compare(rank(a), rank(b)) })
+	return out, nil
+}
+
+// scriptConsent is the consent items of sc's project scripts, as the receipt names them, each
+// recorded when consent.json holds the script's current digest for the project and event; none at
+// user scope, or when a script would be refused (the plan reports that).
+func (e *Engine) scriptConsent(sc Scope) ([]InfoConsent, error) {
+	if sc.Kind != target.Project {
+		return nil, nil
+	}
+	scripts, err := e.projectScripts(sc)
+	if _, refused := errors.AsType[*scriptError](err); refused {
+		return nil, nil
+	}
+	if err == nil {
+		scripts, err = runOrder(scripts)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []InfoConsent
+	for _, s := range scripts {
+		g := s.grant()
+		granted, err := e.Consent.Granted(g.key, g.digest)
+		if err != nil {
+			return nil, err
+		}
+		recorded := RecordedNo
+		if granted {
+			recorded = RecordedYes
+		}
+		out = append(out, InfoConsent{Kind: TrustScripts.String(), Item: s.event + " " + s.shown, Recorded: recorded})
+	}
+	return out, nil
 }
 
 // infoVersion resolves req's argument as install does (§4.2): a marketplace address is fetched
@@ -405,7 +520,7 @@ func refusal(err error) bool {
 // without a component selection, as that source at the commit fetched (R-9-11), which installs
 // from the cache (R-9-21); anything else by its cached name at the head that holds it, which
 // installs from the cache without touching the source (pinEntryRef may pin it further).
-func (e *Engine) infoVersion(ctx context.Context, req InfoRequest) (v store.Version, o store.Origin, by installBy, err error) {
+func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run string) (v store.Version, o store.Origin, by installBy, err error) {
 	_, isAddr, err := market.ParseAddress(req.Arg)
 	if err != nil {
 		return store.Version{}, store.Origin{}, installBy{}, err
@@ -438,24 +553,28 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest) (v store.Vers
 			return store.Version{}, store.Origin{}, installBy{}, err
 		}
 		if !ok {
-			run, err := e.runDir()
-			if err != nil {
-				return store.Version{}, store.Origin{}, installBy{}, err
-			}
-			v, err = e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: req.Ref, Components: o.Components}, "", req.Arg, run)
-			if err = errors.Join(err, os.RemoveAll(run)); err != nil {
+			if v, err = e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: req.Ref, Components: o.Components}, "", req.Arg, run); err != nil {
 				return store.Version{}, store.Origin{}, installBy{}, err
 			}
 		}
 		by = installBy{arg: v.Name, ref: req.Ref}
 	default:
-		if _, ok, err := source.Parse(req.Arg, req.Cwd); err != nil {
+		spec, ok, err := source.Parse(req.Arg, req.Cwd)
+		if err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
 		} else if !ok {
 			return store.Version{}, store.Origin{}, installBy{}, notASource(req.Arg, req.Display)
 		}
-		if v, err = e.AddSource(ctx, req.Cwd, req.Arg, req.Ref, req.Path, req.Display); err != nil {
+		// A git source at a full commit SHA the cache holds for it is shown from the cache, hashed
+		// again in run, as install takes it (R-9-21): a review hint names one (R-9-32).
+		spec.Ref, spec.Path = req.Ref, req.Path
+		if v, err = e.cachedCommit(spec, run); err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
+		}
+		if v.Name == "" {
+			if v, err = e.AddSource(ctx, req.Cwd, req.Arg, req.Ref, req.Path, req.Display); err != nil {
+				return store.Version{}, store.Origin{}, installBy{}, err
+			}
 		}
 		by = installBy{arg: v.Name, ref: req.Ref}
 	}
@@ -765,6 +884,14 @@ func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, c ScopeChoice, t
 				in.mcpServers = append(in.mcpServers, srvView)
 			}
 		}
+	}
+	// The project's scripts, when the install would write a copy for them to wrap.
+	if slices.ContainsFunc(res.Scripts, func(sr ScriptRun) bool { return sr.Source == ScriptProject }) {
+		scripts, err := e.scriptConsent(c.Scope)
+		if err != nil {
+			return InfoInstall{}, err
+		}
+		in.Consent = append(in.Consent, scripts...)
 	}
 	if c.Scope.Kind == target.Project && !dirExists(filepath.Join(c.Scope.ProjectDir, ".lola")) {
 		in.NewProject = true

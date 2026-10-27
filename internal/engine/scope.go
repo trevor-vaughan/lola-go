@@ -151,7 +151,7 @@ func (e *Engine) ResolveScope(req ScopeRequest) (ScopeResolution, error) {
 	if req.Project || req.ProjectDir != "" {
 		return ScopeResolution{Scopes: Scopes([]string{config.ScopeProject}, root, SourceFlag), ProjectRoot: root, Found: found}, nil
 	}
-	cfg, err := config.LoadConfig(e.Paths.Config)
+	cfg, err := config.LoadConfig(e.Paths.Config, e.Paths.Home)
 	if err != nil {
 		return ScopeResolution{}, err
 	}

@@ -161,6 +161,12 @@ linters:
       - path: internal/testenv/
         linters: [gosec]
         text: G504
+      # G703 (taint: an environment-derived path reaching a file write) flags spec setups, whose
+      # paths come from paths.Resolve(os.Getenv) under testenv.Isolate's temporary directories
+      # (R-9-U11). Production code keeps it.
+      - path: _test\.go$
+        linters: [gosec]
+        text: G703
 formatters:
   enable: [gofmt]
   exclusions:

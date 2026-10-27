@@ -228,6 +228,17 @@ right after a bare `--trust`: write it first, or after `--`).
   later run with the same digests asks nothing. On a CI machine whose `$XDG_STATE_HOME`
   persists between jobs, one job's `--trust=hooks` covers the next job that installs the same
   hooks; run each job with a fresh `XDG_STATE_HOME` for consent per job.
+- **Project scripts.** A project's `pre_install:` and `post_install:` in `project.yml` run your
+  teammates' code around every module copy a sync installs ([Install
+  scripts](../usage.md#install-scripts)); they are not entries, so `--trust=entries` never covers
+  them. Each is consented per project, event and the script's sha256: a sync asks about a script
+  it has no consent for even when it installs nothing, so a pulled `project.yml` that adds one,
+  or a pulled edit of the script, asks before anything runs it. Off a terminal an untrusted
+  `pre_install` refuses: `lola sync needs your trust for the pre-install script ci/check.sh of
+  this project (new), and there is no terminal to ask on`, hinting `lola info` of a module it
+  installs, then your run with `--trust=scripts`. An untrusted `post_install` is skipped with a
+  warning and stays pending on the modules it would have wrapped; `lola sync <module>
+  --trust=scripts` runs it alone in their copies. A `--user` sync never runs a project's scripts.
 - A project with no record in `trust.json` (a fresh clone, a moved directory, a deleted state
   directory) has every entry untrusted: the first sync shows them all and asks once. A manifest
   with no modules and no targets has nothing to trust.

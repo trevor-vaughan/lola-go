@@ -280,7 +280,7 @@ func load(path string, read func(string, int) (*yaml.Node, []byte, error), hint 
 		return nil, errs.WithHints(errors.New(err.Error()), hint)
 	}
 	if b == nil {
-		return nil, fmt.Errorf("%s: %w", path, fs.ErrNotExist)
+		return nil, fmt.Errorf("%s: %w", untrusted.Text(path, untrusted.MaxName), fs.ErrNotExist)
 	}
 	return parse(path, d, b, hint, remote)
 }
@@ -289,6 +289,7 @@ func load(path string, read func(string, int) (*yaml.Node, []byte, error), hint 
 // coached with hint. remote applies a remote profile's rules (checkRemote).
 func parse(path string, d *yaml.Node, b []byte, hint string, remote bool) (*Profile, error) {
 	fixHint := func(err error) error { return errs.WithHints(err, hint) }
+	shown := untrusted.Text(path, untrusted.MaxName)
 	p := &Profile{Version: Version, read: b, hint: hint, remote: remote}
 	root := yamldoc.Root(d)
 	if root == nil {
@@ -298,16 +299,16 @@ func parse(path string, d *yaml.Node, b []byte, hint string, remote bool) (*Prof
 		Version int `yaml:"version"`
 	}
 	if err := root.Decode(&v); err != nil {
-		return nil, fixHint(fmt.Errorf("%s: %s", path, untrusted.Text(err.Error(), 2*untrusted.MaxName)))
+		return nil, fixHint(fmt.Errorf("%s: %s", shown, untrusted.Text(err.Error(), 2*untrusted.MaxName)))
 	}
 	if v.Version > Version {
-		return nil, fixHint(errs.WithHints(fmt.Errorf("%s was written by a newer lola (profile version %d); upgrade lola", path, v.Version), "upgrade lola"))
+		return nil, fixHint(errs.WithHints(fmt.Errorf("%s was written by a newer lola (profile version %d); upgrade lola", shown, v.Version), "upgrade lola"))
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
 	f := file{Version: p.Version}
 	if err := dec.Decode(&f); err != nil && !errors.Is(err, io.EOF) {
-		return nil, fixHint(fmt.Errorf("%s: %s", path, untrusted.Text(err.Error(), 2*untrusted.MaxName)))
+		return nil, fixHint(fmt.Errorf("%s: %s", shown, untrusted.Text(err.Error(), 2*untrusted.MaxName)))
 	}
 	p.Version, p.Description, p.Targets, p.Extends = f.Version, f.Description, f.Targets, f.Extends
 	for _, e := range f.Modules {
@@ -320,7 +321,7 @@ func parse(path string, d *yaml.Node, b []byte, hint string, remote bool) (*Prof
 		return nil, ue
 	}
 	if err != nil {
-		return nil, fixHint(fmt.Errorf("%s:%w", path, err))
+		return nil, fixHint(fmt.Errorf("%s:%w", shown, err))
 	}
 	return p, nil
 }
@@ -420,7 +421,7 @@ func (p *Profile) ExtendsError(path string, k int) error {
 	if path == "" {
 		return errs.WithHints(err, hint)
 	}
-	return errs.WithHints(fmt.Errorf("%s:%w", path, err), hint, p.hint)
+	return errs.WithHints(fmt.Errorf("%s:%w", untrusted.Text(path, untrusted.MaxName), err), hint, p.hint)
 }
 
 // Pin is the file at path, from which p was read, with each entry of pins taking its commit and

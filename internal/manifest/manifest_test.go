@@ -2,6 +2,8 @@ package manifest_test
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +54,24 @@ var _ = Describe("manifest", func() {
 		Expect(m.Find("nope")).To(BeNil())
 	})
 
+	It("user.yml refuses pre_install and post_install, naming the file and line", func() {
+		user := filepath.Join(filepath.Dir(path), "user.yml")
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		for key, content := range map[string]string{
+			"pre_install":  "version: 1\npre_install: /bin/pre.sh\n",
+			"post_install": "version: 1\nmodules: []\npost_install: /bin/post.sh\n",
+		} {
+			Expect(os.WriteFile(user, []byte(content), 0o600)).To(Succeed())
+			line := strings.Count(content[:strings.Index(content, key)], "\n") + 1
+			_, err := manifest.LoadUser(user)
+			Expect(err).To(MatchError(fmt.Sprintf("%s:%d: %s: user.yml takes no install scripts; your own go in config.yaml", user, line, key)))
+			Expect(errs.Hints(err)).To(Equal([]string{"move it to config.yaml as an absolute path or ~/…"}))
+			m, err := manifest.Load(user) // project.yml's reading takes them
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.ScriptLine(key)).To(Equal(line))
+		}
+	})
+
 	Describe("Edit", func() {
 		sha1 := strings.Repeat("a", 40)
 		digest := "sha256:" + strings.Repeat("0", 64)
@@ -96,6 +116,19 @@ modules:
   - name: alpha
     source: tools/alpha # a folder
 `))
+		})
+
+		It("lola's edits of project.yml keep pre_install and post_install", func() {
+			write("version: 1\npre_install: ci/check.sh # the team's gate\nmodules:\n  - name: alpha\n    source: tools/alpha\npost_install: ci/after.sh\n")
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect([]string{m.PreInstall, m.PostInstall}).To(Equal([]string{"ci/check.sh", "ci/after.sh"}))
+			change := manifest.Change{Targets: []string{"claude-code"}, Set: []manifest.Entry{{Name: "zeta", Source: "tools/zeta"}}, Remove: []string{"alpha"}}
+			Expect(edit(change)).To(Equal("version: 1\ntargets: [claude-code]\npre_install: ci/check.sh # the team's gate\nmodules:\n" +
+				"  - name: zeta\n    source: tools/zeta\npost_install: ci/after.sh\n"))
+			applied := m.Applied(change)
+			Expect([]string{applied.PreInstall, applied.PostInstall}).To(Equal([]string{"ci/check.sh", "ci/after.sh"}))
+			Expect(applied.ScriptLine("post_install")).To(Equal(6))
 		})
 
 		It("appends a new entry and deletes a removed one with its comment", func() {
@@ -231,6 +264,47 @@ modules:
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dst).To(Equal(mustEval(real)))
 		})
+	})
+
+	It("names a file in a directory holding control or format characters only as text that cannot drive the terminal", func() {
+		dir := filepath.Join(filepath.Dir(filepath.Dir(path)), "evil\x1b[31m\u202eproj", ".lola")
+		shown := strings.NewReplacer("\x1b", "?", "\u202e", "?").Replace(dir)
+		Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+		project, user := filepath.Join(dir, "project.yml"), filepath.Join(dir, "user.yml")
+		refusals := map[string]string{
+			"version: 9\n":                  "written by a newer lola",
+			"version: 1\nbogus: 1\n":        "field bogus not found",
+			"version: [\n":                  "does not parse",
+			"version: 1\n---\nversion: 1\n": "holds more than one YAML document",
+			"version: 1\nmodules:\n  - &m\n    name: a\n    source: https://x/a.git\n  - *m\n": "anchors, aliases and merge keys",
+			"version: 1\nmodules:\n  - {name: kit, source: ../kit, vars: {Lang: go}}\n":        ":3: modules[0].vars.Lang",
+			"version: 1\nmodules:\n  - {name: f, source: '@acme/f'}\n":                         ":3: f's source is @acme/f",
+			"version: 1\n# " + strings.Repeat("x", 1<<20) + "\n":                               "is larger than",
+		}
+		check := func(err error, want, why string) {
+			GinkgoHelper()
+			Expect(err).To(MatchError(And(ContainSubstring(shown), ContainSubstring(want))), why)
+			Expect(err.Error()).NotTo(Or(ContainSubstring("\x1b"), ContainSubstring("\u202e")), why)
+		}
+		for content, want := range refusals {
+			Expect(os.WriteFile(project, []byte(content), 0o600)).To(Succeed())
+			_, err := manifest.Load(project)
+			check(err, want, content)
+		}
+		Expect(os.WriteFile(user, []byte("version: 1\npre_install: /bin/pre.sh\n"), 0o600)).To(Succeed())
+		_, err := manifest.LoadUser(user)
+		check(err, "user.yml takes no install scripts", "user.yml")
+
+		Expect(os.Remove(project)).To(Succeed())
+		Expect(os.Mkdir(project, 0o755)).To(Succeed())
+		_, err = manifest.Load(project)
+		check(err, "is not a regular file", "a directory")
+		Expect(os.Remove(project)).To(Succeed())
+
+		Expect(os.WriteFile(project, []byte("version: 1\n"), 0o000)).To(Succeed())
+		_, err = manifest.Load(project)
+		check(err, "permission denied", "unreadable")
+		Expect(errors.Is(err, fs.ErrPermission)).To(BeTrue(), "the cause is kept")
 	})
 
 	Describe("an entry whose source is a marketplace address", func() {
