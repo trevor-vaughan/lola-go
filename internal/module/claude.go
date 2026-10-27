@@ -232,10 +232,23 @@ func (c *claudeReader) isDir(rel string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// hasSkill reports whether rel is a directory holding SKILL.md.
-func (c *claudeReader) hasSkill(rel string) bool {
-	fi, err := os.Lstat(filepath.Join(c.dir, rel, "SKILL.md"))
-	return err == nil && fi.Mode().IsRegular()
+// hasSkill reports whether rel is a directory holding SKILL.md or SKILL.md.liquid as a regular
+// file, by the names it lists (skillFiles). When it does not and warn is set, the case variants
+// of those names it holds warn. A directory it cannot list refuses.
+func (c *claudeReader) hasSkill(rel string, warn bool) (bool, error) {
+	files, variants, err := skillFiles(c.dir, rel)
+	if err != nil {
+		return false, c.fail("skills", err.Error(), errs.Hints(err)...)
+	}
+	if slices.ContainsFunc(files, func(e fs.DirEntry) bool { return e.Type().IsRegular() }) {
+		return true, nil
+	}
+	if warn {
+		for _, n := range variants {
+			c.warnings = append(c.warnings, variantWarning(rel, n))
+		}
+	}
+	return false, nil
 }
 
 // claimName records that source provides the artifact of kind called name; sources maps
@@ -286,8 +299,14 @@ func (c *claudeReader) skills(module string) (*[]pathEntry, error) {
 				dirs = append(dirs, rel)
 			}
 		}
-	} else if len(dirs) == 0 && c.hasSkill(".") {
-		dirs = append(dirs, ".") // a plugin with only a root SKILL.md is one skill
+	} else if len(dirs) == 0 {
+		root, err := c.hasSkill(".", true)
+		if err != nil {
+			return nil, err
+		}
+		if root {
+			dirs = append(dirs, ".") // a plugin with only a root SKILL.md is one skill
+		}
 	}
 	out, sources := []pathEntry{}, map[string]string{}
 	add := func(rel string) error {
@@ -305,7 +324,9 @@ func (c *claudeReader) skills(module string) (*[]pathEntry, error) {
 		return nil
 	}
 	for _, d := range dirs {
-		if c.hasSkill(d) {
+		if ok, err := c.hasSkill(d, false); err != nil {
+			return nil, err
+		} else if ok {
 			if err := add(d); err != nil {
 				return nil, err
 			}
@@ -317,11 +338,17 @@ func (c *claudeReader) skills(module string) (*[]pathEntry, error) {
 		}
 		for _, e := range es {
 			child := path.Join(d, e.Name())
-			switch {
-			case e.Type()&fs.ModeSymlink != 0:
+			if e.Type()&fs.ModeSymlink != 0 {
 				c.warnings = append(c.warnings, safeName(child)+" is a symbolic link; skipped")
-			case !e.IsDir():
-			case c.hasSkill(child):
+				continue
+			}
+			if !e.IsDir() {
+				continue
+			}
+			switch ok, err := c.hasSkill(child, true); {
+			case err != nil:
+				return nil, err
+			case ok:
 				if err := add(child); err != nil {
 					return nil, err
 				}
@@ -333,7 +360,8 @@ func (c *claudeReader) skills(module string) (*[]pathEntry, error) {
 	return &out, nil
 }
 
-// markdown lists the .md files under rel, recursively, sorted; a symbolic link is refused.
+// markdown lists the .md and .md.liquid files under rel, recursively, sorted; a symbolic link is
+// refused.
 func (c *claudeReader) markdown(key, rel string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(filepath.Join(c.dir, rel), func(p string, d fs.DirEntry, err error) error {
@@ -348,7 +376,11 @@ func (c *claudeReader) markdown(key, rel string) ([]string, error) {
 		switch {
 		case d.Type()&fs.ModeSymlink != 0:
 			return c.fail(key, fmt.Sprintf("%s is a symbolic link", safeName(r)), "lola never follows links in a module")
-		case d.Type().IsRegular() && strings.HasSuffix(r, ".md"):
+		case d.IsDir() && IsTemplate(d.Name()):
+			return irregularFile(r, "template")
+		case !d.IsDir() && suffixVariant(d.Name()):
+			c.warnings = append(c.warnings, suffixWarning(r))
+		case d.Type().IsRegular() && (strings.HasSuffix(r, ".md") || IsTemplate(r)):
 			out = append(out, r)
 		}
 		return nil
@@ -384,7 +416,7 @@ func (c *claudeReader) files(key, def string, dirs bool, ps []string) ([]string,
 				return nil, err
 			}
 			out = append(out, found...)
-		case !strings.HasSuffix(rel, ".md"):
+		case !strings.HasSuffix(rel, ".md") && !IsTemplate(rel):
 			return nil, c.fail(key, fmt.Sprintf("path %q is not a .md file", safeName(p)), "list Markdown files, whose names end in .md")
 		default:
 			out = append(out, rel)
@@ -440,7 +472,7 @@ func (c *claudeReader) commands() (*[]commandEntry, error) {
 				switch {
 				case isDir:
 					return nil, c.fail(at, fmt.Sprintf("source %q is a directory", safeName(*cc.Source)), "name the command's .md file")
-				case !strings.HasSuffix(rel, ".md"):
+				case !strings.HasSuffix(rel, ".md") && !IsTemplate(rel):
 					return nil, c.fail(at, fmt.Sprintf("source %q is not a .md file", safeName(*cc.Source)), "list Markdown files, whose names end in .md")
 				}
 				usesDefault = usesDefault || strings.HasPrefix(rel, "commands/")
@@ -485,7 +517,7 @@ func (c *claudeReader) commands() (*[]commandEntry, error) {
 		return nil, err
 	}
 	for _, f := range files {
-		name := strings.TrimSuffix(path.Base(f), ".md")
+		name := ComponentName(f)
 		if err := derived("command", name, f); err != nil {
 			return nil, err
 		}
@@ -514,7 +546,7 @@ func (c *claudeReader) agents() (*[]pathEntry, error) {
 	}
 	out, sources := []pathEntry{}, map[string]string{}
 	for _, f := range files {
-		name := strings.TrimSuffix(path.Base(f), ".md")
+		name := ComponentName(f)
 		if err := derived("agent", name, f); err != nil {
 			return nil, err
 		}

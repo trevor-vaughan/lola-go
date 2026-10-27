@@ -238,6 +238,23 @@ func ReadableJSON(raw []byte) ([]byte, error) {
 	return reencode(raw, false)
 }
 
+// StandardJSON returns the JSONC b as standard JSON: comments and trailing commas become spaces,
+// so byte offsets and lines stay as written, and nothing is re-encoded, so a key given twice is
+// still there for a caller that refuses it. A b of only whitespace and comments holds no value:
+// it is returned empty.
+func StandardJSON(b []byte) ([]byte, error) {
+	v, err := hujson.Parse(b)
+	if err != nil {
+		// hujson parses only a value; b is none when, inside a list, it is a list of nothing.
+		if l, lerr := hujson.Parse(slices.Concat([]byte("[\n"), b, []byte("\n]"))); lerr == nil && len(l.Value.(*hujson.Array).Elements) == 0 {
+			return []byte{}, nil
+		}
+		return nil, err
+	}
+	v.Standardize()
+	return v.Pack(), nil
+}
+
 func reencode(raw []byte, escapeHTML bool) ([]byte, error) {
 	v, err := hujson.Parse(raw)
 	if err != nil {

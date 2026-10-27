@@ -1,0 +1,183 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  build-tags:
+    - integration
+
+linters:
+  enable:
+    # Core quality linters (non-controversial)
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+
+    # Bug detection
+    - errcheck
+    - bodyclose
+    - contextcheck
+    - nilerr
+    - copyloopvar # Detects loop variable issues
+
+    # Code quality
+    - gocyclo
+    - dupl
+    - unconvert
+    - misspell
+
+    # Security
+    - gosec
+
+    # Style (minimal, non-controversial)
+    - whitespace
+
+  disable:
+    - gochecknoglobals # Too restrictive
+    - err113 # Too strict for error handling (was goerr113)
+    - wrapcheck # Too strict for error handling
+    - exhaustruct # Too noisy
+    - funlen # Function length is contextual
+    - goconst # Too many false positives
+    - depguard # Can be too restrictive
+
+  exclusions:
+    paths:
+      - vendor
+      - third_party
+      - "expressions/scanner.go"
+      - ".*\\.pb\\.go$"
+      - ".*\\.gen\\.go$"
+
+    rules:
+      - path: values/drop_test\.go
+        linters: [staticcheck]
+        text: "S1005:"
+
+      # Exclude all linters for generated scanner file
+      - path: expressions/scanner.go
+        linters:
+          - gocyclo
+          - unconvert
+          - unused
+          - staticcheck
+          - govet
+          - ineffassign
+          - errcheck
+          - bodyclose
+          - contextcheck
+          - nilerr
+          - copyloopvar
+          - dupl
+          - misspell
+          - gosec
+          - whitespace
+
+      # Exclude third party, builtin, examples
+      - path: (third_party|builtin|examples|vendor)/
+        linters:
+          - gocyclo
+          - unconvert
+          - unused
+          - staticcheck
+          - govet
+          - ineffassign
+          - errcheck
+          - bodyclose
+          - contextcheck
+          - nilerr
+          - copyloopvar
+          - dupl
+          - misspell
+          - gosec
+          - whitespace
+
+      # Common exclusions for tests
+      - path: _test\.go
+        linters:
+          - gosec # Security issues less critical in tests
+          - dupl # Test code often has similar patterns
+          - errcheck # Error checking can be relaxed in tests
+          - goconst # Test strings don't need to be constants
+
+      # Generated code exclusions
+      - path: \.pb\.go$
+        linters:
+          - gocyclo
+          - unconvert
+          - unused
+          - staticcheck
+          - govet
+          - ineffassign
+          - errcheck
+          - bodyclose
+          - contextcheck
+          - nilerr
+          - copyloopvar
+          - dupl
+          - misspell
+          - gosec
+          - whitespace
+
+      - path: \.gen\.go$
+        linters:
+          - gocyclo
+          - unconvert
+          - unused
+          - staticcheck
+          - govet
+          - ineffassign
+          - errcheck
+          - bodyclose
+          - contextcheck
+          - nilerr
+          - copyloopvar
+          - dupl
+          - misspell
+          - gosec
+          - whitespace
+
+      # Common false positives
+      - text: "Error return value of .((Close|Write|Flush))` is not checked"
+        linters: [errcheck]
+
+      # Type assertions where we know the type is correct (pre-existing code)
+      - path: values/
+        text: "Error return value is not checked"
+        linters: [errcheck]
+
+  settings:
+    gocyclo:
+      min-complexity: 20
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    dupl:
+      threshold: 150
+    errcheck:
+      check-type-assertions: false  # Too noisy for pre-existing code
+      check-blank: false
+    gosec:
+      excludes: []
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # Too noisy for most projects
+    misspell:
+      locale: US
+
+issues:
+  fix: true # Auto-fix what can be fixed
+  max-same-issues: 3 # Show at most 3 issues of the same type
+  max-issues-per-linter: 50
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/osteele/liquid

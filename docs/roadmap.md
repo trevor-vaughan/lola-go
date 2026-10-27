@@ -74,8 +74,18 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      move and keep pickers with the review's equivalent command, the `--protect`/`--unprotect`
      flag aliases, and the `e2e:tidy` container suite across two file systems)
      (`docs/superpowers/specs/2026-10-22-plan-6d-tidy-design.md`).
-7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
-   using the jet engine, which needs dependency vetting before the plan starts.
+7. **Done: templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
+   using Liquid templates through `osteele/liquid`, chosen over jet because a recursive jet
+   template crashes the process; templates are untrusted, so rendering is bounded in time
+   and output and sees plain data only ([analysis](template_engine_analysis.md)). Delivered as
+   7.1 the sandbox, 7.2 whole-file `.md.liquid` templates, 7.3 partials and 7.4 per-target
+   attribute files and module vars (done: `.targets.yaml`/`.targets.jsonc` merged per target and
+   bound as `attrs`, `lola.yml` vars overridden by entries, trusted with them, recorded in
+   `rendered_with`, and shown by `lola cache info`), then 7.5 relaxed the author rules (done: a
+   frontmatter value refuses only when it renders a line break without `| json`, no key guard,
+   missing `attrs` keys read as nil, numbers in attributes and vars, missing partials refused
+   only when included, `..` in quoted strings, and the math filters)
+   (`docs/superpowers/specs/2026-10-22-plan-7-templating-design.md`).
 8. **End-to-end suites, container, and the full documentation set.** Venom suites against the
    built binary in a container.
 

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -149,6 +150,27 @@ var _ = Describe("Compute", func() {
 			Expect(p.Files).To(HaveLen(1))
 			Expect(p.Files[0].Logical).To(Equal(".claude/skills/s/ref/run.sh"))
 			Expect(p.Files[0].Mode).To(Equal(os.FileMode(0o755)))
+		})
+
+		It("writes a CopyTree's overlay as files of the tree, mode 0644, beside its walked files", func() {
+			src := filepath.Join(root, "src")
+			Expect(os.MkdirAll(filepath.Join(src, "ref"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(src, "ref", "a.md.liquid"), []byte("{{ target }}"), 0o644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(src, "ref", "run.sh"), []byte("R"), 0o700)).To(Succeed())
+			p, err := install("a", false, plan.Intent{Target: tgt, Kind: "skill", Op: plan.OpCopyTree, Src: src, Path: ".claude/skills/s",
+				Exclude: []string{"ref/a.md.liquid"}, Overlay: []plan.File{{Path: "ref/a.md", Data: []byte("claude-code")}}})
+			Expect(err).NotTo(HaveOccurred())
+			var got []string
+			for _, f := range p.Files {
+				got = append(got, fmt.Sprintf("%s %o", f.Logical, f.Mode))
+			}
+			Expect(got).To(ConsistOf(".claude/skills/s/ref/run.sh 755", ".claude/skills/s/ref/a.md 644"))
+
+			for _, bad := range []string{"../x.md", "/etc/x.md", "ref/../../x.md", ""} {
+				_, err := install("a", false, plan.Intent{Target: tgt, Kind: "skill", Op: plan.OpCopyTree, Src: src, Path: ".claude/skills/s",
+					Overlay: []plan.File{{Path: bad, Data: []byte("x")}}})
+				Expect(err).To(MatchError(fmt.Sprintf(".claude/skills/s: overlay file %q is not a path inside the tree", bad)), bad)
+			}
 		})
 
 		It("applies a mode-only change", func() {

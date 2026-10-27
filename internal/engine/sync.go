@@ -331,6 +331,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	// An activation builds the layers of its old and new active lists from one read of each
 	// profile; a list that does not change stops here, with its notice (Plan 6b §6.3 step 2).
 	names := req.Modules
+	active := led.Profiles // the active list the run renders templates with: an activation's new one
 	var act *activation
 	var repl *replacing
 	var layers []Layer
@@ -359,6 +360,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		top := e.manifestLayer(sc, man)
 		old, _ := desired(pl.assemble(top, led.Profiles))
 		layers, layerNotices = pl.assemble(top, act.list), pl.notices
+		active = act.list
 		// Precedence notices only for the modules the named profiles list.
 		want, overrides = desiredNoting(layers, func(m string) bool {
 			return slices.ContainsFunc(act.report.Named, func(q string) bool {
@@ -373,6 +375,16 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		names = []string{}
 		for _, c := range act.report.Changes {
 			names = append(names, c.name)
+		}
+		// A module that stays where it is renders again when its templates read the list.
+		rerender, err := e.rerenders(sc, led, act.list, e.Store.Load)
+		if err != nil {
+			return nil, err
+		}
+		for _, n := range rerender {
+			if !slices.Contains(names, n) && find(want, n) != nil {
+				names = append(names, n)
+			}
 		}
 		switch n := len(all) - len(act.report.Changes); {
 		case n == 1:
@@ -389,6 +401,11 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		if err := e.refuseMissingManifest(sc, want, led); err != nil {
 			return nil, err
 		}
+	}
+	// The trust diff and the first plan pass render under one budget (Plan 7 §6.2).
+	templates, err := e.newTemplateRun(sc, active)
+	if err != nil {
+		return nil, err
 	}
 	limit, err := e.limitTo(sc, layers, want, led, names)
 	if err != nil {
@@ -484,7 +501,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 			notFixed(&report, entries)
 			pinReasons(&report, entries, false)
-			if err := e.fillContent(sc, &report, entries, led, e.newProbeRun(ctx)); err != nil {
+			if err := e.fillContent(sc, &report, entries, led, templates, e.newProbeRun(ctx), opts.Display); err != nil {
 				return nil, err
 			}
 		}
@@ -528,7 +545,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		}
 		notFixed(&res.Trust, entries)
 		pinReasons(&res.Trust, entries, true)
-		if err := e.fillContent(sc, &res.Trust, entries, led, probes); err != nil {
+		if err := e.fillContent(sc, &res.Trust, entries, led, templates, probes, opts.Display); err != nil {
 			return nil, err
 		}
 		for i := range res.Trust.Changes {
@@ -543,7 +560,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
-	sp, err := e.planSync(sc, entries, led, sel, opts, probes, req.Modules)
+	sp, err := e.planSync(sc, entries, led, templates, sel, opts, probes, req.Modules)
 	if err != nil {
 		return nil, err
 	}
@@ -580,7 +597,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				}
 				res.Notices = append(res.Notices, Notice{Level: LevelWarn,
 					Text: "left as installed until you trust them: " + nameList(acc.leave) + " → " + e.SyncCommand(sc)})
-				if sp, err = e.planSync(sc, entries, led, sel, opts, probes, req.Modules); err != nil {
+				// the pass after the answer renders again under a budget of its own (Plan 7 §6.2)
+				fresh, err := e.newTemplateRun(sc, active)
+				if err != nil {
+					return nil, err
+				}
+				if sp, err = e.planSync(sc, entries, led, fresh, sel, opts, probes, req.Modules); err != nil {
 					return nil, err
 				}
 			}
@@ -869,8 +891,8 @@ type syncPlan struct {
 // them over the targets lock.json has it on, and its module copy, replaced (running its hooks)
 // when its version changes, the copy is gone or it adds a target, or to offer a pending post-install hook to a run
 // that names its module (named) or gives --allow-hooks.
-func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, sel *config.Selections, opts Options, probes *probeRun,
-	named []string) (syncPlan, error) {
+func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, templates *templateRun, sel *config.Selections, opts Options,
+	probes *probeRun, named []string) (syncPlan, error) {
 	sp := syncPlan{modules: []ModuleResult{}}
 	for _, se := range entries {
 		name := se.ent.Name
@@ -879,7 +901,8 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, se
 		if err != nil {
 			return syncPlan{}, err
 		}
-		intents, finds, notes, mr, err := e.planModule(sc, se.v, se.targets, &ent, x, opts, probes)
+		opts.entryFrom = se.from
+		intents, finds, notes, mr, err := e.planModule(sc, se.v, se.targets, &ent, x, opts, probes, templates)
 		if err != nil {
 			return syncPlan{}, err
 		}
@@ -893,7 +916,7 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, se
 		}
 		sp.changes = append(sp.changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
 			Entry: &ledger.Entry{From: se.from, Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Components: ent.Components.Clone(), Commit: se.v.Commit, Digest: se.v.Meta.Digest,
-				Targets: mr.Targets}})
+				Targets: mr.Targets, RenderedWith: mr.renderedWith}})
 		replace, err := needsCopy(e.files(sc).modules, name, installed, se.v.Meta.Digest)
 		if err != nil {
 			return syncPlan{}, err

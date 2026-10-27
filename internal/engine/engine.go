@@ -34,6 +34,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
+	"github.com/trevor-vaughan/lola-go/internal/templating"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -73,12 +74,17 @@ type Engine struct {
 	Getwd        func() (string, error)
 	HookTimeout  time.Duration
 	ProbeTimeout time.Duration
+	// TemplateLimits caps each template render and TemplateBudget each plan pass's rendering
+	// (Plan 7 §5.4), timed with Now; specs lower them.
+	TemplateLimits templating.Limits
+	TemplateBudget TemplateBudget
 }
 
 // New returns an Engine over the real store and every registered target.
 func New(p paths.Paths) *Engine {
 	return &Engine{Paths: p, Store: store.New(p, targets.IDs()), Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
-		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second}
+		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
+		TemplateBudget: TemplateBudget{RunOutput: 32 << 20, RunTime: 20 * time.Second}}
 }
 
 // Options apply to install, uninstall and render.
@@ -94,6 +100,12 @@ type Options struct {
 	// named is the modules the run's command line named (an install's), whose conflicts with
 	// another installed module's destinations hint that module's uninstall.
 	named []string
+	// freshPin says the entry planned was pinned by this run, a fresh install's, so lola check of
+	// its address fetches the version refused; no check reaches any other pin.
+	freshPin bool
+	// entryFrom is the layer the entry planned comes from, "" for the scope's manifest, which a
+	// refusal of its vars names (checkVars).
+	entryFrom string
 
 	// Install hooks (§9.1). AllowHooks grants consent for this run. Ask, when set, asks the
 	// user about hooks without a recorded consent; a yes is recorded. HookOutput receives
@@ -141,6 +153,8 @@ type ModuleResult struct {
 	// Market is the marketplace an install through @<market>/<entry> records (Plan 6c §7),
 	// through untrusted.Text; absent otherwise.
 	Market *manifest.MarketRef `json:"market,omitempty"`
+
+	renderedWith *ledger.RenderedWith // what its templates rendered with, which lock.json records
 }
 
 // Notice levels.
@@ -567,7 +581,8 @@ func pinMismatch(r InstallRequest) error {
 
 // planModule asks every effective target for the intents and findings of the module's
 // components that x does not exclude; ment is its manifest entry (nil when it has none).
-func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry, x config.Exclusions, opts Options, probes *probeRun) ([]plan.Intent, []target.Finding, []Notice, ModuleResult, error) {
+func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry, x config.Exclusions, opts Options, probes *probeRun,
+	run *templateRun) ([]plan.Intent, []target.Finding, []Notice, ModuleResult, error) {
 	r := resolveComponents(v.Module, x, ment.RulesOn())
 	m := r.module
 	f := e.files(sc)
@@ -578,6 +593,9 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	}
 	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{},
 		Skipped: r.skipped}
+	if err := e.checkVars(sc, m, ment, opts.entryFrom, v.Meta.Digest, opts.Display); err != nil {
+		return nil, nil, nil, mr, err
+	}
 	finds := warningFindings(m)
 	notes := r.notes
 	var intents []plan.Intent
@@ -594,7 +612,14 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 			return nil, nil, nil, mr, err
 		}
 		pctx.Root, pctx.Version = t.Root(sc.Kind, sc.ProjectDir, e.Paths), probes.version(t)
-		ins, fs, err := t.Plan(m, pctx)
+		rendered, err := e.renderTemplates(probes.ctx, m, run.data(id, sc, resolvedVars(m, ment)), run)
+		if err != nil {
+			if h := e.checkHint(sc, err, ment, opts.Display, opts.freshPin); h != "" {
+				err = errs.WithHints(err, h)
+			}
+			return nil, nil, nil, mr, err
+		}
+		ins, fs, err := t.Plan(rendered, pctx)
 		if err != nil {
 			return nil, nil, nil, mr, fmt.Errorf("%s for %s: %w", m.Name, id, err)
 		}
@@ -616,6 +641,11 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		}
 		mr.MCPServers = append(mr.MCPServers, MCPRun{Name: shown(s.Name), Transport: shown(s.Transport), Runs: shown(runs)})
 	}
+	var overrides map[string]any
+	if ment != nil {
+		overrides = ment.Vars
+	}
+	mr.renderedWith = renderedWith(m, run, overrides)
 	return intents, finds, notes, mr, nil
 }
 

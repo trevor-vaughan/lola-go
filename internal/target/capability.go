@@ -6,6 +6,7 @@ import (
 	"math"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/module"
 )
@@ -50,7 +51,10 @@ type Value struct {
 	// without it. A value the target does not keep (any, with Drop, or one it does not accept)
 	// is dropped quietly when empty and otherwise skips the artifact, forceably, with Guard's
 	// code, text and hint; --force renders the artifact without the key.
-	Guard  *Finding
+	Guard *Finding
+	// Fold makes the key also stand for every frontmatter key equal to it ignoring case. No two
+	// Fold keys of one KindSpec may be equal ignoring case: key would pick one at random.
+	Fold   bool
 	Bounds // the assistant versions that read this key
 }
 
@@ -62,6 +66,20 @@ type ContentRule struct {
 	Forceable        bool // for a skip: --force renders the artifact anyway
 	Code, Text, Hint string
 	Bounds           // the assistant versions that have this problem
+}
+
+// key returns the Value of frontmatter key k: its own, else that of a Fold key equal to it
+// ignoring case.
+func (s KindSpec) key(k string) (Value, bool) {
+	if v, ok := s.Keys[k]; ok {
+		return v, true
+	}
+	for name, v := range s.Keys {
+		if v.Fold && strings.EqualFold(name, k) {
+			return v, true
+		}
+	}
+	return Value{}, false
 }
 
 // Admit checks one artifact against caps (§5.1 of the target framework design) and returns its
@@ -94,7 +112,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	for _, k := range slices.Sorted(maps.Keys(doc.Frontmatter)) {
 		f := at
 		f.Severity, f.Code = SeverityWarn, "frontmatter-key-dropped"
-		v, known := spec.Keys[k]
+		v, known := spec.key(k)
 		known = known && v.newest()
 		switch {
 		case known && v.Guard != nil && (v.Drop != "" || !v.accepts(doc.Frontmatter[k])):

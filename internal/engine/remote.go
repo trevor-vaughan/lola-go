@@ -133,14 +133,15 @@ func fetchProfiles(ctx context.Context, spec source.Spec, run string) (source.Fe
 
 // remoteContent is how a remote profile's entries now differ from was, its entries before (nil
 // for one being added), as a trust diff (Plan 6b §6.5): every added or changed entry with the whole
-// content its pinned version brings, fetched into run (never cached), every file, MCP server and
+// content its pinned version brings, fetched into run (never cached) and rendered in templates,
+// which every profile of one lola profile command shares (Plan 7 §6.2), every file, MCP server and
 // hook listed as added whatever a scope's lock.json says (ruling R-6b3b-7): a planted lock.json
 // must not shorten what you consent to. led, the scope's, only annotates it (FilesNote). Each
 // entry is classified without looking at the disk and must name a remote source (D4, ruling
 // R-6b3b-5). An entry without targets, which the scope's manifest gives them at activation, is
 // planned for every assistant lola knows, as every diff's hooks are.
 func (e *Engine) remoteContent(ctx context.Context, sc Scope, q string, led *ledger.Ledger, was, now []manifest.Entry, run string,
-	probes *probeRun) ([]TrustChange, error) {
+	probes *probeRun, templates *templateRun, display []string) ([]TrustChange, error) {
 	view := func(es []manifest.Entry) trust.View { return trust.ViewOf(&manifest.Manifest{Modules: es}) }
 	rep := trustReport(trust.Check(&trust.Record{View: view(was), Exists: true}, view(now)))
 	for i := range rep.Changes {
@@ -153,7 +154,12 @@ func (e *Engine) remoteContent(ctx context.Context, sc Scope, q string, led *led
 		if err != nil {
 			return nil, err
 		}
-		hooks, err := e.contentHooks(sc, se.v, se.ent, probes)
+		se.from = ledger.FromProfile(q) // a refusal names the remote profile's layer, not the scope's manifest
+		hooks, err := e.contentHooks(sc, se.v, se.ent, se.from, probes, templates, display)
+		_, badVars := errors.AsType[*varsRefusal](err)
+		if _, refused := errors.AsType[*TemplateError](err); refused || badVars {
+			return nil, err // it names the module, its component and file itself
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s: runtime hooks: %w", se.ent.Name, err)
 		}

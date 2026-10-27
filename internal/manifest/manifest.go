@@ -3,9 +3,11 @@ package manifest
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -45,6 +47,10 @@ type Entry struct {
 	// §4.1, user decision of 2026-10-22): the module is those skills, commands and agents alone,
 	// in every fetch of the entry.
 	Components *source.Components `yaml:"components,omitempty"`
+	// Vars overrides the module's template vars, name → value: a string, a bool or a []string
+	// (Plan 7 §4.2). Read from the file's node by tag (EntryVars), as lola.yml vars are; the
+	// module's declaration is checked when it is planned.
+	Vars map[string]any `yaml:"vars,omitempty"`
 }
 
 // MarketRef names a marketplace by its name and its source, as the entry's file records them:
@@ -92,8 +98,13 @@ func Load(path string) (*Manifest, error) {
 		ue.Path, ue.Manifest = path, m
 		return nil, ue
 	}
+	if ve, ok := errors.AsType[*module.VarError](err); ok {
+		err = fmt.Errorf("%s:%d: %s", path, ve.Line, ve.Reason)
+	} else if err != nil {
+		err = fmt.Errorf("%s: %w", path, err)
+	}
 	if err != nil {
-		return nil, errs.WithHints(fmt.Errorf("%s: %w", path, err), "fix it by hand, or restore it from version control")
+		return nil, errs.WithHints(err, "fix it by hand, or restore it from version control")
 	}
 	return m, nil
 }
@@ -127,6 +138,11 @@ func (m *Manifest) validate(root *yaml.Node) error {
 			return errs.WithHints(fmt.Errorf("module %s is listed twice", e.Name), "keep one entry per module")
 		}
 		seen[e.Name] = true
+		vars, err := EntryVars(root, i) // an unresolved entry's too: lola install @m/x keeps them
+		if err != nil {
+			return err
+		}
+		m.Modules[i].Vars = vars
 		if mkt, mod, ok := Address(e.Source); ok {
 			unresolved = append(unresolved, Unresolved{Name: e.Name, Market: mkt, Module: mod, Line: SourceLine(root, "modules", i)})
 			continue
@@ -139,6 +155,49 @@ func (m *Manifest) validate(root *yaml.Node) error {
 		return &UnresolvedError{Entries: unresolved}
 	}
 	return nil
+}
+
+// EntryVars reads the vars of the i-th entry of the modules list in the mapping root (nil for
+// none) from its node, by tag, as module.ParseVars does: a refusal is a *module.VarError naming
+// modules[i].vars and the line.
+func EntryVars(root *yaml.Node, i int) (map[string]any, error) {
+	if root == nil {
+		return nil, nil
+	}
+	list := yamldoc.Value(root, "modules")
+	if list == nil || list.Kind != yaml.SequenceNode || i >= len(list.Content) || list.Content[i].Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	return module.ParseVars(yamldoc.Value(list.Content[i], "vars"), fmt.Sprintf("modules[%d].vars", i))
+}
+
+// SameVars reports whether two entries' vars are the same overrides, however they were decoded:
+// none and an empty mapping alike, a number by its kind and value (2.0 is not 2).
+func SameVars(a, b map[string]any) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return len(a) == len(b)
+	}
+	ja, errA := json.Marshal(module.Vars(a))
+	jb, errB := json.Marshal(module.Vars(b))
+	return errA == nil && errB == nil && bytes.Equal(ja, jb)
+}
+
+// CloneVars returns a copy of vars that shares no list with it.
+func CloneVars(vars map[string]any) map[string]any {
+	if vars == nil {
+		return nil
+	}
+	out := make(map[string]any, len(vars))
+	for k, v := range vars {
+		switch l := v.(type) {
+		case []string:
+			v = slices.Clone(l)
+		case []any:
+			v = slices.Clone(l)
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // Address reports whether source is a marketplace address, @<market>/<module>, both parts passing

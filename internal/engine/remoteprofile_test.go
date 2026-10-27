@@ -24,6 +24,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
 var _ = Describe("remote profiles", func() {
@@ -609,6 +610,84 @@ var _ = Describe("remote profiles", func() {
 			requests.Store(0)
 		})
 
+		It("remoteContent renders all its entries under one run", func() {
+			// Two pinned templated modules, 4 rendered bytes each for their one target: the diff of
+			// the profile renders both under one budget, which 6 bytes cannot hold.
+			entries := ""
+			for _, name := range []string{"ta", "tb"} {
+				w := filepath.Join(tmp, "work-"+name)
+				writeTree(w, map[string]string{"lola.yml": "name: " + name + "\ntargets: [claude-code]\n", "commands/" + name + ".md.liquid": "xxxx"})
+				gitIn(w, "init", "-q", "-b", "main")
+				gitIn(w, "add", "-A")
+				gitIn(w, "commit", "-q", "-m", "init")
+				gitIn(tmp, "clone", "-q", "--bare", w, filepath.Join(tmp, "srv", name+".git"))
+				u := url[:len(url)-len("example.git")] + name + ".git"
+				other := p
+				other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin-"+name), filepath.Join(tmp, "pin-"+name+".lock"), filepath.Join(tmp, "pin-"+name+"-staging")
+				v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
+				Expect(err).NotTo(HaveOccurred())
+				entries += "  - name: " + name + "\n    source: " + u + "\n    commit: " + gitIn(w, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n"
+			}
+			publish(map[string]string{"profiles/two.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + entries})
+			e.TemplateBudget.RunOutput = 6
+			_, err := add(engine.ProfileAddRequest{Name: "two", DryRun: true})
+			te, ok := errors.AsType[*engine.TemplateError](err)
+			Expect(ok).To(BeTrue(), "both entries' renders count against one budget: %v", err)
+			Expect(te.Code).To(Equal("template-run-budget"))
+			e.TemplateBudget.RunOutput = 8
+			res, err := add(engine.ProfileAddRequest{Name: "two", DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles[0].Changes).To(HaveLen(2))
+		})
+
+		It("a profile command renders all its profiles under one run", func() {
+			// Two profiles of one pinned templated module each, 4 rendered bytes for its one target:
+			// one lola profile --add or --update of both renders them under one budget, which 6
+			// bytes cannot hold.
+			entries := map[string]string{}
+			for _, name := range []string{"ta", "tb"} {
+				w := filepath.Join(tmp, "work-"+name)
+				writeTree(w, map[string]string{"lola.yml": "name: " + name + "\ntargets: [claude-code]\n", "commands/" + name + ".md.liquid": "xxxx"})
+				gitIn(w, "init", "-q", "-b", "main")
+				gitIn(w, "add", "-A")
+				gitIn(w, "commit", "-q", "-m", "init")
+				gitIn(tmp, "clone", "-q", "--bare", w, filepath.Join(tmp, "srv", name+".git"))
+				u := url[:len(url)-len("example.git")] + name + ".git"
+				other := p
+				other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin-"+name), filepath.Join(tmp, "pin-"+name+".lock"), filepath.Join(tmp, "pin-"+name+"-staging")
+				v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
+				Expect(err).NotTo(HaveOccurred())
+				entries[name] = "  - name: " + name + "\n    source: " + u + "\n    commit: " + gitIn(w, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n"
+			}
+			profiles := func(extra string) map[string]string {
+				return map[string]string{
+					"profiles/pa.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + entries["ta"] + extra,
+					"profiles/pb.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + entries["tb"] + extra,
+				}
+			}
+			both := func(names []string, _ int) ([]string, error) { return names, nil }
+			yes := func([]engine.RemoteProfile) (bool, error) { return true, nil }
+			publish(profiles(""))
+			e.TemplateBudget.RunOutput = 6
+			_, err := add(engine.ProfileAddRequest{Pick: both, DryRun: true})
+			te, ok := errors.AsType[*engine.TemplateError](err)
+			Expect(ok).To(BeTrue(), "both profiles' renders count against one budget: %v", err)
+			Expect(te.Code).To(Equal("template-run-budget"))
+			e.TemplateBudget.RunOutput = 8
+			res, err := add(engine.ProfileAddRequest{Pick: both, Consent: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Profiles).To(HaveLen(2))
+
+			publish(profiles("    rules: false\n"))
+			e.TemplateBudget.RunOutput = 6
+			up, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, All: true, Consent: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Updates).To(HaveExactElements(
+				And(HaveField("Profile", "remote:pa"), HaveField("Outcome", engine.UpdateUpdated)),
+				And(HaveField("Profile", "remote:pb"), HaveField("Outcome", engine.UpdateFailed),
+					HaveField("Error", ContainSubstring("rendering templates held more than 6 bytes of rendered templates")))))
+		})
+
 		It("adds a remote profile after showing its entries and the content they bring", func() {
 			var seen []engine.RemoteProfile
 			res, err := add(engine.ProfileAddRequest{Name: "go", Consent: accept(&seen)})
@@ -1166,6 +1245,58 @@ var _ = Describe("remote profiles", func() {
 			res, err = update(sc, "go", yes)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Notices).To(ConsistOf(HaveField("Text", HavePrefix("remote:go is up to date"))))
+		})
+
+		It("a vars-only update of a remote profile asks again, showing the vars change", func() {
+			kitWork := filepath.Join(tmp, "kit-work")
+			writeTree(kitWork, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n", "commands/k.md.liquid": "{{ vars.language }}\n"})
+			gitIn(kitWork, "init", "-q", "-b", "main")
+			gitIn(kitWork, "add", "-A")
+			gitIn(kitWork, "commit", "-q", "-m", "init")
+			gitIn(tmp, "clone", "-q", "--bare", kitWork, filepath.Join(tmp, "srv", "kit.git"))
+			kitURL, kitCommit := url[:len(url)-len("example.git")]+"kit.git", gitIn(kitWork, "rev-parse", "HEAD")
+			other := p
+			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
+			v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
+			Expect(err).NotTo(HaveOccurred())
+			entry := "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + kitURL + "\n    commit: " + kitCommit +
+				"\n    digest: " + v.Meta.Digest + "\n"
+			publish(map[string]string{"profiles/go.yml": entry})
+			_, err = update(user, "go", yes)
+			Expect(err).NotTo(HaveOccurred())
+
+			publish(map[string]string{"profiles/go.yml": entry + "    vars: {language: rust}\n"})
+			var seen []engine.RemoteProfile
+			_, err = update(user, "go", func(rps []engine.RemoteProfile) (bool, error) {
+				seen = rps
+				return true, nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(seen).To(HaveLen(1), "a vars-only edit is a change the user is asked about")
+			Expect(seen[0].Changes).To(ConsistOf(And(HaveField("Module", "kit"), HaveField("Kind", "changed"),
+				HaveField("Fields", ConsistOf(trust.FieldChange{Field: "vars", To: `language = "rust"`})))))
+			Expect(file()).To(HaveSuffix("    vars: {language: rust}\n"))
+		})
+
+		It("an override refusal of a remote profile's entry names the remote profile's layer", func() {
+			kitWork := filepath.Join(tmp, "kit-work")
+			writeTree(kitWork, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n", "commands/k.md.liquid": "{{ vars.language }}\n"})
+			gitIn(kitWork, "init", "-q", "-b", "main")
+			gitIn(kitWork, "add", "-A")
+			gitIn(kitWork, "commit", "-q", "-m", "init")
+			gitIn(tmp, "clone", "-q", "--bare", kitWork, filepath.Join(tmp, "srv", "kit.git"))
+			kitURL := url[:len(url)-len("example.git")] + "kit.git"
+			other := p
+			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
+			v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
+			Expect(err).NotTo(HaveOccurred())
+			publish(map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + kitURL +
+				"\n    commit: " + gitIn(kitWork, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n    vars: {lang: rust}\n"})
+			res, err := update(user, "go", yes)
+			Expect(err).NotTo(HaveOccurred(), "a profile's failure is its own")
+			Expect(res.Updates).To(ConsistOf(And(HaveField("Outcome", "failed"),
+				HaveField("Error", "profile:remote:go: modules[kit].vars.lang: kit declares no var lang; it declares language"))),
+				"not user.yml, which holds no such entry")
 		})
 
 		It("applies only what the update moves, counting what else is pending", func() {

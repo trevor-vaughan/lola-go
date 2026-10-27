@@ -37,12 +37,19 @@ type Intent struct {
 
 	Src     string   // CopyTree: absolute source directory
 	Exclude []string // CopyTree: Src-relative slash paths to skip
+	Overlay []File   // CopyTree: files written into the tree that Src does not hold as they are (rendered templates)
 
 	Pointer string          // SetJSON: RFC 6901 pointer to an object member; AddJSONMember: to the array
 	Value   []byte          // SetJSON: standard JSON
 	Member  json.RawMessage // AddJSONMember: the element lola owns in the array, any JSON value (§6.4, Plan 5b §7.2)
 
 	Consent *HookConsent // set when the intent installs runtime hooks; the engine writes it only with consent
+}
+
+// File is one file of a CopyTree's Overlay: Path is relative to the tree's Path.
+type File struct {
+	Path string
+	Data []byte
 }
 
 // HookConsent marks an intent that installs runtime hooks into an assistant (Plan 5b design

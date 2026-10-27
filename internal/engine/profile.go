@@ -105,16 +105,24 @@ func desiredNoting(layers []Layer, noted func(module string) bool) ([]Wanted, []
 // sameEntry reports whether two entries for one module ask for the same thing.
 func sameEntry(a, b manifest.Entry) bool {
 	return a.Source == b.Source && a.Ref == b.Ref && a.Path == b.Path && a.Commit == b.Commit && a.Digest == b.Digest &&
-		slices.Equal(a.Targets, b.Targets) && a.RulesOn() == b.RulesOn()
+		slices.Equal(a.Targets, b.Targets) && a.RulesOn() == b.RulesOn() && manifest.SameVars(a.Vars, b.Vars)
 }
 
 // overrideNotice is the notice of a layer's entry replacing a lower layer's (Plan 6b §6.2):
 // "gopls: project.yml overrides profile:user:go (v2.0 over v1.2)", the versions left out when
-// they read alike.
+// they read alike; when the replaced entry set vars the winner does not repeat, it says they are
+// dropped, as the winner replaces them whole (Plan 7 §4.2).
 func overrideNotice(ent, prev manifest.Entry, layer, under string) Notice {
 	text := shown(ent.Name) + ": " + layer + " overrides " + under
 	if now, was := entryVersion(ent), entryVersion(prev); now != was {
 		text += " (" + now + " over " + was + ")"
+	}
+	if len(prev.Vars) > 0 && !manifest.SameVars(prev.Vars, ent.Vars) {
+		sets := "none"
+		if len(ent.Vars) > 0 {
+			sets = "its own"
+		}
+		text += "; " + shown(ent.Name) + "'s vars from " + under + " are dropped: the entry from " + layer + " sets " + sets
 	}
 	return Notice{Level: LevelWarn, Text: text}
 }

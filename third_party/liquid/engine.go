@@ -1,0 +1,197 @@
+package liquid
+
+import (
+	"io"
+
+	"github.com/osteele/liquid/filters"
+	"github.com/osteele/liquid/render"
+	"github.com/osteele/liquid/tags"
+)
+
+// An Engine parses template source into renderable text.
+//
+// An engine can be configured with additional filters and tags.
+type Engine struct{ cfg render.Config }
+
+// NewEngine returns a new Engine.
+func NewEngine() *Engine {
+	e := Engine{render.NewConfig()}
+	filters.AddStandardFilters(&e.cfg)
+	tags.AddStandardTags(&e.cfg)
+
+	return &e
+}
+
+// NewBasicEngine returns a new Engine without the standard filters or tags.
+func NewBasicEngine() *Engine {
+	return &Engine{render.NewConfig()}
+}
+
+// RegisterBlock defines a block e.g. {% tag %}…{% endtag %}.
+func (e *Engine) RegisterBlock(name string, td Renderer) {
+	e.cfg.AddBlock(name).Renderer(func(w io.Writer, ctx render.Context) error {
+		s, err := td(ctx)
+		if err != nil {
+			return err
+		}
+
+		_, err = io.WriteString(w, s)
+
+		return err
+	})
+}
+
+// RegisterFilter defines a Liquid filter, for use as `{{ value | my_filter }}` or `{{ value | my_filter: arg }}`.
+//
+// A filter is a function that takes at least one input, and returns one or two outputs.
+// If it returns two outputs, the second must have type error.
+//
+// Examples:
+//
+// * https://github.com/osteele/liquid/blob/main/filters/standard_filters.go
+//
+// * https://github.com/osteele/gojekyll/blob/master/filters/filters.go
+func (e *Engine) RegisterFilter(name string, fn any) {
+	e.cfg.AddFilter(name, fn)
+}
+
+// RegisterTag defines a tag e.g. {% tag %}.
+//
+// Further examples are in https://github.com/osteele/gojekyll/blob/master/tags/tags.go
+func (e *Engine) RegisterTag(name string, td Renderer) {
+	// For simplicity, don't expose the two stage parsing/rendering process to clients.
+	// Client tags do everything at runtime.
+	e.cfg.AddTag(name, func(_ string) (func(io.Writer, render.Context) error, error) {
+		return func(w io.Writer, ctx render.Context) error {
+			s, err := td(ctx)
+			if err != nil {
+				return err
+			}
+
+			_, err = io.WriteString(w, s)
+
+			return err
+		}, nil
+	})
+}
+
+func (e *Engine) RegisterTemplateStore(templateStore render.TemplateStore) {
+	e.cfg.TemplateStore = templateStore
+}
+
+// StrictVariables causes the renderer to error when the template contains an undefined variable.
+func (e *Engine) StrictVariables() {
+	e.cfg.StrictVariables = true
+}
+
+// LaxFilters causes the renderer to silently pass through the input value
+// when the template contains an undefined filter, matching Shopify Liquid behavior.
+// By default, undefined filters cause an error.
+func (e *Engine) LaxFilters() {
+	e.cfg.LaxFilters = true
+}
+
+// EnableJekyllExtensions enables Jekyll-specific extensions to Liquid.
+// This includes support for dot notation in assign tags (e.g., {% assign page.canonical_url = value %}).
+// Note: This is not part of the Shopify Liquid standard but is used in Jekyll and Gojekyll.
+func (e *Engine) EnableJekyllExtensions() {
+	e.cfg.JekyllExtensions = true
+}
+
+// ParseTemplate creates a new Template using the engine configuration.
+func (e *Engine) ParseTemplate(source []byte) (*Template, SourceError) {
+	return newTemplate(&e.cfg, source, "", 0)
+}
+
+// ParseString creates a new Template using the engine configuration.
+func (e *Engine) ParseString(source string) (*Template, SourceError) {
+	return e.ParseTemplate([]byte(source))
+}
+
+// ParseTemplateLocation is the same as ParseTemplate, except that the source location is used
+// for error reporting and for the {% include %} tag.
+//
+// The path and line number are used for error reporting.
+// The path is also the reference for relative pathnames in the {% include %} tag.
+func (e *Engine) ParseTemplateLocation(source []byte, path string, line int) (*Template, SourceError) {
+	return newTemplate(&e.cfg, source, path, line)
+}
+
+// ParseAndRender parses and then renders the template.
+func (e *Engine) ParseAndRender(source []byte, b Bindings) ([]byte, SourceError) {
+	tpl, err := e.ParseTemplate(source)
+	if err != nil {
+		return nil, err
+	}
+
+	return tpl.Render(b)
+}
+
+// ParseAndFRender parses and then renders the template into w.
+func (e *Engine) ParseAndFRender(w io.Writer, source []byte, b Bindings) SourceError {
+	tpl, err := e.ParseTemplate(source)
+	if err != nil {
+		return err
+	}
+
+	return tpl.FRender(w, b)
+}
+
+// ParseAndRenderString is a convenience wrapper for ParseAndRender, that takes string input and returns a string.
+func (e *Engine) ParseAndRenderString(source string, b Bindings) (string, SourceError) {
+	bs, err := e.ParseAndRender([]byte(source), b)
+	if err != nil {
+		return "", err
+	}
+
+	return string(bs), nil
+}
+
+// Delims sets the action delimiters to the specified strings, to be used in subsequent calls to
+// ParseTemplate, ParseTemplateLocation, ParseAndRender, or ParseAndRenderString. An empty delimiter
+// stands for the corresponding default: objectLeft = {{, objectRight = }}, tagLeft = {% , tagRight = %}
+func (e *Engine) Delims(objectLeft, objectRight, tagLeft, tagRight string) *Engine {
+	delims := []string{objectLeft, objectRight, tagLeft, tagRight}
+	defaults := []string{"{{", "}}", "{%", "%}"}
+	for i, delim := range delims {
+		if delim == "" {
+			delims[i] = defaults[i]
+		}
+	}
+	e.cfg.Delims = delims
+	return e
+}
+
+// ParseTemplateAndCache is the same as ParseTemplateLocation, except that the
+// source location is used for error reporting and for the {% include %} tag.
+// If parsing is successful, provided source is then cached, and can be retrieved
+// by {% include %} tags, as long as there is not a real file in the provided path.
+//
+// The path and line number are used for error reporting.
+// The path is also the reference for relative pathnames in the {% include %} tag.
+func (e *Engine) ParseTemplateAndCache(source []byte, path string, line int) (*Template, SourceError) {
+	t, err := e.ParseTemplateLocation(source, path, line)
+	if err != nil {
+		return t, err
+	}
+
+	e.cfg.Cache[path] = source
+
+	return t, err
+}
+
+// SetAutoEscapeReplacer enables auto-escape functionality where the output of expression blocks ({{ ... }}) is
+// passed though a render.Replacer during rendering, unless it's been marked as safe by applying the 'safe' filter.
+// This filter is automatically registered when this method is called. The filter must be applied last.
+// A replacer is provided for escaping HTML (see render.HtmlEscaper).
+func (e *Engine) SetAutoEscapeReplacer(replacer render.Replacer) {
+	e.cfg.SetAutoEscapeReplacer(replacer)
+}
+
+// UnregisterTag removes the named tag definition from the engine's configuration.
+// After calling UnregisterTag the tag will no longer be recognized by subsequent
+// parsing or rendering operations. The call is idempotent — unregistering a tag
+// that is not registered is a no-op.
+func (e *Engine) UnregisterTag(name string) {
+	e.cfg.UnregisterTag(name)
+}

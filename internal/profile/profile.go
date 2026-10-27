@@ -238,14 +238,15 @@ type file struct {
 // New manifest fields are refused in profiles by design: a profile entry carrying one is refused
 // at load as any unknown key is.
 type entry struct {
-	Name    string   `yaml:"name"`
-	Source  string   `yaml:"source"`
-	Ref     string   `yaml:"ref"`
-	Path    string   `yaml:"path"`
-	Commit  string   `yaml:"commit"`
-	Digest  string   `yaml:"digest"`
-	Targets []string `yaml:"targets"`
-	Rules   *bool    `yaml:"rules"`
+	Name    string         `yaml:"name"`
+	Source  string         `yaml:"source"`
+	Ref     string         `yaml:"ref"`
+	Path    string         `yaml:"path"`
+	Commit  string         `yaml:"commit"`
+	Digest  string         `yaml:"digest"`
+	Targets []string       `yaml:"targets"`
+	Rules   *bool          `yaml:"rules"`
+	Vars    map[string]any `yaml:"vars"` // replaced by what manifest.EntryVars reads from the node
 }
 
 // Load reads the profile at path once (Plan 6b §4.3, §6.1): through yamldoc.Read, as user.yml is
@@ -311,7 +312,7 @@ func parse(path string, d *yaml.Node, b []byte, hint string, remote bool) (*Prof
 	p.Version, p.Description, p.Targets, p.Extends = f.Version, f.Description, f.Targets, f.Extends
 	for _, e := range f.Modules {
 		p.Modules = append(p.Modules, manifest.Entry{Name: e.Name, Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest,
-			Targets: e.Targets, Rules: e.Rules})
+			Targets: e.Targets, Rules: e.Rules, Vars: e.Vars})
 	}
 	err := p.check(root)
 	if ue, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
@@ -382,6 +383,11 @@ func (p *Profile) check(root *yaml.Node) error {
 		if err := module.ValidateName("module", e.Name); err != nil {
 			return fmt.Errorf("%d: %w", line, err)
 		}
+		vars, err := manifest.EntryVars(root, i)
+		if err != nil {
+			return err // a *module.VarError, which starts with its line
+		}
+		e.Vars = vars
 		if slices.ContainsFunc(p.Modules[:i], func(o manifest.Entry) bool { return o.Name == e.Name }) {
 			return errs.WithHints(fmt.Errorf("%d: module %s is listed twice", line, e.Name), "keep one entry per module")
 		}

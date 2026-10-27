@@ -77,7 +77,8 @@ func (e *Engine) noTargets() error {
 func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error {
 	_, targets := errors.AsType[*untrustedTargetsError](err)
 	_, conflicts := errors.AsType[*plan.ConflictError](err)
-	if len(fetched) == 0 || targets || conflicts || errors.Is(err, ErrNotTrusted) {
+	_, template := errors.AsType[*TemplateError](err) // the same install refuses the same way
+	if len(fetched) == 0 || targets || conflicts || template || errors.Is(err, ErrNotTrusted) {
 		return err
 	}
 	cmds := make([]string, len(spec.Scopes))
@@ -153,6 +154,7 @@ type scopePlan struct {
 	untrustedTargets error
 	unresolved       bool // man holds a marketplace address (holdsAddress)
 	led              *ledger.Ledger
+	templates        *templateRun // the scope's one plan pass
 	layers           []Layer
 	targets          []string
 	given            []string
@@ -280,6 +282,9 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		}
 		plans[i] = &scopePlan{sc: si.Scope, man: man, loaded: man.Clone(), trust: rec, led: led, layers: layers, targets: si.Targets,
 			given: si.Targets, replace: si.Replace, unresolved: holdsAddress(man)}
+		if plans[i].templates, err = e.newTemplateRun(si.Scope, led.Profiles); err != nil {
+			return nil, err
+		}
 		if len(si.Targets) == 0 && rec != nil && len(man.Targets) > 0 && !slices.Equal(rec.View.Targets, man.Targets) {
 			plans[i].untrustedTargets = e.untrustedTargets(si.Scope, rec, spec.Modules, plans[i].unresolved)
 		}
@@ -798,7 +803,7 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 		return sp.untrustedTargets // the module would install to the top-level targets
 	}
 	if prev != nil {
-		ent.Rules = prev.Rules
+		ent.Rules, ent.Vars = prev.Rules, manifest.CloneVars(prev.Vars)
 	}
 	if opts.Rules != nil {
 		ent.Rules = nil
@@ -822,7 +827,8 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	if err != nil {
 		return err
 	}
-	intents, finds, notes, mr, err := e.planModule(sp.sc, v, modTargets, &ent, x, opts, probes)
+	opts.freshPin, opts.entryFrom = !keepPin, ""
+	intents, finds, notes, mr, err := e.planModule(sp.sc, v, modTargets, &ent, x, opts, probes, sp.templates)
 	if err != nil {
 		return err
 	}
@@ -830,7 +836,7 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: modTargets, Intents: intents,
 		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
-			Components: ent.Components.Clone()}})
+			Components: ent.Components.Clone(), RenderedWith: mr.renderedWith}})
 	// Hooks run only in a copy replaced from the hashed version, after the consent keyed on those
 	// bytes (Plan 6a §9.3 step 10, C1). A copy that needs no new version is replaced only to run
 	// them: Install keeps it when no hook runs, so what earlier hooks built in it stays. A target
@@ -1184,6 +1190,10 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 		names = append(names, name)
 	}
 	probes := e.newProbeRun(ctx)
+	templates, err := e.newTemplateRun(sc, led.Profiles)
+	if err != nil {
+		return nil, err
+	}
 	var changes []plan.ModuleChange
 	var copies []moduleCopy
 	for _, name := range names {
@@ -1219,14 +1229,15 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 		if err != nil {
 			return nil, err
 		}
-		intents, finds, notes, mr, err := e.planModule(sc, v, ts, ment, x, opts, probes)
+		opts.entryFrom = from
+		intents, finds, notes, mr, err := e.planModule(sc, v, ts, ment, x, opts, probes, templates)
 		if err != nil {
 			return nil, err
 		}
 		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
 			Entry: &ledger.Entry{From: from, Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Commit, Digest: v.Meta.Digest, Targets: mr.Targets,
-				Components: entry.Components.Clone()}})
+				Components: entry.Components.Clone(), RenderedWith: mr.renderedWith}})
 		replace, err := needsCopy(e.files(sc).modules, name, entry, v.Meta.Digest)
 		if err != nil {
 			return nil, err

@@ -144,6 +144,10 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		}
 	}
 	probes := e.newProbeRun(ctx)
+	templates, err := e.newTemplateRun(sc, led.Profiles) // one budget for every profile the command renders (Plan 7 §6.2)
+	if err != nil {
+		return nil, err
+	}
 	for _, name := range names {
 		p, b, err := profile.Fetched(f.Dir, name)
 		if err != nil {
@@ -154,7 +158,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		rp := RemoteProfile{Profile: shown(q), File: shown(e.profilePath(sc, profile.KindRemote, name)),
 			Source: shown(o.Source), Ref: shown(o.Ref), Path: shown(o.Path), Commit: shown(o.Commit), Digest: shown(o.Digest),
 			ComparedWith: scopeName(sc), Description: shown(p.Description), name: name, data: b, origin: o}
-		if rp.Changes, err = e.remoteContent(ctx, sc, q, led, nil, p.Entries(), run, probes); err != nil {
+		if rp.Changes, err = e.remoteContent(ctx, sc, q, led, nil, p.Entries(), run, probes, templates, outputOnly(req.Rerun)); err != nil {
 			return nil, err
 		}
 		res.Profiles = append(res.Profiles, rp)

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -82,6 +83,23 @@ type moduleView struct {
 	Rules       []string      `json:"rules"`
 	Hooks       []module.Hook `json:"hooks"`
 	Warnings    []string      `json:"warnings"`
+	// Plan 7: the vars the module declares, its template files, partials and attribute files,
+	// each author text, cleaned.
+	Vars       []varView `json:"vars"`
+	Templates  []string  `json:"templates"`
+	Partials   []string  `json:"partials"`
+	Attributes []string  `json:"attributes"`
+}
+
+// maxVarText is the longest var default cache info shows, as a var holds at most 4096 bytes.
+const maxVarText = 4096
+
+// varView is a var a module declares: its name, type (string, boolean or list) and default.
+type varView struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Default any    `json:"default"`
+	text    string // name = default, as the human view shows it
 }
 
 type headView struct {
@@ -93,7 +111,8 @@ func newModuleView(v store.Version, o store.Origin) moduleView {
 	m := v.Module
 	mv := moduleView{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName), Version: untrusted.Text(m.Version, untrusted.MaxName), Digest: v.Meta.Digest, Format: v.Meta.Format,
 		Source: o.Source, Type: o.Type, Path: o.Path, Heads: []headView{}, Skills: []string{}, Commands: []string{}, Agents: []string{},
-		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}}
+		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}, Vars: []varView{}, Templates: []string{},
+		Partials: []string{}, Attributes: []string{}}
 	for _, h := range o.Heads {
 		mv.Heads = append(mv.Heads, headView{Ref: h.Ref, Digest: h.Digest})
 	}
@@ -115,6 +134,34 @@ func newModuleView(v store.Version, o store.Origin) moduleView {
 	for _, h := range m.DeclaredHooks {
 		mv.Hooks = append(mv.Hooks, module.Hook{Event: h.Event, Script: untrusted.Text(h.Script, len(h.Script))})
 	}
+	for _, name := range slices.Sorted(maps.Keys(m.Vars)) {
+		vv := varView{Name: untrusted.Text(name, untrusted.MaxName), text: untrusted.Text(name, untrusted.MaxName) + " = " + module.VarText(m.Vars[name])}
+		switch d := m.Vars[name].(type) {
+		case bool:
+			vv.Type, vv.Default = "boolean", d
+		case int64, float64:
+			vv.Type, vv.Default = "number", d
+		case []string:
+			items := []string{}
+			for _, item := range d {
+				items = append(items, untrusted.Text(item, maxVarText))
+			}
+			vv.Type, vv.Default = "list", items
+		default: // a string
+			vv.Type, vv.Default = "string", untrusted.Text(fmt.Sprint(d), maxVarText)
+		}
+		mv.Vars = append(mv.Vars, vv)
+	}
+	for _, t := range m.Templates() {
+		mv.Templates = append(mv.Templates, untrusted.Text(t.File, untrusted.MaxName))
+	}
+	slices.Sort(mv.Templates)
+	for _, p := range slices.Sorted(maps.Keys(m.Partials)) {
+		mv.Partials = append(mv.Partials, untrusted.Text(p, untrusted.MaxName))
+	}
+	for _, f := range m.AttributeFiles() {
+		mv.Attributes = append(mv.Attributes, untrusted.Text(f, untrusted.MaxName))
+	}
 	mv.Warnings = append(mv.Warnings, m.Warnings...)
 	for _, n := range v.Meta.OthersPresent {
 		// A version fresh from cache add already carries its detection warnings.
@@ -134,24 +181,29 @@ func printModuleView(w io.Writer, s style, mv moduleView) {
 	if mv.Description != "" {
 		fmt.Fprintf(w, "  %s\n", mv.Description)
 	}
-	fmt.Fprintf(w, "  source:   %s (%s)\n", mv.Source, mv.Type)
+	fmt.Fprintf(w, "  %-11s %s (%s)\n", "source:", mv.Source, mv.Type)
 	if mv.Path != "" {
-		fmt.Fprintf(w, "  path:     %s\n", mv.Path)
+		fmt.Fprintf(w, "  %-11s %s\n", "path:", mv.Path)
 	}
-	fmt.Fprintf(w, "  format:   %s\n  digest:   %s\n", mv.Format, mv.Digest)
+	fmt.Fprintf(w, "  %-11s %s\n  %-11s %s\n", "format:", mv.Format, "digest:", mv.Digest)
 	for _, h := range mv.Heads {
 		ref := h.Ref
 		if ref == "" {
 			ref = "(default)"
 		}
-		fmt.Fprintf(w, "  head:     %s → %s\n", ref, h.Digest)
+		fmt.Fprintf(w, "  %-11s %s → %s\n", "head:", ref, h.Digest)
+	}
+	vars := make([]string, len(mv.Vars)) // language = "go"
+	for i, v := range mv.Vars {
+		vars[i] = v.text
 	}
 	for _, kv := range []struct {
 		k string
 		v []string
-	}{{"skills", mv.Skills}, {"commands", mv.Commands}, {"agents", mv.Agents}, {"mcp", mv.MCPServers}, {"rules", mv.Rules}} {
+	}{{"skills", mv.Skills}, {"commands", mv.Commands}, {"agents", mv.Agents}, {"mcp", mv.MCPServers}, {"rules", mv.Rules},
+		{"vars", vars}, {"templates", mv.Templates}, {"partials", mv.Partials}, {"attributes", mv.Attributes}} {
 		if len(kv.v) > 0 {
-			fmt.Fprintf(w, "  %-9s %s\n", kv.k+":", strings.Join(kv.v, ", "))
+			fmt.Fprintf(w, "  %-11s %s\n", kv.k+":", strings.Join(kv.v, ", "))
 		}
 	}
 	if len(mv.Hooks) > 0 {

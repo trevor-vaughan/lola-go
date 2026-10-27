@@ -82,6 +82,15 @@ var _ = Describe("the Claude Code plugin adapter", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(paths(m)["skills"]).To(Equal([]string{"a=skills/a", "solo=."}))
 		Expect(m.Skills[1].Exclude).To(ContainElements(".claude-plugin", "skills", "commands"))
+
+		Expect(os.RemoveAll(root)).To(Succeed())
+		m, err = detect(`{"name":"solo"}`, map[string]string{"SKILL.md": "---\ndescription: s\n---\n",
+			"_partials/h.liquid": "h\n", "_Partials/x.liquid": "x\n"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(paths(m)["skills"]).To(Equal([]string{"solo=."}))
+		if es, err := os.ReadDir(root); err == nil && len(es) == 4 { // .claude-plugin, SKILL.md and both: the file system keeps case
+			Expect(m.Skills[0].Exclude).To(ContainElements("_partials", "_Partials"), "a root skill copies neither the partials nor a case variant")
+		}
 	})
 
 	It("reads the default commands/ and agents/ recursively when the manifest does not set them", func() {
@@ -451,6 +460,30 @@ var _ = Describe("module formats reading an unreadable directory", func() {
 		_, err = module.Detect(root, "x", targets.IDs())
 		Expect(err).To(MatchError(ContainSubstring("dev.getlola/commands: permission denied")))
 		Expect(err.Error()).NotTo(ContainSubstring(root))
+	})
+
+	It("refuses an unreadable skill directory with a hint, never skipping it as one without SKILL.md", func() {
+		if os.Geteuid() == 0 {
+			Skip("root ignores directory permissions")
+		}
+		root := filepath.Join(testenv.Isolate(), "plugin")
+		write(root, map[string]string{".claude-plugin/plugin.json": `{"name":"p"}`, "skills/a/SKILL.md": "A.\n", "skills/b/SKILL.md": "B.\n"})
+		locked := filepath.Join(root, "skills", "b")
+		Expect(os.Chmod(locked, 0o000)).To(Succeed())
+		DeferCleanup(os.Chmod, locked, os.FileMode(0o755))
+		_, err := module.Detect(root, "x", targets.IDs())
+		Expect(err).To(MatchError(".claude-plugin/plugin.json: skills: skills/b: permission denied"))
+		Expect(errs.Hints(err)).To(Equal([]string{"check that the path can be read"}))
+
+		By("an Agent Plugins package refuses it the same way")
+		Expect(os.Chmod(locked, 0o755)).To(Succeed())
+		Expect(os.RemoveAll(filepath.Join(root, ".claude-plugin"))).To(Succeed())
+		write(root, map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"p"}`,
+			"skills/a/SKILL.md": "---\nname: a\ndescription: A\n---\nA.\n", "skills/b/SKILL.md": "---\nname: b\ndescription: B\n---\nB.\n"})
+		Expect(os.Chmod(locked, 0o000)).To(Succeed())
+		_, err = module.Detect(root, "x", targets.IDs())
+		Expect(err).To(MatchError("skills/b: permission denied"))
+		Expect(errs.Hints(err)).To(Equal([]string{"check that the path can be read"}))
 	})
 
 	It("names an unreadable adapter manifest inside the module", func() {

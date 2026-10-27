@@ -16,6 +16,8 @@ Guidance for coding agents working on lola (Go).
 - **Targets** are one package each under `internal/target/<name>`, listed in `internal/targets`.
   They render through `target.Admit` and their capability table; anything they cannot express
   is a `target.Finding`, never an error. Import boundaries are enforced by `depguard`.
+- **Templates** render only through `internal/templating`; it alone imports liquid and reads no
+  files.
 - **No package-level mutable state.** Paths come from `paths.Resolve(getenv)` in `main`; cobra
   globals are set once behind `sync.Once`.
 - **Errors coach.** Attach next steps with `errs.WithHints`; the CLI prints them as `hint:` lines

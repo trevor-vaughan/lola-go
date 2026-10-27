@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 
@@ -165,11 +166,17 @@ func Compute(req Request) (*Plan, error) {
 	return p.finish()
 }
 
-// expand turns a CopyTree into one WriteFile per regular file. Reads go through os.Root, so
-// nothing outside Src can be reached even if the tree changes during the walk.
+// expand turns a CopyTree into one WriteFile per regular file and one per Overlay file, mode
+// 0644, refusing an Overlay path that leaves the tree. Reads go through os.Root, so nothing
+// outside Src can be reached even if the tree changes during the walk.
 func expand(in Intent) (out []Intent, err error) {
 	if in.Op != OpCopyTree {
 		return []Intent{in}, nil
+	}
+	for _, f := range in.Overlay {
+		if !filepath.IsLocal(f.Path) {
+			return nil, fmt.Errorf("%s: overlay file %q is not a path inside the tree", in.Path, f.Path)
+		}
 	}
 	root, err := os.OpenRoot(in.Src)
 	if err != nil {
@@ -201,6 +208,9 @@ func expand(in Intent) (out []Intent, err error) {
 			Data: data, Mode: fsx.NormalizeMode(fi.Mode())})
 		return nil
 	})
+	for _, f := range in.Overlay {
+		out = append(out, Intent{Target: in.Target, Kind: in.Kind, Op: OpWriteFile, Path: path.Join(in.Path, f.Path), Data: f.Data, Mode: 0o644})
+	}
 	return out, err
 }
 

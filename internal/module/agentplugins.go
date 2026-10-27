@@ -253,7 +253,8 @@ func (a *apReader) extensions() (map[string]map[string]json.RawMessage, error) {
 }
 
 // skills discovers the portable skills (§6.2): skills/*/SKILL.md, one level deep. A skill that
-// breaks the agentskills.io rules is reported and skipped.
+// breaks the agentskills.io rules is reported and skipped; a skill directory lola cannot read
+// refuses, as in the other formats.
 func (a *apReader) skills() ([]pathEntry, error) {
 	out := []pathEntry{}
 	if !a.isDir("skills") {
@@ -275,19 +276,30 @@ func (a *apReader) skills() ([]pathEntry, error) {
 		if !e.IsDir() {
 			continue
 		}
-		fi, err := os.Lstat(filepath.Join(a.dir, rel, "SKILL.md"))
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
+		files, variants, err := skillFiles(a.dir, rel)
+		if err != nil {
+			return nil, err
+		}
+		if len(files) == 0 {
+			for _, n := range variants {
+				a.warnings = append(a.warnings, variantWarning(rel, n))
+			}
 			a.warnings = append(a.warnings, safeName(rel)+" has no SKILL.md; skipped")
 			continue
-		case err != nil:
-			a.warnings = append(a.warnings, fmt.Sprintf("%s/SKILL.md cannot be read: %s; skipped", safeName(rel), safeName(untrusted.CleanErr(err).Error())))
+		}
+		f := files[len(files)-1] // SKILL.md.liquid when it exists: it sorts last
+		file := f.Name()
+		switch {
+		case f.Type()&fs.ModeSymlink != 0:
+			a.warnings = append(a.warnings, safeName(rel)+"/"+file+" is a symbolic link; skipped")
 			continue
-		case fi.Mode()&fs.ModeSymlink != 0:
-			a.warnings = append(a.warnings, safeName(rel)+"/SKILL.md is a symbolic link; skipped")
+		case !f.Type().IsRegular():
+			a.warnings = append(a.warnings, safeName(rel)+"/"+file+" is not a regular file; skipped")
 			continue
-		case !fi.Mode().IsRegular():
-			a.warnings = append(a.warnings, safeName(rel)+"/SKILL.md is not a regular file; skipped")
+		}
+		if file == skillTemplate {
+			// its frontmatter exists only once rendered, where the name check runs (Plan 7 §5.6)
+			out = append(out, pathEntry{Path: rel})
 			continue
 		}
 		if why := agentSkill(a.dir, rel, e.Name()); why != "" {
@@ -327,6 +339,12 @@ func agentSkill(dir, rel, dirName string) string {
 	if err != nil {
 		return "its frontmatter does not parse"
 	}
+	return agentSkillDoc(doc, dirName)
+}
+
+// agentSkillDoc checks a skill's parsed SKILL.md against agentskills.io and says what is wrong,
+// or "".
+func agentSkillDoc(doc Doc, dirName string) string {
 	name, ok := doc.Frontmatter["name"].(string)
 	switch {
 	case !ok || len(name) > 64 || !skillNameRE.MatchString(name):
@@ -583,8 +601,14 @@ func (a *apReader) namespaces(exts map[string]map[string]json.RawMessage, module
 				return nil, nil, nil, ioFail(dir, err)
 			}
 			for _, e := range es {
-				name, ok := strings.CutSuffix(e.Name(), ".md")
-				if !ok || !e.Type().IsRegular() {
+				name := ComponentName(e.Name())
+				switch {
+				case e.IsDir() && IsTemplate(e.Name()):
+					return nil, nil, nil, irregularFile(path.Join(dir, e.Name()), "template")
+				case !e.IsDir() && suffixVariant(e.Name()):
+					a.warnings = append(a.warnings, suffixWarning(path.Join(dir, e.Name())))
+					continue
+				case !strings.HasSuffix(e.Name(), ".md") && !IsTemplate(e.Name()) || !e.Type().IsRegular():
 					continue
 				}
 				single := strings.TrimSuffix(kind, "s")
@@ -646,7 +670,7 @@ func (a *apReader) nsPath(ns, key string, raw json.RawMessage, def string, dir b
 		return "", apFail(apManifest, field, fmt.Sprintf("path %q is not a directory", safeName(p)), "point it at a directory in the package")
 	case !dir && isDir:
 		return "", apFail(apManifest, field, fmt.Sprintf("path %q is not a file", safeName(p)), "point it at a file in the package")
-	case !dir && !strings.HasSuffix(rel, ".md"):
+	case !dir && !strings.HasSuffix(rel, ".md") && !IsTemplate(rel):
 		return "", apFail(apManifest, field, fmt.Sprintf("path %q is not a .md file", safeName(p)), "point it at a markdown file")
 	}
 	return rel, nil

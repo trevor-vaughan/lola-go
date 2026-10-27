@@ -71,9 +71,13 @@ var toolName = regexp.MustCompile(`^[a-z0-9*-]+(_[a-z0-9*-]+)*$`)
 // shapes of Gemini's localAgentSchema, which rejects the agent on any mismatch.
 var caps = target.Capabilities{
 	Kinds: map[string]target.KindSpec{
-		"skill": {Open: true, Keys: map[string]target.Value{"description": {Shape: target.ShapeString}},
+		"skill": {Open: true, Keys: map[string]target.Value{"description": {Shape: target.ShapeString},
+			"hooks":       {Drop: target.SeverityWarn, Fold: true, Note: "gemini-cli runs no hooks from a skill's frontmatter"},
+			"mcpServers":  {Drop: target.SeverityWarn, Fold: true, Note: "gemini-cli starts no MCP servers from a skill's frontmatter"},
+			"mcp_servers": {Drop: target.SeverityWarn, Fold: true, Note: "gemini-cli starts no MCP servers from a skill's frontmatter"}},
 			Required: []string{"description"}},
-		"command": {Keys: map[string]target.Value{"description": {Shape: target.ShapeString}}},
+		"command": {Keys: map[string]target.Value{"description": {Shape: target.ShapeString},
+			"mcp_servers": {Drop: target.SeverityWarn, Fold: true, Note: "gemini-cli starts no MCP servers from a command's frontmatter"}}},
 		"agent": {Keys: map[string]target.Value{
 			"name":         {Shape: target.ShapeString, Pattern: agentName},
 			"description":  {Shape: target.ShapeString},
@@ -158,8 +162,7 @@ func (g Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		}
 		out = append(out, plan.Intent{Target: id, Kind: "command", Op: plan.OpWriteFile, Path: ".gemini/commands/" + cmd.Name + ".toml", Data: data, Mode: 0o644})
 		if cmd.SidecarDir != "" {
-			out = append(out, plan.Intent{Target: id, Kind: "command", Op: plan.OpCopyTree,
-				Src: filepath.Join(ctx.ContentDir, cmd.SidecarDir), Path: ".gemini/commands/" + cmd.Name})
+			out = append(out, target.SidecarTree(id, cmd, ctx, ".gemini/commands/"+cmd.Name, nil))
 		}
 	}
 	for _, a := range m.Agents {

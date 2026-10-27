@@ -1,0 +1,180 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go-version: ['1.25.x', '1.26.x']
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Install dependencies
+      run: make deps
+
+    - name: Build
+      run: make build
+
+    - name: Test
+      run: make test
+
+  build-32bit:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.x
+
+    - name: Build for 32-bit ARM
+      run: GOOS=linux GOARCH=arm GOARM=7 go build ./...
+
+    - name: Build for 32-bit x86
+      run: GOOS=linux GOARCH=386 go build ./...
+
+  vet:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.x
+
+    - name: Install dependencies
+      run: make deps
+
+    - name: Run go vet
+      run: make vet
+
+  format-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.x
+
+    - name: Check formatting
+      run: |
+        make fmt
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Code is not formatted. Please run 'make fmt'"
+          git diff
+          exit 1
+        fi
+
+  verify-generated:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.x
+
+    - name: Install Ragel
+      run: sudo apt-get update && sudo apt-get install --yes ragel
+
+    - name: Regenerate generated files
+      run: make generate
+
+    - name: Check for differences
+      run: |
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Generated files are out of date. Please run 'make generate' and commit the results."
+          git diff
+          exit 1
+        fi
+
+  verify-mod:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.x
+
+    - name: Check go.mod
+      run: make check-mod
+
+  coverage:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.26.x
+
+    - name: Install dependencies
+      run: make deps
+
+    - name: Generate coverage report
+      run: make coverage
+
+    - name: Extract coverage percentage
+      id: coverage
+      run: |
+        COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+        echo "Coverage: $COVERAGE%"
+
+    - name: Create coverage badge
+      uses: schneegans/dynamic-badges-action@v1.7.0
+      if: ${{ (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main') && env.GIST_SECRET != '' }}
+      continue-on-error: true
+      env:
+        GIST_SECRET: ${{ secrets.GIST_SECRET }}
+      with:
+        auth: ${{ secrets.GIST_SECRET }}
+        gistID: ${{ secrets.GIST_ID }}
+        filename: liquid-coverage.json
+        label: coverage
+        message: ${{ steps.coverage.outputs.percentage }}%
+        color: ${{ steps.coverage.outputs.percentage > 80 && 'green' || steps.coverage.outputs.percentage > 60 && 'yellow' || 'red' }}
+
+    - name: Add coverage to summary
+      run: |
+        echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
+        echo "Total coverage: ${{ steps.coverage.outputs.percentage }}%" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Per-package coverage:" >> $GITHUB_STEP_SUMMARY
+        go tool cover -func=coverage.out | grep -v "total:" | awk '{printf "- %s: %s\n", $2, $3}' >> $GITHUB_STEP_SUMMARY

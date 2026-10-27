@@ -41,7 +41,19 @@ type lolaFile struct {
 	Formats     map[string]any    `yaml:"formats,omitempty"`
 	Hooks       map[string]string `yaml:"hooks,omitempty"`
 	Components  *components       `yaml:"components,omitempty"`
+	Vars        *varsNode         `yaml:"vars,omitempty"`
 }
+
+// varsNode holds lola.yml's vars: as its YAML node, which ParseVars reads by tag: the mapping is
+// never decoded into Go values of the decoder's choosing.
+type varsNode struct{ node *yaml.Node }
+
+func (v *varsNode) UnmarshalYAML(n *yaml.Node) error {
+	v.node = n
+	return nil
+}
+
+func (v varsNode) MarshalYAML() (any, error) { return v.node, nil }
 
 // ManifestNames lists the module manifest file names in precedence order (ADR #243): the
 // first one present is read and the others are ignored with a warning.
@@ -52,7 +64,7 @@ func ShadowWarning(winner, shadowed string) string {
 	return shadowed + " was ignored: " + winner + " takes precedence"
 }
 
-const lolaKeys = "name, format, description, version, author, license, homepage, repository, keywords, targets, formats, hooks, components"
+const lolaKeys = "name, format, description, version, author, license, homepage, repository, keywords, targets, formats, hooks, components, vars"
 
 var unknownFieldRE = regexp.MustCompile(`field (\S+) not found in type (\S+)`)
 
@@ -63,11 +75,22 @@ const (
 )
 
 // rootSkillExclude lists module-level entries that are never part of a root-level skill,
-// including the plugin manifests a format adapter read.
+// including the plugin manifests a format adapter read, the partials, the root skill's attribute
+// files, and the Markdown files
+// lola reserves there (rootDocs) and their .liquid forms, which are not templates
+// (configTemplates).
 func rootSkillExclude() []string {
-	return append(ManifestNames(), "SKILL.md", "skills", "commands", "agents", "mcps.json", "rules", "INSTRUCTIONS.md", "AGENTS.md",
-		".claude-plugin", "plugin.json", ".mcp.json", "mcp.json")
+	out := append(ManifestNames(), "SKILL.md", skillTemplate, "skills", "commands", "agents", "mcps.json", "rules",
+		".claude-plugin", "plugin.json", ".mcp.json", "mcp.json", partialsDir,
+		"SKILL"+attrsYAML, "SKILL"+attrsJSONC)
+	for _, n := range rootDocs() {
+		out = append(out, n, n+".liquid")
+	}
+	return out
 }
+
+// rootDocs lists the Markdown files at a module's root that are never part of its root skill.
+func rootDocs() []string { return []string{"INSTRUCTIONS.md", "AGENTS.md"} }
 
 // Load reads the module rooted at dir from its lola manifest or, without one, its native
 // layout; it never reads a plugin format's manifest. The cache loads its versions this way, so
@@ -86,6 +109,12 @@ func build(dir string, m *Module, known []string) (*Module, error) {
 	if err := checkHooks(dir, m); err != nil {
 		return nil, err
 	}
+	if err := configTemplates(dir, m); err != nil {
+		return nil, err
+	}
+	if err := loadPartials(dir, m, known); err != nil {
+		return nil, err
+	}
 	l, c := loader{dir: dir, m: m, known: known}, m.components
 	if c == nil {
 		c = &components{}
@@ -102,6 +131,9 @@ func build(dir string, m *Module, known []string) (*Module, error) {
 		if err := step(); err != nil {
 			return nil, err
 		}
+	}
+	if err := loadAttributes(dir, m, known); err != nil {
+		return nil, err
 	}
 	if err := frontmatterHooks(m); err != nil {
 		return nil, err
@@ -305,6 +337,17 @@ func (m *Module) apply(lf *lolaFile) error {
 	m.Name, m.Description, m.Version = lf.Name, lf.Description, lf.Version
 	m.Author, m.License, m.Homepage, m.Repository = lf.Author, lf.License, lf.Homepage, lf.Repository
 	m.Keywords, m.Targets, m.Formats = lf.Keywords, lf.Targets, lf.Formats
+	var vars map[string]any
+	var err error
+	if lf.Vars != nil {
+		vars, err = ParseVars(lf.Vars.node, "vars")
+	}
+	if ve, ok := errors.AsType[*VarError](err); ok {
+		return fmt.Errorf("%s:%d: %s", m.Manifest, ve.Line, ve.Reason)
+	} else if err != nil {
+		return err
+	}
+	m.Vars = vars
 	for event, script := range lf.Hooks {
 		m.DeclaredHooks = append(m.DeclaredHooks, Hook{Event: event, Script: script})
 	}
@@ -344,43 +387,74 @@ func loadSkills(dir string, m *Module) error {
 			continue
 		}
 		rel := "skills/" + e.Name()
-		if _, err := os.Stat(filepath.Join(dir, rel, "SKILL.md")); err != nil {
+		if ok, err := hasSkillFile(dir, rel, m); err != nil {
+			return err
+		} else if !ok {
 			m.Warnings = append(m.Warnings, safeName(rel)+" has no SKILL.md; skipped")
 			continue
 		}
 		if err := ValidateName("skill", e.Name()); err != nil {
 			return err
 		}
-		doc, err := readDoc(dir, rel+"/SKILL.md")
-		if err != nil {
+		s := Skill{Name: e.Name(), Dir: rel}
+		if ok, err := skillDoc(dir, rel, m, &s); err != nil {
 			return err
+		} else if !ok {
+			return fmt.Errorf("%s has no regular SKILL.md", safeName(rel))
 		}
-		m.Skills = append(m.Skills, Skill{Name: e.Name(), Dir: rel, Doc: doc})
+		m.Skills = append(m.Skills, s)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err == nil {
-		if slices.ContainsFunc(m.Skills, func(s Skill) bool { return s.Name == m.Name }) {
-			return fmt.Errorf("SKILL.md at the module root and skills/%s/ both define skill %q", m.Name, m.Name)
-		}
-		doc, err := readDoc(dir, "SKILL.md")
-		if err != nil {
-			return err
-		}
-		m.Skills = append(m.Skills, Skill{Name: m.Name, Dir: ".", Exclude: rootSkillExclude(), Doc: doc})
-		sort.Slice(m.Skills, func(i, j int) bool { return m.Skills[i].Name < m.Skills[j].Name })
+	if ok, err := hasSkillFile(dir, ".", m); err != nil || !ok {
+		return err
 	}
+	if slices.ContainsFunc(m.Skills, func(s Skill) bool { return s.Name == m.Name }) {
+		return fmt.Errorf("SKILL.md at the module root and skills/%s/ both define skill %q", m.Name, m.Name)
+	}
+	exclude, err := rootExclude(dir)
+	if err != nil {
+		return err
+	}
+	s := Skill{Name: m.Name, Dir: ".", Exclude: exclude}
+	if ok, err := skillDoc(dir, ".", m, &s); err != nil {
+		return err
+	} else if !ok {
+		return errors.New("the module root has no regular SKILL.md")
+	}
+	m.Skills = append(m.Skills, s)
+	sort.Slice(m.Skills, func(i, j int) bool { return m.Skills[i].Name < m.Skills[j].Name })
 	return nil
 }
 
-// markdownFiles lists sub/*.md as (name, rel) pairs, validating each name as kind.
-func markdownFiles(dir, sub, kind string) ([][2]string, error) {
+// hasSkillFile reports whether the content-relative directory rel holds an entry named exactly
+// SKILL.md or SKILL.md.liquid, of any type: one that is not a regular file refuses the skill.
+// When it holds neither, the case variants of those names it holds warn (skillDoc warns them
+// otherwise).
+func hasSkillFile(dir, rel string, m *Module) (bool, error) {
+	files, variants, err := skillFiles(dir, rel)
+	if err != nil || len(files) > 0 {
+		return len(files) > 0, err
+	}
+	for _, n := range variants {
+		m.Warnings = append(m.Warnings, variantWarning(rel, n))
+	}
+	return false, nil
+}
+
+// markdownFiles lists sub/*.md and sub/*.md.liquid as (name, rel) pairs, validating each name
+// as kind, and warns about a file whose suffix is a case variant of .md.liquid.
+func markdownFiles(dir, sub, kind string, m *Module) ([][2]string, error) {
 	es, err := entries(filepath.Join(dir, sub))
 	if err != nil {
 		return nil, err
 	}
 	var out [][2]string
 	for _, e := range es {
-		name, ok := strings.CutSuffix(e.Name(), ".md")
-		if e.IsDir() || !ok {
+		if !e.IsDir() && suffixVariant(e.Name()) {
+			m.Warnings = append(m.Warnings, suffixWarning(sub+"/"+e.Name()))
+			continue
+		}
+		name := ComponentName(e.Name())
+		if e.IsDir() && !IsTemplate(e.Name()) || (!IsTemplate(e.Name()) && !strings.HasSuffix(e.Name(), ".md")) {
 			continue
 		}
 		if err := ValidateName(kind, name); err != nil {
@@ -393,19 +467,19 @@ func markdownFiles(dir, sub, kind string) ([][2]string, error) {
 }
 
 func loadCommands(dir string, m *Module) error {
-	files, err := markdownFiles(dir, "commands", "command")
+	files, err := markdownFiles(dir, "commands", "command", m)
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
-		doc, err := readDoc(dir, f[1])
+		doc, err := readComponent(dir, f[1], m)
 		if err != nil {
 			return err
 		}
 		c := Command{Name: f[0], File: f[1], Doc: doc}
 		if fi, err := os.Stat(filepath.Join(dir, "commands", f[0])); err == nil && fi.IsDir() {
 			c.SidecarDir = "commands/" + f[0]
-			if c.Sidecars, err = sidecars(dir, c); err != nil {
+			if c.Sidecars, err = sidecars(dir, c, m); err != nil {
 				return err
 			}
 		}
@@ -414,14 +488,13 @@ func loadCommands(dir string, m *Module) error {
 	return nil
 }
 
-// sidecars reads the .md files under a command's sidecar directory, which Claude Code reads as
-// commands of their own, and refuses frontmatter hooks in them: Claude Code would run those
-// hooks, while lola installs the directory as the command's files, outside the consent that
-// covers the command's hooks.
-func sidecars(dir string, c Command) ([]Sidecar, error) {
+// sidecars reads the .md and .md.liquid files under a command's sidecar directory, which
+// Claude Code reads as commands of their own, and refuses frontmatter hooks in them (a
+// template's once rendered, sidecarHooks).
+func sidecars(dir string, c Command, m *Module) ([]Sidecar, error) {
 	var out []Sidecar
 	err := filepath.WalkDir(filepath.Join(dir, filepath.FromSlash(c.SidecarDir)), func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".md") {
+		if err != nil || d.IsDir() && !IsTemplate(d.Name()) {
 			return err
 		}
 		rel, err := filepath.Rel(dir, p)
@@ -429,29 +502,51 @@ func sidecars(dir string, c Command) ([]Sidecar, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
+		switch {
+		case suffixVariant(d.Name()):
+			m.Warnings = append(m.Warnings, suffixWarning(rel))
+			return nil
+		case IsTemplate(d.Name()):
+			doc, err := readComponent(dir, rel, m)
+			out = append(out, Sidecar{File: strings.TrimSuffix(rel, ".liquid"), Source: rel, Doc: doc})
+			return err
+		case !strings.EqualFold(filepath.Ext(p), ".md"):
+			return nil
+		}
 		doc, err := readDoc(dir, rel)
 		if err != nil {
 			return err
 		}
-		for _, k := range slices.Sorted(maps.Keys(doc.Frontmatter)) {
-			if strings.EqualFold(k, "hooks") {
-				return entryErr(fmt.Sprintf("command %s: %s: frontmatter %s", c.Name, safeName(rel), safeName(k)),
-					"Claude Code reads this file as a command, so lola would install its hooks without asking", "put hooks in the command itself")
-			}
+		s := Sidecar{File: rel, Doc: doc}
+		if err := sidecarHooks(c.Name, s); err != nil {
+			return err
 		}
-		out = append(out, Sidecar{File: rel, Doc: doc})
+		out = append(out, s)
 		return nil
 	})
 	return out, err
 }
 
+// sidecarHooks refuses frontmatter hooks in a command's sidecar: Claude Code would run those
+// hooks, while lola installs the directory as the command's files, outside the consent that
+// covers the command's hooks.
+func sidecarHooks(command string, s Sidecar) error {
+	for _, k := range slices.Sorted(maps.Keys(s.Doc.Frontmatter)) {
+		if strings.EqualFold(k, "hooks") {
+			return entryErr(fmt.Sprintf("command %s: %s: frontmatter %s", command, safeName(s.File), safeName(k)),
+				"Claude Code reads this file as a command, so lola would install its hooks without asking", "put hooks in the command itself")
+		}
+	}
+	return nil
+}
+
 func loadAgents(dir string, m *Module) error {
-	files, err := markdownFiles(dir, "agents", "agent")
+	files, err := markdownFiles(dir, "agents", "agent", m)
 	if err != nil {
 		return err
 	}
 	for _, f := range files {
-		doc, err := readDoc(dir, f[1])
+		doc, err := readComponent(dir, f[1], m)
 		if err != nil {
 			return err
 		}
@@ -489,19 +584,24 @@ func loadRules(dir string, m *Module) error {
 		return err
 	}
 	for _, e := range es {
-		name, ok := strings.CutSuffix(e.Name(), ".md")
-		if e.IsDir() || !ok {
+		switch {
+		case !e.IsDir() && suffixVariant(e.Name()):
+			m.Warnings = append(m.Warnings, suffixWarning("rules/"+e.Name()))
+			continue
+		case e.IsDir() && !IsTemplate(e.Name()) || !IsTemplate(e.Name()) && !strings.HasSuffix(e.Name(), ".md"):
 			m.Warnings = append(m.Warnings, safeName("rules/"+e.Name())+" is not a rule (rules/<name>.md); skipped")
 			continue
 		}
+		name := ComponentName(e.Name())
 		if err := ValidateName("rule", name); err != nil {
 			return err
 		}
-		body, err := ruleBody(dir, "rules/"+e.Name())
+		r, err := readRule(dir, "rules/"+e.Name(), m)
 		if err != nil {
 			return err
 		}
-		m.Rules = append(m.Rules, Rule{Name: name, Body: body})
+		r.Name = name
+		m.Rules = append(m.Rules, r)
 	}
 	sort.Slice(m.Rules, func(i, j int) bool { return m.Rules[i].Name < m.Rules[j].Name })
 	for _, f := range []string{"INSTRUCTIONS.md", "AGENTS.md"} {
@@ -517,18 +617,30 @@ func loadRules(dir string, m *Module) error {
 	return nil
 }
 
-// ruleBody reads a rule file (§5.6): its body, without frontmatter, which may not scope it
-// to paths.
-func ruleBody(dir, rel string) (string, error) {
-	doc, err := readDoc(dir, rel)
+// readRule reads a rule file (§5.6): its body, without frontmatter, which may not scope it to
+// paths, or a template's source, which the engine renders and checks so.
+func readRule(dir, rel string, m *Module) (Rule, error) {
+	doc, err := readComponent(dir, rel, m)
 	if err != nil {
-		return "", err
+		return Rule{}, err
 	}
+	if doc.Template != nil {
+		return Rule{Body: doc.Body, Template: doc.Template}, nil
+	}
+	if err := rulePaths(rel, doc); err != nil {
+		return Rule{}, err
+	}
+	return Rule{Body: doc.Body}, nil
+}
+
+// rulePaths refuses a rule whose frontmatter scopes it to paths: a rule applies in every
+// session. file names the rule's file in the refusal.
+func rulePaths(file string, doc Doc) error {
 	if _, ok := doc.Frontmatter["paths"]; ok {
-		return "", errs.WithHints(fmt.Errorf("%s: a rule applies in every session, so paths: is not supported", safeName(rel)),
+		return errs.WithHints(fmt.Errorf("%s: a rule applies in every session, so paths: is not supported", safeName(file)),
 			"path-scoped guidance belongs in a skill: skills/<name>/SKILL.md")
 	}
-	return doc.Body, nil
+	return nil
 }
 
 // checkHooks refuses hooks lola could not run: unknown events, and scripts that are not
@@ -565,6 +677,17 @@ func Normalize(dir string, m *Module) error {
 		Components: m.components}
 	if m.Format == FormatClaudePlugin || m.Format == FormatAgentPlugins {
 		lf.Format = m.Format
+	}
+	if len(m.Vars) > 0 {
+		lf.Vars = &varsNode{node: &yaml.Node{}}
+		if err := lf.Vars.node.Encode(m.Vars); err != nil {
+			return err
+		}
+		for i := 0; i+1 < len(lf.Vars.node.Content); i += 2 { // as the encoder writes it, 1.0 would read back as 1
+			if f, ok := m.Vars[lf.Vars.node.Content[i].Value].(float64); ok {
+				lf.Vars.node.Content[i+1] = FloatNode(f)
+			}
+		}
 	}
 	for _, h := range m.DeclaredHooks {
 		if lf.Hooks == nil {

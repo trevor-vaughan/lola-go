@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -24,6 +25,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -54,6 +56,9 @@ type Entry struct {
 	// Components is the selection of the module's directory the entry records (Plan 6c §4.1):
 	// it decides what is installed, so it is trusted like the source. Omitted when absent.
 	Components *source.Components `json:"components,omitempty"`
+	// Vars overrides the module's template vars (Plan 7 §8): what its templates render with is
+	// trusted like the source. Omitted when absent, so a view without it hashes as before.
+	Vars module.Vars `json:"vars,omitempty"`
 }
 
 // ExtendsView is the remote profile an entry comes from through extends: (Plan 6b §8.1, §19 S4):
@@ -80,6 +85,31 @@ type View struct {
 // profile's targets is a change to every entry it gives them to.
 type ProfileView struct {
 	Modules []Entry `json:"modules,omitempty"`
+}
+
+// decodedNumbers reads in place each var of v's entries that the decoder kept as a json.Number
+// as module.DecodedNumber does, and reports false when one is not a finite number or an integer
+// beyond 64 bits.
+func (v View) decodedNumbers() bool {
+	read := func(entries []Entry) bool {
+		for _, e := range entries {
+			for k, val := range e.Vars {
+				if n, isNumber := val.(json.Number); isNumber {
+					d, ok := module.DecodedNumber(n)
+					if !ok {
+						return false
+					}
+					e.Vars[k] = d
+				}
+			}
+		}
+		return true
+	}
+	ok := read(v.Modules)
+	for _, p := range v.Profiles {
+		ok = ok && read(p.Modules)
+	}
+	return ok
 }
 
 // Part is the part of v that one file gives: for key "", project.yml's top-level targets and
@@ -141,6 +171,7 @@ func EntryOf(e manifest.Entry) Entry {
 		out.Market = &m
 	}
 	out.Components = e.Components.Clone()
+	out.Vars = manifest.CloneVars(e.Vars)
 	return out
 }
 
@@ -197,7 +228,7 @@ func (v View) CoversEntry(e Entry) bool {
 func (a Entry) equal(b Entry) bool {
 	return a.Name == b.Name && a.Source == b.Source && a.Ref == b.Ref && a.Path == b.Path && a.Commit == b.Commit &&
 		a.Digest == b.Digest && slices.Equal(a.Targets, b.Targets) && sameRules(a.Rules, b.Rules) && sameExtends(a.Extends, b.Extends) &&
-		sameMarket(a.Market, b.Market) && a.Components.Equal(b.Components)
+		sameMarket(a.Market, b.Market) && a.Components.Equal(b.Components) && manifest.SameVars(a.Vars, b.Vars)
 }
 
 func sameMarket(a, b *manifest.MarketRef) bool {
@@ -300,6 +331,9 @@ func (e *Entry) take(l, s Entry) {
 	if !l.Components.Equal(s.Components) {
 		e.Components = s.Components.Clone()
 	}
+	if !manifest.SameVars(l.Vars, s.Vars) {
+		e.Vars = manifest.CloneVars(s.Vars)
+	}
 }
 
 func (e Entry) clone() Entry {
@@ -313,6 +347,7 @@ func (e Entry) clone() Entry {
 		e.Market = &m
 	}
 	e.Components = e.Components.Clone()
+	e.Vars = manifest.CloneVars(e.Vars)
 	return e
 }
 
@@ -441,7 +476,23 @@ func fieldChanges(from, to Entry) []FieldChange {
 	if !from.Components.Equal(to.Components) {
 		out = append(out, FieldChange{Field: "components", From: componentsValue(from.Components), To: componentsValue(to.Components)})
 	}
+	if !manifest.SameVars(from.Vars, to.Vars) {
+		out = append(out, FieldChange{Field: "vars", From: varsValue(from.Vars), To: varsValue(to.Vars)})
+	}
 	return out
+}
+
+// varsValue is an entry's vars as a field change shows them, by name, each value as lola cache
+// info writes a var and through untrusted.Text: `language = "go", strict = true, tools = ["rg"]`.
+func varsValue(vars map[string]any) any {
+	if len(vars) == 0 {
+		return nil
+	}
+	parts := make([]string, 0, len(vars))
+	for _, k := range slices.Sorted(maps.Keys(vars)) {
+		parts = append(parts, untrusted.Text(k, untrusted.MaxName)+" = "+module.VarText(vars[k]))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // componentsValue is an entry's selection as a field change shows it, as its file writes it, each
@@ -655,6 +706,9 @@ func (s *Store) read() (*file, error) {
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
+	// a var keeps its exact int64 and its float spelling (2.0 is not 2) for the trust decision;
+	// Hash re-encodes the view without either, so the sha256 only checks the record's integrity
+	dec.UseNumber()
 	if err := dec.Decode(f); err != nil {
 		return nil, unreadable(s.path, err)
 	}
@@ -665,6 +719,9 @@ func (s *Store) read() (*file, error) {
 		f.Projects = map[string]project{}
 	}
 	for k, p := range f.Projects {
+		if !p.View.decodedNumbers() {
+			return nil, unreadable(s.path, fmt.Errorf("the record of %s holds a var that is not a finite number or beyond 64 bits", k))
+		}
 		hash, err := p.View.Hash()
 		if err != nil {
 			return nil, unreadable(s.path, err)

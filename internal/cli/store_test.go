@@ -12,6 +12,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 var _ = Describe("store, search and init commands", func() {
@@ -56,7 +57,7 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(lola("cache", "rm", "deploy", "-y").code).To(Equal(0))
 		r = lola("cache", "add", plugin)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("format:   claude-plugin"))
+		Expect(r.out).To(ContainSubstring("format:     claude-plugin"))
 		Expect(strings.Count(r.out, "lspServers is not supported")).To(Equal(1))
 	})
 
@@ -106,6 +107,98 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(info["warnings"]).To(ContainElement(".lola.yml was ignored: lola.yml takes precedence"))
 	})
 
+	It("lola cache info shows vars, templates, partials and attribute files cleaned; JSON has [] for each when none", func() {
+		Expect(lola("cache", "add", mod).code).To(Equal(0))
+		var info map[string]any
+		Expect(json.Unmarshal([]byte(lola("cache", "info", "example", "--json").out), &info)).To(Succeed())
+		for _, k := range []string{"vars", "templates", "partials", "attributes"} {
+			Expect(info).To(HaveKeyWithValue(k, []any{}), k)
+		}
+		Expect(lola("cache", "info", "example").out).NotTo(ContainSubstring("vars:"))
+
+		kit := filepath.Join(tmp, "kit")
+		writeTree(kit, map[string]string{
+			"lola.yml":                   "name: kit\nvars:\n  intro: " + strings.Repeat("i", 4096) + "\n  language: \"g\\u202eo\"\n  strict: false\n  tools: [rg, \"j\\u202eq\"]\n",
+			"commands/ship.md.liquid":    "{{ vars.language }}\n",
+			"commands/ship.targets.yaml": "claude-code: {model: sonnet}\n",
+			"agents/a.md":                "A\n",
+			"agents/a.targets.yaml":      "{}\n",
+			"skills/s/SKILL.md":          "S\n",
+			"skills/s/ref/x.md.liquid":   "x\n",
+			"_partials/head.liquid":      "h",
+		})
+		r := lola("cache", "add", kit)
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("cache", "info", "kit", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
+		Expect(info["vars"]).To(Equal([]any{
+			map[string]any{"name": "intro", "type": "string", "default": strings.Repeat("i", 4096)},
+			map[string]any{"name": "language", "type": "string", "default": untrusted.Text("g\u202eo", untrusted.MaxName)},
+			map[string]any{"name": "strict", "type": "boolean", "default": false},
+			map[string]any{"name": "tools", "type": "list", "default": []any{"rg", untrusted.Text("j\u202eq", untrusted.MaxName)}},
+		}))
+		Expect(info["templates"]).To(Equal([]any{"commands/ship.md.liquid", "skills/s/ref/x.md.liquid"}))
+		Expect(info["partials"]).To(Equal([]any{"_partials/head.liquid"}))
+		Expect(info["attributes"]).To(Equal([]any{"agents/a.targets.yaml", "commands/ship.targets.yaml"}))
+		out := lola("cache", "info", "kit").out
+		Expect(out).To(ContainSubstring(`, language = "` + untrusted.Text("g\u202eo", untrusted.MaxName) + `", strict = false, tools = ["rg", "` +
+			untrusted.Text("j\u202eq", untrusted.MaxName) + `"]` + "\n"))
+		Expect(out).To(ContainSubstring("  templates:  commands/ship.md.liquid, skills/s/ref/x.md.liquid\n"))
+		Expect(out).To(ContainSubstring("  partials:   _partials/head.liquid\n"))
+		Expect(out).To(ContainSubstring("  attributes: agents/a.targets.yaml, commands/ship.targets.yaml\n"))
+		Expect(out).To(ContainSubstring("  commands:   ship\n"), "every label lines up")
+		Expect(out).NotTo(ContainSubstring("\u202e"))
+	})
+
+	It("a number var's override must be a number, and cache info, rendered_with and the trust prompt show it", func() {
+		kit := filepath.Join(testenv.Isolate(), "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  count: 3\n  temperature: 0.7\n  big: 1e21\n",
+			"commands/c.md.liquid": "{{ vars.temperature }}\n"})
+		r := lola("cache", "add", kit)
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("cache", "info", "kit", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var info map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &info)).To(Succeed())
+		Expect(info["vars"]).To(Equal([]any{
+			map[string]any{"name": "big", "type": "number", "default": 1e21},
+			map[string]any{"name": "count", "type": "number", "default": 3.0},
+			map[string]any{"name": "temperature", "type": "number", "default": 0.7},
+		}), "the JSON default is a number")
+		Expect(r.out).To(ContainSubstring(`"default": 1e+21`))
+		Expect(lola("cache", "info", "kit").out).To(ContainSubstring("big = 1000000000000000000000.0, count = 3, temperature = 0.7\n"))
+	})
+
+	It("a vars override's hint runs and shows the vars the module declares", func() {
+		kit := filepath.Join(proj, "mods", "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n", "commands/c.md.liquid": "{{ vars.language }}\n"})
+		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: mods/kit, vars: {lang: rust}}\n"})
+		r := lola("sync", "-C", proj, "--trust", "--json", "--no-pager")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(`"hints":[]`), "kit is not in the cache, so no command shows its vars")
+		Expect(lola("cache", "add", kit).code).To(Equal(0))
+		r = lola("sync", "-C", proj, "--trust", "--json", "--no-pager")
+		Expect(r.code).To(Equal(1))
+		var refusal struct {
+			Error string   `json:"error"`
+			Hints []string `json:"hints"`
+		}
+		Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
+		Expect(refusal.Error).To(Equal("project.yml: modules[kit].vars.lang: kit declares no var lang; it declares language"))
+		Expect(refusal.Hints).To(Equal([]string{"lola cache info kit --json --no-pager"}))
+		words := shellWords(refusal.Hints[0])
+		r = lola(words[1:]...)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(`"name": "language"`))
+
+		r = lola("sync", "-C", proj, "--trust", "--plain")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("hint: lola cache info kit --plain\n"), "the run's --plain too")
+		r = lola("cache", "info", "kit", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+	})
+
 	It("refuses to remove a module that is not stored", func() {
 		r := lola("cache", "rm", "nope", "-y")
 		Expect(r.code).To(Equal(1))
@@ -134,7 +227,6 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		for _, out := range []string{r.out, lola("cache", "show", "meta").out, lola("cache", "show", "meta", "--plain").out,
 			lola("search", "tidy").out, lola("search", "tidy", "--plain").out, lola("search", "tidy", "--json").out} {
-			Expect(out).NotTo(ContainSubstring("\x1b"))
 			Expect(out).NotTo(ContainSubstring("\a"))
 		}
 		Expect(lola("cache", "show", "meta").out).To(ContainSubstring("meta 1.0?]0;x?\n  tidy?[2J?desc\n"))

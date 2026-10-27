@@ -60,6 +60,22 @@ modules:
 			Expect(pr.Modules[0].Targets).To(BeEmpty(), "Entries copies; the profile as read keeps its own")
 		})
 
+		It("entry vars refuse bad shapes at decode in project.yml, user.yml and profiles, naming the line", func() {
+			entries := "version: 1\nmodules:\n  - name: kit\n    source: ../kit\n    vars:\n"
+			pr, err := profile.Load(write("go.yml", entries+"      language: go\n      tools: [rg, jq]\n"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pr.Entries()[0].Vars).To(Equal(map[string]any{"language": "go", "tools": []string{"rg", "jq"}}))
+			for vars, want := range map[string]string{
+				"      Lang: go\n":          ":6: modules[0].vars.Lang: a var name is a-z, 0-9 and _, starts with a letter, at most 64 characters",
+				"      since: 2024-01-02\n": `:6: modules[0].vars.since: dates are not supported; quote it to make it a string: "2024-01-02"`,
+				"      x: [[a]]\n":          ":6: modules[0].vars.x[0]: a var is a string, true or false, a number, or a list of strings",
+			} {
+				path := write("bad.yml", entries+vars)
+				_, err := profile.Load(path)
+				Expect(err).To(MatchError(path+want), vars)
+			}
+		})
+
 		It("reads an empty file as a profile with no modules, and a missing one as fs.ErrNotExist", func() {
 			pr, err := profile.Load(write("empty.yml", ""))
 			Expect(err).NotTo(HaveOccurred())

@@ -11,8 +11,9 @@ require (
 	github.com/gofrs/flock v0.13.1
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.44.0
+	github.com/osteele/liquid v1.9.2
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.9
+	github.com/spf13/pflag v1.0.10
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/mod v0.40.0
@@ -45,6 +46,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
+	github.com/osteele/tuesday v1.1.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/net v0.58.0 // indirect
@@ -52,4 +54,8 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
+
+// liquid v1.9.2 with one patch to render/trimwriter.go; see third_party/liquid/PATCHES.md.
+replace github.com/osteele/liquid => ./third_party/liquid

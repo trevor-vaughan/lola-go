@@ -240,6 +240,9 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			}
 		}
 	}
+	if u.templates, err = e.newTemplateRun(sc, u.led.Profiles); err != nil {
+		return nil, err
+	}
 	res.Notices = append(res.Notices, e.sweepRuns()...)
 	// What each scope wanted before the updates, to tell what they move (§19 P9): every scope they
 	// apply in, which must be readable, and, when a flag narrowed it to one, the other one a user
@@ -405,16 +408,18 @@ func (o *ProfileOutcome) fail(err error) {
 }
 
 // updateRun is what every profile of one lola profile --update shares: the scopes the flags named
-// (none when empty), the scope whose lock.json (led) annotates the content shown, the run's flags, and the
-// assistants' versions probed once.
+// (none when empty), the scope whose lock.json (led) annotates the content shown, the run's flags, the
+// assistants' versions probed once, and the one template budget its trust diffs render on (Plan 7
+// §6.2).
 type updateRun struct {
-	e      *Engine
-	ctx    context.Context
-	given  []Scope
-	sc     Scope
-	led    *ledger.Ledger
-	flags  []string
-	probes *probeRun
+	e         *Engine
+	ctx       context.Context
+	given     []Scope
+	sc        Scope
+	led       *ledger.Ledger
+	flags     []string
+	probes    *probeRun
+	templates *templateRun
 }
 
 // fetch fetches the kept remote profile name again from the source, ref and --path its
@@ -458,7 +463,7 @@ func (u *updateRun) fetch(name string) (_ *RemoteProfile, was profile.Origin, _ 
 	rp := &RemoteProfile{Profile: shown(q), File: shown(path), Source: shown(o.Source), Ref: shown(o.Ref), Path: shown(o.Path), Commit: shown(o.Commit),
 		Digest: shown(o.Digest), PreviousCommit: shown(was.Commit), PreviousDigest: shown(was.Digest), ComparedWith: scopeName(sc),
 		Description: shown(p.Description), name: name, data: b, origin: o}
-	if rp.Changes, err = e.remoteContent(u.ctx, sc, q, u.led, old.Entries(), p.Entries(), run, u.probes); err != nil {
+	if rp.Changes, err = e.remoteContent(u.ctx, sc, q, u.led, old.Entries(), p.Entries(), run, u.probes, u.templates, outputOnly(u.flags)); err != nil {
 		return nil, was, nil, err
 	}
 	return rp, was, nil, nil

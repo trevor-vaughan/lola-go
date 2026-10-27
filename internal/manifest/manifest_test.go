@@ -25,6 +25,27 @@ var _ = Describe("manifest", func() {
 		Expect(m).To(Equal(&manifest.Manifest{Version: 1}))
 	})
 
+	It("entry vars refuse bad shapes at decode in project.yml, user.yml and profiles, naming the line", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		entries := "version: 1\nmodules:\n  - name: a\n    source: ../a\n  - name: kit\n    source: ../kit\n    vars:\n"
+		Expect(os.WriteFile(path, []byte(entries+"      language: rust\n      strict: true\n      tools: [rg]\n"), 0o600)).To(Succeed())
+		m, err := manifest.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(m.Find("kit").Vars).To(Equal(map[string]any{"language": "rust", "strict": true, "tools": []string{"rg"}}))
+		Expect(m.Find("a").Vars).To(BeNil())
+		for vars, want := range map[string]string{
+			"      Lang: go\n":         ":8: modules[1].vars.Lang: a var name is a-z, 0-9 and _, starts with a letter, at most 64 characters",
+			"      max: .inf\n":        ":8: modules[1].vars.max: NaN and infinity are not supported",
+			"      on: {a: b}\n":       ":8: modules[1].vars.on: a var is a string, true or false, a number, or a list of strings",
+			"      t: [\"\\u0007\"]\n": ":8: modules[1].vars.t[0]: holds a control character",
+		} {
+			Expect(os.WriteFile(path, []byte(entries+vars), 0o600)).To(Succeed())
+			_, err := manifest.Load(path)
+			Expect(err).To(MatchError(path+want), vars)
+			Expect(errs.Hints(err)).To(Equal([]string{"fix it by hand, or restore it from version control"}))
+		}
+	})
+
 	It("finds entries by name", func() {
 		m := &manifest.Manifest{Version: 1, Modules: []manifest.Entry{{Name: "a", Source: "../a"}}}
 		Expect(m.Find("a")).To(HaveField("Source", "../a"))

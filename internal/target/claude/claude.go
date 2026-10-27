@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -55,12 +54,17 @@ func (Target) Destinations(scope target.Scope, _ string) (target.Destinations, e
 	}, nil
 }
 
+// noServers drops mcpServers, under any spelling, from a skill or command: Claude Code starts
+// the MCP servers of an agent's frontmatter only (code.claude.com/docs/en/sub-agents), so lola
+// never writes the key where consent does not gate it.
+var noServers = target.Value{Drop: target.SeverityWarn, Fold: true, Note: "claude-code starts MCP servers only from an agent's frontmatter"}
+
 // caps: Claude Code takes every artifact kind and keeps every frontmatter key as authored,
-// except that an agent's description must be a string. It is the only target with runtime
-// hooks (Plan 5b design §7.1).
+// except that an agent's description must be a string and a skill or command drops
+// mcpServers. It is the only target with runtime hooks (Plan 5b design §7.1).
 var caps = target.Capabilities{Kinds: map[string]target.KindSpec{
-	"skill":   {Open: true},
-	"command": {Open: true},
+	"skill":   {Open: true, Keys: map[string]target.Value{"mcpServers": noServers}},
+	"command": {Open: true, Keys: map[string]target.Value{"mcpServers": noServers}},
 	"agent": {Open: true, Keys: map[string]target.Value{"description": {Shape: target.ShapeString}},
 		Required: []string{"description"}},
 	"mcp":                  {},
@@ -144,8 +148,7 @@ func (c Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 			finds = append(finds, allowedTools(id, "command", untrusted.Text(sc.File, untrusted.MaxName), sc.Doc)...)
 		}
 		if cmd.SidecarDir != "" {
-			out = append(out, plan.Intent{Target: id, Kind: "command", Op: plan.OpCopyTree,
-				Src: filepath.Join(ctx.ContentDir, cmd.SidecarDir), Path: ".claude/commands/" + cmd.Name, Consent: consent})
+			out = append(out, target.SidecarTree(id, cmd, ctx, ".claude/commands/"+cmd.Name, consent))
 		}
 	}
 	for _, a := range m.Agents {

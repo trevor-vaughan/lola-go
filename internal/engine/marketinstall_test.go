@@ -92,7 +92,7 @@ var _ = Describe("installing from a marketplace", func() {
 		gitIn(tmp, "clone", "-q", "--bare", "--no-single-branch", work, filepath.Join(srv, "tools.git"))
 		gitIn(filepath.Join(srv, "tools.git"), "fetch", "-q", work, "fork:fork")
 		bare(srv, "named", map[string]string{"lola.yml": "name: other\n", "commands/o.md": "O\n"})
-		bare(srv, "kit", map[string]string{"commands/k.md": "K\n"})
+		bare(srv, "kit", map[string]string{"lola.yml": "name: kit\nvars:\n  tools: [rg]\n", "commands/k.md": "K\n"})
 		requests.Store(0)
 		mods = testenv.ServeGitTLS(srv, func(*http.Request) { requests.Add(1) })
 
@@ -774,6 +774,29 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElement(And(HaveField("Level", engine.LevelWarn), HaveField("Text", HaveSuffix(" → "+hint)))),
 			"lola market --remove's count")
+	})
+
+	It("an unresolved @ entry's vars are read by tag: a date, a map or a non-finite number refuses at load, and a list installs", func() {
+		user := engine.Scope{Kind: target.User}
+		write := func(vars string) {
+			writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+				"  - name: kit\n    source: '@acme/kit'\n    vars: " + vars + "\n"})
+		}
+		for vars, want := range map[string]string{
+			"{tools: 2024-01-02}": `:6: modules[0].vars.tools: dates are not supported; quote it to make it a string: "2024-01-02"`,
+			"{tools: {a: b}}":     ":6: modules[0].vars.tools: a var is a string, true or false, a number, or a list of strings",
+			"{tools: .nan}":       ":6: modules[0].vars.tools: NaN and infinity are not supported",
+		} {
+			write(vars)
+			_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: "@acme/kit"}}, engine.Options{})
+			Expect(err).To(MatchError(p.UserManifest+want), vars)
+		}
+		write("{tools: [rg, jq]}")
+		_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: "@acme/kit"}}, engine.Options{})
+		Expect(err).NotTo(HaveOccurred(), "a list is a list, as the module declares")
+		m, err := e.Manifest(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(m.Find("kit").Vars).To(Equal(map[string]any{"tools": []string{"rg", "jq"}}), "kept as written when the entry is resolved")
 	})
 
 	It("install @m/x replaces an unresolved @ entry and records it resolved", func() {

@@ -100,6 +100,43 @@ linters:
             - $gostd
             - github.com/trevor-vaughan/lola-go/internal/module # name rules
             - github.com/trevor-vaughan/lola-go/internal/untrusted
+        # Templates are a stranger's input rendered in-process (Plan 7 §5): the sandbox reads no
+        # files and opens no connection, so a template cannot reach the disk or the network.
+        templating:
+          list-mode: strict
+          files:
+            - "**/internal/templating/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/osteele/liquid # and its packages
+            - github.com/trevor-vaughan/lola-go/internal/untrusted
+          deny:
+            - pkg: os
+              desc: the templating package reads no files; the engine does (Plan 7 §5)
+            - pkg: io/fs
+              desc: the templating package reads no files; the engine does (Plan 7 §5)
+            - pkg: net
+              desc: the templating package opens no connection (Plan 7 §5)
+            - pkg: os/exec
+              desc: the templating package runs no program (Plan 7 §5)
+            - pkg: io/ioutil
+              desc: the templating package reads no files; the engine does (Plan 7 §5)
+            - pkg: syscall
+              desc: the templating package makes no system call (Plan 7 §5)
+            - pkg: unsafe
+              desc: the templating package stays inside Go's memory safety (Plan 7 §5)
+            - pkg: plugin
+              desc: the templating package loads no code (Plan 7 §5)
+        # Only the sandbox may import the template engine, so every template is screened, capped and
+        # rendered with lola's own filters (Plan 7 §5).
+        liquid:
+          files:
+            - "**"
+            - "!**/internal/templating/**"
+          deny:
+            - pkg: github.com/osteele/liquid
+              desc: templates render only through internal/templating (Plan 7 §5)
     errcheck:
       exclude-functions:
         # Human output: a failed write to stdout/stderr has no better channel to report on.
@@ -114,6 +151,8 @@ linters:
         - G306 # same as G302 for os.WriteFile
         - G204 # git runs with a fixed argv, never through a shell
   exclusions:
+    paths:
+      - third_party/ # vendored, patched upstream code (third_party/liquid/PATCHES.md)
     rules:
       # forbidigo guards only the pure market package.
       - path-except: internal/market/
@@ -124,3 +163,6 @@ linters:
         text: G504
 formatters:
   enable: [gofmt]
+  exclusions:
+    paths:
+      - third_party/

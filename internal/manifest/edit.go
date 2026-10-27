@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
@@ -46,6 +48,7 @@ func (e Entry) clone() Entry {
 		e.Market = &m
 	}
 	e.Components = e.Components.Clone()
+	e.Vars = CloneVars(e.Vars)
 	return e
 }
 
@@ -71,7 +74,7 @@ func (m *Manifest) Applied(c Change) *Manifest {
 // keys that come before it in this order.
 var (
 	topKeys   = []string{"version", "targets", "modules"}
-	entryKeys = []string{"name", "source", "ref", "path", "components", "commit", "digest", "targets", "rules", "market"}
+	entryKeys = []string{"name", "source", "ref", "path", "components", "commit", "digest", "targets", "rules", "vars", "market"}
 )
 
 // Edit returns the file to write and the manifest at path with c applied (Plan 6a §4.5). The
@@ -212,6 +215,27 @@ func setEntry(m *yaml.Node, e Entry) {
 		}
 	}
 	setKey(m, entryKeys, "components", comps)
+	var vars *yaml.Node
+	if len(e.Vars) > 0 {
+		vars = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		for _, k := range slices.Sorted(maps.Keys(e.Vars)) {
+			var v *yaml.Node
+			switch x := e.Vars[k].(type) {
+			case bool:
+				v = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(x)}
+			case int64:
+				v = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.FormatInt(x, 10)}
+			case float64:
+				v = module.FloatNode(x)
+			case []string:
+				v = flowList(x)
+			default: // a string
+				v = yamldoc.Str(fmt.Sprint(x))
+			}
+			vars.Content = append(vars.Content, yamldoc.Str(k), v)
+		}
+	}
+	setKey(m, entryKeys, "vars", vars)
 }
 
 // flowList is a flow list of strings.

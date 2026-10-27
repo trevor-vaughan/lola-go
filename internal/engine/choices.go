@@ -554,19 +554,28 @@ func firstLine(s string) string {
 	return untrusted.Text(strings.TrimSpace(s), maxLabel)
 }
 
+// docLabel is a component's label: the first line of its description, or "(template)" for a
+// template, whose frontmatter exists only once rendered for a target.
+func docLabel(d module.Doc) string {
+	if d.Template != nil {
+		return "(template)"
+	}
+	return firstLine(d.String("description"))
+}
+
 // moduleChoice describes a cached version and its components.
 func moduleChoice(v store.Version, o store.Origin) ModuleChoice {
 	m := v.Module
 	mc := ModuleChoice{Name: m.Name, Source: untrusted.Text(o.Source, untrusted.MaxName), Type: untrusted.Text(o.Type, untrusted.MaxName), Format: untrusted.Text(v.Meta.Format, untrusted.MaxName),
 		Description: firstLine(m.Description), Digest: untrusted.Text(v.Meta.Digest, untrusted.MaxName), ID: v.ID, Components: []ComponentChoice{}, PerScope: []ModuleScope{}}
 	for _, s := range m.Skills {
-		mc.Components = append(mc.Components, ComponentChoice{Component: Component{config.KindSkill, s.Name}, Description: firstLine(s.Doc.String("description"))})
+		mc.Components = append(mc.Components, ComponentChoice{Component: Component{config.KindSkill, s.Name}, Description: docLabel(s.Doc)})
 	}
 	for _, c := range m.Commands {
-		mc.Components = append(mc.Components, ComponentChoice{Component: Component{config.KindCommand, c.Name}, Description: firstLine(c.Doc.String("description"))})
+		mc.Components = append(mc.Components, ComponentChoice{Component: Component{config.KindCommand, c.Name}, Description: docLabel(c.Doc)})
 	}
 	for _, a := range m.Agents {
-		mc.Components = append(mc.Components, ComponentChoice{Component: Component{config.KindAgent, a.Name}, Description: firstLine(a.Doc.String("description"))})
+		mc.Components = append(mc.Components, ComponentChoice{Component: Component{config.KindAgent, a.Name}, Description: docLabel(a.Doc)})
 	}
 	for _, s := range m.MCPServers {
 		cc := ComponentChoice{Component: Component{config.KindMCP, s.Name}, RunsCommand: s.Transport == module.TransportStdio}

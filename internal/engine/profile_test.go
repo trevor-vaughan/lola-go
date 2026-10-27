@@ -115,6 +115,46 @@ var _ = Describe("profiles", func() {
 		return string(b)
 	}
 
+	It("the winning entry's vars replace a lower layer's whole; a winner without vars renders defaults; the notice says which vars were dropped", func() {
+		kit := filepath.Join(mods, "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n  strict: false\n",
+			"commands/kit.md.liquid": "{{ vars.language }} {{ vars.strict }}\n"})
+		writeProfile("work", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: "+kit+", vars: {language: rust, strict: true}}\n")
+		activate(user, "user:work")
+		_, err := sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(command(p.Home, "kit")).To(Equal("rust true\n"), "the profile's entry sets both")
+
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + ", vars: {strict: true}}\n"})
+		res, err := sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(command(p.Home, "kit")).To(Equal("go true\n"), "the winner's vars replace the profile's whole: language is the default again")
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+			Text: "kit: user.yml overrides profile:user:work; kit's vars from profile:user:work are dropped: the entry from user.yml sets its own"}))
+
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
+		res, err = sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(command(p.Home, "kit")).To(Equal("go false\n"), "a winner without vars renders the defaults")
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+			Text: "kit: user.yml overrides profile:user:work; kit's vars from profile:user:work are dropped: the entry from user.yml sets none"}))
+
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + ", vars: {language: rust, strict: true}}\n"})
+		res, err = sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "kit: user.yml overrides profile:user:work"}),
+			"the same vars are not dropped")
+	})
+
+	It("an override refusal of a profile's entry names the profile's layer", func() {
+		kit := filepath.Join(mods, "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n", "commands/kit.md.liquid": "{{ vars.language }}\n"})
+		writeProfile("work", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: "+kit+", vars: {lang: rust}}\n")
+		activate(user, "user:work")
+		_, err := sync(user)
+		Expect(err).To(MatchError("profile:user:work: modules[kit].vars.lang: kit declares no var lang; it declares language"))
+	})
+
 	It("a later layer replaces an earlier entry whole, with a notice", func() {
 		a, b, b2, c := mod("a", "a", "A"), mod("b", "b", "B from go"), mod("b2", "b", "B from user.yml"), mod("c", "c", "C")
 		writeTree(a, map[string]string{"rules/style.md": "Prefer small diffs.\n"})
