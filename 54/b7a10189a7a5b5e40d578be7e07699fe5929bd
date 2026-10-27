@@ -1,0 +1,21 @@
+go.mod
+  s_dd02d4728fd2f8::t_a89c5f5c5cc3c8 5
+README.md
+  s_dd02d4728fd2f8::t_7cb54d6d41e495 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54b7a10189a7a5b5e40d578be7e07699fe5929bd",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
