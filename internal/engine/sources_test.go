@@ -227,7 +227,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 	It("checks an archive without adding it to the cache", func() {
 		archive := filepath.Join(tmp, "example.tgz")
 		Expect(os.WriteFile(archive, tarGz("example", exampleModule), 0o644)).To(Succeed())
-		rep, err := e.Check(ctx, sc, proj, []string{archive}, []string{"claude-code"})
+		rep, err := e.Check(ctx, sc, proj, []string{archive}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(ConsistOf(HaveField("Name", "example")))
 		names, err := e.Store.Names()
@@ -249,7 +249,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			}
 			_, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "render, cached: %v", cached)
-			_, _, err = e.Status(ctx, sc)
+			_, _, err = e.Status(ctx, sc, nil)
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "list, cached: %v", cached)
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "sync, cached: %v", cached)
@@ -563,6 +563,8 @@ var _ = Describe("Engine with git and archive sources", func() {
 		})
 
 		It("refuses a pinned fetch that declares another module before caching it or moving a head", func() {
+			// A module that names itself: one that does not takes the name its entry gives it.
+			push(map[string]string{"lola.yml": "name: example\n"})
 			atUser(engine.InstallRequest{Arg: url, Ref: "main"}, func(m *manifest.Entry, _ *ledger.Entry) { m.Name = "other" })
 			Expect(e.Store.Remove("example")).To(BeTrue())
 
@@ -1057,7 +1059,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		var url string
 		BeforeEach(func() { url, _ = serveRepo() })
 		row := func() engine.StatusRow {
-			rows, _, err := e.Status(ctx, sc)
+			rows, _, err := e.Status(ctx, sc, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rows).To(HaveLen(1))
 			return rows[0]

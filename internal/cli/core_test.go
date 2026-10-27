@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -262,6 +264,44 @@ var _ = Describe("core commands", func() {
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(1), "--allow-hooks is consent for one run only")
 	})
 
+	It("install --force on a hooked module still refuses for hook consent off a terminal", func() {
+		mark := filepath.Join(tmp, "hook-ran")
+		writeTree(mod, map[string]string{
+			"lola.yml":         "name: example\nhooks: {pre-install: scripts/setup.sh}\n",
+			"scripts/setup.sh": "#!/bin/sh\ntouch '" + mark + "'\n",
+		})
+		r := lola("install", mod, "-C", proj, "--force")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(mark).NotTo(BeAnExistingFile(), "the hook did not run")
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+
+		r = lola("install", mod, "-C", proj, "--force", "--allow-hooks")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(mark).To(BeAnExistingFile(), "--allow-hooks is the consent")
+	})
+
+	It("sync --force on a hooked module still refuses for hook consent off a terminal", func() {
+		// A pulled project.yml whose module, in the checkout, has a pre-install hook.
+		mark, other := filepath.Join(tmp, "hook-ran"), filepath.Join(tmp, "other")
+		writeTree(other, map[string]string{
+			".lola/project.yml":             "version: 1\ntargets: [claude-code]\nmodules:\n  - name: example\n    source: mods/example\n",
+			"mods/example/lola.yml":         "name: example\nhooks: {pre-install: scripts/setup.sh}\n",
+			"mods/example/commands/ship.md": "Ship\n",
+			"mods/example/scripts/setup.sh": "#!/bin/sh\ntouch '" + mark + "'\n",
+		})
+
+		r := lola("sync", "-C", other, "--force", "--trust")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("example has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(mark).NotTo(BeAnExistingFile(), "the hook did not run")
+		Expect(filepath.Join(other, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+
+		r = lola("sync", "-C", other, "--force", "--trust", "--allow-hooks")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(mark).To(BeAnExistingFile(), "--allow-hooks is the consent")
+	})
+
 	It("installs runtime hooks only with consent: skipped off a terminal, listed by --dry-run, recorded by --allow-runtime-hooks", func() {
 		plugin := filepath.Join(tmp, "deploy")
 		writeTree(plugin, map[string]string{
@@ -466,17 +506,23 @@ var _ = Describe("core commands", func() {
 		Expect(string(b)).To(ContainSubstring("source: ../example"))
 	})
 
-	It("names -t and the installed assistants when none is set up here", func() {
+	It("hints the run with -t and each installed assistant when none is set up here, else each one lola knows", func() {
 		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())
-		r := lola("install", mod, "-C", proj)
+		r := lola("install", mod, "-C", proj, "--strict")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: none of your installed assistants is set up here"))
-		Expect(r.err).To(ContainSubstring("hint: installed: claude-code"))
+		Expect(r.err).To(Equal("error: none of your installed assistants (claude-code) is set up here, so lola does not know where to install\n" +
+			"  hint: lola install " + mod + " --root " + proj + " --strict -t claude-code\n"))
 
 		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
-		r = lola("install", mod, "-C", proj)
-		Expect(r.err).To(ContainSubstring("error: no assistant found on your PATH"))
-		Expect(r.err).To(ContainSubstring("hint: pass -t with one or more of: claude-code"))
+		r = lola("install", mod, "-C", proj, "--json")
+		Expect(r.code).To(Equal(1))
+		run := "lola install " + mod + " --json --root " + proj
+		Expect(r.err).To(MatchJSON(`{"error": "no assistant found on your PATH, so lola does not know where to install", "hints": ["`+
+			run+` -t claude-code", "`+run+` -t gemini-cli", "`+run+` -t opencode"]}`), "the typed source and every flag")
+		for _, h := range []string{run + " -t gemini-cli", run + " -t claude-code"} {
+			again := lola(shellWords(h)[1:]...)
+			Expect(again.code).To(Equal(0), h+": "+again.err)
+		}
 		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0), "the manifest's targets are reused")
 	})
@@ -485,8 +531,8 @@ var _ = Describe("core commands", func() {
 		r := lola("install")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: lola install needs a module or source\n" +
-			"  hint: usage: lola install <source|name>... [-t target]\n" +
-			"  hint: find one: lola cache list (cached modules), or a module directory, archive or git URL\n" +
+			"  hint: usage: lola install <source|name|@market/module>... [-t target]\n" +
+			"  hint: find one: lola cache list (cached modules), a module directory, archive or git URL, or @market/module\n" +
 			"  hint: example: lola install ./my-module -t claude-code\n"))
 	})
 
@@ -495,15 +541,38 @@ var _ = Describe("core commands", func() {
 		r := lola("uninstall", "example", "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("plan (dry run; nothing was written):"))
-		Expect(r.err).To(ContainSubstring("hint: pass -y to confirm"))
+		Expect(r.err).To(HaveSuffix("hint: lola uninstall example --root "+proj+" -y\n"), "the run with -y, which answers this question")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+		Expect(lola("uninstall", "example", "--root", proj, "-y").code).To(Equal(0))
 	})
 
-	It("--force never skips the confirmation", func() {
+	It("--force answers the confirmation, off a terminal too", func() {
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
 		r := lola("uninstall", "example", "--force", "-C", proj)
-		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("pass -y to confirm"))
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("uninstall over an @ source hints the install the run would take, with -n only when the run has it", func() {
+		acme := filepath.Join(tmp, "acme")
+		writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
+  "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"}]}`, "formatter/commands/fmt.md": "Fmt\n"})
+		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(mpath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(mpath, append(b, "  - {name: formatter, source: '@acme/formatter'}\n"...), 0o644)).To(Succeed())
+		for _, dry := range [][]string{nil, {"-n"}} {
+			r := lola(slices.Concat([]string{"uninstall", "example", "-C", proj}, dry, []string{"--json"})...)
+			Expect(r.code).To(Equal(1))
+			var refusal struct {
+				Hints []string `json:"hints"`
+			}
+			Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
+			Expect(refusal.Hints).To(Equal([]string{strings.Join(slices.Concat([]string{"lola install -C " + proj + " @acme/formatter"}, dry,
+				[]string{"--json"}), " ")}), "%v", dry)
+		}
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 	})
 
@@ -518,12 +587,109 @@ var _ = Describe("core commands", func() {
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine"})
 		r := lola("install", mod, "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("refusing to change anything: 1 conflict(s)\n  claude-code: .claude/commands/ship.md: exists and was not written by lola"))
-		Expect(r.err).To(ContainSubstring("hint: rerun with --force"))
+		Expect(r.err).To(Equal("error: refusing to change anything: 1 conflict, which --force overrides\n"+
+			"  claude-code: .claude/commands/ship.md: exists and was not written by lola\n  hint: lola install "+mod+" --root "+proj+" --force\n"),
+			"the hint is the run with --force")
 		Expect(filepath.Join(proj, ".mcp.json")).NotTo(BeAnExistingFile())
 		r = lola("install", mod, "-C", proj, "--force")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("[forced: unowned]"))
+	})
+
+	It("hints the uninstall of the module that owns a destination, keeping the output flags, and runs it", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		other := filepath.Join(tmp, "other")
+		writeTree(other, map[string]string{"lola.yml": "name: other\n", "commands/ship.md": "Other\n"})
+		r := lola("install", other, "-C", proj, "--json")
+		Expect(r.code).To(Equal(1))
+		uninstall := "lola uninstall -C " + proj + " example --json"
+		Expect(r.err).To(MatchJSON(`{"error": "refusing to change anything: 1 conflict\n  claude-code: .claude/commands/ship.md: wanted by module \"other\", ` +
+			`owned by module \"example\"; --force cannot override it: uninstall example first", "hints": ["` + uninstall + `"]}`))
+		again := lola(shellWords(uninstall)[1:]...)
+		Expect(again.err).To(ContainSubstring("needs confirmation, and there is no terminal to ask on"), "it asks, as every uninstall does")
+		again = lola(append(shellWords(uninstall)[1:], "-y")...) // the answer a terminal would give
+		Expect(again.code).To(Equal(0), again.err)
+		Expect(lola("install", other, "-C", proj).code).To(Equal(0), "the destination is free")
+	})
+
+	It("refuses --ref, --path or --global that apply to nothing, saying what to add, with no hint but the run that works", func() {
+		for _, args := range [][]string{{"install", "--ref", "v1", "-C", proj}, {"install", "--path", "sub", "-C", proj, "--json"}} {
+			r := lola(args...)
+			Expect(r.code).To(Equal(1), args[1])
+			flag := args[1]
+			if strings.Contains(strings.Join(args, " "), "--json") {
+				Expect(r.err).To(MatchJSON(`{"error": "` + flag + ` applies to a source argument, and none was given: name it, as in lola install <source> ` +
+					flag + ` <value>", "hints": []}`))
+				continue
+			}
+			Expect(r.err).To(Equal("error: " + flag + " applies to a source argument, and none was given: name it, as in lola install <source> " + flag + " <value>\n"))
+		}
+		r := lola("install", "--ref", "v1", "--path", "sub", "-C", proj)
+		Expect(r.err).To(Equal("error: --ref and --path apply to a source argument, and none was given: name it, " +
+			"as in lola install <source> --ref <value> --path <value>\n"))
+		r = lola("install", "--global", "-C", proj)
+		Expect(r.err).To(Equal("error: --global saves --skip, --only and --unskip for every scope, and none was given: add one, "+
+			"as in lola install <module> --skip <kind>/<name> --global\n"), "no module to run it with: no hint")
+		r = lola("install", mod, "--global", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		run := "lola install " + mod + " --root " + proj
+		Expect(r.err).To(HaveSuffix("\n  hint: "+run+"\n"), "the run without the flag that does nothing")
+		Expect(lola(shellWords(run)[1:]...).code).To(Equal(0))
+	})
+
+	It("refuses an uninstall a hand-edited file blocks, saying nothing was removed, and hints the run with --force", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		for _, run := range [][]string{{"render", "-C", proj, "--strict"}, {"sync", "example", "-C", proj, "-y"}} {
+			writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
+			r := lola(run...)
+			Expect(r.code).To(Equal(1), run[0])
+			// -y answered "remove what lola can remove safely", never "delete my edits" (R-6cux-4).
+			want := map[string]string{"render": "lola render --root " + proj + " --strict --force",
+				"sync": "lola sync example --root " + proj + " --force"}[run[0]]
+			Expect(r.err).To(HaveSuffix("  hint: "+want+"\n"), run[0])
+			again := lola(shellWords(want)[1:]...)
+			Expect(again.code).To(Equal(0), want+": "+again.err)
+		}
+		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
+		r := lola("uninstall", "example", "-C", proj, "-y")
+		Expect(r.code).To(Equal(1))
+		force := "lola uninstall example --root " + proj + " --force"
+		Expect(r.err).To(Equal("error: refusing to change anything: 1 conflict, which --force overrides\n"+
+			"  claude-code: .claude/commands/ship.md: hand-edited since lola wrote it; deleting it would lose your edits\n"+
+			"  hint: "+force+"\n"), "the -y given to a safe uninstall answers no forced one")
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+		r = lola(shellWords(force)[1:]...)
+		Expect(r.code).To(Equal(0), "--force answers the question, off a terminal too (user decision, 2026-10-22): "+r.err)
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("uninstall --force removes a module with hand-edited files without a prompt, after a refusal that lists every edited file", func() {
+		writeTree(mod, map[string]string{"commands/land.md": "Land\n", "skills/review/SKILL.md": "---\ndescription: Review\n---\nReview\n"})
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine", ".claude/skills/review/SKILL.md": "mine too"})
+		r := lola("uninstall", "example", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		force := "lola uninstall example --root " + proj + " --force"
+		Expect(r.err).To(Equal("error: refusing to change anything: 2 conflicts, which --force overrides\n" +
+			"  claude-code: .claude/commands/ship.md: hand-edited since lola wrote it; deleting it would lose your edits\n" +
+			"  claude-code: .claude/skills/review/SKILL.md: hand-edited since lola wrote it; deleting it would lose your edits\n" +
+			"  hint: " + force + "\n"))
+		r = lola(shellWords(force)[1:]...)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.err).NotTo(ContainSubstring("confirmation"))
+		for _, f := range []string{"commands/ship.md", "commands/land.md", "skills/review"} {
+			Expect(filepath.Join(proj, ".claude", f)).NotTo(BeAnExistingFile(), f)
+		}
+	})
+
+	It("sync --force on a pulled project.yml still refuses for trust off a terminal", func() {
+		writeTree(proj, map[string]string{"mods/example/commands/ship.md": "Ship\n",
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: mods/example}\n"})
+		r := lola("sync", "-C", proj, "--force")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("lola sync needs your trust for "))
+		Expect(r.err).To(ContainSubstring("hint: then accept them: lola sync -C " + proj + " --force --trust\n"))
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
 	})
 
 	It("never rewrites a corrupt .mcp.json, even with --force", func() {
@@ -606,6 +772,17 @@ var _ = Describe("core commands", func() {
 		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
 		Expect(res.Modules).To(ContainElement(And(HaveKeyWithValue("name", "other"), HaveKeyWithValue("status", "not_installed"),
 			HaveKeyWithValue("digest", ""), HaveKeyWithValue("pin", ""), HaveKeyWithValue("update_available", false))))
+
+		// The list says how to install them: the sync of that scope, with the run's output flags.
+		writeTree(filepath.Join(proj, "mods", "other"), map[string]string{"lola.yml": "name: other\n", "commands/other.md": "Other\n"})
+		GinkgoT().Chdir(proj)
+		r = lola("list", "--project")
+		Expect(r.out).To(HaveSuffix("\n→ 1 module in project.yml is not installed → lola sync --project\n"))
+		Expect(lola("list", "--plain").out).To(HaveSuffix("notice\tinfo\t1 module in project.yml is not installed → lola sync --project --plain\n"))
+		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}, stderr: &bytes.Buffer{}}
+		r = lolaAsking(c, "sync", "--project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(lola("list", "--project").out).NotTo(ContainSubstring("not installed"))
 	})
 
 	It("colors per LOLA_COLOR, then NO_COLOR, and never under --plain; glyphs stay", func() {

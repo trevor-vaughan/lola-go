@@ -34,6 +34,20 @@ type Prompter interface {
 	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
 	// multi-select, nothing preselected (Plan 6b §3.2).
 	Profiles(ProfileStep) ([]string, error)
+	// MarketName asks the name of a marketplace lola market --add adds when the one it has is
+	// another marketplace's, or one no marketplace can have (Plan 6c §3.1), pre-filled with a
+	// free one.
+	MarketName(MarketNameStep) (string, error)
+	// MarketEntry asks which marketplace entry a bare name your cache lacks means (Plan 6c §3.3),
+	// answering its address.
+	MarketEntry(MarketEntryStep) (string, error)
+}
+
+// MarketNameStep asks for the name of a marketplace: Why the name it has will not do, Value the
+// first free name, pre-filled, and Problem why the last answer was refused ("" on the first ask).
+// Every string is safe to print.
+type MarketNameStep struct {
+	Why, Value, Problem string
 }
 
 // ProfileStep offers the profiles a source holds, by name; Invalid counts its files whose names
@@ -100,13 +114,34 @@ type ModuleOption struct {
 	Label string
 }
 
-// ModuleStep offers the cached modules; with none, the prompter offers Add a source… and Quit.
-// The prompter selects exactly Preselect: nothing on the first run, so an installed module is
-// never picked for the user, and the last answer when the step runs again.
+// ModuleStep offers the cached modules, then one group per marketplace with a fetched catalog
+// (Plan 6c §6.5), whose options are named by their addresses (@acme/formatter); with neither, the
+// prompter offers Add a source… and Quit. Browse offers the market groups alone, without Add a
+// source… (lola install @acme). The prompter selects exactly Preselect: nothing on the first run,
+// so an installed module is never picked for the user, and the last answer when the step runs
+// again.
 type ModuleStep struct {
 	Options   []ModuleOption
+	Markets   []ModuleGroup
+	Browse    bool
 	Preselect []string
 	Problem   string
+}
+
+// ModuleGroup is one marketplace in the module picker: Title is "@acme — <description>", and
+// each option's Label its entry's name, version, description, tags and source host, already made
+// safe to print.
+type ModuleGroup struct {
+	Title   string
+	Options []ModuleOption
+}
+
+// MarketEntryStep asks which marketplace entry a bare name means (Plan 6c §3.3): Name is the
+// name, which your cache does not hold, and Options the entries your catalogs list under it, one
+// per marketplace, named by their addresses; nothing is preselected.
+type MarketEntryStep struct {
+	Name    string
+	Options []ModuleOption
 }
 
 // ModuleAnswer is the module picker's answer: modules, or a source to add (then the picker
@@ -186,6 +221,8 @@ func (noPrompter) ConfirmEmpty(string) (bool, error)            { return false, 
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }
 func (noPrompter) Confirm(string) (bool, error)                 { return false, errNoTerminal }
 func (noPrompter) Profiles(ProfileStep) ([]string, error)       { return nil, errNoTerminal }
+func (noPrompter) MarketName(MarketNameStep) (string, error)    { return "", errNoTerminal }
+func (noPrompter) MarketEntry(MarketEntryStep) (string, error)  { return "", errNoTerminal }
 func (noPrompter) Trust(TrustStep) (engine.TrustAnswer, error) {
 	return engine.TrustAnswer{}, errNoTerminal
 }

@@ -40,7 +40,7 @@ var _ = Describe("NewPlan", func() {
 	plan := func() *migrate.Plan {
 		st, err := migrate.Load(h.dir, userHome)
 		Expect(err).NotTo(HaveOccurred())
-		p, err := migrate.NewPlan(ctx, e, st)
+		p, err := migrate.NewPlan(ctx, e, st, nil)
 		Expect(err).NotTo(HaveOccurred())
 		return p
 	}
@@ -218,7 +218,7 @@ var _ = Describe("NewPlan", func() {
 			Expect(d.Unmappable).To(HaveLen(1))
 			Expect(d.Unmappable[0].Module).To(Equal("gone"))
 			Expect(d.Unmappable[0].Reason).To(HavePrefix("lola-go cannot fetch " + url + "/gone.git: "))
-			Expect(d.Unmappable[0].Hints).To(Equal([]string{"rerun lola migrate once the source is reachable"}))
+			Expect(d.Unmappable[0].Hints).To(Equal([]string{"git ls-remote -- " + url + "/gone.git", "rerun lola migrate once the source is reachable"}))
 			Expect(d.Recorded).To(HaveLen(1), "only the module that migrates records its paths")
 		})
 
@@ -239,7 +239,7 @@ var _ = Describe("NewPlan", func() {
 			Expect(err).NotTo(HaveOccurred())
 			cctx, cancel := context.WithCancel(ctx)
 			cancel()
-			_, err = migrate.NewPlan(cctx, e, st)
+			_, err = migrate.NewPlan(cctx, e, st, nil)
 			Expect(err).To(MatchError(context.Canceled))
 		})
 	})
@@ -432,8 +432,8 @@ var _ = Describe("NewPlan", func() {
 			rec{"module": "review", "assistant": "gemini-cli", "scope": "user", "has_instructions": true},
 			rec{"module": "review", "assistant": "opencode", "scope": "user", "has_instructions": true})
 		p := plan()
-		Expect(p.NotMigrated).To(ConsistOf(migrate.Item{What: migrate.ItemMarket, Path: filepath.Join(h.dir, "market"),
-			Hints: []string{"lola-go has no marketplaces; install those modules from their sources with lola install"}}))
+		Expect(p.NotMigrated).To(BeEmpty(), "marketplaces are registered (Plan 6c §6.9), and an empty market/ holds none")
+		Expect(p.Markets).To(BeEmpty())
 		type shown struct{ What, Path, Marker string }
 		items := func(d *migrate.Destination) []shown {
 			var out []shown

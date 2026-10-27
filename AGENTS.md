@@ -31,7 +31,8 @@ Guidance for coding agents working on lola (Go).
   canonical name in docs and JSON. The published table is pinned by a spec in
   `internal/cli/store_test.go`; update it deliberately.
 - **Destructive commands** take `-y/--yes` and confirm on a terminal; `--force` overrides safety
-  checks and never skips a prompt.
+  checks and answers the destructive question; it never answers a consent question (`--trust`,
+  `--allow-hooks`, `--allow-runtime-hooks`).
 - **Dependencies** are pinned and were vetted; adding one needs the `dependency-vetting` process
   and the maintainer's approval.
 

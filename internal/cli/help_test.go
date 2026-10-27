@@ -26,6 +26,23 @@ var _ = Describe("help, errors and output contract", func() {
 		}
 	})
 
+	It("prints the global flags once, piped or concise", func() {
+		for _, args := range [][]string{{"install", "--help"}, {"market", "-h"}, {"help", "cache", "add"}, {"-h"}} {
+			r := lola(args...)
+			Expect(r.code).To(Equal(0), strings.Join(args, " "))
+			Expect(strings.Count(r.out, "GLOBAL FLAGS")+strings.Count(r.out, "Global Flags:")).To(Equal(1), strings.Join(args, " "))
+			if args[0] != "-h" { // the root's own flags are the global ones
+				Expect(strings.Count(r.out, "--no-pager")).To(Equal(1), strings.Join(args, " "))
+			}
+		}
+		r := lola("install", "--help")
+		Expect(r.out).To(HavePrefix("GLOBAL FLAGS\n"))
+		Expect(r.out).To(MatchRegexp(`== lola install ==\n(.*\n)*Flags:\n(.*\n)*      --strict `), "the command's own flags stay")
+		r = lola("help", "install", "--short")
+		Expect(strings.Count(r.out, "Global Flags:")).To(Equal(1), "concise help keeps cobra's block")
+		Expect(r.out).NotTo(ContainSubstring("GLOBAL FLAGS"))
+	})
+
 	It("help --short prints concise grouped help with aliases inline", func() {
 		r := lola("help", "--short")
 		Expect(r.code).To(Equal(0))

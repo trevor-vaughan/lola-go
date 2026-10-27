@@ -223,6 +223,31 @@ type Profile struct {
 	extendsAt   []int            // the line of each name in Extends
 }
 
+// file is a profile as decoded: a manifest's entries without market, which only project.yml and
+// user.yml record (Plan 6c §6.4, ruling R-6c-1), so a profile entry carrying it is refused at
+// load as any unknown key is, naming its line.
+type file struct {
+	Version     int      `yaml:"version"`
+	Description string   `yaml:"description"`
+	Targets     []string `yaml:"targets"`
+	Extends     []string `yaml:"extends"`
+	Modules     []entry  `yaml:"modules"`
+}
+
+// entry is a profile's module entry as decoded: manifest.Entry without Market and Components.
+// New manifest fields are refused in profiles by design: a profile entry carrying one is refused
+// at load as any unknown key is.
+type entry struct {
+	Name    string   `yaml:"name"`
+	Source  string   `yaml:"source"`
+	Ref     string   `yaml:"ref"`
+	Path    string   `yaml:"path"`
+	Commit  string   `yaml:"commit"`
+	Digest  string   `yaml:"digest"`
+	Targets []string `yaml:"targets"`
+	Rules   *bool    `yaml:"rules"`
+}
+
 // Load reads the profile at path once (Plan 6b §4.3, §6.1): through yamldoc.Read, as user.yml is
 // read, which follows a symbolic link (a dotfile manager's, §19 P7) and refuses a file that is not
 // regular, a file over yamldoc.MaxFile, more than one document, anchors and aliases; the version
@@ -279,17 +304,30 @@ func parse(path string, d *yaml.Node, b []byte, hint string, remote bool) (*Prof
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(b))
 	dec.KnownFields(true)
-	if err := dec.Decode(p); err != nil && !errors.Is(err, io.EOF) {
+	f := file{Version: p.Version}
+	if err := dec.Decode(&f); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fixHint(fmt.Errorf("%s: %s", path, untrusted.Text(err.Error(), 2*untrusted.MaxName)))
 	}
-	if err := p.check(root); err != nil {
+	p.Version, p.Description, p.Targets, p.Extends = f.Version, f.Description, f.Targets, f.Extends
+	for _, e := range f.Modules {
+		p.Modules = append(p.Modules, manifest.Entry{Name: e.Name, Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest,
+			Targets: e.Targets, Rules: e.Rules})
+	}
+	err := p.check(root)
+	if ue, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
+		ue.Path = path
+		return nil, ue
+	}
+	if err != nil {
 		return nil, fixHint(fmt.Errorf("%s:%w", path, err))
 	}
 	return p, nil
 }
 
 // check applies the field rules of Plan 6b §4.3 to a decoded profile, root being its document's
-// mapping: each error starts with the line it is about and a colon.
+// mapping: each error starts with the line it is about and a colon, but for entries whose source
+// is a marketplace address, which once every other rule passed are reported together in a
+// *manifest.UnresolvedError without its path (Plan 6c §6.7).
 func (p *Profile) check(root *yaml.Node) error {
 	at := func(key string) int {
 		if n := yamldoc.Value(root, key); n != nil {
@@ -334,6 +372,7 @@ func (p *Profile) check(root *yaml.Node) error {
 	if n := yamldoc.Value(root, "modules"); n != nil {
 		lines = n.Content
 	}
+	var unresolved []manifest.Unresolved
 	for i := range p.Modules {
 		e := &p.Modules[i]
 		line := root.Line
@@ -346,6 +385,10 @@ func (p *Profile) check(root *yaml.Node) error {
 		if slices.ContainsFunc(p.Modules[:i], func(o manifest.Entry) bool { return o.Name == e.Name }) {
 			return errs.WithHints(fmt.Errorf("%d: module %s is listed twice", line, e.Name), "keep one entry per module")
 		}
+		if mkt, mod, ok := manifest.Address(e.Source); ok {
+			unresolved = append(unresolved, manifest.Unresolved{Name: e.Name, Market: mkt, Module: mod, Line: manifest.SourceLine(root, "modules", i)})
+			continue
+		}
 		if err := e.Validate(); err != nil {
 			return fmt.Errorf("%d: module %s: %w", line, e.Name, err)
 		}
@@ -354,6 +397,9 @@ func (p *Profile) check(root *yaml.Node) error {
 				return fmt.Errorf("%d: module %s: %w", line, e.Name, err)
 			}
 		}
+	}
+	if len(unresolved) > 0 {
+		return &manifest.UnresolvedError{Entries: unresolved}
 	}
 	return nil
 }

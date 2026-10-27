@@ -18,8 +18,9 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// pager shows lola sync's consent diffs git-style (Plan 6b §9, §19 R12, S9): through the user's
-// pager when lola pages, else as before. on is decided once per command.
+// pager shows lola sync's consent diffs (Plan 6b §9, §19 R12, S9) and lola market's listing of a
+// marketplace git-style: through the user's pager when lola pages, else as before. on is decided
+// once per command.
 type pager struct {
 	a   *app
 	cmd *cobra.Command

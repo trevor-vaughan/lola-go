@@ -38,7 +38,7 @@ var _ = Describe("Compute", func() {
 	}
 	req := func(force bool, changes ...plan.ModuleChange) plan.Request {
 		return plan.Request{Roots: map[string]string{tgt: root}, BaseDirs: map[string][]string{tgt: {".claude/commands"}},
-			Ledger: led, Force: force, Changes: changes}
+			Ledger: led, Force: force, ForceRun: "lola render --force", Changes: changes}
 	}
 	change := func(name string, intents ...plan.Intent) plan.ModuleChange {
 		return plan.ModuleChange{Name: name, Entry: &ledger.Entry{Source: "/s/" + name, Digest: "sha256:new"}, Targets: []string{tgt}, Intents: intents}
@@ -190,9 +190,9 @@ var _ = Describe("Compute", func() {
 			own("b", fileArt(".claude/commands/x.md", "B"))
 			_, err := install("a", true, cmd(".claude/commands/x.md", "A"))
 			cs := conflicts(err)
-			Expect(cs[0].Reason).To(Equal(`owned by module "b"; uninstall it first`))
-			Expect(cs[0].Forceable).To(BeFalse())
-			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("cannot override")))
+			Expect(cs[0].Reason).To(Equal(`wanted by module "a", owned by module "b"; --force cannot override it`))
+			Expect(cs[0]).To(And(HaveField("Forceable", false), HaveField("Owner", "b")))
+			Expect(errs.Hints(err)).To(BeEmpty(), "the engine hints the owner's uninstall; the plan knows no scope")
 		})
 
 		It("refuses two modules claiming one destination in the same operation", func() {
@@ -204,11 +204,11 @@ var _ = Describe("Compute", func() {
 			_, err := plan.Compute(req(true, change("a", cmd(".claude/commands/x.md", "A"), cmd(".claude/commands/x.md", "B"))))
 			cs := conflicts(err)
 			Expect(cs).To(HaveLen(1))
-			Expect(cs[0].Reason).To(Equal(`provided twice by module "a"`))
+			Expect(cs[0].Reason).To(Equal(`provided twice by module "a"; its author must rename one of the two`))
 			Expect(cs[0].Forceable).To(BeFalse())
-			Expect(errs.Hints(err)).To(ConsistOf(ContainSubstring("rename one")))
+			Expect(errs.Hints(err)).To(BeEmpty(), "only the module's author can rename one: no command, so no hint")
 			_, err = plan.Compute(req(true, change("a", mcp("gh", `{"command":"a"}`), mcp("gh", `{"command":"b"}`))))
-			Expect(conflicts(err)[0].Reason).To(Equal(`provided twice by module "a"`))
+			Expect(conflicts(err)[0].Reason).To(Equal(`provided twice by module "a"; its author must rename one of the two`))
 		})
 
 		It("moves a destination between replanned modules without a conflict or a delete", func() {
@@ -254,7 +254,9 @@ var _ = Describe("Compute", func() {
 			put(".claude/commands/x.md", "edited")
 			own("a", fileArt(".claude/commands/x.md", "X"))
 			_, err := plan.Compute(req(false, removal("a")))
-			Expect(conflicts(err)[0].Reason).To(ContainSubstring("kept"))
+			Expect(conflicts(err)[0].Reason).To(Equal("hand-edited since lola wrote it; deleting it would lose your edits"))
+			Expect(err).To(MatchError(HavePrefix("refusing to change anything: 1 conflict, which --force overrides\n")))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola render --force"}), "the hint is the run with --force")
 			p, err := plan.Compute(req(true, removal("a")))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(p.Files[0].Delete).To(BeTrue())
@@ -548,11 +550,12 @@ var _ = Describe("Compute", func() {
 
 		It("refuses the same group from two modules, even with --force", func() {
 			_, err := plan.Compute(req(true, change("a", group(groupX)), change("b", group(canonX))))
-			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", `also provided by module "a" in this operation`)))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason",
+				`also provided by module "a" in this operation; only one of the two can install it, and --force cannot override that`)))
 			own("a", ledger.Artifact{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop, Member: []byte(canonX), SHA256: sum(canonX)})
 			put(settings, `{"hooks": {"Stop": [`+groupX+`]}}`)
 			_, err = install("b", true, group(groupX))
-			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", `owned by module "a"; uninstall it first`)))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", `wanted by module "b", owned by module "a"; --force cannot override it`)))
 		})
 
 		It("keeps an owned group the user removed absent, recorded as owned, unless forced", func() {

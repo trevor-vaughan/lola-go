@@ -19,13 +19,16 @@ func interactive(cmd *cobra.Command) bool {
 	return isTTY(cmd.InOrStdin()) && isTTY(cmd.ErrOrStderr())
 }
 
-// confirm asks before a destructive action; yes skips it. The summary was already printed.
-func (a *app) confirm(cmd *cobra.Command, yes bool, question string) error {
+// confirm asks before a destructive action; yes skips it. The summary was already printed. Off a
+// terminal the refusal hints the run (args are its names) with -y.
+func (a *app) confirm(cmd *cobra.Command, args []string, yes bool, question string) error {
 	if yes {
 		return nil
 	}
 	if !interactive(cmd) {
-		return errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()), "pass -y to confirm")
+		// -y answers exactly this question, the one the plan just printed asks.
+		return errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()),
+			runWithout(cmd, args, "yes")+" -y")
 	}
 	ok, err := a.ask(cmd, question)
 	if err == nil && !ok {

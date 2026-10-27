@@ -200,8 +200,10 @@ func (e *Engine) goneProfile(sc Scope, q string) Notice {
 // profile that is off, the layer that would win were it turned on, appended to the active list as
 // --on does. A scope the name does not resolve in is left out (default at project scope, say);
 // when it resolves in none, the first scope's refusal is returned. The named profile is read, and
-// the scope's active ones, once each, as a sync reads them.
-func (e *Engine) ProfileState(ctx context.Context, scopes []Scope, name string) ([]ProfileState, []Notice, error) {
+// the scope's active ones, once each, as a sync reads them. display is the run's output flags,
+// which the hints of a file with a marketplace address keep (Plan 6c §6.7).
+func (e *Engine) ProfileState(ctx context.Context, scopes []Scope, name string, display ...string) (_ []ProfileState, _ []Notice, err error) {
+	defer func() { err = e.CoachUnresolved(err, scopes, false, display) }()
 	unlock, err := e.readProfiles(true)
 	if err != nil {
 		return nil, nil, err

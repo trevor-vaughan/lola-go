@@ -41,17 +41,17 @@ const (
 	ItemMCP          = "mcp"
 	ItemPluginData   = "plugin-data"
 	ItemLolaReq      = "lola-req"
-	ItemMarket       = "market"
 )
 
 // Plan is what lola migrate would do with the Python lola's state, before the install is
-// planned: the destinations (Plan 5c §14), the records that cannot be migrated anywhere, and
-// what is reported but never acted on.
+// planned: the destinations (Plan 5c §14), the records that cannot be migrated anywhere, what is
+// reported but never acted on, and what becomes of its marketplaces (Plan 6c §6.9).
 type Plan struct {
 	Home         string
 	Destinations []*Destination
 	Unmappable   []Unmapped
 	NotMigrated  []Item
+	Markets      []Market
 	Warnings     []string
 
 	st *State
@@ -140,12 +140,16 @@ type Item struct {
 // target, and the version lola-go resolves its source to holds every component the record
 // lists. Everything else is unmappable and left as it is. Each install's source is fetched
 // into the cache once, here, and the install pinned to that version, so a preview and the
-// run that follows it install the same thing.
-func NewPlan(ctx context.Context, e *engine.Engine, st *State) (*Plan, error) {
-	p := &Plan{Home: st.Home, Unmappable: []Unmapped{}, NotMigrated: []Item{}, Warnings: st.Warnings, st: st}
-	if dir := filepath.Join(st.Home, "market"); isDir(dir) {
-		p.NotMigrated = append(p.NotMigrated, Item{What: ItemMarket, Path: dir,
-			Hints: []string{"lola-go has no marketplaces; install those modules from their sources with lola install"}})
+// run that follows it install the same thing. display is the run's output flags, which the hints
+// of a destination's manifest with a marketplace address keep (Plan 6c §6.7).
+func NewPlan(ctx context.Context, e *engine.Engine, st *State, display []string) (*Plan, error) {
+	p := &Plan{Home: st.Home, Unmappable: []Unmapped{}, NotMigrated: []Item{}, Markets: []Market{}, Warnings: st.Warnings, st: st}
+	if len(st.Markets) > 0 {
+		have, _, err := e.Markets(nil)
+		if err != nil {
+			return nil, err
+		}
+		p.Markets = planMarkets(st.Markets, have)
 	}
 	byKey := map[string]*Destination{}
 	for _, rec := range st.Records {
@@ -162,7 +166,7 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State) (*Plan, error) {
 			d = newDestination(e, sc)
 			man, err := e.Manifest(sc)
 			if err != nil {
-				return nil, err
+				return nil, e.CoachUnresolved(err, []engine.Scope{sc}, false, display)
 			}
 			d.man, byKey[sc.Key()] = man, d
 			p.Destinations = append(p.Destinations, d)

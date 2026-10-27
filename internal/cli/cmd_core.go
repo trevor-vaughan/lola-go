@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
@@ -76,7 +78,7 @@ func (a *app) completeInstalled(cmd *cobra.Command, _ []string, toComplete strin
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	rows, _, err := eng.Status(cmd.Context(), sc)
+	rows, _, err := eng.Status(cmd.Context(), sc, nil)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
@@ -89,25 +91,68 @@ func (a *app) completeInstalled(cmd *cobra.Command, _ []string, toComplete strin
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
+// completeAddress completes an argument that starts with @ to a marketplace address, @<market>
+// or @<market>/<entry>, from your fetched catalogs (Plan 6c §3.3); any other argument completes
+// as the shell completes a path.
+func (a *app) completeAddress(_ *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	if !strings.HasPrefix(toComplete, "@") {
+		return nil, cobra.ShellCompDirectiveDefault
+	}
+	eng, err := a.engine()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	groups, _, err := eng.MarketGroups(nil)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var out []cobra.Completion
+	for _, g := range groups {
+		for _, addr := range append([]string{"@" + g.Name}, offerAddresses(g)...) {
+			if strings.HasPrefix(addr, toComplete) {
+				out = append(out, addr)
+			}
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
+// offerAddresses are the addresses of the entries g offers.
+func offerAddresses(g engine.MarketGroup) []string {
+	var out []string
+	for _, o := range g.Entries {
+		out = append(out, o.Install)
+	}
+	return out
+}
+
 func (a *app) addCoreCommands(root *cobra.Command) {
-	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.profileCmd(), a.checkCmd())
+	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.profileCmd(), a.marketCmd(), a.checkCmd())
 }
 
 func (a *app) installCmd() *cobra.Command {
 	var f installFlags
-	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), or a module directory, archive or git URL",
-		usage: "lola install <source|name>... [-t target]",
+	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), a module directory, archive or git URL, or @market/module",
+		usage: "lola install <source|name|@market/module>... [-t target]",
 		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review",
-			"lola install https://github.com/acme/review.git --ref v1.2.0", "lola install ./review-1.2.0.tar.gz",
+			"lola install https://github.com/acme/review.git --ref v1.2.0", "lola install ./review-1.2.0.tar.gz", "lola install @acme/formatter",
 			"lola install review-kit --scope project --skip skill/slow-lint", "lola install"}}
 	cmd := &cobra.Command{
-		Use:     "install [<source|name>...]",
+		Use:     "install [<source|name|@market/module>...]",
 		Aliases: []string{"add"},
 		Short:   "Install modules into this project (or --user)",
 		Long: "Install modules. Each argument is a module already in your cache (used without\n" +
 			"touching its source) or a source:\n" + source.AcceptedForms + ".\n" +
 			"--ref picks a git branch, tag or full commit SHA; --path picks the module root inside\n" +
 			"the source.\n" +
+			"@market/module installs an entry of one of your marketplaces (lola market): lola shows\n" +
+			"where it resolved, then records the module's real source, path, ref and pin, with\n" +
+			"market: {name, source} as provenance, so a teammate needs no marketplace. A catalog's\n" +
+			"commit pin must be on its ref. --ref replaces the catalog's ref and records no market;\n" +
+			"--path is refused, as the catalog gives the path. @market/module is a command-line\n" +
+			"form only, never a file's source: (a directory of that name is ./@market/module); a\n" +
+			"project.yml, user.yml or profile that has one is refused, naming its line, and\n" +
+			"lola install @market/module replaces such an entry of the module's name.\n" +
 			"The module is copied into your cache, rendered for each target, and recorded in\n" +
 			".lola/project.yml (user scope: $XDG_CONFIG_HOME/lola/user.yml).\n" +
 			"\n" +
@@ -134,9 +179,10 @@ func (a *app) installCmd() *cobra.Command {
 			"Claude Code runtime hooks (a plugin's hooks) are installed only with your consent too:\n" +
 			"lola lists them and asks on a terminal (default No), and --allow-runtime-hooks records\n" +
 			"consent off one. It holds until the module version, the hooks or the project path changes.",
-		Example: g.example(),
-		GroupID: groupCore,
-		Args:    cobra.ArbitraryArgs,
+		Example:           g.example(),
+		GroupID:           groupCore,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: a.completeAddress,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runInstall(cmd, g, args, f)
 		},
@@ -150,7 +196,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().StringVar(&f.path, "path", "", "module root inside the source (monorepos)")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
-	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be (never skips a prompt)")
+	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
 	cmd.Flags().BoolVar(&f.noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
 	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
@@ -180,19 +226,26 @@ func (a *app) uninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scs, err := a.scopes(cmd, eng, "Uninstall from where?", false, false)
+			scs, err := a.scopes(cmd, eng, args, "Uninstall from where?", false, false)
 			if err != nil {
 				return err
 			}
 			sc := scs[0].Scope
-			opts := engine.Options{Targets: targets, DryRun: true, Force: force}
-			if !dry && !yes {
+			opts := engine.Options{Targets: targets, DryRun: true, Force: force, ForceRun: forceRun(cmd, args), Display: outputFlags(cmd)}
+			// --force answers the question, as -y does (user decision, 2026-10-22).
+			if !dry && !yes && !force {
+				// The preview is a dry run, whose refusal of an @ source would hint -n: coach it as this run.
+				if _, err := eng.Manifest(sc); err != nil {
+					if _, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
+						return eng.CoachUnresolved(err, []engine.Scope{sc}, dry, outputFlags(cmd))
+					}
+				}
 				preview, err := eng.Uninstall(cmd.Context(), sc, args, opts)
 				if err != nil {
 					return err
 				}
 				printResult(cmd.ErrOrStderr(), style{}, "", preview)
-				if err := a.confirm(cmd, false, "Uninstall "+strings.Join(args, ", ")+"?"); err != nil {
+				if err := a.confirm(cmd, args, false, "Uninstall "+strings.Join(args, ", ")+"?"); err != nil {
 					return err
 				}
 			}
@@ -207,7 +260,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 	addTargetFlag(cmd, &targets, "only uninstall from these assistants")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
-	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them (never skips a prompt)")
+	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking (never answers a consent question)")
 	return cmd
 }
 
@@ -250,7 +303,7 @@ func (a *app) listCmd() *cobra.Command {
 			rows, notices := []engine.StatusRow{}, []engine.Notice{}
 			var scopes []engine.Scope
 			for i, c := range scs {
-				got, notes, err := eng.Status(cmd.Context(), c.Scope)
+				got, notes, err := eng.Status(cmd.Context(), c.Scope, outputFlags(cmd))
 				if err != nil && len(scs) == 2 && c.Source == engine.SourceDiscovered {
 					// No flag chose these scopes, so one that cannot be read must not hide the other.
 					return errs.WithHints(err, "list the other scope: "+eng.Command(scs[1-i].Scope, "list"))
@@ -374,12 +427,12 @@ func (a *app) renderCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scs, err := a.scopes(cmd, eng, "Render where?", false, false)
+			scs, err := a.scopes(cmd, eng, nil, "Render where?", false, false)
 			if err != nil {
 				return err
 			}
 			sc := scs[0].Scope
-			opts := engine.Options{Targets: targets, DryRun: dry, Force: force, Strict: strict}
+			opts := engine.Options{Targets: targets, DryRun: dry, Force: force, Strict: strict, ForceRun: forceRun(cmd, nil), Display: outputFlags(cmd)}
 			a.hookOptions(cmd, &opts, allowHooks, allowRuntime)
 			res, err := eng.Render(cmd.Context(), sc, opts)
 			if err != nil {
@@ -390,7 +443,7 @@ func (a *app) renderCmd() *cobra.Command {
 	}
 	addTargetFlag(cmd, &targets, "only render for these assistants")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite or delete hand-edited files and render skipped artifacts that can be (never skips a prompt)")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite or delete hand-edited files and render skipped artifacts that can be (never answers a consent question)")
 	cmd.Flags().BoolVar(&strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
 	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "run the install hooks of updated modules without asking (consent for this run)")
 	cmd.Flags().BoolVar(&allowRuntime, "allow-runtime-hooks", false, "install Claude Code runtime hooks that need consent without asking (consent is recorded)")
@@ -404,12 +457,15 @@ func (a *app) checkCmd() *cobra.Command {
 		Use:   "check [module-or-source...]",
 		Short: "Report what each assistant would lose, change or skip from a module",
 		Long: "Render modules for every assistant (or those given with -t) without writing anything, and\n" +
-			"report what each target drops, adapts or cannot express. A source is fetched the way\n" +
-			"lola cache add fetches it but is not added to your cache; any other argument names a\n" +
-			"cached module. With no argument, the current directory is checked. Sources:\n" + source.AcceptedForms + ".",
-		Example: "  lola check\n  lola check ./my-module -t gemini-cli\n  lola check my-module --strict\n  lola check ./review-1.2.0.zip",
-		GroupID: groupCore,
-		Args:    cobra.ArbitraryArgs,
+			"report what each target drops, adapts or cannot express. A source, or @market/module, an\n" +
+			"entry of one of your marketplaces, is fetched the way lola cache add fetches it but is not\n" +
+			"added to your cache; any other argument names a cached module. With no argument, the\n" +
+			"current directory is checked. Sources:\n" + source.AcceptedForms + ".",
+		Example: "  lola check\n  lola check ./my-module -t gemini-cli\n  lola check my-module --strict\n  lola check ./review-1.2.0.zip\n" +
+			"  lola check @acme/formatter",
+		GroupID:           groupCore,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: a.completeAddress,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, sc, err := a.session(cmd)
 			if err != nil {
@@ -422,7 +478,7 @@ func (a *app) checkCmd() *cobra.Command {
 			if len(args) == 0 {
 				args = []string{"."}
 			}
-			rep, err := eng.Check(cmd.Context(), sc, cwd, args, targets)
+			rep, err := eng.Check(cmd.Context(), sc, cwd, args, targets, outputFlags(cmd))
 			if err != nil {
 				return err
 			}

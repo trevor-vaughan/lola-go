@@ -2,6 +2,9 @@ package source_test
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // remote is a repository served over loopback HTTP: work is where specs commit, bare is the
@@ -75,6 +79,34 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
 		entries, _ := os.ReadDir(staging)
 		Expect(entries).To(HaveLen(1)) // the clone is gone
+	})
+
+	It("git follows no redirect for a catalog-derived source, and a typed one's", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
+		away := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, strings.TrimSuffix(r.url, "/example.git")+req.URL.RequestURI(), http.StatusFound)
+		}))
+		DeferCleanup(away.Close)
+		spec := source.Spec{Kind: source.KindGit, Location: away.URL + "/example.git"}
+		_, err := source.Fetch(ctx, spec, staging)
+		Expect(err).NotTo(HaveOccurred())
+		spec.FromCatalog = true
+		redirects := away.URL + "/example.git redirects, and lola follows no redirect of a source a catalog names; the catalog must list its final URL"
+		_, err = source.Fetch(ctx, spec, staging)
+		Expect(err).To(MatchError(redirects))
+		Expect(errs.Hints(err)).To(BeEmpty())
+		spec.Ref = "main"
+		_, err = source.Fetch(ctx, spec, staging)
+		Expect(err).To(MatchError(redirects))
+		Expect(source.CheckReachable(ctx, source.Spec{Kind: source.KindGit, Location: spec.Location, FromCatalog: true}, r.rev("main"), staging)).
+			To(MatchError(redirects))
+		// Any redirect status, 303 among them, is the same refusal.
+		seeOther := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, strings.TrimSuffix(r.url, "/example.git")+req.URL.RequestURI(), http.StatusSeeOther)
+		}))
+		DeferCleanup(seeOther.Close)
+		_, err = source.Fetch(ctx, source.Spec{Kind: source.KindGit, Location: seeOther.URL + "/example.git", FromCatalog: true}, staging)
+		Expect(err).To(MatchError(seeOther.URL + "/example.git redirects, and lola follows no redirect of a source a catalog names; the catalog must list its final URL"))
 	})
 
 	It("records the files committed as executable, relative to the module root", func() {
@@ -334,17 +366,83 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
 	})
 
-	It("coaches an authentication failure", func() {
-		fakeGit("fatal: Authentication failed for https://example.invalid/r.git/")
-		_, err := fetch("https://example.invalid/r.git", "", "")
-		Expect(err).To(MatchError(ContainSubstring("Authentication failed")))
-		Expect(errs.Hints(err)).To(ContainElement("for https, configure a git credential helper (git help credentials)"))
+	It("says a repository it may not read is missing or private, never with git's raw output, and hints git's own check", func() {
+		missing := testenv.ServeGit(tmp) + "/missing.git"
+		private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("WWW-Authenticate", `Basic realm="x"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		DeferCleanup(private.Close)
+		for url, why := range map[string]string{
+			missing:                " was not found, or it is private and the credentials git has, if any, cannot read it",
+			private.URL + "/r.git": " was not found, or it is private and git has no credentials for it (lola never lets git ask for them)",
+		} {
+			for _, ref := range []string{"", "main"} { // a clone, and the ls-remote a ref needs first
+				_, err := fetch(url, ref, "")
+				Expect(err).To(MatchError(url+why), url)
+				Expect(errs.Hints(err)).To(Equal([]string{"git ls-remote -- " + url}), url)
+				Expect(errors.As(err, new(*source.AccessError))).To(BeTrue(), url)
+			}
+		}
+	})
+
+	DescribeTable("names each way git is refused access",
+		func(stderr, url, want string, hints []string) {
+			fakeGit(stderr)
+			_, err := fetch(url, "", "")
+			Expect(err).To(MatchError(want))
+			Expect(errs.Hints(err)).To(Equal(hints))
+			Expect(errors.As(err, new(*source.AccessError))).To(BeTrue())
+		},
+		Entry("credentials refused", "fatal: Authentication failed for 'https://example.invalid/r.git/'", "https://example.invalid/r.git",
+			"git's credentials for https://example.invalid/r.git were refused", []string{"git ls-remote -- https://example.invalid/r.git"}),
+		Entry("no repository behind ssh", "ERROR: Repository not found.\nfatal: Could not read from remote repository.", "git@example.invalid:o/r.git",
+			"git@example.invalid:o/r.git was not found, or it is private and the credentials git has, if any, cannot read it",
+			[]string{"git ls-remote -- git@example.invalid:o/r.git"}),
+		Entry("no ssh key accepted", "git@example.invalid: Permission denied (password,publickey).\nfatal: Could not read from remote repository.",
+			"git@example.invalid:o/r.git", "the ssh server for git@example.invalid:o/r.git refused every key ssh offered, or ssh had none",
+			[]string{"ssh-add", "git ls-remote -- git@example.invalid:o/r.git"}),
+		Entry("an ssh server that takes no key", "git@example.invalid: Permission denied (password,keyboard-interactive).\nfatal: Could not read from remote repository.",
+			"git@example.invalid:o/r.git", "the ssh server for git@example.invalid:o/r.git refused every key ssh offered, or ssh had none",
+			[]string{"git ls-remote -- git@example.invalid:o/r.git"}),
+	)
+
+	DescribeTable("keeps git's own error for a failure that is no refusal of access, whatever the server's sideband says",
+		func(stderr, keeps string) {
+			fakeGit(stderr)
+			_, err := fetch("https://example.invalid/r.git", "", "")
+			Expect(errors.As(err, new(*source.AccessError))).To(BeFalse())
+			Expect(err).To(MatchError(ContainSubstring(keeps)))
+		},
+		Entry("a missing ref", "fatal: couldn\\047t find remote ref x", "couldn't find remote ref x"),
+		Entry("an unknown host", "fatal: unable to access 'https://h/': Could not resolve host: h", "Could not resolve host: h"),
+		Entry("a server claiming a missing repository on its sideband", "remote: Repository not found.\nfatal: unable to access 'https://h/': The requested URL returned error: 500",
+			"returned error: 500"),
+		Entry("a server faking git's own line on its sideband", "remote: fatal: could not read Username for 'https://h': terminal prompts disabled\nfatal: early EOF",
+			"early EOF"),
+		Entry("a server claiming a missing repository over ssh's channel", "remote: Repository not found.\nfatal: Could not read from remote repository.",
+			"Could not read from remote repository"),
+		Entry("a server claiming an ssh refusal on its sideband", "remote: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+			"Could not read from remote repository"),
+	)
+
+	It("hints git's check only as a command that runs, and without redirects for a source a catalog named", func() {
+		fakeGit("fatal: Authentication failed")
+		long := "https://example.invalid/" + strings.Repeat("a", untrusted.MaxName) + ".git"
+		_, err := fetch(long, "", "")
+		Expect(errors.As(err, new(*source.AccessError))).To(BeTrue())
+		Expect(errs.Hints(err)).To(BeEmpty(), "a location too long to print whole makes no command")
+		_, err = source.Fetch(ctx, source.Spec{Kind: source.KindGit, Location: "https://example.com/o/r.git", FromCatalog: true}, staging)
+		Expect(errs.Hints(err)).To(Equal([]string{"git -c http.followRedirects=false ls-remote -- https://example.com/o/r.git"}))
 	})
 
 	It("keeps git's progress lines out of a failed clone's error", func() {
-		_, err := fetch(testenv.ServeGit(tmp)+"/missing.git", "", "")
+		broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
+		DeferCleanup(broken.Close)
+		_, err := fetch(broken.URL+"/r.git", "", "")
 		Expect(err).To(MatchError(ContainSubstring("git clone failed")))
 		Expect(err.Error()).NotTo(ContainSubstring("Cloning into"))
+		Expect(errors.As(err, new(*source.AccessError))).To(BeFalse())
 	})
 
 	It("coaches a timeout by the location's transport", func() {

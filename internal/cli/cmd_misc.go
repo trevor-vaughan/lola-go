@@ -8,6 +8,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// printVersion prints lola's version and the Go it was built with: lola version, and lola
+// --version, its alias.
+func (a *app) printVersion(cmd *cobra.Command) error {
+	v := map[string]string{"version": version, "go": runtime.Version()}
+	return a.emit(cmd, func(w io.Writer, s style) {
+		if s.plain {
+			fmt.Fprintf(w, "%s\t%s\n", version, runtime.Version())
+			return
+		}
+		fmt.Fprintf(w, "lola %s (%s)\n", version, runtime.Version())
+	}, v)
+}
+
 func (a *app) addMiscCommands(root *cobra.Command) {
 	root.AddCommand(a.migrateCmd())
 	root.AddCommand(&cobra.Command{
@@ -18,14 +31,7 @@ func (a *app) addMiscCommands(root *cobra.Command) {
 		GroupID: groupAdditional,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			v := map[string]string{"version": version, "go": runtime.Version()}
-			return a.emit(cmd, func(w io.Writer, s style) {
-				if s.plain {
-					fmt.Fprintf(w, "%s\t%s\n", version, runtime.Version())
-					return
-				}
-				fmt.Fprintf(w, "lola %s (%s)\n", version, runtime.Version())
-			}, v)
+			return a.printVersion(cmd)
 		},
 	})
 	shells := []string{"bash", "zsh", "fish", "powershell"}

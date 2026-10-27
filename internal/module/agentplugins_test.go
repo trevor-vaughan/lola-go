@@ -210,7 +210,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 		Entry("null cwd", servers(`"s":{"type":"stdio","command":"x","cwd":null}`), "mcp.json: mcpServers.s: a stdio server takes only type, command, args, env and cwd, as strings (args a list, env an object)"),
 		Entry("a null header", servers(`"s":{"type":"sse","url":"https://x","headers":{"X":null}}`), "mcp.json: mcpServers.s: a remote server takes only type, url and headers, as strings (headers an object)"),
 		Entry("a header placeholder", servers(`"s":{"type":"sse","url":"https://x","headers":{"X":"${PLUGIN_DATA}"}}`), "mcp.json: mcpServers.s.headers.X: takes no placeholders"),
-		Entry("a server name lola cannot use", servers(`"Bad Name":{"type":"stdio","command":"x"}`), `mcp.json: MCP server name "Bad Name" is invalid: use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'`),
+		Entry("a server name lola cannot use", servers(`"Bad Name":{"type":"stdio","command":"x"}`), `mcp.json: MCP server name "Bad Name" is invalid: B and N are uppercase, ' ' is not allowed; use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'`),
 		Entry("a repeated server", `{`+mcpSchema+`,"mcpServers":{"s":{"type":"stdio","command":"x"},"s":{"type":"stdio","command":"y"}}}`, `mcp.json: key "s" appears twice in /mcpServers`),
 	)
 

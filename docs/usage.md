@@ -1,25 +1,26 @@
 # Using lola
 
-`lola help` is the complete, always-current reference (piped, it prints every command with its
-aliases and flags). This page explains the concepts behind it. It describes this build; planned
+`lola help` is the complete, always-current reference (piped, it prints the global flags once,
+then every command with its aliases and own flags). This page explains the concepts behind it. It describes this build; planned
 changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `lola install [<source\|name>...]` | Copy the module into your cache (if it is a source), render it for each target, record it in the manifest. With no argument on a terminal, walks you through the choices ([Choosing what to install](#choosing-what-to-install)). |
+| `lola install [<source\|name\|@market/module>...]` | Copy the module into your cache (if it is a source or a [marketplace](#marketplaces) entry), render it for each target, record it in the manifest. With no argument on a terminal, walks you through the choices ([Choosing what to install](#choosing-what-to-install)). |
 | `lola sync [<module>...]` | Make the project (or `--user`) match its manifest: install every entry at the version it pins, render the modules already installed, and remove the ones the manifest no longer lists. Names limit the run to those modules. Shows and asks about changes to `project.yml` and its active [project profiles](#project-profiles) you have not trusted yet, entry by entry, paging the diff on a terminal ([Sync, pins and trust](#sync-pins-and-trust)). `--scope both` syncs the project, then user scope. |
-| `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. Refuses a module an active [profile](#profiles) or `default.yml` lists, naming it: the next sync would install it again. |
-| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`: run `lola sync`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. Entries of [profiles](#profiles) are listed as the manifest's are, and when any module comes from a profile a `FROM` column names its layer. Without a scope flag it shows the project found from here, if any, and user scope; every row names its scope ([Choosing a scope](#choosing-a-scope)). Like `render`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could turn profiles on. |
+| `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question, and so does `--force`, which also deletes files you edited since lola wrote them. Refuses a module an active [profile](#profiles) or `default.yml` lists, naming it: the next sync would install it again. |
+| `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (`project.yml` pins another version than the one installed: run `lola sync`), or `skipped` (nothing of the module could be rendered for that target), followed by `→ update available` when your cache holds a newer version for the module's ref (`lola sync --update <module>`); and each target of an entry `project.yml` lists that is not installed, `not installed` (`not_installed` in `--json` and `--plain`), with a notice per scope counting them and naming the sync that installs them (`→ 1 module in project.yml is not installed → lola sync --project`, keeping `--json`, `--plain` and `--no-pager`); whether the module's rules are on; and, when any module has some, how many of its components `selections.yaml` skips. `--json` adds each row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at sync's trust question shows as `stale` or `not installed`. Entries of [profiles](#profiles) are listed as the manifest's are, and when any module comes from a profile a `FROM` column names its layer. Without a scope flag it shows the project found from here, if any, and user scope; every row names its scope ([Choosing a scope](#choosing-a-scope)). Like `render`, it refuses a project whose `.lola/lock.json` git tracks, since a committed one could turn profiles on. |
 | `lola render` | Render every installed module again at the version `project.yml` pins (the one installed when it pins none; a folder module from its folder). A module a [profile](#profiles) lists renders at the profile's pin, else at the version `lock.json` records; one no layer lists any more is left as installed at project scope. Removes files a module no longer ships. Leaves as installed, with a warning, a module it may not act on ([Sync, pins and trust](#sync-pins-and-trust)). |
-| `lola profile [<name>...] [--on\|--off\|--switch\|--add <source>\|--update [--all]\|--remove]` | Without a name, list the [profiles](#profiles) each scope can use (yours, and at project scope the project's): kind, where each stands in the scope's active list (`1st of 2`, `always on` for `default`, `off`) and its file. With a name, show the profile and, per scope, the layer each of its modules comes from and the layers that entry overrides; for a profile that is off, what turning it on would give. Listing and showing never ask for a scope: without a flag they show the project found from here, if any, and user scope. `--on`, `--off` and `--switch` turn the named profiles on, off, or make them the active list, and apply the change at once; removing files asks first (`-y`). `--add <source>` fetches a [remote profile](#remote-profiles), shows it and asks before keeping it; `--update` fetches the named ones, or `--all`, again and applies them in each scope that uses them; `--remove` deletes one (asks; `-y`). Refuses a project whose `.lola/lock.json` git tracks. |
+| `lola profile [<name>...] [--on\|--off\|--switch\|--add <source>\|--update [--all]\|--remove]` | Without a name, list the [profiles](#profiles) each scope can use (yours, and at project scope the project's): kind, where each stands in the scope's active list (`1st of 2`, `always on` for `default`, `off`) and its file. With a name, show the profile and, per scope, the layer each of its modules comes from and the layers that entry overrides; for a profile that is off, what turning it on would give. Listing and showing never ask for a scope: without a flag they show the project found from here, if any, and user scope. `--on`, `--off` and `--switch` turn the named profiles on, off, or make them the active list, and apply the change at once; removing files asks first (`-y`). `--add <source>` fetches a [remote profile](#remote-profiles), shows it and asks before keeping it; `--update` fetches the named ones, or `--all`, again and applies them in each scope that uses them; `--remove` deletes one (asks; `-y` or `--force`). Refuses a project whose `.lola/lock.json` git tracks. |
+| `lola market [<name>...] [--add <source>\|--update [--all]\|--remove]` | Without a name, list your [marketplaces](#marketplaces): format, entries, skipped entries, when each was fetched and its source. With a name, show one: its source, pin, every entry with the source lola maps it to, and every entry it skips, with why. `--add <source>` fetches a catalog (Claude Code's `marketplace.json` or the Python lola's YAML) and registers it; `--update` fetches the named ones, or `--all`, again and reports which entries changed; `--remove` forgets one (asks; `-y`). `--add` and `--update` ask nothing, but a name when yours is taken. The Python lola's `lola market add`, `ls`, `rm`, `update`, `set` and `search` are refused with lola's form. |
 | `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
-| `lola search <query>` | Search your cache by name, description and keyword. |
+| `lola search <query>` | Search your cache, then every [marketplace](#marketplaces) catalog you have fetched, by name, description and keyword (tags), listing each hit by what `lola install` takes (`@acme/formatter` for a catalog entry). `lola cache search` searches the cache alone. When `markets.yaml` cannot be read, it lists your cache's hits with a warning saying why, as the install pickers offer your cache alone then. `--json` hits carry `where` (`cache` or `@<market>`) and `install`; `--plain` rows are name, version, where, description and install. |
 | `lola init [dir] [--format agent-plugins\|lola]` | Scaffold a module named after the directory: by default an Agent Plugins package (`plugin.json`, one skill, one `dev.getlola` command); `--format lola` writes `lola.yml`, one skill and one command. It never overwrites a file and refuses a directory holding a module or a symbolic link on the way to a file it would write. |
 | `lola cache add\|rm\|list\|info\|update\|search` | Manage your cache. Bare `lola cache` lists it. |
 | `lola migrate` | Move from the Python lola: install what it installed, with lola, and clean up after it ([Coming from the Python lola](#coming-from-the-python-lola)). |
-| `lola version`, `lola completion <shell>`, `lola help` | The usual. |
+| `lola version` (also `lola --version`), `lola completion <shell>`, `lola help` | The usual. |
 
 Every command has aliases (for example `rm` for `uninstall`); `lola help` lists them.
 
@@ -38,8 +39,9 @@ disappear without breaking installs. lola recognizes these forms, first match fi
 | Any other `https://` or `ssh://` URL, or `user@host:path` | a git repository |
 | An `http://` URL | as `https://`, but only for `localhost`, `127.0.0.0/8` or `::1` |
 
-Anything else is not a source: a bare name means a module in your cache. Marketplace sources are
-planned. lola refuses, with a hint:
+Anything else is not a source: a bare name means a module in your cache, and `@market/module`
+an entry of one of your [marketplaces](#marketplaces), on the command line only (a directory of
+that name is `./@market/module`). lola refuses, with a hint:
 
 - an argument, `--ref` or recorded location that starts with `-`;
 - git's `<transport>::<address>` remote-helper syntax and `git://` URLs;
@@ -90,7 +92,17 @@ the commit it fetched.
 - Your git config, credential helpers and `ssh-agent` are used. Git hooks, `core.fsmonitor`,
   the `ext::` transport and Git LFS filters are switched off for the repository lola fetches.
 - **Git LFS files are not fetched.** A module receives LFS pointer files as they are committed.
-- git never prompts for a user name or password (`GIT_TERMINAL_PROMPT=0`). ssh still can: it
+- git never prompts for a user name or password (`GIT_TERMINAL_PROMPT=0`). A repository git may
+  not read is refused in lola's words, never with git's output: `<url> was not found, or it is
+  private and git has no credentials for it` (a server that wants credentials looks the same as
+  one hiding a missing repository), `… or it is private and the credentials git has, if any,
+  cannot read it`, `git's credentials for <url> were refused`, or `the ssh server for <url>
+  refused every key ssh offered, or ssh had none` (hinting `ssh-add` when the server takes keys).
+  The hint `git ls-remote -- <url>` (with `-c http.followRedirects=false` for a source a catalog
+  named) checks it with your own git, which may ask for credentials and keep them in your
+  credential helper; a location too long or odd to print whole gets no hint. Only git's own
+  `fatal:` lines and ssh's are read, never a server's `remote:` lines. This holds for
+  every fetch: modules, marketplaces, profiles and `lola migrate`. ssh still can prompt: it
   asks on the terminal for a key passphrase or an unknown host key. Load your key into
   `ssh-agent` and add the host to `known_hosts` first, or the fetch waits until it gives up
   after 5 minutes. A child process that keeps git's output open (ssh prompting, a stalled
@@ -152,7 +164,9 @@ file system lola copied to, so the same module has the same digest on Linux, mac
 
 **Trust.** `project.yml` is committed, so a `git pull` can change it. lola keeps, per project,
 what it last wrote there in `$XDG_STATE_HOME/lola/trust.json`: the top-level `targets` and each
-entry's `name`, `source`, `ref`, `path`, `commit`, `digest`, `targets` and `rules`. An entry is
+entry's `name`, `source`, `ref`, `path`, `components`, `commit`, `digest`, `targets`, `rules` and `market` (the
+marketplace an entry says it came from; the diff shows it as `market (as written)`, since lola
+never checks it). An entry is
 **trusted** when every one of those fields is what lola wrote. Each write lola makes trusts
 exactly the fields it changes, so after a pull adds an entry or changes one, installing another
 module leaves that entry untrusted. lola refuses to act on an untrusted entry as written:
@@ -185,7 +199,7 @@ in the current directory: write the folder as `./<name>`.
 user scope, `--project` for the project found from the directory you ran lola in, and
 `-C <root>` for another; so does an
 install's `retry with: lola install <names>` after a failure that left fetched modules in your
-cache, which these refusals leave out, since retrying would refuse again. Installing the
+cache, which these refusals and conflicts leave out, since retrying would refuse again. Installing the
 module from its source still works, and writes the entry as new, keeping none of the changed
 entry's `targets`, `rules`, `ref` or `path`, but it installs what the source serves now and skips
 the review sync shows, so lola no longer suggests it. Without `-t`, such an install keeps the
@@ -263,7 +277,20 @@ branch never changes what sync installs, nor does `lola cache update`.
   `project.yml`. Folder entries are never pinned: sync reads the folder on every run, and
   `--update` writes no pin for one.
 - **`--update`** fetches the refs of the run's entries again (every entry, or the ones named) and
-  re-pins them.
+  re-pins them. An entry installed through a [marketplace](#marketplaces) (`market:`) follows
+  that marketplace's catalog instead, fetched once per run, and only within the same source, path
+  and ref: the catalog's commit pin becomes the new pin (checked against the ref, as at install).
+  When the catalog moved the entry to another ref, source, path or selection, or no longer lists
+  it, or you have no marketplace of that name from the source the entry records, the entry
+  re-pins from its own source and ref, and a notice says why: a changed ref with
+  `lola install @acme/<entry>` (a changed source or ref is an install, never a sync); a changed
+  source, path or selection with what to do first, as your cache holds one module of a name
+  (uninstall it and remove it from your cache, then install the address). A catalog that cannot be
+  fetched is a warning, and its entries re-pin from their own sources. `lola sync` without
+  `--update` never reads a catalog, and `--update` fetches one only for entries you trusted before
+  the run: a pulled `project.yml` makes no catalog request until you trust it, and its entries
+  re-pin from their own sources meanwhile, saying so, with the `lola sync --update` that follows
+  the catalog next (a dry run, which records no trust, names none).
 - **Removals** are listed with every file lola wrote for them, one per line, and confirmed on a
   terminal: `Remove these and sync? No applies nothing` (default No); `-y` confirms them,
   `--trust` does not. `lock.json` is not trusted input: a recorded path that climbs out of its
@@ -480,7 +507,8 @@ your cache and moves the refs' cached heads, as `-n` may there.
 
 **Paging.** When both stdout and stderr are terminals and the output is human, `lola sync`
 shows the trust diff, the removals it asks about and a dry run's diff and plan through a pager,
-git-style, in full (unpaged output keeps its caps and `… and N more` lines). The question comes
+git-style, in full (unpaged output keeps its caps and `… and N more` lines); `lola market <name>`
+pages its listing the same way. The question comes
 after the pager exits, on the terminal. The pager is `$LOLA_PAGER`, else `$PAGER`, else `less`
 (`more` on Windows); an empty `$LOLA_PAGER` falls through to `$PAGER`, and `cat` means no pager.
 The value is split on whitespace and run without a shell; `less` gets `LESS=FRX` when `LESS` is
@@ -745,12 +773,13 @@ lola profile go --remove                                          # delete it; a
   others catch up later (`every other checkout that uses remote:go picks the update up at its next
   lola sync`). A known scope lola cannot read refuses the update before the question, with the
   command that updates it in the other scope only (`or update it at user scope only: lola profile
-  --user remote:go --update`); without a scope flag, the one that names the project leaves `--trust`
-  out, and the message names the changes there you have not trusted. `--scope both` means the same
+  --user remote:go --update`), without `-y`, `--trust` or the hook flags, since the run's answers
+  were given for every scope at once; without a scope flag, the message names the changes in the
+  project you have not trusted. `--scope both` means the same
   as no scope flag (with `-C <dir>`, that project and user scope); with no `.lola/` project to name,
   or your home directory as that project (never taken as a found project either, with a notice), it
   is refused, hinting the run with `--user` in its place (`update at user scope only: lola profile
-  go --update --user`; `-C` is dropped too). `--project`, `--user` or `-C <dir>` alone narrows the
+  go --update --user`; `-C`, `-y`, `--trust` and the hook flags are dropped too). `--project`, `--user` or `-C <dir>` alone narrows the
   update to that scope; `--project` or `-C` naming your home directory is refused before anything is
   fetched (`project scope at <home> is your home directory, where user scope installs`), hinting the
   run with `--user` in its place. The other scope you can see from there (user scope, or from user
@@ -761,12 +790,15 @@ lola profile go --remove                                          # delete it; a
   sync`. If a scope's sync stops, the update is kept, later scopes are not reached, and the error
   says so (`remote:go is updated, but not applied to the project: …; user scope was not synced`,
   with a hint `apply it later: lola sync --project example` for that scope and each one not
-  reached); a No at that sync's own question is an abort, whose message names those commands (`…
+  reached). A conflict would stop that sync again: a file you edited by hand gives the hint `apply
+  it later, overwriting what the conflicts list: lola sync --project example --force` instead
+  (without `-y` or the hook flags), and a file another module owns gives none for that scope, the
+  conflict naming what to remove; every such hint keeps `--json`, `--plain` and `--no-pager`; a No at that sync's own question is an abort, whose message names those commands (`…
   Apply it later: lola sync --project example, then lola sync --user example.`). Under `--json` the
   error document carries the run's document (`remote_profiles`, `updates`, `notices`, `scopes`
   done). Every hint that repeats the update keeps the run's flags (`--trust`, `-n`, `--json`,
   `--plain`, `--no-pager`, `--allow-hooks`, `--allow-runtime-hooks`, `-y`), and a scope flag only
-  when you gave one, except where a hint names a project the run did not name (no `--trust`) or more
+  when you gave one, except where a hint narrows the run to one of its scopes or names more
   profiles than you named (no `--trust`, `-y` or hook flags). A `lola sync` hint keeps the hook
   flags and `-y` only when it names the modules the update moves; a whole scope's sync carries none,
   since it would answer for changes you never saw. A `--remove` hint never carries `-y`, except the
@@ -791,7 +823,7 @@ lola profile go --remove                                          # delete it; a
   question (`-n` is kept), and while one of them
   cannot be read to tell; lola keeps no
   list of every checkout, so other projects are not checked. `--force` removes it anyway, turning
-  those checks into warnings, and never skips the question. Its modules stay installed until each
+  those checks into warnings, and answers the question, off a terminal too. Its modules stay installed until each
   scope's next `lola sync`, which warns that the profile is on but gone and removes them (asking
   first); a profile that extends it refuses until you edit its `extends:`. `-n` says what it would
   remove, and the command that removes it.
@@ -803,7 +835,7 @@ lola profile go --remove                                          # delete it; a
   form: `2130706433` or `0x7f.1`, which git still connects to, is refused); one that does not, or whose `profile.yml` no longer has the
   digest `source.json` records, refuses every run that uses it, hinting the commands that replace
   it: `remove it: lola profile remote:go --remove --force` (it is in use wherever it was read,
-  and no check of that can pass; `--force` still asks, and the hint never carries `-y`), then
+  and no check of that can pass; `--force` answers its question, so the hint needs no `-y`), then
   `then add it again: lola profile go --add <its source>` when `--add` accepts the source
   `source.json` records, or why it does not. An entry's URL is never looked up
   on disk, so a directory a checkout names like it never stands in for it. `lola sync --update
@@ -872,6 +904,242 @@ A project profile came with the project, so lola treats it as it treats `project
   (`../../mods/a` in the profile shows as `mods/a`). The profile files, `.lola/` and
   `.lola/profiles/` must be the project's own: a symbolic link there is refused before anything
   is read, by every run at project scope with any profile on, yours included.
+
+## Marketplaces
+
+A marketplace is a catalog of modules, each with the source it comes from. lola reads Claude
+Code's `.claude-plugin/marketplace.json`, the documented format, and the Python lola's YAML
+catalogs, so a marketplace you used there keeps working; both become one model. Your
+marketplaces are yours alone and shared by every scope: `lola market` asks no scope, and scope
+flags change nothing.
+
+```sh
+lola market acme --add https://github.com/acme/plugins       # fetch its catalog, register it as acme
+lola market --add https://github.com/acme/plugins            # named by the catalog's own name
+lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml   # a catalog file
+lola market mine --add ./my-marketplace                      # a folder you are authoring
+lola market                                                  # list them
+lola market acme                                             # its source, pin, entries and skips
+lola market acme --update                                    # fetch it again, report what changed
+lola market --update --all                                   # every marketplace
+lola market acme --remove                                    # forget it; asks (-y)
+```
+
+- **Adding.** `lola market [<name>] --add <source>` (alias `--get`) fetches the source, your own
+  argument, with a module source's rules: a git repository (`https://`, `ssh://`, `user@host:path`,
+  at `--ref`), an `https://` archive, an `https://` URL whose path ends in `.json`, `.yml` or
+  `.yaml` (the catalog file itself, at most 8 MiB; `http://` only on a loopback host), or a local
+  folder. A catalog file on your disk is refused with the command that adds the folder holding it
+  (`lola market --add <folder> --path .claude-plugin/marketplace.json`), and a local archive is
+  refused: extract it and add the folder. A tree is fetched whole into lola's staging, never into
+  your cache (a marketplace is not a module), and a symbolic link anywhere in it is refused. lola
+  then looks for `.claude-plugin/marketplace.json`, `<name>.yml`, `<name>.yaml`, `marketplace.yml`
+  and `marketplace.yaml` at its root, or in the directory `--path` names (`--path` may name the
+  catalog file itself); two of them are refused with one `--path` command per file. The marketplace
+  is named as you name it, else by the catalog's own `name`; for a catalog name that cannot name a
+  marketplace (the Python lola's `Lola General Marketplace`) a terminal asks for a name, pre-filled
+  with a free slug of it (`lola-general-marketplace`), and off a terminal (or with `-n`) it is
+  refused with the command that adds it under that slug (`lola market lola-general-marketplace
+  --add <source> --path marketplace.yml`); either way it is `lola market <slug> --update` when that
+  slug is already this marketplace. A name is the module-name rule, and none of the Python lola's
+  `lola market` verbs (`add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show`, `search`); a
+  name that breaks the rule is refused saying what breaks it (`B and N are uppercase`, `' ' is not
+  allowed`), with the `--add` of its lowercase form as the hint when that is a name no
+  marketplace has. A name you already have
+  is refused: for the same source, ref and catalog file, with `lola market <name> --update`; for
+  another, a terminal asks for another name (pre-filled with the first free one, `acme-2`), and off
+  a terminal the hint is the `--add` of that free name, never an `--update` of the other source.
+  The slug hint and the free-name hint name the catalog file lola found with `--path`, since
+  another name would look for its own `<name>.yml`. A catalog file at a URL takes neither `--ref`
+  nor `--path`. Adding asks nothing else: a catalog
+  installs and runs nothing, and you typed its source. `-n` fetches and reports, and writes nothing.
+  It prints the marketplace and how many entries lola skips, with why, grouped (`⚠ 3 entries
+  skipped: 2 npm sources, 1 command source → lola market acme`).
+- **Updating.** `lola market <name>... --update` (aliases `--upgrade`, `--refresh`), or
+  `--update --all`, fetches each again from the source, ref and catalog file it was added from,
+  replaces its cached catalog and reports each entry added (`+`), removed (`-`) or changed (`~`,
+  with the fields: `source`, `path`, `ref`, `commit`, `version`). The skipped entries are reported
+  again only when they change (another entry skipped, or another reason). A marketplace that fails (offline,
+  a catalog that no longer parses) keeps its cached catalog and is reported; the others go on, and
+  the run then fails. Names and `--all` are exclusive.
+- **Removing.** `lola market <name> --remove` (aliases `--rm`, `--delete`, `--del`, `--erase`)
+  forgets a marketplace: its line in `markets.yaml` and its cached catalog. It asks first; `-y`
+  confirms, and off a terminal without `-y` it is refused with the same command and `-y` as the
+  hint, which answers that removal and no other question. There is no safety check and so no
+  `--force`: nothing lola installs depends on a marketplace. A notice counts the entries of this
+  project (the one found from here) and your user scope whose `market:` names it, from its source: they keep
+  their real sources and stay installed, and `lola sync --update` follows the marketplace again
+  once you add it back (the notice gives that `--add`). `-n` says what it would remove.
+  `--json` gives `removed`, `notices` and `dry_run`.
+- **The Python lola's verbs.** `lola market add`, `ls`, `list`, `rm`, `remove`, `update`, `set`,
+  `show` and `search` are refused with lola's form (`lola market ls is the Python lola's form; in
+  lola: lola market`), and the hint is that command when it would run:
+  `lola market add acme <url>` → `lola market acme --add <url>` (keeping `--ref`, `--path`, `-n`),
+  `ls` → `lola market`, `ls acme` and `show acme` → `lola market acme`, `rm acme` → `lola market
+  acme --remove` (with `-y` only when you gave it), `update` → `lola market --update --all`, `update
+  acme` → `lola market acme --update` (with `--all` too, both forms), `search fmt` → `lola search
+  fmt`, `set --disable acme` → `lola market acme --remove` (never with `-y`), and `set --enable
+  acme` says it is already active, as lola has no disabled state. A name you do not have gets its
+  close names, with lola's form of the run for each (never with `-y`), then the listing, and a verb missing its operand a usage message alone. The Python lola's picker
+  for `rm` and `set` without a name is not reproduced: `--remove` takes a name.
+- **A name you do not have.** Showing, updating or removing a marketplace you do not have names
+  your marketplaces close to it (`you have no marketplace acmee; close names: acme`), with the run
+  for each as a hint (`lola market acme`, keeping `--update` and `-n`; a `--remove` hint never
+  carries `-y`), then the listing.
+- **Listing and showing.** `lola market` lists `NAME`, `FORMAT` (`claude` or `lola-yaml`),
+  `ENTRIES`, `SKIPPED`, `FETCHED` (`2 days ago`, or `not fetched` with the `--update` that fetches
+  it) and `SOURCE`; `lola market <name>` shows the source, ref, commit, catalog file, owner and
+  description, every entry, by name, with its version, source kind, source, path, ref, commit and
+  description, and the skipped entries grouped by reason, the most common first (`npm sources are
+  not supported: … (2): npma, npmz`). Every line fits the terminal's width (else `$COLUMNS`; a
+  pipe or a file without `$COLUMNS` gets everything whole): a name is never cut, and one over 32
+  columns prints alone with the rest of its row on the line under it; an entry's version is cut
+  with `…` to at most 16 columns, and its source to at most 40; its description fills the rest of the row, cut with `…`, or goes on
+  its own line under the row when fewer than 20 columns are left; and other long lines wrap at
+  spaces, a field's value staying in its column. A single word wider than the terminal (a long
+  name, a URL) is never broken: it prints whole on its line, which is then wider than the terminal.
+  On a terminal the whole listing is paged as `lola sync`'s diffs are ([Paging](#sync-pins-and-trust)); `--plain` and
+  `--json` keep every text whole. Neither fetches nor asks. `--json` gives
+  `markets` (`name`, `source`, `ref`, `path`, `format`, `commit`, `fetched_at`, `entries`,
+  `skipped`, `description`) and `notices`; one marketplace's document adds `file`, `owner`,
+  `version`, `entries` (`name`, `description`, `version`, `tags`, `source`, `ref`, `path`,
+  `commit`, `kind`, `install`, the address that installs it, `notices`, and `components` when its
+  catalog lists them) and `skipped` (`name`, `reason`). `--add` and `--update` give
+  `markets`, `changes` (`market`, `entry`, `change`, `fields`), `updates` (`market`, `outcome`:
+  `added`, `would_add`, `updated`, `would_update`, `up_to_date`, `failed` or `skipped`, `error`,
+  `hints`), `notices` and `dry_run`.
+- **What a catalog may name.** A catalog is a stranger's input, read entry by entry: an entry lola
+  cannot use is skipped with its reason and the rest load. Skipped are `npm` sources (they run a
+  package manager), `command` sources (they run a program), any other kind lola does not know,
+  `ssh://` and `user@host:path` sources (they would use your ssh keys on a stranger's host), any
+  source that is not `https://` at a host given by name (a path, `file://`, `http://`, `localhost`
+  or an address inside your network, judged from the text alone, never looked up on your disk),
+  entries that declare their `hooks`, `outputStyles`, `themes`, `mcpServers`, `lspServers`,
+  `userConfig` or `channels` in the catalog (lola reads a plugin's components from its own files),
+  entries whose source is another repository and that list their `skills`, `commands` or `agents`
+  (the catalog does not own that repository), entries with `headers` or a `headersHelper`, a `sha` that is not a
+  full commit or disagrees with a full-commit `ref`, a `sha256` that is not 64 hex digits, a name
+  that fails the module-name rule, two entries of one name (both), a key given twice or in another
+  case (`Source`), a description or source over 4096 bytes, more than 64 tags, and skills,
+  commands and agents lists naming more than 1024 paths. A
+  relative entry (`"./tools/formatter"`, or a bare name under `metadata.pluginRoot`) must stay in
+  the marketplace (no `..`, no backslash, never absolute) and be a directory there; it comes from
+  the marketplace's own source, at its commit, and a marketplace fetched as a single catalog file
+  has none. A relative entry may list its `skills`, `commands` and `agents` (a path or a list of
+  paths in its directory, as Anthropic's `anthropics/skills` marketplace does): the catalog's
+  author owns that tree, so the lists say which of its files form the module. Each path must stay
+  in the entry's directory (no `..`, no backslash, never absolute, never the directory itself),
+  two paths of one list never share a name, and the fetch must find each as a real directory for
+  a skill, a real file or directory otherwise, else the entry is skipped; `lola market <name>`
+  shows what each entry selects. A Python entry needs `name` and `repository`; its `pre-install` and `post-install`
+  hooks are never run (`catalog install scripts are ignored`). A catalog over 8 MiB, with more than
+  4096 entries, nested deeper than 64, with a top-level key given twice or in another case, or with
+  a control or invisible character in any key or field lola reads, is refused whole, naming the
+  field (`plugins[12].description`).
+- **Installing.** `lola install @acme/formatter` installs the entry `formatter` of your
+  marketplace `acme`, as its cached catalog lists it (`lola market acme --update` fetches it
+  again); `lola cache add @acme/formatter` only caches it and `lola check @acme/formatter` only
+  checks it. `@market/module` is command-line input only: no file lola reads takes it as a
+  `source:`, so what a file installs never depends on the reader's marketplaces. A `project.yml`,
+  `user.yml` or profile (yours, `default`, a project's or a remote one) that has one is refused by
+  every command that reads it, `lola list` included, before any trust question or network contact,
+  naming the file, the line, the module and the address (`.lola/project.yml:14: formatter's source
+  is @acme/formatter, a marketplace address; a file must record the module's real source`). When
+  you have that marketplace, `project.yml` and `user.yml` get one hint per such entry, `lola
+  install --project @acme/formatter` (`--user`, or `-C <root>`, as the file's scope; with `-n` and
+  the output flags when the run had them), which shows where the address resolves before
+  anything is asked and replaces that entry with what it resolved; the other such entries stay as
+  written, each named in a warning with its own hint, and the file is refused until none is left.
+  A profile, or an entry not named after the module its address installs, gets `lola market
+  acme` instead, which shows the entry's source, ref and path to write there. Without the
+  marketplace there is no hint, and the message says to edit the entry to name the module's
+  source, ref and path. A remote profile with one is refused at `--add` and `--update`. Before anything is asked, the install shows where the address resolved
+  (`→ @acme/formatter → https://github.com/acme/monorepo.git path tools/formatter @ v2.0.0
+  (a1b2c3…)`). What lands in `project.yml` (or `user.yml`) is the module's real source, `path`,
+  the catalog's `ref`, and the pin, plus `market:`:
+
+  ```yaml
+    - name: formatter
+      source: https://github.com/acme/monorepo.git
+      path: tools/formatter
+      ref: v2.0.0
+      commit: a1b2c3…        # the catalog's sha, or the head lola resolved
+      digest: sha256:…       # always computed by lola from the fetched content
+      market:
+        name: acme
+        source: https://github.com/acme/plugins
+  ```
+
+  The module is named after the entry: a module that does not name itself (no `lola.yml`
+  `name`) takes the entry's name, here and wherever the entry is fetched again (a teammate's
+  sync, `lola cache update`); one that names itself otherwise is refused. A relative entry pins
+  the marketplace's own commit. A catalog `sha`, or a `ref` that is a full commit SHA, must be
+  reachable from the entry's `ref` (the default branch when it gives none) before anything is
+  cached, though Claude Code would install it: `marketplace acme lists formatter at a1b2c3…, which
+  v2.0.0 does not reach` → `lola market acme --update`. An archive's `sha256` must match the
+  download before anything is extracted. A source the catalog names follows no redirect to a host
+  lola would refuse (after install, `render`, `lola cache update`, an install by cached name that
+  fetches again and a `--ref` install fetch under the rules of a source you type; see
+  [the security model](architecture.md#security-model)). `--ref` replaces the catalog's ref and
+  drops its pin; the entry then records no `market:` (`formatter: pinned to your ref v3; not following acme`). `--path` is refused: the
+  catalog gives the path. The install says what lola does not do for the entry: a Claude entry's
+  `dependencies` are never installed (each one the same marketplace lists gets its own
+  `lola install @acme/<name>`), and a Python entry's install scripts never run. An address lola
+  cannot resolve is refused with what there is: `you have no marketplace acme` (naming your close
+  ones) → `lola market`, an
+  entry the catalog does not list with its close names, or one it skips with why →
+  `lola market acme`. An entry whose catalog lists its skills, commands or agents installs exactly
+  those, each as `skills/<name>`, `commands/<name>` or `agents/<name>`, and the entry records the
+  selection as `components: {skills: [skills/xlsx], commands: [...], agents: [...]}`, beside its
+  source; `lock.json` and your cache record it too, so a teammate's sync, `render` and
+  `lola cache update` fetch the same selection without the marketplace. A module that names itself
+  otherwise in its `lola.yml` is refused, naming both names. When the entry's source is the
+  marketplace's own (a relative entry), the hint installs that source under the module's own
+  name, at the commit the catalog pins and with your flags, and alone when the run named other
+  modules too, since `--ref` and `--path` apply to one source (`lola install <source> --ref <commit>
+  --path <path> …`; `lola cache add …` for `cache add`, and `lola check <source>` for `check` when
+  it needs no `--ref` or `--path`). There is none for a source the catalog names, as one you type
+  would not keep the catalog's redirect rule or an archive's `sha256` (the message says which),
+  nor for a selection, which no install by source can make.
+- **Browsing.** `lola install @acme` on a terminal offers acme's entries as the module picker does
+  (pick any); off a terminal it is refused, naming its first ten entries as addresses, with
+  `lola market acme` as the hint. `lola install` with no argument offers every marketplace as a
+  group after your cache ([The install flow](#the-install-flow)). A bare name your cache does not
+  hold, and that is no source here, but that your catalogs list, is never picked for you: on a
+  terminal lola asks which marketplace's entry you mean (marketplace, version, description,
+  source host); off one it is refused with your run once per combination of the marketplaces
+  listing each such name, every name replaced by an address, keeping your flags but `--path`
+  (with more than ten combinations, none: name each as `@<market>/<name>`). `lola search` finds catalog entries too, each with
+  its `install` value. Shell completion completes `@acme` and `@acme/<entry>` from your fetched
+  catalogs. An entry whose cache record lola cannot read is offered as not cached, with a warning
+  naming the `lola cache rm` that clears it (completion stays silent). After `--add`, lola prints `→ browse: lola install @acme`.
+- **Provenance.** An entry of `project.yml` or `user.yml` may carry `market: {name, source}`, the
+  marketplace it was installed through. It is provenance only: the entry's real `source`, `ref`,
+  `path` and pin are what lola fetches, so a teammate who has never heard of that marketplace
+  syncs it as any other entry. lola checks that the name is a marketplace name and the source a
+  source lola could record, and shows both as written (`lola list --json` gives `market`). A
+  profile never carries it: `market:` in a profile is refused as an unknown key, naming the line.
+  `lola list` shows it, `lola market <name> --remove` counts it, every `lola sync` fetches an
+  entry whose `market` names another source than its own under the catalog's redirect rule, and
+  `lola sync --update` follows that marketplace's catalog only when your marketplace of that name
+  has the source the entry records, and only within the same source, path and ref
+  ([Sync, pins and trust](#sync-pins-and-trust)); nothing else reads it. A file someone else wrote
+  can therefore move an entry only to a new commit your own catalog lists at the same source,
+  path and ref.
+- **Hints.** Every hint `lola market` prints is a command that runs as shown, and keeps the
+  run's `--json`, `--plain` and `--no-pager`.
+- **Folder marketplaces.** A folder you are authoring is recorded by its absolute path, links
+  resolved, and cached like any other: your edits reach lola only through
+  `lola market <name> --update`. Its relative entries are folder sources, unpinned.
+- **Where they live.** `$XDG_CONFIG_HOME/lola/markets.yaml` lists your marketplaces (`name`,
+  `source`, `ref`, and `path`, the catalog file found at `--add`); it is yours to edit, and is read
+  strictly (a folder must be an absolute path; a mistake is refused naming the line). Each fetched
+  catalog is cached byte for byte in `$XDG_CACHE_HOME/lola/markets/<name>/` with `source.json`,
+  its pin (source, ref, path, file, commit, digest, when it was fetched, and the directory the
+  marketplace's files were found in when it is not the source's top, such as an archive's
+  `repo-<sha>/`, so its relative entries install from there): a wiped cache loses
+  nothing you chose and costs a `lola market --update --all`. A cached catalog is written before
+  its registration, so a failed write leaves at worst a cache directory that listings ignore.
 
 ## Module layout
 
@@ -1315,7 +1583,16 @@ on stderr (no full-screen interface):
    reconfigures it. The last entry, **Add a source…**, asks for a source and an optional ref,
    adds it to your cache exactly like `lola cache add`, and shows the list again with it
    selected. Leaving the source empty returns to the list with the modules you ticked still
-   ticked. With an empty cache you get Add a source… or Quit.
+   ticked. After the cache, each of your [marketplaces](#marketplaces) with a fetched catalog is
+   a group of its own, `@acme — <description>`, listing the entries it offers (name, version,
+   description, tags and source host, filterable by typing); an entry your cache already holds
+   from the same source is offered once, in the cache's list. A marketplace entry you pick is
+   fetched, as Add a source… fetches, before the component step, and installed as
+   `@acme/<entry>` (the summary's equivalent command names it so); Add a source… takes an
+   `@acme/<entry>` too, and selects it in its group. Two picks that are one module name (a cached
+   `formatter` and `@acme/formatter`, or `@acme/formatter` and `@other/formatter`) are asked
+   again before anything is fetched, since lola installs one module of a name. With an empty cache and no marketplace you
+   get Add a source… or Quit.
 3. **Assistants**: the installed assistants, as described under
    [Scopes and targets](#scopes-and-targets).
 4. **Components**: one page per module, a list per kind (skills, commands, agents, MCP
@@ -1415,7 +1692,7 @@ First match wins:
 | a terminal | the scope picker (Project, User, Other directory…), with nothing preselected |
 | nothing, in or below a directory with `.lola/` | that project (`install` says `scope: project (found .lola/ at <path>)` on stderr) |
 | `default_scope` in `config.yaml` | that scope |
-| none of these | an error naming the command, `--project`, `--user`, `-C` and `default_scope` (and `--scope both` for `install` and `sync`) |
+| none of these | an error naming the command and the `config.yaml` that sets no `default_scope`, with your run plus `--project`, plus `--user` (and plus `--scope both` for `install` and `sync`) as hints, each keeping the source, `--ref`, `--path` and every other flag |
 
 `install` and `sync` take both scopes (`--scope both`, both ticked, or `default_scope: both`):
 `install` plans them together, and `sync` syncs the project, then user scope, stopping at the
@@ -1536,8 +1813,10 @@ Entries for projects you moved are left alone.
 
 Every answer has a flag, so scripts and CI never need a terminal. Off one (or with `--json`)
 lola never asks; a missing answer is an error whose hint names the flag: no module →
-`lola install <source|name>`; no scope → see [Choosing a scope](#choosing-a-scope); no assistant found →
-`-t`. Copy the equivalent commands from an interactive run to repeat it.
+`lola install <source|name>`; no scope → your run with each scope flag (see [Choosing a
+scope](#choosing-a-scope)); no assistant found, or none of your installed ones set up here → your
+run with `-t` and each assistant (every one lola knows, or the installed ones). Copy the
+equivalent commands from an interactive run to repeat it.
 
 ## Findings
 
@@ -1602,12 +1881,19 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 ## Coming from the Python lola
 
 lola does not read the Python lola's state (`~/.lola/installed.yml`, its module registry and
-marketplaces), and the Python lola does not read lola's. `lola migrate` moves you over once:
+marketplaces), and the Python lola does not read lola's. `lola migrate` moves you over once,
+modules and marketplaces:
 
 ```
 lola migrate --dry-run    # the plan; writes nothing
-lola migrate              # the plan, then "Migrate?" (default No); off a terminal, add -y
+lola migrate              # the plan, then "Migrate?" (default No); off a terminal, add -y (or --force)
 ```
+
+The Python lola's `lola market` verbs are coached rather than accepted: `lola market add <name>
+<url>` is refused with `lola market <name> --add <url>`, `rm` with `--remove`, `update` with
+`--update --all` ([Marketplaces](#marketplaces)). `lola install @market/module` works as there,
+but records the module's real source and pin, so the marketplace is never needed again to
+install what `project.yml` lists; the Python lola's `module@ref` is `--ref` here.
 
 It reads the Python lola's home (`$LOLA_HOME`, else `~/.lola`) and, for every project and for
 user scope where the Python lola installed a module for Claude Code, Gemini CLI or OpenCode,
@@ -1643,8 +1929,36 @@ up:
   tracks, or one below a symbolic link), the plan refuses and names the file and why it is kept:
   `--force` backs it up into the trash and replaces it, reported as replaced; for a symbolic link
   you can instead replace the link with a directory.
-- **The Python home** goes to the trash last, only when every record migrated, nothing failed, and
-  it holds nothing but what the Python lola writes there. While a `~/.lola` stays, lola sees a
+- **Marketplaces.** Each registration in `~/.lola/market/<name>.yml` is registered with
+  [`lola market --add`](#marketplaces) under its name, its catalog fetched during the run (never
+  by `--dry-run`); the plan lists each one first (`register general from
+  https://example.com/market.git`). Its `url` is translated: `git+https://…` and `git+ssh://…`
+  lose the `git+`, and a `#path` fragment of a git URL becomes `--path`; an `https://` URL
+  ending in `.git`, or git's `user@host:path` form, is a git repository; another `https://` URL
+  is a catalog file, which lola reads when its path ends in `.json`, `.yml` or `.yaml`; a
+  `file://` URL or a path is a folder marketplace, with the catalog file in it as `--path`. In a
+  repository whose `url` names no file, the run reads the catalog the Python lola read
+  (`<name>.yml`, then `marketplace.yml`, else the only `.yml` at the root) and registers it with
+  that `--path`; `lola market --add` itself keeps its own lookup. A disabled marketplace is not
+  registered (lola has no disabled state) and is listed with the `lola market <name> --add
+  <source> [--path …]` that registers it; so is one whose name lola cannot use (uppercase, a
+  space, one of the Python lola's verbs), that one of yours has from another source, or that an
+  earlier one of the Python lola's marketplaces has, under a free slug of it (`lola market
+  lola-general --add …`). When only a fetch can tell that command's
+  `--path`, `--dry-run` says the run gives it, and the run fetches to name it. A `url` lola cannot
+  read at all (plain `http://` off loopback, a relative path, credentials or a query, which lola
+  never records) is listed with the reason and no command; a `url` is only ever shown without its
+  user, password, query and fragment, in every output. One whose fetch fails is listed with the
+  reason, the command that shows what the server says when there is one, and its `--add`, or
+  `lola migrate` itself when its `url` named no file (an `--add` would not look for the file the
+  Python lola read), and none when the repository holds no file the Python lola would read (two
+  `.yml` files at its root, say); it does not fail the migration, and the next `lola migrate`
+  tries it again. One you
+  already have from the same source is `already registered` (when its `url` names no file, whichever
+  catalog file you registered it with). Every command listed keeps the run's
+  `--json`, `--plain` and `--no-pager`.
+- **The Python home** goes to the trash last, only when every record migrated, nothing failed,
+  every marketplace but a disabled one is registered, and it holds nothing but what the Python lola writes there. While a `~/.lola` stays, lola sees a
   project at `~` and refuses to install there; the output says why it stayed.
 
 **Not migrated, never changed** (each is listed with its file, and how to remove it by hand):
@@ -1654,7 +1968,7 @@ blocks (`<!-- lola:module:<name>:start -->` in `CLAUDE.md`, `GEMINI.md`, `AGENTS
 user scope `~/.claude/CLAUDE.md`, `~/GEMINI.md`, `$XDG_CONFIG_HOME/opencode/AGENTS.md`), which
 keep working; Gemini's skill sections in `GEMINI.md`; MCP entries lola does not write (the
 Python lola put Claude Code's user-scope servers in `~/.mcp.json`, lola uses `~/.claude.json`);
-plugin data (`.lola/plugin-data/<module>`), which MCP servers keep using; marketplaces; and
+plugin data (`.lola/plugin-data/<module>`), which MCP servers keep using; and
 `.lola-req`. lola keeps rules as files of their own instead of blocks in your instruction files
 ([decisions](decisions.md)), so move a module's `AGENTS.md` to `rules/` to ship it with lola.
 A module's installs in one project (or at user scope) migrate together or not at all: when one
@@ -1667,7 +1981,8 @@ directory in `.lola/modules/` that an install would replace and no migrated reco
 or one it would swap out that git tracks or that is a symbolic link; `--force` backs such a copy
 up and reports it replaced), a hook without consent, or a cancelled prompt changes nothing.
 `--force` overwrites such files as `lola install --force` does, after copying each into the trash,
-and lists them as replaced. When two modules the Python lola installed in one place ship a
+and lists them as replaced; it also answers `Migrate?`, so its refusal's hint `lola migrate --force`
+runs off a terminal, though never a hook's consent (`--allow-hooks`, `--allow-runtime-hooks`). When two modules the Python lola installed in one place ship a
 component of the same name, the Python lola skipped one; lola refuses, naming both modules and the
 component, and gives the Python lola's `lola uninstall <module> -a <assistant> <project>` command
 for the module it skipped the component in: run it with the Python lola, then rerun
@@ -1696,6 +2011,8 @@ copy's directories before it removes the original.
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](#profiles); `default.yml` is always on at user scope. lola never writes them. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/markets.yaml` | Your [marketplaces](#marketplaces): name, source, ref and the catalog file found. Written by `lola market --add`; safe to edit by hand. | Yours to keep |
+| `$XDG_CACHE_HOME/lola/markets/` | Each marketplace's fetched catalog, byte for byte, with `source.json`, its pin. `lola market --update` writes it again. | No: it is cache |
 | `$XDG_DATA_HOME/lola/profiles/` | [Remote profiles](#remote-profiles), one directory each with `profile.yml` and `source.json`. Only `lola profile` writes them. | Yours to keep |
 | `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote or you trusted in `lola sync` (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
@@ -1707,8 +2024,29 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 
 - lola writes a file only if it is new, already identical, or one lola wrote and nobody edited.
   Anything else is a **conflict**: lola lists every conflict and changes nothing.
-  `--force` overrides conflicts and lists each overridden file in the summary.
-- A destination owned by another installed module is never overridden, even with `--force`.
+  The refusal lists each conflicting file, by assistant and path, one per line, and why.
+  `--force` overrides conflicts and lists each overridden file in the summary; the refusal's hint
+  is your run with `--force` added, keeping its other flags but `-y`, `--trust` and the hook
+  flags. `--force` also answers the destructive question itself (`install`'s review menu,
+  `sync`'s removals, `uninstall`, `lola profile --remove`, `lola migrate`), on a terminal or off
+  one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules says which
+  (`with --force it also removes, without asking: other (whole module)`). It never answers a
+  consent question: a forced run that needs your trust for a
+  pulled `project.yml`, or consent to a module's hooks, still asks, or off a terminal refuses
+  with the hint that adds `--trust` or the hook flag.
+  Every hint that repeats your run for another reason (another scope, `-t`, `--force`) drops
+  them the same way, and a flag you gave as false is never repeated as true. A refusal for want
+  of a terminal to confirm on hints your run with `-y`, which answers that question. A hand-edited file lola would delete
+  (an uninstall, or a component dropped at render or sync) refuses the whole run in the same
+  way: nothing is removed, and `--force` deletes it with the rest.
+- A destination owned by another installed module is never overridden, even with `--force`. The
+  refusal names both modules (`wanted by module "evil", owned by module "deploy-tools"`). When you
+  named the module that wants it (`lola install <source>`), it hints the owner's `lola
+  uninstall`, at the scope and with the output flags of your run; when `project.yml`, `user.yml`
+  or a profile lists it, it hints nothing and says to remove it from that file, so a file you did
+  not write never steers you into removing a module you installed.
+  Two modules of one run providing one destination, or one module providing it twice, are refused
+  with what to do in the message and no hint, as no command resolves them.
 - A runtime hook group already in your settings, identical to one a module renders, is a
   conflict: owning it would remove your hook on uninstall. `--force` takes it over.
 - A JSON file that does not parse is never rewritten, even with `--force`.
@@ -1814,17 +2152,18 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 |---|---|
 | `HOME` | User-scope root; base of the XDG defaults |
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
-| `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
+| `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, `markets.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
 | `LOLA_HOME` | The Python lola's home, which `lola migrate` reads (default `~/.lola`; must be absolute) |
 | `LOLA_ACCESSIBLE` | `1` draws the install flow and sync's questions as numbered line prompts (screen readers); Ctrl+C cancels them as it does a full-screen form |
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
-| `LOLA_PAGER`, `PAGER` | The pager for sync's consent diff, in that order (default `less`, `more` on Windows); empty falls through, `cat` means none ([Sync, pins and trust](#sync-pins-and-trust)) |
+| `LOLA_PAGER`, `PAGER` | The pager for sync's consent diff and `lola market <name>`, in that order (default `less`, `more` on Windows); empty falls through, `cat` means none ([Sync, pins and trust](#sync-pins-and-trust)) |
+| `COLUMNS` | The width `lola market <name>` fits its lines to when stdout is not a terminal; unset, nothing is cut or wrapped |
 | `LESS` | Passed to `less`; set to `FRX` for the pager when unset |
 | `XDG_DATA_HOME` | User-scope module copies, plugin data and [remote profiles](#remote-profiles) (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, the trust record, lock files and `lola migrate`'s trash (default `~/.local/state`) |
-| `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
-| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive downloads (git reads them itself) |
+| `XDG_CACHE_HOME` | The cache, [marketplace](#marketplaces) catalogs, download scratch space and assistant version cache (default `~/.cache`) |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive and catalog downloads (git reads them itself) |
 | `GIT_*`, `SSH_AUTH_SOCK` | Passed to git, except the variables that pick a repository or add config behind lola's back (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, …) |
 
 Relative XDG values are ignored, as the XDG specification requires.

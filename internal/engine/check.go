@@ -8,6 +8,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
@@ -33,8 +34,9 @@ type CheckReport struct {
 // targets ids (every registered target when empty) would lose, change or skip. It renders
 // nothing and changes no state: a source is staged in a temporary directory, never added to
 // the cache. Components that selections.yaml excludes at sc are reported as skipped, not
-// checked, since render would not install them.
-func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []string) (*CheckReport, error) {
+// checked, since render would not install them. A marketplace address is checked as install
+// would fetch it (Plan 6c §3.3); display is the run's output flags, which its hints keep.
+func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, display []string) (*CheckReport, error) {
 	if len(ids) == 0 {
 		for _, t := range e.Targets {
 			ids = append(ids, t.ID())
@@ -55,7 +57,7 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []st
 	probes := e.newProbeRun(ctx)
 	rep := &CheckReport{Modules: []CheckedModule{}, Findings: []target.Finding{}}
 	for _, arg := range args {
-		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, probes)
+		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, probes, display)
 		if err != nil {
 			return nil, err
 		}
@@ -65,8 +67,9 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []st
 	return rep, nil
 }
 
-func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, probes *probeRun) (cm CheckedModule, err error) {
-	full, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg)
+func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, probes *probeRun,
+	display []string) (cm CheckedModule, err error) {
+	full, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg, display)
 	if err != nil {
 		return cm, err
 	}
@@ -99,15 +102,23 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 	return cm, nil
 }
 
-// loadForCheck loads arg's module: a source is staged the way lola cache add stages it, in a
-// temporary directory that cleanup removes; any other argument names a module in the cache.
-func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string) (*module.Module, string, func() error, error) {
+// loadForCheck loads arg's module: a source, or a marketplace address, is staged the way lola
+// cache add stages it, in a temporary directory that cleanup removes; any other argument names a
+// module in the cache.
+func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string, display []string) (*module.Module, string, func() error, error) {
 	none := func() error { return nil }
-	spec, isSrc, err := source.Parse(arg, cwd)
+	_, isAddr, err := market.ParseAddress(arg)
 	if err != nil {
 		return nil, "", none, err
 	}
-	if !isSrc {
+	var spec source.Spec
+	isSrc := false
+	if !isAddr {
+		if spec, isSrc, err = source.Parse(arg, cwd); err != nil {
+			return nil, "", none, err
+		}
+	}
+	if !isSrc && !isAddr {
 		v, ok, err := e.Store.Head(arg, "")
 		if err != nil {
 			return nil, "", none, err
@@ -127,6 +138,13 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string) (*module.Mod
 		return nil, "", none, err
 	}
 	cleanup := func() error { return os.RemoveAll(parent) }
+	if isAddr {
+		m, dir, err := e.checkEntry(ctx, arg, parent, display)
+		if err != nil {
+			return nil, "", none, errors.Join(err, cleanup())
+		}
+		return m, dir, cleanup, nil
+	}
 	staged, err := source.Fetch(ctx, spec, parent)
 	if err != nil {
 		return nil, "", none, errors.Join(err, cleanup())

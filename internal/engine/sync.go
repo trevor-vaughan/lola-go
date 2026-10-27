@@ -47,6 +47,9 @@ type SyncRequest struct {
 	// §6.3, §19 R3): the run is limited to the modules whose state differs from what the new list
 	// wants, and the new list is written to lock.json in the same commit as the apply.
 	Profiles *ProfileChange
+	// Display is the run's output flags (--json, --plain, --no-pager as given), which the install
+	// commands an --update's marketplace notices name keep (Plan 6c §11.3).
+	Display []string
 }
 
 // TrustAnswer is the user's answer to the trust question (Plan 6a §9.2): All accepts every change
@@ -234,6 +237,7 @@ type syncEntry struct {
 	staged        *store.Staged
 	headIfAbsent  bool
 	pin           *Pin
+	follow        *marketPick // the catalog entry an --update follows (Plan 6c §6.6), nil for none
 }
 
 // own reports whether the entry is from a profile of the user's own, trusted as user.yml is
@@ -290,6 +294,7 @@ func (se *syncEntry) pinned() manifest.Entry {
 // record is written once, after the apply.
 func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err error) {
 	sc, opts := req.Scope, req.Options
+	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, req.Display) }()
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); sc.Kind == target.Project && sc.Key() == home.Key() {
 		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
 			untrusted.Text(e.Paths.Home, untrusted.MaxName)), "sync the user scope: "+e.SyncCommand(Scope{Kind: target.User}))
@@ -300,17 +305,29 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, err
 	}
 	defer unlockProfiles()
-	man, led, unlock, err := e.load(sc, opts.DryRun)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
 	res := &SyncResult{Result: newResult(opts.DryRun), Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
 		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}, Replacements: []Replacement{}}, EquivalentCommands: []string{}}
 	// A committed lock.json is refused before the profiles it names are read (Plan 6b §19 S5).
 	if err := e.refuseTrackedLedger(ctx, sc, res.Result); err != nil {
 		return nil, err
 	}
+	// --update follows the catalogs of the entries installed through your marketplaces, each
+	// fetched once, under the markets lock: after the profiles lock, before the scope's (Plan 6c
+	// §5, §6.6). Without --update no catalog is read.
+	var catalogs *syncCatalogs
+	var catalogNotices []Notice
+	if req.Update {
+		var unlockMarkets func()
+		if catalogs, unlockMarkets, catalogNotices, err = e.fetchCatalogs(ctx, sc, req); err != nil {
+			return nil, err
+		}
+		defer unlockMarkets()
+	}
+	man, led, unlock, err := e.load(sc, opts.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	// An activation builds the layers of its old and new active lists from one read of each
 	// profile; a list that does not change stops here, with its notice (Plan 6b §6.3 step 2).
 	names := req.Modules
@@ -385,11 +402,11 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
 
-	entries, kept, err := e.validateSync(sc, man, want, led, req, limit)
+	entries, kept, err := e.validateSync(sc, man, want, led, req, limit, catalogs)
 	if err != nil {
 		return nil, err
 	}
-	res.Notices = append(res.Notices, kept...)
+	res.Notices = append(append(res.Notices, catalogNotices...), kept...)
 	// An activation counted the changes it leaves pending above.
 	if n, ok := outOfSync(want, led, limit, e.SyncCommand(sc)); ok && act == nil {
 		res.Notices = append(res.Notices, n)
@@ -441,7 +458,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if res.Removals, err = e.syncRemovals(sc, want, led, entries, limit); err != nil {
 		return nil, err
 	}
-	trustMissing, removalsMissing := needTrust && req.Trust == nil, len(res.Removals) > 0 && req.ConfirmRemovals == nil
+	// --force answers the removals, never the trust question (user decision, 2026-10-22).
+	trustMissing, removalsMissing := needTrust && req.Trust == nil, len(res.Removals) > 0 && req.ConfirmRemovals == nil && !opts.Force
 	if !opts.DryRun && (trustMissing || removalsMissing) {
 		report := TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}}
 		if sc.Kind == target.Project {
@@ -595,7 +613,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			changes = append(changes, plan.ModuleChange{Name: r.Module, Targets: allTargets(led.Modules[r.Module], nil, &manifest.Manifest{})})
 		}
 	}
-	if len(res.Removals) > 0 && !opts.DryRun {
+	if len(res.Removals) > 0 && !opts.DryRun && !opts.Force {
 		if req.ConfirmRemovals == nil { // refused at step 4 already; kept so no path removes unasked
 			return nil, e.syncRefusal(sc, req, TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}},
 				res.Removals, false, true, entries)
@@ -611,6 +629,19 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	res.Findings = append(res.Findings, probes.findings...)
 
 	pr, err := e.prepare(sc, led, changes, copies, nil, opts, res.Result)
+	if ce, ok := errors.AsType[*plan.ConflictError](err); ok && ce.Overridable && len(res.Removals) > 0 {
+		// The sync with --force its hint names also answers the removals (user decision,
+		// 2026-10-22): the refusal says which, so that hint asks nothing it has not shown.
+		var names []string
+		for _, r := range res.Removals {
+			what := strings.Join(r.Targets, ", ")
+			if r.WholeModule {
+				what = "whole module"
+			}
+			names = append(names, r.Module+" ("+what+")")
+		}
+		err = fmt.Errorf("%w\n  with --force it also removes, without asking: %s", err, strings.Join(names, ", "))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +679,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			if needTrust {
 				answers = append(answers, "--trust")
 			}
-			if len(res.Removals) > 0 {
+			if len(res.Removals) > 0 && !opts.Force {
 				answers = append(answers, "-y")
 			}
 			res.EquivalentCommands = []string{res.ToApply}
@@ -718,7 +749,7 @@ func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) s
 		run.Modules = slices.Compact(run.Modules)
 	}
 	var yes []string
-	if len(res.Removals) > 0 {
+	if len(res.Removals) > 0 && !req.Options.Force {
 		yes = append(yes, "-y")
 	}
 	if req.Profiles != nil {
@@ -861,7 +892,7 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, se
 			}
 		}
 		sp.changes = append(sp.changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
-			Entry: &ledger.Entry{From: se.from, Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: se.v.Commit, Digest: se.v.Meta.Digest,
+			Entry: &ledger.Entry{From: se.from, Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Components: ent.Components.Clone(), Commit: se.v.Commit, Digest: se.v.Meta.Digest,
 				Targets: mr.Targets}})
 		replace, err := needsCopy(e.files(sc).modules, name, installed, se.v.Meta.Digest)
 		if err != nil {
@@ -1263,7 +1294,8 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		hints = append(hints, "then confirm them: "+e.commandOf(req, "-y"))
 	}
 	for _, se := range entries {
-		if trustMissing && se.folderChanged {
+		// An install of the folder would take all of it, never the entry's selection.
+		if trustMissing && se.folderChanged && se.spec.Components == nil {
 			hints = append(hints, "edited it yourself? "+e.installFolder(sc, se.spec.Location))
 		}
 	}
@@ -1340,11 +1372,14 @@ func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry) error {
 			return fmt.Errorf("%s: resolving its local source: %w", se.ent.Name, untrusted.CleanErr(err))
 		}
 		if !in {
+			refused := fmt.Errorf("%s: local source %s resolves outside the project (%s)", se.ent.Name,
+				untrusted.Text(se.ent.Source, untrusted.MaxName), untrusted.Text(se.spec.Location, untrusted.MaxName))
+			if se.spec.Components != nil {
+				return refused // an install of the folder would take all of it, never the entry's selection
+			}
 			// Validation refused any other source the cache has for the name, except a local one
 			// that is gone, which the install replaces (§6.5): the install works as hinted.
-			return errs.WithHints(fmt.Errorf("%s: local source %s resolves outside the project (%s)", se.ent.Name,
-				untrusted.Text(se.ent.Source, untrusted.MaxName), untrusted.Text(se.spec.Location, untrusted.MaxName)),
-				"install it yourself if you trust it: "+e.Command(sc, "install", installArgs(se.spec.Location, "", se.ent.Path)...))
+			return errs.WithHints(refused, "install it yourself if you trust it: "+e.Command(sc, "install", installArgs(se.spec.Location, "", se.ent.Path)...))
 		}
 	}
 	return nil
@@ -1419,7 +1454,9 @@ func (e *Engine) folderEdits(sc Scope, rep *TrustReport, entries []*syncEntry) e
 		if inTree {
 			c.ReviewEdits = "review the edits: " + e.reviewFolder(loc)
 		}
-		c.InstallOwn = "edited it yourself? " + e.installFolder(sc, loc)
+		if se.spec.Components == nil { // an install of the folder would take all of it
+			c.InstallOwn = "edited it yourself? " + e.installFolder(sc, loc)
+		}
 	}
 	return nil
 }
@@ -1637,7 +1674,7 @@ func nameList(names []string) string {
 // pinned entry is refused, since its pin is in a file lola does not write; an --update that names
 // no module leaves those entries at their pins, with a notice each (kept).
 func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, led *ledger.Ledger, req SyncRequest,
-	limit syncLimit) (_ []*syncEntry, kept []Notice, _ error) {
+	limit syncLimit, catalogs *syncCatalogs) (_ []*syncEntry, kept []Notice, _ error) {
 	var out []*syncEntry
 	for _, w := range want {
 		ent, name, update := w.Entry, w.Name, req.Update
@@ -1688,7 +1725,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			return nil, nil, fmt.Errorf("%s: %s is on this machine; a remote profile names only git repositories and https archives", name,
 				untrusted.Text(ent.Source, untrusted.MaxName))
 		}
-		spec.Ref, spec.Path = ent.Ref, ent.Path
+		spec.Ref, spec.Path, spec.Components = ent.Ref, ent.Path, ent.Components.Clone()
 		if err := source.Validate(spec); err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
@@ -1716,8 +1753,28 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 				return nil, nil, fmt.Errorf("%s: %w", name, err)
 			}
 		}
+		// An entry installed through a marketplace from a source its catalog named, not the
+		// marketplace's own, keeps the redirect rule of such a source in every fetch (Plan 6c
+		// §10, ruling R-6c-13): the flag only adds refusals, so a forged market cannot loosen one.
+		if ent.Market != nil && !source.SameLocation(spec.Kind, ent.Market.Source, spec.Location) {
+			spec.FromCatalog = true
+		}
+		// An --update of an entry installed through a marketplace follows its catalog only within
+		// the same source, path and ref (Plan 6c §6.6): the catalog's archive sum and redirect
+		// rule then apply to the fetch.
+		var follow *marketPick
+		if update && ent.Market != nil && catalogs != nil {
+			var n *Notice
+			if follow, n = e.follow(sc, catalogs, ent, spec, req.Options.DryRun, req.Display); n != nil {
+				kept = append(kept, *n)
+			}
+			if follow != nil {
+				listed := follow.entry.Spec()
+				spec.SHA256, spec.FromCatalog = listed.SHA256, spec.FromCatalog || listed.FromCatalog
+			}
+		}
 		out = append(out, &syncEntry{ent: ent, from: from, file: file, key: w.key, via: w.via, ledgerPin: w.own() && w.Digest == "" && ent.Digest != "", goneFrom: gone,
-			spec: spec, targets: ts, update: update})
+			spec: spec, targets: ts, update: update, follow: follow})
 	}
 	return out, kept, nil
 }
@@ -1753,14 +1810,14 @@ func (e *Engine) refuseOtherSource(name, base string, spec source.Spec, again st
 	if err != nil || !found {
 		return "", err
 	}
-	if o.Type == string(spec.Kind) && source.SameLocation(spec.Kind, o.Source, spec.Location) && o.Path == spec.Path {
+	if o.Type == string(spec.Kind) && source.SameLocation(spec.Kind, o.Source, spec.Location) && o.Path == spec.Path && o.Components.Equal(spec.Components) {
 		return "", nil
 	}
 	if o.LocalGone() && source.IsLocal(spec.Kind, spec.Location) {
-		return describeSource(o.Source, o.Path), nil
+		return describeSource(o.Source, o.Path, o.Components), nil
 	}
 	return "", errs.WithHints(fmt.Errorf("%s in your cache comes from %s, and %s asks for %s; the cache is shared by every project on this machine",
-		name, describeSource(o.Source, o.Path), base, describeSource(spec.Location, spec.Path)),
+		name, describeSource(o.Source, o.Path, o.Components), base, describeSource(spec.Location, spec.Path, spec.Components)),
 		"remove it from your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name})+" (add -y off a terminal)", "then: "+again)
 }
 
@@ -1771,17 +1828,20 @@ func goneNotices(entries []*syncEntry) []Notice {
 	for _, se := range entries {
 		if se.goneFrom != "" {
 			out = append(out, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: your cache has it from %s, which no longer exists; caching it from %s",
-				se.ent.Name, se.goneFrom, describeSource(se.spec.Location, se.spec.Path))})
+				se.ent.Name, se.goneFrom, describeSource(se.spec.Location, se.spec.Path, se.spec.Components))})
 		}
 	}
 	return out
 }
 
 // describeSource names a source and its path for a message; both may be someone else's.
-func describeSource(location, path string) string {
+func describeSource(location, path string, comps *source.Components) string {
 	s := untrusted.Text(location, untrusted.MaxName)
 	if path != "" {
 		s += " (path " + untrusted.Text(path, untrusted.MaxName) + ")"
+	}
+	if comps != nil {
+		s += " selecting " + comps.String()
 	}
 	return s
 }
@@ -1806,7 +1866,11 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 	case se.spec.Kind == source.KindFolder:
 		return stage()
 	case se.update:
-		if err := stage(); err != nil {
+		get := stage
+		if se.follow != nil {
+			get = func() error { return e.followPin(ctx, se, run) } // the catalog's checks, and its commit pin, not the ref's head
+		}
+		if err := get(); err != nil {
 			return err
 		}
 		if se.v.Commit != ent.Commit || se.v.Meta.Digest != ent.Digest {
@@ -1931,14 +1995,15 @@ func syncPinError(name, base string, ent manifest.Entry, err error, update strin
 	return err
 }
 
-// prepareFetch fetches spec into run and prepares it there; the content must declare name.
+// prepareFetch fetches spec into run and prepares it there; the content must declare name, or
+// none, and then it is name, as the entry records it (a catalog entry's name, Plan 6c §6.3).
 func (e *Engine) prepareFetch(ctx context.Context, name string, spec source.Spec, run string) (store.Staged, error) {
 	f, err := source.Fetch(ctx, spec, run)
 	if err != nil {
 		return store.Staged{}, err
 	}
-	return e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now()})
+	return e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: name, Name: name, Source: spec.Location, Type: string(spec.Kind),
+		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
 }
 
 // publish commits an entry's staged version to the cache, once. A pinned fetch never moves a

@@ -130,18 +130,31 @@ func (r Replaceable) covers(target, path, key string) bool {
 }
 
 // Conflict is a destination lola refuses to touch. Value is the array element, a string or,
-// for other members, its canonical JSON.
+// for other members, its canonical JSON. Owner is the installed module that owns it, when that
+// is why, and Claimant the module of the run that wants it ("" otherwise).
 type Conflict struct {
 	Target, Path, Key, Value, Reason string
 	Forceable                        bool
+	Owner, Claimant                  string
 }
 
-// ConflictError lists every conflict of a refused plan.
-type ConflictError struct{ Conflicts []Conflict }
+// ConflictError lists every conflict of a refused plan. Overridable is set when --force
+// overrides every one of them and the run has a command with --force to hint.
+type ConflictError struct {
+	Conflicts   []Conflict
+	Overridable bool
+}
 
 func (e *ConflictError) Error() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "refusing to change anything: %d conflict(s)", len(e.Conflicts))
+	if n := len(e.Conflicts); n == 1 {
+		b.WriteString("refusing to change anything: 1 conflict")
+	} else {
+		fmt.Fprintf(&b, "refusing to change anything: %d conflicts", n)
+	}
+	if e.Overridable {
+		b.WriteString(", which --force overrides")
+	}
 	for _, c := range e.Conflicts {
 		dest := c.Path
 		if c.Key != "" {

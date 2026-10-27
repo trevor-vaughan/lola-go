@@ -5,6 +5,7 @@ package engine
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -87,6 +88,12 @@ type Options struct {
 	Force   bool  // overrides forceable conflicts and renders forceable skipped artifacts
 	Strict  bool  // fail before writing anything when a warn or skip finding remains
 	Rules   *bool // install only: false records rules: false, true clears it, nil keeps each entry's setting
+	// ForceRun is the user's run with --force, which a refusal of conflicts --force overrides
+	// hints; "" for no hint.
+	ForceRun string
+	// named is the modules the run's command line named (an install's), whose conflicts with
+	// another installed module's destinations hint that module's uninstall.
+	named []string
 
 	// Install hooks (§9.1). AllowHooks grants consent for this run. Ask, when set, asks the
 	// user about hooks without a recorded consent; a yes is recorded. HookOutput receives
@@ -101,6 +108,15 @@ type Options struct {
 	// yes is recorded. AllowHooks never covers them.
 	AllowRuntimeHooks bool
 	AskRuntimeHooks   func(module string, hooks []RuntimeHook) (bool, error)
+
+	// Display is the run's output flags (--json, --plain, --no-pager as given), which every
+	// command a marketplace hint or notice names keeps (Plan 6c §11.3), as does the uninstall a
+	// conflict over another module's destination hints.
+	Display []string
+	// ShowResolved, when set, is given install's resolved marketplace addresses, one line each
+	// ("@acme/formatter → <source> path <path> @ <ref>"), before any consent is asked (Plan 6c
+	// §6.3, ruling R-6c-15).
+	ShowResolved func(lines []string)
 }
 
 // MCPRun says what an MCP server runs: the stdio command line or the remote URL.
@@ -122,6 +138,9 @@ type ModuleResult struct {
 	RuntimeHooks []RuntimeHook `json:"runtime_hooks"`
 	Skipped      []string      `json:"skipped"`  // kind/name of each component selections.yaml excludes
 	SavedTo      string        `json:"saved_to"` // selections.yaml when this install changed the module's entries
+	// Market is the marketplace an install through @<market>/<entry> records (Plan 6c §7),
+	// through untrusted.Text; absent otherwise.
+	Market *manifest.MarketRef `json:"market,omitempty"`
 }
 
 // Notice levels.
@@ -166,12 +185,18 @@ type InstallRequest struct {
 	// install uses it instead of fetching the source or reading the head again, so it installs
 	// exactly what the pickers listed.
 	Version *VersionRef
+	// market is the catalog entry an @<market>/<entry> argument resolved to (Plan 6c §6.3), set
+	// by the engine under the markets lock before any scope is locked.
+	market *marketPick
 }
 
-// VersionRef names one cached version of a module.
+// VersionRef names one cached version of a module. commit is the commit a marketplace entry's
+// version was fetched at, which the cache's heads may not record: a catalog's commit pin never
+// moves one (Plan 6c §6.4).
 type VersionRef struct {
-	Name string `json:"name"`
-	ID   string `json:"id"`
+	Name   string `json:"name"`
+	ID     string `json:"id"`
+	commit string
 }
 
 // StatusRow is one module × target line of `lola list`.
@@ -193,6 +218,18 @@ type StatusRow struct {
 	UpdateAvailable bool `json:"update_available"`
 	// Skipped lists the components selections.yaml excludes at this scope (kind/name).
 	Skipped []string `json:"skipped"`
+	// Market is the marketplace the entry says it was installed through, as written (Plan 6c §7),
+	// through untrusted.Text; absent when it names none.
+	Market *manifest.MarketRef `json:"market,omitempty"`
+}
+
+// shownMarket is m with its name and source through untrusted.Text, nil for none: a file's
+// provenance, as output shows it (Plan 6c §8).
+func shownMarket(m *manifest.MarketRef) *manifest.MarketRef {
+	if m == nil {
+		return nil
+	}
+	return &manifest.MarketRef{Name: shown(m.Name), Source: shown(m.Source)}
 }
 
 // stateFiles are a scope's state locations. lock is empty at project scope: the project's
@@ -378,13 +415,15 @@ func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (_ store.Version, 
 		return store.Version{}, err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
-	return e.fetchAs(ctx, spec, "", run)
+	return e.fetchAs(ctx, spec, "", "", run)
 }
 
 // fetchAs copies a source into the store, staging it in the run directory run. Content must
 // declare the module name, when name is set: content declaring another is refused before
-// anything is cached (store.PutRequest.Name).
-func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name, run string) (v store.Version, err error) {
+// anything is cached (store.PutRequest.Name). Content that declares no name is named fallback,
+// else name, else after its source (the repository, archive or folder): a module lola already
+// knows by a name keeps it, as a catalog entry's does (Plan 6c §6.3).
+func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name, fallback, run string) (v store.Version, err error) {
 	f, err := source.Fetch(ctx, spec, run)
 	if err != nil {
 		return store.Version{}, err
@@ -392,8 +431,9 @@ func (e *Engine) fetchAs(ctx context.Context, spec source.Spec, name, run string
 	defer func() { err = errors.Join(err, os.RemoveAll(f.Dir)) }()
 	// A source the user names takes the place of a local one the cache records that no longer
 	// exists (Plan 6a §6.5); Commit checks that under the cache lock.
-	return e.Store.Put(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), ReplaceGoneOrigin: true})
+	return e.Store.Put(store.PutRequest{Staged: f.Dir, FallbackName: cmp.Or(fallback, name, f.Name), Name: name, Source: spec.Location, Type: string(spec.Kind),
+		Components: spec.Components,
+		Path:       spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), ReplaceGoneOrigin: true})
 }
 
 // canonicalRoot is dir with symbolic links resolved: the root a relative source is recorded
@@ -406,12 +446,16 @@ func canonicalRoot(dir string) string {
 	return dir
 }
 
-// resolve implements §7.1 for this build: a stored name first (no network), then a source.
+// resolve implements §7.1 for this build: a marketplace address (resolveEntry), a stored name
+// (no network), then a source.
 // have, when it names a module, is the version this request already resolved to (fetched for
 // another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
 // entryRef is the ref the scope's manifest records for a name argument: without --ref the
 // name resolves to the cache head for it (Plan 6a §10.1). Fetches stage in the run directory run.
 func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef, run string) (manifest.Entry, store.Version, bool, error) {
+	if r.market != nil {
+		return e.resolveEntry(ctx, sc, r, have, run)
+	}
 	if module.ValidateName("module", r.Arg) == nil {
 		if r.Ref == "" {
 			r.Ref = entryRef
@@ -429,7 +473,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			}
 		}
 		if found && have.Name == r.Arg {
-			return manifest.Entry{Name: r.Arg, Source: o.Source, Ref: r.Ref, Path: o.Path}, have, false, nil
+			return manifest.Entry{Name: r.Arg, Source: o.Source, Ref: r.Ref, Path: o.Path, Components: o.Components}, have, false, nil
 		}
 		if found {
 			v, ok, err := e.Store.Head(r.Arg, r.Ref)
@@ -438,13 +482,13 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 			}
 			fetched := false
 			if !ok {
-				v, err = e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref}, "", run)
+				v, err = e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: r.Ref, Components: o.Components}, "", r.Arg, run)
 				if err != nil {
 					return manifest.Entry{}, store.Version{}, false, err
 				}
 				fetched = true
 			}
-			return manifest.Entry{Name: r.Arg, Source: o.Source, Ref: r.Ref, Path: o.Path}, v, fetched, nil
+			return manifest.Entry{Name: r.Arg, Source: o.Source, Ref: r.Ref, Path: o.Path, Components: o.Components}, v, fetched, nil
 		}
 	}
 	spec, ok, err := source.Parse(r.Arg, cwd)
@@ -479,7 +523,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	}
 	v, fetched := have, false
 	if v.Name == "" {
-		if v, err = e.fetchAs(ctx, spec, "", run); err != nil {
+		if v, err = e.fetchAs(ctx, spec, "", "", run); err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
 		fetched = true
@@ -650,6 +694,36 @@ type prepared struct {
 	copies  []moduleCopy
 }
 
+// ownedConflicts is err, the refusal of ce, saying what frees each destination another installed
+// module owns (ruling R-6cux-7): uninstalling the owner, hinted, when the run's own command line
+// named the module that wants it (opts.named); else removing that module from the file that
+// lists it, a project.yml or a profile, which must never steer you into removing a module you
+// installed.
+func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, changes []plan.ModuleChange, opts Options) error {
+	var owners []string
+	for i, c := range ce.Conflicts {
+		switch {
+		case c.Owner == "":
+		case slices.Contains(opts.named, c.Claimant):
+			ce.Conflicts[i].Reason += ": uninstall " + c.Owner + " first"
+			if !slices.Contains(owners, c.Owner) {
+				owners = append(owners, c.Owner)
+			}
+		default:
+			from := filepath.Base(e.files(sc).manifest)
+			if k := slices.IndexFunc(changes, func(m plan.ModuleChange) bool { return m.Name == c.Claimant }); k >= 0 && changes[k].Entry != nil &&
+				changes[k].Entry.From != "" {
+				from = changes[k].Entry.From
+			}
+			ce.Conflicts[i].Reason += ": remove " + c.Claimant + " from " + shown(from)
+		}
+	}
+	if len(owners) == 0 {
+		return err
+	}
+	return errs.WithHints(err, e.Command(sc, "uninstall", append(owners, opts.Display...)...))
+}
+
 // prepare runs everything that may refuse or ask before a scope is written: runtime hook
 // consent, --strict, the plan (conflicts, except on the replaceable destinations) and install
 // hook consent. It writes nothing but recorded consents.
@@ -664,12 +738,15 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		}
 	}
 	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes, Force: opts.Force,
-		Replace: replace}
+		ForceRun: opts.ForceRun, Replace: replace}
 	for _, t := range e.Targets {
 		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
 		req.BaseDirs[t.ID()] = t.BaseDirs(sc.Kind)
 	}
 	p, err := plan.Compute(req)
+	if ce, ok := errors.AsType[*plan.ConflictError](err); ok {
+		return nil, e.ownedConflicts(sc, ce, err, changes, opts)
+	}
 	if err != nil {
 		return nil, err
 	}

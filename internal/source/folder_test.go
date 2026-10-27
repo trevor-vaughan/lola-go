@@ -2,9 +2,11 @@ package source_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -79,6 +81,7 @@ var _ = Describe("Fetch of a folder", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
 		Expect(f.Name).To(Equal("example"))
+		Expect(f.Root).To(Equal("module"), "where the module root is in the source")
 	})
 
 	It("takes --path . as the folder itself, not its module/, named after the folder", func() {
@@ -88,6 +91,7 @@ var _ = Describe("Fetch of a folder", func() {
 			Expect(err).NotTo(HaveOccurred(), p)
 			Expect(f.Name).To(Equal("example"), p)
 			Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md", "module/commands/b.md"), p)
+			Expect(f.Root).To(BeEmpty(), p)
 		}
 	})
 
@@ -176,5 +180,50 @@ var _ = Describe("Fetch of a folder", func() {
 		Expect(os.Symlink(outside, filepath.Join(src, "plugins"))).To(Succeed())
 		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "plugins/review"}, staging)
 		Expect(err).To(MatchError(ContainSubstring("plugins: symbolic links are not allowed")))
+	})
+})
+
+var _ = Describe("Fetch of a selection of components", func() {
+	It("stages exactly the skills, commands and agents Spec.Components selects, with their execute bits, refusing what it cannot select", func() {
+		tmp := testenv.Isolate()
+		src, staging := filepath.Join(tmp, "src"), filepath.Join(tmp, "staging")
+		writeTree(src, map[string]string{"skills/xlsx/SKILL.md": "x", "skills/xlsx/run.sh": "#!/bin/sh\n", "skills/pptx/SKILL.md": "p",
+			"tools/cmds/sum.md": "s", "agents/a.md": "a", "README.md": "r", "module/skills/other/SKILL.md": "o"})
+		Expect(os.Chmod(filepath.Join(src, "skills", "xlsx", "run.sh"), 0o755)).To(Succeed())
+		sel := &source.Components{Skills: []string{"skills/xlsx"}, Commands: []string{"tools/cmds/sum.md"}, Agents: []string{"agents/a.md"}}
+		f, err := source.Fetch(context.Background(), source.Spec{Kind: source.KindFolder, Location: src, Components: sel}, staging)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listTree(f.Dir)).To(ConsistOf("skills/xlsx/SKILL.md", "skills/xlsx/run.sh", "commands/sum.md", "agents/a.md"),
+			"from the directory itself, never its module/")
+		if runtime.GOOS != "windows" {
+			Expect(f.Executables).To(Equal([]string{"skills/xlsx/run.sh"}))
+		}
+		entries, err := os.ReadDir(staging)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(entries).To(HaveLen(1), "nothing but the selection is left in staging")
+
+		for c, want := range map[*source.Components]string{
+			{Skills: []string{"skills/docx"}}:                                       "does not hold skills/docx, which it selects among its skills",
+			{Skills: []string{"README.md"}}:                                         "selects README.md among its skills, which is not a directory",
+			{Skills: []string{"skills/../x"}}:                                       `skills path "skills/../x" is not a clean relative path`,
+			{Skills: []string{"skills/xlsx", "skills/xlsx/a"}}:                      "skills/xlsx and skills/xlsx/a overlap",
+			{Skills: []string{"skills/xlsx/a", "skills/xlsx"}}:                      "skills/xlsx and skills/xlsx/a overlap",
+			{Skills: []string{"skills/xlsx"}, Agents: []string{"skills/xlsx/a.md"}}: "skills/xlsx and skills/xlsx/a.md overlap",
+			{Skills: []string{"x/a"}, Commands: []string{"x/a"}}:                    "x/a and x/a overlap",
+			{Commands: []string{"a/x.md", "b/x.md"}}:                                "commands lists two paths named x.md",
+			{}:                                                                      "selects no skill, command or agent",
+		} {
+			_, err := source.Fetch(context.Background(), source.Spec{Kind: source.KindFolder, Location: src, Components: c}, staging)
+			Expect(err).To(MatchError(ContainSubstring(want)), want)
+		}
+	})
+})
+
+var _ = Describe("Components as lock.json and trust.json record them", func() {
+	It("leaves out a list it has none of, never writing null", func() {
+		testenv.Isolate()
+		b, err := json.Marshal(source.Components{Skills: []string{"skills/a"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal(`{"skills":["skills/a"]}`))
 	})
 })

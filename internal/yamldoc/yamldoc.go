@@ -103,6 +103,52 @@ func read(path string, version int, noFollow bool) (*yaml.Node, []byte, error) {
 	return &d, b, nil
 }
 
+// Decode reads b, bytes lola did not write and the caller has already capped in size, as one
+// YAML document node, nil for none (Plan 6c §13, ruling R-6c-16). It refuses a second document,
+// anchors, aliases and merge keys, which would make one entry stand for another, and a mapping
+// that holds a key twice, which yaml.v3 refuses only when it decodes into a Go value. It applies
+// no version rule. Errors name the line, never a file: the caller says which bytes these are.
+func Decode(b []byte) (*yaml.Node, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	var d yaml.Node
+	if err := dec.Decode(&d); errors.Is(err, io.EOF) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("does not parse: %s", untrusted.Text(err.Error(), 2*untrusted.MaxName))
+	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return nil, errors.New("holds more than one YAML document")
+	}
+	if n := special(&d); n != nil {
+		return nil, fmt.Errorf("line %d: anchors, aliases and merge keys (<<) are not supported", n.Line)
+	}
+	if n := duplicate(&d); n != nil {
+		return nil, fmt.Errorf("line %d: the key %s is given twice", n.Line, untrusted.Text(n.Value, untrusted.MaxName))
+	}
+	return &d, nil
+}
+
+// duplicate returns the second key node of the first mapping under n that holds a key twice.
+func duplicate(n *yaml.Node) *yaml.Node {
+	if n.Kind == yaml.MappingNode {
+		seen := map[string]bool{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i].Value
+			if seen[k] {
+				return n.Content[i]
+			}
+			seen[k] = true
+		}
+	}
+	for _, c := range n.Content {
+		if d := duplicate(c); d != nil {
+			return d
+		}
+	}
+	return nil
+}
+
 // Root returns a document's root node, or nil for no document or an empty one.
 func Root(d *yaml.Node) *yaml.Node {
 	if d == nil || len(d.Content) == 0 || d.Content[0].Kind == yaml.ScalarNode && d.Content[0].Tag == "!!null" {

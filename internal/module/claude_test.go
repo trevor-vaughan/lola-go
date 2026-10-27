@@ -262,7 +262,7 @@ var _ = Describe("the Claude Code plugin adapter", func() {
 		Entry("a command with neither", `{"name":"p","commands":{"x":{"description":"d"}}}`, ".claude-plugin/plugin.json: commands.x: sets exactly one of source or content"),
 		Entry("a command with empty content", `{"name":"p","commands":{"x":{"content":""}}}`, ".claude-plugin/plugin.json: commands.x: content is empty"),
 		Entry("a command with an unknown key", `{"name":"p","commands":{"x":{"content":"c","hint":"h"}}}`, ".claude-plugin/plugin.json: commands.x: must be an object with source or content, and description, argumentHint, model or allowedTools"),
-		Entry("a command with a bad name", `{"name":"p","commands":{"X Y":{"content":"c"}}}`, `.claude-plugin/plugin.json: commands.X Y: command name "X Y" is invalid: use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'`),
+		Entry("a command with a bad name", `{"name":"p","commands":{"X Y":{"content":"c"}}}`, `.claude-plugin/plugin.json: commands.X Y: command name "X Y" is invalid: X and Y are uppercase, ' ' is not allowed; use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'`),
 		Entry("an agents directory", `{"name":"p","agents":"./agents/x"}`, `.claude-plugin/plugin.json: agents: path "./agents/x" is a directory; list the .md files`),
 		Entry("mcpServers as a number", `{"name":"p","mcpServers":1}`, ".claude-plugin/plugin.json: mcpServers: must be a path, an object of servers, or a list of them"),
 		Entry("an inline server without command or url", `{"name":"p","mcpServers":{"s":{}}}`, `.claude-plugin/plugin.json: mcpServers: server "s" needs a command or a url`),

@@ -31,6 +31,9 @@ type ScopeRequest struct {
 	Interactive bool   // the scope picker can run
 	Command     string // the command, named by the refusal: install, sync, uninstall or render
 	Both        bool   // the command acts on both scopes in one run; else two scopes are refused
+	// Run is the command as run, without its scope flags, quoted for the shell: the refusal of no
+	// scope hints it with each scope flag the command takes. "" gives that refusal no hints.
+	Run string
 }
 
 // ScopeChoice is one scope an install acts on and where that choice came from.
@@ -170,12 +173,19 @@ func (e *Engine) ResolveScope(req ScopeRequest) (ScopeResolution, error) {
 	if preset != nil {
 		return ScopeResolution{Scopes: Scopes(preset, root, SourceConfig), ProjectRoot: root}, nil
 	}
-	hints := []string{"--project acts on this directory (-C <dir> picks another)", "--user acts on your user scope, for every project"}
+	flags, values := []string{"--project", "--user"}, "project or user"
 	if req.Both {
-		hints = append(hints, "--scope both does both")
+		flags, values = append(flags, "--scope both"), "project, user or both"
 	}
-	return ScopeResolution{}, errs.WithHints(fmt.Errorf("lola %s needs a scope: no .lola/ project was found in %s or above it", req.Command, untrusted.Text(req.Cwd, untrusted.MaxName)),
-		append(hints, "or set a default: default_scope: project in "+e.Paths.Config)...)
+	var hints []string
+	if req.Run != "" {
+		for _, f := range flags {
+			hints = append(hints, req.Run+" "+f)
+		}
+	}
+	return ScopeResolution{}, errs.WithHints(fmt.Errorf("lola %s needs a scope: no .lola/ project was found in %s or above it, and %s sets no "+
+		"default_scope (default_scope: %s)", req.Command, untrusted.Text(req.Cwd, untrusted.MaxName), untrusted.Text(e.Paths.Config, untrusted.MaxName), values),
+		hints...)
 }
 
 // oneScope refuses two scopes, which why names, for a command that acts on one (!Both).

@@ -75,11 +75,11 @@ func remoteName(name string) error {
 }
 
 // remoteSpec is the source a remote profile is fetched from (Plan 6b §4.2, D4): src as typed, a
-// git repository or an https archive at a host named by name (profile.CheckRemoteSource, ruling
+// git repository or an https archive at a host named by name (source.CheckRemote, ruling
 // R-6b3b-6), never a folder, a local archive or a file:// URL, with every recorded-source rule
 // (source.Recorded.Check) and the fetcher's (source.Validate) checked before any network contact.
 func (e *Engine) remoteSpec(src, ref, path string) (source.Spec, error) {
-	if err := profile.CheckRemoteSource(src); err != nil {
+	if err := source.CheckRemote(src, profile.RemoteWho); err != nil {
 		return source.Spec{}, err
 	}
 	cwd, err := e.Getwd()
@@ -205,15 +205,25 @@ func (e *Engine) remoteEntry(ctx context.Context, sc Scope, q string, ent manife
 // replaced is never read as gone (§19 R11). A dry run writes nothing: it does not sweep, and
 // when no lola has made the lock file yet, none has written a remote profile, so it takes none.
 func (e *Engine) readProfiles(dry bool) (func(), error) {
-	if _, err := os.Stat(e.Paths.ProfilesLock); dry && errors.Is(err, fs.ErrNotExist) {
+	return readSwept(e.Paths.ProfilesLock, e.Paths.RemoteProfiles, remoteName, dry)
+}
+
+// readSwept takes the lock at lockPath shared, for a run that reads dir, the remote profiles or
+// the cached marketplaces, which writers replace by rename (writeDir). When a killed writer left a
+// directory behind (leftover), it takes the lock exclusively, finishes that work (sweepDir, valid
+// naming what may be put back) and starts again, so a directory that was being replaced is never
+// read as gone. A dry run writes nothing: it does not sweep, and when no lola has made the lock
+// file yet, none has written dir, so it takes none.
+func readSwept(lockPath, dir string, valid func(string) error, dry bool) (func(), error) {
+	if _, err := os.Stat(lockPath); dry && errors.Is(err, fs.ErrNotExist) {
 		return func() {}, nil
 	}
 	for {
-		unlock, err := e.lockProfiles(false)
+		unlock, err := lockAt(lockPath, false)
 		if err != nil {
 			return nil, err
 		}
-		des, err := os.ReadDir(e.Paths.RemoteProfiles)
+		des, err := os.ReadDir(dir)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			unlock()
 			return nil, err
@@ -222,10 +232,10 @@ func (e *Engine) readProfiles(dry bool) (func(), error) {
 			return unlock, nil
 		}
 		unlock()
-		if unlock, err = e.lockProfiles(true); err != nil {
+		if unlock, err = lockAt(lockPath, true); err != nil {
 			return nil, err
 		}
-		err = e.sweepRemote()
+		err = sweepDir(dir, valid)
 		unlock()
 		if err != nil {
 			return nil, err
@@ -238,48 +248,58 @@ func (e *Engine) readProfiles(dry bool) (func(), error) {
 // only while they check again and write (--add, --update, --remove), so no question is ever asked
 // under it.
 func (e *Engine) lockProfiles(exclusive bool) (func(), error) {
-	if err := os.MkdirAll(filepath.Dir(e.Paths.ProfilesLock), 0o700); err != nil {
+	return lockAt(e.Paths.ProfilesLock, exclusive)
+}
+
+// lockAt takes the file lock at path, shared or exclusive.
+func lockAt(path string, exclusive bool) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	fl := flock.New(e.Paths.ProfilesLock)
+	fl := flock.New(path)
 	lock := fl.RLock
 	if exclusive {
 		lock = fl.Lock
 	}
 	if err := lock(); err != nil {
-		return nil, fmt.Errorf("locking %s: %w", e.Paths.ProfilesLock, err)
+		return nil, fmt.Errorf("locking %s: %w", path, err)
 	}
 	return func() { _ = fl.Unlock() }, nil
 }
 
-// The prefixes of the directories writeRemote and RemoveProfile work in, under
-// paths.RemoteProfiles: a name that starts with "." is never a profile (profile.Remote).
+// The prefixes of the directories writeDir, sweepDir and the removals work in, under the
+// directory that holds one directory per remote profile or marketplace: a name that starts with
+// "." is never one of those (profile.Remote, Engine.Markets).
 const (
-	newPrefix = ".new-" // a profile being written
-	oldPrefix = ".old-" // a profile being replaced, put back if nothing took its place
-	delPrefix = ".del-" // a profile being removed, never put back
+	newPrefix = ".new-" // a directory being written
+	oldPrefix = ".old-" // a directory being replaced, put back if nothing took its place
+	delPrefix = ".del-" // a directory being removed, never put back
 )
 
-// leftover reports whether name, under paths.RemoteProfiles, is a directory a killed writer left
-// (one of the prefixes above), which sweepRemote finishes; any other name starting with "." is
-// not lola's, and is left alone.
+// leftover reports whether name is a directory a killed writer left (one of the prefixes above),
+// which sweepDir finishes; any other name starting with "." is not lola's, and is left alone.
 func leftover(name string) bool {
 	return strings.HasPrefix(name, newPrefix) || strings.HasPrefix(name, oldPrefix) || strings.HasPrefix(name, delPrefix)
 }
 
-// writeRemote writes the remote profile name, the bytes data and its source.json o, crash-safe
-// (Plan 6b §4.2, §19 R11): both files go into a new directory under paths.RemoteProfiles, which is
-// renamed into place; a profile of that name is renamed aside first and removed after, and put
-// back if the rename fails. A crash leaves the old profile or the new one, never a mix: between
-// the two renames the old one waits aside, and sweepRemote puts it back. The caller holds the
-// profiles lock exclusively. written reports that the new profile is in place, even when an
-// error follows (flushing the directory, removing the old one, which the next sweep removes).
-func (e *Engine) writeRemote(name string, data []byte, o profile.Origin) (written bool, err error) {
-	dir := e.Paths.RemoteProfiles
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+// dirFile is a file writeDir writes.
+type dirFile struct {
+	name string
+	data []byte
+}
+
+// writeDir writes files into parent/name, crash-safe (Plan 6b §19 R11, Plan 6c §5): they go into a
+// new directory under parent, which is renamed into place; a directory of that name is renamed
+// aside first and removed after, and put back if the rename fails. A crash leaves the old
+// directory or the new one, never a mix: between the two renames the old one waits aside, and
+// sweepDir puts it back. The caller holds the lock of parent exclusively. written reports that the
+// new directory is in place, even when an error follows (flushing parent, removing the old one,
+// which the next sweep removes).
+func writeDir(parent, name string, files []dirFile) (written bool, err error) {
+	if err := os.MkdirAll(parent, 0o700); err != nil {
 		return false, err
 	}
-	tmp, err := os.MkdirTemp(dir, newPrefix+name+"-*")
+	tmp, err := os.MkdirTemp(parent, newPrefix+name+"-*")
 	if err != nil {
 		return false, err
 	}
@@ -288,23 +308,18 @@ func (e *Engine) writeRemote(name string, data []byte, o profile.Origin) (writte
 			err = errors.Join(err, os.RemoveAll(tmp))
 		}
 	}()
-	origin, err := json.MarshalIndent(o, "", "  ")
-	if err != nil {
-		return false, err
-	}
-	if err := writeSynced(filepath.Join(tmp, profile.RemoteFile), data); err != nil {
-		return false, err
-	}
-	if err := writeSynced(filepath.Join(tmp, profile.OriginFile), append(origin, '\n')); err != nil {
-		return false, err
+	for _, f := range files {
+		if err := writeSynced(filepath.Join(tmp, f.name), f.data); err != nil {
+			return false, err
+		}
 	}
 	if err := fsx.SyncDir(tmp); err != nil {
 		return false, err
 	}
-	dst := filepath.Join(dir, name)
+	dst := filepath.Join(parent, name)
 	old := ""
 	if _, err := os.Lstat(dst); err == nil {
-		if old, err = os.MkdirTemp(dir, oldPrefix+name+"-*"); err != nil {
+		if old, err = os.MkdirTemp(parent, oldPrefix+name+"-*"); err != nil {
 			return false, err
 		}
 		if err := os.Remove(old); err != nil {
@@ -320,13 +335,23 @@ func (e *Engine) writeRemote(name string, data []byte, o profile.Origin) (writte
 		}
 		return false, err
 	}
-	if err := fsx.SyncDir(dir); err != nil {
+	if err := fsx.SyncDir(parent); err != nil {
 		return true, err
 	}
 	if old != "" {
 		return true, os.RemoveAll(old)
 	}
 	return true, nil
+}
+
+// writeRemote writes the remote profile name, the bytes data and its source.json o, crash-safe
+// (Plan 6b §4.2, §19 R11, writeDir). The caller holds the profiles lock exclusively.
+func (e *Engine) writeRemote(name string, data []byte, o profile.Origin) (written bool, err error) {
+	origin, err := json.MarshalIndent(o, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	return writeDir(e.Paths.RemoteProfiles, name, []dirFile{{profile.RemoteFile, data}, {profile.OriginFile, append(origin, '\n')}})
 }
 
 // writeSynced writes data to the new file path, private to the user, and flushes it to disk.
@@ -343,11 +368,15 @@ func writeSynced(path string, data []byte) error {
 }
 
 // sweepRemote finishes what a killed --add, --update or --remove left under paths.RemoteProfiles
-// (§19 R11): a profile an update renamed aside goes back in place when none took its place, and
-// is removed otherwise; a profile being written, or removed, is removed. The caller holds the
-// profiles lock exclusively, so nothing else is writing there.
-func (e *Engine) sweepRemote() error {
-	des, err := os.ReadDir(e.Paths.RemoteProfiles)
+// (§19 R11, sweepDir). The caller holds the profiles lock exclusively.
+func (e *Engine) sweepRemote() error { return sweepDir(e.Paths.RemoteProfiles, remoteName) }
+
+// sweepDir finishes what a killed writer left under parent (Plan 6b §19 R11): a directory an
+// update renamed aside goes back in place when none took its place and valid accepts its name,
+// and is removed otherwise; a directory being written, or removed, is removed. The caller holds
+// the lock of parent exclusively, so nothing else is writing there.
+func sweepDir(parent string, valid func(string) error) error {
+	des, err := os.ReadDir(parent)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -357,7 +386,7 @@ func (e *Engine) sweepRemote() error {
 	var errList []error
 	for _, de := range des {
 		name := de.Name()
-		path := filepath.Join(e.Paths.RemoteProfiles, name)
+		path := filepath.Join(parent, name)
 		switch {
 		case strings.HasPrefix(name, newPrefix), strings.HasPrefix(name, delPrefix):
 			errList = append(errList, os.RemoveAll(path))
@@ -366,8 +395,8 @@ func (e *Engine) sweepRemote() error {
 			if k := strings.LastIndex(kept, "-"); k > 0 {
 				kept = kept[:k]
 			}
-			dst := filepath.Join(e.Paths.RemoteProfiles, kept)
-			if _, err := os.Lstat(dst); errors.Is(err, fs.ErrNotExist) && remoteName(kept) == nil {
+			dst := filepath.Join(parent, kept)
+			if _, err := os.Lstat(dst); errors.Is(err, fs.ErrNotExist) && valid(kept) == nil {
 				errList = append(errList, os.Rename(path, dst))
 				continue
 			}
@@ -375,7 +404,7 @@ func (e *Engine) sweepRemote() error {
 		}
 	}
 	if err := errors.Join(errList...); err != nil {
-		return errs.WithHints(fmt.Errorf("could not finish what an interrupted lola left in %s: %w", shown(e.Paths.RemoteProfiles), untrusted.CleanErr(err)),
+		return errs.WithHints(fmt.Errorf("could not finish what an interrupted lola left in %s: %w", shown(parent), untrusted.CleanErr(err)),
 			"remove the directories there whose names start with . by hand")
 	}
 	return nil

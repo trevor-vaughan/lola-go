@@ -181,7 +181,7 @@ var _ = Describe("project profiles", func() {
 		activate("project:go")
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: trustAll})
 		Expect(err).To(MatchError(ContainSubstring(filepath.Join(proj, ".lola", "profiles") + " is not a directory of the project's own")))
-		_, _, err = e.Status(ctx, sc)
+		_, _, err = e.Status(ctx, sc, nil)
 		Expect(err).To(MatchError(ContainSubstring("is not a directory of the project's own")))
 	})
 

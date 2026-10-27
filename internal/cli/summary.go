@@ -60,7 +60,7 @@ func (fl *installFlow) changes(pv *engine.Preview) (bool, error) {
 				}
 			}
 		}
-		rows, _, err := fl.eng.Status(fl.cmd.Context(), c.Scope)
+		rows, _, err := fl.eng.Status(fl.cmd.Context(), c.Scope, nil)
 		if err != nil {
 			return false, err
 		}
@@ -95,6 +95,9 @@ func diffLine(d engine.ComponentDiff) string {
 // equivalent commands.
 func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *engine.Preview) {
 	fmt.Fprintln(w, "Summary:")
+	for _, line := range fl.choices.Resolved {
+		fmt.Fprintln(w, "  "+line)
+	}
 	for _, c := range fl.scopes {
 		key := c.Scope.Key()
 		fmt.Fprintf(w, "  %s, %s:\n", destLabel(c.Scope), scopeSourceLabel(c))

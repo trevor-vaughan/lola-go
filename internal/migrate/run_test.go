@@ -4,16 +4,20 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -102,7 +106,7 @@ var _ = Describe("Migrate", func() {
 	plan := func() *migrate.Plan {
 		st, err := migrate.Load(h.dir, userHome)
 		Expect(err).NotTo(HaveOccurred())
-		p, err := migrate.NewPlan(ctx, e, st)
+		p, err := migrate.NewPlan(ctx, e, st, nil)
 		Expect(err).NotTo(HaveOccurred())
 		return p
 	}
@@ -267,10 +271,10 @@ var _ = Describe("Migrate", func() {
 		r["commands"] = []string{}
 		h.install(record(proj), r)
 		before := snapshot(proj, other, h.dir, filepath.Join(tmp, "state"))
-		_, err := run(migrate.Options{})
+		_, err := run(migrate.Options{Options: engine.Options{ForceRun: "lola migrate --force"}})
 		Expect(err).To(MatchError(ContainSubstring("project " + other)))
 		Expect(err).To(MatchError(ContainSubstring(".claude/commands/ship.md: exists and was not written by lola")))
-		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force")))
+		Expect(errs.Hints(err)).To(ContainElement("lola migrate --force"))
 		Expect(snapshot(proj, other, h.dir, filepath.Join(tmp, "state"))).To(Equal(before))
 	})
 
@@ -788,6 +792,241 @@ var _ = Describe("Migrate", func() {
 		Expect(err).To(MatchError(ContainSubstring("cancelled")))
 		Expect(asked).To(Equal([]string{"hooked"}))
 		Expect(snapshot(proj, other, h.dir, filepath.Join(tmp, "state", "lola", "trash"))).To(Equal(before))
+	})
+
+	It("migrate registers Python marketplaces and reports the ones it cannot", func() {
+		// A Python YAML catalog in a git repository served on loopback (a source the user typed into
+		// the Python lola), at its root under a name lola's own lookup does not try (the Python lola
+		// reads the only .yml there) and under sub/; one in a folder on this machine; and a
+		// repository with two, of which the Python lola would read neither.
+		catalog := "name: acme\nmodules:\n  - name: tool\n    repository: https://example.com/tool.git\n"
+		work := filepath.Join(tmp, "plugins-work")
+		writeTree(work, map[string]string{"catalog.yml": catalog, "sub/other.yml": catalog})
+		git(work, "init", "-q", "-b", "main")
+		git(work, "add", "-A")
+		git(work, "commit", "-qm", "catalog")
+		git(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "plugins.git"))
+		twoWork := filepath.Join(tmp, "two-work")
+		writeTree(twoWork, map[string]string{"a.yml": catalog, "b.yml": catalog})
+		git(twoWork, "init", "-q", "-b", "main")
+		git(twoWork, "add", "-A")
+		git(twoWork, "commit", "-qm", "two")
+		git(tmp, "clone", "-q", "--bare", twoWork, filepath.Join(tmp, "srv", "two.git"))
+		var requests atomic.Int32
+		base := testenv.ServeGitWith(filepath.Join(tmp, "srv"), func(*http.Request) { requests.Add(1) })
+		folder := filepath.Join(tmp, "folder-market")
+		writeTree(folder, map[string]string{"market.yml": catalog})
+		pyMarket := func(file, name, url string, enabled bool) {
+			b, err := yaml.Marshal(map[string]any{"name": name, "url": url, "enabled": enabled})
+			Expect(err).NotTo(HaveOccurred())
+			writeFile(filepath.Join(h.dir, "market", file+".yml"), string(b))
+		}
+		pyMarket("acme", "acme", "git+"+base+"/plugins.git", true)
+		pyMarket("frag", "frag", "git+"+base+"/plugins.git#sub/other.yml", true)
+		pyMarket("local", "local", "file://"+filepath.Join(folder, "market.yml"), true)
+		pyMarket("off", "off", base+"/plugins.git#catalog.yml", false)
+		pyMarket("general", "Lola General", "git+"+base+"/plugins.git", true)
+		pyMarket("update", "update", "git+"+base+"/plugins.git", true)
+		pyMarket("plain", "plain", "http://example.com/market.yml", true)
+		pyMarket("page", "page", "https://example.com/market", true)
+		pyMarket("gone", "gone", "git+"+base+"/missing.git", true)
+		pyMarket("two", "two", "git+"+base+"/two.git", true)
+		writeFile(filepath.Join(h.dir, "market", "cache", "acme.yml"), catalog)
+		h.install()
+		display := []string{"--json"}
+
+		By("the plan names each, and fetches nothing")
+		res, err := run(migrate.Options{Options: engine.Options{DryRun: true, Display: display}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(requests.Load()).To(BeZero(), "a dry run fetches no catalog")
+		Expect(res.Nothing).To(BeFalse())
+		add := func(name, src string, more ...string) string {
+			return strings.Join(append([]string{"lola market", name, "--add", src}, append(more, "--json")...), " ")
+		}
+		plugins := base + "/plugins.git"
+		const later = "; lola migrate gives the command that registers it once its run finds the catalog file the Python lola read"
+		// What a run reports: the exported fields.
+		reported := func(ms []migrate.Market) []migrate.Market {
+			out := []migrate.Market{}
+			for _, m := range ms {
+				out = append(out, migrate.Market{Name: m.Name, URL: m.URL, Market: m.Market, Source: m.Source, Path: m.Path, Status: m.Status,
+					Reason: m.Reason, Hints: m.Hints})
+			}
+			return out
+		}
+		Expect(reported(res.Markets)).To(Equal([]migrate.Market{
+			{Name: "acme", URL: "git+" + plugins, Market: "acme", Source: plugins, Status: migrate.MarketRegister, Hints: []string{}},
+			{Name: "frag", URL: "git+" + plugins, Market: "frag", Source: plugins, Path: "sub/other.yml",
+				Status: migrate.MarketRegister, Hints: []string{}},
+			{Name: "Lola General", URL: "git+" + plugins, Source: plugins, Status: migrate.MarketSkipped,
+				Reason: `marketplace name "Lola General" is invalid: L and G are uppercase, ' ' is not allowed; use 1-64 characters from a-z, 0-9, '.', '_' and '-', ` +
+					"starting with a letter or digit, with no '..'" + later, Hints: []string{}},
+			{Name: "gone", URL: "git+" + base + "/missing.git", Market: "gone", Source: base + "/missing.git", Status: migrate.MarketRegister, Hints: []string{}},
+			{Name: "local", URL: "file://" + filepath.Join(folder, "market.yml"), Market: "local", Source: folder, Path: "market.yml",
+				Status: migrate.MarketRegister, Hints: []string{}},
+			{Name: "off", URL: plugins, Source: plugins, Path: "catalog.yml", Status: migrate.MarketSkipped,
+				Reason: "it is disabled in the Python lola", Hints: []string{add("off", plugins, "--path", "catalog.yml")}},
+			{Name: "page", URL: "https://example.com/market", Status: migrate.MarketSkipped, Hints: []string{},
+				Reason: "lola reads a marketplace URL that is not a git repository (.git) as a catalog file only when its path ends in .json, .yml or .yaml"},
+			{Name: "plain", URL: "http://example.com/market.yml", Status: migrate.MarketSkipped, Hints: []string{},
+				Reason: "it uses plain http://, which lola allows only for a loopback host; the marketplace has no https:// URL lola knows of"},
+			{Name: "two", URL: "git+" + base + "/two.git", Market: "two", Source: base + "/two.git", Status: migrate.MarketRegister, Hints: []string{}},
+			{Name: "update", URL: "git+" + plugins, Source: plugins, Status: migrate.MarketSkipped,
+				Reason: "marketplace name update is reserved: it is the Python lola's lola market update, so it cannot name a marketplace" + later,
+				Hints:  []string{}},
+		}))
+
+		By("the run registers each, fetching it, and a failure is its own")
+		res, err = run(migrate.Options{Options: engine.Options{Display: display}})
+		Expect(err).NotTo(HaveOccurred(), "a marketplace that fails does not fail the migration")
+		status := map[string]string{}
+		for _, m := range res.Markets {
+			status[m.Name] = m.Status
+		}
+		Expect(status).To(Equal(map[string]string{"acme": migrate.MarketRegistered, "frag": migrate.MarketRegistered, "local": migrate.MarketRegistered,
+			"gone": migrate.MarketFailed, "two": migrate.MarketFailed, "off": migrate.MarketSkipped, "Lola General": migrate.MarketSkipped,
+			"update": migrate.MarketSkipped, "plain": migrate.MarketSkipped, "page": migrate.MarketSkipped}))
+		Expect(res.Markets[3].Reason).NotTo(BeEmpty())
+		Expect(res.Markets[3].Hints).To(Equal([]string{"git ls-remote -- " + base + "/missing.git", "lola migrate --json"}),
+			"its --add would not read the file the Python lola read; a rerun of lola migrate does")
+		Expect(res.Markets[8]).To(And(HaveField("Name", "two"), HaveField("Hints", BeEmpty()), HaveField("Reason",
+			"the source has 2 YAML files at its root, a.yml and b.yml, and none the Python lola would pick: two.yml, two.yaml, marketplace.yml or marketplace.yaml")),
+			"no command can name the file")
+		Expect(res.Markets[2]).To(And(HaveField("Name", "Lola General"), HaveField("Path", "catalog.yml"),
+			HaveField("Hints", []string{add("lola-general", plugins, "--path", "catalog.yml")})), "the run's fetch names the file")
+		Expect(res.Markets[9]).To(And(HaveField("Name", "update"), HaveField("Hints", []string{add("update-2", plugins, "--path", "catalog.yml")})))
+		rows, _, err := e.Markets(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rows).To(HaveExactElements(
+			And(HaveField("Name", "acme"), HaveField("Source", plugins), HaveField("Path", "catalog.yml"), HaveField("Entries", 1)),
+			And(HaveField("Name", "frag"), HaveField("Source", plugins), HaveField("Path", "sub/other.yml"), HaveField("Entries", 1)),
+			And(HaveField("Name", "local"), HaveField("Source", folder), HaveField("Path", "market.yml"), HaveField("Entries", 1))))
+		Expect(res.Home.Action).To(Equal(migrate.HomeKeep))
+		Expect(res.Home.Reason).To(HavePrefix("6 marketplaces lola did not register are still in "+filepath.Join(h.dir, "market")+";"),
+			"every one but off, which is disabled")
+
+		By("a second run finds them registered, and tries the one that failed again")
+		requests.Store(0)
+		res, err = run(migrate.Options{Options: engine.Options{Display: display}})
+		Expect(err).NotTo(HaveOccurred())
+		for _, m := range res.Markets {
+			status[m.Name] = m.Status
+		}
+		Expect(status).To(And(HaveKeyWithValue("acme", migrate.MarketAlready), HaveKeyWithValue("frag", migrate.MarketAlready),
+			HaveKeyWithValue("local", migrate.MarketAlready), HaveKeyWithValue("gone", migrate.MarketFailed)))
+		Expect(requests.Load()).To(BeNumerically(">", 0))
+		Expect(os.RemoveAll(filepath.Join(h.dir, "market", "gone.yml"))).To(Succeed())
+		Expect(os.RemoveAll(filepath.Join(h.dir, "market", "two.yml"))).To(Succeed())
+		requests.Store(0)
+		res, err = run(migrate.Options{Options: engine.Options{Display: display}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Nothing).To(BeTrue(), "only what it cannot register is left")
+		Expect(requests.Load()).To(BeZero(), "a registered marketplace is not fetched again")
+
+		By("a destination whose project.yml has an @ source refuses the plan with the hints every reader gives")
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\nmodules:\n  - {name: tool, source: '@acme/tool'}\n"})
+		h.install(record(proj))
+		st, err := migrate.Load(h.dir, userHome)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = migrate.NewPlan(ctx, e, st, display)
+		Expect(err).To(MatchError(HaveSuffix("tool's source is @acme/tool, a marketplace address; a file must record the module's real source")))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola install -C " + proj + " @acme/tool --json"}))
+	})
+
+	It("never registers nor shows a Python marketplace url's credentials or query, and refuses one it cannot read", func() {
+		folder := filepath.Join(tmp, "folder-market")
+		writeTree(folder, map[string]string{"market.yml": "name: m\nmodules: []\n"})
+		for file, url := range map[string]string{
+			"userinfo": "git+https://user:" + "SECRET1@example.com/r.git",
+			"query":    "https://example.com/m.yml?token=SECRET2",
+			"scp":      "user:SECRET3@example.com:r.git",
+			"scp-path": "user:SECRET4@example.com/r.git",
+			"scp-at":   "u:p@SECRET5@example.com:r.git",
+			"helper":   "ext::sh -c x",
+			"drive":    "a:/b",
+		} {
+			writeFile(filepath.Join(h.dir, "market", file+".yml"), "enabled: true\nname: "+file+"\nurl: '"+url+"'\n")
+		}
+		writeFile(filepath.Join(h.dir, "market", "bad\x1b[2J.yml"), "enabled: true\nname: bad\nurl: file://"+filepath.Join(folder, "market.yml")+"\n")
+		writeFile(filepath.Join(h.dir, "market", "Foo.yml"), "enabled: true\nname: Foo\nurl: file://"+filepath.Join(folder, "market.yml")+"\n")
+		writeFile(filepath.Join(h.dir, "market", "foo.yml"), "enabled: true\nname: foo\nurl: file://"+filepath.Join(folder, "market.yml")+"\n")
+		h.install()
+		res, err := run(migrate.Options{Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		b, err := json.Marshal(res)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).NotTo(ContainSubstring("SECRET"))
+		Expect(string(b)).NotTo(ContainSubstring("\x1b"))
+		Expect(res.Warnings).To(ContainElement(ContainSubstring("not a name lola reads; skipped")))
+		by := map[string]migrate.Market{}
+		for _, m := range res.Markets {
+			by[m.Name] = m
+		}
+		Expect(by).To(HaveLen(9), "the file whose name holds an escape is skipped")
+		for _, name := range []string{"userinfo", "query", "scp", "scp-path", "scp-at"} {
+			Expect(by[name]).To(And(HaveField("Status", migrate.MarketSkipped), HaveField("Hints", BeEmpty()),
+				HaveField("Reason", ContainSubstring("must not"))), name)
+		}
+		Expect(by["userinfo"].URL).To(Equal("git+https://example.com/r.git"), "shown without its user info")
+		Expect(by["query"].URL).To(Equal("https://example.com/m.yml"))
+		Expect(by["scp"].URL).To(Equal("example.com:r.git"))
+		Expect(by["scp-path"].URL).To(Equal("example.com/r.git"))
+		Expect(by["scp-at"].URL).To(Equal("example.com:r.git"))
+		for name, scheme := range map[string]string{"helper": "ext", "drive": "a"} {
+			Expect(by[name]).To(And(HaveField("Status", migrate.MarketSkipped), HaveField("Hints", BeEmpty()), HaveField("Source", ""),
+				HaveField("Reason", "lola reads no marketplace from a "+scheme+":// URL")), "%s: never a folder here", name)
+		}
+		Expect(by["foo"]).To(And(HaveField("Status", migrate.MarketRegister), HaveField("Market", "foo")))
+		Expect(by["Foo"].Hints).To(Equal([]string{"lola market foo-2 --add " + folder + " --path market.yml"}),
+			"a slug never takes a name the plan registers")
+	})
+
+	It("lists a disabled Python marketplace with the command that registers it, and moves the home all the same", func() {
+		folder := filepath.Join(tmp, "folder-market")
+		writeTree(folder, map[string]string{"market.yml": "name: off\nmodules: []\n"})
+		writeFile(filepath.Join(h.dir, "market", "off.yml"), "enabled: false\nname: off\nurl: file://"+filepath.Join(folder, "market.yml")+"\n")
+		h.install()
+		res, err := run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Markets).To(HaveExactElements(And(HaveField("Status", migrate.MarketSkipped),
+			HaveField("Hints", []string{"lola market off --add " + folder + " --path market.yml"}))))
+		Expect(res.Home.Action).To(Equal(migrate.HomeMove), "lola has no disabled state; the listing names the command")
+	})
+
+	It("registers one of two Python marketplaces with the same name, and hints a free name for the other", func() {
+		x, y := filepath.Join(tmp, "x"), filepath.Join(tmp, "y")
+		writeTree(x, map[string]string{"x.yml": "name: dup\nmodules: []\n"})
+		writeTree(y, map[string]string{"y.yml": "name: dup\nmodules: []\n"})
+		writeFile(filepath.Join(h.dir, "market", "a9.yml"), "enabled: true\nname: dup\nurl: file://"+filepath.Join(x, "x.yml")+"\n")
+		writeFile(filepath.Join(h.dir, "market", "b1.yml"), "enabled: true\nname: dup\nurl: file://"+filepath.Join(y, "y.yml")+"\n")
+		h.install()
+		res, err := run(migrate.Options{Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Markets).To(HaveExactElements(
+			And(HaveField("Market", "dup"), HaveField("Source", x), HaveField("Status", migrate.MarketRegister)),
+			And(HaveField("Market", ""), HaveField("Status", migrate.MarketSkipped),
+				HaveField("Reason", "another of the Python lola's marketplaces has the name dup"),
+				HaveField("Hints", []string{"lola market dup-2 --add " + y + " --path y.yml"}))))
+
+		res, err = run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Markets).To(HaveExactElements(HaveField("Status", migrate.MarketRegistered), HaveField("Status", migrate.MarketSkipped)))
+		res, err = run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Markets).To(HaveExactElements(HaveField("Status", migrate.MarketAlready), HaveField("Status", migrate.MarketSkipped)),
+			"a second run finds the first registered, and still hints the other")
+	})
+
+	It("never registers a tree whose only YAML file has a name lola does not read", func() {
+		folder := filepath.Join(tmp, "lone-market")
+		writeTree(folder, map[string]string{"evil\nname: x\x1b[31m.yml": "name: lone\nmodules: []\n"})
+		writeFile(filepath.Join(h.dir, "market", "lone.yml"), "enabled: true\nname: lone\nurl: file://"+folder+"\n")
+		h.install()
+		res, err := run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Markets).To(HaveExactElements(And(HaveField("Name", "lone"), HaveField("Status", migrate.MarketFailed), HaveField("Path", ""),
+			HaveField("Reason", "the only YAML file at the source's root has a name lola does not read"), HaveField("Hints", BeEmpty()))))
+		Expect(e.Paths.Markets).NotTo(BeAnExistingFile(), "nothing registered")
 	})
 
 	It("leaves a destination with nothing to migrate unchanged", func() {

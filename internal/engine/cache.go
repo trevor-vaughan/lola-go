@@ -23,13 +23,16 @@ type HeadUpdate struct {
 	Changed bool   `json:"changed"`
 }
 
-// SearchHit is one module matching a search.
+// SearchHit is one module matching a search: Where is "cache", or "@<market>" for an entry of a
+// marketplace's catalog (Plan 6c §6.8), and Install what lola install takes to install it: the
+// cached module's name, or the entry's address.
 type SearchHit struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Version     string   `json:"version"`
 	Keywords    []string `json:"keywords"`
-	Where       string   `json:"where"` // "cache" in this build; markets add "@<market>"
+	Where       string   `json:"where"`
+	Install     string   `json:"install"`
 }
 
 // NotStored is the error for a module that is not in the cache.
@@ -130,7 +133,7 @@ func (e *Engine) Update(ctx context.Context, names []string) (_ *UpdateResult, e
 			return nil, NotStored(n)
 		}
 		for _, h := range o.Heads {
-			v, err := e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: h.Ref}, "", run)
+			v, err := e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: h.Ref, Components: o.Components}, "", n, run)
 			if err != nil {
 				return nil, fmt.Errorf("updating %s: %w", n, err)
 			}
@@ -149,8 +152,12 @@ func (e *Engine) Update(ctx context.Context, names []string) (_ *UpdateResult, e
 }
 
 // Search matches query case-insensitively against stored modules' names, descriptions and
-// keywords. Unloadable modules are not searched; they come back as warnings (see CachedModules).
-func (e *Engine) Search(query string) ([]SearchHit, []string, error) {
+// keywords, then, with markets, against the entries of every fetched catalog (Plan 6c §6.8, D7):
+// their names, descriptions and tags, cache hits first, never fetching; an entry your cache holds
+// from the same source is its cache hit alone. Unloadable modules and catalogs are not searched;
+// they come back as warnings (see CachedModules, MarketGroups), whose commands keep display, the
+// run's output flags.
+func (e *Engine) Search(query string, markets bool, display []string) ([]SearchHit, []string, error) {
 	q := strings.ToLower(query)
 	cached, warnings, err := e.CachedModules()
 	if err != nil {
@@ -167,8 +174,23 @@ func (e *Engine) Search(query string) ([]SearchHit, []string, error) {
 				kw = append(kw, untrusted.Text(k, untrusted.MaxName))
 			}
 			hits = append(hits, SearchHit{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName),
-				Version: untrusted.Text(m.Version, untrusted.MaxName), Keywords: kw, Where: "cache"})
+				Version: untrusted.Text(m.Version, untrusted.MaxName), Keywords: kw, Where: "cache", Install: m.Name})
 		}
 	}
-	return hits, warnings, nil
+	if !markets {
+		return hits, warnings, nil
+	}
+	groups, unread, err := e.MarketGroups(display)
+	if err != nil {
+		return hits, append(warnings, "your marketplaces cannot be read, so search lists your cache alone: "+shown(untrusted.CleanErr(err).Error())), nil
+	}
+	for _, g := range groups {
+		for _, o := range g.Entries {
+			if !o.Cached && o.matches(q) {
+				hits = append(hits, SearchHit{Name: o.Name, Description: o.Description, Version: o.Version, Keywords: o.Tags, Where: "@" + g.Name,
+					Install: o.Install})
+			}
+		}
+	}
+	return hits, append(warnings, unread...), nil
 }

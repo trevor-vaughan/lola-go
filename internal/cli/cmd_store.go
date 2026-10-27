@@ -13,6 +13,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
@@ -166,18 +167,22 @@ func printModuleView(w io.Writer, s style, mv moduleView) {
 
 func (a *app) cacheAddCmd() *cobra.Command {
 	var ref, path string
-	g := argGuide{noun: "source", find: source.AcceptedForms, usage: "lola cache add <source> [--ref ref] [--path dir]",
+	g := argGuide{noun: "source", find: source.AcceptedForms + ", or @market/module", usage: "lola cache add <source|@market/module> [--ref ref] [--path dir]",
 		examples: []string{"lola cache add ./my-module", "lola cache add ./monorepo --path plugins/review",
-			"lola cache add git@github.com:acme/review.git --ref main", "lola cache add https://example.com/review-1.2.0.zip"}}
+			"lola cache add git@github.com:acme/review.git --ref main", "lola cache add https://example.com/review-1.2.0.zip",
+			"lola cache add @acme/formatter"}}
 	cmd := &cobra.Command{
 		Use:     "add <source>",
 		Aliases: []string{"get"},
 		Short:   "Fetch a module into your cache without installing it",
 		Long: "Fetch a module into your cache without installing it. Sources:\n" + source.AcceptedForms + ".\n" +
 			"--ref picks a git branch, tag or full commit SHA; --path picks the module root inside\n" +
-			"the source. lola cache update fetches every cached module from its source again.",
-		Example: g.example(),
-		Args:    cobra.MatchAll(g.args(1), cobra.MaximumNArgs(1)),
+			"the source. @market/module fetches an entry of one of your marketplaces as lola install\n" +
+			"would, its commit pin checked against its ref (--path is refused: the catalog gives it).\n" +
+			"lola cache update fetches every cached module from its source again.",
+		Example:           g.example(),
+		Args:              cobra.MatchAll(g.args(1), cobra.MaximumNArgs(1)),
+		ValidArgsFunction: a.completeAddress,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := a.engine()
 			if err != nil {
@@ -187,7 +192,19 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			v, err := eng.AddSource(cmd.Context(), cwd, args[0], ref, path)
+			addr, isAddr, err := market.ParseAddress(args[0])
+			if err != nil {
+				return err
+			}
+			if isAddr && path != "" {
+				return errs.WithHints(fmt.Errorf("--path does not apply to %s: its catalog gives the path", addr), runWithout(cmd, args, "path"))
+			}
+			var v store.Version
+			if isAddr {
+				v, err = eng.AddEntry(cmd.Context(), args[0], ref, path, outputFlags(cmd))
+			} else {
+				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path)
+			}
 			if err != nil {
 				return err
 			}
@@ -236,7 +253,7 @@ func (a *app) cacheRmCmd() *cobra.Command {
 			}
 			if !yes {
 				fmt.Fprintf(cmd.ErrOrStderr(), "will remove from your cache: %s\n", strings.Join(args, ", "))
-				if err := a.confirm(cmd, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
+				if err := a.confirm(cmd, args, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
 					return err
 				}
 			}
@@ -370,12 +387,20 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 	}
 }
 
-func (a *app) searchRun(cmd *cobra.Command, args []string) error {
+// searchRun runs a search of your cache, and with markets of your fetched catalogs too (Plan 6c
+// §6.8): lola search searches both, lola cache search the cache alone.
+func (a *app) searchRun(markets bool) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		return a.search(cmd, args, markets)
+	}
+}
+
+func (a *app) search(cmd *cobra.Command, args []string, markets bool) error {
 	eng, err := a.engine()
 	if err != nil {
 		return err
 	}
-	hits, warnings, err := eng.Search(strings.Join(args, " "))
+	hits, warnings, err := eng.Search(strings.Join(args, " "), markets, outputFlags(cmd))
 	if err != nil {
 		return err
 	}
@@ -392,10 +417,13 @@ func printSkipped(w io.Writer, s style, warnings []string) {
 	}
 }
 
+// printHits prints a search's hits, each by what lola install takes to install it (a cached
+// module's name, a catalog entry's @market/module); --plain rows are name, version, where,
+// description and that install value.
 func printHits(w io.Writer, s style, hits []engine.SearchHit) {
 	if s.plain {
 		for _, h := range hits {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", h.Name, h.Version, h.Where, h.Description)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", h.Name, h.Version, h.Where, h.Description, h.Install)
 		}
 		return
 	}
@@ -405,7 +433,7 @@ func printHits(w io.Writer, s style, hits []engine.SearchHit) {
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, h := range hits {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", h.Name, h.Version, h.Where, h.Description)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", h.Install, h.Version, h.Where, h.Description)
 	}
 	_ = tw.Flush()
 }
@@ -419,7 +447,7 @@ func (a *app) cacheSearchCmd() *cobra.Command {
 		Short:   "Search your cache",
 		Example: g.example(),
 		Args:    g.args(1),
-		RunE:    a.searchRun,
+		RunE:    a.searchRun(false),
 	}
 }
 
@@ -430,11 +458,15 @@ func (a *app) searchCmd() *cobra.Command {
 		Use:     "search <query>",
 		Aliases: []string{"find"},
 		Short:   "Search for modules by name, description or keyword",
-		Long:    "Search modules case-insensitively by name, description and keywords. This build searches\nyour cache; marketplaces are on the roadmap.",
+		Long: "Search modules case-insensitively by name, description and keywords: your cache first,\n" +
+			"then the entries of every marketplace catalog you have fetched (lola market), each listed\n" +
+			"by what lola install takes: a cached module's name, or @market/module. It never fetches;\n" +
+			"lola market <name> --update fetches a catalog again. lola cache search searches your cache\n" +
+			"alone.",
 		Example: g.example(),
 		GroupID: groupCore,
 		Args:    g.args(1),
-		RunE:    a.searchRun,
+		RunE:    a.searchRun(true),
 	}
 }
 

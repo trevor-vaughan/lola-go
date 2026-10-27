@@ -12,6 +12,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
+	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -159,6 +160,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	if len(scopes) == 0 {
 		scopes, skipped = e.knownScopes()
 	}
+	defer func() { err = e.CoachUnresolved(err, scopes, req.DryRun, outputOnly(req.Rerun)) }()
 	sc := scopes[0]
 	// Your home directory is user scope's root, never a project (ruling R-6b3c-9): a run named
 	// there is refused before anything is fetched or kept, with the run at user scope instead.
@@ -180,7 +182,10 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		if !req.All && len(req.Names) == 0 {
 			return nil, err
 		}
-		return nil, errs.WithHints(err, "update at user scope only: "+e.ProfileRun([]Scope{{Kind: target.User}}, slices.Concat(args, req.Flags, req.Rerun)...))
+		// Another scope is another question: none of the run's answers (-y, --trust, the hook
+		// flags) travels into it (ruling R-6cux-4).
+		display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" })
+		return nil, errs.WithHints(err, "update at user scope only: "+e.ProfileRun([]Scope{{Kind: target.User}}, slices.Concat(args, display)...))
 	}
 	// The profiles lock comes first, and its sweep finishes an interrupted --update before the
 	// names are looked up, so a profile left aside is never taken for none.
@@ -418,6 +423,7 @@ type updateRun struct {
 // when the source serves the pin it has, nil and the notice saying so.
 func (u *updateRun) fetch(name string) (_ *RemoteProfile, was profile.Origin, _ *Notice, err error) {
 	e, sc := u.e, u.sc
+	defer func() { err = e.CoachUnresolved(err, nil, false, outputOnly(u.flags)) }()
 	q := string(profile.KindRemote) + ":" + name
 	path := e.profilePath(sc, profile.KindRemote, name)
 	old, was, err := profile.LoadRemote(path)
@@ -539,19 +545,21 @@ func (e *Engine) updateScopes(res *ProfileUpdateResult, scopes []Scope, uses []s
 // narrowUpdate is the refusal of an update that cannot read scopes[failed] for err: err, its
 // message after prefix, with its hints, then the run (args, the arguments that repeat it) narrowed
 // to each other scope it would apply in (Plan 6b §19 P20). A run a flag narrowed to one scope has
-// none, and is err itself when there is no prefix. A run with no scope flag (unscoped) never
-// carries its --trust into a hint that names a project, which would answer that project's trust
-// (rulings R-6b3c-7, R-6b3c-8): the message says which changes there you have not trusted.
+// none, and is err itself when there is no prefix. A run narrowed to one scope is another question,
+// so it carries none of the run's answers: -y, --trust and the hook flags (ruling R-6cux-4). A run
+// with no scope flag (unscoped) says, of a project, which changes there you have not trusted
+// (rulings R-6b3c-7, R-6b3c-8), since its --trust never answered them.
 func narrowUpdate(err error, prefix string, scopes []Scope, failed int, unscoped bool, e *Engine, args []string) error {
 	msg := prefix + untrusted.CleanErr(err).Error()
+	run := slices.DeleteFunc(slices.Clone(args), func(a string) bool {
+		return a == "-y" || a == "--trust" || a == "--allow-hooks" || a == "--allow-runtime-hooks"
+	})
 	var narrowed []string
 	for i, s := range scopes {
 		if i == failed {
 			continue
 		}
-		run := args
 		if unscoped && s.Kind == target.Project {
-			run = slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "--trust" })
 			if mods, err := e.untrustedModules(s); err == nil && len(mods) > 0 {
 				msg += "; project " + shown(s.ProjectDir) + " has changes you have not trusted (" + andJoin(mods) +
 					"), which its sync asks about: the command for it leaves --trust out, which you add once you have reviewed them"
@@ -834,6 +842,10 @@ func (e *Engine) noRemote(given []Scope, name string, action ProfileAction) erro
 // source.json still reads and --add would take its source, ref and --path, add it again from
 // them; when --add would refuse them, say why.
 func (e *Engine) readd(sc Scope, name string, err error) error {
+	// Its source would serve the same entries again: CoachUnresolved says what can fix them.
+	if _, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
+		return err
+	}
 	remove := []string{string(profile.KindRemote) + ":" + name, "--remove", "--force"}
 	hints := []string{"remove it: " + e.Command(sc, "profile", remove...)}
 	if o, oerr := profile.ReadOrigin(filepath.Join(e.Paths.RemoteProfiles, name)); oerr == nil {

@@ -33,6 +33,10 @@ testcases:
           - result.systemout ShouldContainSubstring "install review (claude-code, gemini-cli, opencode)"
           - result.systemout ShouldContainSubstring "unmappable kit (cursor)"
           - result.systemout ShouldContainSubstring "kept with kit for cursor, which lola-go cannot migrate"
+          - 'result.systemout ShouldContainSubstring "marketplaces:"'
+          - result.systemout ShouldContainSubstring "register general from http://127.0.0.1:8765/market.git"
+          - 'result.systemout ShouldContainSubstring "not registered: off (git+http://127.0.0.1:8765/market.git): it is disabled in the Python lola"'
+          - 'result.systemout ShouldContainSubstring "lola migrate gives the command that registers it once its run finds the catalog file the Python lola read"'
       - type: exec
         script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/dry.json /work/proj /home/tester && {{.runtime}} exec {{.container}} cmp /tmp/before.json /tmp/dry.json"
         assertions:
@@ -44,7 +48,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} migrate"
         assertions:
           - result.code ShouldEqual 1
-          - result.systemerr ShouldContainSubstring "pass -y to confirm"
+          - result.systemerr ShouldContainSubstring "lola migrate -y"
       - type: exec
         script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/refused.json /work/proj /home/tester && {{.runtime}} exec {{.container}} cmp /tmp/before.json /tmp/refused.json"
         assertions:
@@ -74,6 +78,17 @@ testcases:
           - result.systemout ShouldNotContainSubstring "kit claude-code"
           - result.systemout ShouldContainSubstring "rooted claude-code ok"
       - type: exec
+        script: "{{.runtime}} exec {{.container}} grep -c 'lola market off --add http://127.0.0.1:8765/market.git --path catalog.yml --json' /tmp/result.json"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market --plain | tr '\\t' ' '"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "general lola-yaml 1 0 "
+          - result.systemout ShouldContainSubstring " http://127.0.0.1:8765/market.git  catalog.yml"
+          - result.systemout ShouldNotContainSubstring "off lola-yaml"
+      - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'test -f /work/proj/.claude/commands/rooted.md && test ! -e /work/proj/.claude/commands/inner.md'"
         assertions:
           - result.code ShouldEqual 0
@@ -87,6 +102,19 @@ testcases:
           - result.systemout ShouldContainSubstring "nothing to migrate"
           - result.systemout ShouldContainSubstring "owned by lola-go module review"
           - result.systemout ShouldContainSubstring "2 record(s) lola-go cannot migrate are still in installed.yml"
+          - 'result.systemout ShouldContainSubstring "already registered: general from http://127.0.0.1:8765/market.git"'
+
+  - name: The hint for the disabled marketplace registers it
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market off --add http://127.0.0.1:8765/market.git --path catalog.yml"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} migrate --dry-run"
+        assertions:
+          - result.code ShouldEqual 0
+          - 'result.systemout ShouldContainSubstring "already registered: off from http://127.0.0.1:8765/market.git"'
 
   - name: A home with only what migrates moves to the trash
     steps:

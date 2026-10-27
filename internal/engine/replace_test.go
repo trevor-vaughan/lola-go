@@ -43,8 +43,7 @@ var _ = Describe("replaceable paths (migrate design §4, §12)", func() {
 
 	It("refuses an unowned file that is not replaceable, writing nothing", func() {
 		_, err := install(false)
-		Expect(err).To(MatchError(ContainSubstring(".claude/commands/ship.md: exists and was not written by lola")))
-		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force")))
+		Expect(err).To(MatchError(ContainSubstring("1 conflict\n  claude-code: .claude/commands/ship.md: exists and was not written by lola")))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 		Expect(os.ReadFile(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal([]byte("the Python lola's copy\n")))
 	})

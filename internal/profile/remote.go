@@ -7,17 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"net"
-	"net/netip"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
@@ -53,8 +50,8 @@ type Origin struct {
 }
 
 // Check refuses an origin lola would not have written: a newer version, a field that fails the
-// recorded-source rules (source.Recorded.Check), a source on this machine (D4), and a pin that is
-// missing its digest, or its commit for a git source.
+// recorded-source rules (source.Recorded.Check), a source on this machine (D4,
+// source.CheckRemote), and a pin that is missing its digest, or its commit for a git source.
 func (o Origin) Check() error {
 	switch {
 	case o.Version > OriginVersion:
@@ -65,7 +62,7 @@ func (o Origin) Check() error {
 	if err := (source.Recorded{Source: o.Source, Ref: o.Ref, Path: o.Path, Commit: o.Commit, Digest: o.Digest}).Check(); err != nil {
 		return err
 	}
-	if err := CheckRemoteSource(o.Source); err != nil {
+	if err := source.CheckRemote(o.Source, RemoteWho); err != nil {
 		return err
 	}
 	switch {
@@ -77,115 +74,12 @@ func (o Origin) Check() error {
 	return nil
 }
 
-// sharedSpace is 100.64.0.0/10, the shared address space of carrier-grade NAT (RFC 6598), where
-// overlay networks such as Tailscale put their hosts.
-var sharedSpace = netip.MustParsePrefix("100.64.0.0/10")
-
-// IPv6 prefixes CheckRemoteSource reads beyond netip's classification: IPv4-compatible addresses
-// (::/96) and NAT64's well-known prefix (64:ff9b::/96, RFC 6052), which embed an IPv4 address in
-// their last 4 bytes; NAT64's local-use prefix (64:ff9b:1::/48, RFC 8215), which is a network's
-// own; and the deprecated site-local fec0::/10, which some networks still route internally.
-var (
-	compatible = netip.MustParsePrefix("::/96")
-	nat64      = netip.MustParsePrefix("64:ff9b::/96")
-	nat64Local = netip.MustParsePrefix("64:ff9b:1::/48")
-	siteLocal  = netip.MustParsePrefix("fec0::/10")
-)
-
-// endsInNumber reports whether host's last label, a trailing dot aside, is a number in decimal or
-// 0x hex (WHATWG URL's "ends in a number"): such a host is an IPv4 address, in some form.
-func endsInNumber(host string) bool {
-	labels := strings.Split(strings.TrimSuffix(host, "."), ".")
-	last := labels[len(labels)-1]
-	if hex, ok := strings.CutPrefix(last, "0x"); ok {
-		return strings.Trim(hex, "0123456789abcdef") == ""
-	}
-	return last != "" && strings.Trim(last, "0123456789") == ""
-}
-
 // rewriteHint coaches a remote profile's file that lola wrote and that no longer reads; the engine
 // adds the commands.
 const rewriteHint = "lola wrote it when you added the profile; remove the profile and add it again"
 
-// remoteHint coaches a source CheckRemoteSource refuses.
-const remoteHint = "use the repository's https:// or ssh:// URL (or user@host:path), with its host name"
-
-// CheckRemoteSource refuses a source that a remote profile, or an entry of one, may not name
-// (Plan 6b D4, ruling R-6b3b-6), since lola fetches it for a stranger's profile before you
-// consent: a path or file:// URL, which is on this machine; any scheme but https:// and ssh://
-// (git's user@host:path is ssh), plain http:// included; localhost and *.localhost (RFC 6761); a
-// host given as an IP address that is loopback, link-local, unspecified, private or carrier-grade
-// NAT shared space, which would make that fetch a request inside your network; and an IP address
-// in any form but the canonical one, which git and ssh would still connect to (ruling R-6b3b-9).
-// A host name is allowed, and never resolved.
-func CheckRemoteSource(src string) error {
-	shown := untrusted.Text(src, untrusted.MaxName)
-	if strings.Contains(src, "://") {
-		if _, err := url.Parse(src); err != nil {
-			return errs.WithHints(fmt.Errorf("%s is not a URL lola can read", shown), remoteHint)
-		}
-	}
-	host := source.Host(src)
-	if host == "" {
-		return errs.WithHints(fmt.Errorf("%s is on this machine; a remote profile names only git repositories and https archives", shown),
-			remoteHint)
-	}
-	scheme, rest, _ := strings.Cut(host, "://")
-	if scheme != "https" && scheme != "ssh" {
-		return errs.WithHints(fmt.Errorf("%s uses %s://; a remote profile's sources must use https:// or ssh://", shown,
-			untrusted.Text(scheme, untrusted.MaxName)), remoteHint)
-	}
-	// rest is the host and maybe a port, lower-cased, an IPv6 address in brackets.
-	name := rest
-	if h, _, err := net.SplitHostPort(rest); err == nil {
-		name = h
-	}
-	// Trailing dots name the same host (an absolute name): localhost. and localhost.. are localhost.
-	name = strings.TrimRight(strings.Trim(name, "[]"), ".")
-	if name == "localhost" || strings.HasSuffix(name, ".localhost") {
-		return errs.WithHints(fmt.Errorf("%s names localhost, this machine (RFC 6761); a remote profile reaches hosts by name only, never inside your network",
-			shown), remoteHint)
-	}
-	// A host whose last label is a number is an IP address to git (curl) and ssh, whatever form
-	// it takes (WHATWG's ends-in-a-number): 2130706433, 0x7f.1 and 127.1 are 127.0.0.1. Only the
-	// canonical form is read here, so any other is refused rather than taken for a name.
-	if !strings.Contains(name, ":") && !endsInNumber(name) {
-		return nil // a host name, never resolved
-	}
-	addr, err := netip.ParseAddr(name)
-	if err != nil || addr.Is4() && addr.String() != name {
-		return errs.WithHints(fmt.Errorf("%s names the host %s, which git and ssh read as an IP address that lola cannot check in that form; "+
-			"a remote profile reaches hosts by name only", shown, untrusted.Text(name, untrusted.MaxName)), remoteHint)
-	}
-	addr = addr.Unmap()
-	// An IPv6 address that embeds an IPv4 one, IPv4-compatible (::/96, deprecated) or NAT64's
-	// well-known prefix (64:ff9b::/96, RFC 6052), reaches that IPv4 address: judge it instead.
-	if addr.Is6() && !addr.IsLoopback() && !addr.IsUnspecified() && (compatible.Contains(addr) || nat64.Contains(addr)) {
-		b := addr.As16()
-		addr = netip.AddrFrom4([4]byte(b[12:]))
-	}
-	kind := ""
-	switch {
-	case addr.IsLoopback():
-		kind = "loopback"
-	case addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast():
-		kind = "link-local"
-	case addr.IsUnspecified():
-		kind = "unspecified"
-	case addr.IsPrivate():
-		kind = "private"
-	case sharedSpace.Contains(addr):
-		kind = "shared (carrier-grade NAT)"
-	case nat64Local.Contains(addr):
-		kind = "private"
-	case siteLocal.Contains(addr):
-		kind = "site-local"
-	default:
-		return nil
-	}
-	return errs.WithHints(fmt.Errorf("%s names the %s address %s; a remote profile reaches hosts by name only, never inside your network",
-		shown, kind, addr), remoteHint)
-}
+// RemoteWho names a remote profile in source.CheckRemote's refusals.
+const RemoteWho = "a remote profile"
 
 // Digest is the digest a remote profile's pin records for its file's bytes b.
 func Digest(b []byte) string {
@@ -264,7 +158,7 @@ func ReadOrigin(dir string) (Origin, error) {
 	path := filepath.Join(dir, OriginFile)
 	shown := untrusted.Text(path, untrusted.MaxName)
 	const hint = rewriteHint
-	b, err := readOwn(path)
+	b, err := fsx.ReadOwn(path, maxOrigin)
 	if err != nil {
 		return Origin{}, errs.WithHints(fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err)), hint)
 	}
@@ -278,37 +172,6 @@ func ReadOrigin(dir string) (Origin, error) {
 		return Origin{}, errs.WithHints(fmt.Errorf("%s: %w", shown, err), hint)
 	}
 	return o, nil
-}
-
-// readOwn reads the regular file at path, refusing a symbolic link, one swapped in while it is
-// opened, and more than maxOrigin bytes.
-func readOwn(path string) ([]byte, error) {
-	before, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !before.Mode().IsRegular() {
-		return nil, errors.New("not a regular file")
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	fi, err := f.Stat()
-	if err == nil && !os.SameFile(before, fi) {
-		err = errors.New("changed while lola was reading it")
-	}
-	var b []byte
-	if err == nil {
-		b, err = io.ReadAll(io.LimitReader(f, maxOrigin+1))
-	}
-	if err = errors.Join(err, f.Close()); err != nil {
-		return nil, err
-	}
-	if len(b) > maxOrigin {
-		return nil, fmt.Errorf("larger than %d bytes", maxOrigin)
-	}
-	return b, nil
 }
 
 // FetchedNames is the profiles in dir, the profiles/ directory of a source lola fetched (Plan 6b
@@ -389,7 +252,7 @@ func realDir(dir string) error {
 // checkRemote applies the rules of a remote profile's entries (Plan 6b §4.2, §19 S1, D4) to e:
 // a remote source, and a pin, its commit for a git source and its digest.
 func checkRemote(e manifest.Entry) error {
-	if err := CheckRemoteSource(e.Source); err != nil {
+	if err := source.CheckRemote(e.Source, RemoteWho); err != nil {
 		return err
 	}
 	switch {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -49,6 +51,10 @@ type installFlow struct {
 	choices                     *engine.Choices
 	pins                        []engine.VersionRef // the versions the module arguments resolved to, kept when Change scope asks again
 	cachePins                   []engine.VersionRef // the versions of the modules picked from the cache, kept the same way
+	marketPicks                 []string            // the marketplace entries picked, by address, in pick order (Plan 6c §6.5)
+	marketPins                  []engine.VersionRef // the versions they resolved to, kept when Change scope asks again
+	marketNames                 map[string]string   // the module name each picked address resolved to → that address
+	shownAddrs                  []string            // addresses added with Add a source…, shown in their group though cached
 	modules                     []string            // module names; nil until answered
 	prevMods                    []string
 	targets                     map[string][]string            // destination (Scope.Key) → assistants (nil: the manifest's); nil until answered
@@ -67,13 +73,26 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if (f.ref != "" || f.path != "") && len(args) > 1 {
 		return errors.New("--ref and --path apply to a single source")
 	}
-	if (f.ref != "" || f.path != "") && len(args) == 0 {
-		flag := "--ref"
-		if f.ref == "" {
-			flag = "--path"
+	if f.path != "" && len(args) == 1 {
+		if _, ok, _ := market.ParseAddress(args[0]); ok {
+			return errs.WithHints(fmt.Errorf("--path does not apply to %s: its catalog gives the path", untrusted.Text(args[0], untrusted.MaxName)),
+				runWithout(cmd, args, "path"))
 		}
-		return errs.WithHints(errors.New("--ref and --path apply to a source argument, and none was given"),
-			"name the source they apply to: lola install <source> "+flag+" …")
+	}
+	if (f.ref != "" || f.path != "") && len(args) == 0 {
+		// No command would do what was meant without knowing the source: the message says it.
+		var given, example []string
+		for _, kv := range [][2]string{{f.ref, "--ref"}, {f.path, "--path"}} {
+			if kv[0] != "" {
+				given, example = append(given, kv[1]), append(example, kv[1]+" <value>")
+			}
+		}
+		verb := " applies"
+		if len(given) > 1 {
+			verb = " apply"
+		}
+		return fmt.Errorf("%s%s to a source argument, and none was given: name it, as in lola install <source> %s",
+			strings.Join(given, " and "), verb, strings.Join(example, " "))
 	}
 	eng, err := a.engine()
 	if err != nil {
@@ -88,8 +107,13 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 		return err
 	}
 	if f.global && len(edits) == 0 {
-		return errs.WithHints(errors.New("--global changes where --skip, --only and --unskip are saved, and none was given"),
-			"example: lola install my-module --skip skill/slow-lint --global")
+		// The run without --global does all the run asked; without a module, no command does.
+		err := errors.New("--global saves --skip, --only and --unskip for every scope, and none was given: add one, " +
+			"as in lola install <module> --skip <kind>/<name> --global")
+		if len(args) == 0 {
+			return err
+		}
+		return errs.WithHints(err, runWithout(cmd, args, append([]string{"global"}, consentFlags...)...))
 	}
 	p := a.prompter(cmd)
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
@@ -97,7 +121,181 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if !fl.ask && len(args) == 0 {
 		return fl.missingArgument()
 	}
+	if err := fl.expandMarkets(); err != nil {
+		return err
+	}
 	return fl.run()
+}
+
+// expandMarkets replaces each argument that means an entry of your marketplaces with that
+// entry's address (Plan 6c §3.3, §6.5): @<market> alone, on a terminal, by the entries picked
+// from its group (off one the engine refuses it, naming its first entries); and a bare name your
+// catalogs list that your cache lacks and that is no source here (engine.MarketMeaning), by the
+// entry picked on a terminal, never silently; off one the run is refused, every such name at
+// once (bareNames). --path is then refused with any address, as the catalog gives the path.
+func (fl *installFlow) expandMarkets() error {
+	var out []string
+	listed := map[string][]engine.MarketOffer{}
+	for _, arg := range fl.args {
+		addr, isAddr, err := market.ParseAddress(arg)
+		switch {
+		case err != nil:
+			return err
+		case isAddr && addr.Entry == "" && fl.ask:
+			picks, err := fl.browse(addr.Market)
+			if err != nil {
+				return err
+			}
+			out = append(out, picks...)
+			continue
+		case !isAddr:
+			offers, err := fl.eng.MarketMeaning(arg, fl.cwd, outputFlags(fl.cmd))
+			if err != nil {
+				return err
+			}
+			if len(offers) > 0 && fl.ask {
+				var opts []ModuleOption
+				for _, o := range offers {
+					opts = append(opts, ModuleOption{Name: o.Install, Label: offerLabel(o.Install, o)})
+				}
+				if arg, err = fl.p.MarketEntry(MarketEntryStep{Name: arg, Options: opts}); err != nil {
+					return err
+				}
+			} else if len(offers) > 0 {
+				listed[arg] = offers
+			}
+		}
+		out = append(out, arg)
+	}
+	if len(listed) > 0 {
+		return fl.bareNames(listed)
+	}
+	if (fl.f.ref != "" || fl.f.path != "") && len(out) > 1 {
+		return errors.New("--ref and --path apply to a single source, and you picked more than one entry")
+	}
+	if fl.f.path != "" && slices.ContainsFunc(out, func(a string) bool { return strings.HasPrefix(a, "@") }) {
+		return errs.WithHints(errors.New("--path does not apply to a marketplace entry: its catalog gives the path"), runWithout(fl.cmd, out, "path"))
+	}
+	fl.args = out
+	return nil
+}
+
+// maxBareHints is how many runs a refusal of bare names lists: one per combination of the
+// marketplaces listing each name.
+const maxBareHints = 10
+
+// bareNames refuses, off a terminal, a run whose bare names listed maps to the marketplace
+// entries each may mean (Plan 6c §3.3): one hint per combination of them, each the run with every
+// such name replaced by an address and every flag kept but --path, so each hint runs; with more
+// combinations than maxBareHints, none, and the message says what to type.
+func (fl *installFlow) bareNames(listed map[string][]engine.MarketOffer) error {
+	var names, lists []string
+	combos := 1 // counted, stopping past maxBareHints, before any is built
+	for _, name := range fl.args {
+		offers, ok := listed[name]
+		if !ok {
+			continue
+		}
+		var addrs []string
+		for _, o := range offers {
+			addrs = append(addrs, o.Install)
+		}
+		if combos <= maxBareHints {
+			combos *= len(offers)
+		}
+		names, lists = append(names, untrusted.Text(name, untrusted.MaxName)), append(lists, strings.Join(addrs, ", "))
+	}
+	msg := names[0] + " is not in your cache, and your marketplaces list it: " + lists[0] + "; name the one to install"
+	if len(names) > 1 {
+		var each []string
+		for i := range names {
+			each = append(each, names[i]+" ("+lists[i]+")")
+		}
+		msg = strings.Join(each, ", ") + " are not in your cache, and your marketplaces list them; name the ones to install"
+	}
+	if combos > maxBareHints {
+		return errors.New(msg + " as @<marketplace>/<name>")
+	}
+	runs := [][]string{slices.Clone(fl.args)}
+	for i, name := range fl.args {
+		offers, ok := listed[name]
+		if !ok {
+			continue
+		}
+		var next [][]string
+		for _, o := range offers {
+			for _, run := range runs {
+				r := slices.Clone(run)
+				r[i] = o.Install
+				next = append(next, r)
+			}
+		}
+		runs = next
+	}
+	var hints []string
+	for _, run := range runs {
+		hints = append(hints, runWithout(fl.cmd, run, "path"))
+	}
+	return errs.WithHints(errors.New(msg), hints...)
+}
+
+// browse asks for the entries of the marketplace name to install, its group alone (lola
+// install @acme, Plan 6c §6.5), every entry it offers; @name itself when there is no such group,
+// which the engine refuses with what there is.
+func (fl *installFlow) browse(name string) ([]string, error) {
+	groups, _, err := fl.eng.MarketGroups(outputFlags(fl.cmd))
+	if err != nil {
+		return nil, err
+	}
+	k := slices.IndexFunc(groups, func(g engine.MarketGroup) bool { return g.Name == name })
+	if k < 0 || len(groups[k].Entries) == 0 {
+		return []string{"@" + name}, nil
+	}
+	step := ModuleStep{Markets: []ModuleGroup{offerGroup(groups[k], func(engine.MarketOffer) bool { return true })}, Browse: true}
+	for {
+		ans, err := fl.p.Modules(step)
+		if err != nil {
+			return nil, err
+		}
+		if len(ans.Names) > 0 {
+			return ans.Names, nil
+		}
+		step.Problem = "pick at least one module"
+	}
+}
+
+// offerGroup is g as a group of the module picker (Plan 6c §6.5), titled "@acme — <description>",
+// with the entries show keeps.
+func offerGroup(g engine.MarketGroup, show func(engine.MarketOffer) bool) ModuleGroup {
+	mg := ModuleGroup{Title: "@" + g.Name}
+	if g.Description != "" {
+		mg.Title += " — " + g.Description
+	}
+	for _, o := range g.Entries {
+		if show(o) {
+			mg.Options = append(mg.Options, ModuleOption{Name: o.Install, Label: offerLabel(o.Name, o)})
+		}
+	}
+	return mg
+}
+
+// offerLabel is how a picker shows the entry o under name: "name version — description [tags]
+// (host)", each part as safe to print as o's are.
+func offerLabel(name string, o engine.MarketOffer) string {
+	label := name
+	if o.Version != "" {
+		label += " " + o.Version
+	}
+	if o.Description != "" {
+		label += " — " + o.Description
+	}
+	if len(o.Tags) > 0 {
+		label += " [" + strings.Join(o.Tags, ", ") + "]"
+	}
+	if o.Host != "" {
+		label += " (" + o.Host + ")"
+	}
+	return label
 }
 
 // missingArgument is install's refusal off a terminal without an argument; when the scope the
@@ -181,7 +379,8 @@ func (fl *installFlow) run() error {
 		}
 		fl.printSummary(fl.cmd.ErrOrStderr(), spec, pv)
 		fl.droppedModule, fl.droppedScope = 0, 0
-		if fl.f.yes {
+		// --force confirms the plan, as -y does (user decision, 2026-10-22).
+		if fl.f.yes || fl.f.force {
 			break
 		}
 		choice, err := fl.p.Review(ReviewStep{Options: fl.reviewOptions()})
@@ -196,7 +395,22 @@ func (fl *installFlow) run() error {
 		}
 	}
 	fl.a.hookOptions(fl.cmd, &spec.Options, fl.f.allowHooks, fl.f.allowRuntime)
+	spec.Options.Display = outputFlags(fl.cmd)
+	// The summary, when a picker ran, already showed where each address resolved, before Apply.
+	if !fl.a.json && (!fl.ask || len(fl.shown) == 0) {
+		s := fl.a.style(fl.cmd)
+		spec.Options.ShowResolved = func(lines []string) {
+			for _, l := range lines {
+				fmt.Fprintln(fl.cmd.ErrOrStderr(), s.info(l))
+			}
+		}
+	}
 	res, err := fl.eng.InstallAll(fl.cmd.Context(), spec)
+	if renamed, ok := errors.AsType[*engine.RenamedEntryError](err); ok && renamed.Source != nil {
+		if run, ok := fl.bySource(renamed); ok {
+			err = errs.WithHints(renamed, run)
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -208,6 +422,28 @@ func (fl *installFlow) run() error {
 		eq = fl.equivalents(spec)
 	}
 	return fl.a.emit(fl.cmd, func(w io.Writer, s style) { printInstall(w, s, res) }, installOutput{InstallResult: res, EquivalentCommands: eq})
+}
+
+// bySource is the run with the address of renamed replaced by its source, every flag kept but
+// --ref and --path, which the catalog's take the place of: what installs the module under its own
+// name (Plan 6c §6.3). When the source takes --ref or --path, which apply to a single source,
+// and the run has other arguments, it installs the renamed module alone. ok is false when the
+// address is no argument of the run (a picker's pick), and the engine's hint stands.
+func (fl *installFlow) bySource(renamed *engine.RenamedEntryError) (string, bool) {
+	k := slices.Index(fl.args, "@"+renamed.Market+"/"+renamed.Entry)
+	if k < 0 {
+		return "", false
+	}
+	args := slices.Clone(fl.args)
+	args[k] = renamed.Source[0]
+	if len(renamed.Source) > 1 && len(args) > 1 {
+		args = []string{renamed.Source[0]}
+	}
+	tail := []string{}
+	for _, a := range renamed.Source[1:] {
+		tail = append(tail, untrusted.Text(a, untrusted.MaxName))
+	}
+	return strings.TrimSpace(runWithout(fl.cmd, args, "ref", "path") + " " + errs.ShellJoin(tail)), true
 }
 
 // review acts on the review menu: Apply ends the loop, Quit cancels, a Change entry forgets
@@ -260,7 +496,7 @@ func (fl *installFlow) ensureScopes() error {
 	if err != nil {
 		return err
 	}
-	req.Command, req.Both = "install", true
+	req.Command, req.Both, req.Run = "install", true, runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...)
 	res, err := fl.eng.ResolveScope(req)
 	if err != nil {
 		return err
@@ -318,7 +554,8 @@ func (fl *installFlow) ensureChoices() error {
 	if !fl.ask || fl.choices != nil {
 		return nil
 	}
-	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests()})
+	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests(), DryRun: fl.f.dry,
+		Display: outputFlags(fl.cmd)})
 	fl.choices = ch
 	if err != nil {
 		return err
@@ -347,6 +584,13 @@ func (fl *installFlow) requests() []engine.InstallRequest {
 	for i := range fl.cachePins {
 		out = append(out, engine.InstallRequest{Arg: fl.cachePins[i].Name, Version: &fl.cachePins[i]})
 	}
+	for i, addr := range fl.marketPicks {
+		r := engine.InstallRequest{Arg: addr}
+		if i < len(fl.marketPins) {
+			r.Version = &fl.marketPins[i]
+		}
+		out = append(out, r)
+	}
 	return out
 }
 
@@ -363,14 +607,27 @@ func (fl *installFlow) ensureModules() error {
 		return nil
 	}
 	delete(fl.shown, ReviewModules)
-	step := ModuleStep{Options: fl.moduleOptions(), Preselect: fl.prevMods}
+	var keys []string // what the picker selects: a module picked from a marketplace by its address
+	for _, name := range fl.prevMods {
+		keys = append(keys, cmp.Or(fl.marketNames[name], name))
+	}
+	step := ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: keys}
 	for {
 		ans, err := fl.p.Modules(step)
 		if err != nil {
 			return err
 		}
 		if ans.AddSource && ans.Source == "" {
-			step = ModuleStep{Options: fl.moduleOptions(), Preselect: ans.Names}
+			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: ans.Names}
+			continue
+		}
+		if _, isAddr, _ := market.ParseAddress(ans.Source); ans.AddSource && isAddr {
+			// An entry of a marketplace is picked in its group, and fetched once the picks are made.
+			fl.shownAddrs = append(fl.shownAddrs, ans.Source)
+			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: union(slices.Clone(ans.Names), []string{ans.Source})}
+			if !fl.offers(ans.Source) {
+				step.Problem = untrusted.Text(ans.Source, untrusted.MaxName) + " is no entry your marketplaces offer; lola market lists them"
+			}
 			continue
 		}
 		if ans.AddSource {
@@ -386,24 +643,119 @@ func (fl *installFlow) ensureModules() error {
 			if err := fl.ensureChoices(); err != nil {
 				return err
 			}
-			step = ModuleStep{Options: fl.moduleOptions(), Preselect: union(slices.Clone(ans.Names), []string{v.Name})}
+			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: union(slices.Clone(ans.Names), []string{v.Name})}
 			continue
 		}
 		if len(ans.Names) == 0 {
 			step.Problem = "pick at least one module"
 			continue
 		}
-		fl.shown[ReviewModules] = true
-		fl.modules = ans.Names
-		fl.cachePins = nil
-		for _, name := range fl.modules {
+		// A catalog entry is cached under its entry name (a renamed module is refused), so two
+		// picks of one name are refused before anything is fetched.
+		var names, addrs []string
+		picked, problem := map[string]string{}, ""
+		for _, n := range ans.Names {
+			name := n
+			if strings.HasPrefix(n, "@") {
+				addrs = append(addrs, n)
+				_, name, _ = strings.Cut(n, "/")
+			} else {
+				names = append(names, n)
+			}
+			switch first, ok := picked[name]; {
+			case !ok:
+				picked[name] = n
+			case problem == "":
+				problem = untrusted.Text(first, untrusted.MaxName) + " and " + untrusted.Text(n, untrusted.MaxName) + " are both the module " +
+					untrusted.Text(name, untrusted.MaxName) + "; lola installs one module of a name: pick one"
+			}
+		}
+		if problem != "" {
+			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: ans.Names, Problem: problem}
+			continue
+		}
+		var pins []engine.VersionRef
+		for _, name := range names {
 			if m := fl.choices.Module(name); m != nil {
-				fl.cachePins = append(fl.cachePins, engine.VersionRef{Name: name, ID: m.ID})
+				pins = append(pins, engine.VersionRef{Name: name, ID: m.ID})
+			}
+		}
+		if err := fl.pickMarkets(pins, addrs); err != nil {
+			if fl.choices == nil {
+				return err // what was listed before cannot be listed again either
+			}
+			writeError(fl.cmd.ErrOrStderr(), err, false)
+			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: ans.Names,
+				Problem: "could not fetch what you picked from your marketplaces; pick again"}
+			continue
+		}
+		fl.shown[ReviewModules] = true
+		fl.modules = names
+		for _, addr := range fl.marketPicks {
+			for name, a := range fl.marketNames {
+				if a == addr {
+					fl.modules = append(fl.modules, name)
+				}
 			}
 		}
 		fl.dropRemovedPicks()
 		return nil
 	}
+}
+
+// pickMarkets makes pins the versions of the modules picked from the cache and addrs the
+// marketplace entries picked (Plan 6c §6.5): when addrs changed, the pickers' choices are computed
+// again with them, which fetches each as the flow's Add a source… does, so the component picker
+// lists what they install. A pick that cannot be resolved or fetched leaves every pick as it was,
+// listed again; when even that fails, the choices stay nil, and the caller stops.
+func (fl *installFlow) pickMarkets(pins []engine.VersionRef, addrs []string) error {
+	if slices.Equal(addrs, fl.marketPicks) {
+		fl.cachePins = pins
+		return nil
+	}
+	wasCache, was, wasPins, wasNames := fl.cachePins, fl.marketPicks, fl.marketPins, fl.marketNames
+	fl.cachePins, fl.marketPicks, fl.marketPins, fl.marketNames, fl.choices = pins, addrs, nil, map[string]string{}, nil
+	if err := fl.ensureChoices(); err != nil {
+		fl.cachePins, fl.marketPicks, fl.marketPins, fl.marketNames, fl.choices = wasCache, was, wasPins, wasNames, nil
+		return errors.Join(err, fl.ensureChoices())
+	}
+	// Choices.Versions follow the requests, whatever their order.
+	reqs := fl.requests()
+	for _, addr := range addrs {
+		v := fl.choices.Versions[slices.IndexFunc(reqs, func(r engine.InstallRequest) bool { return r.Arg == addr })]
+		fl.marketPins = append(fl.marketPins, v)
+		fl.marketNames[v.Name] = addr
+	}
+	return nil
+}
+
+// offers reports whether addr is an entry a marketplace group of the choices offers.
+func (fl *installFlow) offers(addr string) bool {
+	for _, g := range fl.choices.Markets {
+		for _, o := range g.Entries {
+			if o.Install == addr {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// marketGroups labels each marketplace with a fetched catalog as a group of the module picker
+// (Plan 6c §6.5): "@acme — <description>", each entry "name version — description [tags]
+// (host)". An entry the cache holds from the same source is offered in the cache's group
+// instead, unless it was picked here or added with Add a source….
+func (fl *installFlow) marketGroups() []ModuleGroup {
+	var out []ModuleGroup
+	for _, g := range fl.choices.Markets {
+		mg := offerGroup(g, func(o engine.MarketOffer) bool {
+			return !o.Cached || slices.Contains(fl.marketPicks, o.Install) || slices.Contains(fl.shownAddrs, o.Install)
+		})
+		if len(mg.Options) > 0 {
+			out = append(out, mg)
+		}
+	}
+	return out
 }
 
 // dropRemovedPicks forgets the picks of modules no longer chosen and counts them, once per
@@ -434,6 +786,9 @@ func (fl *installFlow) dropRemovedPicks() {
 func (fl *installFlow) moduleOptions() []ModuleOption {
 	var out []ModuleOption
 	for _, m := range fl.choices.Modules {
+		if _, picked := fl.marketNames[m.Name]; picked {
+			continue // offered in its marketplace's group, as picked
+		}
 		label := m.Source + " · " + m.Name
 		if m.Description != "" {
 			label += " — " + m.Description
@@ -463,15 +818,23 @@ func (fl *installFlow) ensureAssistants() error {
 	answer := map[string][]string{}
 	var open, openLabels []string
 	var installed, here, untrustedTargets []string
+	// The run with -t naming one assistant, for each of ids.
+	withTarget := func(ids []string) []string {
+		var out []string
+		for _, id := range ids {
+			out = append(out, runWithout(fl.cmd, fl.args, consentFlags...)+" -t "+id)
+		}
+		return out
+	}
 	for _, c := range fl.scopes {
 		name := c.Scope.Key()
 		if len(fl.f.targets) > 0 {
 			answer[name] = fl.f.targets
 			continue
 		}
-		man, err := fl.eng.Manifest(c.Scope)
+		man, err := fl.eng.InstallManifest(c.Scope, fl.requests())
 		if err != nil {
-			return err
+			return fl.eng.CoachUnresolved(err, []engine.Scope{c.Scope}, fl.f.dry, outputFlags(fl.cmd))
 		}
 		fixed := man.Targets
 		if fl.choices != nil {
@@ -498,12 +861,10 @@ func (fl *installFlow) ensureAssistants() error {
 		switch {
 		case len(inst) == 0:
 			return errs.WithHints(errors.New("no assistant found on your PATH, so lola does not know where to install"),
-				"pass -t with one or more of: "+strings.Join(targets.IDs(), ", "),
-				"example: lola install ./my-module -t claude-code")
+				withTarget(targets.IDs())...)
 		case !fl.ask && len(marked) == 0:
-			return errs.WithHints(errors.New("none of your installed assistants is set up here, so lola does not know where to install"),
-				"installed: "+strings.Join(inst, ", "),
-				"pass -t with one or more of them")
+			return errs.WithHints(fmt.Errorf("none of your installed assistants (%s) is set up here, so lola does not know where to install",
+				strings.Join(inst, ", ")), withTarget(inst)...)
 		case !fl.ask:
 			answer[name] = marked
 		case len(inst) == 1:
@@ -742,7 +1103,8 @@ func (fl *installFlow) pickEdits(key string) []engine.SelectionEdit {
 
 // spec builds the install from the answers.
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
-	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{DryRun: fl.f.dry, Force: fl.f.force, Strict: fl.f.strict}}
+	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{DryRun: fl.f.dry, Force: fl.f.force, Strict: fl.f.strict,
+		ForceRun: forceRun(fl.cmd, fl.args)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
 	}
@@ -767,7 +1129,9 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	if len(fl.args) == 0 {
 		for _, name := range fl.modules {
 			req := engine.InstallRequest{Arg: name}
-			if m := fl.choices.Module(name); m != nil {
+			if addr, ok := fl.marketNames[name]; ok {
+				req = engine.InstallRequest{Arg: addr, Version: &fl.marketPins[slices.Index(fl.marketPicks, addr)]}
+			} else if m := fl.choices.Module(name); m != nil {
 				req.Version = &engine.VersionRef{Name: name, ID: m.ID}
 			}
 			spec.Modules = append(spec.Modules, req)

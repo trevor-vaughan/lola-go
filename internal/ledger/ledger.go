@@ -86,6 +86,9 @@ type Entry struct {
 	HooksPending bool       `json:"hooks_pending,omitempty"`
 	Targets      []string   `json:"targets,omitempty"`
 	Artifacts    []Artifact `json:"artifacts"`
+	// Components is the selection of the module's directory the entry was installed with, which
+	// render's fetch of the version applies again (Plan 6c §4.1).
+	Components *source.Components `json:"components,omitempty"`
 }
 
 // InstalledTargets is the targets e is installed on, sorted: those it records, else, for an
@@ -182,6 +185,11 @@ func (l *Ledger) validate() error {
 		// pass the rules project.yml's do (Plan 6a §4.3).
 		if err := (source.Recorded{Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest}).Check(); err != nil {
 			return errs.WithHints(fmt.Errorf("module %s: %w", name, err), restoreHint)
+		}
+		if e.Components != nil {
+			if err := e.Components.Check(); err != nil {
+				return errs.WithHints(fmt.Errorf("module %s: components: %w", name, err), restoreHint)
+			}
 		}
 		for i, t := range e.Targets {
 			if err := module.ValidateName("target", t); err != nil {

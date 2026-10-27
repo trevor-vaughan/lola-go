@@ -1,6 +1,7 @@
 package profile_test
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -100,6 +101,58 @@ modules:
 			Entry("a file that does not parse", "version: 1\nmodules: [\n", ": does not parse: "),
 			Entry("anchors", "version: 1\nmodules:\n  - &a {name: a, source: ../a}\n", "anchors, aliases and merge keys"),
 		)
+
+		It("a profile entry with market refuses at load", func() {
+			const body = "version: 1\nmodules:\n  - name: formatter\n    source: https://example.com/monorepo.git\n" +
+				"    market:\n      name: acme\n      source: https://example.com/plugins.git\n"
+			_, err := profile.Load(write("go.yml", body))
+			Expect(err).To(MatchError(ContainSubstring("go.yml: yaml: unmarshal errors:\n    line 5: field market not found")))
+			root := filepath.Join(testenv.Isolate(), "proj")
+			path := filepath.Join(root, ".lola", "profiles", "team.yml")
+			Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err = profile.LoadProject(path)
+			Expect(err).To(MatchError(ContainSubstring("line 5: field market not found")))
+			src := filepath.Join(root, "src", "profiles")
+			Expect(os.MkdirAll(src, 0o700)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(src, "go.yml"), []byte(strings.Replace(body, "/monorepo.git\n", "/monorepo.git\n    commit: "+
+				strings.Repeat("a", 40)+"\n    digest: sha256:"+strings.Repeat("b", 64)+"\n", 1)), 0o600)).To(Succeed())
+			_, _, err = profile.Fetched(src, "go")
+			Expect(err).To(MatchError(ContainSubstring("line 7: field market not found")))
+		})
+
+		It("a profile entry whose source is a marketplace address is reported as unresolved, in every kind of profile", func() {
+			const body = "version: 1\nmodules:\n  - name: formatter\n    source: '@acme/formatter'\n    ref: v1\n"
+			unresolved := func(err error, path string) {
+				GinkgoHelper()
+				ue, ok := errors.AsType[*manifest.UnresolvedError](err)
+				Expect(ok).To(BeTrue(), "%v", err)
+				Expect(ue.Path).To(Equal(path))
+				Expect(ue.Entries).To(Equal([]manifest.Unresolved{{Name: "formatter", Market: "acme", Module: "formatter", Line: 4}}))
+				Expect(ue.Manifest).To(BeNil(), "a profile is never edited to replace it")
+				Expect(errs.Hints(err)).To(BeEmpty(), "the engine coaches it from the reader's marketplaces")
+			}
+			user := write("go.yml", body)
+			_, err := profile.Load(user)
+			unresolved(err, user)
+			Expect(err).To(MatchError(user + ":4: formatter's source is @acme/formatter, a marketplace address; a file must record the module's " +
+				"real source; edit the entry to name the module's source, ref and path"))
+			_, err = profile.Load(write("bad.yml", body+"  - {name: formatter, source: ../f}\n"))
+			Expect(err).To(MatchError(ContainSubstring("module formatter is listed twice")), "every other rule first")
+
+			root := filepath.Join(testenv.Isolate(), "proj")
+			path := filepath.Join(root, ".lola", "profiles", "team.yml")
+			Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err = profile.LoadProject(path)
+			unresolved(err, path)
+
+			src := filepath.Join(root, "src", "profiles")
+			Expect(os.MkdirAll(src, 0o700)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(src, "go.yml"), []byte(body), 0o600)).To(Succeed())
+			_, _, err = profile.Fetched(src, "go")
+			unresolved(err, "profiles/go.yml")
+		})
 
 		It("refuses more than 512 entries", func() {
 			var b strings.Builder

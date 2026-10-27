@@ -23,13 +23,16 @@ const scopeHelp = "Scope: --project, --user, -C <dir> or --scope; else, on a ter
 	"preselected); else the project with .lola/ at or above the current directory; else default_scope\n" +
 	"in $XDG_CONFIG_HOME/lola/config.yaml; otherwise it refuses to guess."
 
+// scopeFlags are the scope flags, by canonical name, which a hint naming a scope of its own drops.
+var scopeFlags = []string{"scope", "project", "user", "root"}
+
 // scopes resolves the scopes of a command that writes (Plan 6b §3.1): engine.ResolveScope, then,
 // on a terminal with no scope flag, the scope picker asking question. both says the command
 // acts on two scopes in one run; the others take one, so the picker asks for one and the engine
 // refuses --scope both or default_scope: both. refuseHome says the engine refuses a project at
 // the home directory for this command (sync), so the picker asks again rather than offer it;
 // render and uninstall take one an older lola installed.
-func (a *app) scopes(cmd *cobra.Command, eng *engine.Engine, question string, both, refuseHome bool) ([]engine.ScopeChoice, error) {
+func (a *app) scopes(cmd *cobra.Command, eng *engine.Engine, args []string, question string, both, refuseHome bool) ([]engine.ScopeChoice, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -39,7 +42,7 @@ func (a *app) scopes(cmd *cobra.Command, eng *engine.Engine, question string, bo
 	if err != nil {
 		return nil, err
 	}
-	req.Command, req.Both = cmd.Name(), both
+	req.Command, req.Both, req.Run = cmd.Name(), both, runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...)
 	res, err := eng.ResolveScope(req)
 	if err != nil {
 		return nil, err
@@ -185,14 +188,14 @@ func (a *app) flagScope(cmd *cobra.Command, eng *engine.Engine, args []string, w
 	both := untrusted.Text(a.scopeFlag, untrusted.MaxName)
 	switch {
 	case len(res.Scopes) > 1 && why != "":
-		run := runWithout(cmd, args, "scope")
+		run := runWithout(cmd, args, append([]string{"scope"}, consentFlags...)...)
 		// -C names a project, which user scope cannot take: that hint drops it too.
 		return nil, errs.WithHints(fmt.Errorf("--scope %s names two scopes; %s", both, why),
-			"drop it: "+run, "or name the project: "+run+" --project", "or user scope: "+runWithout(cmd, args, "scope", "root")+" --user")
+			"drop it: "+run, "or name the project: "+run+" --project", "or user scope: "+runWithout(cmd, args, slices.Concat([]string{"scope", "root"}, consentFlags)...)+" --user")
 	case len(res.Scopes) > 1 && res.Found && eng.IsHome(res.Scopes[0].Scope):
 		// Your home directory is user scope's root, never a project (ruling R-6b3c-9).
 		return nil, errs.WithHints(fmt.Errorf("--scope %s names a project and user scope, and the project there is your home directory, "+
-			"where user scope installs", both), "update at user scope only: "+runWithout(cmd, args, "scope", "root")+" --user")
+			"where user scope installs", both), "update at user scope only: "+runWithout(cmd, args, slices.Concat([]string{"scope", "root"}, consentFlags)...)+" --user")
 	case len(res.Scopes) > 1 && !res.Found:
 		where := "no project with .lola/ was found in " + untrusted.Text(cwd, untrusted.MaxName) + " or above it"
 		if a.root != "" {
@@ -200,7 +203,7 @@ func (a *app) flagScope(cmd *cobra.Command, eng *engine.Engine, args []string, w
 		}
 		// -C names a project, which user scope cannot take: the hint drops it too.
 		return nil, errs.WithHints(fmt.Errorf("--scope %s names a project and user scope, and %s", both, where),
-			"update at user scope only: "+runWithout(cmd, args, "scope", "root")+" --user")
+			"update at user scope only: "+runWithout(cmd, args, slices.Concat([]string{"scope", "root"}, consentFlags)...)+" --user")
 	}
 	var out []engine.Scope
 	for _, c := range res.Scopes {

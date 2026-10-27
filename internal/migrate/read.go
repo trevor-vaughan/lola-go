@@ -48,13 +48,21 @@ type Source struct {
 	Location, Type, Ref, ContentDirname string
 }
 
+// PyMarket is one of the Python lola's marketplace registrations, market/<file>.yml (Plan 6c
+// §6.9): its name (the file's, when it records none), its url and whether it is enabled.
+type PyMarket struct {
+	File, Name, URL string
+	Enabled         bool
+}
+
 // State is what the Python lola recorded in its home. Sources holds the source.yml of every
-// module a record names that has one.
+// module a record names that has one; Markets its marketplace registrations, by file name.
 type State struct {
 	Home     string
 	Exists   bool
 	Records  []Record
 	Sources  map[string]Source
+	Markets  []PyMarket
 	Warnings []string
 }
 
@@ -76,11 +84,12 @@ func Home(getenv func(string) string, userHome string) (string, error) {
 	return filepath.Clean(h), nil
 }
 
-// Load reads the Python lola's installed.yml and the source.yml of each module it names. Both
-// are untrusted (§3): a file that does not parse, or names that are not single path
-// components, stop the command; unknown keys are warnings. A missing home is an empty state.
+// Load reads the Python lola's marketplace registrations, its installed.yml and the source.yml
+// of each module it names. All are untrusted (§3): a file that does not parse, or names that are
+// not single path components, stop the command; unknown keys are warnings. A missing home is an
+// empty state.
 func Load(home, userHome string) (*State, error) {
-	st := &State{Home: home, Sources: map[string]Source{}, Warnings: []string{}}
+	st := &State{Home: home, Sources: map[string]Source{}, Markets: []PyMarket{}, Warnings: []string{}}
 	fi, err := os.Stat(home)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -91,6 +100,9 @@ func Load(home, userHome string) (*State, error) {
 		return nil, errs.WithHints(fmt.Errorf("the Python lola's home %s is not a directory", home), homeHint)
 	}
 	st.Exists = true
+	if st.Markets, err = markets(filepath.Join(home, "market"), &st.Warnings); err != nil {
+		return nil, err
+	}
 	r := &reader{path: filepath.Join(home, "installed.yml"), warnings: &st.Warnings, budget: maxNames}
 	root, err := r.document()
 	if err != nil || root == nil {
@@ -474,6 +486,58 @@ func into(dst *string, read func(*yaml.Node, string) (string, error)) func(*yaml
 		*dst, err = read(n, at)
 		return err
 	}
+}
+
+// markets reads every <name>.yml in dir, the Python lola's market/, as its MarketRegistry writes
+// it ([P] models.py Marketplace.to_reference_dict): name, url and enabled. Its cache/ is not read.
+// A missing dir holds none.
+func markets(dir string, warnings *[]string) ([]PyMarket, error) {
+	ents, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []PyMarket{}, nil
+	}
+	if err != nil {
+		return nil, errs.WithHints(fmt.Errorf("cannot read %s: %w", dir, untrusted.CleanErr(err)), homeHint)
+	}
+	out := []PyMarket{}
+	for _, ent := range ents {
+		stem, ok := strings.CutSuffix(ent.Name(), ".yml")
+		if !ok || ent.IsDir() {
+			continue
+		}
+		// A name that would not print as itself never reaches a message (the Python lola writes
+		// <name>.yml for a name it accepted, which never holds one).
+		if !printable(ent.Name()) {
+			*warnings = append(*warnings, fmt.Sprintf("%s: a file whose name is not a name lola reads; skipped", dir))
+			continue
+		}
+		r := &reader{path: filepath.Join(dir, ent.Name()), warnings: warnings, budget: maxNames}
+		n, err := r.document()
+		if err != nil {
+			return nil, err
+		}
+		m := PyMarket{File: r.path, Name: stem, Enabled: true}
+		if n == nil {
+			return nil, errs.WithHints(fmt.Errorf("%s is empty", r.path), fixHint)
+		}
+		err = r.fields(n, "", map[string]func(*yaml.Node, string) error{
+			"name": into(&m.Name, r.text),
+			"url":  into(&m.URL, r.text),
+			"enabled": func(n *yaml.Node, at string) error {
+				n = deref(n)
+				if n.Kind != yaml.ScalarNode || n.Tag != "!!bool" {
+					return r.fail(n, at, "must be true or false")
+				}
+				m.Enabled = n.Value == "true" || n.Value == "True" || n.Value == "TRUE"
+				return nil
+			},
+		}, "url")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // source reads a source.yml: source and type, and optionally ref and content_dirname.

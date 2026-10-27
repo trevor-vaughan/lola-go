@@ -54,8 +54,18 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      every command and the pager, 6b.2a layers, 6b.2b `lola profile`, 6b.3a project profiles
      and 6b.3b remote profiles (done: `--add`, `--update` and `--remove`, `extends:`, and the
      profiles lock) (`docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md`).
-   - **6c. Marketplaces:** `lola market` and `@market/module`, reading the Claude marketplace
-     JSON catalog format, and the Python lola's YAML catalogs for migrated users.
+   - **6c. Done: marketplaces.** `lola market` and `@market/module`, reading the Claude marketplace
+     JSON catalog format, and the Python lola's YAML catalogs for migrated users, delivered as
+     6c.1 catalogs and `lola market` (done: both formats read into one model as a stranger's
+     input, `--add`, `--update`, `--remove`, listing and showing, folder marketplaces, the markets
+     lock, and the Python lola's `lola market` verbs refused with lola's form as the hint),
+     6c.2 `@market/module` (done: install, `cache add` and `check` of an address, pins bound to a
+     ref, archive sums, the redirect rule, `market:` provenance, the install pickers' marketplace
+     groups, catalog search, `sync --update` following a catalog, and a relative entry's content
+     lists installed exactly, recorded as `components:`) and 6c.3 `@` sources in files (done:
+     every file refuses one before trust and network, coached per entry, `lola install @m/x`
+     replacing such an entry, and `lola migrate` registering the Python lola's marketplaces)
+     (`docs/superpowers/specs/2026-10-21-plan-6c-marketplaces-design.md`).
    - **6d. `lola clean`:** move files lola does not manage out of its destinations.
 7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
    using the jet engine, which needs dependency vetting before the plan starts.

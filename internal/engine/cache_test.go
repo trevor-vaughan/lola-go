@@ -64,12 +64,12 @@ var _ = Describe("store operations", func() {
 
 	It("Search matches name, description and keywords case-insensitively", func() {
 		for _, q := range []string{"EXAM", "review", "git"} {
-			hits, _, err := e.Search(q)
+			hits, _, err := e.Search(q, false, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hits).To(HaveLen(1), q)
 			Expect(hits[0].Where).To(Equal("cache"))
 		}
-		hits, _, err := e.Search("zzz")
+		hits, _, err := e.Search("zzz", false, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(hits).To(BeEmpty())
 		Expect(hits).NotTo(BeNil())

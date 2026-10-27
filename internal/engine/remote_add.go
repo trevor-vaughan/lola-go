@@ -53,6 +53,7 @@ type ProfileAddRequest struct {
 // syncs elsewhere go on; it is taken exclusively only to check again that no profile of that
 // name appeared, and write (ruling R-6b3b-8).
 func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *RemoteResult, err error) {
+	defer func() { err = e.CoachUnresolved(err, nil, false, outputOnly(req.Rerun)) }()
 	var given []Scope
 	known, skipped := e.knownScopes()
 	sc := known[0]
@@ -63,8 +64,9 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	// display is the run's flags a hint that changes its consent or its dry run keeps: --json,
 	// --plain and --no-pager as given.
 	display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" || f == "-n" })
-	// kept is the flags of the --update a refusal of a profile you have hints: --trust answered
-	// this add's content, never an update's change, so it is left out (ruling R-6b3c-8).
+	// kept is the flags of a hint that repeats the run for another reason, the --update of a
+	// profile you have or the add at user scope: --trust answered this add's question, never
+	// that one, so it is left out (rulings R-6b3c-8, R-6cux-4).
 	kept := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return f == "--trust" })
 	// typed is the run's arguments, the name aside, which every hint that repeats it keeps.
 	typed := []string{"--add", untrusted.Text(req.Source, untrusted.MaxName)}
@@ -105,7 +107,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	_, _, led, checked, err := e.profileScope(ctx, sc)
 	if err != nil && len(given) == 0 && sc.Kind == target.Project {
 		return nil, errs.WithHints(errors.New(untrusted.CleanErr(err).Error()), append(errs.Hints(err),
-			"or compare with user scope: "+e.ProfileRun([]Scope{{Kind: target.User}}, append(slices.Clone(typed), req.Rerun...)...))...)
+			"or compare with user scope: "+e.ProfileRun([]Scope{{Kind: target.User}}, append(slices.Clone(typed), kept...)...))...)
 	}
 	if err != nil {
 		return nil, err

@@ -40,7 +40,10 @@ type Origin struct {
 	Source string `yaml:"source"`
 	Type   string `yaml:"type"`
 	Path   string `yaml:"path,omitempty"`
-	Heads  []Head `yaml:"heads"`
+	// Components is the selection of the source's module directory the name was cached with
+	// (source.Components): a fetch of the name again applies it.
+	Components *source.Components `yaml:"components,omitempty"`
+	Heads      []Head             `yaml:"heads"`
 }
 
 // Meta describes one stored version (.lola-origin); its values are those of the first fetch.
@@ -98,6 +101,8 @@ type PutRequest struct {
 	Executables                     []string
 	Now                             time.Time
 	ReplaceGoneOrigin               bool
+	// Components is the selection the staged content was fetched with (source.Spec.Components).
+	Components *source.Components
 }
 
 // OtherNameError is Prepare's refusal of content that declares another module than
@@ -126,6 +131,7 @@ type Staged struct {
 	ReplaceGoneOrigin bool
 	source, typ, path string
 	ref               string
+	components        *source.Components
 }
 
 // Store is the machine-wide module store. targets are the target ids a module's per-entry
@@ -154,12 +160,15 @@ func (s *Store) lockStore() (func(), error) {
 
 // describeOrigin names a module's origin for an error; source and path come from the cache
 // index or a recorded source, so both are untrusted.
-func describeOrigin(source, path string) string {
-	source = untrusted.Text(source, untrusted.MaxName)
-	if path == "" {
-		return source
+func describeOrigin(src, path string, comps *source.Components) string {
+	out := untrusted.Text(src, untrusted.MaxName)
+	if path != "" {
+		out += " (path " + untrusted.Text(path, untrusted.MaxName) + ")"
 	}
-	return source + " (path " + untrusted.Text(path, untrusted.MaxName) + ")"
+	if comps != nil {
+		out += " selecting " + comps.String()
+	}
+	return out
 }
 
 // Put caches freshly fetched content and points the head for req.Ref at it: Prepare, then
@@ -214,7 +223,7 @@ func (s *Store) Prepare(req PutRequest) (Staged, error) {
 		FetchedAt: req.Now.UTC().Format(time.RFC3339), Digest: digest, Executables: execs}
 	v := Version{Name: m.Name, ID: strings.TrimPrefix(digest, "sha256:")[:12], ContentDir: req.Staged, Commit: req.Commit, Meta: meta, Module: cached}
 	return Staged{Version: v, LoadWarnings: loadWarnings, ReplaceGoneOrigin: req.ReplaceGoneOrigin, source: req.Source, typ: req.Type, path: req.Path,
-		ref: req.Ref}, nil
+		ref: req.Ref, components: req.Components.Clone()}, nil
 }
 
 // Commit publishes a prepared version under the cache lock: it refuses a module whose name the
@@ -236,10 +245,10 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 	if err != nil {
 		return Version{}, err
 	}
-	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path) {
+	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path || !o.Components.Equal(st.components)) {
 		if !st.ReplaceGoneOrigin || !o.LocalGone() || !source.IsLocal(source.Kind(st.typ), st.source) {
 			return Version{}, errs.WithHints(fmt.Errorf("a different module named %q is already in your cache (from %s); this one is from %s",
-				sv.Name, describeOrigin(o.Source, o.Path), describeOrigin(st.source, st.path)),
+				sv.Name, describeOrigin(o.Source, o.Path, o.Components), describeOrigin(st.source, st.path, st.components)),
 				"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", sv.Name}))
 		}
 		found = false // the source recorded is gone: this one takes its place, heads and all
@@ -268,7 +277,7 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 		}
 	}
 	if !found {
-		o = Origin{Source: st.source, Type: st.typ, Path: st.path}
+		o = Origin{Source: st.source, Type: st.typ, Path: st.path, Components: st.components}
 	}
 	if !headIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == st.ref }) {
 		o.Heads = setHead(o.Heads, Head{Ref: st.ref, Digest: sv.ID, Commit: sv.Commit})
@@ -452,6 +461,11 @@ func (s *Store) Origin(name string) (Origin, bool, error) {
 	}
 	if err != nil {
 		return Origin{}, false, err
+	}
+	if o.Components != nil {
+		if err := o.Components.Check(); err != nil {
+			return Origin{}, false, errs.WithHints(fmt.Errorf("cache entry %s: components: %w", name, err), removeHint(name))
+		}
 	}
 	for _, h := range o.Heads {
 		if err := checkID(name, h.Digest); err != nil {

@@ -541,7 +541,7 @@ var _ = Describe("remote profiles", func() {
 			return err
 		})
 		run("status", func() error {
-			_, _, err := e.Status(ctx, user)
+			_, _, err := e.Status(ctx, user, nil)
 			return err
 		})
 		Consistently(done, "300ms").ShouldNot(Receive(), "a writer holds it")
@@ -690,7 +690,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(err).To(MatchError(HavePrefix(".lola/lock.json is tracked by git")))
 			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
 				"if you never installed with lola in this checkout, delete it too, then run lola sync --project",
-				"or compare with user scope: lola profile --user go --add " + src + " --trust"}), "each hint once, the run's flags kept")
+				"or compare with user scope: lola profile --user go --add " + src}), "each hint once, the run's flags kept but --trust")
 			Expect(requests.Load()).To(BeZero())
 		})
 
@@ -1337,7 +1337,7 @@ var _ = Describe("remote profiles", func() {
 			}})
 			Expect(err).To(MatchError(HavePrefix("lola cannot tell whether remote:go is in use in project " + proj + ", so it did not ask to update it: ")))
 			Expect(errs.Hints(err)).To(Equal([]string{"fix it by hand; lola never writes it",
-				"or update it at user scope only: lola profile --user remote:go --update -y"}), "each hint once")
+				"or update it at user scope only: lola profile --user remote:go --update"}), "each hint once, and another scope is another question: no -y")
 			Expect(asked).To(BeFalse())
 			Expect(file()).To(Equal(pinned()))
 
@@ -1349,7 +1349,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(err).To(MatchError(HavePrefix(".lola/lock.json is tracked by git")))
 			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json",
 				"if you never installed with lola in this checkout, delete it too, then run lola sync --project",
-				"or update it at user scope only: lola profile --user remote:go --update --trust --json"}), "the hint keeps the run's own flags")
+				"or update it at user scope only: lola profile --user remote:go --update --json"}), "the hint keeps the run's output flags, never its --trust")
 			Expect(requests.Load()).To(BeZero(), "refused before any network contact")
 		})
 
@@ -1368,10 +1368,11 @@ var _ = Describe("remote profiles", func() {
 			Expect(errs.Hints(err)).To(ContainElement("or update it in project " + proj + " only: lola profile --project remote:go --update"))
 			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("--trust")))
 
-			// With the project named (--scope both), its trust is the run's to give.
+			// With the project named (--scope both), the run's answers were given for both scopes
+			// together: a run narrowed to one is another question, so they do not travel into it.
 			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{sc, user}, Names: []string{"go"}, Consent: yes,
-				Rerun: []string{"--trust"}})
-			Expect(errs.Hints(err)).To(ContainElement("or update it in project " + proj + " only: lola profile --project remote:go --update --trust"))
+				Flags: []string{"--allow-hooks", "--allow-runtime-hooks", "-y"}, Rerun: []string{"--trust", "--plain"}})
+			Expect(errs.Hints(err)).To(ContainElement("or update it in project " + proj + " only: lola profile --project remote:go --update --plain"))
 			Expect(err.Error()).NotTo(ContainSubstring("has changes you have not trusted"))
 		})
 
@@ -1430,7 +1431,8 @@ var _ = Describe("remote profiles", func() {
 			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{home}, Names: []string{"go"}, Consent: yes,
 				Flags: []string{"--allow-hooks", "-y"}, Rerun: []string{"--trust", "--json"}})
 			Expect(err).To(MatchError(refused))
-			Expect(errs.Hints(err)).To(Equal([]string{"update at user scope only: lola profile --user remote:go --update --allow-hooks -y --trust --json"}))
+			Expect(errs.Hints(err)).To(Equal([]string{"update at user scope only: lola profile --user remote:go --update --json"}),
+				"another scope is another question: no answer travels into it")
 			_, err = e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{home}, All: true, DryRun: true, Rerun: []string{"-n"}})
 			Expect(err).To(MatchError(refused))
 			Expect(errs.Hints(err)).To(Equal([]string{"update at user scope only: lola profile --user --update --all -n"}))
@@ -1685,17 +1687,10 @@ var _ = Describe("remote profiles", func() {
 					And(HavePrefix("or remove it anyway: lola profile "), HaveSuffix(" remote:go --remove --force"))))
 			}
 			Expect(asked).To(BeZero())
-			_, err = remove(user, "go", true, nil)
-			Expect(err).To(MatchError("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on"),
-				"--force never answers the question")
-			Expect(errs.Hints(err)).To(Equal([]string{"confirm it: lola profile --user remote:go --remove --force -y"}))
-			_, err = remove(user, "go", true, func(engine.RemoteProfile) (bool, error) { return false, nil })
-			Expect(err).To(MatchError(engine.ErrDeclined))
-			Expect(filepath.Join(p.RemoteProfiles, "go")).To(BeADirectory())
-
-			res, err := remove(user, "go", true, yes)
+			// --force answers the question too, off a terminal and on one (user decision, 2026-10-22).
+			res, err := remove(user, "go", true, nil)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(asked).To(Equal(1))
+			Expect(asked).To(BeZero(), "nothing was asked")
 			Expect(res.Removed).To(BeTrue())
 			Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelWarn,
 				Text: "remote:go is on at user scope; its modules stay installed there until the next lola sync --user, which removes them"}))
@@ -1732,7 +1727,7 @@ var _ = Describe("remote profiles", func() {
 			res, err := e.RemoveProfile(ctx, engine.ProfileRemoveRequest{Scope: user, Name: "go", Force: true, DryRun: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
-				Text: "to remove it: lola profile --user remote:go --remove --force (off a terminal: -y)"}))
+				Text: "to remove it: lola profile --user remote:go --remove --force"}), "--force answers the question: no -y off a terminal")
 
 			// The project found from here has a tracked lock.json: it cannot be read.
 			activate(user)

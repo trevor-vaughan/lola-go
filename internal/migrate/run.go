@@ -59,6 +59,7 @@ type Result struct {
 	Destinations []*DestResult `json:"destinations"`
 	Unmappable   []Unmapped    `json:"unmappable"`
 	NotMigrated  []Item        `json:"not_migrated"`
+	Markets      []Market      `json:"markets"`
 	Home         HomeResult    `json:"home"`
 	Warnings     []string      `json:"warnings"`
 }
@@ -168,7 +169,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	st := p.st
 	r := &runner{ctx: ctx, e: e, st: st, opts: opts, holds: map[string][]string{}}
 	rep := &Result{DryRun: true, PythonHome: st.Home, Destinations: []*DestResult{}, Unmappable: p.Unmappable,
-		NotMigrated: p.NotMigrated, Warnings: p.Warnings, Home: HomeResult{Path: st.Home, Action: HomeNone}}
+		NotMigrated: p.NotMigrated, Markets: marketReport(p.Markets, opts.Display), Warnings: p.Warnings, Home: HomeResult{Path: st.Home, Action: HomeNone}}
 	dry := opts
 	dry.DryRun = true
 	results := make([]*engine.InstallResult, len(p.Destinations))
@@ -210,6 +211,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 		}
 		rep.Destinations[i] = dr
 	}
+	rep.Markets = r.registerMarkets(p.Markets)
 	rep.Home = r.home(p, rep)
 	if rep.Home.Action == HomeMove {
 		to, err := r.trash.Move("python-home", filepath.Dir(st.Home), st.Home)
@@ -1226,6 +1228,15 @@ func (r *runner) home(p *Plan, rep *Result) HomeResult {
 		return h
 	}
 	unmappable := len(p.Unmappable)
+	// A marketplace not registered stays where its Python registration is, as an unmappable
+	// record does (Plan 6c §6.9), but a disabled one: lola has no disabled state, and its listing
+	// names the command that registers it.
+	unregistered := 0
+	for _, m := range rep.Markets {
+		if m.Status == MarketSkipped && !m.disabled || m.Status == MarketFailed {
+			unregistered++
+		}
+	}
 	for _, d := range rep.Destinations {
 		unmappable += len(d.Unmappable)
 		if d.Status == StatusFailed {
@@ -1240,6 +1251,10 @@ func (r *runner) home(p *Plan, rep *Result) HomeResult {
 		return keep("--keep-python")
 	case unmappable > 0:
 		return keep(fmt.Sprintf("%d record(s) lola-go cannot migrate are still in installed.yml", unmappable))
+	case unregistered == 1:
+		return keep("1 marketplace lola did not register is still in " + filepath.Join(r.st.Home, "market"))
+	case unregistered > 1:
+		return keep(fmt.Sprintf("%d marketplaces lola did not register are still in %s", unregistered, filepath.Join(r.st.Home, "market")))
 	case err != nil:
 		return keep("lola cannot read it: " + untrusted.CleanErr(err).Error())
 	case fi.Mode()&fs.ModeSymlink != 0:
@@ -1281,7 +1296,7 @@ func (r *runner) home(p *Plan, rep *Result) HomeResult {
 // nothing reports whether a run would only keep and report: no install, replacement or move,
 // and the home stays.
 func nothing(rep *Result) bool {
-	if rep.Home.Action == HomeMove {
+	if rep.Home.Action == HomeMove || slices.ContainsFunc(rep.Markets, func(m Market) bool { return m.Status == MarketRegister }) {
 		return false
 	}
 	for _, d := range rep.Destinations {

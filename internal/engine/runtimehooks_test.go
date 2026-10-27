@@ -64,7 +64,7 @@ var _ = Describe("runtime hooks", func() {
 		return e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: plugin}}, opts)
 	}
 	check := func() []target.Finding {
-		rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"claude-code"})
+		rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		return rep.Modules[0].Findings
 	}
@@ -540,8 +540,9 @@ var _ = Describe("runtime hooks", func() {
 			_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: twin}}, engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true, Force: true})
-			Expect(err).To(MatchError(ContainSubstring(`owned by module "deploy"; uninstall it first`)))
-			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force cannot override ownership")))
+			Expect(err).To(MatchError(ContainSubstring(`wanted by module "twin", owned by module "deploy"; --force cannot override it: uninstall deploy first`)))
+			Expect(err).To(MatchError(ContainSubstring("--force cannot override it")))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola uninstall -C " + proj + " deploy"}))
 		})
 
 		It("writes ~/.claude/settings.json at user scope", func() {

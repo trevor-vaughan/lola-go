@@ -35,11 +35,21 @@ var archiveSuffixes = []string{".zip", ".tar", ".tar.gz", ".tgz"}
 
 // Spec is a parsed source. Location is an absolute path for folders and local archives, with
 // symbolic links resolved when Parse made it, else a URL.
+//
+// SHA256 is the sha256 of an archive's bytes (64 hex digits, either case) that a marketplace's
+// catalog lists: the archive is refused before extraction when its bytes have another (Plan 6c
+// §6.4, ruling R-6c-6). It is never recorded. FromCatalog says a stranger's catalog named the
+// source, not you (Plan 6c §10, ruling R-6c-13): every redirect of its download must pass
+// CheckRemote, and git follows none of its redirects. Components, when set, is the selection a
+// catalog made of the module's directory, which every fetch applies (Components).
 type Spec struct {
-	Kind     Kind
-	Location string
-	Ref      string
-	Path     string
+	Kind        Kind
+	Location    string
+	Ref         string
+	Path        string
+	SHA256      string
+	FromCatalog bool
+	Components  *Components
 }
 
 // remoteHelperRE is git's <transport>::<address> syntax, which runs a git-remote-<transport>
@@ -77,7 +87,7 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 	switch {
 	case !isURL && strings.Contains(arg, "://"):
 		return parseRemote(arg)
-	case !isURL && scpRE.MatchString(arg) && !filepath.IsAbs(arg) && filepath.VolumeName(arg) == "":
+	case !isURL && IsSCP(arg):
 		spec := Spec{Kind: KindGit, Location: arg}
 		return spec, true, Validate(spec)
 	}
@@ -198,6 +208,47 @@ func schemeOnly(raw, fallback string) string {
 	return fallback
 }
 
+// IsSCP reports whether loc is git's scp form, user@host:path, read from its text alone: no
+// "://", the scp grammar, and neither an absolute path nor one with a Windows drive letter.
+func IsSCP(loc string) bool {
+	return !strings.Contains(loc, "://") && scpRE.MatchString(loc) && !filepath.IsAbs(loc) && filepath.VolumeName(loc) == ""
+}
+
+// CheckURL refuses raw, a URL, as a source URL is refused (checkURL): credentials, a query or
+// fragment, and plain http off loopback. Its message shows raw without them.
+func CheckURL(raw string) error {
+	u, err := parseURL(raw)
+	if err != nil {
+		return err
+	}
+	return checkURL(u, "")
+}
+
+// DisplayURL is what may be shown of raw, a location as typed: a URL without its user info, query
+// or fragment (displayURL); git's scp form without its user, password, query or fragment; any
+// other text as it is, through untrusted.Text.
+func DisplayURL(raw string) string {
+	switch {
+	case IsSCP(raw):
+		rest, colon := raw, strings.Index(raw, ":")
+		if at := strings.LastIndex(rest, "@"); at > colon {
+			rest = rest[at+1:] // user:password@host, whose password may hold an @
+		} else if at := strings.Index(rest, "@"); at >= 0 {
+			rest = rest[at+1:] // user@host:path
+		}
+		rest, _, _ = strings.Cut(rest, "?")
+		rest, _, _ = strings.Cut(rest, "#")
+		return untrusted.Text(rest, untrusted.MaxName)
+	case strings.Contains(raw, "://"):
+		u, err := url.Parse(raw)
+		if err != nil {
+			return schemeOnly(raw, "a URL lola cannot read")
+		}
+		return displayURL(u)
+	}
+	return untrusted.Text(raw, untrusted.MaxName)
+}
+
 // displayURL is what may be shown of a parsed URL: never its user info, query or fragment.
 // Without a scheme, the location is shown without the leading "://".
 func displayURL(u *url.URL) string {
@@ -224,15 +275,15 @@ func checkURL(u *url.URL, kind Kind) error {
 	case u.RawQuery != "" || u.ForceQuery || u.Fragment != "":
 		return errs.WithHints(fmt.Errorf("%s: a source URL must not have a query string or fragment, which can carry secrets",
 			shown), hint)
-	case u.Scheme == "http" && !isLoopback(u.Hostname()):
+	case u.Scheme == "http" && !IsLoopback(u.Hostname()):
 		return errs.WithHints(fmt.Errorf("%s: plain http:// is allowed only for a loopback host", shown), "use https://")
 	}
 	return nil
 }
 
-// isLoopback reports whether host is literally localhost, an IPv4 address in 127.0.0.0/8 or
+// IsLoopback reports whether host is literally localhost, an IPv4 address in 127.0.0.0/8 or
 // ::1. Names are never resolved.
-func isLoopback(host string) bool {
+func IsLoopback(host string) bool {
 	if strings.EqualFold(host, "localhost") {
 		return true
 	}

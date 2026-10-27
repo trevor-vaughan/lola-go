@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -120,20 +121,126 @@ func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([
 	if errors.Is(err, exec.ErrNotFound) {
 		return nil, errs.WithHints(errors.New("lola needs git for this source, and git is not on PATH"), "install git")
 	}
+	sub := args[0]
+	if sub == "-c" && len(args) > 2 {
+		sub = args[2] // after remoteArgs' config
+	}
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return nil, fmt.Errorf("git %s did not finish in time", args[0]) // fetchGit coaches it by transport
+		return nil, fmt.Errorf("git %s did not finish in time", sub) // fetchGit coaches it by transport
 	}
 	msg := strings.TrimSpace(stderr.String())
+	if loc, ok := refusedRedirect(args, msg); ok {
+		return nil, fmt.Errorf("%s redirects, and lola follows no redirect of a source a catalog names; the catalog must list its final URL",
+			untrusted.Text(loc, untrusted.MaxName))
+	}
+	if denied := accessDenied(args, msg); denied != nil {
+		return nil, denied
+	}
 	if msg != "" {
 		err = fmt.Errorf("%w: %s", err, untrusted.Text(msg, maxStderr))
 	}
-	err = fmt.Errorf("git %s failed: %w", args[0], err)
-	if strings.Contains(msg, "Authentication failed") || strings.Contains(msg, "Permission denied") ||
-		strings.Contains(msg, "could not read Username") {
-		return nil, errs.WithHints(err, "for https, configure a git credential helper (git help credentials)",
-			"for ssh, load your key into ssh-agent (ssh-add)")
+	return nil, fmt.Errorf("git %s failed: %w", sub, err)
+}
+
+// AccessError is a repository git could not read for want of access: missing, private with no
+// credentials git can use, or the credentials refused. It says which in lola's words, never with
+// git's output, and its hints are commands; every source's fetch returns it as is.
+type AccessError struct{ msg string }
+
+func (e *AccessError) Error() string { return e.msg }
+
+// notFoundRE is git's report of a repository its server says is not there, over https
+// ("fatal: repository '<url>' not found"), and an ssh server's, as GitHub and GitLab word it
+// ("ERROR: Repository not found.").
+var notFoundRE = regexp.MustCompile(`(?i)\brepository\b.*\bnot found\b`)
+
+// sshDeniedRE is ssh's report of a server that took none of the ways it offered to log in, which
+// it lists: "Permission denied (publickey,password)".
+var sshDeniedRE = regexp.MustCompile(`Permission denied \(([^)]*)\)`)
+
+// accessDenied is the AccessError of a git command of args, which contacts the repository it names
+// after "--", that failed with stderr; nil when stderr is no refusal of access. Only git's own
+// "fatal:" lines and ssh's are read: a server's sideband ("remote:") is its to word, and could
+// otherwise make any failure read as a missing repository. lola runs git with its prompts off,
+// so a server asking for credentials git has none for fails as "could not read Username", and
+// so does a missing repository on a server that hides which repositories exist. The hint is the
+// same check in your own git, which may ask for credentials and keep them, following no redirect
+// for a source a catalog named, as lola's own fetch does; there is none when the location cannot
+// be printed whole.
+func accessDenied(args []string, stderr string) error {
+	k := slices.Index(args, "--")
+	if k < 0 || k+1 >= len(args) {
+		return nil
 	}
-	return nil, err
+	raw := args[k+1]
+	var fatal, own []string // git's fatal lines, and every line but the server's sideband
+	for line := range strings.Lines(stderr) {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "remote:"):
+		case strings.HasPrefix(line, "fatal:"):
+			fatal, own = append(fatal, line), append(own, line)
+		default:
+			own = append(own, line)
+		}
+	}
+	has := func(lines []string, match func(string) bool) bool { return slices.ContainsFunc(lines, match) }
+	loc := untrusted.Text(raw, untrusted.MaxName)
+	var hints []string
+	if len(raw) <= untrusted.MaxName && untrusted.IsPlain(raw) {
+		check := []string{"git", "ls-remote", "--", raw}
+		if len(args) > 1 && args[0] == "-c" && args[1] == "http.followRedirects=false" {
+			check = append([]string{"git", "-c", "http.followRedirects=false"}, check[1:]...)
+		}
+		hints = []string{errs.ShellJoin(check)}
+	}
+	var denied *AccessError
+	switch {
+	case has(fatal, func(l string) bool { return strings.Contains(l, "could not read Username") }):
+		denied = &AccessError{msg: loc + " was not found, or it is private and git has no credentials for it (lola never lets git ask for them)"}
+	case has(fatal, notFoundRE.MatchString),
+		has(own, notFoundRE.MatchString) && has(fatal, func(l string) bool { return strings.Contains(l, "Could not read from remote repository") }):
+		denied = &AccessError{msg: loc + " was not found, or it is private and the credentials git has, if any, cannot read it"}
+	case has(fatal, func(l string) bool { return strings.Contains(l, "Authentication failed") }):
+		denied = &AccessError{msg: "git's credentials for " + loc + " were refused"}
+	case has(own, sshDeniedRE.MatchString):
+		denied = &AccessError{msg: "the ssh server for " + loc + " refused every key ssh offered, or ssh had none"}
+		// ssh-add helps only a server that takes keys.
+		if has(own, func(l string) bool {
+			m := sshDeniedRE.FindStringSubmatch(l)
+			return m != nil && strings.Contains(m[1], "publickey")
+		}) {
+			hints = append([]string{"ssh-add"}, hints...)
+		}
+	default:
+		return nil
+	}
+	return errs.WithHints(denied, hints...)
+}
+
+// redirectRE is curl's report, through git, of a redirect it was told not to follow: any 3xx status.
+var redirectRE = regexp.MustCompile(`returned error: 3[0-9][0-9]\b`)
+
+// refusedRedirect is the location a git command of remoteArgs for a source a catalog named
+// (http.followRedirects=false) failed on because the server redirected it, ok false otherwise.
+func refusedRedirect(args []string, stderr string) (string, bool) {
+	if len(args) < 2 || args[0] != "-c" || args[1] != "http.followRedirects=false" || !redirectRE.MatchString(stderr) {
+		return "", false
+	}
+	if k := slices.Index(args, "--"); k >= 0 && k+1 < len(args) {
+		return args[k+1], true
+	}
+	return "", false
+}
+
+// remoteArgs is args, a git command that contacts spec's repository, as lola runs it: for a
+// source a stranger's catalog named, git follows no redirect, so a server cannot send the fetch
+// to a host the address rule refuses (Plan 6c §10, ruling R-6c-13).
+func remoteArgs(spec Spec, args ...string) []string {
+	if spec.FromCatalog {
+		return append([]string{"-c", "http.followRedirects=false"}, args...)
+	}
+	return args
 }
 
 // fetchGit clones a git source into scratch at its ref, then copies the module root of what
@@ -168,7 +275,8 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 	if err != nil {
 		return Fetched{}, errors.Join(err, os.RemoveAll(dir))
 	}
-	return Fetched{Dir: dir, Name: name, Commit: strings.TrimSpace(string(head)), Executables: executablesUnder(execs, filepath.ToSlash(rel), dir)}, nil
+	return Fetched{Dir: dir, Name: name, Commit: strings.TrimSpace(string(head)), Executables: executablesUnder(execs, filepath.ToSlash(rel), dir),
+		Root: fetchedRoot(rel)}, nil
 }
 
 // noConversion is $GIT_DIR/info/attributes for every checkout: it outranks the repository's
@@ -183,16 +291,16 @@ const noConversion = "* -text -eol -filter -ident -working-tree-encoding\n"
 func checkout(ctx context.Context, spec Spec, scratch string) ([]string, error) {
 	url, ref := spec.Location, spec.Ref
 	clone := []string{"clone", "-q", "--depth", "1", "--no-recurse-submodules", "--no-checkout"}
-	name, err := remoteRef(ctx, url, ref)
+	name, err := remoteRef(ctx, spec)
 	switch {
 	case err != nil:
 		return nil, err
 	case ref != "" && name == ref:
-		return checkoutCommit(ctx, url, ref, spec.Path, scratch)
+		return checkoutCommit(ctx, spec, scratch)
 	case ref != "":
 		clone = append(clone, "--branch="+ref)
 	}
-	if _, err := runGit(ctx, "", append(clone, "--", url, scratch)...); err != nil {
+	if _, err := runGit(ctx, "", remoteArgs(spec, append(clone, "--", url, scratch)...)...); err != nil {
 		return nil, err
 	}
 	execs, err := prepareCheckout(ctx, scratch, "HEAD", spec.Path)
@@ -203,16 +311,17 @@ func checkout(ctx context.Context, spec Spec, scratch string) ([]string, error) 
 	return execs, err
 }
 
-// remoteRef names what ref is on the repository at url: "" for the default branch (ref ""),
+// remoteRef names what spec's ref is on its repository: "" for the default branch (ref ""),
 // refs/heads/<ref> or refs/tags/<ref> for the one branch or tag of that name, or ref itself
 // for a full commit SHA that no branch or tag is named. It refuses a branch and a tag of one
 // name, and any other ref. It never guesses.
-func remoteRef(ctx context.Context, url, ref string) (string, error) {
+func remoteRef(ctx context.Context, spec Spec) (string, error) {
+	url, ref := spec.Location, spec.Ref
 	if ref == "" {
 		return "", nil
 	}
 	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
-	out, err := runGit(ctx, "", "ls-remote", "--", url, "refs/heads/"+ref, "refs/tags/"+ref)
+	out, err := runGit(ctx, "", remoteArgs(spec, "ls-remote", "--", url, "refs/heads/"+ref, "refs/tags/"+ref)...)
 	if err != nil {
 		return "", err
 	}
@@ -240,9 +349,10 @@ func remoteRef(ctx context.Context, url, ref string) (string, error) {
 	return "", errs.WithHints(fmt.Errorf("%s has no branch or tag named %s", shown, shownRef), hints...)
 }
 
-// checkoutCommit fetches the one commit ref (a full SHA) into a new repository at scratch and
-// checks it out; sub is the module path, as for prepareCheckout.
-func checkoutCommit(ctx context.Context, url, ref, sub, scratch string) ([]string, error) {
+// checkoutCommit fetches the one commit spec.Ref (a full SHA) into a new repository at scratch and
+// checks it out at spec.Path, the module path, as for prepareCheckout.
+func checkoutCommit(ctx context.Context, spec Spec, scratch string) ([]string, error) {
+	url, ref, sub := spec.Location, spec.Ref, spec.Path
 	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
 	format := "sha1"
 	if len(ref) == 64 {
@@ -251,7 +361,11 @@ func checkoutCommit(ctx context.Context, url, ref, sub, scratch string) ([]strin
 	if _, err := runGit(ctx, scratch, "init", "-q", "--object-format="+format); err != nil {
 		return nil, err
 	}
-	if _, err := runGit(ctx, scratch, "fetch", "-q", "--depth", "1", "--", url, ref); err != nil {
+	_, err := runGit(ctx, scratch, remoteArgs(spec, "fetch", "-q", "--depth", "1", "--", url, ref)...)
+	if errors.As(err, new(*AccessError)) {
+		return nil, err
+	}
+	if err != nil {
 		return nil, errs.WithHints(fmt.Errorf("%s did not serve commit %s; servers using git protocol v0 refuse a commit "+
 			"that no branch or tag points to: %w", shown, shownRef, err), "use --ref with a branch or tag that contains the commit")
 	}

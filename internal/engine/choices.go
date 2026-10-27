@@ -33,6 +33,9 @@ type ChoicesRequest struct {
 	Cwd     string
 	Scopes  []ScopeChoice
 	Modules []InstallRequest
+	// DryRun is the run's -n and Display its output flags, which every hint keeps (Plan 6c §11.3).
+	DryRun  bool
+	Display []string
 }
 
 // Choices is everything the install pickers need (Plan 5c §7), computed by the engine. Every
@@ -45,6 +48,12 @@ type Choices struct {
 	// InstallRequest.Version pins an install to them.
 	Versions []VersionRef `json:"versions"`
 	Warnings []string     `json:"warnings"` // cached modules that could not be loaded
+	// Resolved is, for each module argument that is a marketplace address, where it resolved, as
+	// the summary shows it before Apply (Plan 6c §6.3, ruling R-6c-15).
+	Resolved []string `json:"resolved"`
+	// Markets are your marketplaces with a fetched catalog and the entries each offers, which the
+	// module picker shows after the cache (Plan 6c §6.5).
+	Markets []MarketGroup `json:"markets"`
 
 	sel *config.Selections // as read, for Preview
 }
@@ -118,6 +127,14 @@ func (c *Choices) Module(name string) *ModuleChoice {
 // and per scope whether it is installed, which components selections.yaml excludes and which
 // are installed now. It writes nothing but a source argument's fetch into the cache.
 func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Choices, err error) {
+	var scopes []Scope
+	for _, s := range req.Scopes {
+		scopes = append(scopes, s.Scope)
+	}
+	defer func() { err = e.CoachUnresolved(err, scopes, req.DryRun, req.Display) }()
+	// An install of an address may replace an unresolved entry of its name (Plan 6c §6.3), so the
+	// pickers read such a manifest as that install does.
+	replacing := replacingNames(req.Modules)
 	swept := e.sweepRuns()
 	run, err := e.runDir()
 	if err != nil {
@@ -128,10 +145,12 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	if err != nil {
 		return nil, err
 	}
-	ch := &Choices{Scopes: []ScopeChoices{}, Modules: []ModuleChoice{}, Requested: []string{}, Versions: []VersionRef{}, Warnings: []string{}, sel: sel}
+	ch := &Choices{Scopes: []ScopeChoices{}, Modules: []ModuleChoice{}, Requested: []string{}, Versions: []VersionRef{}, Warnings: []string{},
+		Markets: []MarketGroup{}, sel: sel}
 	for _, n := range swept {
 		ch.Warnings = append(ch.Warnings, n.Text)
 	}
+	ch.Resolved = []string{}
 	// A version a module argument resolved to (its --ref, a fresh fetch, or the version pinned
 	// by r.Version, which is not fetched again) replaces the default head.
 	asked := map[string]store.Version{}
@@ -149,7 +168,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	// The trust state of each scope's entries: an install refuses to rewrite an uncovered one,
 	// so the pickers must never offer what it would refuse after confirmation, and say once per
 	// scope which entries lola sync would review.
-	uncovered, notices, err := e.uncoveredEntries(req.Scopes)
+	uncovered, notices, err := e.uncoveredEntries(req.Scopes, replacing)
 	if err != nil {
 		return nil, err
 	}
@@ -158,9 +177,17 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	// fetched.
 	for _, r := range req.Modules {
 		if u, ok := uncovered[r.Arg]; ok {
-			return nil, e.notTrusted(u.sc, u.rec, u.ent, false)
+			return nil, e.notTrusted(u.sc, u.rec, u.ent, false, u.unresolved)
 		}
 	}
+	// Marketplace addresses resolve to their catalog entries before anything is fetched (Plan 6c
+	// §6.3).
+	req.Modules = slices.Clone(req.Modules)
+	unlock, err := e.resolveMarkets(req.Modules, true, req.Display)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	for _, r := range req.Modules {
 		sc := Scope{Kind: target.User}
 		if len(req.Scopes) > 0 {
@@ -175,7 +202,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		// Without --ref a name takes the ref each scope's entry records; scopes must agree.
 		refs := []string{r.Ref}
 		if r.Ref == "" && module.ValidateName("module", r.Arg) == nil {
-			if refs, err = e.entryRefs(r.Arg, req.Scopes); err != nil {
+			if refs, err = e.entryRefs(r.Arg, req.Scopes, replacing); err != nil {
 				return nil, err
 			}
 		}
@@ -183,9 +210,12 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		for _, ref := range refs {
 			rr := r
 			rr.Ref = ref
-			_, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "", run)
+			ent, rv, _, err := e.resolve(ctx, sc, req.Cwd, rr, pinned, "", run)
 			if err != nil {
 				return nil, err
+			}
+			if r.market != nil {
+				ch.Resolved = append(ch.Resolved, resolvedLine(r.Arg, ent, rv.Commit))
 			}
 			if v.Name != "" && v.ID != rv.ID {
 				return nil, twoVersions(rv.Name)
@@ -195,7 +225,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		// A version listed earlier (a pick kept when Change scope asks again) must be the one
 		// every scope takes; InstallAll would refuse it only after confirmation.
 		if r.Version != nil && r.Ref == "" && r.Arg == pinned.Name {
-			lv, u, err := e.listedVersion(pinned, req.Scopes)
+			lv, u, err := e.listedVersion(pinned, req.Scopes, replacing)
 			if err != nil {
 				return nil, err
 			}
@@ -211,10 +241,10 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		// Adding targets to an installed module keeps it, and its pin (planInstallModule).
 		keep := false
 		if u, ok := uncovered[v.Name]; ok && len(r.Targets) > 0 {
-			return nil, e.notTrusted(u.sc, u.rec, u.ent, false)
+			return nil, e.notTrusted(u.sc, u.rec, u.ent, false, u.unresolved)
 		}
 		if len(r.Targets) > 0 {
-			man, led, _, err := e.load(sc, true)
+			man, led, _, _, err := e.loadReplacing(sc, true, replacing)
 			if err != nil {
 				return nil, err
 			}
@@ -225,8 +255,9 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 			keep = prev != nil && installed != nil
 		}
 		// InstallAll, given the version listed (which carries no commit), would refuse a git
-		// version it cannot pin only after confirmation.
-		if keep {
+		// version it cannot pin only after confirmation. A marketplace entry's version carries
+		// the commit it was fetched at (VersionRef.commit).
+		if keep || r.market != nil {
 			refs = nil
 		}
 		for _, ref := range refs {
@@ -245,7 +276,11 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		}
 		asked[v.Name] = v
 		ch.Requested = append(ch.Requested, v.Name)
-		ch.Versions = append(ch.Versions, VersionRef{Name: v.Name, ID: v.ID})
+		listed := VersionRef{Name: v.Name, ID: v.ID}
+		if r.market != nil {
+			listed.commit = v.Commit
+		}
+		ch.Versions = append(ch.Versions, listed)
 	}
 	type state struct {
 		sc  ScopeChoice
@@ -255,7 +290,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	}
 	var states []state
 	for _, s := range req.Scopes {
-		man, led, _, err := e.load(s.Scope, true)
+		man, led, _, _, err := e.loadReplacing(s.Scope, true, replacing)
 		if err != nil {
 			return nil, err
 		}
@@ -285,6 +320,13 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	for _, w := range warnings {
 		ch.Warnings = append(ch.Warnings, untrusted.Text(w, untrusted.MaxName))
 	}
+	// Your marketplaces only add to what the pickers offer; no command fixes a file that does not
+	// parse, so the warning names none. An address argument was refused already (resolveMarkets).
+	groups, unread, err := e.MarketGroups(req.Display)
+	if err != nil {
+		groups, unread = []MarketGroup{}, []string{"your marketplaces cannot be read, so the pickers offer none: " + shown(untrusted.CleanErr(err).Error())}
+	}
+	ch.Markets, ch.Warnings = groups, append(ch.Warnings, unread...)
 	// A module argument whose default head does not load is not in cached; the version it
 	// resolved to is still offered.
 	for name, v := range asked {
@@ -310,7 +352,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 				continue
 			}
 			var u *unlisted
-			if v, u, err = e.listedVersion(v, req.Scopes); err != nil {
+			if v, u, err = e.listedVersion(v, req.Scopes, replacing); err != nil {
 				return nil, err
 			}
 			if u != nil {
@@ -336,15 +378,16 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 
 // uncoveredEntry is an entry of a scope's manifest that rec, its trust record, does not cover.
 type uncoveredEntry struct {
-	sc  Scope
-	rec *trust.Record
-	ent *manifest.Entry
+	sc         Scope
+	rec        *trust.Record
+	ent        *manifest.Entry
+	unresolved bool // the scope's manifest holds a marketplace address (holdsAddress)
 }
 
 // uncoveredEntries maps each module name to the first project scope of scopes whose entry for
 // it the trust record does not cover, and returns the pickers' notices (Plan 6a §10.1): one per
 // such scope, naming its uncovered entries and the sync that reviews them.
-func (e *Engine) uncoveredEntries(scopes []ScopeChoice) (map[string]uncoveredEntry, []string, error) {
+func (e *Engine) uncoveredEntries(scopes []ScopeChoice, replacing []string) (map[string]uncoveredEntry, []string, error) {
 	out := map[string]uncoveredEntry{}
 	var notices []string
 	for _, s := range scopes {
@@ -355,19 +398,21 @@ func (e *Engine) uncoveredEntries(scopes []ScopeChoice) (map[string]uncoveredEnt
 		if rec == nil {
 			continue
 		}
-		man, err := e.Manifest(s.Scope)
+		man, _, err := e.manifestReplacing(s.Scope, replacing)
 		if err != nil {
 			return nil, nil, err
 		}
 		var names []string
+		unresolved := holdsAddress(man)
 		for i := range man.Modules {
 			ent := &man.Modules[i]
-			if rec.View.Covers(*ent) {
+			// An unresolved entry is the install's own to replace, or its warning (Plan 6c §6.3).
+			if _, _, unresolved := manifest.Address(ent.Source); unresolved || rec.View.Covers(*ent) {
 				continue
 			}
 			names = append(names, ent.Name)
 			if _, seen := out[ent.Name]; !seen {
-				out[ent.Name] = uncoveredEntry{sc: s.Scope, rec: rec, ent: ent}
+				out[ent.Name] = uncoveredEntry{sc: s.Scope, rec: rec, ent: ent, unresolved: unresolved}
 			}
 		}
 		if len(names) == 0 {
@@ -390,17 +435,21 @@ func (e *Engine) uncoveredEntries(scopes []ScopeChoice) (map[string]uncoveredEnt
 		case len(names) == 1:
 			what = "1 module in " + base + " changed since you last trusted it"
 		}
-		notices = append(notices, what+": "+nameList(names)+" → "+e.SyncCommand(s.Scope))
+		what += ": " + nameList(names)
+		if !unresolved {
+			what += " → " + e.SyncCommand(s.Scope)
+		}
+		notices = append(notices, what)
 	}
 	return out, notices, nil
 }
 
 // entryRefs is the distinct refs the scopes' entries for name record, "" for a scope with no
 // entry or no ref; it is [""] when there are no scopes.
-func (e *Engine) entryRefs(name string, scopes []ScopeChoice) ([]string, error) {
+func (e *Engine) entryRefs(name string, scopes []ScopeChoice, replacing []string) ([]string, error) {
 	refs := []string{}
 	for _, s := range scopes {
-		man, err := e.Manifest(s.Scope)
+		man, _, err := e.manifestReplacing(s.Scope, replacing)
 		if err != nil {
 			return nil, err
 		}
@@ -422,11 +471,11 @@ type unlisted struct{ why, fix string }
 // else def for a scope with no entry. When no version can be listed (a ref whose head is not
 // cached, or scopes that resolve to different versions) it says why instead, so nothing the
 // install would refuse after confirmation is offered.
-func (e *Engine) listedVersion(def store.Version, scopes []ScopeChoice) (store.Version, *unlisted, error) {
+func (e *Engine) listedVersion(def store.Version, scopes []ScopeChoice, replacing []string) (store.Version, *unlisted, error) {
 	name := untrusted.Text(def.Name, untrusted.MaxName)
 	v, listed := def, false
 	for _, s := range scopes {
-		man, err := e.Manifest(s.Scope)
+		man, _, err := e.manifestReplacing(s.Scope, replacing)
 		if err != nil {
 			return store.Version{}, nil, err
 		}

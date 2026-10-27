@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,8 @@ type scripted struct {
 	confirm    []bool
 	trust      []func(cli.TrustStep) (engine.TrustAnswer, error)
 	profiles   []func(cli.ProfileStep) ([]string, error)
+	names      []string
+	entries    []string
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -42,6 +45,8 @@ type scripted struct {
 	reviewSteps    []cli.ReviewStep
 	trustSteps     []cli.TrustStep
 	profileSteps   []cli.ProfileStep
+	nameSteps      []cli.MarketNameStep
+	entrySteps     []cli.MarketEntryStep
 }
 
 func pop[T any](q *[]T, step string) T {
@@ -89,6 +94,14 @@ func (s *scripted) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 func (s *scripted) Profiles(st cli.ProfileStep) ([]string, error) {
 	s.calls, s.profileSteps = append(s.calls, "profiles"), append(s.profileSteps, st)
 	return pop(&s.profiles, "profiles")(st)
+}
+func (s *scripted) MarketName(st cli.MarketNameStep) (string, error) {
+	s.calls, s.nameSteps = append(s.calls, "market-name"), append(s.nameSteps, st)
+	return pop(&s.names, "market-name"), nil
+}
+func (s *scripted) MarketEntry(st cli.MarketEntryStep) (string, error) {
+	s.calls, s.entrySteps = append(s.calls, "market-entry"), append(s.entrySteps, st)
+	return pop(&s.entries, "market-entry"), nil
 }
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)
@@ -231,6 +244,27 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.moduleSteps[0].Options).To(ConsistOf(HaveField("Name", "deploy")), "the picker never offers it")
 	})
 
+	It("install without -t coaches an @ source in project.yml as every reader does", func() {
+		acme := filepath.Join(tmp, "acme")
+		writeTree(acme, map[string]string{".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"},
+  "plugins": [{"name": "formatter", "source": "./formatter", "description": "Formats code"}]}`, "formatter/commands/fmt.md": "Fmt\n"})
+		Expect(lola("market", "--add", acme).code).To(Equal(0))
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\nmodules:\n  - name: formatter\n    source: '@acme/formatter'\n" +
+			"  - {name: fmt2, source: '@acme/formatter'}\n"})
+		for _, dry := range [][]string{nil, {"-n"}} {
+			r := lola(slices.Concat([]string{"install", review, "--project"}, dry, []string{"--json"})...)
+			Expect(r.code).To(Equal(1))
+			var refusal struct {
+				Error string   `json:"error"`
+				Hints []string `json:"hints"`
+			}
+			Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
+			Expect(refusal.Error).To(ContainSubstring("formatter's source is @acme/formatter\n"))
+			Expect(refusal.Hints).To(Equal([]string{strings.Join(slices.Concat([]string{"lola install --project @acme/formatter"}, dry, []string{"--json"}), " "),
+				"lola market acme --json"}), "%v", dry)
+		}
+	})
+
 	It("install refuses untrusted top-level targets it would use: the picker asks for the assistants, never preselecting them", func() {
 		Expect(lola("install", "review-kit", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
 		mpath := filepath.Join(proj, ".lola", "project.yml")
@@ -348,6 +382,11 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"components:review-kit"}), "-y applies without the review menu")
 		Expect(r.err).To(ContainSubstring("Summary:"))
+
+		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project", "--force")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"components:review-kit"}), "--force confirms the plan as -y does (user decision, 2026-10-22)")
 
 		p = &scripted{}
 		r = lolaP(p, "install", "review-kit", "--scope", "project", "--skip", "rule/style")
@@ -720,8 +759,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 			p := &scripted{}
 			r := lolaP(p, "install", flag, "v1")
 			Expect(r.code).NotTo(Equal(0))
-			Expect(r.err).To(ContainSubstring("--ref and --path apply to a source argument, and none was given"))
-			Expect(r.err).To(ContainSubstring("lola install <source> " + flag + " …"))
+			Expect(r.err).To(Equal("error: "+flag+" applies to a source argument, and none was given: name it, as in lola install <source> "+
+				flag+" <value>\n"), "no command would do it, so no hint")
 			Expect(p.calls).To(BeEmpty())
 		}
 	})

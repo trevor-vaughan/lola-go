@@ -1,6 +1,7 @@
 package manifest_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -132,6 +134,53 @@ modules:
 			Expect(out).To(ContainSubstring("version: 1"))
 		})
 
+		It("reads and writes an entry's market as provenance, after its other keys, and refuses one it could not name back", func() {
+			write("version: 1\nmodules:\n  - name: formatter\n    source: https://example.com/monorepo.git\n    path: tools/formatter\n" +
+				"    market: {name: acme, source: https://example.com/plugins.git}\n")
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.Modules[0].Market).To(Equal(&manifest.MarketRef{Name: "acme", Source: "https://example.com/plugins.git"}))
+			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "https://example.com/kit.git", Commit: sha1, Digest: digest,
+				Targets: []string{"claude-code"}, Market: &manifest.MarketRef{Name: "acme", Source: "/home/me/acme"}}}})
+			Expect(out).To(HaveSuffix("  - name: kit\n    source: https://example.com/kit.git\n    commit: " + sha1 + "\n    digest: " + digest +
+				"\n    targets: [claude-code]\n    market:\n      name: acme\n      source: /home/me/acme\n"))
+			Expect(edit(manifest.Change{Set: []manifest.Entry{{Name: "formatter", Source: "https://example.com/monorepo.git", Path: "tools/formatter"}}})).
+				NotTo(ContainSubstring("market"), "an entry set without market loses it")
+			for market, want := range map[string]string{
+				"{name: Acme, source: https://example.com/p.git}":          `module formatter: market: marketplace name "Acme" is invalid`,
+				"{name: acme, source: \"https://e.com/p\\u0007\"}":         "module formatter: market: source holds control or invisible characters",
+				"{name: \"a\\u200bb\", source: https://example.com/p.git}": "module formatter: market: name holds control or invisible characters",
+				"{name: acme}": "module formatter: market: source is empty",
+				"{name: acme, source: https://e.com/p.git, ref: main}": "field ref not found",
+			} {
+				write("version: 1\nmodules:\n  - name: formatter\n    source: https://example.com/monorepo.git\n    market: " + market + "\n")
+				_, err := manifest.Load(path)
+				Expect(err).To(MatchError(ContainSubstring(want)), market)
+			}
+		})
+
+		It("reads and writes the components an entry selects, and refuses a selection lola could not apply", func() {
+			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "sheets", Source: "https://example.com/skills.git", Commit: sha1, Digest: digest,
+				Components: &source.Components{Skills: []string{"skills/xlsx", "skills/docx"}, Agents: []string{"agents/a.md"}}}}})
+			Expect(out).To(HaveSuffix("  - name: sheets\n    source: https://example.com/skills.git\n    components:\n      skills: [skills/xlsx, skills/docx]\n" +
+				"      agents: [agents/a.md]\n    commit: " + sha1 + "\n    digest: " + digest + "\n"))
+			write(out)
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.Find("sheets").Components).To(Equal(&source.Components{Skills: []string{"skills/xlsx", "skills/docx"}, Agents: []string{"agents/a.md"}}))
+			for comps, want := range map[string]string{
+				"{skills: [../x]}":          `components: skills path "../x" is not a clean relative path`,
+				"{skills: []}":              "components: selects no skill, command or agent",
+				"{skills: [a], tools: [b]}": "field tools not found",
+				"{commands: [a/x, b/x]}":    "components: commands lists two paths named x",
+				"{skills: [" + strings.Repeat("s/a,", 1024) + "s/a]}": "components: selects 1025 paths; lola takes at most 1024",
+			} {
+				write("version: 1\nmodules:\n  - name: sheets\n    source: https://example.com/skills.git\n    components: " + comps + "\n")
+				_, err := manifest.Load(path)
+				Expect(err).To(MatchError(ContainSubstring(want)), comps)
+			}
+		})
+
 		It("never edits a file that does not load", func() {
 			write("version: 1\nmodules:\n  - name: kit\n    source: https://example.com/kit.git\n    ref: --upload-pack=x\n")
 			_, _, err := manifest.Edit(path, manifest.Change{Set: []manifest.Entry{{Name: "other", Source: "../other"}}})
@@ -160,6 +209,60 @@ modules:
 			dst, _, err := manifest.Edit(path, manifest.Change{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dst).To(Equal(mustEval(real)))
+		})
+	})
+
+	Describe("an entry whose source is a marketplace address", func() {
+		write := func(content string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
+		}
+		const two = "version: 1\nmodules:\n  - name: formatter\n    source: \"@acme/formatter\"\n" +
+			"  - name: ok\n    source: https://example.com/ok.git\n  - {name: lint, source: '@other/lint', ref: v1}\n"
+
+		It("is reported as unresolved, naming the file, the module and its source's line, with the file as read", func() {
+			write(two)
+			m, err := manifest.Load(path)
+			Expect(m).To(BeNil())
+			ue, ok := errors.AsType[*manifest.UnresolvedError](err)
+			Expect(ok).To(BeTrue(), "%v", err)
+			Expect(ue.Path).To(Equal(path))
+			Expect(ue.Entries).To(Equal([]manifest.Unresolved{{Name: "formatter", Market: "acme", Module: "formatter", Line: 4},
+				{Name: "lint", Market: "other", Module: "lint", Line: 7}}))
+			Expect(ue.Manifest.Modules).To(HaveLen(3), "every entry as written")
+			Expect(ue.Manifest.Find("lint")).To(And(HaveField("Source", "@other/lint"), HaveField("Ref", "v1")))
+			Expect(err).To(MatchError(path + " records 2 marketplace addresses as sources; a file must record each module's real source\n" +
+				"  " + path + ":4: formatter's source is @acme/formatter; edit the entry to name the module's source, ref and path\n" +
+				"  " + path + ":7: lint's source is @other/lint; edit the entry to name the module's source, ref and path"))
+			Expect(errs.Hints(err)).To(BeEmpty(), "the engine coaches it from the reader's marketplaces")
+
+			ue.Entries[0].Coached = true
+			Expect(err.Error()).To(ContainSubstring(":4: formatter's source is @acme/formatter\n"), "a coached entry has its hint instead")
+
+			write("version: 1\nmodules:\n  - name: formatter\n    source: \"@acme/formatter\"\n")
+			_, err = manifest.Load(path)
+			Expect(err).To(MatchError(path + ":4: formatter's source is @acme/formatter, a marketplace address; a file must record the module's " +
+				"real source; edit the entry to name the module's source, ref and path"))
+		})
+
+		It("is reported only once the file passes every other check", func() {
+			write(two + "  - name: ok\n    source: https://example.com/ok.git\n")
+			_, err := manifest.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("module ok is listed twice")))
+			_, unresolved := errors.AsType[*manifest.UnresolvedError](err)
+			Expect(unresolved).To(BeFalse())
+
+			write("version: 1\nmodules:\n  - {name: x, source: '@Acme/x'}\n  - {name: y, source: '@acme'}\n")
+			_, err = manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred(), "not the form @<market>/<module>: a directory of that name, as before")
+		})
+
+		It("is kept as written when Edit sets another entry", func() {
+			write(two)
+			_, b, err := manifest.Edit(path, manifest.Change{Set: []manifest.Entry{{Name: "formatter", Source: "https://example.com/fmt.git"}}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).To(Equal("version: 1\nmodules:\n  - name: formatter\n    source: \"https://example.com/fmt.git\"\n" +
+				"  - name: ok\n    source: https://example.com/ok.git\n  - {name: lint, source: '@other/lint', ref: v1}\n"))
 		})
 	})
 

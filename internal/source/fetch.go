@@ -20,6 +20,26 @@ func fetch(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fe
 	if err := Validate(spec); err != nil {
 		return Fetched{}, err
 	}
+	if spec.Components == nil {
+		return fetchWhole(ctx, spec, stagingParent, lim)
+	}
+	if err := spec.Components.Check(); err != nil {
+		return Fetched{}, fmt.Errorf("components: %w", err)
+	}
+	// The selection's paths are from the module's directory itself, never from a module/ in it.
+	whole := spec
+	if whole.Path == "" {
+		whole.Path = "."
+	}
+	f, err := fetchWhole(ctx, whole, stagingParent, lim)
+	if err != nil {
+		return Fetched{}, err
+	}
+	return selectComponents(f, spec, stagingParent)
+}
+
+// fetchWhole stages spec's whole module directory.
+func fetchWhole(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fetched, error) {
 	if spec.Ref != "" && (spec.Kind == KindFolder || spec.Kind == KindArchive) {
 		return Fetched{}, errs.WithHints(fmt.Errorf("--ref applies to git sources only, not to %s source %s", spec.Kind, untrusted.Text(spec.Location, untrusted.MaxName)),
 			"drop --ref: a "+string(spec.Kind)+" has no branches, tags or commits")

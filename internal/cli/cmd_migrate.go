@@ -24,13 +24,16 @@ func (a *app) migrateCmd() *cobra.Command {
 			"A file the Python lola recorded is treated as its own: it is copied into the trash\n" +
 			"($XDG_STATE_HOME/lola/trash/<time>/, with manifest.txt) before lola installs over it,\n" +
 			"or moved there when lola does not write it. Restoring is a move back. Instruction\n" +
-			"blocks, MCP entries lola does not write, marketplaces, .lola-req and installs for\n" +
-			"other assistants are listed, never changed. The Python lola's home goes to the trash\n" +
-			"last, when nothing is left in it. Symbolic links and files git tracks are kept.\n" +
+			"blocks, MCP entries lola does not write, .lola-req and installs for other assistants\n" +
+			"are listed, never changed. Each enabled marketplace of the Python lola is registered\n" +
+			"with lola market (its catalog fetched); one lola cannot register is listed with the\n" +
+			"lola market <name> --add command that would, when one can. The Python lola's home goes\n" +
+			"to the trash last, when\n" +
+			"nothing is left in it. Symbolic links and files git tracks are kept.\n" +
 			"\n" +
 			"lola migrate shows the plan and asks (default No); off a terminal it needs -y.\n" +
-			"--force also overwrites other files in the way and moves files git tracks (it\n" +
-			"never skips the question). A second run has nothing to do.",
+			"--force also overwrites other files in the way and moves files git tracks, and answers\n" +
+			"the question as -y does (never hook consent). A second run has nothing to do.",
 		Example: "  lola migrate --dry-run\n  lola migrate\n  lola migrate -y --keep-python",
 		GroupID: groupAdditional,
 		Args:    cobra.NoArgs,
@@ -47,12 +50,12 @@ func (a *app) migrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p, err := migrate.NewPlan(cmd.Context(), eng, st)
+			p, err := migrate.NewPlan(cmd.Context(), eng, st, outputFlags(cmd))
 			if err != nil {
 				return err
 			}
 			opts := migrate.Options{KeepPython: keep}
-			opts.Force, opts.DryRun = force, true
+			opts.Force, opts.DryRun, opts.ForceRun, opts.Display = force, true, forceRun(cmd, nil), outputFlags(cmd)
 			preview, err := migrate.Migrate(cmd.Context(), eng, p, opts)
 			if err != nil {
 				return err
@@ -60,9 +63,10 @@ func (a *app) migrateCmd() *cobra.Command {
 			if dry || preview.Nothing {
 				return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
 			}
-			if !yes {
+			// --force answers the question, as -y does; never the hooks' consent (ruling R-6c3-4).
+			if !yes && !force {
 				printMigration(cmd.ErrOrStderr(), style{}, preview)
-				if err := a.confirm(cmd, false, "Migrate?"); err != nil {
+				if err := a.confirm(cmd, nil, false, "Migrate?"); err != nil {
 					return err
 				}
 			}
@@ -81,7 +85,7 @@ func (a *app) migrateCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	f.BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
-	f.BoolVar(&force, "force", false, "also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks (never skips a prompt)")
+	f.BoolVar(&force, "force", false, "also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking (never answers hook consent)")
 	f.BoolVar(&allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
 	f.BoolVar(&allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
 	f.BoolVar(&keep, "keep-python", false, "install and replace with backup, but move nothing else to the trash")
@@ -174,6 +178,7 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		}
 	}
 	printReported(w, "", r.NotMigrated, r.Unmappable)
+	printMigratedMarkets(w, s, r.Markets)
 	for _, warn := range r.Warnings {
 		fmt.Fprintln(w, s.warn(warn))
 	}
@@ -188,6 +193,34 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 	}
 	if r.Trash != "" {
 		fmt.Fprintln(w, "trash: "+r.Trash)
+	}
+}
+
+// printMigratedMarkets lists what becomes of the Python lola's marketplaces (Plan 6c §6.9), each one
+// not registered with its reason and hints.
+func printMigratedMarkets(w io.Writer, s style, ms []migrate.Market) {
+	if len(ms) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "marketplaces:")
+	for _, m := range ms {
+		from := m.Source
+		if m.Path != "" {
+			from += " path " + m.Path
+		}
+		switch m.Status {
+		case migrate.MarketRegister:
+			fmt.Fprintln(w, "  register "+m.Market+" from "+from)
+		case migrate.MarketRegistered:
+			fmt.Fprintln(w, "  "+s.ok("registered "+m.Market+" from "+from))
+		case migrate.MarketAlready:
+			fmt.Fprintln(w, "  already registered: "+m.Market+" from "+from)
+		case migrate.MarketSkipped:
+			fmt.Fprintln(w, "  not registered: "+m.Name+" ("+m.URL+"): "+m.Reason)
+		case migrate.MarketFailed:
+			fmt.Fprintln(w, "  "+s.bad("failed "+m.Name+" ("+m.URL+"): "+m.Reason))
+		}
+		printHints(w, "      ", m.Hints)
 	}
 }
 
@@ -228,7 +261,8 @@ func printHints(w io.Writer, indent string, hints []string) {
 }
 
 // printMigrationPlain renders a migration as tab-separated lines: one per install, step,
-// replacement, move, kept path, reported item and record, destination status, then the home,
+// replacement, move, kept path, reported item and record, destination status, marketplace
+// (its status, Python name, lola name, source, path and reason), then the home,
 // the trash and, when there is nothing to do, "nothing".
 func printMigrationPlain(w io.Writer, r *migrate.Result) {
 	row := func(cols ...string) { fmt.Fprintln(w, strings.Join(cols, "\t")) }
@@ -266,6 +300,9 @@ func printMigrationPlain(w io.Writer, r *migrate.Result) {
 	}
 	for _, u := range r.Unmappable {
 		row("unmappable", u.ProjectPath, u.Module, u.Assistant, u.Reason)
+	}
+	for _, m := range r.Markets {
+		row("market", m.Status, m.Name, m.Market, m.Source, m.Path, m.Reason)
 	}
 	row("home", r.Home.Action, r.Home.Path, r.Home.Reason, r.Home.Trash)
 	if r.Trash != "" {

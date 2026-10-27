@@ -29,31 +29,38 @@ import (
 )
 
 // load refuses symlinked project state, takes the scope lock (unless dry) and reads the
-// manifest and ledger.
+// manifest and ledger. A manifest with an entry whose source is a marketplace address is refused
+// (*manifest.UnresolvedError, Plan 6c §6.7), before any trust check or network contact.
 func (e *Engine) load(sc Scope, dry bool) (*manifest.Manifest, *ledger.Ledger, func(), error) {
+	man, led, unlock, _, err := e.loadReplacing(sc, dry, nil)
+	return man, led, unlock, err
+}
+
+// loadReplacing is load, reading the manifest as manifestReplacing does, with the unresolved
+// entries the install leaves, which it warns of.
+func (e *Engine) loadReplacing(sc Scope, dry bool, names []string) (*manifest.Manifest, *ledger.Ledger, func(), []manifest.Unresolved, error) {
 	if err := e.refuseSymlinkedState(sc); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	unlock := func() {}
 	if !dry {
 		u, err := e.lock(sc)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 		unlock = u
 	}
-	f := e.files(sc)
-	man, err := manifest.Load(f.manifest)
+	man, others, err := e.manifestReplacing(sc, names)
 	if err != nil {
 		unlock()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	led, err := ledger.Load(f.ledger)
+	led, err := ledger.Load(e.files(sc).ledger)
 	if err != nil {
 		unlock()
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	return man, led, unlock, nil
+	return man, led, unlock, others, nil
 }
 func (e *Engine) noTargets() error {
 	var ids []string
@@ -65,9 +72,12 @@ func (e *Engine) noTargets() error {
 
 // withRetry tells the user that fetched modules stayed in the cache, and how to install them at
 // each scope of spec from where they are (Plan 6a §11.3), one command per scope. A refusal for
-// want of trust keeps only its own hints, the way forward: retrying would refuse again.
+// want of trust, or for conflicts, keeps only its own hints, the way forward: retrying would
+// refuse again.
 func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error {
-	if _, targets := errors.AsType[*untrustedTargetsError](err); len(fetched) == 0 || targets || errors.Is(err, ErrNotTrusted) {
+	_, targets := errors.AsType[*untrustedTargetsError](err)
+	_, conflicts := errors.AsType[*plan.ConflictError](err)
+	if len(fetched) == 0 || targets || conflicts || errors.Is(err, ErrNotTrusted) {
 		return err
 	}
 	cmds := make([]string, len(spec.Scopes))
@@ -107,6 +117,9 @@ type InstallSpec struct {
 	Modules     []InstallRequest
 	GlobalEdits []SelectionEdit
 	Options     Options
+	// UserRun is the user's run at user scope, the hint of a refusal of a project at the home
+	// directory; "" gives it no hint.
+	UserRun string
 	// BeforeWrite, when set, runs once every scope's plan is computed and every refusal and
 	// prompt has passed, before anything is written: its error stops the install with nothing
 	// written. lola migrate backs up the paths the plan replaces there. A dry run never calls it.
@@ -138,6 +151,7 @@ type scopePlan struct {
 	loaded           *manifest.Manifest
 	trust            *trust.Record
 	untrustedTargets error
+	unresolved       bool // man holds a marketplace address (holdsAddress)
 	led              *ledger.Ledger
 	layers           []Layer
 	targets          []string
@@ -165,6 +179,11 @@ type resolvedRequest struct {
 // selections.yaml written, which the next render converges on. A dry run writes neither.
 func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallResult, err error) {
 	opts := spec.Options
+	var scopes []Scope
+	for _, si := range spec.Scopes {
+		scopes = append(scopes, si.Scope)
+	}
+	defer func() { err = e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display) }()
 	swept := e.sweepRuns()
 	run, err := e.runDir()
 	if err != nil {
@@ -193,13 +212,11 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	// and uninstalling one would delete the other's. render and uninstall still accept one an
 	// older lola installed.
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); seen[home.Key()] {
-		user := []string{"lola", "install"}
-		for _, r := range spec.Modules {
-			user = append(user, untrusted.Text(r.Arg, untrusted.MaxName))
+		err := fmt.Errorf("project scope at %s is your home directory, where the user scope installs", untrusted.Text(e.Paths.Home, untrusted.MaxName))
+		if spec.UserRun == "" {
+			return nil, err
 		}
-		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
-			untrusted.Text(e.Paths.Home, untrusted.MaxName)),
-			"install at user scope: "+errs.ShellJoin(append(user, "--user")))
+		return nil, errs.WithHints(err, spec.UserRun)
 	}
 	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
 	unlockProfiles, err := e.readProfiles(opts.DryRun)
@@ -207,6 +224,14 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		return nil, err
 	}
 	unlocks = append(unlocks, unlockProfiles)
+	// Marketplace addresses resolve under the markets lock, after the profiles lock and before
+	// every other (Plan 6c §5), so nothing is fetched until each one names an entry.
+	spec.Modules = slices.Clone(spec.Modules)
+	unlockMarkets, err := e.resolveMarkets(spec.Modules, opts.DryRun, opts.Display)
+	if err != nil {
+		return nil, err
+	}
+	unlocks = append(unlocks, unlockMarkets)
 	editing := len(spec.GlobalEdits) > 0 || slices.ContainsFunc(spec.Scopes, func(si ScopeInstall) bool { return len(si.Edits) > 0 })
 	if editing && !opts.DryRun {
 		unlock, err := config.Lock(e.Paths.SelectionsLock)
@@ -227,13 +252,17 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	have := map[int]store.Version{} // a source fetched for one scope is not fetched again for the next
 	haveRef := map[int]string{}     // ... unless the next scope's entry records another ref
 	plans := make([]*scopePlan, len(spec.Scopes))
+	replacing := replacingNames(spec.Modules)
 	for _, i := range lockOrder(spec.Scopes) {
 		si := spec.Scopes[i]
-		man, led, unlock, err := e.load(si.Scope, opts.DryRun)
+		man, led, unlock, others, err := e.loadReplacing(si.Scope, opts.DryRun, replacing)
 		if err != nil {
 			return nil, err
 		}
 		unlocks = append(unlocks, unlock)
+		if len(others) > 0 {
+			res.Notices = append(res.Notices, e.unresolvedNotices(si.Scope, others, opts.DryRun, opts.Display)...)
+		}
 		// The targets an install by source keeps (planInstallModule) and the files it removes
 		// come from the ledger, which is this checkout's own only while git does not track it.
 		if err := e.refuseTrackedLedger(ctx, si.Scope, res); err != nil {
@@ -250,9 +279,9 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 			return nil, err
 		}
 		plans[i] = &scopePlan{sc: si.Scope, man: man, loaded: man.Clone(), trust: rec, led: led, layers: layers, targets: si.Targets,
-			given: si.Targets, replace: si.Replace}
+			given: si.Targets, replace: si.Replace, unresolved: holdsAddress(man)}
 		if len(si.Targets) == 0 && rec != nil && len(man.Targets) > 0 && !slices.Equal(rec.View.Targets, man.Targets) {
-			plans[i].untrustedTargets = e.untrustedTargets(si.Scope, rec, spec.Modules)
+			plans[i].untrustedTargets = e.untrustedTargets(si.Scope, rec, spec.Modules, plans[i].unresolved)
 		}
 	}
 	// A name installs the entry as project.yml has it: refused for an entry someone else
@@ -261,7 +290,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	for k, sp := range plans {
 		for _, r := range spec.Modules {
 			if ent := sp.man.Find(r.Arg); ent != nil && !sp.covers(*ent) {
-				return nil, e.notTrusted(spec.Scopes[k].Scope, sp.trust, ent, false)
+				return nil, e.notTrusted(spec.Scopes[k].Scope, sp.trust, ent, false, sp.unresolved)
 			}
 			if sp.untrustedTargets != nil && len(r.Targets) == 0 && !e.hasOwnTargets(sp, spec.Scopes[k].Scope, spec.Cwd, r) {
 				return nil, sp.untrustedTargets
@@ -296,7 +325,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 			// A scope with no entry installs the listed version and records the ref of the head
 			// that holds it: its pin must be reachable from the ref its entry records. An entry
 			// without a ref tracks the default branch and keeps doing so.
-			if ref == "" && r.Version != nil && sp.man.Find(r.Arg) == nil {
+			if ref == "" && r.Version != nil && sp.man.Find(r.Arg) == nil && r.market == nil {
 				if r.Ref, err = e.listedRef(*r.Version); err != nil {
 					return nil, e.withRetry(spec, err, fetched)
 				}
@@ -331,11 +360,33 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 				return nil, e.withRetry(spec, err, fetched)
 			}
 			if didFetch {
-				fetched, have[i], haveRef[i] = append(fetched, v.Name), v, ref
+				again := v.Name
+				if r.market != nil {
+					again = r.Arg // its name would install it without its marketplace
+				}
+				fetched, have[i], haveRef[i] = append(fetched, again), v, ref
 			}
 			sp.resolved = append(sp.resolved, resolvedRequest{req: r, ent: ent, v: v})
+			if r.market != nil {
+				if k == 0 {
+					res.Notices = append(res.Notices, entryNotices(r.market, r.Ref)...)
+				}
+				res.Notices = append(res.Notices, e.dependencyNotices(si.Scope, r.market, opts.DryRun)...)
+			}
 		}
 		out.Scopes = append(out.Scopes, ScopeResult{Scope: si.Scope.Kind.String(), Root: root(si.Scope), ScopeSource: si.Source})
+	}
+	// Each address is shown resolved before any question about what it installs (ruling R-6c-15).
+	if opts.ShowResolved != nil && len(plans) > 0 {
+		var lines []string
+		for _, rr := range plans[0].resolved {
+			if rr.req.market != nil {
+				lines = append(lines, resolvedLine(rr.req.Arg, rr.ent, rr.v.Commit))
+			}
+		}
+		if len(lines) > 0 {
+			opts.ShowResolved(lines)
+		}
 	}
 	saves, err := e.editSelections(sel, spec, plans, res)
 	if err != nil {
@@ -358,7 +409,12 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	var preps []*prepared
 	for _, sp := range plans {
 		n := len(res.Steps)
-		pr, err := e.prepare(sp.sc, sp.led, sp.changes, sp.copies, sp.replace, opts, res)
+		named := opts
+		named.named = nil
+		for _, rr := range sp.resolved {
+			named.named = append(named.named, rr.ent.Name)
+		}
+		pr, err := e.prepare(sp.sc, sp.led, sp.changes, sp.copies, sp.replace, named, res)
 		if err != nil {
 			return nil, e.withRetry(spec, err, fetched)
 		}
@@ -421,12 +477,16 @@ func (sp *scopePlan) covers(ent manifest.Entry) bool {
 // record, does not cover (Plan 6a §10.1, §10.4, §10.8): a pull or a hand edit changed it since
 // lola wrote it, or the project has no record on this machine. lola sync shows the change and
 // asks; installing from the source instead would re-pin to what it serves and skip that review.
-// remove adds the other way out, uninstalling it.
-func (e *Engine) notTrusted(sc Scope, rec *trust.Record, ent *manifest.Entry, remove bool) error {
+// remove adds the other way out, uninstalling it. unresolved, a manifest that holds a marketplace
+// address (holdsAddress), drops both hints: that sync and that uninstall refuse the file.
+func (e *Engine) notTrusted(sc Scope, rec *trust.Record, ent *manifest.Entry, remove, unresolved bool) error {
 	why := untrustedWhy(rec, ent.Name)
-	hints := []string{"review and apply it: " + e.SyncCommand(sc, ent.Name)}
-	if remove {
-		hints = append(hints, "or remove it: "+e.Command(sc, "uninstall", ent.Name))
+	var hints []string
+	if !unresolved {
+		hints = append(hints, "review and apply it: "+e.SyncCommand(sc, ent.Name))
+		if remove {
+			hints = append(hints, "or remove it: "+e.Command(sc, "uninstall", ent.Name))
+		}
 	}
 	return errs.WithHints(&notTrustedError{untrusted.Text(ent.Name, untrusted.MaxName) + ": " + filepath.Base(e.files(sc).manifest) + " " + why},
 		hints...)
@@ -447,8 +507,10 @@ func untrustedWhy(rec *trust.Record, name string) string {
 
 // untrustedTargets refuses an install that would take its targets from sc's top-level targets
 // while rec, the project's trust record, does not cover them (Plan 6a §10.1, M2): a pull may
-// have put them there, and installing to them would trust them unseen.
-func (e *Engine) untrustedTargets(sc Scope, rec *trust.Record, reqs []InstallRequest) error {
+// have put them there, and installing to them would trust them unseen. While the manifest holds
+// an unresolved entry (Plan 6c §6.7), replaced ones included, the sync that reviews them refuses
+// the file, so only the install naming its assistants is hinted.
+func (e *Engine) untrustedTargets(sc Scope, rec *trust.Record, reqs []InstallRequest, unresolved bool) error {
 	base := filepath.Base(e.files(sc).manifest)
 	why := "changed since you last trusted them"
 	if !rec.Exists {
@@ -464,8 +526,11 @@ func (e *Engine) untrustedTargets(sc Scope, rec *trust.Record, reqs []InstallReq
 			args = append(args, "--path", r.Path)
 		}
 	}
-	return errs.WithHints(&untrustedTargetsError{base + "'s top-level targets " + why}, "review and apply them: "+e.SyncCommand(sc),
-		"or name the assistants: "+e.Command(sc, "install", args...)+" -t <id>")
+	err, named := &untrustedTargetsError{base + "'s top-level targets " + why}, e.Command(sc, "install", args...)+" -t <id>"
+	if unresolved {
+		return errs.WithHints(err, "name the assistants: "+named)
+	}
+	return errs.WithHints(err, "review and apply them: "+e.SyncCommand(sc), "or name the assistants: "+named)
 }
 
 // hasOwnTargets reports whether r installs an entry of sp's manifest that has targets of its
@@ -691,7 +756,7 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	// is what the entry records.
 	if prev != nil && !sp.covers(*prev) {
 		if len(r.Targets) > 0 {
-			return e.notTrusted(sp.sc, sp.trust, prev, false)
+			return e.notTrusted(sp.sc, sp.trust, prev, false, sp.unresolved)
 		}
 		prev = nil
 		sp.loaded.Modules = slices.DeleteFunc(sp.loaded.Modules, func(x manifest.Entry) bool { return x.Name == v.Name })
@@ -724,8 +789,9 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	if prev != nil && r.Arg == v.Name {
 		ent.Source = prev.Source
 		ent.Path = prev.Path
-		if r.Ref == "" {
-			ent.Ref = prev.Ref
+		if r.Ref == "" || r.Ref == prev.Ref {
+			// The entry stays where its marketplace listed it, so it keeps saying so (Plan 6c §6.4).
+			ent.Ref, ent.Market = prev.Ref, prev.Market
 		}
 	}
 	if sp.untrustedTargets != nil && len(r.Targets) == 0 && len(ent.Targets) == 0 {
@@ -760,10 +826,11 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	if err != nil {
 		return err
 	}
-	mr.Scope, mr.Root = sp.sc.Kind.String(), root(sp.sc)
+	mr.Scope, mr.Root, mr.Market = sp.sc.Kind.String(), root(sp.sc), shownMarket(ent.Market)
 	res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: modTargets, Intents: intents,
-		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets}})
+		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
+			Components: ent.Components.Clone()}})
 	// Hooks run only in a copy replaced from the hashed version, after the consent keyed on those
 	// bytes (Plan 6a §9.3 step 10, C1). A copy that needs no new version is replaced only to run
 	// them: Install keeps it when no hook runs, so what earlier hooks built in it stays. A target
@@ -969,7 +1036,8 @@ func (e *Engine) notInstalled(sc Scope, name string) error {
 
 // Uninstall removes modules' artifacts (on opts.Targets, or everywhere) and drops them from
 // the manifest once nothing remains.
-func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts Options) (*Result, error) {
+func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts Options) (_ *Result, err error) {
+	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, opts.Display) }()
 	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
 	unlockProfiles, err := e.readProfiles(opts.DryRun)
 	if err != nil {
@@ -1012,7 +1080,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		// rewrites the targets of an entry someone else may have changed (Plan 6a §10.4).
 		partial := slices.ContainsFunc(allTargets(entry, ment, man), func(t string) bool { return !slices.Contains(ts, t) })
 		if ment != nil && rec != nil && partial && !rec.View.Covers(*ment) {
-			return nil, e.notTrusted(sc, rec, ment, true)
+			return nil, e.notTrusted(sc, rec, ment, true, false)
 		}
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts})
 		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}, Skipped: []string{}})
@@ -1065,6 +1133,7 @@ func dirExists(p string) bool {
 // trust record, or a folder whose content changed is left as installed, with a warn finding
 // that names the remedy (Plan 6a §10.3, §10.7).
 func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result, err error) {
+	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, opts.Display) }()
 	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
 	unlockProfiles, err := e.readProfiles(opts.DryRun)
 	if err != nil {
@@ -1156,7 +1225,8 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 		}
 		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
-			Entry: &ledger.Entry{From: from, Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Commit, Digest: v.Meta.Digest, Targets: mr.Targets}})
+			Entry: &ledger.Entry{From: from, Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Commit, Digest: v.Meta.Digest, Targets: mr.Targets,
+				Components: entry.Components.Clone()}})
 		replace, err := needsCopy(e.files(sc).modules, name, entry, v.Meta.Digest)
 		if err != nil {
 			return nil, err
@@ -1181,8 +1251,11 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 // the one lock.json recorded. A module copy's content is not compared: hooks build in it. It
 // reads no network, never the trust record, and changes nothing (Plan 6a §10.5). It refuses a
 // project whose lock.json git tracks, since a committed one could name active profiles (Plan 6b
-// §5, §19 S5); the notices are the active profiles that no longer exist, and git missing.
-func (e *Engine) Status(ctx context.Context, sc Scope) ([]StatusRow, []Notice, error) {
+// §5, §19 S5); the notices are the active profiles that no longer exist, git missing, and how
+// many modules are not installed with the sync that installs them, keeping display, the run's
+// output flags.
+func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []StatusRow, _ []Notice, err error) {
+	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, false, display) }()
 	unlock, err := e.readProfiles(true)
 	if err != nil {
 		return nil, nil, err
@@ -1201,6 +1274,9 @@ func (e *Engine) Status(ctx context.Context, sc Scope) ([]StatusRow, []Notice, e
 		return nil, nil, err
 	}
 	notices = append(notices, checked.Notices...)
+	if what, _, _ := notInstalled(layers, led); what != "" {
+		notices = append(notices, Notice{Level: LevelInfo, Text: what + " → " + e.SyncCommand(sc, display...)})
+	}
 	sel, err := e.selections()
 	if err != nil {
 		return nil, nil, err
@@ -1235,6 +1311,9 @@ func (e *Engine) Status(ctx context.Context, sc Scope) ([]StatusRow, []Notice, e
 		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest))
 		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
 			UpdateAvailable: update, Skipped: []string{}}
+		if ment != nil {
+			base.Market = shownMarket(ment.Market)
+		}
 		var v store.Version
 		err := fs.ErrNotExist
 		if id := versionID(entry.Digest); id != "" {
@@ -1329,7 +1408,7 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted) []StatusRow 
 	var rows []StatusRow
 	for _, t := range ts {
 		rows = append(rows, StatusRow{Name: ment.Name, From: w.From, Target: t, Status: status, Rules: ment.RulesOn(), Source: ment.Source, Ref: ment.Ref,
-			Pin: ment.Digest, UpdateAvailable: update, Skipped: []string{}})
+			Pin: ment.Digest, UpdateAvailable: update, Skipped: []string{}, Market: shownMarket(ment.Market)})
 	}
 	return rows
 }
@@ -1358,6 +1437,17 @@ func (e *Engine) InstallCoaching(ctx context.Context, sc Scope) (notice, hint st
 	if err != nil {
 		return "", "", err
 	}
+	what, base, lists := notInstalled(layers, led)
+	if what == "" {
+		return "", "", nil
+	}
+	return what + " → " + e.SyncCommand(sc), "install what " + base + " " + lists + ": " + e.SyncCommand(sc), nil
+}
+
+// notInstalled says how many modules layers want that led does not record ("1 module in
+// project.yml is not installed"; "" for none), with the layers that list them, joined, and the
+// verb they take ("lists" or "list").
+func notInstalled(layers []Layer, led *ledger.Ledger) (what, base, lists string) {
 	want, _ := desired(layers)
 	n, from := 0, map[string]bool{}
 	for _, w := range want {
@@ -1366,7 +1456,7 @@ func (e *Engine) InstallCoaching(ctx context.Context, sc Scope) (notice, hint st
 		}
 	}
 	if n == 0 {
-		return "", "", nil
+		return "", "", ""
 	}
 	var files []string
 	for _, l := range layers {
@@ -1374,15 +1464,15 @@ func (e *Engine) InstallCoaching(ctx context.Context, sc Scope) (notice, hint st
 			files = append(files, l.Name)
 		}
 	}
-	base, lists := andJoin(files), "lists"
+	base, lists = andJoin(files), "lists"
 	if len(files) > 1 {
 		lists = "list"
 	}
-	what := fmt.Sprintf("%d modules in %s are not installed", n, base)
+	what = fmt.Sprintf("%d modules in %s are not installed", n, base)
 	if n == 1 {
 		what = "1 module in " + base + " is not installed"
 	}
-	return what + " → " + e.SyncCommand(sc), "install what " + base + " " + lists + ": " + e.SyncCommand(sc), nil
+	return what, base, lists
 }
 
 // versionID is the cache version id of a digest: its first 12 hex digits ("" when it has none).

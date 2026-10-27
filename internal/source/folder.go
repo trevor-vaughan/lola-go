@@ -28,6 +28,10 @@ type Fetched struct {
 	Name        string // fallback module name: the base name of the module root's folder
 	Commit      string
 	Executables []string
+	// Root is where Dir's tree was in the source, a slash path from its top ("" for the top
+	// itself): the module root lola found (an archive's wrapping directory, a module/) or the
+	// --path. A later fetch with that --path stages the same tree.
+	Root string
 }
 
 // fetchFolder copies the module root of a folder source into a new directory under
@@ -48,11 +52,15 @@ func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched,
 			"install from a directory that does not contain lola's cache")
 	}
 
+	rel, err := filepath.Rel(spec.Location, root)
+	if err != nil {
+		return Fetched{}, err
+	}
 	dst, execs, err := copyTree(ctx, root, stagingParent, listDetect)
 	if err != nil {
 		return Fetched{}, err
 	}
-	return Fetched{Dir: dst, Name: name, Executables: execs}, nil
+	return Fetched{Dir: dst, Name: name, Executables: execs, Root: fetchedRoot(rel)}, nil
 }
 
 // listing says how copyTree enumerates a tree's files (design §3).

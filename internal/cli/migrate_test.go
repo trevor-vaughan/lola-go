@@ -3,7 +3,9 @@ package cli_test
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -51,7 +53,7 @@ var _ = Describe("lola migrate", func() {
 		r := lola("migrate")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("lola migrate needs confirmation, and there is no terminal to ask on"))
-		Expect(r.err).To(ContainSubstring("hint: pass -y to confirm"))
+		Expect(r.err).To(ContainSubstring("hint: lola migrate -y"))
 		Expect(r.err).To(ContainSubstring("install review (claude-code)"))
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("python ship\n"))
 		Expect(trash()).NotTo(BeADirectory())
@@ -71,6 +73,23 @@ var _ = Describe("lola migrate", func() {
 		r = lola("migrate", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("nothing to migrate"))
+	})
+
+	It("--force answers the Migrate? question off a terminal, and never the hooks' consent", func() {
+		mark := filepath.Join(tmp, "hook-ran")
+		writeTree(src, map[string]string{"lola.yml": "name: review\nhooks: {pre-install: pre.sh}\n", "pre.sh": "#!/bin/sh\ntouch '" + mark + "'\n"})
+		Expect(os.Chmod(filepath.Join(src, "pre.sh"), 0o755)).To(Succeed())
+		r := lola("migrate", "--force")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("review has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(r.err).NotTo(ContainSubstring("needs confirmation"), "--force answered Migrate? (ruling R-6c3-4)")
+		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("python ship\n"), "nothing was written")
+		Expect(mark).NotTo(BeAnExistingFile())
+
+		r = lola("migrate", "--force", "--allow-hooks")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(mark).To(BeAnExistingFile())
+		Expect(r.out).To(ContainSubstring("✓ migrated project " + proj))
 	})
 
 	It("lists what it keeps and why when nothing is left to migrate", func() {
@@ -113,6 +132,89 @@ var _ = Describe("lola migrate", func() {
 		Expect(home).To(BeADirectory())
 	})
 
+	It("registers the Python lola's marketplaces, and every hint it prints for one it cannot runs", func() {
+		work := filepath.Join(tmp, "plugins-work")
+		writeTree(work, map[string]string{"catalog.yml": "name: acme\nmodules:\n  - name: tool\n    repository: https://example.com/tool.git\n"})
+		for _, args := range [][]string{{"-C", work, "init", "-q", "-b", "main"}, {"-C", work, "add", "-A"}, {"-C", work, "commit", "-qm", "catalog"},
+			{"clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "plugins.git")}} {
+			out, err := exec.Command("git", args...).CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(out))
+		}
+		plugins := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/plugins.git"
+		writeTree(filepath.Join(home, "market"), map[string]string{
+			"acme.yml":    "enabled: true\nname: acme\nurl: git+" + plugins + "\n",
+			"off.yml":     "enabled: false\nname: off\nurl: git+" + plugins + "#catalog.yml\n",
+			"general.yml": "enabled: true\nname: Lola General\nurl: git+" + plugins + "\n",
+			"plain.yml":   "enabled: true\nname: plain\nurl: http://example.com/m.yml\n",
+		})
+
+		r := lola("migrate", "--dry-run", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var doc struct {
+			Markets []struct {
+				Name, Status string
+				Hints        []string
+			} `json:"markets"`
+		}
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
+		Expect(doc.Markets).To(HaveLen(4))
+		for _, m := range doc.Markets {
+			for _, h := range m.Hints {
+				Expect(shellWords(h)).To(ContainElement("--json"), "a hint keeps the run's output flags: "+h)
+			}
+		}
+
+		r = lola("migrate", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("marketplaces:\n  ✓ registered acme from "+plugins+" path catalog.yml\n"),
+			"its catalog is the only .yml at the root, which the Python lola read and lola's own lookup would not find")
+		Expect(r.out).To(ContainSubstring("  not registered: off (git+" + plugins + "): it is disabled in the Python lola\n" +
+			"      hint: lola market off --add " + plugins + " --path catalog.yml\n"))
+		Expect(r.out).To(ContainSubstring("  not registered: plain (http://example.com/m.yml): it uses plain http://"))
+		Expect(r.out).To(ContainSubstring("the Python lola's home " + home + " stays: 2 marketplaces lola did not register are still in " +
+			filepath.Join(home, "market")))
+		var hints []string
+		for _, line := range strings.Split(r.out, "\n") {
+			if h, ok := strings.CutPrefix(strings.TrimSpace(line), "hint: lola market"); ok {
+				hints = append(hints, "lola market"+h)
+			}
+		}
+		Expect(hints).To(Equal([]string{"lola market lola-general --add " + plugins + " --path catalog.yml", "lola market off --add " + plugins + " --path catalog.yml"}))
+		for _, h := range hints {
+			again := lola(shellWords(h)[1:]...)
+			Expect(again.code).To(Equal(0), h+": "+again.err)
+		}
+		r = lola("market", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(And(ContainSubstring("acme\t"), ContainSubstring("lola-general\t"), ContainSubstring("off\t")))
+	})
+
+	It("never prints a Python marketplace url's credentials or query, in any output", func() {
+		writeTree(filepath.Join(home, "market"), map[string]string{
+			"user.yml":  "enabled: true\nname: user\nurl: 'git+https://user:" + "SECRET1@example.com/r.git'\n",
+			"query.yml": "enabled: true\nname: query\nurl: 'https://example.com/m.yml?token=SECRET2'\n",
+			"off.yml":   "enabled: false\nname: off\nurl: 'https://x:" + "SECRET3@example.com/r.git#m.yml'\n",
+			// scp-looking text with an @ after the first colon: git would read user or u as the host.
+			"scp.yml":  "enabled: true\nname: scp\nurl: 'user:" + "SECRET4@example.com/r.git'\n",
+			"scp2.yml": "enabled: true\nname: scp2\nurl: 'u:p@" + "SECRET5@example.com:r.git'\n",
+			"ok.yml":   "enabled: true\nname: ok\nurl: 'file://" + filepath.Join(tmp, "folder", "market.yml") + "'\n",
+		})
+		writeTree(filepath.Join(tmp, "folder"), map[string]string{"market.yml": "name: ok\nmodules: []\n"})
+		for _, args := range [][]string{{"migrate", "--dry-run"}, {"migrate", "--dry-run", "--json"}, {"migrate", "--dry-run", "--plain"},
+			{"migrate", "-y", "--json"}, {"migrate", "-y"}, {"migrate", "-y", "--plain"}} {
+			r := lola(args...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out+r.err).NotTo(ContainSubstring("SECRET"), "%v", args)
+			Expect(r.out+r.err).To(ContainSubstring("example.com"), "%v: the redacted url is shown", args)
+		}
+		Expect(lola("market").out).NotTo(ContainSubstring("example.com"), "none was registered")
+		registry, err := os.ReadFile(filepath.Join(tmp, "config", "lola", "markets.yaml"))
+		Expect(err).NotTo(HaveOccurred(), "ok was registered")
+		Expect(string(registry)).To(ContainSubstring("name: ok"))
+		Expect(string(registry)).NotTo(ContainSubstring("SECRET"))
+		Expect(string(registry)).NotTo(ContainSubstring("example.com"))
+	})
+
 	It("emits snake_case JSON whose arrays are never null", func() {
 		for _, args := range [][]string{{"migrate", "--dry-run", "--json"}, {"migrate", "-y", "--json"}, {"migrate", "-y", "--json"}} {
 			r := lola(args...)
@@ -151,8 +253,10 @@ var _ = Describe("lola migrate", func() {
 		r := lola("migrate", "-y")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring(".claude/agents/critic.md: exists and was not written by lola"))
-		Expect(r.err).To(ContainSubstring("--force"))
+		Expect(r.err).To(HaveSuffix("  hint: lola migrate --force\n"), "no -y: --force answers Migrate? too (ruling R-6c3-4)")
 		Expect(trash()).NotTo(BeADirectory())
+		r = lola("migrate", "--force")
+		Expect(r.code).To(Equal(0), r.err)
 	})
 
 	It("refuses a relative LOLA_HOME", func() {

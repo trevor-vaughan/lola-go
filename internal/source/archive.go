@@ -5,7 +5,9 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -70,7 +72,16 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 			return Fetched{}, err
 		}
 		file, name = filepath.Join(scratch, "download"), path.Base(u.Path)
-		if err := download(ctx, spec.Location, file, lim.body); err != nil {
+		w := archiveDownload
+		if spec.FromCatalog {
+			w = catalogArchiveDownload
+		}
+		if err := download(ctx, spec.Location, file, lim.body, w); err != nil {
+			return Fetched{}, err
+		}
+	}
+	if spec.SHA256 != "" {
+		if err := checkSHA256(file, spec); err != nil {
 			return Fetched{}, err
 		}
 	}
@@ -98,7 +109,41 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if err != nil {
 		return Fetched{}, errors.Join(err, os.RemoveAll(dir))
 	}
-	return Fetched{Dir: dir, Name: modName, Executables: executablesUnder(execs, filepath.ToSlash(rel), dir)}, nil
+	return Fetched{Dir: dir, Name: modName, Executables: executablesUnder(execs, filepath.ToSlash(rel), dir), Root: fetchedRoot(rel)}, nil
+}
+
+// fetchedRoot is Fetched.Root for rel, the module root's path from the source's top.
+func fetchedRoot(rel string) string {
+	if rel = filepath.ToSlash(rel); rel == "." {
+		return ""
+	}
+	return rel
+}
+
+// SHA256MismatchError is an archive whose bytes do not have the sha256 its Spec lists (Plan 6c
+// §6.4): nothing of it is extracted.
+type SHA256MismatchError struct{ Location, Want, Got string }
+
+func (e *SHA256MismatchError) Error() string {
+	return fmt.Sprintf("the archive downloaded from %s has sha256 %s, not the %s it is listed with", untrusted.Text(e.Location, untrusted.MaxName),
+		e.Got, untrusted.Text(e.Want, untrusted.MaxName))
+}
+
+// checkSHA256 refuses the archive at file unless its bytes have spec.SHA256, in either case.
+func checkSHA256(file string, spec Spec) (err error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, f.Close()) }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != strings.ToLower(spec.SHA256) {
+		return &SHA256MismatchError{Location: spec.Location, Want: spec.SHA256, Got: got}
+	}
+	return nil
 }
 
 // extractor writes archive entries below root, enforcing the entry rules and limits of §5. It

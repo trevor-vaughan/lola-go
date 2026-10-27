@@ -1,7 +1,26 @@
 version: "2"
 linters:
-  enable: [errorlint, gosec, misspell, bodyclose, unconvert, depguard]
+  enable: [errorlint, gosec, misspell, bodyclose, unconvert, depguard, forbidigo]
   settings:
+    # depguard lets internal/market import source, yamldoc, manifest and module for their lexical
+    # rules; these are the functions of theirs that reach the disk, the network or git, which no
+    # catalog string may (Plan 6c §6.1, ruling R-6c-10). Scoped to internal/market by the
+    # exclusion below.
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^source\.(Parse|Fetch|FetchFile|CheckReachable|GitCommand|InWorkTree|IsWithin|SameLocation)$
+          pkg: ^github\.com/trevor-vaughan/lola-go/internal/source$
+          msg: internal/market classifies sources from their text alone; the engine looks them up and fetches
+        - pattern: ^yamldoc\.(Read|ReadNoFollow)$
+          pkg: ^github\.com/trevor-vaughan/lola-go/internal/yamldoc$
+          msg: internal/market decodes bytes the engine read (yamldoc.Decode)
+        - pattern: ^manifest\.(Load|Edit)$
+          pkg: ^github\.com/trevor-vaughan/lola-go/internal/manifest$
+          msg: internal/market maps entries; the engine reads and writes manifests
+        - pattern: ^module\.(Load|Detect|Normalize)$
+          pkg: ^github\.com/trevor-vaughan/lola-go/internal/module$
+          msg: internal/market uses module's name rules only; the engine loads modules
     depguard:
       rules:
         # Targets are pure renderers behind the target contract: they may not reach into the
@@ -39,6 +58,27 @@ linters:
             - github.com/trevor-vaughan/lola-go/internal/untrusted
             - github.com/trevor-vaughan/lola-go/internal/yamldoc
             - go.yaml.in/yaml/v3
+        # Catalogs are a stranger's input, classified from their text alone (Plan 6c §6.1, ruling
+        # R-6c-10): no file system, so no catalog string can reach the disk from here.
+        market:
+          list-mode: strict
+          files:
+            - "**/internal/market/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/trevor-vaughan/lola-go/internal/errs
+            - github.com/trevor-vaughan/lola-go/internal/manifest
+            - github.com/trevor-vaughan/lola-go/internal/module # name rules
+            - github.com/trevor-vaughan/lola-go/internal/source # lexical rules, never a fetch
+            - github.com/trevor-vaughan/lola-go/internal/untrusted
+            - github.com/trevor-vaughan/lola-go/internal/yamldoc
+            - go.yaml.in/yaml/v3
+          deny:
+            - pkg: os
+              desc: the market package reads no files; the engine does (Plan 6c §6.1)
+            - pkg: io/fs
+              desc: the market package reads no files; the engine does (Plan 6c §6.1)
         # The active-list names lock.json stores: a leaf the ledger imports, so it reads no YAML.
         activeprofile:
           list-mode: strict
@@ -64,6 +104,9 @@ linters:
         - G204 # git runs with a fixed argv, never through a shell
   exclusions:
     rules:
+      # forbidigo guards only the pure market package.
+      - path-except: internal/market/
+        linters: [forbidigo]
       # G504 flags httpoxy in Go < 1.6.3. Specs serve git http-backend through net/http/cgi.
       - path: internal/testenv/
         linters: [gosec]

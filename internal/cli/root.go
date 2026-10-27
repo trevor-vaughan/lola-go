@@ -90,6 +90,15 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	for _, o := range opts {
 		o(a)
 	}
+	// lola --version is an alias of lola version, on the root alone; with arguments the root
+	// refuses them as the unknown command they are.
+	var showVersion bool
+	runRoot := func(cmd *cobra.Command, args []string) error {
+		if showVersion && len(args) == 0 {
+			return a.printVersion(cmd)
+		}
+		return groupRunE(cmd, args)
+	}
 	root := &cobra.Command{
 		Use:   "lola",
 		Short: "Install AI-assistant skills, commands, agents, MCP servers and instructions",
@@ -99,7 +108,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		Args:              cobra.ArbitraryArgs,
-		RunE:              groupRunE,
+		RunE:              runRoot,
 		ValidArgsFunction: aliasCompletions,
 		// cobra only defaults this inside its own lookup; groupRunE calls SuggestionsFor directly.
 		SuggestionsMinimumDistance: 2,
@@ -111,6 +120,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 		},
 	}
 	root.CompletionOptions.DisableDefaultCmd = true
+	root.Flags().BoolVar(&showVersion, "version", false, "print lola's version: lola version")
 	pf := root.PersistentFlags()
 	pf.BoolVar(&a.json, "json", false, "print machine-readable JSON")
 	pf.BoolVar(&a.plain, "plain", false, "print tab-separated lines without color")
@@ -119,7 +129,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	pf.BoolVar(&a.project, "project", false, "act on project scope: --scope project")
 	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory): --scope user")
 	pf.StringVarP(&a.root, "root", "C", "", "the project at this directory; implies project scope")
-	pf.BoolVar(&a.noPager, "no-pager", false, "print consent diffs without a pager")
+	pf.BoolVar(&a.noPager, "no-pager", false, "print consent diffs and marketplace listings without a pager")
 
 	root.AddGroup(
 		&cobra.Group{ID: groupCore, Title: "Core:"},

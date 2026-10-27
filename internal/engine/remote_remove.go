@@ -23,7 +23,7 @@ const ProfileRemove ProfileAction = "remove"
 // ProfileRemoveRequest is one lola profile <name> --remove (Plan 6b §3.2): delete the remote
 // profile Name names (go or remote:go). Scope is the scope the run is in: a profile it, user scope
 // or the project found from the working directory uses is not removed unless Force, which
-// overrides that check and never the question.
+// overrides that check and answers the question (user decision, 2026-10-22).
 type ProfileRemoveRequest struct {
 	Scope  Scope
 	Name   string
@@ -31,8 +31,11 @@ type ProfileRemoveRequest struct {
 	DryRun bool
 	// Yes says the run answered the question with -y, so a hint that repeats it keeps -y.
 	Yes bool
-	// Confirm asks whether to delete the profile. nil means it cannot ask: the run is refused. The
-	// CLI passes one that says yes for -y.
+	// Display is the run's output flags, which the hints of a file with a marketplace address keep
+	// (Plan 6c §6.7).
+	Display []string
+	// Confirm asks whether to delete the profile, unless Force. nil means it cannot ask: the run is
+	// refused. The CLI passes one that says yes for -y.
 	Confirm func(RemoteProfile) (bool, error)
 }
 
@@ -50,13 +53,14 @@ type ProfileRemoveResult struct {
 // RemoveProfile deletes a remote profile (Plan 6b §3.2, §6.5): refused while the scope the run is
 // in, user scope or the project found from the working directory uses it (on, or extended by an
 // active profile or default; lola keeps no list of every checkout), or cannot be read to tell,
-// unless Force, which makes those warnings; asked about first (Confirm, which -y answers; never
-// Force). The check and the question hold the profiles lock shared; it is taken exclusively only
+// unless Force, which makes those warnings; asked about first (Confirm, which -y answers), unless
+// Force, which answers it too. The check and the question hold the profiles lock shared; it is taken exclusively only
 // to check the profile is still there and rename it aside, then remove it, so it is gone in one
 // step. The modules it installed stay until each scope's next sync, which warns about a profile
 // that is on but gone (§10).
-func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*ProfileRemoveResult, error) {
+func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_ *ProfileRemoveResult, err error) {
 	sc := req.Scope
+	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, req.DryRun, req.Display) }()
 	// The profiles lock comes first, and its sweep finishes an interrupted --update before the
 	// name is looked up, so a profile left aside is never taken for none.
 	unlock, err := e.readProfiles(req.DryRun)
@@ -76,7 +80,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*
 	// No hint carries -y but the one that asks for it (ruling R-6b3c-8): a -y answers the question
 	// it was given for, and a hint must not answer another.
 	confirm := slices.Concat(again, []string{"-y"})
-	if req.Confirm == nil && !req.DryRun {
+	if req.Confirm == nil && !req.DryRun && !req.Force {
 		return nil, errs.WithHints(errors.New("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on"),
 			"confirm it: "+e.Command(sc, "profile", confirm...))
 	}
@@ -160,15 +164,21 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (*
 			e.SyncCommand(s) + ", which removes them"})
 	}
 	if req.DryRun {
-		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "to remove it: " + e.Command(sc, "profile", again...) + " (off a terminal: -y)"})
+		text := "to remove it: " + e.Command(sc, "profile", again...)
+		if !req.Force {
+			text += " (off a terminal: -y)"
+		}
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: text})
 		return res, nil
 	}
-	ok, err := req.Confirm(RemoteProfile{Profile: res.Profile, File: res.File, Source: res.Source, Changes: []TrustChange{}})
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, ErrDeclined
+	if !req.Force {
+		ok, err := req.Confirm(RemoteProfile{Profile: res.Profile, File: res.File, Source: res.Source, Changes: []TrustChange{}})
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, ErrDeclined
+		}
 	}
 	unlock()
 	if unlock, err = e.lockProfiles(true); err != nil {

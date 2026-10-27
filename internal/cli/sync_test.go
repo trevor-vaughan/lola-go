@@ -177,6 +177,53 @@ var _ = Describe("lola sync", func() {
 		Expect(r.out).To(Equal("✓ already in sync\n"))
 	})
 
+	It("refuses a selection's local source outside the project with no install hint, which would take the whole folder", func() {
+		acme := filepath.Join(tmp, "acme")
+		writeTree(acme, map[string]string{"sel/skills/s1/SKILL.md": "---\ndescription: S1\n---\nS1\n",
+			"sel/skills/s2/SKILL.md": "---\ndescription: S2\n---\nS2\n"})
+		pull("  - name: sel\n    source: " + acme + "\n    path: sel\n    components:\n      skills: [skills/s1]\n")
+		r := lola("sync", "--trust")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: sel: local source " + acme + " resolves outside the project (" + acme + ")\n"))
+		r = lola("sync", "--trust", "--json")
+		Expect(r.code).To(Equal(1))
+		var refusal struct {
+			Error string   `json:"error"`
+			Hints []string `json:"hints"`
+		}
+		Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
+		Expect(refusal.Error).To(ContainSubstring("resolves outside the project"))
+		Expect(refusal.Hints).To(BeEmpty())
+	})
+
+	It("a pulled project.yml with market entries syncs without that marketplace", func() {
+		long := "https://example.com/" + strings.Repeat("p", 300) + ".git"
+		pull("  - name: other\n    source: mods/other\n    market:\n      name: acme\n      source: " + long + "\n")
+		shownMarket := "acme from https://example.com/" + strings.Repeat("p", 256-len("https://example.com/")) + "…"
+		r := lola("sync", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("  + other         mods/other\n                  market (as written) " + shownMarket + "\n"))
+		r = lola("sync", "-n", "-C", proj, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var out map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &out)).To(Succeed())
+		change := out["trust"].(map[string]any)["changes"].([]any)[0].(map[string]any)
+		Expect(change["fields"]).To(ContainElement(map[string]any{"field": "market", "from": nil, "to": shownMarket}))
+		Expect(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "markets.yaml")).NotTo(BeAnExistingFile())
+		r = lola("sync", "-C", proj, "--trust")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✓ synced other (claude-code)"))
+		Expect(os.ReadFile(manPath)).To(ContainSubstring("    market:\n      name: acme\n      source: "+long+"\n"), "provenance stays as written")
+		r = lola("list", "-C", proj, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var listed struct {
+			Rows []map[string]any `json:"modules"`
+		}
+		Expect(json.Unmarshal([]byte(r.out), &listed)).To(Succeed())
+		Expect(listed.Rows).To(ContainElement(HaveKeyWithValue("market", map[string]any{"name": "acme", "source": long})))
+		Expect(listed.Rows).To(ContainElement(Not(HaveKey("market"))), "an entry without market lists none")
+	})
+
 	It("shows a project profile's changes under the profile, in the diff, the picker and --plain", func() {
 		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: other, source: ../../mods/other}\n"})
 		ledgerPath := filepath.Join(proj, ".lola", "lock.json")

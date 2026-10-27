@@ -91,7 +91,7 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("will remove from your cache: example"))
 		Expect(r.err).NotTo(ContainSubstring("stop working"))
-		Expect(r.err).To(ContainSubstring("hint: pass -y to confirm"))
+		Expect(r.err).To(ContainSubstring("hint: lola cache rm example -y"))
 		r = lola("cache", "delete", "example", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(lola("cache", "list").out).To(ContainSubstring("your cache is empty"))
@@ -368,6 +368,7 @@ var _ = Describe("published alias table", func() {
 			"lola cache info":   {"show", "view"},
 			"lola cache search": {"find"},
 			"lola version":      {"ver"},
+			"lola market":       {"marketplace", "markets"},
 		}))
 	})
 
@@ -387,22 +388,38 @@ var _ = Describe("published alias table", func() {
 			"lola profile --add":    {"get"},
 			"lola profile --update": {"upgrade"},
 			"lola profile --remove": {"rm", "delete", "del", "erase", "uninstall"},
+			"lola market --add":     {"get"},
+			"lola market --update":  {"upgrade", "refresh"},
+			"lola market --remove":  {"rm", "delete", "del", "erase"},
 		}))
 		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("--on (--enable, --activate) "),
 			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade) "), ContainSubstring("--remove (--rm, --delete, --del, --erase, --uninstall) ")))
+		Expect(lola("help", "market", "--short").out).To(And(ContainSubstring("--add (--get) string "),
+			ContainSubstring("--update (--upgrade, --refresh) "), ContainSubstring("--remove (--rm, --delete, --del, --erase) ")))
 	})
 
 	It("JSON array keys are [] in an empty environment", func() {
 		proj := GinkgoT().TempDir()
 		for _, args := range [][]string{
 			{"list", "-C", proj}, {"render", "-C", proj}, {"cache", "list"}, {"cache", "update"},
-			{"search", "x"}, {"cache", "search", "x"}, {"list", "--user"},
+			{"search", "x"}, {"cache", "search", "x"}, {"list", "--user"}, {"market"}, {"market", "--update", "--all"},
 		} {
 			r := lola(append(args, "--json")...)
 			Expect(r.code).To(Equal(0), strings.Join(args, " ")+": "+r.err)
 			Expect(r.out).NotTo(ContainSubstring("null"), strings.Join(args, " "))
 		}
+	})
+
+	It("lola --version is lola version, in every output format, and is no flag of a subcommand", func() {
+		for _, format := range [][]string{nil, {"--plain"}, {"--json"}} {
+			got, want := lola(append([]string{"--version"}, format...)...), lola(append([]string{"version"}, format...)...)
+			Expect(got.code).To(Equal(0), got.err)
+			Expect(got).To(Equal(want), "%v", format)
+		}
+		Expect(lola("--version").out).To(HavePrefix("lola dev ("))
+		Expect(lola("-h").out).To(MatchRegexp(`--version\s+print lola's version: lola version\n`))
+		Expect(lola("install", "--version").err).To(HavePrefix("error: unknown flag: --version"))
 	})
 
 	It("aliases appear in help", func() {

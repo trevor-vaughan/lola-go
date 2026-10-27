@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -15,6 +16,10 @@ const cobraNameCell = "{{rpad .Name .NamePadding }}"
 
 // cobraLocalFlags is the cell cobra's usage template renders a command's own flags with.
 const cobraLocalFlags = "{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}"
+
+// cobraGlobalFlags is the block cobra's usage template renders a command's inherited flags with,
+// which long help leaves to its preamble (globalFlagsBlock).
+const cobraGlobalFlags = "{{if .HasAvailableInheritedFlags}}\n\nGlobal Flags:\n{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}"
 
 // flagAliasKey is the flag annotation that lists a flag's aliases (Plan 6b §3.3).
 const flagAliasKey = "lola_aliases"
@@ -27,6 +32,9 @@ func installHelp(root *cobra.Command) {
 	}
 	if n := strings.Count(tmpl, cobraLocalFlags); n != 1 {
 		panic(fmt.Sprintf("cobra's usage template changed: expected 1 %q cell, found %d", cobraLocalFlags, n))
+	}
+	if n := strings.Count(tmpl, cobraGlobalFlags); n != 1 {
+		panic(fmt.Sprintf("cobra's usage template changed: expected 1 %q block, found %d", cobraGlobalFlags, n))
 	}
 	tmpl = strings.ReplaceAll(tmpl, cobraNameCell, "{{aliasedPad .}}")
 	root.SetUsageTemplate(strings.ReplaceAll(tmpl, cobraLocalFlags, "{{aliasedFlagUsages .LocalFlags | trimTrailingWhitespaces}}"))
@@ -180,22 +188,37 @@ func aliasCompletions(cmd *cobra.Command, args []string, toComplete string) ([]c
 func renderHelp(cmd *cobra.Command, long bool) {
 	w := cmd.OutOrStdout()
 	if !long {
-		writeCommandHelp(w, cmd)
+		writeCommandHelp(w, cmd, "")
 		return
 	}
 	writePreamble(w, cmd.Root())
 	walk(cmd, func(c *cobra.Command) {
 		fmt.Fprintf(w, "\n== %s ==\n", c.CommandPath())
-		writeCommandHelp(w, c)
+		writeCommandHelp(w, c, globalFlagsBlock(c))
 	})
 }
 
-func writeCommandHelp(w io.Writer, c *cobra.Command) {
+// writeCommandHelp prints c's description and usage, without omit, a block of the usage (""
+// for none).
+func writeCommandHelp(w io.Writer, c *cobra.Command, omit string) {
 	desc := c.Long
 	if desc == "" {
 		desc = c.Short
 	}
-	fmt.Fprintf(w, "%s\n\n%s", strings.TrimSpace(desc), c.UsageString())
+	usage := c.UsageString()
+	if omit != "" {
+		usage = strings.Replace(usage, omit, "", 1)
+	}
+	fmt.Fprintf(w, "%s\n\n%s", strings.TrimSpace(desc), usage)
+}
+
+// globalFlagsBlock is the "Global Flags:" block of c's usage as cobraGlobalFlags renders it ("" when
+// c inherits none): long help prints the global flags once, in its preamble.
+func globalFlagsBlock(c *cobra.Command) string {
+	if !c.HasAvailableInheritedFlags() {
+		return ""
+	}
+	return "\n\nGlobal Flags:\n" + strings.TrimRightFunc(c.InheritedFlags().FlagUsages(), unicode.IsSpace)
 }
 
 func walk(c *cobra.Command, fn func(*cobra.Command)) {
@@ -216,6 +239,7 @@ func writePreamble(w io.Writer, root *cobra.Command) {
            under --json a single line {"error": "...", "hints": [...]}
   exit     0 on success or a cancelled prompt, 1 on any error
   prompts  go to stderr; without a terminal, destructive commands need -y
+           (or --force, which never answers trust or hook consent)
 
 ENVIRONMENT
   LOLA_COLOR=1|0   force color on or off
@@ -224,9 +248,10 @@ ENVIRONMENT
   LOLA_HOME        the Python lola's home, which lola migrate reads (default ~/.lola)
   HOME             user-scope root and base of the XDG defaults
   PATH             where lola finds installed assistants; absolute entries only
-  XDG_CONFIG_HOME  config.yaml, selections.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
+  COLUMNS          the width lola market <name> fits its lines to when stdout is not a terminal
+  XDG_CONFIG_HOME  config.yaml, selections.yaml, markets.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
   XDG_DATA_HOME    user-scope module copies, plugin data and remote profiles (default ~/.local/share)
   XDG_STATE_HOME   the user-scope ledger, hook consent, locks and lola migrate's trash (default ~/.local/state)
-  XDG_CACHE_HOME   the cache, downloads and assistant versions (default ~/.cache)
+  XDG_CACHE_HOME   the cache, marketplace catalogs, downloads and assistant versions (default ~/.cache)
 `)
 }

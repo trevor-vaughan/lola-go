@@ -168,7 +168,7 @@ var _ = Describe("profiles", func() {
 
 		Expect(os.Remove(gone)).To(Succeed())
 		missing := engine.Notice{Level: engine.LevelWarn, Text: "profile user:go is on but no longer exists → lola profile --user user:go --off"}
-		rows, notices, err := e.Status(ctx, user)
+		rows, notices, err := e.Status(ctx, user, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notices).To(ConsistOf(missing))
 		Expect(rows).To(ContainElement(And(HaveField("Name", "a"), HaveField("From", "profile:user:go"), HaveField("Status", "ok"))),
@@ -217,16 +217,16 @@ var _ = Describe("profiles", func() {
 		a, c := mod("a", "a", "A"), mod("c", "c", "C")
 		writeProfile("default", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: "+c+"}\n")
 		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + a + "}\n"})
-		rows, notices, err := e.Status(ctx, user)
+		rows, notices, err := e.Status(ctx, user, nil)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(notices).To(BeEmpty())
+		Expect(notices).To(Equal([]engine.Notice{{Level: engine.LevelInfo, Text: "2 modules in profile:default and user.yml are not installed → lola sync --user"}}))
 		Expect(rows).To(ConsistOf(
 			And(HaveField("Name", "a"), HaveField("From", "user.yml"), HaveField("Status", "not_installed"), HaveField("Target", "claude-code")),
 			And(HaveField("Name", "c"), HaveField("From", "profile:default"), HaveField("Status", "not_installed"), HaveField("Target", "claude-code")),
 		))
 		_, err = sync(user)
 		Expect(err).NotTo(HaveOccurred())
-		rows, _, err = e.Status(ctx, user)
+		rows, _, err = e.Status(ctx, user, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows).To(ConsistOf(
 			And(HaveField("Name", "a"), HaveField("From", "user.yml"), HaveField("Status", "ok")),

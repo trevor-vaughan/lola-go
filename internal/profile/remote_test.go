@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -222,14 +223,14 @@ var _ = Describe("remote profiles", func() {
 			"/srv/profiles":                   "/srv/profiles is on this machine",
 			"file:///srv/profiles.tar.gz":     "is on this machine",
 		} {
-			err := profile.CheckRemoteSource(src)
+			err := source.CheckRemote(src, profile.RemoteWho)
 			Expect(err).To(MatchError(ContainSubstring(want)), src)
 			Expect(errs.Hints(err)).To(Equal([]string{"use the repository's https:// or ssh:// URL (or user@host:path), with its host name"}), src)
 		}
 		for _, src := range []string{"https://example.com/a.git", "https://lola.test:8443/a.git", "ssh://git@example.com/a.git",
 			"git@example.com:a.git", "https://8.8.8.8/a.git", "https://example.com/a.tar.gz", "https://1x.example.com/a.git",
 			"https://example.com./a.git", "https://host-127.0.0.1.example/a.git", "https://8.8.8.8./a.git", "https://[64:ff9b::808:808]/a.git"} {
-			Expect(profile.CheckRemoteSource(src)).To(Succeed(), src)
+			Expect(source.CheckRemote(src, profile.RemoteWho)).To(Succeed(), src)
 		}
 		_, _, err := profile.Fetched(fetched(map[string]string{"profiles/go.yml": "version: 1\nmodules:\n  - {name: a, source: \"http://example.com/a.git\", commit: " +
 			commit + ", digest: " + digest + "}\n"}), "go")
