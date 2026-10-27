@@ -1,0 +1,25 @@
+internal/cli/prompt.go
+  s_6c657de1929f08::t_5ba23fe4a49881 87-99,110
+internal/cli/huh_internal_test.go
+  s_6c657de1929f08::t_5ba23fe4a49881 294-316
+internal/cli/scripts_test.go
+  s_6c657de1929f08::t_5ba23fe4a49881 154-160,162-164
+  s_6c657de1929f08::t_89182d67715c06 7
+  s_6c657de1929f08::t_32611e0ce593a6 161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc49edb6c2dfdd920ff64581c1c807a4b21deadf",
+  "prompts": {},
+  "sessions": {
+    "s_6c657de1929f08": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "089d921b-8a19-4406-9edb-77d076574d15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
