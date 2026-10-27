@@ -1,0 +1,49 @@
+README.md
+  s_8d03b9505d742a::t_11439849df1321 9-11,38-42,47-48,99
+docs/guides/marketplaces.md
+  s_8d03b9505d742a::t_232b447a14b24a 4-5,16,34,38-39,68-77,84-85,135,188
+docs/usage.md
+  s_8d03b9505d742a::t_4038a533b78825 11,341,344-360,372,376-381,384-385,390-393,427-428,1735
+e2e/market/market.venom.yml
+  s_8d03b9505d742a::t_9d942ee6cb27fb 151
+internal/cli/cmd_info.go
+  s_8d03b9505d742a::t_b5d11983d2f8f9 53,62-122
+internal/cli/cmd_market.go
+  s_8d03b9505d742a::t_49736ee408eff8 39,125,128-129,133,140-143,160-163,171,173-176,194-204,228,236,240-243,245-253,264-268,281-309,339-341,345
+internal/cli/cmd_store.go
+  s_8d03b9505d742a::t_2add255120af27 152,561-564,569
+internal/cli/conventions_test.go
+  s_8d03b9505d742a::t_2b6de811ffa8e2 5-6,65-78
+internal/cli/flow.go
+  s_8d03b9505d742a::t_a38655007c4165 130
+internal/cli/help.go
+  s_8d03b9505d742a::t_758a08af96aaf1 252
+internal/cli/market_output.go
+  s_8d03b9505d742a::t_c90f7a3f235804 76-78,95-97,103,107-109,146-148
+internal/cli/market_test.go
+  s_8d03b9505d742a::t_f4a6258e3ce22a 97-98,172,230,323,497,499,501-504,506,508-511,611-612,669,817-913
+internal/engine/market_test.go
+  s_8d03b9505d742a::t_acaaac66a6ebd0 830-837,839-857,876,880-883,897-898,901
+internal/market/market.go
+  s_8d03b9505d742a::t_1edf131f46cb24 147-148,231
+internal/market/market_test.go
+  s_8d03b9505d742a::t_baa43822ebd015 546-547
+internal/migrate/run_test.go
+  s_8d03b9505d742a::t_a8d350fd771416 975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "486b57c950f99b999caeae35df8b02a8e587bea6",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
