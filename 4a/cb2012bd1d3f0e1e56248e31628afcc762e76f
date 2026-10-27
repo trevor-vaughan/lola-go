@@ -1,0 +1,64 @@
+internal/engine/ops.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 35-41,43,49,53,56,58,61,63,181-185,254,257,262-264,1030,1126,1248
+internal/engine/remote_add.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 56
+internal/engine/remote_update.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 163,426,845
+internal/engine/marketinstall_test.go
+  s_dd02d4728fd2f8::t_5d046b5e398f21 629,652-655,659-666,673-679,746-811
+  s_dd02d4728fd2f8::t_d3fe237e452eec 812
+docs/usage.md
+  s_dd02d4728fd2f8::t_268c27ceb677d6 1048-1056
+internal/engine/unresolved.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 9,12,14-18,20,25,28-33,35-37,41,48-123
+  s_dd02d4728fd2f8::t_e5fec2d972a16e 124
+internal/engine/profileview.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 203-206
+internal/engine/market_remove.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 8,137-144
+internal/engine/choices.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 36-37,130-137,171,205,228,247,293,355,389,400,407-408,443,446,468,472
+internal/cli/market_test.go
+  s_dd02d4728fd2f8::t_5d046b5e398f21 685,691-696
+internal/engine/remote_remove.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 34-36,61,63
+internal/profile/profile_test.go
+  s_dd02d4728fd2f8::t_5d046b5e398f21 132
+docs/decisions.md
+  s_dd02d4728fd2f8::t_268c27ceb677d6 118
+internal/cli/cmd_core.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 152-153
+internal/cli/flow.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 557,835
+internal/engine/sync.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 297
+internal/manifest/edit.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 80-82,86-87,102-103
+internal/cli/cmd_profile.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 253
+internal/manifest/manifest.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 92,187-189,191-193
+internal/manifest/manifest_test.go
+  s_dd02d4728fd2f8::t_5d046b5e398f21 232-233,259-265
+  s_dd02d4728fd2f8::t_3cfd02a02c778f 266
+docs/architecture.md
+  s_dd02d4728fd2f8::t_268c27ceb677d6 1486,1488-1503
+internal/cli/profile_remove.go
+  s_dd02d4728fd2f8::t_268c27ceb677d6 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4acb2012bd1d3f0e1e56248e31628afcc762e76f",
+  "prompts": {},
+  "sessions": {
+    "s_dd02d4728fd2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d334638-f54b-4cfd-b062-e46dae57ead4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
