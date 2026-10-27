@@ -1,0 +1,25 @@
+e2e/migrate/migrate.venom.yml
+  s_35f2683d3ca978::t_c71e3222a054e6 21,41,53,127
+scripts/e2e-migrate.sh
+  s_35f2683d3ca978::t_c71e3222a054e6 59-61
+e2e/common/gitserve.py
+  s_35f2683d3ca978::t_c71e3222a054e6 1-57
+e2e/common/hint.py
+  s_35f2683d3ca978::t_c71e3222a054e6 1-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9707197d4406ded28389f4df27ef558622e67ce6",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
