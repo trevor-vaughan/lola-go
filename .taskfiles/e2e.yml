@@ -1,9 +1,10 @@
 version: '3'
 
-# The container-driven e2e suites (e2e/<suite>/), run by scripts/e2e.sh: `task e2e` runs all of
-# them, `task e2e -- <suite>...` some. They need podman (or docker), venom and, the first time,
-# the network to build the image; they skip with a message when no container runtime is on PATH.
-# They are not part of `task check`; the release checklist requires them.
+# The container-driven e2e suites (e2e/<suite>/), run by scripts/e2e.sh: `task e2e` (the root
+# alias for `e2e:run`) runs all of them, `task e2e -- <suite>...` some. They need podman (or
+# docker), venom and, the first time, the network to build the image; they skip with a message
+# when no container runtime is on PATH. They are not part of `task check`; the release checklist
+# requires them.
 
 vars:
   # OUT_DIR, not TEST_DIR: the task exports TEST_DIR, which would be re-templated.
@@ -20,6 +21,11 @@ env:
 
 tasks:
   default:
+    silent: true
+    cmd: |
+      task --list 2>/dev/null
+
+  run:
     desc: Run the container suites against the built binary (MODE=human|llm; -- <suite>... for some); artifacts in .test-output/e2e-<suite>/
     dir: '{{.ROOT_DIR}}'
     env: {MODE: '{{.MODE}}', TEST_DIR: '{{.OUT_DIR}}'}
