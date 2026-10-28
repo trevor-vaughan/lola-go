@@ -1,0 +1,25 @@
+internal/ledger/ledger_test.go
+  s_51684f47240dfe::t_d8416e1472f876 401-430
+internal/engine/repair.go
+  s_51684f47240dfe::t_d93f989dd3043c 1-122
+internal/engine/repair_test.go
+  s_51684f47240dfe::t_d93f989dd3043c 1-237
+internal/ledger/ledger.go
+  s_51684f47240dfe::t_d8416e1472f876 307-339
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "863a9f897802eb2840afd19bbe9c5dbba8c21b0e",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
