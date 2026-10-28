@@ -1,0 +1,33 @@
+docs/guides/profiles.md
+  s_cbea84d9628a69::t_8a27f4ed645a8f 28,35
+README.md
+  s_cbea84d9628a69::t_e355511b08890d 97-98
+docs/guides/sync-and-trust.md
+  s_cbea84d9628a69::t_8a27f4ed645a8f 204,233
+docs/guides/authoring-modules.md
+  s_cbea84d9628a69::t_8a27f4ed645a8f 257
+docs/usage.md
+  s_cbea84d9628a69::t_6a4481ea41707f 1099
+  s_cbea84d9628a69::t_e355511b08890d 9
+  s_cbea84d9628a69::t_8a27f4ed645a8f 20,33,36,43,47-48,73,94,182,218,303,748,1041,1289,1292
+docs/guides/marketplaces.md
+  s_cbea84d9628a69::t_8a27f4ed645a8f 209
+docs/guides/choosing-what-to-install.md
+  s_cbea84d9628a69::t_6a4481ea41707f 1-456
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ab32c0038c4f5b9ee754afef0e455bc4bdf41c04",
+  "prompts": {},
+  "sessions": {
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
