@@ -168,7 +168,7 @@ lola profile go --remove                                          # delete it; a
   every scope shares and the scope it is compared with (`remote:go → <path> (shared by every scope);
   content compared with project <dir>`) and the profile's source and pin, every entry with all the
   MCP servers, hooks and files it brings, whatever that scope's `lock.json` says, which only notes
-  when it has this version installed (paged, as `lola sync`'s diff is; printed without a pager, the
+  when it has this version installed (in the viewer, as `lola sync`'s diff is; printed without it, the
   files are capped with the `-n --json` command that lists them all, which names the profile even
   when you picked it: `lola profile remote:go --add <source> -n --json`); then it asks. Nothing is
   kept or cached before you say yes: a No or Ctrl+C leaves no trace. Other lola commands go on while

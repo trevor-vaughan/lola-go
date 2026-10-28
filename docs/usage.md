@@ -14,8 +14,8 @@ and [tidying](guides/tidying.md).
 ## Commands
 
 Every command takes the global flags: `--json` and `--plain` pick the
-[output](#output-contract), `--no-pager` prints consent diffs and marketplace listings without
-a pager, and `--project`, `--user`, `-C/--root <dir>` and `--scope project|user|both` pick the
+[output](#output-contract), `--no-pager` prints without lola's [viewer](#output-contract), and
+`--project`, `--user`, `-C/--root <dir>` and `--scope project|user|both` pick the
 [scope](#choosing-a-scope). Under "Refusals", each quoted message is what follows `error:`; a
 hint that runs a command repeats your run's output, scope and `-C` flags; the exceptions are
 listed under each command's Known limitations.
@@ -1298,7 +1298,7 @@ an `include` in the `global` section, anchors, aliases and merge keys, and files
 # lola settings. Safe to edit by hand.
 version: 1
 default_scope: project   # project | user | both; read off a terminal only
-pager: true              # false prints sync's consent diff without a pager
+pager: true              # false prints everything without lola's viewer
 pre_install: ~/bin/lola-pre.sh     # your own install scripts: absolute or ~/…, no trust asked
 post_install: ~/bin/lola-post.sh
 cache_unused_for: 30d    # lola cache clean also removes versions unused this long (<n>d, <n>w, never)
@@ -1677,6 +1677,15 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   too); `1` on any error. `lola render` leaving modules out exits `0` unless `--strict`.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
+- The viewer: when stdout and stderr are terminals, human output and help taller than the
+  terminal open in lola's viewer, the same on every OS. `↑`/`↓` or `j`/`k` scroll a line,
+  `PgUp`/`PgDn` or `b`/space a page, `g`/`G` or `Home`/`End` go to the top or the end, and `q`,
+  Esc or Ctrl+C quit; the footer shows where you are (`lines 41–80 of 312 · 25%`). On quit the
+  full text is printed, so it stays in your scrollback. Output that fits is printed as it is. In
+  order, `--json` or `--plain`, a stream that is not a terminal, accessible mode
+  (`LOLA_ACCESSIBLE=1` or `TERM=dumb`), `--no-pager`, `NO_PAGER` set to anything, and
+  `pager: false` in your `config.yaml` print without it; a `$LOLA_PAGER` you set runs
+  that pager instead (`cat` prints). `$PAGER` is not read.
 - Without a terminal, `uninstall`, `cache rm`, `cache clean` (when it has something to remove),
   `migrate` and a bare `init` need `-y`; `tidy`
   needs names or `--all`, and `-y`. `sync` needs `-y` to
@@ -1747,12 +1756,14 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, `markets.yaml`, `keep.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
 | `LOLA_HOME` | The directory `lola migrate` reads (default `~/.lola`; must be absolute) |
-| `LOLA_ACCESSIBLE` | `1` draws the install flow and sync's questions as numbered line prompts (screen readers); Ctrl+C cancels them as it does a full-screen form |
+| `LOLA_ACCESSIBLE` | `1` draws the install flow and sync's questions as numbered line prompts (screen readers), and prints output without the viewer; Ctrl+C cancels them as it does a full-screen form |
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
-| `LOLA_PAGER`, `PAGER` | The pager for sync's consent diff and `lola market <name>`, in that order (default `less`, `more` on Windows); empty falls through, `cat` means none ([Sync, pins and trust](guides/sync-and-trust.md#sync-pins-and-trust)) |
+| `LOLA_PAGER` | A pager to use instead of lola's viewer, for all human output and help, split on whitespace and run without a shell; `cat` prints ([Output contract](#output-contract)) |
+| `NO_PAGER` | Set to anything, prints without the viewer or a pager, as `--no-pager` does |
 | `COLUMNS` | The width `lola market <name>` fits its lines to when stdout is not a terminal; unset, nothing is cut or wrapped |
-| `LESS` | Passed to `less`; set to `FRX` for the pager when unset |
+| `LINES` | The height the viewer takes the terminal to have when it cannot ask the terminal |
+| `LESS` | Passed to `$LOLA_PAGER`; set to `FRX` when unset |
 | `XDG_DATA_HOME` | User-scope module copies, plugin data and [remote profiles](guides/profiles.md#remote-profiles) (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook and runtime hook consent, the trust record, lock files and the trash of `lola migrate` and `lola tidy` (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, [marketplace](guides/marketplaces.md#marketplaces) catalogs, download scratch space and assistant version cache (default `~/.cache`) |

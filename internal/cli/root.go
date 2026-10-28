@@ -66,7 +66,7 @@ func WithPrompter(p Prompter) Option {
 }
 
 // WithTerminals makes lola treat stdout and stderr as terminals when out and errw say so, which
-// decides paging; specs page through a fake pager with it.
+// decides paging; specs page through a fake pager, or the viewer, with it.
 func WithTerminals(out, errw bool) Option {
 	return func(a *app) { a.termOut, a.termErr = out, errw }
 }
@@ -97,7 +97,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 		if showVersion && len(args) == 0 {
 			return a.printVersion(cmd)
 		}
-		return groupRunE(cmd, args)
+		return a.groupRunE(cmd, args)
 	}
 	root := &cobra.Command{
 		Use:   "lola",
@@ -129,7 +129,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	pf.BoolVar(&a.project, "project", false, "act on project scope: --scope project")
 	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory): --scope user")
 	pf.StringVarP(&a.root, "root", "C", "", "the project at this directory; implies project scope")
-	pf.BoolVar(&a.noPager, "no-pager", false, "print consent diffs and marketplace listings without a pager")
+	pf.BoolVar(&a.noPager, "no-pager", false, "print without lola's viewer or a pager")
 
 	root.AddGroup(
 		&cobra.Group{ID: groupCore, Title: "Core:"},
@@ -139,7 +139,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	a.addCoreCommands(root)
 	a.addStoreCommands(root)
 	a.addMiscCommands(root)
-	installHelp(root)
+	a.installHelp(root)
 	checkFlagAliases(root)
 	return root
 }
@@ -222,9 +222,9 @@ func Execute(root *cobra.Command) int {
 
 // groupRunE makes a command group fail on unknown subcommands instead of printing help and
 // exiting 0, and print help when run bare.
-func groupRunE(cmd *cobra.Command, args []string) error {
+func (a *app) groupRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		renderHelp(cmd, !isTTY(cmd.OutOrStdout()))
+		a.showHelp(cmd, !isTTY(cmd.OutOrStdout()))
 		return nil
 	}
 	hints := []string{"see: " + cmd.CommandPath() + " --help"}

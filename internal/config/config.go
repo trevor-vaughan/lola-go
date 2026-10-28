@@ -31,7 +31,7 @@ const (
 // Config is config.yaml.
 type Config struct {
 	DefaultScope string // "", project, user or both
-	Pager        bool   // page consent diffs on a terminal (Plan 6b §9); pager: false turns it off
+	Pager        bool   // show output taller than the terminal in the viewer (Plan 10 §2.1); pager: false turns it off
 	// PreInstall and PostInstall are the user's own install scripts (Plan 9 §5.1), which wrap every
 	// module copy a run installs or replaces; Path "" for none.
 	PreInstall, PostInstall Script
@@ -113,7 +113,7 @@ func LoadConfig(path, home string) (*Config, error) {
 		},
 		"pager": func(n *yaml.Node, at string) error {
 			if n.Kind != yaml.ScalarNode || n.Tag != "!!bool" {
-				return d.fail(n, at, "must be true or false, not "+kindName(n), "write pager: false to print consent diffs without a pager")
+				return d.fail(n, at, "must be true or false, not "+kindName(n), "write pager: false to print without the viewer")
 			}
 			return n.Decode(&c.Pager)
 		},

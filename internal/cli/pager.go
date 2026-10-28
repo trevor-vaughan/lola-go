@@ -8,107 +8,125 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
-	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// pager shows lola sync's consent diffs (Plan 6b §9, §19 R12, S9) and lola market's listing of a
-// marketplace git-style: through the user's pager when lola pages, else as before. on is decided
-// once per command.
-type pager struct {
-	a   *app
-	cmd *cobra.Command
-	eng *engine.Engine
-	on  bool
+// paging is how human output reaches the terminal (Plan 10 §2.1): printed (the zero value), shown
+// in the viewer when it is taller than the terminal, or run through argv, the pager an explicit
+// $LOLA_PAGER names, run in env.
+type paging struct {
+	viewer bool
+	argv   []string
+	env    []string
 }
 
-// pager decides whether this command pages: human output (not --json or --plain), stdout and
-// stderr both terminals (the diff would go to stderr, the question asks there), no --no-pager,
-// and pager: true (the default) in the user's config.yaml, read only when the rest allow paging,
-// and never from a project.
-func (a *app) pager(cmd *cobra.Command, eng *engine.Engine) (*pager, error) {
-	p := &pager{a: a, cmd: cmd, eng: eng}
+// paging decides how cmd's human output reaches the terminal, the first rule that matches
+// winning: --json or --plain, stdout or stderr not a terminal, accessible mode (line prompts for
+// screen readers never get a full screen), --no-pager, NO_PAGER set, or pager: false in the
+// user's config.yaml (read only when the rules before it allow paging, and
+// never from a project) print it; an explicitly set $LOLA_PAGER runs that command, split on
+// whitespace with no shell, and cat alone prints; otherwise the viewer. $PAGER is not read. A
+// config.yaml lola cannot read is a warning on stderr, and the output is printed: it never hides
+// what a command did.
+func (a *app) paging(cmd *cobra.Command) paging {
 	outTTY := a.termOut || isTTY(cmd.OutOrStdout())
 	errTTY := a.termErr || isTTY(cmd.ErrOrStderr())
-	if a.json || a.plain || a.noPager || !outTTY || !errTTY {
-		return p, nil
+	if a.json || a.plain || !outTTY || !errTTY || a.accessible() || a.noPager || a.getenv("NO_PAGER") != "" {
+		return paging{}
 	}
-	cfg, err := config.LoadConfig(eng.Paths.Config, eng.Paths.Home)
+	eng, err := a.engine()
+	var cfg *config.Config
+	if err == nil {
+		cfg, err = config.LoadConfig(eng.Paths.Config, eng.Paths.Home)
+	}
 	if err != nil {
-		return nil, err
+		w := cmd.ErrOrStderr()
+		fmt.Fprintln(w, style{color: a.color(w)}.warn(untrusted.CleanErr(err).Error()+"; printing without the viewer"))
+		for _, h := range errs.Hints(err) {
+			fmt.Fprintf(w, "  hint: %s\n", h)
+		}
+		return paging{}
 	}
-	p.on = cfg.Pager
-	return p, nil
+	if !cfg.Pager {
+		return paging{}
+	}
+	if v := a.getenv("LOLA_PAGER"); strings.TrimSpace(v) != "" {
+		argv := strings.Fields(v)
+		if len(argv) == 1 && argv[0] == "cat" {
+			return paging{}
+		}
+		return paging{argv: argv, env: eng.Environ()}
+	}
+	return paging{viewer: true}
 }
 
-// show prints with print: to the pager when lola pages, uncapped (print gets more ""), and
-// otherwise to w in style s, capped, with more naming the command that lists everything. The
-// pager's output goes to the terminal on stdout, its color decided by that terminal, not the
-// pipe. show returns once the pager exits, so a question asked next is never inside it. A pager
-// that cannot be found, is found in the current directory (exec.ErrDot), cannot start or exits
-// non-zero is a warning, and the diff is then printed unpaged: consent is never given unseen.
-func (p *pager) show(w io.Writer, s style, more string, print func(io.Writer, style, string)) {
-	argv := p.command()
-	if !p.on || argv == nil {
-		print(w, s, more)
+// page prints what print writes to w in style s, unless paging says otherwise: then print renders
+// with s.paged set, uncapped, and the text goes through the user's pager, or, when it is taller
+// than the terminal, the viewer; text that fits is printed as it is. page returns once the pager
+// or the viewer exits, so a question asked next is never inside it. A pager that cannot be found,
+// is found in the current directory (exec.ErrDot), cannot start or exits non-zero, and a viewer
+// that cannot start, is a warning, and the text is then printed capped: consent is never given
+// unseen.
+func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Writer, style)) {
+	mode := a.paging(cmd)
+	if !mode.viewer && mode.argv == nil {
+		print(w, s)
 		return
 	}
+	out := cmd.OutOrStdout()
+	full := style{color: a.color(out), paged: true}
+	var buf bytes.Buffer
+	print(&buf, full)
 	warn := func(problem string) {
-		fmt.Fprintln(p.cmd.ErrOrStderr(), style{color: p.a.color(p.cmd.ErrOrStderr())}.warn(problem+"; showing it here"))
-		print(w, s, more)
+		fmt.Fprintln(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}.warn(problem+"; showing it here"))
+		print(w, s)
 	}
-	name := untrusted.Text(argv[0], untrusted.MaxName)
-	path, err := exec.LookPath(argv[0])
+	if mode.argv != nil {
+		if problem := a.runPager(cmd, mode, &buf); problem != "" {
+			warn(problem)
+		}
+		return
+	}
+	width, height := a.width(out), a.height(out)
+	if width == 0 || height == 0 || newViewer(buf.String(), false, width, height).vp.TotalLineCount() < height {
+		fmt.Fprint(w, buf.String())
+		return
+	}
+	if _, err := a.view(cmd, buf.String(), false); err != nil {
+		warn("the viewer failed: " + untrusted.CleanErr(err).Error())
+	}
+}
+
+// runPager runs mode's pager with text on its stdin, writing to the terminal on stdout, and returns
+// what went wrong, or "". Ctrl+C belongs to the pager while it runs, as in git: lola ignores it
+// rather than die with the question unasked.
+func (a *app) runPager(cmd *cobra.Command, mode paging, text io.Reader) string {
+	name := untrusted.Text(mode.argv[0], untrusted.MaxName)
+	path, err := exec.LookPath(mode.argv[0])
 	switch {
 	case errors.Is(err, exec.ErrDot):
-		warn("not paging: the pager " + name + " is in the current directory, which lola never runs a program from")
-		return
+		return "not paging: the pager " + name + " is in the current directory, which lola never runs a program from"
 	case err != nil:
-		warn("not paging: the pager " + name + " was not found")
-		return
+		return "not paging: the pager " + name + " was not found"
 	}
-	var buf bytes.Buffer
-	print(&buf, style{color: p.a.color(p.cmd.OutOrStdout())}, "")
-	run := exec.Command(path, argv[1:]...)
-	run.Stdin, run.Stdout, run.Stderr = &buf, p.cmd.OutOrStdout(), p.cmd.ErrOrStderr()
-	run.Env = p.eng.Environ()
-	if p.a.getenv("LESS") == "" {
+	run := exec.Command(path, mode.argv[1:]...)
+	run.Stdin, run.Stdout, run.Stderr = text, cmd.OutOrStdout(), cmd.ErrOrStderr()
+	run.Env = mode.env
+	if a.getenv("LESS") == "" {
 		run.Env = append(run.Env, "LESS=FRX")
 	}
-	// Ctrl+C belongs to the pager while it runs, as in git: lola ignores it rather than die
-	// with the question unasked.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	err = run.Run()
 	signal.Stop(sig)
 	if err != nil {
-		warn("the pager " + name + " failed: " + untrusted.CleanErr(err).Error())
+		return "the pager " + name + " failed: " + untrusted.CleanErr(err).Error()
 	}
-}
-
-// command is the pager to run, split on whitespace with no shell: $LOLA_PAGER, else $PAGER,
-// else less (more on Windows); nil when the value is cat, which means no pager. An empty
-// variable cannot be told from an unset one through getenv, so it falls through to the next.
-func (p *pager) command() []string {
-	v := p.a.getenv("LOLA_PAGER")
-	if strings.TrimSpace(v) == "" {
-		v = p.a.getenv("PAGER")
-	}
-	if strings.TrimSpace(v) == "" {
-		v = "less"
-		if runtime.GOOS == "windows" {
-			v = "more"
-		}
-	}
-	argv := strings.Fields(v)
-	if argv[0] == "cat" && len(argv) == 1 {
-		return nil
-	}
-	return argv
+	return ""
 }

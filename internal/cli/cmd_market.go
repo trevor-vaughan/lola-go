@@ -237,20 +237,13 @@ func (a *app) marketCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// A catalog may list hundreds of entries: it is paged as consent diffs are.
-			pg, err := a.pager(cmd, eng)
-			if err != nil {
-				return err
-			}
 			// The next step, lola info of the first entry, keeping the run's flags (Plan 10 §7).
 			hints := []string{}
 			if len(v.Entries) > 0 {
 				hints = append(hints, runAs([]string{"lola", "info"}, cmd, []string{v.Entries[0].Install}))
 			}
 			width := a.width(cmd.OutOrStdout())
-			return a.emit(cmd, func(w io.Writer, s style) {
-				pg.show(w, s, "", func(w io.Writer, s style, _ string) { printMarket(w, s, v, hints, width) })
-			}, marketShown{MarketView: v, Hints: hints})
+			return a.emit(cmd, func(w io.Writer, s style) { printMarket(w, s, v, hints, width) }, marketShown{MarketView: v, Hints: hints})
 		},
 	}
 	cmd.Flags().StringVar(&src, string(engine.MarketAdd), "", "fetch the catalog at this source and register it")

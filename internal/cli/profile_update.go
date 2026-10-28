@@ -35,10 +35,6 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	if err := updateNamesRefusal(cmd, eng, args, all); err != nil {
 		return err
 	}
-	pg, err := a.pager(cmd, eng)
-	if err != nil {
-		return err
-	}
 	// -y as given, which every command repeating the run keeps.
 	var flags []string
 	if f.yes {
@@ -61,21 +57,16 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	req := engine.ProfileUpdateRequest{Scopes: given, Names: args, All: all, DryRun: f.dry, Flags: flags, Rerun: rerunFlags(cmd, f.trust), Trust: f.trust, Receipt: a.receipt(cmd, f.trust, f.yes),
 		CannotAsk: !p.Interactive()}
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
-	// Unpaged, the content is capped, naming the command that lists all of a profile's.
-	listAll := func(rp engine.RemoteProfile) string {
-		return eng.ProfileRun(given, rp.Profile, "--update", "-n", "--json")
-	}
-	printer := func(rps []engine.RemoteProfile) func(io.Writer, style, string) {
-		return func(w io.Writer, _ style, more string) {
+	// Unpaged, the content is capped, naming the command that lists all of a profile's; paged, it
+	// is not.
+	printer := func(rps []engine.RemoteProfile) func(io.Writer, style) {
+		return func(w io.Writer, s style) {
 			printRemoteProfiles(w, rps, func(rp engine.RemoteProfile) string {
-				if more == "" {
-					return ""
-				}
-				return listAll(rp)
+				return s.more(eng.ProfileRun(given, rp.Profile, "--update", "-n", "--json"))
 			})
 		}
 	}
-	show := func(rps []engine.RemoteProfile) { pg.show(cmd.ErrOrStderr(), stderr, listAll(rps[0]), printer(rps)) }
+	show := func(rps []engine.RemoteProfile) { a.page(cmd, cmd.ErrOrStderr(), stderr, printer(rps)) }
 	req.Show = func(rps []engine.RemoteProfile) {
 		if !a.json {
 			show(rps)
@@ -117,7 +108,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 			}
 		}
 		var failed int
-		passes, failed, err = a.collectSyncs(cmd, eng, pg, scopes, applies, nil, scoped, f.trust, req.Batch.Items, runWithout(cmd, args))
+		passes, failed, err = a.collectSyncs(cmd, eng, scopes, applies, nil, scoped, f.trust, req.Batch.Items, runWithout(cmd, args))
 		aborted := errors.Is(err, ErrAborted) || errors.Is(err, context.Canceled)
 		if failed >= 0 && aborted {
 			return &abortedError{"aborted; nothing was updated."} // a Cancel, Ctrl+C or a No to the removals (M1)
@@ -158,7 +149,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 		// The updates' own lines first; each scope's sync follows under its label.
 		if err := a.emit(cmd, func(w io.Writer, s style) {
 			if res.DryRun && len(res.Profiles) > 0 {
-				pg.show(w, s, listAll(res.Profiles[0]), printer(res.Profiles))
+				printer(res.Profiles)(w, s)
 			}
 			printUpdateResult(w, s, res)
 		}, nil); err != nil {
@@ -179,7 +170,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 			if passes != nil {
 				fi.pass, passes = passes[0], passes[1:]
 			}
-			synced, more, err := a.syncScope(cmd, eng, pg, u.Of, u.Apply, nil, fi)
+			synced, more, err := a.syncScope(cmd, eng, u.Of, u.Apply, nil, fi)
 			if err != nil {
 				return updateNotApplied(eng, doc, u, res.Scopes[i+1:], later, outputFlags(cmd), err)
 			}
@@ -189,7 +180,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 					if several > 1 && !s.plain {
 						fmt.Fprintln(w, destLabel(u.Of)+":")
 					}
-					printSync(w, s, manifestName(u.Of), synced, u.Apply, more)
+					printSync(w, s, manifestName(u.Of), synced, u.Apply, s.more(more))
 				}, nil); err != nil {
 					return err
 				}

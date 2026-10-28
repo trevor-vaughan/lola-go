@@ -20,12 +20,14 @@ Ginkgo/Gomega specs live beside the code, one suite per package.
 
 - **Isolation.** Every spec calls `testenv.Isolate()` (`internal/testenv`). It points `HOME`,
   every XDG directory and git's config and identity at a fresh temporary directory, clears
-  `LOLA_HOME`, and replaces `PATH` with the spec's own `bin/` (where specs put fake assistants)
+  `LOLA_HOME`, `LINES`, `LOLA_PAGER` and `NO_PAGER`, and replaces `PATH` with the spec's own `bin/` (where specs put fake assistants)
   followed by a directory of symbolic links to the few tools specs need (`sh`, `git`, …), so a
   developer's real assistant is never found. Values come back after the spec. No spec uses the
   network.
 - **The command tree.** CLI specs (`internal/cli`) run the real cobra tree in-process with
-  buffered, non-terminal streams. Convention specs walk the live command tree, and the
+  buffered, non-terminal streams. The viewer's specs drive `viewerModel` with key and window-size
+  messages and read `View()`; through `app.view` and `WithTerminals`, they type keys into a pipe
+  that stays open, as a terminal does, and set `LINES` and `COLUMNS` for the size. Convention specs walk the live command tree, and the
   conformance suite (`internal/target/conformance`) walks the live target registry. Its
   coaching spec (`coaching_test.go`) plans a module for every finding a target's capability
   table and its own rendering produce, and fails on a finding with no hint that the target's

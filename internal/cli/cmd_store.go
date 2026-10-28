@@ -56,7 +56,7 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 			if len(args) == 0 {
 				return a.cacheListRun(cmd, args)
 			}
-			return groupRunE(cmd, args)
+			return a.groupRunE(cmd, args)
 		},
 	}
 	cache.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd(), a.cacheCleanCmd())

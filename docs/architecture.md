@@ -1530,7 +1530,7 @@ parsed (§19 R7), and `profileApply` resolves one scope as every writing command
 on a terminal; `both` refused), then runs `syncScope` with the `ProfileChange`: the same trust
 and removal questions as `lola sync`, `-y` and `--trust` as answers. The summary
 (`printProfileAction`: the list's new state, each change, then `printSync`'s lines) goes through
-`pager.show`.
+`emit`, and so through `page`.
 
 `Uninstall` refuses a module any profile layer lists (`refuseProfileModule`), even when the
 manifest lists it too, since uninstalling would leave it wanted: each profile's hint is
@@ -1706,22 +1706,31 @@ lists instead of its generic advice (`Result.remedies`, `strictError`). The othe
 manifest's pin, else the ledger's version (`renderPin`); a failed fetch under the pin is coached
 as sync coaches it (`syncPinError`, `lola sync --update <m>`).
 
-**Pager.** When stdout and stderr are both terminals (`WithTerminals` stands in for them in
-specs), with human output and no `--no-pager`, `sync` reads `pager` (default `true`) from the
-user's `config.yaml` (never a project's) and, when it is on, shows the trust diff, the removals
-and a dry run's result through `pager.show` (`internal/cli/pager.go`, Plan 6b §9): it renders
-them uncapped (an empty `more` lifts the `filesShown` and `stepsShown` caps) in the color of the
-terminal, and runs `$LOLA_PAGER`, else `$PAGER`, else `less` (`more` on Windows), split on
-whitespace with no shell and found with `exec.LookPath`; a pager in the current directory
-(`exec.ErrDot`) is refused. The text goes in on a pipe (a pager that quits without reading it is
-fine: exec drops the EPIPE of a clean exit); the pager writes to stdout; `LESS=FRX` is added to
-`Engine.Environ` when `LESS` is unset. While it runs, `signal.Notify(os.Interrupt)` keeps Ctrl+C
-from killing lola (the pager handles it). `show` returns when the pager exits, so the question
-comes after it. A missing, refused or failing pager is a warning, and the capped text is printed
-as before. An empty `$LOLA_PAGER` cannot be told from an unset one through the injected
-`getenv`, so it falls through to `$PAGER`; `cat` means no pager. `lola market <name>` pages its
-listing through the same `pager.show` (a catalog may list hundreds of entries), and fits every
-line to `app.width`: the terminal's width (`term.GetSize`), else `$COLUMNS`, else no limit.
+**The viewer and paging.** `emit` (`internal/cli/output.go`), help (`showHelp`) and the consent
+diffs a question follows (`syncScope`, `profileAdd`, `profileUpdate`) all print through
+`page` (`internal/cli/pager.go`, Plan 10 §2). `paging` decides, first match winning: `--json` or
+`--plain`, stdout or stderr not a terminal (`WithTerminals` stands in for them in specs),
+accessible mode (`app.accessible`), `--no-pager`, `NO_PAGER`, or `pager: false` in the user's `config.yaml` (default `true`, never a
+project's, read only when the rules before it allow paging; unreadable, it is a warning and the
+output is printed) print; a non-empty `$LOLA_PAGER` is the pager (`cat` alone prints); otherwise
+the viewer. `$PAGER` is not read. `page` renders once with `style.paged`, which every capped
+printer turns into an empty `more` (`style.more`), lifting the `filesShown` and `stepsShown` caps,
+in the color of stdout. A pager runs as before (`runPager`): split on whitespace with no shell,
+found with `exec.LookPath`, refused in the current directory (`exec.ErrDot`), fed on a pipe,
+writing to stdout, with `LESS=FRX` added to `Engine.Environ` when `LESS` is unset and
+`signal.Notify(os.Interrupt)` keeping Ctrl+C from killing lola. The viewer opens only when the
+text, wrapped to the width, has at least as many lines as the terminal has rows (`app.height`:
+`term.GetSize`, else `$LINES`); otherwise the text is printed. `viewerModel`
+(`internal/cli/viewer.go`) is a bubbletea model over `bubbles/v2/viewport`: `ansi.Wrap` to the
+width, again on `tea.WindowSizeMsg`; `g`/`G`/`Home`/`End` added to the viewport's keys; a footer
+with the position in `style.strong` and the keys through `style.paint`; confirm mode, which answers
+a `viewAnswer`: `y` apply, `c` change, `n`/`q`/Esc/Ctrl+C cancel (W4's install review). `app.view` runs it on the alternate screen, on stdout (read
+mode) or stderr (confirm mode), with the command's stdin unless that is `os.Stdin` (then bubbletea
+opens the terminal), and writes the text to the same stream after it quits. `page` returns only
+when the pager or the viewer has exited, so the question comes after it. A missing, refused or
+failing pager, or a viewer that cannot start, is a warning, and the capped text is printed.
+`lola market <name>` fits every line to `app.width`: the terminal's width (`term.GetSize`), else
+`$COLUMNS`, else no limit.
 `printEntries` caps the name column at `maxNameCell` (32), printing a longer name whole on its own
 line with the rest of its row indented under it (names are never cut: they are what you type),
 cuts the version cell to `maxVersionCell` (16) columns and the source cell to `maxSourceCell` (40), or fewer when the row needs it, and the

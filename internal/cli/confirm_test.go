@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -230,6 +232,65 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			Expect(c.written()).To(BeTrue())
 		},
 		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"))
+
+	// onTerminal runs c on a terminal lines rows tall whose keys quit each viewer, answering yes.
+	onTerminal := func(c confirmCase, lines string) (*confirming, result) {
+		GinkgoHelper()
+		GinkgoT().Setenv("LOLA_PAGER", "")
+		GinkgoT().Setenv("COLUMNS", "80")
+		GinkgoT().Setenv("LINES", lines)
+		in, typed, err := os.Pipe()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(typed.Close()).To(Succeed())
+			Expect(in.Close()).To(Succeed())
+		})
+		_, err = typed.WriteString("q")
+		Expect(err).NotTo(HaveOccurred())
+		// The result is taller than the terminal too: its viewer gets its own q, typed once the
+		// plan's viewer has exited.
+		p := &confirming{answers: []bool{true}, meddle: func() {
+			_, err := typed.WriteString("q")
+			Expect(err).NotTo(HaveOccurred())
+		}}
+		root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
+		var out bytes.Buffer
+		p.stderr = &bytes.Buffer{}
+		root.SetOut(&out)
+		root.SetErr(p.stderr)
+		root.SetIn(in)
+		root.SetArgs(c.args)
+		code := cli.Execute(root)
+		return p, result{out: out.String(), err: p.stderr.String(), code: code}
+	}
+
+	DescribeTable("c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question (Plan 10 §2.1)",
+		func(command string) {
+			c := fixture(command)
+			p, r := onTerminal(c, "2")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
+			Expect(r.out).To(ContainSubstring(c.plan + "\n"))
+			Expect(p.questions).To(Equal([]string{c.question}), "the question comes after the viewer")
+			Expect(p.before[0]).NotTo(ContainSubstring(c.plan), "the plan went to the viewer, not stderr")
+			Expect(c.written()).To(BeTrue())
+		},
+		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+
+	DescribeTable("c9: on a terminal, <cmd>'s plan prints plainly before the question when the viewer is bypassed",
+		func(command string, bypass func(), more ...string) {
+			c := fixture(command)
+			bypass()
+			c.args = with(c.args, more...)
+			p, r := onTerminal(c, "2")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).NotTo(ContainSubstring("\x1b[?1049h"))
+			Expect(p.before[0]).To(HavePrefix(c.plan + "\n"))
+			Expect(p.questions).To(Equal([]string{c.question}))
+		},
+		Entry("migrate, NO_PAGER set", "migrate", func() { GinkgoT().Setenv("NO_PAGER", "1") }),
+		Entry("migrate, --no-pager", "migrate", func() {}, "--no-pager"),
+		Entry("uninstall, NO_PAGER set", "uninstall", func() { GinkgoT().Setenv("NO_PAGER", "1") }))
 
 	DescribeTable("the refusal's plan keys equal those -n --json prints for the same run",
 		func(command string) {

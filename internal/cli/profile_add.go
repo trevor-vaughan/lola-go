@@ -33,10 +33,6 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	if err != nil {
 		return err
 	}
-	pg, err := a.pager(cmd, eng)
-	if err != nil {
-		return err
-	}
 	req := engine.ProfileAddRequest{Source: rf.source, Ref: rf.ref, Path: rf.path, DryRun: f.dry, Rerun: rerunFlags(cmd, f.trust),
 		Trust: f.trust, Receipt: a.receipt(cmd, f.trust, false)}
 	if len(args) == 1 {
@@ -48,21 +44,15 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	p := a.prompter(cmd) // never asks under --json
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
 	// Unpaged, the content is capped, naming the command that lists all of a profile's, picked or
-	// named; paged (more is ""), it is not.
-	moreFor := func(rp engine.RemoteProfile) string {
-		return eng.ProfileRun(given, append(append([]string{rp.Profile}, profileAddArgs("", rf)[2:]...), "-n", "--json")...)
-	}
-	printer := func(rps []engine.RemoteProfile) func(io.Writer, style, string) {
-		return func(w io.Writer, _ style, more string) {
+	// named; paged, it is not.
+	printer := func(rps []engine.RemoteProfile) func(io.Writer, style) {
+		return func(w io.Writer, s style) {
 			printRemoteProfiles(w, rps, func(rp engine.RemoteProfile) string {
-				if more == "" {
-					return ""
-				}
-				return moreFor(rp)
+				return s.more(eng.ProfileRun(given, append(append([]string{rp.Profile}, profileAddArgs("", rf)[2:]...), "-n", "--json")...))
 			})
 		}
 	}
-	show := func(rps []engine.RemoteProfile) { pg.show(cmd.ErrOrStderr(), stderr, moreFor(rps[0]), printer(rps)) }
+	show := func(rps []engine.RemoteProfile) { a.page(cmd, cmd.ErrOrStderr(), stderr, printer(rps)) }
 	// --trust answers the question; what it accepted is still shown, as a record.
 	req.Show = func(rps []engine.RemoteProfile) {
 		if !a.json {
@@ -93,7 +83,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	}
 	return a.emit(cmd, func(w io.Writer, s style) {
 		if res.DryRun {
-			pg.show(w, s, moreFor(res.Profiles[0]), printer(res.Profiles))
+			printer(res.Profiles)(w, s)
 		}
 		printRemoteResult(w, s, res)
 	}, res)

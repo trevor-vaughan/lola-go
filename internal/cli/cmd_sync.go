@@ -87,7 +87,7 @@ type syncPass struct {
 // ErrAborted and applies no scope. After its yes the passes returned apply each scope in turn,
 // each recording its own grants (R-9-16). again is the command a changed apply hints. A scope that fails before its receipt returns its
 // error and its index, nothing written or recorded; failed is -1 otherwise.
-func (a *app) collectSyncs(cmd *cobra.Command, eng *engine.Engine, pg *pager, scopes []engine.Scope, applies [][]string, prof *engine.ProfileChange,
+func (a *app) collectSyncs(cmd *cobra.Command, eng *engine.Engine, scopes []engine.Scope, applies [][]string, prof *engine.ProfileChange,
 	f syncFlags, given engine.TrustKinds, extra []engine.Consent, again string) (_ []*syncPass, failed int, _ error) {
 	passes := make([]*syncPass, len(scopes))
 	shown := slices.Clone(extra)
@@ -95,7 +95,7 @@ func (a *app) collectSyncs(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc
 		passes[i] = &syncPass{collect: true, batch: &engine.TrustBatch{}}
 		fi := f
 		fi.pass = passes[i]
-		if _, _, err := a.syncScope(cmd, eng, pg, sc, applies[i], prof, fi); !errors.Is(err, engine.ErrBatched) {
+		if _, _, err := a.syncScope(cmd, eng, sc, applies[i], prof, fi); !errors.Is(err, engine.ErrBatched) {
 			if err == nil {
 				err = errors.New("a sync stopped before its receipt")
 			}
@@ -204,9 +204,9 @@ func (a *app) syncCmd() *cobra.Command {
 			"anything is cached or installed. Off a terminal, --trust accepts the changes (of the modules\n" +
 			"named, if any); -y does not.\n" +
 			trustHelp("sync") + "\n" +
-			"On a terminal, the diff (and a dry run's plan) is paged, in full, with $LOLA_PAGER, else $PAGER,\n" +
-			"else less; the question comes after the pager exits. --no-pager, or pager: false in\n" +
-			"$XDG_CONFIG_HOME/lola/config.yaml, prints it instead.\n" +
+			"On a terminal, the diff (and a dry run's plan), when taller than the terminal, opens in full\n" +
+			"in lola's viewer, or $LOLA_PAGER when set; the question comes after it exits. --no-pager,\n" +
+			"NO_PAGER, or pager: false in $XDG_CONFIG_HOME/lola/config.yaml, prints it instead.\n" +
 			"-y and --force never give consent of any kind.\n\n" + scopeHelp + "\n" +
 			"--scope both syncs the project, then user scope, and stops at the first that fails or is\n" +
 			"declined.",
@@ -228,10 +228,6 @@ func (a *app) syncCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			pg, err := a.pager(cmd, eng)
-			if err != nil {
-				return err
-			}
 			// Several scopes (Plan 6b §19 R13): in order, each reported under its label as it is
 			// synced, stopping at the first that fails or is declined; --json prints one document
 			// once every scope is synced.
@@ -244,7 +240,7 @@ func (a *app) syncCmd() *cobra.Command {
 					scopes[i], applies[i] = c.Scope, args
 				}
 				var failed int
-				if passes, failed, err = a.collectSyncs(cmd, eng, pg, scopes, applies, nil, f, f.trust, nil, runWithout(cmd, args)); err != nil {
+				if passes, failed, err = a.collectSyncs(cmd, eng, scopes, applies, nil, f, f.trust, nil, runWithout(cmd, args)); err != nil {
 					if failed < 0 {
 						return err
 					}
@@ -261,7 +257,7 @@ func (a *app) syncCmd() *cobra.Command {
 				if passes != nil {
 					fi.pass = passes[i]
 				}
-				res, more, err := a.syncScope(cmd, eng, pg, c.Scope, args, nil, fi)
+				res, more, err := a.syncScope(cmd, eng, c.Scope, args, nil, fi)
 				if err != nil && len(scs) > 1 {
 					serr := &syncedScopesError{err: err, done: done}
 					if !a.json {
@@ -282,14 +278,7 @@ func (a *app) syncCmd() *cobra.Command {
 					}
 					printSync(w, s, name, res, args, more)
 				}
-				// A dry run's diff and plan are paged, uncapped; a run's result lines are not.
-				out := func(w io.Writer, s style) {
-					if res.DryRun {
-						pg.show(w, s, more, human)
-					} else {
-						human(w, s, more)
-					}
-				}
+				out := func(w io.Writer, s style) { human(w, s, s.more(more)) }
 				switch {
 				case len(scs) == 1:
 					return a.emit(cmd, out, res)
@@ -316,9 +305,9 @@ func (a *app) syncCmd() *cobra.Command {
 // syncScope syncs one scope, or applies the activation prof to it (lola profile): the trust
 // question and the removals' confirmation on a terminal, or the answers --trust and -y give; a
 // cancel or a No is an aborted error naming the scope. The diff and the removals a question is
-// about go through pg before it is asked. more is the command that lists what the human output
+// about go through page before it is asked. more is the command that lists what the human output
 // caps.
-func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc engine.Scope, args []string, prof *engine.ProfileChange,
+func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, args []string, prof *engine.ProfileChange,
 	f syncFlags) (res *engine.SyncResult, more string, err error) {
 	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd)}
 	if cmd.Name() == "sync" { // lola profile takes no --force: its conflicts hint nothing
@@ -334,8 +323,8 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc en
 	name, more := manifestName(sc), eng.ListAll(req)
 	p := a.prompter(cmd) // never asks under --json
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
-	diff := func(rep engine.TrustReport) func(io.Writer, style, string) {
-		return func(w io.Writer, s style, more string) { printTrustDiff(w, s, name, rep, more) }
+	diff := func(rep engine.TrustReport) func(io.Writer, style) {
+		return func(w io.Writer, s style) { printTrustDiff(w, s, name, rep, s.more(more)) }
 	}
 	// asked is a trust answer given at the picker, whose equivalent command is printed once
 	// the removals, if any, are answered.
@@ -343,12 +332,12 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc en
 	// --trust answers the question; the diff it accepted is still shown, as a record.
 	req.Show = func(rep engine.TrustReport) {
 		if !a.json {
-			pg.show(cmd.ErrOrStderr(), stderr, more, diff(rep))
+			a.page(cmd, cmd.ErrOrStderr(), stderr, diff(rep))
 		}
 	}
 	if p.Interactive() {
 		req.Trust = func(rep engine.TrustReport) (engine.TrustAnswer, error) {
-			pg.show(cmd.ErrOrStderr(), stderr, more, diff(rep))
+			a.page(cmd, cmd.ErrOrStderr(), stderr, diff(rep))
 			step := trustStep(rep)
 			if prof != nil {
 				step.Groups = nil // an activation applies all it planned or nothing: no Choose…
@@ -367,7 +356,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc en
 		req.ConfirmRemovals = func([]engine.Removal) (bool, error) { return true, nil }
 	case p.Interactive():
 		req.ConfirmRemovals = func(rs []engine.Removal) (bool, error) {
-			pg.show(cmd.ErrOrStderr(), stderr, more, func(w io.Writer, s style, _ string) { printRemovals(w, s, rs) })
+			a.page(cmd, cmd.ErrOrStderr(), stderr, func(w io.Writer, s style) { printRemovals(w, s, rs) })
 			ok, err := p.Confirm(question)
 			if err == nil && ok {
 				names := make([]string, len(rs))

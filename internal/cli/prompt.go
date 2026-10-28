@@ -21,7 +21,8 @@ func interactive(cmd *cobra.Command) bool {
 	return isTTY(cmd.InOrStdin()) && isTTY(cmd.ErrOrStderr())
 }
 
-// confirm asks question before a destructive action, after show prints the plan on stderr; the
+// confirm asks question before a destructive action, after show prints the plan on stderr, or, on a
+// terminal, in the viewer when it is taller than the terminal (or the user's pager; see page); the
 // injected Prompter or the huh adapter asks, under --json too, since the result goes to stdout.
 // Off a terminal it refuses, hinting the run (args are its names) with -y. Under --json that
 // refusal is all lola prints: one JSON line carrying plan, the plan it would have asked about
@@ -35,7 +36,8 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, plan a
 		p = a.huhPrompter(cmd)
 	}
 	if p.Interactive() {
-		show(cmd.ErrOrStderr())
+		// page returns once the viewer or pager exits, so the question is never asked inside it.
+		a.page(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, func(w io.Writer, _ style) { show(w) })
 		ok, err := p.Confirm(question)
 		if err == nil && !ok {
 			return ErrAborted

@@ -1,13 +1,16 @@
 package cli_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -261,11 +264,16 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		// hookedUpdate publishes a go that adds hooked, whose pre-install hook runs body.
-		hookedUpdate := func(body string) {
+		// extra are further files of hooked.
+		hookedUpdate := func(body string, extra ...map[string]string) {
 			GinkgoHelper()
 			// The update adds hooked, whose pre-install hook the scope's sync runs.
 			hw := filepath.Join(tmp, "hooked-work")
-			writeTree(hw, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n", "pre.sh": "#!/bin/sh\n" + body + "\n"})
+			files := map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n", "pre.sh": "#!/bin/sh\n" + body + "\n"}
+			for _, m := range extra {
+				maps.Copy(files, m)
+			}
+			writeTree(hw, files)
 			Expect(os.Chmod(filepath.Join(hw, "pre.sh"), 0o755)).To(Succeed())
 			gitIn(hw, "init", "-q", "-b", "main")
 			gitIn(hw, "add", "-A")
@@ -294,6 +302,50 @@ var _ = Describe("remote profiles", func() {
 			Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
 			Expect(doc["trusted"]).To(ConsistOf(map[string]any{"kind": "profiles", "item": "remote:go", "change": "changed"},
 				map[string]any{"kind": "hooks", "item": "hooked pre-install", "change": "new"}))
+		})
+
+		It("shows an update's sync in the viewer in full (Plan 10 §2.1)", func() {
+			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			many := map[string]string{}
+			for i := range 45 {
+				many[fmt.Sprintf("commands/m%02d.md", i)] = "M\n"
+			}
+			hookedUpdate("true", many)
+			GinkgoT().Setenv("COLUMNS", "80")
+			GinkgoT().Setenv("LINES", "10")
+			in, typed, err := os.Pipe()
+			Expect(err).NotTo(HaveOccurred())
+			// The run opens the viewer once for the profile diff and once for the sync: a q each
+			// time a viewer is open, typed until the run ends.
+			done := make(chan struct{})
+			go func() {
+				for {
+					select {
+					case <-done:
+						return
+					case <-time.After(50 * time.Millisecond):
+						_, _ = typed.WriteString("q")
+					}
+				}
+			}()
+			DeferCleanup(func() {
+				close(done)
+				Expect(typed.Close()).To(Succeed())
+				Expect(in.Close()).To(Succeed())
+			})
+			c := &confirming{scripted: scripted{}, answers: []bool{true}}
+			root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			var out bytes.Buffer
+			c.stderr = &bytes.Buffer{}
+			root.SetOut(&out)
+			root.SetErr(c.stderr)
+			root.SetIn(in)
+			root.SetArgs([]string{"profile", "go", "--update", "--user", "--trust=profiles,hooks"})
+			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
+			Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
+			Expect(out.String()).To(ContainSubstring("create claude-code .claude/commands/m44.md"), "the viewer's text is uncapped")
+			Expect(out.String()).NotTo(ContainSubstring("… and"))
 		})
 
 		It("an update with --trust shows one receipt for the profiles and each scope's sync; No updates and applies nothing", func() {

@@ -88,12 +88,41 @@ var _ = Describe("the consent-diff pager (Plan 6b §9)", func() {
 		Expect(filepath.Join(proj, ".claude", "commands", "c00.md")).NotTo(BeAnExistingFile())
 
 		GinkgoT().Setenv("LESS", "R")
-		GinkgoT().Setenv("LOLA_PAGER", "")
-		GinkgoT().Setenv("PAGER", "fakepager")
 		Expect(os.Remove(paged)).To(Succeed())
 		p, _ = asking(true, "sync", "--project")
-		Expect(p.seen).To(Equal([]bool{true}), "$PAGER when $LOLA_PAGER is empty")
+		Expect(p.seen).To(Equal([]bool{true}))
 		Expect(os.ReadFile(paged+".env")).To(Equal([]byte("LESS=R\n")), "the user's LESS is kept")
+	})
+
+	It("opens the diff in the viewer, in full, before the question, when $LOLA_PAGER is not set (Plan 10 §2.1)", func() {
+		GinkgoT().Setenv("LOLA_PAGER", "")
+		GinkgoT().Setenv("COLUMNS", "80")
+		GinkgoT().Setenv("LINES", "10")
+		// A terminal's input: q, then nothing more until the spec ends.
+		in, typed, err := os.Pipe()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(typed.Close()).To(Succeed())
+			Expect(in.Close()).To(Succeed())
+		})
+		_, err = typed.WriteString("q")
+		Expect(err).NotTo(HaveOccurred())
+		p := &pagedFirst{confirming: &confirming{trusts: []engine.TrustAnswer{{}}}, paged: paged}
+		root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
+		var out bytes.Buffer
+		p.stderr = &bytes.Buffer{}
+		root.SetOut(&out)
+		root.SetErr(p.stderr)
+		root.SetIn(in)
+		root.SetArgs([]string{"sync", "--project"})
+		Expect(cli.Execute(root)).To(Equal(0), p.stderr.String())
+		Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
+		Expect(out.String()).To(ContainSubstring(header))
+		Expect(out.String()).To(ContainSubstring("+ commands/c24.md\n"), "the viewer's text is uncapped")
+		Expect(out.String()).NotTo(ContainSubstring("… and"))
+		Expect(p.before[0]).NotTo(ContainSubstring(header), "the diff went to the viewer, not stderr")
+		Expect(p.questions).To(Equal([]string{"trust"}), "the question comes after the viewer")
+		Expect(paged).NotTo(BeAnExistingFile())
 	})
 
 	It("pages a dry run's diff and plan, uncapped", func() {
@@ -115,6 +144,7 @@ var _ = Describe("the consent-diff pager (Plan 6b §9)", func() {
 			Expect(r.err).NotTo(ContainSubstring("⚠"))
 		},
 		Entry("with --no-pager", true, nil, "--no-pager"),
+		Entry("with NO_PAGER set, though $LOLA_PAGER is (Plan 10 §2.1)", true, func() { GinkgoT().Setenv("NO_PAGER", "1") }),
 		Entry("with pager: false in config.yaml", true, func() {
 			Expect(os.MkdirAll(filepath.Join(tmp, "config", "lola"), 0o700)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(tmp, "config", "lola", "config.yaml"), []byte("version: 1\npager: false\n"), 0o600)).To(Succeed())

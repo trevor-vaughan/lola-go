@@ -37,9 +37,33 @@ func (a *app) width(w any) int {
 	return 0
 }
 
+// height is how many rows the terminal w is on has: the terminal's when w is one, else $LINES
+// when it is a positive number, else 0, unknown, which never opens the viewer.
+func (a *app) height(w any) int {
+	if f, ok := w.(*os.File); ok {
+		if _, rows, err := term.GetSize(int(f.Fd())); err == nil && rows > 0 {
+			return rows
+		}
+	}
+	if n, err := strconv.Atoi(a.getenv("LINES")); err == nil && n > 0 {
+		return n
+	}
+	return 0
+}
+
 // style renders human output: glyphs always, ANSI color only when enabled, nothing fancy
-// under --plain.
-type style struct{ color, plain bool }
+// under --plain. paged is set when the output goes to the viewer or a pager, which shows all of
+// it, so printers drop their caps (more).
+type style struct{ color, plain, paged bool }
+
+// more is the command a capped listing names to list everything, or "" when the output is paged
+// and shows everything.
+func (s style) more(cmd string) string {
+	if s.paged {
+		return ""
+	}
+	return cmd
+}
 
 func (a *app) style(cmd *cobra.Command) style {
 	if a.plain {
@@ -60,7 +84,8 @@ func (a *app) color(w any) bool {
 	return a.getenv("NO_COLOR") == "" && isTTY(w)
 }
 
-// emit is the one output path: JSON under --json, otherwise the human renderer.
+// emit is the one output path: JSON under --json, otherwise the human renderer, through page,
+// which opens the viewer when the output is taller than the terminal (Plan 10 §2.1).
 func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) error {
 	w := cmd.OutOrStdout()
 	if a.json {
@@ -68,7 +93,7 @@ func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) erro
 		enc.SetIndent("", "  ")
 		return enc.Encode(v)
 	}
-	human(w, a.style(cmd))
+	a.page(cmd, w, a.style(cmd), human)
 	return nil
 }
 

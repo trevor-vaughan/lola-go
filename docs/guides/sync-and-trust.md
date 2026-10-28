@@ -294,20 +294,20 @@ manifest or `trust.json`; the content of trusted entries at their pins may still
 your cache, without moving any ref's cached head, and at user scope `--update -n` fetches into
 your cache and moves the refs' cached heads, as `-n` may there.
 
-**Paging.** When both stdout and stderr are terminals and the output is human, `lola sync`
-shows the trust diff, the removals it asks about and a dry run's diff and plan through a pager,
-git-style, in full (unpaged output keeps its caps and `… and N more` lines); `lola market <name>`
-pages its listing the same way. The question comes
-after the pager exits, on the terminal. The pager is `$LOLA_PAGER`, else `$PAGER`, else `less`
-(`more` on Windows); an empty `$LOLA_PAGER` falls through to `$PAGER`, and `cat` means no pager.
-The value is split on whitespace and run without a shell; `less` gets `LESS=FRX` when `LESS` is
-unset, so a diff that fits one screen just prints. lola never runs a pager found in the current
-directory (a relative entry in `PATH`); it warns and prints the diff instead, as it does when the
-pager is missing or fails. Ctrl+C belongs to the pager while it runs. `--no-pager`, or
-`pager: false` in your `config.yaml` (never a project's), turns paging off; `--json`, `--plain`
-and output that is not a terminal never page. `lola sync` reads `pager` only when it could
-page, so off a terminal a malformed `pager` value does not stop it; like any malformed key, it
-still fails a command that reads `default_scope` (one without a scope flag).
+**The viewer.** When both stdout and stderr are terminals and the output is human, `lola sync`
+shows the trust diff, the removals it asks about and a dry run's diff and plan in full (output
+printed without the viewer keeps its caps and `… and N more` lines). When that is taller than the
+terminal it opens in lola's viewer ([Output contract](../usage.md#output-contract)), and the
+question comes after you quit it; the diff is then printed, so it stays in your scrollback. Every
+other command's output, and help, opens the same way. A `$LOLA_PAGER` you set is used instead,
+split on whitespace and run without a shell (`LESS=FRX` when `LESS` is unset; `cat` prints); lola
+never runs a pager found in the current directory (a relative entry in `PATH`): it warns and
+prints the diff instead, as it does when the pager is missing or fails. Ctrl+C belongs to the
+pager while it runs. `--no-pager`, `NO_PAGER`, accessible mode (`LOLA_ACCESSIBLE=1`, `TERM=dumb`), or
+`pager: false` in your `config.yaml` (never a project's) turns the viewer off; `--json`, `--plain` and output that is not a terminal never use
+it. lola reads `pager` only when it could open the viewer; a malformed `pager` value is then a
+warning, and the output is printed. Like any malformed key, it still fails a command that reads
+`default_scope` (one without a scope flag).
 
 **`lola install` without arguments** says how many modules `project.yml` (and any active
 [profile](profiles.md#profiles); `default.yml` at user scope) lists that are not installed, on a terminal
