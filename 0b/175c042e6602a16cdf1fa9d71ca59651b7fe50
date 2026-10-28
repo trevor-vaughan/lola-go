@@ -1,0 +1,24 @@
+internal/ledger/ledger.go
+  s_51684f47240dfe::t_807dc6967df906 274
+  s_51684f47240dfe::t_5774e5a35f9452 11,170-173,175-188,218-273,275-305
+internal/ledger/ledger_test.go
+  s_51684f47240dfe::t_5774e5a35f9452 396,398
+  s_51684f47240dfe::t_807dc6967df906 336-395,397,399
+  s_51684f47240dfe::t_754ce04faafbfc 4,180-181,400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b175c042e6602a16cdf1fa9d71ca59651b7fe50",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
