@@ -175,6 +175,7 @@ var _ = Describe("lola tidy", func() {
 			"claude-code  skill/axb  .claude/skills/axb/", "claude-code  skill/old  .claude/skills/old/", "claude-code  command/tmp  .claude/commands/tmp.md"}))
 		Expect(tidyLabels(p.tidyKeepSteps[0].Options)).To(Equal([]string{`skill/a\*b  claude-code`, "skill/axb  claude-code",
 			"command/tmp  claude-code"}), "one option per selector, naming what it keeps; skill/old was chosen to move")
+		Expect(p.tidyKeepSteps[0].Required).To(BeFalse(), "something moves: keeping nothing is an answer")
 		Expect(r.err).To(ContainSubstring("  → keep skill/a\\*b\n"))
 		Expect(r.out).To(ContainSubstring("keep-list: added skill/a\\*b (project " + proj + ")"))
 		Expect(os.ReadFile(filepath.Join(tmp, "config", "lola", "keep.yaml"))).To(ContainSubstring("- skill/a\\*b\n"))
@@ -201,12 +202,14 @@ var _ = Describe("lola tidy", func() {
 		Expect(os.Remove(filepath.Join(proj, ".claude", "commands", "dup.md"))).To(Succeed())
 		Expect(os.Remove(filepath.Join(proj, ".claude", "commands", "solo.md"))).To(Succeed())
 
-		By("choosing nothing in either picker cancels")
-		p = &scripted{tidyPick: tidyPicks(), tidyKeep: tidyKeeps()}
+		By("choosing nothing to move makes the keep picker need a pick; Ctrl+C there cancels")
+		p = &scripted{tidyPick: tidyPicks(), tidyKeep: []func(cli.TidyKeepStep) ([]string, error){
+			func(cli.TidyKeepStep) ([]string, error) { return nil, cli.ErrAborted }}}
 		r = lolaP(p, "tidy", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(ContainSubstring("aborted; nothing changed."))
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep"}))
+		Expect(p.tidyKeepSteps[0].Required).To(BeTrue())
 
 		By("choosing everything skips the keep picker")
 		p = &scripted{tidyPick: tidyPicks("claude-code"), confirm: []bool{false}}

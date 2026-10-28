@@ -38,6 +38,7 @@ type scripted struct {
 	entries    []string
 	tidyPick   []func(cli.TidyPickStep) ([]string, error)
 	tidyKeep   []func(cli.TidyKeepStep) ([]string, error)
+	background []bool
 	roots      []string
 	mapTargets [][]string
 
@@ -118,6 +119,10 @@ func (s *scripted) TidyPick(st cli.TidyPickStep) ([]string, error) {
 func (s *scripted) TidyKeep(st cli.TidyKeepStep) ([]string, error) {
 	s.calls, s.tidyKeepSteps = append(s.calls, "tidy-keep"), append(s.tidyKeepSteps, st)
 	return pop(&s.tidyKeep, "tidy-keep")(st)
+}
+func (s *scripted) Background() (bool, error) {
+	s.calls = append(s.calls, "background")
+	return pop(&s.background, "background"), nil
 }
 func (s *scripted) MigrateRoot(st cli.MigrateRootStep) (string, error) {
 	s.calls, s.rootSteps = append(s.calls, "migrate-root:"+st.Old), append(s.rootSteps, st)
@@ -528,18 +533,6 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Entry("Ctrl+C at the Other directory path", &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes("project", "other")},
 			dirs: []func(cli.DirectoryStep) (string, error){func(cli.DirectoryStep) (string, error) { return "", cli.ErrAborted }}}),
 	)
-
-	It("asks again until at least one scope and one module are picked", func() {
-		p := &scripted{
-			scope:   []func(cli.ScopeStep) ([]string, error){scopes(), scopes("user")},
-			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods(), mods("deploy")},
-			review:  []string{cli.ReviewApply},
-		}
-		r := lolaP(p, "install", "-n")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps[1].Problem).To(Equal("pick at least one scope"))
-		Expect(p.moduleSteps[1].Problem).To(Equal("pick at least one module"))
-	})
 
 	It("preselects nothing on a terminal, though default_scope is set and the project uses lola (Plan 5c §14)", func() {
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())

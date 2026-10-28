@@ -169,7 +169,8 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 // tidyChoose asks lola tidy's picker steps (Plan 6d §3.4): which candidates move, then which
 // of the rest join the keep-list. The keep step offers one option per escaped literal selector,
 // since a keep entry covers every assistant's item of that name, and none for a selector that
-// would also keep an item chosen to move (R-6d2-6, R-6d2-8). Choosing nothing in both cancels.
+// would also keep an item chosen to move (R-6d2-6, R-6d2-8). When nothing moves, the keep step
+// needs a pick (TidyKeepStep.Required, Plan 10 §4), so the choice is never empty; Ctrl+C cancels.
 func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, error) {
 	opts := make([]TidyOption, len(scan.Candidates))
 	for i, c := range scan.Candidates {
@@ -209,7 +210,7 @@ func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, error) {
 		for i, l := range sels {
 			rest[i] = TidyOption{ID: l.String(), Label: untrusted.Text(l.String(), untrusted.MaxName) + "  " + strings.Join(covers[l], ", ")}
 		}
-		keep, err := p.TidyKeep(TidyKeepStep{Options: rest})
+		keep, err := p.TidyKeep(TidyKeepStep{Options: rest, Required: len(choice.Move) == 0})
 		if err != nil {
 			return engine.TidyChoice{}, err
 		}
@@ -218,9 +219,6 @@ func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, error) {
 				choice.Keep = append(choice.Keep, l)
 			}
 		}
-	}
-	if len(choice.Move) == 0 && len(choice.Keep) == 0 {
-		return engine.TidyChoice{}, ErrAborted
 	}
 	return choice, nil
 }

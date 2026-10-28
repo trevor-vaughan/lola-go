@@ -64,9 +64,10 @@ type scopePicker struct {
 	refuseHome bool   // the command refuses a project at the home directory: install and sync
 }
 
-// pick asks the picker for res, with step's question and preselection, until the answer names
-// at least one scope (exactly one when step.One) and, when sp.refuseHome, no project at the home
-// directory, asking for Other directory…'s directory when it is ticked. It returns the entries
+// pick asks the picker for res, with step's question and preselection, until the answer, never
+// empty (the Prompter refuses that), names exactly one scope when step.One and, when
+// sp.refuseHome, no project at the home directory, asking for Other directory…'s directory when
+// it is ticked. It returns the entries
 // ticked and their scopes: project roots first, then the user scope, as --scope both orders them.
 func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]string, []engine.ScopeChoice, error) {
 	step.ProjectRoot, step.Home = untrusted.Text(res.ProjectRoot, untrusted.MaxName), sp.eng.Paths.Home
@@ -77,9 +78,6 @@ func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]strin
 			return nil, nil, err
 		}
 		switch {
-		case len(entries) == 0:
-			step.Problem = "pick at least one scope"
-			continue
 		case step.One && len(entries) > 1:
 			step.Problem = "pick one scope"
 			continue

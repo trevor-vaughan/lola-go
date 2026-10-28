@@ -78,6 +78,42 @@ var _ = Describe("config.yaml", func() {
 		Expect(c.PostInstall).To(Equal(config.Script{Path: "/opt/ci/after.sh", Line: 3, Key: "post_install"}))
 	})
 
+	It("reads theme: dark or light (Plan 10 §4)", func() {
+		write("version: 1\ntheme: dark\n")
+		c, err := config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Theme).To(Equal(config.ThemeDark))
+		write("version: 1\ntheme: light\n")
+		c, err = config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Theme).To(Equal(config.ThemeLight))
+		write("version: 1\n")
+		c, err = config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Theme).To(BeEmpty(), "no theme: lola asks the terminal, then you")
+	})
+
+	It("saves theme, creating config.yaml or keeping its comments and other keys (Plan 10 §4)", func() {
+		Expect(config.SaveTheme(path, "", config.ThemeDark)).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("# lola settings. Safe to edit by hand.\nversion: 1\ntheme: dark\n")))
+
+		write("# mine\nversion: 1\ndefault_scope: user # where I work\ntheme: dark\npre_install: ~/bin/pre.sh\n")
+		Expect(config.SaveTheme(path, "/home/u", config.ThemeLight)).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("# mine\nversion: 1\ndefault_scope: user # where I work\ntheme: light\npre_install: ~/bin/pre.sh\n")))
+
+		write("# mine\nversion: 1\ndefault_scope: user # where I work\n")
+		Expect(config.SaveTheme(path, "", config.ThemeDark)).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("# mine\nversion: 1\ndefault_scope: user # where I work\ntheme: dark\n")))
+	})
+
+	It("never overwrites a config.yaml that does not load (Plan 10 §4)", func() {
+		write("version: 1\ntheme: blue\n")
+		err := config.SaveTheme(path, "", config.ThemeDark)
+		Expect(err).To(MatchError(ContainSubstring("not saving your theme: " + path + `:2: theme: "blue" is not a theme`)))
+		Expect(errs.Hints(err)).To(ContainElement("fix config.yaml by hand, then rerun; nothing was written to it"))
+		Expect(os.ReadFile(path)).To(Equal([]byte("version: 1\ntheme: blue\n")))
+	})
+
 	DescribeTable("reads cache_unused_for (Plan 9 §6.2)",
 		func(value string, want config.Age) {
 			write("version: 1\ncache_unused_for: " + value + "\n")
@@ -116,7 +152,10 @@ var _ = Describe("config.yaml", func() {
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring(hint)))
 		},
 		Entry("an unknown scope", "version: 1\ndefault_scope: everywhere\n", `:2: default_scope: "everywhere" is not a scope`, "project, user or both"),
-		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "known keys: cache_unused_for, default_scope, pager, post_install, pre_install, version"),
+		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "pre_install, theme, version"),
+		Entry("an unknown theme", "version: 1\ntheme: blue\n", `:2: theme: "blue" is not a theme`, "write theme: dark or theme: light, for your terminal's background"),
+		Entry("an empty theme", "version: 1\ntheme:\n", ":2: theme: must be a non-empty value, not empty", "write theme: dark or theme: light"),
+		Entry("a list for a theme", "version: 1\ntheme: [dark]\n", ":2: theme: must be a non-empty value, not a list", "write theme: dark or theme: light"),
 		Entry("no version", "default_scope: user\n", ":1: missing key version", "add version: 1"),
 		Entry("a newer version", "version: 2\n", ":1: version: version 2 is not supported", "upgrade lola"),
 		Entry("a version that is not a number", "version: one\n", ":1: version: must be the number 1", "write version: 1"),

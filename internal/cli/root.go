@@ -5,6 +5,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"sync"
@@ -54,6 +55,9 @@ type app struct {
 	termErr     bool   // stderr is a terminal whatever it is (WithTerminals)
 	eng         *engine.Engine
 	newPrompter func(*cobra.Command) Prompter
+	// queryBackground asks the terminal for its background color; nil is terminalBackground.
+	// Specs fake the terminal's answer with it.
+	queryBackground func(*cobra.Command) (color.Color, error)
 }
 
 // Option configures the command tree.

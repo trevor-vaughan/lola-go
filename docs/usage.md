@@ -1200,6 +1200,14 @@ a later prompt you decline), that consent stays recorded and nothing else is wri
 screen readers; there, end of input at any prompt, runtime hook consent included, cancels the
 run ("aborted; nothing changed"), and Ctrl+C interrupts.
 
+In a picker, space ticks the option under the cursor (`[x]`; the rest show `[ ]`), enter
+confirms, and Ctrl+C quits; the keys are listed under it. A picker that needs a pick (scope,
+modules, assistants, and `lola tidy`'s keep-list when you chose nothing to move) refuses an empty
+one when you press Enter with nothing ticked: `nothing selected — space selects, enter confirms, ctrl+c quits`, or in
+accessible mode `nothing selected — type an option's number to select it, 0 confirms, ctrl+c
+quits`. A module picker that lists your cache and your marketplaces asks again instead, with the
+same message.
+
 ### Choosing a scope
 
 The scope flags are global: every command takes them.
@@ -1312,6 +1320,7 @@ pager: true              # false prints everything without lola's viewer
 pre_install: ~/bin/lola-pre.sh     # your own install scripts: absolute or ~/…, no trust asked
 post_install: ~/bin/lola-post.sh
 cache_unused_for: 30d    # lola cache clean also removes versions unused this long (<n>d, <n>w, never)
+theme: dark              # your terminal's background, dark or light, for the pickers' colors
 ```
 
 `selections.yaml` is the one place that says which components you do not want. `install`,
@@ -1590,7 +1599,7 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
-| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, and `cache_unused_for`. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, `cache_unused_for`, and `theme`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](guides/profiles.md#profiles); `default.yml` is always on at user scope. lola never writes them. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/keep.yaml` | Your [keep-list](guides/tidying.md#tidying): per scope, what `lola tidy` never offers. Written by `--keep` and `--unkeep`; safe to edit by hand. | Yours to keep |
@@ -1687,6 +1696,13 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   too); `1` on any error. `lola render` leaving modules out exits `0` unless `--strict`.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
+- Picker colors are chosen to read at a contrast of at least 4.5:1 on your terminal's background:
+  `theme: dark` or `theme: light` in `config.yaml`; else what the terminal reports (never asked in
+  accessible mode, and a terminal that answers without a color counts as not answering); else, on
+  a terminal, lola asks once, `Is your terminal background dark or light?`, and saves your answer
+  (`→ saved theme: dark in <config.yaml>`; if the save fails lola warns, with the line to write
+  yourself, and uses your answer for that run); else light. Without color, pickers keep `[x]`, `[ ]`
+  and the bold cursor `>`.
 - The viewer: when stdout and stderr are terminals, human output and help taller than the
   terminal open in lola's viewer, the same on every OS. `↑`/`↓` or `j`/`k` scroll a line,
   `PgUp`/`PgDn` or `b`/space a page, `g`/`G` or `Home`/`End` go to the top or the end, and `q`,

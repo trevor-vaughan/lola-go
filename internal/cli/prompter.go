@@ -9,9 +9,10 @@ import (
 // Prompter asks the install flow's questions (Plan 5c §3, §4): one method per step and one
 // for the review menu; and sync's questions (Plan 6a §3.4): the trust picker and yes/no. The
 // huh adapter draws them inline on stderr; specs inject a scripted one. A method returns
-// ErrAborted when the user cancels. Validation a step needs (at least
-// one scope, an Other directory that exists) runs in the flow after the method returns, which
-// asks again with Problem set.
+// ErrAborted when the user cancels. Scope, Modules, Assistants and a Required TidyKeep never
+// answer with nothing picked: the huh adapter refuses that in the form (Plan 10 §4). Other
+// validation a step needs (one scope, an Other directory that exists) runs in the flow after
+// the method returns, which asks again with Problem set.
 type Prompter interface {
 	// Interactive reports whether the prompter can ask: for the huh adapter, stdin and stderr
 	// are terminals.
@@ -53,6 +54,9 @@ type Prompter interface {
 	// MigrateTargets asks which assistants install the records of an assistant this machine
 	// lacks (Plan 10 §3.2): a multi-select over Options, all preselected; none skips them.
 	MigrateTargets(MigrateTargetStep) ([]string, error)
+	// Background asks whether the terminal's background is dark, for the pickers' colors (Plan
+	// 10 §4). lola asks once, when neither config.yaml nor the terminal says, and saves the answer.
+	Background() (bool, error)
 }
 
 // MigrateRootStep asks for the new root of Old, below which Records of the Python lola's project
@@ -88,9 +92,11 @@ type TidyPickStep struct {
 
 // TidyKeepStep offers the keep-list entries for the candidates TidyPick did not choose: each
 // option's ID is an escaped literal selector, and its Label the selector and the assistants whose
-// items it keeps, already made safe to print.
+// items it keeps, already made safe to print. Required is set when nothing was chosen to move:
+// an empty answer would then do nothing, so the picker refuses it (Plan 10 §4).
 type TidyKeepStep struct {
-	Options []TidyOption
+	Options  []TidyOption
+	Required bool
 }
 
 // MarketNameStep asks for the name of a marketplace: Why the name it has will not do, Value the
@@ -209,7 +215,6 @@ type AssistantStep struct {
 	Options   []string
 	Preselect []string
 	Scopes    []string
-	Problem   string
 }
 
 // ComponentOption is one component of a page. Label is "name — first line of description",
@@ -282,3 +287,4 @@ func (noPrompter) MigrateRoot(MigrateRootStep) (string, error) { return "", errN
 func (noPrompter) MigrateTargets(MigrateTargetStep) ([]string, error) {
 	return nil, errNoTerminal
 }
+func (noPrompter) Background() (bool, error) { return false, errNoTerminal }

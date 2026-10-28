@@ -286,6 +286,23 @@ cancel), the non-interactive one, and the specs' scripted one. In accessible mod
 hook consent included, reads through the `eofReader`, so end of input is `ErrAborted`. Specs
 parse the equivalent commands back through the real command tree and compare the plans.
 
+The huh adapter draws every form in `lolaTheme` (`internal/cli/theme.go`): huh's Charm theme
+with every color, key help included, chosen for WCAG 4.5:1 on a dark or light background, `[x]`
+and `[ ]` markers and a bold cursor; without color, `plainTheme` keeps the markers and bold. The
+background is resolved once per prompter, before its first form in color, by
+`app.darkBackground`: `config.yaml`'s `theme`, else `lipgloss.BackgroundColor` on stdin and
+stderr (faked in specs through `app.queryBackground`; skipped in accessible mode, and a nil color
+counts as no answer), else `Prompter.Background` on a terminal, saved with `config.SaveTheme` (a
+failed save warns and the answer still holds for the run), else light. The theme is wrapped as a
+`huh.ThemeFunc` that ignores huh's own guess at the background. Pickers that need a pick validate
+in the form through `huhForms.required`: its `requiredPick` wrapper records whether the key huh is
+handling is Enter, since huh also validates on focus and on every toggle, so the refusal appears
+only after Enter with nothing ticked and the next toggle clears it. The validator accepts once the
+`eofReader` has seen end of input, because huh's accessible MultiSelect asks again while Validate
+refuses and reads end of input as `0`. A module picker of several lists asks again after the form
+instead, because huh validates a field on tab and shift+tab too. So the flow never receives an
+empty Scope, Modules, Assistants or Required TidyKeep answer.
+
 ## Plans and the ledger
 
 Targets return **intents** (`WriteFile`, `CopyTree`, `SetJSON`, `AddJSONMember`).

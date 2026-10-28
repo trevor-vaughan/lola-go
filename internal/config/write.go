@@ -83,6 +83,41 @@ func Save(path string, changes []Change) error {
 	return writeDoc(path, d, "nothing was installed")
 }
 
+// configTemplate starts a config.yaml lola creates.
+const configTemplate = "# lola settings. Safe to edit by hand.\nversion: 1\n"
+
+// SaveTheme writes theme: theme to config.yaml at path (Plan 10 §4), replacing the key's value
+// or adding the key last; comments, order and every other key are kept. home is LoadConfig's.
+// A file that does not load is never overwritten, and a symlinked file is written at its target.
+func SaveTheme(path, home, theme string) error {
+	if _, err := LoadConfig(path, home); err != nil {
+		return errs.WithHints(fmt.Errorf("not saving your theme: %w", err), "fix config.yaml by hand, then rerun; nothing was written to it")
+	}
+	d, _, err := yamldoc.Read(path, Version)
+	if err != nil {
+		return err
+	}
+	var root *yaml.Node
+	switch {
+	case d == nil:
+		d = &yaml.Node{}
+		if err := yaml.Unmarshal([]byte(configTemplate), d); err != nil {
+			return err
+		}
+		root = d.Content[0]
+	case yamldoc.Root(d) == nil:
+		root = yamldoc.NullDocRoot(d, Version)
+	default:
+		root = d.Content[0]
+	}
+	if v := yamldoc.Value(root, "theme"); v != nil {
+		v.Value, v.Tag, v.Style = theme, "!!str", 0
+	} else {
+		root.Content = append(root.Content, yamldoc.Str("theme"), yamldoc.Str(theme))
+	}
+	return writeDoc(path, d, "lola asks again on its next run")
+}
+
 // writeDoc encodes d and writes it atomically to path at mode 0600, or at the target of the
 // symbolic link path is; outcome says what a failed write means for the run.
 func writeDoc(path string, d *yaml.Node, outcome string) error {

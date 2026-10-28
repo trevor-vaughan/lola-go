@@ -10,11 +10,13 @@ import (
 	"runtime"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 )
 
@@ -101,6 +103,10 @@ type huhForms struct {
 	accessible    bool
 	color         bool
 	width, height int // of the terminal stderr is on; 0 when unknown
+	// dark resolves the background lolaTheme draws for (app.darkBackground); theme calls it once,
+	// before the first form in color, and keeps the answer in isDark.
+	dark   func() (bool, error)
+	isDark *bool
 }
 
 // accessible reports whether forms use huh's line prompts: LOLA_ACCESSIBLE=1 or TERM=dumb, read
@@ -112,7 +118,7 @@ func (a *app) accessible() bool {
 // huhPrompter builds the huh adapter over the command's streams.
 func (a *app) huhPrompter(cmd *cobra.Command) Prompter {
 	h := &huhForms{stdin: cmd.InOrStdin(), in: &eofReader{r: cmd.InOrStdin()}, out: cmd.ErrOrStderr(), tty: interactive(cmd),
-		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr())}
+		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), dark: func() (bool, error) { return a.darkBackground(cmd) }}
 	if f, ok := cmd.ErrOrStderr().(*os.File); ok {
 		if w, ht, err := term.GetSize(int(f.Fd())); err == nil {
 			h.width, h.height = w, ht
@@ -123,21 +129,45 @@ func (a *app) huhPrompter(cmd *cobra.Command) Prompter {
 
 func (h *huhForms) Interactive() bool { return h.tty }
 
-// run runs one form. Ctrl+C (huh's ErrUserAborted) and end of input cancel the run.
+// run runs one form in the forms' theme.
+func (h *huhForms) run(fields ...huh.Field) error {
+	t, err := h.theme()
+	if err != nil {
+		return err
+	}
+	return h.runIn(t, fields...)
+}
+
+// theme is the forms' theme (Plan 10 §4): plainTheme without color; in color, lolaTheme for the
+// background h.dark resolves, once, before the first form. The ThemeFunc ignores the background
+// huh guesses and passes it.
+func (h *huhForms) theme() (huh.Theme, error) {
+	if !h.color {
+		return huh.ThemeFunc(func(bool) *huh.Styles { return plainTheme() }), nil
+	}
+	if h.isDark == nil {
+		dark, err := h.dark()
+		if err != nil {
+			return nil, err
+		}
+		h.isDark = &dark
+	}
+	dark := *h.isDark
+	return huh.ThemeFunc(func(bool) *huh.Styles { return lolaTheme(dark) }), nil
+}
+
+// runIn runs one form in theme t. Ctrl+C (huh's ErrUserAborted) and end of input cancel the run.
 //
 // huh v2.0.3's accessible number prompts return the last answer they rejected when input
 // ends, and Select and MultiSelect then index their options with it and panic. That panic, an
 // index out of range in accessible mode after input ended, is end of input too, so it cancels;
 // any other panic is not ours to hide.
-func (h *huhForms) run(fields ...huh.Field) (err error) {
+func (h *huhForms) runIn(t huh.Theme, fields ...huh.Field) (err error) {
 	var in io.Reader = h.in
 	if !h.accessible {
 		in = h.stdin
 	}
-	f := huh.NewForm(huh.NewGroup(fields...)).WithInput(in).WithOutput(h.out).WithAccessible(h.accessible)
-	if !h.color {
-		f = f.WithTheme(huh.ThemeFunc(huh.ThemeBase))
-	}
+	f := huh.NewForm(huh.NewGroup(fields...)).WithInput(in).WithOutput(h.out).WithAccessible(h.accessible).WithTheme(t)
 	defer func() {
 		if r := recover(); r != nil {
 			re, ok := r.(runtime.Error)
@@ -192,7 +222,7 @@ func (h *huhForms) multi(title, desc string, opts []huh.Option[string], value *[
 
 // Scope offers Project, User and Other directory…, preselecting exactly st.Preselect. It is a
 // multi-select even when st.One, so nothing is chosen until the user ticks it (a select would
-// answer Project on Enter); the flow asks again until one is ticked.
+// answer Project on Enter); the form refuses an empty answer (Plan 10 §4).
 func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 	opts := []huh.Option[string]{
 		huh.NewOption(h.cut("Project ("+st.ProjectRoot+")"), ScopeProject).Selected(contains(st.Preselect, ScopeProject)),
@@ -204,7 +234,7 @@ func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 		desc = "pick one"
 	}
 	var chosen []string
-	err := h.run(h.withProblem(st.Problem, h.multi(st.Question, desc, opts, &chosen))...)
+	err := h.run(h.withProblem(st.Problem, h.required(h.multi(st.Question, desc, opts, &chosen)))...)
 	return chosen, err
 }
 
@@ -215,6 +245,52 @@ func (h *huhForms) withProblem(problem string, f huh.Field) []huh.Field {
 		return []huh.Field{huh.NewNote().Title(h.cut(problem)), f}
 	}
 	return []huh.Field{f}
+}
+
+// nothingSelected says a picker that needs a pick got none, and which keys make one: the full
+// form's, or the line prompts' answers in accessible mode.
+func (h *huhForms) nothingSelected() string {
+	if h.accessible {
+		return "nothing selected — type an option's number to select it, 0 confirms, ctrl+c quits"
+	}
+	return "nothing selected — space selects, enter confirms, ctrl+c quits"
+}
+
+// requiredPick is a multi-select that needs a pick (Plan 10 §4). huh validates a multi-select
+// when it gains the focus and on every toggle, not only on Enter (field_multiselect.go:236-237,
+// 548), and a group shows a field's error in place of the key help (group.go:396). So the field
+// records whether the key it is handling is Enter, and its validator refuses an empty pick only
+// then: a picker opens with huh's key help, Enter with nothing ticked shows the refusal, and the
+// next key that revalidates, a toggle, clears it.
+type requiredPick struct {
+	*huh.MultiSelect[string]
+	entered bool
+}
+
+// Update records whether msg is Enter before huh handles it, and returns the wrapper, which the
+// group keeps in the multi-select's place.
+func (r *requiredPick) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyPressMsg); ok {
+		r.entered = k.String() == "enter"
+	}
+	_, cmd := r.MultiSelect.Update(msg)
+	return r, cmd
+}
+
+// required makes ms a picker that needs a pick (Plan 10 §4). In accessible mode, which has no
+// keys, huh validates only when the user confirms, so the refusal applies at once. Once input has
+// ended (Ctrl+C included) the validator accepts: huh's accessible MultiSelect asks again for as
+// long as it refuses, and at end of input every ask answers 0, so refusing would never end; run
+// then cancels.
+func (h *huhForms) required(ms *huh.MultiSelect[string]) huh.Field {
+	r := &requiredPick{MultiSelect: ms}
+	ms.Validate(func(picked []string) error {
+		if len(picked) > 0 || h.in.eof || !h.accessible && !r.entered {
+			return nil
+		}
+		return errors.New(h.nothingSelected())
+	})
+	return r
 }
 
 // OtherDirectory asks for the path of Other directory…. The reason it asks again is a note
@@ -263,7 +339,7 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 	}
 	opts = append(opts, huh.NewOption("Add a source…", addSource))
 	var chosen []string
-	if err := h.run(h.withProblem(st.Problem, h.multi("Install which modules?", st.Problem, opts, &chosen).Filterable(true))...); err != nil {
+	if err := h.run(h.withProblem(st.Problem, h.required(h.multi("Install which modules?", st.Problem, opts, &chosen).Filterable(true)))...); err != nil {
 		return ModuleAnswer{}, err
 	}
 	if contains(chosen, addSource) {
@@ -280,48 +356,60 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 
 // withMarkets is the module picker with the marketplace groups (Plan 6c §6.5): the cached modules
 // and Add a source… first, unless st.Browse, then one filterable group per marketplace, so a pick
-// may come from any of them.
+// may come from any of them. A lone marketplace group refuses an empty pick in the form; a form
+// of several lists asks again after it instead (Plan 10 §4, R-W3-3), since huh validates a field
+// on tab and shift+tab too, and would hold the cursor in a list left empty on purpose.
 func (h *huhForms) withMarkets(st ModuleStep) (ModuleAnswer, error) {
-	var fields []huh.Field
-	var cached []string
-	if !st.Browse {
-		opts := make([]huh.Option[string], 0, len(st.Options)+1)
-		for _, o := range st.Options {
-			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+	for {
+		var fields []huh.Field
+		var cached []string
+		if !st.Browse {
+			opts := make([]huh.Option[string], 0, len(st.Options)+1)
+			for _, o := range st.Options {
+				opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+			}
+			opts = append(opts, huh.NewOption("Add a source…", addSource))
+			fields = append(fields, h.withProblem(st.Problem, h.multi("Install which modules?", st.Problem, opts, &cached).Filterable(true))...)
+		} else if h.accessible && st.Problem != "" {
+			fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
 		}
-		opts = append(opts, huh.NewOption("Add a source…", addSource))
-		fields = append(fields, h.withProblem(st.Problem, h.multi("Install which modules?", st.Problem, opts, &cached).Filterable(true))...)
-	} else if h.accessible && st.Problem != "" {
-		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
-	}
-	picked := make([][]string, len(st.Markets))
-	for i, g := range st.Markets {
-		opts := make([]huh.Option[string], 0, len(g.Options))
-		for _, o := range g.Options {
-			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+		picked := make([][]string, len(st.Markets))
+		for i, g := range st.Markets {
+			opts := make([]huh.Option[string], 0, len(g.Options))
+			for _, o := range g.Options {
+				opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+			}
+			desc := ""
+			if st.Browse {
+				desc = st.Problem
+			}
+			ms := h.multi(h.cut(g.Title), desc, opts, &picked[i]).Filterable(true)
+			var f huh.Field = ms
+			if st.Browse && len(st.Markets) == 1 {
+				f = h.required(ms)
+			}
+			fields = append(fields, f)
 		}
-		desc := ""
-		if st.Browse {
-			desc = st.Problem
+		if err := h.run(fields...); err != nil {
+			return ModuleAnswer{}, err
 		}
-		fields = append(fields, h.multi(h.cut(g.Title), desc, opts, &picked[i]).Filterable(true))
-	}
-	if err := h.run(fields...); err != nil {
-		return ModuleAnswer{}, err
-	}
-	var chosen []string
-	for _, c := range cached {
-		if c != addSource {
-			chosen = append(chosen, c)
+		var chosen []string
+		for _, c := range cached {
+			if c != addSource {
+				chosen = append(chosen, c)
+			}
 		}
+		for _, p := range picked {
+			chosen = append(chosen, p...)
+		}
+		if contains(cached, addSource) {
+			return h.addSource(chosen)
+		}
+		if len(chosen) > 0 {
+			return ModuleAnswer{Names: chosen}, nil
+		}
+		st.Problem = h.nothingSelected()
 	}
-	for _, p := range picked {
-		chosen = append(chosen, p...)
-	}
-	if contains(cached, addSource) {
-		return h.addSource(chosen)
-	}
-	return ModuleAnswer{Names: chosen}, nil
 }
 
 // MarketEntry asks which entry a bare name means, one of the marketplaces listing it, nothing
@@ -356,12 +444,12 @@ func (h *huhForms) Assistants(st AssistantStep) ([]string, error) {
 	for _, id := range st.Options {
 		opts = append(opts, huh.NewOption(id, id).Selected(contains(st.Preselect, id)))
 	}
-	desc := st.Problem
-	if desc == "" && len(st.Scopes) > 1 {
+	desc := ""
+	if len(st.Scopes) > 1 {
 		desc = "for " + strings.Join(st.Scopes, " and ")
 	}
 	var chosen []string
-	err := h.run(h.withProblem(st.Problem, h.multi("Install for which assistants?", desc, opts, &chosen))...)
+	err := h.run(h.required(h.multi("Install for which assistants?", desc, opts, &chosen)))
 	return chosen, err
 }
 
@@ -456,6 +544,19 @@ func trustAllLabel(n int) string {
 	return fmt.Sprintf("Trust all %d changes", n)
 }
 
+// Background asks whether the terminal's background is dark, in plainTheme: lola has no colors
+// to choose until it knows.
+func (h *huhForms) Background() (bool, error) {
+	var choice string
+	plain := huh.ThemeFunc(func(bool) *huh.Styles { return plainTheme() })
+	if err := h.runIn(plain, huh.NewSelect[string]().Title("Is your terminal background dark or light?").
+		Description("lola picks its colors for it and saves your answer in config.yaml").
+		Options(huh.NewOption("Dark", config.ThemeDark), huh.NewOption("Light", config.ThemeLight)).Value(&choice)); err != nil {
+		return false, err
+	}
+	return choice == config.ThemeDark, nil
+}
+
 func (h *huhForms) Confirm(question string) (bool, error) {
 	ok := false
 	err := h.run(huh.NewConfirm().Title(question).Value(&ok))
@@ -536,11 +637,16 @@ func (h *huhForms) tidyPick(st TidyPickStep, value *[]string) []huh.Field {
 }
 
 // TidyKeep offers the candidates TidyPick left for the keep-list, filterable, nothing
-// preselected (Plan 6d §3.4).
+// preselected (Plan 6d §3.4); when st.Required, it refuses an empty answer (Plan 10 §4).
 func (h *huhForms) TidyKeep(st TidyKeepStep) ([]string, error) {
 	var chosen []string
-	err := h.run(h.multi("Add any of the rest to your keep-list?", "what your keep-list names stays, and lola tidy stops offering it",
-		h.tidyOptions(st.Options), &chosen).Filterable(true))
+	ms := h.multi("Add any of the rest to your keep-list?", "what your keep-list names stays, and lola tidy stops offering it",
+		h.tidyOptions(st.Options), &chosen).Filterable(true)
+	var f huh.Field = ms
+	if st.Required {
+		f = h.required(ms)
+	}
+	err := h.run(f)
 	return chosen, err
 }
 

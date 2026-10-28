@@ -254,17 +254,11 @@ func (fl *installFlow) browse(name string) ([]string, error) {
 	if k < 0 || len(groups[k].Entries) == 0 {
 		return []string{"@" + name}, nil
 	}
-	step := ModuleStep{Markets: []ModuleGroup{offerGroup(groups[k], func(engine.MarketOffer) bool { return true })}, Browse: true}
-	for {
-		ans, err := fl.p.Modules(step)
-		if err != nil {
-			return nil, err
-		}
-		if len(ans.Names) > 0 {
-			return ans.Names, nil
-		}
-		step.Problem = "pick at least one module"
+	ans, err := fl.p.Modules(ModuleStep{Markets: []ModuleGroup{offerGroup(groups[k], func(engine.MarketOffer) bool { return true })}, Browse: true})
+	if err != nil {
+		return nil, err
 	}
+	return ans.Names, nil
 }
 
 // offerGroup is g as a group of the module picker (Plan 6c §6.5), titled "@acme — <description>",
@@ -650,10 +644,6 @@ func (fl *installFlow) ensureModules() error {
 			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: union(slices.Clone(ans.Names), []string{v.Name})}
 			continue
 		}
-		if len(ans.Names) == 0 {
-			step.Problem = "pick at least one module"
-			continue
-		}
 		// A catalog entry is cached under its entry name (a renamed module is refused), so two
 		// picks of one name are refused before anything is fetched.
 		var names, addrs []string
@@ -877,20 +867,13 @@ func (fl *installFlow) ensureAssistants() error {
 			pre = installed
 		}
 		pre = slices.DeleteFunc(slices.Clone(pre), func(id string) bool { return slices.Contains(untrustedTargets, id) })
-		step := AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels}
-		for {
-			picked, err := fl.p.Assistants(step)
-			if err != nil {
-				return err
-			}
-			if len(picked) > 0 {
-				fl.shown[ReviewAssistants], fl.prevTarget = true, picked
-				for _, s := range open {
-					answer[s] = picked
-				}
-				break
-			}
-			step.Problem = "pick at least one assistant"
+		picked, err := fl.p.Assistants(AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels})
+		if err != nil {
+			return err
+		}
+		fl.shown[ReviewAssistants], fl.prevTarget = true, picked
+		for _, s := range open {
+			answer[s] = picked
 		}
 	}
 	fl.targets = answer

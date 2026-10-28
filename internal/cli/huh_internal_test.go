@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
 	. "github.com/onsi/ginkgo/v2"
@@ -130,9 +132,9 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("3.   Other directory…\n"))
 	})
 
-	It("resolves no scope from empty input: the answer is empty, never Project", func() {
+	It("resolves no scope from empty input: it asks again, and end of input cancels, never Project", func() {
 		got, err := accessible(&out, "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(MatchError(ErrAborted))
 		Expect(got).To(BeEmpty())
 	})
 
@@ -168,15 +170,72 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 	})
 
 	It("shows why a picker asks again in accessible mode, where huh hides descriptions", func() {
-		_, err := accessible(&out, "0").Scope(ScopeStep{ProjectRoot: "/p", Problem: "pick at least one scope"})
+		_, err := accessible(&out, "1", "0").Scope(ScopeStep{ProjectRoot: "/p", Problem: "pick one scope"})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(out.String()).To(ContainSubstring("pick at least one scope"))
-		_, err = accessible(&out, "0").Modules(ModuleStep{Options: []ModuleOption{{Name: "m", Label: "m"}}, Problem: "pick at least one module"})
+		Expect(out.String()).To(ContainSubstring("pick one scope"))
+		_, err = accessible(&out, "1", "0").Modules(ModuleStep{Options: []ModuleOption{{Name: "m", Label: "m"}}, Problem: "could not add ./x; try another source"})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(out.String()).To(ContainSubstring("pick at least one module"))
-		_, err = accessible(&out, "0").Assistants(AssistantStep{Options: []string{"claude-code"}, Problem: "pick at least one assistant"})
+		Expect(out.String()).To(ContainSubstring("could not add ./x; try another source"))
+	})
+
+	DescribeTable("a picker that needs a pick refuses none, naming the keys, and still cancels at end of input (Plan 10 §4)",
+		func(_ SpecContext, ask func(*huhForms) (any, error), want any) {
+			got, err := ask(accessible(&out, "0", "1", "0"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal(want))
+			Expect(out.String()).To(ContainSubstring("nothing selected — type an option's number to select it, 0 confirms, ctrl+c quits\n"))
+
+			_, err = ask(accessible(&out, "0"))
+			Expect(err).To(MatchError(ErrAborted), "huh asks again while Validate refuses; at end of input it must stop")
+		},
+		Entry("scope", NodeTimeout(time.Minute), func(h *huhForms) (any, error) { return h.Scope(ScopeStep{ProjectRoot: "/p"}) }, []string{ScopeProject}),
+		Entry("modules", NodeTimeout(time.Minute), func(h *huhForms) (any, error) {
+			return h.Modules(ModuleStep{Options: []ModuleOption{{Name: "m", Label: "m"}}})
+		}, ModuleAnswer{Names: []string{"m"}}),
+		Entry("a marketplace's entries", NodeTimeout(time.Minute), func(h *huhForms) (any, error) {
+			return h.Modules(ModuleStep{Browse: true, Markets: []ModuleGroup{{Title: "@acme", Options: []ModuleOption{{Name: "@acme/m", Label: "m"}}}}})
+		}, ModuleAnswer{Names: []string{"@acme/m"}}),
+		Entry("assistants", NodeTimeout(time.Minute), func(h *huhForms) (any, error) {
+			return h.Assistants(AssistantStep{Options: []string{"claude-code"}})
+		}, []string{"claude-code"}),
+		Entry("tidy's keep-list when nothing moves", NodeTimeout(time.Minute), func(h *huhForms) (any, error) {
+			return h.TidyKeep(TidyKeepStep{Options: []TidyOption{{ID: "0", Label: "skill/old  claude-code"}}, Required: true})
+		}, []string{"0"}),
+	)
+
+	It("asks a module picker of several lists again when nothing in any of them is picked (Plan 10 §4)", func() {
+		st := ModuleStep{Options: []ModuleOption{{Name: "m", Label: "m"}}, Markets: []ModuleGroup{{Title: "@acme", Options: []ModuleOption{{Name: "@acme/x", Label: "x"}}}}}
+		got, err := accessible(&out, "0", "0", "0", "1", "0").Modules(st)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(out.String()).To(ContainSubstring("pick at least one assistant"))
+		Expect(got).To(Equal(ModuleAnswer{Names: []string{"@acme/x"}}))
+		Expect(out.String()).To(ContainSubstring("nothing selected — type an option's number to select it, 0 confirms, ctrl+c quits"))
+	})
+
+	It("lets tidy's keep picker answer nothing when something moves (Plan 10 §4)", func() {
+		got, err := accessible(&out, "0").TidyKeep(TidyKeepStep{Options: []TidyOption{{ID: "0", Label: "skill/old  claude-code"}}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty())
+		Expect(out.String()).NotTo(ContainSubstring("nothing selected"))
+	})
+
+	It("a full-screen picker that needs a pick opens with its key help, refuses Enter with nothing ticked, and clears on the next toggle (Plan 10 §4)", func() {
+		h := &huhForms{in: &eofReader{r: &lineReader{}}, height: 40}
+		var v []string
+		f := huh.NewForm(huh.NewGroup(h.required(h.multi("Pick", "", []huh.Option[string]{huh.NewOption("a", "a")}, &v)))).
+			WithTheme(huh.ThemeFunc(func(bool) *huh.Styles { return lolaTheme(false) }))
+		f.Init()
+		const refusal = "nothing selected — space selects, enter confirms, ctrl+c quits"
+		Expect(ansi.Strip(f.View())).NotTo(ContainSubstring(refusal), "a fresh picker shows no error")
+		Expect(ansi.Strip(f.View())).To(ContainSubstring("x toggle"))
+
+		f.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		Expect(ansi.Strip(f.View())).To(ContainSubstring(refusal))
+		Expect(v).To(BeEmpty())
+
+		f.Update(tea.KeyPressMsg{Code: tea.KeySpace})
+		Expect(ansi.Strip(f.View())).NotTo(ContainSubstring(refusal))
+		Expect(ansi.Strip(f.View())).To(ContainSubstring("x toggle"))
+		Expect(v).To(Equal([]string{"a"}))
 	})
 
 	It("asks for the Other directory with the reason it is asked again, and cancels at end of input", func() {

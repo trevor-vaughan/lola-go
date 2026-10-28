@@ -28,6 +28,15 @@ const (
 	ScopeBoth    = "both"
 )
 
+// Theme values of theme: (Plan 10 §4): the terminal background the pickers draw for.
+const (
+	ThemeDark  = "dark"
+	ThemeLight = "light"
+)
+
+// themeHint says what theme: takes.
+const themeHint = "write theme: dark or theme: light, for your terminal's background"
+
 // Config is config.yaml.
 type Config struct {
 	DefaultScope string // "", project, user or both
@@ -38,6 +47,9 @@ type Config struct {
 	// CacheUnusedFor is the age at which a bare lola cache clean also removes a cached version
 	// nobody used (Plan 9 §6.2); the zero Age for none.
 	CacheUnusedFor Age
+	// Theme is the terminal background the pickers draw for (Plan 10 §4): ThemeDark, ThemeLight,
+	// or "" when config.yaml does not say.
+	Theme string
 }
 
 // Age is how long a cached version went unused, as lola cache clean --unused-for and
@@ -128,6 +140,17 @@ func LoadConfig(path, home string) (*Config, error) {
 				return d.fail(n, at, fmt.Sprintf("%q is not an age; %s", untrusted.Text(n.Value, untrusted.MaxName), AgeForms))
 			}
 			c.CacheUnusedFor = age
+			return nil
+		},
+		"theme": func(n *yaml.Node, at string) error {
+			s, err := d.scalar(n, at, themeHint)
+			if err != nil {
+				return err
+			}
+			if s != ThemeDark && s != ThemeLight {
+				return d.fail(n, at, fmt.Sprintf("%q is not a theme", untrusted.Text(s, untrusted.MaxName)), themeHint)
+			}
+			c.Theme = s
 			return nil
 		},
 	}, "version"); err != nil {
