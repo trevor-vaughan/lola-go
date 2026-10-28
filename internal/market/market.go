@@ -144,7 +144,8 @@ func ValidateName(name string) error {
 		return err
 	}
 	if slices.Contains(verbs, name) {
-		return fmt.Errorf("marketplace name %s is reserved: it is the Python lola's lola market %s, so it cannot name a marketplace", name, name)
+		return fmt.Errorf("marketplace name %s is reserved: lola market %s answers with the lola command to run instead, so it cannot name a marketplace",
+			name, name)
 	}
 	return nil
 }
@@ -227,7 +228,7 @@ func FormatName(format string) string {
 	if format == FormatClaude {
 		return "Claude marketplace.json"
 	}
-	return "Python lola YAML"
+	return "lola YAML catalog"
 }
 
 // Root is the marketplace root of the catalog at file, a slash path in the fetched tree: the

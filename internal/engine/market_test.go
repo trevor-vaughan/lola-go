@@ -827,27 +827,34 @@ var _ = Describe("removing marketplaces and the Python verbs", func() {
 
 	It("python market verbs are refused with the translated command", func() {
 		type want struct{ err, hint string }
+		const (
+			add    = "is not a lola market verb: lola market <name> --add <source> adds a marketplace"
+			list   = "is not a lola market verb: lola market lists your marketplaces"
+			show   = "is not a lola market verb: lola market <name> shows a marketplace"
+			remove = "is not a lola market verb: lola market <name> --remove forgets a marketplace"
+			search = "search is not a lola market verb: lola search <query> searches your cache and every fetched catalog"
+			set    = "set is not a lola market verb: lola market <name> --remove forgets a marketplace; lola has no disabled state"
+		)
 		for args, w := range map[string]want{
-			"add general https://example.com/m.git": {"lola market add is the Python lola's form; in lola: lola market <name> --add <source>",
-				"lola market general --add https://example.com/m.git"},
-			"add general": {"lola market add takes a name and a source; in lola: lola market <name> --add <source>", ""},
-			"add Bad x":   {"lola market add is the Python lola's form; in lola: lola market <name> --add <source>; Bad cannot name a marketplace", ""},
-			"ls":          {"lola market ls is the Python lola's form; in lola: lola market", "lola market"},
-			"list":        {"lola market list is the Python lola's form; in lola: lola market", "lola market"},
-			"ls acme":     {"lola market ls is the Python lola's form; in lola: lola market <name>", "lola market acme"},
-			"show acme":   {"lola market show is the Python lola's form; in lola: lola market <name>", "lola market acme"},
-			"show nope":   {"lola market show is the Python lola's form; in lola: lola market <name>, and you have no marketplace nope", "lola market"},
-			"show":        {"lola market show takes one name; in lola: lola market <name>", ""},
-			"rm acme":     {"lola market rm is the Python lola's form; in lola: lola market <name> --remove", "lola market acme --remove"},
-			"remove":      {"lola market remove takes one name; in lola: lola market <name> --remove", ""},
-			"rm":          {"lola market rm takes one name; in lola: lola market <name> --remove", ""},
-			"update":      {"lola market update is the Python lola's form; in lola: lola market --update --all", "lola market --update --all"},
-			"update acme other": {"lola market update is the Python lola's form; in lola: lola market <name>... --update",
-				"lola market acme other --update"},
-			"search fmt": {"lola market search is the Python lola's form; in lola: lola search <query>", "lola search fmt"},
-			"search":     {"lola market search takes one query; in lola: lola search <query>", ""},
-			"set acme":   {"lola market set takes --enable or --disable and one name; in lola: lola market <name> --remove, as lola has no disabled state", ""},
-			"set":        {"lola market set takes --enable or --disable and one name; in lola: lola market <name> --remove, as lola has no disabled state", ""},
+			"add general https://example.com/m.git": {"add " + add, "lola market general --add https://example.com/m.git"},
+			"add general":                           {"add " + add, ""},
+			"add Bad x":                             {"add " + add + "; Bad cannot name a marketplace", ""},
+			"ls":                                    {"ls " + list, "lola market"},
+			"list":                                  {"list " + list, "lola market"},
+			"ls acme":                               {"ls " + show, "lola market acme"},
+			"ls acme other":                         {"ls " + show, ""},
+			"show acme":                             {"show " + show, "lola market acme"},
+			"show nope":                             {"show " + show + ", and you have no marketplace nope", "lola market"},
+			"show":                                  {"show " + show, ""},
+			"rm acme":                               {"rm " + remove, "lola market acme --remove"},
+			"remove":                                {"remove " + remove, ""},
+			"rm":                                    {"rm " + remove, ""},
+			"update":                                {"update is not a lola market verb: lola market --update --all updates every marketplace", "lola market --update --all"},
+			"update acme other":                     {"update is not a lola market verb: lola market <name>... --update updates the marketplaces named", "lola market acme other --update"},
+			"search fmt":                            {search, "lola search fmt"},
+			"search":                                {search, ""},
+			"set acme":                              {set, ""},
+			"set":                                   {set, ""},
 		} {
 			f := strings.Fields(args)
 			err := e.CoachMarketVerb(engine.MarketVerb{Verb: f[0], Operands: f[1:]})
@@ -866,16 +873,14 @@ var _ = Describe("removing marketplaces and the Python verbs", func() {
 			"fmt":      {"lola search fmt --json"},
 		} {
 			err := e.CoachMarketVerb(engine.MarketVerb{Verb: "search", Operands: []string{query}, Display: []string{"--json"}})
-			Expect(err).To(MatchError("lola market search is the Python lola's form; in lola: lola search <query>"), query)
+			Expect(err).To(MatchError(search), query)
 			Expect(errs.Hints(err)).To(Equal(hint), "a hint only when it is the query typed, whole: "+query)
 		}
 		for args, w := range map[string][2]string{
-			"show acmee": {"lola market show is the Python lola's form; in lola: lola market <name>, and you have no marketplace acmee; close names: acme",
-				"lola market acme"},
-			"rm acmee": {"lola market rm is the Python lola's form; in lola: lola market <name> --remove, and you have no marketplace acmee; close names: acme",
-				"lola market acme --remove"},
-			"update acme acmee": {"lola market update is the Python lola's form; in lola: lola market <name>... --update, and you have no marketplace acmee; " +
-				"close names: acme", "lola market acme --update"},
+			"show acmee": {"show " + show + ", and you have no marketplace acmee; close names: acme", "lola market acme"},
+			"rm acmee":   {"rm " + remove + ", and you have no marketplace acmee; close names: acme", "lola market acme --remove"},
+			"update acme acmee": {"update is not a lola market verb: lola market <name>... --update updates the marketplaces named, " +
+				"and you have no marketplace acmee; close names: acme", "lola market acme --update"},
 		} {
 			f := strings.Fields(args)
 			err := e.CoachMarketVerb(engine.MarketVerb{Verb: f[0], Operands: f[1:], Yes: true})
@@ -889,11 +894,11 @@ var _ = Describe("removing marketplaces and the Python verbs", func() {
 		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", All: true})
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market --update --all"}))
 		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", Operands: []string{"acme"}, All: true})
-		Expect(err).To(MatchError("lola market update takes names or --all, not both; in lola: lola market <name>... --update, " +
-			"or lola market --update --all"))
+		Expect(err).To(MatchError("update is not a lola market verb: lola market <name>... --update updates the marketplaces named, " +
+			"and lola market --update --all updates every marketplace"))
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update", "lola market --update --all"}))
 		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "set", Operands: []string{"acme"}, Disable: true, Yes: true})
-		Expect(err).To(MatchError("lola market set is the Python lola's form; in lola: lola market <name> --remove; lola has no disabled state"))
+		Expect(err).To(MatchError(set))
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --remove"}), "never with -y")
 		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "set", Operands: []string{"acme"}, Enable: true})
 		Expect(err).To(MatchError("acme is already active; lola has no disabled state"))

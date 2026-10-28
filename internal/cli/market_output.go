@@ -73,8 +73,9 @@ func printMarkets(w io.Writer, s style, rows []engine.MarketRow, notices []engin
 // grouped by reason, the most common first. --plain rows are "market" with the name, source, ref,
 // path, commit and file; an "entry" row per entry (name, version, kind, source, ref, path, commit,
 // description), a "component" row per path an entry selects (entry, kind, path) and a "skipped"
-// row per skip (name, reason), every text in full.
-func printMarket(w io.Writer, s style, v *engine.MarketView, width int) {
+// row per skip (name, reason), every text in full; then a "hint" row per hint, as people's output
+// ends with each.
+func printMarket(w io.Writer, s style, v *engine.MarketView, hints []string, width int) {
 	if s.plain {
 		fmt.Fprintf(w, "market\t%s\t%s\t%s\t%s\t%s\t%s\n", v.Name, v.Source, v.Ref, v.Path, v.Commit, v.File)
 		for _, e := range v.Entries {
@@ -91,17 +92,21 @@ func printMarket(w io.Writer, s style, v *engine.MarketView, width int) {
 		for _, n := range v.Notices {
 			fmt.Fprintln(w, noticeLine(s, n))
 		}
+		for _, h := range hints {
+			fmt.Fprintf(w, "hint\t%s\n", h)
+		}
 		return
 	}
 	// Every line is wrapped to the width at spaces: only a word wider than the terminal, such as
 	// an entry's name, is left wider than it, whole.
 	var buf strings.Builder
-	printMarketHuman(&buf, s, v, width)
+	printMarketHuman(&buf, s, v, hints, width)
 	fitLines(w, buf.String(), width)
 }
 
-// printMarketHuman is printMarket's human output, the entry table fitted to width.
-func printMarketHuman(w io.Writer, s style, v *engine.MarketView, width int) {
+// printMarketHuman is printMarket's human output, the entry table fitted to width, ending with
+// each hint.
+func printMarketHuman(w io.Writer, s style, v *engine.MarketView, hints []string, width int) {
 	title := "Marketplace " + v.Name
 	if v.Format != "" {
 		title += " (" + market.FormatName(v.Format) + ")"
@@ -137,6 +142,9 @@ func printMarketHuman(w io.Writer, s style, v *engine.MarketView, width int) {
 	}
 	for _, n := range v.Notices {
 		fmt.Fprintln(w, noticeLine(s, n))
+	}
+	for _, h := range hints {
+		fmt.Fprintln(w, s.info(h))
 	}
 }
 

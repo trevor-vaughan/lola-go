@@ -1,8 +1,8 @@
 # Marketplaces
 
 A marketplace is a catalog of modules, each with the source it comes from. lola reads Claude
-Code's `.claude-plugin/marketplace.json`, the documented format, and the Python lola's YAML
-catalogs, so a marketplace you used there keeps working; both become one model. Your
+Code's `.claude-plugin/marketplace.json`, the documented format, and lola YAML catalogs; both
+become one model. Your
 marketplaces are yours alone and shared by every scope: `lola market` asks no scope, and scope
 flags change nothing.
 
@@ -13,6 +13,7 @@ lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml
 lola market mine --add ./my-marketplace                      # a folder you are authoring
 lola market                                                  # list them
 lola market acme                                             # its source, pin, entries and skips
+lola market acme formatter                                   # one entry, as lola info @acme/formatter
 lola market acme --update                                    # fetch it again, report what changed
 lola market --update --all                                   # every marketplace
 lola market acme --remove                                    # forget it; asks (-y)
@@ -30,12 +31,12 @@ lola market acme --remove                                    # forget it; asks (
   and `marketplace.yaml` at its root, or in the directory `--path` names (`--path` may name the
   catalog file itself); two of them are refused with one `--path` command per file. The marketplace
   is named as you name it, else by the catalog's own `name`; for a catalog name that cannot name a
-  marketplace (the Python lola's `Lola General Marketplace`) a terminal asks for a name, pre-filled
+  marketplace (such as `Lola General Marketplace`) a terminal asks for a name, pre-filled
   with a free slug of it (`lola-general-marketplace`), and off a terminal (or with `-n`) it is
   refused with the command that adds it under that slug (`lola market lola-general-marketplace
   --add <source> --path marketplace.yml`); either way it is `lola market <slug> --update` when that
-  slug is already this marketplace. A name is the module-name rule, and none of the Python lola's
-  `lola market` verbs (`add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show`, `search`); a
+  slug is already this marketplace. A name is the module-name rule, and none of the words
+  `lola market` reserves (`add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show`, `search`); a
   name that breaks the rule is refused saying what breaks it (`B and N are uppercase`, `' ' is not
   allowed`), with the `--add` of its lowercase form as the hint when that is a name no
   marketplace has. A name you already have
@@ -64,17 +65,25 @@ lola market acme --remove                                    # forget it; asks (
   their real sources and stay installed, and `lola sync --update` follows the marketplace again
   once you add it back (the notice gives that `--add`). `-n` says what it would remove.
   `--json` gives `removed`, `notices` and `dry_run`.
-- **The Python lola's verbs.** `lola market add`, `ls`, `list`, `rm`, `remove`, `update`, `set`,
-  `show` and `search` are refused with lola's form (`lola market ls is the Python lola's form; in
-  lola: lola market`), and the hint is that command when it would run:
+- **Showing.** `lola market acme` lists the marketplace's entries and ends with the next step,
+  `→ lola info @acme/<first entry>` (in `hints` under `--json`). `lola market acme formatter` is
+  the same run as `lola info @acme/formatter`, with the same flags (a scope, `-t`, the output
+  flags) and the same output: it fetches the entry into your cache and runs nothing. Three or
+  more names without an action are refused with one `lola market acme <entry>` per given entry
+  the catalog lists and does not skip (`lola market acme` when none is); with `--update` or
+  `--remove`, names are marketplaces.
+- **Reserved words.** `lola market add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show`
+  and `search` are not `lola market` verbs: each is refused saying what the lola command is
+  (`ls is not a lola market verb: lola market lists your marketplaces`), and the hint is that
+  command when it would run:
   `lola market add acme <url>` → `lola market acme --add <url>` (keeping `--ref`, `--path`, `-n`),
   `ls` → `lola market`, `ls acme` and `show acme` → `lola market acme`, `rm acme` → `lola market
   acme --remove` (with `-y` only when you gave it), `update` → `lola market --update --all`, `update
   acme` → `lola market acme --update` (with `--all` too, both forms), `search fmt` → `lola search
   fmt`, `set --disable acme` → `lola market acme --remove` (never with `-y`), and `set --enable
   acme` says it is already active, as lola has no disabled state. A name you do not have gets its
-  close names, with lola's form of the run for each (never with `-y`), then the listing, and a verb missing its operand a usage message alone. The Python lola's picker
-  for `rm` and `set` without a name is not reproduced: `--remove` takes a name.
+  close names, with the lola command for each (never with `-y`), then the listing, and a verb
+  missing its operand gets the message alone.
 - **A name you do not have.** Showing, updating or removing a marketplace you do not have names
   your marketplaces close to it (`you have no marketplace acmee; close names: acme`), with the run
   for each as a hint (`lola market acme`, keeping `--update` and `-n`; a `--remove` hint never
@@ -124,7 +133,7 @@ lola market acme --remove                                    # forget it; asks (
   in the entry's directory (no `..`, no backslash, never absolute, never the directory itself),
   two paths of one list never share a name, and the fetch must find each as a real directory for
   a skill, a real file or directory otherwise, else the entry is skipped; `lola market <name>`
-  shows what each entry selects. A Python entry needs `name` and `repository`; its `pre-install` and `post-install`
+  shows what each entry selects. A YAML catalog's entry needs `name` and `repository`; its `pre-install` and `post-install`
   hooks are never run (`catalog install scripts are ignored`). A catalog over 8 MiB, with more than
   4096 entries, nested deeper than 64, with a top-level key given twice or in another case, or with
   a control or invisible character in any key or field lola reads, is refused whole, naming the
@@ -177,7 +186,7 @@ lola market acme --remove                                    # forget it; asks (
   drops its pin; the entry then records no `market:` (`formatter: pinned to your ref v3; not following acme`). `--path` is refused: the
   catalog gives the path. The install says what lola does not do for the entry: a Claude entry's
   `dependencies` are never installed (each one the same marketplace lists gets its own
-  `lola install @acme/<name>`), and a Python entry's install scripts never run. An address lola
+  `lola install @acme/<name>`), and a YAML catalog entry's install scripts never run. An address lola
   cannot resolve is refused with what there is: `you have no marketplace acme` (naming your close
   ones) → `lola market`, an
   entry the catalog does not list with its close names, or one it skips with why →

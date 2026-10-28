@@ -149,7 +149,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path, outputFlags(cmd))
 			}
 			if err != nil {
-				return tagRefHint(cmd, args, err)
+				return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, args, err)
 			}
 			o, _, err := eng.Store.Origin(v.Name)
 			if err != nil {
@@ -558,12 +558,13 @@ func (a *app) initCmd() *cobra.Command {
 	return cmd
 }
 
-// tagRefHint is err, the failure of a run of cmd with args and a --ref, hinting that run at the
-// commit an annotated tag object points to when the --ref named the tag object (R-9-27, RR4).
-func tagRefHint(cmd *cobra.Command, args []string, err error) error {
+// tagRefHint is err, the failure of a run of cmd with args and a --ref, hinting that run, as the
+// command words, at the commit an annotated tag object points to when the --ref named the tag
+// object (R-9-27, RR4). showInfo's words are lola info's whichever command ran it.
+func tagRefHint(words []string, cmd *cobra.Command, args []string, err error) error {
 	t, ok := errors.AsType[*source.TagObjectError](err)
 	if !ok {
 		return err
 	}
-	return errs.WithHints(err, runWithout(cmd, args, "ref")+" --ref "+t.Commit)
+	return errs.WithHints(err, runAs(words, cmd, args, "ref")+" --ref "+t.Commit)
 }

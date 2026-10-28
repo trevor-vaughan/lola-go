@@ -972,7 +972,7 @@ var _ = Describe("Migrate", func() {
 				Reason: "it uses plain http://, which lola allows only for a loopback host; the marketplace has no https:// URL lola knows of"},
 			{Name: "two", URL: "git+" + base + "/two.git", Market: "two", Source: base + "/two.git", Status: migrate.MarketRegister, Hints: []string{}},
 			{Name: "update", URL: "git+" + plugins, Source: plugins, Status: migrate.MarketSkipped,
-				Reason: "marketplace name update is reserved: it is the Python lola's lola market update, so it cannot name a marketplace" + later,
+				Reason: "marketplace name update is reserved: lola market update answers with the lola command to run instead, so it cannot name a marketplace" + later,
 				Hints:  []string{}},
 		}))
 

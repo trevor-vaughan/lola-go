@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"os"
+	"slices"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -56,6 +58,20 @@ var _ = Describe("command-tree conventions", func() {
 			}
 			if f := c.Flags().Lookup("force"); f != nil {
 				Expect(f.Shorthand).To(BeEmpty(), c.CommandPath())
+			}
+		}
+	})
+
+	It("no command's help but lola migrate's mentions Python", func() {
+		for _, c := range commands() {
+			path := strings.Fields(c.CommandPath())[1:]
+			if len(path) == 0 || path[0] == "help" || path[0] == "migrate" {
+				continue // the root's and help's full reference include lola migrate's
+			}
+			for _, args := range [][]string{append(slices.Clone(path), "--help"), append(append([]string{"help"}, path...), "--short")} {
+				r := lola(args...)
+				Expect(r.code).To(Equal(0), strings.Join(args, " "))
+				Expect(r.out).NotTo(MatchRegexp(`(?i)python`), strings.Join(args, " "))
 			}
 		}
 	})

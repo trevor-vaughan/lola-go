@@ -8,7 +8,7 @@ build; planned changes are marked "planned" and tracked in [roadmap.md](roadmap.
 The guides walk through one workflow each:
 [authoring modules](guides/authoring-modules.md), [templating](guides/templating.md),
 [sync and trust](guides/sync-and-trust.md), [profiles](guides/profiles.md),
-[marketplaces](guides/marketplaces.md), [migrating from the Python lola](guides/migrating.md)
+[marketplaces](guides/marketplaces.md), [migrating from LobsterTrap/lola](guides/migrating.md)
 and [tidying](guides/tidying.md).
 
 ## Commands
@@ -338,18 +338,26 @@ profile --add fetches a remote one` (at project scope it adds `, or the project'
 ### `lola market`
 
 ```
-lola market [<name>...] [--add <source> [--ref <ref>] [--path <file-or-dir>]|--update [--all]|--remove]
+lola market [<name> [<entry>] | [<name>] --add <source> [--ref <ref>] [--path <file-or-dir>] | <name>... --update | --update --all | <name> --remove]
 ```
 
-Aliases: `marketplace`, `markets`. Without a name, list your
-[marketplaces](guides/marketplaces.md#marketplaces): format, entries, skipped entries, when each was
-fetched and its source. With a name, show one: its source, pin, every entry with the source lola
-maps it to, and every entry it skips, with why. `--add <source>` fetches a catalog (Claude Code's
-`marketplace.json` or the Python lola's YAML) and registers it; `--update` fetches the named ones,
-or `--all`, again and reports which entries changed; `--remove` forgets one (asks; `-y`). `--add`
-and `--update` ask nothing, but a name when yours is taken. Scope flags are accepted and change
-nothing. The Python lola's `lola market add`, `ls`, `rm`, `update`, `set` and `search` are refused
-with lola's form.
+Aliases: `marketplace`, `markets`. Four paths, none of which asks:
+
+- `lola market` lists your [marketplaces](guides/marketplaces.md#marketplaces): format, entries,
+  skipped entries, when each was fetched and its source.
+- `lola market acme` shows one: its source, pin, every entry with the source lola maps it to, and
+  every entry it skips, with why. Its last line is the next step, `→ lola info @acme/<first
+  entry>`, with the run's flags.
+- `lola market acme formatter` shows the entry: it is the same run as `lola info @acme/formatter`,
+  with the same flags (a scope, `-t`, the output flags) and the same output, hints included.
+- `lola info @acme/formatter` (see [`lola info`](#lola-info)).
+
+`--add <source>` fetches a catalog (Claude Code's `marketplace.json` or a lola YAML catalog) and
+registers it; `--update` fetches the named ones, or `--all`, again and reports which entries
+changed; `--remove` forgets one (asks; `-y`). `--add` and `--update` ask nothing, but a name when
+yours is taken. Scope flags change nothing but what `lola market <name> <entry>` plans for.
+`add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show` and `search` are not `lola market`
+verbs: each is refused with the lola command to run instead.
 
 | Flag | What it does |
 |---|---|
@@ -361,21 +369,29 @@ with lola's form.
 | `--remove` | Forget the named marketplace and drop its cached catalog (asks; `-y`). Aliases: `--rm`, `--delete`, `--del`, `--erase`. |
 | `-y`, `--yes` | With `--remove`: forget it without asking. |
 | `-n`, `--dry-run` | Report what the action would do, and write nothing. |
+| `-t`, `--target <assistant>` | With `<name> <entry>`: the assistants to plan for, as `lola info`'s `-t`. |
 
 Refusals:
 
-- An unknown name: `you have no marketplace nope`, hinting `lola market`; two names to show:
-  `name one marketplace to show`.
+- An unknown name: `you have no marketplace nope`, hinting `lola market`.
+- Three or more names without an action: `lola market <name> <entry> shows one entry, and 2
+  were given: formatter, linter`, hinting `lola market acme formatter` and `lola market acme
+  linter` for the given entries the catalog lists and does not skip; when none is, `lola market
+  acme`, or `lola market` when `acme` is not yours.
+- `-t` without `<name> <entry>`: `--target applies to lola market <name> <entry> only`, hinting
+  the run without it.
 - `--update` without names: `name the marketplaces to update, or update every one with --all`,
   hinting `lola market --update --all`.
-- The Python lola's verbs: `lola market add is the Python lola's form; in lola: lola market
-  <name> --add <source>`, hinting the form (`lola market acme --add
+- A reserved word: `ls is not a lola market verb: lola market lists your marketplaces`, hinting
+  `lola market`; `add` hints the `--add` it means (`lola market acme --add
   https://github.com/acme/plugins`).
 
 JSON: listing prints `markets` and `notices`; showing prints the marketplace's `name`, `source`,
 `ref`, `path`, `format`, `commit`, `fetched_at`, `description`, `file`, `owner`, `version`,
-`entries`, `skipped` and `notices`; `--add` and `--update` print `markets`, `changes`,
-`updates`, `notices` and `dry_run`; `--remove` prints `removed`, `notices` and `dry_run`.
+`entries`, `skipped`, `notices` and `hints` (`lola info` of the first entry; `[]` without
+entries); `<name> <entry>` prints what `lola info` prints; `--add` and `--update` print
+`markets`, `changes`, `updates`, `notices` and `dry_run`; `--remove` prints `removed`, `notices`
+and `dry_run`.
 
 Known limitation: a catalog entry's host is judged by the URL's text, as a remote profile's is,
 and never resolved: an entry at a host name that resolves to a loopback or private address is
@@ -409,7 +425,8 @@ JSON: `modules` (each `name`, `targets`, `findings`, `skipped`) and `findings`.
 lola info <source|@market/module|module> [-t <assistant>…] [--ref <ref>] [--path <dir>]
 ```
 
-Aliases: `show`, `view`. Show a module before you install it, running nothing: no install hook,
+Aliases: `show`, `view`. `lola market <name> <entry>` is the same run as `lola info
+@<name>/<entry>`. Show a module before you install it, running nothing: no install hook,
 runtime hook or MCP server. The argument is what `lola install` takes: a module in your cache,
 `@market/module`, or a source. A source or a marketplace entry is fetched into your cache as
 `lola cache add` fetches it, so installing the cached name afterwards fetches nothing. It prints:
@@ -1716,7 +1733,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `HOME` | User-scope root; base of the XDG defaults |
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, `markets.yaml`, `keep.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
-| `LOLA_HOME` | The Python lola's home, which `lola migrate` reads (default `~/.lola`; must be absolute) |
+| `LOLA_HOME` | The directory `lola migrate` reads (default `~/.lola`; must be absolute) |
 | `LOLA_ACCESSIBLE` | `1` draws the install flow and sync's questions as numbered line prompts (screen readers); Ctrl+C cancels them as it does a full-screen form |
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |

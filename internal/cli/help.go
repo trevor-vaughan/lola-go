@@ -249,7 +249,7 @@ ENVIRONMENT
   LOLA_COLOR=1|0   force color on or off
   NO_COLOR         disable color when set (https://no-color.org)
   LOLA_ACCESSIBLE  1 asks lola's questions and pickers as numbered line prompts (also TERM=dumb)
-  LOLA_HOME        the Python lola's home, which lola migrate reads (default ~/.lola)
+  LOLA_HOME        the directory lola migrate reads (default ~/.lola)
   HOME             user-scope root and base of the XDG defaults
   PATH             where lola finds installed assistants; absolute entries only
   COLUMNS          the width lola market <name> fits its lines to when stdout is not a terminal

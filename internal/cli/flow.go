@@ -127,7 +127,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if err := fl.expandMarkets(); err != nil {
 		return err
 	}
-	return tagRefHint(cmd, args, fl.run())
+	return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, args, fl.run())
 }
 
 // expandMarkets replaces each argument that means an entry of your marketplaces with that

@@ -5,11 +5,9 @@ servers and always-on rules. You install a module once; lola renders it into eac
 assistant's native layout and records exactly what it wrote, so it can render again or
 uninstall cleanly, without touching anything it did not write.
 
-This is a Go rewrite of [LobsterTrap/lola](https://github.com/LobsterTrap/lola). It is
-deliberately not command-compatible with the Python CLI; [docs/decisions.md](docs/decisions.md)
-explains why. Coming from the Python lola? `lola migrate` installs what it installed and
-moves its files to a trash you can restore from
-([docs/guides/migrating.md](docs/guides/migrating.md#coming-from-the-python-lola)).
+Already using [LobsterTrap/lola](https://github.com/LobsterTrap/lola)? `lola migrate` installs
+what it installed and moves its files to a trash you can restore from
+([docs/guides/migrating.md](docs/guides/migrating.md)).
 
 ## What works today
 
@@ -36,16 +34,17 @@ moves its files to a trash you can restore from
 - **Profiles:** named sets of modules you turn on and off per scope: your own, a project's
   committed ones, or remote ones fetched from a source
   ([Profiles](docs/guides/profiles.md#profiles)).
-- **Marketplaces:** `lola market --add` registers a Claude Code `marketplace.json` or a Python
-  lola catalog; `lola install @market/module` installs an entry and records its real source, so
-  a teammate needs no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)).
+- **Marketplaces:** `lola market --add` registers a Claude Code `marketplace.json` or a lola
+  YAML catalog. `lola market` lists your marketplaces, `lola market acme` lists one's entries,
+  and `lola market acme formatter` shows an entry, as `lola info @acme/formatter` does;
+  `lola install @acme/formatter` installs it and records its real source, so a teammate needs
+  no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)).
 - **Templating:** a module's `.md.liquid` files render per assistant, with partials, attribute
   files and vars a manifest entry can override ([Templates](docs/guides/templating.md#templates)).
 - **Search:** `lola search` finds modules in your cache and in every marketplace catalog you
   have fetched ([`lola search`](docs/usage.md#lola-search)).
-- **Migration:** `lola migrate` installs what the Python lola installed and moves its files to
-  a trash you can restore from
-  ([Coming from the Python lola](docs/guides/migrating.md#coming-from-the-python-lola)).
+- **Migration:** `lola migrate` installs what LobsterTrap/lola installed and moves its files to
+  a trash you can restore from ([Migrating](docs/guides/migrating.md)).
 
 ## Install
 
@@ -96,7 +95,7 @@ share a module through a git repository or an `https://` archive.
   full reference, including every alias.
 - [docs/usage.md](docs/usage.md): every command, scopes, files and the output contract.
 - [docs/guides/](docs/guides/): authoring modules, templating, sync and trust, profiles,
-  marketplaces, migrating from the Python lola, and tidying.
+  marketplaces, migrating from LobsterTrap/lola, and tidying.
 - [docs/architecture.md](docs/architecture.md): how lola works, for contributors.
 - [docs/decisions.md](docs/decisions.md) and [docs/roadmap.md](docs/roadmap.md): where this
   build departs from the upstream ADRs, and what comes next.
