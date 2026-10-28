@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -91,6 +92,137 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(mark).To(BeAnExistingFile())
 		Expect(r.out).To(ContainSubstring("✓ migrated project " + proj))
+	})
+
+	It("says where nothing migrates and counts the records, in human, plain and JSON output (Plan 10 §3.3)", func() {
+		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- module: review\n  assistant: claude-code\n  scope: project\n  project_path: " + proj +
+			"\n  skills: [review, review_review]\n  commands: [ship]\n- module: review\n  assistant: cursor\n  scope: user\n"})
+		r := lola("migrate", "--dry-run")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("⚠ nothing to migrate at user scope: 1 record(s) left as they are\n"))
+		Expect(r.out).To(ContainSubstring("records: 1 to migrate, 1 left as they are\n"))
+
+		r = lola("migrate", "--dry-run", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("status\tuser\tnothing\t\n"))
+		Expect(r.out).To(ContainSubstring("summary\t1\t0\t1\t0\n"))
+
+		r = lola("migrate", "-y", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var v struct {
+			Destinations []struct {
+				Status string `json:"status"`
+			} `json:"destinations"`
+			Summary map[string]int `json:"summary"`
+		}
+		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
+		Expect(v.Destinations).To(HaveLen(2))
+		Expect(v.Destinations[1].Status).To(Equal("nothing"))
+		Expect(v.Summary).To(Equal(map[string]int{"migrated": 1, "already": 0, "left": 1, "failed": 0}))
+
+		r = lola("migrate", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("records: 0 to migrate, 1 already migrated, 1 left as they are\n"))
+	})
+
+	Context("from another machine (Plan 10 §3.1, §3.2)", func() {
+		var moved string
+		BeforeEach(func() {
+			moved = filepath.Join(tmp, "home", "proj")
+			writeTree(moved, map[string]string{".claude/commands/ship.md": "python ship\n"})
+			writeTree(filepath.Join(tmp, "home", "src", "kit"), map[string]string{"skills/lint/SKILL.md": "---\ndescription: Lint\n---\nLint.\n"})
+			fakeAssistant(tmp, "opencode", "1.0.0")
+			writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n" +
+				"- {module: review, assistant: claude-code, scope: project, project_path: /Users/alice/proj, commands: [ship]}\n" +
+				"- {module: review, assistant: claude-code, scope: user, commands: [ship]}\n" +
+				"- {module: kit, assistant: claude-code, scope: user, skills: [lint]}\n",
+				"modules/kit/.lola/source.yml": "source: /Users/alice/src/kit\ntype: folder\n"})
+		})
+
+		It("asks where each missing root is and which assistants stand in for each missing one, then migrates with the answers", func() {
+			p := &scripted{roots: []string{filepath.Join(tmp, "home")}, mapTargets: [][]string{{"opencode"}}, confirm: []bool{true}}
+			r := lolaP(p, "migrate")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-targets:claude-code", "confirm:Migrate?"}))
+			Expect(p.rootSteps).To(Equal([]cli.MigrateRootStep{{Old: "/Users/alice", Suggest: filepath.Join(tmp, "home"), Records: 2}}),
+				"one question covers the project path and kit's folder source")
+			Expect(p.mapTargetSteps).To(Equal([]cli.MigrateTargetStep{{Old: "claude-code", Supported: true, Modules: 2, Options: []string{"opencode"}}}))
+			Expect(r.out).To(ContainSubstring("✓ migrated project " + moved))
+			Expect(r.out).To(ContainSubstring("✓ migrated user scope"))
+			Expect(r.out).NotTo(ContainSubstring("map what this machine lacks"), "nothing is left to map")
+			Expect(lola("list", "-C", moved).out).To(MatchRegexp(`review\s+claude-code\s+✓ ok`))
+			Expect(lola("list", "--user").out).To(MatchRegexp(`review\s+opencode\s+✓ ok`))
+			Expect(lola("list", "--user").out).To(MatchRegexp(`kit\s+opencode\s+✓ ok`))
+		})
+
+		It("asks nothing off a terminal, and ends with the run plus the flags that map what it left", func() {
+			r := lola("migrate", "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("unmappable review (claude-code at /Users/alice/proj): project_path /Users/alice/proj no longer exists\n"))
+			Expect(r.out).To(ContainSubstring("  unmappable review (claude-code): claude-code is not installed here\n"))
+			Expect(r.out).To(HaveSuffix("→ map what this machine lacks: lola migrate --dry-run --map-root /Users/alice=" + filepath.Join(tmp, "home") +
+				" --map-target claude-code=opencode\n"))
+
+			r = lola("migrate", "-y", "--json", "--map-target", "claude-code=opencode")
+			Expect(r.code).To(Equal(0), r.err)
+			var v struct {
+				Remap string `json:"remap"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
+			Expect(v.Remap).To(Equal("lola migrate --json --map-target claude-code=opencode --map-root /Users/alice="+filepath.Join(tmp, "home")),
+				"the run's own map is kept, and -y is not")
+		})
+
+		It("sync works right after migrate", func() {
+			r := lola("migrate", "-y", "--map-root", "/Users/alice="+filepath.Join(tmp, "home"), "--map-target", "claude-code=opencode")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("records: 3 migrated, 0 left as they are\n"))
+			r = lola("sync", "--user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).NotTo(ContainSubstring("no user.yml"))
+			r = lola("sync", "-C", moved)
+			Expect(r.code).To(Equal(0), r.err)
+		})
+
+		It("reruns with the same maps, warning that they match nothing", func() {
+			maps := []string{"--map-root", "/Users/alice=" + filepath.Join(tmp, "home"), "--map-target", "claude-code=opencode"}
+			r := lola(append([]string{"migrate", "-y"}, maps...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).NotTo(ContainSubstring("matches no"))
+
+			r = lola(append([]string{"migrate", "-y"}, maps...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("⚠ --map-root /Users/alice=" + filepath.Join(tmp, "home") +
+				" matches no missing project path or source of the Python lola; it changes nothing\n"))
+			Expect(r.out).To(ContainSubstring("⚠ --map-target claude-code=opencode matches no record whose assistant is missing here; it changes nothing\n"))
+
+			r = lola(append([]string{"migrate", "-y", "--json"}, maps...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			var v struct {
+				Warnings []string `json:"warnings"`
+			}
+			Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
+			Expect(v.Warnings).To(ConsistOf(HavePrefix("--map-root /Users/alice="), HavePrefix("--map-target claude-code=opencode ")))
+		})
+
+		It("never offers a root --map-root would refuse, such as a project at a drive root", func() {
+			writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n" +
+				"- {module: review, assistant: opencode, scope: project, project_path: 'E:\\', commands: [ship]}\n"})
+			r := lola("migrate", "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring(`unmappable review (opencode at E:\)`))
+			Expect(r.out).NotTo(ContainSubstring("map what this machine lacks"))
+			Expect(lola("migrate", "-n", "--json").out).To(ContainSubstring(`"remap": ""`))
+		})
+	})
+
+	It("refuses a --map-root or --map-target it cannot read, saying what is wrong", func() {
+		r := lola("migrate", "--map-root", "Users/alice=/home/alice")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: --map-root \"Users/alice=/home/alice\": \"Users/alice\" is not an absolute path\n"))
+		r = lola("migrate", "--map-target", "claude-code=vim")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: --map-target \"claude-code=vim\": \"vim\" is not an assistant lola installs for; write claude-code, gemini-cli, opencode\n"))
 	})
 
 	It("lists what it keeps and why when nothing is left to migrate", func() {

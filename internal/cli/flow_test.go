@@ -38,6 +38,8 @@ type scripted struct {
 	entries    []string
 	tidyPick   []func(cli.TidyPickStep) ([]string, error)
 	tidyKeep   []func(cli.TidyKeepStep) ([]string, error)
+	roots      []string
+	mapTargets [][]string
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -51,6 +53,8 @@ type scripted struct {
 	entrySteps     []cli.MarketEntryStep
 	tidyPickSteps  []cli.TidyPickStep
 	tidyKeepSteps  []cli.TidyKeepStep
+	rootSteps      []cli.MigrateRootStep
+	mapTargetSteps []cli.MigrateTargetStep
 }
 
 func pop[T any](q *[]T, step string) T {
@@ -114,6 +118,14 @@ func (s *scripted) TidyPick(st cli.TidyPickStep) ([]string, error) {
 func (s *scripted) TidyKeep(st cli.TidyKeepStep) ([]string, error) {
 	s.calls, s.tidyKeepSteps = append(s.calls, "tidy-keep"), append(s.tidyKeepSteps, st)
 	return pop(&s.tidyKeep, "tidy-keep")(st)
+}
+func (s *scripted) MigrateRoot(st cli.MigrateRootStep) (string, error) {
+	s.calls, s.rootSteps = append(s.calls, "migrate-root:"+st.Old), append(s.rootSteps, st)
+	return pop(&s.roots, "migrate-root"), nil
+}
+func (s *scripted) MigrateTargets(st cli.MigrateTargetStep) ([]string, error) {
+	s.calls, s.mapTargetSteps = append(s.calls, "migrate-targets:"+st.Old), append(s.mapTargetSteps, st)
+	return pop(&s.mapTargets, "migrate-targets"), nil
 }
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)

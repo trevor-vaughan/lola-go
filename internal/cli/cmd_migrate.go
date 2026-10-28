@@ -3,18 +3,25 @@ package cli
 import (
 	"fmt"
 	"io"
+	"maps"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/migrate"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 func (a *app) migrateCmd() *cobra.Command {
 	var dry, yes, force, keep bool
 	var trust trustFlag
+	var mapRoots, mapTargets []string
 	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Move from the Python lola: install its modules with lola and clean up",
@@ -32,10 +39,16 @@ func (a *app) migrateCmd() *cobra.Command {
 			"to the trash last, when\n" +
 			"nothing is left in it. Symbolic links and files git tracks are kept.\n" +
 			"\n" +
+			"From another machine: a project path or local source this machine lacks is looked for at\n" +
+			"the same place below the root --map-root names, and a module installed for an assistant\n" +
+			"this machine lacks is installed for those --map-target names instead. On a terminal,\n" +
+			"without -y, lola asks for both; the run ends with the command that maps what it left.\n" +
+			"\n" +
 			"lola migrate shows the plan and asks (default No); off a terminal it needs -y.\n" +
 			"--force also overwrites other files in the way and moves files git tracks, and answers\n" +
 			"the question as -y does (never hook consent). A second run has nothing to do.\n" + trustHelp("migrate"),
-		Example: "  lola migrate --dry-run\n  lola migrate\n  lola migrate -y --keep-python",
+		Example: "  lola migrate --dry-run\n  lola migrate\n  lola migrate -y --keep-python\n" +
+			"  lola migrate --map-root /Users/alice=/home/alice --map-target claude-code=opencode",
 		GroupID: groupAdditional,
 		// Arguments reach RunE so that a kind written after a bare --trust is coached
 		// (trust.parse); any other is refused as cobra.NoArgs refuses it.
@@ -52,6 +65,14 @@ func (a *app) migrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			opts := migrate.Options{KeepPython: keep}
+			opts.Force, opts.DryRun, opts.ForceRun, opts.Display, opts.Trust = force, true, forceRun(cmd, nil), outputFlags(cmd), kinds
+			if opts.Roots, err = migrate.ParseRootMaps(mapRoots); err != nil {
+				return err
+			}
+			if opts.Targets, err = migrate.ParseTargetMaps(eng, mapTargets); err != nil {
+				return err
+			}
 			home, err := migrate.Home(a.getenv, eng.Paths.Home)
 			if err != nil {
 				return err
@@ -60,16 +81,21 @@ func (a *app) migrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			p, err := migrate.NewPlan(cmd.Context(), eng, st, outputFlags(cmd))
+			if pr := a.prompter(cmd); pr.Interactive() && !yes {
+				if err := askMappings(pr, eng, st, &opts); err != nil {
+					return err
+				}
+			}
+			p, err := migrate.NewPlan(cmd.Context(), eng, st, opts)
 			if err != nil {
 				return err
 			}
-			opts := migrate.Options{KeepPython: keep}
-			opts.Force, opts.DryRun, opts.ForceRun, opts.Display, opts.Trust = force, true, forceRun(cmd, nil), outputFlags(cmd), kinds
+			remap := remapRun(cmd, opts, p)
 			preview, err := migrate.Migrate(cmd.Context(), eng, p, opts)
 			if err != nil {
 				return err
 			}
+			preview.Remap = remap
 			if dry || preview.Nothing {
 				return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
 			}
@@ -87,6 +113,7 @@ func (a *app) migrateCmd() *cobra.Command {
 			if res == nil {
 				return err
 			}
+			res.Remap = remap
 			if emitErr := a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, res) }, res); emitErr != nil {
 				return emitErr
 			}
@@ -99,7 +126,76 @@ func (a *app) migrateCmd() *cobra.Command {
 	f.BoolVar(&force, "force", false, "also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking (never answers hook consent)")
 	addTrustFlag(cmd, &trust, "migrate", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
 	f.BoolVar(&keep, "keep-python", false, "install and replace with backup, but move nothing else to the trash")
+	f.StringArrayVar(&mapRoots, "map-root", nil, "look for a project path or local source this machine lacks, below OLD, at the same place below NEW (OLD=NEW; repeatable; one matching nothing is a warning)")
+	f.StringArrayVar(&mapTargets, "map-target", nil, "install the modules of OLD, an assistant this machine lacks, for NEW instead (OLD=NEW[,NEW]; repeatable)")
 	return cmd
+}
+
+// askMappings asks, on a terminal, where each root that missing project paths of the Python lola
+// share is on this machine, then which assistants install the records of each assistant this
+// machine lacks (Plan 10 §3.1, §3.2), adding each answer to opts. What the flags map is not
+// asked; an empty root or no assistant skips that group, and an assistant is asked only when one
+// is on your PATH. The assistants are asked after the roots: a project found again may have its
+// assistant set up.
+func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migrate.Options) error {
+	roots, _ := migrate.Suggest(eng, st, *opts)
+	for _, s := range roots {
+		to, err := pr.MigrateRoot(MigrateRootStep{Old: untrusted.Text(s.Old, untrusted.MaxName), Suggest: s.New, Records: len(s.Records)})
+		if err != nil {
+			return err
+		}
+		if to != "" {
+			opts.Roots = append(opts.Roots, migrate.RootMap{Old: s.Old, New: filepath.Clean(to)})
+		}
+	}
+	_, missing := migrate.Suggest(eng, st, *opts)
+	for _, s := range missing {
+		if len(s.Detected) == 0 {
+			continue
+		}
+		modules := map[string]bool{}
+		for _, r := range s.Records {
+			modules[r.Module] = true
+		}
+		supported := slices.ContainsFunc(eng.Targets, func(t target.Target) bool { return t.ID() == s.Old })
+		ids, err := pr.MigrateTargets(MigrateTargetStep{Old: untrusted.Text(s.Old, untrusted.MaxName), Supported: supported, Modules: len(modules), Options: s.Detected})
+		if err != nil {
+			return err
+		}
+		if len(ids) > 0 {
+			opts.Targets[s.Old] = ids
+		}
+	}
+	return nil
+}
+
+// remapRun is the run again with every map it used, from its flags or its questions, and the
+// --map-root and --map-target flags that map what p leaves for want of this machine's paths or
+// assistants (Plan 10 §3.1, §3.2): each missing root to your home, each missing assistant to
+// those on your PATH. It keeps the run's other flags but -y and --trust, as every hint repeating a
+// run does; "" when no flag would map anything.
+func remapRun(cmd *cobra.Command, opts migrate.Options, p *migrate.Plan) string {
+	var more []string
+	for _, s := range p.RootSuggestions {
+		more = append(more, "--map-root", untrusted.Text(s.Old, untrusted.MaxName)+"="+untrusted.Text(s.New, untrusted.MaxName))
+	}
+	for _, s := range p.TargetSuggestions {
+		if len(s.Detected) > 0 {
+			more = append(more, "--map-target", untrusted.Text(s.Old, untrusted.MaxName)+"="+strings.Join(s.Detected, ","))
+		}
+	}
+	if len(more) == 0 {
+		return ""
+	}
+	var kept []string
+	for _, m := range opts.Roots {
+		kept = append(kept, "--map-root", untrusted.Text(m.Old, untrusted.MaxName)+"="+untrusted.Text(m.New, untrusted.MaxName))
+	}
+	for _, old := range slices.Sorted(maps.Keys(opts.Targets)) {
+		kept = append(kept, "--map-target", untrusted.Text(old, untrusted.MaxName)+"="+strings.Join(opts.Targets[old], ","))
+	}
+	drop := append(slices.Clone(consentFlags), "map-root", "map-target")
+	return runWithout(cmd, nil, drop...) + " " + errs.ShellJoin(append(kept, more...))
 }
 
 // migrationLabel names a migration destination in human output.
@@ -182,12 +278,19 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		switch d.Status {
 		case migrate.StatusMigrated:
 			fmt.Fprintln(w, s.ok("migrated "+migrationLabel(d)))
+		case migrate.StatusNothing:
+			what := "nothing migrated at "
+			if r.DryRun {
+				what = "nothing to migrate at "
+			}
+			fmt.Fprintln(w, s.warn(fmt.Sprintf("%s%s: %d record(s) left as they are", what, migrationLabel(d), len(d.Unmappable))))
 		case migrate.StatusFailed:
 			fmt.Fprintln(w, s.bad("failed "+migrationLabel(d)+": "+d.Error))
 			printHints(w, "    ", d.Hints)
 		}
 	}
 	printReported(w, "", r.NotMigrated, r.Unmappable)
+	printSummary(w, r)
 	printMigratedMarkets(w, s, r.Markets)
 	for _, warn := range r.Warnings {
 		fmt.Fprintln(w, s.warn(warn))
@@ -204,6 +307,31 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 	if r.Trash != "" {
 		fmt.Fprintln(w, "trash: "+r.Trash)
 	}
+	if r.Remap != "" {
+		fmt.Fprintln(w, s.info("map what this machine lacks: "+r.Remap))
+	}
+}
+
+// printSummary counts the Python lola's records by outcome (Plan 10 §3.3), when it has any: on a
+// dry run what would migrate, after a run what did and what failed; and those already migrated
+// and those left as they are.
+func printSummary(w io.Writer, r *migrate.Result) {
+	n := r.Summary
+	if n.Migrated+n.Already+n.Left+n.Failed == 0 {
+		return
+	}
+	parts := []string{fmt.Sprintf("%d migrated", n.Migrated)}
+	if r.DryRun {
+		parts[0] = fmt.Sprintf("%d to migrate", n.Migrated)
+	}
+	if n.Already > 0 {
+		parts = append(parts, fmt.Sprintf("%d already migrated", n.Already))
+	}
+	parts = append(parts, fmt.Sprintf("%d left as they are", n.Left))
+	if n.Failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", n.Failed))
+	}
+	fmt.Fprintln(w, "records: "+strings.Join(parts, ", "))
 }
 
 // printMigratedMarkets lists what becomes of the Python lola's marketplaces (Plan 6c §6.9), each one
@@ -271,9 +399,10 @@ func printHints(w io.Writer, indent string, hints []string) {
 }
 
 // printMigrationPlain renders a migration as tab-separated lines: one per install, step,
-// replacement, move, kept path, reported item and record, destination status, marketplace
-// (its status, Python name, lola name, source, path and reason), then the home,
-// the trash and, when there is nothing to do, "nothing".
+// replacement, move, kept path, reported item and record, destination status, the summary
+// (migrated, already, left and failed counts), marketplace (its status, Python name, lola name,
+// source, path and reason), then the home, the trash, the run that maps what this machine lacks
+// and, when there is nothing to do, "nothing".
 func printMigrationPlain(w io.Writer, r *migrate.Result) {
 	row := func(cols ...string) { fmt.Fprintln(w, strings.Join(cols, "\t")) }
 	for _, d := range r.Destinations {
@@ -311,12 +440,16 @@ func printMigrationPlain(w io.Writer, r *migrate.Result) {
 	for _, u := range r.Unmappable {
 		row("unmappable", u.ProjectPath, u.Module, u.Assistant, u.Reason)
 	}
+	row("summary", strconv.Itoa(r.Summary.Migrated), strconv.Itoa(r.Summary.Already), strconv.Itoa(r.Summary.Left), strconv.Itoa(r.Summary.Failed))
 	for _, m := range r.Markets {
 		row("market", m.Status, m.Name, m.Market, m.Source, m.Path, m.Reason)
 	}
 	row("home", r.Home.Action, r.Home.Path, r.Home.Reason, r.Home.Trash)
 	if r.Trash != "" {
 		row("trash", r.Trash)
+	}
+	if r.Remap != "" {
+		row("remap", r.Remap)
 	}
 	if r.Nothing {
 		row("nothing")

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -583,6 +584,44 @@ func (h *huhForms) tidyOptions(in []TidyOption) []huh.Option[string] {
 		opts[i] = huh.NewOption(label, o.ID)
 	}
 	return opts
+}
+
+// MigrateRoot asks for the new root of a missing one, pre-filled with the suggestion; an empty
+// answer skips it. Accessible mode reads an empty answer as the pre-filled one, so there the
+// suggestion is in the title and nothing is pre-filled.
+func (h *huhForms) MigrateRoot(st MigrateRootStep) (string, error) {
+	title, to := st.Old+" not found on this machine — new root (empty skips):", st.Suggest
+	if h.accessible {
+		title, to = st.Old+" not found on this machine — new root, such as "+st.Suggest+" (empty skips):", ""
+	}
+	desc := fmt.Sprintf("%d project path(s) of the Python lola start with it", st.Records)
+	err := h.run(huh.NewInput().Title(h.cut(title)).Description(desc).Value(&to).Validate(func(s string) error {
+		if s = strings.TrimSpace(s); s != "" && !filepath.IsAbs(s) {
+			return fmt.Errorf("write an absolute path, such as %s, or leave it empty to skip", st.Suggest)
+		}
+		return nil
+	}))
+	return strings.TrimSpace(to), err
+}
+
+// MigrateTargets offers the assistants on your PATH for the records of one this machine lacks,
+// all preselected; choosing none skips them.
+func (h *huhForms) MigrateTargets(st MigrateTargetStep) ([]string, error) {
+	why, which := " is not installed here", fmt.Sprintf("these %d modules", st.Modules)
+	if !st.Supported {
+		why = " has no lola target"
+	}
+	if st.Modules == 1 {
+		which = "its module"
+	}
+	opts := make([]huh.Option[string], 0, len(st.Options))
+	for _, id := range st.Options {
+		opts = append(opts, huh.NewOption(id, id).Selected(true))
+	}
+	var chosen []string
+	err := h.run(h.multi(h.cut(st.Old+why+" — install "+which+" for:"),
+		"choosing none leaves them as they are", opts, &chosen))
+	return chosen, err
 }
 
 // reviewLabels name the review menu's entries.

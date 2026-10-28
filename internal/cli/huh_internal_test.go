@@ -371,6 +371,39 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
+	It("asks where a missing root is, offering your home, and skips on an empty answer (Plan 10 §3.1)", func() {
+		st := MigrateRootStep{Old: "/Users/alice", Suggest: "/home/me", Records: 2}
+		got, err := accessible(&out, "srv", "/srv/me").MigrateRoot(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal("/srv/me"))
+		Expect(out.String()).To(ContainSubstring("/Users/alice not found on this machine — new root, such as /home/me (empty skips):"))
+		Expect(out.String()).To(ContainSubstring("write an absolute path, such as /home/me, or leave it empty to skip"))
+
+		got, err = accessible(&out, "").MigrateRoot(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty(), "accessible mode pre-fills nothing, so an empty answer skips")
+
+		_, err = accessible(&out).MigrateRoot(st)
+		Expect(err).To(MatchError(ErrAborted))
+	})
+
+	It("offers the assistants on your PATH for a missing one, all preselected; none skips (Plan 10 §3.2)", func() {
+		st := MigrateTargetStep{Old: "claude-code", Supported: true, Modules: 2, Options: []string{"gemini-cli", "opencode"}}
+		got, err := accessible(&out, "0").MigrateTargets(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{"gemini-cli", "opencode"}))
+		Expect(out.String()).To(ContainSubstring("claude-code is not installed here — install these 2 modules for:"))
+
+		got, err = accessible(&out, "1", "2", "0").MigrateTargets(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty())
+
+		out.Reset()
+		_, err = accessible(&out, "0").MigrateTargets(MigrateTargetStep{Old: "cursor", Modules: 1, Options: []string{"opencode"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(ContainSubstring("cursor has no lola target — install its module for:"))
+	})
+
 	It("offers the review menu with Apply as the default", func() {
 		got, err := accessible(&out, "", "").Review(ReviewStep{Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())

@@ -5,13 +5,14 @@ name: lola migrate against the real Python lola
 # {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob, &&, redirection or pipe sits
 # inside a single-quoted sh -c or python3 -c, and no step names a host path.
 # Scenario B's steps give the Python lola and lola-go the home /home/b with its own XDG
-# directories (b_env).
+# directories (b_env); scenario C's the home /home/c, with /home/c/bin first on PATH (c_env).
 vars:
   root: "."
   runtime: podman
   container: lola-e2e-migrate
   lola: /opt/lola-go/lola-go
   b_env: -e HOME=/home/b -e XDG_CONFIG_HOME=/home/b/.config -e XDG_DATA_HOME=/home/b/.local/share -e XDG_CACHE_HOME=/home/b/.cache -e XDG_STATE_HOME=/home/b/.local/state
+  c_env: -e HOME=/home/c -e XDG_CONFIG_HOME=/home/c/.config -e XDG_DATA_HOME=/home/c/.local/share -e XDG_CACHE_HOME=/home/c/.cache -e XDG_STATE_HOME=/home/c/.local/state -e PATH=/home/c/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 testcases:
   - name: The Python lola installs folder, git and zip modules for four assistants and at user scope
@@ -179,3 +180,56 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "nothing to migrate"
+
+  - name: C1 A home from another machine leaves its missing project and assistant as they are, and gives the run that maps them
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.c_env}} {{.container}} bash /e2e/scripts/python-setup-c.sh"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "python lola installed"
+      - type: exec
+        script: "{{.runtime}} exec {{.c_env}} {{.container}} {{.lola}} migrate -n"
+        assertions:
+          - result.code ShouldEqual 0
+          - 'result.systemout ShouldContainSubstring "unmappable review (claude-code at /home/olduser/proj): project_path /home/olduser/proj no longer exists"'
+          - 'result.systemout ShouldContainSubstring "unmappable review (claude-code): claude-code is not installed here"'
+          - 'result.systemout ShouldContainSubstring "unmappable kit (claude-code): claude-code is not installed here"'
+          - 'result.systemout ShouldContainSubstring "nothing to migrate at user scope: 2 record(s) left as they are"'
+          - 'result.systemout ShouldContainSubstring "→ map what this machine lacks: lola migrate --dry-run --map-root /home/olduser=/home/c --map-target claude-code=opencode"'
+
+  - name: C2 The mapped run migrates the moved project and the missing assistant's modules, and sync works right after
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.c_env}} {{.container}} sh -c '{{.lola}} migrate -y --json --map-root /home/olduser=/home/c --map-target claude-code=opencode > /tmp/c.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/c.json"))
+          dests = {d.get("root") or "user": d for d in doc["destinations"]}
+          assert dests["/home/c/proj"]["status"] == "migrated", dests["/home/c/proj"]
+          assert [i["targets"] for i in dests["/home/c/proj"]["installs"]] == [["claude-code"]], dests["/home/c/proj"]["installs"]
+          assert dests["user"]["status"] == "migrated", dests["user"]
+          assert {i["source"]: i["targets"] for i in dests["user"]["installs"]} == {"/e2e/fixtures/review": ["opencode"], "/home/c/src/kit": ["opencode"]}, dests["user"]["installs"]
+          assert doc["summary"] == {"migrated": 3, "already": 0, "left": 0, "failed": 0}, doc["summary"]
+          assert doc["remap"] == "", doc["remap"]
+          print("ok the moved project and the missing assistant migrated")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the moved project and the missing assistant migrated"
+      - type: exec
+        script: "{{.runtime}} exec {{.c_env}} {{.container}} {{.lola}} sync --user"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemerr ShouldNotContainSubstring "no user.yml"
+      - type: exec
+        script: "{{.runtime}} exec {{.c_env}} {{.container}} sh -c '{{.lola}} list --user --plain | tr \"\\t\" \" \"; {{.lola}} list -C /home/c/proj --plain | tr \"\\t\" \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "review opencode ok"
+          - result.systemout ShouldContainSubstring "kit opencode ok"
+          - result.systemout ShouldContainSubstring "review claude-code ok"

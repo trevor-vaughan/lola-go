@@ -17,6 +17,7 @@ install what `project.yml` lists; the Python lola's `module@ref` is `--ref` here
 
 It reads the Python lola's home (`$LOLA_HOME`, else `~/.lola`) and, for every project and for
 user scope where the Python lola installed a module for Claude Code, Gemini CLI or OpenCode,
+and that assistant is installed or set up there ([From another machine](#from-another-machine)),
 installs the same module with lola, from the same source (with its ref and content directory
 as `--ref` and `--path`; a content directory of `/` is `--path .` for a folder or git source),
 on the same assistants; a module lola already has there stays at the version it has. Before it
@@ -82,7 +83,8 @@ up:
   project at `~` and refuses to install there; the output says why it stayed.
 
 **Not migrated, never changed** (each is listed with its file, and how to remove it by hand):
-installs for Cursor, Copilot and OpenClaw (their files stay exactly as they are); modules with
+installs for Cursor, Copilot and OpenClaw (their files stay exactly as they are, though
+`--map-target` can install their modules for an assistant lola has); modules with
 no recorded source or a source lola cannot fetch (`git://`, `.tar.bz2`, …); instruction
 blocks (`<!-- lola:module:<name>:start -->` in `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, and at
 user scope `~/.claude/CLAUDE.md`, `~/GEMINI.md`, `$XDG_CONFIG_HOME/opencode/AGENTS.md`), which
@@ -121,3 +123,59 @@ symbolic link inside the trash ("nothing was moved"). A move across file systems
 the copy, then removes only the files and links that match it and the directories left empty;
 anything created or changed after the copy stays in place, and the run says which path changed
 while lola moved it.
+
+## From another machine
+
+A Python home copied from another machine names that machine's paths and assistants. `lola
+migrate` says which it cannot use, and how to map them:
+
+- **A project path or local source this machine lacks** (`project_path /Users/alice/src/app no
+  longer exists`, `the local source /Users/alice/src/kit no longer exists`, or any Windows path on
+  Linux or macOS; a local source is a folder or archive the Python lola added a module from) is
+  grouped by the root it came from, project paths and sources together: the home it is
+  under (`/home/<user>`, `/Users/<user>`, `/root`, `C:\Users\<user>`) unless that is your own
+  home, else the shallowest of its directories missing here. `--map-root OLD=NEW` looks for each
+  path below `OLD` at the same place below `NEW`: with `--map-root /Users/alice=/home/alice`,
+  `/Users/alice/src/app` is `/home/alice/src/app`. The longest `OLD` that matches wins, at whole
+  directory names only, and one map moves project paths and sources alike. Two Windows paths
+  match with either separator and any case of the drive letter. A mapped path is
+  checked like any other; one that is still missing stays as it is, and its reason names where
+  lola looked. A path with a `..` name is never mapped: it is `not in its clean form`, a local
+  source of that kind hints `lola install <source>`, and `--map-root` refuses `/` or a drive
+  as `OLD`, which would match every path, so lola never suggests one and such a record stays as
+  it is.
+- **An assistant this machine lacks.** lola installs a record for its own assistant only where
+  that assistant is installed (on your `PATH`) or set up (Claude Code's `.claude/` or `CLAUDE.md`,
+  Gemini CLI's `.gemini/` or `GEMINI.md`, OpenCode's `.opencode/` or `opencode.json`, and at user
+  scope its config directory), as `lola tidy` counts them. Otherwise, and for an assistant lola
+  has no target for, the record stays as it is (`claude-code is not installed here`) unless
+  `--map-target OLD=NEW[,NEW]` names the assistants to install its modules for instead, such as
+  `--map-target claude-code=opencode`. lola writes only for those: the Python lola's files for
+  the old assistant are not on this machine, and a file of yours where the new one installs is a
+  conflict, never replaced. `--map-target claude-code=claude-code` installs for Claude Code
+  anyway. Name each `OLD` once, with every assistant after the `=`.
+
+On a terminal, without `-y`, lola asks before it plans: first, for each missing root,
+`/Users/alice not found on this machine — new root (empty skips):`, filled in with your home;
+then, for each missing assistant, which of the assistants on your `PATH` install its modules,
+all ticked (`claude-code is not installed here — install these 2 modules for:`). Ticking none
+leaves them as they are. What a flag maps is not asked again. A flag that matches nothing (say,
+on a rerun after everything migrated) is a warning, never an error: `⚠ --map-root
+/Users/alice=/home/alice matches no missing project path or source of the Python lola; it changes
+nothing` (in `warnings` under `--json`). A map that matches a path counts as used even when a
+longer map moves it.
+
+Whatever is left, the run ends with the command that maps it: your run with every map it used,
+plus a `--map-root` to your home for each missing root and a `--map-target` to the assistants on
+your `PATH` for each missing assistant. It drops `-y` and `--trust`, which answer questions only
+you can (`remap` under `--json`):
+
+```
+→ map what this machine lacks: lola migrate --dry-run --map-root /Users/alice=/home/alice --map-target claude-code=opencode
+```
+
+A destination where every record stays says so (`⚠ nothing migrated at user scope: 2 record(s)
+left as they are`), and the run counts the Python lola's records: `records: 3 migrated, 2 left as
+they are`, with `already migrated` and `failed` when there are any. Records left as they are do
+not fail the run. Until a module is installed at user scope, lola has no `user.yml`, and
+`lola sync --user` says so.

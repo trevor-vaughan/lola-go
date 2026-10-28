@@ -47,6 +47,29 @@ type Prompter interface {
 	// TidyKeep asks which keep-list entries, for the candidates TidyPick left, to add: a
 	// filterable multi-select, nothing preselected, answering the IDs of the options chosen.
 	TidyKeep(TidyKeepStep) ([]string, error)
+	// MigrateRoot asks where a root that missing project paths of the Python lola share is on this
+	// machine (Plan 10 §3.1), offering Suggest: an absolute path, or "" to skip them.
+	MigrateRoot(MigrateRootStep) (string, error)
+	// MigrateTargets asks which assistants install the records of an assistant this machine
+	// lacks (Plan 10 §3.2): a multi-select over Options, all preselected; none skips them.
+	MigrateTargets(MigrateTargetStep) ([]string, error)
+}
+
+// MigrateRootStep asks for the new root of Old, below which Records of the Python lola's project
+// paths are missing here; Suggest (your home) is offered. Old is safe to print.
+type MigrateRootStep struct {
+	Old, Suggest string
+	Records      int
+}
+
+// MigrateTargetStep asks which of Options, the assistants on your PATH, install the Modules
+// modules the Python lola installed for Old, which is not installed here or, unless Supported, is
+// one lola has no target for. Old is safe to print.
+type MigrateTargetStep struct {
+	Old       string
+	Supported bool
+	Modules   int
+	Options   []string
 }
 
 // TidyOption is one item lola tidy's pickers offer: ID names it to the command, and Label is
@@ -254,4 +277,8 @@ func (noPrompter) TidyPick(TidyPickStep) ([]string, error)      { return nil, er
 func (noPrompter) TidyKeep(TidyKeepStep) ([]string, error)      { return nil, errNoTerminal }
 func (noPrompter) Trust(TrustStep) (engine.TrustAnswer, error) {
 	return engine.TrustAnswer{}, errNoTerminal
+}
+func (noPrompter) MigrateRoot(MigrateRootStep) (string, error) { return "", errNoTerminal }
+func (noPrompter) MigrateTargets(MigrateTargetStep) ([]string, error) {
+	return nil, errNoTerminal
 }

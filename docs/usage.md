@@ -746,13 +746,23 @@ the Python lola](guides/migrating.md#coming-from-the-python-lola)). It shows the
 | `--force` | Also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking. |
 | `--trust=<kinds>` | Consent without asking to the kinds named, recorded as a yes at the prompt is: `hooks` (install hooks), `runtime-hooks` (Claude Code runtime hooks), `scripts`, or `all` for the three ([Trust kinds](#trust-kinds)). |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
+| `--map-root OLD=NEW` | Look for a project path or local source this machine lacks, below `OLD`, at the same place below `NEW` (repeatable; [From another machine](guides/migrating.md#from-another-machine)). A map that matches nothing is a warning. |
+| `--map-target OLD=NEW[,NEW]` | Install the modules of `OLD`, an assistant this machine lacks, for the assistants `NEW` instead (repeatable; name each `OLD` once). |
+
+On a terminal, without `-y`, it asks for each missing root and each missing assistant before it
+plans. The run ends with the command that maps what it left (`→ map what this machine lacks:
+lola migrate --map-root /Users/alice=/home/alice --map-target claude-code=opencode`).
 
 Refusals: off a terminal without `-y`: `lola migrate needs confirmation, and there is no
-terminal to ask on`, hinting `lola migrate -y`.
+terminal to ask on`, hinting `lola migrate -y`. A map it cannot read says what is wrong:
+`--map-root "alice=/home/alice": "alice" is not an absolute path`, `--map-target
+"claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli,
+opencode`.
 
 JSON: `dry_run`, `nothing_to_migrate`, `python_home`, `trash`, `destinations`, `unmappable`,
-`not_migrated`, `markets`, `home` and `warnings` ([Output contract](#output-contract)); the refusal
-off a terminal carries the `-n --json` keys beside `error` and `hints`.
+`not_migrated`, `markets`, `home`, `warnings`, `summary` and `remap` ([Output
+contract](#output-contract)); the refusal off a terminal carries the `-n --json` keys beside
+`error` and `hints`.
 
 ### `lola version`
 
@@ -1741,9 +1751,11 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   moved or wrote, which may hold Unicode format characters a terminal would not show.
 - `migrate --json`: `dry_run`, `nothing_to_migrate`, `python_home`, `trash` (`""` when nothing
   was put there), `home` (`action` `move`, `keep` or `none`, with `reason` and `trash`),
-  `unmappable` and `not_migrated` (each entry with its `hints`), `warnings`, and per
-  destination its `status` (`planned`, `migrated`, `unchanged` or `failed`, with `error` and
-  `hints`), `installs`, `replaced` and `moved` (each `path`, `key`, `kind`, `trash`), `kept`
+  `unmappable` and `not_migrated` (each entry with its `hints`), `warnings`, `summary` (the
+  Python lola's records by outcome: `migrated`, on a dry run those that would; `already`,
+  `left` and `failed`), `remap` (the run that maps what this machine lacks, `""` when no flag
+  would), and per destination its `status` (`planned`, `migrated`, `unchanged`, `nothing` when
+  every record there is left as it is, or `failed`, with `error` and `hints`), `installs`, `replaced` and `moved` (each `path`, `key`, `kind`, `trash`), `kept`
   (`path`, `reason`), its own `unmappable` and `not_migrated`, and the install's `steps`,
   `modules`, `findings` and `notices`. A step that replaces a recorded file has
   `"replaced": true`.

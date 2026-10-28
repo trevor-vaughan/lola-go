@@ -159,7 +159,9 @@ The **migrate** suite has the Python lola install fixtures, snapshots the tree, 
 `migrate`, and `scripts/check.py` checks the result against a snapshot taken after the Python lola's
 installs, one `ok` or `FAIL` line per check: every path the Python lola wrote ends up lola's, in the
 trash, kept, reported, or byte-identical for an unmappable record; its G1 case pins the one-line
-JSON refusal of `migrate --json` off a terminal. The **tidy** suite runs `lola tidy` where the trash
+JSON refusal of `migrate --json` off a terminal; its C cases move a Python home and project from
+another machine, with Claude Code gone, and check the `--map-root` and `--map-target` run that
+`lola migrate` hints, then `lola sync --user`. The **tidy** suite runs `lola tidy` where the trash
 is on another file system, which unit specs never reach: `scripts/setup.sh` builds a static fixture
 (a committed `.mcp.json` and command, a module lola-go installed, residue shaped as the Python lola
 leaves it with a `.gemini/skills` directory unit, an instruction file, a `.claude/skills` link out

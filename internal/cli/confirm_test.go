@@ -109,9 +109,9 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 				return out
 			}
 			return confirmCase{
-				args: []string{"migrate"}, plan: "plan (dry run; nothing was written):", planLines: 6,
+				args: []string{"migrate"}, plan: "plan (dry run; nothing was written):", planLines: 7,
 				question: "Migrate?", hint: "lola migrate --json -y", done: "✓ migrated project " + proj,
-				keys:  []string{"dry_run", "nothing_to_migrate", "python_home", "trash", "destinations", "unmappable", "not_migrated", "markets", "home", "warnings"},
+				keys:  []string{"dry_run", "nothing_to_migrate", "python_home", "trash", "destinations", "unmappable", "not_migrated", "markets", "home", "warnings", "summary", "remap"},
 				steps: steps, did: steps,
 				written: func() bool { return read(filepath.Join(proj, ".claude/commands/ship.md")) != "python ship\n" },
 			}

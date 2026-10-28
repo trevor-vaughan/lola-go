@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -46,13 +47,17 @@ const (
 // Plan is what lola migrate would do with the Python lola's state, before the install is
 // planned: the destinations (Plan 5c §14), the records that cannot be migrated anywhere, what is
 // reported but never acted on, and what becomes of its marketplaces (Plan 6c §6.9).
+// RootSuggestions and TargetSuggestions are what it leaves unmapped for want of this machine's
+// paths or assistants (Plan 10 §3.1, §3.2), from which the CLI builds the run that maps them.
 type Plan struct {
-	Home         string
-	Destinations []*Destination
-	Unmappable   []Unmapped
-	NotMigrated  []Item
-	Markets      []Market
-	Warnings     []string
+	Home              string
+	Destinations      []*Destination
+	Unmappable        []Unmapped
+	NotMigrated       []Item
+	Markets           []Market
+	Warnings          []string
+	RootSuggestions   []RootSuggestion
+	TargetSuggestions []TargetSuggestion
 
 	st *State
 }
@@ -76,9 +81,19 @@ type Destination struct {
 	NotMigrated []Item
 
 	man      *manifest.Manifest
-	pending  []Record            // the records grouped here, until plan decides them
-	accepted []planned           // the records plan accepted, for coachClash
+	here     map[string]bool     // by target, whether its assistant is installed or set up here
+	detected []string            // the targets whose assistant is on your PATH, which hints map to
+	srcMoved map[string]bool     // the modules whose source a --map-root moved: hints offer no root
+	pending  []queued            // the records grouped here, until plan decides them
+	accepted []planned           // the records plan accepted, for coachClash and records
 	versions map[string]resolved // by installKey
+}
+
+// queued is a record grouped at a destination, with its index among the plan's records, by
+// which plan reports it once however many targets it maps to.
+type queued struct {
+	rec Record
+	idx int
 }
 
 // Install is one module lola-go installs at a destination (or found already migrated): its
@@ -140,10 +155,12 @@ type Item struct {
 // target, and the version lola-go resolves its source to holds every component the record
 // lists. Everything else is unmappable and left as it is. Each install's source is fetched
 // into the cache once, here, and the install pinned to that version, so a preview and the
-// run that follows it install the same thing. display is the run's output flags, which the hints
-// of a destination's manifest with a marketplace address keep (Plan 6c §6.7).
-func NewPlan(ctx context.Context, e *engine.Engine, st *State, display []string) (*Plan, error) {
-	p := &Plan{Home: st.Home, Unmappable: []Unmapped{}, NotMigrated: []Item{}, Markets: []Market{}, Warnings: st.Warnings, st: st}
+// run that follows it install the same thing. opts.Display is the run's output flags, which the
+// hints of a destination's manifest with a marketplace address keep (Plan 6c §6.7). opts.Roots
+// moves missing project paths and opts.Targets maps the assistants this machine lacks (Plan 10
+// §3.1, §3.2); what neither covers is in RootSuggestions and TargetSuggestions.
+func NewPlan(ctx context.Context, e *engine.Engine, st *State, opts Options) (*Plan, error) {
+	p := &Plan{Home: st.Home, Unmappable: []Unmapped{}, NotMigrated: []Item{}, Markets: []Market{}, Warnings: slices.Clone(st.Warnings), st: st}
 	if len(st.Markets) > 0 {
 		have, _, err := e.Markets(nil)
 		if err != nil {
@@ -151,27 +168,54 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, display []string)
 		}
 		p.Markets = planMarkets(st.Markets, have)
 	}
+	used := map[int]bool{}
+	recs, moved := rerooted(st.Records, opts.Roots, e.Paths.Home, used)
+	srcs, srcMoved := rerootedSources(st.Sources, opts.Roots, used)
+	p.RootSuggestions = suggestRoots(e, recs, moved, srcs, srcMoved)
+	for j, m := range opts.Roots {
+		if !used[j] {
+			p.Warnings = append(p.Warnings, "--map-root "+untrusted.Text(m.Old+"="+m.New, untrusted.MaxName)+
+				" matches no missing project path or source of the Python lola; it changes nothing")
+		}
+	}
+	tsugs, mapped := suggestTargets(e, recs, opts.Targets)
+	p.TargetSuggestions = tsugs
+	for _, old := range slices.Sorted(maps.Keys(opts.Targets)) {
+		if !mapped[old] {
+			p.Warnings = append(p.Warnings, "--map-target "+untrusted.Text(old+"="+strings.Join(opts.Targets[old], ","), untrusted.MaxName)+
+				" matches no record whose assistant is missing here; it changes nothing")
+		}
+	}
+	planning := *st
+	planning.Sources = srcs
+	detected := onPath(e)
 	byKey := map[string]*Destination{}
-	for _, rec := range st.Records {
+	for i, rec := range recs {
 		if rec.Problem != "" {
-			p.Unmappable = append(p.Unmappable, unmapped(rec, rec.Problem, "lola migrate leaves this record and its files as they are"))
+			hint := "lola migrate leaves this record and its files as they are"
+			if rec.Missing {
+				flag := mapRootPlaceholder // a map moved it, and it is still missing: no root to offer
+				if !moved[i] {
+					flag = mapRootFlag(rec.ProjectPath, e.Paths.Home)
+				}
+				hint = "rerun lola migrate with " + flag + "; until then it leaves this record and its files as they are"
+			}
+			p.Unmappable = append(p.Unmappable, unmapped(rec, rec.Problem, hint))
 			continue
 		}
-		sc := engine.Scope{Kind: target.User}
-		if rec.Scope == ScopeProject {
-			sc = engine.Scope{Kind: target.Project, ProjectDir: rec.ProjectPath}
-		}
+		sc := scopeOf(rec)
 		d := byKey[sc.Key()]
 		if d == nil {
 			d = newDestination(e, sc)
+			d.detected, d.srcMoved = detected, srcMoved
 			man, err := e.Manifest(sc)
 			if err != nil {
-				return nil, e.CoachUnresolved(err, []engine.Scope{sc}, false, display)
+				return nil, e.CoachUnresolved(err, []engine.Scope{sc}, false, opts.Display)
 			}
 			d.man, byKey[sc.Key()] = man, d
 			p.Destinations = append(p.Destinations, d)
 		}
-		d.pending = append(d.pending, rec)
+		d.pending = append(d.pending, queued{rec: rec, idx: i})
 	}
 	sort.SliceStable(p.Destinations, func(i, j int) bool {
 		a, b := p.Destinations[i], p.Destinations[j]
@@ -181,7 +225,7 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, display []string)
 		return a.Scope.Key() < b.Scope.Key()
 	})
 	for _, d := range p.Destinations {
-		if err := d.plan(ctx, e, st); err != nil {
+		if err := d.plan(ctx, e, &planning, opts.Targets); err != nil {
 			return nil, fmt.Errorf("%s: %w", where(d), err)
 		}
 		d.finish(e)
@@ -189,12 +233,25 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, display []string)
 	return p, nil
 }
 
+// scopeOf is the scope a record installs at.
+func scopeOf(rec Record) engine.Scope {
+	if rec.Scope == ScopeProject {
+		return engine.Scope{Kind: target.Project, ProjectDir: rec.ProjectPath}
+	}
+	return engine.Scope{Kind: target.User}
+}
+
 // planned is a record whose source lola-go can fetch, for the target id, with its install.
-// already is set when the destination's manifest has its module on id.
+// already is set when the destination's manifest has its module on id. from is the target whose
+// files the Python lola wrote here for rec: id, or "" when rec's assistant maps to others, which
+// it does only where that assistant is not, and so neither are its files. idx is rec's index
+// among the plan's records.
 type planned struct {
 	rec     Record
 	in      Install
 	id      string
+	from    string
+	idx     int
 	already bool
 }
 
@@ -212,12 +269,10 @@ type resolved struct {
 // Python lola did), and every install is pinned to its version. A module's records at d
 // migrate all or none: they share the Python lola's copy of the module, which an install
 // would replace under a record left behind.
-func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State) error {
+func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State, targets map[string][]string) error {
 	var list []planned
-	for _, rec := range d.pending {
-		if pl, ok := d.mapRecord(e, st, rec); ok {
-			list = append(list, pl)
-		}
+	for _, q := range d.pending {
+		list = append(list, d.mapRecord(e, st, targets, q)...)
 	}
 	d.pending = nil
 	versions, err := d.resolve(ctx, e, list)
@@ -225,23 +280,30 @@ func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State) err
 		return err
 	}
 	d.versions = versions
+	// leave lists a record as unmappable once, with the first reason one of its targets gives.
+	left := map[int]bool{}
+	leave := func(pl planned, reason string, hints ...string) {
+		if !left[pl.idx] {
+			left[pl.idx] = true
+			d.Unmappable = append(d.Unmappable, unmapped(pl.rec, reason, hints...))
+		}
+	}
 	var verified []planned
 	for _, pl := range list {
 		if !pl.already {
 			v := versions[installKey(pl.in)]
 			if errors.Is(v.err, engine.ErrNotTrusted) {
-				d.Unmappable = append(d.Unmappable, unmapped(pl.rec, untrusted.Text(v.err.Error(), 2*untrusted.MaxName), errs.Hints(v.err)...))
+				leave(pl, untrusted.Text(v.err.Error(), 2*untrusted.MaxName), errs.Hints(v.err)...)
 				continue
 			}
 			if v.err != nil {
 				src := untrusted.Text(pl.in.Source, untrusted.MaxName)
-				d.Unmappable = append(d.Unmappable, unmapped(pl.rec,
-					"lola-go cannot fetch "+src+": "+untrusted.Text(untrusted.CleanErr(v.err).Error(), 2*untrusted.MaxName),
-					append(errs.Hints(v.err), "rerun lola migrate once the source is reachable")...))
+				leave(pl, "lola-go cannot fetch "+src+": "+untrusted.Text(untrusted.CleanErr(v.err).Error(), 2*untrusted.MaxName),
+					append(errs.Hints(v.err), "rerun lola migrate once the source is reachable")...)
 				continue
 			}
 			if reason, hints := lacking(pl, v); reason != "" {
-				d.Unmappable = append(d.Unmappable, unmapped(pl.rec, reason, hints...))
+				leave(pl, reason, hints...)
 				continue
 			}
 			pl.in.Version = &v.ref
@@ -256,9 +318,8 @@ func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State) err
 	}
 	for _, pl := range verified {
 		if u, ok := held[pl.rec.Module]; ok {
-			d.Unmappable = append(d.Unmappable, unmapped(pl.rec,
-				"kept with "+u.Module+" for "+u.Assistant+", which lola-go cannot migrate: they share the Python lola's copy of "+u.Module,
-				"lola migrate migrates a module's records in one place together; once that record migrates or you uninstall it with the Python lola, rerun lola migrate"))
+			leave(pl, "kept with "+u.Module+" for "+u.Assistant+", which lola-go cannot migrate: they share the Python lola's copy of "+u.Module,
+				"lola migrate migrates a module's records in one place together; once that record migrates or you uninstall it with the Python lola, rerun lola migrate")
 			continue
 		}
 		d.accept(e, st, pl)
@@ -344,7 +405,7 @@ func lacking(pl planned, v resolved) (string, []string) {
 
 func newDestination(e *engine.Engine, sc engine.Scope) *Destination {
 	d := &Destination{Scope: sc, ID: "user", Root: e.Paths.Home, Targets: []string{}, Installs: []Install{}, Already: []Install{},
-		Recorded: []Recorded{}, Unmappable: []Unmapped{}, NotMigrated: []Item{}}
+		Recorded: []Recorded{}, Unmappable: []Unmapped{}, NotMigrated: []Item{}, here: installedHere(e, sc)}
 	if sc.Kind == target.Project {
 		sum := sha256.Sum256([]byte(sc.Key()))
 		d.ID, d.Root = hex.EncodeToString(sum[:8]), sc.ProjectDir
@@ -357,37 +418,73 @@ func unmapped(rec Record, reason string, hints ...string) Unmapped {
 		Reason: reason, Hints: append([]string{}, hints...)}
 }
 
-// mapRecord maps rec to a target and an install, or lists it as unmappable at d.
-func (d *Destination) mapRecord(e *engine.Engine, st *State, rec Record) (planned, bool) {
-	id, ok := assistants[rec.Assistant]
-	if ok && !slices.ContainsFunc(e.Targets, func(t target.Target) bool { return t.ID() == id }) {
-		ok = false
+// mapRecord maps q's record to its targets, with an install for each, or lists it as
+// unmappable at d. A record installs for its own assistant when lola has a target for it and it
+// is installed or set up here (Plan 10 §3.2); otherwise for the targets targets maps it to, or
+// not at all.
+func (d *Destination) mapRecord(e *engine.Engine, st *State, targets map[string][]string, q queued) []planned {
+	rec := q.rec
+	id, ok := targetOf(e, rec.Assistant)
+	ids, from := []string{id}, id
+	if !ok || !d.here[id] {
+		mapped, has := targets[rec.Assistant]
+		shown := untrusted.Text(rec.Assistant, untrusted.MaxName)
+		flag := "--map-target " + shown + "=<assistant>"
+		if len(d.detected) > 0 {
+			flag = errs.ShellJoin([]string{"--map-target", shown + "=" + strings.Join(d.detected, ",")})
+		}
+		switch {
+		case has:
+			ids, from = mapped, ""
+		case !ok:
+			d.Unmappable = append(d.Unmappable, unmapped(rec, "lola-go has no target for "+shown,
+				"its files stay exactly as the Python lola wrote them; remove them by hand when you no longer need them",
+				"to install its modules for an assistant you have instead, rerun lola migrate with "+flag))
+			return nil
+		default:
+			d.Unmappable = append(d.Unmappable, unmapped(rec, shown+" is not installed here",
+				"install "+shown+" and rerun lola migrate, or rerun it with "+flag+" to install for one you have ("+
+					shown+"="+shown+" installs for "+shown+" anyway)"))
+			return nil
+		}
 	}
-	if !ok {
-		d.Unmappable = append(d.Unmappable, unmapped(rec, "lola-go has no target for "+untrusted.Text(rec.Assistant, untrusted.MaxName),
-			"its files stay exactly as the Python lola wrote them; remove them by hand when you no longer need them"))
-		return planned{}, false
-	}
-	in, reason, hint := mapSource(rec, st)
+	in, reason, hint := mapSource(rec, st, e.Paths.Home, d.srcMoved[rec.Module])
 	if reason != "" {
 		d.Unmappable = append(d.Unmappable, unmapped(rec, reason, hint))
-		return planned{}, false
+		return nil
 	}
-	in.Targets = []string{id}
-	pl := planned{rec: rec, in: in, id: id}
-	if ent := migrated(d.man, d.Scope, in); ent != nil {
-		pl.in.Module = ent.Name
-		pl.already = slices.Contains(effectiveTargets(d.man, ent), id)
+	out := make([]planned, 0, len(ids))
+	for _, t := range ids {
+		pl := planned{rec: rec, in: in, id: t, from: from, idx: q.idx}
+		pl.in.PythonModules, pl.in.Targets = slices.Clone(in.PythonModules), []string{t}
+		if ent := migrated(d.man, d.Scope, pl.in); ent != nil {
+			pl.in.Module = ent.Name
+			pl.already = slices.Contains(effectiveTargets(d.man, ent), t)
+		}
+		out = append(out, pl)
 	}
-	return pl, true
+	return out
+}
+
+// records counts the records d accepted, each once however many targets it maps to: those it
+// installs on some target, and those already migrated on every one.
+func (d *Destination) records() (installs, already int) {
+	all, fresh := map[int]bool{}, map[int]bool{}
+	for _, pl := range d.accepted {
+		all[pl.idx] = true
+		if !pl.already {
+			fresh[pl.idx] = true
+		}
+	}
+	return len(fresh), len(all) - len(fresh)
 }
 
 // accept adds a planned record to d: what it recorded, what is not migrated, its target, and
 // its install.
 func (d *Destination) accept(e *engine.Engine, st *State, pl planned) {
 	d.accepted = append(d.accepted, pl)
-	d.Recorded = append(d.Recorded, recorded(e, d.Scope, pl.rec, pl.id)...)
-	d.NotMigrated = append(d.NotMigrated, notMigrated(e, d.Scope, st.Home, pl.rec, pl.id)...)
+	d.Recorded = append(d.Recorded, recorded(e, d.Scope, pl.rec, pl.from)...)
+	d.NotMigrated = append(d.NotMigrated, notMigrated(e, d.Scope, st.Home, pl.rec, pl.from)...)
 	if !slices.Contains(d.Targets, pl.id) {
 		d.Targets = append(d.Targets, pl.id)
 	}
@@ -403,8 +500,9 @@ func (d *Destination) accept(e *engine.Engine, st *State, pl planned) {
 // "/" is the source's root: --path . for a folder or git source, lola-go's own rule for an
 // archive (lola-go already looks for the module inside it); a subdirectory is --path for a
 // folder or git source, and cannot be mapped for an archive, where the Python lola looked it
-// up below the module directory it found. reason is set when lola-go cannot fetch it.
-func mapSource(rec Record, st *State) (Install, string, string) {
+// up below the module directory it found. reason is set when lola-go cannot fetch it; the hint
+// for a local source missing here offers --map-root to home unless a map moved it (moved).
+func mapSource(rec Record, st *State, home string, moved bool) (Install, string, string) {
 	in := Install{PythonModules: []string{rec.Module}}
 	src, ok := st.Sources[rec.Module]
 	if !ok {
@@ -418,7 +516,21 @@ func mapSource(rec Record, st *State) (Install, string, string) {
 			"lola-go fetches " + source.AcceptedForms
 	}
 	local := want != source.KindGit && !strings.Contains(src.Location, "://")
-	if local && !filepath.IsAbs(src.Location) {
+	gone := func() (Install, string, string) {
+		if dotDot(src.Location) {
+			return in, "the local source " + loc + " is not in its clean form", "install the module with lola install <source>"
+		}
+		flag := mapRootPlaceholder
+		if !moved {
+			flag = mapRootFlag(src.Location, home)
+		}
+		return in, "the local source " + loc + " no longer exists",
+			"restore it there, rerun lola migrate with " + flag + ", or install the module from another source with lola install"
+	}
+	switch {
+	case local && !filepath.IsAbs(src.Location) && foreignAbs(src.Location):
+		return gone()
+	case local && !filepath.IsAbs(src.Location):
 		return in, "the local source " + loc + " is not an absolute path", "install the module with lola install <source>"
 	}
 	spec, isSource, err := source.Parse(src.Location, string(filepath.Separator))
@@ -427,7 +539,7 @@ func mapSource(rec Record, st *State) (Install, string, string) {
 		return in, "lola-go cannot fetch " + loc + ": " + untrusted.Text(untrusted.CleanErr(err).Error(), 2*untrusted.MaxName),
 			"lola-go fetches " + source.AcceptedForms
 	case !isSource && local:
-		return in, "the local source " + loc + " no longer exists", "restore it there, or install the module from another source with lola install"
+		return gone()
 	case !isSource:
 		return in, "lola-go cannot fetch " + loc, "lola-go fetches " + source.AcceptedForms
 	case spec.Kind != want:
@@ -536,7 +648,8 @@ func root(e *engine.Engine, sc engine.Scope, id string) string {
 	return ""
 }
 
-// recorded lists the paths the Python lola wrote for rec on target id (§6, checked against
+// recorded lists the paths the Python lola wrote for rec on target id, for "" only the module
+// copy (§6, checked against
 // src/lola/targets/*.py at 91a2885): skill directories, command files with their sidecar
 // directories (claude-code and opencode copy one), agent files, the legacy OpenCode
 // directories its uninstall still cleans, MCP entries, and at project scope the module copy.
@@ -603,7 +716,8 @@ func escapePointer(s string) string {
 }
 
 // notMigrated lists what rec left that lola migrate never touches (§5, §12.4): the
-// instructions marker block, Gemini's skill section, and the module's plugin data.
+// instructions marker block and Gemini's skill section on target id (neither for ""), and the
+// module's plugin data.
 func notMigrated(e *engine.Engine, sc engine.Scope, home string, rec Record, id string) []Item {
 	r := root(e, sc, id)
 	user := sc.Kind == target.User
@@ -613,7 +727,7 @@ func notMigrated(e *engine.Engine, sc engine.Scope, home string, rec Record, id 
 	if user && id == "claude-code" {
 		instructions = ".claude/CLAUDE.md"
 	}
-	if rec.HasInstructions || len(rec.AppendContext) > 0 {
+	if instructions != "" && (rec.HasInstructions || len(rec.AppendContext) > 0) {
 		out = append(out, Item{What: ItemInstructions, Module: rec.Module, Path: filepath.Join(r, filepath.FromSlash(instructions)), Marker: block,
 			Hints: []string{"it keeps working; delete the block from " + block + " to <!-- lola:module:" + rec.Module + ":end --> when you no longer want it"}})
 	}

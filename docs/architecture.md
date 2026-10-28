@@ -176,8 +176,8 @@ source ──fetch──▶ staging ──Put (detect, normalize, digest)──�
   (`saveManifest`) and the refusals of untrusted entries; install scope resolution, the component
   resolver, selection edits and `InstallChoices`.
 - `migrate`: `lola migrate`: strict reading of the Python lola's `installed.yml` and `source.yml`,
-  the plan (destinations, outcomes, recorded paths), and running the installs and the cleanup over
-  the engine.
+  the plan (destinations, outcomes, recorded paths), mapping another machine's project roots and
+  missing assistants (`remap.go`), and running the installs and the cleanup over the engine.
 - `trash`: The trash: one run directory under `$XDG_STATE_HOME/lola/trash` per command, its
   `manifest.txt` journal, copies and moves into it, and `UnlinkIfBackedUp`. Only `errs` and
   `untrusted` besides the standard library (depguard).

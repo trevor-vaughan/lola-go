@@ -82,6 +82,7 @@ var _ = Describe("Migrate", func() {
 		proj, src = filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "review")
 		writeTree(src, reviewModule)
 		h.source("review", map[string]string{"source": src, "type": "folder"})
+		installAssistants(tmp)
 		e = newEngine()
 	})
 	// python writes what the Python lola's claude-code target leaves in root for review.
@@ -103,15 +104,16 @@ var _ = Describe("Migrate", func() {
 		return rec{"module": "review", "assistant": "claude-code", "project_path": root, "skills": []string{"review", "review_review"},
 			"commands": []string{"ship"}, "agents": []string{"critic"}, "mcps": []string{"lola-gh"}, "has_instructions": true}
 	}
-	plan := func() *migrate.Plan {
+	planWith := func(opts migrate.Options) *migrate.Plan {
 		st, err := migrate.Load(h.dir, userHome)
 		Expect(err).NotTo(HaveOccurred())
-		p, err := migrate.NewPlan(ctx, e, st, nil)
+		p, err := migrate.NewPlan(ctx, e, st, opts)
 		Expect(err).NotTo(HaveOccurred())
 		return p
 	}
+	plan := func() *migrate.Plan { return planWith(migrate.Options{}) }
 	run := func(opts migrate.Options) (*migrate.Result, error) {
-		return migrate.Migrate(ctx, e, plan(), opts)
+		return migrate.Migrate(ctx, e, planWith(opts), opts)
 	}
 	trashOf := func(res *migrate.Result) string {
 		return filepath.Join(res.Trash, res.Destinations[0].ID)
@@ -260,6 +262,16 @@ var _ = Describe("Migrate", func() {
 		Expect(err).To(MatchError(ContainSubstring("was removed from the cache since it was listed")))
 		Expect(errs.Hints(err)).NotTo(BeEmpty())
 		Expect(snapshot(proj, h.dir)).To(Equal(before))
+	})
+
+	It("a record mapped to another assistant replaces nothing of yours at that assistant's paths (Plan 10 §3.2)", func() {
+		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
+		mine := filepath.Join(tmp, "config", "opencode", "commands", "ship.md")
+		writeFile(mine, "the user's own command\n")
+		h.install(rec{"module": "review", "assistant": "claude-code", "scope": "user", "commands": []string{"ship"}})
+		_, err := run(migrate.Options{Targets: map[string][]string{"claude-code": {"opencode"}}})
+		Expect(err).To(MatchError(ContainSubstring("commands/ship.md: exists and was not written by lola")))
+		Expect(read(mine)).To(Equal("the user's own command\n"))
 	})
 
 	It("refuses a conflict outside the replaceable paths at any destination, writing nothing anywhere", func() {
@@ -838,6 +850,7 @@ var _ = Describe("Migrate", func() {
 		Expect(filepath.Join(proj, ".claude/skills/review_review")).NotTo(BeAnExistingFile())
 		Expect(res.Home.Action).To(Equal(migrate.HomeKeep))
 		Expect(res.Home.Reason).To(HavePrefix("a destination failed"))
+		Expect(res.Summary).To(Equal(migrate.Summary{Migrated: 1, Failed: 1}), "each record once, by its destination's outcome")
 	})
 
 	It("reports what it did and coaches when the trash cannot be closed", func() {
@@ -1028,7 +1041,7 @@ var _ = Describe("Migrate", func() {
 		h.install(record(proj))
 		st, err := migrate.Load(h.dir, userHome)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = migrate.NewPlan(ctx, e, st, display)
+		_, err = migrate.NewPlan(ctx, e, st, migrate.Options{Options: engine.Options{Display: display}})
 		Expect(err).To(MatchError(HaveSuffix("tool's source is @acme/tool, a marketplace address; a file must record the module's real source")))
 		Expect(errs.Hints(err)).To(Equal([]string{"lola install -C " + proj + " @acme/tool --json"}))
 	})
@@ -1129,13 +1142,26 @@ var _ = Describe("Migrate", func() {
 		Expect(e.Paths.Markets).NotTo(BeAnExistingFile(), "nothing registered")
 	})
 
-	It("leaves a destination with nothing to migrate unchanged", func() {
+	It("reports a destination where every record is left as it is as nothing, and counts the records (Plan 10 §3.3)", func() {
 		python(proj)
 		h.install(record(proj), rec{"module": "review", "assistant": "cursor", "scope": "user"})
+		dry, err := run(migrate.Options{Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dry.Destinations[0].Status).To(Equal(migrate.StatusPlanned))
+		Expect(dry.Destinations[1].Status).To(Equal(migrate.StatusNothing))
+		Expect(dry.Summary).To(Equal(migrate.Summary{Migrated: 1, Left: 1}))
+
 		res, err := run(migrate.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Destinations[0].Status).To(Equal(migrate.StatusMigrated))
-		Expect(res.Destinations[1].Status).To(Equal(migrate.StatusUnchanged))
+		Expect(res.Destinations[1].Status).To(Equal(migrate.StatusNothing), "never migrated: nothing was installed there")
+		Expect(res.Summary).To(Equal(migrate.Summary{Migrated: 1, Left: 1}))
+
+		again, err := run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(again.Nothing).To(BeTrue())
+		Expect(again.Destinations[0].Status).To(Equal(migrate.StatusPlanned), "a run with nothing to do reports its plan")
+		Expect(again.Summary).To(Equal(migrate.Summary{Already: 1, Left: 1}))
 	})
 
 	It("reports nothing to migrate without a Python home, and moves a home with no installs", func() {
