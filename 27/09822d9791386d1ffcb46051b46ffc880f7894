@@ -1,0 +1,23 @@
+internal/engine/market_test.go
+  s_92ac1d95f09be8::t_bb47962818f337 1276
+  s_92ac1d95f09be8::t_9eb157b10dfc64 1277
+  s_92ac1d95f09be8::t_06415965e76f88 1269-1275,1278
+internal/engine/market_verbs.go
+  s_92ac1d95f09be8::t_e5e6d5b53840a6 68-70,78-86,88-89,104,148,150-156,159,162-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2709822d9791386d1ffcb46051b46ffc880f7894",
+  "prompts": {},
+  "sessions": {
+    "s_92ac1d95f09be8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f71c8b1-35f8-4405-acd5-2ffb9cb526fc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
