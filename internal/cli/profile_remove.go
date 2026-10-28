@@ -31,7 +31,7 @@ func (a *app) profileRemove(cmd *cobra.Command, eng *engine.Engine, args []strin
 		req.Confirm = func(engine.RemoteProfile) (bool, error) { return true, nil }
 	case p.Interactive():
 		req.Confirm = func(rp engine.RemoteProfile) (bool, error) {
-			return p.Confirm("Remove " + rp.Profile + " (" + rp.File + ")? Its modules stay installed until each scope's next sync")
+			return p.Confirm("Remove "+rp.Profile+" ("+rp.File+")? Its modules stay installed until each scope's next sync", Nav{})
 		}
 	}
 	res, err := eng.RemoveProfile(cmd.Context(), req)

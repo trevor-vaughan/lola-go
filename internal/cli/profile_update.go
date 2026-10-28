@@ -75,7 +75,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	if p.Interactive() {
 		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
 			show(rps)
-			return p.Confirm("Update " + rps[0].Profile + "?")
+			return p.Confirm("Update "+rps[0].Profile+"?", Nav{})
 		}
 	}
 	// With --trust the command shows one receipt (Plan 9 R-9-5, CR3): the update stages the

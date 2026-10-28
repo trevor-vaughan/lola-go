@@ -1140,10 +1140,11 @@ component) drops out of it. After a Change entry, the steps asked again are numb
    same everywhere gets one page for all of them; otherwise it gets one page per destination,
    titled `<module> — project (<root>)` or `<module> — user`.
 5. **Review**: the summary in lola's [viewer](#output-contract), with
-   `y apply · c change · n cancel` in its footer. `y` applies; `n`, `q`, Esc and Ctrl+C cancel;
+   `y apply · c change · n cancel · esc back · q quit` in its footer. `y` applies; `n` and Ctrl+C
+   cancel; `q` quits and Esc goes back to the last step you answered (see [Keys](#keys-q-quits-esc-goes-back));
    Enter answers nothing. `c` opens a menu of Change scope, Change modules, Change assistants
    and Change components (each offered when that step was asked), ending with **Back to the
-   review**; when no step can change (every answer came from a flag or the situation), the
+   review** (Esc there goes back to the review too); when no step can change (every answer came from a flag or the situation), the
    footer omits `c change` and `c` does nothing. Changing a step asks it again
    with your answers preselected, keeps later answers that still apply, and comes back to the
    review. Change scope keeps the component picks of the destinations you keep, and the summary
@@ -1203,7 +1204,8 @@ arguments (`''`) and mangles embedded `"` when it runs a program.
 When the `-C` path contains control or format characters, the line is shown with them
 replaced by `?`, followed by a note that it is not copyable as shown.
 
-Ctrl+C at any step cancels: "aborted; nothing changed". Nothing is written before Apply,
+Ctrl+C at any step cancels: "aborted; nothing changed"; `q` quits, and Esc goes back a step
+([Keys](#keys-q-quits-esc-goes-back)). Nothing is written before Apply,
 except that Add a source… (and a source you name as an argument) is fetched into your
 cache, which installs nothing. After Apply, a runtime-hook consent you give at the prompt
 is recorded in `consent.json` when you give it (one `--trust=runtime-hooks` gives is recorded
@@ -1223,6 +1225,36 @@ one when you press Enter with nothing ticked: `nothing selected — space select
 accessible mode `nothing selected — type an option's number to select it, 0 confirms, ctrl+c
 quits`. A module picker that lists your cache and your marketplaces asks again instead, with the
 same message.
+
+#### Keys: q quits, Esc goes back
+
+Every full-screen question (pickers, menus, text inputs, the install review) takes two more
+keys, named first in its key help: `esc back · q quit`.
+
+- `q` quits the command: lola prints `✗ cancelled — nothing was changed` and exits 0, as Ctrl+C
+  does. Once you have answered two or more steps of the run, it asks first: `Quit? your answers
+  so far are dropped — nothing has been changed [y/N]`; `y` quits, and `n`, Enter or Esc return to
+  the question as you left it. That includes the yes/no question that closes a run, such as
+  `lola tidy`'s "Move…?" after the move and keep pickers or `lola migrate`'s "Migrate?" after two
+  mapping questions; a yes/no question with no steps before it quits at once. A command that words its own cancel (`lola sync`, `lola profile`
+  `--add`, `--remove` and `--update`, `lola market --remove`) prints that instead, since it says
+  what was left as it was. In a text input, and while you type a filter after `/`, `q` is typed as text; Esc
+  first sets, then clears, the filter, as before, and then `q` quits.
+- Esc goes back one screen: the step before asks again with your answer preselected, and the run
+  carries on from there. In `lola install`: from the modules to the scope, from the assistants to
+  the modules, from a component page to the page or step before it, from "Install <module> with no
+  components?" to its page, and from the review to the last step you answered; Other directory…
+  and Add a source… go back to their picker. `lola tidy`'s keep-list goes back to the move picker;
+  `lola migrate`'s questions about a missing root or assistant go back to the one before;
+  Choose… goes back to `lola sync`'s trust question. On a page of several lists (a component page,
+  the module picker with marketplace groups), Esc first moves to the list before, as Shift+Tab does.
+  On the first question of a run, or one that stands alone, Esc goes nowhere and the key help says
+  `first step — q quits` (`first step — ctrl+c quits` in a text input); on a run's closing yes/no
+  question it says `no step to go back to — q quits`.
+- Ctrl+C cancels at once, without asking, everywhere.
+
+Accessible mode's numbered prompts take neither key: there `q` is no answer, and Ctrl+C or end of
+input cancels.
 
 ### Choosing a scope
 

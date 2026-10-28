@@ -111,10 +111,12 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 	p := a.prompter(cmd)
 	req.Interactive = p.Interactive()
 	picked := false
+	answered := 0 // the picker steps answered, which q at the question asks before dropping
 	if req.Interactive {
-		req.Choose = func(scan engine.TidyScan) (engine.TidyChoice, error) {
+		req.Choose = func(scan engine.TidyScan) (choice engine.TidyChoice, err error) {
 			picked = true
-			return tidyChoose(p, scan)
+			choice, answered, err = tidyChoose(p, scan)
+			return choice, err
 		}
 	}
 	if req.Interactive && !f.yes && !f.force {
@@ -149,7 +151,7 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 				asks = append(asks, fmt.Sprintf("stop keeping %d", n))
 			}
 			q := strings.Join(asks, " and ")
-			return p.Confirm(strings.ToUpper(q[:1]) + q[1:] + "?")
+			return p.Confirm(strings.ToUpper(q[:1])+q[1:]+"?", Nav{Answered: answered})
 		}
 	}
 	res, err := eng.Tidy(cmd.Context(), req)
@@ -167,11 +169,13 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 }
 
 // tidyChoose asks lola tidy's picker steps (Plan 6d §3.4): which candidates move, then which
-// of the rest join the keep-list. The keep step offers one option per escaped literal selector,
+// of the rest join the keep-list; going back from the keep step (Esc) asks the move step again,
+// as answered. The keep step offers one option per escaped literal selector,
 // since a keep entry covers every assistant's item of that name, and none for a selector that
 // would also keep an item chosen to move (R-6d2-6, R-6d2-8). When nothing moves, the keep step
 // needs a pick (TidyKeepStep.Required, Plan 10 §4), so the choice is never empty; Ctrl+C cancels.
-func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, error) {
+// It returns how many steps were answered: the move step, and the keep step when it was asked.
+func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, int, error) {
 	opts := make([]TidyOption, len(scan.Candidates))
 	for i, c := range scan.Candidates {
 		opts[i] = TidyOption{ID: strconv.Itoa(i), Label: tidyLabel(c)}
@@ -180,10 +184,22 @@ func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, error) {
 	for i, u := range scan.Protected {
 		locked[i] = tidyLabel(u) + "  " + u.Reason
 	}
-	move, err := p.TidyPick(TidyPickStep{Options: opts, Locked: locked})
-	if err != nil {
-		return engine.TidyChoice{}, err
+	var move []string
+	for {
+		var err error
+		if move, err = p.TidyPick(TidyPickStep{Options: opts, Locked: locked, Preselect: move}); err != nil {
+			return engine.TidyChoice{}, 0, err
+		}
+		choice, asked, err := tidyKeep(p, scan, opts, move)
+		if !errors.Is(err, ErrBack) {
+			return choice, 1 + asked, err
+		}
 	}
+}
+
+// tidyKeep is tidyChoose's choice once the candidates move names (by opts' IDs) are chosen to
+// move: it asks the keep step for the rest, if any, and returns how many steps it asked (0 or 1).
+func tidyKeep(p Prompter, scan engine.TidyScan, opts []TidyOption, move []string) (engine.TidyChoice, int, error) {
 	var choice engine.TidyChoice
 	var moved, sels []config.Pattern
 	covers := map[config.Pattern][]string{}
@@ -210,17 +226,18 @@ func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, error) {
 		for i, l := range sels {
 			rest[i] = TidyOption{ID: l.String(), Label: untrusted.Text(l.String(), untrusted.MaxName) + "  " + strings.Join(covers[l], ", ")}
 		}
-		keep, err := p.TidyKeep(TidyKeepStep{Options: rest, Required: len(choice.Move) == 0})
+		keep, err := p.TidyKeep(TidyKeepStep{Options: rest, Required: len(choice.Move) == 0, Nav: Nav{Back: true, Answered: 1}})
 		if err != nil {
-			return engine.TidyChoice{}, err
+			return engine.TidyChoice{}, 1, err
 		}
 		for _, l := range sels {
 			if slices.Contains(keep, l.String()) {
 				choice.Keep = append(choice.Keep, l)
 			}
 		}
+		return choice, 1, nil
 	}
-	return choice, nil
+	return choice, 0, nil
 }
 
 // bothScopes is the project of a run whose --scope names two scopes, which lola tidy refuses

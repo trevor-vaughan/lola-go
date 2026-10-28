@@ -144,15 +144,29 @@ var _ = Describe("lola migrate", func() {
 			r := lolaP(p, "migrate")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-targets:claude-code", "confirm:Migrate?"}))
-			Expect(p.rootSteps).To(Equal([]cli.MigrateRootStep{{Old: "/Users/alice", Suggest: filepath.Join(tmp, "home"), Records: 2}}),
-				"one question covers the project path and kit's folder source")
-			Expect(p.mapTargetSteps).To(Equal([]cli.MigrateTargetStep{{Old: "claude-code", Supported: true, Modules: 2, Options: []string{"opencode"}}}))
+			Expect(p.confirmNavs).To(Equal([]cli.Nav{{Answered: 2}}), "two mapping answers: q at Migrate? asks first")
+			Expect(p.rootSteps).To(Equal([]cli.MigrateRootStep{{Old: "/Users/alice", Suggest: filepath.Join(tmp, "home"), Value: filepath.Join(tmp, "home"),
+				Records: 2}}), "one question covers the project path and kit's folder source")
+			Expect(p.mapTargetSteps).To(Equal([]cli.MigrateTargetStep{{Old: "claude-code", Supported: true, Modules: 2, Options: []string{"opencode"},
+				Nav: cli.Nav{Back: true, Answered: 1}}}))
 			Expect(r.out).To(ContainSubstring("✓ migrated project " + moved))
 			Expect(r.out).To(ContainSubstring("✓ migrated user scope"))
 			Expect(r.out).NotTo(ContainSubstring("map what this machine lacks"), "nothing is left to map")
 			Expect(lola("list", "-C", moved).out).To(MatchRegexp(`review\s+claude-code\s+✓ ok`))
 			Expect(lola("list", "--user").out).To(MatchRegexp(`review\s+opencode\s+✓ ok`))
 			Expect(lola("list", "--user").out).To(MatchRegexp(`kit\s+opencode\s+✓ ok`))
+		})
+
+		It("goes back from an assistant question to the root question on Esc, the root answered pre-filled", func() {
+			p := &scripted{roots: []string{"", filepath.Join(tmp, "home")}, mapTargets: [][]string{{goBack}, {"opencode"}}, confirm: []bool{false}}
+			r := lolaP(p, "migrate")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-targets:claude-code", "migrate-root:/Users/alice",
+				"migrate-targets:claude-code", "confirm:Migrate?"}))
+			Expect(p.rootSteps[0].Nav).To(Equal(cli.Nav{}), "the first question has no screen before it")
+			Expect(p.rootSteps[1].Value).To(BeEmpty(), "the root was skipped, and is offered as answered")
+			Expect(p.mapTargetSteps[0].Options).To(Equal([]string{"opencode"}))
+			Expect(r.err).To(ContainSubstring("project "+moved+":\n  install review (claude-code)"), "the second answer maps the root")
 		})
 
 		It("asks nothing off a terminal, and ends with the run plus the flags that map what it left", func() {

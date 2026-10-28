@@ -290,9 +290,10 @@ it asks, `Steps{At, Of}`: `done` counts the fields asked so far, and `remaining`
 exactly once what decides a step is known (`componentPages`, shared with `ensureComponents`, and
 `ComponentPage.lists`), one field per step before. The huh adapter titles each list
 `Step n of m — <title>`, says `enter: next` under each but a form's last, and shows the review
-in the viewer's confirm mode (`app.view`): `viewApply` applies, `viewCancel` cancels, and
+in the viewer's confirm mode (`app.view`): `viewApply` applies, `viewCancel` cancels, `viewQuit`
+quits, `viewBack` goes back a step, and
 `viewChange` opens the Change menu (`menu`), whose last entry, `reviewBack`, returns to the
-review (the viewer is offered `change` only when the review has a Change entry). In accessible
+review, as Esc there does (the viewer is offered `change` only when the review has a Change entry). In accessible
 mode, and whenever `paging` would not open the viewer (`huhForms.viewer`, asked only at the
 review since it reads `config.yaml`), it prints the summary before the full menu.
 `Prompter` implementations: the huh adapter (inline forms on stderr; accessible line prompts
@@ -317,6 +318,44 @@ only after Enter with nothing ticked and the next toggle clears it. The validato
 refuses and reads end of input as `0`. A module picker of several lists asks again after the form
 instead, because huh validates a field on tab and shift+tab too. So the flow never receives an
 empty Scope, Modules, Assistants or Required TidyKeep answer.
+
+lola's keys, `q` quits and Esc goes back a screen (`internal/cli/keys.go`), live in the adapter
+and the flows, never in the engine. `huhForms.form` wraps every field of a full-screen form that
+takes keys (a note does not) in `keyed`, which sees each key before huh: `q` quits unless the field
+takes it as text (a `huh.Input`, or a list whose `GetFiltering` is true); Esc goes to the form's
+field before by handing huh Shift+Tab, or, on the form's first field, back a screen, unless one of
+the field's enabled bindings is `esc` (huh's set and clear filter). Both end the form through its
+Quit binding (Ctrl+C, the only key huh's default keymap gives it) and record which in the form's
+`formExit`, so `runIn` answers a `quitError` or `ErrBack` instead of `ErrAborted`. Accessible mode
+wraps nothing. Each step struct carries a `Nav`: `Back`, whether there is a screen to go back to
+(without it, Esc puts `first step — q quits` in the key help), and `Answered`, the steps answered
+so far; with `Answered` plus the fields before it at two or more, `q` first asks `quitQuestion` in
+the key help's place (`keyed.Error` hides a field's error meanwhile). `KeyBinds` puts `esc back`
+and `q quit` before huh's own help, which alone fills 80 columns. `quitError` is `ErrAborted` to
+`errors.Is`; `Execute` prints it as `style.bad("cancelled — nothing was changed")`, in the forms'
+color; a command that turns `ErrAborted` into its own `abortedError` keeps its wording.
+
+A Prompter method whose `Nav.Back` is set answers `ErrBack` for Esc, and its caller asks the screen
+before again. The install flow's `answer` runs one pass's `ensure*` steps and names the stage that
+failed; `run` hands `ErrBack` from a stage, or from the review, to `back`, which forgets the answer
+of the screen `before` names, kept as its preselection, and the loop's next pass asks it and carries
+on. `before` is, on a component page or the review, the last page held (`pageLog`, the pages
+answered in order, each a module and its destinations, `holds` checking that its picks are still
+kept) asked before it, and otherwise the last of the scope, module and assistant pickers `shown`;
+forgetting a picker reuses the review's Change machinery (`review`), forgetting a page moves its
+picks to `prevPicks`. `nav` derives each step's `Nav` from `before` and `held`, the answers held
+from screens the user answered. `askPage` asks a page and, when nothing is picked of a
+preselection, `ConfirmEmpty`, whose Esc asks the page again with nothing ticked. Inside the
+adapter, Esc from Add a source… answers the picker's `AddSource` with no source (back to the
+picker), from Choose… asks the trust question again, and from the review's Change menu shows the
+review again; `scopePicker.pick` asks the scope picker again from Other directory…. `tidyChoose`
+asks the move picker again, preselected, from the keep picker; `askMappings` walks its root
+questions by index and, through `askTargets`, the assistant questions, recomputed from the roots
+answered, going back from the first of them to the last root. `Prompter.Confirm` takes a `Nav`
+too: `tidyChoose` and `askMappings` return the steps they asked, which tidy's closing question and
+`app.confirm`'s "Migrate?" pass as `Answered` (no `Back`: the engine asks them after the pickers),
+so `q` there asks first after two answers, and Esc's note reads `no step to go back to — q quits`
+rather than `first step`; every other caller passes `Nav{}`.
 
 ## Plans and the ledger
 
@@ -1757,8 +1796,10 @@ text, wrapped to the width, has at least as many lines as the terminal has rows 
 (`internal/cli/viewer.go`) is a bubbletea model over `bubbles/v2/viewport`: `ansi.Wrap` to the
 width, again on `tea.WindowSizeMsg`; `g`/`G`/`Home`/`End` added to the viewport's keys; a footer
 with the position in `style.strong` and the keys through `style.paint`; confirm mode, which answers
-a `viewAnswer`: `y` apply, `c` change, `n`/`q`/Esc/Ctrl+C cancel (the install review, below).
-`app.view(cmd, content, confirm, change)` runs it; with `change` false `viewerModel.noChange` drops the
+a `viewAnswer`: `y` apply, `c` change, `n`/Ctrl+C cancel, `q` quit (`viewQuit`) and Esc back
+(`viewBack`), with the keys of `keyed` (below) by its `Nav`: the answers come first in its footer,
+so a narrow terminal cuts the scrolling keys (the install review, below).
+`app.view(cmd, content, confirm, change, nav)` runs it; with `change` false `viewerModel.noChange` drops the
 `c` key and its footer entry. It runs on the alternate screen, on stdout (read
 mode) or stderr (confirm mode), with the command's stdin unless that is `os.Stdin` (then bubbletea
 opens the terminal), and writes the text to the same stream after it quits. `page` returns only

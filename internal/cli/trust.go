@@ -155,7 +155,7 @@ func (a *app) receipt(cmd *cobra.Command, given engine.TrustKinds, yes bool) fun
 		if yes || !p.Interactive() {
 			return true, nil
 		}
-		ok, err := p.Confirm("Proceed?")
+		ok, err := p.Confirm("Proceed?", Nav{})
 		if err == nil && !ok {
 			return false, ErrAborted // nothing is written: aborted, as a declined confirmation is
 		}

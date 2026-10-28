@@ -67,7 +67,7 @@ type scopePicker struct {
 // pick asks the picker for res, with step's question and preselection, until the answer, never
 // empty (the Prompter refuses that), names exactly one scope when step.One and, when
 // sp.refuseHome, no project at the home directory, asking for Other directory…'s directory when
-// it is ticked. It returns the entries
+// it is ticked; going back from that (Esc) asks the picker again, as answered. It returns the entries
 // ticked and their scopes: project roots first, then the user scope, as --scope both orders them.
 func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]string, []engine.ScopeChoice, error) {
 	step.ProjectRoot, step.Home = untrusted.Text(res.ProjectRoot, untrusted.MaxName), sp.eng.Paths.Home
@@ -90,7 +90,11 @@ func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]strin
 			scopes = engine.Scopes([]string{config.ScopeProject}, res.ProjectRoot, engine.SourcePicked)
 		}
 		if slices.Contains(entries, ScopeOther) {
-			other, err := sp.otherDirectory(scopes)
+			other, err := sp.otherDirectory(scopes, Nav{Back: true, Answered: step.Nav.Answered})
+			if errors.Is(err, ErrBack) {
+				step.Preselect, step.Problem = entries, ""
+				continue
+			}
 			if err != nil {
 				return nil, nil, err
 			}
@@ -109,7 +113,7 @@ func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]strin
 // absolute. A relative answer is
 // taken from the current directory; ~ is not expanded. An answer is offered again to edit only
 // when it is safe to show.
-func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice) (string, error) {
+func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (string, error) {
 	home := engine.Scope{Kind: target.Project, ProjectDir: sp.eng.Paths.Home}.Key()
 	offer := func(in string) string {
 		if untrusted.Text(in, len(in)) != in {
@@ -117,7 +121,7 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice) (string, erro
 		}
 		return in
 	}
-	step := DirectoryStep{Value: sp.other}
+	step := DirectoryStep{Value: sp.other, Nav: nav}
 	for {
 		in, err := sp.p.OtherDirectory(step)
 		if err != nil {
@@ -156,7 +160,7 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice) (string, erro
 			sp.other = offer(in)
 			return dir, nil
 		}
-		step = DirectoryStep{Value: offer(in), Problem: problem}
+		step = DirectoryStep{Value: offer(in), Problem: problem, Nav: nav}
 	}
 }
 

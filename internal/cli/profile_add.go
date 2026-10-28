@@ -66,7 +66,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 			for _, rp := range rps {
 				names = append(names, rp.Profile)
 			}
-			return p.Confirm("Add " + strings.Join(names, ", ") + "? Nothing is turned on")
+			return p.Confirm("Add "+strings.Join(names, ", ")+"? Nothing is turned on", Nav{})
 		}
 	}
 	if p.Interactive() {

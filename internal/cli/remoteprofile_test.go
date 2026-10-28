@@ -973,8 +973,8 @@ type ctrlC struct {
 	before func(int)
 }
 
-func (c *ctrlC) Confirm(question string) (bool, error) {
-	ok, err := c.scripted.Confirm(question)
+func (c *ctrlC) Confirm(question string, nav cli.Nav) (bool, error) {
+	ok, err := c.scripted.Confirm(question, nav)
 	confirms := 0
 	for _, call := range c.calls {
 		if strings.HasPrefix(call, "confirm:") {

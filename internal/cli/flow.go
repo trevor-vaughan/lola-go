@@ -71,8 +71,17 @@ type installFlow struct {
 	added                       []addedSource
 	droppedModule, droppedScope int             // component picks dropped because their module or destination was removed; reset after each summary
 	asked                       map[string]bool // modules whose picks came from a component page
+	pageLog                     []answeredPage  // the component pages answered, in the order asked, for Esc
+	asking                      string          // the module whose component page is asked
 	shown                       map[string]bool // steps whose picker ran
 	warned                      map[string]bool // choice warnings printed, each once per run
+}
+
+// answeredPage is a component page the user answered: its module, and the destinations (Scope.Key)
+// it asked.
+type answeredPage struct {
+	module string
+	keys   []string
 }
 
 // runInstall runs the install flow.
@@ -342,22 +351,10 @@ func (fl *installFlow) run() error {
 	var spec engine.InstallSpec
 	for {
 		fl.done = 0 // each pass numbers the steps it asks (Plan 10 §5)
-		if err := fl.ensureScopes(); err != nil {
-			return err
-		}
-		if err := fl.coach(); err != nil {
-			return err
-		}
-		if err := fl.ensureChoices(); err != nil {
-			return err
-		}
-		if err := fl.ensureModules(); err != nil {
-			return err
-		}
-		if err := fl.ensureAssistants(); err != nil {
-			return err
-		}
-		if err := fl.ensureComponents(); err != nil {
+		if stage, err := fl.answer(); err != nil {
+			if errors.Is(err, ErrBack) && fl.back(stage) {
+				continue
+			}
 			return err
 		}
 		var err error
@@ -396,7 +393,11 @@ func (fl *installFlow) run() error {
 			fmt.Fprint(fl.cmd.ErrOrStderr(), summary.String())
 			break
 		}
-		choice, err := fl.p.Review(ReviewStep{Summary: summary.String(), Options: fl.reviewOptions(), Step: Steps{At: fl.done + 1, Of: fl.done + 1}})
+		choice, err := fl.p.Review(ReviewStep{Summary: summary.String(), Options: fl.reviewOptions(), Step: Steps{At: fl.done + 1, Of: fl.done + 1},
+			Nav: fl.nav(ReviewApply)})
+		if errors.Is(err, ErrBack) && fl.back(ReviewApply) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -436,6 +437,127 @@ func (fl *installFlow) run() error {
 		eq = fl.equivalents(spec)
 	}
 	return fl.a.emit(fl.cmd, func(w io.Writer, s style) { printInstall(w, s, res) }, installOutput{InstallResult: res, EquivalentCommands: eq})
+}
+
+// answer fills every answer the pass lacks, in the flow's order, and returns the stage whose
+// question failed with the error.
+func (fl *installFlow) answer() (string, error) {
+	if err := fl.ensureScopes(); err != nil {
+		return ReviewScope, err
+	}
+	if err := fl.coach(); err != nil {
+		return ReviewScope, err
+	}
+	if err := fl.ensureChoices(); err != nil {
+		return ReviewScope, err
+	}
+	if err := fl.ensureModules(); err != nil {
+		return ReviewModules, err
+	}
+	if err := fl.ensureAssistants(); err != nil {
+		return ReviewAssistants, err
+	}
+	return ReviewComponents, fl.ensureComponents()
+}
+
+// nav places the question asked at stage (ReviewScope, …, ReviewApply for the review) in the run
+// for lola's keys: whether there is a screen before it to go back to, and how many answers the
+// run holds from the screens the user answered.
+func (fl *installFlow) nav(stage string) Nav {
+	before, _ := fl.before(stage)
+	return Nav{Back: before != "", Answered: fl.held()}
+}
+
+// held counts the answers the run holds from screens the user answered: the scope, module and
+// assistant pickers' and each component page's.
+func (fl *installFlow) held() int {
+	n := 0
+	for _, s := range []string{ReviewScope, ReviewModules, ReviewAssistants} {
+		if fl.shown[s] {
+			n++
+		}
+	}
+	for _, pa := range fl.pageLog {
+		if fl.holds(pa) {
+			n++
+		}
+	}
+	return n
+}
+
+// holds reports whether the run still holds the answer of the page pa: its module is still
+// picked and its destinations' picks are kept.
+func (fl *installFlow) holds(pa answeredPage) bool {
+	if !slices.Contains(fl.modules, pa.module) {
+		return false
+	}
+	for _, key := range pa.keys {
+		if _, ok := fl.picks[key][pa.module]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// before is the screen Esc at stage goes back to: on a component page (the one for fl.asking) or
+// the review, the last page held that is asked before it, by its module's place and then the order
+// asked, as its index in fl.pageLog; else the last picker before stage whose answer the run holds;
+// "" when there is none.
+func (fl *installFlow) before(stage string) (string, int) {
+	if stage == ReviewComponents || stage == ReviewApply {
+		limit := len(fl.modules)
+		if stage == ReviewComponents {
+			limit = slices.Index(fl.modules, fl.asking)
+		}
+		last, lastAt := -1, -1
+		for i, pa := range fl.pageLog {
+			if at := slices.Index(fl.modules, pa.module); at <= limit && at >= lastAt && fl.holds(pa) {
+				last, lastAt = i, at
+			}
+		}
+		if last >= 0 {
+			return ReviewComponents, last
+		}
+	}
+	order := []string{ReviewScope, ReviewModules, ReviewAssistants}
+	end := len(order)
+	if i := slices.Index(order, stage); i >= 0 {
+		end = i
+	}
+	for i := end - 1; i >= 0; i-- {
+		if fl.shown[order[i]] {
+			return order[i], -1
+		}
+	}
+	return "", -1
+}
+
+// back goes back from stage a screen (Esc): it forgets the answer of the screen before, kept as
+// that screen's preselection, so the next pass asks it again and then carries on. It reports
+// false when there is no screen before.
+func (fl *installFlow) back(stage string) bool {
+	step, k := fl.before(stage)
+	switch {
+	case step == "":
+		return false
+	case k >= 0:
+		pa := fl.pageLog[k]
+		fl.pageLog = slices.Delete(fl.pageLog, k, k+1)
+		if fl.prevPicks == nil {
+			fl.prevPicks = map[string]map[string][]string{}
+		}
+		for _, key := range pa.keys {
+			if fl.prevPicks[key] == nil {
+				fl.prevPicks[key] = map[string][]string{}
+			}
+			fl.prevPicks[key][pa.module] = fl.picks[key][pa.module]
+			delete(fl.picks[key], pa.module)
+		}
+	default:
+		_, err := fl.review(step) // a picker's step, which review always takes
+		return err == nil
+	}
+	return true
 }
 
 // bySource is the run with the address of renamed replaced by its source, every flag kept but
@@ -530,7 +652,7 @@ func (fl *installFlow) review(choice string) (bool, error) {
 	case ReviewAssistants:
 		fl.targets = nil
 	case ReviewComponents:
-		fl.prevPicks, fl.picks, fl.asked = fl.picks, nil, map[string]bool{}
+		fl.prevPicks, fl.picks, fl.asked, fl.pageLog = fl.picks, nil, map[string]bool{}, nil
 	default:
 		return false, ErrAborted
 	}
@@ -582,7 +704,8 @@ func (fl *installFlow) ensureScopes() error {
 		fl.scopes = res.Scopes
 		return nil
 	}
-	entries, scopes, err := fl.picker.pick(res, ScopeStep{Question: "Install where?", Preselect: fl.prevScopes, Step: fl.steps(ReviewScope)})
+	entries, scopes, err := fl.picker.pick(res, ScopeStep{Question: "Install where?", Preselect: fl.prevScopes, Step: fl.steps(ReviewScope),
+		Nav: fl.nav(ReviewScope)})
 	if err != nil {
 		return err
 	}
@@ -684,7 +807,7 @@ func (fl *installFlow) ensureModules() error {
 	}
 	step := ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: keys}
 	for {
-		step.Step = fl.steps(ReviewModules)
+		step.Step, step.Nav = fl.steps(ReviewModules), fl.nav(ReviewModules)
 		ans, err := fl.p.Modules(step)
 		if err != nil {
 			return err
@@ -952,7 +1075,8 @@ func (fl *installFlow) ensureAssistants() error {
 			pre = installed
 		}
 		pre = slices.DeleteFunc(slices.Clone(pre), func(id string) bool { return slices.Contains(untrustedTargets, id) })
-		picked, err := fl.p.Assistants(AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels, Step: fl.steps(ReviewAssistants)})
+		picked, err := fl.p.Assistants(AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels, Step: fl.steps(ReviewAssistants),
+			Nav: fl.nav(ReviewAssistants)})
 		if err != nil {
 			return err
 		}
@@ -1032,31 +1156,25 @@ func (fl *installFlow) ensureComponents() error {
 			if len(dests) == 1 && len(fl.scopes) > 1 {
 				title += " — " + destLabel(dests[0].Scope)
 			}
-			key := dests[0].Scope.Key()
-			pg := fl.page(m, key, title)
-			pg.Step = fl.steps(ReviewComponents)
-			picked, err := fl.p.Components(pg)
+			picked, ok, err := fl.askPage(m, dests, title)
 			if err != nil {
 				return err
 			}
-			fl.asked[name] = true
-			fl.done += pg.lists()
-			if len(picked) == 0 && len(fl.preselected(m, key)) > 0 {
-				ok, err := fl.p.ConfirmEmpty(name)
-				if err != nil {
-					return err
+			if !ok {
+				fl.modules = slices.DeleteFunc(fl.modules, func(x string) bool { return x == name })
+				for _, byMod := range fl.picks {
+					delete(byMod, name)
 				}
-				if !ok {
-					fl.modules = slices.DeleteFunc(fl.modules, func(x string) bool { return x == name })
-					for _, byMod := range fl.picks {
-						delete(byMod, name)
-					}
-					break
-				}
+				break
 			}
+			pa := answeredPage{module: name}
 			for _, d := range dests {
 				fl.picks[d.Scope.Key()][name] = picked
+				pa.keys = append(pa.keys, d.Scope.Key())
 			}
+			fl.pageLog = append(slices.DeleteFunc(fl.pageLog, func(old answeredPage) bool {
+				return old.module == name && slices.ContainsFunc(old.keys, func(k string) bool { return slices.Contains(pa.keys, k) })
+			}), pa)
 		}
 	}
 	delete(fl.shown, ReviewComponents)
@@ -1066,6 +1184,35 @@ func (fl *installFlow) ensureComponents() error {
 		}
 	}
 	return nil
+}
+
+// askPage asks m's component page for dests, titled title, and, when nothing is picked of a
+// preselection, whether to install m with no components, going back to the page from that
+// question (Esc), as answered. ok is false when the user said no: m is dropped from the run.
+func (fl *installFlow) askPage(m *engine.ModuleChoice, dests []engine.ScopeChoice, title string) (picked []string, ok bool, err error) {
+	key := dests[0].Scope.Key()
+	fl.asking = m.Name
+	pg := fl.page(m, key, title)
+	pg.Step, pg.Nav = fl.steps(ReviewComponents), fl.nav(ReviewComponents)
+	fl.done += pg.lists()
+	for {
+		if picked, err = fl.p.Components(pg); err != nil {
+			return nil, false, err
+		}
+		fl.asked[m.Name] = true
+		if len(picked) > 0 || len(fl.preselected(m, key)) == 0 {
+			return picked, true, nil
+		}
+		ok, err := fl.p.ConfirmEmpty(m.Name, Nav{Back: true, Answered: pg.Nav.Answered + 1})
+		if !errors.Is(err, ErrBack) {
+			return picked, ok, err
+		}
+		for _, g := range pg.Groups {
+			for i := range g.Options {
+				g.Options[i].Selected = false
+			}
+		}
+	}
 }
 
 // componentPages is what the component step asks about m: the destinations whose picks are still

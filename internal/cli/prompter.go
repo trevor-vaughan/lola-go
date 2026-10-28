@@ -13,7 +13,8 @@ import (
 // ErrAborted when the user cancels. Scope, Modules, Assistants and a Required TidyKeep never
 // answer with nothing picked: the huh adapter refuses that in the form (Plan 10 §4). Other
 // validation a step needs (one scope, an Other directory that exists) runs in the flow after
-// the method returns, which asks again with Problem set.
+// the method returns, which asks again with Problem set. A method whose step's Nav sets Back
+// returns ErrBack when the user goes back a screen (Esc).
 type Prompter interface {
 	// Interactive reports whether the prompter can ask: for the huh adapter, stdin and stderr
 	// are terminals.
@@ -26,13 +27,14 @@ type Prompter interface {
 	Assistants(AssistantStep) ([]string, error)
 	Components(ComponentPage) ([]string, error)
 	// ConfirmEmpty asks "Install <module> with no components?", default No.
-	ConfirmEmpty(module string) (bool, error)
+	ConfirmEmpty(module string, nav Nav) (bool, error)
 	Review(ReviewStep) (string, error)
 	// Trust asks sync's trust question (Plan 6a §7.5): trust all the changes, choose the
 	// entries to trust, or cancel, which is ErrAborted (so is choosing nothing).
 	Trust(TrustStep) (engine.TrustAnswer, error)
-	// Confirm asks a yes/no question, default No: sync's removals.
-	Confirm(question string) (bool, error)
+	// Confirm asks a yes/no question, default No: sync's removals, and the question that closes
+	// a flow (tidy's, migrate's), whose nav counts the steps answered before it.
+	Confirm(question string, nav Nav) (bool, error)
 	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
 	// multi-select, nothing preselected (Plan 6b §3.2).
 	Profiles(ProfileStep) ([]string, error)
@@ -60,21 +62,41 @@ type Prompter interface {
 	Background() (bool, error)
 }
 
+// ErrBack is a Prompter's answer when the user goes back a screen (Esc): the flow asks the screen
+// before again, its last answer preselected. Only a step whose Nav sets Back returns it.
+var ErrBack = errors.New("back")
+
+// Nav is where a question stands in its flow, for the keys of the full-screen forms: Back says
+// there is a screen to go back to, which Esc does (on the first screen Esc says so instead), and
+// Answered how many of the flow's steps the user has answered, which q asks before dropping when
+// there are two or more. The zero value is a question that stands alone.
+type Nav struct {
+	Back     bool
+	Answered int
+}
+
 // MigrateRootStep asks for the new root of Old, below which Records of the Python lola's project
-// paths are missing here; Suggest (your home) is offered. Old is safe to print.
+// paths are missing here; Suggest (your home) is offered. Value is the answer pre-filled: Suggest
+// on the first ask, the last answer when the user comes back to it. Old is safe to print.
 type MigrateRootStep struct {
-	Old, Suggest string
-	Records      int
+	Old, Suggest, Value string
+	Records             int
+	Nav                 Nav
 }
 
 // MigrateTargetStep asks which of Options, the assistants on your PATH, install the Modules
 // modules the Python lola installed for Old, which is not installed here or, unless Supported, is
-// one lola has no target for. Old is safe to print.
+// one lola has no target for. Again says the user answered it before and comes back to it:
+// Preselect, that answer, is then preselected, none included; otherwise every option is. Old is
+// safe to print.
 type MigrateTargetStep struct {
 	Old       string
 	Supported bool
 	Modules   int
 	Options   []string
+	Again     bool
+	Preselect []string
+	Nav       Nav
 }
 
 // TidyOption is one item lola tidy's pickers offer: ID names it to the command, and Label is
@@ -85,10 +107,12 @@ type TidyOption struct {
 }
 
 // TidyPickStep offers lola tidy's candidates. Locked are the items the scan locked, each as its
-// label and reason, already made safe to print.
+// label and reason, already made safe to print. Preselect is the last answer when the user comes
+// back from the keep step; nothing is preselected at first.
 type TidyPickStep struct {
-	Options []TidyOption
-	Locked  []string
+	Options   []TidyOption
+	Locked    []string
+	Preselect []string
 }
 
 // TidyKeepStep offers the keep-list entries for the candidates TidyPick did not choose: each
@@ -98,6 +122,7 @@ type TidyPickStep struct {
 type TidyKeepStep struct {
 	Options  []TidyOption
 	Required bool
+	Nav      Nav
 }
 
 // MarketNameStep asks for the name of a marketplace: Why the name it has will not do, Value the
@@ -168,6 +193,7 @@ type ScopeStep struct {
 	Problem     string
 	One         bool
 	Step        Steps
+	Nav         Nav
 }
 
 // DirectoryStep asks for the Other directory. Value is the answer offered to edit (the last
@@ -175,6 +201,7 @@ type ScopeStep struct {
 type DirectoryStep struct {
 	Value   string
 	Problem string
+	Nav     Nav
 }
 
 // ModuleOption is one cached module in the module picker. Label is
@@ -198,6 +225,7 @@ type ModuleStep struct {
 	Preselect []string
 	Problem   string
 	Step      Steps
+	Nav       Nav
 }
 
 // ModuleGroup is one marketplace in the module picker: Title is "@acme — <description>", and
@@ -232,6 +260,7 @@ type AssistantStep struct {
 	Preselect []string
 	Scopes    []string
 	Step      Steps
+	Nav       Nav
 }
 
 // ComponentOption is one component of a page. Label is "name — first line of description",
@@ -261,6 +290,7 @@ type ComponentPage struct {
 	Groups []ComponentGroup
 	Footer string
 	Step   Steps
+	Nav    Nav
 }
 
 // lists is how many lists the page asks: one per group, the disabled ones left out.
@@ -291,6 +321,7 @@ type ReviewStep struct {
 	Summary string
 	Options []string
 	Step    Steps
+	Nav     Nav
 }
 
 // errNoTerminal is what the non-interactive Prompter answers; the flow never asks it.
@@ -305,9 +336,9 @@ func (noPrompter) OtherDirectory(DirectoryStep) (string, error) { return "", err
 func (noPrompter) Modules(ModuleStep) (ModuleAnswer, error)     { return ModuleAnswer{}, errNoTerminal }
 func (noPrompter) Assistants(AssistantStep) ([]string, error)   { return nil, errNoTerminal }
 func (noPrompter) Components(ComponentPage) ([]string, error)   { return nil, errNoTerminal }
-func (noPrompter) ConfirmEmpty(string) (bool, error)            { return false, errNoTerminal }
+func (noPrompter) ConfirmEmpty(string, Nav) (bool, error)       { return false, errNoTerminal }
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }
-func (noPrompter) Confirm(string) (bool, error)                 { return false, errNoTerminal }
+func (noPrompter) Confirm(string, Nav) (bool, error)            { return false, errNoTerminal }
 func (noPrompter) Profiles(ProfileStep) ([]string, error)       { return nil, errNoTerminal }
 func (noPrompter) MarketName(MarketNameStep) (string, error)    { return "", errNoTerminal }
 func (noPrompter) MarketEntry(MarketEntryStep) (string, error)  { return "", errNoTerminal }

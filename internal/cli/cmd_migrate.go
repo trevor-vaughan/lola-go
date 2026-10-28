@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -81,8 +82,9 @@ func (a *app) migrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var answered int // the mapping questions answered, which q at Migrate? asks before dropping
 			if pr := a.prompter(cmd); pr.Interactive() && !yes {
-				if err := askMappings(pr, eng, st, &opts); err != nil {
+				if answered, err = askMappings(pr, eng, st, &opts); err != nil {
 					return err
 				}
 			}
@@ -102,7 +104,7 @@ func (a *app) migrateCmd() *cobra.Command {
 			// --force answers the question, as -y does; never the hooks' consent (ruling R-6c3-4).
 			if !yes && !force {
 				show := func(w io.Writer) { printMigration(w, style{}, preview) }
-				if err := a.confirm(cmd, nil, "Migrate?", preview, show); err != nil {
+				if err := a.confirm(cmd, nil, "Migrate?", Nav{Answered: answered}, preview, show); err != nil {
 					return err
 				}
 			}
@@ -136,37 +138,85 @@ func (a *app) migrateCmd() *cobra.Command {
 // machine lacks (Plan 10 §3.1, §3.2), adding each answer to opts. What the flags map is not
 // asked; an empty root or no assistant skips that group, and an assistant is asked only when one
 // is on your PATH. The assistants are asked after the roots: a project found again may have its
-// assistant set up.
-func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migrate.Options) error {
+// assistant set up. Going back from a question (Esc) asks the one before again, as answered; from
+// the first assistant question, the last root's, after which the assistants are worked out again.
+// It returns how many questions were answered.
+func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migrate.Options) (int, error) {
+	flagRoots := opts.Roots
 	roots, _ := migrate.Suggest(eng, st, *opts)
-	for _, s := range roots {
-		to, err := pr.MigrateRoot(MigrateRootStep{Old: untrusted.Text(s.Old, untrusted.MaxName), Suggest: s.New, Records: len(s.Records)})
-		if err != nil {
-			return err
-		}
-		if to != "" {
-			opts.Roots = append(opts.Roots, migrate.RootMap{Old: s.Old, New: filepath.Clean(to)})
-		}
+	answers := make([]string, len(roots))
+	for i := range roots {
+		answers[i] = roots[i].New
 	}
-	_, missing := migrate.Suggest(eng, st, *opts)
-	for _, s := range missing {
-		if len(s.Detected) == 0 {
+	picked := map[string][]string{} // the assistants answered for each missing one, preselected when asked again
+	i := 0
+	for {
+		for i < len(roots) {
+			s := roots[i]
+			to, err := pr.MigrateRoot(MigrateRootStep{Old: untrusted.Text(s.Old, untrusted.MaxName), Suggest: s.New, Value: answers[i],
+				Records: len(s.Records), Nav: Nav{Back: i > 0, Answered: i}})
+			if errors.Is(err, ErrBack) && i > 0 {
+				i--
+				continue
+			}
+			if err != nil {
+				return 0, err
+			}
+			answers[i] = to
+			i++
+		}
+		opts.Roots = slices.Clone(flagRoots)
+		for k, s := range roots {
+			if answers[k] != "" {
+				opts.Roots = append(opts.Roots, migrate.RootMap{Old: s.Old, New: filepath.Clean(answers[k])})
+			}
+		}
+		_, missing := migrate.Suggest(eng, st, *opts)
+		missing = slices.DeleteFunc(missing, func(s migrate.TargetSuggestion) bool { return len(s.Detected) == 0 })
+		back, err := askTargets(pr, eng, missing, len(roots), picked)
+		if back {
+			i = len(roots) - 1
 			continue
 		}
+		if err != nil {
+			return 0, err
+		}
+		for _, s := range missing {
+			if ids := picked[s.Old]; len(ids) > 0 {
+				opts.Targets[s.Old] = ids
+			}
+		}
+		return len(roots) + len(missing), nil
+	}
+}
+
+// askTargets asks askMappings' assistant questions for missing, after answered root questions,
+// preselecting what picked holds and keeping each answer there. back is set when the user went
+// back from the first question to the roots (Esc).
+func askTargets(pr Prompter, eng *engine.Engine, missing []migrate.TargetSuggestion, answered int, picked map[string][]string) (back bool, err error) {
+	for j := 0; j < len(missing); {
+		s := missing[j]
 		modules := map[string]bool{}
 		for _, r := range s.Records {
 			modules[r.Module] = true
 		}
 		supported := slices.ContainsFunc(eng.Targets, func(t target.Target) bool { return t.ID() == s.Old })
-		ids, err := pr.MigrateTargets(MigrateTargetStep{Old: untrusted.Text(s.Old, untrusted.MaxName), Supported: supported, Modules: len(modules), Options: s.Detected})
-		if err != nil {
-			return err
+		prev, again := picked[s.Old]
+		ids, err := pr.MigrateTargets(MigrateTargetStep{Old: untrusted.Text(s.Old, untrusted.MaxName), Supported: supported, Modules: len(modules),
+			Options: s.Detected, Again: again, Preselect: prev, Nav: Nav{Back: answered+j > 0, Answered: answered + j}})
+		switch {
+		case errors.Is(err, ErrBack) && j > 0:
+			j--
+			continue
+		case errors.Is(err, ErrBack) && answered > 0:
+			return true, nil
+		case err != nil:
+			return false, err
 		}
-		if len(ids) > 0 {
-			opts.Targets[s.Old] = ids
-		}
+		picked[s.Old] = ids
+		j++
 	}
-	return nil
+	return false, nil
 }
 
 // remapRun is the run again with every map it used, from its flags or its questions, and the

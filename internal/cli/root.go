@@ -33,6 +33,14 @@ type abortedError struct{ msg string }
 func (e *abortedError) Error() string        { return e.msg }
 func (e *abortedError) Is(target error) bool { return target == ErrAborted }
 
+// quitError is a quit the user asked for with q, as against Ctrl+C or a No: exit 0, "✗ cancelled —
+// nothing was changed", in color when the forms that took the q are. A command that words its own
+// cancel (abortedError) keeps its wording for a quit too, as it says what the cancel left as it was.
+type quitError struct{ color bool }
+
+func (e *quitError) Error() string        { return "cancelled — nothing was changed" }
+func (e *quitError) Is(target error) bool { return target == ErrAborted }
+
 // Command group ids, in display order.
 const (
 	groupCore       = "core"
@@ -204,8 +212,12 @@ func (a *app) scope(cmd *cobra.Command, eng *engine.Engine) (engine.Scope, error
 // prompt, 1 on any error (printed per the output contract).
 func Execute(root *cobra.Command) int {
 	err := root.Execute()
+	var quit *quitError
 	switch {
 	case err == nil:
+		return 0
+	case errors.As(err, &quit):
+		fmt.Fprintln(root.ErrOrStderr(), style{color: quit.color}.bad(quit.Error()))
 		return 0
 	case errors.As(err, new(*abortedError)):
 		fmt.Fprintln(root.ErrOrStderr(), err.Error())

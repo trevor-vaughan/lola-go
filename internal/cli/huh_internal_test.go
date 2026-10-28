@@ -261,19 +261,19 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted), "input ends after an answer huh rejected")
 		_, err = accessible(&out, "7").Scope(ScopeStep{ProjectRoot: "/p"})
 		Expect(err).To(MatchError(ErrAborted))
-		_, err = accessible(&out).ConfirmEmpty("m")
+		_, err = accessible(&out).ConfirmEmpty("m", Nav{})
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
 	It("asks sync's questions, defaulting to No, and cancels at end of input", func() {
-		ok, err := accessible(&out, "y").Confirm("Trust these changes and continue?")
+		ok, err := accessible(&out, "y").Confirm("Trust these changes and continue?", Nav{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())
 		Expect(out.String()).To(ContainSubstring("Trust these changes and continue?"))
-		ok, err = accessible(&out, "").Confirm("Remove these?")
+		ok, err = accessible(&out, "").Confirm("Remove these?", Nav{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeFalse())
-		_, err = accessible(&out).Confirm("Remove these?")
+		_, err = accessible(&out).Confirm("Remove these?", Nav{})
 		Expect(err).To(MatchError(ErrAborted), "end of input is a cancel, not the default No")
 	})
 
@@ -288,7 +288,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(r.after).To(HaveLen(2), "the Commands field must not wait for more input")
 
 		r = &onceEOFReader{after: []string{"v1.0.0"}}
-		_, err = (&huhForms{in: &eofReader{r: r}, out: &out, tty: true, accessible: true}).addSource(nil)
+		_, err = (&huhForms{in: &eofReader{r: r}, out: &out, tty: true, accessible: true}).addSource(nil, Nav{})
 		Expect(err).To(MatchError(ErrAborted))
 		Expect(r.after).To(HaveLen(1), "the Ref field must not wait for more input")
 	})
@@ -385,11 +385,11 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 
 	It("cancels on huh's index panic after input ended, and re-raises any other panic", func() {
 		index := func() { _ = []int{}[len(os.Args)] }
-		Expect(accessible(&out).run(panicField{Note: huh.NewNote(), drain: true, panic: index})).To(MatchError(ErrAborted))
+		Expect(accessible(&out).run(Nav{}, panicField{Note: huh.NewNote(), drain: true, panic: index})).To(MatchError(ErrAborted))
 		Expect(func() {
-			_ = accessible(&out).run(panicField{Note: huh.NewNote(), drain: true, panic: func() { panic("boom") }})
+			_ = accessible(&out).run(Nav{}, panicField{Note: huh.NewNote(), drain: true, panic: func() { panic("boom") }})
 		}).To(PanicWith("boom"))
-		Expect(func() { _ = accessible(&out, "x").run(panicField{Note: huh.NewNote(), panic: index}) }).To(Panic(), "input has not ended")
+		Expect(func() { _ = accessible(&out, "x").run(Nav{}, panicField{Note: huh.NewNote(), panic: index}) }).To(Panic(), "input has not ended")
 	})
 
 	It("asks consent questions in accessible mode when LOLA_ACCESSIBLE=1", func() {
@@ -540,7 +540,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		review := func(menuKeys string, answers ...viewAnswer) *huhForms {
 			return &huhForms{stdin: keys(menuKeys), in: &eofReader{r: strings.NewReader("")}, out: &bytes.Buffer{}, tty: true,
 				viewer: func() bool { return true },
-				view: func(s string, change bool) (viewAnswer, error) {
+				view: func(s string, change bool, _ Nav) (viewAnswer, error) {
 					Expect(s).To(Equal("Summary:\n"))
 					offered = append(offered, change)
 					a := answers[0]
@@ -574,6 +574,36 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(offered).To(Equal([]bool{false}), "with no step to change, the viewer is asked not to offer c")
 	})
 
+	It("goes back from the review on Esc, quits on q, and returns from the Change menu to the review on Esc", func() {
+		var navs []Nav
+		review := func(menuKeys string, answers ...viewAnswer) *huhForms {
+			return &huhForms{stdin: keys(menuKeys), in: &eofReader{r: strings.NewReader("")}, out: &bytes.Buffer{}, tty: true,
+				viewer: func() bool { return true },
+				view: func(_ string, _ bool, nav Nav) (viewAnswer, error) {
+					navs = append(navs, nav)
+					a := answers[0]
+					answers = answers[1:]
+					return a, nil
+				}}
+		}
+		all := ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewScope, ReviewQuit}, Nav: Nav{Back: true, Answered: 3}}
+		_, err := review("", viewBack).Review(all)
+		Expect(err).To(MatchError(ErrBack))
+		Expect(navs).To(Equal([]Nav{{Back: true, Answered: 3}}), "the viewer gets the review's place in the flow")
+		_, err = review("", viewQuit).Review(all)
+		Expect(isQuit(err)).To(BeTrue())
+		got, err := review(escKey, viewChange, viewApply).Review(all)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(ReviewApply), "Esc in the Change menu went back to the review, which y applied")
+		_, err = review("qy", viewChange).Review(all)
+		Expect(isQuit(err)).To(BeTrue(), "q in the Change menu asks, three steps being answered, and y quits")
+
+		bypassed := onTerminal(escKey)
+		bypassed.viewer = func() bool { return false }
+		_, err = bypassed.Review(all)
+		Expect(err).To(MatchError(ErrBack), "Esc in the menu that replaces the viewer goes back too")
+	})
+
 	DescribeTable("prints the review and asks with the menu, as accessible mode does, when the viewer is bypassed (Plan 10 §2.1)",
 		func(noPager bool, setup func()) {
 			if setup != nil {
@@ -587,7 +617,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			// The menu's second entry, Change components.
 			cmd.SetIn(keys("j\r"))
 			h := a.huhPrompter(cmd).(*huhForms)
-			h.view = func(string, bool) (viewAnswer, error) {
+			h.view = func(string, bool, Nav) (viewAnswer, error) {
 				Fail("the review opened the viewer")
 				return viewCancel, nil
 			}
@@ -613,7 +643,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		cmd.SetOut(&bytes.Buffer{})
 		cmd.SetErr(&out)
 		h := a.huhPrompter(cmd).(*huhForms)
-		h.view = func(string, bool) (viewAnswer, error) { return viewApply, nil }
+		h.view = func(string, bool, Nav) (viewAnswer, error) { return viewApply, nil }
 		got, err := h.Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))

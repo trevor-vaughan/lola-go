@@ -357,7 +357,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	case p.Interactive():
 		req.ConfirmRemovals = func(rs []engine.Removal) (bool, error) {
 			a.page(cmd, cmd.ErrOrStderr(), stderr, func(w io.Writer, s style) { printRemovals(w, s, rs) })
-			ok, err := p.Confirm(question)
+			ok, err := p.Confirm(question, Nav{})
 			if err == nil && ok {
 				names := make([]string, len(rs))
 				for i, r := range rs {

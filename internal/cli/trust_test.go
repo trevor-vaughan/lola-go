@@ -31,7 +31,7 @@ type changing struct {
 	change func()
 }
 
-func (c *changing) Confirm(question string) (bool, error) {
+func (c *changing) Confirm(question string, _ cli.Nav) (bool, error) {
 	c.calls = append(c.calls, "confirm:"+question)
 	c.change()
 	return true, nil
@@ -40,7 +40,7 @@ func (c *changing) Confirm(question string) (bool, error) {
 // aborting is a terminal whose every question is answered with Ctrl+C.
 type aborting struct{ *scripted }
 
-func (a *aborting) Confirm(question string) (bool, error) {
+func (a *aborting) Confirm(question string, _ cli.Nav) (bool, error) {
 	a.calls = append(a.calls, "confirm:"+question)
 	return false, cli.ErrAborted
 }
