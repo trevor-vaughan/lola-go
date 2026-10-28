@@ -1,0 +1,29 @@
+docs/guides/profiles.md
+  s_cbea84d9628a69::t_7086fc4a918b9b 8,12-13,33,71-72,88-89,138-140,157-159,176-178,213-215
+  s_cbea84d9628a69::t_f6b7a45b9da7fb 230-232
+README.md
+  s_cbea84d9628a69::t_630e160cb9f23b 215-216
+docs/usage.md
+  s_cbea84d9628a69::t_630e160cb9f23b 18-19
+  s_cbea84d9628a69::t_df1f949aca344b 312,1271
+docs/guides/remote-profiles.md
+  s_cbea84d9628a69::t_32da86d9f000fe 1-363
+docs/guides/choosing-what-to-install.md
+  s_cbea84d9628a69::t_df1f949aca344b 261
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "31bf734b057ad426a6d15577e9b9be05e3b4f9b6",
+  "prompts": {},
+  "sessions": {
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
