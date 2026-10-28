@@ -1,0 +1,28 @@
+internal/market/market_test.go
+  s_92ac1d95f09be8::t_6d415aa047e991 211-233,270-273
+internal/cli/market_test.go
+  s_92ac1d95f09be8::t_e89ed98a5a4e07 942
+  s_92ac1d95f09be8::t_6d415aa047e991 932-941
+internal/market/sshhost.go
+  s_92ac1d95f09be8::t_b51e1676828a2c 7,29
+  s_92ac1d95f09be8::t_e89ed98a5a4e07 38-41
+  s_92ac1d95f09be8::t_c9af1c56d3eeaf 42
+internal/cli/cmd_market.go
+  s_92ac1d95f09be8::t_b51e1676828a2c 425-432
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4575d6e83f0d30083fbec00feb012bd08e2d1cc5",
+  "prompts": {},
+  "sessions": {
+    "s_92ac1d95f09be8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f71c8b1-35f8-4405-acd5-2ffb9cb526fc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
