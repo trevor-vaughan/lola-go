@@ -5,6 +5,8 @@ includes:
     taskfile: .taskfiles/go.yml
   e2e:
     taskfile: .taskfiles/e2e.yml
+  release:
+    taskfile: .taskfiles/release.yml
 
 vars:
   APP_NAME: '{{.APP_NAME | default "lola"}}'
@@ -52,4 +54,4 @@ tasks:
 
   clean:
     desc: Remove build artifacts and test output
-    cmd: rm -rf bin/ {{.TEST_DIR}}
+    cmd: rm -rf bin/ .tools/ {{.TEST_DIR}}

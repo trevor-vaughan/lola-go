@@ -31,7 +31,8 @@ mean to tag, with a clean work tree.
    Judge each against the vendored code and `third_party/liquid/PATCHES.md`. An advisory that
    applies to the vendored code and is not patched there blocks the tag. Record the date, every
    advisory ID read and each verdict (applies and patched, applies and blocks, or does not apply,
-   with why) under "Vulnerability checks" in `PATCHES.md`, in the release commit.
+   with why) under "Vulnerability checks" in `PATCHES.md`, in the release commit. That commit
+   changes only the record, so the other items are not run again on it.
 
 4. **The Go toolchain.** `go.mod`'s `toolchain` line names the newest patch release of the pinned
    minor (`go1.26.x`), and `task vuln` is clean on it.
@@ -43,7 +44,8 @@ mean to tag, with a clean work tree.
    image's Debian release newer than the digest. Otherwise bump `BASE_DIGEST` and run item 2
    again.
 
-6. **The docs, by hand.** Compare, and record each result in the annotated tag's message:
+6. **The docs, by hand.** Compare, and write each result to a file (say `checks.md`) for the
+   tag's message:
    - the commands `lola help` lists with the command sections of [usage.md](usage.md#commands):
      piped, `lola help` prints one `== lola … ==` heading per command and subcommand (for example
      `== lola cache add ==`). Every heading but `== lola ==` has a `###` or `####` section there,
@@ -55,6 +57,26 @@ mean to tag, with a clean work tree.
      the commands of `Q1` in `e2e/install/install.venom.yml`, and the commands in its teammate
      steps are those of `T1` and `T4` in `e2e/team/team.venom.yml`.
 
-7. **Tag.** Create the annotated tag on the commit every item above passed on, its message holding
-   item 6's results. Nothing on this list publishes anything: no image is pushed and no binary
-   uploaded, and release automation is post-MVP ([roadmap.md](roadmap.md)).
+7. **Tag.** Tag the release commit: the commit every item above passed on, plus item 3's record,
+   committed as `chore(release): …` so it stays out of the notes.
+
+   ```sh
+   task release:notes                    # review the notes the tag will carry
+   task release:tag -- 0.1.0 checks.md   # tag v0.1.0 on HEAD
+   ```
+
+   - **The message:** `lola vX.Y.Z`, then the release's notes, then item 6's results under
+     "Release checks". [git-cliff](https://git-cliff.org) generates the notes from the
+     Conventional Commits since the last `vX.Y.Z` tag (`cliff.toml`); commits from before the
+     convention are left out.
+   - **Refusals:** a version that is not `X.Y.Z` or not after the last release, a tag that
+     exists, a dirty work tree, an empty results file, and a release with no Conventional Commit
+     to list.
+   - **git-cliff:** both tasks first install the pinned git-cliff 2.14.2 into `.tools/bin`
+     (`task release:tools`, which checks the download's SHA-512). On a platform with no pinned
+     download, install it there yourself:
+     `cargo install --locked git-cliff --version 2.14.2 --root .tools`.
+
+   Nothing on this list publishes anything. `release:tag` never pushes (`git push origin vX.Y.Z`
+   does, when you are ready), no image is pushed and no binary uploaded, and release automation
+   is post-MVP ([roadmap.md](roadmap.md)).
