@@ -1,0 +1,132 @@
+internal/migrate/run_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 975
+internal/engine/market_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 830-837,839-857,876,880-883,897-898,901
+internal/cli/market_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 230,497,499,501-504,506,508-511,669
+  s_8d03b9505d742a::t_f83ec3d551c136 611-612
+  s_8d03b9505d742a::t_5d9d0f3e4d37db 864
+  s_8d03b9505d742a::t_9ca2b86e955b8e 817-829,832-863,865,869-876,882-891,918
+  s_8d03b9505d742a::t_68f61f3ebaaf07 172
+  s_8d03b9505d742a::t_2973405ac2a335 830-831,867,877-881
+  s_8d03b9505d742a::t_864245353cbfb9 866,868
+  s_8d03b9505d742a::t_7bd4c48ea40230 323
+  s_8d03b9505d742a::t_7e16bb67158530 892-895,897-917
+  s_8d03b9505d742a::t_e27337517f18c7 97-98
+  s_8d03b9505d742a::t_516e5eb5256fe4 896
+internal/engine/market_verbs.go
+  s_8d03b9505d742a::t_0b297e3b72b80c 14-16,28-45,47-50,61-67,87,94,96,98,103,106,109,113,115,117,120,122,125,131,133-134,142,147,149,151-152,154,157,162,173
+internal/market/market_test.go
+  s_8d03b9505d742a::t_d725c60ac7b559 546-547
+e2e/market/market.venom.yml
+  s_8d03b9505d742a::t_0b297e3b72b80c 151
+internal/market/market.go
+  s_8d03b9505d742a::t_0b297e3b72b80c 147-148,231
+internal/cli/cmd_market.go
+  s_8d03b9505d742a::t_0b297e3b72b80c 39,265-268,345-347,351
+  s_8d03b9505d742a::t_2157c2ae9bb91d 171
+  s_8d03b9505d742a::t_25782a69dab4da 133
+  s_8d03b9505d742a::t_0db08678c3269a 160-163
+  s_8d03b9505d742a::t_195e8e502aa6a7 125,128-129,140-143,173-176,194-204,228,236,240-243,250-251,264,288,291,298-301,303-307,311-313
+  s_8d03b9505d742a::t_867ac8d009a8b8 314-315
+  s_8d03b9505d742a::t_4affc4db061e7e 289-290,292,295-297,302,309-310
+  s_8d03b9505d742a::t_864245353cbfb9 293-294,308
+  s_8d03b9505d742a::t_3ed509c0977b7f 245-249,252-253
+  s_8d03b9505d742a::t_306d98d4867c1b 281-287
+internal/cli/help.go
+  s_8d03b9505d742a::t_fa6aa240dfe741 252
+internal/cli/conventions_test.go
+  s_8d03b9505d742a::t_23d84c99559b06 65-78
+  s_8d03b9505d742a::t_1ee60fa28140d5 5-6
+internal/cli/cmd_store.go
+  s_8d03b9505d742a::t_8c29173185243e 152,561-564,569
+internal/cli/cmd_info.go
+  s_8d03b9505d742a::t_236937c1b8b288 53,62-120
+  s_8d03b9505d742a::t_27999f10d71247 121-122
+internal/cli/flow.go
+  s_8d03b9505d742a::t_8c29173185243e 130
+internal/cli/market_output.go
+  s_8d03b9505d742a::t_ca32a1f08d861e 76-78
+  s_8d03b9505d742a::t_579cc532ae290c 146-148
+  s_8d03b9505d742a::t_75ddca87152c14 95-97,103,107-109
+README.md
+  s_8d03b9505d742a::t_ae9ed79e84369e 98
+  s_8d03b9505d742a::t_b1a05ca41e9e10 46-47
+  s_8d03b9505d742a::t_23deb8b8ede5bc 8-10
+  s_8d03b9505d742a::t_6620187ffeb37c 37-41
+docs/usage.md
+  s_8d03b9505d742a::t_3e45e1a67acd56 11
+  s_8d03b9505d742a::t_c75368a42424db 372,376-382,385-386,391-394
+  s_8d03b9505d742a::t_0bf9b636706127 341,344-360
+  s_8d03b9505d742a::t_7117816d9dde54 428-429
+  s_8d03b9505d742a::t_e2e0f4dedf19d0 1736
+  s_51684f47240dfe::t_c16b4c8a2ed91c 757
+docs/guides/marketplaces.md
+  s_8d03b9505d742a::t_6cc04be9c45d6a 189
+  s_8d03b9505d742a::t_48f30a7eafb4d8 4-5
+  s_8d03b9505d742a::t_e2d4b008122d48 68-78
+  s_8d03b9505d742a::t_6c7230676c76e9 34
+  s_8d03b9505d742a::t_da61a604e803a3 136
+  s_8d03b9505d742a::t_8c447646d5e104 85-86
+  s_8d03b9505d742a::t_bda2a158996747 38-39
+  s_8d03b9505d742a::t_74e0e999f76cbf 16
+internal/migrate/plan.go
+  s_8d03b9505d742a::t_dfe352da200f67 381
+  s_8d03b9505d742a::t_fa9d9283b77ef6 383-384
+internal/cli/huh.go
+  s_8d03b9505d742a::t_349ff11ca550fd 305,315
+  s_8d03b9505d742a::t_bbc522e0f15cfc 596,600-601
+  s_8d03b9505d742a::t_8439c8e0049c80 596
+  s_8d03b9505d742a::t_74adcf2dbad4bf 368
+  s_8d03b9505d742a::t_879902a85fe315 434
+internal/cli/flow_test.go
+  s_8d03b9505d742a::t_55d41d0aae1bc5 54-55
+docs/guides/sync-and-trust.md
+  s_cbea84d9628a69::t_f08ca28c8954af 23
+docs/guides/authoring-modules.md
+  s_cbea84d9628a69::t_b5617f60dd6e3f 258
+docs/guides/profiles.md
+  s_cbea84d9628a69::t_7086fc4a918b9b 133,135
+internal/ledger/ledger.go
+  s_51684f47240dfe::t_d8416e1472f876 202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf3f23910373d163db4eaf41040a65318f7568e5",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_614202a1917de6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9a8a2cb659811f3d",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
