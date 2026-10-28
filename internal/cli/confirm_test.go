@@ -16,8 +16,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// R-8-1 (Plan 8 §9.1): the commands that confirm a plan (uninstall, cache rm, migrate, and cache
-// clean, Plan 9 spec 45), cell by cell of the matrix: on or off a terminal, with or without
+// R-8-1 (Plan 8 §9.1): the commands that confirm a plan (uninstall, cache rm, migrate, cache
+// clean, Plan 9 spec 45, and repair), cell by cell of the matrix: on or off a terminal, with or without
 // --json, and the answer.
 var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 	// confirmCase is one command's fixture: the run without its answer, the plan it prints, the
@@ -92,6 +92,19 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 				keys: []string{"removed", "kept", "bytes_freed", "dry_run", "notices"}, steps: key("removed"), did: key("removed"),
 				written: func() bool { return versions() == 1 },
 			}
+		case "repair":
+			installKit(proj)
+			lp := filepath.Join(proj, ".lola", "lock.json")
+			editLock(proj, func(doc map[string]any) {
+				doc["created"] = append(doc["created"].([]any), map[string]any{"target": "claude-code", "path": "../settings.json"})
+			})
+			return confirmCase{
+				args: []string{"repair", "-C", proj}, plan: "will forget 1 entry in " + lp + "; files are not touched:", planLines: 2,
+				question: "Forget 1 entry lola could not have written? Files are not touched.", hint: "lola repair --json --root " + proj + " -y",
+				done: "forgot 1 entry in " + lp,
+				keys: []string{"dry_run", "file", "forgotten", "forgotten_modules", "notices"}, steps: key("forgotten"), did: key("forgotten"),
+				written: func() bool { return !strings.Contains(read(lp), "settings.json") },
+			}
 		case "migrate":
 			home, src := filepath.Join(tmp, "home", ".lola"), filepath.Join(tmp, "src", "review")
 			writeTree(src, map[string]string{"commands/ship.md": "Ship\n"})
@@ -145,7 +158,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			checkJSON(doc, "")
 			Expect(c.written()).To(BeFalse())
 		},
-		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
+		Entry("repair", "repair"))
 
 	DescribeTable("c2: off a terminal without --json, <cmd> prints the plan, then the error and its hint",
 		func(command string) {
@@ -159,7 +173,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			Expect(strings.Count(r.err, "\n")).To(Equal(c.planLines+2), r.err)
 			Expect(c.written()).To(BeFalse())
 		},
-		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
+		Entry("repair", "repair"))
 
 	DescribeTable("c3: on a terminal under --json, <cmd> prints the plan and the question on stderr and one JSON document on stdout",
 		func(command string) {
@@ -176,7 +191,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			checkJSON(doc, "")
 			Expect(c.written()).To(BeTrue())
 		},
-		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
+		Entry("repair", "repair"))
 
 	DescribeTable("c4: on a terminal without --json, <cmd> asks after the plan and prints the human result",
 		func(command string) {
@@ -190,7 +206,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			Expect(r.out).To(ContainSubstring(c.done))
 			Expect(c.written()).To(BeTrue())
 		},
-		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
+		Entry("repair", "repair"))
 
 	DescribeTable("c5: declining <cmd> on a terminal writes nothing and exits 0",
 		func(command string) {
@@ -205,7 +222,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 				Expect(c.written()).To(BeFalse())
 			}
 		},
-		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
+		Entry("repair", "repair"))
 
 	DescribeTable("c6: -y off a terminal under --json prints no plan line and one JSON document",
 		func(command string) {
@@ -218,7 +236,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			checkJSON(doc, "")
 			Expect(c.written()).To(BeTrue())
 		},
-		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
+		Entry("repair", "repair"))
 
 	DescribeTable("c7: --force off a terminal under --json prints no plan line and one JSON document",
 		func(command string) {
@@ -306,7 +325,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			Expect(json.Unmarshal([]byte(dry.out), &want)).To(Succeed(), dry.out)
 			Expect(doc).To(Equal(want))
 		},
-		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"), Entry("repair", "repair"))
 
 	DescribeTable("the refusal's hint runs the plan it carried",
 		func(command string) {
@@ -322,7 +341,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			Expect(c.did(res)).To(Equal(c.steps(doc)), "it did what the refusal said it would")
 			Expect(c.written()).To(BeTrue())
 		},
-		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
+		Entry("repair", "repair"))
 
 	It("a refusal plan carries a file name with control characters only JSON-escaped in steps[].path, and cleaned in error and hints", func() {
 		proj := filepath.Join(tmp, "pr\aoj")

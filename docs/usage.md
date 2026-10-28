@@ -788,6 +788,46 @@ JSON: `dry_run`, `nothing_to_migrate`, `python_home`, `trash`, `destinations`, `
 contract](#output-contract)); the refusal off a terminal carries the `-n --json` keys beside
 `error` and `hints`.
 
+### `lola repair`
+
+```
+lola repair [-n] [-y]
+```
+
+Forget what `lock.json` records that lola could not have written: an artifact or `created` path
+that leaves its target's root (`../`, an absolute path), and a target lola does not know. Every
+other command that plans from it refuses such a `lock.json` and hints `lola repair` for its
+scope ([Sync, pins and trust](guides/sync-and-trust.md#sync-pins-and-trust)). It lists the entries,
+asks (default No), then forgets them; a module left installed on no target lola knows is
+forgotten with them. It deletes and moves no file.
+
+| Flag | What it does |
+|---|---|
+| `-n`, `--dry-run` | List what it would forget and write nothing. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+It prints `will forget 2 entries in <root>/.lola/lock.json; files are not touched:` and one line
+per entry: `module kit: artifact "../outside.md" on target "claude-code"`, `module kit: target
+"bogus"`, `created "../settings.json" on target "claude-code"`. After a run that forgot a path
+on a target lola knows, or a whole module, it ends with `→ lola sync puts back any file a module
+now lacks → lola sync --project`. With nothing to forget it prints `✓ nothing to repair in
+<root>/.lola/lock.json` and exits 0.
+
+A run that applies it prints `✓ forgot 2 entries in <root>/.lola/lock.json; no file was
+touched:` (`1 entry` for one) and the same entry lines, then one `module <m>: no target lola
+knows is left` line for each module forgotten whole, before the `→` lines.
+
+Refusals: off a terminal without `-y`: `lola repair needs confirmation, and there is no terminal
+to ask on`, hinting the run with `-y`. When another lola run changed `lock.json` while repair
+waited for it: `<root>/.lola/lock.json changed since lola listed what to forget: <entry> is new`,
+hinting `lola repair` again; nothing is written. A `lock.json` lola refuses for another reason
+(malformed JSON, written by a newer lola, a source, profile or member lola never writes) keeps
+that refusal and its hint.
+
+JSON: `dry_run`, `file`, `forgotten` (each `entry`, `kind`, `module`, `target`, `path` and
+`key`), `forgotten_modules` and `notices`. The refusal off a terminal carries the `-n --json`
+keys beside `error` and `hints`.
+
 ### `lola version`
 
 ```
@@ -1258,7 +1298,7 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | File | Purpose | Commit it? |
 |---|---|---|
 | `.lola/project.yml` | The manifest: which modules and targets you want, and for git and archive modules the version (pin) installed. lola edits only the entries it changes and keeps your comments and order, but it writes the whole file again, so blank lines between entries are dropped and indentation becomes two spaces. | Yes |
-| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, (`scripts_pending`) the project's post-install script you have not let run on the module yet, the active [profiles](guides/profiles.md#profiles) (`profiles`), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: the active profiles when a template reads them, and `vars`). | No (gitignored for you) |
+| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, (`scripts_pending`) the project's post-install script you have not let run on the module yet, the active [profiles](guides/profiles.md#profiles) (`profiles`), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: the active profiles when a template reads them, and `vars`). Every command that plans from it refuses a path in it outside a target's root, or a target lola does not know, hinting [`lola repair`](#lola-repair), which forgets such entries. | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
@@ -1349,15 +1389,17 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
     [partial](guides/templating.md#partials), whose `file` it is; else `""`) and `rendered` (true
     when the rendered output, not the template, was refused). For `template-run-budget` the
     target, kind, artifact and file are `""`.
-  - A confirmation refused off a terminal (`uninstall`, `cache rm`, `cache clean`, `migrate` and
-    a bare `init` without `-y`) prints only that line, which adds the plan it would have asked
-    about; its hint is the run with `-y`:
+  - A confirmation refused off a terminal (`uninstall`, `cache rm`, `cache clean`, `migrate`,
+    `repair` and a bare `init` without `-y`) prints only that line, which adds the plan it would
+    have asked about; its hint is the run with `-y`:
     - for `uninstall` and `migrate`, the keys their `-n --json` prints (`modules`, `steps`,
       `findings`, `notices`, `scripts` and `dry_run` for `uninstall`);
     - for `cache rm`, `would_remove`, the names;
     - for `init`, the keys its `-y --json` prints (`name`, `path`, `format`, `files`);
     - for `cache clean`, the keys its `-n --json` prints (`removed`, `kept`, `bytes_freed`,
-      `dry_run`, `notices`).
+      `dry_run`, `notices`);
+    - for `repair`, the keys its `-n --json` prints (`dry_run`, `file`, `forgotten`,
+      `forgotten_modules`, `notices`).
 - Human output says a hook or install script `would run` in a dry run; `--json` and `--plain`
   keep the value `would-run`.
 - The results of `install`, `uninstall`, `render` and `sync` (and so of `profile --on`, `--off`

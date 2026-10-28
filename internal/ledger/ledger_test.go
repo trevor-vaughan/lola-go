@@ -398,6 +398,36 @@ var _ = Describe("ledger", func() {
 			Equal(path + `: module b: target "bogus" is not a target lola knows`))
 	})
 
+	It("forgets the strays it is given and a module left on no target, keeping an old entry's targets and every other entry", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		mod := func(targets, artifacts string) string {
+			return `{"source":"s","digest":"` + dg + `",` + targets + `"artifacts":[` + artifacts + `]}`
+		}
+		body := `{"version":1,"modules":{` +
+			`"a":` + mod(``, `{"target":"claude-code","kind":"command","path":".claude/commands/a.md"},{"target":"claude-code","kind":"file","path":"../a.md"}`) + `,` +
+			`"b":` + mod(`"targets":["bogus"],`, `{"target":"bogus","kind":"file","path":"x.md"}`) + `,` +
+			`"c":` + mod(`"targets":["bogus","claude-code"],`, `{"target":"claude-code","kind":"command","path":".claude/commands/c.md"}`) + `,` +
+			`"d":` + mod(``, ``) + `},` +
+			`"created":[{"target":"claude-code","path":"../c.json"},{"target":"claude-code","path":".mcp.json"}]}`
+		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+		l, err := ledger.LoadKeepingStrays(path)
+		Expect(err).NotTo(HaveOccurred())
+		known := func(t string) bool { return t == "claude-code" }
+		Expect(l.Forget(l.Strays(known))).To(Equal([]string{"b"}))
+		Expect(l.Modules).NotTo(HaveKey("b"))
+		Expect(l.Modules["a"].Targets).To(Equal([]string{"claude-code"}),
+			"an entry from before targets were recorded keeps the target its forgotten path was on")
+		Expect(l.Modules["a"].Artifacts).To(HaveExactElements(HaveField("Path", ".claude/commands/a.md")))
+		Expect(l.Modules["c"].Targets).To(Equal([]string{"claude-code"}))
+		Expect(l.Modules["c"].Artifacts).To(HaveExactElements(HaveField("Path", ".claude/commands/c.md")))
+		Expect(l.Modules["d"].Targets).To(BeNil(), "an entry it forgets nothing of is left as it is")
+		Expect(l.Created).To(Equal([]ledger.FileRef{{Target: "claude-code", Path: ".mcp.json"}}))
+		Expect(l.Strays(known)).To(BeEmpty())
+		Expect(l.Save(path)).To(Succeed())
+		_, err = ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred(), "what is left loads again")
+	})
+
 	It("refuses a digest lola never writes", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		body := `{"version":1,"modules":{"kit":{"source":"s","digest":"sha256:abc","artifacts":[]}},"created":[]}`

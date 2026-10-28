@@ -142,9 +142,18 @@ flowchart TD
   - are confirmed on a terminal with the question `Remove these and sync? No applies nothing`
     (default No): a No applies none of the sync, not only none of the removals;
   - are confirmed by `-y`, never by `--trust`.
-  - `lock.json` is not trusted input: a recorded path that climbs out of its target's root (`../`,
-    an absolute path) or names a target lola does not know (hinting the valid targets) refuses
-    the sync before anything is asked.
+  - `lock.json` is not trusted input either. A recorded path that climbs out of its target's root
+    (`../`, an absolute path), or a target lola does not know, is refused by every command that
+    plans from the file, before anything is planned, asked or written. lola never records such an entry itself,
+    so it was edited, damaged or copied from elsewhere.
+    - The refusal names `lock.json`, the module and the path or target, and hints
+      [`lola repair`](../usage.md#lola-repair) for the scope, with your run's scope and output
+      flags (`lola repair --project`).
+    - `lola repair` lists every such entry, asks, and forgets them; it deletes and moves no file.
+      `lola sync --project` then puts back any file a module now lacks.
+    - Do not delete the whole `lock.json`: it also holds your active profiles and the versions
+      installed, which trust of folder modules compares, and every file lola wrote would then
+      count as not written by lola.
   - A recorded path that leaves its root through a symbolic link is removed where the link leads;
     the plan shows it as `<path> (via symlink → <resolved path>)`, as for `lola uninstall`.
 - **Already in sync.** A second run writes nothing, prints its findings and notices, and says

@@ -22,7 +22,7 @@ func (a *app) printVersion(cmd *cobra.Command) error {
 }
 
 func (a *app) addMiscCommands(root *cobra.Command) {
-	root.AddCommand(a.migrateCmd())
+	root.AddCommand(a.migrateCmd(), a.repairCmd())
 	root.AddCommand(&cobra.Command{
 		Use:     "version",
 		Aliases: []string{"ver"},

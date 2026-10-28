@@ -125,6 +125,12 @@ The terms, each covered in its own section below:
   cache lock.
 - `ledger`, `manifest`: Observed and desired state, validated at load; the ledger written
   deterministically, the manifest edited in place (`manifest.Edit`) with its pins.
+  - `ledger.Strays` lists what lola could not have written: artifact and `created` paths that
+    are not `filepath.IsLocal`, and, given the targets the caller knows, items on any other
+    target. `Load` refuses the first path (`*ledger.StrayError`); `LoadKeepingStrays` reads it,
+    keeping every other refusal and its `restoreHint`; `Forget` drops strays and any module then
+    installed on no target (an entry from before `targets` was recorded keeps its artifacts'
+    targets).
 - `profile`: Profiles (Plan 6b §4). No network, no writes; depguard holds its imports (`source`
   for the pin and address rules only).
   - `Visible` finds the user's profiles and, at user scope, `default.yml` by their names alone
@@ -2562,3 +2568,18 @@ recorded; the re-read bytes go to the trash with `trash.CopyBytes` (0600) and th
 written with `fsx.WriteFileAtomic` to the resolved path. A unit that changed is skipped with a
 notice; the first failed move stops the run, which reports what moved and still writes the keep
 edits. Tidy writes no `lock.json`, manifest or trust record.
+
+## lola repair
+
+`Engine.Ledger` is the only engine read of a scope's `lock.json`, apart from `market_sync`'s
+tolerant read and `shouldRemoveLola`. It reads with `ledger.LoadKeepingStrays`, then refuses the
+first `ledger.Stray`, judged against the engine's targets (`knows`), as a `*ledger.StrayError`
+hinting `lola repair` for the scope. No request reaches `Ledger`, so the hint keeps the run's
+output flags through `Engine.Display`, which the CLI sets once per run. `fsx.Resolve` still
+refuses a non-local path in planning, as defense in depth.
+
+`PlanRepair` lists the strays and the modules `Forget` would leave on no target, writing nothing
+and taking no lock; the CLI asks about that plan, or prints it under `-n`. `ApplyRepair` takes
+the scope lock, reads `lock.json` again, refuses a stray the plan did not list (a hand edit
+while it waited), forgets the rest, and saves `lock.json` only when it forgets something. It
+deletes no file and does not check whether git tracks `lock.json`, since it deletes nothing.

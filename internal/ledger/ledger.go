@@ -304,6 +304,39 @@ func (l *Ledger) Strays(known func(target string) bool) []Stray {
 	return out
 }
 
+// Forget drops each item of drop (Strays' items) from l, then each module it took an item from
+// that is left installed on no target, as plan's updateLedger drops one, and returns those
+// modules in name order. A module loses each of its targets an item of drop names as unknown; an
+// entry written before lock.json recorded targets first gets the targets its artifacts are on
+// (InstalledTargets), so forgetting a path never uninstalls a module from its target. A module
+// drop names nothing of is left as it is.
+func (l *Ledger) Forget(drop []Stray) []string {
+	var gone []string
+	for _, name := range slices.Sorted(maps.Keys(l.Modules)) {
+		if !slices.ContainsFunc(drop, func(s Stray) bool { return s.Module == name }) {
+			continue
+		}
+		e := l.Modules[name]
+		if e.Targets == nil {
+			e.Targets = e.InstalledTargets()
+		}
+		e.Targets = slices.DeleteFunc(e.Targets, func(t string) bool {
+			return slices.ContainsFunc(drop, func(s Stray) bool { return s.Module == name && s.Target == t && s.Unknown })
+		})
+		e.Artifacts = slices.DeleteFunc(e.Artifacts, func(a Artifact) bool {
+			return slices.ContainsFunc(drop, func(s Stray) bool { return s.Kind == StrayArtifact && s.Module == name && s.id == a.ID() })
+		})
+		if len(e.Targets) == 0 {
+			delete(l.Modules, name)
+			gone = append(gone, name)
+		}
+	}
+	l.Created = slices.DeleteFunc(l.Created, func(r FileRef) bool {
+		return slices.ContainsFunc(drop, func(s Stray) bool { return s.Kind == StrayCreated && s.id == r.ID() })
+	})
+	return gone
+}
+
 // validate rejects what the JSON decoder accepts but the rest of lola cannot handle: null
 // module entries, module names that are not safe path segments, recorded sources lola would
 // not write (source.Recorded), targets that are not target names or are listed twice, artifacts
