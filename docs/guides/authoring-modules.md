@@ -388,6 +388,7 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
 - A hook group is identified by its content, so a group you edit or remove is no longer lola's
   copy. `lola install` and `lola render` do not write it again, since both copies would run:
   lola keeps it as owned but absent and reports `claude-code/runtime-hook-drift`, with the hint
-  to run with `--force`, which writes it again. The report is info, not a warning: it records
-  your choice, so `--strict` does not fail on it. Uninstall leaves your edited group in place.
+  `restore it:` and your run with `--force`, which writes it again. The report is info, not a
+  warning: it records your choice, so `--strict` does not fail on it. Uninstall leaves your
+  edited group in place.
   (Missing files and JSON keys are rewritten as before; this rule is only for hook groups.)

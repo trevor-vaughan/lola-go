@@ -115,7 +115,8 @@ var caps = target.Capabilities{Kinds: map[string]target.KindSpec{
 	"agent": {Open: true, Keys: map[string]target.Value{
 		"description": {Shape: target.ShapeString},
 		"name":        {Drop: target.SeverityInfo, Note: "the file name names the agent"},
-		"tools":       {Drop: target.SeveritySkip, Guard: target.ToolsGuard("opencode", "remove tools: (OpenCode restricts an agent with permission:)")}, // opencode configures tools with permissions
+		"tools": {Drop: target.SeveritySkip, // opencode configures tools with permissions
+			Guard: target.ToolsGuard("opencode", "under opencode: in the agent's .targets.yaml, set tools: null and restrict the agent with permission:, as OpenCode does")},
 		"model":       model,
 		"variant":     {Shape: target.ShapeString},
 		"mode":        {Shape: target.ShapeString, Pattern: regexp.MustCompile(`^(subagent|primary|all)$`)},
@@ -137,7 +138,7 @@ var caps = target.Capabilities{Kinds: map[string]target.KindSpec{
 	// sits, with no permission check; Claude's ```! fence it never runs.
 	{Kind: "command", Pattern: regexp.MustCompile("!`[^`]+`"), Severity: target.SeverityWarn,
 		Code: "opencode/shell-unchecked", Text: "OpenCode runs !`…` without Claude's permission checks (allowed-tools is dropped)",
-		Hint: "review the command before installing"},
+		Hint: "if the shell needs Claude's permission checks, wrap it in {% if target != \"opencode\" %}…{% endif %} in the command's .md.liquid template"},
 	{Kind: "command", Pattern: regexp.MustCompile("(?m)^[ \\t]*`{3,}!"), Severity: target.SeveritySkip, Forceable: true,
 		Code: "opencode/shell-fence", Text: "OpenCode does not run fenced shell; the command would send it to the model as text",
 		Hint: "use inline !`…`"},

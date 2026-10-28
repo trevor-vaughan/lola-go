@@ -224,8 +224,7 @@ hinting `lola render --force`; a tracked `.lola/lock.json`, as `lola list`'s.
 
 JSON: `modules`, `steps`, `findings`, `notices`, `scripts` and `dry_run`.
 
-Known limitations: a module render leaves out because its folder changed is a finding whose hints
-keep the scope but not `--json`, `--plain` or `--no-pager`. When the content changed, they are
+Known limitations: when a module render leaves out has changed content, its finding's hints are
 `review it: lola sync --project my-module`, then, when the entry selects no components, `edited
 it yourself? lola install --project ../my-module`; when it no longer loads, `review it: lola
 sync --project my-module; or remove it: lola uninstall --project my-module`, followed by the
@@ -1501,6 +1500,20 @@ error before anything is written; use it in CI. A `--force` render is not rememb
 Each finding has a stable code, shown by `--plain` and `--json`. A forceable skip is one that
 `--force` can render; a skip that `--force` rendered is reported as a warn.
 
+A finding you can act on carries a hint (`hint:` under it, `hint` in `--json`). The hint names
+the change to make to the module: usually an entry in the component's `.targets.yaml`
+[attribute file](guides/templating.md), such as `gemini-cli: {hooks: null}`, or a template
+branch on `target` in its `.md.liquid` file. Or the hint is a command. A forceable skip's hint
+ends with your run plus `--force`, for example `or render it anyway: lola install ./kit --force`.
+Some findings have no hint, because there is nothing to do:
+- `kind-unsupported`, `mcp-cwd-dropped` and `command-sidecar-dropped`: no change gives the
+  assistant a place for the item;
+- lossless adaptations (`gemini-cli/arguments`, `opencode/env-reference`, an info
+  `frontmatter-key-dropped`);
+- the review notices `claude-code/allowed-tools` and `claude-code/permission-mode`;
+- the `probe/*` notes;
+- `module-warning` and template errors, whose text already says what to change.
+
 `lola check` reports each [template](guides/templating.md#templates) error as a `skip` finding of its component for
 each assistant, with the error's code: `template-too-large`, `template-invalid-utf8`,
 `template-tag-unavailable`, `template-range-unavailable`, `template-too-many-assigns`,
@@ -1536,7 +1549,7 @@ the run, `lola check` included: they are never skip findings.
 | `gemini-cli/arguments` | info | no | `$ARGUMENTS` becomes Gemini's `{{args}}`. |
 | `gemini-cli/positional-arguments` | warn | no | Gemini CLI has no positional or named arguments: `$ARGUMENTS[N]`, `$N` and names declared in `arguments:` stay as written and the prompt starts with the whole argument string. |
 | `opencode/arguments-renumbered` | warn | no | Claude's 0-based `$N`, `$ARGUMENTS[N]` and declared names became OpenCode's 1-based `$1`, `$2`, …; check the command with a few arguments, as OpenCode may split them differently. |
-| `opencode/shell-unchecked` | warn | no | A command has ``!`…` ``, which OpenCode runs wherever it appears, without Claude's permission checks (`allowed-tools` is dropped); review the command before installing. |
+| `opencode/shell-unchecked` | warn | no | A command has ``!`…` ``, which OpenCode runs wherever it appears, without Claude's permission checks (`allowed-tools` is dropped); its hint wraps the shell in a template branch that keeps it from OpenCode. |
 | `opencode/shell-fence` | skip | yes | A command runs shell in a ```` ```! ```` fenced block, which OpenCode does not run and would send to the model as text; use inline ``!`…` ``. |
 | `skill-shell-dropped` | warn | no | A skill runs shell with ``!`…` `` or a ```` ```! ```` block; `gemini-cli` and `opencode` do not run shell in skills, so it reaches the model as text. |
 | `skill-arguments-dropped` | warn | no | A skill uses `$ARGUMENTS`, `$ARGUMENTS[N]` or `$N`; `gemini-cli` and `opencode` do not fill argument placeholders in skills, so they reach the model as written. |
@@ -1550,7 +1563,7 @@ the run, `lola check` included: they are never skip findings.
 | `claude-code/runtime-hook-shell-unsupported` | skip | yes | A shell-form hook runs in PowerShell, which cannot take the `export` lola adds; give it `args`. |
 | `claude-code/settings-local-not-ignored` | skip | yes | Git could commit `.claude/settings.local.json` (tracked, not ignored, or git missing or failing); add it to `.gitignore`. |
 | `claude-code/runtime-hook-event-invalid` | skip | no | A hooks event name is not an identifier, so it is no event Claude Code fires. |
-| `claude-code/runtime-hook-drift` | info | no | A hook group lola installed was edited or removed. On install and render lola leaves it out until `--force` writes it again, and prints the finding with that hint; on uninstall lola leaves your edited group alone. `--strict` does not fail on it. |
+| `claude-code/runtime-hook-drift` | info | no | A hook group lola installed was edited or removed. On install and render lola leaves it out until `--force` writes it again, and prints the finding with the hint `restore it:` and your run with `--force` (`lola render --force` after `lola profile`, which has no `--force`); on uninstall lola leaves your edited group alone. `--strict` does not fail on it. |
 | `probe/not-found` | info | no | The assistant is not on `PATH`; lola checked against the newest version it knows. |
 | `probe/unknown-version` | info | no | The assistant's version could not be read. |
 | `probe/cache` | info | no | The version was read but could not be cached. |

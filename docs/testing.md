@@ -26,7 +26,11 @@ Ginkgo/Gomega specs live beside the code, one suite per package.
   network.
 - **The command tree.** CLI specs (`internal/cli`) run the real cobra tree in-process with
   buffered, non-terminal streams. Convention specs walk the live command tree, and the
-  conformance suite (`internal/target/conformance`) walks the live target registry.
+  conformance suite (`internal/target/conformance`) walks the live target registry. Its
+  coaching spec (`coaching_test.go`) plans a module for every finding a target's capability
+  table and its own rendering produce, and fails on a finding with no hint that the target's
+  `nothingToDo` list does not name. A new key, rule or finding needs a hint, or an entry there
+  with the reason.
 - **No meta tests.** A spec never tests test files, source text, docs or repository layout, and
   never tests a test helper. Convention specs that walk the live cobra tree are fine.
 - **Regression names.** A spec that pins a fix keeps the name its design lists (specs named

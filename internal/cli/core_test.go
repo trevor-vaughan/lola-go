@@ -363,9 +363,25 @@ var _ = Describe("core commands", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ deploy: claude-code: a Stop hook group lola installed in .claude/settings.local.json is missing"))
 		Expect(lola("render", "-C", proj, "--strict").code).To(Equal(0), "--strict does not escalate drift")
-		Expect(r.out).To(ContainSubstring("hint: run with --force to restore it"))
+		restore := "lola render --root " + proj + " --force"
+		Expect(r.out).To(ContainSubstring("hint: restore it: " + restore))
+		Expect(runHint(restore).code).To(Equal(0))
+		Expect(os.ReadFile(settings)).To(ContainSubstring("stop.sh"), "the hint's run restores the group")
 		r = lola("render", "-C", proj, "--trust=runtime-hooks", "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
+	})
+
+	It("hints a forceable skip with the run that renders it anyway, and that run renders it", func() {
+		kit := filepath.Join(tmp, "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "agents/critic.md": "Criticize.\n"})
+		r := lola("install", kit, "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		run := "lola install " + kit + " --root " + proj + " --target claude-code --force"
+		Expect(r.out).To(ContainSubstring("hint: add description: to the agent's frontmatter; or render it anyway: " + run))
+		agent := filepath.Join(proj, ".claude/agents/critic.md")
+		Expect(agent).NotTo(BeAnExistingFile())
+		Expect(runHint(run).code).To(Equal(0))
+		Expect(agent).To(BeARegularFile())
 	})
 
 	It("lists an agent's inline MCP servers for consent with control and bidi characters replaced, and skips the agent without consent", func() {

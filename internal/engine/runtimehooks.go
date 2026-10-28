@@ -522,10 +522,11 @@ func cut(s string) string {
 // identified by its content the two look the same. Render and install leave such a group
 // absent and still owned (Plan 5b design §14: writing it again would run both copies) and
 // report it as info with a hint, since it records the user's choice rather than something lola
-// lost: --strict does not escalate it, and human output prints it because of its hint. --force
-// restores it. Uninstall, or a declined update, forgets it and leaves the file alone; its hint
-// says the edited group may still run files from the module copy under modules.
-func driftFindings(steps []plan.Step, modules string) []target.Finding {
+// lost: --strict does not escalate it, and human output prints it because of its hint, restore,
+// the run with --force that writes it again. Uninstall, or a declined update, forgets it and
+// leaves the file alone; its hint says the edited group may still run files from the module
+// copy under modules.
+func driftFindings(steps []plan.Step, modules, restore string) []target.Finding {
 	var out []target.Finding
 	for _, st := range steps {
 		if st.Kind != target.KindRuntimeHook {
@@ -535,7 +536,7 @@ func driftFindings(steps []plan.Step, modules string) []target.Finding {
 		f := target.Finding{Module: st.Module, Target: st.Target, Kind: target.KindRuntimeHook, Code: st.Target + "/runtime-hook-drift"}
 		switch st.Action {
 		case plan.ActionAbsent:
-			f.Severity, f.Hint = target.SeverityInfo, "run with --force to restore it"
+			f.Severity, f.Hint = target.SeverityInfo, "restore it: "+restore
 			f.Text = fmt.Sprintf("a %s hook group lola installed in %s is missing (edited or removed); lola leaves it out", event, path)
 		case plan.ActionForget:
 			f.Severity = target.SeverityInfo

@@ -745,6 +745,14 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		}
 		for i := range fs {
 			fs[i].Module = m.Name
+			// A skip --force can render gets the user's run with --force, after the target's own fix.
+			if fs[i].Severity == target.SeveritySkip && fs[i].Forceable && opts.ForceRun != "" {
+				anyway := "render it anyway: " + opts.ForceRun
+				if fs[i].Hint != "" {
+					anyway = fs[i].Hint + "; or " + anyway
+				}
+				fs[i].Hint = anyway
+			}
 		}
 		intents, finds = append(intents, ins...), append(finds, fs...)
 		mr.Targets = append(mr.Targets, id)
@@ -940,7 +948,9 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		p.Steps[i].Scope = sc.Kind.String()
 	}
 	res.Steps = append(res.Steps, p.Steps...)
-	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules)...)
+	// lola profile has no --force: lola render --force restores a missing group for it.
+	restore := cmp.Or(opts.ForceRun, e.Command(sc, "render", append(slices.Clone(opts.Display), "--force")...))
+	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules, restore)...)
 	jobs, err := e.planHooks(sc, copies, opts, unasked, res)
 	if err != nil {
 		return nil, err

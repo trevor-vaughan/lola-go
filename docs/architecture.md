@@ -540,6 +540,11 @@ The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
   failures that are not about module content. `target.Skipped` applies `--force` (forceable
   skips are rendered, marked `Forced`); `engine.StrictError` decides what `--strict` refuses.
   Load warnings become findings about the module; the engine's own messages stay `Notice`s.
+  A finding the user can act on carries a `Hint`. `Admit` names the attribute-file entry, name
+  pattern or version; each target names its own template branch or change; and the engine
+  appends the run with `--force` (`Options.ForceRun`) to a forceable skip. The conformance
+  suite's coaching spec drives each target's live table and own findings, and fails on a
+  hintless finding its `nothingToDo` list does not explain.
 - **Capability tables.** Each target declares `Capabilities`: supported artifact kinds,
   frontmatter keys with value shapes and patterns (or always dropped), required keys, name
   patterns, and content rules. `target.Admit` checks one artifact against them, returns the

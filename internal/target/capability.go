@@ -97,7 +97,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	var finds []Finding
 	render := true
 	if spec.excludes(ctx.Version) {
-		finds = append(finds, versionFinding(at, fmt.Sprintf("%s %s has no place for %ss (added in %s)", id, ctx.Version, kind, spec.Since)))
+		finds = append(finds, versionFinding(at, fmt.Sprintf("%s %s has no place for %ss (added in %s)", id, ctx.Version, kind, spec.Since), spec.Since))
 	}
 	skip := func(f Finding) {
 		f, r := Skipped(ctx, f)
@@ -106,6 +106,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	if spec.Name != nil && !spec.Name.MatchString(name) {
 		f := at
 		f.Code, f.Text, f.Forceable = "name-rejected", fmt.Sprintf("%s needs %s names matching %s", id, kind, spec.Name), true
+		f.Hint = fmt.Sprintf("rename the %s so its name matches %s", kind, spec.Name)
 		skip(f)
 	}
 	var drop []string
@@ -125,12 +126,17 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 			continue
 		case known && v.Drop != "":
 			f.Severity, f.Text = v.Drop, fmt.Sprintf("%s dropped: %s", k, v.Note)
+			if v.Drop != SeverityInfo { // an info drop is lossless: nothing to do
+				f.Hint = keyHint(id, kind, name, k, "")
+			}
 		case known && !v.accepts(doc.Frontmatter[k]):
 			f.Code, f.Text = "frontmatter-value-dropped", fmt.Sprintf("%s dropped: %s needs %s", k, id, v.describe())
+			f.Hint = keyHint(id, kind, name, k, v.describe())
 		case !known && !spec.Open:
 			f.Text = fmt.Sprintf("%s dropped: %s does not support it", k, id)
+			f.Hint = keyHint(id, kind, name, k, "")
 		case known && v.excludes(ctx.Version):
-			finds = append(finds, versionFinding(at, fmt.Sprintf("%s %s ignores %s (added in %s)", id, ctx.Version, k, v.Since)))
+			finds = append(finds, versionFinding(at, fmt.Sprintf("%s %s ignores %s (added in %s)", id, ctx.Version, k, v.Since), v.Since))
 			continue
 		default:
 			continue
@@ -153,7 +159,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 		}
 		if !rule.newest() {
 			if canonical(ctx.Version) != "" && !rule.excludes(ctx.Version) {
-				f := versionFinding(at, fmt.Sprintf("%s in %s %s (fixed in %s)", rule.Text, id, ctx.Version, rule.Until))
+				f := versionFinding(at, fmt.Sprintf("%s in %s %s (fixed in %s)", rule.Text, id, ctx.Version, rule.Until), rule.Until)
 				f.Code = "version/limited"
 				finds = append(finds, f)
 			}
@@ -186,10 +192,32 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 }
 
 // versionFinding is a warn about a gap between the newest version, which lola renders for,
-// and the installed one.
-func versionFinding(at Finding, text string) Finding {
-	at.Severity, at.Code, at.Text, at.Hint = SeverityWarn, "version/unsupported", text, "upgrade "+at.Target
+// and the installed one; its hint names version, the one to upgrade to.
+func versionFinding(at Finding, text, version string) Finding {
+	at.Severity, at.Code, at.Text = SeverityWarn, "version/unsupported", text
+	at.Hint = fmt.Sprintf("upgrade %s to %s or later", at.Target, version)
 	return at
+}
+
+// keyHint coaches a frontmatter key k that id drops from the artifact of kind named name: the
+// entry of the artifact's attribute file (Plan 7 §3.4) that gives id the value value, or, when
+// value is "", leaves k out for id. For name, which attribute files refuse, it names the change
+// to the frontmatter instead.
+func keyHint(id, kind, name, k, value string) string {
+	if k == "name" {
+		if value == "" {
+			return fmt.Sprintf("remove name: from the %s's frontmatter", kind)
+		}
+		return fmt.Sprintf("in the %s's frontmatter, give name: %s, or remove it", kind, value)
+	}
+	file := name + ".targets.yaml beside the " + kind
+	if kind == "skill" {
+		file = "SKILL.targets.yaml beside the skill's SKILL.md"
+	}
+	if value == "" {
+		return fmt.Sprintf("leave %s out for %s: in %s, add %s: {%s: null}", k, id, file, id, k)
+	}
+	return fmt.Sprintf("in %s, set %s's %s to %s, or to null to leave it out", file, id, k, value)
 }
 
 // invalid is the finding for frontmatter lola could parse but cannot re-encode: never rendered.
@@ -200,11 +228,12 @@ func invalid(at Finding, err error) Finding {
 
 // ToolsGuard is the Guard of an agent's tools key. Gemini CLI and OpenCode give an agent without
 // a tool list every tool, so a list the target cannot enforce must not be dropped quietly (user
-// decision 2026-10-09). fix is the target's own remedy, shown before the --force alternative.
+// decision 2026-10-09). fix is the target's own remedy; the engine adds the run with --force
+// that installs the agent unrestricted.
 func ToolsGuard(id, fix string) *Finding {
 	return &Finding{Code: "agent-tools-unenforceable",
 		Text: id + " cannot enforce this agent's tool list; without it the agent can use every tool",
-		Hint: fix + ", or pass --force to install it unrestricted"}
+		Hint: fix}
 }
 
 // blank reports a frontmatter value that sets nothing: null, "", or an empty list or map.

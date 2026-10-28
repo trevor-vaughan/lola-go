@@ -83,8 +83,52 @@ var _ = Describe("Admit", func() {
 		Expect(codes(fs)).To(Equal([]string{"warn frontmatter-key-dropped", "warn frontmatter-value-dropped", "warn frontmatter-value-dropped",
 			"warn frontmatter-value-dropped", "warn frontmatter-value-dropped", "warn frontmatter-value-dropped"}))
 		Expect(fs[2].Text).To(Equal("model dropped: t needs a string matching ^gemini-"))
+		Expect(fs[2].Hint).To(Equal("in rev.targets.yaml beside the agent, set t's model to a string matching ^gemini-, or to null to leave it out"))
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "t", Kind: "agent", Artifact: "rev",
-			Code: "frontmatter-key-dropped", Text: "color dropped: t does not support it"}))
+			Code: "frontmatter-key-dropped", Text: "color dropped: t does not support it",
+			Hint: "leave color out for t: in rev.targets.yaml beside the agent, add t: {color: null}"}))
+	})
+
+	It("coaches each finding it can: the attribute file entry, the name, or the version to upgrade to", func() {
+		_, fs, ok := admit("agent", "Rev", "---\ndescription: d\nhidden: maybe\n---\nx\n")
+		Expect(ok).To(BeFalse())
+		Expect(fs).To(Equal([]target.Finding{
+			{Severity: target.SeveritySkip, Target: "t", Kind: "agent", Artifact: "Rev", Code: "name-rejected",
+				Text: "t needs agent names matching ^[a-z]+$", Hint: "rename the agent so its name matches ^[a-z]+$", Forceable: true},
+			{Severity: target.SeverityWarn, Target: "t", Kind: "agent", Artifact: "Rev", Code: "frontmatter-value-dropped",
+				Text: "hidden dropped: t needs a bool", Hint: "in Rev.targets.yaml beside the agent, set t's hidden to a bool, or to null to leave it out"},
+		}))
+
+		_, fs, _ = admit("agent", "rev", "---\ndescription: d\nname: rev\n---\nx\n")
+		Expect(fs).To(ConsistOf(HaveField("Hint", "")), "an info drop is lossless: nothing to do")
+
+		named := target.Capabilities{Kinds: map[string]target.KindSpec{
+			"skill": {Keys: map[string]target.Value{
+				"name":  {Shape: target.ShapeString, Pattern: regexp.MustCompile(`^[a-z]+$`)},
+				"hooks": {Drop: target.SeverityWarn, Note: "t runs no hooks"}}},
+			"command": {},
+		}}
+		_, fs, _ = target.Admit("t", named, ctx, "skill", "s", doc("---\nhooks: {}\nname: S\nother: x\n---\nx\n"))
+		Expect(fs).To(HaveExactElements(
+			HaveField("Hint", "leave hooks out for t: in SKILL.targets.yaml beside the skill's SKILL.md, add t: {hooks: null}"),
+			HaveField("Hint", "in the skill's frontmatter, give name: a string matching ^[a-z]+$, or remove it"),
+			HaveField("Hint", "leave other out for t: in SKILL.targets.yaml beside the skill's SKILL.md, add t: {other: null}")))
+		_, fs, _ = target.Admit("t", named, ctx, "command", "c", doc("---\nname: c\n---\nx\n"))
+		Expect(fs).To(ConsistOf(HaveField("Hint", "remove name: from the command's frontmatter")), "attribute files refuse name")
+	})
+
+	It("coaches the shell and placeholders a target leaves in a skill with a template branch on target", func() {
+		rules := target.Capabilities{Kinds: map[string]target.KindSpec{"skill": {Open: true}}, Rules: target.SkillRules("t")}
+		_, fs, ok := target.Admit("t", rules, ctx, "skill", "s", doc("Run !`git diff` on $1\n"))
+		Expect(ok).To(BeTrue())
+		Expect(fs).To(Equal([]target.Finding{
+			{Severity: target.SeverityWarn, Target: "t", Kind: "skill", Artifact: "s", Code: "skill-shell-dropped",
+				Text: "t does not run shell in skills; it reaches the model as text",
+				Hint: `wrap the shell in {% if target != "t" %}…{% endif %} in the skill's SKILL.md.liquid template`},
+			{Severity: target.SeverityWarn, Target: "t", Kind: "skill", Artifact: "s", Code: "skill-arguments-dropped",
+				Text: "t does not fill argument placeholders in skills; they reach the model as written",
+				Hint: `wrap the placeholders in {% if target != "t" %}…{% endif %} in the skill's SKILL.md.liquid template`},
+		}))
 	})
 
 	DescribeTable("checks positive integers and maps",
@@ -265,6 +309,15 @@ var _ = Describe("Admit", func() {
 			Expect(at("", "command", "Use $1\n")).To(BeEmpty())
 			Expect(at("nightly", "command", "Use $1\n")).To(BeEmpty(), "a malformed version adds nothing")
 			Expect(at("2.1.287.1", "command", "Use $1\n")).To(BeEmpty())
+		})
+
+		It("names the version to upgrade to", func() {
+			fs, _ := admitAt("0.9.0", "agent", "---\ndescription: d\n---\nx\n")
+			Expect(fs).To(ConsistOf(HaveField("Hint", "upgrade t to 1.0.0 or later")))
+			fs, _ = admitAt("1.1.0", "agent", "---\ndescription: d\nkind: local\n---\nx\n")
+			Expect(fs).To(ConsistOf(HaveField("Hint", "upgrade t to 1.2.0 or later")))
+			fs, _ = admitAt("1.5.0", "command", "Use $1\n")
+			Expect(fs).To(ConsistOf(HaveField("Hint", "upgrade t to 2.0.0 or later")))
 		})
 	})
 
