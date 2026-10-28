@@ -1,0 +1,34 @@
+internal/engine/ops.go
+  s_51684f47240dfe::t_753bfd833bff01 58
+internal/engine/engine.go
+  s_51684f47240dfe::t_753bfd833bff01 81-84,407-411,413-427
+internal/engine/check.go
+  s_51684f47240dfe::t_753bfd833bff01 62
+internal/cli/root.go
+  s_51684f47240dfe::t_6fef8d81eda887 57-61,63-64
+  s_51684f47240dfe::t_753bfd833bff01 62,132,169
+internal/engine/tidy.go
+  s_51684f47240dfe::t_753bfd833bff01 299,332
+internal/cli/hints_test.go
+  s_51684f47240dfe::t_6fef8d81eda887 184-187
+  s_51684f47240dfe::t_753bfd833bff01 180-183,188,191-214
+internal/engine/sync_test.go
+  s_51684f47240dfe::t_753bfd833bff01 1447-1448,1454-1455,1459-1464,1467-1487
+  s_51684f47240dfe::t_c18d2dbeaaa177 1488
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ab86fe649eb736985dc3d0f5f9021d2a13e4c476",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
