@@ -1,0 +1,39 @@
+docs/guides/sync-and-trust.md
+  s_cbea84d9628a69::t_e106ddfce860b7 25-49,52-54,56-62
+  s_cbea84d9628a69::t_80bbb657465140 18
+  s_cbea84d9628a69::t_06bddd09ff860f 140-149
+  s_cbea84d9628a69::t_ca0f1e2b4eb49f 154-168
+  s_cbea84d9628a69::t_4c40136b8a1a92 346
+  s_cbea84d9628a69::t_6538d87a8aefd6 371-381
+  s_cbea84d9628a69::t_c68e68595d3116 318-319,325-345,347-360
+  s_cbea84d9628a69::t_99973a9b41da6a 170-184
+  s_cbea84d9628a69::t_26144c52bd2c3d 3-6
+  s_cbea84d9628a69::t_7341ec1013e1ee 243,248-271,273,275-281
+  s_cbea84d9628a69::t_3bf1df94ac9347 20-22
+  s_cbea84d9628a69::t_846fa83f0e2b7e 64-79
+  s_cbea84d9628a69::t_69c4ae035eb229 85-124,126-128,130-139
+  s_cbea84d9628a69::t_443d0dd2ef3fa2 50-51
+  s_cbea84d9628a69::t_4673f95029f6ff 55
+  s_cbea84d9628a69::t_f08ca28c8954af 63
+  s_cbea84d9628a69::t_8da05cc1740fd3 125
+  s_cbea84d9628a69::t_aa5ab9c7b493ce 129
+  s_cbea84d9628a69::t_17d001911687f5 272
+  s_cbea84d9628a69::t_33eea5daf1eb11 274
+  s_cbea84d9628a69::t_fd5d2f554a496a 282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "030e6e1a3b11e8819f074f1dbadd6c88b68f652a",
+  "prompts": {},
+  "sessions": {
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
