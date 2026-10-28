@@ -1,0 +1,19 @@
+internal/engine/repair.go
+  s_51684f47240dfe::t_43c2688e7ab352 22-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e2ca3419c7c9e678bce2c37e6f968bce65c24e6",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
