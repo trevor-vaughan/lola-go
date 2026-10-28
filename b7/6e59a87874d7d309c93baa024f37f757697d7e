@@ -1,0 +1,37 @@
+docs/decisions.md
+  s_cbea84d9628a69::t_4028b076e79716 61
+  s_cbea84d9628a69::t_d7ecc63eedd522 160
+  s_cbea84d9628a69::t_276cfc22929359 15
+  s_cbea84d9628a69::t_393b31d326d106 6-11
+  s_cbea84d9628a69::t_aac631dde48a8b 87
+  s_cbea84d9628a69::t_7a01197a0b65fb 136
+  s_cbea84d9628a69::t_84df940fb4d80a 97
+  s_cbea84d9628a69::t_9ec849aa5bb129 93
+  s_cbea84d9628a69::t_06d6ca66925305 96
+  s_cbea84d9628a69::t_067db3dfa7f7eb 161
+  s_cbea84d9628a69::t_dc3f3c777d543e 45
+  s_cbea84d9628a69::t_7638359df8e9f0 20
+  s_cbea84d9628a69::t_d99ee36a2eba7d 32
+  s_cbea84d9628a69::t_0c6faa0cb3d1e7 141
+  s_cbea84d9628a69::t_d2cac6eb2266e6 21
+  s_cbea84d9628a69::t_b107d18e779f20 14
+  s_cbea84d9628a69::t_37c478dbb022c5 28
+  s_cbea84d9628a69::t_3866e3f04054f4 114
+  s_cbea84d9628a69::t_5637506d2ddff7 162-306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b76e59a87874d7d309c93baa024f37f757697d7e",
+  "prompts": {},
+  "sessions": {
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
