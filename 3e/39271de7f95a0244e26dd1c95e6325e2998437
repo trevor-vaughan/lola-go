@@ -1,0 +1,22 @@
+.taskfiles/e2e.yml
+  s_51684f47240dfe::t_5234c8a0a896b8 3-7,24-27
+  s_51684f47240dfe::t_c199dc795bd78f 28
+Taskfile.yml
+  s_51684f47240dfe::t_5234c8a0a896b8 41-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e39271de7f95a0244e26dd1c95e6325e2998437",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
