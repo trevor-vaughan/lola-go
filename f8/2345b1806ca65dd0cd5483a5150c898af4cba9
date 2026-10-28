@@ -1,0 +1,28 @@
+internal/engine/market.go
+  s_92ac1d95f09be8::t_c454f063111095 201-204,216,237,251,254,276,292,560-562,721,927,940,968-970,987-990,1002,1010,1024,1033,1035,1052,1063,1079,1127-1131,1133-1139,1231,1237-1243,1246-1247,1323-1330
+internal/engine/market_ssh.go
+  s_92ac1d95f09be8::t_c454f063111095 72-87,91,158-160,185,208,221
+internal/engine/market_test.go
+  s_92ac1d95f09be8::t_a5bae43977f201 1100
+  s_92ac1d95f09be8::t_4e0219045ef355 1054-1099,1101-1127
+internal/engine/market_remove.go
+  s_92ac1d95f09be8::t_c454f063111095 164
+internal/engine/market_verbs.go
+  s_92ac1d95f09be8::t_c454f063111095 108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f82345b1806ca65dd0cd5483a5150c898af4cba9",
+  "prompts": {},
+  "sessions": {
+    "s_92ac1d95f09be8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f71c8b1-35f8-4405-acd5-2ffb9cb526fc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
