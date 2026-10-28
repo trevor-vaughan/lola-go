@@ -1,0 +1,60 @@
+docs/architecture.md
+  s_cbea84d9628a69::t_bc978f9c9bffc4 1095-1105
+  s_cbea84d9628a69::t_f24fe212479ee5 88-95,106-112
+  s_cbea84d9628a69::t_5dff405f6c2e64 1006-1008
+  s_cbea84d9628a69::t_7c9f069df84476 40-51
+  s_cbea84d9628a69::t_ec08db52a83953 422-465
+  s_cbea84d9628a69::t_8a024bde49ae37 1080-1091
+  s_cbea84d9628a69::t_9a30a89c41c732 691-701
+  s_cbea84d9628a69::t_695b6b573e087f 119,121-147
+  s_cbea84d9628a69::t_3d846bd65bfd6a 941
+  s_cbea84d9628a69::t_253fd20b2d5d58 748-756
+  s_cbea84d9628a69::t_d61fb680d01013 1259-1260
+  s_cbea84d9628a69::t_9a0da2d9b707df 148-192
+  s_cbea84d9628a69::t_7345bde56434e3 274
+  s_cbea84d9628a69::t_a1eabb2894d061 880-881
+  s_cbea84d9628a69::t_4c1ba843dbdba6 113-114
+  s_cbea84d9628a69::t_301d72e2fc5a78 893-894
+  s_cbea84d9628a69::t_ddacceb0b481db 63
+  s_cbea84d9628a69::t_824cdfffd8773b 275
+  s_cbea84d9628a69::t_09c69b81517c9b 1122
+  s_cbea84d9628a69::t_4a6d18c979cc8e 1030-1031
+  s_cbea84d9628a69::t_64592420800206 115-116
+  s_cbea84d9628a69::t_dd873c36f3e247 389-390
+  s_cbea84d9628a69::t_63f76a406ce887 685
+  s_cbea84d9628a69::t_33969b946bb554 3-11,13-15
+  s_cbea84d9628a69::t_1e46fd07f561ae 870-871
+  s_cbea84d9628a69::t_a5e0375ca13d49 970-973
+  s_cbea84d9628a69::t_3008381b7100ae 62,64-71
+  s_cbea84d9628a69::t_da9c8443188f1e 702-713
+  s_cbea84d9628a69::t_a1d98973900bda 298-300
+  s_cbea84d9628a69::t_4ed15d77f484be 284-287
+  s_cbea84d9628a69::t_3f181754eac84e 1047-1079
+  s_cbea84d9628a69::t_8eac2a2522e409 210-219
+  s_cbea84d9628a69::t_bc36b3406d8715 989
+  s_cbea84d9628a69::t_9ae11f7d5e870c 926
+  s_cbea84d9628a69::t_1840129e603fb2 1025-1029
+  s_cbea84d9628a69::t_e7e5e753a9658b 1184
+  s_cbea84d9628a69::t_5771df03800607 981
+  s_cbea84d9628a69::t_4fb3a3dec291cb 601
+  s_cbea84d9628a69::t_c03af31df87504 618-619
+  s_cbea84d9628a69::t_8da2ff8c880da2 260-261
+  s_cbea84d9628a69::t_b6bc37bf0fb63d 96-105
+  s_cbea84d9628a69::t_9b092b809b719d 466
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90addd6d0c2776a2fe5c18ce52479a74e1911558",
+  "prompts": {},
+  "sessions": {
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
