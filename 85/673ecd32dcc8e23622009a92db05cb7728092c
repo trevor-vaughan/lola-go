@@ -1,0 +1,27 @@
+docs/architecture.md
+  s_92ac1d95f09be8::t_38d66918f797d2 186-187,2325-2327
+docs/decisions.md
+  s_92ac1d95f09be8::t_b5da0271706f7c 112
+docs/guides/marketplaces.md
+  s_92ac1d95f09be8::t_f13d78fe7e80d5 108-109
+  s_92ac1d95f09be8::t_859e4d82025818 18-19,98-105,110,120-124,136-142,152-155,200-201,210-212,227-232
+  s_92ac1d95f09be8::t_b5da0271706f7c 106-107
+docs/usage.md
+  s_92ac1d95f09be8::t_b5da0271706f7c 373,385,390-399,417-418,1320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85673ecd32dcc8e23622009a92db05cb7728092c",
+  "prompts": {},
+  "sessions": {
+    "s_92ac1d95f09be8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f71c8b1-35f8-4405-acd5-2ffb9cb526fc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
