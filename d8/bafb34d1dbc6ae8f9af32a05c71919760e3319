@@ -1,0 +1,22 @@
+docs/guides/migrating.md
+  s_cbea84d9628a69::t_620608ff53e99e 116
+  s_cbea84d9628a69::t_5dedf9752dcd7a 115
+  s_cbea84d9628a69::t_59c3f0a965ea33 12-100,102-114,117-132,134-157,162-244,251-273,278-294,305-306,314-315,317-326
+  s_cbea84d9628a69::t_79985a95d0131c 274-277
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d8bafb34d1dbc6ae8f9af32a05c71919760e3319",
+  "prompts": {},
+  "sessions": {
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
