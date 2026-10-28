@@ -1,0 +1,19 @@
+docs/guides/marketplaces.md
+  s_92ac1d95f09be8::t_3281a28da89749 141-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ce6dae78989fbc8652228f3c0724b6fe9c0a14e",
+  "prompts": {},
+  "sessions": {
+    "s_92ac1d95f09be8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f71c8b1-35f8-4405-acd5-2ffb9cb526fc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
