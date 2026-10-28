@@ -1,0 +1,30 @@
+internal/engine/market.go
+  s_92ac1d95f09be8::t_b11e378414e5c4 81-83,87-88,1199-1200,1202-1205,1215-1237,1257,1278,1301-1303,1308-1310,1320-1325,1329,1332-1333,1335-1339,1342,1348,1355,1359,1362-1372,1380
+  s_92ac1d95f09be8::t_4d302d4b23e6d9 84-86,103-105,171-174,184-187
+  s_92ac1d95f09be8::t_92604fb58a5ab0 529,538,559-560,767-769,810
+  s_92ac1d95f09be8::t_3d853a33e7728d 558,1002-1005,1031,1075-1078,1108,1118-1120,1123-1125
+  s_92ac1d95f09be8::t_5e61a46c13be4e 974-975
+internal/engine/market_sync.go
+  s_92ac1d95f09be8::t_b11e378414e5c4 98
+internal/engine/market_ssh.go
+  s_92ac1d95f09be8::t_2e9a6d544d0b3f 1-147,149-237
+  s_92ac1d95f09be8::t_3eca034f0d553d 148
+internal/engine/market_test.go
+  s_92ac1d95f09be8::t_fc4fe5800bcc39 795-1059
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8d8e4581ba1b2837e532a8f6a655182dd3f67ab1",
+  "prompts": {},
+  "sessions": {
+    "s_92ac1d95f09be8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f71c8b1-35f8-4405-acd5-2ffb9cb526fc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
