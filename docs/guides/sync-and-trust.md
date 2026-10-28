@@ -303,7 +303,7 @@ other command's output, and help, opens the same way. A `$LOLA_PAGER` you set is
 split on whitespace and run without a shell (`LESS=FRX` when `LESS` is unset; `cat` prints); lola
 never runs a pager found in the current directory (a relative entry in `PATH`): it warns and
 prints the diff instead, as it does when the pager is missing or fails. Ctrl+C belongs to the
-pager while it runs. `--no-pager`, `NO_PAGER`, accessible mode (`LOLA_ACCESSIBLE=1`, `TERM=dumb`), or
+pager while it runs. `--no-pager`, a non-empty `NO_PAGER`, accessible mode (`LOLA_ACCESSIBLE=1`, `TERM=dumb`), or
 `pager: false` in your `config.yaml` (never a project's) turns the viewer off; `--json`, `--plain` and output that is not a terminal never use
 it. lola reads `pager` only when it could open the viewer; a malformed `pager` value is then a
 warning, and the output is printed. Like any malformed key, it still fails a command that reads

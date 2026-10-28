@@ -10,6 +10,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -90,19 +91,24 @@ func diffLine(d engine.ComponentDiff) string {
 	return strings.Join(parts, ", ")
 }
 
-// printSummary prints §4.5's summary on stderr: per destination and assistant the component
-// diff, each destination's source, the selections.yaml changes, dropped answers, and the
-// equivalent commands.
-func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *engine.Preview) {
+// printSummary writes the review's summary (§4.5, Plan 10 §5): each destination with its
+// directory and where it came from; per assistant, why it was chosen, and each module's component
+// diff; the selections.yaml changes, the notices, the findings a dry run of the install reports
+// with their hints, dropped answers, and the equivalent commands.
+func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *engine.Preview, findings []target.Finding) {
 	fmt.Fprintln(w, "Summary:")
 	for _, line := range fl.choices.Resolved {
 		fmt.Fprintln(w, "  "+line)
 	}
 	for _, c := range fl.scopes {
 		key := c.Scope.Key()
-		fmt.Fprintf(w, "  %s, %s:\n", destLabel(c.Scope), scopeSourceLabel(c))
+		dest := destLabel(c.Scope)
+		if c.Scope.ProjectDir == "" {
+			dest += " (" + untrusted.Text(fl.eng.Paths.Home, untrusted.MaxName) + ")"
+		}
+		fmt.Fprintf(w, "  %s, %s:\n", dest, scopeSourceLabel(c))
 		for _, id := range fl.assistants(key) {
-			fmt.Fprintf(w, "    %s:\n", id)
+			fmt.Fprintf(w, "    → for %s (%s)\n", id, fl.why[key])
 			for _, name := range fl.modules {
 				if m := fl.choices.Module(name); m != nil {
 					fmt.Fprintf(w, "      %s: %s\n", name, diffLine(m.Diff(key, id, pv.Selected[key][name])))
@@ -118,6 +124,13 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 	}
 	for _, n := range pv.Notices {
 		fmt.Fprintln(w, "  "+noticeLine(style{}, n))
+	}
+	var found strings.Builder
+	printFindings(&found, style{}, findings)
+	for _, line := range strings.SplitAfter(found.String(), "\n") {
+		if line != "" {
+			fmt.Fprint(w, "  "+line)
+		}
 	}
 	for _, d := range []struct {
 		n   int

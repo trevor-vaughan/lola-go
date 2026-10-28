@@ -256,7 +256,7 @@ ENVIRONMENT
   NO_COLOR         disable color when set (https://no-color.org)
   LOLA_ACCESSIBLE  1 asks lola's questions and pickers as numbered line prompts and prints without the viewer (also TERM=dumb)
   LOLA_PAGER       the pager for output taller than the terminal, instead of lola's viewer; cat prints it
-  NO_PAGER         set to anything, prints without the viewer or a pager
+  NO_PAGER         set to a non-empty value, prints without the viewer or a pager
   LOLA_HOME        the directory lola migrate reads (default ~/.lola)
   HOME             user-scope root and base of the XDG defaults
   PATH             where lola finds installed assistants; absolute entries only

@@ -154,6 +154,17 @@ var _ = Describe("the viewer (Plan 10 §2)", func() {
 			"lines 1–3 of 3 · 100%  ↑↓/jk line · space/b page · g/G top/end · y apply · c change · n cancel"))
 	})
 
+	It("without a step to change, offers no c and ignores it", func() {
+		m := newViewer(numbered(3), true, 100, 10)
+		m.noChange = true
+		Expect(ansiStrip(m.footer())).To(Equal("lines 1–3 of 3 · 100%  ↑↓/jk line · space/b page · g/G top/end · y apply · n cancel"))
+		_, q := quits(m, keyC)
+		Expect(q).To(BeFalse(), "c does nothing")
+		m, q = quits(m, keyY)
+		Expect(q).To(BeTrue())
+		Expect(m.Answer()).To(Equal(viewApply))
+	})
+
 	It("cuts its footer to the width", func() {
 		f := ansiStrip(newViewer(numbered(30), true, 30, 10).footer())
 		Expect(f).To(Equal("lines 1–9 of 30 · 0%  ↑↓/jk l…"))
@@ -201,7 +212,7 @@ var _ = Describe("a.view, the viewer on the terminal (Plan 10 §2.1)", func() {
 
 	It("in read mode shows the text on stdout, then prints it there whole", func() {
 		cmd.SetIn(keys("jjq"))
-		ans, err := a().view(cmd, numbered(30), false)
+		ans, err := a().view(cmd, numbered(30), false, false)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal(viewCancel))
 		Expect(out.String()).To(ContainSubstring(altScreen))
@@ -212,7 +223,7 @@ var _ = Describe("a.view, the viewer on the terminal (Plan 10 §2.1)", func() {
 	DescribeTable("in confirm mode asks on stderr, then prints the text there whole, and returns the answer",
 		func(typed string, answer viewAnswer) {
 			cmd.SetIn(keys(typed))
-			ans, err := a().view(cmd, numbered(30), true)
+			ans, err := a().view(cmd, numbered(30), true, true)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ans).To(Equal(answer))
 			Expect(errb.String()).To(ContainSubstring(altScreen))

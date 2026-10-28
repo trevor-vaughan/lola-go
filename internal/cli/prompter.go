@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 )
@@ -143,6 +144,19 @@ const (
 	ScopeOther   = "other"
 )
 
+// Steps numbers a step's fields across one pass of the install flow (Plan 10 §5): its first
+// field is step At of Of. The zero value, which every command but install asks with, numbers
+// nothing.
+type Steps struct{ At, Of int }
+
+// title is the title of the step's i-th field: "Step n of m — t", or t when nothing is numbered.
+func (s Steps) title(i int, t string) string {
+	if s.Of < 2 {
+		return t
+	}
+	return fmt.Sprintf("Step %d of %d — %s", s.At+i, s.Of, t)
+}
+
 // ScopeStep asks Question, offering Project (at ProjectRoot), User and Other directory…; One
 // says the command takes one of them. Nothing is preselected on the first run; when install's
 // Change scope asks again, Preselect is the last answer.
@@ -153,6 +167,7 @@ type ScopeStep struct {
 	Preselect   []string
 	Problem     string
 	One         bool
+	Step        Steps
 }
 
 // DirectoryStep asks for the Other directory. Value is the answer offered to edit (the last
@@ -182,6 +197,7 @@ type ModuleStep struct {
 	Browse    bool
 	Preselect []string
 	Problem   string
+	Step      Steps
 }
 
 // ModuleGroup is one marketplace in the module picker: Title is "@acme — <description>", and
@@ -215,6 +231,7 @@ type AssistantStep struct {
 	Options   []string
 	Preselect []string
 	Scopes    []string
+	Step      Steps
 }
 
 // ComponentOption is one component of a page. Label is "name — first line of description",
@@ -236,12 +253,25 @@ type ComponentGroup struct {
 }
 
 // ComponentPage is one module's components for one scope, or for both when their
-// preselections are equal. Footer is the read-only runtime hooks line, or "".
+// preselections are equal. Footer is the read-only runtime hooks line, or "". Step numbers its
+// lists, the disabled ones left out.
 type ComponentPage struct {
 	Module string
 	Title  string
 	Groups []ComponentGroup
 	Footer string
+	Step   Steps
+}
+
+// lists is how many lists the page asks: one per group, the disabled ones left out.
+func (pg ComponentPage) lists() int {
+	n := 0
+	for _, g := range pg.Groups {
+		if !g.Disabled {
+			n++
+		}
+	}
+	return n
 }
 
 // Review menu answers.
@@ -254,10 +284,13 @@ const (
 	ReviewQuit       = "quit"
 )
 
-// ReviewStep is the menu after the summary. Options are the answers it offers, in order: Apply,
-// a Change entry for each step the flags left open, and Quit.
+// ReviewStep is the install's last step (Plan 10 §5): Summary, what the run will do, already made
+// safe to print, and Options, the answers it offers, in order: Apply, a Change entry for each step
+// the flags left open, and Quit.
 type ReviewStep struct {
+	Summary string
 	Options []string
+	Step    Steps
 }
 
 // errNoTerminal is what the non-interactive Prompter answers; the flow never asks it.

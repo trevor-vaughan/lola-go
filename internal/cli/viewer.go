@@ -32,9 +32,11 @@ type viewerModel struct {
 	vp      viewport.Model
 	content string
 	confirm bool
-	answer  viewAnswer
-	width   int
-	s       style
+	// noChange drops the c key and its footer entry, for a review with no answer to change.
+	noChange bool
+	answer   viewAnswer
+	width    int
+	s        style
 }
 
 // newViewer is a viewer over content sized to a terminal of width columns and height rows, the
@@ -70,7 +72,7 @@ func (m viewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		case "y", "c":
-			if m.confirm {
+			if m.confirm && (msg.String() == "y" || !m.noChange) {
 				m.answer = viewApply
 				if msg.String() == "c" {
 					m.answer = viewChange
@@ -112,6 +114,9 @@ func (m viewerModel) footer() string {
 	keys := "↑↓/jk line · space/b page · g/G top/end · q quit"
 	if m.confirm {
 		keys = "↑↓/jk line · space/b page · g/G top/end · y apply · c change · n cancel"
+		if m.noChange {
+			keys = "↑↓/jk line · space/b page · g/G top/end · y apply · n cancel"
+		}
 	}
 	return ansi.Truncate(m.s.strong(pos)+"  "+m.s.paint("36", keys), m.width, "…")
 }
@@ -121,14 +126,14 @@ func (m viewerModel) footer() string {
 // with the answer (viewCancel in read mode). It then prints content where it showed it, so it stays in the terminal's
 // scrollback. The keys come from stdin, or from the terminal when stdin is not one. Ctrl+C
 // arriving as a signal is a quit.
-func (a *app) view(cmd *cobra.Command, content string, confirm bool) (viewAnswer, error) {
+func (a *app) view(cmd *cobra.Command, content string, confirm, change bool) (viewAnswer, error) {
 	out := cmd.OutOrStdout()
 	if confirm {
 		out = cmd.ErrOrStderr()
 	}
 	width, height := a.width(out), a.height(out)
 	m := newViewer(content, confirm, width, height)
-	m.s = style{color: a.color(out)}
+	m.s, m.noChange = style{color: a.color(out)}, !change
 	opts := []tea.ProgramOption{tea.WithOutput(out), tea.WithWindowSize(width, height)}
 	if in := cmd.InOrStdin(); in != os.Stdin {
 		opts = append(opts, tea.WithInput(in))

@@ -165,6 +165,13 @@ on a rerun after everything migrated) is a warning, never an error: `⚠ --map-r
 nothing` (in `warnings` under `--json`). A map that matches a path counts as used even when a
 longer map moves it.
 
+Each record left as it is carries a hint with the map it needs: `rerun lola migrate with
+--map-root /Users/alice=/home/alice` (your home as the new root), or `--map-target
+claude-code=opencode` (the assistants on your `PATH`). When there is nothing to suggest (no
+assistant on your `PATH`, a root `--map-root` refuses, or a path a map already moved), the hint
+names what to write instead: `--map-root <old root>=<where it is on this machine>`,
+`--map-target claude-code=<assistant>`.
+
 Whatever is left, the run ends with the command that maps it: your run with every map it used,
 plus a `--map-root` to your home for each missing root and a `--map-target` to the assistants on
 your `PATH` for each missing assistant. It drops `-y` and `--trust`, which answer questions only

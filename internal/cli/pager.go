@@ -98,7 +98,7 @@ func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Write
 		fmt.Fprint(w, buf.String())
 		return
 	}
-	if _, err := a.view(cmd, buf.String(), false); err != nil {
+	if _, err := a.view(cmd, buf.String(), false, false); err != nil {
 		warn("the viewer failed: " + untrusted.CleanErr(err).Error())
 	}
 }

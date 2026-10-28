@@ -278,8 +278,23 @@ module is left out of `Choices.Modules` and `Choices.Warnings` names the command
 it. A kept pick that `listedVersion` no longer returns is refused while the choices are
 computed, before the summary, as is a module argument whose git version `pinCommit` could not
 pin. The CLI's `installFlow` only fills answers: each step asks the `Prompter` (one method per
-step and one for the review menu) unless a flag or the situation answers it, component picks
+step and one for the review) unless a flag or the situation answers it, component picks
 become `--skip`/`--unskip` edits, and the equivalent commands are built from the same spec.
+The flow ends with the review whenever lola chose something the user did not type (`reviews`:
+a picker ran, or `ensureAssistants` took the only assistant installed, `auto`), and keeps why each
+destination's assistants were chosen (`why`) for the summary (Plan 10 §5). Before the review it
+runs `InstallAll` on a copy of the spec with `DryRun` set and the run's output flags
+(`outputFlags`), which asks nothing and writes nothing, and prints its findings (`printFindings`)
+in the summary. Each pass of the flow numbers the steps
+it asks, `Steps{At, Of}`: `done` counts the fields asked so far, and `remaining` forecasts the rest,
+exactly once what decides a step is known (`componentPages`, shared with `ensureComponents`, and
+`ComponentPage.lists`), one field per step before. The huh adapter titles each list
+`Step n of m — <title>`, says `enter: next` under each but a form's last, and shows the review
+in the viewer's confirm mode (`app.view`): `viewApply` applies, `viewCancel` cancels, and
+`viewChange` opens the Change menu (`menu`), whose last entry, `reviewBack`, returns to the
+review (the viewer is offered `change` only when the review has a Change entry). In accessible
+mode, and whenever `paging` would not open the viewer (`huhForms.viewer`, asked only at the
+review since it reads `config.yaml`), it prints the summary before the full menu.
 `Prompter` implementations: the huh adapter (inline forms on stderr; accessible line prompts
 under `LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that turns end of input into a
 cancel), the non-interactive one, and the specs' scripted one. In accessible mode every prompt,
@@ -290,9 +305,9 @@ The huh adapter draws every form in `lolaTheme` (`internal/cli/theme.go`): huh's
 with every color, key help included, chosen for WCAG 4.5:1 on a dark or light background, `[x]`
 and `[ ]` markers and a bold cursor; without color, `plainTheme` keeps the markers and bold. The
 background is resolved once per prompter, before its first form in color, by
-`app.darkBackground`: `config.yaml`'s `theme`, else `lipgloss.BackgroundColor` on stdin and
-stderr (faked in specs through `app.queryBackground`; skipped in accessible mode, and a nil color
-counts as no answer), else `Prompter.Background` on a terminal, saved with `config.SaveTheme` (a
+`app.darkBackground`: `config.yaml`'s `theme`, else light in accessible mode (no query, no
+question, nothing saved), else `lipgloss.BackgroundColor` on stdin and stderr (faked in specs
+through `app.queryBackground`; a nil color counts as no answer), else `Prompter.Background` on a terminal, saved with `config.SaveTheme` (a
 failed save warns and the answer still holds for the run), else light. The theme is wrapped as a
 `huh.ThemeFunc` that ignores huh's own guess at the background. Pickers that need a pick validate
 in the form through `huhForms.required`: its `requiredPick` wrapper records whether the key huh is
@@ -1724,10 +1739,11 @@ manifest's pin, else the ledger's version (`renderPin`); a failed fetch under th
 as sync coaches it (`syncPinError`, `lola sync --update <m>`).
 
 **The viewer and paging.** `emit` (`internal/cli/output.go`), help (`showHelp`) and the consent
-diffs a question follows (`syncScope`, `profileAdd`, `profileUpdate`) all print through
+diffs a question follows (`syncScope`, `profileAdd`, `profileUpdate`), and the plan `confirm`
+(`internal/cli/prompt.go`) shows on a terminal before its question, all print through
 `page` (`internal/cli/pager.go`, Plan 10 §2). `paging` decides, first match winning: `--json` or
 `--plain`, stdout or stderr not a terminal (`WithTerminals` stands in for them in specs),
-accessible mode (`app.accessible`), `--no-pager`, `NO_PAGER`, or `pager: false` in the user's `config.yaml` (default `true`, never a
+accessible mode (`app.accessible`), `--no-pager`, a non-empty `NO_PAGER`, or `pager: false` in the user's `config.yaml` (default `true`, never a
 project's, read only when the rules before it allow paging; unreadable, it is a warning and the
 output is printed) print; a non-empty `$LOLA_PAGER` is the pager (`cat` alone prints); otherwise
 the viewer. `$PAGER` is not read. `page` renders once with `style.paged`, which every capped
@@ -1741,7 +1757,9 @@ text, wrapped to the width, has at least as many lines as the terminal has rows 
 (`internal/cli/viewer.go`) is a bubbletea model over `bubbles/v2/viewport`: `ansi.Wrap` to the
 width, again on `tea.WindowSizeMsg`; `g`/`G`/`Home`/`End` added to the viewport's keys; a footer
 with the position in `style.strong` and the keys through `style.paint`; confirm mode, which answers
-a `viewAnswer`: `y` apply, `c` change, `n`/`q`/Esc/Ctrl+C cancel (W4's install review). `app.view` runs it on the alternate screen, on stdout (read
+a `viewAnswer`: `y` apply, `c` change, `n`/`q`/Esc/Ctrl+C cancel (the install review, below).
+`app.view(cmd, content, confirm, change)` runs it; with `change` false `viewerModel.noChange` drops the
+`c` key and its footer entry. It runs on the alternate screen, on stdout (read
 mode) or stderr (confirm mode), with the command's stdin unless that is `os.Stdin` (then bubbletea
 opens the terminal), and writes the text to the same stream after it quits. `page` returns only
 when the pager or the viewer has exited, so the question comes after it. A missing, refused or

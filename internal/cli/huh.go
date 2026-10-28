@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -107,6 +108,10 @@ type huhForms struct {
 	// before the first form in color, and keeps the answer in isDark.
 	dark   func() (bool, error)
 	isDark *bool
+	view   func(content string, change bool) (viewAnswer, error) // the viewer in confirm mode on stderr (app.view)
+	// viewer reports whether the review may open the viewer (app.paging), asked only when it
+	// would: it reads config.yaml.
+	viewer func() bool
 }
 
 // accessible reports whether forms use huh's line prompts: LOLA_ACCESSIBLE=1 or TERM=dumb, read
@@ -118,7 +123,9 @@ func (a *app) accessible() bool {
 // huhPrompter builds the huh adapter over the command's streams.
 func (a *app) huhPrompter(cmd *cobra.Command) Prompter {
 	h := &huhForms{stdin: cmd.InOrStdin(), in: &eofReader{r: cmd.InOrStdin()}, out: cmd.ErrOrStderr(), tty: interactive(cmd),
-		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), dark: func() (bool, error) { return a.darkBackground(cmd) }}
+		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), dark: func() (bool, error) { return a.darkBackground(cmd) },
+		view:   func(content string, change bool) (viewAnswer, error) { return a.view(cmd, content, true, change) },
+		viewer: func() bool { return a.paging(cmd).viewer }}
 	if f, ok := cmd.ErrOrStderr().(*os.File); ok {
 		if w, ht, err := term.GetSize(int(f.Fd())); err == nil {
 			h.width, h.height = w, ht
@@ -234,7 +241,7 @@ func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 		desc = "pick one"
 	}
 	var chosen []string
-	err := h.run(h.withProblem(st.Problem, h.required(h.multi(st.Question, desc, opts, &chosen)))...)
+	err := h.run(h.withProblem(st.Problem, h.required(h.multi(st.Step.title(0, st.Question), desc, opts, &chosen)))...)
 	return chosen, err
 }
 
@@ -323,7 +330,7 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 	if len(st.Options) == 0 {
 		choice := "add"
 		err := h.run(huh.NewNote().Title("no modules in your cache"),
-			huh.NewSelect[string]().Title("What next?").Description(st.Problem).
+			huh.NewSelect[string]().Title(st.Step.title(0, "What next?")).Description(st.Problem).
 				Options(huh.NewOption("Add a source…", "add"), huh.NewOption("Quit", "quit")).Value(&choice))
 		if err != nil {
 			return ModuleAnswer{}, err
@@ -339,7 +346,7 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 	}
 	opts = append(opts, huh.NewOption("Add a source…", addSource))
 	var chosen []string
-	if err := h.run(h.withProblem(st.Problem, h.required(h.multi("Install which modules?", st.Problem, opts, &chosen).Filterable(true)))...); err != nil {
+	if err := h.run(h.withProblem(st.Problem, h.required(h.multi(st.Step.title(0, "Install which modules?"), st.Problem, opts, &chosen).Filterable(true)))...); err != nil {
 		return ModuleAnswer{}, err
 	}
 	if contains(chosen, addSource) {
@@ -361,36 +368,9 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 // on tab and shift+tab too, and would hold the cursor in a list left empty on purpose.
 func (h *huhForms) withMarkets(st ModuleStep) (ModuleAnswer, error) {
 	for {
-		var fields []huh.Field
 		var cached []string
-		if !st.Browse {
-			opts := make([]huh.Option[string], 0, len(st.Options)+1)
-			for _, o := range st.Options {
-				opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
-			}
-			opts = append(opts, huh.NewOption("Add a source…", addSource))
-			fields = append(fields, h.withProblem(st.Problem, h.multi("Install which modules?", st.Problem, opts, &cached).Filterable(true))...)
-		} else if h.accessible && st.Problem != "" {
-			fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
-		}
 		picked := make([][]string, len(st.Markets))
-		for i, g := range st.Markets {
-			opts := make([]huh.Option[string], 0, len(g.Options))
-			for _, o := range g.Options {
-				opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
-			}
-			desc := ""
-			if st.Browse {
-				desc = st.Problem
-			}
-			ms := h.multi(h.cut(g.Title), desc, opts, &picked[i]).Filterable(true)
-			var f huh.Field = ms
-			if st.Browse && len(st.Markets) == 1 {
-				f = h.required(ms)
-			}
-			fields = append(fields, f)
-		}
-		if err := h.run(fields...); err != nil {
+		if err := h.run(h.marketFields(st, &cached, picked)...); err != nil {
 			return ModuleAnswer{}, err
 		}
 		var chosen []string
@@ -439,6 +419,50 @@ func (h *huhForms) addSource(names []string) (ModuleAnswer, error) {
 	return ModuleAnswer{Names: names, AddSource: true, Source: src, Ref: ref}, nil
 }
 
+// marketFields is withMarkets' form, its answers going to cached and picked (one per
+// marketplace). Each list is numbered (st.Step), and every list but the last says Enter moves on
+// (Plan 10 §5). A lone marketplace group, browsed, refuses an empty pick.
+func (h *huhForms) marketFields(st ModuleStep, cached *[]string, picked [][]string) []huh.Field {
+	var fields []huh.Field
+	n := 0 // lists so far
+	if !st.Browse {
+		desc := st.Problem
+		if len(st.Markets) > 0 {
+			desc = strings.TrimPrefix(desc+" · enter: next", " · ")
+		}
+		opts := make([]huh.Option[string], 0, len(st.Options)+1)
+		for _, o := range st.Options {
+			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+		}
+		opts = append(opts, huh.NewOption("Add a source…", addSource))
+		fields = append(fields, h.withProblem(st.Problem, h.multi(st.Step.title(n, "Install which modules?"), desc, opts, cached).Filterable(true))...)
+		n++
+	} else if h.accessible && st.Problem != "" {
+		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
+	}
+	for i, g := range st.Markets {
+		opts := make([]huh.Option[string], 0, len(g.Options))
+		for _, o := range g.Options {
+			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+		}
+		desc := ""
+		if st.Browse {
+			desc = st.Problem
+		}
+		if i < len(st.Markets)-1 {
+			desc = strings.TrimPrefix(desc+" · enter: next", " · ")
+		}
+		ms := h.multi(h.cut(st.Step.title(n, g.Title)), desc, opts, &picked[i]).Filterable(true)
+		var f huh.Field = ms
+		if st.Browse && len(st.Markets) == 1 {
+			f = h.required(ms)
+		}
+		fields = append(fields, f)
+		n++
+	}
+	return fields
+}
+
 func (h *huhForms) Assistants(st AssistantStep) ([]string, error) {
 	opts := make([]huh.Option[string], 0, len(st.Options))
 	for _, id := range st.Options {
@@ -449,13 +473,34 @@ func (h *huhForms) Assistants(st AssistantStep) ([]string, error) {
 		desc = "for " + strings.Join(st.Scopes, " and ")
 	}
 	var chosen []string
-	err := h.run(h.required(h.multi("Install for which assistants?", desc, opts, &chosen)))
+	err := h.run(h.required(h.multi(st.Step.title(0, "Install for which assistants?"), desc, opts, &chosen)))
 	return chosen, err
 }
 
 func (h *huhForms) Components(pg ComponentPage) ([]string, error) {
-	var fields []huh.Field
 	values := make([][]string, len(pg.Groups))
+	if err := h.run(h.pageFields(pg, values)...); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, v := range values {
+		out = append(out, v...)
+	}
+	return out, nil
+}
+
+// pageFields is a component page's form, each group's answer going to values: a filterable list
+// per kind, numbered (pg.Step), every list but the last saying Enter moves on (Plan 10 §5); a
+// disabled kind is a note, and the footer a note after them.
+func (h *huhForms) pageFields(pg ComponentPage, values [][]string) []huh.Field {
+	var fields []huh.Field
+	last := -1 // the last list
+	for i, g := range pg.Groups {
+		if !g.Disabled {
+			last = i
+		}
+	}
+	n := 0 // lists so far
 	for i, g := range pg.Groups {
 		if g.Disabled {
 			var lines []string
@@ -473,19 +518,17 @@ func (h *huhForms) Components(pg ComponentPage) ([]string, error) {
 		if i == 0 {
 			title = pg.Title + ": " + title
 		}
-		fields = append(fields, h.multi(title, "", opts, &values[i]).Filterable(true))
+		desc := ""
+		if i < last {
+			desc = "enter: next"
+		}
+		fields = append(fields, h.multi(pg.Step.title(n, title), desc, opts, &values[i]).Filterable(true))
+		n++
 	}
 	if pg.Footer != "" {
 		fields = append(fields, huh.NewNote().Title(pg.Footer))
 	}
-	if err := h.run(fields...); err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, v := range values {
-		out = append(out, v...)
-	}
-	return out, nil
+	return fields
 }
 
 func (h *huhForms) ConfirmEmpty(module string) (bool, error) {
@@ -730,22 +773,59 @@ func (h *huhForms) MigrateTargets(st MigrateTargetStep) ([]string, error) {
 	return chosen, err
 }
 
+// reviewBack is the Change menu's way back to the review; it is not an answer to the flow.
+const reviewBack = "back"
+
 // reviewLabels name the review menu's entries.
 var reviewLabels = map[string]string{ReviewApply: "Apply", ReviewScope: "Change scope", ReviewModules: "Change modules",
-	ReviewAssistants: "Change assistants", ReviewComponents: "Change components", ReviewQuit: "Quit"}
+	ReviewAssistants: "Change assistants", ReviewComponents: "Change components", ReviewQuit: "Quit", reviewBack: "Back to the review"}
 
+// Review shows the summary and asks what to do with it (Plan 10 §5). On a full terminal it is the
+// viewer's confirm mode: y applies, n cancels, and c opens the menu of the steps to change (the
+// Change entries of st.Options, or back to the review), whose answer the flow asks again before it
+// comes back to the review; with no step to change, the viewer does not offer c. In accessible mode,
+// and wherever paging bypasses the viewer (--no-pager, NO_PAGER, pager: false, an explicit
+// $LOLA_PAGER), the summary is printed, then the menu of every entry, Apply first and the default.
+// Either way the summary is headed by the review's number when the pass asked other steps.
 func (h *huhForms) Review(st ReviewStep) (string, error) {
-	opts := make([]huh.Option[string], 0, len(st.Options))
-	for _, o := range st.Options {
-		opts = append(opts, huh.NewOption(reviewLabels[o], o))
+	if st.Step.Of > 1 {
+		st.Summary = st.Step.title(0, "Review") + "\n" + st.Summary
 	}
-	choice := ReviewApply
-	if err := h.run(huh.NewSelect[string]().Title("Apply these changes?").Description("Ctrl+C cancels; nothing is written").
-		Options(opts...).Value(&choice)); err != nil {
-		return "", err
+	if !h.accessible && h.viewer() {
+		changes := slices.DeleteFunc(slices.Clone(st.Options), func(o string) bool { return o == ReviewApply || o == ReviewQuit })
+		for {
+			ans, err := h.view(st.Summary, len(changes) > 0)
+			switch {
+			case err != nil:
+				return "", err
+			case ans == viewApply:
+				return ReviewApply, nil
+			case ans == viewCancel:
+				return "", ErrAborted
+			}
+			choice, err := h.menu("Change what?", append(slices.Clone(changes), reviewBack), changes[0])
+			if err != nil || choice != reviewBack {
+				return choice, err
+			}
+		}
 	}
-	if choice == ReviewQuit {
+	fmt.Fprint(h.out, st.Summary)
+	choice, err := h.menu("Apply these changes?", st.Options, ReviewApply)
+	if err == nil && choice == ReviewQuit {
 		return "", ErrAborted
+	}
+	return choice, err
+}
+
+// menu asks title over the review menu's entries opts, labelled, with choice under the cursor.
+func (h *huhForms) menu(title string, opts []string, choice string) (string, error) {
+	options := make([]huh.Option[string], 0, len(opts))
+	for _, o := range opts {
+		options = append(options, huh.NewOption(reviewLabels[o], o))
+	}
+	if err := h.run(huh.NewSelect[string]().Title(title).Description("Ctrl+C cancels; nothing is written").
+		Options(options...).Value(&choice)); err != nil {
+		return "", err
 	}
 	return choice, nil
 }

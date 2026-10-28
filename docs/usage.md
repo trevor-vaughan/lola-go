@@ -45,9 +45,9 @@ project with `.lola/` at or above the current directory, then `default_scope` in
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
 | `--pre-install <path>`, `--post-install <path>` | Your own script for this run, which wraps every module copy the install writes, once per assistant, around the module's own hooks; a relative path is taken from the directory you run lola in, and the script runs from that absolute path, never a file of its name in the module copy ([Install scripts](#install-scripts)). No trust is asked. |
 | `--trust=<kinds>` | Consent without asking to the kinds named, recorded as a yes at the prompt is: `scripts` (the project's install scripts), `hooks` (install hooks), `runtime-hooks` (Claude Code runtime hooks), or `all` for the three ([Trust kinds](#trust-kinds)). |
-| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be, without the review menu ([Safety rules](#safety-rules)). |
+| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be, and apply without the review question ([Safety rules](#safety-rules)). |
 | `-n`, `--dry-run` | Print the plan and write nothing, not even `selections.yaml`. |
-| `-y`, `--yes` | Apply after the pickers without the review menu. |
+| `-y`, `--yes` | Apply without the review question: the summary is printed, and the install goes on. |
 
 Refusals:
 
@@ -1098,7 +1098,10 @@ For `opencode` (user scope: the same paths under `$XDG_CONFIG_HOME/opencode/`, w
 ### The install flow
 
 `lola install` with no argument, on a terminal, asks what it needs, one step at a time, inline
-on stderr (no full-screen interface):
+on stderr. Every list is numbered, `Step 2 of 5 — Install which modules?`, and a form with several
+lists says `enter: next` under each but the last. The count is lola's forecast until you pick the
+modules, then exact: a step lola answers itself (the only assistant installed, a module with one
+component) drops out of it. After a Change entry, the steps asked again are numbered from 1.
 
 1. **Scope**: **Project** (showing its root), **User** (`~`) and **Other directory…**, in that
    order; tick any of them, at least one. Nothing is preselected, not even when `config.yaml`
@@ -1136,15 +1139,24 @@ on stderr (no full-screen interface):
    the module out of this run. With several destinations, a module whose preselection is the
    same everywhere gets one page for all of them; otherwise it gets one page per destination,
    titled `<module> — project (<root>)` or `<module> — user`.
-5. **Summary**, then a menu: **Apply**, Change scope, Change modules, Change assistants,
-   Change components (each offered when that step was asked), or Quit. Changing a step asks
-   it again with your answers preselected; later answers that still apply are kept. Change
-   scope keeps the component picks of the destinations you keep, and the summary counts the
-   picks of the ones you remove as dropped.
+5. **Review**: the summary in lola's [viewer](#output-contract), with
+   `y apply · c change · n cancel` in its footer. `y` applies; `n`, `q`, Esc and Ctrl+C cancel;
+   Enter answers nothing. `c` opens a menu of Change scope, Change modules, Change assistants
+   and Change components (each offered when that step was asked), ending with **Back to the
+   review**; when no step can change (every answer came from a flag or the situation), the
+   footer omits `c change` and `c` does nothing. Changing a step asks it again
+   with your answers preselected, keeps later answers that still apply, and comes back to the
+   review. Change scope keeps the component picks of the destinations you keep, and the summary
+   counts the picks of the ones you remove as dropped. When you quit the viewer, the summary
+   stays printed on your terminal. In accessible mode, and wherever the viewer is turned off
+   (`--no-pager`, `NO_PAGER`, `pager: false`, a `$LOLA_PAGER` you set), the summary is printed,
+   then the menu of **Apply**, the Change entries and Quit.
 
 A step with no real choice is not shown: a scope, module, assistant or component flag answers
-it, as does a single installed assistant or a module with one component. The menu appears
-only when a step was shown; `-y` applies without it. The install uses exactly the versions
+it, as does a single installed assistant or a module with one component. The review is shown
+whenever lola chose something you did not type: an answer at a picker, or the only assistant
+installed, which the summary names (`→ for opencode (the only assistant found)`). A run the
+flags specify fully asks nothing; `-y` and `--force` print the summary and apply without asking. The install uses exactly the versions
 the pickers listed, for source arguments and for modules picked from the cache, and keeps
 them through the menu's "Change …" steps. If a listed version was removed from your cache in
 the meantime, the run stops and asks you to run `lola install` again. Two arguments that
@@ -1162,10 +1174,14 @@ A pick kept through "Change scope" that no longer matches a scope's entry ref is
 the summary, not after you confirm. When nothing would change, lola says
 `already up to date`. Runtime hook consent is asked during the install, as always.
 
-The summary lists, per destination and assistant, each module's components: `+` added, `~`
-updated (a newer cached version), `-` removed, `= N unchanged`; where each destination came
-from; the `selections.yaml` entries the run writes; and the **equivalent commands**, which do
-the same without a terminal:
+The summary lists each destination with its directory (`project (<root>)`, `user (<home>)`) and
+where it came from; under it, each assistant with why lola uses it (`→ for claude-code
+(picked)`, `(from -t)`, `(from .lola/project.yml)`, `(the only assistant found)`), and each
+module's components: `+` added, `~` updated (a newer cached version), `-` removed,
+`= N unchanged`; then the `selections.yaml` entries the run writes, notices, the
+[findings](#findings) a dry run of exactly this install reports, each with its hint, and the
+**equivalent commands**, which do the same without a terminal. Consent to hooks and scripts
+is still asked after the review, as before:
 
 ```
 Equivalent commands:
@@ -1619,7 +1635,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   Anything else is a **conflict**: lola lists every conflict and changes nothing.
   The refusal lists each conflicting file, by assistant and path, one per line, and why.
   `--force` overrides conflicts and lists each overridden file in the summary; the refusal's hint
-  is your run with `--force` added, keeping its other flags but `-y` and `--trust`. `--force` also answers the destructive question itself (`install`'s review menu,
+  is your run with `--force` added, keeping its other flags but `-y` and `--trust`. `--force` also answers the destructive question itself (`install`'s review,
   `sync`'s removals, `uninstall`, `lola profile --remove`, `lola migrate`), on a terminal or off
   one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules says which
   (`with --force it also removes, without asking: other (whole module)`). It never answers a
@@ -1697,8 +1713,9 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
 - Picker colors are chosen to read at a contrast of at least 4.5:1 on your terminal's background:
-  `theme: dark` or `theme: light` in `config.yaml`; else what the terminal reports (never asked in
-  accessible mode, and a terminal that answers without a color counts as not answering); else, on
+  `theme: dark` or `theme: light` in `config.yaml`; else, in accessible mode, light (lola neither
+  queries the terminal nor asks there, and saves nothing); else what the terminal reports (a
+  terminal that answers without a color counts as not answering); else, on
   a terminal, lola asks once, `Is your terminal background dark or light?`, and saves your answer
   (`→ saved theme: dark in <config.yaml>`; if the save fails lola warns, with the line to write
   yourself, and uses your answer for that run); else light. Without color, pickers keep `[x]`, `[ ]`
@@ -1707,9 +1724,11 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   terminal open in lola's viewer, the same on every OS. `↑`/`↓` or `j`/`k` scroll a line,
   `PgUp`/`PgDn` or `b`/space a page, `g`/`G` or `Home`/`End` go to the top or the end, and `q`,
   Esc or Ctrl+C quit; the footer shows where you are (`lines 41–80 of 312 · 25%`). On quit the
-  full text is printed, so it stays in your scrollback. Output that fits is printed as it is. In
+  full text is printed, so it stays in your scrollback. Output that fits is printed as it is. The
+  plan a confirmation question follows (`uninstall`, `cache rm`, `cache clean`, `migrate`, a bare
+  `init`) opens the same way, and the question comes after you quit it. In
   order, `--json` or `--plain`, a stream that is not a terminal, accessible mode
-  (`LOLA_ACCESSIBLE=1` or `TERM=dumb`), `--no-pager`, `NO_PAGER` set to anything, and
+  (`LOLA_ACCESSIBLE=1` or `TERM=dumb`), `--no-pager`, `NO_PAGER` set to a non-empty value, and
   `pager: false` in your `config.yaml` print without it; a `$LOLA_PAGER` you set runs
   that pager instead (`cat` prints). `$PAGER` is not read.
 - Without a terminal, `uninstall`, `cache rm`, `cache clean` (when it has something to remove),
@@ -1719,7 +1738,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   including the pin it writes back for an unpinned entry you trusted before; `-y` never trusts.
 - `install --json` adds `scopes` (each with `scope`, `root` and `scope_source`), and per
   module `scope`, `skipped` (component names, `[]` when none) and `saved_to` (the
-  `selections.yaml` it wrote, or `""`), and `equivalent_commands` (`[]` when no step was shown).
+  `selections.yaml` it wrote, or `""`), and `equivalent_commands` (`[]` when the run had no review).
   `list --json` and `check --json` carry `skipped` per module; `list --json` rows carry `scope`
   (`project` or `user`) and `from` (the [layer](guides/profiles.md#profiles) the module comes from: `project.yml`,
   `user.yml`, `profile:default`, `profile:user:<name>`), and `list --plain` rows end with the two.
@@ -1788,7 +1807,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
 | `LOLA_PAGER` | A pager to use instead of lola's viewer, for all human output and help, split on whitespace and run without a shell; `cat` prints ([Output contract](#output-contract)) |
-| `NO_PAGER` | Set to anything, prints without the viewer or a pager, as `--no-pager` does |
+| `NO_PAGER` | Set to a non-empty value, prints without the viewer or a pager, as `--no-pager` does |
 | `COLUMNS` | The width `lola market <name>` fits its lines to when stdout is not a terminal; unset, nothing is cut or wrapped |
 | `LINES` | The height the viewer takes the terminal to have when it cannot ask the terminal |
 | `LESS` | Passed to `$LOLA_PAGER`; set to `FRX` when unset |
