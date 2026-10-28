@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -166,8 +167,25 @@ func New() *Ledger {
 	return &Ledger{Version: Version, Modules: map[string]*Entry{}, Created: []FileRef{}}
 }
 
-// Load reads path; a missing file is an empty ledger.
+// Load reads path; a missing file is an empty ledger. A ledger recording a path that leaves its
+// target's root, which lola never writes, is refused (*StrayError, the first of Strays). The
+// engine reads lock.json with LoadKeepingStrays and refuses every Stray itself, with the targets
+// it knows.
 func Load(path string) (*Ledger, error) {
+	l, err := LoadKeepingStrays(path)
+	if err != nil {
+		return nil, err
+	}
+	if strays := l.Strays(nil); len(strays) > 0 {
+		return nil, &StrayError{File: path, Stray: strays[0]}
+	}
+	return l, nil
+}
+
+// LoadKeepingStrays reads path as Load does, but keeps what lola could not have written (Strays)
+// instead of refusing it, for the engine to refuse or lola repair to forget. Every other refusal
+// stands.
+func LoadKeepingStrays(path string) (*Ledger, error) {
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return New(), nil
@@ -197,8 +215,94 @@ func Load(path string) (*Ledger, error) {
 	return l, nil
 }
 
-// restoreHint coaches a lock.json lola could not have written.
-const restoreHint = "restore lock.json from a backup or version control, or remove the module's entry from it and reinstall the module"
+// restoreHint coaches a lock.json lola could not have written and lola repair cannot fix. lola
+// refuses a lock.json git tracks, so version control is never the way back.
+const restoreHint = "restore lock.json from a backup, or remove the module's entry from it and reinstall the module"
+
+// The kinds of Stray.
+const (
+	StrayArtifact = "artifact" // an item of a module's artifacts
+	StrayTarget   = "target"   // an item of a module's targets
+	StrayCreated  = "created"  // an item of the created list
+)
+
+// Stray is an item of lock.json lola could not have written, which every command refuses and
+// lola repair forgets: an artifact or created item whose path leaves its target's root (Outside;
+// lola writes only paths fsx.Resolve accepted, Plan 6a §4.3), or an artifact, created item or
+// item of a module's targets on a target lola does not know (Unknown). Module is "" for an item
+// of the created list; Path is "" for a target. id is the artifact's or created item's ID, which
+// Forget matches.
+type Stray struct {
+	Kind, Module, Target, Path, Key string
+	Outside, Unknown                bool
+	id                              string
+}
+
+// String names s as lola repair's list and every refusal do, each untrusted value quoted:
+// module kit: artifact "../x.md" on target "claude-code"; module kit: target "bogus";
+// created "../settings.json" key "/hooks" on target "claude-code".
+func (s Stray) String() string {
+	key := ""
+	if s.Key != "" {
+		key = fmt.Sprintf(" key %q", s.Key)
+	}
+	switch s.Kind {
+	case StrayTarget:
+		return fmt.Sprintf("module %s: target %q", s.Module, s.Target)
+	case StrayCreated:
+		return fmt.Sprintf("created %q%s on target %q", s.Path, key, s.Target)
+	}
+	return fmt.Sprintf("module %s: artifact %q%s on target %q", s.Module, s.Path, key, s.Target)
+}
+
+// StrayError refuses a lock.json, File, that records Stray: Load's refusal of a path that leaves
+// its target's root, and the engine's of a target lola does not know.
+type StrayError struct {
+	File  string
+	Stray Stray
+}
+
+func (e *StrayError) Error() string {
+	switch {
+	case e.Stray.Outside:
+		return e.File + ": " + e.Stray.String() + " leaves the target's root"
+	case e.Stray.Kind == StrayTarget:
+		return e.File + ": " + e.Stray.String() + " is not a target lola knows"
+	}
+	return e.File + ": " + e.Stray.String() + ", which is not a target lola knows"
+}
+
+// Strays lists what l records that lola could not have written, in lock.json's order: module by
+// module in name order, each item of its targets that known rejects, then each artifact whose
+// path is not filepath.IsLocal or whose target known rejects; then each item of the created list
+// likewise. A nil known rejects no target: Load, which knows none, checks paths only.
+func (l *Ledger) Strays(known func(target string) bool) []Stray {
+	unknown := func(t string) bool { return known != nil && !known(t) }
+	var out []Stray
+	for _, name := range slices.Sorted(maps.Keys(l.Modules)) {
+		e := l.Modules[name]
+		for _, t := range e.Targets {
+			if unknown(t) {
+				out = append(out, Stray{Kind: StrayTarget, Module: name, Target: t, Unknown: true})
+			}
+		}
+		for _, a := range e.Artifacts {
+			s := Stray{Kind: StrayArtifact, Module: name, Target: a.Target, Path: a.Path, Key: a.Key,
+				Outside: !filepath.IsLocal(a.Path), Unknown: unknown(a.Target), id: a.ID()}
+			if s.Outside || s.Unknown {
+				out = append(out, s)
+			}
+		}
+	}
+	for _, r := range l.Created {
+		s := Stray{Kind: StrayCreated, Target: r.Target, Path: r.Path, Key: r.Key,
+			Outside: !filepath.IsLocal(r.Path), Unknown: unknown(r.Target), id: r.ID()}
+		if s.Outside || s.Unknown {
+			out = append(out, s)
+		}
+	}
+	return out
+}
 
 // validate rejects what the JSON decoder accepts but the rest of lola cannot handle: null
 // module entries, module names that are not safe path segments, recorded sources lola would

@@ -1,6 +1,7 @@
 package ledger_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,7 +177,8 @@ var _ = Describe("ledger", func() {
 			`{"target":"t","kind":"k","path":"p","key":"/hooks/Stop","member":"x"}]}},"created":[]}`
 		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
 		_, err := ledger.Load(path)
-		Expect(errs.Hints(err)).To(ConsistOf(And(ContainSubstring("restore"), ContainSubstring("lock.json"), ContainSubstring("reinstall"))))
+		Expect(errs.Hints(err)).To(ConsistOf("restore lock.json from a backup, or remove the module's entry from it and reinstall the module"),
+			"lola refuses a tracked lock.json, so version control is never the way back")
 	})
 
 	It("refuses a newer version and unknown fields", func() {
@@ -329,6 +331,71 @@ var _ = Describe("ledger", func() {
 		_, err := ledger.Load(path)
 		Expect(err).To(MatchError(ContainSubstring(`module kit: artifact ".opencode/commands/x.md" is on target "opencode", which targets does not list`)))
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json")))
+	})
+
+	DescribeTable("refuses a recorded path outside its target's root, naming lock.json, the module and the path",
+		func(artifacts, created, want string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			body := `{"version":1,"modules":{"kit":{"source":"s","digest":"` + dg + `","targets":["claude-code"],` +
+				`"artifacts":` + artifacts + `}},"created":` + created + `}`
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(path + ": " + want))
+			_, ok := errors.AsType[*ledger.StrayError](err)
+			Expect(ok).To(BeTrue(), "the engine hints lola repair for it")
+			Expect(errs.Hints(err)).To(BeEmpty(), "the hint needs the scope's flags, which only the engine knows")
+		},
+		Entry("an artifact climbing out", `[{"target":"claude-code","kind":"file","path":"../outside.md"}]`, `[]`,
+			`module kit: artifact "../outside.md" on target "claude-code" leaves the target's root`),
+		Entry("an artifact climbing out from inside", `[{"target":"claude-code","kind":"file","path":".claude/../../outside.md"}]`, `[]`,
+			`module kit: artifact ".claude/../../outside.md" on target "claude-code" leaves the target's root`),
+		Entry("an absolute artifact path", `[{"target":"claude-code","kind":"file","path":"/etc/passwd"}]`, `[]`,
+			`module kit: artifact "/etc/passwd" on target "claude-code" leaves the target's root`),
+		Entry("a created ref climbing out", `[]`, `[{"target":"claude-code","path":"../settings.json","key":"/hooks"}]`,
+			`created "../settings.json" key "/hooks" on target "claude-code" leaves the target's root`),
+	)
+
+	It("loads a recorded path that stays inside its target's root", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		body := `{"version":1,"modules":{"kit":{"source":"s","digest":"` + dg + `","targets":["claude-code"],` +
+			`"artifacts":[{"target":"claude-code","kind":"command","path":".claude/commands/a..b.md"}]}},` +
+			`"created":[{"target":"claude-code","path":".claude/settings.local.json","key":"/hooks"}]}`
+		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred(), "a name holding .. that does not climb is local")
+	})
+
+	It("lists every entry lola could not have written, in lock.json's order, once it is told the targets", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		body := `{"version":1,"modules":{` +
+			`"b":{"source":"s","digest":"` + dg + `","targets":["bogus","claude-code"],"artifacts":[` +
+			`{"target":"claude-code","kind":"command","path":".claude/commands/b.md"},` +
+			`{"target":"bogus","kind":"file","path":"x.md"},` +
+			`{"target":"claude-code","kind":"file","path":"/abs.md"}]},` +
+			`"a":{"source":"s","digest":"` + dg + `","artifacts":[{"target":"gone","kind":"file","path":"y.md","key":"/k"}]}},` +
+			`"created":[{"target":"claude-code","path":"../c.json"},{"target":"claude-code","path":".mcp.json"}]}`
+		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(err).To(MatchError(path+`: module b: artifact "/abs.md" on target "claude-code" leaves the target's root`),
+			"Load refuses the first stray path; it knows no targets")
+		l, err := ledger.LoadKeepingStrays(path)
+		Expect(err).NotTo(HaveOccurred())
+		var got []string
+		for _, s := range l.Strays(func(t string) bool { return t == "claude-code" }) {
+			got = append(got, s.String())
+		}
+		Expect(got).To(Equal([]string{
+			`module a: artifact "y.md" key "/k" on target "gone"`,
+			`module b: target "bogus"`,
+			`module b: artifact "x.md" on target "bogus"`,
+			`module b: artifact "/abs.md" on target "claude-code"`,
+			`created "../c.json" on target "claude-code"`,
+		}))
+		Expect(l.Strays(nil)).To(HaveLen(2), "told no targets, only the paths")
+		Expect((&ledger.StrayError{File: path, Stray: l.Strays(func(string) bool { return false })[0]}).Error()).To(
+			Equal(path + `: module a: artifact "y.md" key "/k" on target "gone", which is not a target lola knows`))
+		Expect((&ledger.StrayError{File: path, Stray: l.Strays(func(string) bool { return false })[1]}).Error()).To(
+			Equal(path + `: module b: target "bogus" is not a target lola knows`))
 	})
 
 	It("refuses a digest lola never writes", func() {

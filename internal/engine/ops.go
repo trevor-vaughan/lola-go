@@ -55,7 +55,7 @@ func (e *Engine) loadReplacing(sc Scope, dry bool, names []string) (*manifest.Ma
 		unlock()
 		return nil, nil, nil, nil, err
 	}
-	led, err := ledger.Load(e.files(sc).ledger)
+	led, err := e.Ledger(sc)
 	if err != nil {
 		unlock()
 		return nil, nil, nil, nil, err

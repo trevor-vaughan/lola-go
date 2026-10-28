@@ -9,7 +9,6 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
-	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/module"
@@ -60,7 +59,7 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 		return nil, err
 	}
 	probes := e.newProbeRun(ctx)
-	led, err := ledger.Load(e.files(sc).ledger)
+	led, err := e.Ledger(sc)
 	if err != nil {
 		return nil, err
 	}

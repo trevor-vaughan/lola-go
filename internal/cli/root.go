@@ -54,13 +54,14 @@ type app struct {
 	getenv      func(string) string
 	json        bool
 	plain       bool
-	scopeFlag   string // --scope
-	user        bool   // --user
-	project     bool   // --project
-	root        string // -C/--root
-	noPager     bool   // --no-pager
-	termOut     bool   // stdout is a terminal whatever it is (WithTerminals)
-	termErr     bool   // stderr is a terminal whatever it is (WithTerminals)
+	scopeFlag   string   // --scope
+	user        bool     // --user
+	project     bool     // --project
+	root        string   // -C/--root
+	noPager     bool     // --no-pager
+	display     []string // the run's output flags (outputFlags), which engine() gives the engine as Engine.Display
+	termOut     bool     // stdout is a terminal whatever it is (WithTerminals)
+	termErr     bool     // stderr is a terminal whatever it is (WithTerminals)
 	eng         *engine.Engine
 	newPrompter func(*cobra.Command) Prompter
 	// queryBackground asks the terminal for its background color; nil is terminalBackground.
@@ -128,6 +129,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 			if a.json && a.plain {
 				return errs.WithHints(errors.New("--json and --plain cannot be combined"), "pick one output format")
 			}
+			a.display = outputFlags(cmd)
 			return nil
 		},
 	}
@@ -164,6 +166,7 @@ func (a *app) engine() (*engine.Engine, error) {
 			return nil, err
 		}
 		a.eng = engine.New(p)
+		a.eng.Display = a.display
 	}
 	return a.eng, nil
 }

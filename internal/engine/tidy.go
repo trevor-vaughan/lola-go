@@ -296,7 +296,7 @@ func (e *Engine) tidyLocked(ctx context.Context, req TidyRequest, res *TidyResul
 	if err := e.tidyLedgerCheck(ctx, sc); err != nil {
 		return nil, err
 	}
-	led, err := ledger.Load(e.files(sc).ledger)
+	led, err := e.Ledger(sc)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ func (e *Engine) tidyLocked(ctx context.Context, req TidyRequest, res *TidyResul
 			prev := *unlock
 			*unlock = func() { u(); prev() }
 		}
-		uled, err := ledger.Load(e.files(user).ledger)
+		uled, err := e.Ledger(user)
 		if err != nil {
 			return nil, err
 		}

@@ -78,6 +78,10 @@ type Engine struct {
 	// (Plan 7 §5.4), timed with Now; specs lower them.
 	TemplateLimits templating.Limits
 	TemplateBudget TemplateBudget
+	// Display is the run's output flags (--json, --plain, --no-pager as given), which the lola
+	// repair hint of Ledger's refusal keeps: Ledger serves every command, outside any request
+	// that carries them. The CLI sets it once per run.
+	Display []string
 	// staged is the remote profiles an update in a batch keeps until the command's receipt is
 	// answered (CommitStaged), by path; the layers of the command's syncs read them in place.
 	staged map[string]stagedRemote
@@ -400,9 +404,27 @@ func (e *Engine) Manifest(sc Scope) (*manifest.Manifest, error) {
 	return manifest.Load(e.files(sc).manifest)
 }
 
-// Ledger loads the scope's ledger: what lola wrote there, and for which module.
+// Ledger loads the scope's ledger: what lola wrote there, and for which module. Every engine
+// read of a scope's ledger goes through it, so every command refuses a lock.json lola could not
+// have written the same way, before planning or asking anything: what ledger.LoadKeepingStrays
+// refuses keeps its own hints, and the first ledger.Stray (a path that leaves its target's root,
+// a target lola does not know) hints lola repair for the scope, keeping the run's output flags.
 func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
-	return ledger.Load(e.files(sc).ledger)
+	path := e.files(sc).ledger
+	led, err := ledger.LoadKeepingStrays(path)
+	if err != nil {
+		return nil, err
+	}
+	if strays := led.Strays(e.knows); len(strays) > 0 {
+		return nil, errs.WithHints(&ledger.StrayError{File: path, Stray: strays[0]}, e.Command(sc, "repair", e.Display...))
+	}
+	return led, nil
+}
+
+// knows reports whether id names a target lola has.
+func (e *Engine) knows(id string) bool {
+	_, err := e.target(id)
+	return err == nil
 }
 
 // refuseSymlinkedState fails when the project's .lola/, .lola/modules, .lola/plugin-data or

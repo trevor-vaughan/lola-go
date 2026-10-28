@@ -1444,19 +1444,47 @@ var _ = Describe("Sync", func() {
 			}
 			Expect(l.Save(lp)).To(Succeed())
 		}
-		DescribeTable("refuses a planted ledger removal before asking about it",
+		lockPath := func() string { return filepath.Join(proj, ".lola", "lock.json") }
+		DescribeTable("refuses a planted ledger entry before asking anything, naming lock.json, the module and lola repair",
 			func(a ledger.Artifact, want string) {
 				drop()
 				plant(a)
 				before := state()
 				_, err := sync(engine.SyncRequest{ConfirmRemovals: confirm})
-				Expect(err).To(MatchError(ContainSubstring(want)))
+				Expect(err).To(MatchError(lockPath() + ": module other: " + want))
+				Expect(errs.Hints(err)).To(Equal([]string{"lola repair --project"}))
 				Expect(removals).To(BeEmpty(), "nothing was asked")
 				Expect(state()).To(Equal(before))
 			},
-			Entry("a path outside the project", ledger.Artifact{Target: "claude-code", Kind: "file", Path: "../outside.md"}, "outside.md"),
-			Entry("an unknown target", ledger.Artifact{Target: "bogus", Kind: "file", Path: "x.md"}, `unknown target "bogus"`),
+			Entry("a path outside the project", ledger.Artifact{Target: "claude-code", Kind: "file", Path: "../outside.md"},
+				`artifact "../outside.md" on target "claude-code" leaves the target's root`),
+			Entry("an absolute path", ledger.Artifact{Target: "claude-code", Kind: "file", Path: "/tmp/outside.md"},
+				`artifact "/tmp/outside.md" on target "claude-code" leaves the target's root`),
+			Entry("an unknown target", ledger.Artifact{Target: "bogus", Kind: "file", Path: "x.md"},
+				`target "bogus" is not a target lola knows`),
 		)
+
+		DescribeTable("every command that reads lock.json refuses a planted entry the same way",
+			func(run func() error) {
+				plant(ledger.Artifact{Target: "bogus", Kind: "file", Path: "x.md"})
+				before := state()
+				err := run()
+				Expect(err).To(MatchError(lockPath() + `: module other: target "bogus" is not a target lola knows`))
+				Expect(errs.Hints(err)).To(Equal([]string{"lola repair --project"}))
+				Expect(state()).To(Equal(before), "nothing was written or moved")
+			},
+			Entry("lola list", func() error { _, _, err := e.Status(ctx, sc, nil); return err }),
+			Entry("lola render", func() error { _, err := e.Render(ctx, sc, engine.Options{}); return err }),
+			Entry("lola uninstall", func() error { _, err := e.Uninstall(ctx, sc, []string{"other"}, engine.Options{}); return err }),
+			Entry("lola tidy", func() error { _, err := e.Tidy(ctx, engine.TidyRequest{Scope: sc, All: true, Yes: true}); return err }),
+		)
+
+		It("the refusal's lola repair keeps the run's output flags", func() {
+			plant(ledger.Artifact{Target: "claude-code", Kind: "file", Path: "../outside.md"})
+			e.Display = []string{"--json", "--no-pager"}
+			_, _, err := e.Status(ctx, sc, nil)
+			Expect(errs.Hints(err)).To(Equal([]string{"lola repair --project --json --no-pager"}))
+		})
 
 		It("a declined removal writes nothing and records no consent", func() {
 			kit := filepath.Join(proj, "mods", "kit")
