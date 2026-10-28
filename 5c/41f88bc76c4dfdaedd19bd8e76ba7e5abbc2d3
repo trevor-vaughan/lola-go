@@ -1,0 +1,27 @@
+docs/usage.md
+  s_51684f47240dfe::t_c16b4c8a2ed91c 791-826
+  s_51684f47240dfe::t_78af6729ceff88 1297
+  s_51684f47240dfe::t_964b0d0f54c2c4 1396-1398
+  s_51684f47240dfe::t_afe1c64d9fde8f 1388-1389
+docs/guides/sync-and-trust.md
+  s_51684f47240dfe::t_1b63a89e512d42 145-156
+docs/architecture.md
+  s_51684f47240dfe::t_ee5b7dd58e9821 128-133
+  s_51684f47240dfe::t_de490987bb5b97 2571-2585
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c41f88bc76c4dfdaedd19bd8e76ba7e5abbc2d3",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
