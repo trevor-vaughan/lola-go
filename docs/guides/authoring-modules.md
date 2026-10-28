@@ -9,11 +9,16 @@ my-module/
   lola.yml                 # optional; see below
   skills/<skill>/SKILL.md  # plus any supporting files
   SKILL.md                 # alternative: the module root is itself one skill
-  commands/<command>.md    # optional commands/<command>/ directory alongside
+  commands/<command>.md    # plus an optional commands/<command>/ directory (below)
   agents/<agent>.md        # frontmatter needs a description
   mcps.json                # {"mcpServers": {...}} in Claude's .mcp.json shape
   rules/<rule>.md          # always-on rules (below)
 ```
+
+A `commands/<command>/` directory beside a command is copied with it; OpenCode would read its
+files as commands, so there it is dropped (`command-sidecar-dropped`). A native module's MCP
+servers go in `mcps.json`; `.mcp.json` and `mcp.json` are the files of the Claude Code plugin
+and Agent Plugins [formats](#module-formats).
 
 Any of these Markdown files may instead be a template, `<name>.md.liquid` ([Templates](templating.md#templates)).
 
@@ -28,8 +33,8 @@ license: MIT
 homepage: https://example.com
 repository: https://example.com/repo.git
 keywords: [review, git]
-targets: [claude-code]          # restrict which assistants it supports
-hooks: {pre-install: setup.sh}  # run only with your consent (below)
+targets: [claude-code]          # restrict which assistants it supports: claude-code, gemini-cli, opencode
+hooks: {pre-install: setup.sh}  # executable, path relative to the module root; run only with your consent (below)
 vars:                           # what templates read as vars, with defaults (templating.md, Vars)
   language: go
   strict: false
@@ -73,8 +78,9 @@ files belongs in a skill. The rest of a rule is delivered verbatim: `${PLUGIN_RO
 in rules. A rule whose remaining text starts with `---` gets an empty `---` block first, so that
 text is never read as the rule's frontmatter. A module-root `INSTRUCTIONS.md` or `AGENTS.md` is not
 installed; lola warns and suggests moving it to `rules/`. `lola install --no-rules` installs
-everything else and records `rules: false` on the module's manifest entry, so later renders keep it
-off; `--rules` turns them back on.
+everything else and records `rules: false` on the module's entry in the scope's manifest
+(`.lola/project.yml`, or `user.yml` at user scope: which modules and targets you want), so
+later renders keep it off; `--rules` turns them back on.
 
 ## Module formats
 
@@ -88,10 +94,10 @@ lola reads a module from the first of these it finds; the others are ignored, wi
 3. `.claude-plugin/plugin.json`: a Claude Code plugin;
 4. the native layout above.
 
-Formats are detected by `cache add`, `install` of a source and `check` of a source. The cached
-copy keeps the plugin's own files where they are and gains a `lola.yml` with `format:` and a
-`components:` section (below) listing every artifact the plugin declared, so loading it never
-interprets the plugin format again. Before storing a version, lola reloads that copy as
+`lola cache add` detects the format, as do `lola install` and `lola check` given a source. The
+cached copy keeps the plugin's own files where they are and gains a `lola.yml` with `format:` and
+a `components:` section (below) listing every artifact the plugin declared, so loading it never
+interprets the plugin format again. Before it caches a version, lola reloads that copy as
 an install will and refuses the module if it reads differently from the source ("could not
 cache ... faithfully"); that is a lola bug to report. Warnings about the plugin (unsupported
 keys, skipped skills) are shown when the module is added or checked from its source; they are
@@ -104,26 +110,30 @@ not stored, so later installs from your cache do not repeat them.
 - Component paths start with `./` (`skills` also takes `.`), stay inside the plugin and exist;
   `hooks` and `mcpServers` paths end in `.json`. A `null` component value is an error.
 - `skills` add to `skills/`; every listed directory is one skill if it holds `SKILL.md`,
-  otherwise each `<name>/SKILL.md` below it is. `commands` and `agents` replace `commands/` and
-  `agents/` (lola warns when the default directory is then ignored); directories of commands
-  are read recursively, and the `commands` object map becomes inline commands (`argumentHint`
-  and `allowedTools` become the `argument-hint` and `allowed-tools` frontmatter keys; lola
-  warns that `commands/` is then ignored). A default directory that is a symbolic link is
-  skipped with a warning. An MCP server field lola does not read warns.
-  `mcpServers` and `hooks` merge with `.mcp.json` and `hooks/hooks.json`.
-- lola has no namespaces, so two commands, agents or skills with one name (for example
-  `commands/a/build.md` and `commands/b/build.md`) are an error, and so is an MCP server
-  declared twice, where Claude Code would let the later one replace the earlier one. A plugin
+  otherwise each `<name>/SKILL.md` below it is.
+  - `commands` and `agents` replace `commands/` and `agents/` (lola warns when the default
+    directory is then ignored).
+  - Directories of commands are read recursively.
+  - The `commands` object map becomes inline commands (`argumentHint` and `allowedTools` become
+    the `argument-hint` and `allowed-tools` frontmatter keys; lola warns that `commands/` is
+    then ignored).
+  - A default directory that is a symbolic link is skipped with a warning.
+  - An MCP server field lola does not read warns.
+  - `mcpServers` and `hooks` merge with `.mcp.json` and `hooks/hooks.json`.
+- lola has no namespaces, so two commands, agents or skills with the same name (for example
+  `commands/a/build.md` and `commands/b/build.md`) are an error, and so is declaring one MCP
+  server twice, where Claude Code would let the later one replace the earlier one. A plugin
   that declares nothing lola can install is an error ("declares nothing lola can install"), as
   is an empty hook set.
 - `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` mean `${PLUGIN_ROOT}` and
   `${PLUGIN_DATA}`; `${CLAUDE_PROJECT_DIR}` is left as written.
 - `lspServers`, `outputStyles`, `workflows`, `experimental`, `settings`, `userConfig`,
-  `channels`, `dependencies`, `types`, MCP bundles (`.mcpb`, `.dxt`) and keys lola does not know
-  are not installed: lola warns and keeps them under `formats.claude-plugin`.
+  `channels`, `dependencies`, `types`, `themes`, `monitors`, MCP bundles (`.mcpb`, `.dxt`) and
+  keys lola does not know are not installed: lola warns and keeps them under
+  `formats.claude-plugin`.
 - Hooks are Claude Code runtime hooks. lola installs them into Claude Code only, and only with
   your consent (see [Runtime hooks](#runtime-hooks) below); the other assistants report them
-  as `kind-unsupported`.
+  as `kind-unsupported` ([Findings](../usage.md#findings)).
 
 **Agent Plugins packages** (root `plugin.json`):
 
@@ -136,14 +146,18 @@ not stored, so later installs from your cache do not repeat them.
   a `description` of 1 to 1024 characters, a `compatibility` of at most 500; limits count
   characters) is skipped with a warning, as is a `skills` that is not a directory. A package
   that declares nothing lola can install is an error ("declares nothing lola can install").
-- `mcp.json` is checked strictly; any problem is an error: exactly `$schema` and `mcpServers`;
-  types `stdio`, `streamable-http` and `sse`; a `command` that is one bare name or a `./` path, without `..` or control characters;
-  no `PLUGIN_ROOT` or `PLUGIN_DATA` in `env`; a `cwd` under `./`, `${PLUGIN_ROOT}` or
-  `${PLUGIN_DATA}` that stays inside it; `http(s)` URLs without user information or a fragment,
-  `https` unless the host is loopback; no placeholders in `command`, `url` or headers, and no
-  control characters in header values other than tab; `null` where the schema wants a type. lola
-  gives every stdio server `PLUGIN_ROOT` and `PLUGIN_DATA` in its environment. Any other
-  `${NAME}` in a stdio server's `args`, `env` or `cwd` is kept, with a warning: Agent Plugins
+- `mcp.json` is checked strictly; any problem is an error. It needs:
+  - exactly `$schema` and `mcpServers`;
+  - server types `stdio`, `streamable-http` and `sse`;
+  - a `command` that is one bare name or a `./` path, without `..` or control characters;
+  - no `PLUGIN_ROOT` or `PLUGIN_DATA` in `env`;
+  - a `cwd` under `./`, `${PLUGIN_ROOT}` or `${PLUGIN_DATA}` that stays inside it;
+  - `http(s)` URLs without user information or a fragment, `https` unless the host is loopback;
+  - no placeholders in `command`, `url` or headers, and tab as the only control character in
+    header values;
+  - no `null` where the schema wants a type.
+- lola puts `PLUGIN_ROOT` and `PLUGIN_DATA` in the environment of every stdio server of
+  `mcp.json`. Any other `${NAME}` in a stdio server's `args`, `env` or `cwd` is kept, with a warning: Agent Plugins
   treats it as literal text, but your assistants expand it.
 - Client namespaces reach only their own assistant: `com.anthropic.claude` and
   `com.anthropic.claude-code` reach `claude-code`, `ai.opencode` reaches `opencode`,
@@ -217,7 +231,7 @@ components:
   the fields, is an error.
 
 **Hooks.** `pre-install` and `post-install` name executable scripts inside the module. They run
-as you, unconfined, once per target, in the module copy, with `LOLA_MODULE_NAME`,
+as you, unconfined, once per assistant, in the module copy, with `LOLA_MODULE_NAME`,
 `LOLA_MODULE_PATH`, `LOLA_PROJECT_PATH`, `LOLA_ASSISTANT`, `LOLA_SCOPE` and `LOLA_HOOK` set; their
 output goes to stderr, and each run is stopped after 10 minutes. lola runs them only with your
 consent: on a terminal it shows each script with its sha256 and asks (default No), and
@@ -239,11 +253,44 @@ given `--trust=hooks`, asks nothing about the hook and says
 `pending post-install hook for <module> → lola sync --project <module>` (off a terminal, with the
 `--trust=hooks` form); a dry run says so too, and, naming the module, shows the hook it would
 run. A `pre-install` hook refused off a terminal hints first `review it: lola info …` of exactly the
-version the run would install, read from your cache with no fetch the run did not make (a git
+version the run would install, read from your cache without fetching more than the run did (a git
 module as its source at the commit, anything else by its cached name at the head that holds it;
 no such hint when no `lola info` can show that version), then your run with `--trust=` the kinds
 you gave, `hooks`, and any other kind the run would still be refused for (`scripts`, for the
 project's untrusted pre-install script).
+
+A `post-install` hook's states:
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+stateDiagram-v2
+  [*] --> Consent
+  Consent: consent needed
+  Consent --> Ran: yes, remembered yes or --trust=hooks
+  Consent --> Pending: no consent
+  Pending: pending in lock.json (hooks_pending)
+  Pending --> Consent: lola sync naming the module
+  Ran: ran in the module copy
+  Ran --> Kept: hook fails
+  Kept: installation kept, with a warning
+  Ran --> [*]: hook succeeds
+  Kept --> [*]
+```
 
 **Install scripts wrap your hooks.** The user's own scripts (`pre_install` and `post_install` in
 `config.yaml`), a project's (in its `.lola/project.yml`, run with the project's trust) and
@@ -254,7 +301,36 @@ same environment plus `LOLA_SCRIPT_SOURCE` (`user`, `project` or `flag`). A hook
 on running first or last, nor rewrite files outside the module copy that a script may read: lola
 hashes each script again just before it runs it and does not run one that changed: a pre-install
 script stops the install, nothing written, and a post-install one is skipped with a warning
-([Install scripts](../usage.md#install-scripts)).
+([Install scripts](choosing-what-to-install.md#install-scripts)).
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+sequenceDiagram
+  participant L as lola
+  participant S as install scripts (user, project, flag)
+  participant H as your module's hooks
+  Note over L,H: each script and hook runs once per assistant, in the module copy
+  L->>S: pre-install scripts (hashed again first)
+  L->>H: pre-install hook
+  L->>L: write into your assistants
+  L->>H: post-install hook
+  L->>S: post-install scripts (hashed again first)
+```
 
 ## Runtime hooks
 
@@ -282,62 +358,80 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
     CLAUDE_PLUGIN_DATA=<data> <command> <args>...`, with every value passed as written.
   - Other handler types (`http`, `mcp_tool`, `prompt`, `agent`) and every other field are kept
     as written.
-- **What lola will not install** without `--force` (each is a forceable skip of the module's
-  hooks): a shell-form hook when the module copy's or plugin-data path has characters other
-  than letters, digits and `/ . _ + -` (`claude-code/runtime-hook-path-unsafe`; use exec form,
-  or a simpler path; if the path holds `'`, `"`, `$`, `` ` `` or `\`, `--force` does not
-  override it, so only exec form installs); an exec-form command containing `=` or starting with `-`, which `env`
-  would misread (also `runtime-hook-path-unsafe`); a shell-form hook with `shell: "powershell"`,
-  which cannot take the `export` (`claude-code/runtime-hook-shell-unsupported`); and, at
-  project scope, a `.claude/settings.local.json` that git could commit
-  (`claude-code/settings-local-not-ignored`, in [Findings](../usage.md#findings)). Even with
-  `--force`, a POSIX shell never parses a lola path as shell syntax: an unsafe path is exported in single quotes and referred
-  to as `${CLAUDE_PLUGIN_ROOT}`. The shell still splits an unquoted reference at spaces and
-  expands glob characters in it, so a forced `${CLAUDE_PLUGIN_ROOT}/x.sh` under a path with a
-  space runs a different program. Write hooks with the variable quoted:
-  `"${CLAUDE_PLUGIN_ROOT}/x.sh"`. Other shells (PowerShell, for example) get no such guarantee.
+- **What lola installs only with `--force`** (each is a forceable skip of the module's hooks):
+  - a shell-form hook when the path of the module copy or of its plugin-data directory has
+    characters other than letters, digits and `/ . _ + -`
+    (`claude-code/runtime-hook-path-unsafe`). Use exec form, or a simpler path. If the path
+    holds `'`, `"`, `$`, `` ` `` or `\`, `--force` does not override it, so only exec form
+    installs;
+  - an exec-form command containing `=` or starting with `-`, which `env` would misread (also
+    `runtime-hook-path-unsafe`);
+  - a shell-form hook with `shell: "powershell"`, which cannot take the `export`
+    (`claude-code/runtime-hook-shell-unsupported`);
+  - at project scope, a `.claude/settings.local.json` that git could commit
+    (`claude-code/settings-local-not-ignored`, in [Findings](../usage.md#findings)).
+- **Forced shell-form hooks.** Even with `--force`, a POSIX shell never parses a lola path as
+  shell syntax.
+  - An unsafe path is exported in single quotes and referred to as `${CLAUDE_PLUGIN_ROOT}`.
+  - The shell still splits an unquoted reference at spaces and expands glob characters in it,
+    so a forced `${CLAUDE_PLUGIN_ROOT}/x.sh` under a path with a space runs a different
+    program. Write hooks with the variable quoted: `"${CLAUDE_PLUGIN_ROOT}/x.sh"`.
+  - Other shells (PowerShell, for example) get no such guarantee.
 - **Windows.** The rewrite assumes a POSIX shell and an `env` program. Windows paths
   (`C:\...`) hold `\`, so shell-form hooks never install there, even with `--force`: give the
   hooks `args` (exec form). An exec-form hook needs an `env` executable, which Git Bash
   provides.
 - **Hooks in component frontmatter.** Claude Code also runs a `hooks:` key in a skill's,
-  command's or agent's frontmatter while that component is active. lola treats any key that
-  equals `hooks` ignoring case as hooks, checks it like `runtime_hooks`, gives its command
-  handlers the same variable rewrite (`${PLUGIN_ROOT}` expansion of the rest of the file never
-  touches them), and installs the component only under the same consent: the prompt lists its
-  hooks under the component's name. Declined, that component is skipped and the rest of the
-  module installs. A `.md` file inside a command's own directory (`commands/deploy/notes.md`
-  beside `commands/deploy.md`) is a command to Claude Code, so a `hooks:` key there is refused
-  when the module loads: put hooks in the command itself. A file whose first line starts with `---`
-  but is not exactly `---` is refused too (see Frontmatter, above), because Claude Code might
-  read frontmatter there that lola cannot. When lola rewrites the hooks, the component's body
-  stays body text: it is never read as frontmatter. Installs made before this version keep
-  their components with frontmatter hooks until `lola render`, which asks for consent or
-  removes them; a module whose command directory holds a `.md` file with hooks no longer loads,
-  and `lola render` stops until you fix or remove it (`lola uninstall <name>`). Consent is yours alone: if your project commits the installed skills,
-  commands or agents under `.claude/`, their frontmatter hooks and `allowed-tools` reach your
-  teammates, whose Claude Code applies its own workspace-trust rules to them.
+  command's or agent's frontmatter while that component is active.
+  - lola treats any key that equals `hooks` ignoring case as hooks, and checks it like
+    `runtime_hooks`.
+  - lola rewrites the variables in its command handlers as it does for runtime hooks (see
+    Variables, above); expanding `${PLUGIN_ROOT}` in the rest of the file never touches them.
+  - lola installs the component only under the same consent: the prompt lists its hooks under
+    the component's name. Declined, that component is skipped and the rest of the module
+    installs.
+  - A `.md` file inside a command's own directory (`commands/deploy/notes.md` beside
+    `commands/deploy.md`) is a command to Claude Code, so a `hooks:` key there is refused when
+    the module loads: put hooks in the command itself.
+  - A file whose first line starts with `---` but is not exactly `---` is refused too (see
+    Frontmatter, above), because Claude Code might read frontmatter there that lola cannot.
+  - When lola rewrites the hooks, the component's body stays body text: it is never read as
+    frontmatter.
+  - Components with frontmatter hooks that an older lola installed stay until `lola render`,
+    which asks for consent or removes them.
+  - A module whose command directory holds a `.md` file with hooks no longer loads, and
+    `lola render` stops until you fix or remove it (`lola uninstall <name>`).
+  - Consent is yours alone: if your project commits the installed skills, commands or agents
+    under `.claude/`, the hooks and `allowed-tools` in their frontmatter reach your teammates,
+    whose Claude Code applies its own workspace-trust rules to them.
 - **MCP servers in agent frontmatter.** An agent's `mcpServers:` list (any key that equals
-  `mcpServers` ignoring case) gives the agent MCP servers. An item such as `- github` names a
-  server you already configured and needs no consent. An item such as
-  `- playwright: {command: npx, args: [-y, "@playwright/mcp@latest"]}` defines a server that
-  Claude Code starts when the agent starts, so lola installs such an agent only under the same
-  consent as hooks: the prompt lists each inline server under the agent's name, with its
-  transport, its command line or URL, its headers and env with their values (a value such as
-  `LD_PRELOAD=…` changes what runs), and any other field as JSON. Consent covers the servers
-  as lola renders them, so changing one, even only its `args`, asks again. Declined, the agent
-  is skipped (`claude-code/runtime-hooks-declined`) and one installed earlier is removed. When
-  the module loads, `mcpServers` must be a list; each item must be a non-empty name or a
-  mapping of exactly one server name to its definition; the definition gets the checks of
-  `mcps.json` (one transport's fields, a `type` that agrees with them, a valid server name).
-  A server name may be defined once per agent, and not both defined and named there.
-  Installs made before this version keep such agents until `lola render`, which asks for
-  consent or removes them. A skill or command's `mcpServers` (any spelling) is dropped with
-  `frontmatter-key-dropped`: Claude Code starts servers only from an agent's frontmatter.
-  Gemini CLI and OpenCode run no hooks and start no servers from skill, command or agent
-  frontmatter, so lola drops `hooks` and `mcpServers` (any spelling) there the same way; a
-  Gemini agent's own `mcp_servers` is dropped too, as is every agent key outside the set lola
-  keeps for gemini-cli, and so is `mcp_servers` (any spelling) on a Gemini skill or command. No key that starts a process reaches an assistant without consent.
+  `mcpServers` ignoring case) gives the agent MCP servers.
+  - An item such as `- github` names a server you already configured and needs no consent.
+  - An item such as `- playwright: {command: npx, args: [-y, "@playwright/mcp@latest"]}`
+    defines a server that Claude Code starts when the agent starts, so lola installs such an
+    agent only under the same consent as hooks.
+  - The prompt lists each inline server under the agent's name, with its transport, its command
+    line or URL, its headers and env with their values (a value such as `LD_PRELOAD=…` changes
+    what runs), and any other field as JSON.
+  - Consent covers the servers as lola renders them, so changing one, even only its `args`,
+    asks again.
+  - Declined, the agent is skipped (`claude-code/runtime-hooks-declined`) and one installed
+    earlier is removed.
+  - When the module loads, `mcpServers` must be a list, and each item must be a non-empty name
+    or a mapping of exactly one server name to its definition. lola checks the definition as it
+    checks `mcps.json` (one transport's fields, a `type` that agrees with them, a valid server
+    name).
+  - A server name may be defined once per agent, and not both defined and named there.
+  - Such agents that an older lola installed stay until `lola render`, which asks for consent
+    or removes them.
+  - A skill or command's `mcpServers` (any spelling) is dropped with `frontmatter-key-dropped`:
+    Claude Code starts servers only from an agent's frontmatter.
+  - Gemini CLI and OpenCode run no hooks and start no servers from skill, command or agent
+    frontmatter, so lola drops `hooks` and `mcpServers` (any spelling) there the same way.
+  - A Gemini agent's own `mcp_servers` is dropped too, as is every agent key outside the set
+    lola keeps for gemini-cli, and so is `mcp_servers` (any spelling) on a Gemini skill or
+    command.
+  - A key that starts a process reaches an assistant only with your consent.
 - **Permission mode.** An agent's `permissionMode` sets the permission mode Claude Code runs it
   in. lola installs it as written and reports `claude-code/permission-mode`, naming the agent
   and the mode. Claude Code v2.1.267+ ignores `bypassPermissions` in a subagent's frontmatter.
@@ -354,26 +448,67 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
 
 **Consent.** lola installs a module's runtime hooks only with your consent:
 
-- On a terminal, lola lists each hook (its event, matcher and type, `if`, `async` and `shell`
-  when set, then the command line it runs, the URL an `http` hook sends data to with its headers
-  and the environment it sends, the MCP tool it calls, or the prompt, cut at 200 characters;
-  then any other field of the handler or of its matcher group, as JSON) and each inline MCP
-  server of an agent, and asks "Install <module>'s Claude Code hooks?" ("…hooks and agent MCP
-  servers?" when it lists a server), defaulting to No. A yes is recorded in
-  `$XDG_STATE_HOME/lola/consent.json`.
-- The terminal view shows each value on one line, and a newline inside a value appears as the
-  two characters `\n`, so a value cannot pass as another hook line. Control characters,
-  invisible format characters (bidirectional overrides, zero-width characters, a byte-order
-  mark) and line or paragraph separators in a value show as `?`, so text looks like what it is.
-  Names, paths and manifest metadata (a module's description and version) get the same treatment where lola prints them; other module text, such as frontmatter keys quoted in finding texts, does not yet. `--json`
-  consent values are replaced the same way; the exact group lola writes is the step's `member`
-  (`steps[].member`).
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+flowchart TD
+  Key["runtime hooks, frontmatter hooks or inline agent MCP servers"] --> Which{"which assistant?"}
+  Which -->|"gemini-cli or opencode"| Drop["not installed: kind-unsupported or frontmatter-key-dropped"]
+  Which -->|claude-code| Recorded{"recorded consent or --trust=runtime-hooks?"}
+  Recorded -->|yes| Install[installed]
+  Recorded -->|no| Terminal{"on a terminal and not --dry-run?"}
+  Terminal -->|yes| Ask{"asks, default No"}
+  Ask -->|yes| Record[consent recorded]
+  Record --> Install
+  Ask -->|no| Declined["skipped: claude-code/runtime-hooks-declined; earlier copies removed"]
+  Terminal -->|no| Declined
+  classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
+  classDef sysB fill:#1d7848,color:#ffffff,stroke:#7c8ba1
+  classDef sysF fill:#5c6a82,color:#ffffff,stroke:#7c8ba1
+  class Key,Which,Recorded,Terminal,Ask sysA
+  class Install,Record sysB
+  class Drop,Declined sysF
+```
+
+- On a terminal, lola lists each hook and each inline MCP server of an agent, and asks
+  "Install <module>'s Claude Code hooks?" ("…hooks and agent MCP servers?" when it lists a
+  server), defaulting to No.
+  - For a hook it shows its event, matcher and type, and `if`, `async` and `shell` when set.
+  - Then the command line it runs, the URL an `http` hook sends data to with its headers and the
+    environment it sends, the MCP tool it calls, or the prompt, cut at 200 characters.
+  - Then any other field of the handler or of its matcher group, as JSON.
+  - A yes is recorded in `$XDG_STATE_HOME/lola/consent.json`.
+- The terminal view shows each value on one line.
+  - A newline inside a value appears as the two characters `\n`, so a value cannot pass as
+    another hook line.
+  - Control characters, invisible format characters (bidirectional overrides, zero-width
+    characters, a byte-order mark) and line or paragraph separators in a value show as `?`, so
+    text looks like what it is.
+  - lola treats names, paths and manifest metadata (a module's description and version) the
+    same way where it prints them; it does not yet treat other module text this way, such as
+    frontmatter keys quoted in finding texts.
+  - `--json` consent values are replaced the same way; the exact group lola writes is the step's
+    `member` (`steps[].member`).
 - If the prompt fails (input closes, for example), the run stops: nothing is written and nothing
   is recorded.
 - `--trust=runtime-hooks` consents to the hooks the summary lists without asking, and the consent
   is recorded once the run's receipt is answered. `--trust=hooks` is for install hooks and never
   covers runtime hooks, and `-y` never grants consent.
-- `--dry-run` makes the decision a real run would make (a recorded consent or
+- `--dry-run` decides as a real run would (a recorded consent or
   `--trust=runtime-hooks` installs the hooks; anything else declines them), lists the hooks,
   and never asks or records.
 - Consent is recorded per module and settings file (the absolute path of
@@ -386,9 +521,10 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
   of the module installs (`--strict` makes that an error). Hooks lola installed under an earlier
   consent are removed: they never keep running under a consent that did not cover them.
 - A hook group is identified by its content, so a group you edit or remove is no longer lola's
-  copy. `lola install` and `lola render` do not write it again, since both copies would run:
-  lola keeps it as owned but absent and reports `claude-code/runtime-hook-drift`, with the hint
-  `restore it:` and your run with `--force`, which writes it again. The report is info, not a
-  warning: it records your choice, so `--strict` does not fail on it. Uninstall leaves your
-  edited group in place.
-  (Missing files and JSON keys are rewritten as before; this rule is only for hook groups.)
+  copy.
+  - `lola install` and `lola render` do not write it again, since both copies would run.
+  - lola keeps it as owned but absent and reports `claude-code/runtime-hook-drift`, with the
+    hint `restore it:` and your run with `--force`, which writes it again.
+  - The report is info, not a warning: it records your choice, so `--strict` lets it pass.
+  - Uninstall leaves your edited group in place.
+  - Missing files and JSON keys are rewritten as before; this rule is only for hook groups.

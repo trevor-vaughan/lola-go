@@ -1,7 +1,9 @@
 # Sync, pins and trust
 
-`lola sync` makes a project match its `.lola/project.yml` (`--user`: `user.yml`), the way a
-teammate who cloned your repository gets what you installed:
+`lola sync` makes a project match its `.lola/project.yml` (with `--user`, your user scope match
+its `user.yml`; [Choosing a scope](choosing-what-to-install.md#choosing-a-scope) says which scope
+a run without a flag acts on), the way a teammate who cloned your repository gets what you
+installed:
 
 ```
 git clone https://example.com/acme/api.git && cd api
@@ -13,79 +15,173 @@ lola sync --update lint-pack # only lint-pack
 ```
 
 It installs every entry at the version its **pin** names (`commit` and `digest`, written by
-`lola install` and by sync itself, see [Pins](../usage.md#sources-and-the-cache)), renders the modules
+`lola install` and by sync itself; see **Pins** in [Sources and the cache](../usage.md#sources-and-the-cache)), renders the modules
 already installed, and removes what the manifest no longer lists: a whole module, or the targets
-an entry no longer names. A pinned version comes from your cache when it is there; otherwise a git
+an entry no longer names.
+
+A pinned version comes from your cache when it is there; otherwise a git
 module is fetched by its commit, which must be reachable from the entry's `ref`, and an archive is
 fetched again; either way its content must have the pinned digest. When it does not, sync stops:
-`if you expect the change, re-pin it: lola sync --project --update <module>`. A moved tag or a force-pushed
-branch never changes what sync installs, nor does `lola cache update`.
+`if you expect the change, re-pin it: lola sync --project --update <module>`. Like every sync
+hint, it names the run's scope: `--project` for the project found from where you are, `-C <dir>`
+for another, `--user` at user scope. A moved tag or a force-pushed branch never changes what sync
+installs, nor does `lola cache update`.
 
-- **Names limit a run.** `lola sync a b` validates, checks, fetches, asks about and records only
-  `a` and `b`: an entry you did not name is never fetched or asked about, so a broken or untrusted
-  one cannot block the one you named. A name must be an entry of the manifest or a module
-  installed here that it no longer lists (which the run removes, after asking); any other name is
-  refused before anything else, with both lists in the hint. The top-level `targets` are asked
-  about only when a named entry has no `targets` of its own. A limited run says
-  `a, b already in sync` when it has nothing to do, and always notes, from `project.yml` and
-  `lock.json` alone, the modules it left out of sync: `2 other modules are not in sync: c, d →
-  lola sync`. That local check misses what only a full sync finds: an unpinned entry's new
-  version, a changed source, ref or path whose content is the same, and changed top-level
-  `targets`.
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+flowchart TD
+  Pin["entry's pin: commit and digest"] --> Cached{in your cache?}
+  Cached -->|yes| Digest{content has the pinned digest?}
+  Cached -->|"no, git"| Git["fetch the commit, which must be reachable from the ref"]
+  Cached -->|"no, archive"| Archive[fetch the archive again]
+  Git --> Digest
+  Archive --> Digest
+  Digest -->|yes| Install[install it]
+  Digest -->|no| Stop["sync stops: re-pin it with --update"]
+  classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
+  classDef sysB fill:#1d7848,color:#ffffff,stroke:#7c8ba1
+  classDef sysF fill:#5c6a82,color:#ffffff,stroke:#7c8ba1
+  class Pin,Git,Archive sysA
+  class Install sysB
+  class Stop sysF
+```
+
+- **Names limit a run.**
+  - `lola sync a b` validates, checks, fetches, asks about and records only `a` and `b`: an entry
+    you did not name is never fetched or asked about, so a broken or untrusted one cannot block
+    the one you named.
+  - A name must be an entry of the manifest or a module installed here that it no longer lists
+    (which the run removes, after asking). Any other name is refused before anything else, with
+    both lists in the hint.
+  - The top-level `targets` are asked about only when a named entry has no `targets` of its own.
+  - A limited run says `a, b already in sync` when it has nothing to do.
+  - It also lists the modules outside the run that are not in sync: `2 other modules are not in
+    sync: c, d → lola sync`. It finds them without fetching, by comparing `project.yml` with
+    `lock.json` (the record of what is installed): an entry not installed, an entry whose pin
+    differs from the version installed, and a module installed that `project.yml` no longer
+    lists.
+  - That local check misses what only a full sync finds: an unpinned entry's new version, a
+    changed source, ref or path whose content is the same, and changed top-level `targets`.
 - **Unpinned entries.** A git or archive entry without a `digest` installs your cache's newest
   version for its ref (fetching the ref when the cache has none), and sync writes that pin into
   `project.yml`. Folder entries are never pinned: sync reads the folder on every run, and
   `--update` writes no pin for one.
 - **`--update`** fetches the refs of the run's entries again (every entry, or the ones named) and
-  re-pins them. An entry installed through a [marketplace](marketplaces.md#marketplaces) (`market:`) follows
-  that marketplace's catalog instead, fetched once per run, and only within the same source, path
-  and ref: the catalog's commit pin becomes the new pin (checked against the ref, as at install).
-  When the catalog moved the entry to another ref, source, path or selection, or no longer lists
-  it, or you have no marketplace of that name from the source the entry records, the entry
-  re-pins from its own source and ref, and a notice says why: a changed ref with
-  `lola install @acme/<entry>` (a changed source or ref is an install, never a sync); a changed
-  source, path or selection with what to do first, as your cache holds one module of a name
-  (uninstall it and remove it from your cache, then install the address). A catalog that cannot be
-  fetched is a warning, and its entries re-pin from their own sources. `lola sync` without
-  `--update` never reads a catalog, and `--update` fetches one only for entries you trusted before
-  the run: a pulled `project.yml` makes no catalog request until you trust it, and its entries
-  re-pin from their own sources meanwhile, saying so, with the `lola sync --update` that follows
-  the catalog next (a dry run, which records no trust, names none).
-- **Removals** are listed with every file lola wrote for them, one per line, and confirmed on a
-  terminal: `Remove these and sync? No applies nothing` (default No); `-y` confirms them,
-  `--trust` does not. `lock.json` is not trusted input: a recorded path that climbs out of its
-  target's root (`../`, an absolute path) or names a target lola does not know refuses the sync
-  before anything is asked. A recorded path that leaves its root through a symbolic link is
-  refused when the plan is made, as `lola uninstall` refuses it.
+  re-pins them.
+  - An entry installed through a [marketplace](marketplaces.md#marketplaces) (`market:`) follows
+    that marketplace's catalog instead, fetched once per run, and only within the same source,
+    path and ref: the catalog's commit pin becomes the new pin (checked against the ref, as at
+    install).
+  - The entry re-pins from its own source and ref instead when the catalog moved it to another
+    ref, source, path or selection, or no longer lists it, or you have no marketplace of that
+    name from the source the entry records. A notice says why:
+    - a changed ref, with `lola install @acme/<entry>` (a changed source or ref is an install,
+      never a sync);
+    - a changed source, path or selection, with what to do first, as your cache holds one module
+      of a name (uninstall it and remove it from your cache, then install the address).
+  - A catalog that cannot be fetched is a warning, and its entries re-pin from their own sources.
+  - `lola sync` without `--update` never reads a catalog, and `--update` fetches one only for
+    entries you trusted before the run. A pulled `project.yml` requests its catalog only once you
+    trust it; meanwhile its entries re-pin from their own sources, saying so, with the
+    `lola sync --update` that follows the catalog next (a dry run, which records no trust, names
+    none).
+
+  ```mermaid
+  %%{init: {'theme': 'base', 'themeVariables': {
+    'primaryColor': '#2f6dab',
+    'primaryTextColor': '#1e1e1e',
+    'primaryBorderColor': '#7c8ba1',
+    'lineColor': '#7c8ba1',
+    'edgeLabelBackground': '#eef2f8',
+    'tertiaryColor': 'transparent',
+    'tertiaryTextColor': '#7c8ba1',
+    'tertiaryBorderColor': '#7c8ba1',
+    'clusterBkg': 'transparent',
+    'clusterBorder': '#7c8ba1',
+    'titleColor': '#7c8ba1',
+    'noteBkgColor': '#eef2f8',
+    'noteTextColor': '#1e1e1e',
+    'fontFamily': 'system-ui, sans-serif'
+  }, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+  flowchart TD
+    Entry[entry of an --update run] --> Market{"installed through a marketplace (market:)?"}
+    Market -->|no| Own[fetch its ref again and re-pin]
+    Market -->|yes| Trusted{trusted before the run?}
+    Trusted -->|no| Notice["re-pin from its own source and ref, with a notice"]
+    Trusted -->|yes| Known{you have that marketplace from the entry's source?}
+    Known -->|no| Notice
+    Known -->|yes| Fetched{catalog fetched?}
+    Fetched -->|no| Warn["warning; re-pin from its own source and ref"]
+    Fetched -->|yes| Same{"catalog lists it at the same source, path, ref and selection?"}
+    Same -->|yes| Catalog[the catalog's commit pin becomes the new pin]
+    Same -->|no| Notice
+    classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
+    classDef sysB fill:#1d7848,color:#ffffff,stroke:#7c8ba1
+    classDef sysF fill:#5c6a82,color:#ffffff,stroke:#7c8ba1
+    class Entry sysA
+    class Own,Catalog sysB
+    class Notice,Warn sysF
+  ```
+- **Removals**
+  - are listed with every file lola wrote for them, one per line;
+  - are confirmed on a terminal with the question `Remove these and sync? No applies nothing`
+    (default No): a No applies none of the sync, not only none of the removals;
+  - are confirmed by `-y`, never by `--trust`.
+  - `lock.json` is not trusted input: a recorded path that climbs out of its target's root (`../`,
+    an absolute path) or names a target lola does not know (hinting the valid targets) refuses
+    the sync before anything is asked.
+  - A recorded path that leaves its root through a symbolic link is removed where the link leads;
+    the plan shows it as `<path> (via symlink → <resolved path>)`, as for `lola uninstall`.
 - **Already in sync.** A second run writes nothing, prints its findings and notices, and says
   `✓ already in sync`.
 - **Missing commit.** A cached git head recorded without a commit (written before pins) is
   fetched again at its ref, never refused.
-- **Output.** The plan, the MCP servers of the modules the diff did not show, the hooks, the pins
-  (each once, with its new digest), the removals, the findings and the notices, then a
-  `✓ synced <module>` line for each module the run changed, `✓ removed <module>`, and
-  `✓ N unchanged` for the rest. A dry run's plan lists at most 40 steps a module, then
-  `… and N more for <module> (lola sync -n --json lists them all)` with your own names and
-  flags (a file list's says `… and N more (…)`, without the module), and ends
-  with the command that applies it, and, when that needs answers, the form for no terminal:
-  `→ to apply: lola sync review-kit` and
-  `→ off a terminal: lola sync review-kit --trust=entries -y` (your own names and flags, and
-  `--trust=` the kinds you gave and the kinds the run would be refused without: `entries`,
-  `profiles`, and `hooks` for a pre-install hook without your consent).
+- **Output.**
+  - The plan, the MCP servers of the modules the diff did not show, the hooks, the pins (each
+    once, with its new digest), the removals, the findings and the notices.
+  - Then a `✓ synced <module>` line for each module the run changed, `✓ removed <module>`, and
+    `✓ N unchanged` for the rest.
+  - A dry run's plan lists at most 40 steps a module, then
+    `… and N more for <module> (lola sync -n --json lists them all)` with your own names and
+    flags (a file list's says `… and N more (…)`, without the module).
+  - A dry run ends with the command that applies it, `→ to apply: lola sync review-kit`, and, when
+    that needs answers, the form for no terminal:
+    `→ off a terminal: lola sync review-kit --trust=entries -y`. It carries your own names and
+    flags, `-y` when the run removes something (it confirms the removals), and `--trust=` the
+    kinds you gave and the kinds the run would be refused without: `entries`, `profiles`,
+    `hooks` for a module's pre-install hook without your consent, and `scripts` for a project's
+    pre-install script without it.
 - **One source per name.** Your cache keeps one source per module name for every project on the
-  machine. An entry whose name your cache holds from another source or path (a pulled
-  `project.yml` that moved a folder, say) is refused before anything is fetched:
-  `lola cache rm <module>` (add `-y` off a terminal), then `lola sync` again. A **moved
-  project** is the exception: when the source your cache records for the name is a local folder
-  or archive that no longer exists, and the entry's source is local too, sync says
-  `<module>: your cache has it from <old>, which no longer exists; caching it from <new>` and
-  caches the module from the new place once you trust it (lola checks again, under the cache's
-  lock, that the old place is still gone; a dry run replaces nothing). `lola install` of a local
-  source does the same. **Known limitation:** two checkouts or worktrees of one repository whose
-  `project.yml` lists folder modules inside the repository name the same modules from different
-  folders, so each one's sync refuses what the other cached and coaches `lola cache rm` again.
-  A folder that is only missing for a while (an unmounted drive) is replaced too; you see the
-  notice and the trust diff, and can `lola cache rm` and sync again.
+  machine.
+  - An entry whose name your cache holds from another source or path (a pulled `project.yml` that
+    moved a folder, say) is refused before anything is fetched: `lola cache rm <module>` (add
+    `-y` off a terminal), then `lola sync` again.
+  - A **moved project** is the exception: when the source your cache records for the name is a
+    local folder or archive that no longer exists, and the entry's source is local too, sync says
+    `<module>: your cache has it from <old>, which no longer exists; caching it from <new>` and
+    caches the module from the new place once you trust it (lola checks again, under the cache's
+    lock, that the old place is still gone; a dry run replaces nothing). `lola install` of a
+    local source does the same.
+  - **Known limitation:** two checkouts or worktrees of one repository whose `project.yml` lists
+    folder modules inside the repository name the same modules from different folders, so each
+    one's sync refuses what the other cached and coaches `lola cache rm` again.
+  - A folder that is only missing for a while (an unmounted drive) is replaced too; you see the
+    notice and the trust diff, and can `lola cache rm` and sync again.
 
 **The trust diff.** At project scope, sync compares `project.yml`, with the pins it would write,
 to what you last trusted (`$XDG_STATE_HOME/lola/trust.json`): what lola wrote there, or what you
@@ -144,10 +240,45 @@ word in quotes (`sh -c "curl x|sh"` is three words), or where it `connects to`, 
 unchanged one takes one line. A hook is identified by all of its fields, so a hook whose command
 changed is one `removed` and one `added`. Every hook the content declares is listed: install
 hooks, runtime hooks and an agent's own hooks and MCP servers, whatever assistants the entry
-installs for and whichever components you deselected. Accepting the diff is your consent to the
+installs for and whichever components you deselected. By accepting the diff you consent to the
 module MCP servers it lists.
 
 **The trust question.** On a terminal, after the diff:
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+flowchart TD
+  Diff[trust diff] --> Q{Trust these changes?}
+  Q -->|Trust all| All[every change is trusted]
+  Q -->|Choose…| Pick[one multi-select per kind of change]
+  Q -->|"Cancel (default)"| Abort[the project is not changed]
+  Pick -->|nothing chosen| Abort
+  Pick -->|some chosen| Some[entries you did not trust stay as installed]
+  All --> Removals["removals, if any, are asked"]
+  Some --> Removals
+  Removals -->|"confirmed, or none"| Apply["apply, then record the trust"]
+  classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
+  classDef sysB fill:#1d7848,color:#ffffff,stroke:#7c8ba1
+  classDef sysF fill:#5c6a82,color:#ffffff,stroke:#7c8ba1
+  class Diff sysA
+  class Apply sysB
+  class Abort sysF
+```
 
 ```
 ┃ Trust these changes?
@@ -184,42 +315,49 @@ you trusted again from what it already fetched, so what it applies is what it sh
   you confirmed removals; nothing after a No).
 
 `--trust <module>…` is that answer as a flag: in a run limited to those modules, `--trust`
-accepts every change of the run (a module named like a kind of trust, `hooks` say, is refused
-right after a bare `--trust`: write it first, or after `--`).
+accepts every change of the run. A module named like a kind of trust (`hooks`, say) is refused
+right after a bare `--trust`: write the module name before `--trust`, or after `--`.
 
 - The record is written once the sync has applied, so a failure asks again next time. Cancel or
   Ctrl+C prints `aborted; the project was not changed.` (your cache may already hold versions you
   trusted before). In accessible mode (`LOLA_ACCESSIBLE=1`), Ctrl+C at any question cancels the
   same way, with exit 0.
-- A No to the removals applies nothing but records the trust you just gave (only when it changed
-  what the record holds), without the pins lola did not write, and says what the next sync asks
-  again: `removals declined; the project was
-  not changed. The changes you trusted are recorded; the next lola sync asks only about the
-  removals.` A pin it would write or a folder's content is not in the record until lola writes
-  it, so for those entries the message says `the next lola sync asks about the removals and
-  about <module>, … again: lola records a pin or a folder's content only once it writes it.` (and
-  leaves out `The changes you trusted are recorded` when they were all such changes).
-  When `lola render` would now install what you trusted, the message ends with
-  `lola render would install what you trusted.`
-- `--trust` takes [kinds](../usage.md#trust-kinds): `entries` answers for `project.yml`,
-  `profiles` for its project profiles, and bare `--trust` is both. It prints the diff it accepted
-  on stderr, then the receipt of everything its kinds cover (`trusting, as --trust=entries
-  allows:`), and on a terminal asks `Proceed?` once (`-y` answers; No installs and records
-  nothing; fetched content stays in the cache); off a terminal it goes on, and under `--json` it
-  prints neither (`trust` and `trusted` hold them). `--scope both` asks one receipt for both
-  scopes and applies neither before its yes. Without the answers it needs
-  the run is refused once, before any network contact, naming every one:
-  `lola sync needs your trust for changes to .lola/project.yml; and your confirmation to remove
-  old-mod, and there is no terminal to ask on`, with the diff (fields only for git and archive
-  entries, since nothing was fetched, each entry it would pin by name, and a new or changed
-  folder with its content, read from your disk) and the removals on stderr, and the hints
-  `see them: lola sync --project -n` and `then accept them: lola sync --project --trust=entries
-  -y`, with your other flags and `--trust=` exactly the kinds missing beside those you gave; each
-  keeps the run's `--json`, `--plain` and `--no-pager`. `-y` confirms removals only, which the
-  error says when you gave it (`…; -y confirms removals only; accept them with --trust=entries`);
-  `--trust` alone with removals hints `then confirm them: lola sync --project
-  --trust=entries,profiles -y`, and a refusal of removals alone adds `--trust=hooks` when a
-  pre-install hook without your consent would refuse the next run.
+- **A No to the removals** applies nothing.
+  - It records the trust you just gave (only when it changed what the record holds), without the
+    pins lola did not write, and says what the next sync asks again: `removals declined; the
+    project was not changed. The changes you trusted are recorded; the next lola sync asks only
+    about the removals.`
+  - lola records a pin it would write, or a folder's content, only once it writes it, so for
+    those entries the message says `the next lola sync asks about the removals and about
+    <module>, … again: lola records a pin or a folder's content only once it writes it.` (and
+    leaves out `The changes you trusted are recorded` when they were all such changes).
+  - When `lola render` would now install what you trusted, the message ends with
+    `lola render would install what you trusted.`
+- **`--trust`** takes [kinds](choosing-what-to-install.md#trust-kinds): `entries` answers for
+  `project.yml`, `profiles` for its project profiles, `scripts` for the project's install
+  scripts, `hooks` for modules' install hooks and `runtime-hooks` for their Claude Code runtime
+  hooks and agent MCP servers; `all` is every kind, and bare `--trust` is `entries,profiles`.
+  - It prints the diff it accepted on stderr, then the receipt of everything its kinds cover
+    (`trusting, as --trust=entries allows:`).
+  - On a terminal it asks `Proceed?` once (`-y` answers; No installs and records nothing;
+    fetched content stays in the cache). Off a terminal it goes on, and under `--json` it prints
+    neither (`trust` and `trusted` hold them).
+  - `--scope both` asks one receipt for both scopes and applies neither before its yes.
+- **A run without the answers it needs** is refused once, before any network contact, naming
+  every one: `lola sync needs your trust for changes to .lola/project.yml; and your confirmation
+  to remove old-mod, and there is no terminal to ask on`.
+  - On stderr: the diff (fields only for git and archive entries, since nothing was fetched,
+    each entry it would pin by name, and a new or changed folder with its content, read from your
+    disk) and the removals.
+  - The hints `see them: lola sync --project -n` and `then accept them: lola sync --project
+    --trust=entries -y`, with your other flags and `--trust=` exactly the kinds missing beside
+    those you gave; each keeps the run's `--json`, `--plain` and `--no-pager`.
+  - `-y` confirms removals only, which the error says when you gave it (`…; -y confirms removals
+    only; accept them with --trust=entries`).
+  - `--trust` alone with removals hints `then confirm them: lola sync --project
+    --trust=entries,profiles -y`.
+  - A refusal of removals alone adds `--trust=hooks` when a pre-install hook without your
+    consent would refuse the next run.
 - A pin sync writes is a change you trust, even for an entry you trusted before: re-pinning
   with `--update`, and writing back the pin of an unpinned entry, need your answer or `--trust`.
 - Neither an answer, bare `--trust` nor `-y` consents to install hooks, runtime hooks or an agent's
@@ -230,15 +368,17 @@ right after a bare `--trust`: write it first, or after `--`).
   hooks; run each job with a fresh `XDG_STATE_HOME` for consent per job.
 - **Project scripts.** A project's `pre_install:` and `post_install:` in `project.yml` run your
   teammates' code around every module copy a sync installs ([Install
-  scripts](../usage.md#install-scripts)); they are not entries, so `--trust=entries` never covers
-  them. Each is consented per project, event and the script's sha256: a sync asks about a script
-  it has no consent for even when it installs nothing, so a pulled `project.yml` that adds one,
-  or a pulled edit of the script, asks before anything runs it. Off a terminal an untrusted
-  `pre_install` refuses: `lola sync needs your trust for the pre-install script ci/check.sh of
-  this project (new), and there is no terminal to ask on`, hinting `lola info` of a module it
-  installs, then your run with `--trust=scripts`. An untrusted `post_install` is skipped with a
-  warning and stays pending on the modules it would have wrapped; `lola sync <module>
-  --trust=scripts` runs it alone in their copies. A `--user` sync never runs a project's scripts.
+  scripts](choosing-what-to-install.md#install-scripts)).
+  - They are not entries, so `--trust=entries` never covers them.
+  - Each is consented per project, event and the script's sha256. A sync asks about a script it
+    has no consent for even when it installs nothing, so a pulled `project.yml` that adds one, or
+    a pulled edit of the script, asks before anything runs it.
+  - Off a terminal an untrusted `pre_install` refuses: `lola sync needs your trust for the
+    pre-install script ci/check.sh of this project (new), and there is no terminal to ask on`,
+    hinting `lola info` of a module it installs, then your run with `--trust=scripts`.
+  - An untrusted `post_install` is skipped with a warning and stays pending on the modules it
+    would have wrapped; `lola sync <module> --trust=scripts` runs it alone in their copies.
+  - A `--user` sync never runs a project's scripts.
 - A project with no record in `trust.json` (a fresh clone, a moved directory, a deleted state
   directory) has every entry untrusted: the first sync shows them all and asks once. A manifest
   with no modules and no targets has nothing to trust.

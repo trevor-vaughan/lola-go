@@ -8,7 +8,7 @@ release ([release.md](release.md)) and whenever you change what they cover.
 | Command | Runs |
 |---|---|
 | `task test` | Every Ginkgo spec; `MODE=llm` prints only failures. |
-| `task check` | `lint`, `test`, `cross` and `vuln`: the gate every commit passes. |
+| `task check` | `lint`, `test`, `cross` (build and vet, tests included, for Windows and macOS) and `vuln` (`govulncheck`): the gate every commit passes. |
 | `task e2e` | Every end-to-end suite; `task e2e -- <suite>...` runs those named. Not part of `task check`. |
 
 Artifacts go to `.test-output/` (`TEST_DIR` overrides it); the suites write theirs to
@@ -16,28 +16,33 @@ Artifacts go to `.test-output/` (`TEST_DIR` overrides it); the suites write thei
 
 ## Specs
 
-Ginkgo/Gomega specs live beside the code, one suite per package.
+Ginkgo specs, with Gomega matchers, live beside the code, one suite per package.
 
 - **Isolation.** Every spec calls `testenv.Isolate()` (`internal/testenv`). It points `HOME`,
-  every XDG directory and git's config and identity at a fresh temporary directory, clears
-  `LOLA_HOME`, `LINES`, `LOLA_PAGER` and `NO_PAGER`, and replaces `PATH` with the spec's own `bin/` (where specs put fake assistants)
+  every XDG directory and git's config and identity at a fresh temporary directory, sets
+  `NO_COLOR=1`, clears `LOLA_COLOR`, `LOLA_HOME`, `COLUMNS`, `LINES`, `LOLA_PAGER` and
+  `NO_PAGER`, and replaces `PATH` with the spec's own `bin/` (where specs put fake assistants)
   followed by a directory of symbolic links to the few tools specs need (`sh`, `git`, …), so a
   developer's real assistant is never found. Values come back after the spec. No spec uses the
   network.
-- **The command tree.** CLI specs (`internal/cli`) run the real cobra tree in-process with
-  buffered, non-terminal streams. The viewer's specs drive `viewerModel` with key and window-size
-  messages and read `View()`; through `app.view` and `WithTerminals`, they type keys into a pipe
-  that stays open, as a terminal does, and set `LINES` and `COLUMNS` for the size. Convention specs walk the live command tree, and the
-  conformance suite (`internal/target/conformance`) walks the live target registry. Its
-  coaching spec (`coaching_test.go`) plans a module for every finding a target's capability
-  table and its own rendering produce, and fails on a finding with no hint that the target's
-  `nothingToDo` list does not name. A new key, rule or finding needs a hint, or an entry there
-  with the reason.
+- **The command tree.**
+  - CLI specs (`internal/cli`) run the real cobra tree in-process with buffered, non-terminal
+    streams.
+  - The viewer's specs drive `viewerModel` with key and window-size messages and read `View()`;
+    through `app.view` and `WithTerminals`, they type keys into a pipe that stays open, as a
+    terminal does, and set `LINES` and `COLUMNS` for the size.
+  - Convention specs walk the live command tree.
+  - The conformance suite (`internal/target/conformance`) walks the live target registry. Its
+    coaching spec (`coaching_test.go`) plans a module for every finding a target's capability
+    table and its own rendering produce. It fails on a finding that has neither a hint nor a
+    name in the target's `nothingToDo` list.
+  - A new key, rule or finding needs a hint, or an entry there with the reason.
 - **No meta tests.** A spec never tests test files, source text, docs or repository layout, and
   never tests a test helper. Convention specs that walk the live cobra tree are fine.
-- **Regression names.** A spec that pins a fix keeps the name its design lists (specs named
-  after Python lola bugs, such as `corrupt JSON config is never overwritten`); never rename
-  one.
+- **Regression names.** A spec that pins a fix keeps the name its design lists; never rename
+  one. The MVP design (`docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`, §11) names
+  the specs for bugs of the Python lola, [LobsterTrap/lola](https://github.com/LobsterTrap/lola),
+  the tool `lola migrate` moves users from, such as `corrupt JSON config is never overwritten`.
 - **Behaviour lives in `internal/engine`.** A new flow gets engine specs first; `internal/cli`
   only adapts it.
 
@@ -54,8 +59,8 @@ Ginkgo/Gomega specs live beside the code, one suite per package.
 
 ## End-to-end suites
 
-The suites under `e2e/<suite>/` run the release-built binary (`CGO_ENABLED=0 GOOS=linux -trimpath`)
-where only a real process, file system or tool shows the behaviour. They need Go (the runner builds
+The suites under `e2e/<suite>/` check behaviour that only a real process, file system or tool
+shows. They run the release-built binary (`CGO_ENABLED=0 GOOS=linux -trimpath`). They need Go (the runner builds
 the binary on the host), podman or docker, [venom](https://github.com/ovh/venom), and the network
 the first time, to build the image; without a container runtime they print `skipped: the e2e suites
 need podman or docker, and neither is on PATH` and exit 0.
@@ -93,17 +98,49 @@ into.
 
 ### The container
 
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+sequenceDiagram
+  participant R as scripts/e2e.sh on the host
+  participant V as venom on the host
+  participant G as gitserve.py in the container
+  participant L as lola-go in the container
+  R->>G: run -d, network none, gitserve.py as main process
+  R->>V: venom run with runtime and container vars
+  loop each step
+    V->>L: runtime exec container argv
+    L->>G: git over loopback HTTP
+    L-->>V: exit status, stdout, stderr
+  end
+  R->>G: rm -f the container
+```
+
 Each suite runs in a container of its own, as root (the uid owning its tmpfs mounts, so git
 trusts the repositories), with `--network none`, `--cap-drop ALL` and `no-new-privileges`, and
 `HOME` and every XDG directory pinned under `/home/tester`. Five tmpfs mounts hold `/work`,
-`/home/tester`, `/home/tester/.local/state` (`XDG_STATE_HOME`, the trash, so a move to it from
+`/home/tester`, `/home/tester/.local/state` (`XDG_STATE_HOME`, the trash, so moving a file to it from
 `/work` crosses file systems), `/run/gitserve` and `/run/e2e-tls` (mode 0700). Git's config is
 `/dev/null`, its identity `lola-e2e` and its dates fixed, so a fixture repository's commits have
 the same SHAs on every run; `NO_COLOR=1`. The binary is `/opt/lola-go/lola-go`, the suite
 `/e2e`, `e2e/common` `/e2e-common`. No assistant is on `PATH`.
 
-The container's main process is `e2e/common/gitserve.py`, a loopback smart-HTTP git server on
-port 8765 serving `/srv/git`, which logs each request as `<METHOD> <path>` to
+The container's main process is `e2e/common/gitserve.py`, a git server for git's smart HTTP
+protocol, on loopback port 8765, serving `/srv/git`, which logs each request as `<METHOD> <path>` to
 `/run/gitserve/requests.log`: "no request" means the log's line count did not change.
 
 ### Steps run in the container
@@ -111,18 +148,20 @@ port 8765 serving `/srv/git`, which logs each request as `<METHOD> <path>` to
 Every venom step is `{{.runtime}} exec [<options>] {{.container}} <argv>`. Any `$`, glob, `&&`,
 pipe or redirection sits inside a single-quoted `sh -c '…'` or `python3 -c '…'`, so the host
 shell expands nothing, and no step names a host path: the only one venom sees is
-`--output-dir`. Venom steps are host shell strings, so a `$XDG_CONFIG_HOME` outside the quotes
+`--output-dir`. Venom runs each step as a shell string on the host, so a `$XDG_CONFIG_HOME` outside the quotes
 would expand on the host and could write your real `~/.config`. The runner does not enforce
 this; review does.
 
 ### Shared helpers (`e2e/common/`)
 
-- `hint.py <refusal> [<index>]` runs one hint of a refusal's `--json` line as a user pasting it
-  would: the first, or the one at the index given (a trust refusal's second hint applies what its
-  first shows). Hints carry author text, so it runs only lola: it accepts a hint only as
-  `lola …` or `<label>: lola …` with a lowercase label, splits it with `shlex`, requires the first
-  word to be `lola`, puts the binary in its place and runs it without a shell, with a 60 s
-  timeout. A hint it refuses or cannot read exits 2.
+- `hint.py <file> [<index>]` runs one hint of the refusal's `--json` line held in `<file>`, as a
+  user pasting it would: the first, or the one at the index given (a trust refusal's second hint
+  applies what its first shows). Hints carry author text, so it runs only lola:
+  - it accepts a hint only as `lola …` or `<label>: lola …` with a lowercase label;
+  - splits it with `shlex` and requires the first word to be `lola`;
+  - puts the binary in its place and runs it without a shell, with a 60 s timeout.
+
+  A hint it refuses or cannot read exits 2.
 - `jsoncheck.py doc <file>` checks one JSON document, and `jsoncheck.py refusal <stdout>
   <stderr>` a refusal: empty stdout and exactly one stderr line, an object with an `error`
   string and a list of string `hints`. Either way no value may be `null` but the documented
@@ -155,9 +194,9 @@ and venom's version.
 
 ### The suites
 
-The **migrate** suite has the Python lola install fixtures, snapshots the tree, runs lola-go's
-`migrate`, and `scripts/check.py` checks the result against a snapshot taken after the Python lola's
-installs, one `ok` or `FAIL` line per check: every path the Python lola wrote ends up lola's, in the
+The **migrate** suite has the Python lola install its fixtures, snapshots the tree, runs lola-go's
+`migrate`, and `scripts/check.py` checks the result against a snapshot taken after the Python lola
+installed them, one `ok` or `FAIL` line per check: every path the Python lola wrote ends up lola's, in the
 trash, kept, reported, or byte-identical for an unmappable record; its G1 case pins the one-line
 JSON refusal of `migrate --json` off a terminal; its C cases move a Python home and project from
 another machine, with Claude Code gone, and check the `--map-root` and `--map-target` run that
@@ -190,7 +229,11 @@ a filter in frontmatter, and compares both assistants' renders byte for byte wit
 `fixtures/expected/`; edits the entry's vars and re-renders after trust, reading `lock.json`'s
 `rendered_with`; refuses a line break rendered into frontmatter with the file and line; and runs a
 template that loops without writing (case X4), checking that the process ends with exit 1 within 7 s
-and no `lola-go` process is left. No in-process spec can probe that loop: X4 is its only test.
+and no `lola-go` process is left.
+
+No in-process spec can probe that loop; the Ginkgo spec in
+`cmd/lola/templates_test.go` runs a binary it builds on such a loop and checks exit 1 within the
+render timeout plus 5 s, and X4 checks the release-built binary in the container.
 
 The **team** suite follows a project a teammate clones: the first sync off a
 terminal refuses until trusted, a dry run names the command that applies it, `-y` never trusts,
@@ -211,14 +254,15 @@ the suite records, and runs `tls.sh`.
 The **market** suite registers a folder marketplace and a Python-lola YAML catalog over git,
 searches them, installs a relative entry and a git entry, which lola maps only from `https://`
 and fetches over HTTPS from `git.lola.test`, refuses another module of the entry's name in your
-cache with the `cache rm` that clears it, follows a changed catalog pin with `sync --update`,
+cache with the `cache rm` that clears it, follows a pin changed in the catalog with `sync --update`,
 refuses an `@` address written into `project.yml` before any request, and removes a marketplace
 through its one-line refusal's hint.
 
 ## Adding a suite or a case
 
-**The reason rule.** An end-to-end case checks only what an in-process spec cannot, and its
-design states which reason it has:
+**The reason rule.** An end-to-end case checks only what an in-process spec cannot. Its row in
+the e2e design's case tables (`docs/superpowers/specs/2026-10-23-plan-8-e2e-docs-design.md`, the
+Reason column) states which of these reasons it has:
 
 | Reason | The case needs |
 |---|---|
@@ -231,33 +275,55 @@ design states which reason it has:
 A case whose only claim is a CLI behaviour a Ginkgo spec already pins is not added.
 
 **A case** goes into its suite's chain in order: cases run in the file's order and read the
-state earlier ones leave, so a case whose state is missing fails rather than being skipped. Name
-it `<id> <what it shows>` (`T4 The hint trusts and installs`), keep every step in the container
-form above, check JSON with `jsoncheck.py`, a "nothing written" claim with `snapshot.py`, and a
-refusal by running its hint with `hint.py` and asserting the outcome: exit 0 having removed the
-refusal's cause, or exactly the next refusal. Never assert a time.
+state earlier ones leave, so a case whose state is missing fails rather than being skipped.
+
+1. Name it `<id> <what it shows>` (`T4 The hint trusts and installs`). The id is a letter and a
+   number; the existing suites use their own letter (`I` install, `X` template, `T` team, `M`
+   market) and another letter for a group within a suite (install's `Q1`, migrate's `G1` and `C`
+   cases).
+2. Keep every step in the container form above, for example
+   `{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/tpl -C /work/proj --scope project -t claude-code -t opencode`.
+3. Check JSON with `jsoncheck.py`.
+4. Check a "nothing written" claim with `snapshot.py`.
+5. Check a refusal by saving its JSON line to a file in the container, running its
+   hint with `{{.hint}} <file> [<index>]`, and asserting the outcome: exit 0 having removed the
+   refusal's cause, or exactly the next refusal.
+6. Never assert a time.
 
 **A suite** is a directory `e2e/<name>/` holding `<name>.venom.yml`, which the runner discovers;
-`task e2e -- <name>` runs it alone. It reads the variables the runner passes (`runtime`,
-`container`) and declares its own for the paths above (`lola: /opt/lola-go/lola-go`, `hint:
-python3 /e2e-common/hint.py`, …). Fixtures go in `fixtures/`, and a `scripts/setup.sh` its first
-case runs builds any git repositories under `/srv/git` and refuses unless each commit is the SHA
-the suite records. Start the file with a header saying what runs where, as the existing suites
-do, and keep it within the 90 s budget.
+`task e2e -- <name>` runs it alone.
+
+1. Read the variables the runner passes with `--var`: `runtime`, the podman or docker it found,
+   and `container`, the name of the suite's container. Give both a default in `vars:`, as the
+   existing suites do (`runtime: podman`).
+2. Declare your own variables for the paths above (`lola: /opt/lola-go/lola-go`, `hint:
+   python3 /e2e-common/hint.py`, …).
+3. Put fixtures in `fixtures/`.
+4. If the suite needs git repositories, write a `scripts/setup.sh` that builds them under
+   `/srv/git` and refuses unless each commit is the SHA the suite records, and run it in the
+   first case (`{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh …`).
+5. Start the file with a header saying what runs where, as the existing suites do.
+6. Keep the suite within the 90 s budget.
 
 ## Untested by design
 
-- **Migrate's partial move** (R-6d1-8). When `lola migrate` moves a recorded path or the Python
-  lola's home into the trash across file systems and something changes between the copy and the
-  removal, `trash.Move` leaves the changed entries in place and returns a `*trash.ChangedError`;
-  migrate then reports where the copy went (`internal/migrate/run.go`, the Python home's move in
-  `Migrate` and a recorded path's move in its cleanup). No fixture can time a change between the
-  copy and the removal, and a test seam was refused when the branch shipped; the `Move` contract it
-  relies on is pinned by the trash specs.
-- **Templating's residual risks**: none has a deterministic in-process probe. An engine-internal
-  growth path not found in the review, and a map nested in a list printing in Go syntax
-  ([architecture.md](architecture.md#templates)); and the swap of a template file between `Lstat`
-  and `Open`, which `internal/module/template.go` refuses with `os.SameFile`.
+- **Migrate's partial move** (R-6d1-8).
+  - The case: `lola migrate` moves a recorded path or the Python lola's home into the trash across
+    file systems, and something changes between the copy and the removal.
+  - `trash.Move` leaves the changed entries in place and returns a `*trash.ChangedError`; migrate
+    then reports where the copy went.
+  - The code: `internal/migrate/run.go`, where `Migrate` moves the Python home and its cleanup
+    moves a recorded path.
+  - Why untested: no fixture can time a change between the copy and the removal, and a test seam
+    was refused when the branch shipped.
+  - What covers it: the trash specs pin the `Move` contract it relies on.
+- **Templating's residual risks**: no in-process spec can probe any of them deterministically.
+  - A path inside the liquid engine that grows memory without writing: the Plan 7 design's review
+    of liquid covered `render`, `tags`, `values` conversion and range code, not all of
+    `expressions` ([architecture.md](architecture.md#templates)).
+  - A map nested in a list prints in Go syntax.
+  - A template file swapped between `Lstat` and `Open`, which `internal/module/template.go`
+    refuses with `os.SameFile`.
 - **Docker.** The runner supports docker as well as podman, but the suites have been run only
   with podman (rootless); docker, rootful or rootless, is unverified. `versions.txt` records which
   runtime ran.
