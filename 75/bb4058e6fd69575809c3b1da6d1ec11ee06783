@@ -1,0 +1,28 @@
+internal/cli/confirm_test.go
+  s_51684f47240dfe::t_0562fe2a0a6de0 19-20,95-107,161-162,176-177,194-195,209-210,225-226,239-240,328,344-345
+internal/cli/cmd_repair.go
+  s_51684f47240dfe::t_d93f989dd3043c 1-108
+internal/cli/repair_test.go
+  s_51684f47240dfe::t_433be3aadb297d 41
+  s_51684f47240dfe::t_d93f989dd3043c 1-40,42-97
+internal/cli/cmd_misc.go
+  s_51684f47240dfe::t_46bf09694aee18 25
+internal/cli/store_test.go
+  s_51684f47240dfe::t_0562fe2a0a6de0 533
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "75bb4058e6fd69575809c3b1da6d1ec11ee06783",
+  "prompts": {},
+  "sessions": {
+    "s_51684f47240dfe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee2b0a57-130c-4b71-b4e2-152537b2f5dc",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
