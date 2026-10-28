@@ -1,0 +1,22 @@
+docs/testing.md
+  s_cbea84d9628a69::t_2167b251c3e657 311-326
+  s_cbea84d9628a69::t_b9698abc3ad8fb 279-291,294-306
+  s_cbea84d9628a69::t_500db3b57ff906 101-132
+  s_cbea84d9628a69::t_c375ea0aa30ea8 11,19,22-24,28-39,42-45,62-63,136,142-143,151,157-164,197-199,232-236,257,263-265,278,310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "966387cba711784facbabf9ca5d24fd653ae0a92",
+  "prompts": {},
+  "sessions": {
+    "s_cbea84d9628a69": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eedf952-fecf-43fd-aabe-6e70592e7650",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
