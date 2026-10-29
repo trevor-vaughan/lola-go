@@ -1,0 +1,26 @@
+docs/architecture.md
+  s_2eb2f51d8dca0b::t_132648d84d6b24 267-274,279-282
+  s_2eb2f51d8dca0b::t_edb652c8e8443b 283
+docs/guides/choosing-what-to-install.md
+  s_2eb2f51d8dca0b::t_132648d84d6b24 293-295,312,315-324,364-365,368-373
+docs/decisions.md
+  s_2eb2f51d8dca0b::t_132648d84d6b24 167
+docs/usage.md
+  s_2eb2f51d8dca0b::t_132648d84d6b24 52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "13ab854cd4e928293adb6846f5481b9d02ed60b8",
+  "prompts": {},
+  "sessions": {
+    "s_2eb2f51d8dca0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89f83b70-717e-4a8a-87ec-08c56a875a20",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
