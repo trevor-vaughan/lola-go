@@ -1,0 +1,60 @@
+internal/engine/selections_test.go
+  s_aad18a8ddba1bd::t_ade4c81043a4c7 65,72,74,77
+internal/engine/runtimehooks_test.go
+  s_aad18a8ddba1bd::t_8a05a58fd54fcc 651
+  s_aad18a8ddba1bd::t_2d6d91ea9673b9 66-73,106,166,195,282,284,299,311,395,501,514,519,521-522,531,657
+  s_aad18a8ddba1bd::t_dfefe38c121475 280-281,283,644,652-654
+internal/engine/profile_test.go
+  s_aad18a8ddba1bd::t_e82ab862cabf77 272,282-284,295-297,303-306,308
+  s_aad18a8ddba1bd::t_dba50f59a4af9f 298
+  s_aad18a8ddba1bd::t_d617338afbd186 299
+  s_aad18a8ddba1bd::t_2d7d2925ecc49e 604,645-647,649
+  s_aad18a8ddba1bd::t_0b73d0870b9373 638-644
+internal/engine/sync_test.go
+  s_aad18a8ddba1bd::t_e1dfc748e2557d 1255
+  s_aad18a8ddba1bd::t_29bde9083c78b1 329-330,1256
+internal/engine/sources_test.go
+  s_aad18a8ddba1bd::t_32bd952ebecb76 581,601,631,637,657,680,690,697,701,703-704,724,744,759,778,873,876,892,897
+  s_aad18a8ddba1bd::t_6c5ccc3cd8e8d4 361,367,429-430,575-576
+  s_aad18a8ddba1bd::t_a01a2b6b4e8c6d 789,795-804
+  s_aad18a8ddba1bd::t_660965e26722b2 1219-1220,1455-1459,1506-1510
+internal/engine/templates_test.go
+  s_aad18a8ddba1bd::t_183f426778ef6e 364,366,431,444,446,718,720
+internal/engine/engine_test.go
+  s_aad18a8ddba1bd::t_86c32568665af2 393
+  s_aad18a8ddba1bd::t_2c235b612c89c2 1077,1079,1083,1674,1702-1705,1896,1913-1915,1921,1932
+  s_aad18a8ddba1bd::t_21a2d73cd1ed64 164,297,385,407,445,451,580,628,631,1078,1089,1111,1145,1158,1185,1240,1247,1252,1294,1310,1327,1685,1689,1700,1908,1912,1929,1935
+  s_aad18a8ddba1bd::t_24a408f0891428 598,607-611,613,624
+internal/engine/lastused_test.go
+  s_aad18a8ddba1bd::t_ddd56953d393a7 41,90,101,105-106,134,142
+internal/engine/scripts_test.go
+  s_aad18a8ddba1bd::t_0e5e5823b450d3 395,401,764,770
+internal/engine/remoteprofile_test.go
+  s_aad18a8ddba1bd::t_ba2824d0364539 528
+internal/engine/edits_test.go
+  s_aad18a8ddba1bd::t_ade4c81043a4c7 293
+  s_aad18a8ddba1bd::t_8a32d8a5e87c13 285,294-295
+internal/engine/market_test.go
+  s_aad18a8ddba1bd::t_06052eb56ec158 542,554-555,558-565
+internal/engine/hints_test.go
+  s_aad18a8ddba1bd::t_ade4c81043a4c7 209,214,218,228
+internal/engine/marketinstall_test.go
+  s_aad18a8ddba1bd::t_88633e1f978b54 441-446
+  s_aad18a8ddba1bd::t_ba2824d0364539 420,447
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e14a7d85724ba223aeed6c41f9a8797a95fc8ac8",
+  "prompts": {},
+  "sessions": {
+    "s_aad18a8ddba1bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7497488a-464a-46fa-8a4f-7a09bbbbbac0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
