@@ -1,0 +1,28 @@
+internal/cli/root.go
+  s_2eb2f51d8dca0b::t_c67fad95335f4d 141
+docs/usage.md
+  s_2eb2f51d8dca0b::t_41518882c36345 903
+  s_2eb2f51d8dca0b::t_84521951bdd2e3 25
+internal/cli/scope_test.go
+  s_2eb2f51d8dca0b::t_edbf640f9a4b0d 51-59
+internal/cli/help.go
+  s_2eb2f51d8dca0b::t_c67fad95335f4d 81
+docs/guides/choosing-what-to-install.md
+  s_2eb2f51d8dca0b::t_41518882c36345 220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f2bd0ed13c86962fdccdc935fab7f3092c7862ec",
+  "prompts": {},
+  "sessions": {
+    "s_2eb2f51d8dca0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89f83b70-717e-4a8a-87ec-08c56a875a20",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
