@@ -1,0 +1,49 @@
+internal/migrate/plan.go
+  s_3c8e9f29d7f371::t_16fd7175ac9d8b 203-205,305,333-339
+  s_3c8e9f29d7f371::t_d9f5e7086e8b58 340-341
+docs/usage.md
+  s_3c8e9f29d7f371::t_77861cfa230820 788-789,1522
+internal/migrate/run_test.go
+  s_3c8e9f29d7f371::t_b8387e11ae708d 608
+  s_3c8e9f29d7f371::t_c1eb64ce542c68 346
+internal/cli/migrate_test.go
+  s_3c8e9f29d7f371::t_b8387e11ae708d 177,179-181
+  s_3c8e9f29d7f371::t_26592b86b91ec0 245,247,252-256,258-260
+  s_3c8e9f29d7f371::t_06f59ccfd59a24 246
+  s_3c8e9f29d7f371::t_125d0811f4ccc8 248-251
+  s_3c8e9f29d7f371::t_abf71bda77c6c8 257
+internal/source/fetch.go
+  s_3c8e9f29d7f371::t_71177b2f3bb204 13-16
+internal/source/git.go
+  s_3c8e9f29d7f371::t_71177b2f3bb204 455
+internal/source/folder.go
+  s_3c8e9f29d7f371::t_0d49f117bbe6f8 159,286
+internal/migrate/read.go
+  s_3c8e9f29d7f371::t_16fd7175ac9d8b 72-74,469
+internal/cli/cmd_migrate.go
+  s_3c8e9f29d7f371::t_0f80b6fbbeceeb 360-384,386-398
+internal/migrate/run.go
+  s_3c8e9f29d7f371::t_3e6c54afc298c6 142-145
+  s_3c8e9f29d7f371::t_c6261364a17f09 146,201,257,1327-1328,1330,1332,1334-1335,1358,1362-1363
+internal/migrate/plan_test.go
+  s_3c8e9f29d7f371::t_c1b421f219aa36 306-318
+  s_3c8e9f29d7f371::t_b8387e11ae708d 618-619
+docs/guides/migrating.md
+  s_3c8e9f29d7f371::t_77861cfa230820 30-31,137-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e30795dacfbaf77b60202f8699f93815545d2ed",
+  "prompts": {},
+  "sessions": {
+    "s_3c8e9f29d7f371": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce50e11b-d9ba-40cf-99c9-53bf9068079c",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
