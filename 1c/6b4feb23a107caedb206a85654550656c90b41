@@ -1,0 +1,37 @@
+docs/usage.md
+  s_3c8e9f29d7f371::t_9cb0a704f88fbf 788-791
+internal/migrate/run.go
+  s_3c8e9f29d7f371::t_0c1d4d0f719b67 39-48,219,227,232
+internal/migrate/plan.go
+  s_3c8e9f29d7f371::t_0c1d4d0f719b67 232-234,278-279,285,351,358
+  s_3c8e9f29d7f371::t_9aeabe0de87763 191
+  s_3c8e9f29d7f371::t_2421d9a587b9b6 215
+internal/cli/confirm_test.go
+  s_3c8e9f29d7f371::t_485655e04c3a32 307-308
+internal/cli/progress.go
+  s_3c8e9f29d7f371::t_9ea8836900829f 34,38
+  s_3c8e9f29d7f371::t_f2d8f9558fd770 19
+  s_3c8e9f29d7f371::t_fcbd0274452f1c 1-18,20,22-33,35-37,39-42
+  s_3c8e9f29d7f371::t_a7805187a41ccc 21
+internal/cli/cmd_migrate.go
+  s_3c8e9f29d7f371::t_fcbd0274452f1c 91-93,100,104
+internal/cli/migrate_test.go
+  s_3c8e9f29d7f371::t_58ebdd16d668d0 4,40-75
+  s_3c8e9f29d7f371::t_caa176200502e2 76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c6b4feb23a107caedb206a85654550656c90b41",
+  "prompts": {},
+  "sessions": {
+    "s_3c8e9f29d7f371": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce50e11b-d9ba-40cf-99c9-53bf9068079c",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
