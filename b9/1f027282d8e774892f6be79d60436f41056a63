@@ -1,0 +1,28 @@
+internal/cli/viewer_internal_test.go
+  s_3c8e9f29d7f371::t_38f1941305792f 10,68-73,76-89,123,212,214,219,221,412-435,439-486
+  s_3c8e9f29d7f371::t_0427988d3def63 436-438
+  s_3c8e9f29d7f371::t_75b02eac6d13a7 487
+docs/usage.md
+  s_3c8e9f29d7f371::t_633da25bb2c45f 1447-1452
+internal/cli/viewer.go
+  s_3c8e9f29d7f371::t_90e7b0de95c9f3 77-78,80-155,170-172,217-220,225-227
+  s_3c8e9f29d7f371::t_14880386a2dd58 221,224,257-261,272,274-277
+  s_3c8e9f29d7f371::t_9c27d2c48b3cba 12,36-41,54-60
+  s_3c8e9f29d7f371::t_d0cafe1e23278a 263-271,273,278-279,281-282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b91f027282d8e774892f6be79d60436f41056a63",
+  "prompts": {},
+  "sessions": {
+    "s_3c8e9f29d7f371": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce50e11b-d9ba-40cf-99c9-53bf9068079c",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
