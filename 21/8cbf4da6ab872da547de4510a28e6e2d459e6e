@@ -1,0 +1,21 @@
+docs/usage.md
+  s_aad18a8ddba1bd::t_149e615886bc5b 1315
+docs/decisions.md
+  s_aad18a8ddba1bd::t_149e615886bc5b 166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "218cbf4da6ab872da547de4510a28e6e2d459e6e",
+  "prompts": {},
+  "sessions": {
+    "s_aad18a8ddba1bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7497488a-464a-46fa-8a4f-7a09bbbbbac0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
