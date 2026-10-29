@@ -1,0 +1,19 @@
+scripts/test.sh
+  s_3c8e9f29d7f371::t_6348f0c91f8ae5 8-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9fa4457e4d909142995f44ed87ad4decb838f538",
+  "prompts": {},
+  "sessions": {
+    "s_3c8e9f29d7f371": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce50e11b-d9ba-40cf-99c9-53bf9068079c",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
