@@ -1,0 +1,21 @@
+e2e/update/update.venom.yml
+  s_2eb2f51d8dca0b::t_eb093f318e0c99 200-240
+e2e/update/scripts/setup.sh
+  s_2eb2f51d8dca0b::t_eb093f318e0c99 7-8,40-62,64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c01cbae88d98beec29b99581f8c9c860b214378",
+  "prompts": {},
+  "sessions": {
+    "s_2eb2f51d8dca0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89f83b70-717e-4a8a-87ec-08c56a875a20",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
