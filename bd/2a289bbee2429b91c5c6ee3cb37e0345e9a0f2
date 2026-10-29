@@ -1,0 +1,22 @@
+internal/engine/mentions_test.go
+  s_2eb2f51d8dca0b::t_0aec06b1adda2a 144,146-147,166-206,208-212,221-222
+  s_2eb2f51d8dca0b::t_f591304d6a888e 207,213-220
+internal/engine/mentions.go
+  s_2eb2f51d8dca0b::t_1ca1cc6e30a779 10,34-37,60-68,74-76,80,114-116,132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd2a289bbee2429b91c5c6ee3cb37e0345e9a0f2",
+  "prompts": {},
+  "sessions": {
+    "s_2eb2f51d8dca0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89f83b70-717e-4a8a-87ec-08c56a875a20",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
