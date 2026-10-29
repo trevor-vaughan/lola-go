@@ -1,0 +1,62 @@
+internal/cli/scope_test.go
+  s_aad18a8ddba1bd::t_a2cdf830d6dc33 102-103
+  s_aad18a8ddba1bd::t_7d56596ec992d6 193,203-204,210
+  s_aad18a8ddba1bd::t_92345296f58a3e 64,66,71,74,85,92,98,100,117,119
+internal/engine/trustkinds.go
+  s_aad18a8ddba1bd::t_46286cf1e7ee06 89,93
+internal/cli/core_test.go
+  s_aad18a8ddba1bd::t_7bcba14e0c163b 271
+  s_aad18a8ddba1bd::t_a6bd91d25abb7c 276
+  s_aad18a8ddba1bd::t_2133c2bcccfcc3 67,94,227-228,277,359,364,367,372,674,679
+  s_aad18a8ddba1bd::t_472fa365bcd532 66,69-70,280,368
+internal/cli/store_test.go
+  s_aad18a8ddba1bd::t_1c21384d026b6a 471,504,533
+internal/cli/selections_test.go
+  s_aad18a8ddba1bd::t_8bead043874cf8 40
+  s_aad18a8ddba1bd::t_7bcba14e0c163b 14
+internal/cli/trust.go
+  s_aad18a8ddba1bd::t_cd54976254c238 69
+internal/cli/trust_test.go
+  s_aad18a8ddba1bd::t_a6bd91d25abb7c 483-484
+  s_aad18a8ddba1bd::t_c574a968783b0b 179-180,191,194
+internal/cli/cmd_core.go
+  s_aad18a8ddba1bd::t_46286cf1e7ee06 130
+internal/cli/cmd_update.go
+  s_aad18a8ddba1bd::t_fc8871cc0035d8 1-43
+internal/cli/hints_test.go
+  s_aad18a8ddba1bd::t_8bead043874cf8 171,177
+internal/cli/scripts_test.go
+  s_aad18a8ddba1bd::t_8bead043874cf8 81
+internal/cli/help_test.go
+  s_aad18a8ddba1bd::t_8bead043874cf8 92
+internal/cli/update_test.go
+  s_aad18a8ddba1bd::t_ff4f2e346d1a24 1-71,76-131,156-159
+  s_aad18a8ddba1bd::t_c2c1bd389a5eab 72-73
+  s_aad18a8ddba1bd::t_32b87f938d118f 132-155
+  s_aad18a8ddba1bd::t_bdfb5c2492e356 74-75
+internal/engine/trustkinds_test.go
+  s_aad18a8ddba1bd::t_de185510e6be7e 190
+internal/engine/sync.go
+  s_aad18a8ddba1bd::t_cbf087de261a1e 109
+  s_aad18a8ddba1bd::t_c2c1bd389a5eab 102-105
+internal/cli/cmd_sync.go
+  s_aad18a8ddba1bd::t_f33f80de459eca 5,62-63,65-68,191-214,357-358,363-364,435
+  s_aad18a8ddba1bd::t_d31834f55cb321 282,295
+  s_aad18a8ddba1bd::t_a41b46737ac4fb 243-279,281,283-284,286-289,291,293-294,296-303,305-310,312-313,319-331,333-340,342-346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "46d23a124a867ee46091c15a42e17fe1456f3ba7",
+  "prompts": {},
+  "sessions": {
+    "s_aad18a8ddba1bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7497488a-464a-46fa-8a4f-7a09bbbbbac0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
