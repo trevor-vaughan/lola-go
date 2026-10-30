@@ -1,0 +1,26 @@
+internal/engine/uninstall_test.go
+  s_945f947167805f::t_bb2670de8f8533 184
+  s_945f947167805f::t_eca29e7f2aab40 119,144,147-148,158-183,185-207,230
+internal/engine/ops.go
+  s_945f947167805f::t_aa4b03337d93b8 1630-1637,1640,1642,1645-1646,1648-1649,1661,1669,1674-1680,1686-1704,1726-1730,1732-1738
+internal/engine/target.go
+  s_945f947167805f::t_aa4b03337d93b8 210-211,214,235-238,240-241
+internal/cli/huh_internal_test.go
+  s_945f947167805f::t_eca29e7f2aab40 150-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bcc19d638894e59da0f2697c4a8e628627186f04",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
