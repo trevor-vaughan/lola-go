@@ -1,0 +1,53 @@
+internal/engine/edit.go
+  s_945f947167805f::t_53e446918b86f8 1-119
+internal/cli/human.go
+  s_945f947167805f::t_f22261eb8967f7 179-185,197-231
+  s_945f947167805f::t_6f588459859da9 232-233
+internal/cli/sync_test.go
+  s_945f947167805f::t_2c31b30463dcb1 548
+internal/cli/confirm_test.go
+  s_945f947167805f::t_f6af2655af4a89 61
+internal/engine/gitignore.go
+  s_945f947167805f::t_5247f395a8faac 71-76,81,89-91,102
+internal/engine/ops.go
+  s_945f947167805f::t_57966052067d77 201,500-504,536-545,1241-1250
+  s_945f947167805f::t_07c23b6fab2eeb 1760,1762,1786,1793,1797-1799,1803-1807
+internal/engine/edit_test.go
+  s_945f947167805f::t_3c2f946bfb00d4 1-93
+docs/architecture.md
+  s_945f947167805f::t_5350d82a6df48c 1493,2554
+internal/engine/target.go
+  s_945f947167805f::t_1102d84d3928f2 38-49
+e2e/install/install.venom.yml
+  s_945f947167805f::t_c1ee9d4b70966a 177-178,180
+internal/cli/flow.go
+  s_945f947167805f::t_98e434bc11cb26 451
+  s_945f947167805f::t_e40db654c7cd52 452
+internal/cli/core_test.go
+  s_945f947167805f::t_2c31b30463dcb1 617
+internal/engine/tidy.go
+  s_945f947167805f::t_5247f395a8faac 412
+internal/engine/engine.go
+  s_945f947167805f::t_5247f395a8faac 247-249,265
+internal/cli/edits_test.go
+  s_945f947167805f::t_3c2f946bfb00d4 1-32,34-47
+  s_945f947167805f::t_f74f3f85dcc252 33
+internal/engine/profile.go
+  s_945f947167805f::t_57966052067d77 604-606,609,611,616,624,627
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "565eb6064b5f961172a06eb90a1d2fa4c9f1c326",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
