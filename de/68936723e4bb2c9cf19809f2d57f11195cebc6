@@ -1,0 +1,23 @@
+internal/engine/ops.go
+  s_945f947167805f::t_95eedb9d6068f1 76-77,85-86,466
+internal/store/store.go
+  s_945f947167805f::t_95eedb9d6068f1 153-160,613
+internal/engine/inherited_test.go
+  s_945f947167805f::t_4645461981baf9 500
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "de68936723e4bb2c9cf19809f2d57f11195cebc6",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
