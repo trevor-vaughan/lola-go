@@ -1,0 +1,38 @@
+internal/engine/uninstall_test.go
+  s_68549326b8864f::t_e7032e2b4d92ad 266-267
+internal/cli/sync_test.go
+  s_68549326b8864f::t_dde139f709bb96 838-840,843
+internal/engine/projectprofile_test.go
+  s_68549326b8864f::t_d1a340e535c75a 335-353
+internal/engine/ops.go
+  s_68549326b8864f::t_f436b65bfe8481 804
+  s_68549326b8864f::t_4da8415bd6d30f 794-803
+internal/engine/remote_update.go
+  s_68549326b8864f::t_f436b65bfe8481 699-700
+  s_68549326b8864f::t_19580efcfcb68c 698
+internal/engine/sync.go
+  s_68549326b8864f::t_1fcf4508a97753 519-522,557-559,684-687,1911-1917
+  s_68549326b8864f::t_0bdf9fe97bb9ae 1918-1919
+internal/engine/profile.go
+  s_68549326b8864f::t_19580efcfcb68c 77-83
+internal/engine/trust_test.go
+  s_68549326b8864f::t_3e943e129af952 277-291
+  s_68549326b8864f::t_97f087390862fb 293-294
+  s_68549326b8864f::t_80ae260f050c01 292,295-304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c29bf644624b209e46218e79aada1f2d7ddaf2f",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
