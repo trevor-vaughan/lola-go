@@ -1,0 +1,40 @@
+internal/engine/sync.go
+  s_945f947167805f::t_4b301617f751dc 322
+internal/engine/profile_test.go
+  s_945f947167805f::t_d8463e2ce957ae 1091-1092,1095-1106
+internal/cli/cmd_sync.go
+  s_945f947167805f::t_47101aae35097a 365-367,369-374
+internal/engine/runtimehooks_test.go
+  s_945f947167805f::t_99aa82712ed30e 540-543
+  s_945f947167805f::t_cb370ac94864af 535-539
+internal/cli/profile_test.go
+  s_945f947167805f::t_ecdb8cf72c101b 107,305-306,377,381-385,388-389,391-442
+internal/engine/activate.go
+  s_945f947167805f::t_84d0891bcec6fb 94-98
+  s_945f947167805f::t_fe10fb1d87cd36 108-109,114-124,171-176,179
+internal/cli/cmd_profile.go
+  s_945f947167805f::t_aa67fdc27c84e3 337
+  s_945f947167805f::t_47101aae35097a 31-33,192-200,349,382-395,496-497,509-510,588
+internal/engine/coaching_test.go
+  s_945f947167805f::t_b46da05e5a67ae 67
+  s_945f947167805f::t_939f7119e617b0 62-66,68-71
+internal/engine/engine.go
+  s_945f947167805f::t_4b301617f751dc 129-132,818,999
+  s_945f947167805f::t_9a9ca043ccabce 988-989
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3b2e9f43e8503346f35004372e1d5e5b7db7aa76",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
