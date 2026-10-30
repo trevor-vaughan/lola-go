@@ -1,0 +1,38 @@
+internal/engine/mentions.go
+  s_2eb2f51d8dca0b::t_bff2dcb5fb7e7f 209-236
+  s_2eb2f51d8dca0b::t_1c452e604305f6 99-100,102
+internal/engine/info.go
+  s_2eb2f51d8dca0b::t_fb29fcc86dcb8a 319,950-951,953-955,957-958
+  s_2eb2f51d8dca0b::t_1c452e604305f6 952,956
+  s_2eb2f51d8dca0b::t_bff2dcb5fb7e7f 179-187
+  s_2eb2f51d8dca0b::t_d0db3a077db5d7 959
+internal/engine/mentions_test.go
+  s_2eb2f51d8dca0b::t_ff0a250a048490 224-271
+internal/cli/cmd_info.go
+  s_2eb2f51d8dca0b::t_1f8f2298a6ff5c 162
+  s_2eb2f51d8dca0b::t_8151a8ce5c7d58 170-173,269-286
+  s_2eb2f51d8dca0b::t_224804b45ca87c 287-288
+docs/usage.md
+  s_2eb2f51d8dca0b::t_b8701c7e15157e 493-496
+  s_2eb2f51d8dca0b::t_1c35803b9ecc2f 574-577,591-592
+internal/engine/info_internal_test.go
+  s_2eb2f51d8dca0b::t_fb29fcc86dcb8a 6,12-13,30-42
+internal/cli/mentions_test.go
+  s_2eb2f51d8dca0b::t_57b6335ed68a5c 1-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "174190547102042a645dcadddeff1fa70e821b1d",
+  "prompts": {},
+  "sessions": {
+    "s_2eb2f51d8dca0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89f83b70-717e-4a8a-87ec-08c56a875a20",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
