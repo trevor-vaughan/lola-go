@@ -1,0 +1,73 @@
+internal/cli/cmd_sync.go
+  s_945f947167805f::t_0aa41870f4ae9e 277
+internal/cli/core_test.go
+  s_945f947167805f::t_02c60afe6b1244 692,708
+internal/cli/store_test.go
+  s_945f947167805f::t_10f16975d01541 551
+  s_945f947167805f::t_5f5c8d6545013b 538,546
+  s_945f947167805f::t_9e71b1c35dfc20 38
+internal/cli/context_test.go
+  s_945f947167805f::t_c3518fdae7ebb7 1-80,82,85-87,89-135
+  s_945f947167805f::t_3c604f26a8430c 81,83-84,88
+internal/cli/cmd_profile.go
+  s_945f947167805f::t_0aa41870f4ae9e 303,382
+internal/cli/repair_test.go
+  s_945f947167805f::t_0a46343f12d657 32,36,53,75,83-84,94
+internal/cli/cmd_repair.go
+  s_945f947167805f::t_0aa41870f4ae9e 36
+e2e/tidy/tidy.venom.yml
+  s_945f947167805f::t_8651fafd64ac83 14,57-61
+internal/cli/cmd_tidy.go
+  s_945f947167805f::t_0aa41870f4ae9e 110
+internal/engine/info.go
+  s_945f947167805f::t_08f65e04906a4f 189-191,357
+internal/cli/context.go
+  s_945f947167805f::t_4f046b13290d0f 1-120
+internal/cli/root.go
+  s_945f947167805f::t_4f046b13290d0f 66,158
+internal/cli/cli_suite_test.go
+  s_945f947167805f::t_5f5c8d6545013b 5,51-67
+  s_945f947167805f::t_66f0cdfd5bde4e 7,39-50
+internal/cli/output.go
+  s_945f947167805f::t_4f046b13290d0f 4,88-90,94-107
+internal/cli/profile_test.go
+  s_945f947167805f::t_17a76b873a0829 429-430,458-459
+  s_945f947167805f::t_02c60afe6b1244 125,158,167
+e2e/install/install.venom.yml
+  s_945f947167805f::t_a7edcb9ebb5316 277-278
+internal/cli/scope_test.go
+  s_945f947167805f::t_9e71b1c35dfc20 255
+internal/cli/sync_test.go
+  s_945f947167805f::t_9353dc3d3f9499 75-76
+  s_945f947167805f::t_9e71b1c35dfc20 126,198,686
+internal/engine/check.go
+  s_945f947167805f::t_08f65e04906a4f 35-37,88
+e2e/common/jsoncheck.py
+  s_945f947167805f::t_a7edcb9ebb5316 10-11,21
+  s_945f947167805f::t_8e41c95d851367 22
+internal/cli/cmd_core.go
+  s_945f947167805f::t_0aa41870f4ae9e 263,337,477-478
+  s_945f947167805f::t_d066744f64e221 479
+internal/cli/confirm_test.go
+  s_945f947167805f::t_127a34050e3aef 9,28,61,104,172,175,206-207,222-226,313
+internal/cli/info_test.go
+  s_945f947167805f::t_5f5c8d6545013b 224
+internal/cli/cmd_info.go
+  s_945f947167805f::t_6b9736c7d152b7 120-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1538e125a97736ccbbaae3ac9c12a8167fb93a62",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
