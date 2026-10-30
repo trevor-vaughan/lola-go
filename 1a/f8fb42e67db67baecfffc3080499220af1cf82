@@ -1,0 +1,25 @@
+docs/usage.md
+  s_2eb2f51d8dca0b::t_e722061a045e3f 576,591-594
+internal/engine/info.go
+  s_2eb2f51d8dca0b::t_e722061a045e3f 180,182,958
+internal/cli/cmd_info.go
+  s_2eb2f51d8dca0b::t_e722061a045e3f 162-169
+internal/cli/mentions_test.go
+  s_2eb2f51d8dca0b::t_e722061a045e3f 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1af8fb42e67db67baecfffc3080499220af1cf82",
+  "prompts": {},
+  "sessions": {
+    "s_2eb2f51d8dca0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89f83b70-717e-4a8a-87ec-08c56a875a20",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
