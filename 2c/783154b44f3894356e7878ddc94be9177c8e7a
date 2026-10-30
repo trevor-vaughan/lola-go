@@ -1,0 +1,40 @@
+internal/manifest/manifest.go
+  s_945f947167805f::t_c0eb96932c33f3 276-279
+internal/config/selections.go
+  s_945f947167805f::t_17d3c645dea3b1 119-120
+internal/source/recorded.go
+  s_945f947167805f::t_c0eb96932c33f3 24
+internal/config/config_test.go
+  s_945f947167805f::t_17d3c645dea3b1 267-268
+internal/plan/apply.go
+  s_945f947167805f::t_c0eb96932c33f3 97
+internal/yamldoc/yamldoc.go
+  s_945f947167805f::t_c0eb96932c33f3 2
+internal/engine/base_test.go
+  s_945f947167805f::t_bafd02fac84bed 131
+  s_945f947167805f::t_1a41541559a900 120-130,132-134
+internal/cli/cmd_core.go
+  s_945f947167805f::t_c0eb96932c33f3 158
+internal/trust/trust.go
+  s_945f947167805f::t_c0eb96932c33f3 5
+internal/engine/ops.go
+  s_945f947167805f::t_4ab86c1262a0cb 952-954,960-961,967-969
+  s_945f947167805f::t_387d3be650216a 962-966
+  s_945f947167805f::t_2685b01e3aba30 970
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2c783154b44f3894356e7878ddc94be9177c8e7a",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
