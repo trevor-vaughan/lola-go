@@ -1,0 +1,43 @@
+internal/manifest/manifest_test.go
+  s_945f947167805f::t_fe4f7b3156c27a 13,239-258
+  s_945f947167805f::t_e8dbc0f2595e63 259-260
+internal/manifest/edit.go
+  s_945f947167805f::t_076aab0e347968 53,79,200-208
+internal/profile/profile.go
+  s_945f947167805f::t_294b901de38d49 265-266,303-304,474,476,534-569,571-622
+  s_945f947167805f::t_ccf15350625154 408,570
+  s_945f947167805f::t_b04ad1b7a10fd9 22,28,216-217,227,231,240-243,245-257,260-261,268,281-285,331,336,402-407,409-419,447-473
+  s_945f947167805f::t_52accd0d663ed9 475,477,623
+.golangci.yml
+  s_945f947167805f::t_b04ad1b7a10fd9 54
+internal/trust/trust_test.go
+  s_945f947167805f::t_c5f9be2f991a46 163-174,218-224
+  s_945f947167805f::t_a53b2d676bde98 225-226
+internal/engine/remoteprofile_test.go
+  s_945f947167805f::t_8bb3c573fe895b 1642,1866
+internal/profile/profile_test.go
+  s_945f947167805f::t_85477f7b200633 19,96,122-123,125-130,132-133,177,198
+  s_945f947167805f::t_076aab0e347968 131
+  s_945f947167805f::t_dff52543c6ee53 199-200,202-363
+  s_945f947167805f::t_19e3d5d28b216d 201
+internal/manifest/manifest.go
+  s_945f947167805f::t_076aab0e347968 40-41,50-54
+internal/trust/trust.go
+  s_945f947167805f::t_1f8ce6a4e74c79 59-63,173,236-237,343-348,363,480-487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d11285121f655a610e094080149ac0048d85a138",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
