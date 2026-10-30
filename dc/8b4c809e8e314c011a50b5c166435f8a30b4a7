@@ -1,0 +1,21 @@
+internal/engine/context.go
+  s_945f947167805f::t_7411b49de4f4d8 1-116
+internal/engine/context_test.go
+  s_945f947167805f::t_e21734969c12da 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc8b4c809e8e314c011a50b5c166435f8a30b4a7",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
