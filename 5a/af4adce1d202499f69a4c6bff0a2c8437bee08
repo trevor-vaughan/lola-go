@@ -1,0 +1,43 @@
+internal/cli/cmd_core.go
+  s_945f947167805f::t_6b0371b4e14b26 251,258,273-278,280-282,312
+internal/cli/profile_test.go
+  s_945f947167805f::t_2e80261565c480 74-75
+  s_945f947167805f::t_c801ac046f4da1 69-73,77-83
+  s_945f947167805f::t_3422c562b90224 76
+internal/engine/uninstall_test.go
+  s_945f947167805f::t_04618c7fe2e93d 1-121,182-211
+  s_945f947167805f::t_8dc04f8f228889 171
+  s_945f947167805f::t_a316ae51f1efe1 157-159,170
+  s_945f947167805f::t_e1f0d78875562b 122-156,160-161,163-169,172-181
+  s_945f947167805f::t_8ddb469c253409 162
+internal/engine/target.go
+  s_945f947167805f::t_5aee515a15b62c 197-210,213-215,217-226,228-290
+  s_945f947167805f::t_4023ad26707bba 211-212,216,227
+internal/engine/ops.go
+  s_945f947167805f::t_98bb3c14d2693b 656-660,662-664,670,1273-1274,1623-1627,1629,1631-1633,1635-1638,1641-1644,1650-1672,1685-1686,1688-1692,1694-1696,1698,1700-1707,1709-1713,1716
+internal/engine/hints_test.go
+  s_945f947167805f::t_4023ad26707bba 184,192,196
+internal/cli/hints_test.go
+  s_945f947167805f::t_6c0f1312cc7578 131,137
+  s_945f947167805f::t_c3e0cd51d6478c 140
+e2e/team/team.venom.yml
+  s_945f947167805f::t_4648227e321d10 386,389,392,394,396,398,400,402
+internal/engine/profile_test.go
+  s_945f947167805f::t_0a10d236dc6d24 382-383,391-393,396-400
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5aaf4adce1d202499f69a4c6bff0a2c8437bee08",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
