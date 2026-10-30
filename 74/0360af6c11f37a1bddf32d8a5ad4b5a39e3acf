@@ -1,0 +1,50 @@
+docs/guides/choosing-what-to-install.md
+  s_945f947167805f::t_46772c8ab2cb85 241-242
+docs/guides/sync-and-trust.md
+  s_945f947167805f::t_0665a0746fc96d 157
+docs/architecture.md
+  s_945f947167805f::t_3cc0e7ca900c51 520-521,532-538,540,657,1549-1552,1824,1833,2021
+  s_945f947167805f::t_c0d7a444d73ecd 1553-1554,1566-1578
+  s_945f947167805f::t_4149b2e057887c 1579
+docs/guides/remote-profiles.md
+  s_945f947167805f::t_0665a0746fc96d 343,346,349
+AGENTS.md
+  s_945f947167805f::t_9b5f60082863f1 36-37
+  s_945f947167805f::t_20529dfede2582 33
+  s_945f947167805f::t_32661024a11d7f 35
+  s_945f947167805f::t_58a43b3f44bdc8 34
+docs/guides/templating.md
+  s_945f947167805f::t_0665a0746fc96d 136-137
+docs/decisions.md
+  s_945f947167805f::t_570952d3d4e4e4 82
+  s_945f947167805f::t_e4d1a3409a3aa7 73,75-76,79-81,88-89,91,143,233,236
+docs/usage.md
+  s_945f947167805f::t_334c782ec109c2 379-380
+  s_945f947167805f::t_f04917f65391af 1363,1442-1450
+  s_945f947167805f::t_d87fa4648c35dd 388
+  s_945f947167805f::t_c81dc79184c3bb 39-41
+  s_945f947167805f::t_46dbaecf45bbbb 42-44,378
+  s_945f947167805f::t_c6ef612d5c8948 377
+  s_945f947167805f::t_7b518e047bc0c7 1452-1453
+  s_945f947167805f::t_ae1a2395e78fbd 1451
+  s_945f947167805f::t_c6123a61287333 329,333-339,343-345,353-354,361-369,1350
+docs/guides/profiles.md
+  s_945f947167805f::t_1eb7bb069cc933 198,218-220,274-275
+  s_945f947167805f::t_3891c09da5ba86 14-21,24-28,31-35,42-47,51-56,60-61,63-66,68-73,77,122,125,139-146,148,150-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "740360af6c11f37a1bddf32d8a5ad4b5a39e3acf",
+  "prompts": {},
+  "sessions": {
+    "s_945f947167805f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40f136d4-ad6f-4768-a9ec-4307a427552e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
