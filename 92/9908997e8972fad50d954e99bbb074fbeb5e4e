@@ -1,0 +1,27 @@
+internal/paths/paths.go
+  s_68549326b8864f::t_173caaa4e32ef9 16,22,67,74
+internal/config/pins_test.go
+  s_68549326b8864f::t_c04027d3c55db8 1-75,77-101
+  s_68549326b8864f::t_b1554620fd9341 76
+internal/config/pins.go
+  s_68549326b8864f::t_a632dacc897924 1
+  s_68549326b8864f::t_745d2ea0dfb8c8 2-266
+internal/paths/paths_test.go
+  s_68549326b8864f::t_173caaa4e32ef9 31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "929908997e8972fad50d954e99bbb074fbeb5e4e",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
