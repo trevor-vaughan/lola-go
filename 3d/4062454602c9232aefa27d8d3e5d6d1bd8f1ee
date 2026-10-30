@@ -1,0 +1,25 @@
+internal/plan/apply.go
+  s_68549326b8864f::t_f816aab7381d8d 111-116
+internal/engine/remoteprofile_test.go
+  s_68549326b8864f::t_94db4302b53d86 666-696
+internal/fsx/atomic.go
+  s_68549326b8864f::t_f816aab7381d8d 51-65
+internal/engine/pins.go
+  s_68549326b8864f::t_f816aab7381d8d 152-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3d4062454602c9232aefa27d8d3e5d6d1bd8f1ee",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
