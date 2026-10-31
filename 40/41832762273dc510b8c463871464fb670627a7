@@ -1,0 +1,30 @@
+internal/cli/context_test.go
+  s_68549326b8864f::t_bb285184b45943 110-119
+internal/engine/profile.go
+  s_68549326b8864f::t_974a9c8b8aa165 273-277
+internal/engine/profileview.go
+  s_68549326b8864f::t_abc0c10147b527 191-194
+internal/engine/restore.go
+  s_68549326b8864f::t_e99832edaa517d 42-49,74-96,230-232
+internal/engine/remoteprofile_test.go
+  s_68549326b8864f::t_43f2224adee777 1304-1329
+  s_68549326b8864f::t_1ea9be7e51a916 1390-1400
+internal/engine/context.go
+  s_68549326b8864f::t_abc0c10147b527 103-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4041832762273dc510b8c463871464fb670627a7",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
