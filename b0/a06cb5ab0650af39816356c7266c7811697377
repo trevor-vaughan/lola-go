@@ -1,0 +1,45 @@
+internal/engine/activate.go
+  s_68549326b8864f::t_3eccd298397df5 163
+internal/engine/bundle.go
+  s_68549326b8864f::t_6015f872f4539a 124,134
+internal/engine/edit.go
+  s_68549326b8864f::t_719c5de49b64ac 60
+internal/engine/hints_move.go
+  s_68549326b8864f::t_ed223a471a6ff6 208,232
+internal/engine/move.go
+  s_68549326b8864f::t_ba3d922f3c9542 258-259,301
+internal/engine/profile.go
+  s_68549326b8864f::t_eb432debf8b346 29-31,41,49-50,58,66,71-72,111,211-212,229,253-255,281
+internal/engine/profileview.go
+  s_68549326b8864f::t_3898bf8c8e7b7b 27-29,161,319
+internal/engine/remote_add.go
+  s_68549326b8864f::t_f221b8ddc7caac 240,242
+internal/engine/remote_remove.go
+  s_68549326b8864f::t_c434023d6a767d 54-55,145,150,152,154-157
+internal/engine/remote_update.go
+  s_68549326b8864f::t_e946df7f997eb1 162-163,838,840,852,854,860,862,957-959,976-983
+internal/engine/restore.go
+  s_68549326b8864f::t_bb39c96320dd05 96-101,107-110,117-119,121-123,127-132,135-138,140-145
+internal/engine/sync.go
+  s_68549326b8864f::t_58b7f64e73a7bf 286,342,1180,1203-1204,2169,2171-2172,2177,2231,2240-2241,2286,2524-2525,2535,2539-2542,2544
+internal/engine/target.go
+  s_68549326b8864f::t_000ec33f89edb3 128-129,137,147,174,191,240,250-253,276-290,321,343,347
+internal/profile/profile.go
+  s_68549326b8864f::t_5c0a2ac7b2ef06 254-257,426,494
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b0a06cb5ab0650af39816356c7266c7811697377",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
