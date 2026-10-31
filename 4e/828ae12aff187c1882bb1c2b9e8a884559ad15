@@ -1,0 +1,40 @@
+internal/ledger/ledger.go
+  s_68549326b8864f::t_c90016aff37f65 215-217,246-278
+  s_68549326b8864f::t_7fbc3ff343f8e5 279
+internal/engine/engine.go
+  s_68549326b8864f::t_09d3a4aa1af60a 507,523,525-541
+  s_68549326b8864f::t_2de4a5792f8001 500-502,504-506,508-511,524
+  s_68549326b8864f::t_949bc7024a7294 542
+internal/profile/profile_test.go
+  s_68549326b8864f::t_1aad73bddb8896 660-662,691-706,720-725
+internal/profile/profile.go
+  s_68549326b8864f::t_5641258318f8aa 275-278,280
+  s_68549326b8864f::t_1fcaa075f17f6b 279,296,395,521-529,531-532,537,539-542,544,547-559,561-562,565,567,569-573,575,581-586,589-594,596-597
+internal/activeprofile/activeprofile.go
+  s_68549326b8864f::t_c90016aff37f65 25-28,43
+internal/engine/remote.go
+  s_68549326b8864f::t_09d3a4aa1af60a 99
+  s_68549326b8864f::t_6df571a0f3a933 86-88
+internal/engine/profileview.go
+  s_68549326b8864f::t_09d3a4aa1af60a 387-395
+internal/engine/profile_test.go
+  s_68549326b8864f::t_723566d5fed106 9
+  s_68549326b8864f::t_8ebeff20ee0ee5 736-747,947-971
+  s_68549326b8864f::t_76137510f6e12e 972-973
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e828ae12aff187c1882bb1c2b9e8a884559ad15",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
