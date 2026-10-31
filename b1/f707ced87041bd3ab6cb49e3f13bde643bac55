@@ -1,0 +1,41 @@
+internal/cli/context_test.go
+  s_68549326b8864f::t_7d7348ce1a358c 5,74-114
+  s_68549326b8864f::t_eb4962dd11dfc8 115
+internal/cli/context.go
+  s_68549326b8864f::t_78f4e827ddcaff 9,57-59,69-98
+  s_68549326b8864f::t_583c00c574b7ae 99-100
+internal/engine/bundle.go
+  s_68549326b8864f::t_db5c2ce354ea00 236
+  s_68549326b8864f::t_78f4e827ddcaff 45-46,77,195,226-235,237-245
+  s_68549326b8864f::t_5bdf1046fb8f85 246
+internal/engine/profile.go
+  s_68549326b8864f::t_78f4e827ddcaff 210,226,383
+internal/engine/profileview.go
+  s_68549326b8864f::t_78f4e827ddcaff 28-30,44,162,293-297
+internal/cli/cmd_profile.go
+  s_68549326b8864f::t_78f4e827ddcaff 619-621
+internal/engine/templates.go
+  s_68549326b8864f::t_78f4e827ddcaff 575-577,591-601
+internal/engine/bundle_test.go
+  s_68549326b8864f::t_7d7348ce1a358c 299-332
+internal/engine/context.go
+  s_68549326b8864f::t_78f4e827ddcaff 23-25,29,121-122,125-139,143-156,159,172-173
+internal/ledger/ledger.go
+  s_68549326b8864f::t_78f4e827ddcaff 102-103,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1f707ced87041bd3ab6cb49e3f13bde643bac55",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
