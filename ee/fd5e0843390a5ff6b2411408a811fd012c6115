@@ -1,0 +1,24 @@
+internal/engine/picks_test.go
+  s_9b8c0fcd70ce13::t_91fdbcdf04ec0a 88-89,92-95,100-103,108
+internal/cli/profile_edit_test.go
+  s_9b8c0fcd70ce13::t_91fdbcdf04ec0a 116
+internal/engine/resolve.go
+  s_9b8c0fcd70ce13::t_91fdbcdf04ec0a 145,164-166
+  s_9b8c0fcd70ce13::t_73cb6248c9f475 146-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eefd5e0843390a5ff6b2411408a811fd012c6115",
+  "prompts": {},
+  "sessions": {
+    "s_9b8c0fcd70ce13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c4c943c-5992-491f-89a1-68f6db4e426a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
