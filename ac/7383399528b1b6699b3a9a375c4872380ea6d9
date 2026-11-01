@@ -1,0 +1,28 @@
+internal/cli/cmd_profile.go
+  s_68549326b8864f::t_aaa17ffdf0fb8e 659
+internal/cli/profile_edit_test.go
+  s_68549326b8864f::t_d8c99e2e0988bf 294-296
+  s_68549326b8864f::t_e63593a3f9e29b 297
+  s_68549326b8864f::t_b41e9b6be193b2 277-293
+internal/engine/bundle_test.go
+  s_68549326b8864f::t_d8c99e2e0988bf 655,676,700
+internal/engine/new.go
+  s_68549326b8864f::t_aaa17ffdf0fb8e 30-32,361
+  s_68549326b8864f::t_e63593a3f9e29b 374-377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac7383399528b1b6699b3a9a375c4872380ea6d9",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
