@@ -1,0 +1,27 @@
+internal/cli/profile_edit_test.go
+  s_68549326b8864f::t_03eefb060d2c97 341-342
+  s_68549326b8864f::t_8cb261053f9868 320,322-323,328,332-333,338-340,343-344
+internal/cli/profile_edit.go
+  s_68549326b8864f::t_e22cbd8cb5fd9a 265-266,272-274
+internal/engine/profile_edit.go
+  s_68549326b8864f::t_98b1067e4c0dc2 9,457-462,573-609,621-623,625,753-823
+  s_68549326b8864f::t_663718d87d3f7e 824
+internal/engine/profileedit_test.go
+  s_68549326b8864f::t_8cb261053f9868 636,652
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ec46db8ecf0ffdff5dd552e28cb31e2b22b50575",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
