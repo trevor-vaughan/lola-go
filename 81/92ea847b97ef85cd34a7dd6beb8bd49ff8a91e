@@ -1,0 +1,25 @@
+internal/cli/sources_test.go
+  s_68549326b8864f::t_4b3efe239cb913 64,66-68
+  s_68549326b8864f::t_4345e5dd80b4ba 65
+internal/cli/context.go
+  s_68549326b8864f::t_dca760b75da595 17-20,24,26-38,43-56
+  s_68549326b8864f::t_44afe2fa369450 57
+internal/cli/context_test.go
+  s_68549326b8864f::t_dca760b75da595 264-270,272-276
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8192ea847b97ef85cd34a7dd6beb8bd49ff8a91e",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
