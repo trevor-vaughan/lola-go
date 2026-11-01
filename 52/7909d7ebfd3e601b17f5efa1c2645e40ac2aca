@@ -1,0 +1,70 @@
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-testing/SKILL.md
+  s_68549326b8864f::t_a6d99bbd983197 1-5
+e2e/profile-first/profile-first.venom.yml
+  s_68549326b8864f::t_357996397eb6c0 1-107,109-112,115-406,408,413-474
+  s_68549326b8864f::t_3b013b4ada93f4 108,409,411-412
+  s_68549326b8864f::t_98efcf651db702 113-114
+  s_68549326b8864f::t_aeb64a0fb26488 407,410
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-docs/SKILL.md
+  s_68549326b8864f::t_a6d99bbd983197 1-5
+e2e/profile-first/fixtures/spellcheck/commands/spellcheck.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/fixtures/golang-lint/commands/golang-lint.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-style/SKILL.md
+  s_68549326b8864f::t_a6d99bbd983197 1-5
+e2e/profile-first/fixtures/shiny-new/commands/shiny.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/scripts/setup.sh
+  s_68549326b8864f::t_357996397eb6c0 1-90
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-naming/SKILL.md
+  s_68549326b8864f::t_a6d99bbd983197 1-5
+e2e/profile-first/fixtures/gopls/commands/gopls.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/common/jsoncheck.py
+  s_68549326b8864f::t_357996397eb6c0 24
+  s_68549326b8864f::t_bc166bfc89825a 11-12
+  s_68549326b8864f::t_eaa80e4ddc2c66 25
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-gopls/SKILL.md
+  s_68549326b8864f::t_a6d99bbd983197 1-5
+e2e/profile-first/fixtures/review-tools/commands/review-tools.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/fixtures/review-kit/commands/review.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/fixtures/acme/.gitignore
+  s_68549326b8864f::t_a6d99bbd983197 1
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-errors/SKILL.md
+  s_68549326b8864f::t_a6d99bbd983197 1-5
+e2e/profile-first/fixtures/docs-lint/commands/docs-lint.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/fixtures/profiles/profiles/go.yml
+  s_68549326b8864f::t_a6d99bbd983197 1-9
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-lint/SKILL.md
+  s_68549326b8864f::t_a6d99bbd983197 1-5
+e2e/profile-first/fixtures/my-notes/commands/notes.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/fixtures/team-kit/commands/deploy.md
+  s_68549326b8864f::t_a6d99bbd983197 1-4
+e2e/profile-first/fixtures/acme/.lola/.gitignore
+  s_68549326b8864f::t_b72ef20e8ba8f8 1-3
+e2e/profile-first/fixtures/acme/.lola/profiles/review.yml
+  s_68549326b8864f::t_d3df936c6e4c8c 1-2
+e2e/profile-first/fixtures/acme/.lola/project.yml
+  s_68549326b8864f::t_65a26d455e83ba 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "527909d7ebfd3e601b17f5efa1c2645e40ac2aca",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
