@@ -1,0 +1,21 @@
+internal/cli/remoteprofile_test.go
+  s_68549326b8864f::t_92e8be718e4147 270-280
+internal/engine/remote_add.go
+  s_68549326b8864f::t_d4f8bd021b0e73 238-243,251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4ffb9870fafa8fa4143acbd025e03dbfd6f0cf33",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
