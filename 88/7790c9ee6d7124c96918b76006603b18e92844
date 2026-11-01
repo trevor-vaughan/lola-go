@@ -1,0 +1,23 @@
+e2e/profile-first/profile-first.venom.yml
+  s_9b8c0fcd70ce13::t_f8ca9dd6181fc0 116
+internal/engine/profile_test.go
+  s_9b8c0fcd70ce13::t_7001c348b2da08 120-150
+internal/engine/profile.go
+  s_9b8c0fcd70ce13::t_f8ca9dd6181fc0 153-155,167-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "887790c9ee6d7124c96918b76006603b18e92844",
+  "prompts": {},
+  "sessions": {
+    "s_9b8c0fcd70ce13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c4c943c-5992-491f-89a1-68f6db4e426a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
