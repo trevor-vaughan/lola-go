@@ -1,0 +1,61 @@
+internal/engine/profile_edit.go
+  s_68549326b8864f::t_a9ad4793f27da6 130-134,146,154-155,170-179,181-187,252-253,260,297,326,344
+  s_68549326b8864f::t_0f4b56ba6475aa 323
+internal/cli/human.go
+  s_68549326b8864f::t_90cd4f1a305a53 276,278-281
+docs/architecture.md
+  s_68549326b8864f::t_b452e53d1deeb7 2329,2333-2334
+internal/engine/target.go
+  s_68549326b8864f::t_0f4b56ba6475aa 105-118,126
+  s_68549326b8864f::t_a9ad4793f27da6 72-74,84,249,268,551
+internal/cli/flow.go
+  s_68549326b8864f::t_a0c2bd5ce308a7 35-40,1458
+internal/engine/bundle_test.go
+  s_68549326b8864f::t_b7b8cb11be71a5 677
+internal/cli/profile_edit_test.go
+  s_68549326b8864f::t_281e4503f04488 131-158
+docs/usage.md
+  s_68549326b8864f::t_aa1e637e0b8d72 526-529
+internal/engine/inproject_test.go
+  s_68549326b8864f::t_6229bd6aa1aa78 224
+  s_68549326b8864f::t_b7b8cb11be71a5 223
+internal/engine/new.go
+  s_68549326b8864f::t_8a34e75ac7bd13 435
+internal/engine/ops.go
+  s_68549326b8864f::t_c3c02b4408756c 101,161-166,680-683,782,1282-1290
+  s_68549326b8864f::t_8a34e75ac7bd13 1450
+  s_68549326b8864f::t_6229bd6aa1aa78 75-79,88-89,92-100
+  s_68549326b8864f::t_bacac3beece31c 249-253,255-263,277-281,285-335
+  s_68549326b8864f::t_76951687ad2bd7 336-337,1291-1292
+internal/engine/move_test.go
+  s_68549326b8864f::t_aa1e637e0b8d72 190
+  s_68549326b8864f::t_b7b8cb11be71a5 232,820,832
+internal/cli/profile_edit.go
+  s_68549326b8864f::t_a0c2bd5ce308a7 46-51,62,82,91
+  s_68549326b8864f::t_0f4b56ba6475aa 99-101
+internal/engine/move.go
+  s_68549326b8864f::t_0f4b56ba6475aa 430,435,636,662-671,674-677,685,692-695
+  s_68549326b8864f::t_8a34e75ac7bd13 558,643-646,723-725,728,733,739
+  s_68549326b8864f::t_aa1e637e0b8d72 701
+  s_68549326b8864f::t_b7b8cb11be71a5 706
+  s_68549326b8864f::t_6229bd6aa1aa78 678-679,681-684,686-691
+internal/engine/profileedit_test.go
+  s_68549326b8864f::t_8019776b3f994d 316
+  s_68549326b8864f::t_d9fd88a4602209 5,285-315,317-328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "307c9d092b332c5ad0555e718cf685ae31d681ca",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
