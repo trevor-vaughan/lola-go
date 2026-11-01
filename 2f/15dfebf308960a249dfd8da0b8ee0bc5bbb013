@@ -1,0 +1,23 @@
+docs/guides/profiles.md
+  s_68549326b8864f::t_4d8328d51fb3a1 283-284
+docs/usage.md
+  s_68549326b8864f::t_4d8328d51fb3a1 589-591
+docs/decisions.md
+  s_68549326b8864f::t_4d8328d51fb3a1 197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f15dfebf308960a249dfd8da0b8ee0bc5bbb013",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
