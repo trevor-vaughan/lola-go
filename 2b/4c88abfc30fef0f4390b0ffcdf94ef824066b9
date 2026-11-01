@@ -1,0 +1,44 @@
+internal/cli/profile_test.go
+  s_68549326b8864f::t_5adbd7143872a0 203-226
+internal/cli/cmd_profile.go
+  s_68549326b8864f::t_0a734ef388a877 237-242,375,381,625-627,634-636,638-639
+internal/cli/profile_remove.go
+  s_68549326b8864f::t_0a734ef388a877 7,15-19,22,36-38,55,57,60-61
+internal/cli/remoteprofile_test.go
+  s_68549326b8864f::t_5adbd7143872a0 117,935
+internal/engine/remote_update.go
+  s_68549326b8864f::t_0a734ef388a877 972-981,983-989
+internal/engine/profile_remove.go
+  s_68549326b8864f::t_0a734ef388a877 1-102,108-109,111-182,190-201,203-205,210-211,213-234,242-278,282-303,308,311-351
+  s_68549326b8864f::t_4e07397d0224ce 202,206-209,212
+  s_68549326b8864f::t_ddc0417c5c1927 235-241
+  s_68549326b8864f::t_c57239c4ba12d9 103-107,110
+  s_68549326b8864f::t_2211cc270a85c8 279-281
+  s_68549326b8864f::t_fa45158b21ded8 183
+  s_68549326b8864f::t_0e5e9098cc17ad 304-307,309-310
+  s_68549326b8864f::t_aa1dd3594b3488 184-189
+internal/engine/remote_remove.go
+  s_68549326b8864f::t_0a734ef388a877 18-19,22-27,44-45,51,56-59,75-80,108-110,112
+internal/engine/remoteprofile_test.go
+  s_68549326b8864f::t_4cc791b7039a84 2693,2695-2701,2703-2710
+  s_68549326b8864f::t_5adbd7143872a0 8,2613,2623,2632-2691,2702,2711-2745,2753-2777
+  s_68549326b8864f::t_9de30e8524f874 2692,2694
+  s_68549326b8864f::t_f5deff985a1f95 2746-2752
+  s_68549326b8864f::t_c9d4f28a6272cf 2778
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2b4c88abfc30fef0f4390b0ffcdf94ef824066b9",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
