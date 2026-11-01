@@ -1,0 +1,23 @@
+internal/cli/move_hint_test.go
+  s_68549326b8864f::t_9d9037592208cb 252-279
+internal/engine/bundle_test.go
+  s_68549326b8864f::t_47b2fd95351ad6 655,676,700
+internal/engine/hints_move.go
+  s_68549326b8864f::t_63ce1169fa0b15 31-32,47-53,55-57,90-94,99-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ba8765fa1b670497915b89565816a37947be864",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
