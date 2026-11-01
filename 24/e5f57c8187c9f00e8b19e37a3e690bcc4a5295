@@ -1,0 +1,66 @@
+internal/cli/move_test.go
+  s_68549326b8864f::t_d853e6dd47661c 296,302-306
+internal/cli/cmd_profile.go
+  s_68549326b8864f::t_c952dafc0d1651 539-543,552
+  s_68549326b8864f::t_612ed9691f3878 551
+  s_68549326b8864f::t_04a71a3daa8c83 215-217,261-263
+  s_68549326b8864f::t_c8d799c49dd9a9 547-550
+internal/engine/profile_remove.go
+  s_68549326b8864f::t_3e740d042e68d6 212,296-301,323
+  s_68549326b8864f::t_c952dafc0d1651 91
+  s_68549326b8864f::t_258e7077685de6 101-106,108
+  s_68549326b8864f::t_19e5531a6cf05b 324,331
+internal/engine/bundle_test.go
+  s_68549326b8864f::t_c599ea4efd8beb 233-235,544
+  s_68549326b8864f::t_d853e6dd47661c 232,545-546,576-577
+internal/engine/profileedit_test.go
+  s_68549326b8864f::t_53b9c4cb7a2cd0 760-766
+  s_68549326b8864f::t_cafb2e8c3c6763 769-798
+  s_68549326b8864f::t_d853e6dd47661c 739-756,767-768,799-813
+  s_68549326b8864f::t_48c0a235844d61 757-759
+internal/engine/activate.go
+  s_68549326b8864f::t_85f241593865e6 14
+  s_68549326b8864f::t_fd9b68962660d2 202-209,220
+  s_68549326b8864f::t_53b9c4cb7a2cd0 217
+  s_68549326b8864f::t_c952dafc0d1651 64-69,198-201,210-216,218-219,221-225
+internal/engine/target.go
+  s_68549326b8864f::t_45073a5922f4f7 584
+  s_68549326b8864f::t_c952dafc0d1651 379-381,580-583,585-591
+internal/engine/uninstall_test.go
+  s_68549326b8864f::t_c599ea4efd8beb 118-121
+  s_68549326b8864f::t_d853e6dd47661c 116-117
+internal/cli/profile_edit.go
+  s_68549326b8864f::t_c8d799c49dd9a9 326,329,346
+  s_68549326b8864f::t_c952dafc0d1651 4,385-386
+  s_68549326b8864f::t_612ed9691f3878 89,225,327-328,330,334-336,343-344
+  s_68549326b8864f::t_7cc3aae63fe6eb 345
+internal/engine/bundle.go
+  s_68549326b8864f::t_c952dafc0d1651 226-230,246-282
+  s_68549326b8864f::t_baad7fa1f084ec 283
+internal/cli/profile_edit_test.go
+  s_68549326b8864f::t_612ed9691f3878 446
+  s_68549326b8864f::t_d853e6dd47661c 437-445,447-449
+internal/engine/remoteprofile_test.go
+  s_68549326b8864f::t_7697766df3a9fa 2604-2605
+  s_68549326b8864f::t_258e7077685de6 2726-2727,2731-2732,2734
+  s_68549326b8864f::t_ab4306bcdbeec0 2719-2720
+  s_68549326b8864f::t_c599ea4efd8beb 2735-2737
+  s_68549326b8864f::t_fba7b35faec33d 2733
+  s_68549326b8864f::t_d853e6dd47661c 438,2597-2598,2609-2620,2632,2728-2729
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "24e5f57c8187c9f00e8b19e37a3e690bcc4a5295",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
