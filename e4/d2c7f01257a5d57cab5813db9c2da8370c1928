@@ -1,0 +1,25 @@
+internal/cli/move_hint_test.go
+  s_68549326b8864f::t_feca135ee1029a 243-270,289-293,295-297
+  s_68549326b8864f::t_e070d37322a6f9 294
+  s_68549326b8864f::t_8526fa0f8403d6 271-279,281,284-285,287-288
+  s_68549326b8864f::t_5a27a6dc2ffa09 280,282-283,286
+internal/engine/hints_move.go
+  s_68549326b8864f::t_8526fa0f8403d6 81-86
+  s_68549326b8864f::t_342e5f5b18cf90 31-32,35-37,50-56,58-60,104-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e4d2c7f01257a5d57cab5813db9c2da8370c1928",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
