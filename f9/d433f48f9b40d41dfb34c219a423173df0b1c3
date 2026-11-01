@@ -1,0 +1,59 @@
+e2e/common/jsoncheck.py
+  s_68549326b8864f::t_980c8520c9a199 23-24
+e2e/profile-first/fixtures/acme/.gitignore
+  s_68549326b8864f::t_e0f885ca1d2ab3 1
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-docs/SKILL.md
+  s_68549326b8864f::t_36e46e3f4b46ce 1-5
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-errors/SKILL.md
+  s_68549326b8864f::t_ffe04da3ba716d 1-5
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-gopls/SKILL.md
+  s_68549326b8864f::t_2584c5c3db4996 1-5
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-lint/SKILL.md
+  s_68549326b8864f::t_9488cd7f30e8d6 1-5
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-naming/SKILL.md
+  s_68549326b8864f::t_90c2fd3fb8a7c0 1-5
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-style/SKILL.md
+  s_68549326b8864f::t_96d9a8d450ca04 1-5
+e2e/profile-first/fixtures/cc-skills-golang/skills/golang-testing/SKILL.md
+  s_68549326b8864f::t_352a1c46784e27 1-5
+e2e/profile-first/fixtures/docs-lint/commands/docs-lint.md
+  s_68549326b8864f::t_73d5910bfa26be 1-4
+e2e/profile-first/fixtures/golang-lint/commands/golang-lint.md
+  s_68549326b8864f::t_8e8e869ea14f62 1-4
+e2e/profile-first/fixtures/gopls/commands/gopls.md
+  s_68549326b8864f::t_d1b2b0ff8df1e6 1-4
+e2e/profile-first/fixtures/my-notes/commands/notes.md
+  s_68549326b8864f::t_0ed10c8e18727c 1-4
+e2e/profile-first/fixtures/profiles/profiles/go.yml
+  s_68549326b8864f::t_b7220e8f2d8f0c 1-9
+e2e/profile-first/fixtures/review-kit/commands/review.md
+  s_68549326b8864f::t_d2161b85d1990e 1-4
+e2e/profile-first/fixtures/review-tools/commands/review-tools.md
+  s_68549326b8864f::t_04f14a53204481 1-4
+e2e/profile-first/fixtures/shiny-new/commands/shiny.md
+  s_68549326b8864f::t_b5d2d5489288bc 1-4
+e2e/profile-first/fixtures/spellcheck/commands/spellcheck.md
+  s_68549326b8864f::t_00692d968eaa8c 1-4
+e2e/profile-first/fixtures/team-kit/commands/deploy.md
+  s_68549326b8864f::t_885a2036329509 1-4
+e2e/profile-first/profile-first.venom.yml
+  s_68549326b8864f::t_0730a7f409d02a 1-468
+e2e/profile-first/scripts/setup.sh
+  s_68549326b8864f::t_98339c48834ddc 1-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f9d433f48f9b40d41dfb34c219a423173df0b1c3",
+  "prompts": {},
+  "sessions": {
+    "s_68549326b8864f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ed84f12-194c-47d0-8b5d-1096c3e46558",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
