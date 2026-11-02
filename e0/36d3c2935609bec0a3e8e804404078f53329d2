@@ -1,0 +1,20 @@
+e2e/picks/picks.venom.yml
+  s_9b8c0fcd70ce13::t_067e8bc204df8f 74,150,178
+  s_9b8c0fcd70ce13::t_7ce9a7ceb5446c 173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e036d3c2935609bec0a3e8e804404078f53329d2",
+  "prompts": {},
+  "sessions": {
+    "s_9b8c0fcd70ce13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c4c943c-5992-491f-89a1-68f6db4e426a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
