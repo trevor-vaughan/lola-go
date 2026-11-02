@@ -1,0 +1,22 @@
+internal/source/archive.go
+  s_1478abac28db40::t_4da1b4e413c51d 547
+internal/source/links.go
+  s_1478abac28db40::t_4da1b4e413c51d 21,73
+  s_1478abac28db40::t_cff00e434bbb81 26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b9aaf97ed8f2e082d62bd14e82e908f12c64bd4",
+  "prompts": {},
+  "sessions": {
+    "s_1478abac28db40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9e0bbc47-c4cc-4d2f-8df5-0ca01294616d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Trevor Vaughan <peiriannydd@gmail.com>"
+    }
+  }
+}
