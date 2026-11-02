@@ -1,0 +1,26 @@
+internal/cli/cmd_info.go
+  s_133f4ad1c855fe::t_35e6415f29a7b3 17,40-42,444
+internal/engine/native_test.go
+  s_133f4ad1c855fe::t_1db2d7a2239277 93-95
+  s_133f4ad1c855fe::t_0611752e11366a 91-92,96-102
+internal/native/native.go
+  s_133f4ad1c855fe::t_35e6415f29a7b3 42-50,303
+internal/engine/native.go
+  s_133f4ad1c855fe::t_35e6415f29a7b3 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "842650f782f64c6ff57b742ee121d8488755153c",
+  "prompts": {},
+  "sessions": {
+    "s_133f4ad1c855fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7619d0ee-02f5-435e-8ef7-071b82132a53",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
