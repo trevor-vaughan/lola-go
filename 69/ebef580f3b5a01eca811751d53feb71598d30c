@@ -1,0 +1,29 @@
+internal/engine/info.go
+  s_9b8c0fcd70ce13::t_622dcfd8dcaf25 337-338,402,429,987-988,990-991,993,995
+internal/engine/mentions.go
+  s_9b8c0fcd70ce13::t_622dcfd8dcaf25 239-240,252
+internal/engine/info_internal_test.go
+  s_9b8c0fcd70ce13::t_9b4dc38cf41b30 46-50,56-57,59-63
+  s_9b8c0fcd70ce13::t_622dcfd8dcaf25 39,58
+  s_9b8c0fcd70ce13::t_283b8b62659586 6,13,17,51-55
+  s_9b8c0fcd70ce13::t_1b7108d11b9c50 64-65
+internal/engine/info_components.go
+  s_9b8c0fcd70ce13::t_622dcfd8dcaf25 52,73-74,90
+  s_9b8c0fcd70ce13::t_1edceeb918080e 49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "69ebef580f3b5a01eca811751d53feb71598d30c",
+  "prompts": {},
+  "sessions": {
+    "s_9b8c0fcd70ce13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c4c943c-5992-491f-89a1-68f6db4e426a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
