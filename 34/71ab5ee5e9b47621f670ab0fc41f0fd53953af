@@ -1,0 +1,56 @@
+internal/migrate/plan.go
+  s_133f4ad1c855fe::t_44d899563cafbf 337-338,341
+internal/source/folder.go
+  s_133f4ad1c855fe::t_3290ddbbea7442 39-40,60,78-80,82,84,86,90,92,94,97,218-219,222-223,227,230-231,254,277-292,294,301,303-320,324-328,334,340,345-349
+  s_133f4ad1c855fe::t_4493d9e2a67b44 161
+internal/source/git_internal_test.go
+  s_133f4ad1c855fe::t_fe57ae0bf5df7a 41,96,103
+internal/source/git.go
+  s_133f4ad1c855fe::t_4493d9e2a67b44 322,330-335,505-509
+  s_133f4ad1c855fe::t_cd24da1dcb753e 470-474
+  s_133f4ad1c855fe::t_cf4eaecaca3562 15
+internal/source/fetch.go
+  s_133f4ad1c855fe::t_69a6d0e9e0c6a5 13-16
+internal/source/git_test.go
+  s_133f4ad1c855fe::t_498e4212b18000 264-266,268-269
+  s_133f4ad1c855fe::t_0f6185e693feff 234,239-240,245-263,267,270-280,285-290,316
+internal/source/archive.go
+  s_133f4ad1c855fe::t_4493d9e2a67b44 104
+internal/source/export_test.go
+  s_133f4ad1c855fe::t_e33450847b4e24 1-17
+internal/source/folder_test.go
+  s_133f4ad1c855fe::t_5a554fab4259d1 40-49,135,139-140,145-170,174-222,262,271
+  s_133f4ad1c855fe::t_74c1b58378c85e 171-173
+internal/engine/remoteprofile_test.go
+  s_133f4ad1c855fe::t_44d899563cafbf 1237-1238,1240
+internal/source/links_test.go
+  s_133f4ad1c855fe::t_e9a031e83a6446 1-113
+internal/migrate/plan_test.go
+  s_133f4ad1c855fe::t_44d899563cafbf 314
+  s_133f4ad1c855fe::t_fb215931ed2cfc 315
+internal/source/folder_internal_test.go
+  s_133f4ad1c855fe::t_ffde46e3c96741 6,40-69
+  s_133f4ad1c855fe::t_f1633f342896e2 70
+internal/source/links.go
+  s_133f4ad1c855fe::t_fe27d7acedcfd2 1-19,21-22,24,36-49,51-57,59-62,64-69,71-109,111-113,115,117-119,131-156
+  s_133f4ad1c855fe::t_7ffb990b7725ab 20,23,25-31,50,58,63,70,110,114,116,120-130
+  s_133f4ad1c855fe::t_4493d9e2a67b44 32-35
+internal/engine/market_test.go
+  s_133f4ad1c855fe::t_44d899563cafbf 498,571
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3471ab5ee5e9b47621f670ab0fc41f0fd53953af",
+  "prompts": {},
+  "sessions": {
+    "s_133f4ad1c855fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7619d0ee-02f5-435e-8ef7-071b82132a53",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
