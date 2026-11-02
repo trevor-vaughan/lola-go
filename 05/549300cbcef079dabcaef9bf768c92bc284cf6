@@ -1,0 +1,21 @@
+internal/engine/resolve.go
+  s_9b8c0fcd70ce13::t_dd91454196d3d8 147-148
+docs/usage.md
+  s_9b8c0fcd70ce13::t_ceaee573e7608e 848,850-853
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05549300cbcef079dabcaef9bf768c92bc284cf6",
+  "prompts": {},
+  "sessions": {
+    "s_9b8c0fcd70ce13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c4c943c-5992-491f-89a1-68f6db4e426a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
