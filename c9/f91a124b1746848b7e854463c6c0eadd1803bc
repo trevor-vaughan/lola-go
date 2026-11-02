@@ -1,0 +1,20 @@
+docs/architecture.md
+  s_133f4ad1c855fe::t_19f4d221a7326e 1148
+  s_133f4ad1c855fe::t_9a881b9c1b0a80 1101,1146-1147,2619-2628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9f91a124b1746848b7e854463c6c0eadd1803bc",
+  "prompts": {},
+  "sessions": {
+    "s_133f4ad1c855fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7619d0ee-02f5-435e-8ef7-071b82132a53",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
