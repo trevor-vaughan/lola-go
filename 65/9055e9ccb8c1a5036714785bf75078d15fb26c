@@ -1,0 +1,20 @@
+e2e/install/install.venom.yml
+  s_133f4ad1c855fe::t_4fe92434a7213d 704-707,709-730,732-735
+  s_133f4ad1c855fe::t_cdcba8053c59fc 708,731
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "659055e9ccb8c1a5036714785bf75078d15fb26c",
+  "prompts": {},
+  "sessions": {
+    "s_133f4ad1c855fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7619d0ee-02f5-435e-8ef7-071b82132a53",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
