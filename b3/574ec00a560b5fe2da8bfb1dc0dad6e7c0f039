@@ -1,0 +1,21 @@
+docs/usage.md
+  s_133f4ad1c855fe::t_f604e865027336 1647
+docs/decisions.md
+  s_133f4ad1c855fe::t_f604e865027336 213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b3574ec00a560b5fe2da8bfb1dc0dad6e7c0f039",
+  "prompts": {},
+  "sessions": {
+    "s_133f4ad1c855fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7619d0ee-02f5-435e-8ef7-071b82132a53",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
