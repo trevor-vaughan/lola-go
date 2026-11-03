@@ -1,0 +1,42 @@
+cmd/lola/main.go
+  s_8a727392dd8026::t_eb8de7cd94a28e 5,12-17
+cmd/lola/signal_test.go
+  s_8a727392dd8026::t_7710f2ddd74190 1-23,25-52
+  s_8a727392dd8026::t_3d0bb37f31dab9 24
+internal/cli/root.go
+  s_8a727392dd8026::t_533a714f22215d 237-238
+  s_8a727392dd8026::t_b4809b0006b6db 219-220,224
+  s_8a727392dd8026::t_eb8de7cd94a28e 6
+docs/usage.md
+  s_8a727392dd8026::t_20ef842c7777f9 1755-1756,1760,1833-1835
+internal/cli/interrupt.go
+  s_8a727392dd8026::t_0f15f0fe6f32c7 1-26,28-31,33
+  s_8a727392dd8026::t_9b5bfc3eb90b98 27,32
+docs/architecture.md
+  s_8a727392dd8026::t_20ef842c7777f9 1134-1138,1290-1292,1859-1860,2363-2365
+internal/engine/staging.go
+  s_8a727392dd8026::t_3d21fb9f5f1f82 105-106
+  s_8a727392dd8026::t_e7c865672d268a 140,146-148,150-155
+  s_8a727392dd8026::t_9987b0d8eebd9d 119-126
+  s_8a727392dd8026::t_19d4dcdf5cad40 9
+internal/engine/staging_internal_test.go
+  s_8a727392dd8026::t_116960420977c2 165
+  s_8a727392dd8026::t_9cba6a0ff42307 162
+  s_8a727392dd8026::t_f7a0a2f3467b6d 171-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73dbe9d946f039e9575a98c2787374be753c6aec",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
