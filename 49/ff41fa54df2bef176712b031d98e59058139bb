@@ -1,0 +1,83 @@
+internal/cli/cmd_core.go
+  s_42c56dad8a6802::t_0479f5ea799343 207,250-258,341,362-364,542
+  s_42c56dad8a6802::t_8034225eb4dc4a 361
+  s_42c56dad8a6802::t_c166b45e205792 35,37,227,336,413,572
+internal/cli/cmd_store.go
+  s_42c56dad8a6802::t_c2890663e22580 181-182,286-288
+  s_42c56dad8a6802::t_8034225eb4dc4a 252-254,352-358,492-498,514-518,532-535
+internal/engine/complete_test.go
+  s_42c56dad8a6802::t_00806a14773a62 1-64,66-100
+  s_42c56dad8a6802::t_a3225fda471421 65
+internal/cli/cmd_info.go
+  s_42c56dad8a6802::t_c166b45e205792 59
+  s_42c56dad8a6802::t_c2890663e22580 62-63
+internal/cli/cmd_tidy.go
+  s_42c56dad8a6802::t_c166b45e205792 60
+  s_42c56dad8a6802::t_c2890663e22580 61-62
+  s_42c56dad8a6802::t_8034225eb4dc4a 46-48
+internal/engine/complete.go
+  s_42c56dad8a6802::t_44ec06c802a829 117-120,124-127,130,133
+  s_42c56dad8a6802::t_a3225fda471421 5-7,13,57,64-74,76,78-79,81,85-94,96-104,106
+  s_42c56dad8a6802::t_a76993c1c78586 58,60-62
+  s_42c56dad8a6802::t_31ea11a16030d3 1-4,8-12,14-56,59,63,75,77,80,82-84,95,105,107-116,121-123,128-129,131-132,134-149
+internal/cli/cmd_profile.go
+  s_42c56dad8a6802::t_c2890663e22580 450-459
+  s_42c56dad8a6802::t_c166b45e205792 437
+internal/cli/complete.go
+  s_42c56dad8a6802::t_eca468b1a6fa78 152,195-197,199
+  s_42c56dad8a6802::t_8c8eb2d85d7c82 30-31
+  s_42c56dad8a6802::t_17bd9154d0dba8 1-29,32-151,153-194,198,200-213
+internal/cli/cmd_repair.go
+  s_42c56dad8a6802::t_8034225eb4dc4a 24-27
+internal/cli/root.go
+  s_42c56dad8a6802::t_c2890663e22580 148
+internal/cli/cmd_update.go
+  s_42c56dad8a6802::t_c2890663e22580 42
+internal/cli/cmd_trash.go
+  s_42c56dad8a6802::t_c2890663e22580 51-53,97-98
+internal/cli/conventions_test.go
+  s_42c56dad8a6802::t_03084c3db1f521 87-88,91-92,94-95,99-101,105
+  s_42c56dad8a6802::t_e007e4bd305a0a 89,93
+  s_42c56dad8a6802::t_4480c980f6fdc9 90,96-98,102-104,106
+  s_42c56dad8a6802::t_13d9a332913828 107
+  s_42c56dad8a6802::t_91aab881710ce6 11
+internal/cli/complete_test.go
+  s_42c56dad8a6802::t_9baaf450fa4da4 189
+  s_42c56dad8a6802::t_8c8eb2d85d7c82 4,146,148
+  s_42c56dad8a6802::t_6dc46bff5ff3ea 1-3,5-145,147,149-188,190-193
+internal/cli/cmd_misc.go
+  s_42c56dad8a6802::t_8034225eb4dc4a 27-33
+  s_42c56dad8a6802::t_04634ba17386a0 40-49
+docs/reference/completion.md
+  s_42c56dad8a6802::t_04634ba17386a0 7-28
+internal/cli/store_test.go
+  s_42c56dad8a6802::t_5a5d86a89eff7b 343
+internal/engine/trash.go
+  s_42c56dad8a6802::t_926f7e39c780f3 86,88
+  s_42c56dad8a6802::t_c06343389fd64f 106-120
+  s_42c56dad8a6802::t_34b4ba60fdfe47 121-122
+internal/cli/cmd_sync.go
+  s_42c56dad8a6802::t_c2890663e22580 266
+internal/cli/cmd_market.go
+  s_42c56dad8a6802::t_c2890663e22580 266-268,272
+  s_42c56dad8a6802::t_c166b45e205792 275
+internal/cli/cmd_migrate.go
+  s_42c56dad8a6802::t_8034225eb4dc4a 56-57
+  s_42c56dad8a6802::t_c2890663e22580 139-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "49ff41fa54df2bef176712b031d98e59058139bb",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
