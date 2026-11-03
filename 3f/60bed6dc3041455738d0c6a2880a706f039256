@@ -1,0 +1,86 @@
+e2e/install/install.venom.yml
+  s_42c56dad8a6802::t_46f56df748bc08 192-193,221
+internal/cli/sync_test.go
+  s_42c56dad8a6802::t_1a1a863286099c 525-526,532
+docs/guides/profiles.md
+  s_42c56dad8a6802::t_5369583af72898 573,586
+  s_42c56dad8a6802::t_eee50a8fe35aff 414-415
+internal/engine/tidy_refusal_test.go
+  s_42c56dad8a6802::t_d0ca88acea9db5 42-46,51,64
+internal/cli/tidy_test.go
+  s_42c56dad8a6802::t_ca72ba5e404a93 370,382
+  s_42c56dad8a6802::t_d40d9e6270bf22 385-389,391
+internal/engine/remote_add.go
+  s_42c56dad8a6802::t_c7869628256460 254
+  s_42c56dad8a6802::t_195f904cbb2cec 267-268
+internal/cli/move_test.go
+  s_42c56dad8a6802::t_d9922d7b09cffb 306-308,311
+  s_42c56dad8a6802::t_5d55081f531889 288-290,295,397,409
+internal/engine/edits_test.go
+  s_42c56dad8a6802::t_47a2d1f9589fb4 142-143
+internal/cli/move_hint_test.go
+  s_42c56dad8a6802::t_828f2fbb14e8dd 18-19,30
+  s_42c56dad8a6802::t_7c45c6017ed2bd 100,112,134,162,172,186,198,200,226,240,253,420
+  s_42c56dad8a6802::t_be6836b3790d50 17,20-29,31-33
+  s_42c56dad8a6802::t_302878703ca7e9 88-89,99,111,120,132-133,160,184-185,196,211,223-224,237-238,252,339,393,418,458
+internal/engine/tidy_select.go
+  s_42c56dad8a6802::t_88aadeea90eaeb 80
+docs/decisions.md
+  s_42c56dad8a6802::t_6b421fb16b259f 171
+internal/engine/hints_move_test.go
+  s_42c56dad8a6802::t_47a2d1f9589fb4 74-75,80-81,87,93-94,96,99,104,128,134-135,140,149,182-183,191-192,205-206,242
+docs/reference/install.md
+  s_42c56dad8a6802::t_5369583af72898 97
+docs/guides/sync-and-trust.md
+  s_42c56dad8a6802::t_5369583af72898 182-188
+README.md
+  s_42c56dad8a6802::t_5369583af72898 167-168
+internal/cli/core_test.go
+  s_42c56dad8a6802::t_1a1a863286099c 803-804
+internal/cli/hints_test.go
+  s_42c56dad8a6802::t_cec232059132b6 306
+  s_42c56dad8a6802::t_b572bb962aaca9 289-291,293-305,307-308
+  s_42c56dad8a6802::t_f32d5ae0fd31e5 292
+e2e/profile-first/profile-first.venom.yml
+  s_42c56dad8a6802::t_46f56df748bc08 158-159,407
+internal/engine/move_test.go
+  s_42c56dad8a6802::t_d0ca88acea9db5 951-952
+  s_42c56dad8a6802::t_5d55081f531889 333-334
+internal/engine/move.go
+  s_42c56dad8a6802::t_bf4f96200a9051 583,639,659,679,790-791,1357,1359
+docs/guides/remote-profiles.md
+  s_42c56dad8a6802::t_5369583af72898 89-91
+docs/architecture.md
+  s_42c56dad8a6802::t_076bcb741d39c4 2287-2288,2951-2953
+internal/cli/remoteprofile_test.go
+  s_42c56dad8a6802::t_3041d024bd4b64 282,284
+  s_42c56dad8a6802::t_cec232059132b6 283
+internal/engine/hints_move.go
+  s_42c56dad8a6802::t_7a436d44af592f 28-31,35,66,120,152,156,167-169,193,225
+internal/cli/inproject_test.go
+  s_42c56dad8a6802::t_be6836b3790d50 114
+  s_42c56dad8a6802::t_7c45c6017ed2bd 88
+  s_42c56dad8a6802::t_be9d2cc8248eac 80
+e2e/tidy/tidy.venom.yml
+  s_42c56dad8a6802::t_46f56df748bc08 56
+internal/engine/ops.go
+  s_42c56dad8a6802::t_7a436d44af592f 289
+internal/engine/sync.go
+  s_42c56dad8a6802::t_88aadeea90eaeb 256-258,1037-1039,1050-1051
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3f60bed6dc3041455738d0c6a2880a706f039256",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
