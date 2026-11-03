@@ -1,0 +1,23 @@
+docs/guides/choosing-what-to-install.md
+  s_42c56dad8a6802::t_bfe771ae076692 595-597,600-601
+docs/usage.md
+  s_42c56dad8a6802::t_bfe771ae076692 422,495
+docs/guides/authoring-modules.md
+  s_42c56dad8a6802::t_bfe771ae076692 474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4632cf78e806d459a892437f55cb3cfe7d724281",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
