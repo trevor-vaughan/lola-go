@@ -1,0 +1,52 @@
+internal/engine/hooks.go
+  s_42c56dad8a6802::t_1635385c801e37 202-205,207-211,214
+internal/engine/ops.go
+  s_42c56dad8a6802::t_59d108f5f839fb 168-173,701-705,738-742,1847-1867
+  s_42c56dad8a6802::t_1635385c801e37 1764-1770
+  s_42c56dad8a6802::t_8fb12cbc970ed4 1868-1869
+internal/cli/scripts_test.go
+  s_42c56dad8a6802::t_5a4a6c8af05c6b 59,61
+  s_42c56dad8a6802::t_14b567f1f48bf1 60,62
+internal/engine/engine.go
+  s_42c56dad8a6802::t_1635385c801e37 175-178
+internal/cli/cmd_core.go
+  s_42c56dad8a6802::t_66abb80a7998d3 213-215,236
+internal/cli/update_test.go
+  s_42c56dad8a6802::t_f80656f8554f20 7,744-777,779-781,783-784,786-788
+  s_42c56dad8a6802::t_48e3b71f34cf90 778,782,785
+  s_42c56dad8a6802::t_cb159703c46781 789
+docs/reference/sync.md
+  s_42c56dad8a6802::t_dc555fc55886ad 51-57
+internal/cli/flow.go
+  s_42c56dad8a6802::t_66abb80a7998d3 33-34,520-523
+docs/reference/update.md
+  s_42c56dad8a6802::t_dc555fc55886ad 53-60
+internal/engine/copies.go
+  s_42c56dad8a6802::t_1635385c801e37 26-35
+docs/decisions.md
+  s_42c56dad8a6802::t_1b8b67adf95439 61
+docs/reference/install.md
+  s_42c56dad8a6802::t_dc555fc55886ad 26
+internal/engine/sync.go
+  s_42c56dad8a6802::t_8ecb97c7d2c415 677-678,2747-2768,2771-2772
+  s_42c56dad8a6802::t_d2e1a1c676f662 676
+internal/cli/core_test.go
+  s_42c56dad8a6802::t_5a4a6c8af05c6b 279
+  s_42c56dad8a6802::t_14b567f1f48bf1 278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0dee8fc29bb2f8758c21b9bc4567dec47bf5792e",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
