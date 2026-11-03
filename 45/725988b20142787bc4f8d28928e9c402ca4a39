@@ -1,0 +1,24 @@
+internal/cli/picks_cleared_test.go
+  s_42c56dad8a6802::t_e0fc8dd45425be 31
+  s_42c56dad8a6802::t_4bb0721ffe7c1e 48
+docs/usage.md
+  s_42c56dad8a6802::t_e0fc8dd45425be 259,1901
+internal/engine/picks_cleared_test.go
+  s_42c56dad8a6802::t_e0fc8dd45425be 105,110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45725988b20142787bc4f8d28928e9c402ca4a39",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
