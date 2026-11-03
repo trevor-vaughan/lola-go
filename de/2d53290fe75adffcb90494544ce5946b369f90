@@ -1,0 +1,33 @@
+docs/usage.md
+  s_8a727392dd8026::t_f3ec6f1def28e1 240-246
+internal/plan/compute.go
+  s_8a727392dd8026::t_f5c215fb1e9396 653-655,669,671-678,685-687,689-691,705,722-728,730
+docs/architecture.md
+  s_8a727392dd8026::t_f3ec6f1def28e1 1060-1065
+internal/cli/confirm_test.go
+  s_8a727392dd8026::t_706a8150e92bab 61
+internal/plan/compute_test.go
+  s_8a727392dd8026::t_9873d21c5205bd 319,325-326,328-350
+internal/engine/uninstall_test.go
+  s_8a727392dd8026::t_9873d21c5205bd 388,390-396
+e2e/install/install.venom.yml
+  s_8a727392dd8026::t_39a11b10fef272 81,84,377-378,382,645
+internal/engine/engine_test.go
+  s_8a727392dd8026::t_9873d21c5205bd 600-601
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "de2d53290fe75adffcb90494544ce5946b369f90",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
