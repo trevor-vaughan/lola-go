@@ -1,0 +1,25 @@
+internal/cli/update_test.go
+  s_42c56dad8a6802::t_2308662e0aa013 322-326
+internal/cli/cmd_sync.go
+  s_42c56dad8a6802::t_2308662e0aa013 412
+internal/cli/profile_move.go
+  s_42c56dad8a6802::t_2308662e0aa013 83
+docs/usage.md
+  s_42c56dad8a6802::t_10a3ce7ef1a98d 881-882
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0be49cba3c2c6f61b5fcd5d84da9b0942520a6f",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
