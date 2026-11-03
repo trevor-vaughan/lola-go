@@ -1,0 +1,31 @@
+e2e/trash-picks/fixtures/kit/lola.yml
+  s_42c56dad8a6802::t_34decbcda48c8a 1-2
+e2e/trash-picks/fixtures/kit/skills/bravo/SKILL.md
+  s_42c56dad8a6802::t_34decbcda48c8a 1-4
+e2e/trash-picks/scripts/setup.sh
+  s_42c56dad8a6802::t_34decbcda48c8a 1-29
+e2e/trash-picks/fixtures/kit/skills/alpha/SKILL.md
+  s_42c56dad8a6802::t_34decbcda48c8a 1-4
+e2e/trash-picks/trash-picks.venom.yml
+  s_42c56dad8a6802::t_db05d4ae6a7585 92,103,138-139,161
+  s_42c56dad8a6802::t_34decbcda48c8a 1-91,93-102,104-137,140-147,149-160
+  s_42c56dad8a6802::t_4382ad6ee93208 148
+e2e/trash-picks/fixtures/kit/skills/charlie/SKILL.md
+  s_42c56dad8a6802::t_34decbcda48c8a 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79b6700897f41b36c47027fd1cde246f0127ca9b",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
