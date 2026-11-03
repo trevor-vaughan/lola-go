@@ -1,0 +1,29 @@
+internal/engine/edits.go
+  s_42c56dad8a6802::t_80810028030126 102,105,214-218,345-347
+internal/engine/exact_test.go
+  s_42c56dad8a6802::t_8dd4827ba18d18 133-137
+  s_42c56dad8a6802::t_217d297e793e1f 139
+  s_42c56dad8a6802::t_a69fd377e72a62 132,138,140-146
+internal/engine/ops.go
+  s_42c56dad8a6802::t_80810028030126 1385-1387,1399-1400
+docs/guides/choosing-what-to-install.md
+  s_42c56dad8a6802::t_563123354955f1 316-319
+internal/engine/choices.go
+  s_42c56dad8a6802::t_80810028030126 955-957,969-971
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3e95b2ac0182fa2ab0c2fdacaad61f24740497c",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
