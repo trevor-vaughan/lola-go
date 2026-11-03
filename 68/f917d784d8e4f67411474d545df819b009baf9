@@ -1,0 +1,57 @@
+internal/engine/trash.go
+  s_42c56dad8a6802::t_c1748138b91ffa 1-30,32-93,95-119,121-238,240-259,261-265,274-295,297-356,371-378,380-387,391-393,395-407,409-439,441-443,445,447-452
+  s_42c56dad8a6802::t_d9353a799cd5c9 31,94,120,239,379,394,408,440,444,446
+  s_42c56dad8a6802::t_28d95355a99dc0 260,266-273,296,357-370,388-390
+internal/trash/trash.go
+  s_42c56dad8a6802::t_91364b194d68fe 3,30
+  s_42c56dad8a6802::t_cc548720d6cdfb 133,140-146,153,156,261-267,276-503
+internal/cli/cmd_trash.go
+  s_42c56dad8a6802::t_a58d0b1ac06ca4 1-166,172-356
+  s_42c56dad8a6802::t_3cd77ce8e505e4 167-170
+  s_42c56dad8a6802::t_28d95355a99dc0 171
+internal/cli/trash_test.go
+  s_42c56dad8a6802::t_3cd77ce8e505e4 176
+  s_42c56dad8a6802::t_7394f63b14bbeb 105-106
+  s_42c56dad8a6802::t_418e4857393cdd 178
+  s_42c56dad8a6802::t_28d95355a99dc0 175
+  s_42c56dad8a6802::t_0100dd2e2dd128 1-104,107-174,177,179-196
+README.md
+  s_42c56dad8a6802::t_dc87a4185fe8da 64-66
+  s_42c56dad8a6802::t_7f67aa5228a9a9 9
+docs/guides/migrating.md
+  s_42c56dad8a6802::t_7f67aa5228a9a9 240-243
+docs/usage.md
+  s_42c56dad8a6802::t_7f67aa5228a9a9 1830,1863
+  s_42c56dad8a6802::t_f71824b408788c 1218-1283
+internal/engine/trash_test.go
+  s_42c56dad8a6802::t_68e3384227ad05 4-5,77-82
+  s_42c56dad8a6802::t_28d95355a99dc0 268
+  s_42c56dad8a6802::t_544d06d9fb66bd 1-3,6-76,83-267,269-290
+internal/trash/trash_test.go
+  s_42c56dad8a6802::t_cc22e51fab9b6d 372-579
+  s_42c56dad8a6802::t_86fad1d695d6f4 6
+internal/cli/cmd_misc.go
+  s_42c56dad8a6802::t_418e4857393cdd 25
+internal/cli/confirm_test.go
+  s_42c56dad8a6802::t_e9e8ee5481158d 11,22,98-111,179,194,212,227,247,261,350-351,368
+internal/cli/store_test.go
+  s_42c56dad8a6802::t_7394f63b14bbeb 508-509,516-517
+docs/guides/tidying.md
+  s_42c56dad8a6802::t_7f67aa5228a9a9 185-186,188-190,193,199-202,205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "68f917d784d8e4f67411474d545df819b009baf9",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
