@@ -1,0 +1,31 @@
+docs/architecture.md
+  s_8a727392dd8026::t_91110421dd3a6b 1179-1180
+internal/source/fetch.go
+  s_8a727392dd8026::t_6043a05ea84ff5 47-53,57-61
+  s_8a727392dd8026::t_a7930819a79ed2 8
+docs/usage.md
+  s_8a727392dd8026::t_b5f41e9ad3ff3e 1282-1283
+  s_8a727392dd8026::t_91110421dd3a6b 1319-1321
+internal/source/fetch_test.go
+  s_8a727392dd8026::t_243dadb63aa744 89-105
+internal/source/git_internal_test.go
+  s_8a727392dd8026::t_243dadb63aa744 159-171
+internal/source/git.go
+  s_8a727392dd8026::t_6043a05ea84ff5 230-231,233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4c57ab4b1235c6562ccdc5f39bee10a0a69fad1c",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
