@@ -1,0 +1,35 @@
+internal/cli/sync_output.go
+  s_42c56dad8a6802::t_ec4841a7f2c1fd 146,152,157
+internal/engine/deletes.go
+  s_42c56dad8a6802::t_ec4841a7f2c1fd 46,62,77
+internal/engine/sync.go
+  s_42c56dad8a6802::t_ec4841a7f2c1fd 113-116,2780-2782,2799
+internal/engine/picks_test.go
+  s_42c56dad8a6802::t_b4d227dc85f560 324
+e2e/team/team.venom.yml
+  s_42c56dad8a6802::t_34591f6eb71651 274
+internal/cli/sync_test.go
+  s_42c56dad8a6802::t_751f19fa76a764 666
+internal/engine/update_test.go
+  s_42c56dad8a6802::t_b4d227dc85f560 177,203,699
+internal/cli/selections_test.go
+  s_42c56dad8a6802::t_751f19fa76a764 298-301
+docs/usage.md
+  s_42c56dad8a6802::t_3f09f94ae0fa90 870-873,879-881
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0128484a91c08c8c60db94d1c5745986ccac7ce6",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
