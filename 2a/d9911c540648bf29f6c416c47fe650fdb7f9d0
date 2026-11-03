@@ -1,0 +1,64 @@
+internal/plan/apply_test.go
+  s_8a727392dd8026::t_7138c3a4cca25a 25,28,56,66,72-86
+  s_8a727392dd8026::t_697335ec94f176 87-88
+README.md
+  s_8a727392dd8026::t_dd4783094208d4 170
+internal/plan/compute.go
+  s_8a727392dd8026::t_49f8027d6242de 678-680
+  s_8a727392dd8026::t_14586fcbb934b1 24,626,646-648,652-677,681-727
+  s_8a727392dd8026::t_4692878b2bf6ef 26-29
+  s_8a727392dd8026::t_c07f79f326679e 37-39,43
+  s_8a727392dd8026::t_b8eba149efff3f 11,17
+  s_8a727392dd8026::t_80e5ab23ed29a4 728-729
+internal/engine/engine.go
+  s_8a727392dd8026::t_549ff144bda45d 1143
+internal/plan/intent.go
+  s_8a727392dd8026::t_d6a068cd287cb8 183-186
+  s_8a727392dd8026::t_c07f79f326679e 97-99,187-190
+internal/cli/core_test.go
+  s_8a727392dd8026::t_60615fd36e11d0 74-76
+internal/plan/apply.go
+  s_8a727392dd8026::t_b8eba149efff3f 312-313,327-330,333-341
+internal/cli/human.go
+  s_8a727392dd8026::t_7cc823471ed57b 45-47
+internal/engine/uninstall_test.go
+  s_8a727392dd8026::t_bc2660599667f4 353-417
+  s_8a727392dd8026::t_82a4330e8efa23 17
+internal/plan/compute_test.go
+  s_8a727392dd8026::t_80c40dd0e97475 41,88
+  s_8a727392dd8026::t_b63af86979a21b 305-380
+internal/engine/engine_test.go
+  s_8a727392dd8026::t_38d30b5484c00a 600
+docs/usage.md
+  s_8a727392dd8026::t_7c0d46b9044ff6 245
+  s_8a727392dd8026::t_023fab2118ae5d 240-244,246-247
+e2e/install/install.venom.yml
+  s_8a727392dd8026::t_dec6548371e06e 375-378,382
+  s_8a727392dd8026::t_9cd41372fc7252 81,84,645
+internal/cli/confirm_test.go
+  s_8a727392dd8026::t_38d30b5484c00a 61
+docs/architecture.md
+  s_8a727392dd8026::t_7c0d46b9044ff6 1057-1064
+internal/target/gemini/gemini.go
+  s_8a727392dd8026::t_abb43b074c57e1 39
+internal/target/opencode/opencode.go
+  s_8a727392dd8026::t_1ee4d16b8edb72 55
+internal/target/target.go
+  s_8a727392dd8026::t_14bb2372da92c8 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2ad9911c540648bf29f6c416c47fe650fdb7f9d0",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
