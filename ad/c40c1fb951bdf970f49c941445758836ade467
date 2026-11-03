@@ -1,0 +1,68 @@
+internal/cli/scope_test.go
+  s_42c56dad8a6802::t_8cd693c8de1bc7 206,213,216,219-220
+  s_42c56dad8a6802::t_d83017a050a4a2 192
+docs/architecture.md
+  s_42c56dad8a6802::t_4b78c147a288ff 1575-1577,1597-1601,2907-2908
+internal/cli/cmd_migrate.go
+  s_42c56dad8a6802::t_a082322e4e0d5f 230-231
+internal/cli/hints_internal_test.go
+  s_42c56dad8a6802::t_5a41af1925d290 1-67
+internal/cli/remoteprofile_test.go
+  s_42c56dad8a6802::t_d499706caf56c4 188-189,710-711
+docs/decisions.md
+  s_42c56dad8a6802::t_4b78c147a288ff 170,179
+e2e/install/install.venom.yml
+  s_42c56dad8a6802::t_1f56497a4108e9 26,87,94,110,112,114-123
+internal/cli/hints_test.go
+  s_42c56dad8a6802::t_4e0dbb6603f8c9 14
+  s_42c56dad8a6802::t_9a1d95f388845f 217-254,256-269,271-284
+  s_42c56dad8a6802::t_fb11b3addb08ad 255
+  s_42c56dad8a6802::t_ba556f9e335a08 270
+internal/cli/cmd_sync.go
+  s_42c56dad8a6802::t_df46c9e4908046 380
+internal/engine/sync.go
+  s_42c56dad8a6802::t_2403cb5de59c0c 59-60
+internal/cli/store_test.go
+  s_42c56dad8a6802::t_d499706caf56c4 277
+internal/engine/hints.go
+  s_42c56dad8a6802::t_f0e6eb35260ba5 97
+  s_42c56dad8a6802::t_7ab485deb01ed1 90-91,98
+internal/engine/tidy.go
+  s_42c56dad8a6802::t_9e60607d5507f2 84,224-226,247-248
+  s_42c56dad8a6802::t_8a0070085ee05f 249
+internal/cli/cmd_profile.go
+  s_42c56dad8a6802::t_ff446997cf4bd1 82-83,89-90,93-96,101
+  s_42c56dad8a6802::t_f8ed218fd6cc95 91-92
+  s_42c56dad8a6802::t_f8ef3f05eb463f 127-130,132-134,136
+internal/cli/flow_test.go
+  s_42c56dad8a6802::t_d499706caf56c4 1194
+  s_42c56dad8a6802::t_9bd5754e3d4934 1193
+internal/cli/migrate_test.go
+  s_42c56dad8a6802::t_d499706caf56c4 227-228
+internal/cli/profile_edit_test.go
+  s_42c56dad8a6802::t_d499706caf56c4 625
+  s_42c56dad8a6802::t_9bd5754e3d4934 624
+internal/engine/tidy_test.go
+  s_42c56dad8a6802::t_d499706caf56c4 458
+  s_42c56dad8a6802::t_682c9922e430f5 467
+docs/usage.md
+  s_42c56dad8a6802::t_4b78c147a288ff 27-32
+internal/cli/cmd_store.go
+  s_42c56dad8a6802::t_a082322e4e0d5f 551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "adc40c1fb951bdf970f49c941445758836ade467",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
