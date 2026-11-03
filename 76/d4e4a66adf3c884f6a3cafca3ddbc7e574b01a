@@ -1,0 +1,38 @@
+docs/usage.md
+  s_8a727392dd8026::t_bac0b77ca25b98 1882-1884
+internal/cli/profile_update.go
+  s_8a727392dd8026::t_101b47f4487c47 5,358-367
+internal/cli/interrupt.go
+  s_8a727392dd8026::t_3e0eb61ab68a1f 20-22
+internal/cli/interrupt_internal_test.go
+  s_8a727392dd8026::t_dfb54ebcb80b5f 4-7,9,12-13,15-18,21,24-25,27-43,45-53,55-56,58-62,65-67
+  s_8a727392dd8026::t_6b432aadca5a97 22-23,26,44,54,57,63-64
+  s_8a727392dd8026::t_b2348b6f7b3092 107-112
+  s_8a727392dd8026::t_013798c75b2fb7 68
+internal/cli/root.go
+  s_8a727392dd8026::t_101b47f4487c47 219-221,224-229,245-247
+internal/cli/remoteprofile_test.go
+  s_8a727392dd8026::t_6855882baa880b 511
+  s_8a727392dd8026::t_ab06a29ffd0be1 845,847-866,868-869,873-874,877-878
+  s_8a727392dd8026::t_e8e97053778f91 846,867,870-872,875-876
+docs/architecture.md
+  s_8a727392dd8026::t_3e0eb61ab68a1f 1138-1144
+cmd/lola/signal_test.go
+  s_8a727392dd8026::t_a8c88c397fca71 57-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "76d4e4a66adf3c884f6a3cafca3ddbc7e574b01a",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
