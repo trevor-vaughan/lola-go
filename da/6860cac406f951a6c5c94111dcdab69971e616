@@ -1,0 +1,31 @@
+docs/usage.md
+  s_8a727392dd8026::t_fea88313c2cf56 388-392,396
+internal/cli/sync_output.go
+  s_8a727392dd8026::t_421cf6d97d8a03 51
+internal/engine/update_test.go
+  s_8a727392dd8026::t_c35ac7dbddebd0 396-410
+internal/engine/sync.go
+  s_8a727392dd8026::t_a74d0949a8000e 263,316,773-779,1036-1037,1118-1119,2506
+  s_8a727392dd8026::t_8a91a54022b25e 783-785
+internal/engine/installed.go
+  s_8a727392dd8026::t_a74d0949a8000e 22,37-39,42-49
+internal/cli/update_test.go
+  s_8a727392dd8026::t_8a91a54022b25e 216
+  s_8a727392dd8026::t_421cf6d97d8a03 208-215,217-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "da6860cac406f951a6c5c94111dcdab69971e616",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
