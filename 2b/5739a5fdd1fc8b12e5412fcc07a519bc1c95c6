@@ -1,0 +1,21 @@
+README.md
+  s_8a727392dd8026::t_a01d25416d8b51 62,97,220-221
+docs/usage.md
+  s_8a727392dd8026::t_a01d25416d8b51 1710-1750
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2b5739a5fdd1fc8b12e5412fcc07a519bc1c95c6",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
