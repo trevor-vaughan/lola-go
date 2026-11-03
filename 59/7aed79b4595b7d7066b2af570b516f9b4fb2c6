@@ -1,0 +1,41 @@
+internal/manifest/manifest.go
+  s_42c56dad8a6802::t_5f007a56788d55 125
+internal/profile/profile.go
+  s_42c56dad8a6802::t_5f007a56788d55 416,428
+internal/yamldoc/yamldoc.go
+  s_42c56dad8a6802::t_5f007a56788d55 261-264,271,276,287-293,349-362
+  s_42c56dad8a6802::t_11666aca37fd88 363
+docs/guides/profiles.md
+  s_42c56dad8a6802::t_838441a2e9a1bc 559
+internal/engine/profile_test.go
+  s_42c56dad8a6802::t_16eccef948def2 505,508-513
+  s_42c56dad8a6802::t_7243ca6a98eed8 506
+  s_42c56dad8a6802::t_ba6e16f79e4bdb 507
+internal/manifest/manifest_test.go
+  s_42c56dad8a6802::t_d126f6f87409cf 384
+internal/engine/sync_test.go
+  s_42c56dad8a6802::t_16eccef948def2 2151-2158
+internal/engine/sync.go
+  s_42c56dad8a6802::t_2d6bacfa9d9d2e 2370-2374,2431-2435,2438,2442,2444-2449,2451-2453,2456
+internal/engine/ops.go
+  s_42c56dad8a6802::t_2d6bacfa9d9d2e 622-632
+internal/profile/profile_test.go
+  s_42c56dad8a6802::t_d126f6f87409cf 105,111,537
+  s_42c56dad8a6802::t_16eccef948def2 112-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "597aed79b4595b7d7066b2af570b516f9b4fb2c6",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
