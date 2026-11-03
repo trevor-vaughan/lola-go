@@ -1,0 +1,19 @@
+internal/target/conformance/conformance_test.go
+  s_8a727392dd8026::t_c48a754ddb2a2b 135,157-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ef8bd7dfc65f0db806f8e6c2df2abbee6263e179",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
