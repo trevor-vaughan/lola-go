@@ -1,0 +1,22 @@
+e2e/trash-picks/fixtures/kit/lola.yml
+  s_42c56dad8a6802::t_346ffb96563eda 2
+e2e/trash-picks/trash-picks.venom.yml
+  s_42c56dad8a6802::t_346ffb96563eda 162-173,176-195
+  s_42c56dad8a6802::t_d9bac0047e899f 174-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "773d8dd0af200a5b641b92a306b07719ac070442",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
