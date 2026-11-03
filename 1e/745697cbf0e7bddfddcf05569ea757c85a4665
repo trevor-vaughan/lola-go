@@ -1,0 +1,48 @@
+internal/cli/remoteprofile_test.go
+  s_8a727392dd8026::t_b0970774ed5305 494-517
+  s_8a727392dd8026::t_8a886c480cd083 13
+internal/engine/cancel_test.go
+  s_8a727392dd8026::t_61410c2265bc13 24-25,31,46
+  s_8a727392dd8026::t_99894c3bfdcc5e 39-45
+  s_8a727392dd8026::t_7e3a3f766c0f91 1-16,19-23,26-27,30,38,47-48
+  s_8a727392dd8026::t_2c990fd0abe176 17,28-29,33,35-37
+  s_8a727392dd8026::t_a3ccb1ff3d0af0 18,32,34
+internal/engine/engine.go
+  s_8a727392dd8026::t_f5dd3371f89be0 1206-1207,1209-1211
+cmd/lola/main.go
+  s_8a727392dd8026::t_b7d85198d15251 6,18-23
+cmd/lola/reraise_unix.go
+  s_8a727392dd8026::t_b7d85198d15251 1-20
+internal/cli/interrupt.go
+  s_8a727392dd8026::t_cbf65990d0dc4a 5,45-50
+  s_8a727392dd8026::t_b7d85198d15251 20-21,24-32,34
+  s_8a727392dd8026::t_03397739e526cb 51
+docs/usage.md
+  s_8a727392dd8026::t_acbbdbc9ad98c6 1835-1836
+  s_8a727392dd8026::t_07e3a82a5915fd 1760-1761,1834,1837
+docs/architecture.md
+  s_8a727392dd8026::t_07e3a82a5915fd 1136-1141
+internal/cli/profile_update.go
+  s_8a727392dd8026::t_bb8a8fc6ecc003 90,111,338
+cmd/lola/signal_test.go
+  s_8a727392dd8026::t_71c76d157636d8 1-2,21,48-50
+cmd/lola/reraise_other.go
+  s_8a727392dd8026::t_7a838961161efd 8
+  s_8a727392dd8026::t_b7d85198d15251 1-7,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e745697cbf0e7bddfddcf05569ea757c85a4665",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
