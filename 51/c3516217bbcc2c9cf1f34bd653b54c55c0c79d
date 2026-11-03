@@ -1,0 +1,23 @@
+internal/engine/engine.go
+  s_42c56dad8a6802::t_595c23b7f6b163 398-399,420
+internal/engine/projectprofile_test.go
+  s_42c56dad8a6802::t_b421e98e32ca59 625
+  s_42c56dad8a6802::t_510e2e42935c5c 626
+  s_42c56dad8a6802::t_3b757a4e3a654e 555-624,627-634
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51c3516217bbcc2c9cf1f34bd653b54c55c0c79d",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
