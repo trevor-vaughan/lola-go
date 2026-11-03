@@ -1,0 +1,24 @@
+internal/engine/trash.go
+  s_42c56dad8a6802::t_3e2a10082bf133 310-313
+internal/trash/trash.go
+  s_42c56dad8a6802::t_3e2a10082bf133 353-354,356-362,366-370,373,414-417,422,430-431,435-437
+internal/trash/trash_internal_test.go
+  s_42c56dad8a6802::t_3e2a10082bf133 14,313,318-383
+  s_42c56dad8a6802::t_faf56a53dcd568 384
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9b474d66271fe77ff32d1be76ef875a0aaea434d",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
