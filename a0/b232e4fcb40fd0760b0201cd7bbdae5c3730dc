@@ -1,0 +1,27 @@
+docs/architecture.md
+  s_8a727392dd8026::t_25023298e2096a 1062-1065
+docs/usage.md
+  s_8a727392dd8026::t_1da623a6488015 1721-1722
+  s_8a727392dd8026::t_25023298e2096a 245-248
+  s_8a727392dd8026::t_05e6054ea55e33 1720
+  s_8a727392dd8026::t_1a857e6eb37096 1737-1739
+  s_8a727392dd8026::t_44c6f6735e0c32 1743-1747,1750-1754,1757-1758
+internal/plan/compute.go
+  s_8a727392dd8026::t_25023298e2096a 655-657
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0b232e4fcb40fd0760b0201cd7bbdae5c3730dc",
+  "prompts": {},
+  "sessions": {
+    "s_8a727392dd8026": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51fd4bf5-416a-4315-b1a8-cdb810a6b04b",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
