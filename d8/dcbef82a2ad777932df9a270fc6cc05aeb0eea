@@ -1,0 +1,65 @@
+internal/cli/mentions_test.go
+  s_42c56dad8a6802::t_b2df28ca298014 154-181
+  s_42c56dad8a6802::t_98822bd8c1fc51 118-121
+  s_42c56dad8a6802::t_bf78a13a7832d0 104-111,117
+  s_42c56dad8a6802::t_a33398e21aa3d6 116
+internal/cli/summary.go
+  s_42c56dad8a6802::t_8154027bd24395 121-122,193
+docs/guides/choosing-what-to-install.md
+  s_42c56dad8a6802::t_e2ba13b469cbd0 402-403
+internal/cli/flow_test.go
+  s_42c56dad8a6802::t_98822bd8c1fc51 435,437-442
+  s_42c56dad8a6802::t_a33398e21aa3d6 434
+internal/engine/ops.go
+  s_42c56dad8a6802::t_9158553e9228b2 1669
+internal/engine/check.go
+  s_42c56dad8a6802::t_99492014ee1be7 34-36,56,111,125,142,168-175
+internal/engine/sync.go
+  s_42c56dad8a6802::t_8b79e6f6b13541 1359
+docs/architecture.md
+  s_42c56dad8a6802::t_e2ba13b469cbd0 818-824
+docs/usage.md
+  s_42c56dad8a6802::t_e2ba13b469cbd0 765-767,778-779,1893-1899
+internal/engine/mentions_test.go
+  s_42c56dad8a6802::t_a33398e21aa3d6 390,433-434
+internal/engine/engine.go
+  s_42c56dad8a6802::t_3a38c91ac6d20a 1058,1066-1079,1087
+  s_42c56dad8a6802::t_c936ab5d0d4fde 278,280,975
+  s_42c56dad8a6802::t_d43085f17052aa 146-148,1059-1062,1080-1085
+  s_42c56dad8a6802::t_8b79e6f6b13541 1086
+  s_42c56dad8a6802::t_bcc22d24986ce7 1088
+internal/cli/human.go
+  s_42c56dad8a6802::t_a94239ef9feaca 123-125,132-134
+  s_42c56dad8a6802::t_24ceeaff3bcc75 421-426,442,448-451,454-455,463,466-467,469,472,474-475,480-481,489,491,493-495,497
+internal/engine/templates.go
+  s_42c56dad8a6802::t_8b79e6f6b13541 104,118
+  s_42c56dad8a6802::t_3a38c91ac6d20a 115-117,119-133
+  s_42c56dad8a6802::t_50034c751d4d3d 134-135
+internal/cli/notices_internal_test.go
+  s_42c56dad8a6802::t_7cf29163b928b8 25-26,34-35,37-38,45-61
+internal/cli/notices_test.go
+  s_42c56dad8a6802::t_73a7a2c2d147de 180-194
+  s_42c56dad8a6802::t_2a0e14a289d2fa 74-102
+e2e/picks/picks.venom.yml
+  s_42c56dad8a6802::t_9924bd4cec2c9f 123-129,156
+internal/engine/mentions.go
+  s_42c56dad8a6802::t_9158553e9228b2 328-336,406
+internal/target/finding.go
+  s_42c56dad8a6802::t_039bdc57608429 59-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d8dcbef82a2ad777932df9a270fc6cc05aeb0eea",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
