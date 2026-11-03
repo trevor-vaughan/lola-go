@@ -1,0 +1,50 @@
+internal/engine/sync_internal_test.go
+  s_42c56dad8a6802::t_6dafa562013f29 5-6,17,68-84
+  s_42c56dad8a6802::t_1c689bb880ec25 85-86
+docs/reference/sync.md
+  s_42c56dad8a6802::t_2c63f103892233 51-55
+internal/cli/update_test.go
+  s_42c56dad8a6802::t_6757a1e1d8fec3 301-309
+docs/reference/update.md
+  s_42c56dad8a6802::t_2c63f103892233 27-28,48-53
+docs/architecture.md
+  s_42c56dad8a6802::t_433c42e9d5e425 2239-2243,2246-2251
+internal/engine/marketinstall_test.go
+  s_42c56dad8a6802::t_6a20191be765df 551
+internal/cli/sync_output.go
+  s_42c56dad8a6802::t_2028596813fff1 182-192
+internal/cli/flow.go
+  s_42c56dad8a6802::t_2028596813fff1 682-684
+e2e/update/update.venom.yml
+  s_42c56dad8a6802::t_c06eb954416876 272
+internal/cli/profile_move.go
+  s_42c56dad8a6802::t_2028596813fff1 82
+internal/engine/move.go
+  s_42c56dad8a6802::t_2028596813fff1 908
+internal/engine/sync.go
+  s_42c56dad8a6802::t_2028596813fff1 733-737,741,745-750,862,977,1057,1852-1857,1915-1917,1919-1922,1926-1929,1932-1942,1950,1978-1982,2791-2802
+  s_42c56dad8a6802::t_6da93bca327e01 2803-2804
+internal/engine/market_install.go
+  s_42c56dad8a6802::t_2028596813fff1 149-156,171-172,180-181
+internal/engine/update_test.go
+  s_42c56dad8a6802::t_6757a1e1d8fec3 185,229-230
+  s_42c56dad8a6802::t_6a20191be765df 207,773
+internal/cli/cmd_sync.go
+  s_42c56dad8a6802::t_2028596813fff1 411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e1736777a60e3429f12908de3cf6c104b3366c75",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
