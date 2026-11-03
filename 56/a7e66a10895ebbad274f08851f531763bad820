@@ -1,0 +1,36 @@
+docs/guides/authoring-modules.md
+  s_42c56dad8a6802::t_9ab702f97f0e35 256-264
+e2e/team/team.venom.yml
+  s_42c56dad8a6802::t_9594de85d616a0 81,138,221
+internal/engine/sync.go
+  s_42c56dad8a6802::t_b25890e43c050e 418,420,423-424,1115
+  s_42c56dad8a6802::t_2ea11dd06fdc5e 419,421-422,425-427,1996,2875-2905
+  s_42c56dad8a6802::t_2c9e985b267ffc 2906-2907
+internal/engine/trustkinds_test.go
+  s_42c56dad8a6802::t_251a0b3af50a01 129-130
+  s_42c56dad8a6802::t_2a37060ac8ae44 229,299-300
+internal/engine/sync_test.go
+  s_42c56dad8a6802::t_3c8da93c5c2a2b 393-398
+internal/cli/trust_test.go
+  s_42c56dad8a6802::t_2a37060ac8ae44 98-99,106,359
+internal/cli/update_test.go
+  s_42c56dad8a6802::t_6bf4aec381a481 488-529,726-735,737-740
+  s_42c56dad8a6802::t_c464d898e8b254 736
+  s_42c56dad8a6802::t_6ebabaf26e31d2 394,419-420,422,424-425
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56a7e66a10895ebbad274f08851f531763bad820",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
