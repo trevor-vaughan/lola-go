@@ -1,0 +1,54 @@
+docs/guides/choosing-what-to-install.md
+  s_42c56dad8a6802::t_d65b96402a5566 314-316,325-334,356-359
+internal/cli/human.go
+  s_42c56dad8a6802::t_e24796167f4c0e 6
+  s_42c56dad8a6802::t_d82546b51c7de3 130,287-289,305,443-447,451-456,459,468-473
+internal/engine/ops.go
+  s_42c56dad8a6802::t_245b85f3fc4664 200,529,572,1642
+  s_42c56dad8a6802::t_8be16e73525a81 2170
+  s_42c56dad8a6802::t_3fb6d96997b532 1656-1660
+internal/engine/edits.go
+  s_42c56dad8a6802::t_23ba9a1460ecb9 105
+  s_42c56dad8a6802::t_1668c25134f129 87-89,93,102-104,106-107,409-420,422-424,434-437
+internal/engine/sync.go
+  s_42c56dad8a6802::t_3fb6d96997b532 1364-1374
+internal/engine/exact_test.go
+  s_42c56dad8a6802::t_6534e90a302f60 164,166
+  s_42c56dad8a6802::t_e24796167f4c0e 155
+  s_42c56dad8a6802::t_27bf7a06ca248e 108-154,156-163,165,167-169
+internal/engine/engine.go
+  s_42c56dad8a6802::t_9e7880e77c240f 247-248
+  s_42c56dad8a6802::t_00cc57204e70ab 975
+  s_42c56dad8a6802::t_971b12f124062c 963,976-978
+  s_42c56dad8a6802::t_8be16e73525a81 957
+internal/cli/human_internal_test.go
+  s_42c56dad8a6802::t_babf4cc694c915 41-59
+internal/engine/inherited_test.go
+  s_42c56dad8a6802::t_bf182753ec0033 169-174,177
+  s_42c56dad8a6802::t_b17007a685fa12 175-176,178-179
+internal/engine/resolve.go
+  s_42c56dad8a6802::t_971b12f124062c 300-321
+  s_42c56dad8a6802::t_00cc57204e70ab 95,98
+  s_42c56dad8a6802::t_33d6f088404330 76-84,86-87,89-90,92-94,96-97,99-103,105
+internal/engine/check.go
+  s_42c56dad8a6802::t_8be16e73525a81 137
+  s_42c56dad8a6802::t_971b12f124062c 31-32,143
+internal/engine/selections_test.go
+  s_42c56dad8a6802::t_49a8d4b3a4aecb 104-105,150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "907556a78faf9466b711ec1929d0ec9d38880ca3",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
