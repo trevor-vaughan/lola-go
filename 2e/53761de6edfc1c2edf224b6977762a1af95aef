@@ -1,0 +1,72 @@
+docs/reference/info.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-150
+docs/reference/uninstall.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-75
+docs/reference/profile.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-203
+docs/guides/tidying.md
+  s_42c56dad8a6802::t_018b331d995e4b 18,190
+docs/guides/sync-and-trust.md
+  s_42c56dad8a6802::t_018b331d995e4b 160
+docs/reference/help.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-15
+docs/reference/market.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-79
+docs/guides/profiles.md
+  s_42c56dad8a6802::t_018b331d995e4b 397
+docs/guides/migrating.md
+  s_42c56dad8a6802::t_018b331d995e4b 243
+docs/guides/authoring-modules.md
+  s_42c56dad8a6802::t_018b331d995e4b 3
+docs/reference/repair.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-39
+docs/reference/sync.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-48
+docs/reference/init.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-29
+docs/reference/cache.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-155
+docs/reference/search.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-17
+docs/reference/tidy.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-40
+docs/reference/migrate.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-38
+README.md
+  s_42c56dad8a6802::t_018b331d995e4b 110
+docs/reference/trash.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-93
+docs/reference/version.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-9
+docs/reference/check.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-24
+docs/reference/list.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-46
+docs/reference/update.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-75
+docs/reference/completion.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-9
+docs/reference/install.md
+  s_42c56dad8a6802::t_018b331d995e4b 1-148
+docs/usage.md
+  s_42c56dad8a6802::t_d89a47fdba6feb 3-6,35-55
+  s_42c56dad8a6802::t_8cad1269e7382f 7-9,32-33
+  s_42c56dad8a6802::t_018b331d995e4b 551,567
+  s_42c56dad8a6802::t_89546445f1bee3 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e53761de6edfc1c2edf224b6977762a1af95aef",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
