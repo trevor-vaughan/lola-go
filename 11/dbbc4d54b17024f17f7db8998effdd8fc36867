@@ -1,0 +1,68 @@
+docs/guides/profiles.md
+  s_42c56dad8a6802::t_98d78122706255 301
+  s_42c56dad8a6802::t_f7e3bef7968e05 299-300,302
+docs/usage.md
+  s_42c56dad8a6802::t_e4dbe3b7b72022 1784-1785,1795-1798
+  s_42c56dad8a6802::t_f7e3bef7968e05 72,74
+internal/engine/sources_test.go
+  s_42c56dad8a6802::t_df608d5094e5cc 1099
+internal/engine/ops.go
+  s_42c56dad8a6802::t_bf5f6cfa13bd7c 165-167
+  s_42c56dad8a6802::t_5cce33f38394d8 160-163
+  s_42c56dad8a6802::t_5ad6819661fe68 862-864
+internal/cli/flow_test.go
+  s_42c56dad8a6802::t_e99b8b1fdbe66b 526
+  s_42c56dad8a6802::t_c44d7d70b60713 527,530,535
+  s_42c56dad8a6802::t_bf5f6cfa13bd7c 528-529,531-534,537-538
+internal/engine/base_test.go
+  s_42c56dad8a6802::t_df608d5094e5cc 108,126
+internal/engine/inherited_test.go
+  s_42c56dad8a6802::t_df608d5094e5cc 75,664,682
+internal/cli/prompt.go
+  s_42c56dad8a6802::t_9c648d641e208b 61-79
+internal/engine/profileedit_test.go
+  s_42c56dad8a6802::t_df608d5094e5cc 96,371
+internal/cli/selections_test.go
+  s_42c56dad8a6802::t_3e6dae3745d896 241,244
+  s_42c56dad8a6802::t_c4e4c8c7e1fcee 208-209
+  s_42c56dad8a6802::t_df607e9fff86d5 179-207,210-240,242-243,245-255
+docs/guides/choosing-what-to-install.md
+  s_42c56dad8a6802::t_e4dbe3b7b72022 298-301
+internal/cli/flow.go
+  s_42c56dad8a6802::t_9c648d641e208b 528-533,1759-1760,1762-1763
+  s_42c56dad8a6802::t_bf5f6cfa13bd7c 1761,1764
+internal/engine/deletes.go
+  s_42c56dad8a6802::t_f227ed2bdd0d21 1-24,27,29,31,33-34,40-49,57-58,60-68,70-81
+  s_42c56dad8a6802::t_80cb0cca2f6435 32
+  s_42c56dad8a6802::t_bf5f6cfa13bd7c 59
+  s_42c56dad8a6802::t_3e6dae3745d896 69
+  s_42c56dad8a6802::t_5cce33f38394d8 25-26,50-56
+  s_42c56dad8a6802::t_5ad6819661fe68 28,30,35-39
+internal/cli/profile_edit_test.go
+  s_42c56dad8a6802::t_c4da6924e8aef6 523-527
+  s_42c56dad8a6802::t_c9989ce07148a9 545,551-560,566,569-571
+  s_42c56dad8a6802::t_717cb562859257 422,431,508
+internal/engine/repokey_test.go
+  s_42c56dad8a6802::t_df608d5094e5cc 51,176
+internal/engine/engine_suite_test.go
+  s_42c56dad8a6802::t_80cb0cca2f6435 8-9,12-13
+  s_42c56dad8a6802::t_1c8791a70d06f9 14
+internal/engine/mentions_test.go
+  s_42c56dad8a6802::t_80cb0cca2f6435 328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "11dbbc4d54b17024f17f7db8998effdd8fc36867",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
