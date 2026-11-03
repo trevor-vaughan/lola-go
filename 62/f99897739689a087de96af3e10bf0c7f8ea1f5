@@ -1,0 +1,75 @@
+internal/engine/check.go
+  s_42c56dad8a6802::t_997e4b2712dfe3 125
+internal/engine/sync.go
+  s_42c56dad8a6802::t_997e4b2712dfe3 1339
+docs/guides/choosing-what-to-install.md
+  s_42c56dad8a6802::t_7f89fade4a16b5 469-470
+  s_42c56dad8a6802::t_48ef28ba884be0 403,435,454-468,471-473
+  s_42c56dad8a6802::t_1cba2c33c7d8e0 313-314
+internal/config/config_test.go
+  s_42c56dad8a6802::t_a57443dfc4c742 597
+docs/usage.md
+  s_42c56dad8a6802::t_9d21402877bd48 1709
+internal/engine/choices.go
+  s_42c56dad8a6802::t_997e4b2712dfe3 752,927,931
+docs/guides/sync-and-trust.md
+  s_42c56dad8a6802::t_39e71a5a67fe2b 33-39,508-510
+internal/engine/ops.go
+  s_42c56dad8a6802::t_997e4b2712dfe3 570,573,1621,2357
+  s_42c56dad8a6802::t_d88dc8b54ac52e 813-829
+internal/config/repokey.go
+  s_42c56dad8a6802::t_b716a8fdf3968f 7,9,35
+  s_42c56dad8a6802::t_c7ee1e45bfbcba 36-39
+  s_42c56dad8a6802::t_1a9fbaedbdd70c 41,45-47,49-51
+  s_42c56dad8a6802::t_95c9d56174b34c 42-44
+  s_42c56dad8a6802::t_6ec271fc2b34f9 1-6,8,10-34,40,48,52-124
+internal/engine/hints_move.go
+  s_42c56dad8a6802::t_997e4b2712dfe3 362
+internal/engine/move.go
+  s_42c56dad8a6802::t_997e4b2712dfe3 1180
+docs/architecture.md
+  s_42c56dad8a6802::t_48ef28ba884be0 66-67,69-70,273-284
+internal/config/write.go
+  s_42c56dad8a6802::t_6b269882c07a21 10,25,84,165-167,172-174,176,194-196,200-202,204-216,218-223,225-226,229-258
+internal/engine/repokey_test.go
+  s_42c56dad8a6802::t_6b7a2112b155aa 112
+  s_42c56dad8a6802::t_6c0c0a92f365e3 1-107,109-111,113-116
+  s_42c56dad8a6802::t_b7500288f31c2f 108
+internal/engine/info_components.go
+  s_42c56dad8a6802::t_997e4b2712dfe3 122
+internal/engine/resolve.go
+  s_42c56dad8a6802::t_e896455ac80a93 108
+  s_42c56dad8a6802::t_997e4b2712dfe3 13,182
+  s_42c56dad8a6802::t_c3bd0e694c1227 91,103-107,109-111,114-120,122-125,127-129,134,138,144-145
+  s_42c56dad8a6802::t_445802b9ab242f 112-113,121,126
+internal/engine/engine.go
+  s_42c56dad8a6802::t_7b75b52393b1fb 97-99
+internal/config/selections.go
+  s_42c56dad8a6802::t_6d9f5ab1904874 26-32,36,46-47
+  s_42c56dad8a6802::t_b7500288f31c2f 48-50
+  s_42c56dad8a6802::t_16ad6ef7e3760e 146,151,185-209,291-292,297-313,316-318,320-322,327,345-361
+  s_42c56dad8a6802::t_a8834eb2ca26c5 51,362
+internal/config/repokey_test.go
+  s_42c56dad8a6802::t_a57443dfc4c742 147
+  s_42c56dad8a6802::t_69b2027c198bd2 85,87-90,97-100
+  s_42c56dad8a6802::t_0a9c65157a1543 114-146,148-216
+  s_42c56dad8a6802::t_a01ccbe6187c20 91-96
+  s_42c56dad8a6802::t_ee24b595fa5344 1-81,83-84,86,101-113
+  s_42c56dad8a6802::t_b7500288f31c2f 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62f99897739689a087de96af3e10bf0c7f8ea1f5",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
