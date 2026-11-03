@@ -1,0 +1,25 @@
+docs/guides/profiles.md
+  s_42c56dad8a6802::t_c8daf786f48262 258-259
+internal/cli/cmd_core.go
+  s_42c56dad8a6802::t_c8daf786f48262 279
+internal/cli/profile_test.go
+  s_42c56dad8a6802::t_c8daf786f48262 106-117
+internal/engine/target.go
+  s_42c56dad8a6802::t_c8daf786f48262 370-372,404
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "52e1acce36b6c82b3624cf32a0d970af360505e9",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
