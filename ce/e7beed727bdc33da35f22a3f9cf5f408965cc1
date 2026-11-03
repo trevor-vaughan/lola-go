@@ -1,0 +1,42 @@
+internal/engine/deletes.go
+  s_42c56dad8a6802::t_b6824cda0a45e4 35,39-40,42,51,54,87-91,94
+internal/cli/update_test.go
+  s_42c56dad8a6802::t_077f68ebfd9629 181,191,195-207,209-220
+  s_42c56dad8a6802::t_f5d7d2321ea24b 208
+  s_42c56dad8a6802::t_f615526f9b4bcb 221-222
+docs/decisions.md
+  s_42c56dad8a6802::t_5abe621576de7c 195
+internal/engine/sync.go
+  s_42c56dad8a6802::t_b6824cda0a45e4 1001-1021
+internal/engine/update_test.go
+  s_42c56dad8a6802::t_d5763ea5e2f434 185
+  s_42c56dad8a6802::t_a5bf49db2d2bec 170-184,186-196
+internal/cli/cmd_update.go
+  s_42c56dad8a6802::t_f5d7d2321ea24b 8-9,20,23-25,39
+docs/architecture.md
+  s_42c56dad8a6802::t_5abe621576de7c 2375-2378
+e2e/update/scripts/setup.sh
+  s_42c56dad8a6802::t_2e1be67db2873d 9,64-72,74
+e2e/update/update.venom.yml
+  s_42c56dad8a6802::t_2e1be67db2873d 1,240-272
+docs/reference/update.md
+  s_42c56dad8a6802::t_ae47ca487255ab 15,23-29,41,48
+docs/guides/sync-and-trust.md
+  s_42c56dad8a6802::t_5abe621576de7c 439-440
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cee7beed727bdc33da35f22a3f9cf5f408965cc1",
+  "prompts": {},
+  "sessions": {
+    "s_42c56dad8a6802": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6e6294d3-4e25-4451-baeb-cfdbbd1bbe86",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
