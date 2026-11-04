@@ -1,0 +1,30 @@
+internal/cli/huh_internal_test.go
+  s_ad7eb03af82059::t_7d286fd2f1df7e 22,932-947
+  s_ad7eb03af82059::t_5a5098d6ecee34 948
+internal/cli/theme.go
+  s_ad7eb03af82059::t_80ee988840f30a 173-175
+  s_ad7eb03af82059::t_2386078e9c1202 4,15
+internal/cli/theme_internal_test.go
+  s_ad7eb03af82059::t_8f4671fe44c04d 52-59,228-232
+  s_ad7eb03af82059::t_eaad6d8d4e6a1d 233-234
+internal/cli/huh.go
+  s_ad7eb03af82059::t_c93298ce9da93a 5,24,138-141,217,227-228,235-240,252-254
+  s_ad7eb03af82059::t_af324c62410956 99-117,215-216,218
+  s_ad7eb03af82059::t_643806e72b6ae0 226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93f14f73340c1d5f980f9786024730284ef89fc4",
+  "prompts": {},
+  "sessions": {
+    "s_ad7eb03af82059": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49472215-d288-4d57-b22b-dcceb0c47846",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
