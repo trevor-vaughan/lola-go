@@ -1,0 +1,32 @@
+internal/cli/confirm_test.go
+  s_88b4b3873a9a43::t_3d593112e8b387 142
+internal/cli/complete_test.go
+  s_88b4b3873a9a43::t_3d593112e8b387 174
+docs/guides/sync-and-trust.md
+  s_88b4b3873a9a43::t_f839060bc3c608 480-482
+  s_88b4b3873a9a43::t_ec018959e00085 483-484
+internal/engine/ops.go
+  s_88b4b3873a9a43::t_26515fa2fb6364 904-910,979-995
+  s_88b4b3873a9a43::t_5e65c70bb787be 996-997
+internal/engine/edits_test.go
+  s_88b4b3873a9a43::t_aa64719c6efb1c 142-143,174
+internal/cli/core_test.go
+  s_88b4b3873a9a43::t_f1a6c965f571e3 803,808
+  s_88b4b3873a9a43::t_3d593112e8b387 801-802,804-807,809-810,818-819
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a898d68a28c6e943f6625424e79d101247f0814",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
