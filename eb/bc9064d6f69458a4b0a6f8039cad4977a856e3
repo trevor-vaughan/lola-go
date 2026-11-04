@@ -1,0 +1,24 @@
+internal/migrate/remap_internal_test.go
+  s_ad7eb03af82059::t_7afbbfc09c5253 17
+internal/migrate/plan_test.go
+  s_ad7eb03af82059::t_7afbbfc09c5253 27
+internal/testenv/testenv.go
+  s_ad7eb03af82059::t_7afbbfc09c5253 19,91-107
+  s_ad7eb03af82059::t_37ea6478be54fc 108-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ebbc9064d6f69458a4b0a6f8039cad4977a856e3",
+  "prompts": {},
+  "sessions": {
+    "s_ad7eb03af82059": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49472215-d288-4d57-b22b-dcceb0c47846",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
