@@ -1,0 +1,796 @@
+third_party/liquid/.gitignore
+  s_ad8e7d52cd540d::t_c828f215001645 1-5
+third_party/liquid/values/mapslicevalue.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-45
+third_party/liquid/SECURITY.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-114
+go.mod
+  s_ad8e7d52cd540d::t_07f58fe5a3faac 14,16,49,57,59-61
+third_party/liquid/Makefile
+  s_ad8e7d52cd540d::t_c828f215001645 1-214
+third_party/liquid/values/drop.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-40
+third_party/liquid/drops.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-17
+third_party/liquid/evaluator/evaluator.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-34
+third_party/liquid/render/nodes.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-74
+third_party/liquid/parser/error.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-84
+third_party/liquid/.github/workflows/test.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-180
+third_party/liquid/values/range.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-27
+third_party/liquid/expressions/expressions.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-88
+third_party/liquid/parser/token.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-72
+third_party/liquid/values/structvalue.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-138
+third_party/liquid/expressions/scanner.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-802
+third_party/liquid/filters/standard_filters.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-622
+third_party/liquid/parser/grammar.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/.github/PULL_REQUEST_TEMPLATE.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-8
+third_party/liquid/tags/render_tag.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-494
+third_party/liquid/template.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-66
+third_party/liquid/render/tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-25
+third_party/liquid/go.mod
+  s_ad8e7d52cd540d::t_c828f215001645 1-223
+third_party/liquid/docs/loop-semantics.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-52
+third_party/liquid/expressions/filters.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-136
+third_party/liquid/expressions/scanner.rl
+  s_ad8e7d52cd540d::t_c828f215001645 1-212
+third_party/liquid/expressions/statements.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-59
+third_party/liquid/render/file_template_store.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-50
+third_party/liquid/parser/config.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-16
+third_party/liquid/expressions/parser.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-86
+third_party/liquid/scripts/test_ruby_liquid.rb
+  s_ad8e7d52cd540d::t_c828f215001645 1-97
+third_party/liquid/tags/template_path.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-22
+.golangci.yml
+  s_ad8e7d52cd540d::t_07f58fe5a3faac 103-139,154-155,166-168
+AGENTS.md
+  s_ad8e7d52cd540d::t_07f58fe5a3faac 19-20
+third_party/liquid/values/parsedate.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-66
+third_party/liquid/values/compare.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-121
+third_party/liquid/.markdownlint.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-4
+third_party/liquid/liquid.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-40
+third_party/liquid/.appveyor.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-20
+third_party/liquid/BENCHMARKS.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-69
+third_party/liquid/expressions/config.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-13
+third_party/liquid/filters/sort_filters.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-78
+third_party/liquid/render/node_context.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-66
+third_party/liquid/tags/standard_tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-83
+third_party/liquid/parser/scanner.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-150
+third_party/liquid/values/call.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-113
+third_party/liquid/tags/iteration_tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-354
+third_party/liquid/values/sort.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-80
+third_party/liquid/PATCHES.md
+  s_ad8e7d52cd540d::t_35ee242c511f9f 1-56
+third_party/liquid/values/convert.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-308
+third_party/liquid/render/autoescape.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/docs/TemplateStoreExample.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-59
+third_party/liquid/render/error.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/expressions/context.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-57
+third_party/liquid/tags/include_tag.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-49
+third_party/liquid/values/predicates.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-23
+third_party/liquid/values/value.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-277
+third_party/liquid/.github/ISSUE_TEMPLATE/feature-request.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-62
+third_party/liquid/README.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-349
+third_party/liquid/render/context.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-320
+third_party/liquid/scripts/shopify-liquid
+  s_ad8e7d52cd540d::t_c828f215001645 1-12
+third_party/liquid/values/arrays.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-25
+third_party/liquid/expressions/y.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-857
+third_party/liquid/.pre-commit-config.yaml
+  s_ad8e7d52cd540d::t_c828f215001645 1-58
+third_party/liquid/.github/ISSUE_TEMPLATE/bug-report.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-68
+third_party/liquid/.github/workflows/lint.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-29
+third_party/liquid/scripts/coverage
+  s_ad8e7d52cd540d::t_c828f215001645 1-12
+third_party/liquid/engine.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-197
+third_party/liquid/render/compiler.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-110
+third_party/liquid/parser/tokentype_string.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-16
+third_party/liquid/LICENSE
+  s_ad8e7d52cd540d::t_c828f215001645 1-21
+third_party/liquid/expressions/builders.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-71
+third_party/liquid/parser/parser.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-120
+third_party/liquid/.all-contributorsrc
+  s_ad8e7d52cd540d::t_c828f215001645 1-271
+third_party/liquid/CHANGELOG.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-736
+third_party/liquid/parser/ast.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-75
+third_party/liquid/render/blocks.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-126
+third_party/liquid/.golangci.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-183
+third_party/liquid/render/trimwriter.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-75
+third_party/liquid/docs/FRender.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-165
+third_party/liquid/tags/control_flow_tags.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-140
+third_party/liquid/tools.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-10
+third_party/liquid/values/docs.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-8
+third_party/liquid/render/render.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-211
+third_party/liquid/.github/ISSUE_TEMPLATE/config.yml
+  s_ad8e7d52cd540d::t_c828f215001645 1-5
+third_party/liquid/expressions/functional.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-32
+third_party/liquid/CONTRIBUTING.md
+  s_ad8e7d52cd540d::t_c828f215001645 1-97
+third_party/liquid/expressions/expressions.y
+  s_ad8e7d52cd540d::t_c828f215001645 1-212
+third_party/liquid/render/config.go
+  s_ad8e7d52cd540d::t_c828f215001645 1-49
+go.sum
+  s_ad8e7d52cd540d::t_e4f7c30a44bb69 96-97,100-101,106-107,141-143,145-146
+third_party/liquid/go.sum
+  s_ad8e7d52cd540d::t_f90ee87e55db4f 1-996
+internal/templating/render_test.go
+  s_ad8e7d52cd540d::t_9bdc7c0ecb0315 1-22,24-26,29-60,62-67,69-75,77-107,113-123,125-141,143-144,154-157,159-189
+  s_ad8e7d52cd540d::t_86ab740361db80 23,27
+  s_ad8e7d52cd540d::t_0412df14e68726 108-112
+  s_ad8e7d52cd540d::t_16bd8b9e9a874f 145-149,152-153
+  s_ad8e7d52cd540d::t_25978271cf0e6a 151
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 28,61,68,76,124,142,150,158
+internal/templating/panic_internal_test.go
+  s_ad8e7d52cd540d::t_9bdc7c0ecb0315 1-21,23-29,31-42,44-54
+  s_ad8e7d52cd540d::t_88a86ac2613704 22,30,43
+internal/templating/error.go
+  s_ad8e7d52cd540d::t_8c253701122f4d 1-6,9-11,13-19,28-35,40,46-48,50,52,57-76,82-84,121-124,192-219
+  s_ad8e7d52cd540d::t_9fe74c74b110d7 12,101-104,109
+  s_ad8e7d52cd540d::t_ef62fb2638eaa6 110
+  s_ad8e7d52cd540d::t_68e35e84cd399b 7-8,20-27,97,108,111-120,127-130,133-145,148-191
+  s_ad8e7d52cd540d::t_d6de796484153d 146-147
+  s_ad8e7d52cd540d::t_f9bd277d59db9a 131-132
+  s_ad8e7d52cd540d::t_808a6fe72df950 98-100
+  s_ad8e7d52cd540d::t_169bf7203c4951 36-39,41-45,49,51,53-56,77-81,85-96
+  s_ad8e7d52cd540d::t_666ebdae6edb09 106-107,125
+  s_ad8e7d52cd540d::t_536cca83e6ffbb 105
+  s_ad8e7d52cd540d::t_5de75d455900cd 126
+internal/templating/templating.go
+  s_ad8e7d52cd540d::t_8c253701122f4d 1-9,10-19,24,30-31,37-39,41-45,50-51,54-59,64-65,68-70,85-86,101-104,106-107,109-115,117-118,122-130,132-134,137,142,144-146,158-160,162,164-165,171-172,189,192-193,204,209-241
+  s_ad8e7d52cd540d::t_4a4e2ccb583d30 20,60-61,73-77,157
+  s_ad8e7d52cd540d::t_4c5a33b9bc474c 32-33,40,201-202,204,205
+  s_ad8e7d52cd540d::t_9fe74c74b110d7 48-49,62-63,163-165
+  s_ad8e7d52cd540d::t_22c4274f0f944b 119,121
+  s_ad8e7d52cd540d::t_67ddd61dc617a4 135
+  s_ad8e7d52cd540d::t_4c3f44fca90c86 21-23,25-29,78-80,82,84-89,98-99,105,108,116,120,136,138-141,143,147-148,152-156,172-174,179-186,188-193,203,208
+  s_ad8e7d52cd540d::t_808a6fe72df950 52,66,71-72,81
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 46-47,53,67,150-151,161
+  s_ad8e7d52cd540d::t_169bf7203c4951 187,194-196,199,206
+  s_ad8e7d52cd540d::t_2f207e31826c5c 34-36
+  s_ad8e7d52cd540d::t_666ebdae6edb09 90-91,166,175-178,197
+  s_ad8e7d52cd540d::t_536cca83e6ffbb 83,92-95,100,131,149,167
+  s_ad8e7d52cd540d::t_5de75d455900cd 168
+internal/templating/templating_suite_test.go
+  s_ad8e7d52cd540d::t_9bdc7c0ecb0315 1-13
+internal/templating/screen.go
+  s_ad8e7d52cd540d::t_4a4e2ccb583d30 1-16,18-22,48,50-69,71-72,78-79,81-83,85-87,95-102,108,110,118-119,121,123-124,131-132,145-157,198-201,203,206-208,210-259,261-264,266-269,271-277,303-345
+  s_ad8e7d52cd540d::t_8db24b4be6d183 88,94,260,265,270
+  s_ad8e7d52cd540d::t_4c3f44fca90c86 89,92,94,103-104,106,111-113,115,117,129,131,158,164-175,181-196
+  s_ad8e7d52cd540d::t_9502ca815509d2 197
+  s_ad8e7d52cd540d::t_3a5719d22cc08a 176-177
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 17,23-40,43-47,49,70,73-75,80,84,90,93,105,107,109,114,116,120,122,125-127,130,133-144,159-163,178-181,202,204-205,209
+  s_ad8e7d52cd540d::t_275c46f5f1b919 41,76-77,278-300
+  s_ad8e7d52cd540d::t_e392359955af83 42
+  s_ad8e7d52cd540d::t_e8def38d183c75 301-302
+internal/templating/store_internal_test.go
+  s_ad8e7d52cd540d::t_86ab740361db80 1-6,8-14,16-19,27,30,77-79
+  s_ad8e7d52cd540d::t_65f73e6bc02a66 7,15,31,35-52,54-63,70-74,76
+  s_ad8e7d52cd540d::t_c54126ea35ec25 77-78
+  s_ad8e7d52cd540d::t_ca0ff042c63859 20-26,28-29,64-69,75
+  s_ad8e7d52cd540d::t_11992c87b2076c 32
+  s_ad8e7d52cd540d::t_a60805f9dbbbda 53
+internal/templating/screen_test.go
+  s_ad8e7d52cd540d::t_86ab740361db80 1-26,28-48,50-52,58-60,62-63,67-121,152-173,179-186
+  s_ad8e7d52cd540d::t_4c5a33b9bc474c 122-133
+  s_ad8e7d52cd540d::t_706c7259486e84 137-141,142-147,152-153,174-178
+  s_ad8e7d52cd540d::t_ab8f7d8ed682cf 149-151
+  s_ad8e7d52cd540d::t_53ef43babe0c98 148
+  s_ad8e7d52cd540d::t_4c14d786157cf8 136
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 27
+  s_ad8e7d52cd540d::t_344f6653dec94a 49,53-57,61,64-66
+internal/templating/bind.go
+  s_ad8e7d52cd540d::t_bf343d0d0698ae 1-8,10-16,19-35,37-38,75-76,78-92,94-122
+  s_ad8e7d52cd540d::t_2f207e31826c5c 74,77,93
+  s_ad8e7d52cd540d::t_2bf3408aab1e51 9,17-18,36,39-73
+internal/templating/bind_test.go
+  s_ad8e7d52cd540d::t_4c5a33b9bc474c 1-31,33-46,48,51-55,57-58,60-70,106-118,120,127-135
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 32
+  s_ad8e7d52cd540d::t_a71a6ff25dd5e1 47,59
+  s_ad8e7d52cd540d::t_8124c1a0996613 56
+  s_ad8e7d52cd540d::t_ba2ec383dc1e30 71-76,92-105
+  s_ad8e7d52cd540d::t_7dc34a3a129d3c 119,121-126
+  s_ad8e7d52cd540d::t_81cb8597459bb6 49-50
+  s_ad8e7d52cd540d::t_b2ca34a2ccf1e6 77-91
+internal/templating/filters_internal_test.go
+  s_ad8e7d52cd540d::t_0412df14e68726 1-4,6-25
+  s_ad8e7d52cd540d::t_ca0ff042c63859 5,26-36
+  s_ad8e7d52cd540d::t_81bacb3f5837d9 37-38
+internal/templating/filters.go
+  s_ad8e7d52cd540d::t_9fe74c74b110d7 1-7,9-38,40-53,57-80,89-94,98-99,103-124,149-241,244,248,254,256-313,327-334,340-346,352-358,368-375,385-391,401-427,432-448,453-501,507-552,557-605,611-637,643-850,852,865-867,869-880
+  s_ad8e7d52cd540d::t_05c2c4d75db0f9 54-56,242-243,245-247,249-251,253,255,314-326,335-339,347-351,359-367,376-384,392-400,428-431,449-452,502-506,553-556,606-610,638-642
+  s_ad8e7d52cd540d::t_83f55c0d4fceef 126-127,252
+  s_ad8e7d52cd540d::t_eb6fd93da1654c 95-97,100-102,125,128-147,851,853-864,868
+  s_ad8e7d52cd540d::t_7b140d6038b7f9 148
+  s_ad8e7d52cd540d::t_586519394cf8a8 8,39,81-83,86-88,881-898,901-905,908,910-960,977-1047
+  s_ad8e7d52cd540d::t_2e73c74341d489 84-85,899-900,906-907,909,961-975
+  s_ad8e7d52cd540d::t_e1d8967737f746 976
+internal/templating/filters_test.go
+  s_ad8e7d52cd540d::t_0412df14e68726 1-5,7-44,46-109,111-117,152-170,171-179,225
+  s_ad8e7d52cd540d::t_d02fbebbdd2260 110
+  s_ad8e7d52cd540d::t_711c55c76ad2b6 139-142
+  s_ad8e7d52cd540d::t_bb69a2dbf32707 118-138,143-151
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 45
+  s_ad8e7d52cd540d::t_128dffaedb8f34 6,180-211,215-223
+  s_ad8e7d52cd540d::t_a5062a1584c09f 224
+  s_ad8e7d52cd540d::t_85c618f7645c8e 212-214
+internal/templating/errors_test.go
+  s_ad8e7d52cd540d::t_94115051afa44e 1-13,15,21-41,44-51,54,56-59,61-78,80-81,83-99
+  s_ad8e7d52cd540d::t_09beeef7d05a8f 42-43,79,82
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 55
+  s_ad8e7d52cd540d::t_128dffaedb8f34 14,16-20,52-53,60
+internal/templating/differential_test.go
+  s_ad8e7d52cd540d::t_c93d8ae5c04b2d 1-6,8-31,38-40,43,46-64,67-98,101-110,129-177,181-215,217-242
+  s_ad8e7d52cd540d::t_effd72e7c9312b 32-33,41-42,44-45,65-66,99-100
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 216
+  s_ad8e7d52cd540d::t_128dffaedb8f34 7,34-37,111-124,127-128,178-180
+  s_ad8e7d52cd540d::t_85c618f7645c8e 125-126
+docs/template_engine_analysis.md
+  s_ad8e7d52cd540d::t_6c714f786c90da 81,85-91,133-135,141-146
+  s_ad8e7d52cd540d::t_f25c7d583e7738 82-84
+  s_ad8e7d52cd540d::t_f74f7d206432b9 127-130
+internal/engine/choices.go
+  s_ad8e7d52cd540d::t_303d474424c233 557-565,572,575,578
+internal/engine/choices_test.go
+  s_ad8e7d52cd540d::t_530084b6213b87 60-65
+internal/module/frontmatter.go
+  s_ad8e7d52cd540d::t_303d474424c233 20-21,26
+  s_ad8e7d52cd540d::t_f1c19dd3865b83 147,178
+  s_ad8e7d52cd540d::t_cfd54218fd6d28 286
+  s_ad8e7d52cd540d::t_4f66634894fba5 10,283-285,287-321
+  s_ad8e7d52cd540d::t_f6d8528aab1a45 322
+internal/module/module.go
+  s_ad8e7d52cd540d::t_303d474424c233 27-28,35-42,55-57,59-61,93-94,97,148
+  s_ad8e7d52cd540d::t_c16ae2fb38f3db 143,145
+  s_ad8e7d52cd540d::t_77d45f3da88ebf 30,51,69
+  s_ad8e7d52cd540d::t_427d76cd84b03b 31-32,52,70
+  s_ad8e7d52cd540d::t_cb828c4325dac8 8,172-232
+  s_ad8e7d52cd540d::t_2f207e31826c5c 144
+internal/module/claude.go
+  s_ad8e7d52cd540d::t_303d474424c233 249-250,363-364,383,419,475,520,549
+  s_ad8e7d52cd540d::t_92e5e4e59e1035 236,246-248
+  s_ad8e7d52cd540d::t_94c670a23c5c33 235,239-240,242-243,245,379,381-382
+  s_ad8e7d52cd540d::t_c16ae2fb38f3db 237-238,241,244,251,302-309,327-329,341,343-351,380
+internal/module/agentplugins.go
+  s_ad8e7d52cd540d::t_303d474424c233 282,300-304,604,673
+  s_ad8e7d52cd540d::t_7bba87c1767fd3 342-347
+  s_ad8e7d52cd540d::t_1c76a13dac0567 279-280,283-286,289-294,296-297,605-606,608-611
+  s_ad8e7d52cd540d::t_c16ae2fb38f3db 607
+  s_ad8e7d52cd540d::t_0a2c74a13790d1 256-257,281
+internal/engine/templates_test.go
+  s_ad8e7d52cd540d::t_530084b6213b87 1-4,9-10,14-16,18-19,24-25,27,29-30,61-63,65-68,108-122,124-134,145,149-154,1295-1296
+  s_ad8e7d52cd540d::t_c513d432d8977f 6-8,11-13,21-23,26,31-60,64,69-107,123,185-245,248-251,262-265,267-268,290-300,310-488,593-637,1297-1304
+  s_ad8e7d52cd540d::t_efacca286fcb86 638-673
+  s_ad8e7d52cd540d::t_7a27b468249305 5,674-688,691-796
+  s_ad8e7d52cd540d::t_961a193df4870d 797
+  s_ad8e7d52cd540d::t_ca0ff042c63859 689-690
+  s_ad8e7d52cd540d::t_0fa69966e2fdda 538-543,552-592
+  s_ad8e7d52cd540d::t_58f96bbc889350 155-158,165-183
+  s_ad8e7d52cd540d::t_cea0fdffd017cd 544-547
+  s_ad8e7d52cd540d::t_ccfcb36adcb0cf 135-144,159-164
+  s_ad8e7d52cd540d::t_aa5e706aa8ae70 798,1180-1252,1294-1295
+  s_ad8e7d52cd540d::t_56fa81fdab1077 269-275
+  s_ad8e7d52cd540d::t_c61ce00d26eea4 301-309
+  s_ad8e7d52cd540d::t_3e0e9959feba06 799-825
+  s_ad8e7d52cd540d::t_07dedd777bd56d 20,826-852,914-951
+  s_ad8e7d52cd540d::t_38a4f01b26da0d 952
+  s_ad8e7d52cd540d::t_2a02b336ee50d3 28,953-988,990-996,1084-1110,1152-1179
+  s_ad8e7d52cd540d::t_cded2ac7951fe4 1266
+  s_ad8e7d52cd540d::t_a00a3b8450634a 1253-1265,1267-1293
+  s_ad8e7d52cd540d::t_d6724fd7c124f8 900-913
+  s_ad8e7d52cd540d::t_56d103ca5c7500 1111-1151
+  s_ad8e7d52cd540d::t_8339c0602d560d 146-148
+  s_ad8e7d52cd540d::t_71c98552d76249 989,997-1083
+  s_ad8e7d52cd540d::t_d72a721e2e7666 246-247,252-261,266
+  s_ad8e7d52cd540d::t_3beac2ec18dae2 489-522,536-537,548-551
+  s_ad8e7d52cd540d::t_0c1504a1d89580 853-878,898-899
+  s_ad8e7d52cd540d::t_75d3154fc5a3e9 276-289
+  s_ad8e7d52cd540d::t_89be213466316b 888,891,894
+  s_ad8e7d52cd540d::t_184235d1c090df 880,882-884,895
+  s_ad8e7d52cd540d::t_6728da98fbf30b 879,881,885-887,889-890,892-893,896-897
+  s_ad8e7d52cd540d::t_5cad4abf6b6ddf 17
+  s_ad8e7d52cd540d::t_c23fd48ccd2453 523-535
+internal/module/template_test.go
+  s_ad8e7d52cd540d::t_530084b6213b87 1-6,8-12,14-136,195-319,420
+  s_ad8e7d52cd540d::t_b8c0607b8937ea 137-159
+  s_ad8e7d52cd540d::t_0e0280d469e1c6 7,161-186,189-195,320-354,355-357,359,360-382,395-410,412-414,418-419
+  s_ad8e7d52cd540d::t_a04b3f7b29119f 187-188
+  s_ad8e7d52cd540d::t_beb57bb8129eee 411
+  s_ad8e7d52cd540d::t_943a349fbdc84f 13,358,383-394,415-417
+internal/module/components.go
+  s_ad8e7d52cd540d::t_303d474424c233 125,240,248-252,274,277,280-282,322,329,348,355,359-360
+  s_ad8e7d52cd540d::t_c16ae2fb38f3db 142-144
+  s_ad8e7d52cd540d::t_5cb413d112b9e4 242-246
+internal/module/template.go
+  s_ad8e7d52cd540d::t_303d474424c233 1-58,61-68,89,90-91,93-94,96,99-102,104-109,111-113,115-117,120,124,138-185,216,220,222-224,229,233-253,255-260,265-287,291,293-297,299-302
+  s_ad8e7d52cd540d::t_2acdb176582ea3 138-139,186-192,194-215,217-219,221,225-228,230-232,254,261-264,288-290,292,298
+  s_ad8e7d52cd540d::t_c16ae2fb38f3db 59-60,69-72,74,110,118,134-137,193
+  s_ad8e7d52cd540d::t_8af04f24dce122 128-131
+  s_ad8e7d52cd540d::t_5281611ded381d 132-133
+  s_ad8e7d52cd540d::t_bbfe05843bf966 73,75-88,92,95,97-98,103,114,119,121-123,125
+internal/module/fifo_unix_test.go
+  s_ad8e7d52cd540d::t_530084b6213b87 6-7,10,12-15,21-51
+  s_ad8e7d52cd540d::t_943a349fbdc84f 52-79
+internal/module/load.go
+  s_ad8e7d52cd540d::t_303d474424c233 112-114,399-400,402-403,405,409-412,418-421,423-424,436,441-445,452-457,470,475,482,491-494,497,505-515,520-522,524,530-542,544,549,587-591,595,599,603-604,620-623,625-628,630-638,640,643
+  s_ad8e7d52cd540d::t_fcc440e1a8d63e 83,86-89,92-94,390-392,407-408,428-440
+  s_ad8e7d52cd540d::t_c16ae2fb38f3db 115-117
+  s_ad8e7d52cd540d::t_f9f239d8624ef9 80-81,413-417
+  s_ad8e7d52cd540d::t_77d45f3da88ebf 78-79,84-85,135-136
+  s_ad8e7d52cd540d::t_34619b52c027f7 137
+  s_ad8e7d52cd540d::t_e20d6fedadf95b 44,47-56
+  s_ad8e7d52cd540d::t_0ec7831e211026 67
+  s_ad8e7d52cd540d::t_db7e2b142adc64 340-350
+  s_ad8e7d52cd540d::t_e8610c317c2849 681-685,691
+  s_ad8e7d52cd540d::t_3feeafd627fdd7 57
+  s_ad8e7d52cd540d::t_2f207e31826c5c 686-690
+internal/plan/intent.go
+  s_ad8e7d52cd540d::t_42ec8355cadfb3 40,49-52
+  s_ad8e7d52cd540d::t_1cb26a3823d997 53-54
+internal/plan/compute.go
+  s_ad8e7d52cd540d::t_42ec8355cadfb3 169,211-213
+  s_ad8e7d52cd540d::t_2f2b0bceca7ffe 170-171,176-179
+  s_ad8e7d52cd540d::t_6dd97128da43bf 13,180
+internal/plan/compute_test.go
+  s_ad8e7d52cd540d::t_673dda4abcaf95 7,155-167
+  s_ad8e7d52cd540d::t_fd882e898ad215 174-175
+  s_ad8e7d52cd540d::t_3e272abf906926 168-173
+internal/target/claude/claude.go
+  s_ad8e7d52cd540d::t_dd4b6e1267aef4 151
+  s_ad8e7d52cd540d::t_1d2f6b9e769e54 57-61,63-64,66-67
+internal/target/gemini/gemini.go
+  s_ad8e7d52cd540d::t_60b885a01d49d0 165
+  s_ad8e7d52cd540d::t_8086068de6cf78 74
+  s_ad8e7d52cd540d::t_16858ab2304b84 75-77,79-80
+internal/target/render.go
+  s_ad8e7d52cd540d::t_56d5a304fabc9f 51-52,54,56-74
+internal/target/render_test.go
+  s_ad8e7d52cd540d::t_71f0f83fb391bc 7-8,22-44
+internal/templating/regions.go
+  s_ad8e7d52cd540d::t_4c3f44fca90c86 1-3,9-11,13-35,37-50,51-62,63-95,96-103,192,193,195,197-198,215-216,218,234-237,265,290-291,304,327-328,332,335-347,423-451
+  s_ad8e7d52cd540d::t_3a5719d22cc08a 186,207,306,322-326,329-331,333
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 148-149,219-220,244-245,311,318-319,368-373,375-376,383-390,391
+  s_ad8e7d52cd540d::t_d8b29664a95c69 7,274-317,320-336,338-340,342-345
+  s_ad8e7d52cd540d::t_fdfb86ecedb4a1 207,210,216,218,219-220
+  s_ad8e7d52cd540d::t_666ebdae6edb09 4,6,12,36,104-108,154-155,161-163,165,168-177,182,194-198,204,216-269,271
+  s_ad8e7d52cd540d::t_419c7cb64a0e05 5,348-356,360-423
+  s_ad8e7d52cd540d::t_b6e11edff22226 424
+  s_ad8e7d52cd540d::t_32f7918232094e 181
+  s_ad8e7d52cd540d::t_ab734fc6127f9f 178-180,183-186
+  s_ad8e7d52cd540d::t_536cca83e6ffbb 8,109-110,113-114,116-120,124-126,150-153,158-160,190-191,199,201-203,205-215
+  s_ad8e7d52cd540d::t_a80873fbe631e5 357-359
+  s_ad8e7d52cd540d::t_5de75d455900cd 111-112,115,121-123,128-149,156-157,164,166-167,187-189,200
+internal/templating/regions_test.go
+  s_ad8e7d52cd540d::t_4c14d786157cf8 1-5,9-12,14-29,31-57,59-83,92,106-110,150,225-229,244-248,250-265,267-271,272-281,286,288-290
+  s_ad8e7d52cd540d::t_7674db4ba80706 282-285
+  s_ad8e7d52cd540d::t_4bed0af0df4a42 58,249,266
+  s_ad8e7d52cd540d::t_ca0ff042c63859 230-243
+  s_ad8e7d52cd540d::t_d8b29664a95c69 287
+  s_ad8e7d52cd540d::t_bd8622c9241573 111,113-115,117-121,123-126,128-133,135-140,142-149,151
+  s_ad8e7d52cd540d::t_fed166b6a470bf 7
+  s_ad8e7d52cd540d::t_b061c9bfbc01f4 84-85,87-91,93-105
+  s_ad8e7d52cd540d::t_6a10398fced543 86
+  s_ad8e7d52cd540d::t_177d8eb2deb9fa 6,8,13,30,152-166,170-197
+  s_ad8e7d52cd540d::t_e1313699e4ac58 112,116
+  s_ad8e7d52cd540d::t_f5811d0877936c 134
+  s_ad8e7d52cd540d::t_e3923d7a3abe38 169
+  s_ad8e7d52cd540d::t_29dc15f5381796 122,127,141
+  s_ad8e7d52cd540d::t_38bced01799f1c 167-168
+  s_ad8e7d52cd540d::t_fe1c2b476038fd 198-224
+internal/templating/regions_internal_test.go
+  s_ad8e7d52cd540d::t_4c14d786157cf8 1-5,8-22,24-44,46-54,56-63
+  s_ad8e7d52cd540d::t_ca0ff042c63859 7,64,66-67,104,109
+  s_ad8e7d52cd540d::t_a44202d2bb7ddd 124-125
+  s_ad8e7d52cd540d::t_e3d910c0f2fd92 6,86,88-89,100-123
+  s_ad8e7d52cd540d::t_c528f279f91d24 124-125
+  s_ad8e7d52cd540d::t_2ed075dca779ff 72,79,81
+  s_ad8e7d52cd540d::t_73a35678a606ea 90-99
+  s_ad8e7d52cd540d::t_3beac2ec18dae2 87
+  s_ad8e7d52cd540d::t_d8dabe74b7c371 69-70
+  s_ad8e7d52cd540d::t_6f49fe2a02f268 65-68,82,84-86
+  s_ad8e7d52cd540d::t_ab734fc6127f9f 83
+  s_ad8e7d52cd540d::t_88a86ac2613704 23,45,55
+  s_ad8e7d52cd540d::t_3c717eac90237a 71-79,81
+  s_ad8e7d52cd540d::t_31406708bb1f3c 80
+internal/engine/templates_internal_test.go
+  s_ad8e7d52cd540d::t_09ed4ba39e0eee 1-7,9-12,14,16-29,31-41,43-57,59-71,73,80,82-99,100-105,107-109,125-126,130-131,145-146
+  s_ad8e7d52cd540d::t_c513d432d8977f 13,15,72,74-78,81,110-119,121-124,128-129,133-135,137-144
+  s_ad8e7d52cd540d::t_efacca286fcb86 8,30,42,58,79,106,120,127,132,136
+internal/engine/templates.go
+  s_ad8e7d52cd540d::t_0ca3cb471185c2 1-6,8,10,12,15,19,24-30,32,36-37,45-52,56-58,70,73,117,128-130,132-134,136-140,159-160,164-166,172,197-198,203,226,264,266-268,271-274,283,288-293,296-302,311,312-315,318,319-324,332-333,336-338,344-345,348-350,390,393-399,404-405,406-437,438-439,509-510,579-580,666
+  s_ad8e7d52cd540d::t_1580a3cdd7a74c 7,9,13,16-17,20,23,33-34,53,55,62-65,69,74,122-127,151-154,159-160,163,167,171,173-176,180-196,199-202,213,215,220,244,284-287,305-310,317-318,325,328-331,334-335,339-343,513-514,517-518,566-586,666
+  s_ad8e7d52cd540d::t_e347e3350feeff 14,35,38-44,59-61,149-150,155-158,161,209,211-212,217-219,276,280-282,515-516,535-539,544-547,549,551-565
+  s_ad8e7d52cd540d::t_7cfa831d798b0e 22,440-444,447-450,455-458,464-473,475-499,505-511,519-534,540-543,548,550
+  s_ad8e7d52cd540d::t_83e4b0f15af541 18,21,79-89,95,103-107,109-117,119-122
+  s_ad8e7d52cd540d::t_9a3372317e3b3a 123
+  s_ad8e7d52cd540d::t_13b5079d2c2223 90-94,96-102,108,118
+  s_ad8e7d52cd540d::t_808a6fe72df950 168
+  s_ad8e7d52cd540d::t_169bf7203c4951 31,66,76,177-179,400-403
+  s_dcbd74c99a862d::t_58632a5cc8bd13 463
+  s_ad8e7d52cd540d::t_429e211a0d3073 144-145,162,204-208,222-233,236-237,239-240,242-244,259,264,266,269-270,277-278,294-295,304,316,327,346-347,351-389
+  s_ad8e7d52cd540d::t_7a34e6abaf1f36 169-170
+  s_ad8e7d52cd540d::t_0974a9bd8ff9d7 279
+  s_ad8e7d52cd540d::t_5932ee7a116898 659-665
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 587-599
+  s_ad8e7d52cd540d::t_8be8abac6a6497 11,600-650,653-658
+  s_ad8e7d52cd540d::t_54acd4b4fbff76 451-454,459-462,474,500-504
+  s_ad8e7d52cd540d::t_cb828c4325dac8 445-446
+  s_ad8e7d52cd540d::t_d9ad52fc701fd7 54,67-68,70-73,131,135,141,234-235,238,241,245-258,260-263,265,275,303,326
+  s_ad8e7d52cd540d::t_2f207e31826c5c 651-652
+  s_ad8e7d52cd540d::t_ecceccd18f86c2 146-148,217,391-393
+  s_ad8e7d52cd540d::t_88a86ac2613704 210
+internal/engine/templates_name_internal_test.go
+  s_ad8e7d52cd540d::t_d300fbbe13b502 1-17,19-34
+  s_ad8e7d52cd540d::t_d9ad52fc701fd7 18
+  s_ad8e7d52cd540d::t_3beac2ec18dae2 25,31
+internal/engine/engine.go
+  s_ad8e7d52cd540d::t_7bba87c1767fd3 37,79
+  s_ad8e7d52cd540d::t_1580a3cdd7a74c 584-585,616,620-622
+  s_ad8e7d52cd540d::t_e347e3350feeff 77-78,80,86-87
+  s_ad8e7d52cd540d::t_7cfa831d798b0e 156-157
+  s_ad8e7d52cd540d::t_83e4b0f15af541 618-619
+  s_ad8e7d52cd540d::t_13b5079d2c2223 103-105,617
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 615
+  s_ad8e7d52cd540d::t_80fc30290dcbe4 106-108,596-598
+  s_ad8e7d52cd540d::t_54acd4b4fbff76 644-648
+internal/module/rendered.go
+  s_ad8e7d52cd540d::t_16cdd30c9468f4 1-18,23-25,28-32,38-92
+  s_ad8e7d52cd540d::t_169bf7203c4951 19-22,33,35-37
+  s_ad8e7d52cd540d::t_c44f82d02bf963 34
+  s_ad8e7d52cd540d::t_0bdd3157996448 26-27
+internal/engine/check.go
+  s_ad8e7d52cd540d::t_1580a3cdd7a74c 13,64-71,137-143
+  s_ad8e7d52cd540d::t_19af56b219a616 14,21,73-87,89,100,113-124,126,136,208-225
+  s_ad8e7d52cd540d::t_419c7cb64a0e05 8-9,20,125,226-285
+internal/engine/remote.go
+  s_ad8e7d52cd540d::t_1580a3cdd7a74c 162
+  s_ad8e7d52cd540d::t_341180c351a8e2 136-137
+  s_ad8e7d52cd540d::t_13b5079d2c2223 144,161-162
+  s_ad8e7d52cd540d::t_86fbf804794e9e 158-160
+  s_ad8e7d52cd540d::t_5a1b23b673a48f 157
+internal/engine/templates_profiles_test.go
+  s_ad8e7d52cd540d::t_c513d432d8977f 1-47
+internal/engine/ops.go
+  s_ad8e7d52cd540d::t_1580a3cdd7a74c 157,285-287,831,1193-1196,1233
+  s_ad8e7d52cd540d::t_7cfa831d798b0e 839,1240
+  s_ad8e7d52cd540d::t_83e4b0f15af541 80-81
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 806
+  s_ad8e7d52cd540d::t_6325158f4aab0e 830,1232
+internal/engine/sync.go
+  s_ad8e7d52cd540d::t_1580a3cdd7a74c 334,363,895,905
+  s_ad8e7d52cd540d::t_e347e3350feeff 405-409,563,600-605,894
+  s_ad8e7d52cd540d::t_7cfa831d798b0e 379-388,919
+  s_ad8e7d52cd540d::t_13b5079d2c2223 504,548
+  s_ad8e7d52cd540d::t_51f066e007c04d 904
+internal/target/conformance/templates_test.go
+  s_ad8e7d52cd540d::t_ab3ef86ce26aea 1-88
+internal/engine/remoteprofile_test.go
+  s_ad8e7d52cd540d::t_efacca286fcb86 613-642
+  s_ad8e7d52cd540d::t_cf56196e2546ea 643-690
+  s_ad8e7d52cd540d::t_3e0e9959feba06 27,1250-1278
+  s_ad8e7d52cd540d::t_63c335fbe24388 1279-1280
+  s_ad8e7d52cd540d::t_2e37afde40bd2e 1281-1294,1299-1301
+  s_ad8e7d52cd540d::t_5a1b23b673a48f 1295-1298
+internal/engine/templates_budget_test.go
+  s_ad8e7d52cd540d::t_7ef213a1cef3bc 1-61
+internal/engine/templates_cache_internal_test.go
+  s_ad8e7d52cd540d::t_3bb1e026dc7907 1-36
+internal/ledger/ledger.go
+  s_ad8e7d52cd540d::t_7cfa831d798b0e 92-97,99,102-103,108,111-112,114-119,188-192
+  s_ad8e7d52cd540d::t_54acd4b4fbff76 98,104-107,109-110,113
+  s_ad8e7d52cd540d::t_2f207e31826c5c 100-101,178
+internal/engine/content.go
+  s_ad8e7d52cd540d::t_7cfa831d798b0e 101,104-111
+  s_ad8e7d52cd540d::t_13b5079d2c2223 76-79,89-90,98,145,299-300,302
+  s_ad8e7d52cd540d::t_b263767ac61b01 86-88,281,286,301,311
+  s_ad8e7d52cd540d::t_54acd4b4fbff76 99-100,102-103,115,117-120,142-144,150-159
+  s_ad8e7d52cd540d::t_b916720536cd97 112-114,116
+internal/cli/template_test.go
+  s_ad8e7d52cd540d::t_8374ace8862ffb 1-98,110-127
+  s_ad8e7d52cd540d::t_8419c6350ce6f0 107
+  s_ad8e7d52cd540d::t_110aa3967436b4 100-106,108-109
+  s_ad8e7d52cd540d::t_d28d77ddad4585 99
+internal/engine/templates_hint_internal_test.go
+  s_ad8e7d52cd540d::t_52c8066bbb2d84 1-18,21,29,44,45-46
+  s_ad8e7d52cd540d::t_1536d3a4b1ee82 22-28
+  s_ad8e7d52cd540d::t_110aa3967436b4 19-20,30-43
+cmd/lola/lola_suite_test.go
+  s_ad8e7d52cd540d::t_13d973087ad4fa 1-26
+cmd/lola/templates_test.go
+  s_ad8e7d52cd540d::t_13d973087ad4fa 1-37,39-46
+  s_ad8e7d52cd540d::t_5936db5ed64455 38
+docs/usage.md
+  s_ad8e7d52cd540d::t_207668c2233202 1161-1162,1220-1241,1251-1260,1308-1309,1327,1330-1334,1473,2109-2111,2121,2422,2499-2500,2503-2504
+  s_ad8e7d52cd540d::t_90ea130ef7fd88 1335-1340
+  s_ad8e7d52cd540d::t_d14e4a7c64f3c0 1242-1250,1341,2119-2120
+  s_ad8e7d52cd540d::t_f74f7d206432b9 1328-1329,1343-1357,1366-1371,1377-1383,2112-2113,2501-2502
+  s_ad8e7d52cd540d::t_d2c4484ed09706 2114-2116
+  s_ad8e7d52cd540d::t_b9bfb85b804f06 360,604-607,1176-1179,1384-1403,1417-1431,1439-1455,1458-1468,1473,2134-2135
+  s_ad8e7d52cd540d::t_5c5e55b51787b7 1407-1409
+  s_ad8e7d52cd540d::t_80114e488a3d48 1404-1406
+  s_ad8e7d52cd540d::t_ee5ea264b1b54e 1713-1717
+  s_ad8e7d52cd540d::t_846f9b53f98362 21,1261-1266,1289-1290,1292-1307,1310-1326,1358-1365,1372-1373,1410-1416,1432-1438,1456-1457,2117-2118,2136
+  s_ad8e7d52cd540d::t_9b9298cb9f606e 1270-1276,1288
+  s_ad8e7d52cd540d::t_daffd890cd108f 1718
+  s_ad8e7d52cd540d::t_1a0e8ab3aa13df 1291,1469-1472
+  s_ad8e7d52cd540d::t_5dbf48ad649141 1267-1269,1277-1279
+  s_ad8e7d52cd540d::t_95b6ebf0fbd0ae 1280-1287,1373-1375
+  s_ad8e7d52cd540d::t_3474278a02e030 1376
+docs/architecture.md
+  s_ad8e7d52cd540d::t_207668c2233202 19-20,308-312,374-379,387-389,440-441,458-460,467,505-511,1799-1802
+  s_ad8e7d52cd540d::t_f74f7d206432b9 380-386,390-392,442-450,453-457
+  s_ad8e7d52cd540d::t_b88699d3d3284f 505
+  s_ad8e7d52cd540d::t_0f0751879f1cc2 396
+  s_ad8e7d52cd540d::t_d2c4484ed09706 395
+  s_ad8e7d52cd540d::t_bf2f49c77a61aa 397-398
+  s_ad8e7d52cd540d::t_b9bfb85b804f06 313-314,399-401,931,938-940
+  s_ad8e7d52cd540d::t_801db7cb5eb942 402-403
+  s_ad8e7d52cd540d::t_f07960595aaae9 404-405
+  s_ad8e7d52cd540d::t_7a63627c345af2 451-452
+  s_ad8e7d52cd540d::t_4a8748b5807f78 941-950
+  s_ad8e7d52cd540d::t_846f9b53f98362 60-64,315-319,393-394,406-412,414-415,461-504,922-930
+  s_ad8e7d52cd540d::t_8132d9a8ea71f3 419-427,436-439
+  s_ad8e7d52cd540d::t_1a0e8ab3aa13df 413
+  s_ad8e7d52cd540d::t_5dbf48ad649141 416-418,428-429
+  s_ad8e7d52cd540d::t_238657c8c3f66d 430-435
+  s_35f2683d3ca978::t_711de7a744a50e 1850
+  s_35f2683d3ca978::t_ed04d3cf88902c 1850
+  s_35f2683d3ca978::t_0126d5c23adc24 1850
+  s_35f2683d3ca978::t_2b95985785c22a 1850
+internal/engine/remote_add.go
+  s_ad8e7d52cd540d::t_341180c351a8e2 147-150
+  s_ad8e7d52cd540d::t_13b5079d2c2223 161
+internal/engine/remote_update.go
+  s_ad8e7d52cd540d::t_341180c351a8e2 243-245,411-413,415-422
+  s_ad8e7d52cd540d::t_13b5079d2c2223 466
+internal/module/partials_test.go
+  s_ad8e7d52cd540d::t_bc9bbc0964bb05 1-77,82-145,158-159
+  s_ad8e7d52cd540d::t_ac17d0a19f6e49 146-157
+  s_ad8e7d52cd540d::t_9ddda5eaf3a82d 78-81
+internal/module/partials.go
+  s_ad8e7d52cd540d::t_68a4036741611a 1-27,29,31,34-57,61-111,135-144
+  s_ad8e7d52cd540d::t_392844af4997a3 28,30,32-33,112-134
+  s_ad8e7d52cd540d::t_8af04f24dce122 58-60
+internal/module/claude_test.go
+  s_ad8e7d52cd540d::t_943a349fbdc84f 465-476,487-488
+  s_ad8e7d52cd540d::t_612c51859e1981 91
+  s_ad8e7d52cd540d::t_2eb9048130988b 85,87-90
+  s_ad8e7d52cd540d::t_df4c5e8fd8d25c 86
+  s_ad8e7d52cd540d::t_5bbca56dbe0583 92-93
+  s_ad8e7d52cd540d::t_716959a62af1a4 477-486
+internal/templating/names.go
+  s_ad8e7d52cd540d::t_68a4036741611a 1-21
+internal/templating/store.go
+  s_ad8e7d52cd540d::t_808a6fe72df950 1-5,6-19,20-33,38,45-49,51-52,56-60,65-73,78-81,83
+  s_ad8e7d52cd540d::t_169bf7203c4951 53,61-63
+  s_ad8e7d52cd540d::t_8e43aacc4d4b94 64
+  s_ad8e7d52cd540d::t_666ebdae6edb09 82
+  s_ad8e7d52cd540d::t_9e01d21beb5fea 34-37,39-44,50,54-55,74-77
+internal/templating/graph.go
+  s_ad8e7d52cd540d::t_1fadf9b13d1b57 1-3,6-8,9-27,29-34,38-39,45-49,51-60,62-70,79-88,90-91,94-96,101,104,106,108,111-123,126-138,140,143-153,156-157,159-175
+  s_ad8e7d52cd540d::t_169bf7203c4951 4-5,28,35-37,50,61,71-78,92-93,97-100,102-103,105,107,109-110,141-142,158
+  s_ad8e7d52cd540d::t_f85a0136d40a76 40-44,89,124-125,139,154-155
+internal/templating/partials_test.go
+  s_ad8e7d52cd540d::t_ca0ff042c63859 1-11,13-59,63-67,69,71-78,80-82,92-103,105-106,110-111,113-119,121-127,130-133,137-138,140-142,144,146,233-268,274-275
+  s_ad8e7d52cd540d::t_0fa69966e2fdda 68,70,79,112,120,128-129,150-180,186,219,233
+  s_ad8e7d52cd540d::t_09038487582d0d 234
+  s_ad8e7d52cd540d::t_d8b29664a95c69 271-273
+  s_ad8e7d52cd540d::t_cea0fdffd017cd 225
+  s_ad8e7d52cd540d::t_11992c87b2076c 216-221,223-226,228-234
+  s_ad8e7d52cd540d::t_344f6653dec94a 104,107-109
+  s_ad8e7d52cd540d::t_0c20d3dac7457e 147
+  s_ad8e7d52cd540d::t_7e89d4894faed0 134-136
+  s_ad8e7d52cd540d::t_7709d4c1eb4704 143
+  s_ad8e7d52cd540d::t_3beac2ec18dae2 269-270
+  s_ad8e7d52cd540d::t_d9db87a9b7c905 83-91
+  s_ad8e7d52cd540d::t_2bd83f8471a79a 181-215
+  s_ad8e7d52cd540d::t_31064ab6aeebd2 60-62
+  s_ad8e7d52cd540d::t_29dc15f5381796 139,145,222,227
+  s_ad8e7d52cd540d::t_fa28a474a0663b 12
+internal/module/attrs_test.go
+  s_ad8e7d52cd540d::t_8d3958514ea9ab 1-61,64-86,90-95,99-104,107-127,136-177,179-180,186-188,198-204,213-215,224,226-243,247-256
+  s_ad8e7d52cd540d::t_aa5e706aa8ae70 62-63
+  s_ad8e7d52cd540d::t_abbb974e533838 89,189-197
+  s_ad8e7d52cd540d::t_768e3097c4c0de 87-88,96-98,105-106,128-135,216,218-219,244-246
+  s_ad8e7d52cd540d::t_bc8d29efa0ca7c 178,181-185,205-212,220-225
+internal/module/attrs.go
+  s_ad8e7d52cd540d::t_77d45f3da88ebf 1-6,7-50,52-59,61-74,76-78,80-90,92-94,96-97,99-101,103-107,110-111,113-114,115-118,120-135,137-138,140-154,156,158,160-167,168-172,175,179-185,188-236,238-251,253-254,256-263,265-279,281-287,289-292,294-308,312-322,326-330,336-340,355-358,360-363,367-368,370-374,379-385,387-390,414,416-424,428,429-448,449-453,455-458,459-481,485,487-489
+  s_ad8e7d52cd540d::t_7ec35eae61f34e 51,60,75,79,91,95,98,102,108-109,112,119,136,139
+  s_ad8e7d52cd540d::t_b7208f7789300d 155,157,159,173-174,176-178,186-187,237,252,255,264,280,288,293,341-354,359,364-366,369,375-378,386,391-413,415,425-427,454
+  s_ad8e7d52cd540d::t_2f207e31826c5c 309-311,323-325,331-335,482-484,486
+internal/fsx/jsonc.go
+  s_ad8e7d52cd540d::t_77d45f3da88ebf 241-242,245-247,252-257
+  s_ad8e7d52cd540d::t_20cf95d4f66120 243-244,248-251
+internal/module/vars_test.go
+  s_ad8e7d52cd540d::t_40ba23a1de2405 1-4,6-10,12-42,46-61,77-81,90-95,147-148
+  s_ad8e7d52cd540d::t_0a7ade303c04c8 11,43-45,82,85-89,103-113
+  s_ad8e7d52cd540d::t_843c6a0617b238 114
+  s_ad8e7d52cd540d::t_34a88fb961a369 116-148
+  s_ad8e7d52cd540d::t_001836b71f3ed8 5,62-76,83-84,96-101
+internal/module/vars.go
+  s_ad8e7d52cd540d::t_ae68033a7b5b72 1-3,5-17,21-39,42,44-48,52-62,70-91,93-94,109-122,132-133,136,139-142,242,244
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 211-212,215-221,230-244
+  s_ad8e7d52cd540d::t_54acd4b4fbff76 145-161,164-177,184-205
+  s_ad8e7d52cd540d::t_6dba95381d8ec7 43,49-51,63-69,123-124,128-129,134-135
+  s_ad8e7d52cd540d::t_2d280a930ef90e 206-209
+  s_ad8e7d52cd540d::t_2f207e31826c5c 4,18-20,40-41,92,95-108,125-127,130-131,137-138,143,162-163,178-183,213-214,222-229
+internal/trust/trust.go
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 17,28,59-60,174,231,334-336,350,479-481,485-495
+  s_ad8e7d52cd540d::t_e3075fcff36ed1 496-497
+  s_ad8e7d52cd540d::t_2f207e31826c5c 61,90,93-114,722,724
+  s_ad8e7d52cd540d::t_21bea4a36e8d8f 91-92,709-711,723
+internal/trust/trust_test.go
+  s_ad8e7d52cd540d::t_3e0e9959feba06 22,383-416
+  s_ad8e7d52cd540d::t_7c8f58b5d60af7 417-418
+  s_ad8e7d52cd540d::t_9627baf64c7fba 8,95
+  s_ad8e7d52cd540d::t_5dcbd3a0812d9a 89-94,96-102
+internal/manifest/manifest.go
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 6,10,50-53,101-102,105,141-145,160-174,176-179,182-201
+  s_ad8e7d52cd540d::t_6c483948932a6f 202
+  s_ad8e7d52cd540d::t_383bff34be7efd 103-104,107
+  s_ad8e7d52cd540d::t_2f207e31826c5c 175,180-181
+internal/engine/profile.go
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 108,113-114,120-125
+  s_ad8e7d52cd540d::t_dce03d95136c8d 126
+internal/profile/profile_test.go
+  s_ad8e7d52cd540d::t_3e0e9959feba06 63-70,72-78
+  s_ad8e7d52cd540d::t_f258b8d78d31fe 71
+internal/manifest/manifest_test.go
+  s_ad8e7d52cd540d::t_3e0e9959feba06 28-37,40-48
+  s_ad8e7d52cd540d::t_5352fe90e26eaf 38-39
+internal/engine/profile_test.go
+  s_ad8e7d52cd540d::t_3e0e9959feba06 118-148
+  s_ad8e7d52cd540d::t_07dedd777bd56d 149-157
+internal/engine/marketinstall_test.go
+  s_ad8e7d52cd540d::t_3e0e9959feba06 95,780-786,789-799
+  s_ad8e7d52cd540d::t_82eba4aa736878 800-801
+  s_ad8e7d52cd540d::t_5ed492da41f38e 779,787-788
+internal/profile/profile.go
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 241-249,315,386-390
+internal/manifest/edit.go
+  s_ad8e7d52cd540d::t_5b2b15cb6f1c47 8,51,77,218-225,230-238
+  s_ad8e7d52cd540d::t_2f207e31826c5c 17,226-229
+internal/engine/vars_internal_test.go
+  s_ad8e7d52cd540d::t_f3745148d83962 1-23,25-33
+  s_ad8e7d52cd540d::t_d6724fd7c124f8 34-49
+  s_ad8e7d52cd540d::t_b8273d0c3cbdaf 24
+internal/cli/store_test.go
+  s_ad8e7d52cd540d::t_912e030335e719 15,60,110-153,173-201
+  s_ad8e7d52cd540d::t_b8fba2c97d8485 154-172
+internal/cli/cmd_store.go
+  s_ad8e7d52cd540d::t_cb828c4325dac8 6,86-102,114-115,137,139-140,144,146,148,150,152,153-164,184,186,188,194-198,203-204,206
+  s_ad8e7d52cd540d::t_3e8dffd192132f 138,141,145,147,149,151
+  s_ad8e7d52cd540d::t_2f207e31826c5c 142-143
+docs/roadmap.md
+  s_ad8e7d52cd540d::t_b9bfb85b804f06 80-83,88
+  s_ad8e7d52cd540d::t_62790219fa67c3 77
+  s_ad8e7d52cd540d::t_846f9b53f98362 84-87
+internal/target/capability.go
+  s_ad8e7d52cd540d::t_60e4419918072e 9,71-84,115
+  s_ad8e7d52cd540d::t_f4b63d2eca21f7 54-58
+internal/target/conformance/consent_test.go
+  s_ad8e7d52cd540d::t_5caa5e172c7223 1-40,48-64,66-87,89-95,100-137,141-149
+  s_ad8e7d52cd540d::t_7d3616e6ffdf07 41-46,65,88,96-99,138-140
+  s_ad8e7d52cd540d::t_8a2c45e27aef47 47
+internal/target/opencode/opencode.go
+  s_ad8e7d52cd540d::t_053d40b2a6f471 93-100,107,130-131
+internal/templating/quotes_internal_test.go
+  s_ad8e7d52cd540d::t_3fed93de013855 1-75,77-103
+  s_ad8e7d52cd540d::t_88a86ac2613704 76
+internal/module/numbers.go
+  s_ad8e7d52cd540d::t_2f207e31826c5c 1-132
+e2e/migrate/requirements.txt
+  s_35f2683d3ca978::t_28f7b912c4c648 1-115
+e2e/migrate/scripts/build-image.sh
+  s_35f2683d3ca978::t_28f7b912c4c648 1,3,7-22,24-27
+e2e/migrate/scripts/gitserve.py
+  s_35f2683d3ca978::t_c71e3222a054e6 1-2,4-7,8-10,11-15,16-48
+e2e/migrate/migrate.venom.yml
+  s_35f2683d3ca978::t_7ee5f0ddc53720 54-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a71a4278d21cca45b7038fe26f5360cdf19a8cd",
+  "prompts": {},
+  "sessions": {
+    "s_35f2683d3ca978": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f5df342-7e20-4ea0-9d43-31a2331db2b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_6ad43f32d8d900": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3274ad15-09ec-4684-a849-eddc1c1d23de",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_ad8e7d52cd540d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e8f1263-ed6a-4672-bbe0-655516fe2521",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_dcbd74c99a862d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0972fe72250ce172",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
