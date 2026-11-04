@@ -1,0 +1,47 @@
+internal/source/links_test.go
+  s_ad7eb03af82059::t_1c3cb5876988d4 75-77,80-85,88-94
+internal/source/folder_test.go
+  s_ad7eb03af82059::t_894c0451c9fcc1 180
+  s_ad7eb03af82059::t_9ca07314f72912 345-434
+internal/source/git.go
+  s_ad7eb03af82059::t_774cf744c52b15 343
+internal/source/fetch.go
+  s_ad7eb03af82059::t_6e97e297142856 16-17
+internal/source/archive_test.go
+  s_ad7eb03af82059::t_4e1aeff5a90691 259-262,264-265,267-268,270-273
+  s_ad7eb03af82059::t_0c72b5e444526c 263,266,269
+internal/source/archive.go
+  s_ad7eb03af82059::t_a99788cd4b43d3 104,118,689-702
+  s_ad7eb03af82059::t_774cf744c52b15 126
+  s_ad7eb03af82059::t_aefcdfaefb12ea 703
+internal/source/git_test.go
+  s_ad7eb03af82059::t_c6a27cc2e98c11 263-274
+internal/source/folder.go
+  s_ad7eb03af82059::t_6e97e297142856 41
+  s_ad7eb03af82059::t_774cf744c52b15 9,11,62,82,94-95,280-289,292-300,304,321-323,326,328-330,339-341,350-362,376-413
+  s_ad7eb03af82059::t_5a36d07e9cfcb9 363-375
+  s_ad7eb03af82059::t_d9a0e1a4217fa7 414
+docs/usage.md
+  s_ad7eb03af82059::t_6e97e297142856 225-229
+internal/source/components.go
+  s_ad7eb03af82059::t_774cf744c52b15 188-204
+internal/source/links.go
+  s_ad7eb03af82059::t_26ed6fdcdbb450 69
+  s_ad7eb03af82059::t_1eb3a26ae30b6b 40-47,50-65,67-68,71,78-90,94-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1bce701dc64f089632af25da22fd26ebed1151a1",
+  "prompts": {},
+  "sessions": {
+    "s_ad7eb03af82059": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49472215-d288-4d57-b22b-dcceb0c47846",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

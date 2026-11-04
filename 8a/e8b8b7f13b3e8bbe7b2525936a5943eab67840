@@ -1,0 +1,32 @@
+internal/cli/cmd_store.go
+  s_ad7eb03af82059::t_53e6a5c6dcaa4a 274,550
+  s_ad7eb03af82059::t_018334cd34e15b 212-214
+internal/cli/prompt.go
+  s_ad7eb03af82059::t_53e6a5c6dcaa4a 24,31,40,51
+internal/cli/migrate_test.go
+  s_ad7eb03af82059::t_5f97f232099fe6 198-207
+internal/cli/cmd_core.go
+  s_ad7eb03af82059::t_53e6a5c6dcaa4a 322
+internal/cli/cmd_migrate.go
+  s_ad7eb03af82059::t_53e6a5c6dcaa4a 112
+internal/cli/cmd_repair.go
+  s_ad7eb03af82059::t_53e6a5c6dcaa4a 46
+internal/cli/cmd_trash.go
+  s_ad7eb03af82059::t_53e6a5c6dcaa4a 193,362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8ae8b8b7f13b3e8bbe7b2525936a5943eab67840",
+  "prompts": {},
+  "sessions": {
+    "s_ad7eb03af82059": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49472215-d288-4d57-b22b-dcceb0c47846",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}

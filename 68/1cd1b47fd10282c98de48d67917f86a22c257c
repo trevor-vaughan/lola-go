@@ -1,0 +1,23 @@
+internal/cli/migrate_test.go
+  s_ad7eb03af82059::t_08b443752b28ad 303-304
+internal/cli/cmd_migrate.go
+  s_ad7eb03af82059::t_08b443752b28ad 275-283,293-294
+e2e/migrate/migrate.venom.yml
+  s_ad7eb03af82059::t_926606c2e25c79 144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "681cd1b47fd10282c98de48d67917f86a22c257c",
+  "prompts": {},
+  "sessions": {
+    "s_ad7eb03af82059": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49472215-d288-4d57-b22b-dcceb0c47846",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
