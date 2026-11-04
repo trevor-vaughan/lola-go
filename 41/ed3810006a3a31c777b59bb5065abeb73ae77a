@@ -1,0 +1,134 @@
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_b478066113a3dc 36,67,77
+internal/manifest/edit.go
+  s_ae5de64031a7d5::t_4db38108f985c6 29-64
+internal/manifest/manifest_test.go
+  s_ae5de64031a7d5::t_63bc4914a9bb5b 89-103
+docs/roadmap.md
+  s_ae5de64031a7d5::t_51e2b78fa974cd 42-44
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_b478066113a3dc 36,67,77
+internal/manifest/edit.go
+  s_ae5de64031a7d5::t_4db38108f985c6 29-64
+internal/manifest/manifest_test.go
+  s_ae5de64031a7d5::t_63bc4914a9bb5b 89-103
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_0c8d4fb6ea99fa 388-397,462
+  s_ae5de64031a7d5::t_6649877fe9f97c 364-365
+internal/engine/cache.go
+  s_ae5de64031a7d5::t_56cd6bdeafc075 111,143
+internal/engine/staging.go
+  s_ae5de64031a7d5::t_b441460aaad5db 5,11-12,20,28-32,34-35,38-40,57-61
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_827db42235ad11 89-90
+internal/store/store.go
+  s_ae5de64031a7d5::t_5ea8b8fb27f574 89-91
+docs/roadmap.md
+  s_ae5de64031a7d5::t_51e2b78fa974cd 42-44
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_b478066113a3dc 36,67,77
+internal/manifest/edit.go
+  s_ae5de64031a7d5::t_4db38108f985c6 29-64
+internal/manifest/manifest_test.go
+  s_ae5de64031a7d5::t_63bc4914a9bb5b 89-103
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_827db42235ad11 89-90
+internal/store/store.go
+  s_ae5de64031a7d5::t_5ea8b8fb27f574 89-91
+internal/store/store.go
+  s_ae5de64031a7d5::t_4eb9f2e859b933 434-435
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_b22db0bc258f67 8,10,12-13,67-88,91-114
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_b22db0bc258f67 8,10,12-13,67-88,91-114
+internal/store/store.go
+  s_ae5de64031a7d5::t_4eb9f2e859b933 434-435
+internal/store/store.go
+  s_ae5de64031a7d5::t_4eb9f2e859b933 434-435
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_0c8d4fb6ea99fa 388-397,462
+  s_ae5de64031a7d5::t_6649877fe9f97c 364-365
+internal/engine/cache.go
+  s_ae5de64031a7d5::t_56cd6bdeafc075 111,143
+internal/engine/staging.go
+  s_ae5de64031a7d5::t_b441460aaad5db 5,11-12,20,28-32,34-35,38-40,57-61
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_827db42235ad11 89-90
+internal/store/store.go
+  s_ae5de64031a7d5::t_5ea8b8fb27f574 89-91
+docs/roadmap.md
+  s_ae5de64031a7d5::t_51e2b78fa974cd 42-44
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_0c8d4fb6ea99fa 388-397,462
+  s_ae5de64031a7d5::t_6649877fe9f97c 364-365
+internal/engine/cache.go
+  s_ae5de64031a7d5::t_56cd6bdeafc075 111,143
+internal/engine/staging.go
+  s_ae5de64031a7d5::t_b441460aaad5db 5,11-12,20,28-32,34-35,38-40,57-61
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_827db42235ad11 89-90
+internal/store/store.go
+  s_ae5de64031a7d5::t_5ea8b8fb27f574 89-91
+docs/roadmap.md
+  s_ae5de64031a7d5::t_51e2b78fa974cd 42-44
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_b22db0bc258f67 8,10,12-13,67-88,91-114
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_0c8d4fb6ea99fa 388-397,462
+  s_ae5de64031a7d5::t_6649877fe9f97c 364-365
+internal/engine/cache.go
+  s_ae5de64031a7d5::t_56cd6bdeafc075 111,143
+internal/engine/staging.go
+  s_ae5de64031a7d5::t_b441460aaad5db 5,11-12,20,28-32,34-35,38-40,57-61
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_827db42235ad11 89-90
+internal/store/store.go
+  s_ae5de64031a7d5::t_5ea8b8fb27f574 89-91
+docs/roadmap.md
+  s_ae5de64031a7d5::t_51e2b78fa974cd 42-44
+internal/engine/cache.go
+  s_ae5de64031a7d5::t_56cd6bdeafc075 111,143
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_6649877fe9f97c 364-365
+internal/engine/staging.go
+  s_ae5de64031a7d5::t_b441460aaad5db 5,11-12,20,28-32,34-35,38-40,57-61
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_0c8d4fb6ea99fa 388-397,462
+  s_ae5de64031a7d5::t_6649877fe9f97c 364-365
+internal/engine/cache.go
+  s_ae5de64031a7d5::t_56cd6bdeafc075 111,143
+internal/engine/staging.go
+  s_ae5de64031a7d5::t_b441460aaad5db 5,11-12,20,28-32,34-35,38-40,57-61
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_827db42235ad11 89-90
+internal/store/store.go
+  s_ae5de64031a7d5::t_5ea8b8fb27f574 89-91
+docs/roadmap.md
+  s_ae5de64031a7d5::t_51e2b78fa974cd 42-44
+internal/engine/engine.go
+  s_ae5de64031a7d5::t_b478066113a3dc 36,67,77
+internal/manifest/edit.go
+  s_ae5de64031a7d5::t_4db38108f985c6 29-64
+internal/manifest/manifest_test.go
+  s_ae5de64031a7d5::t_63bc4914a9bb5b 89-103
+internal/engine/gitignore.go
+  s_ae5de64031a7d5::t_b22db0bc258f67 8,10,12-13,67-88,91-114
+internal/store/store.go
+  s_ae5de64031a7d5::t_4eb9f2e859b933 434-435
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41ed3810006a3a31c777b59bb5065abeb73ae77a",
+  "prompts": {},
+  "sessions": {
+    "s_ae5de64031a7d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64b02a9-81c6-47db-bd43-cffb3d4311b2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
