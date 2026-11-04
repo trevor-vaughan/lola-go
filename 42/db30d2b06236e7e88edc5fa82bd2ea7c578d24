@@ -1,0 +1,21 @@
+.taskfiles/e2e.yml
+  s_8ec065057d6b01::t_5542b527de0baa 3-7,24-28
+Taskfile.yml
+  s_8ec065057d6b01::t_d8754d81c91d7e 41-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9deca217f691ea366f1d5fd44911c9d43425c85c",
+  "prompts": {},
+  "sessions": {
+    "s_8ec065057d6b01": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f856f65-6615-4a1e-b25a-078c43ffa29f",
+        "model": "unknown"
+      },
+      "human_author": "Trevor Vaughan <peiriannydd@gmail.com>"
+    }
+  }
+}
