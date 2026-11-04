@@ -1,0 +1,23 @@
+internal/cli/cmd_misc.go
+  s_88b4b3873a9a43::t_9d47c0d6051259 56-59
+README.md
+  s_88b4b3873a9a43::t_a47d2f39ba2f96 230-241
+docs/reference/completion.md
+  s_88b4b3873a9a43::t_a47d2f39ba2f96 7-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "158e95689e56c3528e25316d25d0ace214e43fe9",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
