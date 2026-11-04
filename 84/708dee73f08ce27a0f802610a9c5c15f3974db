@@ -1,0 +1,69 @@
+docs/guides/profiles.md
+  s_8d03b9505d742a::t_a4558f7a2c82ae 171
+go.mod
+  s_8d03b9505d742a::t_e19b9c21b9958a 8-9
+internal/cli/cmd_profile.go
+  s_8d03b9505d742a::t_6c7a0d3ab51265 358,362
+internal/cli/cmd_sync.go
+  s_8d03b9505d742a::t_ccb7a066bb0eb3 90,98,207-209,243,260,281,308,310,326-327,335,340,359
+internal/cli/flow_test.go
+  s_8d03b9505d742a::t_59c1fac495a6d7 41-42,56-57,122-129
+internal/cli/huh.go
+  s_8d03b9505d742a::t_7292aad9081648 9,589-626
+internal/cli/huh_internal_test.go
+  s_8d03b9505d742a::t_18fdab64be7c2f 374-406
+internal/cli/human.go
+  s_8d03b9505d742a::t_b2ae583a2f8fd3 27-35
+internal/cli/output.go
+  s_8d03b9505d742a::t_c0906f53162a13 40-53,55-66,87-88,96
+internal/cli/pager_test.go
+  s_8d03b9505d742a::t_77d44381bace96 93,97-127,147
+internal/cli/profile_add.go
+  s_8d03b9505d742a::t_4dfaed1810bf80 47-49,51,55,86
+internal/cli/prompter.go
+  s_8d03b9505d742a::t_0a2191474e42f4 50-72,281-284
+internal/cli/root.go
+  s_8d03b9505d742a::t_0a1ca1391ff40e 69,100,132,142,225,227
+internal/config/config.go
+  s_8d03b9505d742a::t_3af913f0617988 34,116
+internal/migrate/helpers_test.go
+  s_8d03b9505d742a::t_b1f0856a278397 72-80
+internal/migrate/read_test.go
+  s_8d03b9505d742a::t_0c406e1e72e37b 274-290
+internal/migrate/run.go
+  s_8d03b9505d742a::t_e93b2a961802a3 30-33,37-38,49,75-90,227,249,479-481,700-703,709-724
+internal/testenv/testenv.go
+  s_8d03b9505d742a::t_1d2c2605560c78 58-60
+internal/cli/flow_test.go
+  s_8d03b9505d742a::t_2381e10495bc44 41-42,56-57,122-129
+internal/cli/huh.go
+  s_8d03b9505d742a::t_a34dadb36f3d44 9,589-626
+internal/cli/huh_internal_test.go
+  s_8d03b9505d742a::t_934c6b87e9fca5 374-406
+internal/cli/prompter.go
+  s_8d03b9505d742a::t_258c5aeae01d5a 50-72,281-284
+internal/migrate/helpers_test.go
+  s_8d03b9505d742a::t_f3c7c1fe310cb3 72-80
+internal/migrate/read_test.go
+  s_8d03b9505d742a::t_142da2099a8ddd 274-290
+internal/migrate/run.go
+  s_8d03b9505d742a::t_f945154176aaa0 30-33,37-38,49,75-90,227,249,479-481,700-703,709-724
+internal/migrate/run_test.go
+  s_8d03b9505d742a::t_fad77ab931ebd2 85,107,110,114,116,267-276,853,1044,1145,1148-1153,1157-1164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "84708dee73f08ce27a0f802610a9c5c15f3974db",
+  "prompts": {},
+  "sessions": {
+    "s_8d03b9505d742a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b1fab0b-35ed-473f-ae10-adffc6810239",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
