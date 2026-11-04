@@ -1,0 +1,22 @@
+internal/engine/complete.go
+  s_88b4b3873a9a43::t_b47d4e0bdc9618 8,12,21-24,28-31,34,43-61
+  s_88b4b3873a9a43::t_a74b9afe65f8b7 62-63
+internal/cli/complete_test.go
+  s_88b4b3873a9a43::t_5f4a649834ea61 82-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a25b214df4259ab0e8df5462a98d22edb85d461",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
