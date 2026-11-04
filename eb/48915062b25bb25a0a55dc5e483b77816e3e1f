@@ -1,0 +1,87 @@
+internal/engine/market_install.go
+  s_88b4b3873a9a43::t_3bcbfc6b0c4eed 363
+internal/engine/sources_test.go
+  s_88b4b3873a9a43::t_630f61f4b0c3fd 221-222
+internal/engine/hints_move_test.go
+  s_88b4b3873a9a43::t_2d17f4618843db 165-166
+internal/engine/check.go
+  s_88b4b3873a9a43::t_e59a541246ac2d 337-338
+internal/store/store_test.go
+  s_88b4b3873a9a43::t_557a9038ea785e 123-124,286,643-646,648,689
+  s_88b4b3873a9a43::t_8052ba04466080 873-874,876-893
+  s_88b4b3873a9a43::t_31b2037c4944d0 297,305,317,321
+  s_88b4b3873a9a43::t_b214dc0f687e38 679
+  s_88b4b3873a9a43::t_6b4a4fb6cce428 621,625,629-642,764,770-790,896-899,901-905
+  s_88b4b3873a9a43::t_dada6175572ef0 701,706,717,721,726,728
+  s_88b4b3873a9a43::t_167a8983704942 908
+internal/engine/cache.go
+  s_88b4b3873a9a43::t_3bcbfc6b0c4eed 57
+internal/engine/engine.go
+  s_88b4b3873a9a43::t_2bcc85b4691766 1170-1171,1173-1175,1177
+  s_88b4b3873a9a43::t_fb718d24db4759 918
+internal/engine/clean_test.go
+  s_88b4b3873a9a43::t_a91226e7eb294e 23-36,199,203,338
+internal/engine/info.go
+  s_88b4b3873a9a43::t_3bcbfc6b0c4eed 610,664,682
+  s_88b4b3873a9a43::t_e9b7724e027d36 668-673,677-678
+internal/engine/sync.go
+  s_88b4b3873a9a43::t_a0af53c750f6a9 2704-2705
+  s_88b4b3873a9a43::t_c14bd5062dc319 2532,2699-2703,2708,2711-2712,2714-2719
+  s_88b4b3873a9a43::t_41d9f58421210f 2597,2869
+docs/guides/sync-and-trust.md
+  s_88b4b3873a9a43::t_0f3540b08790b7 191-203
+docs/architecture.md
+  s_88b4b3873a9a43::t_0f3540b08790b7 1293-1295,2218-2221
+internal/engine/installed.go
+  s_88b4b3873a9a43::t_41d9f58421210f 140
+internal/engine/staged_test.go
+  s_88b4b3873a9a43::t_0d890623412301 299,308-312
+internal/engine/market_test.go
+  s_88b4b3873a9a43::t_46e6f289d0e818 621-622
+internal/engine/projectprofile_test.go
+  s_88b4b3873a9a43::t_3f4fe54ee7a147 156,164-167
+e2e/market/market.venom.yml
+  s_88b4b3873a9a43::t_d4e21dbb4189d3 90,93,97,100,102
+internal/store/store.go
+  s_88b4b3873a9a43::t_9f9350da48f30d 589-592,595-604
+  s_88b4b3873a9a43::t_c14bd5062dc319 104,818-831
+  s_88b4b3873a9a43::t_292b21ff2202ba 727,735-736,744-745,747-748,793-795,797-798,801-812,815-817,832-840,842,845,847-848,850-854,856-863,868,872
+  s_88b4b3873a9a43::t_197c67c4826fd8 45-47,57-79,83-103,236-244,257
+  s_88b4b3873a9a43::t_cddbe30c9dff57 223-226,288-290,292,296-304,309-310,312,315,323,328-332,335-336,345,348-349,351,356
+  s_88b4b3873a9a43::t_92e02f3e7a5e75 472-475,488,492-496,498-501
+  s_88b4b3873a9a43::t_fcedc7429761c8 105
+internal/engine/ops.go
+  s_88b4b3873a9a43::t_3bcbfc6b0c4eed 458
+  s_88b4b3873a9a43::t_d5a0b1c60dcdac 2778-2782,2787-2791
+  s_88b4b3873a9a43::t_b3d9af1f575e22 2591,2694,2785-2786
+internal/engine/sync_test.go
+  s_88b4b3873a9a43::t_1f817c1159fb47 1243,1246,2005-2007,2009,2119,2126-2132,2149-2157
+  s_88b4b3873a9a43::t_b826af9601b18e 1213,1241,1245,1247-1249,1256,1262,1265,1271-1272,1275,1283-1288,1291,1307-1314,1325,1327-1328,1333-1336
+  s_88b4b3873a9a43::t_3f4fe54ee7a147 2148
+  s_88b4b3873a9a43::t_c0abbf45c9d854 1212,1266,1282,2136
+internal/cli/store_test.go
+  s_88b4b3873a9a43::t_a5e54b9a5c7812 426,429
+  s_88b4b3873a9a43::t_c7bf7ba6646936 443
+internal/engine/info_test.go
+  s_88b4b3873a9a43::t_af8c6171a08f74 196,209,220,223-227,230,233-235,237-238
+docs/reference/cache.md
+  s_88b4b3873a9a43::t_e3c18b496f783a 25-31
+internal/engine/staged_run.go
+  s_88b4b3873a9a43::t_2bcc85b4691766 108-110,112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb48915062b25bb25a0a55dc5e483b77816e3e1f",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
