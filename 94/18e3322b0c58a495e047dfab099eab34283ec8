@@ -1,0 +1,80 @@
+docs/guides/tidying.md
+  s_6ad43f32d8d900::t_9a01318050c8dc 1-127
+docs/guides/authoring-modules.md
+  s_6ad43f32d8d900::t_9a01318050c8dc 1-2,7-17,19-32,34-37,40-66,78-275,278-376
+  s_6ad43f32d8d900::t_0e498f600cc078 3-6,18,33,38-39,67-77,276-277
+docs/guides/marketplaces.md
+  s_6ad43f32d8d900::t_0e498f600cc078 94,176,200,219
+  s_6ad43f32d8d900::t_9a01318050c8dc 1-93,95-175,177-199,201-218,220-235
+docs/decisions.md
+  s_6ad43f32d8d900::t_0e498f600cc078 145
+docs/usage.md
+  s_6ad43f32d8d900::t_0e498f600cc078 8-13,29-35,81-85,107,129-133,174-179,202-207,242-244,281-285,294,343-351,411-415,436,519-522,563-564,634,660,782,788,814-822,824-831,922,1051,1176,1238,1244-1246,1248,1296,1315,1318,1340,1404,1407,1409
+  s_6ad43f32d8d900::t_170fd95582c33e 116-119,122,224,233-234,324-336,379-382,833-838
+  s_6ad43f32d8d900::t_0aa982a79992d4 839
+  s_6ad43f32d8d900::t_dc62ce8ad1566f 185-190
+  s_6ad43f32d8d900::t_18625d7d2e3f9f 230-232
+  s_6ad43f32d8d900::t_baa5700350bf2c 20-21,120-121
+  s_6ad43f32d8d900::t_1b7b2478f4be7b 225-229
+docs/guides/sync-and-trust.md
+  s_6ad43f32d8d900::t_0e498f600cc078 16,40,119,289
+  s_6ad43f32d8d900::t_9a01318050c8dc 1-15,17-39,41-118,120-288,290-295
+README.md
+  s_6ad43f32d8d900::t_0e498f600cc078 11-12,35,37-38,41,43,48,97-99
+  s_6ad43f32d8d900::t_baa5700350bf2c 45
+docs/guides/profiles.md
+  s_6ad43f32d8d900::t_0e498f600cc078 28,72,353
+  s_6ad43f32d8d900::t_9a01318050c8dc 1-27,29-71,73-352,354-379
+docs/guides/migrating.md
+  s_6ad43f32d8d900::t_9a01318050c8dc 1-13,15-52,54-92,94-122
+  s_6ad43f32d8d900::t_0e498f600cc078 14,53,93
+docs/guides/templating.md
+  s_6ad43f32d8d900::t_9a01318050c8dc 2-31,38-230,232-244,246-253
+  s_6ad43f32d8d900::t_0e498f600cc078 1,32-37,231,245
+docs/testing.md
+  s_6ad43f32d8d900::t_914eef231f94d1 1-5,7-32,35-247
+  s_6ad43f32d8d900::t_ce1c7623c9138f 6
+  s_6ad43f32d8d900::t_baa5700350bf2c 33-34
+docs/release.md
+  s_6ad43f32d8d900::t_ce1c7623c9138f 1-11,14-53
+  s_6ad43f32d8d900::t_baa5700350bf2c 12-13
+docs/architecture.md
+  s_6ad43f32d8d900::t_ce1c7623c9138f 510,1805-1806
+  s_6ad43f32d8d900::t_170fd95582c33e 1814-1818,1865-1867
+third_party/liquid/PATCHES.md
+  s_6ad43f32d8d900::t_ce1c7623c9138f 47-48
+  s_6ad43f32d8d900::t_e76ad7aa044944 49-57
+docs/roadmap.md
+  s_6ad43f32d8d900::t_170fd95582c33e 75,89-100
+internal/cli/cmd_store.go
+  s_6ad43f32d8d900::t_bdd79772b32a52 227
+  s_6ad43f32d8d900::t_7c4fef91b3bba2 49
+internal/engine/engine_test.go
+  s_6ad43f32d8d900::t_7081c4994f612d 782-789
+internal/cli/cmd_core.go
+  s_6ad43f32d8d900::t_56420c32b45b14 300-302
+internal/engine/engine.go
+  s_6ad43f32d8d900::t_69fac3c487ad4b 317-327
+internal/cli/core_test.go
+  s_6ad43f32d8d900::t_942dbdd18c3c52 757-767
+scripts/e2e.sh
+  s_6ad43f32d8d900::t_63a2819869350f 139-140
+e2e/image/pins.env
+  s_6ad43f32d8d900::t_2dcc84c4b113a5 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ec5f7e0e000ef44bf253fa4648a43743ae0393a",
+  "prompts": {},
+  "sessions": {
+    "s_6ad43f32d8d900": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3274ad15-09ec-4684-a849-eddc1c1d23de",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
