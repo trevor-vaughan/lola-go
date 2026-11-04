@@ -1,0 +1,21 @@
+internal/cli/viewer.go
+  s_88b4b3873a9a43::t_33a0a5afdbf6c0 265
+internal/cli/viewer_internal_test.go
+  s_88b4b3873a9a43::t_b5cc70740b41af 131,242-245,472
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0cb9945e6e196b55eed4259d06f121c65b4680fa",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
