@@ -1,0 +1,19 @@
+internal/cli/huh.go
+  s_88b4b3873a9a43::t_0947b96a7311ff 395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c1c00d57990808066c6bebb9ec0bc5409ce7295",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
