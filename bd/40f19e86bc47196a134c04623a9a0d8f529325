@@ -1,0 +1,26 @@
+internal/cli/help_test.go
+  s_88b4b3873a9a43::t_efc79e89e3df14 83
+internal/cli/help.go
+  s_88b4b3873a9a43::t_c614b94e74a297 12-13
+  s_88b4b3873a9a43::t_3281cc0b6a1482 72
+internal/cli/root.go
+  s_88b4b3873a9a43::t_efc79e89e3df14 13,165-172
+internal/cli/store_test.go
+  s_88b4b3873a9a43::t_efc79e89e3df14 587-588
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd40f19e86bc47196a134c04623a9a0d8f529325",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
