@@ -1,0 +1,28 @@
+internal/cli/viewer_internal_test.go
+  s_ad7eb03af82059::t_70b07ce80b99d0 284
+  s_ad7eb03af82059::t_0e139b9d52e444 117-124,295
+internal/cli/huh.go
+  s_ad7eb03af82059::t_93604e4d20cf43 158
+internal/cli/pager.go
+  s_ad7eb03af82059::t_00baa8e8f15635 77-82,107
+internal/cli/prompt.go
+  s_ad7eb03af82059::t_e48ae837504756 40
+internal/cli/viewer.go
+  s_ad7eb03af82059::t_bd35da6da95524 52-56,266-268,301-302,309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1bcd7481013fefcf3ba763f13b5debb7a1a3de6",
+  "prompts": {},
+  "sessions": {
+    "s_ad7eb03af82059": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49472215-d288-4d57-b22b-dcceb0c47846",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
