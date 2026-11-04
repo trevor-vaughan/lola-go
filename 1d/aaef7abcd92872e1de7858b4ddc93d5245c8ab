@@ -1,0 +1,28 @@
+internal/migrate/read.go
+  s_ad7eb03af82059::t_760d160424eb70 11
+  s_ad7eb03af82059::t_153e72f8c4aaec 464-465,482-489
+  s_ad7eb03af82059::t_9bef313ad6c57d 490-491
+internal/migrate/remap.go
+  s_ad7eb03af82059::t_153e72f8c4aaec 205,216-221
+  s_ad7eb03af82059::t_79c940e721de20 222-223
+internal/migrate/plan_test.go
+  s_ad7eb03af82059::t_43678ceb2f0b80 604-615
+internal/migrate/plan.go
+  s_ad7eb03af82059::t_153e72f8c4aaec 198-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1daaef7abcd92872e1de7858b4ddc93d5245c8ab",
+  "prompts": {},
+  "sessions": {
+    "s_ad7eb03af82059": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49472215-d288-4d57-b22b-dcceb0c47846",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
