@@ -1,0 +1,22 @@
+internal/cli/trust.go
+  s_88b4b3873a9a43::t_5b95d21a1e6c88 80-99
+internal/cli/complete_test.go
+  s_88b4b3873a9a43::t_3611448123ecba 137,139-146
+  s_88b4b3873a9a43::t_c548afaddf07db 138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ad36015b9ce488102e0cd26cf62262a855ddf102",
+  "prompts": {},
+  "sessions": {
+    "s_88b4b3873a9a43": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26c830c0-d931-4b69-8f83-f6cb97876c33",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
