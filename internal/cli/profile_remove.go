@@ -18,7 +18,7 @@ import (
 func (a *app) profileRemove(cmd *cobra.Command, eng *engine.Engine, args []string, f syncFlags) error {
 	if len(args) != 1 {
 		return errs.WithHints(errors.New("--remove takes one remote profile's name"),
-			"see yours: "+runWithout(cmd, nil, "remove", "yes", "trust", "dry-run", "force", "allow-hooks", "allow-runtime-hooks"))
+			"see yours: "+runWithout(cmd, nil, "remove", "yes", "trust", "dry-run", "force"))
 	}
 	scs, err := a.scopes(cmd, eng, args, "Check which scope before removing it?", false, true)
 	if err != nil {

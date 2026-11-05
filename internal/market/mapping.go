@@ -61,18 +61,18 @@ func remoteSource(field, loc string) *skip {
 }
 
 // pin maps a catalog's ref and sha to a manifest entry's ref and commit (Plan 6c §4.3, ruling
-// R-6c-12): sha must be a full commit; a ref that is a full commit becomes the commit, with no
-// ref, so it is checked against the default branch like a sha; a sha and a full-commit ref that
+// R-6c-12): sha must be a full commit; a ref that is a full commit, in any case, becomes the
+// commit, lower-cased (R-9-31), with no ref, so it is checked against the default branch like a sha; a sha and a full-commit ref that
 // differ skip the entry.
 func pin(ref, sha string) (string, string, *skip) {
 	if sha != "" && !source.IsFullCommit(sha) {
 		return "", "", skipped("malformed pin", "sha %s is not a full commit SHA (40 or 64 lower-case hex digits)", untrusted.Text(sha, untrusted.MaxName))
 	}
-	if source.IsFullCommit(ref) {
-		if sha != "" && sha != ref {
-			return "", "", skipped("malformed pin", "ref and sha disagree: ref %s, sha %s", ref, sha)
+	if commit, ok := source.CommitRef(ref); ok {
+		if sha != "" && sha != commit {
+			return "", "", skipped("malformed pin", "ref and sha disagree: ref %s, sha %s", commit, sha)
 		}
-		return "", ref, nil
+		return "", commit, nil
 	}
 	return ref, sha, nil
 }

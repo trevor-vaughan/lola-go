@@ -717,6 +717,106 @@ var _ = Describe("Migrate", func() {
 		})
 	})
 
+	It("asks one receipt for what --trust covers in every destination, and records it only after a yes", func() {
+		hooked := filepath.Join(tmp, "src", "hooked")
+		writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n",
+			"pre.sh": "#!/bin/sh\nexit 0\n"})
+		Expect(os.Chmod(filepath.Join(hooked, "pre.sh"), 0o755)).To(Succeed())
+		h.source("hooked", map[string]string{"source": hooked, "type": "folder"})
+		other := filepath.Join(tmp, "other")
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		Expect(os.MkdirAll(other, 0o755)).To(Succeed())
+		h.install(rec{"module": "hooked", "assistant": "claude-code", "project_path": proj},
+			rec{"module": "hooked", "assistant": "claude-code", "project_path": other})
+		var asked [][]engine.Consent
+		receipt := func(answer bool) func([]engine.Consent) (bool, error) {
+			return func(cs []engine.Consent) (bool, error) { asked = append(asked, cs); return answer, nil }
+		}
+		preview, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		want := []engine.Consent{{Kind: "hooks", Item: "hooked pre-install", Change: engine.ConsentNew}}
+		Expect(preview.Trusted).To(Equal(want), "a dry run lists what --trust would cover, once")
+
+		_, err = run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Receipt: receipt(false)}})
+		Expect(err).To(MatchError(engine.ErrDeclined))
+		Expect(asked).To(Equal([][]engine.Consent{want}), "one receipt for both destinations")
+		Expect(e.Paths.Consent).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
+
+		asked = nil
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Receipt: receipt(true)}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(HaveLen(1))
+		Expect(res.Trusted).To(Equal(want))
+		Expect(e.Paths.Consent).To(BeAnExistingFile())
+		Expect(filepath.Join(other, ".claude", "commands", "h.md")).To(BeAnExistingFile())
+	})
+
+	It("runs a hook a terminal said yes to before anything was written, recording the consent when it installs", func() {
+		mark := filepath.Join(tmp, "hook-ran")
+		hooked := filepath.Join(tmp, "src", "hooked")
+		writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n",
+			"pre.sh": "#!/bin/sh\necho ran >> '" + mark + "'\n"})
+		Expect(os.Chmod(filepath.Join(hooked, "pre.sh"), 0o755)).To(Succeed())
+		h.source("hooked", map[string]string{"source": hooked, "type": "folder"})
+		other := filepath.Join(tmp, "other")
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		Expect(os.MkdirAll(other, 0o755)).To(Succeed())
+		h.install(rec{"module": "hooked", "assistant": "claude-code", "project_path": proj},
+			rec{"module": "hooked", "assistant": "claude-code", "project_path": other})
+		var asked []string
+		res, err := run(migrate.Options{Options: engine.Options{Ask: func(module string, _ []engine.HookScript) (bool, error) {
+			asked = append(asked, module)
+			return true, nil
+		}}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(HaveEach("hooked"))
+		Expect(res.Destinations).To(HaveEach(HaveField("Status", migrate.StatusMigrated)))
+		Expect(os.ReadFile(mark)).To(Equal([]byte("ran\nran\n")), "the hook ran in each destination")
+		Expect(e.Paths.Consent).To(BeAnExistingFile())
+		Expect(filepath.Join(other, ".claude", "commands", "h.md")).To(BeAnExistingFile())
+	})
+
+	It("grants nothing the receipt did not show: a hook changed after it is refused", func() {
+		hooked := filepath.Join(tmp, "src", "hooked")
+		writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n",
+			"pre.sh": "#!/bin/sh\nexit 0\n"})
+		Expect(os.Chmod(filepath.Join(hooked, "pre.sh"), 0o755)).To(Succeed())
+		h.source("hooked", map[string]string{"source": hooked, "type": "folder"})
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		h.install(rec{"module": "hooked", "assistant": "claude-code", "project_path": proj})
+		p := plan()
+		// The cached hook changes after the receipt showed it, before the install runs it.
+		changed := func([]engine.Consent) (bool, error) {
+			scripts, err := filepath.Glob(filepath.Join(e.Paths.Store, "hooked", "versions", "*", "content", "pre.sh"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scripts).To(HaveLen(1))
+			Expect(os.WriteFile(scripts[0], []byte("#!/bin/sh\nexit 0\ntrue\n"), 0o755)).To(Succeed())
+			return true, nil
+		}
+		res, err := migrate.Migrate(ctx, e, p, migrate.Options{Options: engine.Options{Trust: engine.TrustHooks, Receipt: changed}})
+		Expect(err).To(HaveOccurred())
+		Expect(res.Destinations[0].Status).To(Equal(migrate.StatusFailed))
+		Expect(res.Destinations[0].Error).To(ContainSubstring("what --trust covers changed after you answered its receipt; nothing more was written"))
+	})
+
+	It("a run that fails after a destination's grants carries what it recorded in its error", func() {
+		hooked := filepath.Join(tmp, "src", "hooked")
+		writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n",
+			"pre.sh": "#!/bin/sh\nexit 3\n"})
+		Expect(os.Chmod(filepath.Join(hooked, "pre.sh"), 0o755)).To(Succeed())
+		h.source("hooked", map[string]string{"source": hooked, "type": "folder"})
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		h.install(rec{"module": "hooked", "assistant": "claude-code", "project_path": proj})
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks}})
+		Expect(err).To(HaveOccurred())
+		te, ok := errors.AsType[*engine.TrustedError](err)
+		Expect(ok).To(BeTrue(), "%v", err)
+		want := []engine.Consent{{Kind: "hooks", Item: "hooked pre-install", Change: engine.ConsentNew}}
+		Expect(te.Trusted).To(Equal(want))
+		Expect(res.Trusted).To(Equal(want), "trusted is what was recorded")
+	})
+
 	It("migrates the other destinations when one fails, keeps the home, and names the failure", func() {
 		hooked := filepath.Join(tmp, "src", "hooked")
 		writeTree(hooked, map[string]string{"lola.yml": "name: hooked\nhooks: {pre-install: pre.sh}\n", "commands/h.md": "H\n",
@@ -727,7 +827,7 @@ var _ = Describe("Migrate", func() {
 		python(proj)
 		writeTree(other, map[string]string{".claude/commands/h.md": "python h\n"})
 		h.install(record(proj), rec{"module": "hooked", "assistant": "claude-code", "project_path": other, "commands": []string{"h"}})
-		res, err := run(migrate.Options{Options: engine.Options{AllowHooks: true}})
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks}})
 		Expect(err).To(MatchError(ContainSubstring("lola migrate did not finish: project " + other + " failed")))
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("rerun lola migrate")))
 		Expect(res.Destinations[0].Root).To(Equal(other))
@@ -761,7 +861,7 @@ var _ = Describe("Migrate", func() {
 		writeFile(filepath.Join(h.dir, "notes.txt"), "keeps the home in place")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		h.install(rec{"module": "hooked", "assistant": "claude-code", "project_path": proj})
-		res, err := run(migrate.Options{Options: engine.Options{AllowHooks: true}})
+		res, err := run(migrate.Options{Options: engine.Options{Trust: engine.TrustHooks}})
 		Expect(err).To(MatchError(HavePrefix("lola migrate did not finish: closing the trash failed: ")))
 		Expect(res).NotTo(BeNil())
 		Expect(res.Destinations[0].Status).To(Equal(migrate.StatusMigrated))

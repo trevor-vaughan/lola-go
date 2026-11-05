@@ -39,19 +39,26 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	if err != nil {
 		return err
 	}
-	// The hook flags and -y as given, which every command repeating the run keeps.
+	// -y as given, which every command repeating the run keeps.
 	var flags []string
-	if f.allowHooks {
-		flags = append(flags, "--allow-hooks")
-	}
-	if f.allowRuntime {
-		flags = append(flags, "--allow-runtime-hooks")
-	}
 	if f.yes {
 		flags = append(flags, "-y")
 	}
+	// Without a scope flag, --trust answered only the profiles' consent: a scope's own trust
+	// question, its entries and profiles, is asked, never answered by it (ruling R-6b3c-7; off a
+	// terminal the engine refused before any network contact when the found project had changes to
+	// trust). Its other kinds answer each scope's sync (Plan 9 §3.2), and the syncs a hint names
+	// keep them.
+	scoped := f
+	if len(given) == 0 {
+		scoped.trust &^= engine.TrustBare
+	}
+	later := slices.Clone(flags)
+	if scoped.trust != 0 {
+		later = append([]string{scoped.trust.Arg()}, later...)
+	}
 	p := a.prompter(cmd) // never asks under --json
-	req := engine.ProfileUpdateRequest{Scopes: given, Names: args, All: all, DryRun: f.dry, Flags: flags, Rerun: rerunFlags(cmd),
+	req := engine.ProfileUpdateRequest{Scopes: given, Names: args, All: all, DryRun: f.dry, Flags: flags, Rerun: rerunFlags(cmd, f.trust), Trust: f.trust, Receipt: a.receipt(cmd, f.trust, f.yes),
 		CannotAsk: !p.Interactive()}
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
 	// Unpaged, the content is capped, naming the command that lists all of a profile's.
@@ -69,26 +76,73 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 		}
 	}
 	show := func(rps []engine.RemoteProfile) { pg.show(cmd.ErrOrStderr(), stderr, listAll(rps[0]), printer(rps)) }
-	switch {
-	case f.trust:
-		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
-			if !a.json {
-				show(rps)
-			}
-			return true, nil
+	req.Show = func(rps []engine.RemoteProfile) {
+		if !a.json {
+			show(rps)
 		}
-	case p.Interactive():
+	}
+	if p.Interactive() {
 		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
 			show(rps)
 			return p.Confirm("Update " + rps[0].Profile + "?")
 		}
 	}
+	// With --trust the command shows one receipt (Plan 9 R-9-5, CR3): the update stages the
+	// profiles it keeps, each scope's sync runs up to its receipt against them, and only the yes to
+	// the receipt of all of them writes the profiles, records the grants and applies each scope.
+	batch := f.trust != 0 && !f.dry
+	if batch {
+		req.Batch = &engine.TrustBatch{}
+		defer eng.DropStaged()
+	}
 	res, err := eng.UpdateProfile(cmd.Context(), req)
-	if stopped, ok := errors.AsType[*engine.UpdateStoppedError](err); ok {
-		return a.updateStopped(cmd, eng, stopped, flags)
+	if stopped, ok := errors.AsType[*engine.UpdateStoppedError](err); ok && batch {
+		if errors.Is(stopped.Err, ErrAborted) || errors.Is(stopped.Err, context.Canceled) {
+			return &abortedError{"aborted; nothing was updated."}
+		}
+		return stopped.Err // nothing was written
+	} else if ok {
+		return a.updateStopped(cmd, eng, stopped, later)
 	}
 	if err != nil {
 		return err
+	}
+	var passes []*syncPass
+	if batch && slices.ContainsFunc(res.Updates, func(u engine.ProfileOutcome) bool { return u.Outcome == engine.UpdateUpdated }) {
+		var scopes []engine.Scope
+		var applies [][]string
+		for _, u := range res.Scopes {
+			if len(u.Apply) > 0 {
+				scopes, applies = append(scopes, u.Of), append(applies, u.Apply)
+			}
+		}
+		var failed int
+		passes, failed, err = a.collectSyncs(cmd, eng, pg, scopes, applies, nil, scoped, f.trust, req.Batch.Items, runWithout(cmd, args))
+		aborted := errors.Is(err, ErrAborted) || errors.Is(err, context.Canceled)
+		if failed >= 0 && aborted {
+			return &abortedError{"aborted; nothing was updated."} // a Cancel, Ctrl+C or a No to the removals (M1)
+		}
+		if failed >= 0 {
+			// A scope's sync refused before the receipt (R-9-15): the update is kept, after the
+			// receipt of its own items, and that sync refuses again below with the hints that apply
+			// it later.
+			passes, err = nil, nil
+			if len(req.Batch.Items) > 0 {
+				_, err = a.receipt(cmd, f.trust, f.yes)(req.Batch.Items)
+			}
+		}
+		if errors.Is(err, ErrAborted) {
+			return &abortedError{"aborted; nothing was updated."}
+		}
+		if err != nil {
+			return err
+		}
+		if err := eng.CommitStaged(req, res); err != nil {
+			if stopped, ok := errors.AsType[*engine.UpdateStoppedError](err); ok {
+				return a.updateStopped(cmd, eng, stopped, later) // a later profile changed: what was written is said
+			}
+			return err
+		}
 	}
 	if !slices.ContainsFunc(res.Updates, func(u engine.ProfileOutcome) bool { return u.Outcome != engine.UpdateDeclined }) && len(res.Updates) > 0 {
 		// Every profile declined: the run's notices are still said.
@@ -118,17 +172,16 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 			several++
 		}
 	}
-	// Without a scope flag, --trust answered only the profiles' consent: a scope's own trust
-	// question is asked, never answered by it (ruling R-6b3c-7; off a terminal the engine refused
-	// before any network contact when the found project had changes to trust).
-	scoped := f
-	scoped.trust = f.trust && len(given) > 0
 	for i, u := range res.Scopes {
 		d := updateScopeDoc{UpdateScope: u}
 		if len(u.Apply) > 0 {
-			synced, more, err := a.syncScope(cmd, eng, pg, u.Of, u.Apply, nil, scoped)
+			fi := scoped
+			if passes != nil {
+				fi.pass, passes = passes[0], passes[1:]
+			}
+			synced, more, err := a.syncScope(cmd, eng, pg, u.Of, u.Apply, nil, fi)
 			if err != nil {
-				return updateNotApplied(eng, doc, u, res.Scopes[i+1:], flags, outputFlags(cmd), err)
+				return updateNotApplied(eng, doc, u, res.Scopes[i+1:], later, outputFlags(cmd), err)
 			}
 			d.Sync = synced
 			if !a.json {
@@ -188,7 +241,7 @@ func failedErr(res *engine.ProfileUpdateResult) error {
 }
 
 // applyLater is the lola sync of each of scopes that applies what the updates move there,
-// keeping the run's hook flags and -y, and its output flags (flags).
+// keeping the run's --trust for a sync and -y, and its output flags (flags).
 func applyLater(eng *engine.Engine, scopes []engine.UpdateScope, flags []string) []string {
 	var out []string
 	for _, u := range scopes {
@@ -202,13 +255,13 @@ func applyLater(eng *engine.Engine, scopes []engine.UpdateScope, flags []string)
 // updateNamesRefusal refuses the names of an --update the run cannot take (Plan 6b §19 P21): names
 // with --all; neither, listing your remote profiles with both forms; and a name given twice (go
 // and remote:go are one). Each hint is the run, flags kept (runWithout), but one that names
-// profiles you did not name drops the answers: --trust, -y and the hook flags (ruling R-6b3c-8).
+// profiles you did not name drops the answers: --trust and -y (ruling R-6b3c-8).
 func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, all bool) error {
 	switch {
 	case all && len(args) > 0:
 		// A hint for more profiles than were named answers no question for them (ruling R-6b3c-8).
 		return errs.WithHints(errors.New("--all updates every remote profile you have, and takes no names"),
-			"update every one: "+runWithout(cmd, nil, "trust", "yes", "allow-hooks", "allow-runtime-hooks"),
+			"update every one: "+runWithout(cmd, nil, "trust", "yes"),
 			"or only those named: "+runWithout(cmd, args, "all"))
 	case len(args) == 0 && !all:
 		names, err := eng.RemoteProfileNames()
@@ -217,7 +270,7 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 		}
 		if len(names) == 0 {
 			return errs.WithHints(errors.New("you have no remote profiles to update"),
-				"see the profiles you have: "+runWithout(cmd, nil, "update", "yes", "trust", "dry-run", "allow-hooks", "allow-runtime-hooks"))
+				"see the profiles you have: "+runWithout(cmd, nil, "update", "yes", "trust", "dry-run"))
 		}
 		var qs []string
 		for _, n := range names {
@@ -228,8 +281,8 @@ func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, a
 			listed[i] = untrusted.Text(q, untrusted.MaxName)
 		}
 		return errs.WithHints(fmt.Errorf("--update needs the remote profiles to update, or --all; you have %s", strings.Join(listed, ", ")),
-			"name them: "+runWithout(cmd, qs, "trust", "yes", "allow-hooks", "allow-runtime-hooks"),
-			"or every one: "+runWithout(cmd, nil, "trust", "yes", "allow-hooks", "allow-runtime-hooks")+" --all")
+			"name them: "+runWithout(cmd, qs, "trust", "yes"),
+			"or every one: "+runWithout(cmd, nil, "trust", "yes")+" --all")
 	}
 	var once, seen []string
 	twice := ""
@@ -339,7 +392,7 @@ func (a *app) updateStopped(cmd *cobra.Command, eng *engine.Engine, stopped *eng
 // updateNotApplied is the end of updates kept but not applied in scope u, whose sync failed or
 // was declined with err, before the scopes in rest were reached (Plan 6b §19 P20): it says so,
 // with the lola sync that applies them later in u and in each of rest that they move something in
-// (keeping the run's hook flags and -y, and display, its output flags), but for a conflict in u, which that sync would meet again:
+// (keeping the run's --trust for a sync and -y, and display, its output flags), but for a conflict in u, which that sync would meet again:
 // u's is then the sync with --force, without the run's answers, when --force overrides every
 // conflict, and none otherwise. A No at the sync's question is an abort, which says those
 // commands in its message (an abort prints no hints), unless a profile failed; the --json error
@@ -402,7 +455,8 @@ type updateError struct {
 func (e *updateError) Error() string { return e.err.Error() }
 func (e *updateError) Unwrap() error { return e.err }
 
-// JSONFields carries the run's document beside error and hints.
+// JSONFields carries the run's document beside error and hints, and trusted: the profiles' grants
+// and what each scope's sync recorded, the failed one's included (R-9-16).
 func (e *updateError) JSONFields() map[string]any {
 	fields := map[string]any{}
 	if f, ok := errors.AsType[jsonFielder](e.err); ok {
@@ -410,6 +464,17 @@ func (e *updateError) JSONFields() map[string]any {
 	}
 	maps.Copy(fields, map[string]any{"remote_profiles": e.doc.Profiles, "notices": e.doc.Notices, "dry_run": e.doc.DryRun,
 		"updates": e.doc.Updates, "scopes": e.doc.Scopes})
+	var done []*engine.SyncResult
+	for _, s := range e.doc.Scopes {
+		done = append(done, s.Sync)
+	}
+	trusted := slices.Clone(e.doc.Trusted)
+	for _, c := range written(done, e.err) {
+		if !slices.Contains(trusted, c) {
+			trusted = append(trusted, c)
+		}
+	}
+	fields["trusted"] = append([]engine.Consent{}, trusted...)
 	return fields
 }
 

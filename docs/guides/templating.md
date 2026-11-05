@@ -235,8 +235,9 @@ modules:
 - **Checked before rendering.** An entry setting a var the module does not declare, or a value
   of another type than its default, refuses the run (`project.yml: modules[review-kit].vars.strict:
   review-kit's default is true or false; this is a string`; a whole number and a decimal are one
-  type, so `temperature: 1` overrides a default of `0.7`), with the hint `lola cache info
-  review-kit` when your cache's current version is the one refused. `lola check` renders with
+  type, so `temperature: 1` overrides a default of `0.7`), with the hint `lola info
+  --project review-kit` (the run's scope and output flags) when your cache's current version is the
+  one refused. `lola check` renders with
   the winning entry's vars when that entry's source is the one checked (the same location and
   path, marketplace address, or the source your cache recorded for a module named by its cache
   name), else with the defaults; a bad override is a `vars-override` skip finding and the check
@@ -247,7 +248,7 @@ modules:
   about like any change, and a hook a var changes is asked about again. `lola install` keeps a
   trusted entry's vars when it rewrites the entry. `lock.json` records the overrides each
   module rendered with (`rendered_with.vars`).
-- **Decimals keep their point.** `lola cache info` and the trust prompt show a decimal with its
+- **Decimals keep their point.** `lola info` and the trust prompt show a decimal with its
   point (`temperature = 2.0`), and `2.0` and `2` are different values: changing one to the other
   renders again and is asked about again, since a filter such as `divided_by` gives a different
   result for each.

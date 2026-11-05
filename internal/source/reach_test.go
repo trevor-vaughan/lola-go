@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -36,6 +37,15 @@ var _ = Describe("CheckReachable", func() {
 		for _, ref := range []string{"main", "v1", ""} {
 			Expect(check(r.url, ref, first)).To(Succeed(), "ref %q", ref)
 		}
+		expectNothingStaged()
+	})
+
+	It("takes a ref that is a full commit SHA in capitals as that commit, never a branch or tag lookup", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
+		first := r.rev("HEAD")
+		Expect(check(r.url, strings.ToUpper(first), first)).To(Succeed())
+		second := r.commit(map[string]string{"commands/a.md": "B"})
+		Expect(check(r.url, strings.ToUpper(second), first)).To(Succeed())
 		expectNothingStaged()
 	})
 

@@ -78,13 +78,19 @@ type Engine struct {
 	// (Plan 7 §5.4), timed with Now; specs lower them.
 	TemplateLimits templating.Limits
 	TemplateBudget TemplateBudget
+	// staged is the remote profiles an update in a batch keeps until the command's receipt is
+	// answered (CommitStaged), by path; the layers of the command's syncs read them in place.
+	staged map[string]stagedRemote
 }
 
-// New returns an Engine over the real store and every registered target.
+// New returns an Engine over the real store and every registered target. The store dates
+// last_used by e.Now, read at each use, so a spec that replaces Now fakes the day (Plan 9 A14).
 func New(p paths.Paths) *Engine {
-	return &Engine{Paths: p, Store: store.New(p, targets.IDs()), Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
+	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
 		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
 		TemplateBudget: TemplateBudget{RunOutput: 32 << 20, RunTime: 20 * time.Second}}
+	e.Store = store.New(p, targets.IDs(), func() time.Time { return e.Now() })
+	return e
 }
 
 // Options apply to install, uninstall and render.
@@ -106,20 +112,48 @@ type Options struct {
 	// entryFrom is the layer the entry planned comes from, "" for the scope's manifest, which a
 	// refusal of its vars names (checkVars).
 	entryFrom string
+	// askScripts says the run is a sync, which asks about its project's install scripts even when
+	// it writes no copy for them to wrap: a pulled project.yml that adds or changes one asks (Plan
+	// 9 §7).
+	askScripts bool
 
-	// Install hooks (§9.1). AllowHooks grants consent for this run. Ask, when set, asks the
-	// user about hooks without a recorded consent; a yes is recorded. HookOutput receives
-	// the hooks' stdout and stderr.
-	AllowHooks bool
+	// Trust is the kinds of trust the run's --trust grants (Plan 9 §3.4): an item of a kind it
+	// covers is not asked about but shown once to Receipt, which, when set, is called before the
+	// first write and may answer No (ErrDeclined); the grants are recorded only after it.
+	Trust   TrustKinds
+	Receipt func([]Consent) (bool, error)
+	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
+	// a refusal for want of trust hints; nil gives no such hint.
+	Rerun func(TrustKinds) string
+	// Batch, when set, takes the run's covered items and grants at its receipt instead, which then
+	// stops the run with ErrBatched: the caller asks one receipt for several runs (TrustBatch).
+	Batch *TrustBatch
+	// Expect, when set, is the batch whose one receipt the user answered: the run asks no receipt,
+	// and records its grants just before its own apply only when each is one the batch holds, by
+	// key and digest, and each entries or profiles item one it showed; else it is ErrTrustChanged,
+	// with nothing of it written (R-9-16).
+	Expect *TrustBatch
+
+	// Install hooks (§9.1). Ask, when set, asks the user about hooks without a recorded consent
+	// that Trust does not cover; a yes is recorded. HookOutput receives the hooks' stdout and
+	// stderr.
 	Ask        func(module string, hooks []HookScript) (bool, error)
 	HookOutput io.Writer
+	// AskScript, when set, asks the user to trust a project's install script without a recorded
+	// consent that Trust does not cover (Plan 9 §5.4); a yes is recorded once the run's receipt is
+	// answered yes (A23). Run is the user's
+	// command, "lola install", which a refusal for want of that trust names.
+	AskScript func(ScriptQuestion) (bool, error)
+	Run       string
 
 	// Runtime hooks (Plan 5b design §7.3), which an assistant runs on its own events.
-	// AllowRuntimeHooks grants and records consent to the hooks the summary lists;
-	// AskRuntimeHooks, when set, asks the user about hooks without a recorded consent, and a
-	// yes is recorded. AllowHooks never covers them.
-	AllowRuntimeHooks bool
-	AskRuntimeHooks   func(module string, hooks []RuntimeHook) (bool, error)
+	// AskRuntimeHooks, when set, asks the user about hooks without a recorded consent that Trust
+	// does not cover, and a yes is recorded.
+	AskRuntimeHooks func(module string, hooks []RuntimeHook) (bool, error)
+
+	// PreInstall and PostInstall are install's --pre-install and --post-install scripts (Plan 9
+	// §5.1), which wrap every module copy the run installs or replaces; Given "" for none.
+	PreInstall, PostInstall FlagScript
 
 	// Display is the run's output flags (--json, --plain, --no-pager as given), which every
 	// command a marketplace hint or notice names keeps (Plan 6c §11.3), as does the uninstall a
@@ -136,6 +170,11 @@ type MCPRun struct {
 	Name      string `json:"name"`
 	Transport string `json:"transport"`
 	Runs      string `json:"runs"`
+	// name is the server's name as the module gives it, and argv and url what it runs as Runs
+	// shows it, expanded and uncleaned: lola info shows them per assistant.
+	name string
+	argv []string
+	url  string
 }
 
 // ModuleResult summarizes one module of an operation.
@@ -155,6 +194,9 @@ type ModuleResult struct {
 	Market *manifest.MarketRef `json:"market,omitempty"`
 
 	renderedWith *ledger.RenderedWith // what its templates rendered with, which lock.json records
+	// hooksKept says an install without consent keeps the module's copy and runs none of its
+	// hooks: the copy holds the version already and no post-install hook is pending.
+	hooksKept bool
 }
 
 // Notice levels.
@@ -176,14 +218,25 @@ type Result struct {
 	Steps    []plan.Step      `json:"steps"`
 	Findings []target.Finding `json:"findings"`
 	Notices  []Notice         `json:"notices"`
-	DryRun   bool             `json:"dry_run"`
+	// Scripts is each install script for each module and target, in run order (Plan 9 §5.6).
+	Scripts []ScriptRun `json:"scripts"`
+	DryRun  bool        `json:"dry_run"`
+	// Trusted is what the run's --trust covers (Plan 9 §3.4, §8), and under -n what it would:
+	// [] when nothing, and nil, so absent from the JSON, for a command that takes no --trust.
+	Trusted []Consent `json:"trusted,omitzero"`
 	// remedies are the hints of the modules render left out, in module order, which a --strict
 	// refusal names instead of its generic advice (Plan 6a §10.3).
 	remedies []string
+	// grants are the consent.json records Trusted's items give, written after the receipt; needs
+	// is the kinds of trust the run met an item of that would be refused without it (R-9-6).
+	grants []grant
+	needs  TrustKinds
+	// recorded is the items whose grants confirmTrusted wrote, which a later failure carries.
+	recorded []Consent
 }
 
 func newResult(dry bool) *Result {
-	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, DryRun: dry}
+	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, Scripts: []ScriptRun{}, DryRun: dry}
 }
 
 // InstallRequest is one install argument (§7.1) with its --ref and --path.
@@ -205,8 +258,9 @@ type InstallRequest struct {
 }
 
 // VersionRef names one cached version of a module. commit is the commit a marketplace entry's
-// version was fetched at, which the cache's heads may not record: a catalog's commit pin never
-// moves one (Plan 6c §6.4).
+// version, or the git version lola info showed, was fetched at, which the cache's heads may not
+// record: a catalog's commit pin never moves one (Plan 6c §6.4), and info's install pins the
+// commit in place of the ref it fetched (Plan 9 §4.3).
 type VersionRef struct {
 	Name   string `json:"name"`
 	ID     string `json:"id"`
@@ -340,6 +394,9 @@ func (e *Engine) target(id string) (target.Target, error) {
 
 // Manifest loads the scope's manifest.
 func (e *Engine) Manifest(sc Scope) (*manifest.Manifest, error) {
+	if sc.Kind == target.User {
+		return manifest.LoadUser(e.files(sc).manifest)
+	}
 	return manifest.Load(e.files(sc).manifest)
 }
 
@@ -435,11 +492,11 @@ func (e *Engine) lock(sc Scope) (func(), error) {
 // It does not sweep (sweepRuns): it has no notices to report a failed sweep in, and the next
 // install, render or cache update sweeps.
 func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (_ store.Version, err error) {
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return store.Version{}, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	return e.fetchAs(ctx, spec, "", "", run)
 }
 
@@ -476,11 +533,13 @@ func canonicalRoot(dir string) string {
 // have, when it names a module, is the version this request already resolved to (fetched for
 // another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
 // entryRef is the ref the scope's manifest records for a name argument: without --ref the
-// name resolves to the cache head for it (Plan 6a §10.1). Fetches stage in the run directory run.
+// name resolves to the cache head for it (Plan 6a §10.1). A full-SHA ref, either one, is recorded
+// lower-cased (R-9-31). Fetches stage in the run directory run.
 // display is the run's output flags, which the `lola cache list` hint of the not-a-source
 // refusal keeps.
 func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef, run string,
 	display []string) (manifest.Entry, store.Version, bool, error) {
+	r.Ref, entryRef = source.RecordedRef(r.Ref), source.RecordedRef(entryRef)
 	if r.market != nil {
 		return e.resolveEntry(ctx, sc, r, have, run)
 	}
@@ -524,9 +583,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 		return manifest.Entry{}, store.Version{}, false, err
 	}
 	if !ok {
-		return manifest.Entry{}, store.Version{}, false, errs.WithHints(
-			fmt.Errorf("%q is neither a module in your cache nor a source; sources are %s", r.Arg, source.AcceptedForms),
-			"cached modules: "+errs.ShellJoin(append([]string{"lola", "cache", "list"}, display...)))
+		return manifest.Entry{}, store.Version{}, false, notASource(r.Arg, display)
 	}
 	spec.Ref, spec.Path = r.Ref, r.Path
 	if r.Version != nil {
@@ -551,12 +608,61 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	}
 	v, fetched := have, false
 	if v.Name == "" {
+		if v, err = e.cachedCommit(spec, run); err != nil {
+			return manifest.Entry{}, store.Version{}, false, err
+		}
+	}
+	if v.Name == "" {
 		if v, err = e.fetchAs(ctx, spec, "", "", run); err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
 		fetched = true
 	}
 	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, fetched, nil
+}
+
+// cachedCommit is the cached version of the git source spec at spec.Ref when that is a full commit
+// SHA in any case (Plan 9 R-9-21, R-9-27): a module the cache holds from exactly that location, path and component
+// selection, whose version records that commit as the one its fetch resolved. Its content is
+// hashed again into the run directory run before it is used (store.Pinned). A version that is
+// not cached, or any other ref, is the zero Version: the source is fetched.
+func (e *Engine) cachedCommit(spec source.Spec, run string) (store.Version, error) {
+	commit, ok := source.CommitRef(spec.Ref)
+	if spec.Kind != source.KindGit || !ok {
+		return store.Version{}, nil
+	}
+	names, err := e.Store.Names()
+	if err != nil {
+		return store.Version{}, err
+	}
+	for _, name := range names {
+		o, found, err := e.Store.Origin(name)
+		if err != nil || !found || o.Type != string(source.KindGit) || o.Source != spec.Location || o.Path != spec.Path ||
+			!o.Components.Equal(spec.Components) {
+			continue // an index lola cannot read is no version of this source
+		}
+		digest, err := e.Store.AtCommit(name, commit)
+		if err != nil {
+			return store.Version{}, err
+		}
+		if digest == "" {
+			continue // another name of this source, cached at other commits
+		}
+		v, found, err := e.Store.Pinned(name, digest, run)
+		if err != nil || !found {
+			return store.Version{}, err
+		}
+		v.Commit = commit
+		return v, nil
+	}
+	return store.Version{}, nil
+}
+
+// notASource refuses arg, an argument of install or info that is neither a module in the cache
+// nor a source, hinting the cache's listing with the run's output flags (display).
+func notASource(arg string, display []string) error {
+	return errs.WithHints(fmt.Errorf("%q is neither a module in your cache nor a source; sources are %s", arg, source.AcceptedForms),
+		"cached modules: "+errs.ShellJoin(append([]string{"lola", "cache", "list"}, display...)))
 }
 
 // recordable refuses an install whose source, ref or path sc's manifest and ledger could not
@@ -644,16 +750,19 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		mr.Targets = append(mr.Targets, id)
 	}
 	for _, s := range m.MCPServers {
-		runs := target.Expand(s.URL, pctx)
+		url := target.Expand(s.URL, pctx)
+		runs := url
+		var argv []string
 		if s.Transport == module.TransportStdio {
 			// Each argument quoted unless plain, so where one ends stays visible, as consent shows argv.
 			words := make([]string, 0, len(s.Args)+1)
 			for _, w := range append([]string{s.Command}, s.Args...) {
-				words = append(words, word(target.Expand(w, pctx)))
+				argv = append(argv, target.Expand(w, pctx))
+				words = append(words, word(argv[len(argv)-1]))
 			}
-			runs = strings.Join(words, " ")
+			runs, url = strings.Join(words, " "), ""
 		}
-		mr.MCPServers = append(mr.MCPServers, MCPRun{Name: shown(s.Name), Transport: shown(s.Transport), Runs: shown(runs)})
+		mr.MCPServers = append(mr.MCPServers, MCPRun{Name: shown(s.Name), Transport: shown(s.Transport), Runs: shown(runs), name: s.Name, argv: argv, url: url})
 	}
 	var overrides map[string]any
 	if ment != nil {
@@ -722,10 +831,13 @@ func strictError(finds []target.Finding, rerun string, offerForce bool, remedies
 func (e *Engine) execute(ctx context.Context, sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy,
 	opts Options, res *Result, after func(*plan.Plan) error) error {
 	pr, err := e.prepare(sc, led, changes, copies, nil, opts, res)
-	if err != nil || opts.DryRun {
+	if err != nil {
 		return err
 	}
-	return e.commit(ctx, pr, opts, res, nil, after)
+	if err := e.confirmTrusted(opts, res); err != nil || opts.DryRun {
+		return err
+	}
+	return res.afterGrants(e.commit(ctx, pr, opts, res, nil, after))
 }
 
 // prepared is a scope's computed plan whose every refusal and prompt has passed: what commit
@@ -734,6 +846,7 @@ type prepared struct {
 	sc      Scope
 	plan    *plan.Plan
 	jobs    []*hookJob
+	scripts scriptPlan // the install scripts that wrap jobs, and the pending ones that run alone
 	changes []plan.ModuleChange
 	copies  []moduleCopy
 }
@@ -773,7 +886,36 @@ func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, cha
 // hook consent. It writes nothing but recorded consents.
 func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy, replace []plan.Replaceable,
 	opts Options, res *Result) (*prepared, error) {
-	if err := e.consentRuntimeHooks(sc, changes, opts, res); err != nil {
+	// Install scripts are checked before anything is asked (Plan 9 §5.5), when a copy may be
+	// installed or replaced for them to wrap; planScripts plans them once hooks decided which.
+	// A sync that writes no copy asks only about its project's scripts, and a pending one runs alone:
+	// your own and the flag's wrap nothing, so nothing checks them (I2, RR3).
+	var all []installScript
+	read := true
+	switch {
+	case slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.runHooks }):
+		var err error
+		if all, err = e.installScripts(sc, opts); err != nil {
+			return nil, err
+		}
+	case opts.askScripts && sc.Kind == target.Project || slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.pendingScript }):
+		ps, err := e.projectScripts(sc)
+		if err == nil {
+			all, err = runOrder(ps)
+		}
+		if err != nil {
+			return nil, err
+		}
+	default:
+		read = false
+	}
+	// A pending project post-install script whose key project.yml no longer has is pending no more.
+	postKept := !read || slices.ContainsFunc(all, func(s installScript) bool { return s.source == ScriptProject && s.event == PostInstall })
+	unasked, err := e.unaskedKinds(copies, all, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := e.consentRuntimeHooks(sc, changes, opts, unasked, res); err != nil {
 		return nil, err
 	}
 	if opts.Strict {
@@ -799,7 +941,11 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 	}
 	res.Steps = append(res.Steps, p.Steps...)
 	res.Findings = append(res.Findings, driftFindings(p.Steps, e.files(sc).modules)...)
-	jobs, err := e.planHooks(sc, copies, opts, res)
+	jobs, err := e.planHooks(sc, copies, opts, unasked, res)
+	if err != nil {
+		return nil, err
+	}
+	sp, err := e.planScripts(sc, all, jobs, copies, opts, res)
 	if err != nil {
 		return nil, err
 	}
@@ -811,18 +957,23 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		if entry == nil {
 			continue
 		}
-		ran := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name })
+		ran := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name && len(j.scripts) > 0 })
 		post := declaresPostInstall(c.hooks)
 		kept := !c.runHooks || c.forced && !ran
 		declined := !kept && !ran && post
 		entry.HooksPending = declined || kept && post && led.Modules[c.name] != nil && led.Modules[c.name].HooksPending
+		// So does the project's post-install script declined for want of trust (Plan 9 §5.5),
+		// on a copy it would have wrapped; a copy nothing wraps keeps its mark, which a pending
+		// script that runs alone clears only once it has run (commit).
+		wrapped := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name })
+		entry.ScriptsPending = wrapped && sp.declinedPost || !wrapped && postKept && led.Modules[c.name] != nil && led.Modules[c.name].ScriptsPending
 	}
-	return &prepared{sc: sc, plan: p, jobs: jobs, changes: changes, copies: copies}, nil
+	return &prepared{sc: sc, plan: p, jobs: jobs, scripts: sp, changes: changes, copies: copies}, nil
 }
 
-// commit applies a prepared scope: module copies, pre-install hooks, the plan with the
-// manifest edits man (none when empty) under the scope lock, after (when set), then
-// post-install hooks.
+// commit applies a prepared scope: module copies, pre-install scripts and hooks, the plan with
+// the manifest edits man (none when empty) under the scope lock, after (when set), then
+// post-install hooks and scripts, and the pending post-install scripts that run alone.
 func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man []plan.ManifestWrite, after func(*plan.Plan) error) error {
 	sc, p := pr.sc, pr.plan
 	if err := e.ownGitignore(sc); err != nil {
@@ -837,7 +988,7 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 	if err != nil {
 		return err
 	}
-	if err := e.runHooks(ctx, sc, pr.jobs, PreInstall, opts, res); err != nil {
+	if err := e.runHooks(ctx, sc, pr.jobs, pr.scripts.run, PreInstall, opts, res); err != nil {
 		return errors.Join(err, sw.rollback())
 	}
 	committed := false
@@ -857,6 +1008,19 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 			errs = append(errs, os.RemoveAll(filepath.Join(dir, c.Name)))
 		}
 	}
-	errs = append(errs, e.runHooks(ctx, sc, pr.jobs, PostInstall, opts, res))
+	errs = append(errs, e.runHooks(ctx, sc, pr.jobs, pr.scripts.run, PostInstall, opts, res))
+	// A pending script that ran alone on every target is pending no more; one that failed or
+	// changed stays pending, so the next sync naming its module offers it again.
+	cleared := false
+	for _, j := range pr.scripts.alone {
+		from := len(res.Scripts)
+		errs = append(errs, e.runScripts(ctx, sc, j, pr.scripts.pending, PostInstall, opts, res))
+		if !slices.ContainsFunc(res.Scripts[from:], func(s ScriptRun) bool { return s.Status != HookRan }) {
+			p.Ledger.Modules[j.name].ScriptsPending, cleared = false, true
+		}
+	}
+	if cleared {
+		errs = append(errs, p.Ledger.Save(e.files(sc).ledger))
+	}
 	return errors.Join(errs...)
 }

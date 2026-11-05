@@ -63,6 +63,9 @@ type Result struct {
 	Markets      []Market      `json:"markets"`
 	Home         HomeResult    `json:"home"`
 	Warnings     []string      `json:"warnings"`
+	// Trusted is what the run's --trust covered in every destination, each item once (Plan 9 §8):
+	// under -n, what it would cover.
+	Trusted []engine.Consent `json:"trusted"`
 }
 
 // DestResult is one destination of a Result: what lola-go installs, which recorded paths it
@@ -155,6 +158,8 @@ type runner struct {
 	// holds names the MCP entries left in place that reference a path (a module copy, the
 	// Python home): such a path stays (§12.5).
 	holds map[string][]string
+	// written is what the destinations' installs recorded of what --trust covers, each item once.
+	written []engine.Consent
 	// blind is set when an MCP settings file could not be read: it may reference anything.
 	blind string
 }
@@ -170,7 +175,8 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	st := p.st
 	r := &runner{ctx: ctx, e: e, st: st, opts: opts, holds: map[string][]string{}}
 	rep := &Result{DryRun: true, PythonHome: st.Home, Destinations: []*DestResult{}, Unmappable: p.Unmappable,
-		NotMigrated: p.NotMigrated, Markets: marketReport(p.Markets, opts.Display), Warnings: p.Warnings, Home: HomeResult{Path: st.Home, Action: HomeNone}}
+		NotMigrated: p.NotMigrated, Markets: marketReport(p.Markets, opts.Display), Warnings: p.Warnings, Home: HomeResult{Path: st.Home, Action: HomeNone},
+		Trusted: []engine.Consent{}}
 	dry := opts
 	dry.DryRun = true
 	results := make([]*engine.InstallResult, len(p.Destinations))
@@ -179,6 +185,9 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	for i, d := range p.Destinations {
 		if leds[i], results[i], err = r.previewInstall(d, dry); err != nil {
 			return nil, fmt.Errorf("%s: %w", where(d), r.coachClash(d, leds[i], err))
+		}
+		if results[i] != nil {
+			rep.Trusted = addTrusted(rep.Trusted, results[i].Trusted)
 		}
 	}
 	if err := r.collectHolds(p, results, leds); err != nil {
@@ -196,11 +205,13 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	if opts.DryRun || rep.Nothing {
 		return rep, nil
 	}
-	if err := r.consent(p); err != nil {
+	if err = r.consent(p); err != nil {
 		return nil, err
 	}
+	// From here a failure carries what the destinations recorded (R-9-16), [] before any did.
+	r.written, rep.Trusted = []engine.Consent{}, []engine.Consent{}
 	if r.trash, err = trash.OpenTrash(e.Paths.Trash, e.Now()); err != nil {
-		return nil, err
+		return nil, &engine.TrustedError{Err: err, Trusted: r.written}
 	}
 	rep.DryRun, rep.Trash = false, r.trash.Dir
 	var failed []string
@@ -212,6 +223,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 		}
 		rep.Destinations[i] = dr
 	}
+	rep.Trusted = r.written
 	rep.Markets = r.registerMarkets(p.Markets)
 	rep.Home = r.home(p, rep)
 	if rep.Home.Action == HomeMove {
@@ -244,16 +256,19 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 		why = append(why, "closing the trash failed: "+untrusted.CleanErr(closeErr).Error())
 		hints = append(hints, "the trash is "+untrusted.Text(r.trash.Dir, untrusted.MaxName)+"; its manifest.txt lists everything lola backed up or moved there")
 	}
-	return rep, errs.WithHints(fmt.Errorf("lola migrate did not finish: %s", strings.Join(why, "; ")), hints...)
+	return rep, &engine.TrustedError{Err: errs.WithHints(fmt.Errorf("lola migrate did not finish: %s", strings.Join(why, "; ")), hints...),
+		Trusted: rep.Trusted}
 }
 
-// errConsented ends an install's consent pass where it would start writing.
-var errConsented = errors.New("consent pass complete")
-
-// consent runs every destination's install up to the point it would write, so the install and
-// runtime hook prompts are all answered (and a yes recorded) before anything is written. The
-// installs that follow ask nothing: what was declined here stays declined.
+// consent runs every destination's install up to its receipt, so the install and runtime hook
+// prompts are all answered before anything is written, and collects what --trust covers in every
+// destination, with the yes answers, for one receipt (Plan 9 §3.4, A23), shown once all of them
+// were asked; its No is engine.ErrDeclined. Nothing is recorded here: each destination's install
+// records its own grants just before it writes, when each is one the receipt showed by key and
+// digest, else it fails with engine.ErrTrustChanged, writing nothing (R-9-16, S-M4). The installs
+// that follow ask nothing: what was declined here stays declined.
 func (r *runner) consent(p *Plan) error {
+	batch := &engine.TrustBatch{}
 	for _, d := range p.Destinations {
 		if len(d.Installs) == 0 {
 			continue
@@ -266,13 +281,33 @@ func (r *runner) consent(p *Plan) error {
 		if err != nil {
 			return err
 		}
-		spec.BeforeWrite = func(*engine.InstallResult) error { return errConsented }
-		if _, err := r.e.InstallAll(r.ctx, spec); err != nil && !errors.Is(err, errConsented) {
+		spec.Options.Batch = batch
+		if _, err := r.e.InstallAll(r.ctx, spec); err != nil && !errors.Is(err, engine.ErrBatched) {
 			return fmt.Errorf("%s: %w", where(d), err)
 		}
 	}
-	r.opts.Ask, r.opts.AskRuntimeHooks = nil, nil
+	if len(batch.Items) > 0 && r.opts.Receipt != nil {
+		ok, err := r.opts.Receipt(slices.Clone(batch.Items))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return engine.ErrDeclined
+		}
+	}
+	r.opts.Ask, r.opts.AskRuntimeHooks, r.opts.Receipt, r.opts.Expect = nil, nil, nil, batch
 	return nil
+}
+
+// addTrusted is to with each of items it does not hold yet: a module's hooks consent covers it in
+// every destination, so the receipt lists it once.
+func addTrusted(to, items []engine.Consent) []engine.Consent {
+	for _, c := range items {
+		if !slices.Contains(to, c) {
+			to = append(to, c)
+		}
+	}
+	return to
 }
 
 // coachClash is the one place a refused preview of d's install is coached; led is d's ledger.
@@ -608,9 +643,13 @@ func (r *runner) migrate(d *Destination, dr *DestResult) error {
 			return r.backup(d, decisions, fsteps)
 		}
 		res, err := r.e.InstallAll(r.ctx, spec)
+		if te, ok := errors.AsType[*engine.TrustedError](err); ok {
+			r.written = addTrusted(r.written, te.Trusted)
+		}
 		if err != nil {
 			return err
 		}
+		r.written = addTrusted(r.written, res.Trusted)
 		dr.addInstall(res)
 		for _, f := range fsteps {
 			dr.Replaced = append(dr.Replaced, f.moved())

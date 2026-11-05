@@ -31,8 +31,9 @@ more; never one another layer still wants). Anything else the scope is waiting f
 entry you added to `user.yml` and have not synced, is left to `lola sync`, with a notice (`2 other
 changes are pending → lola sync --user`). Whenever the change removes files it asks first, on a
 terminal; `-y` confirms, and off a terminal without `-y` it refuses, naming the command that
-would, with the profiles by their qualified names. `--trust`, `--allow-hooks` and
-`--allow-runtime-hooks` work as for `lola sync`, except that the trust question offers only Trust all or Cancel: an action applies
+would, with the profiles by their qualified names. `--trust` and its
+[kinds](../usage.md#trust-kinds) work as for `lola sync` (a project profile's changes are
+`profiles`), except that the trust question offers only Trust all or Cancel: an action applies
 all of its changes or none. The new list is written only with a successful apply: a No, a refusal, an error or
 Ctrl+C leaves the old list and the old files. A profile already on (`user:go is already on (2nd
 of 3)`), one not on, or a switch to the current list is a notice and changes nothing. `--on
@@ -175,8 +176,11 @@ lola profile go --remove                                          # delete it; a
   preselected; files whose names are not valid profile names, and `default.yml`, are only counted);
   off a terminal it refuses, naming them, with the command that adds each (that shows each, for
   `-n`). A `--path` the source does not have, and a source without `profiles/`, are refused saying
-  which (`the source has no profiles/ directory at its root`). Off a terminal `--trust` accepts what
-  it shows, and without it lola refuses before any network contact; `-n` shows it and keeps nothing.
+  which (`the source has no profiles/ directory at its root`). Off a terminal `--trust` (the
+  `profiles` kind, all `--add` takes; any other kind, `--trust=entries,profiles` written out
+  included, is refused) accepts what it shows, after its receipt, which on a terminal asks
+  `Proceed?` (`--add` takes no `-y`); without it lola refuses off a terminal before any network
+  contact, hinting the run with `--trust=profiles`; `-n` shows it and keeps nothing.
   A remote profile of that name already kept is refused (`lola profile remote:<name> --update`
   fetches it again; the hint keeps the run's flags but `--trust`, which answered the add, never an
   update's change), and so are the name `default`, a `user:` or `project:` name, and a file in the
@@ -200,8 +204,13 @@ lola profile go --remove                                          # delete it; a
   <source> (commit …, sha256:…)`) and changes nothing; otherwise it shows the old and new pins and
   how each entry changes (`~ example  rules (none) → false`, a new entry with what it brings, a
   dropped one with `-`, `(no entry changes)` when only the file's other fields changed), paged, and
-  asks (`Update remote:go?`); off a terminal `--trust` accepts it, and without it lola refuses
-  before any network contact. Each profile is fetched, shown and asked about on its own, in the
+  asks (`Update remote:go?`); `--trust` (its `profiles` kind) accepts it instead, and off a
+  terminal without it lola refuses before any network contact. With `--trust` of any kind the
+  update writes nothing before one receipt that lists every profile it covers and what each
+  scope's sync covers: it keeps the profiles in memory, runs each scope's sync up to its receipt
+  against them, then, on a yes, writes them and applies each scope; a No, or Ctrl+C at any
+  question, updates nothing (`aborted; nothing was updated.`). A scope's sync refused before the
+  receipt still keeps the update, after a receipt of the profiles, as below. Each profile is fetched, shown and asked about on its own, in the
   order named (by name for `--all`): a No keeps that profile and goes on to the next (`declined
   remote:go; it is kept as it was`); a profile that cannot be fetched, read, checked or written is
   kept as it was and reported (`✗ remote:go was not updated (the error says why)`), the run goes on,
@@ -220,7 +229,7 @@ lola profile go --remove                                          # delete it; a
   run's notices). A profile that changed while you were asked is kept as it was too (`remote:go
   changed while you were asked; nothing was updated`). Without names or `--all` it refuses, listing
   your remote profiles with both forms (`name them: lola profile remote:docs remote:go --update`,
-  `or every one: lola profile --update --all`), which drop `--trust`, `-y` and the hook flags: those
+  `or every one: lola profile --update --all`), which drop `--trust` and `-y`: those
   answered only for what you named; names with `--all`, and a name given twice, are refused, and
   `--all` is refused with every other action. The new profile replaces the old one in one step.
   `--update` asks no scope: the profile is shared by every scope, so lola then applies it in each
@@ -229,11 +238,12 @@ lola profile go --remove                                          # delete it; a
   In each, it applies what the update moves there, the modules whose winning entry it changes, with
   a `lola sync` of them, asking that scope's own questions: before it removes files (`-y`), about
   hooks, and about any project trust the change needs (`--trust`). Without a scope flag, `--trust`
-  answers only the remote profiles' consent, never the found project's trust: on a terminal that
+  answers only the remote profiles' consent, never the found project's trust (its `entries` and
+  `profiles` kinds; the others, `hooks` say, still answer each scope's sync): on a terminal that
   question is asked; off one, a found project with changes you have not trusted refuses the update
   before anything is fetched (`project <dir> has changes you have not trusted (planted), which its
   sync asks about, and no flag named it: --trust then answers only for the remote profiles`),
-  hinting the run with `--project`, or `--scope both`, and `--trust`. That check reads the project's
+  hinting the run with `--project`, or `--scope both`, and `--trust=` the kinds it needs. That check reads the project's
   trust before the update, and a project profile that extends the updated remote profile changes
   what that project trusts: an unscoped `--trust` run off a terminal can then write the profile and
   have the project's sync refuse. The error's `apply it later: lola sync --project …` hint applies
@@ -246,13 +256,13 @@ lola profile go --remove                                          # delete it; a
   others catch up later (`every other checkout that uses remote:go picks the update up at its next
   lola sync`). A known scope lola cannot read refuses the update before the question, with the
   command that updates it in the other scope only (`or update it at user scope only: lola profile
-  --user remote:go --update`), without `-y`, `--trust` or the hook flags, since the run's answers
+  --user remote:go --update`), without `-y` or `--trust`, since the run's answers
   were given for every scope at once; without a scope flag, the message names the changes in the
   project you have not trusted. `--scope both` means the same
   as no scope flag (with `-C <dir>`, that project and user scope); with no `.lola/` project to name,
   or your home directory as that project (never taken as a found project either, with a notice), it
   is refused, hinting the run with `--user` in its place (`update at user scope only: lola profile
-  go --update --user`; `-C`, `-y`, `--trust` and the hook flags are dropped too). `--project`, `--user` or `-C <dir>` alone narrows the
+  go --update --user`; `-C`, `-y` and `--trust` are dropped too). `--project`, `--user` or `-C <dir>` alone narrows the
   update to that scope; `--project` or `-C` naming your home directory is refused before anything is
   fetched (`project scope at <home> is your home directory, where user scope installs`), hinting the
   run with `--user` in its place. The other scope you can see from there (user scope, or from user
@@ -265,15 +275,15 @@ lola profile go --remove                                          # delete it; a
   with a hint `apply it later: lola sync --project example` for that scope and each one not
   reached). A conflict would stop that sync again: a file you edited by hand gives the hint `apply
   it later, overwriting what the conflicts list: lola sync --project example --force` instead
-  (without `-y` or the hook flags), and a file another module owns gives none for that scope, the
+  (without `-y` or `--trust`), and a file another module owns gives none for that scope, the
   conflict naming what to remove; every such hint keeps `--json`, `--plain` and `--no-pager`; a No at that sync's own question is an abort, whose message names those commands (`…
   Apply it later: lola sync --project example, then lola sync --user example.`). Under `--json` the
   error document carries the run's document (`remote_profiles`, `updates`, `notices`, `scopes`
-  done). Every hint that repeats the update keeps the run's flags (`--trust`, `-n`, `--json`,
-  `--plain`, `--no-pager`, `--allow-hooks`, `--allow-runtime-hooks`, `-y`), and a scope flag only
-  when you gave one, except where a hint narrows the run to one of its scopes or names more
-  profiles than you named (no `--trust`, `-y` or hook flags). A `lola sync` hint keeps the hook
-  flags and `-y` only when it names the modules the update moves; a whole scope's sync carries none,
+  done). Every hint that repeats the update keeps the run's flags (`--trust` as its kinds, `-n`,
+  `--json`, `--plain`, `--no-pager`, `-y`), and a scope flag only when you gave one, except where a
+  hint narrows the run to one of its scopes or names more profiles than you named (no `--trust` or
+  `-y`). A `lola sync` hint keeps `--trust` (the kinds that answer a sync) and `-y` only when it
+  names the modules the update moves; a whole scope's sync carries none,
   since it would answer for changes you never saw. A `--remove` hint never carries `-y`, except the
   `confirm it` hint of its refusal off a terminal, which asks for exactly that answer. `--update` of
   `user:go` or `project:go` is refused: those are files you edit. `--json` gives `remote_profiles`

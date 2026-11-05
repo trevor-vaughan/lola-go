@@ -291,6 +291,29 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("Install m's Claude Code hooks?"))
 	})
 
+	DescribeTable("asks about a project's install script beside the project's root, to run it now or trust it for later runs",
+		func(later bool, question string) {
+			a := &app{getenv: func(k string) string {
+				if k == "LOLA_ACCESSIBLE" {
+					return "1"
+				}
+				return ""
+			}}
+			cmd := NewRootCmd(os.Getenv)
+			cmd.SetIn(&lineReader{lines: []string{"y"}})
+			cmd.SetErr(&out)
+			ok, err := a.askScript(cmd, engine.ScriptQuestion{Event: engine.PreInstall, Path: "ci/check.sh", Root: "/work/proj", SHA256: "ab12", Later: later})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ok).To(BeTrue())
+			Expect(out.String()).To(HavePrefix("The project at /work/proj has a pre-install script. It runs as you, unconfined, for every module lola installs there:\n" +
+				"    ci/check.sh (sha256 ab12)\n" +
+				"  Consent covers only the script listed, not other files it runs; review those too.\n"))
+			Expect(out.String()).To(ContainSubstring(question))
+		},
+		Entry("a copy for it to wrap: run it", false, "Run this project's pre-install script?"),
+		Entry("no copy for it to wrap: trust it for later runs", true, "Trust this project's pre-install script for later runs?"),
+	)
+
 	It("accessible mode: Ctrl+C at a sync question cancels with exit 0", func() {
 		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())

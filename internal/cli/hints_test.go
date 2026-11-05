@@ -58,7 +58,7 @@ var _ = Describe("hints", func() {
 		Entry("sync's trust refusal under --json",
 			func(proj string) []string { return []string{"sync", "-C", proj, "--json"} },
 			func(proj string) []string {
-				return []string{"see them: lola sync -C " + proj + " --json -n", "then accept them: lola sync -C " + proj + " --json --trust"}
+				return []string{"see them: lola sync -C " + proj + " --json -n", "then accept them: lola sync -C " + proj + " --trust=entries --json"}
 			}),
 		Entry("sync's trust refusal under --plain and --no-pager, with -y, which answers only the refusal that accepts",
 			func(proj string) []string {
@@ -66,21 +66,21 @@ var _ = Describe("hints", func() {
 			},
 			func(proj string) []string {
 				return []string{"see them: lola sync -C " + proj + " other --plain --no-pager -n",
-					"then accept them: lola sync -C " + proj + " other --plain --no-pager --trust -y"}
+					"then accept them: lola sync -C " + proj + " other --trust=entries --plain --no-pager -y"}
 			}),
 		Entry("sync's trust refusal of named modules under --update and --json",
 			func(proj string) []string { return []string{"sync", "other", "-C", proj, "--update", "--json"} },
 			func(proj string) []string {
 				return []string{"see them: lola sync -C " + proj + " other --update --json -n",
-					"then accept them: lola sync -C " + proj + " other --update --json --trust"}
+					"then accept them: lola sync -C " + proj + " other --update --trust=entries --json"}
 			}),
-		Entry("sync's trust refusal after --force and --allow-hooks, which it repeats and never adds",
+		Entry("sync's trust refusal after --force and --trust=hooks, which it repeats, adding only the kinds missing",
 			func(proj string) []string {
-				return []string{"sync", "-C", proj, "--force", "--allow-hooks", "--json"}
+				return []string{"sync", "-C", proj, "--force", "--trust=hooks", "--json"}
 			},
 			func(proj string) []string {
-				return []string{"see them: lola sync -C " + proj + " --force --allow-hooks --json -n",
-					"then accept them: lola sync -C " + proj + " --force --allow-hooks --json --trust"}
+				return []string{"see them: lola sync -C " + proj + " --force --trust=hooks --json -n",
+					"then accept them: lola sync -C " + proj + " --force --trust=entries,hooks --json"}
 			}),
 		Entry("install's argument that is neither in the cache nor a source, under --json",
 			func(proj string) []string {
@@ -115,7 +115,7 @@ var _ = Describe("hints", func() {
 				return []string{"sync", "kit", "-C", proj, "--plain"}
 			},
 			func(proj string) []string {
-				return []string{"see them: lola sync -C " + proj + " kit --plain -n", "then accept them: lola sync -C " + proj + " kit --plain --trust",
+				return []string{"see them: lola sync -C " + proj + " kit --plain -n", "then accept them: lola sync -C " + proj + " kit --trust=entries --plain",
 					"edited it yourself? lola install -C " + proj + " ./proj/mods/kit --plain"}
 			}),
 		Entry("a profile's trust refusal as it turns on, under --json",
@@ -126,7 +126,7 @@ var _ = Describe("hints", func() {
 			},
 			func(proj string) []string {
 				return []string{"see them: lola profile -C " + proj + " project:review --on --json -n",
-					"then accept them: lola profile -C " + proj + " project:review --on --json --trust"}
+					"then accept them: lola profile -C " + proj + " project:review --on --trust=profiles --json"}
 			}),
 		Entry("uninstall of a module an active profile lists, under --json with -y, which it does not carry to another question",
 			func(proj string) []string {
@@ -144,8 +144,8 @@ var _ = Describe("hints", func() {
 			func(string) []string {
 				return []string{"cached modules: lola cache list --json"}
 			}),
-		Entry("cache info of a module not in your cache, under --json",
-			func(string) []string { return []string{"cache", "info", "nope", "--json"} },
+		Entry("info of an argument that is neither a module in your cache nor a source, under --json",
+			func(string) []string { return []string{"info", "nope", "--json"} },
 			func(string) []string { return []string{"cached modules: lola cache list --json"} }),
 		Entry("cache rm of a module not in your cache, under --plain",
 			func(string) []string { return []string{"cache", "rm", "nope", "-y", "--plain"} },

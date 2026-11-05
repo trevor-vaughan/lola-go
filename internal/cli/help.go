@@ -159,6 +159,10 @@ func aliasedFlagUsages(fs *pflag.FlagSet) string {
 		if as := f.Annotations[flagAliasKey]; len(as) > 0 {
 			c.Name = f.Name + " (--" + strings.Join(as, ", --") + ")"
 		}
+		if shown := f.Annotations[trustShownKey]; len(shown) > 0 {
+			// The empty back-quoted name drops pflag's value placeholder: --trust shows its own.
+			c.Name, c.NoOptDefVal, c.Usage = c.Name+shown[0], "", "``"+c.Usage
+		}
 		out.AddFlag(&c)
 	})
 	return out.FlagUsages()

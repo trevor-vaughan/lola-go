@@ -618,7 +618,7 @@ var _ = Describe("marketplaces", func() {
 		proj := filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		installed, err := e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: proj}, proj, []engine.InstallRequest{{Arg: "@py/hooked"}},
-			engine.Options{Targets: []string{"claude-code"}, AllowHooks: true})
+			engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustHooks})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(filepath.Join(proj, ".claude", "commands", "h.md")).To(BeARegularFile())
 		Expect(installed.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "hooked: catalog install scripts are ignored"}))

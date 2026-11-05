@@ -37,7 +37,8 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	if err != nil {
 		return err
 	}
-	req := engine.ProfileAddRequest{Source: rf.source, Ref: rf.ref, Path: rf.path, DryRun: f.dry, Rerun: rerunFlags(cmd)}
+	req := engine.ProfileAddRequest{Source: rf.source, Ref: rf.ref, Path: rf.path, DryRun: f.dry, Rerun: rerunFlags(cmd, f.trust),
+		Trust: f.trust, Receipt: a.receipt(cmd, f.trust, false)}
 	if len(args) == 1 {
 		req.Name = args[0]
 	}
@@ -62,16 +63,13 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 		}
 	}
 	show := func(rps []engine.RemoteProfile) { pg.show(cmd.ErrOrStderr(), stderr, moreFor(rps[0]), printer(rps)) }
-	switch {
-	case f.trust:
-		// --trust answers the question; what it accepted is still shown, as a record.
-		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
-			if !a.json {
-				show(rps)
-			}
-			return true, nil
+	// --trust answers the question; what it accepted is still shown, as a record.
+	req.Show = func(rps []engine.RemoteProfile) {
+		if !a.json {
+			show(rps)
 		}
-	case p.Interactive():
+	}
+	if p.Interactive() {
 		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
 			show(rps)
 			var names []string

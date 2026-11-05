@@ -77,15 +77,18 @@ func (r FileRef) ID() string { return r.Target + "\x00" + r.Path + "\x00" + r.Ke
 // the targets the module is installed on, sorted, including one that rendered none of its
 // files; an entry written before the field records none (see InstalledTargets).
 type Entry struct {
-	From         string     `json:"from,omitempty"`
-	Source       string     `json:"source"`
-	Ref          string     `json:"ref,omitempty"`
-	Path         string     `json:"path,omitempty"`
-	Commit       string     `json:"commit,omitempty"`
-	Digest       string     `json:"digest"`
-	HooksPending bool       `json:"hooks_pending,omitempty"`
-	Targets      []string   `json:"targets,omitempty"`
-	Artifacts    []Artifact `json:"artifacts"`
+	From         string `json:"from,omitempty"`
+	Source       string `json:"source"`
+	Ref          string `json:"ref,omitempty"`
+	Path         string `json:"path,omitempty"`
+	Commit       string `json:"commit,omitempty"`
+	Digest       string `json:"digest"`
+	HooksPending bool   `json:"hooks_pending,omitempty"`
+	// ScriptsPending says the project's post-install script was declined for want of trust after
+	// this copy was installed and has not run on it since (Plan 9 §5.5).
+	ScriptsPending bool       `json:"scripts_pending,omitempty"`
+	Targets        []string   `json:"targets,omitempty"`
+	Artifacts      []Artifact `json:"artifacts"`
 	// Components is the selection of the module's directory the entry was installed with, which
 	// render's fetch of the version applies again (Plan 6c §4.1).
 	Components *source.Components `json:"components,omitempty"`

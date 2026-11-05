@@ -87,7 +87,7 @@ var _ = Describe("runtime hooks", func() {
 	})
 
 	It("never reach settings.local.json without consent, while the rest of the module installs", func() {
-		for _, opts := range []engine.Options{claudeOnly, {Targets: []string{"claude-code"}, Force: true, AllowHooks: true}} {
+		for _, opts := range []engine.Options{claudeOnly, {Targets: []string{"claude-code"}, Force: true, Trust: engine.TrustHooks}} {
 			res, err := install(opts)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
@@ -136,7 +136,7 @@ var _ = Describe("runtime hooks", func() {
 			return hooks
 		}
 		declined := MatchFields(IgnoreExtras, Fields{"Severity": Equal(target.SeverityWarn), "Module": Equal("deploy"), "Target": Equal("claude-code"),
-			"Kind": Equal("runtime-hook"), "Code": Equal("claude-code/runtime-hooks-declined"), "Hint": ContainSubstring("--allow-runtime-hooks")})
+			"Kind": Equal("runtime-hook"), "Code": Equal("claude-code/runtime-hooks-declined"), "Hint": ContainSubstring("--trust=runtime-hooks")})
 		BeforeEach(func() { asked = nil })
 
 		It("asks, records a yes, and installs the groups; the same hooks never ask again", func() {
@@ -173,13 +173,13 @@ var _ = Describe("runtime hooks", func() {
 			Expect(asked).To(HaveLen(2), "a no asks again next time")
 		})
 
-		It("records consent with --allow-runtime-hooks, which --allow-hooks never stands in for", func() {
-			res, err := install(engine.Options{Targets: []string{"claude-code"}, AllowHooks: true})
+		It("records consent with --trust=runtime-hooks, which --trust=hooks never stands in for", func() {
+			res, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustHooks})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(ContainElement(declined))
 			Expect(filepath.Join(proj, settings)).NotTo(BeAnExistingFile())
 
-			_, err = install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hooksIn(settings)["Stop"]).To(HaveLen(1))
 			Expect(consentFile()).To(ContainSubstring(`"deploy/runtime-hooks/`))
@@ -196,7 +196,7 @@ var _ = Describe("runtime hooks", func() {
 			Expect(res.Findings).To(ContainElement(declined))
 			Expect(res.Steps).NotTo(ContainElement(HaveField("Kind", "runtime-hook")))
 
-			dry.AllowRuntimeHooks = true
+			dry.Trust = engine.TrustRuntimeHooks
 			res, err = install(dry)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksConsented)))
@@ -205,9 +205,9 @@ var _ = Describe("runtime hooks", func() {
 			Expect(filepath.Join(proj, settings)).NotTo(BeAnExistingFile())
 			Expect(consentFile()).To(BeEmpty())
 
-			_, err = install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).NotTo(HaveOccurred())
-			dry.AllowRuntimeHooks = false
+			dry.Trust = 0
 			res, err = install(dry)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksConsented)), "a recorded consent holds")
@@ -258,7 +258,7 @@ var _ = Describe("runtime hooks", func() {
 		})
 
 		It("asks again in another project, and removes the groups of a moved project off a terminal", func() {
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).NotTo(HaveOccurred())
 			other := filepath.Join(tmp, "other")
 			Expect(os.MkdirAll(other, 0o755)).To(Succeed())
@@ -337,13 +337,13 @@ var _ = Describe("runtime hooks", func() {
 				Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 				Expect(res.Findings).To(ContainElements(
 					MatchFields(IgnoreExtras, Fields{"Kind": Equal("skill"), "Artifact": Equal("review"), "Code": Equal("claude-code/runtime-hooks-declined"),
-						"Hint": ContainSubstring("--allow-runtime-hooks")}),
+						"Hint": ContainSubstring("--trust=runtime-hooks")}),
 					MatchFields(IgnoreExtras, Fields{"Kind": Equal("command"), "Artifact": Equal("deploy"), "Code": Equal("claude-code/runtime-hooks-declined")}),
 					MatchFields(IgnoreExtras, Fields{"Kind": Equal("runtime-hook"), "Artifact": Equal(""), "Code": Equal("claude-code/runtime-hooks-declined")})))
 			})
 
 			It("asks again when only a component's hooks change, and a declined update removes the component", func() {
-				_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+				_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(skillFile()).To(BeARegularFile())
 				writeTree(plugin, map[string]string{
@@ -368,7 +368,7 @@ var _ = Describe("runtime hooks", func() {
 				return MatchFields(IgnoreExtras, all)
 			}
 
-			It("asks for an agent's inline server under the agent, skips the agent when declined, and installs it with --allow-runtime-hooks", func() {
+			It("asks for an agent's inline server under the agent, skips the agent when declined, and installs it with --trust=runtime-hooks", func() {
 				writeTree(plugin, browser(playwright))
 				res, err := install(opts(answer(false)))
 				Expect(err).NotTo(HaveOccurred())
@@ -378,9 +378,9 @@ var _ = Describe("runtime hooks", func() {
 				Expect(filepath.Join(proj, agentFile)).NotTo(BeAnExistingFile())
 				Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 				Expect(res.Findings).To(ContainElement(MatchFields(IgnoreExtras, Fields{"Kind": Equal("agent"), "Artifact": Equal("browser"),
-					"Code": Equal("claude-code/runtime-hooks-declined"), "Text": ContainSubstring("inline MCP servers"), "Hint": ContainSubstring("--allow-runtime-hooks")})))
+					"Code": Equal("claude-code/runtime-hooks-declined"), "Text": ContainSubstring("inline MCP servers"), "Hint": ContainSubstring("--trust=runtime-hooks")})))
 
-				res, err = install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+				res, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(filepath.Join(proj, agentFile)).To(BeARegularFile())
 				Expect(res.Modules[0].RuntimeHooks).To(ContainElement(server(Fields{"MCPServer": Equal("pw"), "Status": Equal(engine.RuntimeHooksConsented)})))
@@ -400,7 +400,7 @@ var _ = Describe("runtime hooks", func() {
 
 			It("asks again when only a server's args change, and a declined update removes the agent", func() {
 				writeTree(plugin, browser(playwright))
-				_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+				_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(filepath.Join(proj, agentFile)).To(BeARegularFile())
 				writeTree(plugin, browser("  - github\n  - pw: {command: npx, args: [-y, '@playwright/mcp@2']}\n"))
@@ -468,7 +468,7 @@ var _ = Describe("runtime hooks", func() {
 			writeTree(plugin, map[string]string{"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"x"}]}],` +
 				`"SessionStart":[{"hooks":[{"type":"command","command":"y"}]}]}}`})
 			writeTree(proj, map[string]string{settings: user})
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).NotTo(HaveOccurred())
 			got := hooksIn(settings)
 			Expect(got["Stop"]).To(HaveLen(2))
@@ -499,7 +499,7 @@ var _ = Describe("runtime hooks", func() {
 		})
 
 		It("leaves a group the user removed or edited absent, reporting drift without failing --strict, until --force restores it", func() {
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).NotTo(HaveOccurred())
 			edited := "{\n  \"hooks\": {\n    \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"true\"}]}]\n  }\n}\n"
 			writeTree(proj, map[string]string{settings: edited})
@@ -526,9 +526,9 @@ var _ = Describe("runtime hooks", func() {
 			mine := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"` + "export CLAUDE_PLUGIN_ROOT='" + filepath.Join(proj, ".lola/modules/deploy") +
 				"' CLAUDE_PLUGIN_DATA='" + filepath.Join(proj, ".lola/plugin-data/deploy") + "'; " + filepath.Join(proj, ".lola/modules/deploy") + `/stop.sh"}]}]}}`
 			writeTree(proj, map[string]string{settings: mine})
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).To(MatchError(ContainSubstring("exists and was not written by lola; owning it would remove it on uninstall")))
-			_, err = install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true, Force: true})
+			_, err = install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Force: true})
 			Expect(err).NotTo(HaveOccurred())
 		})
 
@@ -537,9 +537,9 @@ var _ = Describe("runtime hooks", func() {
 			twin := filepath.Join(tmp, "src", "twin")
 			writeTree(twin, map[string]string{".claude-plugin/plugin.json": `{"name":"twin"}`, "hooks/hooks.json": same})
 			writeTree(plugin, map[string]string{"hooks/hooks.json": same})
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).NotTo(HaveOccurred())
-			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: twin}}, engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true, Force: true})
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: twin}}, engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks, Force: true})
 			Expect(err).To(MatchError(ContainSubstring(`wanted by module "twin", owned by module "deploy"; --force cannot override it: uninstall deploy first`)))
 			Expect(err).To(MatchError(ContainSubstring("--force cannot override it")))
 			Expect(errs.Hints(err)).To(Equal([]string{"lola uninstall -C " + proj + " deploy"}))
@@ -547,7 +547,7 @@ var _ = Describe("runtime hooks", func() {
 
 		It("writes ~/.claude/settings.json at user scope", func() {
 			sc = engine.Scope{Kind: target.User}
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: plugin}}, engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: plugin}}, engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).NotTo(HaveOccurred())
 			b, err := os.ReadFile(filepath.Join(tmp, "home", ".claude", "settings.json"))
 			Expect(err).NotTo(HaveOccurred())
@@ -622,7 +622,7 @@ var _ = Describe("runtime hooks", func() {
 					e.Targets[i] = rogue{Target: t, kind: kind}
 				}
 			}
-			_, err := install(engine.Options{Targets: []string{"claude-code"}, AllowRuntimeHooks: true})
+			_, err := install(engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustRuntimeHooks})
 			Expect(err).To(MatchError(ContainSubstring("planned runtime hooks in .claude/settings.local.json without a consent destination")))
 			Expect(filepath.Join(proj, settings)).NotTo(BeAnExistingFile())
 		},

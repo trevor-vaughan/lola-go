@@ -30,7 +30,8 @@ type Change struct {
 
 // Clone returns a copy of m that shares no slice or pointer with it.
 func (m *Manifest) Clone() *Manifest {
-	out := &Manifest{Version: m.Version, Targets: slices.Clone(m.Targets)}
+	out := &Manifest{Version: m.Version, Targets: slices.Clone(m.Targets), PreInstall: m.PreInstall, PostInstall: m.PostInstall,
+		preLine: m.preLine, postLine: m.postLine}
 	for _, e := range m.Modules {
 		out.Modules = append(out.Modules, e.clone())
 	}

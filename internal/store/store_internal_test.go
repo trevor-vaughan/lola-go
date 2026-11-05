@@ -20,7 +20,7 @@ var _ = Describe("Put", func() {
 		testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		s := New(p, []string{"claude-code"})
+		s := New(p, []string{"claude-code"}, time.Now)
 		s.normalize = func(dir string, m *module.Module) error {
 			if err := module.Normalize(dir, m); err != nil {
 				return err

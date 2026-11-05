@@ -5,6 +5,8 @@ package consent
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +23,14 @@ const Version = 1
 type file struct {
 	Version int               `json:"version"`
 	Modules map[string]string `json:"modules"` // module name → digest of the hooks consented to
+}
+
+// ScriptKey is the key a project's install script of event is consented under (Plan 9 §5.4):
+// per project, by the sha256 of its resolved directory, and per event, so consenting in one
+// project never covers another's script.
+func ScriptKey(projectDir, event string) string {
+	sum := sha256.Sum256([]byte(projectDir))
+	return "project-scripts/" + hex.EncodeToString(sum[:]) + "/" + event
 }
 
 // Store is the consent file at one path ($XDG_STATE_HOME/lola/consent.json).
@@ -61,6 +71,16 @@ func (s *Store) Granted(module, digest string) (bool, error) {
 		return false, err
 	}
 	return f.Modules[module] == digest, nil
+}
+
+// Recorded reports whether some consent to key, under any digest, is recorded.
+func (s *Store) Recorded(key string) (bool, error) {
+	f, err := s.load()
+	if err != nil {
+		return false, err
+	}
+	_, ok := f.Modules[key]
+	return ok, nil
 }
 
 // Grant records consent to module's hooks with this digest, replacing an earlier one.

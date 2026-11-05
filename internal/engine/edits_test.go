@@ -349,7 +349,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		It("a failure while applying leaves the selections written and says the next render converges", func() {
 			writeTree(src, map[string]string{"lola.yml": "name: example\nhooks: {pre-install: hooks/pre.sh}\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
 			Expect(os.Chmod(filepath.Join(src, "hooks/pre.sh"), 0o755)).To(Succeed())
-			_, err := install(engine.Options{AllowHooks: true, HookOutput: GinkgoWriter}, nil, skipShip, src)
+			_, err := install(engine.Options{Trust: engine.TrustHooks, HookOutput: GinkgoWriter}, nil, skipShip, src)
 			Expect(err).To(HaveOccurred())
 			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola render -C " + proj + " applies them once the problem is fixed"))
 			Expect(saved()).To(ContainSubstring("skip: [command/ship]"))

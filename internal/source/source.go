@@ -71,6 +71,22 @@ const gitCredentialsHint = "remove the credentials, query or fragment; let a git
 // fullSHARE is a full sha1 or sha256 commit id.
 var fullSHARE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
+// CommitRef is ref as the full commit SHA it names, lower-cased (a commit id is hex in any case),
+// and whether it names one: a ref of 40 or 64 hex digits is always a commit (R-9-U10).
+func CommitRef(ref string) (string, bool) {
+	lower := strings.ToLower(ref)
+	return lower, fullSHARE.MatchString(lower)
+}
+
+// RecordedRef is ref as lola records and shows it: a full commit SHA lower-cased, any other ref
+// as typed (R-9-31).
+func RecordedRef(ref string) string {
+	if commit, ok := CommitRef(ref); ok {
+		return commit
+	}
+	return ref
+}
+
 // schemeRE is the URL scheme grammar (RFC 3986 §3.1).
 var schemeRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
 
@@ -352,7 +368,7 @@ func Validate(spec Spec) error {
 	if err := checkRef(spec.Ref); err != nil {
 		return err
 	}
-	if spec.Kind == KindGit && spec.Ref != "" && !fullSHARE.MatchString(spec.Ref) {
+	if _, commit := CommitRef(spec.Ref); spec.Kind == KindGit && spec.Ref != "" && !commit {
 		// A local check with no network access, so it needs no caller's deadline.
 		if _, err := runGit(context.Background(), "", "check-ref-format", "--allow-onelevel", spec.Ref); err != nil {
 			if len(errs.Hints(err)) > 0 { // git itself is missing

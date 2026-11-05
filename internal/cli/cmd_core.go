@@ -128,11 +128,12 @@ func offerAddresses(g engine.MarketGroup) []string {
 
 func (a *app) addCoreCommands(root *cobra.Command) {
 	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.tidyCmd(), a.profileCmd(), a.marketCmd(),
-		a.checkCmd())
+		a.checkCmd(), a.infoCmd())
 }
 
 func (a *app) installCmd() *cobra.Command {
 	var f installFlags
+	var trust trustFlag
 	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), a module directory, archive or git URL, or @market/module",
 		usage: "lola install <source|name|@market/module>... [-t target]",
 		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review",
@@ -176,15 +177,34 @@ func (a *app) installCmd() *cobra.Command {
 			"choice, so later renders keep it; --rules turns them back on.\n" +
 			"Install hooks run only with your consent: lola asks on a terminal (default No) and\n" +
 			"remembers a yes until one of those scripts changes. Consent covers only the scripts\n" +
-			"themselves, not files they run. --allow-hooks consents for one run.\n" +
+			"themselves, not files they run. --trust=hooks consents without asking.\n" +
 			"Claude Code runtime hooks (a plugin's hooks) are installed only with your consent too:\n" +
-			"lola lists them and asks on a terminal (default No), and --allow-runtime-hooks records\n" +
-			"consent off one. It holds until the module version, the hooks or the project path changes.",
+			"lola lists them and asks on a terminal (default No), and --trust=runtime-hooks consents\n" +
+			"without asking. It holds until the module version, the hooks or the project path changes.\n" +
+			"Install scripts wrap every module copy the install writes, once per assistant, around its\n" +
+			"hooks: pre_install and post_install in config.yaml (yours), in .lola/project.yml (the\n" +
+			"project's, run only in that project's scope, and only with --trust=scripts or a yes on a\n" +
+			"terminal, until the script changes) and --pre-install/--post-install (this run's). Each\n" +
+			"runs from its absolute path, with the module copy as working directory, the hook\n" +
+			"environment and LOLA_SCRIPT_SOURCE=user, project or flag.\n" +
+			trustHelp("install"),
 		Example:           g.example(),
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeAddress,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var err error
+			if f.trust, err = trust.parse(cmd, args, "install", "module"); err != nil {
+				return err
+			}
+			// A script path a hint repeats must print as itself, on one line (RR4).
+			for _, s := range []struct{ flag, given string }{{"--pre-install", f.preInstall}, {"--post-install", f.postInstall}} {
+				if s.given != "" && !untrusted.IsPlain(s.given) {
+					// Text keeps a line break and cleans \r to ?, so a \n made \r shows as ?, on one line.
+					return fmt.Errorf("%s %s holds a control character or a line break; lola runs only a script whose path is plain text",
+						s.flag, untrusted.Text(strings.ReplaceAll(s.given, "\n", "\r"), len(s.given)))
+				}
+			}
 			return a.runInstall(cmd, g, args, f)
 		},
 	}
@@ -195,6 +215,8 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.global, "global", false, "save --skip, --only and --unskip in the global section of selections.yaml, for every scope")
 	cmd.Flags().StringVar(&f.ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&f.path, "path", "", "module root inside the source (monorepos)")
+	cmd.Flags().StringVar(&f.preInstall, "pre-install", "", "a script to run before each module copy the install writes, once per assistant (yours: no trust asked)")
+	cmd.Flags().StringVar(&f.postInstall, "post-install", "", "a script to run after each module copy the install writes, once per assistant (yours: no trust asked)")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")
@@ -202,8 +224,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
 	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
 	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
-	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
-	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
+	addTrustFlag(cmd, &trust, "install", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
 	return cmd
 }
 
@@ -413,7 +434,8 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 
 func (a *app) renderCmd() *cobra.Command {
 	var targets []string
-	var dry, force, strict, allowHooks, allowRuntime bool
+	var dry, force, strict bool
+	var trust trustFlag
 	cmd := &cobra.Command{
 		Use:     "render",
 		Aliases: []string{"update"},
@@ -422,11 +444,20 @@ func (a *app) renderCmd() *cobra.Command {
 			"folder), fetching that version again if your cache lost it, and remove files the module no\n" +
 			"longer ships. Files edited by hand are reported and kept unless --force.\n" +
 			"Claude Code runtime hooks whose consent no longer matches (a new version, or a moved\n" +
-			"project) are asked about again, and removed unless you consent.\n\n" + scopeHelp,
+			"project) are asked about again, and removed unless you consent.\n" + trustHelp("render") + "\n\n" + scopeHelp,
 		Example: "  lola render\n  lola render --dry-run\n  lola render -t claude-code --force",
 		GroupID: groupCore,
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		// Arguments reach RunE so that a kind written after a bare --trust is coached
+		// (trust.parse); any other is refused as cobra.NoArgs refuses it.
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			kinds, err := trust.parse(cmd, args, "render", "module")
+			if err != nil {
+				return err
+			}
+			if err := cobra.NoArgs(cmd, args); err != nil {
+				return err
+			}
 			eng, err := a.engine()
 			if err != nil {
 				return err
@@ -436,8 +467,9 @@ func (a *app) renderCmd() *cobra.Command {
 				return err
 			}
 			sc := scs[0].Scope
-			opts := engine.Options{Targets: targets, DryRun: dry, Force: force, Strict: strict, ForceRun: forceRun(cmd, nil), Display: outputFlags(cmd)}
-			a.hookOptions(cmd, &opts, allowHooks, allowRuntime)
+			opts := engine.Options{Targets: targets, DryRun: dry, Force: force, Strict: strict, ForceRun: forceRun(cmd, nil), Display: outputFlags(cmd),
+				Trust: kinds, Receipt: a.receipt(cmd, kinds, false), Rerun: trustRun(cmd, nil)}
+			a.hookOptions(cmd, &opts)
 			res, err := eng.Render(cmd.Context(), sc, opts)
 			if err != nil {
 				return err
@@ -449,8 +481,7 @@ func (a *app) renderCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite or delete hand-edited files and render skipped artifacts that can be (never answers a consent question)")
 	cmd.Flags().BoolVar(&strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
-	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "run the install hooks of updated modules without asking (consent for this run)")
-	cmd.Flags().BoolVar(&allowRuntime, "allow-runtime-hooks", false, "install Claude Code runtime hooks that need consent without asking (consent is recorded)")
+	addTrustFlag(cmd, &trust, "render", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
 	return cmd
 }
 

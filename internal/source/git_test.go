@@ -146,6 +146,29 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(read(f, "commands/a.md")).To(Equal("old"))
 	})
 
+	It("takes a full commit SHA in capitals as that commit", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "old"})
+		old := r.rev("HEAD")
+		r.commit(map[string]string{"commands/a.md": "new"})
+		f, err := fetch(r.url, strings.ToUpper(old), "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Commit).To(Equal(old))
+		Expect(read(f, "commands/a.md")).To(Equal("old"))
+	})
+
+	It("refuses the SHA of an annotated tag object, naming the tag and the commit it points to", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
+		commit := r.rev("HEAD")
+		git(r.work, "tag", "-a", "-m", "release", "v1")
+		git(r.work, "push", "-q", "--tags", r.bare)
+		tag := r.rev("v1")
+		_, err := fetch(r.url, tag, "")
+		Expect(err).To(MatchError(tag + " is the annotated tag v1, not a commit; it points to commit " + commit))
+		var tagErr *source.TagObjectError
+		Expect(errors.As(err, &tagErr)).To(BeTrue())
+		Expect(tagErr.Commit).To(Equal(commit))
+	})
+
 	It("explains that a protocol v0 server refuses an unadvertised commit", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "old"})
 		old := r.rev("HEAD")
@@ -187,17 +210,25 @@ var _ = Describe("Fetch of a git source", func() {
 
 	It("a hex-looking branch name is not treated as a commit", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "first"})
+		second := r.commit(map[string]string{"commands/a.md": "second"})
+		git(r.work, "branch", "cafe1234", second)
+		git(r.work, "push", "-q", "--all", r.bare)
+		f, err := fetch(r.url, "cafe1234", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Commit).To(Equal(second))
+		Expect(read(f, "commands/a.md")).To(Equal("second"))
+	})
+
+	It("a remote with a branch named like a commit SHA installs the commit, not the branch", func() {
+		r := newRemote(tmp, map[string]string{"commands/a.md": "first"})
 		first := r.rev("HEAD")
 		second := r.commit(map[string]string{"commands/a.md": "second"})
 		git(r.work, "branch", first, second) // a branch named like the first commit, at the second
-		git(r.work, "branch", "cafe1234", second)
 		git(r.work, "push", "-q", "--all", r.bare)
-		for _, ref := range []string{first, "cafe1234"} {
-			f, err := fetch(r.url, ref, "")
-			Expect(err).NotTo(HaveOccurred(), ref)
-			Expect(f.Commit).To(Equal(second), ref)
-			Expect(read(f, "commands/a.md")).To(Equal("second"), ref)
-		}
+		f, err := fetch(r.url, first, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Commit).To(Equal(first))
+		Expect(read(f, "commands/a.md")).To(Equal("first"))
 	})
 
 	It("refuses a committed symlink, naming it", func() {

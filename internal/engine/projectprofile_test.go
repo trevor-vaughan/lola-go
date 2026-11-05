@@ -422,8 +422,8 @@ var _ = Describe("project profiles", func() {
 		profile("go", "version: 1\n")
 		activate("user:go")
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOff, Names: []string{"go"}},
-			Options: engine.Options{DryRun: true, AllowHooks: true}, ConfirmRemovals: yes})
-		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --project user:go --off --allow-hooks -n"}))
+			Options: engine.Options{DryRun: true, Trust: engine.TrustHooks}, ConfirmRemovals: yes})
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --project user:go --off --trust=hooks -n"}))
 	})
 
 	It("--off of a bare name both kinds define with neither on is a notice, as --off of any profile that is off", func() {

@@ -241,6 +241,26 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(entry("secdevai").Market).To(BeNil())
 	})
 
+	It("a refused pre-install hook's review hint names the entry's source at its commit, which lola info shows without the catalog", func() {
+		work := filepath.Join(tmp, "work", "kit")
+		writeTree(work, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: setup.sh}\n", "setup.sh": "#!/bin/sh\necho kit\n"})
+		Expect(os.Chmod(filepath.Join(work, "setup.sh"), 0o755)).To(Succeed())
+		commit := bare(filepath.Join(tmp, "mods"), "kit", nil)
+		_, err := install(engine.Options{Display: []string{"--json"}}, engine.InstallRequest{Arg: "@acme/kit"})
+		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project "+mods+"/kit.git --ref "+commit+" --target claude-code --json",
+			"then consent to it: lola install --project @acme/kit --target claude-code --json --trust=hooks"))
+
+		requests.Store(0)
+		catalogFetches.Store(0)
+		info, err := e.Info(ctx, engine.InfoRequest{Cwd: proj, Arg: mods + "/kit.git", Ref: commit, Scope: engine.ScopeRequest{Project: true, Cwd: proj},
+			Targets: claude.Targets, Rerun: func(...string) string { return "" }, Install: func(string, string, string, engine.TrustKinds) string { return "" }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Runs.InstallHooks).To(HaveLen(1))
+		Expect(requests.Load()).To(BeZero(), "the review shows the cached version")
+		Expect(catalogFetches.Load()).To(BeZero(), "and never reads the catalog, which may have moved")
+	})
+
 	It("refuses a version listed for an address that its catalog now lists from elsewhere", func() {
 		ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}},
 			Modules: []engine.InstallRequest{{Arg: "@acme/secdevai"}}})

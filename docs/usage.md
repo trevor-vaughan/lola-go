@@ -43,8 +43,8 @@ project with `.lola/` at or above the current directory, then `default_scope` in
 | `--global` | Save `--skip`, `--only` and `--unskip` in the global section of `selections.yaml`. |
 | `--no-rules`, `--rules` | Leave the module's always-on rules out, remembered in the manifest; `--rules` puts them back. |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
+| `--pre-install <path>`, `--post-install <path>` | Your own script for this run, which wraps every module copy the install writes, once per assistant, around the module's own hooks; a relative path is taken from the directory you run lola in, and the script runs from that absolute path, never a file of its name in the module copy ([Install scripts](#install-scripts)). No trust is asked. |
+| `--trust=<kinds>` | Consent without asking to the kinds named, recorded as a yes at the prompt is: `scripts` (the project's install scripts), `hooks` (install hooks), `runtime-hooks` (Claude Code runtime hooks), or `all` for the three ([Trust kinds](#trust-kinds)). |
 | `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be, without the review menu ([Safety rules](#safety-rules)). |
 | `-n`, `--dry-run` | Print the plan and write nothing, not even `selections.yaml`. |
 | `-y`, `--yes` | Apply after the pickers without the review menu. |
@@ -67,9 +67,13 @@ Refusals:
   one first: lola cache rm my-module`.
 - A conflict ([Safety rules](#safety-rules)), `--strict` with a finding (`--strict: 1
   finding(s); nothing was changed`), and a project whose `.lola/lock.json` git tracks.
+- An install script that is missing, not a regular file or not executable, and a project's that
+  is an absolute path, resolves outside the project or is a symbolic link, before anything is asked
+  ([Install scripts](#install-scripts)); the project's pre-install script without your trust off a
+  terminal.
 
-JSON: `modules`, `steps`, `findings`, `notices`, `dry_run`, `scopes` and `equivalent_commands`
-([Output contract](#output-contract)).
+JSON: `modules`, `steps`, `findings`, `notices`, `scripts`, `dry_run`, `scopes` and
+`equivalent_commands` ([Output contract](#output-contract)).
 
 ### `lola sync`
 
@@ -86,11 +90,9 @@ both` syncs the project, then user scope.
 
 | Flag | What it does |
 |---|---|
-| `--trust` | Accept the changes to `project.yml` and its active profiles without asking; it never bypasses a refusal or grants hook consent. |
+| `--trust[=<kinds>]` | Trust without asking what the run would ask about, of the kinds named: `entries` (the changes to `project.yml`), `profiles` (its active profiles'), `scripts`, `hooks`, `runtime-hooks`, or `all`; bare `--trust` is `entries,profiles`, which run no code. It never bypasses a refusal ([Trust kinds](#trust-kinds)). |
 | `-y`, `--yes` | Confirm removals, and only removals: it never trusts changes. |
 | `--update` | Fetch the refs again and re-pin the modules of the run. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
 | `--force` | Overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals. |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. |
 
@@ -99,7 +101,9 @@ Refusals:
 - Changes to trust off a terminal: `lola sync needs your trust for .lola/project.yml, which has
   not been trusted on this machine, and there is no terminal to ask on` (after a pull, `your trust
   for changes to .lola/project.yml`), hinting `see them: lola sync --project -n` and `then
-  accept them: lola sync --project --trust`.
+  accept them: lola sync --project --trust=entries` (the kinds missing: `--trust=profiles` for a
+  project profile's changes, `--trust=entries,hooks` when a module's pre-install hook would refuse
+  too).
 - Removals off a terminal: `lola sync needs your confirmation to remove my-module, and there is no
   terminal to ask on`, hinting `see them: lola sync --project -n` and `then confirm them: lola
   sync --project -y`.
@@ -109,7 +113,7 @@ Refusals:
   `--project`, `--user` and `--scope both`.
 
 JSON: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `equivalent_commands`
-and the plan's `modules`, `steps`, `findings` and `notices`; with `--scope both`, `{"scopes":
+and the plan's `modules`, `steps`, `findings`, `notices` and `scripts`; with `--scope both`, `{"scopes":
 [...]}` ([Output contract](#output-contract)). A refusal for want of trust or confirmation adds
 `trust` and `removals` to its error line.
 
@@ -151,8 +155,8 @@ Refusals:
 - A file edited since lola wrote it: `refusing to change anything: 1 conflict, which --force
   overrides`, each file on its own line, hinting `lola uninstall my-module --force`.
 
-JSON: `modules`, `steps`, `findings`, `notices` and `dry_run`; the refusal off a terminal carries
-the same keys beside `error` and `hints`.
+JSON: `modules`, `steps`, `findings`, `notices`, `scripts` and `dry_run`; the refusal off a
+terminal carries the same keys beside `error` and `hints`.
 
 ### `lola list`
 
@@ -210,8 +214,7 @@ files a module no longer ships. Leaves as installed, with a warning, a module it
 |---|---|
 | `-t`, `--target <assistant>` | Only render for these assistants. |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
-| `--allow-hooks` | Run the install hooks of updated modules without asking, for this run. |
-| `--allow-runtime-hooks` | Install Claude Code runtime hooks that need consent without asking; the consent is recorded. |
+| `--trust=<kinds>` | Consent without asking to the project's install scripts around a replaced copy (`scripts`), the install hooks of updated modules (`hooks`), the runtime hooks that need it (`runtime-hooks`), or `all`; recorded as a yes is ([Trust kinds](#trust-kinds)). |
 | `--force` | Overwrite or delete hand-edited files and render skipped artifacts that can be. |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
 
@@ -219,7 +222,7 @@ Refusals: a hand-edited file: `refusing to change anything: 1 conflict, which --
 overrides`, then `claude-code: .claude/commands/hello.md: hand-edited since lola wrote it`,
 hinting `lola render --force`; a tracked `.lola/lock.json`, as `lola list`'s.
 
-JSON: `modules`, `steps`, `findings`, `notices` and `dry_run`.
+JSON: `modules`, `steps`, `findings`, `notices`, `scripts` and `dry_run`.
 
 Known limitations: a module render leaves out because its folder changed is a finding whose hints
 keep the scope but not `--json`, `--plain` or `--no-pager`. When the content changed, they are
@@ -297,11 +300,9 @@ the project found from here, if any, and user scope. One action per run. Refuses
 | `--update` | Fetch the named remote profiles, or `--all`, again, show what changed, ask, and apply them where they are on. Alias: `--upgrade`. |
 | `--all` | With `--update`: every remote profile you have. |
 | `--remove` | Delete a remote profile; asks (`-y`), and is refused while it is in use unless `--force`. Aliases: `--rm`, `--delete`, `--del`, `--erase`, `--uninstall`. |
-| `--trust` | Accept the changes to `project.yml` and its profiles the run installs, a project profile taking your profile's place, and a remote profile `--add` or `--update` shows, without asking (never hook consent; `--update` without a scope flag: the profiles only). |
+| `--trust[=<kinds>]` | Trust without asking, by kind ([Trust kinds](#trust-kinds)): `entries` and `profiles` (the changes to `project.yml` and its profiles the run installs, a project profile taking your profile's place, a remote profile `--add` or `--update` shows), `scripts`, `hooks`, `runtime-hooks`, or `all`. `--add` takes `profiles` only (bare `--trust` there is `profiles`); `--update` without a scope flag applies only `profiles` to the update and the other kinds to each scope's sync. |
 | `-y`, `--yes` | Confirm removals, and `--remove`; it never trusts changes. |
 | `--force` | With `--remove`: remove a remote profile in use, without asking. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
 | `-n`, `--dry-run` | Print what the action would change, ask nothing and write nothing. |
 
 Refusals:
@@ -402,6 +403,112 @@ pass a module folder or another source, e.g. lola check ./my-module; sources are
 
 JSON: `modules` (each `name`, `targets`, `findings`, `skipped`) and `findings`.
 
+### `lola info`
+
+```
+lola info <source|@market/module|module> [-t <assistant>…] [--ref <ref>] [--path <dir>]
+```
+
+Aliases: `show`, `view`. Show a module before you install it, running nothing: no install hook,
+runtime hook or MCP server. The argument is what `lola install` takes: a module in your cache,
+`@market/module`, or a source. A source or a marketplace entry is fetched into your cache as
+`lola cache add` fetches it, so installing the cached name afterwards fetches nothing. It prints:
+
+1. The module's identity: name, version, description, source, type, path, digest, format and
+   cached heads.
+2. Its contents: skills, commands, agents, MCP servers, rules, install hooks, warnings, the
+   [vars](guides/templating.md#vars) it declares with their defaults, and its
+   [templates](guides/templating.md#templates), [partials](guides/templating.md#partials) and
+   [attribute files](guides/templating.md#attribute-files).
+3. What would run code, and when: each install hook with its sha256 (what consent is recorded
+   for) and its first 5 lines, each cut at 200 characters; the runtime hooks (hook sets, and
+   hooks and agents' MCP servers in components' frontmatter) each assistant would run, as the
+   consent question shows them; and each MCP server with the command line or URL the assistant
+   would run, for each assistant that can express it. Without a plan (no scope, no assistant, or
+   a refusal) they are shown as the module declares them, `${CLAUDE_PLUGIN_ROOT}` and its kin
+   unexpanded. Author text is shown on one line. Then the install scripts that would wrap the
+   module's install, in the order they run, each with its source and sha256 and whether it needs
+   your trust (a project's): without a scope, only your own from `config.yaml`.
+4. What installing it here would do, for each scope `lola install` would pick without asking:
+   the plan `lola install -n` prints (files per assistant, findings, `new project at <dir>` for
+   a project without `.lola/`), each consent the install would meet (`scripts`, `hooks`, `runtime-hooks`)
+   and whether you gave it already, and the `--trust=` kinds still needed. When installing there
+   would be refused (an untrusted `project.yml` entry, a conflict, any refusal that coaches), it
+   shows that refusal with its hints instead, and no install; any other failure (an unreadable
+   file) is `lola info`'s own error. A copy of the version already installed, whose hooks would
+   not run without consent, needs no `hooks` trust.
+5. The install of exactly the version shown, with `--trust=` the kinds still needed (none: no
+   `--trust`), keeping your output flags, scope flags, `-C` and `-t`; there is none when
+   installing at any scope would be refused. A git source, and a marketplace entry from git
+   without a component selection, is named as its git source at the full commit SHA fetched, in
+   place of a branch or tag you gave, since a branch can move before you install (`--path` as the
+   source needs); a commit your cache holds installs without fetching. An archive, a folder, a
+   cached name and any other entry (one that selects components among them) are named by the
+   cached name at the head shown (`--ref <ref>` for a head other than the default branch's),
+   which installs from your cache without touching the source; a cached git module without a
+   component selection whose entry in the scope records another ref is named by its source at
+   the commit shown instead, so that installing it pins that commit in the entry (to follow a
+   branch again, install with `--ref <branch>`). What stays open: if you fetch a cached head
+   again yourself (`lola cache update`, an install of the source at a branch) or run `lola market
+   --update` between `lola info` and the install, a hint by cached name installs the new head.
+
+   ```
+   → install it: lola install https://example.com/kit.git --ref 4f0c2a9e1b7d3c5a6e8f9012ab34cd56ef7890ab --project --trust=hooks
+   ```
+
+| Flag | What it does |
+|---|---|
+| `-t`, `--target <assistant>` | Plan for these assistants, as `lola install -t` would (repeatable or comma-separated). |
+| `--ref <ref>` | The git branch, tag or full commit SHA to fetch. |
+| `--path <dir>` | The module root inside the source (monorepos); refused with `@market/module`. |
+
+Scope: `--scope` (`both` shows one plan per scope), `--user`, `--project` or `-C`; else the
+project with `.lola/` at or above the current directory; else `default_scope` in `config.yaml`.
+`lola info` never asks for a scope, on a terminal or off it, and never guesses one. With none,
+it shows sections 1 to 3 and the consent it knows without a scope (`runtime-hooks` are needed
+but their record is unknown, as it is kept per settings file), says why, and hints the runs that
+name a scope, exiting 0:
+
+```
+no scope: no .lola/ was found in /work/x or above it, and config.yaml sets no default_scope
+  hint: lola info ./kit --project
+  hint: lola info ./kit --user
+```
+
+`--project` is not hinted in your home directory, where the user scope installs. Without `-t` and
+with no assistant set up in the scope, it says which assistants are installed and hints the run
+with `-t` and each of them (`lola info ./kit --project -t claude-code`); with none installed it
+says so and hints nothing.
+
+Refusals: no argument: `lola info needs a module or source`, hinting `cached modules: lola cache
+list`; an argument that is neither: `"./nope" is neither a module in your cache nor a source;
+sources are …`, hinting `cached modules: lola cache list`; `--path` with `@market/module`; and a
+fetch failure or another module of that name in your cache, as `lola cache add`'s.
+
+JSON: one document. The module's identity and contents: `name`, `description`, `version`,
+`digest`, `format`, `source`, `type`, `heads` (each `ref`, `digest`), `skills`, `commands`,
+`agents`, `mcp_servers`, `rules`, `hooks`, `warnings`, `vars` (`[{"name", "type", "default"}]`,
+`type` one of `string`, `boolean`, `number`, `list`; a number's `default` is a JSON number),
+`templates`, `partials` and `attributes` (paths in the module), each `[]` when none, and `path`
+(the module root inside the source) when it has one. Then `runs`: `install_hooks` (each `event`,
+`script`, `sha256`, `first_lines`), `runtime_hooks` (as `lola install` reports them) and
+`mcp_servers` (each `name`, `target`, `command`, `args`, `url`) and `scripts` (each `event`,
+`source`, `path`, `sha256`, `needs_trust`). Then `install`, one element per
+scope: `scope` (`""` without one), `targets`, `steps`, `findings`, `consent` (each `kind`, `item`,
+`recorded`: `yes`, `no` or `unknown`), `trust_needed` (kinds), `digest` (the version it
+installs), `command` (the next step; `""` without a plan, and in every element when installing at
+any scope would be refused) and, when installing there would be
+refused, `refusal` (`error`, `hints`), and `new_project` (`true` when the install would create `.lola/`
+at the scope's directory). A runtime hook shown as declared has `status` `unknown`. Last,
+`no_scope` (the sentence, only when no scope resolved), `no_assistant` (the sentence, only when a
+scope has no assistant to plan for) and `hints` (`[]` unless no scope or no assistant resolved).
+
+`--plain` rows are the module's, then `hook` (event, script, sha256), `script` (event, source,
+path, sha256, needs_trust), `runtime-hook` (as `lola install --plain` prints them), `mcp` (name,
+assistant, command line, URL), `refusal`
+(scope, error) each followed by its `hint` rows, `consent`, the steps, `install`, `no_scope` or
+`no_assistant` (the sentence), and `hint` rows.
+
 ### `lola search`
 
 ```
@@ -477,7 +584,8 @@ ref (`--path` is refused: the catalog gives it).
 Refusals: no source: `lola cache add needs a source`; another module of that name in your cache,
 as `lola install`'s.
 
-JSON: the module, as `lola cache info` prints it, with `path` when `--path` gave one.
+JSON: the module's identity and contents, as [`lola info`](#lola-info) starts its document, with
+`path` when `--path` gave one.
 
 #### `lola cache rm`
 
@@ -500,6 +608,76 @@ run with `-y`.
 JSON: `removed`, the names. The refusal off a terminal carries `would_remove`, the names it
 would have removed, beside `error` and `hints`.
 
+#### `lola cache clean`
+
+```
+lola cache clean [--unused-for <age>] [--all] [-n] [-y]
+```
+
+Remove what your cache no longer needs. Asks first.
+
+| Form | Removes |
+|---|---|
+| bare | Superseded versions (each version no head points to: a newer fetch of its ref replaced it) and scratch: each `.staging/run-*` and `tmp/check-*` that no running lola holds, a `run-*.lock` or `check-*.lock` left without its directory, and a `.staging/clean-*` a killed clean left. Every module keeps its heads. With `cache_unused_for` set in `config.yaml`, also what `--unused-for` with that age removes. |
+| `--unused-for <n>d` or `<n>w` | Also every version no run used for at least that many days (`1w` is 7 days), current heads included: a head whose version goes is dropped, and a module whose last version goes is removed whole. |
+| `--unused-for never` | What bare removes, without the configured age. |
+| `--all` | Every module, every marketplace catalog and all scratch, except scratch a running lola holds. The cache's lock file and `probes.json` stay. |
+
+| Flag | What it does |
+|---|---|
+| `--unused-for <age>` | `<n>d` (days), `<n>w` (weeks) or `never`; not with `--all`. |
+| `--all` | Remove everything but held scratch; not with `--unused-for`. |
+| `-n`, `--dry-run` | Print what would be removed and remove nothing. |
+| `-y`, `--yes` | Do not ask for confirmation. |
+
+A version is used when a run installs it (`install`), fetches it (`install` or `info` of a
+source, `cache add`, `cache update`, `sync`, `render` fetching it again, `profile --update`) or
+renders the version a project records (`render`, `sync`, `profile --on`, `--switch`,
+`--update`, their dry runs included); `index.yml` records the day (UTC) as `last_used`, at most
+once a day. `lola info` and `install -n` of a cached name, `cache list`, `check`, `list` and
+`cache clean -n` record nothing. A version cached before lola recorded uses counts as used the
+day a clean first sees it, as does one whose `last_used` entry is not a day lola wrote. A cache
+whose `index.yml` lola cannot write (a read-only cache) still installs and renders; the use is
+not recorded.
+
+On a terminal clean prints each item with its reason and size, and the total, then asks `Remove
+these from your cache?`; under `-n` it prints the same and asks nothing. With nothing to remove it
+prints `✓ nothing to clean` and asks nothing. Each item is checked again before it goes: one that
+changed since the plan (a head moved onto it, a run used it, it is gone, a directory above it is no
+longer a real directory) is kept and reported; when every item changed, clean prints `→ nothing
+removed`. A module whose `index.yml`, or an entry, clean
+cannot read, when it plans or when it checks again, is kept as `unreadable`, and the clean goes
+on. `index.yml` stops naming a version
+before the version is removed, and a clean that fails part way puts back the heads of the
+versions it did not remove, so no head names a removed version; its error (under `--json`, with
+`removed` and `bytes_freed`) says what it had removed. Clean sets items aside only in a
+`.staging` that is a real directory. What a clean cannot delete after setting it aside is a
+warning, `bytes_freed` counts only what was deleted, and the next `lola cache clean` retries it.
+
+Risk: removing a version a project records makes that project's next `render` fetch it again,
+and a source that moved or is gone fails as it does after `lola cache rm`. Removing catalogs
+(`--all`) leaves your marketplaces registered but not fetched: installing from one refuses with
+`marketplace <name> is not fetched: its catalog is not in your cache`, hinting `lola market <name>
+--update`. `lola sync --update` fetches again only the catalogs of marketplaces that entries
+installed in the scope came from; for any other, run `lola market <name> --update`.
+
+Refusals: `--all` with `--unused-for` (cobra's `if any flags in the group [all unused-for] are set
+none of the others can be`); an age that is not one: `--unused-for "3x" is not an age; write a
+whole number of days or weeks, such as 30d or 2w, or never` (`--unused-for ""` too, which never
+falls back to the configured age; in `config.yaml`, with its file, line and key); off a terminal
+without `-y`: `lola cache clean needs confirmation, and there is no terminal to ask on`, hinting
+the run with `-y`.
+
+JSON: `removed` (each `module`, `version`, `reason`, `path`, `bytes`), `kept` (each `module`,
+`version`, `reason`, `path`), `bytes_freed`, `dry_run` and `notices`. `reason` is `superseded`,
+`unused`, `scratch` or `all` for a removed item, `in use` (scratch a running lola holds),
+`changed` or `unreadable` for a kept one; `module` and `version` are `""` for scratch and
+catalogs, and `version` is `""` for a module `--all` removes; `path` is relative to
+`$XDG_CACHE_HOME/lola`, as it is on disk when it is plain text, with control and format
+characters replaced otherwise. The refusal off a terminal carries the keys `-n --json` prints
+beside `error` and `hints`. `--plain` rows: `remove` (under `-n`), `removed` or `kept`, then the
+reason, the path and the bytes, and a `notice` row per notice.
+
 #### `lola cache list`
 
 ```
@@ -508,26 +686,7 @@ lola cache list
 
 Alias: `ls`. List the modules in your cache.
 
-JSON: `modules` (each as `lola cache info` prints it) and `warnings`.
-
-#### `lola cache info`
-
-```
-lola cache info <module>
-```
-
-Aliases: `show`, `view`. Show a cached module's metadata, source, artifacts and refused hooks, the
-[vars](guides/templating.md#vars) it declares, with their defaults, and its
-[templates](guides/templating.md#templates), [partials](guides/templating.md#partials) and
-[attribute files](guides/templating.md#attribute-files).
-
-Refusals: `nope is not in your cache`, hinting `cached modules: lola cache list`.
-
-JSON: `name`, `description`, `version`, `digest`, `format`, `source`, `type`, `heads` (each
-`ref`, `digest`), `skills`, `commands`, `agents`, `mcp_servers`, `rules`, `hooks`, `warnings`,
-`vars` (`[{"name", "type", "default"}]`, `type` one of `string`, `boolean`, `number`, `list`; a
-number's `default` is a JSON number), `templates`, `partials` and `attributes` (paths in the
-module), each `[]` when none, and `path` (the module root inside the source) when it has one.
+JSON: `modules` (each the identity and contents of [`lola info`](#lola-info)) and `warnings`.
 
 #### `lola cache update`
 
@@ -569,8 +728,7 @@ the Python lola](guides/migrating.md#coming-from-the-python-lola)). It shows the
 | `--keep-python` | Install, and replace with a backup, but move nothing else to the trash. |
 | `-y`, `--yes` | Do not ask for confirmation. |
 | `--force` | Also replace, after backing each up into the trash, unowned files outside the recorded paths, recorded files git tracks or that lie below a symbolic link, and module copies; and move files git tracks, without asking. |
-| `--allow-hooks` | Run the modules' install hooks without asking, for this run. |
-| `--allow-runtime-hooks` | Install the modules' Claude Code runtime hooks without asking; the consent is recorded. |
+| `--trust=<kinds>` | Consent without asking to the kinds named, recorded as a yes at the prompt is: `hooks` (install hooks), `runtime-hooks` (Claude Code runtime hooks), `scripts`, or `all` for the three ([Trust kinds](#trust-kinds)). |
 | `-n`, `--dry-run` | Print the plan and write nothing. |
 
 Refusals: off a terminal without `-y`: `lola migrate needs confirmation, and there is no
@@ -673,12 +831,24 @@ module root unless you pass `--path`; `--path .` picks the folder itself. `--ref
 
 **Git.** lola runs your `git` (it must be on `PATH`) with a shallow clone of the default
 branch, or of `--ref`: a branch name, a tag name, or a full 40- or 64-character commit SHA.
-lola never guesses: a ref that names both a branch and a tag is an error, an abbreviated SHA
-is an error, and a hex-looking branch name is a branch. A commit that no branch or tag points
-to needs a server that serves such commits (servers speaking git protocol v2 do). Only committed
-files are copied; the module root is `--path`, else `module/`, else the repository root.
+lola never guesses:
+
+- A ref that names both a branch and a tag is an error, and so is an abbreviated SHA.
+- A full commit SHA, in any case, is always that commit, never a branch or tag of that name.
+  lola records and shows it lower-cased. A server that serves another commit for it is refused.
+- The SHA of an annotated tag object is refused; the error names the commit the tag points to,
+  and the hint is your run at that commit.
+- Any other hex-looking name is a branch or tag.
+
+A commit that no branch or tag points to needs a server that serves such commits (servers
+speaking git protocol v2 do). Only committed files are copied; the module root is `--path`,
+else `module/`, else the repository root.
 `--path .` picks the repository root and names the module after the repository. lola records
-the commit it fetched.
+the commit it fetched. A source is fetched again on every install, with one exception: an
+install at a full commit SHA that your cache already holds for exactly that source (the same
+location, `--path` and selection, the version a fetch of that commit recorded) fetches nothing;
+lola hashes the cached version again and installs it. A branch, a tag or a short SHA always
+fetches.
 
 - Your git config, credential helpers and `ssh-agent` are used. Git hooks, `core.fsmonitor`,
   the `ext::` transport and Git LFS filters are switched off for the repository lola fetches.
@@ -993,8 +1163,9 @@ replaced by `?`, followed by a note that it is not copyable as shown.
 
 Ctrl+C at any step cancels: "aborted; nothing changed". Nothing is written before Apply,
 except that Add a source… (and a source you name as an argument) is fetched into your
-cache, which installs nothing. After Apply, a runtime-hook consent you give (or
-`--allow-runtime-hooks`) is recorded in `consent.json` when you give it, before
+cache, which installs nothing. After Apply, a runtime-hook consent you give at the prompt
+is recorded in `consent.json` when you give it (one `--trust=runtime-hooks` gives is recorded
+once its receipt is answered), before
 `selections.yaml` and the installed files are written; if the run then stops (a refusal, or
 a later prompt you decline), that consent stays recorded and nothing else is written.
 `--dry-run` runs the steps and the summary and writes nothing, not even `selections.yaml`.
@@ -1112,6 +1283,9 @@ an `include` in the `global` section, anchors, aliases and merge keys, and files
 version: 1
 default_scope: project   # project | user | both; read off a terminal only
 pager: true              # false prints sync's consent diff without a pager
+pre_install: ~/bin/lola-pre.sh     # your own install scripts: absolute or ~/…, no trust asked
+post_install: ~/bin/lola-post.sh
+cache_unused_for: 30d    # lola cache clean also removes versions unused this long (<n>d, <n>w, never)
 ```
 
 `selections.yaml` is the one place that says which components you do not want. `install`,
@@ -1153,6 +1327,143 @@ lola never asks; a missing answer is an error whose hint names the flag: no modu
 scope](#choosing-a-scope)); no assistant found, or none of your installed ones set up here → your
 run with `-t` and each assistant (every one lola knows, or the installed ones). Copy the
 equivalent commands from an interactive run to repeat it.
+
+### Install scripts
+
+Install scripts are code around every module copy a run installs or replaces (`install`,
+`render` replacing a copy, `sync`, `profile`, `migrate`), once per assistant, whether or not the
+module has hooks: your own, the project's (which needs your trust) and the run's, in this order:
+
+```
+pre:  config.yaml → project.yml → --pre-install → the module's pre-install hook
+      (lola writes the module's files)
+post: the module's post-install hook → --post-install → project.yml → config.yaml
+```
+
+| Source | Where | Trust |
+|---|---|---|
+| yours | `pre_install:` and `post_install:` in `config.yaml`: an absolute path or `~/…` | none |
+| the project's | top-level `pre_install:` and `post_install:` in `.lola/project.yml`, relative to the project, in plain text and without a `..` component; it must be a regular file inside the project, not a symbolic link | `scripts`, per project, event and digest |
+| this run's | `install --pre-install <path>` and `--post-install <path>` | none |
+
+Each runs as a hook does, but from its absolute path, with the module copy as its working
+directory, the hook environment (`LOLA_MODULE_NAME`, `LOLA_MODULE_PATH`, `LOLA_PROJECT_PATH`,
+`LOLA_ASSISTANT`, `LOLA_SCOPE`, `LOLA_HOOK`) and `LOLA_SCRIPT_SOURCE` (`user`, `project` or
+`flag`), its output on stderr, under the hook timeout (10 minutes). A project's scripts run only
+in runs whose scope is that project: a `--user` run never runs them, and under `--scope both` they
+wrap the project's modules only. `user.yml` refuses the keys; yours belong in `config.yaml`.
+
+- A missing, irregular or non-executable script is refused before anything is asked, naming the
+  file, line and key (`/work/proj/.lola/project.yml:4: pre_install: ci/check.sh does not exist`)
+  or the flag (`--pre-install ./hooks/pre.sh is not executable`, hinting `chmod +x
+  ./hooks/pre.sh`); so is a project's that is an absolute path (`… is an absolute path; name the
+  script by its path inside the project`), resolves outside the project, is a symbolic link, has a
+  `..` component (`… has a .. component; name the script by its path inside the project`) or holds
+  a control character or a line break. `lola list` works with a missing script. A project's
+  script is shown by its path from the project's root, beside that root (`ci/check.sh (project
+  at /work/proj, claude-code)`), and every script path is shown on one line.
+- A pre-install script that fails or times out stops the run, nothing written (`pre-install
+  script ci/check.sh (project) failed for kit on claude-code: exit status 3`); a post-install one
+  is a warning and the installation is kept.
+- lola hashes every script when the run plans it and again just before it runs it; one that
+  changed in between is not run (`pre-install script ci/check.sh (project) changed after lola
+  checked it; nothing was installed`; a post-install one is a warning).
+- The project's scripts need your trust (`scripts`): on a terminal lola shows the script and its
+  sha256 and asks; off one a pre-install script is refused, hinting your run with
+  `--trust=scripts`, and a post-install script is skipped with a warning and stays pending in
+  `lock.json` (`scripts_pending`). A pending one runs, alone, in the module's copy as it is, only
+  in a `lola sync` that names the module or gives `--trust=scripts`, and only with your consent
+  for the script as it is now; any other sync says `pending post-install script for kit → lola
+  sync --project kit (off a terminal: lola sync --project kit --trust=scripts)`, the part in
+  parentheses only off a terminal. The mark stays until the script has run on every assistant, so
+  one that fails is offered again. Once `project.yml` no longer names a post-install script, a sync
+  clears the mark. A `lola sync` asks about the project's scripts even when it installs nothing, so a pulled
+  `project.yml` that adds or edits one asks before any install runs it: a pre-install script as
+  `Trust this project's pre-install script for later runs?` (off a terminal, refused until
+  `--trust=scripts`), while a post-install one, which would only be skipped, is not asked about
+  and is warned of (`post-install script ci/after.sh (project) is not trusted on this machine;
+  trust it: lola sync --project --trust=scripts`). Your own scripts and the flag's are checked
+  only when a copy is written.
+- A post-install script, like a post-install hook, is declined rather than refused when you have
+  not trusted it, so the command a dry run ends with (`lola sync -n`) adds `--trust=scripts` only
+  for a pre-install script; `-n` still says the post-install one needs it. A dry run of a sync that
+  would run a pending script counts its module as changed; without the trust it needs, it marks
+  the script and says it stays pending, as the run would.
+- `-n` lists every script in run order with its source, and says which project script still
+  needs `--trust=scripts`; JSON has `scripts` (`event`, `source`, `path`, `module`, `target`,
+  `status`: `would-run`, `ran`, `failed` or `declined`), and `--plain` a `script` row for each
+  (module, event, source, path, assistant, status). `lola info` lists
+  them too.
+- A refusal for want of trust hints the run with every kind it would still be refused for, not
+  only the one refused: a module's pre-install hook and the project's pre-install script, both
+  untrusted, hint `--trust=scripts,hooks`.
+
+Consent covers the script itself, not the files it runs; lola runs no shell around it and runs
+nothing in a sandbox.
+
+### Trust kinds
+
+Every question lola asks before it runs or installs something you did not write has a kind, and
+`--trust` answers the kinds you name, on `sync`, `profile`, `install`, `render` and `migrate`:
+
+| Kind | Covers | Recorded in |
+|---|---|---|
+| `entries` | The changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write | `trust.json` |
+| `profiles` | A project profile's changes, a project profile taking your profile's place, a remote profile `--add` or `--update` shows | `trust.json` |
+| `scripts` | A project's install scripts, per project, event and the digest of the script ([Install scripts](#install-scripts)) | `consent.json` |
+| `hooks` | A module's install hooks, by the digest of their scripts | `consent.json` |
+| `runtime-hooks` | A module's Claude Code runtime hooks and agent MCP servers, per settings file | `consent.json` |
+
+Write the kinds after `=`, as a comma list or the flag repeated (`--trust=entries,hooks`); help
+shows `--trust[=entries,profiles]` where a bare `--trust` grants those, and `--trust=<kinds>` where
+it grants none. `--trust hooks` is bare `--trust` and a module named `hooks`: lola refuses an
+argument right after a bare `--trust` that names kinds (in any case, or a list such as
+`hooks,scripts`; after `--` it is a name), hinting your run with `--trust=` the kinds you wrote,
+never the ones a bare `--trust` would add. `--trust=entries,profiles` written out is those two
+kinds, so `profile --add` refuses it. Bare `--trust` is `entries,profiles`, the kinds that run no code; `all` is
+every kind the command takes. A kind the command never asks is refused, naming the ones it takes:
+`install`, `render` and `migrate` take `scripts`, `hooks` and `runtime-hooks` (bare `--trust` is
+refused there, beside other kinds too), `profile --add` takes `profiles`, and `sync` and the other
+`profile` actions take all five. An unknown kind is refused, hinting the closest one within two
+edits (a stray comma, the value without it). `profile --update` without a scope flag refuses
+`--trust=entries`, which would answer nothing there, hinting the run with `--project` and with
+`--scope both`.
+
+What the kinds cover is listed once, before anything is written, as a receipt on stderr:
+
+```
+trusting, as --trust=entries,hooks allows:
+  → entries: targets (new), kit (new)
+  → hooks: kit pre-install (new)
+Proceed? [y/N]
+```
+
+On a terminal lola then asks once (`-y` answers; No installs and records nothing; fetched content
+stays in the cache); what the kinds do not cover is asked item by item first, as without the flag.
+`profile --add`, which takes no `-y`, asks it on a terminal too. A command asks one receipt for
+everything it does: `sync --scope both` runs each scope up to its receipt, shows one, and applies
+the scopes only after its yes, and `profile --update` with `--trust` does the same for the
+profiles and each scope's sync, writing no profile before it (a scope's sync refused before the
+receipt still keeps the update, after a receipt of the profiles; a Cancel or a No to its removals
+updates nothing; a profile another lola run replaced while you were asked is not updated, and
+the profiles written before it are named, not applied). Each scope records its grants just before it is applied, and one whose content
+changed after the receipt is refused (`what --trust covers changed after you answered its receipt;
+nothing more was written`). Off a terminal the run proceeds,
+and under `--json` nothing is printed: the document's `trusted` key lists the same items, and so
+does the error document of a run that fails after it recorded them (for several scopes or
+destinations, what all of them recorded so far, `[]` for none). A run whose
+answers the kinds do not cover is refused off a terminal, and its hint is your run with
+`--trust=` the kinds you gave and exactly the ones missing; a post-install hook or runtime hook
+without consent is declined with a warning that names the run with its kind. `-y` and `--force`
+never give consent of any kind.
+
+A grant by `--trust` is recorded as a yes at the prompt is, once the receipt is answered: a later
+run on the same machine with the same digests asks nothing and needs no flag, and a changed
+script, hook set or runtime-hook group asks again. A yes at a hook's own question is recorded at
+the same point, with them (just before the first write when nothing is covered). A No, a refusal,
+Ctrl+C or `-n` records nothing, neither the flag's grants nor those yes answers. On a CI machine whose `$XDG_STATE_HOME` persists between jobs, one job's
+`--trust=hooks` therefore covers later jobs that install the same hooks; give each job a fresh
+`XDG_STATE_HOME` when you want consent per job.
 
 ## Findings
 
@@ -1215,7 +1526,7 @@ the run, `lola check` included: they are never skip findings.
 | `opencode/escaped-arguments` | warn | no | A command has a Claude-escaped `\$N` or `\$ARGUMENTS`; OpenCode has no escape and still replaces it with arguments, so reword the text. |
 | `opencode/env-reference` | info | no | `${VAR}` in an MCP server becomes OpenCode's `{env:VAR}`. |
 | `opencode/env-default-dropped` | warn | no | OpenCode has no defaults for environment references: `${VAR:-default}` becomes `{env:VAR}`. |
-| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; rerun with `--allow-runtime-hooks`, or answer the prompt on a terminal. |
+| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; its hint is your run with `--trust=` the kinds you gave and `runtime-hooks`, or answer the prompt on a terminal. |
 | `claude-code/allowed-tools` | warn | no | A skill, command or agent pre-approves tools with `allowed-tools`; Claude Code runs them without asking. Installed as written. |
 | `claude-code/permission-mode` | warn | no | An agent sets the permission mode Claude Code runs it in with `permissionMode`; the finding names the mode. Claude Code v2.1.267+ ignores `bypassPermissions` in a subagent's frontmatter. Installed as written. |
 | `claude-code/runtime-hook-path-unsafe` | skip | yes, unless a path holds a quote, `$`, a backquote or `\` | A shell-form hook needs the module copy and plugin-data paths to hold only letters, digits and `/ . _ + -`, or an exec-form command contains `=` or starts with `-`. |
@@ -1235,11 +1546,11 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | File | Purpose | Commit it? |
 |---|---|---|
 | `.lola/project.yml` | The manifest: which modules and targets you want, and for git and archive modules the version (pin) installed. lola edits only the entries it changes and keeps your comments and order, but it writes the whole file again, so blank lines between entries are dropped and indentation becomes two spaces. | Yes |
-| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, the active [profiles](guides/profiles.md#profiles) (`profiles`), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: the active profiles when a template reads them, and `vars`). | No (gitignored for you) |
+| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, (`scripts_pending`) the project's post-install script you have not let run on the module yet, the active [profiles](guides/profiles.md#profiles) (`profiles`), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: the active profiles when a template reads them, and `vars`). | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
-| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, and `cache_unused_for`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally, at user scope and per project. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](guides/profiles.md#profiles); `default.yml` is always on at user scope. lola never writes them. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/keep.yaml` | Your [keep-list](guides/tidying.md#tidying): per scope, what `lola tidy` never offers. Written by `--keep` and `--unkeep`; safe to edit by hand. | Yours to keep |
@@ -1247,6 +1558,7 @@ and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenja
 | `$XDG_CACHE_HOME/lola/markets/` | Each marketplace's fetched catalog, byte for byte, with `source.json`, its pin. `lola market --update` writes it again. | No: it is cache |
 | `$XDG_DATA_HOME/lola/profiles/` | [Remote profiles](guides/profiles.md#remote-profiles), one directory each with `profile.yml` and `source.json`. Only `lola profile` writes them. | Yours to keep |
 | `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote or you trusted in `lola sync` (see [Trust](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
+| `$XDG_STATE_HOME/lola/consent.json` | The consents you gave, by digest: each module's install hooks, its runtime hooks per settings file, and each project's install scripts per event (`project-scripts/<sha256 of the project directory>/<event>`). A changed digest asks again. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved and what `lola tidy` moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
@@ -1258,14 +1570,13 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   Anything else is a **conflict**: lola lists every conflict and changes nothing.
   The refusal lists each conflicting file, by assistant and path, one per line, and why.
   `--force` overrides conflicts and lists each overridden file in the summary; the refusal's hint
-  is your run with `--force` added, keeping its other flags but `-y`, `--trust` and the hook
-  flags. `--force` also answers the destructive question itself (`install`'s review menu,
+  is your run with `--force` added, keeping its other flags but `-y` and `--trust`. `--force` also answers the destructive question itself (`install`'s review menu,
   `sync`'s removals, `uninstall`, `lola profile --remove`, `lola migrate`), on a terminal or off
   one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules says which
   (`with --force it also removes, without asking: other (whole module)`). It never answers a
   consent question: a forced run that needs your trust for a
   pulled `project.yml`, or consent to a module's hooks, still asks, or off a terminal refuses
-  with the hint that adds `--trust` or the hook flag.
+  with the hint that adds the `--trust=` kinds missing.
   Every hint that repeats your run for another reason (another scope, `-t`, `--force`) drops
   them the same way, and a flag you gave as false is never repeated as true. A refusal for want
   of a terminal to confirm on hints your run with `-y`, which answers that question. A hand-edited file lola would delete
@@ -1318,18 +1629,26 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   [partial](guides/templating.md#partials), whose `file` it is; else `""`) and `rendered` (true when the rendered
   output, not the template, was refused); for `template-run-budget` the target, kind, artifact
   and file are `""`. Under `--json`, a confirmation refused off a terminal (`uninstall`, `cache rm`,
-  `migrate` and a bare `init` without `-y`) prints only that line, which adds the plan it would
+  `cache clean`, `migrate` and a bare `init` without `-y`) prints only that line, which adds the plan it would
   have asked about: for `uninstall` and `migrate` the keys their `-n --json` prints (`modules`,
   `steps`, `findings`, `notices` and `dry_run` for `uninstall`), for `cache rm` `would_remove`,
   the names, and for `init` the keys its `-y --json` prints (`name`, `path`, `format`, `files`);
-  its hint is the run with `-y`.
-- Human output says a hook `would run` in a dry run; `--json` and `--plain` keep the value
-  `would-run`.
+  its hint is the run with `-y`. `cache clean` does the same with the keys its `-n --json` prints
+  (`removed`, `kept`, `bytes_freed`, `dry_run`, `notices`).
+- Human output says a hook or install script `would run` in a dry run; `--json` and `--plain`
+  keep the value `would-run`.
+- Every result that carries `modules` carries `scripts`: each install script the run ran, would
+  run, declined or saw fail, per module and assistant, in run order (`[]` when none; [Install
+  scripts](#install-scripts)); its `path` is shown as configured, with control characters replaced.
+- `sync`, `profile`, `install`, `render` and `migrate` under `--json` carry `trusted`: each item
+  the run's `--trust` covered, `{kind, item, change}` with `change` `new` or `changed`, `[]` when
+  none; under `-n`, what it would cover ([Trust kinds](#trust-kinds)).
 - Exit status: `0` on success or when you decline a prompt (Ctrl+C included, in accessible mode
   too); `1` on any error. `lola render` leaving modules out exits `0` unless `--strict`.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
-- Without a terminal, `uninstall`, `cache rm`, `migrate` and a bare `init` need `-y`; `tidy`
+- Without a terminal, `uninstall`, `cache rm`, `cache clean` (when it has something to remove),
+  `migrate` and a bare `init` need `-y`; `tidy`
   needs names or `--all`, and `-y`. `sync` needs `-y` to
   remove anything and `--trust` to accept changes to `project.yml` (`--trust <module>…` for some),
   including the pin it writes back for an unpinned entry you trusted before; `-y` never trusts.
@@ -1376,7 +1695,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   an activation that puts a project profile in place of yours.
 - Text a module or a manifest chose (names, paths, hook scripts such as `modules[].hooks[].script`
   and the scripts of install hooks, `mcp_servers[].runs`, module warnings, the trust diff, and the
-  module file names in `lola cache info`, human or `--json`) shows control and invisible characters
+  module file names in `lola info`, human or `--json`) shows control and invisible characters
   as `?` in JSON as on a terminal. `runs` and a hook's `script` are for reading, not an exact
   command line to run. A step's `path`, `member` and `value` are the exception: they are what lola
   wrote, raw but for JSON's escaping; so are `lola tidy`'s `path` and `trash`, the paths it found,

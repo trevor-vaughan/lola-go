@@ -52,6 +52,7 @@ type RemoteProfile struct {
 	name           string
 	data           []byte
 	origin         profile.Origin
+	entries        []manifest.Entry // the profile's entries, which a staged update gives its layer
 }
 
 // RemoteResult is what lola profile --add and --update report: the remote profiles shown, and
@@ -60,6 +61,26 @@ type RemoteResult struct {
 	Profiles []RemoteProfile `json:"remote_profiles"`
 	Notices  []Notice        `json:"notices"`
 	DryRun   bool            `json:"dry_run"`
+	// Trusted is what the run's --trust covers, as Result's (Plan 9 §8): [] for --add and
+	// --update, absent for --remove, which takes no --trust.
+	Trusted []Consent `json:"trusted,omitzero"`
+}
+
+// consentRemote is the answer to keeping rps, remote profiles an --add or an --update fetched:
+// when --trust covers profiles, show shows them as a record and receipt is shown what is
+// trusted, items, once (Plan 9 §3.4); otherwise ask asks.
+func consentRemote(rps []RemoteProfile, items []Consent, covered bool, ask func([]RemoteProfile) (bool, error),
+	show func([]RemoteProfile), receipt func([]Consent) (bool, error)) (bool, error) {
+	if !covered {
+		return ask(rps)
+	}
+	if show != nil {
+		show(rps)
+	}
+	if receipt == nil {
+		return true, nil
+	}
+	return receipt(slices.Clone(items))
 }
 
 // remoteName refuses a name no remote profile can have: one that fails the module-name rules,

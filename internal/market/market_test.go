@@ -488,6 +488,17 @@ modules:
 		Expect(cat.Entries[1].Source.Commit).To(Equal(strings.Repeat("c", 64)), "lola takes a sha256 commit too")
 	})
 
+	It("a full-commit ref in capitals is that commit, lower-cased", func() {
+		cat := parsed(`{"name": "caps", "source": {"source": "github", "repo": "a/b", "ref": "`+strings.ToUpper(commit)+`"}}`,
+			`{"name": "agree", "source": {"source": "github", "repo": "a/b", "ref": "`+strings.ToUpper(commit)+`", "sha": "`+commit+`"}}`,
+			`{"name": "disagree", "source": {"source": "github", "repo": "a/b", "ref": "`+strings.ToUpper(commit)+`", "sha": "`+other+`"}}`)
+		Expect(reasons(cat)).To(Equal(map[string]string{"disagree": "ref and sha disagree: ref " + commit + ", sha " + other}))
+		Expect(cat.Entries).To(HaveLen(2))
+		for _, e := range cat.Entries {
+			Expect(e.Source).To(And(HaveField("Ref", ""), HaveField("Commit", commit)), e.Name)
+		}
+	})
+
 	It("a Claude archive entry's sha256 reaches source.Spec.SHA256", func() {
 		sum := strings.Repeat("AB", 32)
 		cat := market.Bind(parsed(`{"name": "bundle", "source": {"source": "archive", "url": "https://dl.example.com/b.tar.gz", "sha256": "`+sum+`"}}`,

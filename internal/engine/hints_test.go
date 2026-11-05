@@ -59,7 +59,7 @@ var _ = Describe("hints", func() {
 				return err
 			},
 			func() []string {
-				return []string{"see them: lola sync --project --json -n", "then accept them: lola sync --project --json --trust"}
+				return []string{"see them: lola sync --project --json -n", "then accept them: lola sync --project --trust=entries --json"}
 			}),
 		Entry("sync's trust refusal of named modules, with -y, which answers only the refusal that accepts",
 			func() error {
@@ -70,17 +70,17 @@ var _ = Describe("hints", func() {
 			},
 			func() []string {
 				return []string{"see them: lola sync --project other --plain --no-pager -n",
-					"then accept them: lola sync --project other --plain --no-pager --trust -y"}
+					"then accept them: lola sync --project other --trust=entries --plain --no-pager -y"}
 			}),
-		Entry("sync's trust refusal after --force and --allow-hooks, which it repeats and never adds",
+		Entry("sync's trust refusal after --force and --trust=hooks, which it repeats, adding only the kinds missing",
 			func() error {
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Force: true, AllowHooks: true},
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Force: true, Trust: engine.TrustHooks},
 					Display: []string{"--json"}})
 				return err
 			},
 			func() []string {
-				return []string{"see them: lola sync --project --force --allow-hooks --json -n",
-					"then accept them: lola sync --project --force --allow-hooks --json --trust"}
+				return []string{"see them: lola sync --project --force --trust=hooks --json -n",
+					"then accept them: lola sync --project --force --trust=entries,hooks --json"}
 			}),
 		Entry("install's argument that is neither in the cache nor a source",
 			func() error {
@@ -112,7 +112,7 @@ var _ = Describe("hints", func() {
 				return err
 			},
 			func() []string {
-				return []string{"see them: lola sync --project kit --json -n", "then accept them: lola sync --project kit --json --trust",
+				return []string{"see them: lola sync --project kit --json -n", "then accept them: lola sync --project kit --trust=entries --json",
 					"edited it yourself? lola install --project ./mods/kit --json"}
 			}),
 		Entry("sync's trust diff of a folder edited since lola installed it, under --plain and --no-pager",
@@ -156,7 +156,7 @@ var _ = Describe("hints", func() {
 			},
 			func() []string {
 				return []string{"see them: lola profile --project project:review --on --json -n",
-					"then accept them: lola profile --project project:review --on --json --trust"}
+					"then accept them: lola profile --project project:review --on --trust=profiles --json"}
 			}),
 		Entry("check's argument that is neither a source nor a module in your cache",
 			func() error {

@@ -169,10 +169,10 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 			return out
 		}
 		for _, run := range [][]string{
-			{"install", mod, "--yes=false", "--json=false", "--no-rules=false", "--allow-hooks=false"},
-			{"sync", "--trust=false", "--yes=false", "--json=false", "--allow-runtime-hooks=false"},
-			{"install", mod, "-y", "--allow-hooks", "--allow-runtime-hooks", "-t", "claude-code"}, // answers for this run only
-			{"sync", "-y", "--trust", "--allow-hooks"},
+			{"install", mod, "--yes=false", "--json=false", "--no-rules=false"},
+			{"sync", "--yes=false", "--json=false"},
+			{"install", mod, "-y", "--trust=hooks,runtime-hooks", "-t", "claude-code"}, // answers for this run only
+			{"sync", "-y", "--trust", "--trust=hooks"},
 		} {
 			r := lola(run...)
 			Expect(r.code).To(Equal(1), strings.Join(run, " "))
@@ -180,7 +180,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 			Expect(hints).NotTo(BeEmpty(), strings.Join(run, " "))
 			for _, h := range hints {
 				words := shellWords(h)
-				for _, consent := range []string{"--yes", "-y", "--trust", "--allow-hooks", "--allow-runtime-hooks", "--json", "--no-rules"} {
+				for _, consent := range []string{"--yes", "-y", "--trust", "--trust=hooks,runtime-hooks", "--json", "--no-rules"} {
 					Expect(words).NotTo(ContainElement(consent), h)
 				}
 			}
@@ -287,7 +287,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(inHome).NotTo(BeAnExistingFile())
 		Expect(os.WriteFile(manPath, was, 0o644)).To(Succeed())
 
-		By("a failing user scope keeps the project's result")
+		By("a user scope that fails before the command's one receipt applies neither scope (Plan 9 CR3)")
 		Expect(os.Remove(filepath.Join(tmp, "config", "lola", "user.yml"))).To(Succeed())
 		r = lola("sync", "--scope", "both", "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
@@ -297,8 +297,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		}
 		Expect(json.Unmarshal([]byte(r.err), &failed)).To(Succeed(), r.err)
 		Expect(failed.Error).To(HavePrefix("no user.yml at "))
-		Expect(failed.Scopes).To(HaveLen(1))
-		Expect(failed.Scopes[0].Scope).To(Equal("project"))
+		Expect(failed.Scopes).To(BeEmpty())
 	})
 
 	It("a declined sync names the scope it left unchanged", func() {

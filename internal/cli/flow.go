@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -21,9 +22,11 @@ import (
 
 // installFlags are lola install's flags.
 type installFlags struct {
-	targets, skips, onlys, unskips                                            []string
-	ref, path                                                                 string
-	dry, force, strict, rules, noRules, allowHooks, allowRuntime, global, yes bool
+	targets, skips, onlys, unskips                  []string
+	ref, path                                       string
+	preInstall, postInstall                         string // --pre-install and --post-install, as given
+	dry, force, strict, rules, noRules, global, yes bool
+	trust                                           engine.TrustKinds
 }
 
 // addedSource is a source added to the cache during the run (Add a source…).
@@ -124,7 +127,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if err := fl.expandMarkets(); err != nil {
 		return err
 	}
-	return fl.run()
+	return tagRefHint(cmd, args, fl.run())
 }
 
 // expandMarkets replaces each argument that means an entry of your marketplaces with that
@@ -394,7 +397,8 @@ func (fl *installFlow) run() error {
 			break
 		}
 	}
-	fl.a.hookOptions(fl.cmd, &spec.Options, fl.f.allowHooks, fl.f.allowRuntime)
+	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), trustRun(fl.cmd, fl.args)
+	fl.a.hookOptions(fl.cmd, &spec.Options)
 	spec.Options.Display = outputFlags(fl.cmd)
 	// The summary, when a picker ran, already showed where each address resolved, before Apply.
 	if !fl.a.json && (!fl.ask || len(fl.shown) == 0) {
@@ -832,11 +836,11 @@ func (fl *installFlow) ensureAssistants() error {
 			answer[name] = fl.f.targets
 			continue
 		}
-		man, err := fl.eng.InstallManifest(c.Scope, fl.requests())
+		choice, err := fl.eng.DefaultTargets(c.Scope, fl.requests())
 		if err != nil {
 			return fl.eng.CoachUnresolved(err, []engine.Scope{c.Scope}, fl.f.dry, outputFlags(fl.cmd))
 		}
-		fixed := man.Targets
+		fixed := choice.Manifest
 		if fl.choices != nil {
 			for _, s := range fl.choices.Scopes {
 				if s.Scope.Key() == name {
@@ -848,23 +852,13 @@ func (fl *installFlow) ensureAssistants() error {
 			answer[name] = nil
 			continue
 		}
-		var inst, marked []string
-		for _, as := range fl.eng.Detect(c.Scope) {
-			if as.Binary == "" {
-				continue
-			}
-			inst = append(inst, as.Target)
-			if as.Marked {
-				marked = append(marked, as.Target)
-			}
-		}
-		switch {
+		inst, marked := choice.Installed, choice.SetUp
+		choice.Manifest = nil // the pickers' fixed targets decided above
+		switch why := choice.NoneHere(); {
 		case len(inst) == 0:
-			return errs.WithHints(errors.New("no assistant found on your PATH, so lola does not know where to install"),
-				withTarget(targets.IDs())...)
+			return errs.WithHints(errors.New(why), withTarget(targets.IDs())...)
 		case !fl.ask && len(marked) == 0:
-			return errs.WithHints(fmt.Errorf("none of your installed assistants (%s) is set up here, so lola does not know where to install",
-				strings.Join(inst, ", ")), withTarget(inst)...)
+			return errs.WithHints(errors.New(why), withTarget(inst)...)
 		case !fl.ask:
 			answer[name] = marked
 		case len(inst) == 1:
@@ -1101,10 +1095,20 @@ func (fl *installFlow) pickEdits(key string) []engine.SelectionEdit {
 	return out
 }
 
+// flagScript is the script --pre-install or --post-install names, given, made absolute against the
+// directory lola runs in (Plan 9 §5.1, A1); none for "".
+func (fl *installFlow) flagScript(given string) engine.FlagScript {
+	if given == "" || filepath.IsAbs(given) {
+		return engine.FlagScript{Given: given, Path: given}
+	}
+	return engine.FlagScript{Given: given, Path: filepath.Join(fl.cwd, given)}
+}
+
 // spec builds the install from the answers.
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
-		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
+		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
+		PostInstall: fl.flagScript(fl.f.postInstall)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
 	}

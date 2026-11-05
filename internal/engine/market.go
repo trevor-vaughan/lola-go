@@ -706,11 +706,11 @@ func (e *Engine) PythonCatalog(ctx context.Context, src, name string) (_ string,
 	if ms.file {
 		return "", fmt.Errorf("%s is a catalog file, not a tree", shown(src))
 	}
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return "", err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	f, err := source.Fetch(ctx, ms.spec, run)
 	if err != nil {
 		return "", unhinted(err)
@@ -999,11 +999,11 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 	if r := reg.Find(req.Name); req.Name != "" && r != nil && sameMarket(*r, src, req.Ref, req.Path, req.Name) {
 		return nil, alreadyThis(r.Name, req.DryRun, req.Display)
 	}
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	// The catalog is looked up by the name you typed (<name>.yml), whatever name it is added as.
 	two := func(file string) string {
 		return MarketRun(addRun(req.Name, req.Source, req.Ref, file, req.DryRun, req.Display)...)
@@ -1261,11 +1261,11 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 // replaces (nil for none, or one that cannot be read).
 func (e *Engine) updateMarket(ctx context.Context, r market.Registration, dry bool, unlock *func()) (_ *fetchedMarket, _ *cachedMarket, err error) {
 	was, _ := e.loadMarket(r) // an unreadable cache is replaced, and every entry reads as added
-	run, err := e.runDir()
+	run, done, err := e.runDir()
 	if err != nil {
 		return nil, nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(run)) }()
+	defer func() { err = errors.Join(err, done()) }()
 	f, err := e.fetchMarket(ctx, registrySource(r), r.Name, r.Path, "", run, nil)
 	if err != nil {
 		return nil, nil, err
