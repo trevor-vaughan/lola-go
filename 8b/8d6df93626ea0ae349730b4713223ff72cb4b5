@@ -1,0 +1,39 @@
+docs/usage.md
+  s_63149906d5c471::t_394b2ddc14ffe3 707-708
+  s_63149906d5c471::t_d4ccb8775b18c5 114-130
+  s_63149906d5c471::t_326bbd32428d37 243-245
+  s_63149906d5c471::t_0f369506531859 229-231
+  s_63149906d5c471::t_f28a8eed411548 868-875
+  s_63149906d5c471::t_59eca53d3fdbfe 26-28
+  s_63149906d5c471::t_35ecbd5802909d 366-368
+  s_63149906d5c471::t_58acaea98953bb 354-356
+  s_63149906d5c471::t_4ee9a19d8fd7f0 693-700
+  s_63149906d5c471::t_28fb57b45e3a11 837-846
+  s_63149906d5c471::t_7a95384262189f 32-34
+  s_63149906d5c471::t_6ca65248cdd1b6 331-333
+  s_63149906d5c471::t_24203b38c83af7 360-362
+  s_63149906d5c471::t_de1e651adbb8f9 401-403
+  s_63149906d5c471::t_bf8a5496c6ba30 894-908
+  s_63149906d5c471::t_b10bc1aba5b37f 325-327
+  s_63149906d5c471::t_86a7f3a4538c05 488-490
+  s_63149906d5c471::t_7fdcd1c30b0ab2 485
+  s_63149906d5c471::t_cb9ad1f499c762 172-182
+  s_63149906d5c471::t_59328f7601b378 780-804
+  s_63149906d5c471::t_044a8bddf21b9d 767-777
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8b8d6df93626ea0ae349730b4713223ff72cb4b5",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
