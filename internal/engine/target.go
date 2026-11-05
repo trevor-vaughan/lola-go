@@ -84,6 +84,9 @@ type TargetRequest struct {
 	Catalog  []string
 	// CatalogPartial says lola could not read every catalog: a hint qualifies each profile name.
 	CatalogPartial bool
+	// Yes is uninstall's -y, which answers the question of which layer to remove a module from when
+	// only one layer lists it (removeFrom); Rerun then keeps -y.
+	Yes bool
 }
 
 // ownFlags is what Rerun leaves out of a lola profile --edit run that a run repeating it keeps:
@@ -364,10 +367,11 @@ func (e *Engine) uninstallTarget(sc Scope, layers []Layer, req TargetRequest) (w
 
 // removeFrom is the layer an uninstall removes module's entry from (spec 2026-10-29 §6.1): t, the
 // target, when --profile named it or when w, the module's winning entry, is t's own; else w's layer,
-// once ask says so (flag form --profile <it>), which neither -y nor --force answers (§3.6); under -t
-// (partial), which keeps the entry with fewer targets, the question is about changing it there. A remote
-// profile's entry, on or a bundle's member, is refused, hinting the --off that turns the profile on off. A
-// refusal's hints keep the run's output flags (opts.Display).
+// once ask says so (flag form --profile <it>), which --force does not answer; -y answers it only
+// when w's is the one layer that lists the module (§3.6, A3). Under -t (partial), which keeps the
+// entry with fewer targets, the question is about changing it there, and -y does not answer it. A
+// remote profile's entry, on or a bundle's member, is refused, hinting the --off that turns the
+// profile on off. A refusal's hints keep the run's output flags (opts.Display).
 func (e *Engine) removeFrom(sc Scope, layers []Layer, infos []profile.Info, t writeTo, w *Wanted, partial bool, opts Options) (*writeTo, error) {
 	if opts.Target.Profile != "" {
 		if t.layerEntry(w.Name) == nil {
@@ -385,6 +389,9 @@ func (e *Engine) removeFrom(sc Scope, layers []Layer, infos []profile.Info, t wr
 		return &t, nil
 	}
 	k := slices.IndexFunc(layers, func(l Layer) bool { return l.Name == w.From })
+	lists := func(l Layer) bool {
+		return slices.ContainsFunc(l.Entries, func(e manifest.Entry) bool { return e.Name == w.Name })
+	}
 	from := writeTo{Layer: layers[k], on: true, label: layerLabel(infos, w.From)}
 	label, verb := "Remove it from "+from.label, "remove"
 	if partial {
@@ -393,6 +400,9 @@ func (e *Engine) removeFrom(sc Scope, layers []Layer, infos []profile.Info, t wr
 	title := module + " comes from " + from.label + ", loaded under every profile " + scopeWhere(sc) + "."
 	if k > 0 && from.Bundle != "" {
 		title = module + " comes from " + from.label + ", a member of bundle " + bundleLabel(infos, from.Bundle) + "."
+	}
+	if opts.Target.Yes && !partial && slices.IndexFunc(layers, lists) == k && slices.IndexFunc(layers[k+1:], lists) < 0 {
+		return &from, nil // -y answers the question when w.From is the one layer that lists the module
 	}
 	q := WhereQuestion{Scope: sc, Module: w.Name, Title: title, Choices: []WhereChoice{{Label: label, Profile: layerFlag(layers, w.From)}}}
 	refused := module + " comes from " + from.label + "; lola uninstall needs to know whether to " + verb + " it there, and there is no terminal to ask on"

@@ -455,7 +455,7 @@ var _ = Describe("lola tidy: what it sees", func() {
 		res := t.dry(t.sc)
 		Expect(codes(res.Skipped)).To(Equal([]string{"claude-code agent/ other_project"}))
 		Expect(noticeTexts(res.Notices)).To(ContainElement(".claude/agents is inside the lola project " + nested + "; lola tidy skips it"))
-		Expect(res.Hints).To(ContainElement("lola tidy -C " + nested))
+		Expect(res.Hints).To(ContainElement("lola tidy -C "+nested+" -n"), "P2-3: a dry run's hint stays dry")
 
 		By("user scope to a project through a dotfiles link")
 		dots := filepath.Join(t.home, "dotfiles")
@@ -464,7 +464,7 @@ var _ = Describe("lola tidy: what it sees", func() {
 		res = t.dry(t.user, "claude-code")
 		Expect(codes(res.Skipped)).To(ContainElement("claude-code skill/ other_project"))
 		Expect(res.Candidates).To(BeEmpty())
-		Expect(res.Hints).To(ContainElement("lola tidy -C " + dots + " -t claude-code"))
+		Expect(res.Hints).To(ContainElement("lola tidy -C "+dots+" -t claude-code -n"), "P2-3: a dry run's hint stays dry")
 	})
 
 	It("an instruction file is locked by its on-disk name at any depth in any case", func() {

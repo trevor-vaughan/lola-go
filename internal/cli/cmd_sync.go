@@ -66,6 +66,9 @@ type syncFlags struct {
 	installed, refetch              bool
 	trust                           engine.TrustKinds
 	pass                            *syncPass // the scope's part of a command that syncs several behind one receipt
+	// alone says the run is this one scope's, as the user asked it, so a hint repeating it keeps
+	// -y; a pass of several scopes, or an apply another command runs, keeps none (ruling R-8).
+	alone bool
 }
 
 // syncPass is one scope's part of a command that syncs several scopes behind one receipt (Plan 9
@@ -304,6 +307,7 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 			if passes != nil {
 				fi.pass = passes[i]
 			}
+			fi.alone = len(scs) == 1
 			res, more, err := a.syncScope(cmd, eng, c.Scope, args, nil, fi)
 			name := manifestName(c.Scope)
 			human := func(w io.Writer, s style, more string) {
@@ -366,18 +370,18 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	// lola profile's --on, --off and --switch take --force too (spec 2026-10-29 §6.2): their
 	// conflicts hint it, with the profile's name.
 	if cmd.Name() == "sync" || cmd.Name() == "update" {
-		opts.ForceRun = forceRun(cmd, args)
+		opts.ForceRun, opts.RenderRun = forceRun(cmd, args), renderRun(cmd, args)
 	} else if prof != nil {
 		var names []string
 		if prof.Name != "" {
 			names = []string{prof.Name}
 		}
-		opts.ForceRun = forceRun(cmd, names)
+		opts.ForceRun, opts.RenderRun = forceRun(cmd, names), renderRun(cmd, names)
 	}
 	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update || f.installed, Installed: f.installed, Refetch: f.refetch,
-		Options: opts, Profiles: prof, Display: outputFlags(cmd)}
+		Options: opts, Profiles: prof, Yes: f.yes && f.alone, Display: outputFlags(cmd)}
 	question := "Remove these and sync? No applies nothing"
 	if prof != nil {
 		question = "Remove these and apply? No applies nothing"

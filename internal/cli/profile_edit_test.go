@@ -454,7 +454,7 @@ var _ = Describe("lola profile --edit", func() {
 
 		r := lola("profile", "go", "--edit", "kit", "--only", "skill/a", "--override", "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(And(ContainSubstring("✓ create opencode    .opencode/skills/a/SKILL.md\n"), ContainSubstring("user:\n  ✗ delete claude-code .claude/skills/b/SKILL.md\n")),
+		Expect(r.out).To(And(ContainSubstring("✓ create opencode    .opencode/skills/a/SKILL.md\n"), ContainSubstring("user:\n  → delete claude-code .claude/skills/b/SKILL.md\n")),
 			"-n plans the other scope from the file as it would be written")
 		Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")))
 
@@ -803,6 +803,17 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go, docs, lint]\n")))
 		})
 
+		It("Src-P2-6-bundle: a forceable skip in a profile added to the bundle on hints the bundle edit, not a plain profile run", func() {
+			kit := filepath.Join(tmp, "kit")
+			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "agents/critic.md": "Criticize.\n"})
+			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n",
+				"lint.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
+			Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
+			r := lolaP(&scripted{where: []int{2}}, "profile", "lint", "--on", "--user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("render it anyway: lola profile --user work --edit --bundle go,docs,lint --force\n"))
+		})
+
 		It("prints each scope's context line once when --on's addition to a bundle applies in two scopes", func() {
 			writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "docs.yml": "version: 1\n", "lint.yml": "version: 1\n",
 				"work.yml": "version: 1\nbundle: [go, docs]\n"})
@@ -937,7 +948,7 @@ var _ = Describe("lola profile --edit", func() {
 			r := lolaP(sp, "profile", "go", "--edit", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).To(ContainElement("confirm:Remove lint from profile go?"))
-			Expect(r.err).To(And(ContainSubstring("Remove lint from profile go, as you unticked at user scope:\n"), ContainSubstring("✗ delete claude-code .claude/commands/lint.md")))
+			Expect(r.err).To(And(ContainSubstring("Remove lint from profile go, as you unticked at user scope:\n"), ContainSubstring("→ delete claude-code .claude/commands/lint.md")))
 			Expect(r.out).NotTo(ContainSubstring("already up to date"))
 			Expect(os.ReadFile(goYml)).NotTo(ContainSubstring("lint"))
 			Expect(lintMd).NotTo(BeAnExistingFile())
@@ -951,7 +962,7 @@ var _ = Describe("lola profile --edit", func() {
 			r = lolaP(sp, "profile", "go", "--edit", "--user", "-y")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).NotTo(ContainElement(HavePrefix("confirm:")))
-			Expect(r.err).To(MatchRegexp(`(?s)install.*Remove lint from profile go, as you unticked at user scope:\n.*✗ delete claude-code \.claude/commands/lint\.md`),
+			Expect(r.err).To(MatchRegexp(`(?s)install.*Remove lint from profile go, as you unticked at user scope:\n.*→ delete claude-code \.claude/commands/lint\.md`),
 				"the review -y applies lists the removal")
 			Expect(strings.Count(r.err, "Remove lint from profile go, as you unticked")).To(Equal(1), "shown once")
 			Expect(lintMd).NotTo(BeAnExistingFile())

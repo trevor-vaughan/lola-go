@@ -42,6 +42,9 @@ func stepLine(s style, st plan.Step) string {
 	// Paths and keys can carry a module's file and server names: printed safely here, and kept
 	// raw in the result, where lola migrate reads them as paths.
 	dest := untrusted.Text(st.Path, len(st.Path))
+	if st.Kind == plan.KindDirectory {
+		dest += "/"
+	}
 	if st.Key != "" {
 		dest += " " + untrusted.Text(st.Key, len(st.Key))
 	}
@@ -63,6 +66,8 @@ func stepLine(s style, st plan.Step) string {
 	}
 	line := fmt.Sprintf("%-6s %-11s %s", st.Action, st.Target, dest)
 	switch {
+	case st.Replaced && st.Action == plan.ActionAdopt:
+		line += " [identical to a file lola did not write; kept, not rewritten]"
 	case st.Replaced:
 		line += " [replaces a file lola did not write]"
 	case st.Forced != "":
@@ -72,9 +77,7 @@ func stepLine(s style, st plan.Step) string {
 		line += " (" + st.Note + ")"
 	}
 	switch st.Action {
-	case plan.ActionDelete:
-		return s.bad(line)
-	case plan.ActionForget:
+	case plan.ActionDelete, plan.ActionForget:
 		return s.info(line)
 	case plan.ActionAbsent:
 		return s.warn(line)
@@ -202,7 +205,8 @@ func printEdits(w io.Writer, s style, edits []engine.Edit, dry bool) {
 
 // editLine is a write line (spec 2026-10-29 §3.7): "✓ added kit to profile go  (<path>)", the path
 // for a file of yours (", new" when the run created it), the base or a project profile said shared
-// when git tracks it, then the entry's only: count and the layer an override copied; under -n
+// when git tracks it, then the entry's only: count, the layer an override copied and where a move
+// carried its picks from; under -n
 // "→ would add …".
 func editLine(s style, ed engine.Edit, dry bool) string {
 	verb, prep := ed.Action, map[string]string{engine.EditAdded: "to", engine.EditChanged: "in", engine.EditRemoved: "from"}[ed.Action]
@@ -230,6 +234,9 @@ func editLine(s style, ed engine.Edit, dry bool) string {
 	}
 	if ed.Overrides != "" {
 		line += " (overrides " + ed.Overrides + "'s)"
+	}
+	if ed.Picks != "" {
+		line += "  picks: " + ed.Picks
 	}
 	if dry {
 		return s.info(line)

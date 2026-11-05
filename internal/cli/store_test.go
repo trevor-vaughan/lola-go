@@ -274,7 +274,7 @@ var _ = Describe("store, search and init commands", func() {
 		dir := filepath.Join(tmp, "it's here", "fresh")
 		r := lola("init", dir)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("try it: " + errs.ShellJoin([]string{"lola", "install", dir, "-t", "claude-code"})))
+		Expect(r.out).To(ContainSubstring("try it: " + errs.ShellJoin([]string{"lola", "install", dir, "--project", "-t", "claude-code"})))
 		Expect(r.out).NotTo(ContainSubstring("lola install " + dir))
 	})
 

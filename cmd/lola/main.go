@@ -2,11 +2,24 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 )
 
 func main() {
-	os.Exit(cli.Execute(cli.NewRootCmd(os.Getenv)))
+	ctx, stop := cli.NotifyContext(context.Background())
+	root := cli.NewRootCmd(os.Getenv)
+	root.SetContext(ctx)
+	code := cli.Execute(root)
+	stop()
+	// A run a signal stopped has cleaned up; it now dies of that signal, as it would have without
+	// the handler, so that a shell script calling lola stops too.
+	var sig cli.Interrupted
+	if errors.As(context.Cause(ctx), &sig) && code == 128+int(sig.Signal) {
+		reraise(sig.Signal)
+	}
+	os.Exit(code)
 }

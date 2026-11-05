@@ -71,7 +71,9 @@ var _ = Describe("core commands", func() {
 
 		r = lola("rm", "example", "-y", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("✗ delete claude-code .claude/commands/ship.md"))
+		Expect(r.out).To(ContainSubstring("→ delete claude-code .claude/commands/ship.md\n"))
+		Expect(r.out).To(ContainSubstring("→ delete claude-code .claude/commands/\n"), "a directory it empties, marked as one")
+		Expect(filepath.Join(proj, ".claude/commands")).NotTo(BeAnExistingFile())
 		Expect(r.out).To(ContainSubstring("→ still in your cache: lola cache rm example"))
 		Expect(filepath.Join(proj, ".mcp.json")).NotTo(BeAnExistingFile())
 	})

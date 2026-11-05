@@ -302,8 +302,9 @@ var _ = Describe("lola tidy: refusals and hints", func() {
 		}
 
 		err = t.e.TidyOneScope(engine.TidyRequest{Scope: t.sc, All: true, Yes: true, Targets: []string{"claude-code"}})
-		Expect(errs.Hints(err)).To(Equal([]string{run(" --all -t claude-code -y"), "lola tidy --user --all -t claude-code -y"}))
-		res, err := t.runHint(errs.Hints(err)[0])
+		Expect(errs.Hints(err)).To(Equal([]string{run(" --all -t claude-code"), "lola tidy --user --all -t claude-code"}),
+			"R-8: the -y given for both scopes answers neither alone")
+		res, err := t.runHint(errs.Hints(err)[0] + " -y")
 		Expect(err).NotTo(HaveOccurred(), "--scope both --all -y: the hint keeps --all")
 		Expect(res.Moved).To(HaveLen(2))
 		t.files(t.proj, map[string]string{".claude/commands/tmp-1.md": "x\n", ".claude/skills/a b'c/SKILL.md": "x\n"})

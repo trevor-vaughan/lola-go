@@ -339,4 +339,184 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(strings.Count(r.err, "scope: ")+strings.Count(r.err, "project "+proj+": ")).To(Equal(1), "a move within the project names it alone")
 	})
+
+	Describe("Pick-P1-a: a move out of project.yml carries the module's selections.yaml picks", func() {
+		var alpha string
+		BeforeEach(func() {
+			alpha = filepath.Join(tmp, "src", "alpha")
+			writeTree(alpha, map[string]string{"lola.yml": "name: alpha\n", "commands/hello.md": "H\n",
+				"skills/a1/SKILL.md": "---\nname: a1\ndescription: A1\n---\nA1\n", "skills/a2/SKILL.md": "---\nname: a2\ndescription: A2\n---\nA2\n",
+				"skills/a3/SKILL.md": "---\nname: a3\ndescription: A3\n---\nA3\n"})
+		})
+		// installedFiles is every file under the project's .claude, relative to it.
+		installedFiles := func() []string {
+			GinkgoHelper()
+			out := []string{}
+			Expect(filepath.WalkDir(filepath.Join(proj, ".claude"), func(path string, d os.DirEntry, err error) error {
+				if err == nil && !d.IsDir() {
+					rel, _ := filepath.Rel(proj, path)
+					out = append(out, filepath.ToSlash(rel))
+				}
+				return err
+			})).To(Succeed())
+			return out
+		}
+		// unchanged asserts a move's output: the carried picks on its write line, and no file
+		// installed or removed, no warning about the selections.yaml entry it took them from.
+		unchanged := func(r result) {
+			GinkgoHelper()
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out + r.err).To(ContainSubstring("picks: carried from selections.yaml"))
+			Expect(r.out + r.err).NotTo(Or(ContainSubstring("create "), ContainSubstring("delete "), ContainSubstring("is ignored")))
+		}
+
+		It("Pick-P1-a: the keep-it-to-yourself hint, run as printed, keeps the --only pick and changes no installed file", func() {
+			hints := install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
+			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch -y"))
+			Expect(installedFiles()).To(Equal([]string{".claude/skills/a1/SKILL.md"}))
+
+			r := runHint(command(hints[0]))
+			unchanged(r)
+			Expect(installedFiles()).To(Equal([]string{".claude/skills/a1/SKILL.md"}))
+			Expect(read(filepath.Join(p.UserProfiles, "mine.yml"))).To(ContainSubstring("    skip: [skill/a2, skill/a3, command/hello]\n"))
+			Expect(read(p.Selections)).NotTo(ContainSubstring("alpha"))
+			Expect(lola("sync", "--project").out).NotTo(ContainSubstring("create "), "the next sync installs nothing either")
+		})
+
+		It("Pick-P1-a: --to project:team keeps the pick in the project profile and changes no installed file", func() {
+			team := filepath.Join(proj, ".lola", "profiles", "team.yml")
+			writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\n"})
+			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
+
+			r := lola("profile", "--project", "--move", "alpha", "--to", "project:team", "--switch", "-y")
+			unchanged(r)
+			Expect(installedFiles()).To(Equal([]string{".claude/skills/a1/SKILL.md"}))
+			Expect(read(team)).To(ContainSubstring("    skip: [skill/a2, skill/a3, command/hello]\n"))
+			Expect(read(p.Selections)).NotTo(ContainSubstring("alpha"))
+		})
+
+		It("Pick-P1-a: the every-project hint, run as printed, carries the pick into default at user scope", func() {
+			hints := install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
+			Expect(hints[len(hints)-1]).To(Equal("meant for every project? lola profile --user --move alpha --to base -y"))
+
+			r := runHint(command(hints[len(hints)-1]))
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out + r.err).To(ContainSubstring("picks: carried from selections.yaml"))
+			Expect(r.out + r.err).NotTo(ContainSubstring("is ignored"))
+			Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("    skip: [skill/a2, skill/a3, command/hello]\n"))
+			Expect(read(p.Selections)).NotTo(ContainSubstring("alpha"))
+			Expect(filepath.Join(p.Home, ".claude", "skills", "a1", "SKILL.md")).To(BeAnExistingFile())
+			Expect(filepath.Join(p.Home, ".claude", "skills", "a2", "SKILL.md")).NotTo(BeAnExistingFile())
+			Expect(filepath.Join(p.Home, ".claude", "commands", "hello.md")).NotTo(BeAnExistingFile())
+		})
+
+		It("Pick-P1-a: an exact only: list and an include carry as the profile entry's only: list; selections.yaml keeps its other entries as written", func() {
+			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1", "--exact")
+			install("alpha", "--project", "--unskip", "skill/a2")
+			Expect(read(p.Selections)).To(ContainSubstring("only: [skill/a1]"))
+			Expect(read(p.Selections)).To(ContainSubstring("include: [skill/a2]"))
+			// Another project's entry, with the user's comment, stays byte for byte.
+			other := "  # kept by hand\n  /elsewhere/proj:\n    beta: {skip: [skill/b1]}\n"
+			sel := strings.Replace(read(p.Selections), "projects:\n", "projects:\n"+other, 1)
+			Expect(os.WriteFile(p.Selections, []byte(sel), 0o600)).To(Succeed())
+			Expect(installedFiles()).To(Equal([]string{".claude/skills/a1/SKILL.md", ".claude/skills/a2/SKILL.md"}))
+
+			r := lola("profile", "--project", "--move", "alpha", "--to", "mine", "--switch", "-y", "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out + r.err).To(ContainSubstring("picks: carried from selections.yaml"))
+			Expect(read(p.Selections)).To(Equal(sel), "-n writes nothing")
+			Expect(filepath.Join(p.UserProfiles, "mine.yml")).NotTo(BeAnExistingFile())
+
+			r = lola("profile", "--project", "--move", "alpha", "--to", "mine", "--switch", "-y")
+			unchanged(r)
+			Expect(installedFiles()).To(Equal([]string{".claude/skills/a1/SKILL.md", ".claude/skills/a2/SKILL.md"}))
+			Expect(read(filepath.Join(p.UserProfiles, "mine.yml"))).To(ContainSubstring("    only: [skill/a1, skill/a2]\n"))
+			Expect(read(p.Selections)).To(ContainSubstring("projects:\n" + other))
+			Expect(read(p.Selections)).NotTo(ContainSubstring("alpha"))
+		})
+
+		It("Pick-P1-a: a glob skip carries as the profile entry's skip:", func() {
+			hints := install(alpha, "--project", "-t", "claude-code", "--skip", "skill/*")
+			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch -y"))
+			unchanged(runHint(command(hints[0])))
+			Expect(installedFiles()).To(Equal([]string{".claude/commands/hello.md"}))
+			Expect(read(filepath.Join(p.UserProfiles, "mine.yml"))).To(ContainSubstring("    skip: [skill/*]\n"))
+		})
+
+		// refused asserts that the move of alpha into mine is refused with want and its hint, and that
+		// neither it nor its dry run writes anything; then that the hint, run as printed, moves it,
+		// leaving files.
+		refused := func(want string, files []string) {
+			GinkgoHelper()
+			sel := read(p.Selections)
+			before := installedFiles()
+			r := lola("profile", "--project", "--move", "alpha", "--to", "mine", "--switch", "-y")
+			Expect(r.code).To(Equal(1), r.out)
+			hint := "lola profile --move alpha --project --switch --to mine --force"
+			Expect(r.err).To(Equal("project "+proj+": project.yml\nerror: "+want+"\n  hint: move it anyway: "+hint+"\n"), r.err)
+			r = lola("profile", "--project", "--move", "alpha", "--to", "mine", "--switch", "-y", "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out + r.err).To(ContainSubstring("the move refuses: " + want + " → move it anyway: lola profile --dry-run --move alpha --project --switch --to mine --force"))
+			Expect(read(p.Selections)).To(Equal(sel))
+			Expect(installedFiles()).To(Equal(before))
+			Expect(filepath.Join(p.UserProfiles, "mine.yml")).NotTo(BeAnExistingFile())
+
+			r = runHint(hint)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out + r.err).To(ContainSubstring(want + "; --force moves it all the same"))
+			Expect(installedFiles()).To(Equal(files))
+		}
+
+		It("Pick-P1-a: an include over a glob skip, with no only: list, refuses the move and hints none after the install", func() {
+			Expect(install(alpha, "--project", "-t", "claude-code", "--skip", "skill/*", "--unskip", "skill/a1")).To(BeEmpty(),
+				"no move hint: the move would be refused")
+			Expect(read(p.Selections)).To(ContainSubstring("include: [skill/a1]"))
+			refused("alpha's picks in selections.yaml projects["+proj+"] cannot move into profile mine as they are: include: skill/a1 cannot travel: "+
+				"a profile entry has no include: to override the skip skill/*; the move would remove skill/a1 here",
+				[]string{".claude/commands/hello.md"})
+		})
+
+		It("Pick-P1-a: an include over a global skip refuses the move and hints none after the install", func() {
+			writeTree(filepath.Dir(p.Selections), map[string]string{"selections.yaml": "version: 1\nglobal:\n  alpha: {skip: [skill/a1]}\n"})
+			Expect(install(alpha, "--project", "-t", "claude-code", "--unskip", "skill/a1")).To(BeEmpty(), "no move hint: the move would be refused")
+			Expect(read(p.Selections)).To(ContainSubstring("include: [skill/a1]"))
+			refused("alpha's picks in selections.yaml projects["+proj+"] cannot move into profile mine as they are: include: skill/a1 cannot travel: "+
+				"a profile entry has no include:, and the global skip skill/a1 applies to it; the move would remove skill/a1 here",
+				[]string{".claude/commands/hello.md", ".claude/skills/a2/SKILL.md", ".claude/skills/a3/SKILL.md"})
+		})
+
+		It("Pick-P1-a: a move of two modules whose picks cannot travel names both", func() {
+			beta := filepath.Join(tmp, "src", "beta")
+			writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "skills/b1/SKILL.md": "---\nname: b1\ndescription: B1\n---\nB1\n",
+				"skills/b2/SKILL.md": "---\nname: b2\ndescription: B2\n---\nB2\n"})
+			writeTree(filepath.Dir(p.Selections), map[string]string{"selections.yaml": "version: 1\nglobal:\n  alpha: {skip: [skill/a1]}\n  beta: {skip: [skill/b1]}\n"})
+			install(alpha, beta, "--project", "-t", "claude-code", "--unskip", "alpha:skill/a1", "--unskip", "beta:skill/b1")
+			r := lola("profile", "--project", "--move", "alpha,beta", "--to", "mine", "--switch", "-y")
+			Expect(r.code).To(Equal(1), r.out)
+			Expect(r.err).To(ContainSubstring("alpha's picks in selections.yaml projects[" + proj + "] cannot move into profile mine as they are: " +
+				"include: skill/a1 cannot travel: a profile entry has no include:, and the global skip skill/a1 applies to it; the move would remove skill/a1 here; " +
+				"beta's picks in selections.yaml projects[" + proj + "] cannot move into profile mine as they are: " +
+				"include: skill/b1 cannot travel: a profile entry has no include:, and the global skip skill/b1 applies to it; the move would remove skill/b1 here\n"))
+		})
+
+		It("Pick-P1-a: a move between scopes whose selections.yaml write fails says the move is done, and hints no rerun", func() {
+			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
+			lolaDir := filepath.Dir(p.Selections)
+			Expect(os.MkdirAll(p.UserProfiles, 0o700)).To(Succeed())
+			Expect(os.Chmod(lolaDir, 0o500)).To(Succeed())
+			DeferCleanup(os.Chmod, lolaDir, os.FileMode(0o700))
+
+			r := lola("profile", "--user", "--move", "alpha", "--to", "base", "-y")
+			Expect(os.Chmod(lolaDir, 0o700)).To(Succeed())
+			Expect(r.code).To(Equal(1), r.out)
+			Expect(r.err).To(ContainSubstring("error: alpha moved: the profile entry holds the picks, and project.yml and lock.json are written, " +
+				"but lola could not remove alpha from selections.yaml's projects[" + proj + "]: "))
+			Expect(r.err).To(ContainSubstring("  hint: no lola command removes it: in " + p.Selections + ", delete alpha under projects: " + proj +
+				":; until then lola warns that it is ignored\n"))
+			Expect(r.err).NotTo(Or(ContainSubstring("still in"), ContainSubstring("finish the move"), ContainSubstring("lola profile")))
+			Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("    skip: [skill/a2, skill/a3, command/hello]\n"))
+			Expect(read(filepath.Join(proj, ".lola", "project.yml"))).NotTo(ContainSubstring("alpha"))
+			Expect(read(p.Selections)).To(ContainSubstring("alpha"))
+		})
+	})
 })

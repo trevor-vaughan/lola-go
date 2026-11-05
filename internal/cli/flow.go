@@ -195,7 +195,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 			err = errors.Join(err, cerr)
 		}
 	}()
-	return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, fl.hintArgs(args), fl.run())
+	return coachSource(strings.Fields(cmd.CommandPath()), cmd, fl.hintArgs(args), fl.run())
 }
 
 // hintArgs is args, module arguments of the run, as a hint repeating the run gives them: after the
@@ -955,7 +955,7 @@ func (fl *installFlow) ensureScopes() error {
 	if err != nil {
 		return err
 	}
-	req.Command, req.Both, req.Run = "install", true, runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...)
+	req.Command, req.Both, req.Run = "install", true, completeRun(fl.cmd, fl.args, scopeFlags...)
 	res, err := fl.eng.ResolveScope(req)
 	if err != nil {
 		return err
@@ -1306,7 +1306,7 @@ func (fl *installFlow) ensureAssistants() error {
 	withTarget := func(ids []string) []string {
 		var out []string
 		for _, id := range ids {
-			out = append(out, runWithout(fl.cmd, fl.hintArgs(fl.args), consentFlags...)+" -t "+id)
+			out = append(out, completeRun(fl.cmd, fl.hintArgs(fl.args))+" -t "+id)
 		}
 		return out
 	}
@@ -1744,7 +1744,7 @@ func (fl *installFlow) target() engine.TargetRequest {
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	t := fl.target()
 	spec := engine.InstallSpec{Cwd: fl.cwd, Staged: fl.staged, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
-		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.hintArgs(fl.args)), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
+		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.hintArgs(fl.args)), RenderRun: renderRun(fl.cmd, fl.hintArgs(fl.args)), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
 		PostInstall: fl.flagScript(fl.f.postInstall), Display: outputFlags(fl.cmd), Target: t, AskWhere: fl.where},
 		WithMentions: fl.f.withMentions, NameMentions: true, UserRun: t.UserRun()}
 	if fl.f.rules || fl.f.noRules {

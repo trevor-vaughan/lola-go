@@ -132,8 +132,7 @@ var _ = Describe("every registered target", func() {
 					}
 				})
 
-				It("writes files only under its base directories and keeps every path relative and clean", func() {
-					bases := t.BaseDirs(scope)
+				It("keeps every path relative and clean", func() {
 					for _, m := range []func() *module.Module{clean, wrong} {
 						force := ctx
 						force.Force = true
@@ -142,10 +141,6 @@ var _ = Describe("every registered target", func() {
 							Expect(path.IsAbs(in.Path)).To(BeFalse(), in.Path)
 							Expect(path.Clean(in.Path)).To(Equal(in.Path))
 							Expect(in.Path).NotTo(HavePrefix(".."))
-							if in.Op == plan.OpWriteFile || in.Op == plan.OpCopyTree {
-								Expect(slices.ContainsFunc(bases, func(b string) bool { return strings.HasPrefix(in.Path, b+"/") })).
-									To(BeTrue(), "%s is outside %v", in.Path, bases)
-							}
 						}
 					}
 				})
@@ -154,15 +149,14 @@ var _ = Describe("every registered target", func() {
 					dests, err := t.Destinations(scope, ctx.Root)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(dests.Dirs).NotTo(BeEmpty())
-					bases := t.BaseDirs(scope)
 					for _, d := range dests.Dirs {
 						Expect(kinds).To(ContainElement(d.Kind))
 						Expect(d.Path).NotTo(BeElementOf("", "."))
 						Expect(filepath.IsLocal(filepath.FromSlash(d.Path))).To(BeTrue(), d.Path)
 						Expect(path.Clean(d.Path)).To(Equal(d.Path))
-						for _, b := range bases {
-							Expect(strings.HasPrefix(b, d.Path+"/")).To(BeFalse(),
-								"%s holds the assistant's own files beside its component directory %s", d.Path, b)
+						for _, o := range dests.Dirs {
+							Expect(strings.HasPrefix(o.Path, d.Path+"/")).To(BeFalse(),
+								"%s holds another destination, %s, and the assistant's own files beside it", d.Path, o.Path)
 						}
 					}
 					for _, sm := range dests.Servers {

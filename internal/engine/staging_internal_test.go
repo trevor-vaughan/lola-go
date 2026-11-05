@@ -159,13 +159,48 @@ var _ = Describe("scratch locks (R-9-9)", func() {
 			Expect(e.sweepRuns()).To(BeEmpty())
 			if gone {
 				Expect(dir).NotTo(BeAnExistingFile())
+				Expect(dir+".lock").NotTo(BeAnExistingFile(), "its lock goes with it")
 			} else {
 				Expect(dir).To(BeADirectory(), "a live run waiting longer than a minute keeps its scratch")
+				Expect(dir + ".lock").To(BeARegularFile())
 			}
 		},
 		Entry("a lock a live run holds: kept", true, false),
 		Entry("a lock nobody holds: removed", false, true),
 	)
+
+	// orphanLock makes a run-*.lock with no directory beside it, last modified age ago.
+	orphanLock := func(age time.Duration) string {
+		GinkgoHelper()
+		Expect(os.MkdirAll(e.Paths.Staging, 0o700)).To(Succeed())
+		lock := filepath.Join(e.Paths.Staging, runPrefix+"orphan"+lockSuffix)
+		Expect(os.WriteFile(lock, nil, 0o600)).To(Succeed())
+		mtime := time.Now().Add(-age)
+		Expect(os.Chtimes(lock, mtime, mtime)).To(Succeed())
+		return lock
+	}
+
+	It("sweepRuns removes a run's lock left without its directory once it is a minute old and free", func() {
+		lock := orphanLock(2 * time.Minute)
+		Expect(e.sweepRuns()).To(BeEmpty())
+		Expect(lock).NotTo(BeAnExistingFile())
+	})
+
+	It("sweepRuns keeps a lock without its directory created seconds ago: its run may be about to make it", func() {
+		lock := orphanLock(5 * time.Second)
+		Expect(e.sweepRuns()).To(BeEmpty())
+		Expect(lock).To(BeARegularFile())
+	})
+
+	It("sweepRuns keeps a lock without its directory that a live process holds, however old", func() {
+		lock := orphanLock(2 * time.Minute)
+		fl := flock.New(lock)
+		Expect(fl.TryLock()).To(BeTrue())
+		DeferCleanup(fl.Unlock)
+		Expect(e.sweepRuns()).To(BeEmpty())
+		Expect(lock).To(BeARegularFile())
+		Expect(lockedAt(fl, lock)).To(BeTrue(), "the live holder still holds the file at its path")
+	})
 })
 
 var _ = Describe("reviewOf a version an install's staged run holds (cherry-pick design §7)", func() {

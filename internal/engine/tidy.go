@@ -81,7 +81,7 @@ type TidyRequest struct {
 	// --all, which runs the picker there.
 	Interactive bool
 	// Display is the run's output flags as given (--json, --plain, --no-pager), which every hint
-	// keeps (6b §12.3, R-6d2-5); never -n, since a dry run's hint is the real run.
+	// keeps (6b §12.3, R-6d2-5).
 	Display []string
 	// Choose asks which units to move and which to keep; nil means it cannot ask.
 	Choose func(TidyScan) (TidyChoice, error)
@@ -143,8 +143,10 @@ func (e *TidyError) JSONFields() map[string]any {
 var errUnoffered = errors.New("the picker answered with an item lola did not offer")
 
 // TidyOneScope refuses a run given two scopes (--scope both, §3.3): each run is one scope's
-// consent. The hints are the run at req.Scope, the project, and at user scope.
+// consent. The hints are the run at req.Scope, the project, and at user scope, without -y, which
+// answered for both (ruling R-8).
 func (e *Engine) TidyOneScope(req TidyRequest) error {
+	req.Yes = false
 	user := req
 	user.Scope = Scope{Kind: target.User}
 	return errs.WithHints(errors.New("lola tidy acts on one scope per run"), tidyHints(e.tidyRerun(req), e.tidyRerun(user))...)
@@ -221,9 +223,10 @@ func tidyNames(ps []config.Pattern) []string {
 }
 
 // tidyRun is the lola tidy command a hint names (§3.1): the scope's flags, names, extra, then
-// the run flags as given (-t, --include-tracked, --keep, --unkeep), then -y or --force and the
-// output flags as given. --all goes in extra; never -n unless extra says so. "" when no such command
-// works (tidyCommand).
+// the run flags as given (-t, --include-tracked, --keep, --unkeep), then --force, or -y when the
+// hint is no dry run, which asks nothing (as SyncRequest.rerun), then -n and the output flags as
+// given (spec 2026-11-03 §3.3); a hint naming the real run clears req.Dry. --all goes in extra, and
+// -n once when extra has it too. "" when no such command works (tidyCommand).
 func (e *Engine) tidyRun(req TidyRequest, names []string, extra ...string) string {
 	args := append(slices.Clone(names), extra...)
 	for _, t := range req.Targets {
@@ -238,11 +241,15 @@ func (e *Engine) tidyRun(req TidyRequest, names []string, extra ...string) strin
 	for _, k := range req.Unkeep {
 		args = append(args, "--unkeep", k.String())
 	}
+	dry := req.Dry || slices.Contains(extra, "-n")
 	switch {
 	case req.Force:
 		args = append(args, "--force")
-	case req.Yes:
+	case req.Yes && !dry:
 		args = append(args, "-y")
+	}
+	if req.Dry && !slices.Contains(extra, "-n") {
+		args = append(args, "-n")
 	}
 	args = append(args, req.Display...)
 	return e.tidyCommand(req.Scope, "tidy", args...)

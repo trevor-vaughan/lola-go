@@ -189,32 +189,26 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(r.err).To(HavePrefix(projectContext(proj)), "the line follows the pick")
 	})
 
-	It("no hint turns a flag given as false into one given as true, or carries an answer to another question", func() {
+	It("no hint turns a flag given as false into one given as true, or carries consent; P2-3: -y stays", func() {
 		GinkgoT().Chdir(bare)
-		hintsOf := func(r result) []string {
-			var out []string
-			for _, line := range strings.Split(r.err, "\n") {
-				if h, ok := strings.CutPrefix(line, "  hint: "); ok {
-					out = append(out, h)
-				}
-			}
-			return out
-		}
 		for _, run := range [][]string{
 			{"install", mod, "--yes=false", "--json=false", "--no-rules=false"},
 			{"sync", "--yes=false", "--json=false"},
-			{"install", mod, "-y", "--trust=hooks,runtime-hooks", "-t", "claude-code"}, // answers for this run only
+			{"install", mod, "-y", "--trust=hooks,runtime-hooks", "-t", "claude-code"}, // consent for this run only
 			{"sync", "-y", "--trust", "--trust=hooks"},
 		} {
 			r := lola(run...)
 			Expect(r.code).To(Equal(1), strings.Join(run, " "))
-			hints := hintsOf(r)
+			hints := hintLines(r.err)
 			Expect(hints).NotTo(BeEmpty(), strings.Join(run, " "))
+			yes := slices.Contains(run, "-y")
 			for _, h := range hints {
 				words := shellWords(h)
-				for _, consent := range []string{"--yes", "-y", "--trust", "--trust=hooks,runtime-hooks", "--json", "--no-rules"} {
+				for _, consent := range []string{"--trust", "--trust=hooks,runtime-hooks", "--json", "--no-rules"} {
 					Expect(words).NotTo(ContainElement(consent), h)
 				}
+				Expect(words).NotTo(ContainElement("-y"), h)
+				Expect(slices.Contains(words, "--yes")).To(Equal(yes), h)
 			}
 		}
 		r := lola("market", "acmee", "--json=false")

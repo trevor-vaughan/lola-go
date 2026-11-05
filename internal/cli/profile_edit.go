@@ -86,7 +86,7 @@ func (a *app) profileEdit(cmd *cobra.Command, args []string, ef editFlags, f syn
 	}
 	if len(modules) == 0 { // no install flow, which prints the context once it has the scope
 		if bundle && !ef.create {
-			return a.editBundle(cmd, eng, read, name, ef.members, req, f, forceRun(cmd, []string{name}), false)
+			return a.editBundle(cmd, eng, read, name, ef.members, req, f, forceRun(cmd, []string{name}), renderRun(cmd, []string{name}), false)
 		}
 		a.printContext(cmd, eng, []engine.Scope{sc}, nil)
 		if ef.create {
@@ -222,7 +222,7 @@ func (a *app) editPage(cmd *cobra.Command, eng *engine.Engine, g argGuide, read 
 		if err != nil {
 			return err
 		}
-		return a.editBundle(cmd, eng, read, t.Name, members, req, f, forceRun(cmd, []string{t.Name}), false)
+		return a.editBundle(cmd, eng, read, t.Name, members, req, f, forceRun(cmd, []string{t.Name}), renderRun(cmd, []string{t.Name}), false)
 	}
 	scopes, err := eng.EditScopes(read, t.Name)
 	if err != nil {
@@ -324,10 +324,10 @@ func (a *app) makeProfile(cmd *cobra.Command, eng *engine.Engine, req engine.Mak
 // are set, and each scope it reaches applies them (EditScopes, ruling P1), each scope's context line
 // printed first, with sync's questions: removals asked (-y, --force), trust asked or refused off a
 // terminal (--trust) (spec 2026-10-29 §6.2). force is the edit with --force, which a refusal --force
-// overrides hints; said says read's context line is printed already (--on's question), so only
+// overrides hints; render is the same as a real run (no -n), which renders a forceable skip; said says read's context line is printed already (--on's question), so only
 // the other scopes' lines are printed.
 func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.ScopeChoice, name string, members []string, req engine.TargetRequest, f syncFlags,
-	force string, said bool) error {
+	force, render string, said bool) error {
 	sc := read.Scope
 	choices, err := eng.EditScopes(read, name)
 	if err != nil {
@@ -348,7 +348,7 @@ func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.Sco
 		a.printContext(cmd, eng, scopes[1:], nil)
 		a.contexts = append(printed, a.contexts...)
 	}
-	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: force}
+	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: force, RenderRun: render}
 	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	bundle := manifestName(sc)

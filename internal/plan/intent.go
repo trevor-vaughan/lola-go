@@ -94,6 +94,9 @@ const (
 	ActionAbsent Action = "absent" // an owned non-string array member the user removed: kept owned, not rewritten
 )
 
+// KindDirectory is the Kind of a step that removes a directory the plan's deletions leave empty.
+const KindDirectory = "directory"
+
 // Step is one line of a plan as shown to the user.
 type Step struct {
 	Action Action          `json:"action"`
@@ -177,13 +180,12 @@ func (e *ConflictError) Error() string {
 
 // FileChange is the final content of one real file, or its deletion.
 type FileChange struct {
-	Target   string
-	Logical  string // path relative to Root, as the target sees it
-	Abs      string // symlink-resolved destination
-	Root     string // the target's scope root, unresolved
-	Outside  bool   // Abs is outside the resolved root
-	Delete   bool
-	Data     []byte
-	Mode     fs.FileMode
-	StopDirs []string // resolved dirs that empty-directory cleanup never removes
+	Target  string
+	Logical string // path relative to Root, as the target sees it
+	Abs     string // symlink-resolved destination
+	Root    string // the target's scope root, unresolved
+	Outside bool   // Abs is outside the resolved root
+	Delete  bool
+	Data    []byte
+	Mode    fs.FileMode
 }

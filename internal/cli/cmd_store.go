@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -149,7 +150,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path, outputFlags(cmd))
 			}
 			if err != nil {
-				return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, args, err)
+				return coachSource(strings.Fields(cmd.CommandPath()), cmd, args, err)
 			}
 			o, _, err := eng.Store.Origin(v.Name)
 			if err != nil {
@@ -548,7 +549,7 @@ func (a *app) initCmd() *cobra.Command {
 				for _, f := range s.Files {
 					fmt.Fprintln(w, "    "+f)
 				}
-				fmt.Fprintln(w, st.info("try it: "+errs.ShellJoin([]string{"lola", "install", dir, "-t", "claude-code"})))
+				fmt.Fprintln(w, st.info("try it: "+errs.ShellJoin([]string{"lola", "install", dir, "--project", "-t", "claude-code"})))
 			}, s)
 		},
 	}
@@ -558,13 +559,39 @@ func (a *app) initCmd() *cobra.Command {
 	return cmd
 }
 
-// tagRefHint is err, the failure of a run of cmd with args and a --ref, hinting that run, as the
-// command words, at the commit an annotated tag object points to when the --ref named the tag
-// object (R-9-27, RR4). showInfo's words are lola info's whichever command ran it.
-func tagRefHint(words []string, cmd *cobra.Command, args []string, err error) error {
-	t, ok := errors.AsType[*source.TagObjectError](err)
-	if !ok {
+// coachSource is err, the failure of a run of cmd with args, with the run that fixes it as a hint,
+// where the failure says what the fix is, as the command words (showInfo's are lola info's
+// whichever command ran it): at the commit an annotated tag object points to when the --ref
+// named the tag object (R-9-27, RR4); at the repository a github.com web URL names, with its ref
+// and path (spec 2026-11-03 §3.3, P2-1); at the directory above a skills/ --path (P2-2). The
+// source the failure names is the one argument it replaces; no hint when no argument is it.
+func coachSource(words []string, cmd *cobra.Command, args []string, err error) error {
+	if t, ok := errors.AsType[*source.TagObjectError](err); ok {
+		return errs.WithHints(err, runAs(words, cmd, args, "ref")+" --ref "+t.Commit)
+	}
+	var from, to string
+	var flags []string
+	if a, ok := errors.AsType[*source.AccessError](err); ok && a.Web != nil && a.Web.Ref != "" {
+		from, to, flags = a.Web.URL, a.Web.Repo, []string{"--ref", a.Web.Ref}
+		if a.Web.Path != "" {
+			flags = append(flags, "--path", a.Web.Path)
+		}
+	} else if s, ok := errors.AsType[*store.SkillsDirError](err); ok {
+		from, to = s.Source, s.Source
+		if s.Parent != "" {
+			flags = []string{"--path", s.Parent}
+		}
+	} else {
 		return err
 	}
-	return errs.WithHints(err, runAs(words, cmd, args, "ref")+" --ref "+t.Commit)
+	at := slices.Index(args, from)
+	if at < 0 && len(args) == 1 {
+		at = 0
+	}
+	if at < 0 {
+		return err
+	}
+	named := slices.Clone(args)
+	named[at] = to
+	return errs.WithHints(err, strings.TrimSpace(runAs(words, cmd, named, "ref", "path", "trust")+" "+errs.ShellJoin(flags)))
 }

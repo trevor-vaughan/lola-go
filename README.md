@@ -5,8 +5,6 @@ servers and always-on rules. You install a module once; lola renders it into eac
 assistant's native layout and records exactly what it wrote, so it can render again or
 uninstall cleanly, without touching anything it did not write.
 
-<!-- DEMO: add a hero demo showing lola in action. Record: lola check ./my-module, then lola install ./my-module, then ls .claude/, then lola uninstall my-module. Viewer sees: the portability report, the install writing the module into .claude/, the rendered files, and the uninstall removing exactly what lola wrote. Format: asciinema + svg-term-cli, or VHS (https://github.com/charmbracelet/vhs). Place the rendered .gif/.svg here and link it above. -->
-
 Already using [LobsterTrap/lola](https://github.com/LobsterTrap/lola)? `lola migrate` installs
 what it installed and moves its files to a trash you can restore from
 ([docs/guides/migrating.md](docs/guides/migrating.md)).
@@ -61,6 +59,7 @@ flowchart TD
   class write,adopt sysB
   class conflict sysC
 ```
+
 - **Cleanup:** `lola tidy` moves what lola does not manage out of the assistants' directories
   and MCP server lists into a trash you can restore from, never an instruction file, nor what git
   tracks or your [keep-list](docs/guides/tidying.md#tidying) (the names you protect with
@@ -95,12 +94,13 @@ stateDiagram-v2
   Changed --> Trusted : you accept the change, or --trust=entries
   Changed --> Changed : declined, left as installed, asked again next sync
 ```
+
 - **Profiles:** each scope has a base that is always loaded (`default` at user scope, the
   project's `project.yml`) and at most one profile on over it; a bundle combines profiles. Every
   command that reads a scope names it first (`user scope: profile go-review over default`), and
   every write names the file it changed ([Profiles](docs/guides/profiles.md#profiles)).
-- **Marketplaces:** `lola market --add` registers a Claude Code `marketplace.json` or a catalog
-  in lola's YAML format. `lola market` lists your marketplaces, `lola market acme` lists one's entries,
+- **Marketplaces:** `lola market [<name>] --add <source>` registers a Claude Code `marketplace.json` or a catalog
+  in lola's YAML format (the name goes before `--add`, which takes the source). `lola market` lists your marketplaces, `lola market acme` lists one's entries,
   and `lola market acme formatter` shows an entry, as `lola info @acme/formatter` does;
   `lola install @acme/formatter` installs it and records its real source, so a teammate needs
   no marketplace ([Marketplaces](docs/guides/marketplaces.md#marketplaces)).
@@ -117,7 +117,9 @@ You need Go 1.26 or later, [Task](https://taskfile.dev) (the task runner that bu
 its site lists ways to install it), and git. `go.mod` pins toolchain
 go1.26.10, which fixes a reachable standard-library vulnerability; Go fetches it automatically
 unless `GOTOOLCHAIN=local` is set, as some distribution packages do (`go env -w
-GOTOOLCHAIN=auto` re-enables it).
+GOTOOLCHAIN=auto` re-enables it). `task lint` and `task vuln` build their pinned
+golangci-lint and govulncheck into `.tools/bin` with the Go on your PATH the first time they
+run (a minute or so), so a newer Go works too.
 
 The clone lands in a `lola-go` directory:
 
@@ -165,7 +167,7 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
 5. Uninstall it:
 
    ```sh
-   lola uninstall my-module -y           # removes exactly what lola wrote
+   lola uninstall my-module -y           # removes what lola wrote, and the directories that leaves empty
    ```
 
 A teammate gets your modules from the `.lola/project.yml` you commit. A clone is not trusted
@@ -215,6 +217,8 @@ share a module through a git repository or an `https://` archive.
 - [docs/guides/](docs/guides/): choosing what to install, authoring modules, templating, sync
   and trust, profiles, remote profiles, marketplaces, migrating from LobsterTrap/lola, and
   tidying.
+- [Removing lola](docs/usage.md#removing-lola): uninstall your modules, then delete what lola
+  keeps and the binary.
 - [docs/architecture.md](docs/architecture.md): how lola works, for contributors.
 - [docs/decisions.md](docs/decisions.md) and [docs/roadmap.md](docs/roadmap.md): where this
   build departs from the upstream ADRs, and what comes next.

@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -190,5 +191,18 @@ var _ = Describe("printFindings grouping", func() {
 		f := []target.Finding{{Severity: "bogus", Module: "ecc", Text: "x"}}
 		Expect(render(style{}, f)).To(BeEmpty())
 		Expect(render(style{plain: true}, f)).To(Equal("finding\tbogus\tecc\t\t\t\t\tx\n"))
+	})
+})
+
+var _ = Describe("a plan step's bracket", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("says an adopted file is identical and not rewritten, and a replaced one that it replaces a file lola did not write", func() {
+		adopt := stepLine(style{}, plan.Step{Action: plan.ActionAdopt, Target: "claude-code", Path: ".claude/skills/a/SKILL.md", Replaced: true})
+		Expect(adopt).To(ContainSubstring("adopt"))
+		Expect(adopt).To(ContainSubstring("[identical to a file lola did not write; kept, not rewritten]"))
+		Expect(adopt).NotTo(ContainSubstring("replaces"))
+		update := stepLine(style{}, plan.Step{Action: plan.ActionUpdate, Target: "claude-code", Path: ".claude/skills/a/SKILL.md", Replaced: true})
+		Expect(update).To(ContainSubstring("[replaces a file lola did not write]"))
 	})
 })

@@ -8,7 +8,7 @@ release ([release.md](release.md)) and whenever you change what they cover.
 | Command | Runs |
 |---|---|
 | `task test` | Every Ginkgo spec; `MODE=llm` prints only failures. |
-| `task check` | `lint`, `test`, `cross` (build and vet, tests included, for Windows and macOS) and `vuln` (`govulncheck`): the gate every commit passes. |
+| `task check` | `lint`, `test`, `cross` (build and vet, tests included, for Windows and macOS) and `vuln` (`govulncheck`): the gate every commit passes. `lint` and `vuln` use golangci-lint and govulncheck built from source at the versions pinned in `.taskfiles/go.yml` (`go:tools`, into `.tools/bin`), rebuilt whenever a pin or the Go on PATH changes. |
 | `task e2e` | Every end-to-end suite; `task e2e -- <suite>...` runs those named. Not part of `task check`. |
 
 Artifacts go to `.test-output/` (`TEST_DIR` overrides it); the suites write theirs to

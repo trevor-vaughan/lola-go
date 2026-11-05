@@ -86,6 +86,23 @@ var _ = Describe("Fetch", func() {
 		Expect(errs.Hints(err)).NotTo(BeEmpty())
 	})
 
+	It("says a folder that is a git work tree or bare repository is still a folder source", func() {
+		work := filepath.Join(tmp, "work")
+		writeTree(work, map[string]string{".git/HEAD": "ref: refs/heads/main\n", "commands/a.md": "A"})
+		bare := filepath.Join(tmp, "bare")
+		writeTree(bare, map[string]string{"HEAD": "ref: refs/heads/main\n", "objects/.keep": "", "refs/.keep": ""})
+		for _, loc := range []string{work, bare} {
+			_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: loc, Ref: "v1"}, staging)
+			Expect(err).To(MatchError(ContainSubstring("--ref applies to git sources only")), loc)
+			Expect(errs.Hints(err)).To(HaveLen(1), loc)
+			Expect(errs.Hints(err)[0]).To(And(
+				ContainSubstring("a local path is always read as a folder, even a git repository"),
+				ContainSubstring("lola reads no branch, tag or commit of it"),
+				ContainSubstring("drop --ref"),
+				Not(ContainSubstring("has no branches"))), loc)
+		}
+	})
+
 	It("refuses an unknown kind", func() {
 		_, err := source.Fetch(ctx, source.Spec{Kind: "svn", Location: src}, staging)
 		Expect(err).To(MatchError(ContainSubstring(`unknown type "svn"`)))

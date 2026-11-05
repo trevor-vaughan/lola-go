@@ -552,3 +552,83 @@ var _ = Describe("project profiles", func() {
 		Expect(res.Trust.Replacements).To(ConsistOf(HaveField("Replaces", "user:go")))
 	})
 })
+
+var _ = Describe("Prof-P1-b: switching to an empty profile in a project with no .lola/", func() {
+	var (
+		tmp string
+		p   paths.Paths
+		e   *engine.Engine
+		ctx = context.Background()
+	)
+	BeforeEach(func() {
+		var err error
+		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		p, err = paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		e = engine.New(p)
+	})
+	// fresh is a project directory without .lola/; the engine runs from it.
+	fresh := func(name string) engine.Scope {
+		GinkgoHelper()
+		dir := filepath.Join(tmp, name)
+		Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+		e.Getwd = func() (string, error) { return dir, nil }
+		return engine.Scope{Kind: target.Project, ProjectDir: dir}
+	}
+	files := func(dir string) []string {
+		GinkgoHelper()
+		var out []string
+		Expect(filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			rel, err := filepath.Rel(dir, path)
+			out = append(out, rel)
+			return err
+		})).To(Succeed())
+		return out
+	}
+	switchNew := func(sc engine.Scope, name string) {
+		GinkgoHelper()
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: name, New: true}})
+		Expect(err).NotTo(HaveOccurred())
+	}
+	recorded := func(sc engine.Scope) *ledger.Active {
+		GinkgoHelper()
+		led, err := e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		return led.Profile
+	}
+
+	It("records the switch where a non-empty switch does, and leaves no file the non-empty one would not", func() {
+		full := fresh("full")
+		writeTree(tmp, map[string]string{"mods/a/lola.yml": "name: a\n", "mods/a/commands/a.md": "A\n"})
+		writeTree(p.UserProfiles, map[string]string{"full.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " +
+			filepath.Join(tmp, "mods", "a") + "}\n"})
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: full, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: "user:full"}, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
+			return engine.TrustAnswer{All: true}, nil
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(recorded(full)).NotTo(BeNil())
+
+		empty := fresh("empty")
+		switchNew(empty, "me")
+		Expect(recorded(empty)).To(Equal(&ledger.Active{Name: "user:me", By: ledger.BySwitch}))
+		Expect(files(full.ProjectDir)).To(ContainElements(files(empty.ProjectDir)))
+	})
+
+	It("lands the next install in the new profile, not in project.yml", func() {
+		sc := fresh("proj")
+		switchNew(sc, "me")
+		writeTree(tmp, map[string]string{"mods/g/lola.yml": "name: g\n", "mods/g/commands/g.md": "G\n"})
+		_, err := e.Install(ctx, sc, sc.ProjectDir, []engine.InstallRequest{{Arg: filepath.Join(tmp, "mods", "g")}},
+			engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustAll})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(sc.ProjectDir, "project.yml")).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(p.UserProfiles, "me.yml")).To(BeAnExistingFile())
+		b, err := os.ReadFile(filepath.Join(p.UserProfiles, "me.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(ContainSubstring("g"))
+	})
+})

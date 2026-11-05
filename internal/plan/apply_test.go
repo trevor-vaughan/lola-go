@@ -16,17 +16,16 @@ import (
 
 var _ = Describe("Apply", func() {
 	var root, ledgerPath string
-	var stops []string
 
 	write := func(rel, content string) {
 		Expect(os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(root, rel), []byte(content), 0o644)).To(Succeed())
 	}
 	change := func(rel, data string) plan.FileChange {
-		return plan.FileChange{Target: "claude-code", Logical: rel, Abs: filepath.Join(root, rel), Root: root, Data: []byte(data), Mode: 0o644, StopDirs: stops}
+		return plan.FileChange{Target: "claude-code", Logical: rel, Abs: filepath.Join(root, rel), Root: root, Data: []byte(data), Mode: 0o644}
 	}
 	del := func(rel string) plan.FileChange {
-		return plan.FileChange{Target: "claude-code", Logical: rel, Abs: filepath.Join(root, rel), Root: root, Delete: true, StopDirs: stops}
+		return plan.FileChange{Target: "claude-code", Logical: rel, Abs: filepath.Join(root, rel), Root: root, Delete: true}
 	}
 	// leftovers lists lola's temp and backup files anywhere under root.
 	leftovers := func() []string {
@@ -45,7 +44,6 @@ var _ = Describe("Apply", func() {
 		root, err = filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 		ledgerPath = filepath.Join(root, ".lola", "lock.json")
-		stops = []string{root, filepath.Join(root, ".claude/skills")}
 	})
 
 	It("creates, replaces and deletes files, then writes the ledger, then runs after", func() {
@@ -55,7 +53,7 @@ var _ = Describe("Apply", func() {
 		l.Modules["a"] = &ledger.Entry{Digest: "sha256:1"}
 		p := &plan.Plan{Ledger: l, Files: []plan.FileChange{
 			change(".claude/commands/new.md", "N"), change("keep.md", "new"), del(".claude/skills/s/ref/gone.md"),
-		}}
+		}, Dirs: []string{filepath.Join(root, ".claude/skills/s/ref"), filepath.Join(root, ".claude/skills/s")}}
 		p.Files[0].Mode = 0o755
 		ran := false
 		Expect(plan.Apply(p, ledgerPath, nil, func() error { ran = true; return nil })).To(Succeed())
@@ -65,10 +63,27 @@ var _ = Describe("Apply", func() {
 		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o755)))
 		Expect(os.ReadFile(filepath.Join(root, "keep.md"))).To(Equal([]byte("new")))
 		Expect(filepath.Join(root, ".claude/skills/s")).NotTo(BeADirectory(), "emptied dirs are removed")
-		Expect(filepath.Join(root, ".claude/skills")).To(BeADirectory(), "stop dirs are kept")
+		Expect(filepath.Join(root, ".claude/skills")).To(BeADirectory(), "a directory the plan does not list is kept")
 		Expect(ledgerPath).To(BeARegularFile())
 		Expect(ran).To(BeTrue())
 		Expect(leftovers()).To(BeEmpty())
+	})
+
+	It("removes only the plan's directories that are still empty directories, never a symlink or what it leads to", func() {
+		write(".claude/skills/s/SKILL.md", "S")
+		write(".claude/skills/late/new.md", "written since the plan")
+		write("shared/kept.md", "k")
+		Expect(os.Symlink(filepath.Join(root, "shared"), filepath.Join(root, ".claude/link"))).To(Succeed())
+		Expect(os.Remove(filepath.Join(root, "shared/kept.md"))).To(Succeed())
+		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{del(".claude/skills/s/SKILL.md")},
+			Dirs: []string{filepath.Join(root, ".claude/skills/s"), filepath.Join(root, ".claude/skills/late"), filepath.Join(root, ".claude/link")}}
+		Expect(plan.Apply(p, ledgerPath, nil, nil)).To(Succeed())
+		Expect(filepath.Join(root, ".claude/skills/s")).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(root, ".claude/skills/late/new.md")).To(BeARegularFile())
+		fi, err := os.Lstat(filepath.Join(root, ".claude/link"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(fi.Mode() & os.ModeSymlink).NotTo(BeZero())
+		Expect(filepath.Join(root, "shared")).To(BeADirectory())
 	})
 
 	It("keeps a directory that still has other files", func() {

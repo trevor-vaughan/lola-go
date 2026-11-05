@@ -38,7 +38,7 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 	}
 	a.printContext(cmd, eng, []engine.Scope{sc}, &engine.TargetRequest{Profile: to})
 	p := a.prompter(cmd)
-	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: forceRun(cmd, args), AskWhere: a.askWhere(p, nil),
+	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: forceRun(cmd, args), RenderRun: renderRun(cmd, args), AskWhere: a.askWhere(p, nil),
 		Target: engine.TargetRequest{
 			Rerun: func(extra ...string) string {
 				return strings.Join(append([]string{runWithout(cmd, args, append([]string{"to"}, consentFlags...)...)}, extra...), " ")

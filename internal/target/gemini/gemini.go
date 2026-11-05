@@ -36,11 +36,6 @@ func (Target) Detect(_ target.Scope, root string) bool {
 	return target.HasAny(root, ".gemini", "GEMINI.md")
 }
 
-// BaseDirs implements Target. .gemini/lola/ is lola's own and goes once it is empty.
-func (Target) BaseDirs(target.Scope) []string {
-	return []string{".gemini/skills", ".gemini/commands", ".gemini/agents", ".gemini"}
-}
-
 // Destinations implements Target. .gemini itself holds Gemini's own settings, so only its
 // component directories are declared.
 func (Target) Destinations(target.Scope, string) (target.Destinations, error) {

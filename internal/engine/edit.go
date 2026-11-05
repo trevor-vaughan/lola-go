@@ -25,8 +25,10 @@ const (
 // qualified name (default, user:go, project:team, or project.yml for a project's base), its Kind
 // (base, user or project), Path and Scope. For human output: Label names the file (default (base),
 // profile go), Created says the run created it, Shared that git tracks it, Only counts the entry's
-// only: list ("4 skills") and Overrides names the layer whose entry it copied, when no override
-// notice of the run says so already. Every string has been through untrusted.Text.
+// only: list ("4 skills"), Overrides names the layer whose entry it copied, when no override
+// notice of the run says so already, and Picks says where the entry's picks came from when a move
+// carried them out of selections.yaml ("carried from selections.yaml"). Every string has been
+// through untrusted.Text.
 type Edit struct {
 	Module    string `json:"module"`
 	Action    string `json:"action"`
@@ -39,6 +41,7 @@ type Edit struct {
 	Shared    bool   `json:"-"`
 	Only      string `json:"-"`
 	Overrides string `json:"-"`
+	Picks     string `json:"-"`
 }
 
 // editsOf is the edits of entries written into t's file at sc (set; removed, the names it

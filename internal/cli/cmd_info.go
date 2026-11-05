@@ -118,7 +118,7 @@ func (a *app) showInfo(cmd *cobra.Command, arg string) error {
 			return run
 		}})
 	if err != nil {
-		return tagRefHint(words, cmd, args, err)
+		return coachSource(words, cmd, args, err)
 	}
 	if len(info.Scopes) > 0 {
 		a.printContext(cmd, eng, info.Scopes, nil)

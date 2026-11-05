@@ -168,7 +168,9 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 		if sh := shadowing(infos, i); sh != nil {
 			return nil, "", "", nil, errs.WithHints(fmt.Errorf("%s is shadowed by %s %s (%s): a local profile always wins over a remote one of its name",
 				shown(q), ownedBy(sh.Kind, false), shown(sh.Qualified()), shown(sh.Path)),
-				"use "+ownedBy(sh.Kind, true)+": "+e.Command(sc, "profile", qualifiedArgs(typed, ch.Name, sh.Qualified())...),
+				// another profile than the one named: the run's -y answered nothing about it (ruling R-8)
+				"use "+ownedBy(sh.Kind, true)+": "+e.Command(sc, "profile", qualifiedArgs(slices.DeleteFunc(slices.Clone(typed),
+					func(a string) bool { return a == "-y" }), ch.Name, sh.Qualified())...),
 				"or use both, bundled: "+e.bundleRun(sc, freeName(infos, i.Name+"-both"), []string{sh.Qualified(), q}, again),
 				"or rename or delete "+shown(sh.Path))
 		}
@@ -186,8 +188,8 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 	case cur == nil || replaces(cur, i):
 		return &ledger.Active{Name: q, By: ledger.ByOn}, q, shown(i.Path), nil, nil
 	}
-	// The --switch hint keeps the run's --trust, never its --force (flags carry no -y): --switch
-	// removes files --on would not, so nothing may answer their removal unasked.
+	// The --switch hint keeps the run's --trust, never its --force or -y: --switch removes files
+	// --on would not, so nothing may answer their removal unasked.
 	sw := []string{q, "--switch"}
 	if k := slices.IndexFunc(flags, trustArg); k >= 0 {
 		sw = append(sw, flags[k])

@@ -40,7 +40,7 @@ var _ = Describe("selections.yaml in list, check and sync", func() {
 		skip("command/test")
 		r := lola("sync", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("✗ delete claude-code .claude/commands/test.md"))
+		Expect(r.out).To(ContainSubstring("→ delete claude-code .claude/commands/test.md"))
 		Expect(r.out).To(ContainSubstring("→ example: skipped in selections.yaml: command/test"))
 
 		r = lola("ls", "-C", proj)

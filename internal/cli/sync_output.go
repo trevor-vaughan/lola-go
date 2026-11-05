@@ -48,7 +48,7 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 	if diffShown {
 		printTrustDiff(w, s, name, run, r.Trust, more)
 	}
-	if r.InSync && !diffShown && !s.plain {
+	if r.InSync && !diffShown && !s.plain && len(r.Failed) == 0 && len(r.Gone) == 0 { // a module not checked is not up to date
 		printFindings(w, s, r.Findings)
 		for _, n := range r.Notices {
 			fmt.Fprintln(w, noticeLine(s, n))

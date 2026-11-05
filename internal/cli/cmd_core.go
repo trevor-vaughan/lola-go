@@ -270,8 +270,13 @@ func (a *app) uninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			req := engine.TargetRequest{Profile: profileName, Rerun: func(extra ...string) string {
-				return strings.Join(append([]string{runWithout(cmd, args, append([]string{"profile"}, consentFlags...)...)}, extra...), " ")
+			req := engine.TargetRequest{Profile: profileName, Yes: yes, Rerun: func(extra ...string) string {
+				// -y stays, and a run that lacked it gains it: the hinted run then asks nothing the
+				// hint itself does not answer (the layer by --profile, the plan by -y).
+				if !yes && !dry {
+					extra = append(extra, "-y")
+				}
+				return strings.Join(append([]string{runWithout(cmd, args, "profile", "trust")}, extra...), " ")
 			}, UserRun: func() string {
 				return runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
 			}, Again: rerunFlags(cmd, 0)}

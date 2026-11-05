@@ -23,6 +23,7 @@ vars:
   v1_digest: sha256:29429e4d39f8b499ef306a0d597791cba76960e36a028c587794b4f0763334b0
   git_cache: -e XDG_CACHE_HOME=/home/tester/.cache-git
   zip_cache: -e XDG_CACHE_HOME=/home/tester/.cache-zip
+  i1_cache: -e XDG_CACHE_HOME=/home/tester/.cache-i1
   tar_cache: -e XDG_CACHE_HOME=/home/tester/.cache-tar
   # I3 runs a move hint in a project and homes of its own, which the later cases never read
   i3_homes: -e XDG_CONFIG_HOME=/home/tester/.config-i3 -e XDG_STATE_HOME=/home/tester/.state-i3 -e XDG_DATA_HOME=/home/tester/.data-i3 -e XDG_CACHE_HOME=/home/tester/.cache-i3
@@ -78,19 +79,19 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ uninstalled my-module (claude-code)"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} find /work/qs/my-project/.claude ! -type d"
+        script: "{{.runtime}} exec {{.container}} sh -c 'test -d /work/qs/my-project/.claude && find /work/qs/my-project/.claude -mindepth 1'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldBeEmpty
 
-  - name: I1 init's try-it hint, run from the module's parent, needs a scope off a terminal
+  - name: I1 (P2-4) init's try-it hint, run from the module's parent, installs off a terminal
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} init /work/authored > /tmp/i1.out; echo exit=$?; cat /tmp/i1.out'"
         assertions:
           - result.systemout ShouldStartWith "exit=0"
           - result.systemout ShouldContainSubstring "✓ created module authored in /work/authored (agent-plugins)"
-          - "result.systemout ShouldContainSubstring \"→ try it: lola install /work/authored -t claude-code\""
+          - "result.systemout ShouldContainSubstring \"→ try it: lola install /work/authored --project -t claude-code\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'find /work/authored -type f | sort | paste -sd \" \"'"
         assertions:
@@ -106,12 +107,20 @@ testcases:
           '
         assertions:
           - result.code ShouldEqual 0
+      # In a git project of its own, with a cache of its own: the cases after it see neither.
       - type: exec
-        script: "{{.runtime}} exec -w /work {{.container}} {{.hint}} /tmp/i1.json"
+        script: "{{.runtime}} exec {{.container}} git init -q /work/i1-proj"
         assertions:
-          - result.code ShouldEqual 1
-          - "result.systemerr ShouldContainSubstring \"error: lola install needs a scope: no .lola/ project was found in /work or above it, and /home/tester/.config/lola/config.yaml sets no default_scope (default_scope: project, user or both)\""
-          - "result.systemerr ShouldContainSubstring \"hint: lola install /work/authored --target claude-code --project\""
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec -w /work/i1-proj {{.i1_cache}} {{.container}} {{.hint}} /tmp/i1.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ installed authored (claude-code)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -f /work/i1-proj/.claude/skills/hello/SKILL.md"
+        assertions:
+          - result.code ShouldEqual 0
 
   - name: I2 check reports per assistant with no assistant installed, writing nothing
     steps:
@@ -372,12 +381,14 @@ testcases:
           {{.runtime}} exec {{.container}} python3 -c '
           import json
           steps = json.load(open("/tmp/i8.err"))["steps"]
-          assert len(steps) == 17 and {s["action"] for s in steps} == {"delete"}, steps
-          print("ok 17 delete steps")
+          assert {s["action"] for s in steps} == {"delete"}, steps
+          dirs = [s for s in steps if s["kind"] == "directory"]
+          assert len(steps) - len(dirs) == 17 and len(dirs) == 19, steps
+          print("ok 17 delete steps and 19 emptied directories")
           '
         assertions:
           - result.code ShouldEqual 0
-          - result.systemout ShouldEqual "ok 17 delete steps"
+          - result.systemout ShouldEqual "ok 17 delete steps and 19 emptied directories"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/i8-after.json /work/proj /home/tester && cmp /tmp/i8-before.json /tmp/i8-after.json'"
         assertions:
@@ -640,7 +651,7 @@ testcases:
           - "result.systemout ShouldContainSubstring \"Uninstall kit? [y/N]\""
           - result.systemout ShouldContainSubstring "✓ uninstalled kit (claude-code)"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'find /home/tester/.claude ! -type d && test ! -e /home/tester/.claude.json'"
+        script: "{{.runtime}} exec {{.container}} sh -c 'test -d /home/tester/.claude && find /home/tester/.claude -mindepth 1 && test ! -e /home/tester/.claude.json'"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldBeEmpty

@@ -254,11 +254,14 @@ A file of yours shows its path (`, new` when the run created it); the base or a 
 
 **`lola uninstall`** removes the entry from the layer the module comes from: the profile on (under a
 bundle, the member it comes from), or, for a module the base provides, the base, once you say so
-(`--profile base` answers off a terminal). A module another layer still lists stays installed, and
-the notice names that layer and the command that removes it there too (`→ gopls stays: default
-(base) lists it too → also remove it there: lola uninstall --user gopls --profile base`). With `-t`
-and `--profile` naming a lower or off layer, it narrows that entry's targets and removes no files,
-and asks nothing; a run that removes no files asks no confirmation.
+(`--profile base` answers off a terminal). Where exactly one layer lists the module, `-y` is that
+answer too (not under `-t`, whose "change it there" question needs a terminal or `--profile`);
+where several do, name one with `--profile`, and the hint keeps your `-y`. A module another layer
+still lists stays installed, and the notice names that layer and the command that removes it there
+too (`→ gopls stays: default (base) lists it too → also remove it there: lola uninstall --user
+gopls --profile base`). With `-t` and `--profile` naming a lower or off layer, it narrows that
+entry's targets and removes no files, and asks nothing; a run that removes no files asks no
+confirmation.
 
 ## Editing a profile
 
@@ -338,6 +341,21 @@ now: user scope: profile me over default
 
 - **The source.** The layer the module's entry comes from, or the one you name before `--move`: a
   profile, `base`, or `default` / `project.yml` for a base. A module no layer lists is refused.
+- **Picks.** The entry takes its `only:` and `skip:` with it. A module moved out of `project.yml`
+  into a profile takes its picks from `selections.yaml`'s section of the project: they become the
+  profile entry's (an `include:` joins its `only:` list), leave `selections.yaml`, and the write
+  line says `picks: carried from selections.yaml`. A profile entry has no `include:`, always
+  takes the global `skip:` and never the global `only:`, so the move is refused when, for a
+  component of the version installed:
+  - an `include:` keeps it while the global `skip:` skips it;
+  - an `include:` keeps it while another `skip:` selector of the section skips it (a glob such as
+    `skill/*` beside `include: [skill/a1]`), with or without an `only:` list;
+  - the global `only:` list leaves it out and the section has no `only:` list of its own.
+
+  A glob `skip:` with no `include:` over it, an `include:` beside an `only:` list, and a `skip:`
+  equal to an `include:` all carry. The refusal names each module, the selector and the files the
+  move would remove or install; `--force` moves anyway, `-n` shows the refusal beside the plan,
+  and lola hints no move after the install.
 - **The target.** `--to` takes a profile of yours or the project's, or `base`. A name no profile
   has creates your profile (`✓ new profile me`, and `created` in `--json`). A target the module's
   entry already comes from is refused (`kit is in default (base) already`); one that lists the
@@ -437,7 +455,7 @@ profile <bundle>`), whose file lists other profiles in `bundle:` instead of modu
   refuse (`work is a bundle; it lists profiles, not modules`, `work is a bundle; move into one of
   its members`), hinting each member. A bundle with no member lola can write asks whether to write
   the base. An uninstall removes the module from the member it comes from, and asks before removing
-  a module the base gives, as it does under any profile.
+  a module the base gives, as it does under any profile (`-y` answers when one layer lists it).
 - **Remote profiles in a bundle.** A remote profile you use alongside your own goes in a bundle:
   `lola profile go-work --switch --new --bundle remote:go,go-extras`. Its entries keep their pins,
   which only `lola profile remote:<name> --update` changes (`lola sync --update <module>` refuses

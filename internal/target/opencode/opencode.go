@@ -52,15 +52,6 @@ func dir(scope target.Scope) string {
 	return ".opencode/"
 }
 
-// BaseDirs implements Target. At project scope .opencode/lola/ is lola's own and goes once
-// it is empty; at user scope lola/ sits beside the artifact directories and stays.
-func (Target) BaseDirs(scope target.Scope) []string {
-	if scope == target.User {
-		return []string{"skills", "commands", "agents", "lola"}
-	}
-	return []string{".opencode/skills", ".opencode/commands", ".opencode/agents", ".opencode"}
-}
-
 // Destinations implements Target. The server map is in the config file Plan writes to.
 func (Target) Destinations(scope target.Scope, root string) (target.Destinations, error) {
 	cfg, err := config(root)

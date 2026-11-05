@@ -457,5 +457,9 @@ var _ = Describe("lola tidy", func() {
 		Expect(r.err).To(ContainSubstring("error: lola tidy acts on one scope per run\n"))
 		Expect(r.err).To(ContainSubstring("  hint: lola tidy -C " + proj + " skill/old\n"))
 		Expect(r.err).To(ContainSubstring("  hint: lola tidy --user skill/old\n"))
+		r = lola("tidy", "--scope", "both", "-C", proj, "skill/old", "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("  hint: lola tidy -C "+proj+" skill/old\n  hint: lola tidy --user skill/old\n"),
+			"R-8: the -y given for both scopes answers neither alone")
 	})
 })

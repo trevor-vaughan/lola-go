@@ -1054,8 +1054,17 @@ any failure up to and including them restores files, ledger and manifests in rev
 `ManifestWrite` may carry a `Check`, run just before it is staged: a profile's (`Profile.Unchanged`)
 refuses the apply when `.lola/` or `.lola/profiles/` stopped being the project's own directories, or
 the file no longer holds the bytes the run read (ruling R-6b3a-4). Afterwards backups are removed,
-emptied directories are pruned (never past a target's base directories), and a logical symlink whose
-target was deleted is removed; the `after` callback then runs.
+a logical symlink whose target was deleted is removed, and then each of the plan's `Dirs` that is
+still an empty directory (`rmdir`; never a symbolic link); the `after` callback then runs.
+`plan.Compute` lists those `Dirs`, each with a `delete` step of kind `directory`: every logical
+ancestor of a deleted file, below the directories directly under its target's root, that no file
+the plan writes lies in, that is a real directory inside the resolved root, and that holds only
+deleted files and directories listed too. A symbolic link is never one (`Lstat`), so neither it
+nor the directory it leads to goes, nor any directory above it, which still holds it; a directory
+below it goes when it resolves inside the root (`~/.claude` linked to `~/dotfiles/claude`: an
+emptied `~/dotfiles/claude/commands` goes), never one a link leads out of the root to. The directories directly under the root (`.claude/`, `.gemini/`, `.opencode/`)
+always stay: `Target.Detect` looks for them, and lola does not record which directories it
+created, so it cannot tell one it made from one the user made to be detected.
 
 The bytes of the manifest come from `manifest.Edit`, run under the scope lock before `Apply`: it
 reads the file again (refusing one that does not load) and edits the yaml.v3 node tree, touching
@@ -1124,8 +1133,18 @@ last modified more than a minute ago whose lock no live run holds (`Engine.sweep
 sweep is best effort, and what it cannot remove is a warning notice, never a refusal. Everything
 temporary goes inside: fetch scratch (`scratch-*`), fetched copies (`fetch-*`), the
 reachability check's repository, version builds (`version-*`, assembled beside the staged tree
-by `Store.Put`) and snapshots. A process killed outside lola's control leaves its directory
-until the next sweep. The sweep goes by the run directory's modification time, but a live run
+by `Store.Put`) and snapshots. SIGINT and SIGTERM cancel the command's context
+(`cli.NotifyContext`, set on the root command in `main`): the git, download or hook it waits on
+is stopped, `Engine.commit` refuses to start a write on a cancelled context, the error unwinds
+through the deferred `done`, and `cli.Execute` returns 128 plus the signal's number, printing
+nothing but the error of a `profile --update` that wrote profiles it did not apply (what was
+updated, and the `lola sync` that applies it); `main` then resets the signal and sends it to lola
+itself (`reraise`, Unix), so the parent sees a death by the signal and a calling shell script
+stops (Windows exits with the code). An abort mapped from `context.Canceled` (`profile
+--update`) is an abort only when no signal caused it (`cli.cancelled`). SIGINT lola was started
+with ignored (a background job of a non-interactive shell) stays ignored (`signal.Ignored`); an
+ignored SIGTERM does not, since Go installs its own handler for it at start. A process killed outside lola's control (SIGKILL, a second
+Ctrl+C, which has the default effect again) leaves its directory until the next sweep. The sweep goes by the run directory's modification time, but a live run
 holds its lock however long it is idle (at a confirmation prompt, or in a long fetch inside
 `scratch-*`), so only a dead run's directory is swept. A dry run sweeps too, since the
 directories are lola's own temporaries and the sweep precedes the dry-run check (`InstallAll`,
@@ -1162,7 +1181,10 @@ repository is never filtered by that repository's ignore rules.
     (…)`; `remote:` sideband lines are never read) is a `source.AccessError` instead
     (`accessDenied`): lola's message for the location after `--`, with `git ls-remote --
     <location>` (plus `-c http.followRedirects=false` when the run had it, and `ssh-add` when
-    the server takes keys) as hints, none for a location that is not plain or over `MaxName`;
+    the server takes keys) as hints, but not for a github.com web or organisation page
+    (`githubWebHint`), whose `AccessError.Web` names the repository, ref and path for the CLI to hint
+    in the user's own command (`coachSource`, which also takes `store.SkillsDirError` and
+    `source.TagObjectError`); none for a location that is not plain or over `MaxName`;
     callers keep them (`unhinted` passes it through).
   - One 5-minute context covers the fetch; `WaitDelay` (5 s) makes git stop on time even when a
     child keeps its output open, and a timeout is coached by the location's transport (ssh
@@ -1277,7 +1299,9 @@ and the run removes the directory, then releases and removes the lock. A lock fi
 removed after this run created it and before it locked it is detected (`os.SameFile` of the locked
 descriptor and the path) and another name is taken. `sweepRuns` removes a `run-*` older than a minute
 only when it can take its lock without waiting, so a run waiting at a prompt for longer keeps its
-scratch (A28).
+scratch (A28), and removes its lock after releasing it. A `run-*.lock` without its directory (its
+run killed after the directory was swept, or between creating the lock and the directory) is
+removed under the same rule: older than a minute and free.
 
 `lola cache clean` is `engine.PlanClean`, which writes nothing, and `engine.ApplyClean`, which
 applies the plan the user confirmed (`internal/engine/clean.go`). The plan lists superseded versions
@@ -1550,8 +1574,11 @@ profile's.
     `-C`), else `-C <root>`; a command without a scope flag would ask for its scope on a terminal
     (Plan 6b §12.3).
   - Then the names and flags, each through `untrusted.Text` and `errs.ShellJoin`.
-  - A hint that repeats the user's run carries its names, `--update` and `--force`, and
-    `--trust=` the kinds given (`SyncRequest.rerun`); the "… and N more" of a capped file list or
+  - A hint that repeats the user's run carries its names, `--update` and `--force`,
+    `--trust=` the kinds given, and `-y` as given (`SyncRequest.Yes`, set only for a run at the
+    one scope the user named: `syncFlags.alone`) unless the hint adds `-n`
+    (`SyncRequest.rerun`, spec 2026-11-03 §3.3; the shadowed-profile hint, which names another
+    profile, drops it: ruling R-8); the "… and N more" of a capped file list or
     dry-run plan names the user's run with `-n --json` (`Engine.ListAll`).
   - An install's `retry with: lola install <names>` (`withRetry`) is built per scope with
     `Command`, and left off a refusal for want of trust (`ErrNotTrusted`, the untrusted top-level
@@ -1571,9 +1598,14 @@ profile's.
     command takes.
   - install's no-assistant refusals hint the run plus `-t <id>`, and a project at the home
     directory `InstallSpec.UserRun`.
-  - Every such rerun drops `consentFlags` (`-y` and `--trust`: rulings R-6b3c-8, R-6cux-4), and
-    `runWithout` repeats a bool only as given (`--x=false` against a true default, nothing for a
-    false one).
+  - Every such rerun keeps `-t` and `-n` (spec 2026-11-03 §3.3) and drops `consentFlags` (`-y`
+    and `--trust`: rulings R-6b3c-8, R-6cux-4, R-8), but `completeRun`, which drops only
+    `--trust`: the missing-scope refusal's `ScopeRequest.Run` and install's `-t <id>` hints
+    complete the run with what a terminal would have asked, so its `-y` answers the completed
+    run's question. `runAs` drops `-y` from a dry run's hint, which asks nothing, and on another
+    command (`lola info`'s next step is an install) keeps only the flags that command takes, and
+    never `-y`. `runWithout` repeats a
+    bool only as given (`--x=false` against a true default, nothing for a false one).
   - `confirm`'s refusal off a terminal hints the run with `-y`.
   - `lola migrate` needs no case of its own: its process's directory decides, not the `Cwd` it
     passes.
@@ -1844,8 +1876,8 @@ longer the one shown, replaces it (`writeRemote`), and the loop takes the shared
 the next question (R-6b3b-8); failing to take it stops the run the same way, the profile written
 reported, and every scope is read under the lock (the stop's hints are each scope's whole sync). A
 scope that cannot be read once the profiles are written also stops the run, with every profile's
-outcome kept. The `ctx.Err()` branch serves engine callers: the CLI installs no signal handler, so
-Ctrl+C outside a question ends the process. Once every profile is handled, `updateScopes` has
+outcome kept. The `ctx.Err()` branch is the CLI's Ctrl+C or SIGTERM outside a question, which
+cancels the run's context (`cli.NotifyContext`). Once every profile is handled, `updateScopes` has
 `scopeUse.after` read each scope again with the profiles written (`uses` takes several) and keep the
 modules whose winning entry changed (Plan 6b §19 P9), counting every other difference from
 `lock.json` as pending. `ProfileUpdateResult.Scopes` lists the scopes in order with those modules
@@ -2348,8 +2380,9 @@ line of its own. Widths are measured and cut with `charmbracelet/x/ansi`.
 While an accessible-mode form waits, `eofReader.catch` holds `signal.Notify(os.Interrupt)`; the
 reader reads stdin in a goroutine, and an interrupt ends its input, so the form
 returns `ErrAborted` (exit 0, the command's abort message). A goroutine left blocked on stdin
-ends with the process, since a cancel always ends the command. lola installs no process-wide
-handler.
+ends with the process, since a cancel always ends the command. The process-wide handler
+(`cli.NotifyContext`) cancels the run's context too, but `Execute` maps `ErrAborted` before it
+looks at the context's cause, so the form's cancel keeps exit 0.
 
 **Restoring remote profiles** (`restoreRemotes`, `internal/engine/restore.go`). `Sync`,
 `InstallAll`, `--switch`/`--on` and a `Move` that can cross scopes (for both scopes, before its
@@ -2376,7 +2409,14 @@ the profile files' edits, with `apply` laying them over the layers a sync reads.
 that scope's `Sync` as `SyncRequest.move`, which reads the layers with the edits, makes the run the
 moved modules, records lola's own writes as trusted (`moveEdit.trusted`, only an entry's own file
 part) and writes the files in the apply's transaction with `lock.json` and `pins.yaml`, so a failed
-apply leaves every file as it was. A module is moved within the target scope when that scope's
+apply leaves every file as it was. An entry leaving `project.yml` for a profile carries its picks
+from `selections.yaml` (`carryPicks`: an include joins the `only:` list); `moveEdit.selections`
+removes that section entry, in the selections the sync plans with and, after the apply's
+transaction, on disk with `config.Save` under the selections lock (taken before the scope locks).
+`lostPicks` compares, over the installed version's components, what the section and the carried
+profile entry exclude; a difference refuses the move (`picksLostError`; `--force` proceeds, `-n`
+warns), and `installMoveHints` offers no move then (`picksStay`).
+A module is moved within the target scope when that scope's
 layers list it; otherwise (`providers`) from the other scope, which is a cross-scope move
 (`moveAcross`): under both scopes' locks in `lockOrder`, held by the caller (`SyncRequest.held`),
 the target scope's sync first, the source scope's second, with `SyncRequest.seed` carrying the
@@ -2871,8 +2911,10 @@ not a candidate, or a keep answer is not a candidate's escaped literal selector,
 needed) select exactly the choice, with the keep answers as `--keep`; `Hidden` marks one that
 exists but that `untrusted.Text` would alter. The review is skipped with `-y` or `--force`; a
 nil `Confirm` refuses, hinting `-y`. Hints are built by `tidyRun`: the scope's flags
-(`RootArgs`), names, then the run flags as given, and the output flags `--json`, `--plain` and
-`--no-pager` as given (`TidyRequest.Display`, R-6d2-5). A dry run's closing hint adds `--all`
+(`RootArgs`), names, then the run flags as given, `-n` for a dry run (spec 2026-11-03 §3.3; the
+closing hint that applies it clears `Dry`), and the output flags `--json`, `--plain` and
+`--no-pager` as given (`TidyRequest.Display`, R-6d2-5); a dry-run hint carries no `-y`, and
+`TidyOneScope`'s hints drop it, given for both scopes (ruling R-8). A dry run's closing hint adds `--all`
 to a run without names only off a terminal or with `--force` (`TidyRequest.Interactive`); on
 one, the run without names opens the picker.
 

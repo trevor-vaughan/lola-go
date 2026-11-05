@@ -58,7 +58,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 		case "uninstall":
 			installKit(proj)
 			return confirmCase{
-				args: []string{"uninstall", "kit", "-C", proj}, context: projectContext(proj), plan: "→ would remove kit from project.yml (base)\nplan (dry run; nothing was written):", planLines: 3,
+				args: []string{"uninstall", "kit", "-C", proj}, context: projectContext(proj), plan: "→ would remove kit from project.yml (base)\nplan (dry run; nothing was written):", planLines: 4,
 				question: "Uninstall kit?", hint: "lola uninstall kit --json --root " + proj + " -y", done: "uninstalled",
 				keys: []string{"modules", "steps", "findings", "notices", "dry_run"}, steps: key("steps"), did: key("steps"),
 				written: func() bool {

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -130,6 +131,9 @@ var _ = Describe("remote profiles", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: remote:go is shadowed by your profile user:go"))
 		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user user:go --on"))
+		r = lola("profile", "--user", "remote:go", "--on", "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user user:go --on\n"), "R-8: -y answered nothing about another profile")
 
 		// Turned on before user:go existed, it is read as user:go, and still shows its own modules.
 		led := ledger.New()
@@ -490,6 +494,30 @@ var _ = Describe("remote profiles", func() {
 			Expect(filepath.Join(p.Home, ".claude", "commands", "h.md")).NotTo(BeAnExistingFile(), "nothing is applied")
 		})
 
+		DescribeTable("an update a signal stops exits as the signal would, not as a cancelled question",
+			func(trust string, sig syscall.Signal) {
+				Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
+				Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+				kept := filepath.Join(p.RemoteProfiles, "go", "profile.yml")
+				before, err := os.ReadFile(kept)
+				Expect(err).NotTo(HaveOccurred())
+				ctx, cancel := context.WithCancelCause(context.Background())
+				cancel(cli.Interrupted{Signal: sig}) // as cli.NotifyContext does on the signal
+				root := cli.NewRootCmd(os.Getenv)
+				var out, errb bytes.Buffer
+				root.SetOut(&out)
+				root.SetErr(&errb)
+				root.SetIn(strings.NewReader(""))
+				root.SetArgs([]string{"profile", "go", "--update", "--user", trust})
+				root.SetContext(ctx)
+				Expect(cli.Execute(root)).To(Equal(128+int(sig)), errb.String())
+				Expect(errb.String()).To(BeEmpty(), "nothing was written, so there is nothing to apply later")
+				Expect(os.ReadFile(kept)).To(Equal(before))
+			},
+			Entry("one at a time, SIGINT", "--trust", syscall.SIGINT),
+			Entry("in a batch (--trust=profiles), SIGTERM", "--trust=profiles", syscall.SIGTERM),
+		)
+
 		It("an update with --trust whose sync is cancelled before the receipt updates nothing", func() {
 			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
 			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
@@ -816,6 +844,40 @@ var _ = Describe("remote profiles", func() {
 			Expect(r.err).To(ContainSubstring("; remote:zed: stopped before it was updated; remote:go is updated, but not applied; the run stopped at Ctrl+C\n"),
 				"the profile the stop left is counted")
 		})
+
+		DescribeTable("a signal after a profile is written says it is not applied, and how to apply it, then exits as the signal would",
+			func(sig syscall.Signal) {
+				Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
+				Expect(lola("profile", "docs", "--add", src, "--user", "--trust").code).To(Equal(0))
+				Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+				work := filepath.Join(tmp, "profiles-work")
+				writeTree(work, map[string]string{"profiles/docs.yml": "version: 1\ndescription: Docs 2\n",
+					"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
+				gitIn(work, "commit", "-qam", "both")
+				gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
+				ctx, cancel := context.WithCancelCause(context.Background())
+				// The signal arrives once go is answered, while docs is fetched.
+				sp := &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, before: func(n int) {
+					if n == 1 {
+						cancel(cli.Interrupted{Signal: sig}) // as cli.NotifyContext does on the signal
+					}
+				}}
+				root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(sp))
+				var out, errb bytes.Buffer
+				root.SetOut(&out)
+				root.SetErr(&errb)
+				root.SetIn(strings.NewReader(""))
+				root.SetArgs([]string{"profile", "go", "docs", "--update", "--user"})
+				root.SetContext(ctx)
+				Expect(cli.Execute(root)).To(Equal(128+int(sig)), errb.String())
+				Expect(out.String()).To(HavePrefix("✓ updated remote:go"))
+				Expect(errb.String()).To(HaveSuffix("error: remote:go is updated, but not applied; the run was stopped by a signal (" + sig.String() + ")\n" +
+					"  hint: apply it later: lola sync --user example\n"))
+				Expect(filepath.Join(p.Home, ".claude", "commands", "ship.md")).To(BeAnExistingFile(), "nothing is applied")
+			},
+			Entry("SIGINT", syscall.SIGINT),
+			Entry("SIGTERM", syscall.SIGTERM),
+		)
 
 		It("never lets --trust answer the found project's trust when no flag names it", func() {
 			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))

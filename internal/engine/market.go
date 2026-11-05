@@ -1005,6 +1005,11 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 	}
 	if req.Name != "" {
 		if err := market.ValidateName(req.Name); err != nil {
+			// A source in the name's place is --add <name> <source> typed for <name> --add <source>:
+			// --add took the name as its value, so the source is what is left over.
+			if req.Source != "" && strings.ContainsAny(req.Name, ":/") {
+				return nil, errs.WithHints(err, MarketRun(addRun(req.Source, req.Name, req.Ref, req.Path, req.SSHHosts, req.DryRun, req.Display)...))
+			}
 			// Its lowercase form, when that is a name no marketplace has, is the run's likeliest
 			// intent. markets.yaml is read without the lock: it only picks the hint.
 			lower := strings.ToLower(req.Name)

@@ -102,6 +102,75 @@ var _ = Describe("bundles", func() {
 		Expect(string(b)).To(Equal("B from docs\n"))
 	})
 
+	Describe("Prof-P1-a: the bundle view shows the winning member's picks", func() {
+		var alpha string
+		BeforeEach(func() {
+			alpha = filepath.Join(mods, "alpha")
+			files := map[string]string{"lola.yml": "name: alpha\n", "commands/hello.md": "hello\n"}
+			for _, s := range []string{"a1", "a2", "a3"} {
+				files["skills/"+s+"/SKILL.md"] = "---\ndescription: " + s + "\n---\n" + s + "\n"
+			}
+			writeTree(alpha, files)
+			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + entry("alpha", alpha)})
+		})
+		// bundle writes members one and two, picking as the given entries' tails, and bundle both over them.
+		bundle := func(onePicks, twoPicks string) {
+			GinkgoHelper()
+			writeProfile("one", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: alpha, source: "+alpha+", "+onePicks+"}\n")
+			writeProfile("two", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: alpha, source: "+alpha+", "+twoPicks+"}\n")
+			writeProfile("both", "version: 1\nbundle: [one, two]\n")
+		}
+		skills := func() []string {
+			GinkgoHelper()
+			ents, err := os.ReadDir(filepath.Join(proj, ".claude", "skills"))
+			if os.IsNotExist(err) {
+				return []string{}
+			}
+			Expect(err).NotTo(HaveOccurred())
+			out := []string{}
+			for _, ent := range ents {
+				out = append(out, ent.Name())
+			}
+			return out
+		}
+
+		It("reports the later member's picks, and sync installs those", func() {
+			bundle("only: [skill/a3]", "only: [skill/a1]")
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: "both"},
+				ConfirmRemovals: yes, Trust: trustAll})
+			Expect(err).NotTo(HaveOccurred())
+
+			states, _, err := e.ProfileState(ctx, []engine.Scope{sc}, "both")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].Modules).To(Equal([]engine.ProfileModule{{Name: "alpha", From: "profile:user:two",
+				Overrides: []string{"project.yml", "profile:user:one"}, Only: []string{"skill/a1"}, Skip: []string{}}}))
+			Expect(skills()).To(Equal([]string{"a1"}))
+			Expect(filepath.Join(proj, ".claude", "commands", "hello.md")).NotTo(BeAnExistingFile())
+		})
+
+		It("reports the winning member's skips, not the first member's only", func() {
+			bundle("only: [skill/a3]", "skip: [skill/a2, skill/a3, command/hello]")
+			states, _, err := e.ProfileState(ctx, []engine.Scope{sc}, "both")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states[0].Modules).To(ConsistOf(And(HaveField("From", "profile:user:two"),
+				HaveField("Only", BeEmpty()), HaveField("Skip", Equal([]string{"skill/a2", "skill/a3", "command/hello"})))))
+		})
+
+		It("a winning member that skips every component shows that, and sync writes none of the module", func() {
+			bundle("only: [skill/a3]", "skip: [skill/a1, skill/a2, skill/a3, command/hello]")
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: "both"},
+				ConfirmRemovals: yes, Trust: trustAll})
+			Expect(err).NotTo(HaveOccurred())
+			states, _, err := e.ProfileState(ctx, []engine.Scope{sc}, "both")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states[0].Modules).To(ConsistOf(And(HaveField("From", "profile:user:two"), HaveField("Only", BeEmpty()),
+				HaveField("Skip", Equal([]string{"skill/a1", "skill/a2", "skill/a3", "command/hello"})))))
+			Expect(skills()).To(BeEmpty())
+			Expect(filepath.Join(proj, ".claude", "commands", "hello.md")).NotTo(BeAnExistingFile())
+		})
+	})
+
 	It("expands nested bundles depth-first, a profile reached twice keeping its first place with a notice", func() {
 		g, l, d := mod("g", "g", "G"), mod("l", "l", "L"), mod("d", "d", "D")
 		writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n"+entry("g", g))

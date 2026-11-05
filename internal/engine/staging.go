@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -101,7 +102,8 @@ func lockedAt(fl *flock.Flock, path string) bool {
 }
 
 // sweepRuns removes the run directories under Paths.Staging last modified more than staleRun
-// ago whose lock no live run holds (R-9-9, A28): what killed processes left behind; a live run
+// ago whose lock no live run holds (R-9-9, A28), with their locks, and the run-*.lock files left
+// without their directory under the same rule: what killed processes left behind; a live run
 // waiting at a prompt keeps its directory however long. It is best effort: what it cannot remove is a warning, never a refusal, and the next sweep tries again.
 // lola cache add, which reports no notices, does not sweep.
 func (e *Engine) sweepRuns() []Notice {
@@ -114,7 +116,14 @@ func (e *Engine) sweepRuns() []Notice {
 		errs = append(errs, err)
 	}
 	for _, d := range es {
-		if !d.IsDir() || !strings.HasPrefix(d.Name(), runPrefix) {
+		if !strings.HasPrefix(d.Name(), runPrefix) {
+			continue
+		}
+		base, isLock := strings.CutSuffix(d.Name(), lockSuffix)
+		if isLock && (!d.Type().IsRegular() || slices.ContainsFunc(es, func(o fs.DirEntry) bool { return o.Name() == base })) {
+			continue // not a lock lola made, or its directory's, which goes with it
+		}
+		if !isLock && !d.IsDir() {
 			continue
 		}
 		fi, err := d.Info()
@@ -128,14 +137,22 @@ func (e *Engine) sweepRuns() []Notice {
 		if e.Now().Sub(fi.ModTime()) <= staleRun {
 			continue
 		}
-		dir := filepath.Join(e.Paths.Staging, d.Name())
+		dir := filepath.Join(e.Paths.Staging, base)
 		release, free, err := holdLock(dir + lockSuffix)
 		if err != nil || !free {
 			errs = append(errs, err)
 			continue
 		}
-		errs = append(errs, os.RemoveAll(dir))
+		if !isLock {
+			err = os.RemoveAll(dir)
+		}
 		release()
+		if err == nil {
+			err = os.Remove(dir + lockSuffix)
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
+		}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return []Notice{{Level: LevelWarn, Text: fmt.Sprintf("could not remove what a killed lola left in %s: %v; remove it by hand",

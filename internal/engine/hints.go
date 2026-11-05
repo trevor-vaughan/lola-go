@@ -87,13 +87,15 @@ func (e *Engine) commandOf(req SyncRequest, extra ...string) string {
 
 // rerun is the names and flags of the user's sync that a hint repeating it carries (Plan 6a
 // §11.3): the names, --update (--fetch for lola update, which always updates) and --force as
-// given, and --trust for the kinds given (Plan 9 §3.5).
+// given, --trust for the kinds given (Plan 9 §3.5), and -y as given (spec 2026-11-03 §3.3):
+// once when extra adds it too, and not when extra makes the run a dry run, which asks nothing.
 func (req SyncRequest) rerun(extra ...string) []string {
 	out := append([]string{}, req.Modules...)
 	for _, f := range []struct {
 		on   bool
 		flag string
-	}{{req.Update && !req.Installed, "--update"}, {req.Refetch, "--fetch"}, {req.Options.Force, "--force"}, {req.Options.Trust != 0, req.Options.Trust.Arg()}} {
+	}{{req.Update && !req.Installed, "--update"}, {req.Refetch, "--fetch"}, {req.Options.Force, "--force"}, {req.Options.Trust != 0, req.Options.Trust.Arg()},
+		{req.Yes && !slices.Contains(extra, "-y") && !slices.Contains(extra, "-n"), "-y"}} {
 		if f.on {
 			out = append(out, f.flag)
 		}

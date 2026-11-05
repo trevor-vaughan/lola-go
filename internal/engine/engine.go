@@ -123,6 +123,9 @@ type Options struct {
 	// ForceRun is the user's run with --force, which a refusal of conflicts --force overrides
 	// hints; "" for no hint.
 	ForceRun string
+	// RenderRun is the user's run as a real run with --force: what renders a forceable skip, which
+	// a dry run does not. "" means ForceRun is that run.
+	RenderRun string
 	// Then is the scopes the caller applies next, from what an uninstall writes (lola profile
 	// --edit's module page, ruling P1): its notice that a profile it wrote is also on elsewhere
 	// names none of them.
@@ -395,7 +398,8 @@ func FindProject(dir string) string {
 }
 
 // shouldRemoveLola reports whether dir (a .lola directory) contains no recorded state and should be removed.
-// It checks: project.yml doesn't exist, ledger is absent or empty (no modules or created files).
+// It checks: project.yml doesn't exist, ledger is absent or empty (no modules, created files or
+// active profile: a switch to an empty profile records only that).
 // If the ledger can't be read, it returns false with the error (don't remove if we can't check).
 func shouldRemoveLola(dir string) (bool, error) {
 	// Check if project.yml exists
@@ -416,7 +420,7 @@ func shouldRemoveLola(dir string) (bool, error) {
 	}
 
 	// Check if ledger is empty
-	if len(l.Modules) == 0 && len(l.Created) == 0 {
+	if len(l.Modules) == 0 && len(l.Created) == 0 && l.Profile == nil {
 		return true, nil
 	}
 
@@ -976,8 +980,8 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		for i := range fs {
 			fs[i].Module = m.Name
 			// A skip --force can render gets the user's run with --force, after the target's own fix.
-			if fs[i].Severity == target.SeveritySkip && fs[i].Forceable && opts.ForceRun != "" && !opts.activation {
-				anyway := "render it anyway: " + opts.ForceRun
+			if run := cmp.Or(opts.RenderRun, opts.ForceRun); fs[i].Severity == target.SeveritySkip && fs[i].Forceable && run != "" && !opts.activation {
+				anyway := "render it anyway: " + run
 				if fs[i].Hint != "" {
 					anyway = fs[i].Hint + "; or " + anyway
 				}
@@ -1140,11 +1144,10 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 			return nil, err
 		}
 	}
-	req := plan.Request{Roots: map[string]string{}, BaseDirs: map[string][]string{}, Ledger: led, Changes: changes, Force: opts.Force,
+	req := plan.Request{Roots: map[string]string{}, Ledger: led, Changes: changes, Force: opts.Force,
 		ForceRun: opts.ForceRun, Replace: replace}
 	for _, t := range e.Targets {
 		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
-		req.BaseDirs[t.ID()] = t.BaseDirs(sc.Kind)
 	}
 	p, err := plan.Compute(req)
 	if ce, ok := errors.AsType[*plan.ConflictError](err); ok {
@@ -1204,8 +1207,12 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 
 // commit applies a prepared scope: module copies, pre-install scripts and hooks, the plan with
 // the manifest edits man (none when empty) under the scope lock, after (when set), then
-// post-install hooks and scripts, and the pending post-install scripts that run alone.
+// post-install hooks and scripts, and the pending post-install scripts that run alone. A ctx
+// cancelled before it starts (Ctrl+C or SIGTERM after the fetch) writes nothing.
 func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man []plan.ManifestWrite, after func(*plan.Plan) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	sc, p := pr.sc, pr.plan
 	if err := e.ownGitignore(sc); err != nil {
 		return err

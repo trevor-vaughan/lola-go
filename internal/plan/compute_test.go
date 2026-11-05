@@ -38,7 +38,7 @@ var _ = Describe("Compute", func() {
 		return plan.Intent{Target: tgt, Kind: "mcp", Op: plan.OpSetJSON, Path: ".mcp.json", Pointer: "/mcpServers/" + name, Value: []byte(value)}
 	}
 	req := func(force bool, changes ...plan.ModuleChange) plan.Request {
-		return plan.Request{Roots: map[string]string{tgt: root}, BaseDirs: map[string][]string{tgt: {".claude/commands"}},
+		return plan.Request{Roots: map[string]string{tgt: root},
 			Ledger: led, Force: force, ForceRun: "lola uninstall --force", Changes: changes}
 	}
 	change := func(name string, intents ...plan.Intent) plan.ModuleChange {
@@ -85,7 +85,7 @@ var _ = Describe("Compute", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionCreate, Module: "a", Target: tgt, Kind: "command", Path: ".claude/commands/x.md"}}))
 			Expect(p.Files).To(Equal([]plan.FileChange{{Target: tgt, Logical: ".claude/commands/x.md", Abs: filepath.Join(root, ".claude/commands/x.md"),
-				Root: root, Data: []byte("X"), Mode: 0o644, StopDirs: []string{root, filepath.Join(root, ".claude/commands")}}}))
+				Root: root, Data: []byte("X"), Mode: 0o644}}))
 			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{fileArt(".claude/commands/x.md", "X")}))
 			Expect(p.Ledger.Modules["a"].Digest).To(Equal("sha256:new"))
 			Expect(led.Modules).To(BeEmpty())
@@ -299,6 +299,104 @@ var _ = Describe("Compute", func() {
 			p, err := plan.Compute(req(false, removal("a")))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{{Target: "opencode", Kind: "command", Path: ".opencode/commands/x.md", SHA256: sum("X")}}))
+		})
+	})
+
+	Describe("emptied directories", func() {
+		dir := func(module, path string) plan.Step {
+			return plan.Step{Action: plan.ActionDelete, Module: module, Target: tgt, Kind: plan.KindDirectory, Path: path}
+		}
+		dirSteps := func(p *plan.Plan) []plan.Step {
+			var out []plan.Step
+			for _, st := range p.Steps {
+				if st.Kind == plan.KindDirectory {
+					out = append(out, st)
+				}
+			}
+			return out
+		}
+
+		It("plans removing each directory its deletions leave empty, children first, below the root's own directories", func() {
+			put(".claude/skills/s/SKILL.md", "S")
+			put(".claude/commands/x.md", "X")
+			own("a", fileArt(".claude/skills/s/SKILL.md", "S"), fileArt(".claude/commands/x.md", "X"))
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dirSteps(p)).To(Equal([]plan.Step{dir("a", ".claude/commands"), dir("a", ".claude/skills/s"), dir("a", ".claude/skills")}))
+			Expect(p.Steps[len(p.Steps)-3:]).To(Equal(dirSteps(p)), "after the file steps")
+			Expect(p.Dirs).To(Equal([]string{filepath.Join(root, ".claude/commands"), filepath.Join(root, ".claude/skills/s"),
+				filepath.Join(root, ".claude/skills")}))
+		})
+
+		It("never removes a directory directly under the root, which tells lola an assistant is set up there", func() {
+			put(".claude/CLAUDE.md", "C")
+			put("top/x.md", "X")
+			own("a", fileArt(".claude/CLAUDE.md", "C"), fileArt("top/x.md", "X"))
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Files).To(HaveLen(2))
+			Expect(dirSteps(p)).To(BeEmpty())
+			Expect(p.Dirs).To(BeEmpty())
+		})
+
+		It("keeps a directory the same run writes into", func() {
+			put(".claude/skills/s/ref/old.md", "O")
+			own("a", fileArt(".claude/skills/s/ref/old.md", "O"))
+			p, err := install("a", false, cmd(".claude/skills/s/ref/new.md", "N"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ContainElement(HaveField("Action", plan.ActionDelete)))
+			Expect(p.Steps).To(ContainElement(HaveField("Action", plan.ActionCreate)))
+			Expect(dirSteps(p)).To(BeEmpty())
+			Expect(p.Dirs).To(BeEmpty())
+		})
+
+		It("keeps a directory that still holds a file or a directory of yours", func() {
+			put(".claude/skills/s/SKILL.md", "S")
+			put(".claude/commands/x.md", "X")
+			put(".claude/commands/mine.md", "mine")
+			Expect(os.MkdirAll(filepath.Join(root, ".claude/skills/yours"), 0o755)).To(Succeed())
+			own("a", fileArt(".claude/skills/s/SKILL.md", "S"), fileArt(".claude/commands/x.md", "X"))
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dirSteps(p)).To(Equal([]plan.Step{dir("a", ".claude/skills/s")}))
+			Expect(p.Dirs).To(Equal([]string{filepath.Join(root, ".claude/skills/s")}))
+		})
+
+		It("plans nothing for a directory that only a file lola keeps holds", func() {
+			put(".claude/commands/x.md", "X")
+			put(".claude/commands/y.md", "Y")
+			own("a", fileArt(".claude/commands/x.md", "X"))
+			own("b", fileArt(".claude/commands/y.md", "Y"))
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dirSteps(p)).To(BeEmpty())
+			Expect(p.Dirs).To(BeEmpty())
+		})
+
+		It("never removes a symlinked directory, nor climbs past it", func() {
+			put("shared/s/SKILL.md", "S")
+			Expect(os.MkdirAll(filepath.Join(root, ".claude"), 0o755)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(root, "shared"), filepath.Join(root, ".claude/skills"))).To(Succeed())
+			own("a", fileArt(".claude/skills/s/SKILL.md", "S"))
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dirSteps(p)).To(Equal([]plan.Step{dir("a", ".claude/skills/s")}), "the directory below the link is lola's")
+			Expect(p.Dirs).To(Equal([]string{filepath.Join(root, "shared/s")}))
+		})
+
+		It("never removes a directory a symlink leads out of the root", func() {
+			outside, err := filepath.EvalSymlinks(GinkgoT().TempDir())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.MkdirAll(filepath.Join(outside, "s"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(outside, "s", "SKILL.md"), []byte("S"), 0o644)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(root, ".claude"), 0o755)).To(Succeed())
+			Expect(os.Symlink(outside, filepath.Join(root, ".claude/skills"))).To(Succeed())
+			own("a", fileArt(".claude/skills/s/SKILL.md", "S"))
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Files).To(HaveExactElements(HaveField("Delete", true)))
+			Expect(dirSteps(p)).To(BeEmpty())
+			Expect(p.Dirs).To(BeEmpty())
 		})
 	})
 

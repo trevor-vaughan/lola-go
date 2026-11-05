@@ -4,6 +4,11 @@ vars:
   # OUT_DIR, not TEST_DIR: the test task exports TEST_DIR, which would be re-templated.
   OUT_DIR: '{{.ROOT_DIR}}/{{.TEST_DIR | default ".test-output"}}'
   MODE: '{{.MODE | default "human"}}'
+  # Linters are built from source with the go on PATH, so they can read whatever Go the host has
+  # (a prebuilt binary cannot load packages from a newer Go). Bump a version here to upgrade.
+  TOOLS_DIR: '{{.ROOT_DIR}}/.tools/bin'
+  GOLANGCI_LINT_VERSION: v2.15.0
+  GOVULNCHECK_VERSION: v1.9.0
   # Only release tags (vX.Y.Z) stamp the version; the plan and work tags would otherwise leak in.
   VERSION:
     sh: git -C "{{.ROOT_DIR}}" describe --tags --match "v[0-9]*.[0-9]*.[0-9]*" --always --dirty
@@ -35,15 +40,33 @@ tasks:
       TEST_DIR: '{{.OUT_DIR}}'
     cmd: bash "{{.ROOT_DIR}}/scripts/test.sh"
 
+  tools:
+    desc: Build the pinned golangci-lint and govulncheck into .tools/bin with the go on PATH
+    # Not in ROOT_DIR: `go install pkg@version` must ignore this module's go.mod.
+    dir: '{{.TOOLS_DIR}}'
+    env:
+      GOBIN: '{{.TOOLS_DIR}}'
+    cmds:
+      - go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+      - go install golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}
+    status:
+      # Rebuild when a pin changes or the go on PATH changes.
+      - go version '{{.TOOLS_DIR}}/golangci-lint' | grep -qF "$(go env GOVERSION)"
+      - go version '{{.TOOLS_DIR}}/govulncheck' | grep -qF "$(go env GOVERSION)"
+      - go version -m '{{.TOOLS_DIR}}/golangci-lint' | grep -q 'mod[[:space:]]*github.com/golangci/golangci-lint/v2[[:space:]]*{{.GOLANGCI_LINT_VERSION}}'
+      - go version -m '{{.TOOLS_DIR}}/govulncheck' | grep -q 'mod[[:space:]]*golang.org/x/vuln[[:space:]]*{{.GOVULNCHECK_VERSION}}'
+
   lint:
     desc: Run golangci-lint v2 (includes gofmt check)
+    deps: [tools]
     dir: '{{.ROOT_DIR}}'
-    cmd: golangci-lint run ./...
+    cmd: '"{{.TOOLS_DIR}}/golangci-lint" run ./...'
 
   fmt:
     desc: Format all Go code
+    deps: [tools]
     dir: '{{.ROOT_DIR}}'
-    cmd: golangci-lint fmt ./...
+    cmd: '"{{.TOOLS_DIR}}/golangci-lint" fmt ./...'
 
   cross:
     desc: Build and vet (tests included) for Windows and macOS
@@ -54,5 +77,6 @@ tasks:
 
   vuln:
     desc: Scan dependencies and code with govulncheck
+    deps: [tools]
     dir: '{{.ROOT_DIR}}'
-    cmd: govulncheck ./...
+    cmd: '"{{.TOOLS_DIR}}/govulncheck" ./...'

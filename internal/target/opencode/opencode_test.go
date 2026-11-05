@@ -337,8 +337,6 @@ var _ = Describe("opencode", func() {
 	It("roots user scope at $XDG_CONFIG_HOME/opencode with artifact directories directly under it", func() {
 		Expect(o.Root(target.User, "/proj", paths.Paths{Home: "/home/u", ConfigHome: "/home/u/.config"})).To(Equal("/home/u/.config/opencode"))
 		Expect(o.Root(target.Project, "/proj", paths.Paths{})).To(Equal("/proj"))
-		Expect(o.BaseDirs(target.User)).To(Equal([]string{"skills", "commands", "agents", "lola"}))
-		Expect(o.BaseDirs(target.Project)).To(Equal([]string{".opencode/skills", ".opencode/commands", ".opencode/agents", ".opencode"}))
 		ctx.Scope = target.User
 		ins, _ := plan1(&module.Module{Name: "example", Commands: []module.Command{{Name: "go", Doc: doc("Go\n")}}})
 		Expect(ins[0].Path).To(Equal("commands/go.md"))

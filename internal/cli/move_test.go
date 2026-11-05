@@ -94,6 +94,10 @@ var _ = Describe("lola profile --move", func() {
 		r = lola("profile", "--move", "notes", "--to", "default", "--root", proj)
 		Expect(r.err).To(HaveSuffix("error: default is user scope's base; this project's base is project.yml\n" +
 			"  hint: lola profile --move notes --root " + proj + " --to base\n  hint: lola profile --move notes --to default --user\n"))
+		r = lola("profile", "--move", "notes", "--to", "default", "--root", proj, "-y")
+		Expect(r.err).To(HaveSuffix("  hint: lola profile --move notes --to default --user\n"),
+			"R-8: the -y given at the project answers nothing at user scope")
+		Expect(r.err).NotTo(ContainSubstring("--yes"))
 		me, err := os.ReadFile(filepath.Join(p.UserProfiles, "me.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		r = run("lola profile --move notes --root " + proj + " --to base")

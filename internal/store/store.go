@@ -345,9 +345,9 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 
 // NoModuleAt names the source the user gave (and its --path) in an ErrNoModule from loading dir,
 // in place of lola's staging directory, which module.Detect no longer prints, and says what to do
-// when dir holds skills directly: a --path naming a skills/ directory gets the same install with
-// --path at its parent (none for the top), keeping the user's other flags; any other directory
-// of skills is the source's to change.
+// when dir holds skills directly: a --path naming a skills/ directory is a SkillsDirError, whose
+// caller hints the same run with --path at its parent (none for the top), keeping the user's other
+// flags; any other directory of skills is the source's to change.
 func NoModuleAt(source, p, dir string, err error) error {
 	at := untrusted.Text(source, untrusted.MaxName)
 	if p != "" {
@@ -365,12 +365,26 @@ func NoModuleAt(source, p, dir string, err error) error {
 	case path.Base(clean) != "skills":
 		return errs.WithHints(err, under+"move them into a skills/ directory in the source, then point --path at its parent")
 	}
-	cmd := []string{"lola", "install", untrusted.Text(source, untrusted.MaxName)}
-	if parent := path.Dir(clean); parent != "." {
-		cmd = append(cmd, "--path", untrusted.Text(parent, untrusted.MaxName))
+	parent := path.Dir(clean)
+	if parent == "." {
+		parent = ""
 	}
-	return errs.WithHints(err, under+"run "+errs.ShellJoin(cmd)+", keeping your other flags")
+	return &SkillsDirError{Source: source, Parent: parent, err: err}
 }
+
+// SkillsDirError is a --path that names the skills/ directory of Source, which is no module root:
+// the module is Parent, the directory above it ("" for the source's top). Its caller hints the run
+// that names Parent instead.
+type SkillsDirError struct {
+	Source, Parent string
+	err            error
+}
+
+func (e *SkillsDirError) Error() string {
+	return e.err.Error() + "; that directory holds skills, and a module root holds them under skills/"
+}
+
+func (e *SkillsDirError) Unwrap() error { return e.err }
 
 // Prepare detects the staged content's format and reads it as a module (module.Detect),
 // normalizes it in place (module.Normalize), checks that the cached copy would read the same and

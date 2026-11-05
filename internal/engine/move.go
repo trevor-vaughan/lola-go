@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
@@ -17,6 +18,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // ProfileMove is lola profile --move: it moves entries between a scope's files (spec 2026-10-29
@@ -70,19 +72,24 @@ type MoveResult struct {
 // is the move as lola profile takes it, which a hint repeating its sync names (commandOf), after
 // the flags of the scope at names (the target's, for a move between scopes; nil: the sync's). origin
 // is, per moved module whose entry comes from a project file, where the trust record covers it
-// (trusted).
+// (trusted). selections is the removal of each moved module's entry from selections.yaml's section
+// of a project whose project.yml it leaves, the picks the target entry carries now (carryPicks):
+// the sync applies it to the selections it plans with and writes it after the scope's files. lost
+// is each moved module whose carried picks would change what it installs (lostPicks).
 type moveEdit struct {
-	modules  []string
-	out      map[string][]string
-	in       map[string][]manifest.Entry
-	files    map[string]*fileEdit
-	order    []string
-	manifest manifest.Change
-	top      *Layer
-	creating string
-	args     []string
-	at       *Scope
-	origin   map[string]moveOrigin
+	modules    []string
+	out        map[string][]string
+	in         map[string][]manifest.Entry
+	files      map[string]*fileEdit
+	order      []string
+	manifest   manifest.Change
+	top        *Layer
+	creating   string
+	args       []string
+	at         *Scope
+	origin     map[string]moveOrigin
+	selections []config.Change
+	lost       []*picksLostError
 }
 
 // moveOrigin is a moved entry of a project file as the trust record holds it: part, the file's part
@@ -475,6 +482,31 @@ func (e *Engine) Move(ctx context.Context, req MoveRequest) (_ *MoveResult, err 
 	if err != nil {
 		return nil, err
 	}
+	var lost *Notice // a dry run's, or --force's, word on the picks the move cannot carry as they are
+	if len(rm.lost) > 0 {
+		var whys []string
+		for _, l := range rm.lost {
+			whys = append(whys, l.Error())
+		}
+		why := strings.Join(whys, "; ")
+		run := req.Options.ForceRun // the CLI's: the run as given, with --force
+		if run == "" {
+			args := moveArgs(req)
+			if src != dst {
+				args = e.acrossArgs(req, dst, src, req.From, req.Modules, req.Yes)
+			}
+			run = e.Command(req.Scope, "profile", slices.Concat(args, []string{"--force"}, req.Options.Display)...)
+		}
+		anyway := "move it anyway: " + run
+		switch {
+		case req.Options.Force:
+			lost = &Notice{Level: LevelWarn, Text: why + "; --force moves it all the same"}
+		case req.Options.DryRun:
+			lost = &Notice{Level: LevelWarn, Text: "the move refuses: " + why + " → " + anyway}
+		default:
+			return nil, errs.WithHints(&picksLostError{errors.New(why)}, anyway)
+		}
+	}
 	if created != "" && req.Options.DryRun && (to.on || req.Switch) {
 		// A dry run creates nothing: the profile it would create is put on top of the stack, and
 		// a switch to it is planned as the switch to a profile whose file is gone.
@@ -502,6 +534,9 @@ func (e *Engine) Move(ctx context.Context, req MoveRequest) (_ *MoveResult, err 
 	}
 	if len(restored) > 0 {
 		res.Syncs[0].Notices = append(restored, res.Syncs[0].Notices...)
+	}
+	if lost != nil {
+		res.Syncs[0].Notices = append(res.Syncs[0].Notices, *lost)
 	}
 	if switchOn {
 		r := res.Syncs[0]
@@ -829,6 +864,14 @@ func (e *Engine) moveAcross(ctx context.Context, req MoveRequest, add SyncReques
 		}
 		return []*SyncResult{first, second}, nil
 	}
+	if len(rm.selections) > 0 {
+		// rm's sync writes selections.yaml (Sync): its lock comes before the scopes'.
+		unlock, err := config.Lock(e.Paths.SelectionsLock)
+		if err != nil {
+			return nil, err
+		}
+		defer unlock()
+	}
 	scopes := []ScopeInstall{{ScopeChoice: ScopeChoice{Scope: dst.sc}}, {ScopeChoice: ScopeChoice{Scope: src.sc}}}
 	for _, i := range lockOrder(scopes) {
 		unlock, err := e.lock(scopes[i].Scope)
@@ -889,6 +932,9 @@ func (e *Engine) moveAcross(ctx context.Context, req MoveRequest, add SyncReques
 	from := sourceName(src, left)
 	rm.args = e.acrossArgs(req, dst, src, from, modules, true)
 	second, err := e.Sync(ctx, remove)
+	if _, done := errors.AsType[*selectionsLeftError](err); done {
+		return nil, err // the move is applied; only selections.yaml keeps the picks it carried
+	}
 	if err != nil {
 		// The sync's own types are left out: a refusal or a No here does not leave the scopes as
 		// they were, as the CLI would say of them.
@@ -1098,6 +1144,14 @@ func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveS
 	}
 	var removed []Edit
 	var added []manifest.Entry
+	var carried []string // the modules whose picks leave selections.yaml with them, as shown
+	var sel *config.Selections
+	if src.sc.Kind == target.Project && t.Profile {
+		var err error
+		if sel, err = e.selections(); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	for _, m := range req.Modules {
 		if slices.Contains(add.modules, m) {
 			continue
@@ -1118,6 +1172,34 @@ func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveS
 		if from.read != nil {
 			if k := slices.IndexFunc(from.read.Modules, func(x manifest.Entry) bool { return x.Name == m }); k >= 0 {
 				ent.Only, ent.Skip = slices.Clone(from.read.Modules[k].Only), slices.Clone(from.read.Modules[k].Skip)
+			}
+		}
+		if sel != nil && !from.Profile {
+			// project.yml's picks live in selections.yaml (picksAt); the entry takes them with it
+			// (spec 2026-11-03 A1: the move changes no installed file).
+			w, err := where(src.sc)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			picked := sel.Entry(w, m)
+			carry := carryPicks(picked)
+			if !picked.Empty() {
+				ent.Only, ent.Skip = nil, nil
+				if len(carry.Only) > 0 {
+					ent.Only = patternStrings(carry.Only)
+				}
+				if len(carry.Skip) > 0 {
+					ent.Skip = patternStrings(carry.Skip)
+				}
+				rm.selections = append(rm.selections, config.Change{Section: w, Module: m})
+				carried = append(carried, shown(m))
+			}
+			lost, err := e.lostPicks(sel, w, t, m, carry, src.led.Modules[m], ent.RulesOn())
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if lost != nil {
+				rm.lost = append(rm.lost, lost)
 			}
 		}
 		if in := src.led.Modules[m]; across && in != nil {
@@ -1164,7 +1246,109 @@ func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveS
 	}
 	rm.args = moveArgs(req)
 	add.args = rm.args
-	return rm, add, append(removed, editsOf(ctx, dst.sc, t, added, nil, nil)...), nil
+	into := editsOf(ctx, dst.sc, t, added, nil, nil)
+	for i := range into {
+		if slices.Contains(carried, into[i].Module) {
+			into[i].Picks = "carried from selections.yaml"
+		}
+	}
+	return rm, add, append(removed, into...), nil
+}
+
+// carryPicks is e, a module's entry in selections.yaml's section of a project, as the picks of a
+// profile entry, which are only: and skip: (cherry-pick design §4.1): an include joins the only:
+// list when there is one, as --unskip adds to a profile entry's (unskip), and drops the skip equal
+// to it. Each list keeps its form, so an exact only: list stays one. What an include does that
+// this cannot say, lostPicks finds.
+func carryPicks(e config.Entry) config.Entry {
+	only := slices.Clone(e.Only)
+	if len(only) > 0 {
+		for _, inc := range e.Include {
+			if !slices.Contains(only, inc) {
+				only = append(only, inc)
+			}
+		}
+	}
+	skip := slices.DeleteFunc(slices.Clone(e.Skip), func(s config.Pattern) bool { return slices.Contains(e.Include, s) })
+	return config.Entry{Only: only, Skip: skip}
+}
+
+// picksLostError refuses a move that carries a module out of project.yml into a profile whose
+// entry, holding the picks carryPicks makes, would install another set of its installed
+// components than selections.yaml's section does (spec 2026-11-03 A1: the move changes no
+// installed file). --force moves it all the same; a dry run says it and plans that.
+type picksLostError struct{ error }
+
+func (e *picksLostError) Unwrap() error { return e.error }
+
+// lostPicks is the refusal of the move of module, an entry of project.yml whose picks sel's
+// section w holds, into t, a profile whose entry would hold picks (carryPicks), when the two
+// would install different components of the version lock.json's entry installed records: a
+// profile entry has no include:, takes the global skip, and not the global only: list
+// (cherry-pick design §4.2). A rule counts only while rulesOn. nil when the sets match, or when
+// lola cannot tell them (nothing installed, or the cache no longer holds that version).
+func (e *Engine) lostPicks(sel *config.Selections, w config.Where, t writeTo, module string, picks config.Entry, installed *ledger.Entry,
+	rulesOn bool) (*picksLostError, error) {
+	comps, known, err := e.installedSet(module, installed)
+	if err != nil || !known {
+		return nil, err
+	}
+	section := sel.Exclusions(w, module)
+	global := sel.Entry(config.Global(), module)
+	profiled := config.Layered(config.Picks(t.Name), global, picks)
+	var reasons, removed, added []string
+	reason := func(r string) {
+		if !slices.Contains(reasons, r) {
+			reasons = append(reasons, r)
+		}
+	}
+	matching := func(ps []config.Pattern, c Component) []string {
+		var out []string
+		for _, p := range ps {
+			if p.Matches(c.Kind, c.Name) {
+				out = append(out, untrusted.Text(p.String(), untrusted.MaxName))
+			}
+		}
+		return out
+	}
+	for _, c := range comps {
+		if c.Kind == config.KindRule && !rulesOn {
+			continue
+		}
+		was, now := section.Excludes(c.Kind, c.Name), profiled.Excludes(c.Kind, c.Name)
+		switch {
+		case was == now:
+			continue
+		case now:
+			// The section keeps c only by an include, which the profile entry lacks; what excludes
+			// it there is the global skip or a skip carried from the section (carryPicks keeps every
+			// include in an only: list, so that list never leaves c out).
+			removed = append(removed, untrusted.Text(c.String(), untrusted.MaxName))
+			inc := strings.Join(matching(sel.Entry(w, module).Include, c), ", ")
+			if g := matching(global.Skip, c); len(g) > 0 {
+				reason(fmt.Sprintf("include: %s cannot travel: a profile entry has no include:, and the global skip %s applies to it", inc, g[0]))
+			} else {
+				reason(fmt.Sprintf("include: %s cannot travel: a profile entry has no include: to override the skip %s", inc, matching(picks.Skip, c)[0]))
+			}
+		default:
+			// Only the global only: list leaves out what the profile entry keeps: every other pick
+			// of the section is carried, or an include that keeps the component in both.
+			added = append(added, untrusted.Text(c.String(), untrusted.MaxName))
+			reason("the global only: list in selections.yaml does not apply to a profile entry")
+		}
+	}
+	if len(reasons) == 0 {
+		return nil, nil
+	}
+	var change []string
+	if len(removed) > 0 {
+		change = append(change, "remove "+strings.Join(removed, ", "))
+	}
+	if len(added) > 0 {
+		change = append(change, "install "+strings.Join(added, ", "))
+	}
+	return &picksLostError{fmt.Errorf("%s's picks in %s cannot move into %s as they are: %s; the move would %s here", shown(module),
+		untrusted.Text(w.Origin(), untrusted.MaxName), t.label, strings.Join(reasons, "; "), strings.Join(change, " and "))}, nil
 }
 
 // offFlags is the flags of the hint that turns off the remote profile a move's entry comes from:

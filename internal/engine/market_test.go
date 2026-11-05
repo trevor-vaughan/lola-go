@@ -362,6 +362,16 @@ var _ = Describe("marketplaces", func() {
 		}
 	})
 
+	It("--add whose name looks like a source (--add <name> <source> typed for --add <source>) hints the order that works", func() {
+		_, err := add(engine.MarketAddRequest{Name: "https://github.com/lolables/market", Source: "lolables", Ref: "main", DryRun: true, Display: []string{"--json"}})
+		Expect(err).To(MatchError(ContainSubstring(`marketplace name "https://github.com/lolables/market" is invalid`)))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market lolables --add https://github.com/lolables/market --ref main -n --json"}))
+		_, err = add(engine.MarketAddRequest{Name: "git@host:acme/market", Source: "acme"})
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --add git@host:acme/market"}))
+		_, err = add(engine.MarketAddRequest{Name: "a b", Source: "x"})
+		Expect(errs.Hints(err)).To(BeEmpty(), "a name without ':' or '/' is not a source")
+	})
+
 	It("names the marketplaces close to one you do not have, hinting the run with each", func() {
 		url, _ := repo("plugins", acme())
 		_, err := add(engine.MarketAddRequest{Source: url})

@@ -309,8 +309,8 @@ func (t *txn) commit() error {
 	return errors.Join(errs...)
 }
 
-// cleanup removes directories that deletes left empty, never climbing past a stop dir or
-// out of the root, and removes a logical symlink whose target was just deleted.
+// cleanup removes a logical symlink whose target was just deleted, then each of p.Dirs that is
+// still an empty directory (rmdir: never one holding anything, never a symbolic link).
 func cleanup(p *Plan) error {
 	var errs []error
 	for _, fc := range p.Files {
@@ -324,24 +324,22 @@ func cleanup(p *Plan) error {
 				}
 			}
 		}
-		if fc.Outside {
+	}
+	for _, dir := range p.Dirs {
+		fi, err := os.Lstat(dir)
+		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		for dir := filepath.Dir(fc.Abs); !slices.Contains(fc.StopDirs, dir) && len(fc.StopDirs) > 0 && within(fc.StopDirs[0], dir); dir = filepath.Dir(dir) {
-			err := os.Remove(dir)
-			if err == nil {
-				continue
-			}
-			if !errors.Is(err, syscall.ENOTEMPTY) && !errors.Is(err, syscall.EEXIST) && !errors.Is(err, fs.ErrNotExist) {
-				errs = append(errs, err)
-			}
-			break
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if !fi.IsDir() {
+			continue
+		}
+		if err := os.Remove(dir); err != nil && !errors.Is(err, syscall.ENOTEMPTY) && !errors.Is(err, syscall.EEXIST) && !errors.Is(err, fs.ErrNotExist) {
+			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
-}
-
-func within(root, dir string) bool {
-	rel, err := filepath.Rel(root, dir)
-	return err == nil && rel != "." && filepath.IsLocal(rel)
 }

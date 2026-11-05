@@ -21,6 +21,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/target/claude"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -132,8 +133,10 @@ var _ = Describe("Engine", func() {
 		Expect(err.Error()).To(HavePrefix(kit + " --path skills: "))
 		Expect(err.Error()).NotTo(ContainSubstring(p.Staging))
 		Expect(err.Error()).NotTo(ContainSubstring(p.Store))
-		Expect(errs.Hints(err)).To(ContainElement("that directory holds skills; a module root holds them under skills/: run " +
-			errs.ShellJoin([]string{"lola", "install", kit}) + ", keeping your other flags"))
+		var dir *store.SkillsDirError
+		Expect(errors.As(err, &dir)).To(BeTrue(), "the caller hints the run at the directory above")
+		Expect(dir.Source).To(Equal(kit))
+		Expect(dir.Parent).To(BeEmpty())
 	})
 
 	It("records a local source relative to the canonical project root and caches one canonical location", func() {
@@ -597,7 +600,8 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read("CLAUDE.md")).To(Equal("# Mine\n"))
 		Expect(tree(proj)).To(ConsistOf("CLAUDE.md", ".lola/.gitignore", ".lola/lock.json", ".lola/project.yml"))
-		Expect(filepath.Join(proj, ".claude/skills")).To(BeADirectory(), "base dirs stay")
+		Expect(filepath.Join(proj, ".claude/skills")).NotTo(BeAnExistingFile(), "the directories lola emptied go")
+		Expect(filepath.Join(proj, ".claude")).To(BeADirectory(), "the project's own directories stay")
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: "info", Text: "still in your cache: lola cache rm example"}))
 		Expect(res.Notices).To(ContainElement(HaveField("Text", ContainSubstring("plugin data kept at"))))
 		m, _ := manifest.Load(filepath.Join(proj, ".lola/project.yml"))
@@ -876,6 +880,21 @@ var _ = Describe("Engine", func() {
 		_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
 		Expect(err).To(MatchError(`lola uninstall: "example" is not installed in this project`))
 		Expect(errs.Hints(err)).To(Equal([]string{"still in your cache: lola cache rm example", "installed here: lola list --project"}))
+	})
+
+	It("uninstall of a name that differs from one installed module only in case hints that module", func() {
+		_, err := install(claude, src)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = e.Uninstall(ctx, sc, []string{"EXAMPLE"}, engine.Options{})
+		Expect(err).To(MatchError(`lola uninstall: "EXAMPLE" is not installed in this project`))
+		Expect(errs.Hints(err)).To(Equal([]string{"did you mean example? lola uninstall --project example", "installed here: lola list --project"}))
+	})
+
+	It("uninstall keeps its plain hints when no installed module matches the name in any case", func() {
+		_, err := install(claude, src)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = e.Uninstall(ctx, sc, []string{"exampl"}, engine.Options{})
+		Expect(errs.Hints(err)).To(Equal([]string{"installed here: lola list --project"}))
 	})
 
 	It("uninstall coaches lola cache rm for a cached module whose index lola refuses", func() {

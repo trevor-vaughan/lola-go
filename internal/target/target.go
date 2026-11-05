@@ -50,8 +50,6 @@ type Target interface {
 	// Detect reports whether the assistant appears to be set up under root, the target's
 	// root for scope.
 	Detect(scope Scope, root string) bool
-	// BaseDirs are root-relative artifact directories that cleanup never removes.
-	BaseDirs(scope Scope) []string
 	// Capabilities is what the target can express; Plan admits every artifact through it.
 	Capabilities() Capabilities
 	// Probe tells lola how to find the assistant and read its version.

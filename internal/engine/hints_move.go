@@ -36,6 +36,9 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 	if !t.on && t.Key != "" {
 		return nil // a project profile that is off: the saved-to line says what to do (plan 12.5 P3)
 	}
+	if sp.sc.Kind == target.Project && !t.Profile && e.picksStay(sp.sc, a.entries, modules) {
+		return nil // every move would be refused; the picks have no form a profile can hold
+	}
 	infos, err := sp.profiles()
 	if err != nil {
 		return nil // no listing: no hint can name a profile
@@ -342,4 +345,33 @@ func freeName(infos []profile.Info, want string) string {
 		name = fmt.Sprintf("%s-%d", want, k)
 	}
 	return name
+}
+
+// picksStay reports whether the move of any of modules, entries of project.yml at sc (entries, as
+// written), out of it into a profile would be refused for its selections.yaml picks (lostPicks), or
+// lola cannot tell: no move is hinted then.
+func (e *Engine) picksStay(sc Scope, entries []manifest.Entry, modules []string) bool {
+	sel, err := e.selections()
+	if err != nil {
+		return true
+	}
+	led, err := e.Ledger(sc)
+	if err != nil {
+		return true
+	}
+	w, err := where(sc)
+	if err != nil {
+		return true
+	}
+	for _, m := range modules {
+		rulesOn := true
+		if k := slices.IndexFunc(entries, func(x manifest.Entry) bool { return x.Name == m }); k >= 0 {
+			rulesOn = entries[k].RulesOn()
+		}
+		lost, err := e.lostPicks(sel, w, writeTo{}, m, carryPicks(sel.Entry(w, m)), led.Modules[m], rulesOn)
+		if err != nil || lost != nil {
+			return true
+		}
+	}
+	return false
 }

@@ -1918,8 +1918,19 @@ func (e *Engine) where(sc Scope) string {
 }
 
 // notInstalled is ADR #244's ambiguity error: it says where the module does exist.
-func (e *Engine) notInstalled(sc Scope, name string) error {
+// A single installed module that differs from name only in case is offered as the likely
+// intent, with the user's scope and display flags kept.
+func (e *Engine) notInstalled(sc Scope, name string, led *ledger.Ledger, display []string) error {
 	var hints []string
+	var like []string
+	for installed := range led.Modules {
+		if strings.EqualFold(installed, name) {
+			like = append(like, installed)
+		}
+	}
+	if len(like) == 1 {
+		hints = append(hints, "did you mean "+untrusted.Text(like[0], untrusted.MaxName)+"? "+e.Command(sc, "uninstall", append([]string{like[0]}, display...)...))
+	}
 	if found, err := e.Store.Has(name); err == nil && found {
 		hints = append(hints, "still in your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name}))
 	}
@@ -2008,7 +2019,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		}
 		if entry == nil && w == nil {
 			if removing[name] == nil {
-				return nil, e.notInstalled(sc, name)
+				return nil, e.notInstalled(sc, name, led, opts.Display)
 			}
 			if len(opts.Targets) > 0 {
 				from := removing[name]

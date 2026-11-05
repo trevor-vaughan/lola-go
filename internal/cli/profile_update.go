@@ -88,7 +88,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	}
 	res, err := eng.UpdateProfile(cmd.Context(), req)
 	if stopped, ok := errors.AsType[*engine.UpdateStoppedError](err); ok && batch {
-		if errors.Is(stopped.Err, ErrAborted) || errors.Is(stopped.Err, context.Canceled) {
+		if errors.Is(stopped.Err, ErrAborted) || cancelled(cmd.Context(), stopped.Err) {
 			return &abortedError{"aborted; nothing was updated."}
 		}
 		return stopped.Err // nothing was written
@@ -109,7 +109,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 		}
 		var failed int
 		passes, failed, err = a.collectSyncs(cmd, eng, scopes, applies, nil, scoped, f.trust, req.Batch.Items, runWithout(cmd, args))
-		aborted := errors.Is(err, ErrAborted) || errors.Is(err, context.Canceled)
+		aborted := errors.Is(err, ErrAborted) || cancelled(cmd.Context(), err)
 		if failed >= 0 && aborted {
 			return &abortedError{"aborted; nothing was updated."} // a Cancel, Ctrl+C or a No to the removals (M1)
 		}
@@ -336,7 +336,7 @@ func (a *app) updateStopped(cmd *cobra.Command, eng *engine.Engine, stopped *eng
 	syncs := applyLater(eng, res.Scopes, slices.Concat(flags, outputFlags(cmd)))
 	done := res.UpdatedText()
 	failed := failedErr(res)
-	isAbort := func(err error) bool { return errors.Is(err, ErrAborted) || errors.Is(err, context.Canceled) }
+	isAbort := func(err error) bool { return errors.Is(err, ErrAborted) || cancelled(cmd.Context(), err) }
 	// The stop's errors: Ctrl+C, and what else stopped the run with it (a scope lola could not
 	// read once the profiles were written), which is reported, never dropped.
 	causes := []error{stopped.Err}
@@ -355,6 +355,16 @@ func (a *app) updateStopped(cmd *cobra.Command, eng *engine.Engine, stopped *eng
 		return &abortedError{"aborted; " + done + "; nothing else was updated."}
 	}
 	msg := "the run stopped: " + untrusted.CleanErr(stopped.Err).Error()
+	// A signal's stop is said as such, with what else stopped the run, and Execute prints it before
+	// lola exits as the signal would: the profiles written are not applied.
+	sig, signalled := errors.AsType[Interrupted](context.Cause(cmd.Context()))
+	isSignal := func(err error) bool { return signalled && errors.Is(err, context.Canceled) }
+	if !ctrlC && slices.ContainsFunc(causes, isSignal) {
+		msg = "the run was stopped by a signal (" + sig.Error() + ")"
+		if rest := errors.Join(slices.DeleteFunc(slices.Clone(causes), isSignal)...); rest != nil {
+			msg += ", and: " + untrusted.CleanErr(rest).Error()
+		}
+	}
 	if ctrlC {
 		msg = "the run stopped at Ctrl+C"
 		if others != nil {

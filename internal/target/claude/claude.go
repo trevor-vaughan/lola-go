@@ -35,11 +35,6 @@ func (Target) Detect(_ target.Scope, root string) bool {
 	return target.HasAny(root, ".claude", "CLAUDE.md")
 }
 
-// BaseDirs implements Target.
-func (Target) BaseDirs(target.Scope) []string {
-	return []string{".claude/skills", ".claude/commands", ".claude/agents", ".claude/rules"}
-}
-
 // Destinations implements Target. Rules live in lola's own .claude/rules/lola, never beside
 // the user's rules.
 func (Target) Destinations(scope target.Scope, _ string) (target.Destinations, error) {

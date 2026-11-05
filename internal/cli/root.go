@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image/color"
@@ -215,10 +216,19 @@ func (a *app) scope(cmd *cobra.Command, eng *engine.Engine) (engine.Scope, error
 }
 
 // Execute runs root and maps the outcome to an exit code: 0 on success or a cancelled
-// prompt, 1 on any error (printed per the output contract).
+// prompt, 1 on any error (printed per the output contract), and 128 plus the signal's number on
+// an error after a signal cancelled root's context (NotifyContext), printing nothing but the
+// error of an update that wrote profiles it did not apply.
 func Execute(root *cobra.Command) int {
 	err := root.Execute()
+	// "json" is registered on the root by NewRootCmd, so GetBool only fails if that registration
+	// is removed; report errors in the human format rather than hide the real error behind it.
+	asJSON, flagErr := root.PersistentFlags().GetBool("json")
+	if flagErr != nil {
+		asJSON = false
+	}
 	var quit *quitError
+	var sig Interrupted
 	switch {
 	case err == nil:
 		return 0
@@ -231,12 +241,11 @@ func Execute(root *cobra.Command) int {
 	case errors.Is(err, ErrAborted):
 		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing changed.")
 		return 0
-	}
-	// "json" is registered on the root by NewRootCmd, so GetBool only fails if that registration
-	// is removed; report errors in the human format rather than hide the real error behind it.
-	asJSON, flagErr := root.PersistentFlags().GetBool("json")
-	if flagErr != nil {
-		asJSON = false
+	case root.Context() != nil && errors.As(context.Cause(root.Context()), &sig):
+		if u, ok := errors.AsType[*updateError](err); ok && u.doc.UpdatedText() != "" {
+			writeError(root.ErrOrStderr(), err, asJSON)
+		}
+		return 128 + int(sig.Signal)
 	}
 	writeError(root.ErrOrStderr(), err, asJSON)
 	return 1

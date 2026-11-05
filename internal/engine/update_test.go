@@ -393,6 +393,21 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		Expect(read(".claude/commands/other.md")).To(Equal("Other v2\n"))
 	})
 
+	It("fails the run for a folder module whose folder is gone, keeping it as installed and not checked", func() {
+		install(sc, engine.InstallRequest{Arg: src})
+		Expect(os.RemoveAll(src)).To(Succeed())
+		res, err := update(engine.SyncRequest{Display: []string{"--json"}})
+		failed, ok := errors.AsType[*engine.FetchesFailedError](err)
+		Expect(ok).To(BeTrue(), "an update that could not consult a source does not succeed")
+		Expect(failed.Gone).To(Equal([]string{"other"}))
+		Expect(err).To(MatchError("other: source gone; not checked; left as installed"))
+		Expect(res).NotTo(BeNil())
+		Expect(res.Findings).To(ContainElement(And(HaveField("Code", engine.CodeSourceGone), HaveField("Module", "other"),
+			HaveField("Text", ContainSubstring("source gone; not checked")), HaveField("Text", ContainSubstring(src)),
+			HaveField("Hint", ContainSubstring("lola uninstall --project other --json")))))
+		Expect(read(".claude/commands/other.md")).To(Equal("Other\n"))
+	})
+
 	It("refuses a named module that is not installed, hinting sync", func() {
 		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
 		pull(manifest.Change{Set: []manifest.Entry{{Name: "other", Source: src}}})

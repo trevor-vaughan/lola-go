@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -128,16 +129,17 @@ var _ = Describe("hints", func() {
 				return []string{"see them: lola profile -C " + proj + " project:review --on --json -n",
 					"then accept them: lola profile -C " + proj + " project:review --on --trust=profiles --json"}
 			}),
-		Entry("uninstall of a module the base provides while a profile is on, under --json with -y, which answers no where-question",
+		Entry("uninstall of a module two bundle members provide, under --json with -y, which answers no where-question between two layers",
 			func(proj string) []string {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})
-				writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"review.yml": "version: 1\nmodules:\n  - name: rev\n    source: ../../mods/rev\n"})
+				list := "version: 1\nmodules:\n  - name: rev\n    source: ../../mods/rev\n"
+				writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"one.yml": list, "two.yml": list, "review.yml": "version: 1\nbundle: [one, two]\n"})
 				r := lola("profile", "review", "--on", "-C", proj, "--trust", "-y")
 				Expect(r.code).To(Equal(0), r.err)
-				return []string{"uninstall", "kit", "-C", proj, "-y", "--json"}
+				return []string{"uninstall", "rev", "-C", proj, "-y", "--json"}
 			},
 			func(proj string) []string {
-				return []string{"lola uninstall kit --json --root " + proj + " --profile base"}
+				return []string{"lola uninstall rev --json --root " + proj + " --yes --profile project:two"}
 			}),
 		Entry("check's argument that is neither a source nor a module in your cache, under --json",
 			func(proj string) []string { return []string{"check", "nope", "-C", proj, "--json"} },
@@ -212,3 +214,101 @@ func plantTarget(proj string) {
 		kit["artifacts"] = append(kit["artifacts"].([]any), map[string]any{"target": "bogus", "kind": "file", "path": "x.md"})
 	})
 }
+
+// hintLines are the hints of a refusal's human stderr.
+func hintLines(stderr string) []string {
+	var got []string
+	for _, line := range strings.Split(stderr, "\n") {
+		if h, ok := strings.CutPrefix(line, "  hint: "); ok {
+			got = append(got, h)
+		}
+	}
+	return got
+}
+
+// Spec 2026-11-03 §3.3: a hint keeps the run's -t and -n, and -y where the hinted command asks
+// what the user's -y answered.
+var _ = Describe("hints keep the user's flags", func() {
+	var tmp, proj string
+	BeforeEach(func() {
+		var err error
+		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj = filepath.Join(tmp, "proj")
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		GinkgoT().Chdir(proj)
+	})
+
+	It("P2-3: tidy -y refused for want of a scope hints each scope with -y", func() {
+		r := lola("tidy", "-y")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(hintLines(r.err)).To(Equal([]string{"lola tidy --yes --project", "lola tidy --yes --user"}))
+		r = lola("tidy", "-n", "-y")
+		Expect(hintLines(r.err)).To(Equal([]string{"lola tidy --dry-run --project", "lola tidy --dry-run --user"}), "R-8: a dry run asks nothing")
+	})
+
+	It("P2-3: tidy --dry-run --project refused for want of targets hints a dry run that works", func() {
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\n", ".claude/skills/old/SKILL.md": "x\n"})
+		r := lola("tidy", "--dry-run", "--project")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(hintLines(r.err)).To(ContainElement("lola tidy --project -t claude-code -n"))
+		again := lola(shellWords("lola tidy --project -t claude-code -n")[1:]...)
+		Expect(again.code).To(Equal(0), again.err)
+		Expect(again.out).To(ContainSubstring("would move 1 item:"))
+		Expect(filepath.Join(proj, ".claude", "skills", "old", "SKILL.md")).To(BeARegularFile(), "the hinted run stays dry")
+	})
+
+	It("R-8: tidy -n -y hints a dry run without -y, which a dry run never asks", func() {
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\n", ".claude/skills/old/SKILL.md": "x\n"})
+		r := lola("tidy", "--project", "-n", "-y")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(hintLines(r.err)).To(ContainElement("lola tidy --project -t claude-code -n"))
+		Expect(r.err).NotTo(ContainSubstring(" -y"))
+	})
+
+	It("R-8: sync --scope both -n -y names each scope's run without -y; a run at one scope keeps it", func() {
+		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		writeTree(filepath.Join(proj, "mods", "other"), map[string]string{"lola.yml": "name: other\n", "commands/other.md": "Other\n"})
+		Expect(lola("install", "./mods/kit", "--project", "-t", "claude-code").code).To(Equal(0))
+		f, err := os.OpenFile(filepath.Join(proj, ".lola", "project.yml"), os.O_APPEND|os.O_WRONLY, 0)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = f.WriteString("  - name: other\n    source: mods/other\n")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Close()).To(Succeed())
+
+		r := lola("sync", "--scope", "both", "-n", "-y")
+		Expect(r.out).To(ContainSubstring("→ to apply: lola sync --project\n"))
+		Expect(r.out).To(ContainSubstring("→ off a terminal: lola sync --project --trust=entries\n"))
+		Expect(r.out+r.err).NotTo(ContainSubstring(" -y"), "the -y given for both scopes answers neither alone")
+
+		r = lola("sync", "--project", "-n", "-y")
+		Expect(r.out).To(ContainSubstring("→ to apply: lola sync --project -y\n"))
+		Expect(r.out).To(ContainSubstring("→ off a terminal: lola sync --project --trust=entries -y\n"))
+	})
+
+	It("Prof-P2-a: profile <ambiguous> --switch -y hints each profile with -y, which switches when run verbatim", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(proj, map[string]string{".lola/profiles/mine.yml": "version: 1\n"})
+		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\n"})
+		r := lola("profile", "mine", "--switch", "--project", "-y")
+		Expect(r.code).To(Equal(1), r.err)
+		yours := "lola profile --project user:mine --switch -y"
+		Expect(hintLines(r.err)).To(ContainElement("yours: " + yours))
+		again := lola(shellWords(yours)[1:]...)
+		Expect(again.code).To(Equal(0), again.err)
+		Expect(again.out + again.err).To(ContainSubstring("now: project " + proj + ": profile user:mine over project.yml"))
+	})
+
+	It("P2-4: init's try-it hint names the project scope, and installs from a git project off a terminal", func() {
+		out, err := exec.Command("git", "-C", proj, "init", "-q").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), string(out))
+		r := lola("init", "my-module")
+		Expect(r.code).To(Equal(0), r.err)
+		hint := "lola install my-module --project -t claude-code"
+		Expect(r.out).To(ContainSubstring("→ try it: " + hint + "\n"))
+		again := lola(shellWords(hint)[1:]...)
+		Expect(again.code).To(Equal(0), again.err)
+		Expect(filepath.Join(proj, ".claude", "skills", "hello", "SKILL.md")).To(BeARegularFile())
+	})
+})

@@ -205,6 +205,27 @@ var _ = Describe("lola update", func() {
 		Expect(read(".claude/commands/other.md")).To(Equal("other v1\n"))
 	})
 
+	It("exits 1 without saying up to date when a module's source folder is gone", func() {
+		folder := filepath.Join(tmp, "folder", "local")
+		writeTree(folder, map[string]string{"lola.yml": "name: local\n", "commands/local.md": "local v1\n"})
+		Expect(lola("install", folder, "-t", "claude-code", "-C", proj).code).To(Equal(0))
+		Expect(os.RemoveAll(folder)).To(Succeed())
+		r := lola("update", "local", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.out).To(ContainSubstring("local: source gone; not checked"))
+		Expect(r.out).To(ContainSubstring("lola uninstall -C " + proj + " local"))
+		Expect(r.out).NotTo(ContainSubstring("up to date"))
+		Expect(r.err).To(ContainSubstring("local: source gone; not checked; left as installed"))
+		Expect(read(".claude/commands/local.md")).To(Equal("local v1\n"))
+
+		r = lola("update", "local", "--json", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		var doc map[string]any
+		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
+		Expect(doc["findings"]).To(ContainElement(And(HaveKeyWithValue("code", "source-gone"), HaveKeyWithValue("module", "local"))))
+		Expect(doc).NotTo(HaveKey("gone"))
+	})
+
 	It("reports a failed fetch in --json as a fetch-failed finding beside the result, with no new key", func() {
 		push(map[string]string{"commands/example.md": "example v2\n"})
 		Expect(os.RemoveAll(otherBare)).To(Succeed())

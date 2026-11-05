@@ -8,24 +8,25 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 )
 
-// Request is everything Compute needs. Roots and BaseDirs are keyed by target id.
+// Request is everything Compute needs. Roots are keyed by target id.
 type Request struct {
-	Roots    map[string]string
-	BaseDirs map[string][]string
-	Ledger   *ledger.Ledger // observed state; never mutated
-	Changes  []ModuleChange
-	Force    bool
+	Roots   map[string]string
+	Ledger  *ledger.Ledger // observed state; never mutated
+	Changes []ModuleChange
+	Force   bool
 	// ForceRun is the command that repeats the run with --force, the hint of a refusal --force
 	// would override; "" gives that refusal no hint.
 	ForceRun string
@@ -33,10 +34,13 @@ type Request struct {
 	Replace []Replaceable
 }
 
-// Plan is a checked set of changes plus the ledger that results from applying them.
+// Plan is a checked set of changes plus the ledger that results from applying them. Dirs are
+// the resolved directories its deletions leave empty, each before its parent: Apply removes
+// those that are still empty directories once the files are gone.
 type Plan struct {
 	Steps  []Step
 	Files  []FileChange
+	Dirs   []string
 	Ledger *ledger.Ledger
 }
 
@@ -618,12 +622,8 @@ func (p *planner) finish() (*Plan, error) {
 		if f.del && !f.exists {
 			continue
 		}
-		stops, err := p.stopDirs(f.target)
-		if err != nil {
-			return nil, err
-		}
 		out.Files = append(out.Files, FileChange{Target: f.target, Logical: f.logical, Abs: f.res.Abs, Root: p.req.Roots[f.target],
-			Outside: f.res.Outside, Delete: f.del, Data: f.cur, Mode: f.mode, StopDirs: stops})
+			Outside: f.res.Outside, Delete: f.del, Data: f.cur, Mode: f.mode})
 	}
 	sort.Slice(out.Files, func(i, j int) bool { return out.Files[i].Abs < out.Files[j].Abs })
 	for ref := range p.arrays {
@@ -643,7 +643,109 @@ func (p *planner) finish() (*Plan, error) {
 		a, b := out.Steps[i], out.Steps[j]
 		return a.Module+"\x00"+a.Target+"\x00"+a.Path+"\x00"+a.Key < b.Module+"\x00"+b.Target+"\x00"+b.Path+"\x00"+b.Key
 	})
+	if err := p.emptied(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// emptied plans removing the directories out's deletions leave empty: each logical ancestor
+// of a deleted file, below the directories directly under its target's root, that no file the
+// plan writes lies in, is a directory (not a symbolic link) inside the resolved root and holds
+// nothing but deleted files and directories removed too. A symbolic link is never removed, nor
+// the directory it leads to, nor anything above it (which still holds it); a directory below it
+// is, when it resolves inside the root, and none a link leads out of the root to.
+// Each is a delete step, after the file steps, of the first module (by name) whose deleted file
+// it held, and an entry of out.Dirs; both list a directory before its parent.
+func (p *planner) emptied(out *Plan) error {
+	owner := map[string]string{} // target and logical file path → first module deleting it
+	for _, st := range out.Steps {
+		k := st.Target + "\x00" + st.Path
+		if o, ok := owner[k]; st.Action == ActionDelete && (!ok || st.Module < o) {
+			owner[k] = st.Module
+		}
+	}
+	type candidate struct{ target, logical, root, module string }
+	gone := map[string]bool{}        // the logical absolute paths the plan deletes
+	kept := map[string]bool{}        // the logical absolute directories a file the plan writes lies in
+	cands := map[string]*candidate{} // logical absolute directory → candidate
+	for _, fc := range out.Files {
+		if fc.Delete {
+			continue
+		}
+		for d := path.Dir(fc.Logical); d != "."; d = path.Dir(d) {
+			kept[filepath.Join(fc.Root, filepath.FromSlash(d))] = true
+		}
+	}
+	for _, fc := range out.Files {
+		if !fc.Delete {
+			continue
+		}
+		gone[filepath.Join(fc.Root, filepath.FromSlash(fc.Logical))] = true
+		m := owner[fc.Target+"\x00"+fc.Logical]
+		// A directory directly under the root (.claude, .gemini, .opencode) is how lola detects an
+		// assistant, and may be the user's own: it stays.
+		for d := path.Dir(fc.Logical); d != "." && path.Dir(d) != "."; d = path.Dir(d) {
+			abs := filepath.Join(fc.Root, filepath.FromSlash(d))
+			if kept[abs] {
+				continue
+			}
+			if c, ok := cands[abs]; ok {
+				if m != "" && (c.module == "" || m < c.module) {
+					c.module = m
+				}
+				continue
+			}
+			cands[abs] = &candidate{target: fc.Target, logical: d, root: fc.Root, module: m}
+		}
+	}
+	// A directory sorts before its parent: "\xff" never occurs in a path and is above "/" and "\\".
+	order := slices.Collect(maps.Keys(cands))
+	slices.SortFunc(order, func(a, b string) int { return strings.Compare(a+"\xff", b+"\xff") })
+	removed := map[string]bool{}
+	tops := map[string]string{} // target root → its resolved path
+	for _, abs := range order {
+		c := cands[abs]
+		fi, err := os.Lstat(abs)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !fi.IsDir() {
+			continue
+		}
+		res, err := fsx.Resolve(c.root, filepath.FromSlash(c.logical))
+		if err != nil {
+			return err
+		}
+		top, ok := tops[c.root]
+		if !ok {
+			r, err := fsx.Resolve(c.root, ".")
+			if err != nil {
+				return err
+			}
+			top, tops[c.root] = r.Abs, r.Abs
+		}
+		if res.Outside || res.Abs == top {
+			continue
+		}
+		entries, err := os.ReadDir(abs)
+		if err != nil {
+			return err
+		}
+		if slices.ContainsFunc(entries, func(en fs.DirEntry) bool {
+			full := filepath.Join(abs, en.Name())
+			return !gone[full] && !removed[full]
+		}) {
+			continue
+		}
+		removed[abs] = true
+		out.Dirs = append(out.Dirs, res.Abs)
+		out.Steps = append(out.Steps, Step{Action: ActionDelete, Module: c.module, Target: c.target, Kind: KindDirectory, Path: c.logical})
+	}
+	return nil
 }
 
 // arrayRemains reports whether a JSON array lola created still exists once the plan is
@@ -661,23 +763,6 @@ func (p *planner) arrayRemains(ref ledger.FileRef) (bool, error) {
 		return false, fmt.Errorf("%s: %w", f.logical, err)
 	}
 	return found, nil
-}
-
-func (p *planner) stopDirs(target string) ([]string, error) {
-	root := p.req.Roots[target]
-	r, err := fsx.Resolve(root, ".")
-	if err != nil {
-		return nil, err
-	}
-	stops := []string{r.Abs}
-	for _, base := range p.req.BaseDirs[target] {
-		b, err := fsx.Resolve(root, base)
-		if err != nil {
-			return nil, err
-		}
-		stops = append(stops, b.Abs)
-	}
-	return stops, nil
 }
 
 // updateLedger records each change: the module keeps its artifacts and installed targets outside

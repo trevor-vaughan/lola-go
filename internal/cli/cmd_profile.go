@@ -79,16 +79,30 @@ func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
 }
 
 // runAs is runWithout as the command words: the run's flags, kept the same way, on another
-// command (lola info's next step is an install).
+// command (lola info's next step is an install). On another command it keeps only the flags that
+// command takes, and never -y, which answered a question of this one; nor in a dry run, which
+// asks nothing (spec 2026-11-03 §3.3, ruling R-8).
 func runAs(words []string, cmd *cobra.Command, args []string, drop ...string) string {
 	out := slices.Clone(words)
 	for _, a := range args {
 		out = append(out, untrusted.Text(a, untrusted.MaxName))
 	}
+	var other *cobra.Command
+	if strings.Join(words, " ") != cmd.CommandPath() {
+		found, rest, err := cmd.Root().Find(words[1:])
+		if err != nil || len(rest) > 0 {
+			panic("lola hints a command it does not have: " + strings.Join(words, " "))
+		}
+		other = found
+	}
+	dry := cmd.Flags().Lookup("dry-run")
+	asks := dry == nil || dry.Value.String() != "true" || slices.Contains(drop, "dry-run")
 	cmd.Flags().Visit(func(f *pflag.Flag) {
 		list, isList := f.Value.(pflag.SliceValue)
 		switch {
 		case slices.Contains(drop, f.Name):
+		case f.Name == "yes" && (other != nil || !asks):
+		case other != nil && other.Flags().Lookup(f.Name) == nil && other.InheritedFlags().Lookup(f.Name) == nil:
 		case f.Name == "trust":
 			// as parsed, its kinds after =, never all (Plan 9 §3.2); before it is parsed, as given (M4)
 			if t, ok := f.Value.(*trustFlag); ok && t.kinds != 0 {
@@ -119,10 +133,25 @@ func runAs(words []string, cmd *cobra.Command, args []string, drop ...string) st
 // question, and only you can answer it (ruling R-6b3c-8, R-6cux-4).
 var consentFlags = []string{"yes", "trust"}
 
+// completeRun is the user's run, its names args, without the flags named in drop and --trust, for
+// a hint that completes it with what a terminal would have asked (a scope it lacked, an
+// assistant): -y stays, since the completed run asks what it answered (spec 2026-11-03 §3.3,
+// ruling R-8). A hint that changes a scope the user chose, or names another profile, is
+// runWithout with consentFlags.
+func completeRun(cmd *cobra.Command, args []string, drop ...string) string {
+	return runWithout(cmd, args, slices.Concat(drop, []string{"trust"})...)
+}
+
 // forceRun is the user's run, with its names args, repeated with --force and none of its
 // consentFlags: what a refusal of conflicts --force overrides hints (engine.Options.ForceRun).
 func forceRun(cmd *cobra.Command, args []string) string {
 	return runWithout(cmd, args, append([]string{"force"}, consentFlags...)...) + " --force"
+}
+
+// renderRun is forceRun as a real run, without -n: what renders a forceable skip, which a dry run
+// plans but does not write (engine.Options.RenderRun).
+func renderRun(cmd *cobra.Command, args []string) string {
+	return runWithout(cmd, args, append([]string{"force", "dry-run"}, consentFlags...)...) + " --force"
 }
 
 // rerunFlags is the flags of lola profile --add or --update that a hint repeating the run keeps
@@ -529,7 +558,9 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	}
 	sc := scs[0].Scope
 	a.printContext(cmd, eng, []engine.Scope{sc}, nil)
-	res, more, err := a.syncScope(cmd, eng, sc, nil, &ch, f)
+	alone := f
+	alone.alone = true // the change the user named, at its one scope; the terminal's answer below is another
+	res, more, err := a.syncScope(cmd, eng, sc, nil, &ch, alone)
 	// --on never replaces the profile on unasked (spec 2026-10-29 §6.2): a terminal is asked to
 	// switch, which -y and --force never answer; off one, or under -n, which asks nothing, the
 	// engine's refusal hints --switch.
@@ -546,9 +577,13 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 		}
 		if i == 2 { // the bundle on stays on, with one more member: the edit its hint runs
 			again := rerunFlags(cmd, 0)
-			edit := slices.Concat([]string{other.Into, "--edit", "--bundle", strings.Join(other.Joined, ",")}, again)
+			edit := func(flags []string) string {
+				words := slices.Concat([]string{other.Into, "--edit", "--bundle", strings.Join(other.Joined, ",")}, flags, []string{"--force"})
+				return eng.Command(sc, "profile", words...)
+			}
+			real := slices.DeleteFunc(slices.Clone(again), func(f string) bool { return f == "-n" })
 			return a.editBundle(cmd, eng, scs[0], other.Into, other.Joined, engine.TargetRequest{Edit: true, Again: again}, f,
-				eng.Command(sc, "profile", append(edit, "--force")...), true)
+				edit(again), edit(real), true)
 		}
 		ch = engine.ProfileChange{Action: engine.ProfileSwitch, Name: other.Name}
 		if i == 1 {

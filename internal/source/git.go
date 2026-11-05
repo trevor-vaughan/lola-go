@@ -154,7 +154,12 @@ func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([
 // AccessError is a repository git could not read for want of access: missing, private with no
 // credentials git can use, or the credentials refused. It says which in lola's words, never with
 // git's output, and its hints are commands; every source's fetch returns it as is.
-type AccessError struct{ msg string }
+type AccessError struct {
+	msg string
+	// Web is the place a github.com browser URL names when that is what the source was, else nil;
+	// the caller hints the command that names the repository itself.
+	Web *WebPage
+}
 
 func (e *AccessError) Error() string { return e.msg }
 
@@ -225,49 +230,62 @@ func accessDenied(args []string, stderr string) error {
 		return nil
 	}
 	if len(raw) <= untrusted.MaxName && untrusted.IsPlain(raw) {
-		if webHint, note := githubWebHint(raw); note != "" {
-			denied = &AccessError{msg: denied.msg + "; " + note}
-			if webHint != "" {
-				hints = append([]string{webHint}, hints...)
-			}
+		if web, note := githubWebHint(raw); web != nil {
+			// git ls-remote on a web page fails by construction: it is no check of the address.
+			denied, hints = &AccessError{msg: loc + " is " + note, Web: web}, nil
+		} else if note != "" {
+			denied, hints = &AccessError{msg: denied.msg + "; " + note}, nil
 		}
 	}
 	return errs.WithHints(denied, hints...)
 }
 
+// WebPage is a github.com browser URL (tree or blob) that names a place in a repository: the
+// repository's URL, the ref the URL names (empty when it names none git would take as one) and the
+// directory it points into. Ref and Path are what a command that names the same place passes as
+// --ref and --path; the caller builds that command, as it alone knows the user's.
+type WebPage struct{ URL, Repo, Ref, Path string }
+
 // githubWebHint recognises the browser URLs of github.com that are not git repositories and
-// returns the lola command that names the same place, or a note that it is no repository. The
-// segment after tree/ or blob/ is taken as the ref: a ref that contains "/" cannot be told from
-// the path, so the note says so. raw must be plain text (see accessDenied).
-func githubWebHint(raw string) (hint, note string) {
+// returns the place a tree or blob URL names (web, whose note is what follows "<url> is" in the
+// error), or, for an organisation page, a note that it is no repository (web nil). The segment
+// after tree/ or blob/ is taken as the ref: a ref containing "/" cannot be told from the path,
+// so the note says so. A path ending in skills/ is a directory of skills, which is no module
+// root: it names the directory above, and the note says how to take one skill. raw must be
+// plain text (see accessDenied).
+func githubWebHint(raw string) (web *WebPage, note string) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Host != "github.com" {
-		return "", ""
+		return nil, ""
 	}
 	seg := strings.Split(strings.Trim(u.Path, "/"), "/")
 	// url.Parse percent-decodes the path, so the caller's check of raw does not cover it.
 	if slices.ContainsFunc(seg, func(s string) bool { return !untrusted.IsPlain(s) }) {
-		return "", ""
+		return nil, ""
 	}
 	switch {
 	case len(seg) == 1 && seg[0] != "":
-		return "", "that is an organisation page, not a repository; name one of its repositories: https://github.com/" + untrusted.Text(seg[0], untrusted.MaxName) + "/<repository>"
+		return nil, "that is an organisation page, not a repository; name one of its repositories: https://github.com/" + untrusted.Text(seg[0], untrusted.MaxName) + "/<repository>"
 	case len(seg) >= 4 && (seg[2] == "tree" || seg[2] == "blob"):
-		note = "that is a github.com web page, not a repository URL; a ref containing \"/\" cannot be told from the path, so check it with git ls-remote --heads"
+		note = "a github.com web page, not a repository URL; a ref containing \"/\" cannot be told from the path, so check it with git ls-remote --heads"
+		web = &WebPage{URL: raw, Repo: "https://github.com/" + seg[0] + "/" + seg[1]}
 		if seg[3] == "" || strings.HasPrefix(seg[3], "-") {
-			return "", note // no ref to name, or one git would read as an option
+			return web, note // no ref to name, or one git would read as an option
 		}
-		cmd := []string{"lola", "install", "https://github.com/" + seg[0] + "/" + seg[1], "--ref", seg[3]}
+		web.Ref = seg[3]
 		sub := seg[4:]
 		if seg[2] == "blob" && len(sub) > 0 {
 			sub = sub[:len(sub)-1] // a file's directory
 		}
-		if len(sub) > 0 {
-			cmd = append(cmd, "--path", strings.Join(sub, "/"))
+		if len(sub) > 0 && sub[len(sub)-1] == "skills" {
+			one := untrusted.Text(strings.Join(sub, "/"), untrusted.MaxName) + "/<name>"
+			note += "; it holds skills, which are no module root: to take one skill, use --path " + one
+			sub = sub[:len(sub)-1]
 		}
-		return errs.ShellJoin(cmd), note
+		web.Path = strings.Join(sub, "/")
+		return web, note
 	}
-	return "", ""
+	return nil, ""
 }
 
 // redirectRE is curl's report, through git, of a redirect it was told not to follow: any 3xx status.

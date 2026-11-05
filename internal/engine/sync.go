@@ -56,6 +56,8 @@ type SyncRequest struct {
 	// cannot ask: a sync with removals is refused. The CLI passes an always-yes ConfirmRemovals
 	// for -y.
 	ConfirmRemovals func([]Removal) (bool, error)
+	// Yes is the run's -y, which a hint repeating the run keeps (spec 2026-11-03 §3.3, rerun).
+	Yes bool
 	// Profiles, when set, changes the scope's active profile and applies the change (Plan 6b §6.3,
 	// §19 R3): the run is limited to the modules whose state differs from what the new profile
 	// wants, and the new profile is written to lock.json in the same commit as the apply.
@@ -260,6 +262,7 @@ type SyncResult struct {
 	InSync             bool        `json:"in_sync"`
 	EquivalentCommands []string    `json:"equivalent_commands"`
 	Failed             []string    `json:"-"` // lola update's modules left as installed because their fetch failed; findings in JSON (§6)
+	Gone               []string    `json:"-"` // lola update's modules whose source folder is gone, so not checked; findings in JSON
 	Installed          bool        `json:"-"` // the run was lola update (SyncRequest.Installed), whose human output says so
 	Changed            []string    `json:"-"`
 	Equivalent         string      `json:"-"`
@@ -312,6 +315,7 @@ type syncEntry struct {
 	follow        *marketPick // the catalog entry an --update follows (Plan 6c §6.6), nil for none
 	fresh         bool        // lola update's cache head for its ref was fetched within cache_fresh_for: the run does not fetch the ref
 	failed        bool        // lola update could not fetch it: it stays as installed
+	sourceGone    bool        // its source folder is gone: the version installed was rendered
 	installed     string      // the digest lock.json records for the module, "" when none is installed
 	notices       []Notice    // what resolving the entry has to say (a gone folder rendered from the cache)
 }
@@ -427,6 +431,16 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			return nil, err
 		}
 		defer unlockMarkets()
+	}
+	// A move that carries picks out of selections.yaml writes it under the selections lock, taken
+	// as an install takes it: after the markets lock, before the scope's (moveAcross holds it for a
+	// move between scopes).
+	if req.move != nil && len(req.move.selections) > 0 && !opts.DryRun && !req.held {
+		unlockSelections, err := config.Lock(e.Paths.SelectionsLock)
+		if err != nil {
+			return nil, err
+		}
+		defer unlockSelections()
 	}
 	man, led, unlock, err := e.load(sc, opts.DryRun || req.held)
 	if err != nil {
@@ -768,10 +782,19 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				return nil, err
 			}
 		}
+		if se.sourceGone && req.Installed {
+			name := untrusted.Text(se.ent.Name, untrusted.MaxName)
+			res.Gone = append(res.Gone, name)
+			res.Findings = append(res.Findings, target.Finding{Severity: target.SeverityWarn, Module: name, Kind: "module", Code: CodeSourceGone,
+				Text: "source gone; not checked: its source folder " + untrusted.Text(se.spec.Location, untrusted.MaxName) + " does not exist, so the version installed was rendered",
+				Hint: "restore the folder, or remove the module: " + e.Command(sc, "uninstall", append([]string{se.ent.Name}, req.Display...)...)})
+		}
 		if se.fresh && se.staged == nil {
 			served++
 		}
-		res.Notices = append(res.Notices, se.notices...)
+		if !se.sourceGone || !req.Installed { // lola update says it as a source-gone finding
+			res.Notices = append(res.Notices, se.notices...)
+		}
 		// What the user trusts at its pin goes into the cache now; everything else waits. A
 		// project dry run moves no head (Plan 6a §3.1), not even for an --update fetch, and
 		// replaces no source the cache records (§6.5).
@@ -829,6 +852,11 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	sel, err := e.selections()
 	if err != nil {
 		return nil, err
+	}
+	if req.move != nil {
+		for _, c := range req.move.selections {
+			sel.Set(c.Section, c.Module, c.Entry)
+		}
 	}
 	if sel, err = withPicks(sel, layers); err != nil {
 		return nil, err
@@ -1022,8 +1050,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				res.EquivalentCommands = []string{res.OffTerminal}
 			}
 		}
-		if len(res.Failed) > 0 {
-			return res, &FetchesFailedError{Modules: res.Failed}
+		if len(res.Failed) > 0 || len(res.Gone) > 0 {
+			return res, &FetchesFailedError{Modules: res.Failed, Gone: res.Gone}
 		}
 		return res, nil
 	}
@@ -1091,6 +1119,12 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
+	// The picks a move carried leave selections.yaml once the entries that hold them now are written.
+	if req.move != nil && len(req.move.selections) > 0 {
+		if err := config.Save(e.Paths.Selections, req.move.selections); err != nil {
+			return nil, e.selectionsLeft(req.move.selections, err)
+		}
+	}
 	if len(pinned) > 0 {
 		res.Edits = append(res.Edits, editsOf(ctx, sc, baseTarget(layers[0]), pinned, nil, nil)...)
 	}
@@ -1104,8 +1138,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if acc != nil {
 		res.Equivalent = e.equivalent(req, acc, res)
 	}
-	if len(res.Failed) > 0 {
-		return res, &FetchesFailedError{Modules: res.Failed}
+	if len(res.Failed) > 0 || len(res.Gone) > 0 {
+		return res, &FetchesFailedError{Modules: res.Failed, Gone: res.Gone}
 	}
 	return res, nil
 }
@@ -2492,7 +2526,7 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 			return errs.WithHints(fmt.Errorf("%s is no longer in your cache, and its source folder is gone", name),
 				"remove it: "+e.Command(sc, "uninstall", append([]string{name}, display...)...))
 		}
-		se.v = v
+		se.v, se.sourceGone = v, true
 		se.notices = append(se.notices, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: its source folder %s is gone; rendered the version installed",
 			name, untrusted.Text(se.spec.Location, untrusted.MaxName))})
 		return nil
@@ -2699,4 +2733,28 @@ func (e *Engine) removal(sc Scope, name string, installed *ledger.Entry, keep []
 		r.Paths = append(r.Paths, RemovedPath{Target: shown(a.Target), Path: path})
 	}
 	return r, nil
+}
+
+// selectionsLeftError is a move applied in full, the entries and their picks in their profile,
+// project.yml and lock.json written, whose carried picks lola could not then remove from
+// selections.yaml: no hint repeats the move, which is done.
+type selectionsLeftError struct{ error }
+
+func (e *selectionsLeftError) Unwrap() error { return e.error }
+
+// selectionsLeft is the error of a failed write of changes, the removals of a move's carried picks
+// from selections.yaml (moveEdit.selections), after the move was applied: it says what is on disk
+// and names the file and the entries to delete, which no lola command removes. err's own hints,
+// written for an install that wrote nothing, are left out.
+func (e *Engine) selectionsLeft(changes []config.Change, err error) error {
+	var modules []string
+	for _, c := range changes {
+		modules = append(modules, shown(c.Module))
+	}
+	list := strings.Join(modules, ", ")
+	key := untrusted.Text(changes[0].Section.Project, untrusted.MaxName)
+	file := untrusted.Text(e.Paths.Selections, untrusted.MaxName)
+	return &selectionsLeftError{errs.WithHints(fmt.Errorf("%s moved: the profile entry holds the picks, and project.yml and lock.json are written, but lola could not "+
+		"remove %s from selections.yaml's projects[%s]: %s", list, list, key, untrusted.CleanErr(err).Error()),
+		fmt.Sprintf("no lola command removes it: in %s, delete %s under projects: %s:; until then lola warns that it is ignored", file, list, key))}
 }

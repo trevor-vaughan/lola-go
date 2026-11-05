@@ -1059,23 +1059,30 @@ var _ = Describe("NoModuleAt", func() {
 		func(path, prefix, hint string) {
 			err := store.NoModuleAt("https://example.com/kit it.git", path, skills, cause)
 			Expect(err).To(MatchError(cause))
-			Expect(err).To(MatchError(prefix + ": no module found"))
+			Expect(err).To(MatchError(HavePrefix(prefix + ": no module found")))
 			Expect(errs.Hints(err)).To(Equal([]string{hint}))
 		},
-		Entry("a --path naming skills/ at the top: the same install without --path",
-			"skills/", "https://example.com/kit it.git --path skills/",
-			"that directory holds skills; a module root holds them under skills/: run "+
-				errs.ShellJoin([]string{"lola", "install", "https://example.com/kit it.git"})+", keeping your other flags"),
-		Entry("a deeper --path naming skills/: the same install with --path at its parent",
-			"mods/x/skills", "https://example.com/kit it.git --path mods/x/skills",
-			"that directory holds skills; a module root holds them under skills/: run "+
-				errs.ShellJoin([]string{"lola", "install", "https://example.com/kit it.git", "--path", "mods/x"})+", keeping your other flags"),
 		Entry("a --path naming another directory of skills: no command can help",
 			"mods/x/tools", "https://example.com/kit it.git --path mods/x/tools",
 			"that directory holds skills; a module root holds them under skills/: move them into a skills/ directory in the source, then point --path at its parent"),
 		Entry("no --path: the source's top holds the skills",
 			"", "https://example.com/kit it.git",
 			"the source holds skills directly, not under skills/: move them into a skills/ directory in the source"),
+	)
+
+	DescribeTable("hands a --path naming skills/ to the caller, which hints the run at its parent",
+		func(path, parent string) {
+			err := store.NoModuleAt("https://example.com/kit it.git", path, skills, cause)
+			var dir *store.SkillsDirError
+			Expect(errors.As(err, &dir)).To(BeTrue())
+			Expect(dir.Source).To(Equal("https://example.com/kit it.git"))
+			Expect(dir.Parent).To(Equal(parent))
+			Expect(err).To(MatchError(cause))
+			Expect(err).To(MatchError(ContainSubstring("that directory holds skills, and a module root holds them under skills/")))
+			Expect(errs.Hints(err)).To(BeEmpty())
+		},
+		Entry("at the top", "skills/", ""),
+		Entry("deeper", "mods/x/skills", "mods/x"),
 	)
 
 	It("adds no hint when the directory holds no skills", func() {

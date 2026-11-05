@@ -14,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -346,6 +347,74 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Modules).To(HaveExactElements(HaveField("Targets", []string{"gemini-cli"})), "only what it is installed on")
 			Expect(readYML()).To(Equal(head + "    targets: [claude-code]\n"))
+		})
+	})
+
+	Describe("the directories it empties", func() {
+		var (
+			proj, notes string
+			sc          engine.Scope
+		)
+		BeforeEach(func() {
+			proj = filepath.Join(tmp, "proj")
+			notes = filepath.Join(tmp, "mods", "notes")
+			writeTree(notes, map[string]string{"lola.yml": "name: notes\n", "commands/notes.md": "notes\n",
+				"skills/notes/SKILL.md": "---\nname: notes\ndescription: take notes\n---\nTake notes.\n"})
+			sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
+			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code, opencode]\n"})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+			Expect(err).NotTo(HaveOccurred())
+		})
+		uninstall := func() *engine.Result {
+			GinkgoHelper()
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: notes}}, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			res, err := e.Uninstall(ctx, sc, []string{"notes"}, engine.Options{})
+			Expect(err).NotTo(HaveOccurred())
+			return res
+		}
+		dirs := func(res *engine.Result) []string {
+			var out []string
+			for _, st := range res.Steps {
+				if st.Kind == plan.KindDirectory {
+					Expect(st.Action).To(Equal(plan.ActionDelete))
+					Expect(st.Module).To(Equal("notes"))
+					out = append(out, st.Target+" "+st.Path)
+				}
+			}
+			return out
+		}
+
+		It("removes the directories lola's files leave empty, and says so, below the project's own directories", func() {
+			res := uninstall()
+			Expect(dirs(res)).To(Equal([]string{"claude-code .claude/commands", "claude-code .claude/skills/notes", "claude-code .claude/skills",
+				"opencode .opencode/commands", "opencode .opencode/skills/notes", "opencode .opencode/skills"}))
+			for _, top := range []string{".claude", ".opencode"} {
+				left, err := os.ReadDir(filepath.Join(proj, top))
+				Expect(err).NotTo(HaveOccurred(), "%s stays: it tells lola the assistant is set up here", top)
+				Expect(left).To(BeEmpty())
+			}
+			Expect(filepath.Join(proj, ".lola", "project.yml")).To(BeARegularFile())
+		})
+
+		It("keeps a directory holding anything of yours, a symlinked directory and what it leads to, in or out of the project", func() {
+			outside := filepath.Join(tmp, "elsewhere")
+			writeTree(proj, map[string]string{".claude/settings.local.json": "{}\n"})
+			Expect(os.MkdirAll(filepath.Join(proj, ".claude/skills/yours"), 0o755)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(proj, "shared"), 0o755)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(proj, ".opencode"), 0o755)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(proj, "shared"), filepath.Join(proj, ".opencode/commands"))).To(Succeed())
+			Expect(os.MkdirAll(outside, 0o755)).To(Succeed())
+			Expect(os.Symlink(outside, filepath.Join(proj, ".opencode/skills"))).To(Succeed())
+
+			res := uninstall()
+			Expect(dirs(res)).To(Equal([]string{"claude-code .claude/commands", "claude-code .claude/skills/notes"}))
+			Expect(filepath.Join(proj, ".claude/settings.local.json")).To(BeARegularFile())
+			Expect(filepath.Join(proj, ".claude/skills/yours")).To(BeADirectory())
+			Expect(filepath.Join(proj, ".opencode/commands")).To(BeADirectory(), "the link is kept")
+			Expect(filepath.Join(proj, "shared")).To(BeADirectory())
+			Expect(filepath.Join(outside, "notes")).To(BeADirectory(), "a directory out of the project is never removed")
+			Expect(filepath.Join(outside, "notes", "SKILL.md")).NotTo(BeAnExistingFile())
 		})
 	})
 

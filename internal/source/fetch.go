@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -43,11 +44,21 @@ func fetch(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fe
 	return selectComponents(f, spec, stagingParent)
 }
 
+// isGitRepository reports whether dir is a git work tree (it holds .git) or a bare repository
+// (it holds HEAD, objects and refs).
+func isGitRepository(dir string) bool {
+	exists := func(name string) bool { _, err := os.Lstat(filepath.Join(dir, name)); return err == nil }
+	return exists(".git") || exists("HEAD") && exists("objects") && exists("refs")
+}
+
 // fetchWhole stages spec's whole module directory.
 func fetchWhole(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fetched, error) {
 	if spec.Ref != "" && (spec.Kind == KindFolder || spec.Kind == KindArchive) {
-		return Fetched{}, errs.WithHints(fmt.Errorf("--ref applies to git sources only, not to %s source %s", spec.Kind, untrusted.Text(spec.Location, untrusted.MaxName)),
-			"drop --ref: a "+string(spec.Kind)+" has no branches, tags or commits")
+		hint := "drop --ref: a " + string(spec.Kind) + " has no branches, tags or commits"
+		if spec.Kind == KindFolder && isGitRepository(spec.Location) {
+			hint = "drop --ref: a local path is always read as a folder, even a git repository, and lola reads no branch, tag or commit of it"
+		}
+		return Fetched{}, errs.WithHints(fmt.Errorf("--ref applies to git sources only, not to %s source %s", spec.Kind, untrusted.Text(spec.Location, untrusted.MaxName)), hint)
 	}
 	switch spec.Kind {
 	case KindFolder:

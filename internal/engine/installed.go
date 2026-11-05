@@ -19,6 +19,7 @@ const (
 	CodeNotInManifest = "not-in-manifest" // no layer lists the module
 	CodeTargetsDiffer = "targets-differ"  // its entry asks for other targets than are installed
 	CodeFetchFailed   = "fetch-failed"    // its source could not be fetched (spec §5.2)
+	CodeSourceGone    = "source-gone"     // its source folder is gone, so it could not be checked
 )
 
 // CodeNativeExecutable is the finding that a module installs native executables.
@@ -33,11 +34,19 @@ func (e *fetchFailedError) Error() string { return e.err.Error() }
 func (e *fetchFailedError) Unwrap() error { return e.err }
 
 // FetchesFailedError is a lola update that applied what it could and left Modules as installed
-// because their fetch failed (spec 2026-10-29 §5.2): Sync returns it with the result.
-type FetchesFailedError struct{ Modules []string }
+// because their fetch failed (spec 2026-10-29 §5.2), or Gone, because their source folder is gone
+// and there was nothing to check them against: Sync returns it with the result.
+type FetchesFailedError struct{ Modules, Gone []string }
 
 func (e *FetchesFailedError) Error() string {
-	return "could not fetch " + strings.Join(e.Modules, ", ") + "; left as installed"
+	var parts []string
+	if len(e.Modules) > 0 {
+		parts = append(parts, "could not fetch "+strings.Join(e.Modules, ", "))
+	}
+	if len(e.Gone) > 0 {
+		parts = append(parts, strings.Join(e.Gone, ", ")+": source gone; not checked")
+	}
+	return strings.Join(parts, "; ") + "; left as installed"
 }
 
 // freshFor is cache_fresh_for: in config.yaml, one day when it does not say.

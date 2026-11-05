@@ -24,9 +24,15 @@ Every command takes the global flags: `--json` and `--plain` pick the
 [output](#output-contract), `--no-pager` prints without lola's [viewer](#output-contract), and
 `--project`, `--user`, `-C/--root <dir>` and `-s/--scope project|user|both` pick the
 [scope](guides/choosing-what-to-install.md#choosing-a-scope). Under "Refusals", each quoted
-message is what follows `error:`; a hint that runs a command repeats your run's output, scope and
-`-C` flags; the exceptions are listed in the "Known limitations" paragraph that ends the sections
-of `lola sync`, `lola profile` and [Sources and the cache](#sources-and-the-cache).
+message is what follows `error:`; a hint that runs a command repeats your run's output, scope,
+`-C`, `-t` and `-n` flags (the command a dry run ends with, which applies it, drops `-n`). It
+keeps your `-y` only where it runs what you asked at the one scope you asked it of: the command
+your dry run ends with, or your command completed with the scope or assistant it lacked, or with
+an ambiguous profile name qualified. A hint that changes or narrows a scope you chose, names
+another profile or command, or is a dry run (`lola sync`'s `see them: … -n`, any of `lola
+tidy`'s under `-n`) leaves `-y` out. The exceptions are listed in the "Known limitations"
+paragraph that ends the sections of `lola sync`, `lola profile` and
+[Sources and the cache](#sources-and-the-cache).
 
 ### `lola install`
 
@@ -237,6 +243,16 @@ base` answers. Asks before removing files; `-y` skips the question, and so does 
 also deletes files you edited since lola wrote them. A run that removes no files asks nothing, and
 still writes. Scope as `lola install`'s.
 
+The directories those files leave empty go too, each printed as a step
+(`→ delete claude-code .claude/commands/`; JSON `kind` `directory`, `path` without the slash), but
+never the assistant's root (the project; at user scope your home, or OpenCode's config directory)
+nor a directory directly in it, such as `.claude/`, `.gemini/` or `.opencode/`: lola looks for
+those to tell which assistants are set up. Only an empty directory goes: one still holding
+anything, or one the same run writes into, stays. A symbolic link is never removed, nor the
+directory it leads to, nor one above it; an emptied directory below a link goes when it lies
+inside the assistant's root (`~/.claude` linked to `~/dotfiles/claude`: an emptied
+`~/dotfiles/claude/commands/` goes), and none a link leads out of that root to. Every run that removes files (`sync`, `update`, `profile`) does the same.
+
 Each entry removed prints a write line (`✓ removed mod1 from profile go  (<path>)`, see
 [Where an install is written](#where-an-install-is-written)). An edit to a profile that is off
 says `saved to profile rust; it is not on at user scope → lola profile --user rust --switch`.
@@ -252,11 +268,13 @@ says `saved to profile rust; it is not on at user scope → lola profile --user 
 Refusals:
 
 - `lola uninstall: "my-module" is not installed in this project`, hinting `installed here: lola
-  list --project`.
+  list --project`. When exactly one installed module matches the name ignoring case, a first hint
+  says `did you mean my-module?` with the command, scope flags kept.
 - The module comes from the base while a profile is on, off a terminal: `my-module comes from
   default (base); lola uninstall needs to know whether to remove it there, and there is no
   terminal to ask on` (`change it there` under `-t`), hinting `lola uninstall my-module --user
-  --profile base`.
+  --profile base -y`. `-y` answers it when that is the one layer that lists the module; where
+  several do, the refusal stays and its hint keeps your `-y` and adds `--profile <layer>`.
 - A `--profile` that does not list it: `profile go does not list my-module`, hinting `see where it
   comes from: lola list --user`; an unknown one: `no profile nosuch for user scope`.
 - `-t` naming an unknown assistant: `unknown target "nosuch"`, hinting the valid ones.
@@ -385,10 +403,15 @@ A module whose fetch fails stays installed, and is reported as a `fetch-failed` 
 repository has, how to reach it); `update` brings up to date the modules it can reach and then
 exits `1`.
 
+A folder module whose source folder is gone is rendered at the version installed, and is not
+reported as up to date: its `source-gone` warning says `<module>: source gone; not checked`, with
+the folder, and hints restoring it or `lola uninstall <module>` (your scope flags kept). `update`
+exits `1`, as for a failed fetch, and does not print `already up to date`.
+
 JSON: the shape of `lola sync`'s: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`,
 `removals`, `equivalent_commands` and the plan's `modules`, `steps`, `findings`, `notices` and
 `scripts`; arrays are `[]` when empty. A failed fetch appears only as a finding with the code
-`fetch-failed`.
+`fetch-failed`, or `source-gone` for a vanished folder.
 
 ### `lola tidy`
 
@@ -470,7 +493,7 @@ project). Refuses a project whose `.lola/lock.json` git tracks.
 | `--ref <ref>` | With `--add` or `--edit`: the branch, tag or commit to fetch. |
 | `--path <dir>` | With `--add`: the directory of the source that holds `profiles/`. With `--edit`: the module root inside the source. |
 | `--skip`, `--only`, `--unskip`, `--exact`, `--with-mentions`, `--override`, `-t` | With `--edit`: as `lola install`'s (repeatable or comma-separated), saved in the profile's entry: `--only` skips the rest, `--only --exact` writes its `only:` list, and `--exact` without `--only` is refused. `--override` copies another layer's entry into the profile; it is refused for a project's entry its own sync has not trusted, and for one whose folder lies inside a project, as `lola install --override` is. |
-| `--move <module>…` | Move whole entries, in one transaction, from the layer each comes from (or `<from>`, named before it: a profile, `base`, `default` or `project.yml`) to `--to`, keeping the version installed, and apply. Repeatable or comma-separated. Alias: `--mv`. Across scopes it prints each scope's context line: the target's, where it writes, then the source's once lola knows the entry comes from there. See [Moving a module](guides/profiles.md#moving-a-module). |
+| `--move <module>…` | Move whole entries, in one transaction, from the layer each comes from (or `<from>`, named before it: a profile, `base`, `default` or `project.yml`) to `--to`, keeping the version installed and the picks (a module leaving `project.yml` takes its `selections.yaml` picks into the profile entry: `picks: carried from selections.yaml`; picks a profile entry cannot hold, such as an `include:` over a global or glob skip, refuse the move unless `--force`), and apply. Repeatable or comma-separated. Alias: `--mv`. Across scopes it prints each scope's context line: the target's, where it writes, then the source's once lola knows the entry comes from there. See [Moving a module](guides/profiles.md#moving-a-module). |
 | `--to <name>` | With `--move`: a profile of yours or the project's, or `base`; a new name creates your profile. With `--split`: the new profile's name (default `<name>-modules`). |
 | `--keep-off` | With `--move` into a profile that is off here: keep it off, so the modules' files are removed here (asked; `-y`, `--force`). |
 | `--update` | Fetch the named remote profiles, or `--all`, again, show what changed, ask, and apply them where they are on. Alias: `--upgrade`. |
@@ -548,7 +571,8 @@ Refusals:
   the edit that keeps what it did (replace the key with `bundle: [remote:go]`; with `modules:`
   or `targets:`, the `--split` after it).
 - `lola uninstall` of a module the base gives, while a bundle is on, asks whether to remove it
-  there, as under any profile; off a terminal it hints `--profile base`.
+  there, as under any profile; off a terminal it hints `--profile base -y`, and `-y` alone answers
+  when the base is the one layer that lists it.
 - `--on base` while a profile is on: `the base is always loaded; user:go is on over it`, hinting
   `lola profile base --switch`; `--off base`: `the base is always loaded; lola profile --off turns
   off the profile over it`; `default` at project scope: `default is user scope's base; this
@@ -647,7 +671,8 @@ Aliases: `marketplace`, `markets`. Four paths, none of which asks:
   with the same flags (a scope, `-t`, the output flags) and the same output, hints included.
 - `lola info @acme/formatter` (see [`lola info`](#lola-info)).
 
-`--add <source>` fetches a catalog (Claude Code's `marketplace.json` or a lola YAML catalog) and
+`--add <source>` takes the source, so the name goes before it: `lola market acme --add <source>`,
+not `lola market --add acme <source>` (the refusal that follows hints the working order). It fetches a catalog (Claude Code's `marketplace.json` or a lola YAML catalog) and
 registers it. lola looks for `.claude-plugin/marketplace.json`, then `<name>.yml`, `<name>.yaml`,
 `marketplace.yml` and `marketplace.yaml`, and last, only when none of those exists, the original
 lola's `lola.yml` or `lola.yaml` (`name` and `modules`, each with `name`, `description`,
@@ -1265,7 +1290,8 @@ For every kind of source:
 
 **Folders.** In a git work tree, lola copies the files git would track (`.gitignore` is
 respected; new, unstaged files are included). A directory `module/` inside the source is the
-module root unless you pass `--path`; `--path .` picks the folder itself. `--ref` is refused.
+module root unless you pass `--path`; `--path .` picks the folder itself. `--ref` is refused, even for a folder that is a git
+repository (a local path is always read as a folder; lola reads no branch, tag or commit of it).
 
 **Git.** lola runs your `git` (it must be on `PATH`) with a shallow clone of the default
 branch, or of `--ref`: a branch name, a tag name, or a full 40- or 64-character commit SHA.
@@ -1301,7 +1327,14 @@ fetches.
     `ssh-add` when the server takes keys).
   - The hint `git ls-remote -- <url>` (with `-c http.followRedirects=false` for a source a
     catalog named) checks it with your own git, which may ask for credentials and keep them in
-    your credential helper; a location too long or odd to print whole gets no hint.
+    your credential helper; a location too long or odd to print whole gets no hint, and a
+    github.com web page or organisation page gets no such check (it would fail on it). A web
+    page (`/tree/<ref>/…` or `/blob/<ref>/…`) is called one in the message, and hints your own
+    command (`lola info` stays `lola info`, with your scope, `-t`, `-n` and output flags, and `-y`
+    on a run that asks) on the repository with `--ref <ref>` and the `--path` it names; a path
+    ending in `skills/` hints the repository root or the directory above it, and the message says
+    `--path skills/<name>` takes one skill. The same holds for a `--path` naming a `skills/`
+    directory: the hint is your command on the directory above it.
   - Only git's own `fatal:` lines and ssh's are read, never a server's `remote:` lines.
   - ssh still can prompt: it asks on the terminal for a key passphrase or an unknown host key.
     Load your key into `ssh-agent` and add the host to `known_hosts` first, or the fetch waits
@@ -1689,6 +1722,57 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
 changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 
+## Removing lola
+
+lola has no uninstaller of its own; you remove your modules, then what lola keeps, then the
+binary. Each step below was run against a throwaway `HOME`.
+
+1. Uninstall every module in each project and at user scope. `lola uninstall` takes several
+   names and has no "all" flag; `lola list` shows them. It removes the entries from
+   `project.yml` (or your default profile) and the files lola wrote, then the directories that
+   leaves empty, whoever made them (a `~/.claude/commands/` that held only lola's files goes, even
+   one you made), but never the assistant's root nor a directory directly in it, such as
+   `~/.claude/`, which stays even when empty.
+
+   ```sh
+   cd my-project && lola list && lola uninstall mod-a mod-b -y
+   lola list --user && lola uninstall --user mod-a mod-b -y
+   ```
+
+2. Optionally move what lola does not manage out of the assistants' directories
+   (`lola tidy --all -y`); it goes to the trash, not away ([Tidying](guides/tidying.md#tidying)).
+3. Empty the cache: `lola cache clean --all -y`. Uninstalling leaves every module in the
+   cache; this removes them (the `modules/` directory stays, empty).
+4. Delete what is left. Uninstall, tidy and `cache clean` remove none of it:
+
+   | Where (default) | What stays |
+   |---|---|
+   | `.lola/` in each project | `project.yml`, `lock.json` (empty of modules), `.gitignore`, an empty `modules/`, and `plugin-data/` with each module's data if a module used `${PLUGIN_DATA}` (uninstall keeps it and says where). `project.yml` is yours and may be committed; remove `.lola/` if you no longer want it. |
+   | `$XDG_CONFIG_HOME/lola/` (`~/.config/lola/`) | Your settings (`config.yaml`), keep-list, marketplaces and profiles, including `profiles/default.yml` (no modules left in it), `selections.yaml` with your component picks, and `pins.yaml` with its record of your remote profiles. |
+   | `$XDG_DATA_HOME/lola/` (`~/.local/share/lola/`) | An empty `user-modules/`; remote profiles (`profiles/`), if you added any; `plugin-data/` with each user-scope module's data, if one used `${PLUGIN_DATA}`. |
+   | `$XDG_STATE_HOME/lola/` (`~/.local/state/lola/`) | `lock.json` (the user-scope ledger), `trust.json`, `consent.json` once you have consented to a hook, `locks/`, and `trash/` with every run of `lola tidy` and `lola migrate`. Look in `trash/` before deleting it: it is the only copy of what those commands moved. |
+   | `$XDG_CACHE_HOME/lola/` (`~/.cache/lola/`) | Empty `modules/` and `.staging/`, a `.lock` file, and any marketplace catalogs and probe results. |
+
+   lola honours an `XDG_*` value only when it is an absolute path; an unset, empty or relative
+   one means the default under `$HOME` ([Environment](#environment)). The snippet below works
+   the paths out the same way, so a relative value such as `XDG_DATA_HOME=.` never points it at
+   the current directory. Look at the four paths it prints before you delete them:
+
+   ```sh
+   rm -rf .lola                                  # in each project you no longer manage
+   xdg() { case $1 in /*) printf '%s/lola\n' "$1" ;; *) printf '%s/lola\n' "$HOME/$2" ;; esac; }
+   set -- "$(xdg "${XDG_CONFIG_HOME-}" .config)" "$(xdg "${XDG_DATA_HOME-}" .local/share)" \
+          "$(xdg "${XDG_STATE_HOME-}" .local/state)" "$(xdg "${XDG_CACHE_HOME-}" .cache)"
+   printf '%s\n' "$@"                            # check these four, then:
+   rm -rf -- "$@"
+   ```
+
+   The same locations apply on every platform; lola reads the `XDG_*` variables everywhere, so
+   run this with them set or unset as they were when you used lola.
+
+5. Delete the binary: `bin/lola` in your clone of lola-go (`task build` writes it there), or
+   wherever you copied it. Nothing else is installed outside the directories above.
+
 ## Safety rules
 
 - lola writes a file only if it is new, already identical, or one lola wrote and nobody edited.
@@ -1738,11 +1822,13 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   first, entry by entry ([Sync, pins and trust](guides/sync-and-trust.md#sync-pins-and-trust)). `sync`, `update`, `install`
   and `uninstall` refuse a `.lola/lock.json` that git tracks.
 - Each command that fetches keeps its temporary files in one private directory,
-  `$XDG_CACHE_HOME/lola/.staging/run-*`, removed when it ends.
+  `$XDG_CACHE_HOME/lola/.staging/run-*`, removed when it ends, also when Ctrl+C or SIGTERM
+  stops it.
   - `install`, `sync`, `update`, `cache update`, `info`, `lola market --add` and `--update`, `lola
     profile --add` and `--update`, and each `lola profile` change it applies with a sync (such as
     `--on`, `--switch` or `--move`) also remove those a killed lola left behind once they are a
-    minute old, and warn when they cannot.
+    minute old, with their `run-*.lock` files, and a `run-*.lock` left without its directory once
+    it is a minute old; they warn when they cannot remove one.
   - A dry run (`-n`) still does this: the directories are lola's own temporaries.
   - A command waiting at a prompt keeps its directory however long it waits: the sweep skips the
     directory of a lola that is still running.
@@ -1815,7 +1901,12 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   the run's `--trust` covered, `{kind, item, change}` with `change` `new` or `changed`, `[]` when
   none; under `-n`, what it would cover ([Trust kinds](guides/choosing-what-to-install.md#trust-kinds)).
 - Exit status: `0` on success or when you decline a prompt (Ctrl+C included, in accessible mode
-  too); `1` on any error, which includes a module whose fetch `lola update` could not make.
+  too); `1` on any error, which includes a module whose fetch `lola update` could not make; Ctrl+C
+  (SIGINT) or SIGTERM elsewhere stops the fetch, download or hook the command is waiting on, or
+  its writes before they start, removes its temporary files, and lola then dies of the signal, so your shell reports `130` or `143` and a
+  script running lola stops too. It prints nothing then, but for a `lola profile --update` that
+  already wrote a profile: that error says what is updated but not applied, and the `lola sync`
+  that applies it (under `--json`, the error document). A second Ctrl+C ends it at once.
 - Color: `LOLA_COLOR=1` or `0` forces it; otherwise `NO_COLOR` disables it; otherwise it follows
   the terminal.
 - Picker colors are chosen to read at a contrast of at least 4.5:1 on your terminal's
@@ -1942,7 +2033,10 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
   - Per destination also `installs`, `replaced` and `moved` (each `path`, `key`, `kind`,
     `trash`), `kept` (`path`, `reason`), its own `unmappable` and `not_migrated`, and the
     install's `steps`, `modules`, `findings` and `notices`.
-  - A step that replaces a recorded file has `"replaced": true`.
+  - A step that replaces a recorded file has `"replaced": true`; so does an `adopt` step on a
+    recorded file that is already identical to what lola writes, which lola keeps and does not
+    rewrite. The human plan line says which: `[replaces a file lola did not write]` for the
+    first, `[identical to a file lola did not write; kept, not rewritten]` for `adopt`.
 
 ## Environment
 

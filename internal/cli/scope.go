@@ -42,7 +42,7 @@ func (a *app) scopes(cmd *cobra.Command, eng *engine.Engine, args []string, ques
 	if err != nil {
 		return nil, err
 	}
-	req.Command, req.Both, req.Run = cmd.Name(), both, runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...)
+	req.Command, req.Both, req.Run = cmd.Name(), both, completeRun(cmd, args, scopeFlags...)
 	res, err := eng.ResolveScope(req)
 	if err != nil {
 		return nil, err

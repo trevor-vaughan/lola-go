@@ -374,12 +374,15 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 }
 
 // stackLayer is the layers of a profile on, its own or a bundle's members' (loadStack), as one
-// layer for its state: each module once, from the first layer that lists it.
+// layer for its state: each module once, as the last layer that lists it has it, which is the
+// layer that wins (desired), picks and all.
 func stackLayer(stack []Layer) Layer {
 	out := Layer{Entries: []manifest.Entry{}}
 	for _, l := range stack {
 		for _, ent := range l.Entries {
-			if !slices.ContainsFunc(out.Entries, func(o manifest.Entry) bool { return o.Name == ent.Name }) {
+			if k := slices.IndexFunc(out.Entries, func(o manifest.Entry) bool { return o.Name == ent.Name }); k >= 0 {
+				out.Entries[k] = ent
+			} else {
 				out.Entries = append(out.Entries, ent)
 			}
 		}

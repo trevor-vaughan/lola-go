@@ -67,19 +67,68 @@ var _ = Describe("profiles", func() {
 		Expect(lola("list", "--user", "--plain").out).To(Equal("a\tclaude-code\tok\ton\t" + a + "\tuser\tprofile:default\n"))
 	})
 
-	It("uninstall under a profile on refuses the base's module off a terminal, and --profile base removes it there", func() {
+	It("Prof-P1-c: uninstall -y under a profile on removes the base's module, the one layer that lists it", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c", "-y")
-		Expect(r.code).To(Equal(1), r.err)
-		Expect(r.err).To(Equal("user scope: profile go over default\n"+
-			"error: c comes from default (base); lola uninstall needs to know whether to remove it there, and there is no terminal to ask on\n"+
-			"  hint: lola uninstall c --user --profile base\n"), "-y does not answer where the change goes")
-
-		r = lola("uninstall", "--user", "c", "-y", "--profile", "base")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))).To(Equal([]byte("version: 1\ntargets: [claude-code]\nmodules:\n" +
 			"  - {name: a, source: " + a + "}\n")))
+	})
+
+	It("Prof-P1-c: uninstall -y refuses when two layers list the module, hinting --profile with -y, which works", func() {
+		listC := "version: 1\nmodules:\n  - {name: c, source: " + c + "}\n"
+		writeTree(p.UserProfiles, map[string]string{"one.yml": listC, "two.yml": listC, "work.yml": "version: 1\nbundle: [one, two]\n"})
+		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		r := lola("uninstall", "--user", "c", "-y")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.err).To(Equal("user scope: bundle work (one, two) over default\n"+
+			"error: c comes from profile two; lola uninstall needs to know whether to remove it there, and there is no terminal to ask on\n"+
+			"  hint: lola uninstall c --user --yes --profile user:two\n"), "-y does not choose between layers")
+
+		r = lola("uninstall", "--user", "c", "--yes", "--profile", "user:two")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "two.yml"))).To(Equal([]byte("version: 1\n")))
+	})
+
+	It("Prof-P1-c: uninstall without -y refuses off a terminal, and its hint adds -y", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		r := lola("uninstall", "--user", "c")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.err).To(Equal("user scope: profile go over default\n" +
+			"error: c comes from default (base); lola uninstall needs to know whether to remove it there, and there is no terminal to ask on\n" +
+			"  hint: lola uninstall c --user --profile base -y\n"))
+		r = lola("uninstall", "--user", "c", "--profile", "base", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+	})
+
+	It("Prof-P1-c: uninstall -t <one target> -y off a terminal still asks which layer a bundled module changes in", func() {
+		beta := filepath.Join(tmp, "mods", "beta")
+		writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "commands/beta.md": "B\n"})
+		writeTree(p.UserProfiles, map[string]string{"mixed-modules.yml": "version: 1\ntargets: [claude-code, opencode]\nmodules:\n  - {name: beta, source: " + beta + "}\n",
+			"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [mixed-modules, docs]\n"})
+		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("sync", "--user").code).To(Equal(0))
+		r := lola("uninstall", "--user", "beta", "-t", "opencode", "-y")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.err).To(ContainSubstring("lola uninstall needs to know whether to change it there, and there is no terminal to ask on"))
+	})
+
+	It("Prof-P1-c: uninstall -y removes a module from the one bundle member that lists it", func() {
+		beta := filepath.Join(tmp, "mods", "beta")
+		writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "commands/beta.md": "B\n"})
+		writeTree(p.UserProfiles, map[string]string{"mixed-modules.yml": "version: 1\nmodules:\n  - {name: beta, source: " + beta + "}\n",
+			"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [mixed-modules, docs]\n"})
+		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("sync", "--user").code).To(Equal(0))
+		r := lola("uninstall", "--user", "beta", "-y", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("would remove beta from profile mixed-modules"))
+		r = lola("uninstall", "--user", "beta", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "mixed-modules.yml"))).To(Equal([]byte("version: 1\n")))
+		Expect(lola("list", "--user", "--plain").out).NotTo(ContainSubstring("beta"))
 	})
 
 	It("uninstall that removes no files edits the file without asking for confirmation, off a terminal without -y", func() {
