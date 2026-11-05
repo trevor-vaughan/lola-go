@@ -1,0 +1,21 @@
+.taskfiles/go.yml
+  s_160ff2584f2d2c::t_58bc5e7158bf78 33-40
+.taskfiles/e2e.yml
+  s_160ff2584f2d2c::t_58bc5e7158bf78 23-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b8752a1ef37228cbd3a82f321bd8f729de5f2e5e",
+  "prompts": {},
+  "sessions": {
+    "s_160ff2584f2d2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fb57553-05b6-40f5-8331-73af2e299fa7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
