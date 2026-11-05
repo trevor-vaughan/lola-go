@@ -6,8 +6,669 @@ docs/release.md
   s_160ff2584f2d2c::t_751cf25bc93b03 62-63
   s_160ff2584f2d2c::t_0497a670ab2829 66
   s_160ff2584f2d2c::t_4677f0941ddf2e 46
+  s_160ff2584f2d2c::t_3f9a063878df04 18-22,47-52,79-80
 .taskfiles/release.yml
   s_160ff2584f2d2c::t_895ce0631c8934 36
+internal/store/store.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,34,56,117,217,225,250,289,320,445,591,671,714,719,867
+internal/engine/market_browse.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16,39,85,111,118
+internal/engine/pin.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16,84
+internal/module/frontmatter.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21,37-39,243,286
+docs/guides/bundles.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-77
+docs/reference/trash.md
+  s_160ff2584f2d2c::t_3f9a063878df04 12-13,18-20,24-26,33-38,43-49,66,69,72,76-78,82-84
+internal/engine/resolve.go
+  s_160ff2584f2d2c::t_3f9a063878df04 55,142-143,215-216,256,285
+internal/engine/profileview.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21-29,49,57,59,74,85,104-105,107,109-110,215,241-242,254-260,306-307,439,448,453
+docs/guides/syncing-lola-between-machines.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-82
+e2e/migrate/scripts/check.py
+  s_160ff2584f2d2c::t_3f9a063878df04 1-4,148,164
+internal/engine/bundle.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,20,34-35,171,187,259,308-309
+internal/manifest/manifest_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 374
+internal/engine/tidy_refusal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,42,310
+docs/reference/info.md
+  s_160ff2584f2d2c::t_3f9a063878df04 14-23,57-68,135-137,139-141,144-146,151-152,154-156,159-161,163-165
+internal/cli/output.go
+  s_160ff2584f2d2c::t_3f9a063878df04 92
+internal/market/market.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,21,27,35,38,126,135,139,143,209-212,255-257
+internal/engine/profile_remove.go
+  s_160ff2584f2d2c::t_3f9a063878df04 115,182,340
+internal/cli/prompter.go
+  s_160ff2584f2d2c::t_3f9a063878df04 10-11,14,32,38,43,48,51-52,54,57,63,67,70,72-73,133,147-149,162,169,191,198,219-220,245-249,265,283,361
+internal/engine/market.go
+  s_160ff2584f2d2c::t_3f9a063878df04 28,49,58,76,137,147,155,165,177,201,231,235,302,327,335,360,448,490,508,585,732,754,777-778,918,936-939,961,982,992-1000,1077,1186,1229-1230,1234
+internal/engine/move.go
+  s_160ff2584f2d2c::t_3f9a063878df04 24,27,51,64,155,211-214,339,381,549-551,595-605,696-698,710,790,828,987-989,1031-1036,1100-1102,1135-1136,1178,1259,1278,1287-1288,1355,1380
+internal/market/mapping.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,35-39,73-76,90-91,142,213,239,266-268,277
+internal/templating/regions.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15,21,110,129
+internal/config/pins.go
+  s_160ff2584f2d2c::t_3f9a063878df04 32,36,49,144,178
+internal/engine/staging_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22-23,147,206
+internal/cli/staged_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16
+docs/reference/install.md
+  s_160ff2584f2d2c::t_3f9a063878df04 10-12,16-18,62-64,69-71,74-76,106-108
+docs/decisions.md
+  s_160ff2584f2d2c::t_3f9a063878df04 3-5,7,13,15-16,23-24,30-31,34-56,58-209,215,325
+docs/reference/sync.md
+  s_160ff2584f2d2c::t_3f9a063878df04 22,45-61
+internal/engine/cache.go
+  s_160ff2584f2d2c::t_3f9a063878df04 26,123-124,168
+e2e/profile-first/profile-first.venom.yml
+  s_160ff2584f2d2c::t_3f9a063878df04 1,11
+docs/architecture/trust-record.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-186
+internal/cli/info_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 155
+internal/cli/root.go
+  s_160ff2584f2d2c::t_3f9a063878df04 99
+internal/engine/init.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19
+internal/source/fetch_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 26,43,106
+internal/source/folder.go
+  s_160ff2584f2d2c::t_3f9a063878df04 27,69,127,173
+internal/ledger/ledger.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,31-32,75,77,89,94,100-101,141,158,198,235,248,313,441,484
+internal/source/download_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 189
+internal/engine/newcomponents.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,41
+e2e/common/jsoncheck.py
+  s_160ff2584f2d2c::t_3f9a063878df04 1
+internal/engine/repokey_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,80,94,104,118,134,147,158,170,187
+internal/migrate/run.go
+  s_160ff2584f2d2c::t_3f9a063878df04 28,31,59,82,85,88,192,200-206,248,304,307,511-513,590-591,726,903,1142,1297,1344,1362
+internal/ledger/ledger_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 217
+internal/engine/new.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,35,80,212,313,316,364,430,490,508,515-516
+internal/engine/templates.go
+  s_160ff2584f2d2c::t_3f9a063878df04 27,37,44,78,160,166,372,404,464,527,581-584,613-614,626-629
+internal/engine/profile_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 505,632,1193
+docs/guides/config-and-selections.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-99
+internal/engine/copies.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16,19,45,78
+internal/engine/profileedit_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 493,562,594
+internal/cli/picks_cleared_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 14
+internal/engine/remote_update.go
+  s_160ff2584f2d2c::t_3f9a063878df04 24,27,29-30,33,47-48,50,55,62,66,121-124,132-136,145-164,173,194,241,262,330,421-425,431,473-474,533-537,567-572,581,619-622,648,667,679,696,737,803-805,827-828,911,946-947,1016
+internal/source/source_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 193,207
+internal/engine/pins.go
+  s_160ff2584f2d2c::t_3f9a063878df04 23,60,119,267
+docs/guides/profile-walkthroughs.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-32
+internal/engine/probe.go
+  s_160ff2584f2d2c::t_3f9a063878df04 38
+internal/cli/template_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17
+internal/engine/staged_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20
+internal/engine/sync_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1932,2055-2056,2160,2169,2177
+internal/plan/intent.go
+  s_160ff2584f2d2c::t_3f9a063878df04 44,55
+docs/architecture/install-flow.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-307
+internal/engine/context.go
+  s_160ff2584f2d2c::t_3f9a063878df04 13,32,39,56,106,135,184,200
+internal/engine/sync.go
+  s_160ff2584f2d2c::t_3f9a063878df04 33-36,41-42,47-52,59,70-72,75,82,97-99,106-108,138-141,153-154,175-177,184-188,203,205-207,221-225,237-238,257,266-273,283,290-291,298-303,306-308,322,333,344-345,388-394,426,437,448,453-454,481,490-491,510,532-533,560,620,694,708-712,725,749-750,757,822-823,901-902,935-937,960-961,990,1000-1001,1004,1040,1054,1073-1074,1083,1086-1087,1133,1136-1137,1169-1173,1202,1284-1288,1310-1311,1322-1323,1337-1342,1349-1352,1355,1370,1386-1387,1405,1424,1457-1463,1538-1540,1550-1552,1568-1571,1670,1703-1708,1720-1724,1786-1787,1814-1818,1879-1885,1972-1973,2025-2026,2050-2056,2061-2063,2085,2146-2148,2171-2174,2181-2186,2227-2231,2255-2257,2261-2263,2279,2317-2319,2359-2362,2405-2409,2411-2418,2420-2423,2435,2442,2452,2461-2464,2488-2489,2534-2535,2540-2541,2559,2566,2576,2652-2654,2673-2675,2718-2719,2743-2747,2870-2872,2963-2964,2981-2984,3024-3025,3050-3055
+internal/cli/profile_edit.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19-20,29-34,110-114,184-190,272,309,324,326
+internal/cli/profile_move.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,121
+internal/activeprofile/activeprofile.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,14,20
+e2e/template/template.venom.yml
+  s_160ff2584f2d2c::t_3f9a063878df04 6
+e2e/team/team.venom.yml
+  s_160ff2584f2d2c::t_3f9a063878df04 8-9,525,575,602-603
+internal/engine/choices.go
+  s_160ff2584f2d2c::t_3f9a063878df04 39,50,62,65,81,133,158-159,208,211,264,449,513,534,1012
+internal/engine/engine.go
+  s_160ff2584f2d2c::t_3f9a063878df04 50-52,64-66,78-79,109-110,136-137,158,168-170,186,189-190,194-195,198-199,201-203,211-212,215-216,219-221,224,256-257,298-300,302,305-306,308-309,311-312,343,356-357,363-364,375,393,396-397,402,410-412,417,503-509,549-551,576-579,752-754,790-792,800-807,868,892-896,1063-1066,1207-1210,1256-1260,1305-1308,1381-1382,1393-1395,1426-1427
+internal/engine/lastused_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19-20
+internal/cli/notices_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,163
+docs/architecture/trust-kinds.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-99
+internal/config/config.go
+  s_160ff2584f2d2c::t_3f9a063878df04 31,43-44,48,54,60
+internal/engine/activate.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,30-32,36-37,43-49,58,64,86-90,101,105,108,166,170,177,196,204,232-233,239,277,309,378-382,425-429,457
+internal/cli/cmd_trash.go
+  s_160ff2584f2d2c::t_3f9a063878df04 206
+internal/engine/picks_cleared_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,105
+internal/engine/scripts.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,33-34,44-45,49,57-58,68,81,128,150,167,187,195,260,270,288,297,380,392-393,425,450,500,544
+internal/engine/target.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,41,59-66,68,132-138,174-176,229,255-257,273,293,314,340,367,370,416-417,453,479-480,529,578-579,591-597,650-653,738,755,799,934-935,957
+internal/engine/remote_add.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,22,26,39,42,49,57,72,109,151,253,264,304-305
+internal/cli/market_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 65,520,553
+internal/engine/content.go
+  s_160ff2584f2d2c::t_3f9a063878df04 27,30,43,73,297-298,352,373
+e2e/image/pins.env
+  s_160ff2584f2d2c::t_3f9a063878df04 6
+e2e/migrate/migrate.venom.yml
+  s_160ff2584f2d2c::t_3f9a063878df04 99
+internal/module/partials.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16
+internal/profile/remote.go
+  s_160ff2584f2d2c::t_3f9a063878df04 26,40,42,53-54,90,93,109,119-121,154,177-178,194-196,237,254
+docs/guides/marketplaces.md
+  s_160ff2584f2d2c::t_3f9a063878df04 124,136-143,230-237
+internal/templating/names.go
+  s_160ff2584f2d2c::t_3f9a063878df04 3
+internal/cli/profile_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 70,79,94,106,118,222,373
+docs/reference/update.md
+  s_160ff2584f2d2c::t_3f9a063878df04 28-31,41-43,50-52,56-58,63-65
+internal/migrate/plan_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 79,382,440,458,498,663
+internal/cli/stale_selector_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15
+AGENTS.md
+  s_160ff2584f2d2c::t_3f9a063878df04 63
+internal/engine/update_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 664
+internal/config/selections.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,28,30,71,123,392,401
+internal/cli/profile_update.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21-28,44,46,81,114,117,246,249,253,324,394,428-430,446,460
+internal/engine/templates_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 61,284,531,1198,1273
+docs/architecture/marketplaces.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-198
+internal/market/registry.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,25,54,253
+internal/store/store_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 454,951
+internal/templating/filters.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,41,190,882
+internal/store/digest.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17
+docs/guides/install-trust-kinds.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-76
+docs/testing.md
+  s_160ff2584f2d2c::t_3f9a063878df04 42-53,84,98,202-203,215-217,232-234,238-240,263-265,270-272,283-293,295-297,305-306,351,362
+internal/engine/staging.go
+  s_160ff2584f2d2c::t_3f9a063878df04 24,44-45,105
+internal/market/sshhost.go
+  s_160ff2584f2d2c::t_3f9a063878df04 23-24
+internal/market/address.go
+  s_160ff2584f2d2c::t_3f9a063878df04 13,27,52
+internal/engine/tidy_label.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15
+internal/profile/profile_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 89,106,108,110,112,409,521,598,644
+internal/engine/remote_remove.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18-19,22,35,55,63,105
+internal/engine/trustkinds.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,22,26,36-39,70,85,113,126,141,155,171,190-191,223,232,246-247,296-297,334,336,382
+internal/templating/bind.go
+  s_160ff2584f2d2c::t_3f9a063878df04 12,39,53
+internal/source/components.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17
+internal/engine/scope_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,90,118
+internal/cli/cmd_core.go
+  s_160ff2584f2d2c::t_3f9a063878df04 96,216,500-502
+scripts/e2e.sh
+  s_160ff2584f2d2c::t_3f9a063878df04 19
+internal/cli/summary.go
+  s_160ff2584f2d2c::t_3f9a063878df04 48-49,95,117,154,249,303
+internal/engine/mentions_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,81,120,246,294,390,438
+internal/engine/tidy.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,24,40,45,52-57,67,72-73,85,96,143,146-148,156-157,192,225,228,274,293,396,413-414,429,490
+internal/module/attrs.go
+  s_160ff2584f2d2c::t_3f9a063878df04 24
+docs/usage.md
+  s_160ff2584f2d2c::t_3f9a063878df04 10,26-28,32-34,62,84-86,168,171-173,376-383,390-391,438
+internal/engine/clean.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,30,32-34,40,49-50,82,187-188,214,238,255,281,283,289,453-454,521,597
+internal/engine/restore.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21,100,109,193
+docs/architecture/install-hooks.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-107
+internal/cli/theme.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,25,133,195
+internal/engine/edit.go
+  s_160ff2584f2d2c::t_3f9a063878df04 23,99
+internal/cli/long_complement_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,20
+internal/templating/screen.go
+  s_160ff2584f2d2c::t_3f9a063878df04 10,20
+internal/engine/market_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 57
+internal/engine/tidy_apply.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,53
+internal/engine/unresolved.go
+  s_160ff2584f2d2c::t_3f9a063878df04 12,24-25,28,70,73,91,112,122,134,142-143,156
+internal/cli/install_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 37,156
+internal/engine/hints_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21,218
+internal/engine/picksummary_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 13
+internal/cli/sync_output.go
+  s_160ff2584f2d2c::t_3f9a063878df04 24,106-108,193,197-198,400
+internal/engine/tidy_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 200,457,466
+internal/cli/sync_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 288,297,528,775,853
+internal/plan/compute.go
+  s_160ff2584f2d2c::t_3f9a063878df04 364,367
+internal/engine/inproject.go
+  s_160ff2584f2d2c::t_3f9a063878df04 12
+internal/yamldoc/yamldoc.go
+  s_160ff2584f2d2c::t_3f9a063878df04 36,120
+internal/profile/remote_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 256
+e2e/common/hint.py
+  s_160ff2584f2d2c::t_3f9a063878df04 1-2
+internal/engine/inproject_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21,149
+e2e/install/install.venom.yml
+  s_160ff2584f2d2c::t_3f9a063878df04 6-7,87
+internal/engine/split.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,22,41,67,82,87,101,158
+internal/cli/cmd_info.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,66-67,299,336
+internal/cli/clean_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19-20,76,118
+internal/engine/hooks.go
+  s_160ff2584f2d2c::t_3f9a063878df04 107,146,148,278,334,356,393
+internal/paths/paths.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16-17,23-26,28-30,38
+internal/engine/tidy_scan.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,58,61,98,118,209-210,233-234,341,352,382-383,416,459,502,556,582,633
+docs/guides/sync-and-trust.md
+  s_160ff2584f2d2c::t_3f9a063878df04 27-29,32-34,189-196,206-209,243,256-258,265-267,272-274,396-398,445-450,455-457,467-469,472-474,478-480,504,526-528,532-534,551
+internal/cli/pager.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20
+internal/config/repokey_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,40,58,72,79,88,107,113,119,127,136,147,181,185,191,202,207,215,224,230,240,249
+internal/config/write.go
+  s_160ff2584f2d2c::t_3f9a063878df04 96,233
+internal/source/git.go
+  s_160ff2584f2d2c::t_3f9a063878df04 40,60,294-295,312,321,364,399,500
+docs/reference/cache.md
+  s_160ff2584f2d2c::t_3f9a063878df04 83-85,87-89,98-100,102-104,128-130,133-135
+internal/engine/trustkinds_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 34,135,152,272,500,547
+internal/cli/cmd_sync.go
+  s_160ff2584f2d2c::t_3f9a063878df04 25,38,75,79-83,96-98,131,196,208,347,351,387,436,440,499,569,572,576,667
+internal/cli/huh.go
+  s_160ff2584f2d2c::t_3f9a063878df04 38,119-122,184,308,349,370,458,461,490,520-521,590,639,793-794,838,964
+internal/engine/clean_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,37,356,379,392,400,430,447,468,488
+internal/source/reach.go
+  s_160ff2584f2d2c::t_3f9a063878df04 14
+internal/source/recorded.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15,26
+internal/module/load.go
+  s_160ff2584f2d2c::t_3f9a063878df04 29,71,305,610,651
+e2e/common/tls.sh
+  s_160ff2584f2d2c::t_3f9a063878df04 2-4
+internal/engine/deletes.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15
+internal/cli/hints_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,227,240,245,248,259,267,287,307,321,334,340,356
+internal/engine/ops.go
+  s_160ff2584f2d2c::t_3f9a063878df04 32-34,75-79,95,138-140,143-145,150-152,154-157,197-201,248-256,258-261,363-365,498,511,518,575,606-607,652,722-723,742,772-773,851-853,898,914-917,1035-1037,1049-1053,1067-1069,1092-1097,1121,1197-1198,1206-1207,1213-1215,1236-1244,1358-1360,1383-1384,1398-1400,1419-1423,1503-1504,1509-1513,1555,1617-1621,1630,1689-1690,1748-1750,1903-1906,2091,2147,2231-2232,2245,2356-2361,2498-2508,2699-2704
+internal/cli/cmd_migrate.go
+  s_160ff2584f2d2c::t_3f9a063878df04 110,146,232,430,453
+internal/module/names.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20
+internal/cli/source_hints_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15-16,50,58,67,76,88-89,111-112,134,157,163,174
+internal/config/keep.go
+  s_160ff2584f2d2c::t_3f9a063878df04 31
+internal/templating/regions_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 73
+docs/guides/remote-profiles.md
+  s_160ff2584f2d2c::t_3f9a063878df04 87-94
+internal/engine/inherited_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 169
+internal/testenv/testenv.go
+  s_160ff2584f2d2c::t_3f9a063878df04 149
+internal/trash/trash.go
+  s_160ff2584f2d2c::t_3f9a063878df04 3,26,31,984
+internal/cli/core_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 152,169,187,740
+docs/reference/market.md
+  s_160ff2584f2d2c::t_3f9a063878df04 19-21,28-33,35,54-56,59-61
+docs/architecture/plans-and-the-ledger.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-147
+internal/cli/help_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 45
+internal/cli/human_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 41
+internal/profile/split.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18-19,67
+internal/cli/huh_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 111,128,136,151,201,241,249,256,353,386,533,549,579,649
+internal/cli/market_output.go
+  s_160ff2584f2d2c::t_3f9a063878df04 25,42,70,279,339-341
+internal/templating/graph.go
+  s_160ff2584f2d2c::t_3f9a063878df04 11,18,44
+docs/reference/uninstall.md
+  s_160ff2584f2d2c::t_3f9a063878df04 11-13,15-17,26-28,31-33,37-39,42-44,75-81
+internal/engine/marketinstall_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 852
+internal/trust/perm_windows.go
+  s_160ff2584f2d2c::t_3f9a063878df04 8
+internal/cli/theme_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,60,140
+internal/engine/engine_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1099,1493,1915
+internal/consent/consent.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,28
+internal/cli/inproject_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16
+docs/guides/install-scripts.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-115
+internal/cli/tidy_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 200,370,385,469
+internal/engine/info.go
+  s_160ff2584f2d2c::t_3f9a063878df04 28-29,53,150,157,164-165,169,182,184-185,190-191,204,208,216,218,229,270,284,288,330-331,341-342,344,382,454,484,508,521,596,599-601,649,686,904,940
+internal/engine/profile_edit.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22-23,26,43,149-152,208-212,292-299,347-351,368,401,414-416,423-424,446-449,490-500,602,728-730,958-965,1013
+internal/engine/repokey_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,42,52
+internal/engine/check.go
+  s_160ff2584f2d2c::t_3f9a063878df04 45,54,65,342
+third_party/liquid/PATCHES.md
+  s_160ff2584f2d2c::t_3f9a063878df04 17,58-62,68
+internal/engine/staged_run.go
+  s_160ff2584f2d2c::t_3f9a063878df04 12
+internal/engine/market_remove.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,21,32,39,41,114,126,137
+internal/module/formats_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 47
+docs/architecture/layers.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-602
+internal/cli/move_hint_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,39,346,366,396,409,421,436,461,493,502,511,525,544
+internal/cli/trust_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 50,486
+internal/engine/exact_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,108,132,142,157,168,190,288,436
+docs/architecture.md
+  s_160ff2584f2d2c::t_3f9a063878df04 7-10,57,61,65,69,86,105-117,199-213,217,227-237,251-253,264-284,287-293,300-318,320-329,334-349,354-355,359,363,367,371,375,379,383,387,404-417,421-432,435-444,446-447,449,451-482,492
+internal/engine/selections_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 141
+internal/engine/uninstall_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 279
+internal/engine/runtimehooks.go
+  s_160ff2584f2d2c::t_3f9a063878df04 29,60,204-205,207,242,523
+internal/migrate/remap_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 13
+internal/cli/hints_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15,33,68
+internal/engine/edits.go
+  s_160ff2584f2d2c::t_3f9a063878df04 26,40-41,383,385
+internal/cli/prompt.go
+  s_160ff2584f2d2c::t_3f9a063878df04 29,122-124
+docs/architecture/packages.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-206
+internal/migrate/remap.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21,25-26,33-35,56,132,166,187,236,271,301,317,342
+.golangci.yml
+  s_160ff2584f2d2c::t_3f9a063878df04 7,42,61-62,79,81,83,104,117,119,121,123,125,127,129,131,133,140,166-167
+internal/module/components.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,97,112,125,172,196
+internal/engine/gitignore.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16,75
+internal/source/fetch.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17-18,22
+docs/architecture/sync.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-424
+docs/guides/authoring-modules.md
+  s_160ff2584f2d2c::t_3f9a063878df04 78-80,102-104,242-244,250,255-257,264-266,272-274,317-319
+internal/migrate/read.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,38-39,54-55,72-73,94,443-444
+internal/profile/profile.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,4,38,43,46,50,61,75,100-101,110-115,140,146,174,200,225,255,302-303,321-328,334,368-370,464,467,542-550,625,667-671,738,828-829,870-879,916-923,1020,1023
+internal/templating/store.go
+  s_160ff2584f2d2c::t_3f9a063878df04 11,31,36
+docs/reference/list.md
+  s_160ff2584f2d2c::t_3f9a063878df04 7-9,14-15,19-24,28,30-32
+internal/cli/human.go
+  s_160ff2584f2d2c::t_3f9a063878df04 208,351,370,433-440
+internal/cli/profile_remove.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15
+internal/cli/notices_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15
+internal/engine/market_ssh.go
+  s_160ff2584f2d2c::t_3f9a063878df04 152
+internal/market/lolayaml.go
+  s_160ff2584f2d2c::t_3f9a063878df04 15,18,31,56,181
+internal/module/template.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19
+internal/config/config_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,57,75,83,98,111,119
+internal/market/market_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 501,612
+internal/engine/mentions.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,30-31,233,276,366
+internal/cli/mentions_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 26,77,117,154
+internal/module/numbers.go
+  s_160ff2584f2d2c::t_3f9a063878df04 14,116
+internal/source/download.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,25,27,34,134
+internal/engine/info_components.go
+  s_160ff2584f2d2c::t_3f9a063878df04 13,23-24,82
+docs/architecture/cache.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-141
+docs/guides/choosing-what-to-install.md
+  s_160ff2584f2d2c::t_3f9a063878df04 110-112,120-122,127,140-142,167,173-175,204-205,225,326,329-331,369,376,416,424-447,451-461,467,492-493,562,566
+internal/cli/migrate_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 126,136,186,491
+internal/engine/picks_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 135
+internal/cli/confirm_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21-24,307,393,395
+internal/cli/profile_add.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19-23,108-113
+internal/module/vars.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17-20
+internal/cli/help.go
+  s_160ff2584f2d2c::t_3f9a063878df04 26,109,134,194
+internal/engine/market_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 57,298
+internal/engine/bundle_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 105
+internal/cli/viewer.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,30
+internal/cli/cmd_market.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,22,32,115,210,213,251,275,280,291,297,325,355-357,368,420,463
+internal/engine/hints.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,36,52-53,89-90,138,159,176-177
+internal/engine/installed.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,21,37,64,73,110
+internal/engine/tidy_select.go
+  s_160ff2584f2d2c::t_3f9a063878df04 14,45,80,137,159,175,226,278
+internal/source/archive.go
+  s_160ff2584f2d2c::t_3f9a063878df04 29,53,57,141-142,167,268,583
+internal/templating/differential_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 30
+internal/engine/remoteprofile_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 117,143,208,934,982,1292,1464,1974,2680
+internal/templating/templating.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,23,56,93
+internal/trust/trust.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,42,53,56,59,64,69,79-81,89-90,95,259,264,300,302,380,407,418,429,550,647,700,781
+internal/cli/profile_edit_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 545,613,661,704,822,849,860,1003,1031
+internal/engine/profile.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21-30,35-36,54-58,73-74,83,102,105-108,150-153,195-197,211-214,223-228,230-233,264,270-271,349-350,364-365,373-376,388-389,402-404,415-418,432-433,435-436,484-485,505-507,524-526,564-565,571,585,594-596,612-615,625
+internal/module/rendered.go
+  s_160ff2584f2d2c::t_3f9a063878df04 23-27
+docs/reference/profile.md
+  s_160ff2584f2d2c::t_3f9a063878df04 17-19,25-27,70-92,94-132,157-165,168-172,189-218,222-224,227-229,234
+docs/guides/profiles.md
+  s_160ff2584f2d2c::t_3f9a063878df04 49-54,58-60,107-109,111-113,269-271,274-276,288-294,309-318,385,396-408,416-421,444,527
+docs/template_engine_analysis.md
+  s_160ff2584f2d2c::t_3f9a063878df04 3-4,89,132,175,200,240-242
+internal/cli/cmd_profile.go
+  s_160ff2584f2d2c::t_3f9a063878df04 23,27-29,84,107,133,138-139,157,172,321,388-389,462,478-482,529,559,561,581,614,622,695,777
+docs/architecture/templates.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-167
+docs/architecture/fetching-sources.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-156
+internal/cli/flow.go
+  s_160ff2584f2d2c::t_3f9a063878df04 35-38,45-47,58,60,79,82,189,209,266,321,339,375,415,473,573-574,840,860,957-958,1007,1033,1198,1235-1238,1305,1311-1312,1425,1661,1670,1673,1715,1745
+internal/cli/pager_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 32,97,147
+internal/cli/scope.go
+  s_160ff2584f2d2c::t_3f9a063878df04 29,57,112,170-175,201
+internal/engine/trash.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,251,368,485
+internal/engine/move_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 279,334,952
+internal/module/claude.go
+  s_160ff2584f2d2c::t_3f9a063878df04 41,195,278,391,447,533,562,583-584,673
+internal/source/source.go
+  s_160ff2584f2d2c::t_3f9a063878df04 1,40-43,74,81,100,139,187,275,325
+internal/engine/info_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 768
+internal/source/text.go
+  s_160ff2584f2d2c::t_3f9a063878df04 3
+docs/architecture/lola-tidy.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-110
+internal/cli/profile_split.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16,71,88,106
+internal/cli/flow_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 298,433,441,451,489,579,615,818
+internal/cli/context.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,43,104,145,163
+internal/engine/scope.go
+  s_160ff2584f2d2c::t_3f9a063878df04 16,45,47,93,110-111,113,192
+internal/engine/clean_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,44
+internal/market/claude.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,80,131,139,158-159,182,236,562,597
+internal/cli/scope_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 20,192,299
+internal/engine/scripts_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 182,680,730,842
+internal/templating/error.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,30
+README.md
+  s_160ff2584f2d2c::t_3f9a063878df04 14-15,167,208,211,214-215,218,254
+docs/guides/sources-and-the-cache.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-322
+internal/cli/cmd_tidy.go
+  s_160ff2584f2d2c::t_3f9a063878df04 63,175,179-180,247-248,360
+internal/migrate/helpers_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 73
+internal/engine/market_install.go
+  s_160ff2584f2d2c::t_3f9a063878df04 23-26,39-42,76,121,138-139,156,193,213,267,283,300,322-324,332,365,400-402,422-424
+internal/engine/remote.go
+  s_160ff2584f2d2c::t_3f9a063878df04 29-36,63,70,85,89,103-106,136-139,160-167,208,233,236,277,322-327,378,401,404-407,452-456,476-479
+internal/manifest/edit.go
+  s_160ff2584f2d2c::t_3f9a063878df04 82,87,126
+internal/source/remote.go
+  s_160ff2584f2d2c::t_3f9a063878df04 54-61
+internal/engine/market_verbs.go
+  s_160ff2584f2d2c::t_3f9a063878df04 14,30,42
+internal/migrate/run_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 205,297,1177
+internal/migrate/market.go
+  s_160ff2584f2d2c::t_3f9a063878df04 27,49,53,127-134,197,223
+internal/module/detect.go
+  s_160ff2584f2d2c::t_3f9a063878df04 10,34
+internal/manifest/manifest.go
+  s_160ff2584f2d2c::t_3f9a063878df04 28,30,40-41,46,49-50,54-55,75,148,150,237-238,268,277,279,311,342
+internal/cli/move_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 99,325
+internal/cli/cmd_update.go
+  s_160ff2584f2d2c::t_3f9a063878df04 7,47
+internal/plan/apply.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,20
+internal/cli/viewer_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 93,271,316
+internal/engine/tidy_git.go
+  s_160ff2584f2d2c::t_3f9a063878df04 30,37,142
+docs/reference/output-contract.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-240
+internal/module/agentplugins.go
+  s_160ff2584f2d2c::t_3f9a063878df04 44,60,174,199,210,221,255,301,367,421,486,497,520,585-586,679
+e2e/image/build-image.sh
+  s_160ff2584f2d2c::t_3f9a063878df04 3,14-16
+internal/cli/scripts_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 193
+internal/cli/remoteprofile_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 136,274,283,373,610,695
+internal/engine/engine_suite_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 12
+internal/cli/marketflow_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18
+docs/architecture/security-model.md
+  s_160ff2584f2d2c::t_3f9a063878df04 1-141
+internal/migrate/plan.go
+  s_160ff2584f2d2c::t_3f9a063878df04 48-49,51,115,142,152-160,271,346,388-390,443,518,671-673,737
+internal/module/json.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21
+internal/engine/choices_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 24,237
+internal/engine/edits_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 22,230,269
+internal/cli/selections_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 114,180
+internal/engine/mention_match.go
+  s_160ff2584f2d2c::t_3f9a063878df04 9
+internal/cli/trust.go
+  s_160ff2584f2d2c::t_3f9a063878df04 17,20,70,103,121-122,157,164,169
+e2e/market/market.venom.yml
+  s_160ff2584f2d2c::t_3f9a063878df04 8-9
+internal/engine/ops_internal_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 14
+internal/engine/hints_move.go
+  s_160ff2584f2d2c::t_3f9a063878df04 18,30,38,57,167,198,241,334
+internal/module/module.go
+  s_160ff2584f2d2c::t_3f9a063878df04 93,102,119,143-144,157-160,178,213
+internal/templating/regions_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 153,199
+internal/engine/projectprofile_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 210,559
+internal/cli/cli_suite_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 61
+internal/engine/replace_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 21,80
+internal/engine/market_sync.go
+  s_160ff2584f2d2c::t_3f9a063878df04 19,32,34,48,72,114,119,170,194
+internal/migrate/read_test.go
+  s_160ff2584f2d2c::t_3f9a063878df04 243
+internal/cli/cmd_store.go
+  s_160ff2584f2d2c::t_3f9a063878df04 439-440,543,588-589
 ---
 {
   "schema_version": "authorship/3.0.0",
