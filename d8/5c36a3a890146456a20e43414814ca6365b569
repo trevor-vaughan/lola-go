@@ -1,0 +1,25 @@
+internal/targets/equivalence_test.go
+  s_a7fa0a2062bbb1::t_3ba95756514a48 160,162-163,165-172,174
+internal/target/mech/markdown.go
+  s_a7fa0a2062bbb1::t_1a3e2259d0f17f 10
+internal/target/mech/rules.go
+  s_a7fa0a2062bbb1::t_0bf4ceff57bf73 32-34,36,39,45-48,50-52,55-60
+internal/target/spec/spec_test.go
+  s_a7fa0a2062bbb1::t_540748fc2fbdd7 70-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d85c36a3a890146456a20e43414814ca6365b569",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
