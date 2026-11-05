@@ -27,16 +27,19 @@ func (a *app) style(cmd *cobra.Command) style {
 	if a.plain {
 		return style{plain: true}
 	}
+	return style{color: a.color(cmd.OutOrStdout())}
+}
+
+// color decides ANSI color for output to w: LOLA_COLOR, then NO_COLOR, then whether w is a
+// terminal. The install flow's forms on stderr follow the same rule.
+func (a *app) color(w any) bool {
 	switch a.getenv("LOLA_COLOR") {
 	case "1":
-		return style{color: true}
+		return true
 	case "0":
-		return style{}
+		return false
 	}
-	if a.getenv("NO_COLOR") != "" {
-		return style{}
-	}
-	return style{color: isTTY(cmd.OutOrStdout())}
+	return a.getenv("NO_COLOR") == "" && isTTY(w)
 }
 
 // emit is the one output path: JSON under --json, otherwise the human renderer.

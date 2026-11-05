@@ -7,10 +7,14 @@ type Severity string
 
 // Severities, from least to most consequential.
 const (
-	SeverityInfo Severity = "info" // a lossless adaptation; shown by lola check and --json
+	SeverityInfo Severity = "info" // a lossless adaptation or a user's choice; shown by lola check and --json, and by install and render when it has a hint
 	SeverityWarn Severity = "warn" // lossy but working: the artifact is rendered
 	SeveritySkip Severity = "skip" // the artifact is not rendered for this target
 )
+
+// KindRuntimeHook is the artifact, intent and finding kind of a runtime hook (Plan 5b design
+// §7). The engine's consent gate keys on it, so every target and the engine use this constant.
+const KindRuntimeHook = "runtime-hook"
 
 // Finding is something a target loses, adapts or cannot express when it renders a module.
 // Content problems are always findings, never Plan errors.

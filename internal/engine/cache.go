@@ -9,6 +9,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // HeadUpdate reports one re-fetched ref of a stored module.
@@ -32,6 +33,20 @@ type SearchHit struct {
 // NotStored is the error for a module that is not in the cache.
 func NotStored(name string) error {
 	return errs.WithHints(fmt.Errorf("%s is not in your cache", name), "cached modules: lola cache list")
+}
+
+// AddSource fetches a source into the cache: lola cache add, and the install flow's Add a
+// source…. Adding to the cache installs nothing.
+func (e *Engine) AddSource(ctx context.Context, cwd, arg, ref, path string) (store.Version, error) {
+	spec, ok, err := source.Parse(arg, cwd)
+	if err != nil {
+		return store.Version{}, err
+	}
+	if !ok {
+		return store.Version{}, errs.WithHints(fmt.Errorf("%q is not a source", arg), "sources are "+source.AcceptedForms)
+	}
+	spec.Ref, spec.Path = ref, path
+	return e.Fetch(ctx, spec)
 }
 
 // Current returns a stored module's origin and the version used for its metadata: the
@@ -126,11 +141,12 @@ func (e *Engine) Search(query string) ([]SearchHit, []string, error) {
 		match := strings.Contains(strings.ToLower(m.Name), q) || strings.Contains(strings.ToLower(m.Description), q) ||
 			slices.ContainsFunc(m.Keywords, func(k string) bool { return strings.Contains(strings.ToLower(k), q) })
 		if match {
-			kw := m.Keywords
-			if kw == nil {
-				kw = []string{}
+			kw := []string{}
+			for _, k := range m.Keywords {
+				kw = append(kw, untrusted.Text(k, untrusted.MaxName))
 			}
-			hits = append(hits, SearchHit{Name: m.Name, Description: m.Description, Version: m.Version, Keywords: kw, Where: "cache"})
+			hits = append(hits, SearchHit{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName),
+				Version: untrusted.Text(m.Version, untrusted.MaxName), Keywords: kw, Where: "cache"})
 		}
 	}
 	return hits, warnings, nil

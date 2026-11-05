@@ -1,0 +1,112 @@
+name: lola migrate against the real Python lola
+# Run by scripts/e2e-migrate.sh (task e2e:migrate), which starts the container this suite execs
+# into: the Python lola at the pinned upstream commit, this checkout's lola-go at
+# /opt/lola-go/lola-go, the fixtures and scripts at /e2e, and a git server on 127.0.0.1:8765
+# serving /srv/git.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-migrate-e2e
+  lola: /opt/lola-go/lola-go
+
+testcases:
+  - name: The Python lola installs folder, git and zip modules for four assistants and at user scope
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/python-setup.sh"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "python lola installed"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/before.json /work/proj /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "snapshot:"
+
+  - name: A dry run shows the plan and writes nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} migrate --dry-run"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "plan (dry run; nothing was written):"
+          - result.systemout ShouldContainSubstring "install review (claude-code, gemini-cli, opencode)"
+          - result.systemout ShouldContainSubstring "unmappable kit (cursor)"
+          - result.systemout ShouldContainSubstring "kept with kit for cursor, which lola-go cannot migrate"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/dry.json /work/proj /home/tester && {{.runtime}} exec {{.container}} cmp /tmp/before.json /tmp/dry.json"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: Off a terminal without -y it refuses with the hint and writes nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} migrate"
+        assertions:
+          - result.code ShouldEqual 1
+          - result.systemerr ShouldContainSubstring "pass -y to confirm"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/snapshot.py /tmp/refused.json /work/proj /home/tester && {{.runtime}} exec {{.container}} cmp /tmp/before.json /tmp/refused.json"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: lola migrate installs, replaces with backup and cleans up (§12.7 checks)
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} migrate -y --json > /tmp/result.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e/scripts/check.py /tmp/before.json /tmp/result.json --home-action keep --untouched /work/proj/.cursor --untouched /work/proj/.claude/skills/lint --untouched /work/proj/.claude/commands/deploy.md --untouched /work/proj/.lola/modules/kit"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring "FAIL"
+          - result.systemout ShouldContainSubstring "ok every manifest.txt line names a trash path matching the snapshot"
+          - result.systemout ShouldContainSubstring "ok every path the Python lola wrote is lola-go's, in the trash, kept, reported or untouched"
+          - result.systemout ShouldContainSubstring "ok the unmappable records' files are byte-identical"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain | tr '\\t' ' '"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "review claude-code ok"
+          - result.systemout ShouldContainSubstring "review gemini-cli ok"
+          - result.systemout ShouldContainSubstring "review opencode ok"
+          - result.systemout ShouldNotContainSubstring "kit claude-code"
+          - result.systemout ShouldContainSubstring "rooted claude-code ok"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test -f /work/proj/.claude/commands/rooted.md && test ! -e /work/proj/.claude/commands/inner.md'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: A second run has nothing to migrate and lists what it keeps
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} migrate -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "nothing to migrate"
+          - result.systemout ShouldContainSubstring "owned by lola-go module review"
+          - result.systemout ShouldContainSubstring "2 record(s) lola-go cannot migrate are still in installed.yml"
+
+  - name: A home with only what migrates moves to the trash
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} bash /e2e/scripts/python-setup-b.sh"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "python lola installed"
+      - type: exec
+        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} sh -c 'python3 /e2e/scripts/snapshot.py /tmp/b-before.json /home/b && {{.lola}} migrate -y --json > /tmp/b.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} python3 /e2e/scripts/check.py /tmp/b-before.json /tmp/b.json --home-action move"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldNotContainSubstring "FAIL"
+          - result.systemout ShouldContainSubstring "ok the Python home action is move"
+      - type: exec
+        script: "{{.runtime}} exec -e HOME=/home/b {{.container}} {{.lola}} migrate -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "nothing to migrate"

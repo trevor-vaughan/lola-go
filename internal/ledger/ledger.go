@@ -12,7 +12,9 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 )
@@ -21,21 +23,38 @@ import (
 const Version = 1
 
 // Artifact is one thing lola wrote. Path is relative to the target's scope root; Key is an
-// RFC 6901 pointer for JSON members, and Value the string element lola owns when Key is an
-// array; SHA256 is over the file bytes or the canonical JSON of the member or element.
+// RFC 6901 pointer for JSON members. When Key is an array, lola owns one element of it: a
+// string is recorded as Value, any other JSON value as Member, in canonical JSON (Plan 5b
+// design §7.2). SHA256 is over the file bytes or the canonical JSON of the member or element.
 // Resolved is set only when Path resolves outside the root.
 type Artifact struct {
-	Target   string `json:"target"`
-	Kind     string `json:"kind"`
-	Path     string `json:"path"`
-	Key      string `json:"key,omitempty"`
-	Value    string `json:"value,omitempty"`
-	SHA256   string `json:"sha256,omitempty"`
-	Resolved string `json:"resolved,omitempty"`
+	Target   string          `json:"target"`
+	Kind     string          `json:"kind"`
+	Path     string          `json:"path"`
+	Key      string          `json:"key,omitempty"`
+	Value    string          `json:"value,omitempty"`
+	Member   json.RawMessage `json:"member,omitempty"`
+	SHA256   string          `json:"sha256,omitempty"`
+	Resolved string          `json:"resolved,omitempty"`
 }
 
 // ID identifies the destination an artifact occupies.
-func (a Artifact) ID() string { return a.Target + "\x00" + a.Path + "\x00" + a.Key + "\x00" + a.Value }
+func (a Artifact) ID() string {
+	id := a.Target + "\x00" + a.Path + "\x00" + a.Key + "\x00" + a.Value
+	if a.Member != nil {
+		id += "\x00" + string(a.Member)
+	}
+	return id
+}
+
+// Element is the array element a owns, as canonical JSON, or nil when a owns no element.
+func (a Artifact) Element() []byte {
+	if a.Member != nil || a.Value == "" {
+		return a.Member
+	}
+	b, _ := json.Marshal(a.Value) // encoding a string cannot fail
+	return b
+}
 
 // FileRef names a JSON file lola created, or with Key an array lola created in one. lola
 // removes either once its last member leaves it.
@@ -96,7 +115,8 @@ func Load(path string) (*Ledger, error) {
 }
 
 // validate rejects what the JSON decoder accepts but the rest of lola cannot handle: null
-// module entries, module names that are not safe path segments, and artifacts with no target.
+// module entries, module names that are not safe path segments, artifacts with no target, and
+// members lola could not have written. It records each member again as canonical JSON.
 func (l *Ledger) validate() error {
 	for name, e := range l.Modules {
 		if err := module.ValidateName("module", name); err != nil {
@@ -105,10 +125,24 @@ func (l *Ledger) validate() error {
 		if e == nil {
 			return fmt.Errorf("module %q has no entry", name)
 		}
-		for _, a := range e.Artifacts {
+		for i, a := range e.Artifacts {
 			if a.Target == "" {
 				return fmt.Errorf("module %q has an artifact (%s) with no target", name, a.Path)
 			}
+			if a.Member == nil {
+				continue
+			}
+			if a.Key == "" || a.Value != "" {
+				return fmt.Errorf("module %q has an artifact (%q) with a member but no key, or with a value too", name, a.Path)
+			}
+			// Save indents the member, and other tools may reformat or unescape it; any valid
+			// member is recorded again as the canonical JSON its hash and identity use.
+			c, err := fsx.CanonicalJSON(a.Member)
+			if err != nil || !strings.ContainsRune("{[-0123456789tf", rune(c[0])) {
+				return errs.WithHints(fmt.Errorf("module %q has an artifact (%q) whose member is not a JSON object, array, number or boolean", name, a.Path),
+					"restore lock.json from a backup or version control, or remove the module's entry from it and reinstall the module")
+			}
+			e.Artifacts[i].Member = c
 		}
 	}
 	return nil

@@ -22,6 +22,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Head maps a fetched ref ("" = the source's default) to its newest version id.
@@ -105,11 +106,14 @@ func (s *Store) lockStore() (func(), error) {
 	return func() { _ = fl.Unlock() }, nil
 }
 
+// describeOrigin names a module's origin for an error; source and path come from the cache
+// index or a recorded source, so both are untrusted.
 func describeOrigin(source, path string) string {
+	source = untrusted.Text(source, untrusted.MaxName)
 	if path == "" {
 		return source
 	}
-	return source + " (path " + path + ")"
+	return source + " (path " + untrusted.Text(path, untrusted.MaxName) + ")"
 }
 
 // Put detects the staged content's format and reads it as a module (module.Detect), normalizes
@@ -151,7 +155,7 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	if found && (o.Source != req.Source || o.Path != req.Path) {
 		return Version{}, errs.WithHints(fmt.Errorf("a different module named %q is already in your cache (from %s); this one is from %s",
 			m.Name, describeOrigin(o.Source, o.Path), describeOrigin(req.Source, req.Path)),
-			"remove the cached one first: lola cache rm "+m.Name)
+			"remove the cached one first: "+errs.ShellJoin([]string{"lola", "cache", "rm", m.Name}))
 	}
 	vdir := filepath.Join(s.dir, m.Name, "versions", id)
 	switch _, err := os.Stat(vdir); {

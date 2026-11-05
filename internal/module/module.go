@@ -28,11 +28,19 @@ type Skill struct {
 }
 
 // Command is a slash command. File and SidecarDir are content-relative; SidecarDir is "" when
-// the command has no commands/<name>/ directory.
+// the command has no commands/<name>/ directory. Sidecars are the .md files under SidecarDir,
+// which Claude Code also reads as commands.
 type Command struct {
 	Name, File, SidecarDir string
 	Doc                    Doc
+	Sidecars               []Sidecar
 	Targets                []string
+}
+
+// Sidecar is a Markdown file under a command's SidecarDir; File is content-relative.
+type Sidecar struct {
+	File string
+	Doc  Doc
 }
 
 // Agent is a subagent definition; File is content-relative.

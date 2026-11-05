@@ -9,6 +9,7 @@ import (
 )
 
 func (a *app) addMiscCommands(root *cobra.Command) {
+	root.AddCommand(a.migrateCmd())
 	root.AddCommand(&cobra.Command{
 		Use:     "version",
 		Aliases: []string{"ver"},

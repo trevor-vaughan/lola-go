@@ -73,6 +73,16 @@ var _ = Describe("Fetch of a folder", func() {
 		Expect(f.Name).To(Equal("example"))
 	})
 
+	It("takes --path . as the folder itself, not its module/, named after the folder", func() {
+		writeTree(src, map[string]string{"commands/a.md": "A", "module/commands/b.md": "B"})
+		for _, p := range []string{".", "./"} {
+			f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: p}, staging)
+			Expect(err).NotTo(HaveOccurred(), p)
+			Expect(f.Name).To(Equal("example"), p)
+			Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md", "module/commands/b.md"), p)
+		}
+	})
+
 	It("uses --path for monorepos and names the module after that directory", func() {
 		writeTree(src, map[string]string{"plugins/review/commands/a.md": "A", "plugins/other/commands/b.md": "B"})
 		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "plugins/review"}, staging)

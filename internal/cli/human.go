@@ -9,6 +9,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 func (s style) paint(code, text string) string {
@@ -23,6 +24,10 @@ func (s style) warn(t string) string { return s.paint("33", "⚠ "+t) }
 func (s style) bad(t string) string  { return s.paint("31", "✗ "+t) }
 func (s style) info(t string) string { return s.paint("36", "→ "+t) }
 
+// memberShown caps a JSON array member, such as a hook group, in a step line; the full member
+// is in the JSON output.
+const memberShown = 120
+
 // stepLine renders one plan step.
 func stepLine(s style, st plan.Step) string {
 	dest := st.Path
@@ -32,14 +37,24 @@ func stepLine(s style, st plan.Step) string {
 	if st.Value != "" {
 		dest += " " + strconv.Quote(st.Value)
 	}
+	if st.Member != nil {
+		dest += " " + untrusted.Text(string(st.Member), memberShown)
+	}
 	if st.Via != "" {
 		dest += " (via symlink → " + st.Via + ")"
 	}
+	forced := st.Forced
+	if st.Replaced {
+		forced = "replaced"
+	}
 	if s.plain {
-		return strings.Join([]string{string(st.Action), st.Module, st.Target, st.Kind, dest, st.Forced, st.Note}, "\t")
+		return strings.Join([]string{string(st.Action), st.Module, st.Target, st.Kind, dest, forced, st.Note}, "\t")
 	}
 	line := fmt.Sprintf("%-6s %-11s %s", st.Action, st.Target, dest)
-	if st.Forced != "" {
+	switch {
+	case st.Replaced:
+		line += " [replaces a file lola did not write]"
+	case st.Forced != "":
 		line += " [forced: " + st.Forced + "]"
 	}
 	if st.Note != "" {
@@ -50,6 +65,8 @@ func stepLine(s style, st plan.Step) string {
 		return s.bad(line)
 	case plan.ActionForget:
 		return s.info(line)
+	case plan.ActionAbsent:
+		return s.warn(line)
 	default:
 		return s.ok(line)
 	}
@@ -77,6 +94,8 @@ func findingLine(s style, f target.Finding) string {
 		line = s.warn(f.Describe())
 	case target.SeveritySkip:
 		line = s.bad("skipped " + f.Describe())
+	case target.SeverityInfo:
+		line = s.info(f.Describe())
 	default:
 		return ""
 	}
@@ -93,6 +112,7 @@ func printCheck(w io.Writer, s style, rep *engine.CheckReport) {
 		fmt.Fprintln(w, checkLine(s, f))
 	}
 	for _, m := range rep.Modules {
+		printExcluded(w, s, m.Name, m.Skipped, false)
 		for _, f := range m.Findings {
 			if f.Target == "" {
 				fmt.Fprintln(w, checkLine(s, f))
@@ -124,22 +144,53 @@ func checkLine(s style, f target.Finding) string {
 	return findingLine(s, f)
 }
 
+// printInstall renders an install result; with more than one scope, steps are grouped and
+// modules named per scope.
+func printInstall(w io.Writer, s style, r *engine.InstallResult) {
+	printScoped(w, s, "installed", r.Result, r.Scopes)
+}
+
 // printResult renders an install/uninstall/render result: steps, MCP transparency, install
 // hooks, notices, and a summary line.
 func printResult(w io.Writer, s style, verb string, r *engine.Result) {
+	printScoped(w, s, verb, r, nil)
+}
+
+// scopeLabel names a scope in human output.
+func scopeLabel(sc engine.ScopeResult) string {
+	if sc.Root != "" {
+		return sc.Scope + " (" + untrusted.Text(sc.Root, untrusted.MaxName) + ")"
+	}
+	return sc.Scope
+}
+
+func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
 	if r.DryRun && !s.plain {
 		fmt.Fprintln(w, "plan (dry run; nothing was written):")
 	}
-	for _, st := range r.Steps {
-		fmt.Fprintln(w, "  "+stepLine(s, st))
+	if len(scopes) > 1 && !s.plain {
+		for _, sc := range scopes {
+			fmt.Fprintln(w, scopeLabel(sc)+":")
+			for _, st := range r.Steps {
+				if st.Scope == sc.Scope && st.Root == sc.Root {
+					fmt.Fprintln(w, "  "+stepLine(s, st))
+				}
+			}
+		}
+	} else {
+		for _, st := range r.Steps {
+			fmt.Fprintln(w, "  "+stepLine(s, st))
+		}
 	}
 	for _, m := range r.Modules {
+		printExcluded(w, s, m.Name, m.Skipped, r.DryRun)
 		if len(m.MCPServers) > 0 && !s.plain {
 			fmt.Fprintf(w, "%s MCP servers:\n", m.Name)
 			for _, srv := range m.MCPServers {
 				fmt.Fprintf(w, "    %s (%s) runs: %s\n", srv.Name, srv.Transport, srv.Runs)
 			}
 		}
+		printRuntimeHooks(w, s, m)
 		for _, h := range m.Hooks {
 			if s.plain {
 				fmt.Fprintf(w, "hook\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Event, h.Script, h.Target, h.Status)
@@ -157,8 +208,8 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 		}
 	}
 	for _, f := range r.Findings {
-		if f.Severity == target.SeverityInfo {
-			continue
+		if f.Severity == target.SeverityInfo && f.Hint == "" {
+			continue // an info finding with a hint is something the user can act on
 		}
 		if line := findingLine(s, f); line != "" {
 			fmt.Fprintln(w, line)
@@ -171,6 +222,59 @@ func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 		return
 	}
 	for _, m := range r.Modules {
-		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s (%s)", verb, m.Name, strings.Join(m.Targets, ", "))))
+		where := ""
+		if len(scopes) > 1 {
+			where = " at " + m.Scope + " scope"
+		}
+		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s%s (%s)", verb, m.Name, where, strings.Join(m.Targets, ", "))))
 	}
+}
+
+// printRuntimeHooks lists a module's runtime hooks per target with their consent status. A
+// --plain row is module, target, event, type, status and the component whose frontmatter has
+// the hook ("" for settings hooks); an agent's inline MCP server has "mcp_server:<name>" for
+// its event and its transport for its type.
+func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult) {
+	if s.plain {
+		for _, h := range m.RuntimeHooks {
+			event := h.Event
+			if h.MCPServer != "" {
+				event = "mcp_server:" + h.MCPServer
+			}
+			fmt.Fprintf(w, "runtime-hook\t%s\t%s\t%s\t%s\t%s\t%s\n", m.Name, h.Target, event, h.Type, h.Status, h.Component)
+		}
+		return
+	}
+	for i, h := range m.RuntimeHooks {
+		if i == 0 || h.Target != m.RuntimeHooks[i-1].Target {
+			fmt.Fprintf(w, "%s runtime hooks for %s (%s):\n", m.Name, h.Target, h.Status)
+		}
+		for _, line := range runtimeHookLines(h) {
+			fmt.Fprintln(w, "    "+line)
+		}
+	}
+}
+
+// printExcluded names a module's components that selections.yaml excludes; a dry run saved
+// no edit, so it says they would be skipped. A --plain row is "skipped", the module and the
+// component (kind/name).
+func printExcluded(w io.Writer, s style, module string, skipped []string, dry bool) {
+	if len(skipped) == 0 {
+		return
+	}
+	names := make([]string, len(skipped))
+	for i, c := range skipped {
+		names[i] = untrusted.Text(c, untrusted.MaxName)
+	}
+	if s.plain {
+		for _, c := range names {
+			fmt.Fprintf(w, "skipped\t%s\t%s\n", module, c)
+		}
+		return
+	}
+	verb := "skipped"
+	if dry {
+		verb = "would be skipped"
+	}
+	fmt.Fprintln(w, s.info(module+": "+verb+" in selections.yaml: "+strings.Join(names, ", ")))
 }

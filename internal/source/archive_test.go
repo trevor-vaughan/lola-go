@@ -147,6 +147,15 @@ var _ = Describe("Fetch of an archive", func() {
 		expectNothingStaged()
 	})
 
+	It("quotes the module root in the --path hint for the user's shell", func() {
+		archive := filepath.Join(tmp, "mono.zip")
+		writeZip(archive, file("it's a/lola.yml", ""), file("z/plugin.json", "{}"))
+		_, err := fetch(archive, "")
+		Expect(err).To(MatchError("the archive holds several module roots at the same depth: it's a, z"))
+		Expect(errs.Hints(err)).To(ConsistOf("choose one with --path, e.g. " + errs.ShellJoin([]string{"--path", "it's a"})))
+		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("--path it's a")))
+	})
+
 	It("refuses unsafe paths and every entry that is not a file or directory, keeping nothing", func() {
 		cases := map[string]entry{
 			"../evil.md":   file("../evil.md", "x"),

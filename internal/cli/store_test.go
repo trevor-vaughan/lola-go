@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -118,6 +119,32 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(v["results"]).To(Equal([]any{}))
 	})
 
+	It("shows a manifest's description, version and keywords without their control characters", func() {
+		plugin := filepath.Join(tmp, "meta")
+		writeTree(plugin, map[string]string{
+			".claude-plugin/plugin.json": `{"name":"meta","description":"tidy\u001b[2J\u0007desc","version":"1.0\u001b]0;x\u0007",` +
+				`"keywords":["k\u009bw","tab\tbed"]}`,
+			"commands/a.md": "A",
+		})
+		r := lola("cache", "add", plugin)
+		Expect(r.code).To(Equal(0), r.err)
+		for _, out := range []string{r.out, lola("cache", "show", "meta").out, lola("cache", "show", "meta", "--plain").out,
+			lola("search", "tidy").out, lola("search", "tidy", "--plain").out, lola("search", "tidy", "--json").out} {
+			Expect(out).NotTo(ContainSubstring("\x1b"))
+			Expect(out).NotTo(ContainSubstring("\a"))
+		}
+		Expect(lola("cache", "show", "meta").out).To(ContainSubstring("meta 1.0?]0;x?\n  tidy?[2J?desc\n"))
+		var info map[string]any
+		Expect(json.Unmarshal([]byte(lola("cache", "show", "meta", "--json").out), &info)).To(Succeed())
+		Expect(info["description"]).To(Equal("tidy?[2J?desc"))
+		Expect(info["version"]).To(Equal("1.0?]0;x?"))
+		var found map[string][]map[string]any
+		Expect(json.Unmarshal([]byte(lola("search", "tidy", "--json").out), &found)).To(Succeed())
+		Expect(found["results"]).To(HaveLen(1))
+		Expect(found["results"][0]["keywords"]).To(Equal([]any{"k?w", "tab?bed"}))
+		Expect(found["results"][0]["description"]).To(Equal("tidy?[2J?desc"))
+	})
+
 	It("scaffolds a module that installs, and never overwrites", func() {
 		GinkgoT().Chdir(tmp)
 		r := lola("init", "fresh")
@@ -129,6 +156,14 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(lola("init", "Bad_Name").err).To(ContainSubstring("module name"))
 		writeTree(filepath.Join(tmp, "hidden"), map[string]string{".lola.yml": "name: hidden\n"})
 		Expect(lola("init", "hidden").err).To(ContainSubstring("already a module (it has .lola.yml)"))
+	})
+
+	It("init suggests an install command with the directory quoted for the shell", func() {
+		dir := filepath.Join(tmp, "it's here", "fresh")
+		r := lola("init", dir)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("try it: " + errs.ShellJoin([]string{"lola", "install", dir, "-t", "claude-code"})))
+		Expect(r.out).NotTo(ContainSubstring("lola install " + dir))
 	})
 
 	It("init writes nothing when any scaffold path already exists", func() {

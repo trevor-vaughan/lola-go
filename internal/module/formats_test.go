@@ -151,7 +151,7 @@ var _ = Describe("module formats", func() {
 			"skills/s/SKILL.md": "---\nname: s\ndescription: S\n---\n",
 		}),
 		Entry("as a Claude hooks event", "claude-plugin", map[string]string{
-			".claude-plugin/plugin.json": `{"name":"mk","hooks":{"<<":[{"PreToolUse":[{"hooks":[{"type":"command","command":"x"}]}]}]}}`,
+			".claude-plugin/plugin.json": `{"name":"mk","hooks":{"<<":[{"matcher":"<<","hooks":[{"type":"command","command":"<<"}]}]}}`,
 		}),
 	)
 })

@@ -9,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
@@ -325,7 +326,7 @@ var _ = Describe("Compute", func() {
 	Describe("owned array members", func() {
 		const dirs = "/context/includeDirectories"
 		member := func(value string) plan.Intent {
-			return plan.Intent{Target: tgt, Kind: "rule", Op: plan.OpAddJSONMember, Path: "settings.json", Pointer: dirs, Member: value}
+			return plan.Intent{Target: tgt, Kind: "rule", Op: plan.OpAddJSONMember, Path: "settings.json", Pointer: dirs, Member: plan.StringMember(value)}
 		}
 		read := func() string {
 			b, err := os.ReadFile(filepath.Join(root, "settings.json"))
@@ -415,7 +416,7 @@ var _ = Describe("Compute", func() {
 		It("refuses a destination that is not an array, even with --force", func() {
 			put("settings.json", `{"context": {"includeDirectories": "docs"}}`)
 			_, err := install("a", true, member("lola/a"))
-			Expect(err).To(MatchError(ContainSubstring("/context/includeDirectories is not an array")))
+			Expect(err).To(MatchError(ContainSubstring(`"/context/includeDirectories" is not an array`)))
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("fix it by hand")))
 		})
 
@@ -425,6 +426,139 @@ var _ = Describe("Compute", func() {
 			Expect(plan.Observe(root, a)).To(Equal(sum(`"lola/a"`)))
 			put("settings.json", `{"context": {"includeDirectories": ["docs"]}}`)
 			Expect(plan.Observe(root, a)).To(Equal(""))
+		})
+	})
+
+	Describe("JSON-value members", func() {
+		const settings, stop = ".claude/settings.local.json", "/hooks/Stop"
+		groupX := `{"matcher":"","hooks":[{"type":"command","command":"x"}]}`
+		canonX := `{"hooks":[{"command":"x","type":"command"}],"matcher":""}`
+		group := func(value string) plan.Intent {
+			return plan.Intent{Target: tgt, Kind: "runtime-hook", Op: plan.OpAddJSONMember, Path: settings, Pointer: stop, Member: []byte(value)}
+		}
+		read := func() string {
+			b, err := os.ReadFile(filepath.Join(root, settings))
+			Expect(err).NotTo(HaveOccurred())
+			return string(b)
+		}
+
+		It("records the member as canonical JSON, and removes it with the arrays and file it created", func() {
+			user := "{\n  \"model\": \"opus\"\n}\n"
+			put(settings, user)
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionCreate, Module: "a", Target: tgt, Kind: "runtime-hook", Path: settings,
+				Key: stop, Member: []byte(canonX)}}))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop,
+				Member: []byte(canonX), SHA256: sum(canonX)}}))
+			Expect(p.Ledger.Created).To(Equal([]ledger.FileRef{{Target: tgt, Path: settings, Key: stop}}))
+			apply(p)
+			Expect(read()).To(ContainSubstring("\"hooks\": {\n    \"Stop\": [\n      {\n        \"hooks\": [\n"))
+			Expect(plan.Observe(root, p.Ledger.Modules["a"].Artifacts[0])).To(Equal(sum(canonX)))
+
+			p, err = install("a", false, group(canonX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(BeEmpty(), "the same group in another key order is unchanged")
+
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps[0].Action).To(Equal(plan.ActionDelete))
+			apply(p)
+			Expect(read()).To(Equal(user))
+			Expect(p.Ledger.Created).To(BeEmpty())
+		})
+
+		It("deletes the settings file it created once the last group leaves", func() {
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			apply(p)
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Files).To(HaveLen(1))
+			Expect(p.Files[0].Delete).To(BeTrue())
+		})
+
+		It("keeps the user's groups in an event array it did not create", func() {
+			user := "{\n  \"hooks\": {\n    \"Stop\": [\n      {\"hooks\": [{\"type\": \"command\", \"command\": \"mine\"}]} // mine\n    ]\n  }\n}\n"
+			put(settings, user)
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Created).To(BeEmpty())
+			apply(p)
+			p, err = plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			apply(p)
+			Expect(read()).To(Equal(user))
+		})
+
+		It("refuses to adopt an identical group lola does not own, unless forced", func() {
+			put(settings, `{"hooks": {"Stop": [`+groupX+`]}}`)
+			_, err := install("a", false, group(groupX))
+			Expect(conflicts(err)).To(Equal([]plan.Conflict{{Target: tgt, Path: settings, Key: stop, Value: canonX,
+				Reason: "exists and was not written by lola; owning it would remove it on uninstall", Forceable: true}}))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force")))
+
+			p, err := install("a", true, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps[0].Action).To(Equal(plan.ActionAdopt))
+			Expect(p.Steps[0].Forced).To(Equal("unowned"))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(HaveLen(1))
+		})
+
+		It("refuses the same group from two modules, even with --force", func() {
+			_, err := plan.Compute(req(true, change("a", group(groupX)), change("b", group(canonX))))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", `also provided by module "a" in this operation`)))
+			own("a", ledger.Artifact{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop, Member: []byte(canonX), SHA256: sum(canonX)})
+			put(settings, `{"hooks": {"Stop": [`+groupX+`]}}`)
+			_, err = install("b", true, group(groupX))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", `owned by module "a"; uninstall it first`)))
+		})
+
+		It("keeps an owned group the user removed absent, recorded as owned, unless forced", func() {
+			own("a", ledger.Artifact{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop, Member: []byte(canonX), SHA256: sum(canonX)})
+			edited := `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "x --safe"}]}]}}`
+			put(settings, edited)
+			p, err := install("a", false, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionAbsent, Module: "a", Target: tgt, Kind: "runtime-hook", Path: settings,
+				Key: stop, Member: []byte(canonX), Note: "missing; --force restores it"}}))
+			Expect(p.Files).To(BeEmpty())
+			Expect(p.Ledger.Modules["a"].Artifacts).To(Equal([]ledger.Artifact{{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop,
+				Member: []byte(canonX), SHA256: sum(canonX)}}))
+
+			p, err = install("a", true, group(groupX))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionCreate), "Forced": Equal("missing"),
+				"Note": Equal("was missing; rewritten")})))
+			Expect(p.Files).To(HaveLen(1))
+		})
+
+		It("forgets a group the user edited, leaving the edited one alone", func() {
+			own("a", ledger.Artifact{Target: tgt, Kind: "runtime-hook", Path: settings, Key: stop, Member: []byte(canonX), SHA256: sum(canonX)})
+			edited := `{"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "x --safe"}]}]}}`
+			put(settings, edited)
+			p, err := plan.Compute(req(false, removal("a")))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(Equal([]plan.Step{{Action: plan.ActionForget, Module: "a", Target: tgt, Kind: "runtime-hook", Path: settings,
+				Key: stop, Member: []byte(canonX), Note: "already gone"}}))
+			Expect(p.Files).To(BeEmpty())
+		})
+
+		DescribeTable("refuses a settings file it cannot edit, with coaching",
+			func(content, msg string) {
+				put(settings, content)
+				_, err := install("a", true, group(groupX))
+				Expect(err).To(MatchError(ContainSubstring(msg)))
+				Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("fix it by hand")))
+			},
+			Entry("malformed JSON", `{"hooks": `, settings+": "),
+			Entry("hooks that is not an object", `{"hooks": "off"}`, `"/hooks" is not an object`),
+			Entry("an event that is not an array", `{"hooks": {"Stop": {}}}`, `"/hooks/Stop" is not an array`),
+		)
+
+		It("refuses a member that is not JSON", func() {
+			_, err := install("a", false, group(`{"hooks":`))
+			Expect(err).To(MatchError(ContainSubstring(settings + " " + stop + ": member:")))
 		})
 	})
 
@@ -440,6 +574,101 @@ var _ = Describe("Compute", func() {
 		Expect(p.Steps[0].Via).To(Equal(filepath.Join(outside, "x.md")))
 		Expect(p.Ledger.Modules["a"].Artifacts[0].Path).To(Equal(".claude/commands/x.md"))
 		Expect(p.Ledger.Modules["a"].Artifacts[0].Resolved).To(Equal(filepath.Join(outside, "x.md")))
+	})
+
+	Describe("replaceable paths", func() {
+		replace := func(force bool, rs []plan.Replaceable, intents ...plan.Intent) (*plan.Plan, error) {
+			r := req(force, change("a", intents...))
+			r.Replace = rs
+			return plan.Compute(r)
+		}
+		file := func(path string) plan.Replaceable { return plan.Replaceable{Target: tgt, Path: path} }
+		dir := func(path string) plan.Replaceable { return plan.Replaceable{Target: tgt, Path: path, Dir: true} }
+
+		It("overwrites an unowned file listed as replaceable instead of refusing it, and marks the step", func() {
+			put(".claude/commands/x.md", "theirs")
+			p, err := replace(false, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionUpdate), "Path": Equal(".claude/commands/x.md"),
+				"Replaced": BeTrue(), "Forced": BeEmpty()})))
+			Expect(p.Files).To(HaveLen(1))
+			Expect(string(p.Files[0].Data)).To(Equal("ours"))
+			Expect(p.Ledger.Modules["a"].Artifacts).To(HaveLen(1))
+		})
+
+		It("marks the step replaced when it adopts an identical unowned file listed as replaceable", func() {
+			put(".claude/commands/x.md", "ours")
+			put(".claude/commands/y.md", "ours")
+			p, err := replace(false, []plan.Replaceable{file(".claude/commands/x.md")},
+				cmd(".claude/commands/x.md", "ours"), cmd(".claude/commands/y.md", "ours"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(ConsistOf(
+				MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionAdopt), "Path": Equal(".claude/commands/x.md"), "Replaced": BeTrue()}),
+				MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionAdopt), "Path": Equal(".claude/commands/y.md"), "Replaced": BeFalse()}),
+			))
+		})
+
+		It("overwrites every unowned file under a replaceable directory", func() {
+			put(".claude/skills/r/SKILL.md", "theirs")
+			put(".claude/skills/r/ref/a.md", "theirs")
+			p, err := replace(false, []plan.Replaceable{dir(".claude/skills/r")},
+				cmd(".claude/skills/r/SKILL.md", "ours"), cmd(".claude/skills/r/ref/a.md", "ours"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Steps).To(HaveEach(HaveField("Replaced", BeTrue())))
+		})
+
+		It("replaces an MCP entry only at the listed pointer", func() {
+			put(".mcp.json", `{"mcpServers":{"gh":{"command":"old"},"db":{"command":"old"}}}`)
+			_, err := replace(false, []plan.Replaceable{{Target: tgt, Path: ".mcp.json", Key: "/mcpServers/gh"}},
+				mcp("gh", `{"command":"new"}`))
+			Expect(err).NotTo(HaveOccurred())
+			_, err = replace(false, []plan.Replaceable{{Target: tgt, Path: ".mcp.json", Key: "/mcpServers/gh"}},
+				mcp("db", `{"command":"new"}`))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Key", "/mcpServers/db")))
+		})
+
+		It("still refuses unowned paths that are not listed, naming them with the --force hint", func() {
+			put(".claude/commands/x.md", "theirs")
+			put(".claude/commands/y.md", "theirs")
+			_, err := replace(false, []plan.Replaceable{file(".claude/commands/x.md"), dir(".claude/commands/x")},
+				cmd(".claude/commands/x.md", "ours"), cmd(".claude/commands/y.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Path", ".claude/commands/y.md")))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("--force")))
+		})
+
+		It("never replaces a path a lola module owns, even when it is listed", func() {
+			put(".claude/commands/x.md", "edited")
+			own("other", fileArt(".claude/commands/x.md", "X"))
+			_, err := replace(true, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", ContainSubstring(`owned by module "other"`))))
+
+			own("a", fileArt(".claude/commands/x.md", "X"))
+			delete(led.Modules, "other")
+			_, err = replace(false, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Reason", "hand-edited since lola wrote it")), "its own hand-edited file stays a conflict")
+		})
+
+		It("never replaces through a symbolic link or a symlinked parent", func() {
+			outside, err := filepath.EvalSymlinks(GinkgoT().TempDir())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(filepath.Join(outside, "x.md"), []byte("theirs"), 0o644)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(root, ".claude", "commands"), 0o755)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(outside, "x.md"), filepath.Join(root, ".claude", "commands", "x.md"))).To(Succeed())
+			_, err = replace(false, []plan.Replaceable{file(".claude/commands/x.md")}, cmd(".claude/commands/x.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Path", ".claude/commands/x.md")))
+
+			Expect(os.Symlink(outside, filepath.Join(root, ".claude", "skills"))).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(outside, "SKILL.md"), []byte("theirs"), 0o644)).To(Succeed())
+			_, err = replace(false, []plan.Replaceable{dir(".claude/skills")}, cmd(".claude/skills/SKILL.md", "ours"))
+			Expect(conflicts(err)).To(ConsistOf(HaveField("Path", ".claude/skills/SKILL.md")))
+			Expect(os.ReadFile(filepath.Join(outside, "SKILL.md"))).To(Equal([]byte("theirs")))
+		})
+
+		It("does not match a sibling that shares the directory's name as a prefix", func() {
+			put(".claude/skills/rx/SKILL.md", "theirs")
+			_, err := replace(false, []plan.Replaceable{dir(".claude/skills/r")}, cmd(".claude/skills/rx/SKILL.md", "ours"))
+			Expect(conflicts(err)).To(HaveLen(1))
+		})
 	})
 
 	It("Observe reports current hashes and absence", func() {

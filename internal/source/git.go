@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -44,11 +46,12 @@ func gitEnv(environ []string) []string {
 	return append(out, "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0")
 }
 
-// gitCommand builds a git invocation over an UNTRUSTED repository, in dir when dir is set. Its
-// config is attacker-controlled, so everything that makes git run a configured program
-// (hooks, fsmonitor, the ext transport, LFS filters) or write to the repository is switched
-// off on the command line, which outranks repository config.
-func gitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
+// GitCommand builds a git invocation over an UNTRUSTED repository, in dir when dir is set: a
+// source, or the user's project, whose repository a clone may have configured. Its config is
+// attacker-controlled, so everything that makes git run a configured program (hooks,
+// fsmonitor, the ext transport, LFS filters) or write to the repository is switched off on the
+// command line, which outranks repository config.
+func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	full := []string{"-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
 		"-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false", "-c", "core.untrackedCache=false"}
 	if dir != "" {
@@ -58,6 +61,22 @@ func gitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	cmd.Env = gitEnv(os.Environ())
 	cmd.WaitDelay = 5 * time.Second // do not wait forever on children that keep the output open
 	return cmd
+}
+
+// InWorkTree reports whether dir or a parent holds .git, the way git finds a repository.
+func InWorkTree(dir string) (bool, error) {
+	for d := dir; ; d = filepath.Dir(d) {
+		_, err := os.Lstat(filepath.Join(d, ".git"))
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return false, err
+		}
+		if filepath.Dir(d) == d {
+			return false, nil
+		}
+	}
 }
 
 // headWriter keeps the first limit bytes written to it and discards the rest, while still
@@ -80,7 +99,7 @@ func (w *headWriter) String() string { return w.buf.String() }
 // runGit runs a git command and returns its stdout. A failure carries git's stderr, made
 // safe to print by untrusted.Text, and coaching for the usual causes.
 func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
-	cmd := gitCommand(ctx, dir, args...)
+	cmd := GitCommand(ctx, dir, args...)
 	stderr := &headWriter{limit: maxStderr + 1}
 	cmd.Stderr = stderr
 	out, err := cmd.Output()
@@ -177,7 +196,7 @@ func checkout(ctx context.Context, spec Spec, scratch string) error {
 		_, err := runGit(ctx, scratch, "checkout", "-q", "--detach", "FETCH_HEAD")
 		return err
 	}
-	hints := []string{"list them: git ls-remote --heads --tags " + shown}
+	hints := []string{"list them: " + errs.ShellJoin([]string{"git", "ls-remote", "--heads", "--tags", shown})}
 	if shortSHARE.MatchString(ref) {
 		hints = append([]string{"use the full 40-character commit SHA"}, hints...)
 	}

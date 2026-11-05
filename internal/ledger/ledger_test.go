@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -69,6 +70,106 @@ var _ = Describe("ledger", func() {
 			{Target: "gemini-cli", Path: ".gemini/settings.json"},
 			{Target: "gemini-cli", Path: ".gemini/settings.json", Key: "/context/includeDirectories"},
 		}))
+	})
+
+	It("loads a ledger written before JSON-value members, and writes it back byte for byte", func() {
+		written := `{
+  "version": 1,
+  "modules": {
+    "a": {
+      "source": "/s/a",
+      "digest": "sha256:1",
+      "artifacts": [
+        {
+          "target": "gemini-cli",
+          "kind": "rule",
+          "path": ".gemini/settings.json",
+          "key": "/context/includeDirectories",
+          "value": ".gemini/lola/a",
+          "sha256": "9f"
+        }
+      ]
+    }
+  },
+  "created": [
+    {
+      "target": "gemini-cli",
+      "path": ".gemini/settings.json",
+      "key": "/context/includeDirectories"
+    }
+  ]
+}
+`
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(written), 0o600)).To(Succeed())
+		l, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		a := l.Modules["a"].Artifacts[0]
+		Expect(a.Value).To(Equal(".gemini/lola/a"))
+		Expect(a.Member).To(BeNil())
+		Expect(string(a.Element())).To(Equal(`".gemini/lola/a"`))
+		Expect(l.Save(path)).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte(written)))
+	})
+
+	It("records a JSON-value member as canonical JSON and round-trips it", func() {
+		group := ledger.Artifact{Target: "claude-code", Kind: "runtime-hook", Path: ".claude/settings.local.json", Key: "/hooks/Stop",
+			Member: []byte(`{"hooks":[{"command":"x","type":"command"}]}`), SHA256: "1"}
+		other := group
+		other.Member = []byte(`{"hooks":[{"command":"y","type":"command"}]}`)
+		Expect(group.ID()).NotTo(Equal(other.ID()))
+		Expect(string(group.Element())).To(Equal(`{"hooks":[{"command":"x","type":"command"}]}`))
+		Expect(ledger.Artifact{Path: "x"}.Element()).To(BeNil())
+		l := ledger.New()
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "d", Artifacts: []ledger.Artifact{group, other}}
+		Expect(l.Save(path)).To(Succeed())
+		Expect(os.ReadFile(path)).To(ContainSubstring(`"member": {`))
+		back, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(back.Modules["a"].Artifacts).To(ConsistOf(group, other))
+	})
+
+	It("loads a member another tool reformatted, such as a pretty-printer writing && unescaped, and saves it back canonical", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		body := "{\n    \"version\": 1,\n    \"modules\": {\"a\": {\"source\": \"s\", \"digest\": \"d\", \"artifacts\": [\n" +
+			"        {\"target\": \"claude-code\", \"kind\": \"runtime-hook\", \"path\": \".claude/settings.local.json\", \"key\": \"/hooks/Stop\", \"sha256\": \"1\",\n" +
+			"         \"member\": {\"matcher\": \"Bash\",\n            \"hooks\": [ {\"type\": \"command\", \"command\": \"a && b > c\"} ]}}]}},\n    \"created\": []\n}\n"
+		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+		l, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		canonical := `{"hooks":[{"command":"a \u0026\u0026 b \u003e c","type":"command"}],"matcher":"Bash"}`
+		Expect(string(l.Modules["a"].Artifacts[0].Member)).To(Equal(canonical))
+		Expect(l.Save(path)).To(Succeed())
+		back, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(back.Modules["a"].Artifacts[0].Member)).To(Equal(canonical))
+	})
+
+	DescribeTable("refuses a member it could not have written",
+		func(artifact, want string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			body := `{"version":1,"modules":{"a":{"source":"s","digest":"d","artifacts":[` + artifact + `]}},"created":[]}`
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(path + `: module "a" has an artifact (".claude/settings.local.json") ` + want))
+		},
+		Entry("a string", `{"target":"t","kind":"k","path":".claude/settings.local.json","key":"/hooks/Stop","member":"x"}`,
+			"whose member is not a JSON object, array, number or boolean"),
+		Entry("null", `{"target":"t","kind":"k","path":".claude/settings.local.json","key":"/hooks/Stop","member":null}`,
+			"whose member is not a JSON object, array, number or boolean"),
+		Entry("without a key", `{"target":"t","kind":"k","path":".claude/settings.local.json","member":{"a":1}}`,
+			"with a member but no key, or with a value too"),
+		Entry("with a value too", `{"target":"t","kind":"k","path":".claude/settings.local.json","key":"/k","value":"v","member":{"a":1}}`,
+			"with a member but no key, or with a value too"),
+	)
+
+	It("coaches a refused member: restore lock.json, or reinstall", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		body := `{"version":1,"modules":{"a":{"source":"s","digest":"d","artifacts":[` +
+			`{"target":"t","kind":"k","path":"p","key":"/hooks/Stop","member":"x"}]}},"created":[]}`
+		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+		_, err := ledger.Load(path)
+		Expect(errs.Hints(err)).To(ConsistOf(And(ContainSubstring("restore"), ContainSubstring("lock.json"), ContainSubstring("reinstall"))))
 	})
 
 	It("refuses a newer version and unknown fields", func() {

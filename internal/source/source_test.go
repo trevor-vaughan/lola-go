@@ -86,6 +86,13 @@ var _ = Describe("Parse refusals", func() {
 		Expect(errs.Hints(err)).To(ContainElement("for a path, write ./-rf"))
 	})
 
+	It("quotes the path it suggests for an argument that starts with '-' for the shell", func() {
+		cwd := testenv.Isolate()
+		_, _, err := source.Parse("-my skills", cwd)
+		Expect(err).To(MatchError(ContainSubstring("starts with '-'")))
+		Expect(errs.Hints(err)).To(ContainElement("for a path, write " + errs.ShellJoin([]string{"./-my skills"})))
+	})
+
 	It("refuses a git remote helper, but not an IPv6 URL", func() {
 		cwd := testenv.Isolate()
 		_, _, err := source.Parse("fd::0", cwd)

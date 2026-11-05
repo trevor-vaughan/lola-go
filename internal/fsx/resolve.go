@@ -36,6 +36,30 @@ func Resolve(root, logical string) (Resolved, error) {
 	return Resolved{Logical: filepath.ToSlash(logical), Abs: abs, Outside: outside}, nil
 }
 
+// Linked reports whether a component of the root-relative path logical, from the first one
+// below root through the last, is a symbolic link. Components that do not exist end the walk;
+// links at or above root do not count.
+func Linked(root, logical string) (bool, error) {
+	if !filepath.IsLocal(logical) {
+		return false, fmt.Errorf("path %q must be relative and stay inside the root", logical)
+	}
+	p := filepath.Clean(root)
+	for _, c := range strings.Split(filepath.Clean(logical), string(filepath.Separator)) {
+		p = filepath.Join(p, c)
+		fi, err := os.Lstat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 const maxLinkHops = 40
 
 func resolveAbs(abs string, hops int) (string, error) {

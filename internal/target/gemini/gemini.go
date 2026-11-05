@@ -202,13 +202,14 @@ func (g Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 			member = filepath.Join(ctx.Root, dir)
 		}
 		out = append(out,
-			plan.Intent{Target: id, Kind: "rule", Op: plan.OpWriteFile, Path: dir + "/GEMINI.md", Data: []byte(strings.Join(bodies, "\n")), Mode: 0o644},
-			plan.Intent{Target: id, Kind: "rule", Op: plan.OpAddJSONMember, Path: ".gemini/settings.json", Pointer: "/context/includeDirectories", Member: member})
+			plan.Intent{Target: id, Kind: "rule", Op: plan.OpWriteFile, Path: dir + "/GEMINI.md", Data: []byte(module.Doc{Body: strings.Join(bodies, "\n")}.Render()), Mode: 0o644},
+			plan.Intent{Target: id, Kind: "rule", Op: plan.OpAddJSONMember, Path: ".gemini/settings.json", Pointer: "/context/includeDirectories", Member: plan.StringMember(member)})
 	}
-	// Runtime hooks (Plan 5b design §7) are not rendered yet: the kind is missing from caps.
+	// Runtime hooks (Plan 5b design §7.1) are never rendered here: the kind is missing from caps,
+	// since mapping Claude Code's events and tool names would be a cross-target value conversion.
 	for _, h := range m.RuntimeHooks {
 		if module.Supports(h.Targets, id) {
-			_, f, _ := target.Admit(id, caps, ctx, "runtime-hook", h.Name(), module.Doc{})
+			_, f, _ := target.Admit(id, caps, ctx, target.KindRuntimeHook, h.Name(), module.Doc{})
 			finds = append(finds, f...)
 		}
 	}

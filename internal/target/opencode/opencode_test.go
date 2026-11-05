@@ -312,7 +312,7 @@ var _ = Describe("opencode", func() {
 		Expect(ins).To(Equal([]plan.Intent{
 			{Target: "opencode", Kind: "rule", Op: plan.OpWriteFile, Path: ".opencode/lola/example/a.md", Data: []byte("Keep ${PLUGIN_ROOT}.\n"), Mode: 0o644},
 			{Target: "opencode", Kind: "rule", Op: plan.OpWriteFile, Path: ".opencode/lola/example/b.md", Data: []byte("Be brief.\n"), Mode: 0o644},
-			{Target: "opencode", Kind: "rule", Op: plan.OpAddJSONMember, Path: "opencode.json", Pointer: "/instructions", Member: ".opencode/lola/example/*.md"},
+			{Target: "opencode", Kind: "rule", Op: plan.OpAddJSONMember, Path: "opencode.json", Pointer: "/instructions", Member: plan.StringMember(".opencode/lola/example/*.md")},
 		}))
 
 		Expect(os.WriteFile(filepath.Join(ctx.Root, "opencode.jsonc"), []byte("{}"), 0o644)).To(Succeed())
@@ -322,7 +322,7 @@ var _ = Describe("opencode", func() {
 		ctx.Scope = target.User
 		ins, _ = plan1(m)
 		Expect(ins[0].Path).To(Equal("lola/example/a.md"))
-		Expect(ins[2].Member).To(Equal(filepath.Join(ctx.Root, "lola/example/*.md")), "OpenCode globs only the last component of an absolute entry")
+		Expect(ins[2].Member).To(Equal(plan.StringMember(filepath.Join(ctx.Root, "lola/example/*.md"))), "OpenCode globs only the last component of an absolute entry")
 
 		ctx.SkipRules = true
 		ins, _ = plan1(m)

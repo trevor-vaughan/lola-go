@@ -1,0 +1,32 @@
+version: '3'
+
+# Container-driven integration suites. They need podman (or docker), venom and, the first time,
+# the network to build their images; they skip with a message when no container runtime is on
+# PATH. They are not part of `task check`.
+
+vars:
+  # OUT_DIR, not TEST_DIR: the task exports TEST_DIR, which would be re-templated.
+  OUT_DIR: '{{.ROOT_DIR}}/{{.TEST_DIR | default ".test-output"}}'
+  MODE: '{{.MODE | default "human"}}'
+
+env:
+  GIT_CONFIG_GLOBAL: /dev/null
+  GIT_CONFIG_SYSTEM: /dev/null
+  GIT_AUTHOR_NAME: lola-test
+  GIT_AUTHOR_EMAIL: lola-test@invalid
+  GIT_COMMITTER_NAME: lola-test
+  GIT_COMMITTER_EMAIL: lola-test@invalid
+
+tasks:
+  default:
+    silent: true
+    cmd: |
+      task --list 2>/dev/null
+
+  migrate:
+    desc: Run lola migrate against the real Python lola in a container (MODE=human|llm); artifacts in .test-output/e2e-migrate/
+    dir: '{{.ROOT_DIR}}'
+    env:
+      MODE: '{{.MODE}}'
+      TEST_DIR: '{{.OUT_DIR}}'
+    cmd: bash "{{.ROOT_DIR}}/scripts/e2e-migrate.sh"

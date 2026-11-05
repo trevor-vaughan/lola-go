@@ -84,14 +84,17 @@ func copyTree(ctx context.Context, root, stagingParent string, mode listing) (st
 const pathHint = "--path is relative to the source's root: the folder itself, or the top of the git repository"
 
 // folderRoot applies the folder and git module-root rule (design §3.1) to the tree at base:
-// --path, else module/ when it is a directory, else base itself. The fallback name is
-// baseName unless --path picks the root. Errors show the --path as given, never base, which
-// for git is lola's scratch directory.
+// --path, else module/ when it is a directory, else base itself. A --path of "." picks base
+// itself explicitly, skipping module/. The fallback name is baseName unless --path picks a
+// directory below base. Errors show the --path as given, never base, which for git is lola's
+// scratch directory.
 func folderRoot(base, subpath, baseName string) (string, string, error) {
 	if subpath == "" {
 		if fi, err := os.Stat(filepath.Join(base, "module")); err == nil && fi.IsDir() {
 			return checkedRoot(base, "module", baseName, "module/")
 		}
+	}
+	if subpath == "" || filepath.Clean(subpath) == "." {
 		if fi, err := os.Stat(base); err != nil {
 			return "", "", err
 		} else if !fi.IsDir() {
@@ -169,7 +172,7 @@ func listFiles(ctx context.Context, root string, mode listing) ([]string, error)
 	case listGit:
 		return gitFiles(ctx, root, "--cached")
 	case listDetect:
-		out, err := gitCommand(ctx, root, "rev-parse", "--is-inside-work-tree").Output()
+		out, err := GitCommand(ctx, root, "rev-parse", "--is-inside-work-tree").Output()
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -203,7 +206,7 @@ func listFiles(ctx context.Context, root string, mode listing) ([]string, error)
 // gitFiles lists the files under root that git ls-files selects with which.
 func gitFiles(ctx context.Context, root string, which ...string) ([]string, error) {
 	args := append(append([]string{"ls-files", "-z"}, which...), "--", ".")
-	cmd := gitCommand(ctx, root, args...)
+	cmd := GitCommand(ctx, root, args...)
 	stderr := &headWriter{limit: maxStderr + 1}
 	cmd.Stderr = stderr
 	out, err := cmd.Output()

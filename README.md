@@ -7,7 +7,8 @@ uninstall cleanly, without touching anything it did not write.
 
 This is a Go rewrite of [LobsterTrap/lola](https://github.com/LobsterTrap/lola). It is
 deliberately not command-compatible with the Python CLI; [docs/decisions.md](docs/decisions.md)
-explains why.
+explains why. Coming from the Python lola? `lola migrate` installs what it installed and
+moves its files to a trash you can restore from ([docs/usage.md](docs/usage.md#coming-from-the-python-lola)).
 
 ## What works today
 
@@ -23,9 +24,9 @@ explains why.
   you pass `--force`; an existing file identical to what lola would write is adopted, not
   rewritten. JSON files keep their comments; a file lola cannot parse is never rewritten.
   lola never edits your `CLAUDE.md`, `GEMINI.md` or `AGENTS.md`, and a module's install hooks
-  run only with your consent.
+  run, and its Claude Code runtime hooks are installed, only with your consent.
 
-Claude Code runtime hooks, marketplaces, profiles and templating are planned: see
+Marketplaces, profiles and templating are planned: see
 [docs/roadmap.md](docs/roadmap.md).
 
 ## Install
@@ -45,10 +46,10 @@ task build          # writes bin/lola
 ```sh
 lola init my-module                         # plugin.json, one skill, one command (Agent Plugins)
 mkdir my-project && cd my-project
-lola install ../my-module -t claude-code    # renders into .claude/, records .lola/project.yml
+lola install ../my-module --scope project -t claude-code   # renders into .claude/, records .lola/project.yml
 lola list                                   # my-module  claude-code  ✓ ok
 # edit ../my-module, then pick up the change:
-lola install ../my-module
+lola install ../my-module                   # no --scope: a terminal asks (nothing preselected); a script uses the .lola/ found
 lola uninstall my-module -y                 # removes exactly what lola wrote
 ```
 

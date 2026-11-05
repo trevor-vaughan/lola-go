@@ -134,6 +134,13 @@ var _ = Describe("claude-code", func() {
 		Expect(ins).To(Equal(want))
 	})
 
+	It("writes an empty frontmatter block before a rule body that opens like frontmatter, so paths: there stays body text", func() {
+		m := &module.Module{Name: "example", Rules: []module.Rule{{Name: "style", Body: "---\npaths: [src/**]\n---\nB\n"}}}
+		ins, _, err := c.Plan(m, ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(ins[0].Data)).To(Equal("---\n---\n---\npaths: [src/**]\n---\nB\n"))
+	})
+
 	It("skips artifacts restricted to other targets", func() {
 		m := &module.Module{Name: "example", Commands: []module.Command{{Name: "x", Doc: doc("x"), Targets: []string{"opencode"}}}}
 		ins, _, err := c.Plan(m, ctx)

@@ -36,6 +36,10 @@ type PlanContext struct {
 	SkipRules  bool   // the manifest entry says rules: false (§5.6)
 	Force      bool   // render forceable skips (Skipped)
 	Version    string // the installed assistant's version, "" when unknown; adds findings only (Bounds)
+	// LocalSettingsExposed says, at project scope, why git could commit the project's
+	// .claude/settings.local.json: tracked, not ignored, or not checkable. "" when git ignores
+	// it or the project is not in a git work tree. The engine runs git; targets stay pure.
+	LocalSettingsExposed string
 }
 
 // Target is one assistant lola renders into.

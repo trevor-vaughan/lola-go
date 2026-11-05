@@ -17,6 +17,7 @@ linters:
             - github.com/trevor-vaughan/lola-go/internal/module
             - github.com/trevor-vaughan/lola-go/internal/paths
             - github.com/trevor-vaughan/lola-go/internal/plan
+            - github.com/trevor-vaughan/lola-go/internal/untrusted # sanitizing author text in findings
             - go.yaml.in/yaml/v3
             - github.com/BurntSushi/toml
             - golang.org/x/mod/semver

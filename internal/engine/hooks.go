@@ -127,7 +127,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 			}
 			if slices.ContainsFunc(scripts, func(s HookScript) bool { return s.Event == PreInstall }) {
 				return nil, errs.WithHints(fmt.Errorf("%s has a pre-install hook, and lola runs hooks only with your consent", c.name),
-					"review it: lola cache info "+c.name, "then rerun with --allow-hooks, or on a terminal answer the prompt")
+					"review it: "+errs.ShellJoin([]string{"lola", "cache", "info", c.name}), "then rerun with --allow-hooks, or on a terminal answer the prompt")
 			}
 			status = HookDeclined
 			res.Notices = append(res.Notices, Notice{Level: LevelWarn,

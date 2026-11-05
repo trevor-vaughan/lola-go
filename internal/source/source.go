@@ -310,7 +310,7 @@ func validateGitLocation(loc string) error {
 func checkLocation(loc string) error {
 	if strings.HasPrefix(loc, "-") {
 		return errs.WithHints(fmt.Errorf("source %q starts with '-', which would be read as an option", untrusted.Text(loc, untrusted.MaxName)),
-			"for a path, write ./"+untrusted.Text(loc, untrusted.MaxName))
+			"for a path, write "+errs.ShellJoin([]string{"./" + untrusted.Text(loc, untrusted.MaxName)}))
 	}
 	if remoteHelperRE.MatchString(loc) {
 		return errs.WithHints(fmt.Errorf("source %q names a git remote helper (<transport>::<address>), which lola never runs",

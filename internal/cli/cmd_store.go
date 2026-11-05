@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // completeStored offers stored module names.
@@ -89,7 +90,7 @@ type headView struct {
 
 func newModuleView(v store.Version, o store.Origin) moduleView {
 	m := v.Module
-	mv := moduleView{Name: m.Name, Description: m.Description, Version: m.Version, Digest: v.Meta.Digest, Format: v.Meta.Format,
+	mv := moduleView{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName), Version: untrusted.Text(m.Version, untrusted.MaxName), Digest: v.Meta.Digest, Format: v.Meta.Format,
 		Source: o.Source, Type: o.Type, Path: o.Path, Heads: []headView{}, Skills: []string{}, Commands: []string{}, Agents: []string{},
 		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}}
 	for _, h := range o.Heads {
@@ -184,15 +185,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			spec, ok, err := source.Parse(args[0], cwd)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return errs.WithHints(fmt.Errorf("%q is not a source", args[0]), "sources are "+source.AcceptedForms)
-			}
-			spec.Ref, spec.Path = ref, path
-			v, err := eng.Fetch(cmd.Context(), spec)
+			v, err := eng.AddSource(cmd.Context(), cwd, args[0], ref, path)
 			if err != nil {
 				return err
 			}
@@ -204,7 +197,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			return a.emit(cmd, func(w io.Writer, s style) {
 				printModuleView(w, s, mv)
 				if !s.plain {
-					fmt.Fprintln(w, s.ok("cached "+mv.Name+"; install it with: lola install "+mv.Name))
+					fmt.Fprintln(w, s.ok("cached "+mv.Name+"; install it with: "+errs.ShellJoin([]string{"lola", "install", mv.Name})))
 				}
 			}, mv)
 		},
@@ -241,7 +234,7 @@ func (a *app) cacheRmCmd() *cobra.Command {
 			}
 			if !yes {
 				fmt.Fprintf(cmd.ErrOrStderr(), "will remove from your cache: %s\n", strings.Join(args, ", "))
-				if err := confirm(cmd, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
+				if err := a.confirm(cmd, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
 					return err
 				}
 			}
@@ -470,7 +463,7 @@ func (a *app) initCmd() *cobra.Command {
 				for _, f := range s.Files {
 					fmt.Fprintln(w, "    "+f)
 				}
-				fmt.Fprintln(w, st.info("try it: lola install "+dir+" -t claude-code"))
+				fmt.Fprintln(w, st.info("try it: "+errs.ShellJoin([]string{"lola", "install", dir, "-t", "claude-code"})))
 			}, s)
 		},
 	}

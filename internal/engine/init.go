@@ -69,8 +69,12 @@ func Init(dir, format string) (Scaffolded, error) {
 	case FormatLola:
 		err = module.ValidateName("module", name)
 	default:
+		var each []string
+		for _, f := range InitFormats() {
+			each = append(each, errs.ShellJoin([]string{"--format", f}))
+		}
 		return Scaffolded{}, errs.WithHints(fmt.Errorf("lola init cannot scaffold format %q", format),
-			"use --format "+strings.Join(InitFormats(), " or --format "))
+			"use "+strings.Join(each, " or "))
 	}
 	if err != nil {
 		hints := []string{"run lola init in a directory whose name is a valid module name"}

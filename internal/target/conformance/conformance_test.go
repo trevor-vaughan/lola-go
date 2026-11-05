@@ -25,7 +25,7 @@ func doc(src string) module.Doc {
 }
 
 // kinds are the artifact kinds of the module IR.
-var kinds = []string{"skill", "command", "agent", "mcp", "rule", "runtime-hook"}
+var kinds = []string{"skill", "command", "agent", "mcp", "rule", target.KindRuntimeHook}
 
 // clean is a module every target should render without losing anything that matters.
 func clean() *module.Module {
@@ -149,6 +149,30 @@ var _ = Describe("every registered target", func() {
 					}
 				})
 
+				It("never lets a body that opens like frontmatter become the frontmatter of a Markdown file it writes", func() {
+					opener := "---\npaths: [src/**]\n---\nB\n"
+					bare := doc("---\n---\n" + opener)
+					m := &module.Module{Name: "example",
+						Skills:   []module.Skill{{Name: "review", Dir: "skills/review", Doc: doc("---\nname: review\ndescription: d\n---\n" + opener)}},
+						Commands: []module.Command{{Name: "ship", Doc: bare}},
+						Agents:   []module.Agent{{Name: "critic", Doc: doc("---\ndescription: d\n---\n" + opener)}},
+						Rules:    []module.Rule{{Name: "style", Body: opener}, {Name: "tone", Body: "Be brief.\n"}}}
+					force := ctx
+					force.Force = true
+					ins, _ := run(m, force)
+					written := 0
+					for _, in := range ins {
+						if in.Op != plan.OpWriteFile || !strings.EqualFold(path.Ext(in.Path), ".md") {
+							continue
+						}
+						written++
+						d, err := module.ParseDoc(in.Data)
+						Expect(err).NotTo(HaveOccurred(), in.Path)
+						Expect(d.Frontmatter).NotTo(HaveKey("paths"), in.Path)
+					}
+					Expect(written).NotTo(BeZero())
+				})
+
 				It("renders the clean module without skipping anything", func() {
 					_, fs := run(clean(), ctx)
 					for _, f := range fs {
@@ -189,12 +213,19 @@ var _ = Describe("every registered target", func() {
 					}
 				})
 
-				It("reports runtime hooks as kind-unsupported and never renders them, even with Force", func() {
+				It("renders runtime hooks as owned array members only if it declares them; otherwise they are kind-unsupported, even with Force", func() {
 					m := &module.Module{Name: "example", RuntimeHooks: wrong().RuntimeHooks}
 					force := ctx
 					force.Force = true
+					_, declared := t.Capabilities().Kinds[target.KindRuntimeHook]
+					Expect(declared).To(Equal(t.ID() == "claude-code"), "only claude-code runs runtime hooks (Plan 5b design §7.1)")
 					for _, c := range []target.PlanContext{ctx, force} {
 						ins, fs := run(m, c)
+						if declared {
+							Expect(fs).To(BeEmpty())
+							Expect(ins).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Kind": Equal(target.KindRuntimeHook), "Op": Equal(plan.OpAddJSONMember)})))
+							continue
+						}
 						Expect(ins).To(BeEmpty())
 						Expect(fs).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Severity": Equal(target.SeveritySkip),
 							"Kind": Equal("runtime-hook"), "Artifact": Equal("hooks/hooks.json"), "Code": Equal("kind-unsupported"), "Forceable": BeFalse()})))
