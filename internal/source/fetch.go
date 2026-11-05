@@ -17,7 +17,7 @@ func Fetch(ctx context.Context, spec Spec, stagingParent string) (Fetched, error
 }
 
 func fetch(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fetched, error) {
-	if err := validate(spec); err != nil {
+	if err := Validate(spec); err != nil {
 		return Fetched{}, err
 	}
 	if spec.Ref != "" && (spec.Kind == KindFolder || spec.Kind == KindArchive) {

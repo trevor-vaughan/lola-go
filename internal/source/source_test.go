@@ -16,7 +16,9 @@ import (
 var _ = Describe("Parse", func() {
 	var cwd string
 	BeforeEach(func() {
-		cwd = testenv.Isolate()
+		var err error
+		cwd, err = filepath.EvalSymlinks(testenv.Isolate()) // locations come back canonical
+		Expect(err).NotTo(HaveOccurred())
 		Expect(os.MkdirAll(filepath.Join(cwd, "mods", "x"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(cwd, "file.txt"), nil, 0o644)).To(Succeed())
 	})
@@ -36,6 +38,100 @@ var _ = Describe("Parse", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())
 		Expect(s.Location).To(Equal(filepath.Join(cwd, "mods/x")))
+	})
+
+	It("canonicalizes a local location through symbolic links, once", func() {
+		Expect(os.Symlink(filepath.Join(cwd, "mods"), filepath.Join(cwd, "link"))).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(cwd, "mods", "a.zip"), nil, 0o644)).To(Succeed())
+		for arg, want := range map[string]string{
+			"link/x":                                        filepath.Join(cwd, "mods", "x"),
+			"link/../mods/x/":                               filepath.Join(cwd, "mods", "x"),
+			filepath.Join(cwd, "link", "a.zip"):             filepath.Join(cwd, "mods", "a.zip"),
+			"file://" + filepath.Join(cwd, "link/x"):        filepath.Join(cwd, "mods", "x"),
+			"file://" + filepath.Join(cwd, "link", "a.zip"): filepath.Join(cwd, "mods", "a.zip"),
+		} {
+			s, ok, err := source.Parse(arg, cwd)
+			Expect(err).NotTo(HaveOccurred(), arg)
+			Expect(ok).To(BeTrue(), arg)
+			Expect(s.Location).To(Equal(want), arg)
+		}
+		Expect(source.SameLocation(source.KindFolder, filepath.Join(cwd, "link", "x"), filepath.Join(cwd, "mods", "x"))).To(BeTrue(),
+			"a location recorded through a link names the same folder")
+		Expect(source.SameLocation(source.KindFolder, filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "x"))).To(BeFalse())
+		Expect(source.SameLocation(source.KindGit, "https://example.com/a.git", "https://example.com/b.git")).To(BeFalse())
+		Expect(source.SameLocation(source.KindFolder, "link/x", filepath.Join(cwd, "mods", "x"))).To(BeFalse(),
+			"a relative recorded location is never resolved against an unknown directory")
+		Expect(source.SameLocation(source.KindFolder, filepath.Join(cwd, "gone", "x"), filepath.Join(cwd, "mods", "x"))).To(BeFalse(),
+			"a recorded location that no longer exists names nothing")
+	})
+
+	It("tells whether a location is inside a directory, after symbolic links", func() {
+		Expect(os.Symlink(filepath.Join(cwd, "mods"), filepath.Join(cwd, "link"))).To(Succeed())
+		Expect(os.Symlink(cwd, filepath.Join(cwd, "mods", "up"))).To(Succeed())
+		for child, want := range map[string]bool{
+			filepath.Join(cwd, "mods", "x"):               true,
+			filepath.Join(cwd, "link", "x"):               true,
+			filepath.Join(cwd, "mods", "x", "new"):        true, // not there yet: resolved through its parent
+			filepath.Join(cwd, "mods"):                    true,
+			filepath.Join(cwd, "mods", "up"):              false, // a link leading out
+			filepath.Join(cwd, "mods", "up", "mods", "x"): true,  // out and back in
+			filepath.Join(cwd, "file.txt"):                false,
+			filepath.Dir(cwd):                             false,
+		} {
+			in, err := source.IsWithin(filepath.Join(cwd, "mods"), child)
+			Expect(err).NotTo(HaveOccurred(), child)
+			Expect(in).To(Equal(want), child)
+		}
+		in, err := source.IsWithin(filepath.Join(cwd, "link"), filepath.Join(cwd, "mods", "x"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(in).To(BeTrue(), "the parent is resolved too")
+		_, err = source.IsWithin(filepath.Join(cwd, "missing"), filepath.Join(cwd, "mods", "x"))
+		Expect(err).To(HaveOccurred(), "a parent that cannot be resolved is an error, never an answer")
+	})
+
+	It("returns an error, never an answer, for a path it cannot place", func() {
+		outside := filepath.Join(filepath.Dir(cwd), "outside-"+filepath.Base(cwd))
+		Expect(os.MkdirAll(outside, 0o755)).To(Succeed())
+		DeferCleanup(func() { Expect(os.RemoveAll(outside)).To(Succeed()) })
+		Expect(os.Symlink(outside, filepath.Join(cwd, "mods", "out"))).To(Succeed())
+
+		_, err := source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "out")+"/../x")
+		Expect(err).To(HaveOccurred(), "a missing path through a link and '..' is not cleaned lexically")
+
+		_, err = source.IsWithin(filepath.Join(cwd, "mods"), "mods/x")
+		Expect(err).To(HaveOccurred(), "a relative child cannot be compared with an absolute parent")
+
+		if os.Geteuid() != 0 {
+			sealed := filepath.Join(cwd, "mods", "sealed")
+			Expect(os.Mkdir(sealed, 0o755)).To(Succeed())
+			Expect(os.Symlink(outside, filepath.Join(sealed, "link"))).To(Succeed())
+			Expect(os.Chmod(sealed, 0o000)).To(Succeed())
+			DeferCleanup(func() { Expect(os.Chmod(sealed, 0o755)).To(Succeed()) })
+			_, err = source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(sealed, "link", "x"))
+			Expect(err).To(HaveOccurred(), "a path that cannot be examined is not inside")
+		}
+	})
+
+	It("accepts an archive link whose target has the same suffix and refuses one that changes it", func() {
+		blobs := filepath.Join(cwd, "blobs")
+		Expect(os.MkdirAll(blobs, 0o755)).To(Succeed())
+		for name, link := range map[string]string{"real.zip": "same.zip", "sha256-ab12": "blob.zip", "other.zip": "mod.tgz"} {
+			Expect(os.WriteFile(filepath.Join(blobs, name), nil, 0o644)).To(Succeed())
+			Expect(os.Symlink(filepath.Join(blobs, name), filepath.Join(cwd, link))).To(Succeed())
+		}
+
+		s, ok, err := source.Parse("same.zip", cwd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(s.Location).To(Equal(filepath.Join(blobs, "real.zip")))
+
+		_, _, err = source.Parse("blob.zip", cwd)
+		Expect(err).To(MatchError(And(ContainSubstring("blob.zip"), ContainSubstring(filepath.Join(blobs, "sha256-ab12")), ContainSubstring("link"))))
+		Expect(errs.Hints(err)).To(ConsistOf("lola install " + filepath.Join(blobs, "sha256-ab12")))
+
+		_, _, err = source.Parse(filepath.Join(cwd, "mod.tgz"), cwd)
+		Expect(err).To(MatchError(And(ContainSubstring("mod.tgz"), ContainSubstring(filepath.Join(blobs, "other.zip")))))
+		Expect(errs.Hints(err)).To(ConsistOf("lola install " + filepath.Join(blobs, "other.zip")))
 	})
 
 	It("says 'not a source' for names and missing paths", func() {

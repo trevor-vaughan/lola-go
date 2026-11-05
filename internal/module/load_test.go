@@ -94,14 +94,14 @@ var _ = Describe("Load", func() {
 		Entry("unknown event", "{pre-uninstall: x.sh}", map[string]string{"x.sh": ""}, `lola.yml: hook "pre-uninstall" is unknown`),
 		Entry("absolute script", "{pre-install: /bin/sh}", map[string]string{}, `pre-install hook "/bin/sh" must be a relative path inside the module`),
 		Entry("script outside the module", "{pre-install: ../x.sh}", map[string]string{}, "must be a relative path inside the module"),
-		Entry("missing script", "{post-install: nope.sh}", map[string]string{}, "post-install hook nope.sh does not exist"),
-		Entry("directory", "{pre-install: scripts}", map[string]string{"scripts/a.sh": ""}, "pre-install hook scripts is not a regular file"),
+		Entry("missing script", "{post-install: nope.sh}", map[string]string{}, "post-install hook \"nope.sh\" does not exist"),
+		Entry("directory", "{pre-install: scripts}", map[string]string{"scripts/a.sh": ""}, "pre-install hook \"scripts\" is not a regular file"),
 	)
 
 	It("refuses a hook script without an execute bit, with the fix", func() {
 		write(root, map[string]string{"lola.yml": "name: example\nhooks: {pre-install: setup.txt}\n", "setup.txt": "", "commands/a.md": "x"})
 		_, err := module.Load(root, "x", targets.IDs())
-		Expect(err).To(MatchError("lola.yml: pre-install hook setup.txt is not executable"))
+		Expect(err).To(MatchError("lola.yml: pre-install hook \"setup.txt\" is not executable"))
 		Expect(errs.Hints(err)).To(Equal([]string{"chmod +x setup.txt"}))
 	})
 

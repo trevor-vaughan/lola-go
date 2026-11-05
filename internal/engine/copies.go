@@ -6,13 +6,17 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 )
 
 // moduleCopy is the cache version a module copy must hold (§6.4), whether the copy is
-// replaced with it, and whether the module's install hooks run in it on targets.
+// replaced with it, and whether the module's install hooks run in it on targets. forced says the
+// copy holds that version already and is replaced only so that its hooks run from the hashed
+// version, never in the kept copy (Plan 6a §9.3 step 10): keepUnhooked keeps it as it was when
+// no hook runs. pending says lock.json marks its post-install hook as not run yet.
 type moduleCopy struct {
 	name     string
 	src      string // cache content dir
@@ -20,6 +24,32 @@ type moduleCopy struct {
 	hooks    []module.Hook
 	targets  []string
 	runHooks bool
+	forced   bool
+	pending  bool
+}
+
+// keepUnhooked keeps every forced copy no hook job of jobs runs in as it is: it was to be
+// replaced only to run them. A dry run keeps the replacement, so its plan shows the hooks it
+// would run.
+func keepUnhooked(copies []moduleCopy, jobs []*hookJob, opts Options) {
+	if opts.DryRun {
+		return
+	}
+	for i := range copies {
+		if copies[i].forced && !slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == copies[i].name }) {
+			copies[i].replace, copies[i].runHooks = false, false
+		}
+	}
+}
+
+// addsTargets reports whether ts names a target installed, the module's ledger entry (nil when
+// it has none), is not installed on: one the module's install hooks never ran for.
+func addsTargets(installed *ledger.Entry, ts []string) bool {
+	var on []string
+	if installed != nil {
+		on = installed.InstalledTargets()
+	}
+	return slices.ContainsFunc(ts, func(t string) bool { return !slices.Contains(on, t) })
 }
 
 // needsCopy reports whether the copy of name under dir must be (re)placed: its version

@@ -2,11 +2,14 @@ package cli
 
 import (
 	"errors"
+
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 )
 
 // Prompter asks the install flow's questions (Plan 5c §3, §4): one method per step and one
-// for the review menu. The huh adapter draws them inline on stderr; specs inject a scripted
-// one. A method returns ErrAborted when the user cancels. Validation a step needs (at least
+// for the review menu; and sync's questions (Plan 6a §3.4): the trust picker and yes/no. The
+// huh adapter draws them inline on stderr; specs inject a scripted one. A method returns
+// ErrAborted when the user cancels. Validation a step needs (at least
 // one scope, an Other directory that exists) runs in the flow after the method returns, which
 // asks again with Problem set.
 type Prompter interface {
@@ -23,6 +26,33 @@ type Prompter interface {
 	// ConfirmEmpty asks "Install <module> with no components?", default No.
 	ConfirmEmpty(module string) (bool, error)
 	Review(ReviewStep) (string, error)
+	// Trust asks sync's trust question (Plan 6a §7.5): trust all the changes, choose the
+	// entries to trust, or cancel, which is ErrAborted (so is choosing nothing).
+	Trust(TrustStep) (engine.TrustAnswer, error)
+	// Confirm asks a yes/no question, default No: sync's removals.
+	Confirm(question string) (bool, error)
+}
+
+// TrustStep is sync's trust question (Plan 6a §7.5). Changes is the number of changes "Trust
+// all" accepts, one per row of the diff, the top-level targets' included. Groups are the entries Choose… offers, one group per kind of change in the
+// diff's order, nothing preselected; with none (the top-level targets are the only change) the
+// question offers only Trust all and Cancel.
+type TrustStep struct {
+	Changes int
+	Groups  []TrustGroup
+}
+
+// TrustGroup is one kind of change in the picker, titled with its count.
+type TrustGroup struct {
+	Title   string
+	Options []TrustOption
+}
+
+// TrustOption is one entry the picker offers: Module as the report names it, Label "<glyph>
+// <module> <one-line summary>", already made safe to print.
+type TrustOption struct {
+	Module string
+	Label  string
 }
 
 // The scope picker's entries (Plan 5c §14), in the order it offers them.
@@ -32,13 +62,16 @@ const (
 	ScopeOther   = "other"
 )
 
-// ScopeStep offers Project (at ProjectRoot), User and Other directory…. Nothing is preselected
-// on the first run; when Change scope asks again, Preselect is the last answer.
+// ScopeStep asks Question, offering Project (at ProjectRoot), User and Other directory…; One
+// says the command takes one of them. Nothing is preselected on the first run; when install's
+// Change scope asks again, Preselect is the last answer.
 type ScopeStep struct {
+	Question    string
 	ProjectRoot string
 	Home        string
 	Preselect   []string
 	Problem     string
+	One         bool
 }
 
 // DirectoryStep asks for the Other directory. Value is the answer offered to edit (the last
@@ -140,3 +173,7 @@ func (noPrompter) Assistants(AssistantStep) ([]string, error)   { return nil, er
 func (noPrompter) Components(ComponentPage) ([]string, error)   { return nil, errNoTerminal }
 func (noPrompter) ConfirmEmpty(string) (bool, error)            { return false, errNoTerminal }
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }
+func (noPrompter) Confirm(string) (bool, error)                 { return false, errNoTerminal }
+func (noPrompter) Trust(TrustStep) (engine.TrustAnswer, error) {
+	return engine.TrustAnswer{}, errNoTerminal
+}

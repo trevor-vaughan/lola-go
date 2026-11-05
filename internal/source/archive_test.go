@@ -225,6 +225,19 @@ var _ = Describe("Fetch of an archive", func() {
 		Expect(md.Mode()).To(Equal(os.FileMode(0o644)))
 	})
 
+	It("records the execute bits the entries declare, relative to the module root", func() {
+		tgz, zipped := filepath.Join(tmp, "pkg-1.tgz"), filepath.Join(tmp, "pkg-1.zip")
+		entries := []entry{{name: "pkg-1/bin/run.sh", body: "#!/bin/sh\n", mode: 0o755, typ: tar.TypeReg},
+			{name: "pkg-1/commands/a.md", body: "A", mode: 0o644, typ: tar.TypeReg}}
+		writeTar(tgz, true, entries...)
+		writeZip(zipped, entries...)
+		for _, archive := range []string{tgz, zipped} {
+			f, err := fetch(archive, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(f.Executables).To(Equal([]string{"bin/run.sh"}), archive)
+		}
+	})
+
 	It("never copies or consults a .git directory inside an archive", func() {
 		pwned := filepath.Join(tmp, "PWNED")
 		Expect(os.WriteFile(filepath.Join(tmp, "bin", "git"), []byte("#!/bin/sh\ntouch "+pwned+"\n"), 0o755)).To(Succeed())

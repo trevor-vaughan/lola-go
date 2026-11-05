@@ -57,7 +57,7 @@ var _ = Describe("Apply", func() {
 		}}
 		p.Files[0].Mode = 0o755
 		ran := false
-		Expect(plan.Apply(p, ledgerPath, func() error { ran = true; return nil })).To(Succeed())
+		Expect(plan.Apply(p, ledgerPath, nil, func() error { ran = true; return nil })).To(Succeed())
 		Expect(os.ReadFile(filepath.Join(root, ".claude/commands/new.md"))).To(Equal([]byte("N")))
 		fi, err := os.Stat(filepath.Join(root, ".claude/commands/new.md"))
 		Expect(err).NotTo(HaveOccurred())
@@ -73,7 +73,7 @@ var _ = Describe("Apply", func() {
 	It("keeps a directory that still has other files", func() {
 		write(".claude/skills/s/a.md", "a")
 		write(".claude/skills/s/b.md", "b")
-		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{del(".claude/skills/s/a.md")}}, ledgerPath, nil)).To(Succeed())
+		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{del(".claude/skills/s/a.md")}}, ledgerPath, nil, nil)).To(Succeed())
 		Expect(filepath.Join(root, ".claude/skills/s/b.md")).To(BeARegularFile())
 	})
 
@@ -90,7 +90,7 @@ var _ = Describe("Apply", func() {
 		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{
 			change("deep/new/dir/x.md", "X"), change("keep.md", "replaced"), del("gone.md"),
 		}}
-		err := plan.Apply(p, ledgerPath, func() error { Fail("after must not run"); return nil })
+		err := plan.Apply(p, ledgerPath, nil, func() error { Fail("after must not run"); return nil })
 		Expect(err).To(HaveOccurred())
 		Expect(os.ReadFile(filepath.Join(root, "keep.md"))).To(Equal([]byte("original")))
 		Expect(os.ReadFile(filepath.Join(root, "gone.md"))).To(Equal([]byte("still here")))
@@ -107,14 +107,14 @@ var _ = Describe("Apply", func() {
 		Expect(os.MkdirAll(filepath.Join(root, "locked"), 0o555)).To(Succeed())
 		DeferCleanup(os.Chmod, filepath.Join(root, "locked"), os.FileMode(0o755))
 		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{change("a.md", "changed"), change("locked/x.md", "X")}}
-		Expect(plan.Apply(p, ledgerPath, nil)).NotTo(Succeed())
+		Expect(plan.Apply(p, ledgerPath, nil, nil)).NotTo(Succeed())
 		Expect(os.ReadFile(filepath.Join(root, "a.md"))).To(Equal([]byte("A")))
 		Expect(leftovers()).To(BeEmpty())
 	})
 
 	It("returns the after error with the changes applied", func() {
 		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{change("x.md", "X")}}
-		err := plan.Apply(p, ledgerPath, func() error { return os.ErrPermission })
+		err := plan.Apply(p, ledgerPath, nil, func() error { return os.ErrPermission })
 		Expect(err).To(MatchError(os.ErrPermission))
 		Expect(filepath.Join(root, "x.md")).To(BeARegularFile())
 	})
@@ -126,7 +126,7 @@ var _ = Describe("Apply", func() {
 		Expect(os.Symlink(filepath.Join(outside, "CLAUDE.md"), filepath.Join(root, "CLAUDE.md"))).To(Succeed())
 		fc := del("CLAUDE.md")
 		fc.Abs, fc.Outside = filepath.Join(outside, "CLAUDE.md"), true
-		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{fc}}, ledgerPath, nil)).To(Succeed())
+		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{fc}}, ledgerPath, nil, nil)).To(Succeed())
 		Expect(filepath.Join(outside, "CLAUDE.md")).NotTo(BeAnExistingFile())
 		_, err = os.Lstat(filepath.Join(root, "CLAUDE.md"))
 		Expect(os.IsNotExist(err)).To(BeTrue())
@@ -151,7 +151,7 @@ var _ = Describe("Apply", func() {
 
 		// Try to apply a plan; it should fail when creating temp file for the new ledger.
 		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{change("x.md", "X")}}
-		err = plan.Apply(p, ledgerPath, nil)
+		err = plan.Apply(p, ledgerPath, nil, nil)
 		Expect(err).To(HaveOccurred())
 
 		// The old ledger should still exist with its original content unchanged.
@@ -163,6 +163,56 @@ var _ = Describe("Apply", func() {
 		Expect(filepath.Join(root, "x.md")).NotTo(BeAnExistingFile())
 
 		// No temp or backup files should be left.
+		Expect(leftovers()).To(BeEmpty())
+	})
+
+	It("writes the manifest after the ledger, with mode 0600, before after runs", func() {
+		manPath := filepath.Join(root, ".lola", "project.yml")
+		write(".lola/project.yml", "version: 1\n")
+		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{change("x.md", "X")}}
+		Expect(plan.Apply(p, ledgerPath, &plan.ManifestWrite{Path: manPath, Data: []byte("version: 1\ntargets: [claude-code]\n")}, func() error {
+			Expect(os.ReadFile(manPath)).To(Equal([]byte("version: 1\ntargets: [claude-code]\n")))
+			return nil
+		})).To(Succeed())
+		fi, err := os.Stat(manPath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
+		Expect(leftovers()).To(BeEmpty())
+	})
+
+	It("creates a missing manifest directory private to the user, as the manifest's other writes do", func() {
+		manPath := filepath.Join(root, "config", "lola", "user.yml")
+		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, &plan.ManifestWrite{Path: manPath, Data: []byte("version: 1\n")}, nil)).To(Succeed())
+		for _, dir := range []string{filepath.Join(root, "config"), filepath.Join(root, "config", "lola")} {
+			fi, err := os.Stat(dir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o700)), dir)
+		}
+	})
+
+	It("restores the files, the ledger and the manifest when the manifest cannot be written", func() {
+		if os.Geteuid() == 0 {
+			Skip("root ignores directory permissions")
+		}
+		write("keep.md", "original")
+		old := ledger.New()
+		old.Modules["old"] = &ledger.Entry{Source: "../old"}
+		Expect(os.MkdirAll(filepath.Dir(ledgerPath), 0o755)).To(Succeed())
+		Expect(old.Save(ledgerPath)).To(Succeed())
+		oldLedger, err := os.ReadFile(ledgerPath)
+		Expect(err).NotTo(HaveOccurred())
+		write("shared/project.yml", "version: 1 # mine\n")
+		Expect(os.Chmod(filepath.Join(root, "shared"), 0o555)).To(Succeed())
+		DeferCleanup(os.Chmod, filepath.Join(root, "shared"), os.FileMode(0o755))
+
+		p := &plan.Plan{Ledger: ledger.New(), Files: []plan.FileChange{change("keep.md", "replaced"), change("new.md", "N")}}
+		err = plan.Apply(p, ledgerPath, &plan.ManifestWrite{Path: filepath.Join(root, "shared", "project.yml"), Data: []byte("version: 1\n")},
+			func() error { Fail("after must not run"); return nil })
+		Expect(err).To(HaveOccurred())
+		Expect(os.ReadFile(filepath.Join(root, "keep.md"))).To(Equal([]byte("original")))
+		Expect(filepath.Join(root, "new.md")).NotTo(BeAnExistingFile())
+		Expect(os.ReadFile(ledgerPath)).To(Equal(oldLedger))
+		Expect(os.ReadFile(filepath.Join(root, "shared", "project.yml"))).To(Equal([]byte("version: 1 # mine\n")))
 		Expect(leftovers()).To(BeEmpty())
 	})
 })

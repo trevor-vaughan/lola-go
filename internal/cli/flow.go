@@ -4,9 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -15,7 +13,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
-	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -23,7 +20,7 @@ import (
 // installFlags are lola install's flags.
 type installFlags struct {
 	targets, skips, onlys, unskips                                            []string
-	ref, path, scope                                                          string
+	ref, path                                                                 string
 	dry, force, strict, rules, noRules, allowHooks, allowRuntime, global, yes bool
 }
 
@@ -48,7 +45,7 @@ type installFlow struct {
 	resolution                  engine.ScopeResolution
 	scopes                      []engine.ScopeChoice // nil until answered
 	prevScopes                  []string             // the scope picker's last answer, preselected when Change scope asks again
-	prevOther                   string               // the last Other directory as typed, offered again
+	picker                      *scopePicker
 	choices                     *engine.Choices
 	pins                        []engine.VersionRef // the versions the module arguments resolved to, kept when Change scope asks again
 	cachePins                   []engine.VersionRef // the versions of the modules picked from the cache, kept the same way
@@ -62,6 +59,7 @@ type installFlow struct {
 	droppedModule, droppedScope int             // component picks dropped because their module or destination was removed; reset after each summary
 	asked                       map[string]bool // modules whose picks came from a component page
 	shown                       map[string]bool // steps whose picker ran
+	warned                      map[string]bool // choice warnings printed, each once per run
 }
 
 // runInstall runs the install flow.
@@ -95,11 +93,38 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	}
 	p := a.prompter(cmd)
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
-		edits: edits, shown: map[string]bool{}, asked: map[string]bool{}}
+		edits: edits, picker: &scopePicker{p: p, eng: eng, cwd: cwd, refuseHome: true}, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
 	if !fl.ask && len(args) == 0 {
-		return g.args(1)(cmd, args)
+		return fl.missingArgument()
 	}
 	return fl.run()
+}
+
+// missingArgument is install's refusal off a terminal without an argument; when the scope the
+// install would use lists modules lock.json does not record, it hints the sync that installs
+// them (Plan 6a §10.2).
+func (fl *installFlow) missingArgument() error {
+	err := fl.guide.args(1)(fl.cmd, fl.args)
+	req, rerr := fl.a.scopeRequest(fl.cwd, false)
+	if rerr != nil {
+		return err
+	}
+	req.Command, req.Both = "install", true
+	res, rerr := fl.eng.ResolveScope(req)
+	if rerr != nil {
+		return err
+	}
+	var hints []string
+	for _, c := range res.Scopes {
+		_, hint, cerr := fl.eng.InstallCoaching(c.Scope)
+		if cerr != nil {
+			return cerr
+		}
+		if hint != "" {
+			hints = append(hints, hint)
+		}
+	}
+	return errs.WithHints(err, hints...)
 }
 
 // prompter returns the injected Prompter, the non-interactive one under --json, or the huh
@@ -118,6 +143,9 @@ func (fl *installFlow) run() error {
 	var spec engine.InstallSpec
 	for {
 		if err := fl.ensureScopes(); err != nil {
+			return err
+		}
+		if err := fl.coach(); err != nil {
 			return err
 		}
 		if err := fl.ensureChoices(); err != nil {
@@ -228,11 +256,12 @@ func (fl *installFlow) ensureScopes() error {
 	if fl.scopes != nil {
 		return nil
 	}
-	dir, err := fl.a.projectDir()
+	req, err := fl.a.scopeRequest(fl.cwd, fl.ask)
 	if err != nil {
 		return err
 	}
-	res, err := fl.eng.ResolveInstallScope(engine.ScopeRequest{Scope: fl.f.scope, User: fl.a.user, ProjectDir: dir, Cwd: fl.cwd, Interactive: fl.ask})
+	req.Command, req.Both = "install", true
+	res, err := fl.eng.ResolveScope(req)
 	if err != nil {
 		return err
 	}
@@ -247,104 +276,41 @@ func (fl *installFlow) ensureScopes() error {
 		fl.scopes = res.Scopes
 		return nil
 	}
-	step := ScopeStep{ProjectRoot: untrusted.Text(res.ProjectRoot, untrusted.MaxName), Home: fl.eng.Paths.Home, Preselect: fl.prevScopes}
-	for {
-		entries, err := fl.p.Scope(step)
+	entries, scopes, err := fl.picker.pick(res, ScopeStep{Question: "Install where?", Preselect: fl.prevScopes})
+	if err != nil {
+		return err
+	}
+	fl.shown[ReviewScope], fl.prevScopes, fl.scopes = true, entries, scopes
+	for key, byMod := range fl.picks {
+		if !slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }) {
+			for _, picked := range byMod {
+				fl.droppedScope += len(picked)
+			}
+			delete(fl.picks, key)
+		}
+	}
+	return nil
+}
+
+// coach prints, once per scope and before the module picker, how many modules the scope's
+// manifest lists that lock.json does not record, and the sync that installs them (Plan 6a
+// §10.2).
+func (fl *installFlow) coach() error {
+	if !fl.ask || len(fl.args) > 0 {
+		return nil
+	}
+	s := fl.a.style(fl.cmd)
+	for _, c := range fl.scopes {
+		notice, _, err := fl.eng.InstallCoaching(c.Scope)
 		if err != nil {
 			return err
 		}
-		if len(entries) == 0 {
-			step.Problem = "pick at least one scope"
-			continue
+		if notice != "" && !fl.warned[notice] {
+			fl.warned[notice] = true
+			fmt.Fprintln(fl.cmd.ErrOrStderr(), s.warn(notice))
 		}
-		home := engine.Scope{Kind: target.Project, ProjectDir: fl.eng.Paths.Home}.Key()
-		user := slices.Contains(entries, ScopeUser)
-		if slices.Contains(entries, ScopeProject) && (engine.Scope{Kind: target.Project, ProjectDir: res.ProjectRoot}).Key() == home {
-			step.Problem = "the project here is your home directory; tick User instead"
-			continue
-		}
-		// Project roots first, then the user scope, as --scope both orders them.
-		var scopes []engine.ScopeChoice
-		if slices.Contains(entries, ScopeProject) {
-			scopes = engine.Scopes([]string{config.ScopeProject}, res.ProjectRoot, engine.SourcePicked)
-		}
-		if slices.Contains(entries, ScopeOther) {
-			other, err := fl.otherDirectory(scopes)
-			if err != nil {
-				return err
-			}
-			scopes = append(scopes, engine.Scopes([]string{config.ScopeProject}, other, engine.SourcePicked)...)
-		}
-		if user {
-			scopes = append(scopes, engine.Scopes([]string{config.ScopeUser}, "", engine.SourcePicked)...)
-		}
-		fl.shown[ReviewScope], fl.prevScopes, fl.scopes = true, entries, scopes
-		for key, byMod := range fl.picks {
-			if !slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }) {
-				for _, picked := range byMod {
-					fl.droppedScope += len(picked)
-				}
-				delete(fl.picks, key)
-			}
-		}
-		return nil
 	}
-}
-
-// otherDirectory asks for the directory of Other directory… (§14) until the answer is an
-// existing directory that is not the project picked above, nor the home directory (the user
-// scope's root, which install refuses as a project), and returns it absolute. A relative
-// answer is taken from the current directory; ~ is not expanded. An answer is offered again to
-// edit only when it is safe to show.
-func (fl *installFlow) otherDirectory(picked []engine.ScopeChoice) (string, error) {
-	home := engine.Scope{Kind: target.Project, ProjectDir: fl.eng.Paths.Home}.Key()
-	offer := func(in string) string {
-		if untrusted.Text(in, len(in)) != in {
-			return ""
-		}
-		return in
-	}
-	step := DirectoryStep{Value: fl.prevOther}
-	for {
-		in, err := fl.p.OtherDirectory(step)
-		if err != nil {
-			return "", err
-		}
-		dir := in
-		if !filepath.IsAbs(dir) {
-			dir = filepath.Join(fl.cwd, dir)
-		}
-		dir = filepath.Clean(dir)
-		key := engine.Scope{Kind: target.Project, ProjectDir: dir}.Key()
-		safe := untrusted.Text(dir, untrusted.MaxName)
-		fi, err := os.Stat(dir)
-		var problem string
-		var pathErr *fs.PathError
-		switch {
-		case in == "":
-			problem = "enter the path of a directory"
-		case errors.Is(err, fs.ErrNotExist):
-			problem = safe + " does not exist"
-			if strings.HasPrefix(in, "~") {
-				problem += " (~ is not expanded)"
-			}
-		case errors.As(err, &pathErr):
-			problem = safe + ": " + pathErr.Err.Error()
-		case err != nil:
-			problem = untrusted.Text(err.Error(), untrusted.MaxName)
-		case !fi.IsDir():
-			problem = safe + " is not a directory"
-		case slices.ContainsFunc(picked, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }):
-			problem = "that is the project above"
-		case key == home:
-			problem = "that is your user scope (~); tick User instead"
-		}
-		if problem == "" {
-			fl.prevOther = offer(in)
-			return dir, nil
-		}
-		step = DirectoryStep{Value: offer(in), Problem: problem}
-	}
+	return nil
 }
 
 // ensureChoices computes what the pickers offer; off a terminal nothing is offered.
@@ -354,7 +320,17 @@ func (fl *installFlow) ensureChoices() error {
 	}
 	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests()})
 	fl.choices = ch
-	return err
+	if err != nil {
+		return err
+	}
+	s := fl.a.style(fl.cmd)
+	for _, w := range ch.Warnings {
+		if !fl.warned[w] {
+			fl.warned[w] = true
+			fmt.Fprintln(fl.cmd.ErrOrStderr(), s.warn(w))
+		}
+	}
+	return nil
 }
 
 // requests are the module arguments and the modules picked from the cache, pinned to the
@@ -476,7 +452,9 @@ func (fl *installFlow) moduleOptions() []ModuleOption {
 
 // ensureAssistants decides each scope's assistants (§4.3): -t, else the targets the scope's
 // manifest fixes; off a terminal, those installed and set up here; on one, the only
-// assistant installed, else the picker (once, for every scope whose targets are open).
+// assistant installed, else the picker (once, for every scope whose targets are open). On a
+// terminal, top-level targets the trust record does not cover fix nothing: the scope is open,
+// and the picker never preselects them (Plan 6a §10.1).
 func (fl *installFlow) ensureAssistants() error {
 	if fl.targets != nil {
 		return nil
@@ -484,7 +462,7 @@ func (fl *installFlow) ensureAssistants() error {
 	delete(fl.shown, ReviewAssistants)
 	answer := map[string][]string{}
 	var open, openLabels []string
-	var installed, here []string
+	var installed, here, untrustedTargets []string
 	for _, c := range fl.scopes {
 		name := c.Scope.Key()
 		if len(fl.f.targets) > 0 {
@@ -495,7 +473,15 @@ func (fl *installFlow) ensureAssistants() error {
 		if err != nil {
 			return err
 		}
-		if len(man.Targets) > 0 {
+		fixed := man.Targets
+		if fl.choices != nil {
+			for _, s := range fl.choices.Scopes {
+				if s.Scope.Key() == name {
+					fixed, untrustedTargets = s.FixedTargets, union(untrustedTargets, s.UntrustedTargets)
+				}
+			}
+		}
+		if len(fixed) > 0 {
 			answer[name] = nil
 			continue
 		}
@@ -535,6 +521,7 @@ func (fl *installFlow) ensureAssistants() error {
 		if len(pre) == 0 {
 			pre = installed
 		}
+		pre = slices.DeleteFunc(slices.Clone(pre), func(id string) bool { return slices.Contains(untrustedTargets, id) })
 		step := AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels}
 		for {
 			picked, err := fl.p.Assistants(step)

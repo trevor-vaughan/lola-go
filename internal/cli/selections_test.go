@@ -43,7 +43,7 @@ var _ = Describe("selections.yaml in list, check and render", func() {
 		Expect(r.out).To(ContainSubstring("→ example: skipped in selections.yaml: command/test"))
 
 		r = lola("ls", "-C", proj)
-		Expect(r.out).To(MatchRegexp(`MODULE\s+TARGET\s+STATUS\s+RULES\s+SKIPPED\s+SOURCE`))
+		Expect(r.out).To(MatchRegexp(`SCOPE\s+MODULE\s+TARGET\s+STATUS\s+RULES\s+SKIPPED\s+SOURCE`))
 		Expect(r.out).To(MatchRegexp(`example\s+claude-code\s+✓ ok\s+on\s+1\s+` + mod))
 		var v struct {
 			Modules []struct {
@@ -52,7 +52,7 @@ var _ = Describe("selections.yaml in list, check and render", func() {
 		}
 		Expect(json.Unmarshal([]byte(lola("ls", "-C", proj, "--json").out), &v)).To(Succeed())
 		Expect(v.Modules[0].Skipped).To(Equal([]string{"command/test"}))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\n"), "--plain rows keep their columns")
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\tproject\n"), "--plain rows keep their columns, the scope last")
 	})
 
 	It("says a dry run would skip, since it saves nothing", func() {

@@ -1,6 +1,8 @@
 package cli_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -56,7 +58,7 @@ var _ = Describe("core commands", func() {
 
 		r = lola("ls", "-C", proj)
 		Expect(r.out).To(MatchRegexp(`example\s+claude-code\s+✓ ok`))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\n"))
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\n"))
 
 		r = lola("update", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
@@ -67,6 +69,66 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("✗ delete claude-code .claude/commands/ship.md"))
 		Expect(r.out).To(ContainSubstring("→ still in your cache: lola cache rm example"))
 		Expect(filepath.Join(proj, ".mcp.json")).NotTo(BeAnExistingFile())
+	})
+
+	It("prints a module's file names, MCP command lines and hook scripts without driving the terminal", func() {
+		writeTree(mod, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n", "skills/x/ref/a\x1b[2Jb.md": "x",
+			"mcps.json": `{"mcpServers":{"lola-gh":{"command":"gh-mcp","args":["\u001b]0;pwned\u0007"]}}}`,
+			"lola.yml":  "name: example\nhooks: {post-install: \"hooks/p\\e[31m.sh\"}\n", "hooks/p\x1b[31m.sh": "#!/bin/sh\nexit 0\n"})
+		r := lola("install", mod, "-C", proj, "-n")
+		Expect(r.out).To(ContainSubstring(".claude/skills/x/ref/a?[2Jb.md"))
+		Expect(r.out).To(ContainSubstring("lola-gh (stdio) runs: gh-mcp \"\\x1b]0;pwned\\a\""))
+		Expect(r.out).To(ContainSubstring("post-install hook hooks/p?[31m.sh"))
+		const control = "[\x00-\x08\x0b-\x1f\x7f]"
+		for _, args := range [][]string{{"install", mod, "-C", proj, "-n"}, {"install", mod, "-C", proj, "--allow-hooks"}} {
+			r := lola(args...)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out+r.err).NotTo(MatchRegexp(control), strings.Join(args, " "))
+		}
+		Expect(os.Remove(filepath.Join(proj, ".claude", "skills", "x", "ref", "a\x1b[2Jb.md"))).To(Succeed())
+		r = lola("render", "-C", proj, "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring(".claude/skills/x/ref/a?[2Jb.md"))
+		Expect(r.out + r.err).NotTo(MatchRegexp(control))
+	})
+
+	It("prints a module's rule and hook file names in warnings and errors without driving the terminal", func() {
+		writeTree(mod, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n", "rules/a\x1b[2Jb.txt": "x"})
+		r := lola("cache", "add", mod)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("rules/a?[2Jb.txt is not a rule"))
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("cache", "show", "example")
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("cache", "show", "example", "--json")
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		Expect(r.out + r.err).NotTo(ContainSubstring(`\u001b`))
+
+		bad := filepath.Join(GinkgoT().TempDir(), "bad")
+		writeTree(bad, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n", "skills/\x1b[2Jy/note": "x",
+			"lola.yml": "name: bad\nhooks: {post-install: \"hooks/p\\e[31m.sh\"}\n", "hooks/p\x1b[31m.sh": "#!/bin/sh\nexit 0\n"})
+		Expect(os.Chmod(filepath.Join(bad, "hooks", "p\x1b[31m.sh"), 0o644)).To(Succeed())
+		r = lola("install", bad, "-C", proj, "-n")
+		Expect(r.code).NotTo(Equal(0))
+		Expect(r.out + r.err).To(ContainSubstring("hooks/p?[31m.sh"))
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("install", bad, "-C", proj, "-n", "--json")
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		Expect(r.out + r.err).NotTo(ContainSubstring(`\u001b`))
+	})
+
+	It("prints a cached module's hook script without driving the terminal", func() {
+		writeTree(mod, map[string]string{"skills/x/SKILL.md": "---\ndescription: x\n---\nx\n",
+			"lola.yml": "name: example\nhooks: {post-install: \"hooks/p\\e[31m.sh\"}\n", "hooks/p\x1b[31m.sh": "#!/bin/sh\nexit 0\n"})
+		Expect(lola("cache", "add", mod).code).To(Equal(0))
+		r := lola("cache", "show", "example")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("post-install: hooks/p?[31m.sh"))
+		Expect(r.out + r.err).NotTo(ContainSubstring("\x1b"))
+		r = lola("cache", "show", "example", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("hooks/p?[31m.sh"))
+		Expect(r.out).NotTo(ContainSubstring(`\u001b`))
 	})
 
 	It("prints what a target skipped with a hint, and --strict fails without writing", func() {
@@ -183,7 +245,7 @@ var _ = Describe("core commands", func() {
 
 		r = lola("install", mod, "-C", proj, "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("→ example pre-install hook scripts/setup.sh (claude-code): would-run"))
+		Expect(r.out).To(ContainSubstring("→ example pre-install hook scripts/setup.sh (claude-code): would run"), "would-run is the JSON value")
 		Expect(r.err).NotTo(ContainSubstring("setting up"))
 
 		r = lola("install", mod, "-C", proj, "--allow-hooks")
@@ -192,7 +254,12 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("✓ example pre-install hook scripts/setup.sh (claude-code): ran"))
 		Expect(r.out).To(ContainSubstring("✓ example post-install hook scripts/done.sh (claude-code): ran"))
 
-		Expect(lola("install", "example", "-C", proj).code).To(Equal(1), "--allow-hooks is consent for one run only")
+		r = lola("install", "example", "-C", proj)
+		Expect(r.code).To(Equal(0), "the same version runs no hook, so it needs no consent: %s", r.err)
+		Expect(r.err).NotTo(ContainSubstring("setting up"))
+
+		writeTree(mod, map[string]string{"commands/more.md": "More\n"})
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(1), "--allow-hooks is consent for one run only")
 	})
 
 	It("installs runtime hooks only with consent: skipped off a terminal, listed by --dry-run, recorded by --allow-runtime-hooks", func() {
@@ -488,6 +555,57 @@ var _ = Describe("core commands", func() {
 		r := lola("del", "example", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(home, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("lists the pin and an available update, keeping --plain's columns", func() {
+		archive := filepath.Join(tmp, "kit.zip")
+		writeZip := func(body string) {
+			var buf bytes.Buffer
+			zw := zip.NewWriter(&buf)
+			for name, content := range map[string]string{"kit/lola.yml": "name: kit\n", "kit/commands/k.md": body} {
+				w, err := zw.Create(name)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = w.Write([]byte(content))
+				Expect(err).NotTo(HaveOccurred())
+			}
+			Expect(zw.Close()).To(Succeed())
+			Expect(os.WriteFile(archive, buf.Bytes(), 0o644)).To(Succeed())
+		}
+		writeZip("v1\n")
+		Expect(lola("install", archive, "-C", proj).code).To(Equal(0))
+		writeZip("v2\n")
+		Expect(lola("cache", "update", "kit").code).To(Equal(0))
+
+		Expect(lola("list", "-C", proj).out).To(MatchRegexp(`kit\s+claude-code\s+✓ ok → update available\s`))
+		Expect(lola("list", "-C", proj, "--plain").out).To(Equal("kit\tclaude-code\tok\ton\t" + archive + "\tproject\n"))
+		var res struct{ Modules []map[string]any }
+		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
+		Expect(res.Modules).To(HaveLen(1))
+		Expect(res.Modules[0]).To(HaveKeyWithValue("update_available", true))
+		Expect(res.Modules[0]).To(HaveKeyWithValue("pin", res.Modules[0]["digest"]))
+		Expect(lola("list", "--help").out).To(And(ContainSubstring("stale (project.yml pins another version"),
+			ContainSubstring("not installed (listed in project.yml: run lola sync)"),
+			ContainSubstring("update available: your cache has a newer version for the ref: lola sync --update <module>")))
+	})
+
+	It("lists an entry project.yml lists but lock.json does not record as not installed, per target", func() {
+		kit := filepath.Join(proj, "mods", "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		Expect(lola("install", kit, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(mpath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(mpath, append(b, []byte("  - name: other\n    source: mods/other\n    targets: [claude-code, opencode]\n")...), 0o644)).To(Succeed())
+
+		r := lola("list", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`other\s+claude-code\s+⚠ not installed\s`))
+		Expect(r.out).To(MatchRegexp(`other\s+opencode\s+⚠ not installed\s`))
+		Expect(lola("list", "-C", proj, "--plain").out).To(ContainSubstring("other\tclaude-code\tnot_installed\ton\tmods/other\tproject\n"))
+		var res struct{ Modules []map[string]any }
+		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
+		Expect(res.Modules).To(ContainElement(And(HaveKeyWithValue("name", "other"), HaveKeyWithValue("status", "not_installed"),
+			HaveKeyWithValue("digest", ""), HaveKeyWithValue("pin", ""), HaveKeyWithValue("update_available", false))))
 	})
 
 	It("colors per LOLA_COLOR, then NO_COLOR, and never under --plain; glyphs stay", func() {

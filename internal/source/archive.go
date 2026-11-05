@@ -78,7 +78,8 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if err := os.Mkdir(tree, 0o700); err != nil {
 		return Fetched{}, err
 	}
-	if err := extract(file, archiveSuffix(name), tree, lim); err != nil {
+	execs, err := extract(file, archiveSuffix(name), tree, lim)
+	if err != nil {
 		return Fetched{}, err
 	}
 	root, err := archiveRoot(tree, spec.Path)
@@ -89,33 +90,42 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if root == tree {
 		modName = name[:len(name)-len(archiveSuffix(name))]
 	}
-	dir, err := copyTree(ctx, root, stagingParent, listWalk)
+	dir, _, err := copyTree(ctx, root, stagingParent, listWalk)
 	if err != nil {
 		return Fetched{}, err
 	}
-	return Fetched{Dir: dir, Name: modName}, nil
+	rel, err := filepath.Rel(tree, root)
+	if err != nil {
+		return Fetched{}, errors.Join(err, os.RemoveAll(dir))
+	}
+	return Fetched{Dir: dir, Name: modName, Executables: executablesUnder(execs, filepath.ToSlash(rel), dir)}, nil
 }
 
-// extractor writes archive entries below root, enforcing the entry rules and limits of §5.
+// extractor writes archive entries below root, enforcing the entry rules and limits of §5. It
+// records the entries whose mode is executable in execs.
 type extractor struct {
 	root    *os.Root
 	lim     limits
 	entries int
 	written int64
+	execs   []string
 }
 
-// extract unpacks file, whose format suffix is suffix, into the empty directory dest.
-func extract(file, suffix, dest string, lim limits) (err error) {
+// extract unpacks file, whose format suffix is suffix, into the empty directory dest, and
+// returns the slash paths of the files its entries mark executable.
+func extract(file, suffix, dest string, lim limits) (execs []string, err error) {
 	root, err := os.OpenRoot(dest)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
 	x := &extractor{root: root, lim: lim}
 	if suffix == ".zip" {
-		return x.zip(file)
+		err = x.zip(file)
+	} else {
+		err = x.tar(file, suffix != ".tar")
 	}
-	return x.tar(file, suffix != ".tar")
+	return x.execs, err
 }
 
 func (x *extractor) zip(file string) (err error) {
@@ -355,6 +365,9 @@ func (x *extractor) file(name string, mode fs.FileMode, size int64, r io.Reader)
 		return fmt.Errorf("%s: longer than its header declares", untrusted.Text(name, untrusted.MaxName))
 	case x.written > x.lim.bytes:
 		return fmt.Errorf("the archive unpacks to more than %d bytes", x.lim.bytes)
+	}
+	if fsx.NormalizeMode(mode) == 0o755 {
+		x.execs = append(x.execs, rel)
 	}
 	return nil
 }

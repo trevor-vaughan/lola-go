@@ -53,8 +53,8 @@ var _ = Describe("install scope (Plan 5c §5.1)", func() {
 		r := lola("install", mod, "-t", "claude-code")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: lola install needs a scope: no .lola/ project was found in " + bare + " or above it\n"))
-		Expect(r.err).To(ContainSubstring("hint: --scope project installs into this directory (-C <dir> picks another)"))
-		Expect(r.err).To(ContainSubstring("hint: --user installs for your user, in every project"))
+		Expect(r.err).To(ContainSubstring("hint: --project acts on this directory (-C <dir> picks another)"))
+		Expect(r.err).To(ContainSubstring("hint: --user acts on your user scope, for every project"))
 		Expect(r.err).To(ContainSubstring("hint: or set a default: default_scope: project in "))
 		Expect(filepath.Join(bare, ".lola")).NotTo(BeADirectory())
 		Expect(filepath.Join(bare, ".claude")).NotTo(BeADirectory())
@@ -133,13 +133,6 @@ var _ = Describe("install scope (Plan 5c §5.1)", func() {
 			Expect(filepath.Join(home, ".claude")).NotTo(BeADirectory())
 			Expect(filepath.Join(home, ".lola", "lock.json")).NotTo(BeAnExistingFile())
 		}
-	})
-
-	It("keeps render's and uninstall's resolution: the found project, else the current directory", func() {
-		GinkgoT().Chdir(bare)
-		r := lola("render")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(filepath.Join(bare, ".lola")).NotTo(BeADirectory())
 	})
 })
 

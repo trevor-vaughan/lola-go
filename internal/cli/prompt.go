@@ -11,6 +11,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // interactive reports whether lola may prompt: both stdin and stderr are terminals.
@@ -26,10 +27,8 @@ func (a *app) confirm(cmd *cobra.Command, yes bool, question string) error {
 	if !interactive(cmd) {
 		return errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()), "pass -y to confirm")
 	}
-	ok := false
-	err := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(question).Value(&ok))).
-		WithInput(cmd.InOrStdin()).WithOutput(cmd.ErrOrStderr()).WithAccessible(a.accessible()).Run()
-	if errors.Is(err, huh.ErrUserAborted) || (err == nil && !ok) {
+	ok, err := a.ask(cmd, question)
+	if err == nil && !ok {
 		return ErrAborted
 	}
 	return err
@@ -49,7 +48,7 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options, allow, allow
 			w := cmd.ErrOrStderr()
 			fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
 			for _, h := range hooks {
-				fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, h.Script, h.SHA256)
+				fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256)
 			}
 			fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
 			return a.ask(cmd, "Run "+module+"'s install hooks?")
@@ -74,20 +73,21 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options, allow, allow
 	}
 }
 
-// ask asks a yes/no question on stderr, defaulting to No. In accessible mode end of input is a
-// cancel, not the default: huh would otherwise answer No and the install would go on.
+// ask asks a yes/no question on stderr, defaulting to No. In accessible mode end of input and
+// Ctrl+C are a cancel, not the default: huh would otherwise answer No and the install would go
+// on, or lola would die of the signal.
 func (a *app) ask(cmd *cobra.Command, question string) (bool, error) {
 	ok := false
 	accessible := a.accessible()
 	in := &eofReader{r: cmd.InOrStdin()}
 	form := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(question).Value(&ok))).
 		WithOutput(cmd.ErrOrStderr()).WithAccessible(accessible)
+	var err error
 	if accessible {
-		form = form.WithInput(in)
+		err = in.catch(form.WithInput(in).Run)
 	} else {
-		form = form.WithInput(cmd.InOrStdin())
+		err = form.WithInput(cmd.InOrStdin()).Run()
 	}
-	err := form.Run()
 	if errors.Is(err, huh.ErrUserAborted) || in.eof {
 		return false, ErrAborted
 	}

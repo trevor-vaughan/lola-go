@@ -31,11 +31,14 @@ const (
 	HookDeclined = "declined" // no consent; only post-install hooks can be declined without aborting
 )
 
-// HookScript is one install hook with the sha256 of its script, as consent shows it.
+// HookScript is one install hook with the sha256 of its script, as consent shows it. Script is
+// the script's path, as the module names it, through untrusted.Text; path is that path itself,
+// which runs and keys consent.
 type HookScript struct {
 	Event  string `json:"event"`
 	Script string `json:"script"`
 	SHA256 string `json:"sha256"`
+	path   string
 }
 
 // HookRun is one hook for one target in an operation's result.
@@ -72,8 +75,8 @@ func hookScripts(dir string, hooks []module.Hook) ([]HookScript, string, error) 
 				return nil, "", err
 			}
 			sum := sha256.Sum256(b)
-			s := HookScript{Event: h.Event, Script: h.Script, SHA256: hex.EncodeToString(sum[:])}
-			fmt.Fprintf(all, "%s\x00%s\x00%s\n", s.Event, s.Script, s.SHA256)
+			s := HookScript{Event: h.Event, Script: shown(h.Script), SHA256: hex.EncodeToString(sum[:]), path: h.Script}
+			fmt.Fprintf(all, "%s\x00%s\x00%s\n", s.Event, s.path, s.SHA256)
 			out = append(out, s)
 		}
 	}
@@ -125,13 +128,25 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, res *Res
 				jobs = append(jobs, j)
 				continue
 			}
+			if c.forced && !c.pending {
+				continue // the copy is kept as it is, with what its hooks built when they ran
+			}
 			if slices.ContainsFunc(scripts, func(s HookScript) bool { return s.Event == PreInstall }) {
 				return nil, errs.WithHints(fmt.Errorf("%s has a pre-install hook, and lola runs hooks only with your consent", c.name),
 					"review it: "+errs.ShellJoin([]string{"lola", "cache", "info", c.name}), "then rerun with --allow-hooks, or on a terminal answer the prompt")
 			}
+			// The hook stays pending in lock.json: sync replaces the copy from the hashed version
+			// and asks again, which a rerun with --allow-hooks alone never did (Plan 6a §11.3).
 			status = HookDeclined
-			res.Notices = append(res.Notices, Notice{Level: LevelWarn,
-				Text: c.name + ": post-install hook skipped without your consent (rerun with --allow-hooks to run it)"})
+			text := c.name + ": post-install hook skipped without your consent"
+			if c.forced {
+				text = c.name + ": its post-install hook has not run (you declined it)"
+			}
+			text += "; review and run it: " + e.SyncCommand(sc, c.name)
+			if opts.Ask == nil {
+				text += ", or consent without asking: " + e.SyncCommand(sc, c.name, "--allow-hooks")
+			}
+			res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: text})
 		}
 		for _, s := range scripts {
 			for _, id := range c.targets {
@@ -177,7 +192,7 @@ func (e *Engine) runHook(ctx context.Context, sc Scope, j *hookJob, s HookScript
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.HookTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(j.dir, s.Script))
+	cmd := exec.CommandContext(ctx, filepath.Join(j.dir, s.path))
 	cmd.Dir = j.dir
 	cmd.Env = append(e.Environ(),
 		"LOLA_MODULE_NAME="+j.name,
@@ -196,4 +211,10 @@ func (e *Engine) runHook(ctx context.Context, sc Scope, j *hookJob, s HookScript
 		return fmt.Errorf("timed out after %s", e.HookTimeout)
 	}
 	return err
+}
+
+// declaresPostInstall reports whether hooks hold a post-install hook, the only one a pending
+// mark can stand for.
+func declaresPostInstall(hooks []module.Hook) bool {
+	return slices.ContainsFunc(hooks, func(h module.Hook) bool { return h.Event == PostInstall })
 }

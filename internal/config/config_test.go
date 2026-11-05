@@ -44,10 +44,23 @@ var _ = Describe("config.yaml", func() {
 		c, err := config.LoadConfig(path)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.DefaultScope).To(BeEmpty())
+		Expect(c.Pager).To(BeTrue())
 		write("# nothing yet\n")
 		c, err = config.LoadConfig(path)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.DefaultScope).To(BeEmpty())
+		Expect(c.Pager).To(BeTrue())
+	})
+
+	It("reads pager (Plan 6b §9)", func() {
+		write("version: 1\npager: false\n")
+		c, err := config.LoadConfig(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Pager).To(BeFalse())
+		write("version: 1\npager: true\n")
+		c, err = config.LoadConfig(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Pager).To(BeTrue())
 	})
 
 	It("reads default_scope", func() {
@@ -66,11 +79,13 @@ var _ = Describe("config.yaml", func() {
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring(hint)))
 		},
 		Entry("an unknown scope", "version: 1\ndefault_scope: everywhere\n", `:2: default_scope: "everywhere" is not a scope`, "project, user or both"),
-		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "known keys: default_scope, version"),
+		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "known keys: default_scope, pager, version"),
 		Entry("no version", "default_scope: user\n", ":1: missing key version", "add version: 1"),
 		Entry("a newer version", "version: 2\n", ":1: version: version 2 is not supported", "upgrade lola"),
 		Entry("a version that is not a number", "version: one\n", ":1: version: must be the number 1", "write version: 1"),
 		Entry("a list for a scope", "version: 1\ndefault_scope: [user]\n", ":2: default_scope: must be a non-empty value, not a list", "use project, user or both"),
+		Entry("a pager that is not a boolean", "version: 1\npager: less\n", ":2: pager: must be true or false, not a value", "write pager: false"),
+		Entry("an empty pager", "version: 1\npager:\n", ":2: pager: must be true or false, not empty", "write pager: false"),
 		Entry("a list at the top", "- version: 1\n", ":1: must be a mapping, not a list", "key: value"),
 		Entry("a key written twice", "version: 1\nversion: 1\n", ":2: version: is written twice", "keep one"),
 	)

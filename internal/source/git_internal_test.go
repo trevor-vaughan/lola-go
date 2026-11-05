@@ -22,6 +22,8 @@ var _ = Describe("git environment and listing", func() {
 		env := gitEnv([]string{"GIT_DIR=/x/.git", "GIT_WORK_TREE=/x", "GIT_INDEX_FILE=i", "GIT_OBJECT_DIRECTORY=o",
 			"GIT_ALTERNATE_OBJECT_DIRECTORIES=a", "GIT_COMMON_DIR=c", "GIT_NAMESPACE=n", "GIT_CEILING_DIRECTORIES=/",
 			"GIT_CONFIG_PARAMETERS='core.x=y'", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.x", "GIT_CONFIG_VALUE_0=y",
+			"GIT_CONFIG=/x/config", "GIT_IMPLICIT_WORK_TREE=0", "GIT_GRAFT_FILE=g", "GIT_NO_REPLACE_OBJECTS=1",
+			"GIT_REPLACE_REF_BASE=refs/r/", "GIT_PREFIX=sub/", "GIT_SHALLOW_FILE=s",
 			"GIT_CONFIG_GLOBAL=/home/u/.gitconfig", "SSH_AUTH_SOCK=/tmp/agent", "GIT_TERMINAL_PROMPT=1", "HOME=/home/u"})
 		Expect(env).To(Equal([]string{"GIT_CONFIG_GLOBAL=/home/u/.gitconfig", "SSH_AUTH_SOCK=/tmp/agent", "GIT_TERMINAL_PROMPT=1",
 			"HOME=/home/u", "GIT_TERMINAL_PROMPT=0", "GIT_PROTOCOL_FROM_USER=0", "GIT_OPTIONAL_LOCKS=0"}))

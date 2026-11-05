@@ -244,22 +244,13 @@ var _ = Describe("InstallChoices (Plan 5c §7)", func() {
 		Expect(again.Module("example").Digest).To(Equal(ch.Module("example").Digest))
 	})
 
-	It("passes no raw escape sequence from the cache, the ledger or a warning", func() {
+	It("passes no raw escape sequence from the cache or a warning", func() {
 		_, err := e.Install(ctx, scopes[0].Scope, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"claude-code"}})
 		Expect(err).NotTo(HaveOccurred())
 		index := filepath.Join(p.Store, "example", "index.yml")
 		b, err := os.ReadFile(index)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(index, []byte(strings.Replace(string(b), "type: folder", "type: \"folder\\e[31m\"", 1)), 0o644)).To(Succeed())
-		lock := filepath.Join(proj, ".lola/lock.json")
-		raw, err := os.ReadFile(lock)
-		Expect(err).NotTo(HaveOccurred())
-		var doc map[string]any
-		Expect(json.Unmarshal(raw, &doc)).To(Succeed())
-		doc["modules"].(map[string]any)["example"].(map[string]any)["digest"] = "sha256:\x1b[31m"
-		raw, err = json.Marshal(doc)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(lock, raw, 0o644)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Join(p.Store, "broken"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(p.Store, "broken", "index.yml"), []byte("source: \"x\\e[31m\"\nbogus: 1\n"), 0o644)).To(Succeed())
 

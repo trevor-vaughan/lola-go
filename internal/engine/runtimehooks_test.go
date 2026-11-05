@@ -268,7 +268,12 @@ var _ = Describe("runtime hooks", func() {
 
 			moved := filepath.Join(tmp, "moved")
 			Expect(os.Rename(proj, moved)).To(Succeed())
+			// A moved project has no trust record, so render leaves its modules out; installing the
+			// module again, as its finding coaches, renders it there.
 			res, err := e.Render(ctx, engine.Scope{Kind: target.Project, ProjectDir: moved}, claudeOnly)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Findings).To(ContainElement(HaveField("Code", engine.CodeNotTrusted)))
+			res, err = e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: moved}, moved, []engine.InstallRequest{{Arg: plugin}}, claudeOnly)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(ContainElement(declined))
 			Expect(filepath.Join(moved, settings)).NotTo(BeAnExistingFile())
@@ -624,17 +629,17 @@ var _ = Describe("runtime hooks", func() {
 		Entry("another kind", "mcp"),
 	)
 
-	It("coaches removal when an installed module no longer loads, such as one with a hooked sidecar from before the refusal", func() {
+	It("leaves out an installed module that no longer loads, such as one with a hooked sidecar from before the refusal, with its coaching", func() {
 		native := filepath.Join(tmp, "src", "ship")
 		writeTree(native, map[string]string{"commands/ship.md": "Ship\n"})
 		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: native}}, claudeOnly)
 		Expect(err).NotTo(HaveOccurred())
-		v, _, err := e.Current("ship")
+		// The folder now holds what an older lola installed and this one refuses.
+		writeTree(native, map[string]string{"commands/ship/notes.md": "---\nhooks: {Stop: [{hooks: [{type: prompt, prompt: p}]}]}\n---\nN\n"})
+		res, err := e.Render(ctx, sc, claudeOnly)
 		Expect(err).NotTo(HaveOccurred())
-		writeTree(v.ContentDir, map[string]string{"commands/ship/notes.md": "---\nhooks: {Stop: [{hooks: [{type: prompt, prompt: p}]}]}\n---\nN\n"})
-		_, err = e.Render(ctx, sc, claudeOnly)
-		Expect(err).To(MatchError(ContainSubstring("frontmatter hooks")))
-		Expect(errs.Hints(err)).To(ContainElements("put hooks in the command itself", ContainSubstring("lola uninstall ship")))
+		Expect(res.Findings).To(ContainElement(And(HaveField("Module", "ship"), HaveField("Code", engine.CodeContentChanged),
+			HaveField("Text", ContainSubstring("frontmatter hooks")), HaveField("Hint", ContainSubstring("put hooks in the command itself")))))
 		_, err = e.Uninstall(ctx, sc, []string{"ship"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred(), "the hint's way out works")
 		_, err = e.Render(ctx, sc, claudeOnly)

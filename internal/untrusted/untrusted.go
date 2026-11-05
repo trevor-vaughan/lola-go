@@ -30,9 +30,7 @@ func Text(s string, limit int) string {
 		switch {
 		case r == '\n':
 			b.WriteString("\n  ")
-		case r == utf8.RuneError && !strings.HasPrefix(s[i:], "\uFFFD"):
-			b.WriteByte('?')
-		case r < 0x20, r >= 0x7f && r <= 0x9f, unicode.Is(unicode.Cf, r), unicode.Is(unicode.Zl, r), unicode.Is(unicode.Zp, r):
+		case replaced(s, i, r):
 			b.WriteByte('?')
 		default:
 			b.WriteRune(r)
@@ -42,6 +40,30 @@ func Text(s string, limit int) string {
 		b.WriteString("…")
 	}
 	return b.String()
+}
+
+// IsPlain reports whether s holds nothing Text would replace and no newline: a value lola
+// accepts in a file someone else may have written prints as it is, on one line.
+func IsPlain(s string) bool {
+	for i, r := range s {
+		if r == '\n' || replaced(s, i, r) {
+			return false
+		}
+	}
+	return true
+}
+
+// replaced reports whether Text prints the rune r, at byte i of s, as '?': an invalid byte, a
+// control other than newline, a format character or a line or paragraph separator.
+func replaced(s string, i int, r rune) bool {
+	switch {
+	case r == utf8.RuneError && !strings.HasPrefix(s[i:], "\uFFFD"):
+		return true
+	case r == '\n':
+		return false
+	default:
+		return r < 0x20 || r >= 0x7f && r <= 0x9f || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
+	}
 }
 
 // CleanErr returns err without the file names an *fs.PathError or *os.LinkError carries, so an

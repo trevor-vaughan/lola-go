@@ -12,7 +12,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
+	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/manifest"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
 // scripted is a Prompter that answers from queues and records each step it was asked, so
@@ -26,6 +30,8 @@ type scripted struct {
 	dirs       []func(cli.DirectoryStep) (string, error)
 	empty      []bool
 	review     []string
+	confirm    []bool
+	trust      []func(cli.TrustStep) (engine.TrustAnswer, error)
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -33,6 +39,7 @@ type scripted struct {
 	assistantSteps []cli.AssistantStep
 	pages          []cli.ComponentPage
 	reviewSteps    []cli.ReviewStep
+	trustSteps     []cli.TrustStep
 }
 
 func pop[T any](q *[]T, step string) T {
@@ -68,6 +75,14 @@ func (s *scripted) Components(pg cli.ComponentPage) ([]string, error) {
 func (s *scripted) ConfirmEmpty(module string) (bool, error) {
 	s.calls = append(s.calls, "empty:"+module)
 	return pop(&s.empty, "confirm-empty"), nil
+}
+func (s *scripted) Confirm(question string) (bool, error) {
+	s.calls = append(s.calls, "confirm:"+question)
+	return pop(&s.confirm, "confirm"), nil
+}
+func (s *scripted) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
+	s.calls, s.trustSteps = append(s.calls, "trust"), append(s.trustSteps, st)
+	return pop(&s.trust, "trust")(st)
 }
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)
@@ -190,6 +205,95 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		GinkgoT().Chdir(proj)
 	})
 
+	It("refuses an entry project.yml changed since lola wrote it before any picker or summary", func() {
+		Expect(lola("install", "review-kit", "deploy", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(mpath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(mpath, []byte(strings.Replace(string(b), "  - name: review-kit\n", "  - name: review-kit\n    rules: false\n", 1)), 0o644)).To(Succeed())
+
+		p := &scripted{}
+		r := lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("review-kit: project.yml changed for it since you last trusted it"))
+		Expect(r.err).To(ContainSubstring("hint: review and apply it: lola sync --project review-kit\n"))
+		Expect(p.calls).To(BeEmpty(), "refused before any prompt")
+
+		p = &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")}, review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "--scope", "project", "-t", "claude-code")
+		Expect(r.err).To(ContainSubstring("⚠ 1 module in project.yml changed since you last trusted it: review-kit → lola sync --project\n"))
+		Expect(p.moduleSteps[0].Options).To(ConsistOf(HaveField("Name", "deploy")), "the picker never offers it")
+	})
+
+	It("install refuses untrusted top-level targets it would use: the picker asks for the assistants, never preselecting them", func() {
+		Expect(lola("install", "review-kit", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(mpath)
+		Expect(err).NotTo(HaveOccurred())
+		pulled := strings.Replace(string(b), "targets: [claude-code]", "targets: [claude-code, gemini-cli]", 1)
+		Expect(pulled).NotTo(Equal(string(b)))
+		Expect(os.WriteFile(mpath, []byte(pulled), 0o644)).To(Succeed())
+		fakeAssistant(tmp, "gemini", "0.63.0")
+		Expect(os.MkdirAll(filepath.Join(proj, ".gemini"), 0o755)).To(Succeed())
+
+		r := lola("install", "deploy", "--scope", "project")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal("error: project.yml's top-level targets changed since you last trusted them\n" +
+			"  hint: review and apply them: lola sync --project\n  hint: or name the assistants: lola install --project deploy -t <id>\n"))
+
+		p := &scripted{
+			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")},
+			assistants: []func(cli.AssistantStep) ([]string, error){func(cli.AssistantStep) ([]string, error) { return []string{"claude-code"}, nil }},
+			review:     []string{cli.ReviewApply},
+		}
+		r = lolaP(p, "install", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.assistantSteps[0].Options).To(ContainElements("claude-code", "gemini-cli"))
+		Expect(p.assistantSteps[0].Preselect).NotTo(ContainElement("gemini-cli"), "gemini-cli is set up here, but only a pull asked for it")
+		Expect(filepath.Join(proj, ".claude/commands/deploy.md")).To(BeARegularFile())
+		Expect(filepath.Join(proj, ".gemini/commands/deploy.toml")).NotTo(BeAnExistingFile())
+	})
+
+	It("coaches lola sync --user for the modules user.yml lists that are not installed", func() {
+		Expect(lola("install", "review-kit", "--user", "-t", "claude-code", "-y").code).To(Equal(0))
+		upath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "user.yml")
+		b, err := os.ReadFile(upath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(upath, append(b, []byte("  - name: deploy\n    source: "+deploy+"\n")...), 0o644)).To(Succeed())
+
+		r := lola("install", "--user")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("hint: install what user.yml lists: lola sync --user\n"))
+
+		aborted := func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, cli.ErrAborted }
+		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){aborted}}
+		r = lolaP(p, "install", "--user")
+		Expect(r.err).To(ContainSubstring("⚠ 1 module in user.yml is not installed → lola sync --user\n"))
+	})
+
+	It("coaches lola sync for the modules project.yml lists that are not installed", func() {
+		Expect(lola("install", "review-kit", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
+		aborted := func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, cli.ErrAborted }
+		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){aborted}}
+		r := lolaP(p, "install", "--scope", "project")
+		Expect(r.err).NotTo(ContainSubstring("not installed"), "nothing to coach when every entry is installed")
+
+		mpath := filepath.Join(proj, ".lola", "project.yml")
+		b, err := os.ReadFile(mpath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(mpath, append(b, []byte("  - name: deploy\n    source: "+deploy+"\n")...), 0o644)).To(Succeed())
+		r = lola("install", "--scope", "project")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: lola install needs a module or source\n  hint: install what project.yml lists: lola sync --project\n"),
+			"off a terminal, the missing-argument error")
+
+		p = &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){aborted}}
+		r = lolaP(p, "install", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.err).To(ContainSubstring("⚠ 1 module in project.yml is not installed → lola sync --project\n"))
+		Expect(p.calls).To(Equal([]string{"modules"}), "said before the module picker")
+	})
+
 	It("walks from nothing to an installed set: scope, modules, assistants, components, summary, apply", func() {
 		fakeAssistant(tmp, "gemini", "0.63.0")
 		p := &scripted{
@@ -204,7 +308,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.calls).To(Equal([]string{"scope", "modules", "assistants", "components:review-kit", "review"}),
 			"deploy has one component and no exclusion, so it gets no page")
 
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{ProjectRoot: proj, Home: home}), "nothing preselected")
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home}), "nothing preselected")
 		Expect(p.moduleSteps[0].Options).To(Equal([]cli.ModuleOption{
 			{Name: "deploy", Label: deploy + " · deploy"},
 			{Name: "review-kit", Label: review + " · review-kit — Code review helpers"}}))
@@ -375,7 +479,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){func(st cli.ScopeStep) ([]string, error) { return nil, cli.ErrAborted }}}
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{ProjectRoot: proj, Home: home}))
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home}))
 	})
 
 	It("asks for the Other directory again, with the reason, until it is a directory that is not the project above", func() {
@@ -841,6 +945,27 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		if b, err := os.ReadFile(selections); err == nil {
 			Expect(string(b)).NotTo(ContainSubstring("extra"), "no page ever showed it, so nothing skips it")
 		}
+	})
+
+	It("says once on stderr why a cached module is left out of the picker, though Change scope lists again", func() {
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"),
+			[]byte("modules:\n  - name: deploy\n    source: "+deploy+"\n    ref: v9\n"), 0o644)).To(Succeed())
+		man, err := manifest.Load(filepath.Join(proj, ".lola", "project.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		pp, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(trust.New(pp).Save(proj, trust.ViewOf(man))).To(Succeed(), "that lola recorded the entry it wrote")
+		p := &scripted{
+			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project"), scopes("project")},
+			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+			components: []func(cli.ComponentPage) ([]string, error){keep(), keep()},
+			review:     []string{cli.ReviewScope, cli.ReviewApply},
+		}
+		r := lolaP(p, "install", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.moduleSteps[0].Options).To(HaveLen(1), "deploy is left out")
+		Expect(strings.Count(r.err, "⚠ deploy is not listed: your cache has no version of ref v9")).To(Equal(1), r.err)
 	})
 
 	It("offers Apply, Change components and Quit when only the component picker ran", func() {

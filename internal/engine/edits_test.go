@@ -274,7 +274,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).To(BeARegularFile())
 		})
 
-		It("that an older lola installed can still be rendered and uninstalled", func() {
+		It("that an older lola installed can still be rendered, which leaves its untrusted modules out, and uninstalled", func() {
 			_, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Scopes: []engine.ScopeInstall{project()}, Modules: []engine.InstallRequest{{Arg: src}}})
 			Expect(err).NotTo(HaveOccurred())
 			for _, d := range []string{".lola", ".claude"} {
@@ -282,9 +282,11 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			}
 			old := engine.Scope{Kind: target.Project, ProjectDir: p.Home}
 			Expect(os.Remove(filepath.Join(p.Home, ".claude/commands/ship.md"))).To(Succeed())
-			_, err = e.Render(ctx, old, engine.Options{})
+			res, err := e.Render(ctx, old, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).To(BeARegularFile())
+			Expect(res.Findings).To(ContainElement(HaveField("Code", engine.CodeNotTrusted)), "this machine has no trust record of it")
+			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+			Expect(os.WriteFile(filepath.Join(p.Home, ".claude/commands/ship.md"), []byte("Ship $ARGUMENTS\n"), 0o644)).To(Succeed())
 			_, err = e.Uninstall(ctx, old, []string{"example"}, engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
@@ -341,7 +343,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			Expect(os.Chmod(filepath.Join(src, "hooks/pre.sh"), 0o755)).To(Succeed())
 			_, err := install(engine.Options{AllowHooks: true, HookOutput: GinkgoWriter}, nil, skipShip, src)
 			Expect(err).To(HaveOccurred())
-			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola render applies them once the problem is fixed"))
+			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola render -C " + proj + " applies them once the problem is fixed"))
 			Expect(saved()).To(ContainSubstring("skip: [command/ship]"))
 			Expect(exists(".claude/agents/critic.md")).To(BeFalse())
 		})
