@@ -5,6 +5,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"sync"
@@ -32,6 +33,14 @@ type abortedError struct{ msg string }
 func (e *abortedError) Error() string        { return e.msg }
 func (e *abortedError) Is(target error) bool { return target == ErrAborted }
 
+// quitError is a quit the user asked for with q, as against Ctrl+C or a No: exit 0, "✗ cancelled —
+// nothing was changed", in color when the forms that took the q are. A command that words its own
+// cancel (abortedError) keeps its wording for a quit too, as it says what the cancel left as it was.
+type quitError struct{ color bool }
+
+func (e *quitError) Error() string        { return "cancelled — nothing was changed" }
+func (e *quitError) Is(target error) bool { return target == ErrAborted }
+
 // Command group ids, in display order.
 const (
 	groupCore       = "core"
@@ -45,15 +54,19 @@ type app struct {
 	getenv      func(string) string
 	json        bool
 	plain       bool
-	scopeFlag   string // --scope
-	user        bool   // --user
-	project     bool   // --project
-	root        string // -C/--root
-	noPager     bool   // --no-pager
-	termOut     bool   // stdout is a terminal whatever it is (WithTerminals)
-	termErr     bool   // stderr is a terminal whatever it is (WithTerminals)
+	scopeFlag   string   // --scope
+	user        bool     // --user
+	project     bool     // --project
+	root        string   // -C/--root
+	noPager     bool     // --no-pager
+	display     []string // the run's output flags (outputFlags), which engine() gives the engine as Engine.Display
+	termOut     bool     // stdout is a terminal whatever it is (WithTerminals)
+	termErr     bool     // stderr is a terminal whatever it is (WithTerminals)
 	eng         *engine.Engine
 	newPrompter func(*cobra.Command) Prompter
+	// queryBackground asks the terminal for its background color; nil is terminalBackground.
+	// Specs fake the terminal's answer with it.
+	queryBackground func(*cobra.Command) (color.Color, error)
 }
 
 // Option configures the command tree.
@@ -66,7 +79,7 @@ func WithPrompter(p Prompter) Option {
 }
 
 // WithTerminals makes lola treat stdout and stderr as terminals when out and errw say so, which
-// decides paging; specs page through a fake pager with it.
+// decides paging; specs page through a fake pager, or the viewer, with it.
 func WithTerminals(out, errw bool) Option {
 	return func(a *app) { a.termOut, a.termErr = out, errw }
 }
@@ -97,7 +110,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 		if showVersion && len(args) == 0 {
 			return a.printVersion(cmd)
 		}
-		return groupRunE(cmd, args)
+		return a.groupRunE(cmd, args)
 	}
 	root := &cobra.Command{
 		Use:   "lola",
@@ -116,6 +129,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 			if a.json && a.plain {
 				return errs.WithHints(errors.New("--json and --plain cannot be combined"), "pick one output format")
 			}
+			a.display = outputFlags(cmd)
 			return nil
 		},
 	}
@@ -129,7 +143,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	pf.BoolVar(&a.project, "project", false, "act on project scope: --scope project")
 	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory): --scope user")
 	pf.StringVarP(&a.root, "root", "C", "", "the project at this directory; implies project scope")
-	pf.BoolVar(&a.noPager, "no-pager", false, "print consent diffs and marketplace listings without a pager")
+	pf.BoolVar(&a.noPager, "no-pager", false, "print without lola's viewer or a pager")
 
 	root.AddGroup(
 		&cobra.Group{ID: groupCore, Title: "Core:"},
@@ -139,7 +153,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	a.addCoreCommands(root)
 	a.addStoreCommands(root)
 	a.addMiscCommands(root)
-	installHelp(root)
+	a.installHelp(root)
 	checkFlagAliases(root)
 	return root
 }
@@ -152,6 +166,7 @@ func (a *app) engine() (*engine.Engine, error) {
 			return nil, err
 		}
 		a.eng = engine.New(p)
+		a.eng.Display = a.display
 	}
 	return a.eng, nil
 }
@@ -200,8 +215,12 @@ func (a *app) scope(cmd *cobra.Command, eng *engine.Engine) (engine.Scope, error
 // prompt, 1 on any error (printed per the output contract).
 func Execute(root *cobra.Command) int {
 	err := root.Execute()
+	var quit *quitError
 	switch {
 	case err == nil:
+		return 0
+	case errors.As(err, &quit):
+		fmt.Fprintln(root.ErrOrStderr(), style{color: quit.color}.bad(quit.Error()))
 		return 0
 	case errors.As(err, new(*abortedError)):
 		fmt.Fprintln(root.ErrOrStderr(), err.Error())
@@ -222,9 +241,9 @@ func Execute(root *cobra.Command) int {
 
 // groupRunE makes a command group fail on unknown subcommands instead of printing help and
 // exiting 0, and print help when run bare.
-func groupRunE(cmd *cobra.Command, args []string) error {
+func (a *app) groupRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		renderHelp(cmd, !isTTY(cmd.OutOrStdout()))
+		a.showHelp(cmd, !isTTY(cmd.OutOrStdout()))
 		return nil
 	}
 	hints := []string{"see: " + cmd.CommandPath() + " --help"}

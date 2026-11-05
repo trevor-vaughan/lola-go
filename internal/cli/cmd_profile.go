@@ -354,20 +354,12 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	if err != nil {
 		return err
 	}
-	pg, err := a.pager(cmd, eng)
-	if err != nil {
-		return err
-	}
 	sc := scs[0].Scope
-	res, more, err := a.syncScope(cmd, eng, pg, sc, nil, &ch, f)
+	res, more, err := a.syncScope(cmd, eng, sc, nil, &ch, f)
 	if err != nil {
 		return err
 	}
-	return a.emit(cmd, func(w io.Writer, s style) {
-		pg.show(w, s, more, func(w io.Writer, s style, more string) {
-			printProfileAction(w, s, ch.Action, manifestName(sc), res, more)
-		})
-	}, res)
+	return a.emit(cmd, func(w io.Writer, s style) { printProfileAction(w, s, ch.Action, manifestName(sc), res, s.more(more)) }, res)
 }
 
 // printProfileAction prints an action's summary (Plan 6b §12.1): where each named profile the run

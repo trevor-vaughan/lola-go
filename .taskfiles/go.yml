@@ -4,8 +4,9 @@ vars:
   # OUT_DIR, not TEST_DIR: the test task exports TEST_DIR, which would be re-templated.
   OUT_DIR: '{{.ROOT_DIR}}/{{.TEST_DIR | default ".test-output"}}'
   MODE: '{{.MODE | default "human"}}'
+  # Only release tags (vX.Y.Z) stamp the version; the plan and work tags would otherwise leak in.
   VERSION:
-    sh: git -C "{{.ROOT_DIR}}" describe --tags --always --dirty
+    sh: git -C "{{.ROOT_DIR}}" describe --tags --match "v[0-9]*.[0-9]*.[0-9]*" --always --dirty
 
 env:
   GIT_CONFIG_GLOBAL: /dev/null

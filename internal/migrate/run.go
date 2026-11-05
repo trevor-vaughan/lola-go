@@ -27,10 +27,15 @@ import (
 
 // Options configure a migration (design §7). The engine options carry --dry-run, --force and
 // hook consent; --force also moves and replaces paths git tracks. KeepPython is --keep-python:
-// install (still replacing with backup) but move nothing else to the trash.
+// install (still replacing with backup) but move nothing else to the trash. Roots and Targets
+// are --map-root and --map-target with the answers to their questions (Plan 10 §3.1, §3.2):
+// NewPlan looks for a missing project path below a root's Old at the same place below its New,
+// and installs the records of an assistant this machine lacks for the targets Targets maps it to.
 type Options struct {
 	engine.Options
 	KeepPython bool
+	Roots      []RootMap
+	Targets    map[string][]string
 }
 
 // keptByKeepPython is the reason a path --keep-python keeps is listed with.
@@ -41,6 +46,7 @@ const (
 	StatusPlanned   = "planned"
 	StatusMigrated  = "migrated"
 	StatusUnchanged = "unchanged" // nothing was installed, replaced or moved
+	StatusNothing   = "nothing"   // every record here is left as it is (Plan 10 §3.3)
 	StatusFailed    = "failed"
 )
 
@@ -66,6 +72,22 @@ type Result struct {
 	// Trusted is what the run's --trust covered in every destination, each item once (Plan 9 §8):
 	// under -n, what it would cover.
 	Trusted []engine.Consent `json:"trusted"`
+	// Summary counts the Python lola's records by what became of them (Plan 10 §3.3).
+	Summary Summary `json:"summary"`
+	// Remap is the run again with the --map-root and --map-target flags that map what it leaves
+	// for want of this machine's paths or assistants (Plan 10 §3.1, §3.2), "" when no flag would.
+	// The CLI sets it: only it knows the run's flags.
+	Remap string `json:"remap"`
+}
+
+// Summary counts the Python lola's records, each once: Migrated, those a destination installs
+// (on a dry run, would install); Already, those it had migrated before; Left, those left as they
+// are; and Failed, those of a destination that failed.
+type Summary struct {
+	Migrated int `json:"migrated"`
+	Already  int `json:"already"`
+	Left     int `json:"left"`
+	Failed   int `json:"failed"`
 }
 
 // DestResult is one destination of a Result: what lola-go installs, which recorded paths it
@@ -202,6 +224,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	}
 	rep.Home = r.home(p, rep)
 	rep.Nothing = nothing(rep)
+	rep.Summary = summarize(p, rep)
 	if opts.DryRun || rep.Nothing {
 		return rep, nil
 	}
@@ -223,6 +246,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 		}
 		rep.Destinations[i] = dr
 	}
+	rep.Summary = summarize(p, rep)
 	rep.Trusted = r.written
 	rep.Markets = r.registerMarkets(p.Markets)
 	rep.Home = r.home(p, rep)
@@ -452,6 +476,9 @@ func newDestResult(d *Destination) *DestResult {
 	if d.Scope.Kind == target.Project {
 		dr.Root = d.Root
 	}
+	if len(d.Installs) == 0 && len(d.Already) == 0 {
+		dr.Status = StatusNothing
+	}
 	for _, in := range d.Already {
 		dr.Installs = append(dr.Installs, installItem(in, InstallAlready))
 	}
@@ -670,10 +697,29 @@ func (r *runner) migrate(d *Destination, dr *DestResult) error {
 			errList = append(errList, fmt.Errorf("%s: %w", untrusted.Text(dc.rec.Abs(), untrusted.MaxName), untrusted.CleanErr(err)))
 		}
 	}
-	if len(d.Installs) == 0 && len(dr.Replaced) == 0 && len(dr.Moved) == 0 {
+	switch {
+	case len(d.Installs) == 0 && len(d.Already) == 0:
+		dr.Status = StatusNothing
+	case len(d.Installs) == 0 && len(dr.Replaced) == 0 && len(dr.Moved) == 0:
 		dr.Status = StatusUnchanged
 	}
 	return errors.Join(errList...)
+}
+
+// summarize counts p's records by what rep says became of them (Plan 10 §3.3).
+func summarize(p *Plan, rep *Result) Summary {
+	s := Summary{Left: len(p.Unmappable)}
+	for i, d := range p.Destinations {
+		installs, already := d.records()
+		s.Left += len(d.Unmappable)
+		s.Already += already
+		if rep.Destinations[i].Status == StatusFailed {
+			s.Failed += installs
+		} else {
+			s.Migrated += installs
+		}
+	}
+	return s
 }
 
 // backup copies into the trash every path the install replaces: a file, a whole directory, the

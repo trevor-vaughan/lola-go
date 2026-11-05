@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,6 +31,7 @@ type scripted struct {
 	components []func(cli.ComponentPage) ([]string, error)
 	dirs       []func(cli.DirectoryStep) (string, error)
 	empty      []bool
+	emptyBacks int // the first emptyBacks ConfirmEmpty questions go back a screen, as Esc does
 	review     []string
 	confirm    []bool
 	trust      []func(cli.TrustStep) (engine.TrustAnswer, error)
@@ -38,6 +40,9 @@ type scripted struct {
 	entries    []string
 	tidyPick   []func(cli.TidyPickStep) ([]string, error)
 	tidyKeep   []func(cli.TidyKeepStep) ([]string, error)
+	background []bool
+	roots      []string
+	mapTargets [][]string
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -51,6 +56,22 @@ type scripted struct {
 	entrySteps     []cli.MarketEntryStep
 	tidyPickSteps  []cli.TidyPickStep
 	tidyKeepSteps  []cli.TidyKeepStep
+	rootSteps      []cli.MigrateRootStep
+	mapTargetSteps []cli.MigrateTargetStep
+	emptyNavs      []cli.Nav
+	confirmNavs    []cli.Nav
+
+	summaryTo io.Writer // where Review writes the summary, as the huh adapter leaves it on stderr
+}
+
+// goBack is a scripted answer to the review or a migrate question that goes back a screen, as
+// Esc does.
+const goBack = "\x00back"
+
+// goneBack answers a step by going back a screen, as Esc does.
+func goneBack[S, T any](S) (T, error) {
+	var none T
+	return none, cli.ErrBack
 }
 
 func pop[T any](q *[]T, step string) T {
@@ -83,12 +104,16 @@ func (s *scripted) Components(pg cli.ComponentPage) ([]string, error) {
 	s.calls, s.pages = append(s.calls, "components:"+pg.Title), append(s.pages, pg)
 	return pop(&s.components, "components")(pg)
 }
-func (s *scripted) ConfirmEmpty(module string) (bool, error) {
-	s.calls = append(s.calls, "empty:"+module)
+func (s *scripted) ConfirmEmpty(module string, nav cli.Nav) (bool, error) {
+	s.calls, s.emptyNavs = append(s.calls, "empty:"+module), append(s.emptyNavs, nav)
+	if s.emptyBacks > 0 {
+		s.emptyBacks--
+		return false, cli.ErrBack
+	}
 	return pop(&s.empty, "confirm-empty"), nil
 }
-func (s *scripted) Confirm(question string) (bool, error) {
-	s.calls = append(s.calls, "confirm:"+question)
+func (s *scripted) Confirm(question string, nav cli.Nav) (bool, error) {
+	s.calls, s.confirmNavs = append(s.calls, "confirm:"+question), append(s.confirmNavs, nav)
 	return pop(&s.confirm, "confirm"), nil
 }
 func (s *scripted) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
@@ -115,13 +140,37 @@ func (s *scripted) TidyKeep(st cli.TidyKeepStep) ([]string, error) {
 	s.calls, s.tidyKeepSteps = append(s.calls, "tidy-keep"), append(s.tidyKeepSteps, st)
 	return pop(&s.tidyKeep, "tidy-keep")(st)
 }
+func (s *scripted) Background() (bool, error) {
+	s.calls = append(s.calls, "background")
+	return pop(&s.background, "background"), nil
+}
+func (s *scripted) MigrateRoot(st cli.MigrateRootStep) (string, error) {
+	s.calls, s.rootSteps = append(s.calls, "migrate-root:"+st.Old), append(s.rootSteps, st)
+	if to := pop(&s.roots, "migrate-root"); to != goBack {
+		return to, nil
+	}
+	return "", cli.ErrBack
+}
+func (s *scripted) MigrateTargets(st cli.MigrateTargetStep) ([]string, error) {
+	s.calls, s.mapTargetSteps = append(s.calls, "migrate-targets:"+st.Old), append(s.mapTargetSteps, st)
+	if ids := pop(&s.mapTargets, "migrate-targets"); !slices.Equal(ids, []string{goBack}) {
+		return ids, nil
+	}
+	return nil, cli.ErrBack
+}
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)
-	r := pop(&s.review, "review")
-	if r == cli.ReviewQuit {
-		return "", cli.ErrAborted
+	if s.summaryTo != nil {
+		fmt.Fprint(s.summaryTo, st.Summary)
 	}
-	return r, nil
+	switch r := pop(&s.review, "review"); r {
+	case cli.ReviewQuit:
+		return "", cli.ErrAborted
+	case goBack:
+		return "", cli.ErrBack
+	default:
+		return r, nil
+	}
 }
 
 // answers return fixed values.
@@ -157,6 +206,9 @@ func keep(drop ...string) func(cli.ComponentPage) ([]string, error) {
 func lolaP(p cli.Prompter, args ...string) result {
 	root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p))
 	var out, errb bytes.Buffer
+	if s, ok := p.(*scripted); ok {
+		s.summaryTo = &errb
+	}
 	root.SetOut(&out)
 	root.SetErr(&errb)
 	root.SetIn(strings.NewReader(""))
@@ -346,6 +398,27 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.calls).To(Equal([]string{"modules"}), "said before the module picker")
 	})
 
+	It("shows in the review the findings a dry run of the install reports, with their hints (Plan 10 §5)", func() {
+		agents := filepath.Join(tmp, "src", "agents")
+		writeTree(agents, map[string]string{"lola.yml": "name: agents\n", "agents/bare.md": "A bare agent.\n"})
+		p := &scripted{review: []string{cli.ReviewQuit}}
+		r := lolaP(p, "install", agents, "--scope", "user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"review"}))
+		Expect(p.reviewSteps[0].Summary).To(MatchRegexp(`\n  ✗ skipped agents: claude-code agent bare: .+\n      hint: \S`))
+		Expect(filepath.Join(home, ".claude")).NotTo(BeADirectory(), "the dry run wrote nothing")
+	})
+
+	It("keeps the run's output flags in the hints of a review's dry-run refusal (Plan 10 §5)", func() {
+		kit := filepath.Join(tmp, "src", "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/ship.md.liquid": "Ship\n{{ targt }}\n"})
+		p := &scripted{}
+		r := lolaP(p, "install", kit, "--scope", "user", "--plain")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(p.calls).To(BeEmpty(), "the refusal comes before the review")
+		Expect(r.err).To(ContainSubstring("hint: lola check --user " + kit + " --plain\n"))
+	})
+
 	It("walks from nothing to an installed set: scope, modules, assistants, components, summary, apply", func() {
 		fakeAssistant(tmp, "gemini", "0.63.0")
 		p := &scripted{
@@ -360,11 +433,12 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.calls).To(Equal([]string{"scope", "modules", "assistants", "components:review-kit", "review"}),
 			"deploy has one component and no exclusion, so it gets no page")
 
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home}), "nothing preselected")
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home, Step: cli.Steps{At: 1, Of: 5}}), "nothing preselected")
 		Expect(p.moduleSteps[0].Options).To(Equal([]cli.ModuleOption{
 			{Name: "deploy", Label: deploy + " · deploy"},
 			{Name: "review-kit", Label: review + " · review-kit — Code review helpers"}}))
-		Expect(p.assistantSteps[0]).To(Equal(cli.AssistantStep{Options: []string{"claude-code", "gemini-cli"}, Preselect: []string{"claude-code"}, Scopes: []string{"project (" + proj + ")"}}))
+		Expect(p.assistantSteps[0]).To(Equal(cli.AssistantStep{Options: []string{"claude-code", "gemini-cli"}, Preselect: []string{"claude-code"},
+			Scopes: []string{"project (" + proj + ")"}, Step: cli.Steps{At: 3, Of: 7}, Nav: cli.Nav{Back: true, Answered: 2}}))
 		pg := p.pages[0]
 		Expect(pg.Groups).To(HaveLen(3))
 		Expect(pg.Groups[0].Title).To(Equal("Skills (2)"))
@@ -372,7 +446,11 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(pg.Groups[2].Title).To(Equal("Rules (1)"))
 		Expect(p.reviewSteps[0].Options).To(Equal([]string{"apply", "scope", "modules", "assistants", "components", "quit"}))
 
-		Expect(r.err).To(ContainSubstring("Summary:\n  project (" + proj + "), picked:\n    claude-code:\n" +
+		// Numbered across the pass (Plan 10 §5): the count is a forecast until the modules are picked,
+		// then exact; review-kit's page has three lists, deploy's one component no page.
+		Expect([]cli.Steps{p.scopeSteps[0].Step, p.moduleSteps[0].Step, p.assistantSteps[0].Step, pg.Step, p.reviewSteps[0].Step}).To(Equal(
+			[]cli.Steps{{At: 1, Of: 5}, {At: 2, Of: 5}, {At: 3, Of: 7}, {At: 4, Of: 7}, {At: 7, Of: 7}}))
+		Expect(r.err).To(ContainSubstring("Summary:\n  project (" + proj + "), picked:\n    → for claude-code (picked)\n" +
 			"      review-kit: + skill/review, + command/ship, + rule/style\n      deploy: + command/deploy\n"))
 		Expect(r.err).To(ContainSubstring("  selections.yaml (" + selections + "):\n    review-kit in projects[" + proj + "]: skip [skill/slow-lint]\n"))
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit deploy --scope project -t claude-code --skip review-kit:skill/slow-lint"}))
@@ -382,12 +460,30 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(filepath.Join(proj, ".claude/commands/deploy.md")).To(BeARegularFile())
 	})
 
-	It("does not show steps the flags or the situation answer, and skips the menu when no picker ran", func() {
+	It("asks nothing of a run the flags fully specify, and reviews an assistant lola chose (Plan 10 §5)", func() {
 		p := &scripted{}
-		r := lolaP(p, "install", "deploy", "--scope", "project")
+		r := lolaP(p, "install", "deploy", "--scope", "project", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(BeEmpty(), "scope by flag, module by argument, one assistant, one component")
+		Expect(p.calls).To(BeEmpty(), "scope and assistant by flag, module by argument, one component")
 		Expect(r.err).NotTo(ContainSubstring("Summary:"))
+
+		p = &scripted{review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "deploy", "--scope", "user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"review"}), "the only assistant installed was taken without asking")
+		Expect(p.reviewSteps[0].Options).To(Equal([]string{cli.ReviewApply, cli.ReviewQuit}), "no picker ran, so there is no step to change")
+		Expect(p.reviewSteps[0].Step).To(Equal(cli.Steps{At: 1, Of: 1}), "the review alone is not numbered")
+		Expect(p.reviewSteps[0].Summary).To(HavePrefix("Summary:\n  user (" + home + "), flag:\n    → for claude-code (the only assistant found)\n" +
+			"      deploy: + command/deploy\n"))
+		Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"), "Quit cancels")
+		Expect(filepath.Join(home, ".claude/commands/deploy.md")).NotTo(BeAnExistingFile())
+
+		p = &scripted{}
+		r = lolaP(p, "install", "deploy", "--scope", "user", "--force")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(BeEmpty(), "--force confirms what lola chose, as -y does")
+		Expect(r.err).To(ContainSubstring("    → for claude-code (the only assistant found)\n"))
+		Expect(filepath.Join(home, ".claude/commands/deploy.md")).To(BeARegularFile())
 
 		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}}
 		r = lolaP(p, "install", "review-kit", "--scope", "project", "-y")
@@ -401,9 +497,83 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.calls).To(Equal([]string{"components:review-kit"}), "--force confirms the plan as -y does (user decision, 2026-10-22)")
 
 		p = &scripted{}
-		r = lolaP(p, "install", "review-kit", "--scope", "project", "--skip", "rule/style")
+		r = lolaP(p, "install", "review-kit", "--scope", "project", "--skip", "rule/style", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(BeEmpty(), "component flags replace the component step")
+	})
+
+	It("goes back a screen on Esc: the step before asks again with its answer preselected, then the flow carries on", func() {
+		fakeAssistant(tmp, "gemini", "0.63.0")
+		claude := func(cli.AssistantStep) ([]string, error) { return []string{"claude-code"}, nil }
+		p := &scripted{
+			scope: []func(cli.ScopeStep) ([]string, error){scopes("project"), scopes("project")},
+			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){goneBack[cli.ModuleStep, cli.ModuleAnswer],
+				mods("review-kit", "deploy"), mods("review-kit")},
+			assistants: []func(cli.AssistantStep) ([]string, error){goneBack[cli.AssistantStep, []string], claude},
+			components: []func(cli.ComponentPage) ([]string, error){keep("skill/slow-lint"), keep()},
+			review:     []string{goBack, cli.ReviewApply},
+		}
+		r := lolaP(p, "install", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"scope", "modules", "scope", "modules", "assistants", "modules", "assistants",
+			"components:review-kit", "review", "components:review-kit", "review"}))
+		Expect(p.scopeSteps[1].Preselect).To(Equal([]string{"project"}), "Esc on the modules went back to the scope, answered")
+		Expect(p.moduleSteps[2].Preselect).To(Equal([]string{"review-kit", "deploy"}), "Esc on the assistants went back to the modules")
+		var again []string
+		for _, g := range p.pages[1].Groups {
+			for _, o := range g.Options {
+				if o.Selected {
+					again = append(again, o.ID)
+				}
+			}
+		}
+		Expect(again).To(Equal([]string{"skill/review", "command/ship", "rule/style"}), "Esc on the review went back to the page, as answered")
+		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t claude-code --skip review-kit:skill/slow-lint"}))
+
+		By("each step says whether there is a screen to go back to, and how many steps are answered")
+		Expect([]cli.Nav{p.scopeSteps[0].Nav, p.moduleSteps[0].Nav, p.scopeSteps[1].Nav, p.moduleSteps[1].Nav, p.assistantSteps[0].Nav,
+			p.pages[0].Nav, p.reviewSteps[0].Nav, p.pages[1].Nav, p.reviewSteps[1].Nav}).To(Equal([]cli.Nav{
+			{}, {Back: true, Answered: 1}, {}, {Back: true, Answered: 1}, {Back: true, Answered: 2},
+			{Back: true, Answered: 3}, {Back: true, Answered: 4}, {Back: true, Answered: 3}, {Back: true, Answered: 4}}))
+	})
+
+	It("goes back from the first component page to the assistants, and from a no to no components to its page", func() {
+		fakeAssistant(tmp, "gemini", "0.63.0")
+		gemini := func(cli.AssistantStep) ([]string, error) { return []string{"gemini-cli"}, nil }
+		p := &scripted{
+			assistants: []func(cli.AssistantStep) ([]string, error){gemini, gemini},
+			components: []func(cli.ComponentPage) ([]string, error){goneBack[cli.ComponentPage, []string], pick(), pick("skill/review")},
+			emptyBacks: 1,
+			review:     []string{cli.ReviewApply},
+		}
+		r := lolaP(p, "install", "review-kit", "--scope", "project", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"assistants", "components:review-kit", "assistants", "components:review-kit",
+			"empty:review-kit", "components:review-kit", "review"}))
+		Expect(p.assistantSteps[0].Nav).To(Equal(cli.Nav{}), "the assistants are the run's first screen")
+		Expect(p.assistantSteps[1].Preselect).To(Equal([]string{"gemini-cli"}))
+		Expect(p.emptyNavs).To(Equal([]cli.Nav{{Back: true, Answered: 2}}))
+		for _, g := range p.pages[2].Groups {
+			for _, o := range g.Options {
+				Expect(o.Selected).To(BeFalse(), "the page asks again as answered: nothing picked")
+			}
+		}
+		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t gemini-cli " +
+			"--skip review-kit:skill/slow-lint --skip review-kit:command/ship --skip review-kit:rule/style"}))
+	})
+
+	It("goes back from Other directory… to the scope picker, Other ticked", func() {
+		p := &scripted{
+			scope:   []func(cli.ScopeStep) ([]string, error){scopes("other"), scopes("user")},
+			dirs:    []func(cli.DirectoryStep) (string, error){goneBack[cli.DirectoryStep, string]},
+			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")},
+			review:  []string{cli.ReviewQuit},
+		}
+		r := lolaP(p, "install", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"scope", "directory", "scope", "modules", "review"}))
+		Expect(p.dirSteps[0].Nav).To(Equal(cli.Nav{Back: true}))
+		Expect(p.scopeSteps[1].Preselect).To(Equal([]string{"other"}))
 	})
 
 	It("re-runs a step from the review menu with its answers preselected, keeping later answers that still apply", func() {
@@ -426,6 +596,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		Expect(second).NotTo(ContainElement("command/ship"), "the re-run page starts from the last answer")
 		Expect(p.moduleSteps[1].Preselect).To(Equal([]string{"review-kit", "deploy"}))
+		Expect([]cli.Steps{p.pages[1].Step, p.reviewSteps[1].Step, p.moduleSteps[1].Step, p.reviewSteps[2].Step}).To(Equal(
+			[]cli.Steps{{At: 1, Of: 4}, {At: 4, Of: 4}, {At: 1, Of: 3}, {At: 2, Of: 2}}), "a pass after a Change entry numbers only the steps it asks")
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t claude-code --skip review-kit:command/ship --skip review-kit:rule/style"}))
 		Expect(selections).NotTo(BeAnExistingFile(), "a dry run writes nothing")
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
@@ -485,6 +657,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		r := lolaP(p, "install", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install deploy review-kit --scope project"}), "the manifest fixes the targets now")
+		Expect(r.err).To(ContainSubstring("    → for claude-code (from .lola/project.yml)\n"))
 	})
 
 	It("drops the component picks of a module removed in the review, and says so", func() {
@@ -517,18 +690,6 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 			dirs: []func(cli.DirectoryStep) (string, error){func(cli.DirectoryStep) (string, error) { return "", cli.ErrAborted }}}),
 	)
 
-	It("asks again until at least one scope and one module are picked", func() {
-		p := &scripted{
-			scope:   []func(cli.ScopeStep) ([]string, error){scopes(), scopes("user")},
-			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods(), mods("deploy")},
-			review:  []string{cli.ReviewApply},
-		}
-		r := lolaP(p, "install", "-n")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps[1].Problem).To(Equal("pick at least one scope"))
-		Expect(p.moduleSteps[1].Problem).To(Equal("pick at least one module"))
-	})
-
 	It("preselects nothing on a terminal, though default_scope is set and the project uses lola (Plan 5c §14)", func() {
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Dir(selections), 0o700)).To(Succeed())
@@ -536,7 +697,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){func(st cli.ScopeStep) ([]string, error) { return nil, cli.ErrAborted }}}
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home}))
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home, Step: cli.Steps{At: 1, Of: 5}}))
 	})
 
 	It("asks for the Other directory again, with the reason, until it is a directory that is not the project above", func() {
@@ -640,7 +801,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 			"components:review-kit — project (" + other + ")", "components:review-kit — user", "review"}))
 		Expect(r.err).To(ContainSubstring("Summary:\n  project (" + proj + "), picked:\n"))
 		Expect(r.err).To(ContainSubstring("\n  project (" + other + "), picked:\n"))
-		Expect(r.err).To(ContainSubstring("\n  user, picked:\n"))
+		Expect(r.err).To(ContainSubstring("\n  user (" + home + "), picked:\n    → for claude-code (from -t)\n"))
 		Expect(equivalents(r.err)).To(Equal([]string{
 			"lola install review-kit --scope project -C " + proj + " -t claude-code --skip review-kit:command/ship",
 			"lola install review-kit --scope project -C " + other + " -t claude-code --skip review-kit:skill/slow-lint",
@@ -703,7 +864,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install", "-t", "claude-code", "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.dirSteps[1]).To(Equal(cli.DirectoryStep{Value: "../other"}))
+		Expect(p.dirSteps[1]).To(Equal(cli.DirectoryStep{Value: "../other", Nav: cli.Nav{Back: true, Answered: 1}}),
+			"Esc goes back to the scope picker; the module picker's answer is held")
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install deploy --scope project -C " + other + " -t claude-code"}))
 	})
 
@@ -761,7 +923,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		writeTree(house, map[string]string{"lola.yml": "name: house-rules\n", "rules/brief.md": "Be brief.\n", "rules/kind.md": "Be kind.\n"})
 		Expect(lola("cache", "add", house).code).To(Equal(0))
 		p := &scripted{}
-		r := lolaP(p, "install", "house-rules", "--scope", "project", "--no-rules", "-n")
+		r := lolaP(p, "install", "house-rules", "--scope", "project", "--no-rules", "-t", "claude-code", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(BeEmpty(), "there is nothing to pick")
 	})

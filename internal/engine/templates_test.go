@@ -846,7 +846,8 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred(), "an unreadable project.yml never stops lola check")
 		Expect(rep.Findings).To(ContainElement(And(HaveField("Severity", target.SeverityInfo), HaveField("Code", "vars-defaults"),
-			HaveField("Text", HaveSuffix("; lola check renders every module with its default vars")))))
+			HaveField("Text", HaveSuffix("; lola check renders every module with its default vars")),
+			HaveField("Hint", "fix it by hand, or move it aside (lola starts a new one) and rerun"))))
 		Expect(rep.Modules[0].Findings).NotTo(ContainElement(HaveField("Code", "template-undefined-variable")))
 	})
 
@@ -867,13 +868,16 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 				undefined = append(undefined, f)
 			}
 		}
-		warn := func(text string) target.Finding {
-			return target.Finding{Severity: target.SeverityWarn, Module: "kit", Kind: "module", Code: "attrs-undefined", Text: text}
+		warn := func(text, hint string) target.Finding {
+			return target.Finding{Severity: target.SeverityWarn, Module: "kit", Kind: "module", Code: "attrs-undefined", Text: text, Hint: hint}
 		}
 		Expect(undefined).To(Equal([]target.Finding{
-			warn("_partials/p.liquid:2: attrs.gone.deep is defined by no attribute file of kit, for any target; it always reads as nil"),
-			warn("agents/a.md.liquid:4: attrs.modle is defined by no attribute file of kit, for any target; it always reads as nil"),
-			warn("agents/a.md.liquid:4: attrs.opts.dpeth is defined by no attribute file of kit, for any target; it always reads as nil"),
+			warn("_partials/p.liquid:2: attrs.gone.deep is defined by no attribute file of kit, for any target; it always reads as nil",
+				"correct attrs.gone.deep at _partials/p.liquid:2, or define it for an assistant in the .targets.yaml beside the component that reads it"),
+			warn("agents/a.md.liquid:4: attrs.modle is defined by no attribute file of kit, for any target; it always reads as nil",
+				"correct attrs.modle at agents/a.md.liquid:4, or define it for an assistant in the .targets.yaml beside the component that reads it"),
+			warn("agents/a.md.liquid:4: attrs.opts.dpeth is defined by no attribute file of kit, for any target; it always reads as nil",
+				"correct attrs.opts.dpeth at agents/a.md.liquid:4, or define it for an assistant in the .targets.yaml beside the component that reads it"),
 		}), "a key one target's file defines is defined; size, list indexes and computed keys are not checked")
 		Expect(rep.Modules[0].Findings).NotTo(ContainElement(HaveField("Severity", target.SeveritySkip)), "a warning, never a refusal")
 
@@ -918,28 +922,35 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		writeTree(filepath.Join(proj, "mods", "bare"), map[string]string{"commands/b.md": "b\n"})
 		_, err := e.AddSource(ctx, proj, "mods/kit", "", "", nil) // lola info shows the version refused
 		Expect(err).NotTo(HaveOccurred())
-		for vars, want := range map[string]string{
-			"{lang: rust}":           "project.yml: modules[kit].vars.lang: kit declares no var lang; it declares language, strict, tools",
-			"{strict: 'yes'}":        "project.yml: modules[kit].vars.strict: kit's default is true or false; this is a string",
-			"{tools: rg}":            "project.yml: modules[kit].vars.tools: kit's default is a list of strings; this is a string",
-			"{language: [go, rust]}": "project.yml: modules[kit].vars.language: kit's default is a string; this is a list of strings",
+		for vars, want := range map[string]struct{ text, fix string }{
+			"{lang: rust}": {"project.yml: modules[kit].vars.lang: kit declares no var lang; it declares language, strict, tools",
+				"in project.yml, rename modules[kit].vars.lang to one of language, strict, tools, or remove it"},
+			"{strict: 'yes'}": {"project.yml: modules[kit].vars.strict: kit's default is true or false; this is a string",
+				"in project.yml, set modules[kit].vars.strict to true or false"},
+			"{tools: rg}": {"project.yml: modules[kit].vars.tools: kit's default is a list of strings; this is a string",
+				"in project.yml, set modules[kit].vars.tools to a list of strings"},
+			"{language: [go, rust]}": {"project.yml: modules[kit].vars.language: kit's default is a string; this is a list of strings",
+				"in project.yml, set modules[kit].vars.language to a string"},
 		} {
 			writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: mods/kit, vars: " + vars + "}\n"})
 			_, err := sync(engine.Options{Display: []string{"--json"}})
-			Expect(err).To(MatchError(want), vars)
+			Expect(err).To(MatchError(want.text), vars)
 			Expect(errs.Hints(err)).To(Equal([]string{"lola info --project kit --json"}))
 			Expect(exists(".claude/commands/c.md")).To(BeFalse(), "nothing renders")
 
 			rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil)
 			Expect(err).NotTo(HaveOccurred(), "lola check reports a bad override and goes on")
 			Expect(rep.Modules[0].Findings).To(ContainElement(target.Finding{Severity: target.SeveritySkip, Module: "kit", Kind: "module",
-				Code: "vars-override", Text: want}))
+				Code: "vars-override", Text: want.text, Hint: want.fix}))
 			Expect(rep.Modules[0].Targets).NotTo(BeEmpty(), "rendered with its defaults")
 		}
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: bare, source: mods/bare, vars: {x: y}}\n"})
 		_, err = sync(engine.Options{})
 		Expect(err).To(MatchError("project.yml: modules[bare].vars.x: bare declares no var x; it declares none"))
 		Expect(errs.Hints(err)).To(BeEmpty(), "bare is not in the cache, so no command shows its vars")
+		checked, err := e.Check(ctx, sc, proj, []string{"mods/bare"}, nil, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checked.Modules[0].Findings).To(ContainElement(HaveField("Hint", "in project.yml, remove modules[bare].vars.x")))
 
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: mods/kit, vars: {language: rust, strict: true, tools: []}}\n"})
 		_, err = sync(engine.Options{})

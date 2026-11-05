@@ -69,6 +69,15 @@ func zipTree(file, root string) {
 	Expect(f.Close()).To(Succeed())
 }
 
+// installAssistants puts claude, gemini and opencode on the spec's PATH (testenv.Isolate's bin/
+// under root), so lola migrate finds every assistant it has a target for installed (Plan 10 §3.2).
+func installAssistants(root string) {
+	for _, name := range []string{"claude", "gemini", "opencode"} {
+		writeFile(filepath.Join(root, "bin", name), "#!/bin/sh\n")
+		Expect(os.Chmod(filepath.Join(root, "bin", name), 0o755)).To(Succeed())
+	}
+}
+
 // newEngine is an engine over the spec's isolated environment.
 func newEngine() *engine.Engine {
 	p, err := paths.Resolve(os.Getenv)

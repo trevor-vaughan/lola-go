@@ -267,7 +267,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 					return err
 				}
 				show := func(w io.Writer) { printResult(w, style{}, "", preview) }
-				if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", preview, show); err != nil {
+				if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", Nav{}, preview, show); err != nil {
 					return err
 				}
 			}

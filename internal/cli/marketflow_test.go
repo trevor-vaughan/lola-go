@@ -140,13 +140,13 @@ var _ = Describe("installing from marketplaces on and off a terminal (Plan 6c §
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: @acme is a marketplace; name the entry to install: @acme/formatter, @acme/linter\n  hint: lola market acme\n"))
 
-		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods(), mods("@acme/formatter")}}
+		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("@acme/formatter")}}
 		r = lolaP(p, "install", "@acme", "--scope", "project", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.moduleSteps).To(HaveLen(1))
 		Expect(p.moduleSteps[0].Browse).To(BeTrue())
 		Expect(p.moduleSteps[0].Options).To(BeEmpty())
 		Expect(p.moduleSteps[0].Markets).To(HaveLen(1))
-		Expect(p.moduleSteps[1].Problem).To(Equal("pick at least one module"))
 		Expect(filepath.Join(proj, ".claude", "commands", "fmt.md")).To(BeARegularFile())
 		Expect(manifest()).To(ContainSubstring("    market:\n      name: acme\n"))
 	})

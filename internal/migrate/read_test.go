@@ -271,4 +271,21 @@ installations:
 		Expect(st.Records[0].Problem).To(Equal("project scope without a project_path"))
 		Expect(st.Records[1].Problem).To(Equal(`unknown scope "galaxy"`))
 	})
+
+	It("marks a project_path this machine does not have as missing, another OS's absolute path included", func() {
+		installed("installations:\n" +
+			"- {module: m, assistant: claude-code, project_path: '" + filepath.Join(tmp, "gone") + "'}\n" +
+			"- {module: m, assistant: claude-code, project_path: 'C:\\Users\\alice\\proj'}\n" +
+			"- {module: m, assistant: claude-code, project_path: proj}\n" +
+			"- {module: m, assistant: claude-code, project_path: '" + proj + "'}\n")
+		st, err := load()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(st.Records[0].Missing).To(BeTrue())
+		Expect(st.Records[0].Problem).To(Equal("project_path " + filepath.Join(tmp, "gone") + " no longer exists"))
+		Expect(st.Records[1].Missing).To(BeTrue(), "another OS's absolute path never exists here")
+		Expect(st.Records[1].Problem).To(Equal(`project_path C:\Users\alice\proj no longer exists`))
+		Expect(st.Records[2].Missing).To(BeFalse(), "a relative path is refused, never looked for")
+		Expect(st.Records[3].Missing).To(BeFalse())
+		Expect(st.Records[3].Problem).To(BeEmpty())
+	})
 })

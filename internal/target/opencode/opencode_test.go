@@ -86,9 +86,11 @@ var _ = Describe("opencode", func() {
 		Expect(codes(fs)).To(Equal([]string{"warn skill-shell-dropped inline", "warn skill-shell-dropped fence",
 			"warn skill-arguments-dropped args", "warn skill-arguments-dropped doubled"}), "an escaped $ or one after a character is not a placeholder")
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "opencode", Kind: "skill", Artifact: "inline", Code: "skill-shell-dropped",
-			Text: "opencode does not run shell in skills; it reaches the model as text"}))
+			Text: "opencode does not run shell in skills; it reaches the model as text",
+			Hint: `wrap the shell in {% if target != "opencode" %}…{% endif %} in the skill's SKILL.md.liquid template`}))
 		Expect(fs[2]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "opencode", Kind: "skill", Artifact: "args", Code: "skill-arguments-dropped",
-			Text: "opencode does not fill argument placeholders in skills; they reach the model as written"}))
+			Text: "opencode does not fill argument placeholders in skills; they reach the model as written",
+			Hint: `wrap the placeholders in {% if target != "opencode" %}…{% endif %} in the skill's SKILL.md.liquid template`}))
 	})
 
 	It("skips, forceably, skills OpenCode would reject", func() {
@@ -139,7 +141,8 @@ var _ = Describe("opencode", func() {
 		Expect(byPath(ins)).NotTo(HaveKey(".opencode/commands/fence.md"))
 		Expect(fs).To(Equal([]target.Finding{
 			{Severity: target.SeverityWarn, Target: "opencode", Kind: "command", Artifact: "inline", Code: "opencode/shell-unchecked",
-				Text: "OpenCode runs !`…` without Claude's permission checks (allowed-tools is dropped)", Hint: "review the command before installing"},
+				Text: "OpenCode runs !`…` without Claude's permission checks (allowed-tools is dropped)",
+				Hint: "if the shell needs Claude's permission checks, wrap it in {% if target != \"opencode\" %}…{% endif %} in the command's .md.liquid template"},
 			{Severity: target.SeveritySkip, Target: "opencode", Kind: "command", Artifact: "fence", Code: "opencode/shell-fence",
 				Text: "OpenCode does not run fenced shell; the command would send it to the model as text", Hint: "use inline !`…`", Forceable: true},
 		}), "a command without shell gets neither finding")
@@ -217,8 +220,10 @@ var _ = Describe("opencode", func() {
 		Expect(string(p[".opencode/agents/lead.md"].Data)).To(Equal("---\ndescription: leads\nmode: primary\nmodel: anthropic/claude-opus-5-5\n---\nLead.\n"))
 		Expect(fs).To(Equal([]target.Finding{
 			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped",
-				Text: "color dropped: opencode needs a string matching ^#[0-9a-fA-F]{6}$"},
-			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped", Text: "model dropped: opencode needs a string matching ^[^/]+/.+$"},
+				Text: "color dropped: opencode needs a string matching ^#[0-9a-fA-F]{6}$",
+				Hint: "in rev.targets.yaml beside the agent, set opencode's color to a string matching ^#[0-9a-fA-F]{6}$, or to null to leave it out"},
+			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped", Text: "model dropped: opencode needs a string matching ^[^/]+/.+$",
+				Hint: "in rev.targets.yaml beside the agent, set opencode's model to a string matching ^[^/]+/.+$, or to null to leave it out"},
 			{Severity: target.SeverityInfo, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-key-dropped", Text: "name dropped: the file name names the agent"},
 		}))
 	})
@@ -238,7 +243,7 @@ var _ = Describe("opencode", func() {
 		Expect(codes(fs)).To(Equal([]string{"skip agent-tools-unenforceable list", "skip agent-tools-unenforceable string"}))
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeveritySkip, Target: "opencode", Kind: "agent", Artifact: "list",
 			Code: "agent-tools-unenforceable", Text: "opencode cannot enforce this agent's tool list; without it the agent can use every tool",
-			Hint: "remove tools: (OpenCode restricts an agent with permission:), or pass --force to install it unrestricted", Forceable: true}))
+			Hint: "under opencode: in the agent's .targets.yaml, set tools: null and restrict the agent with permission:, as OpenCode does", Forceable: true}))
 		ctx.Force = true
 		ins, fs = plan1(m)
 		Expect(string(byPath(ins)[".opencode/agents/list.md"].Data)).To(Equal("---\nmode: subagent\ndescription: d\n---\nL.\n"))

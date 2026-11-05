@@ -97,13 +97,16 @@ var Shell = regexp.MustCompile("(?m)(?:^|\\s)!`[^`]+`|^[ \\t]*`{3,}!")
 var placeholder = regexp.MustCompile(`(?:^|[^\\]|\\\\)\$(?:ARGUMENTS\[\d+\]|ARGUMENTS(?:$|[^\[])|\d)`)
 
 // SkillRules are the findings for a target that, unlike Claude, neither runs shell nor fills
-// argument placeholders in skills: both reach the model as written.
+// argument placeholders in skills: both reach the model as written. A template branch on target
+// keeps them from the target.
 func SkillRules(id string) []ContentRule {
 	return []ContentRule{
 		{Kind: "skill", Pattern: Shell, Severity: SeverityWarn,
-			Code: "skill-shell-dropped", Text: id + " does not run shell in skills; it reaches the model as text"},
+			Code: "skill-shell-dropped", Text: id + " does not run shell in skills; it reaches the model as text",
+			Hint: `wrap the shell in {% if target != "` + id + `" %}…{% endif %} in the skill's SKILL.md.liquid template`},
 		{Kind: "skill", Pattern: placeholder, Severity: SeverityWarn,
-			Code: "skill-arguments-dropped", Text: id + " does not fill argument placeholders in skills; they reach the model as written"},
+			Code: "skill-arguments-dropped", Text: id + " does not fill argument placeholders in skills; they reach the model as written",
+			Hint: `wrap the placeholders in {% if target != "` + id + `" %}…{% endif %} in the skill's SKILL.md.liquid template`},
 	}
 }
 

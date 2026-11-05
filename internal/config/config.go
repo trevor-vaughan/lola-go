@@ -28,16 +28,28 @@ const (
 	ScopeBoth    = "both"
 )
 
+// Theme values of theme: (Plan 10 §4): the terminal background the pickers draw for.
+const (
+	ThemeDark  = "dark"
+	ThemeLight = "light"
+)
+
+// themeHint says what theme: takes.
+const themeHint = "write theme: dark or theme: light, for your terminal's background"
+
 // Config is config.yaml.
 type Config struct {
 	DefaultScope string // "", project, user or both
-	Pager        bool   // page consent diffs on a terminal (Plan 6b §9); pager: false turns it off
+	Pager        bool   // show output taller than the terminal in the viewer (Plan 10 §2.1); pager: false turns it off
 	// PreInstall and PostInstall are the user's own install scripts (Plan 9 §5.1), which wrap every
 	// module copy a run installs or replaces; Path "" for none.
 	PreInstall, PostInstall Script
 	// CacheUnusedFor is the age at which a bare lola cache clean also removes a cached version
 	// nobody used (Plan 9 §6.2); the zero Age for none.
 	CacheUnusedFor Age
+	// Theme is the terminal background the pickers draw for (Plan 10 §4): ThemeDark, ThemeLight,
+	// or "" when config.yaml does not say.
+	Theme string
 }
 
 // Age is how long a cached version went unused, as lola cache clean --unused-for and
@@ -113,7 +125,7 @@ func LoadConfig(path, home string) (*Config, error) {
 		},
 		"pager": func(n *yaml.Node, at string) error {
 			if n.Kind != yaml.ScalarNode || n.Tag != "!!bool" {
-				return d.fail(n, at, "must be true or false, not "+kindName(n), "write pager: false to print consent diffs without a pager")
+				return d.fail(n, at, "must be true or false, not "+kindName(n), "write pager: false to print without the viewer")
 			}
 			return n.Decode(&c.Pager)
 		},
@@ -128,6 +140,17 @@ func LoadConfig(path, home string) (*Config, error) {
 				return d.fail(n, at, fmt.Sprintf("%q is not an age; %s", untrusted.Text(n.Value, untrusted.MaxName), AgeForms))
 			}
 			c.CacheUnusedFor = age
+			return nil
+		},
+		"theme": func(n *yaml.Node, at string) error {
+			s, err := d.scalar(n, at, themeHint)
+			if err != nil {
+				return err
+			}
+			if s != ThemeDark && s != ThemeLight {
+				return d.fail(n, at, fmt.Sprintf("%q is not a theme", untrusted.Text(s, untrusted.MaxName)), themeHint)
+			}
+			c.Theme = s
 			return nil
 		},
 	}, "version"); err != nil {

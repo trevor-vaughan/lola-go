@@ -5,6 +5,8 @@ includes:
     taskfile: .taskfiles/go.yml
   e2e:
     taskfile: .taskfiles/e2e.yml
+  release:
+    taskfile: .taskfiles/release.yml
 
 vars:
   APP_NAME: '{{.APP_NAME | default "lola"}}'
@@ -36,6 +38,11 @@ tasks:
     cmds:
       - task: go:fmt
 
+  e2e:
+    desc: "Alias for e2e:run (-- <suite>... for some suites; MODE=llm for errors-only output)"
+    cmds:
+      - task: e2e:run
+
   cross:
     desc: "Alias for go:cross"
     cmds:
@@ -52,4 +59,4 @@ tasks:
 
   clean:
     desc: Remove build artifacts and test output
-    cmd: rm -rf bin/ {{.TEST_DIR}}
+    cmd: rm -rf bin/ .tools/ {{.TEST_DIR}}

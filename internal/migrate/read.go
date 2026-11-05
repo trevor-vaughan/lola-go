@@ -34,13 +34,15 @@ const (
 
 // Record is one entry of the Python lola's installed.yml: a module installed for one assistant
 // at one scope. Names are validated single path components; Problem says why a project-scope
-// record's project_path cannot be used (§3), and is "" otherwise.
+// record's project_path cannot be used (§3), and is "" otherwise. Missing is set when that is
+// because the path does not exist on this machine, which --map-root mends (Plan 10 §3.1).
 type Record struct {
 	Module, Assistant, Scope, ProjectPath, Ref string
 	Skills, Commands, Agents, MCPs             []string
 	HasInstructions                            bool
 	AppendContext                              []string
 	Problem                                    string
+	Missing                                    bool
 }
 
 // Source is a module's .lola/source.yml: where the Python lola fetched it from.
@@ -427,28 +429,33 @@ func (r *reader) record(n *yaml.Node, at, userHome string) (Record, error) {
 	switch rec.Scope {
 	case ScopeUser:
 	case ScopeProject:
-		rec.Problem = projectProblem(rec.ProjectPath, userHome)
+		rec.Problem, rec.Missing = projectProblem(rec.ProjectPath, userHome)
 	default:
 		rec.Problem = fmt.Sprintf("unknown scope %q", untrusted.Text(rec.Scope, untrusted.MaxName))
 	}
 	return rec, nil
 }
 
-// projectProblem says why p cannot be a destination (§3), or "" when it can: it must be an
-// existing directory, absolute and equal to its clean and symlink-free forms, and neither
-// the home directory nor one of its parents.
-func projectProblem(p, userHome string) string {
+// projectProblem says why p cannot be a destination (§3), or "" when it can, and whether that
+// is because p does not exist on this machine (Plan 10 §3.1), as another OS's absolute path
+// never does: it must be an existing directory, absolute and equal to its clean and
+// symlink-free forms, and neither the home directory nor one of its parents.
+func projectProblem(p, userHome string) (string, bool) {
 	if p == "" {
-		return "project scope without a project_path"
+		return "project scope without a project_path", false
 	}
 	shown := "project_path " + untrusted.Text(p, untrusted.MaxName)
 	switch {
 	case !printable(p):
-		return shown + " holds a control or format character"
+		return shown + " holds a control or format character", false
+	case !filepath.IsAbs(p) && foreignAbs(p) && dotDot(p):
+		return shown + " is not in its clean form", false
+	case !filepath.IsAbs(p) && foreignAbs(p):
+		return shown + " no longer exists", true
 	case !filepath.IsAbs(p):
-		return shown + " is not an absolute path"
+		return shown + " is not an absolute path", false
 	case filepath.Clean(p) != p:
-		return shown + " is not in its clean form"
+		return shown + " is not in its clean form", false
 	}
 	homes := []string{userHome}
 	if real, err := filepath.EvalSymlinks(userHome); err == nil {
@@ -456,22 +463,22 @@ func projectProblem(p, userHome string) string {
 	}
 	for _, h := range homes {
 		if within(p, h) {
-			return shown + " is your home directory or one of its parents"
+			return shown + " is your home directory or one of its parents", false
 		}
 	}
 	fi, err := os.Stat(p)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return shown + " no longer exists"
+		return shown + " no longer exists", true
 	case err != nil:
-		return shown + " cannot be read: " + untrusted.CleanErr(err).Error()
+		return shown + " cannot be read: " + untrusted.CleanErr(err).Error(), false
 	case !fi.IsDir():
-		return shown + " is not a directory"
+		return shown + " is not a directory", false
 	}
 	if real, err := filepath.EvalSymlinks(p); err != nil || real != p {
-		return shown + " is a symbolic link or has one on its way"
+		return shown + " is a symbolic link or has one on its way", false
 	}
-	return ""
+	return "", false
 }
 
 // within reports whether child is parent or below it, lexically.

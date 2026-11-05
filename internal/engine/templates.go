@@ -617,31 +617,37 @@ func (e *Engine) checkVars(sc Scope, m *module.Module, ment *manifest.Entry, fro
 	}
 	declared := slices.Sorted(maps.Keys(m.Vars))
 	for _, k := range slices.Sorted(maps.Keys(ment.Vars)) {
-		at := fmt.Sprintf("%s: modules[%s].vars.%s", file, shown(m.Name), shown(k))
+		entry := fmt.Sprintf("modules[%s].vars.%s", shown(m.Name), shown(k))
+		at := file + ": " + entry
 		var err error // a varsRefusal's text
+		var fix string
 		def, ok := m.Vars[k]
 		switch {
 		case !ok && len(declared) == 0:
 			err = fmt.Errorf("%s: %s declares no var %s; it declares none", at, shown(m.Name), shown(k))
+			fix = fmt.Sprintf("in %s, remove %s", file, entry)
 		case !ok:
 			err = fmt.Errorf("%s: %s declares no var %s; it declares %s", at, shown(m.Name), shown(k), strings.Join(declared, ", "))
+			fix = fmt.Sprintf("in %s, rename %s to one of %s, or remove it", file, entry, strings.Join(declared, ", "))
 		case varKind(def) != varKind(ment.Vars[k]) || varKind(ment.Vars[k]) == "unsupported":
 			err = fmt.Errorf("%s: %s's default is %s; this is %s", at, shown(m.Name), varKind(def), varKind(ment.Vars[k]))
+			fix = fmt.Sprintf("in %s, set %s to %s", file, entry, varKind(def))
 		default:
 			continue
 		}
 		// A cache that cannot be read, or holds another version, has no command that shows these vars.
 		if cur, _, cerr := e.Current(m.Name); cerr != nil || digest == "" || cur.Meta.Digest != digest {
-			return &varsRefusal{err.Error()}
+			return &varsRefusal{err.Error(), fix}
 		}
-		return errs.WithHints(&varsRefusal{err.Error()}, e.Command(sc, "info", append([]string{m.Name}, display...)...))
+		return errs.WithHints(&varsRefusal{err.Error(), fix}, e.Command(sc, "info", append([]string{m.Name}, display...)...))
 	}
 	return nil
 }
 
 // varsRefusal is checkVars' refusal, which names the module and its entry itself, so a trust
-// diff passes it on as it is.
-type varsRefusal struct{ text string }
+// diff passes it on as it is. fix names the change to the entry, which lola check's finding
+// hints; a refusal's hints stay runnable commands.
+type varsRefusal struct{ text, fix string }
 
 func (r *varsRefusal) Error() string { return r.text }
 

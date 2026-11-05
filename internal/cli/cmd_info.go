@@ -50,53 +50,74 @@ func (a *app) infoCmd() *cobra.Command {
 		Args:              cobra.MatchAll(infoArgs, cobra.MaximumNArgs(1)),
 		ValidArgsFunction: a.completeInfo,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, isAddr, err := market.ParseAddress(args[0]); err != nil {
-				return err
-			} else if isAddr && path != "" {
-				return errs.WithHints(fmt.Errorf("--path does not apply to %s: its catalog gives the path", untrusted.Text(args[0], untrusted.MaxName)),
-					runWithout(cmd, args, "path"))
-			}
-			eng, err := a.engine()
-			if err != nil {
-				return err
-			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			scope, err := a.scopeRequest(cwd, false)
-			if err != nil {
-				return err
-			}
-			info, err := eng.Info(cmd.Context(), engine.InfoRequest{Cwd: cwd, Arg: args[0], Ref: ref, Path: path, Scope: scope, Targets: targets,
-				Display: outputFlags(cmd),
-				Rerun: func(extra ...string) string {
-					return runWithout(cmd, args) + " " + errs.ShellJoin(extra)
-				},
-				UserRun: runWithout(cmd, args, scopeFlags...) + " --user",
-				Install: func(arg, ref, path string, k engine.TrustKinds) string {
-					words := []string{arg}
-					for _, f := range [][2]string{{"--ref", ref}, {"--path", path}} {
-						if f[1] != "" {
-							words = append(words, f[0], f[1])
-						}
-					}
-					run := runAs([]string{"lola", "install"}, cmd, words, "ref", "path")
-					if k != 0 {
-						run += " " + k.Arg()
-					}
-					return run
-				}})
-			if err != nil {
-				return tagRefHint(cmd, args, err)
-			}
-			return a.emit(cmd, func(w io.Writer, s style) { printInfo(w, s, info) }, info)
+			return a.showInfo(cmd, args[0])
 		},
 	}
 	addTargetFlag(cmd, &targets, "assistants to plan for, as install's -t")
 	cmd.Flags().StringVar(&ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&path, "path", "", "module root inside the source (monorepos)")
 	return cmd
+}
+
+// showInfo is lola info <arg> (Plan 9 §4), which lola market <name> <entry> runs as lola info
+// @<name>/<entry> (Plan 10 U7). It reads --target, --ref and --path from cmd by name, which both
+// commands define, and every hint it builds names lola info with the run's flags, so the two
+// commands print the same.
+func (a *app) showInfo(cmd *cobra.Command, arg string) error {
+	targets, err := cmd.Flags().GetStringSlice("target")
+	if err != nil {
+		return err
+	}
+	ref, err := cmd.Flags().GetString("ref")
+	if err != nil {
+		return err
+	}
+	path, err := cmd.Flags().GetString("path")
+	if err != nil {
+		return err
+	}
+	words, args := []string{"lola", "info"}, []string{arg}
+	if _, isAddr, err := market.ParseAddress(arg); err != nil {
+		return err
+	} else if isAddr && path != "" {
+		return errs.WithHints(fmt.Errorf("--path does not apply to %s: its catalog gives the path", untrusted.Text(arg, untrusted.MaxName)),
+			runAs(words, cmd, args, "path"))
+	}
+	eng, err := a.engine()
+	if err != nil {
+		return err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	scope, err := a.scopeRequest(cwd, false)
+	if err != nil {
+		return err
+	}
+	info, err := eng.Info(cmd.Context(), engine.InfoRequest{Cwd: cwd, Arg: arg, Ref: ref, Path: path, Scope: scope, Targets: targets,
+		Display: outputFlags(cmd),
+		Rerun: func(extra ...string) string {
+			return runAs(words, cmd, args) + " " + errs.ShellJoin(extra)
+		},
+		UserRun: runAs(words, cmd, args, scopeFlags...) + " --user",
+		Install: func(arg, ref, path string, k engine.TrustKinds) string {
+			words := []string{arg}
+			for _, f := range [][2]string{{"--ref", ref}, {"--path", path}} {
+				if f[1] != "" {
+					words = append(words, f[0], f[1])
+				}
+			}
+			run := runAs([]string{"lola", "install"}, cmd, words, "ref", "path")
+			if k != 0 {
+				run += " " + k.Arg()
+			}
+			return run
+		}})
+	if err != nil {
+		return tagRefHint(words, cmd, args, err)
+	}
+	return a.emit(cmd, func(w io.Writer, s style) { printInfo(w, s, info) }, info)
 }
 
 // infoArgs refuses a run with no argument, hinting the cache's listing with the run's output

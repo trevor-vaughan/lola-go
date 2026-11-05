@@ -33,8 +33,9 @@ type installFlags struct {
 type addedSource struct{ source, ref string }
 
 // installFlow is one run of lola install (Plan 5c §3, §4). It fills every answer the flags
-// leave open, asking the Prompter on a terminal, shows the summary and review menu when a
-// picker ran, and turns the answers into one engine.InstallSpec.
+// leave open, asking the Prompter on a terminal, ends with the review whenever lola chose
+// something the user did not type (Plan 10 §5), and turns the answers into one
+// engine.InstallSpec.
 type installFlow struct {
 	a     *app
 	cmd   *cobra.Command
@@ -62,13 +63,25 @@ type installFlow struct {
 	prevMods                    []string
 	targets                     map[string][]string            // destination (Scope.Key) → assistants (nil: the manifest's); nil until answered
 	prevTarget                  []string                       // the last picker answer
+	why                         map[string]string              // destination (Scope.Key) → why its assistants were chosen, which the review says
+	done                        int                            // fields the pickers asked in this pass, for the next step's number
+	auto                        bool                           // lola chose an assistant the user did not name: the only one installed
 	picks                       map[string]map[string][]string // destination (Scope.Key) → module → selected kind/name
 	prevPicks                   map[string]map[string][]string // the picks before Change components, preselected
 	added                       []addedSource
 	droppedModule, droppedScope int             // component picks dropped because their module or destination was removed; reset after each summary
 	asked                       map[string]bool // modules whose picks came from a component page
+	pageLog                     []answeredPage  // the component pages answered, in the order asked, for Esc
+	asking                      string          // the module whose component page is asked
 	shown                       map[string]bool // steps whose picker ran
 	warned                      map[string]bool // choice warnings printed, each once per run
+}
+
+// answeredPage is a component page the user answered: its module, and the destinations (Scope.Key)
+// it asked.
+type answeredPage struct {
+	module string
+	keys   []string
 }
 
 // runInstall runs the install flow.
@@ -127,7 +140,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if err := fl.expandMarkets(); err != nil {
 		return err
 	}
-	return tagRefHint(cmd, args, fl.run())
+	return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, args, fl.run())
 }
 
 // expandMarkets replaces each argument that means an entry of your marketplaces with that
@@ -254,17 +267,11 @@ func (fl *installFlow) browse(name string) ([]string, error) {
 	if k < 0 || len(groups[k].Entries) == 0 {
 		return []string{"@" + name}, nil
 	}
-	step := ModuleStep{Markets: []ModuleGroup{offerGroup(groups[k], func(engine.MarketOffer) bool { return true })}, Browse: true}
-	for {
-		ans, err := fl.p.Modules(step)
-		if err != nil {
-			return nil, err
-		}
-		if len(ans.Names) > 0 {
-			return ans.Names, nil
-		}
-		step.Problem = "pick at least one module"
+	ans, err := fl.p.Modules(ModuleStep{Markets: []ModuleGroup{offerGroup(groups[k], func(engine.MarketOffer) bool { return true })}, Browse: true})
+	if err != nil {
+		return nil, err
 	}
+	return ans.Names, nil
 }
 
 // offerGroup is g as a group of the module picker (Plan 6c §6.5), titled "@acme — <description>",
@@ -343,29 +350,18 @@ func (a *app) prompter(cmd *cobra.Command) Prompter {
 func (fl *installFlow) run() error {
 	var spec engine.InstallSpec
 	for {
-		if err := fl.ensureScopes(); err != nil {
-			return err
-		}
-		if err := fl.coach(); err != nil {
-			return err
-		}
-		if err := fl.ensureChoices(); err != nil {
-			return err
-		}
-		if err := fl.ensureModules(); err != nil {
-			return err
-		}
-		if err := fl.ensureAssistants(); err != nil {
-			return err
-		}
-		if err := fl.ensureComponents(); err != nil {
+		fl.done = 0 // each pass numbers the steps it asks (Plan 10 §5)
+		if stage, err := fl.answer(); err != nil {
+			if errors.Is(err, ErrBack) && fl.back(stage) {
+				continue
+			}
 			return err
 		}
 		var err error
 		if spec, err = fl.spec(); err != nil {
 			return err
 		}
-		if !fl.ask || len(fl.shown) == 0 {
+		if !fl.reviews() {
 			break
 		}
 		pv, err := fl.choices.Preview(spec, fl.modules)
@@ -380,13 +376,28 @@ func (fl *installFlow) run() error {
 			fmt.Fprintln(fl.cmd.OutOrStdout(), fl.a.style(fl.cmd).ok("already up to date"))
 			return nil
 		}
-		fl.printSummary(fl.cmd.ErrOrStderr(), spec, pv)
+		// The review shows the findings a dry run of exactly this install reports (Plan 10 §5):
+		// it asks nothing and writes nothing.
+		dry := spec
+		dry.Options.DryRun = true
+		dry.Options.Rerun, dry.Options.Display = trustRun(fl.cmd, fl.args), outputFlags(fl.cmd)
+		planned, err := fl.eng.InstallAll(fl.cmd.Context(), dry)
+		if err != nil {
+			return err
+		}
+		var summary strings.Builder
+		fl.printSummary(&summary, spec, pv, planned.Findings)
 		fl.droppedModule, fl.droppedScope = 0, 0
 		// --force confirms the plan, as -y does (user decision, 2026-10-22).
 		if fl.f.yes || fl.f.force {
+			fmt.Fprint(fl.cmd.ErrOrStderr(), summary.String())
 			break
 		}
-		choice, err := fl.p.Review(ReviewStep{Options: fl.reviewOptions()})
+		choice, err := fl.p.Review(ReviewStep{Summary: summary.String(), Options: fl.reviewOptions(), Step: Steps{At: fl.done + 1, Of: fl.done + 1},
+			Nav: fl.nav(ReviewApply)})
+		if errors.Is(err, ErrBack) && fl.back(ReviewApply) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
@@ -400,8 +411,8 @@ func (fl *installFlow) run() error {
 	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), trustRun(fl.cmd, fl.args)
 	fl.a.hookOptions(fl.cmd, &spec.Options)
 	spec.Options.Display = outputFlags(fl.cmd)
-	// The summary, when a picker ran, already showed where each address resolved, before Apply.
-	if !fl.a.json && (!fl.ask || len(fl.shown) == 0) {
+	// The review, when there was one, already showed where each address resolved, before Apply.
+	if !fl.a.json && !fl.reviews() {
 		s := fl.a.style(fl.cmd)
 		spec.Options.ShowResolved = func(lines []string) {
 			for _, l := range lines {
@@ -422,10 +433,131 @@ func (fl *installFlow) run() error {
 		fmt.Fprintln(fl.cmd.ErrOrStderr(), "→ saved to "+untrusted.Text(saved, untrusted.MaxName))
 	}
 	eq := []string{}
-	if len(fl.shown) > 0 {
+	if fl.reviews() {
 		eq = fl.equivalents(spec)
 	}
 	return fl.a.emit(fl.cmd, func(w io.Writer, s style) { printInstall(w, s, res) }, installOutput{InstallResult: res, EquivalentCommands: eq})
+}
+
+// answer fills every answer the pass lacks, in the flow's order, and returns the stage whose
+// question failed with the error.
+func (fl *installFlow) answer() (string, error) {
+	if err := fl.ensureScopes(); err != nil {
+		return ReviewScope, err
+	}
+	if err := fl.coach(); err != nil {
+		return ReviewScope, err
+	}
+	if err := fl.ensureChoices(); err != nil {
+		return ReviewScope, err
+	}
+	if err := fl.ensureModules(); err != nil {
+		return ReviewModules, err
+	}
+	if err := fl.ensureAssistants(); err != nil {
+		return ReviewAssistants, err
+	}
+	return ReviewComponents, fl.ensureComponents()
+}
+
+// nav places the question asked at stage (ReviewScope, …, ReviewApply for the review) in the run
+// for lola's keys: whether there is a screen before it to go back to, and how many answers the
+// run holds from the screens the user answered.
+func (fl *installFlow) nav(stage string) Nav {
+	before, _ := fl.before(stage)
+	return Nav{Back: before != "", Answered: fl.held()}
+}
+
+// held counts the answers the run holds from screens the user answered: the scope, module and
+// assistant pickers' and each component page's.
+func (fl *installFlow) held() int {
+	n := 0
+	for _, s := range []string{ReviewScope, ReviewModules, ReviewAssistants} {
+		if fl.shown[s] {
+			n++
+		}
+	}
+	for _, pa := range fl.pageLog {
+		if fl.holds(pa) {
+			n++
+		}
+	}
+	return n
+}
+
+// holds reports whether the run still holds the answer of the page pa: its module is still
+// picked and its destinations' picks are kept.
+func (fl *installFlow) holds(pa answeredPage) bool {
+	if !slices.Contains(fl.modules, pa.module) {
+		return false
+	}
+	for _, key := range pa.keys {
+		if _, ok := fl.picks[key][pa.module]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// before is the screen Esc at stage goes back to: on a component page (the one for fl.asking) or
+// the review, the last page held that is asked before it, by its module's place and then the order
+// asked, as its index in fl.pageLog; else the last picker before stage whose answer the run holds;
+// "" when there is none.
+func (fl *installFlow) before(stage string) (string, int) {
+	if stage == ReviewComponents || stage == ReviewApply {
+		limit := len(fl.modules)
+		if stage == ReviewComponents {
+			limit = slices.Index(fl.modules, fl.asking)
+		}
+		last, lastAt := -1, -1
+		for i, pa := range fl.pageLog {
+			if at := slices.Index(fl.modules, pa.module); at <= limit && at >= lastAt && fl.holds(pa) {
+				last, lastAt = i, at
+			}
+		}
+		if last >= 0 {
+			return ReviewComponents, last
+		}
+	}
+	order := []string{ReviewScope, ReviewModules, ReviewAssistants}
+	end := len(order)
+	if i := slices.Index(order, stage); i >= 0 {
+		end = i
+	}
+	for i := end - 1; i >= 0; i-- {
+		if fl.shown[order[i]] {
+			return order[i], -1
+		}
+	}
+	return "", -1
+}
+
+// back goes back from stage a screen (Esc): it forgets the answer of the screen before, kept as
+// that screen's preselection, so the next pass asks it again and then carries on. It reports
+// false when there is no screen before.
+func (fl *installFlow) back(stage string) bool {
+	step, k := fl.before(stage)
+	switch {
+	case step == "":
+		return false
+	case k >= 0:
+		pa := fl.pageLog[k]
+		fl.pageLog = slices.Delete(fl.pageLog, k, k+1)
+		if fl.prevPicks == nil {
+			fl.prevPicks = map[string]map[string][]string{}
+		}
+		for _, key := range pa.keys {
+			if fl.prevPicks[key] == nil {
+				fl.prevPicks[key] = map[string][]string{}
+			}
+			fl.prevPicks[key][pa.module] = fl.picks[key][pa.module]
+			delete(fl.picks[key], pa.module)
+		}
+	default:
+		_, err := fl.review(step) // a picker's step, which review always takes
+		return err == nil
+	}
+	return true
 }
 
 // bySource is the run with the address of renamed replaced by its source, every flag kept but
@@ -450,6 +582,62 @@ func (fl *installFlow) bySource(renamed *engine.RenamedEntryError) (string, bool
 	return strings.TrimSpace(runWithout(fl.cmd, args, "ref", "path") + " " + errs.ShellJoin(tail)), true
 }
 
+// reviews reports whether the run ends with the review (Plan 10 §5): on a terminal, whenever lola
+// chose something the user did not type, a picker's answer or an assistant taken as the only one
+// installed.
+func (fl *installFlow) reviews() bool { return fl.ask && (len(fl.shown) > 0 || fl.auto) }
+
+// steps numbers the step the flow asks at stage (ReviewScope, …): after the fields this pass
+// asked, of those and the fields the flow expects to ask from stage on (remaining).
+func (fl *installFlow) steps(stage string) Steps {
+	return Steps{At: fl.done + 1, Of: fl.done + fl.remaining(stage)}
+}
+
+// remaining forecasts how many fields the pass asks from stage on, the review included: the scope
+// picker's one; the module picker's lists when no argument names the modules and they are not
+// answered; the assistant picker's one when neither -t nor an answer gives them; the component
+// pages still open, unless --skip, --only or --unskip answers them. A step is counted exactly
+// once what decides it is known, and as one field (a component page per module argument) before:
+// an assistant taken as the only one installed, or a module with one component, drops out of the
+// count at the next step.
+func (fl *installFlow) remaining(stage string) int {
+	n := 1 // the review
+	stages := []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewComponents}
+	for _, s := range stages[slices.Index(stages, stage):] {
+		switch {
+		case s == ReviewScope:
+			n++
+		case s == ReviewModules && fl.modules == nil && len(fl.args) == 0 && fl.choices != nil:
+			n += moduleFields(ModuleStep{Markets: fl.marketGroups()})
+		case s == ReviewModules && fl.modules == nil && len(fl.args) == 0:
+			n++
+		case s == ReviewAssistants && fl.targets == nil && len(fl.f.targets) == 0:
+			n++
+		case s == ReviewComponents && len(fl.edits) == 0:
+			n += fl.componentFields()
+		}
+	}
+	return n
+}
+
+// componentFields forecasts the lists the component pages still ask: exactly once the modules
+// are picked, and one page per module argument (at least one) before.
+func (fl *installFlow) componentFields() int {
+	if fl.choices == nil || fl.modules == nil {
+		return max(len(fl.args), 1)
+	}
+	n := 0
+	for _, name := range fl.modules {
+		if m := fl.choices.Module(name); m != nil {
+			_, pages := fl.componentPages(m)
+			for _, dests := range pages {
+				n += fl.page(m, dests[0].Scope.Key(), name).lists()
+			}
+		}
+	}
+	return n
+}
+
 // review acts on the review menu: Apply ends the loop, Quit cancels, a Change entry forgets
 // that step's answer (kept as its preselection) so the loop asks it again.
 func (fl *installFlow) review(choice string) (bool, error) {
@@ -464,7 +652,7 @@ func (fl *installFlow) review(choice string) (bool, error) {
 	case ReviewAssistants:
 		fl.targets = nil
 	case ReviewComponents:
-		fl.prevPicks, fl.picks, fl.asked = fl.picks, nil, map[string]bool{}
+		fl.prevPicks, fl.picks, fl.asked, fl.pageLog = fl.picks, nil, map[string]bool{}, nil
 	default:
 		return false, ErrAborted
 	}
@@ -516,11 +704,13 @@ func (fl *installFlow) ensureScopes() error {
 		fl.scopes = res.Scopes
 		return nil
 	}
-	entries, scopes, err := fl.picker.pick(res, ScopeStep{Question: "Install where?", Preselect: fl.prevScopes})
+	entries, scopes, err := fl.picker.pick(res, ScopeStep{Question: "Install where?", Preselect: fl.prevScopes, Step: fl.steps(ReviewScope),
+		Nav: fl.nav(ReviewScope)})
 	if err != nil {
 		return err
 	}
 	fl.shown[ReviewScope], fl.prevScopes, fl.scopes = true, entries, scopes
+	fl.done++
 	for key, byMod := range fl.picks {
 		if !slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }) {
 			for _, picked := range byMod {
@@ -617,6 +807,7 @@ func (fl *installFlow) ensureModules() error {
 	}
 	step := ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: keys}
 	for {
+		step.Step, step.Nav = fl.steps(ReviewModules), fl.nav(ReviewModules)
 		ans, err := fl.p.Modules(step)
 		if err != nil {
 			return err
@@ -648,10 +839,6 @@ func (fl *installFlow) ensureModules() error {
 				return err
 			}
 			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: union(slices.Clone(ans.Names), []string{v.Name})}
-			continue
-		}
-		if len(ans.Names) == 0 {
-			step.Problem = "pick at least one module"
 			continue
 		}
 		// A catalog entry is cached under its entry name (a renamed module is refused), so two
@@ -694,6 +881,7 @@ func (fl *installFlow) ensureModules() error {
 			continue
 		}
 		fl.shown[ReviewModules] = true
+		fl.done += moduleFields(step)
 		fl.modules = names
 		for _, addr := range fl.marketPicks {
 			for name, a := range fl.marketNames {
@@ -705,6 +893,15 @@ func (fl *installFlow) ensureModules() error {
 		fl.dropRemovedPicks()
 		return nil
 	}
+}
+
+// moduleFields is how many lists the module picker shows for step: one per marketplace group, and
+// the cached modules' unless it browses a marketplace alone.
+func moduleFields(step ModuleStep) int {
+	if step.Browse {
+		return len(step.Markets)
+	}
+	return 1 + len(step.Markets)
 }
 
 // pickMarkets makes pins the versions of the modules picked from the cache and addrs the
@@ -813,13 +1010,14 @@ func (fl *installFlow) moduleOptions() []ModuleOption {
 // manifest fixes; off a terminal, those installed and set up here; on one, the only
 // assistant installed, else the picker (once, for every scope whose targets are open). On a
 // terminal, top-level targets the trust record does not cover fix nothing: the scope is open,
-// and the picker never preselects them (Plan 6a §10.1).
+// and the picker never preselects them (Plan 6a §10.1). It keeps why each scope's assistants were
+// chosen, which the review says (Plan 10 §5).
 func (fl *installFlow) ensureAssistants() error {
 	if fl.targets != nil {
 		return nil
 	}
 	delete(fl.shown, ReviewAssistants)
-	answer := map[string][]string{}
+	answer, reasons, auto := map[string][]string{}, map[string]string{}, false
 	var open, openLabels []string
 	var installed, here, untrustedTargets []string
 	// The run with -t naming one assistant, for each of ids.
@@ -833,7 +1031,7 @@ func (fl *installFlow) ensureAssistants() error {
 	for _, c := range fl.scopes {
 		name := c.Scope.Key()
 		if len(fl.f.targets) > 0 {
-			answer[name] = fl.f.targets
+			answer[name], reasons[name] = fl.f.targets, "from -t"
 			continue
 		}
 		choice, err := fl.eng.DefaultTargets(c.Scope, fl.requests())
@@ -849,7 +1047,7 @@ func (fl *installFlow) ensureAssistants() error {
 			}
 		}
 		if len(fixed) > 0 {
-			answer[name] = nil
+			answer[name], reasons[name] = nil, "from "+manifestName(c.Scope)
 			continue
 		}
 		inst, marked := choice.Installed, choice.SetUp
@@ -860,9 +1058,9 @@ func (fl *installFlow) ensureAssistants() error {
 		case !fl.ask && len(marked) == 0:
 			return errs.WithHints(errors.New(why), withTarget(inst)...)
 		case !fl.ask:
-			answer[name] = marked
+			answer[name], reasons[name] = marked, "set up here"
 		case len(inst) == 1:
-			answer[name] = inst
+			answer[name], reasons[name], auto = inst, "the only assistant found", true
 		default:
 			open, openLabels = append(open, name), append(openLabels, destLabel(c.Scope))
 			installed, here = union(installed, inst), union(here, marked)
@@ -877,23 +1075,18 @@ func (fl *installFlow) ensureAssistants() error {
 			pre = installed
 		}
 		pre = slices.DeleteFunc(slices.Clone(pre), func(id string) bool { return slices.Contains(untrustedTargets, id) })
-		step := AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels}
-		for {
-			picked, err := fl.p.Assistants(step)
-			if err != nil {
-				return err
-			}
-			if len(picked) > 0 {
-				fl.shown[ReviewAssistants], fl.prevTarget = true, picked
-				for _, s := range open {
-					answer[s] = picked
-				}
-				break
-			}
-			step.Problem = "pick at least one assistant"
+		picked, err := fl.p.Assistants(AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels, Step: fl.steps(ReviewAssistants),
+			Nav: fl.nav(ReviewAssistants)})
+		if err != nil {
+			return err
+		}
+		fl.shown[ReviewAssistants], fl.prevTarget = true, picked
+		fl.done++
+		for _, s := range open {
+			answer[s], reasons[s] = picked, "picked"
 		}
 	}
-	fl.targets = answer
+	fl.targets, fl.why, fl.auto = answer, reasons, auto
 	return nil
 }
 
@@ -948,64 +1141,40 @@ func (fl *installFlow) ensureComponents() error {
 		if m == nil {
 			continue
 		}
-		var missing []engine.ScopeChoice
-		for _, c := range fl.scopes {
-			if _, ok := fl.picks[c.Scope.Key()][name]; !ok {
-				missing = append(missing, c)
-			}
-		}
+		missing, pages := fl.componentPages(m)
 		if len(missing) == 0 {
 			continue
 		}
-		pickable := slices.ContainsFunc(missing, func(d engine.ScopeChoice) bool {
-			return slices.ContainsFunc(m.Components, func(c engine.ComponentChoice) bool {
-				return c.Kind != config.KindRule || !fl.rulesOff(m, d.Scope.Key())
-			})
-		})
-		single := len(m.Components) == 1 && !slices.ContainsFunc(missing, func(d engine.ScopeChoice) bool { return len(m.Scope(d.Scope.Key()).Excluded) > 0 })
-		if !pickable || single {
+		if pages == nil {
 			for _, d := range missing {
 				fl.picks[d.Scope.Key()][name] = fl.preselected(m, d.Scope.Key())
 			}
 			continue
-		}
-		first := missing[0].Scope.Key()
-		pages := [][]engine.ScopeChoice{missing}
-		if slices.ContainsFunc(missing[1:], func(d engine.ScopeChoice) bool {
-			return !slices.Equal(fl.preselected(m, first), fl.preselected(m, d.Scope.Key())) || fl.rulesOff(m, first) != fl.rulesOff(m, d.Scope.Key())
-		}) {
-			pages = nil
-			for _, d := range missing {
-				pages = append(pages, []engine.ScopeChoice{d})
-			}
 		}
 		for _, dests := range pages {
 			title := name
 			if len(dests) == 1 && len(fl.scopes) > 1 {
 				title += " — " + destLabel(dests[0].Scope)
 			}
-			key := dests[0].Scope.Key()
-			picked, err := fl.p.Components(fl.page(m, key, title))
+			picked, ok, err := fl.askPage(m, dests, title)
 			if err != nil {
 				return err
 			}
-			fl.asked[name] = true
-			if len(picked) == 0 && len(fl.preselected(m, key)) > 0 {
-				ok, err := fl.p.ConfirmEmpty(name)
-				if err != nil {
-					return err
+			if !ok {
+				fl.modules = slices.DeleteFunc(fl.modules, func(x string) bool { return x == name })
+				for _, byMod := range fl.picks {
+					delete(byMod, name)
 				}
-				if !ok {
-					fl.modules = slices.DeleteFunc(fl.modules, func(x string) bool { return x == name })
-					for _, byMod := range fl.picks {
-						delete(byMod, name)
-					}
-					break
-				}
+				break
 			}
+			pa := answeredPage{module: name}
 			for _, d := range dests {
 				fl.picks[d.Scope.Key()][name] = picked
+				pa.keys = append(pa.keys, d.Scope.Key())
 			}
+			fl.pageLog = append(slices.DeleteFunc(fl.pageLog, func(old answeredPage) bool {
+				return old.module == name && slices.ContainsFunc(old.keys, func(k string) bool { return slices.Contains(pa.keys, k) })
+			}), pa)
 		}
 	}
 	delete(fl.shown, ReviewComponents)
@@ -1015,6 +1184,69 @@ func (fl *installFlow) ensureComponents() error {
 		}
 	}
 	return nil
+}
+
+// askPage asks m's component page for dests, titled title, and, when nothing is picked of a
+// preselection, whether to install m with no components, going back to the page from that
+// question (Esc), as answered. ok is false when the user said no: m is dropped from the run.
+func (fl *installFlow) askPage(m *engine.ModuleChoice, dests []engine.ScopeChoice, title string) (picked []string, ok bool, err error) {
+	key := dests[0].Scope.Key()
+	fl.asking = m.Name
+	pg := fl.page(m, key, title)
+	pg.Step, pg.Nav = fl.steps(ReviewComponents), fl.nav(ReviewComponents)
+	fl.done += pg.lists()
+	for {
+		if picked, err = fl.p.Components(pg); err != nil {
+			return nil, false, err
+		}
+		fl.asked[m.Name] = true
+		if len(picked) > 0 || len(fl.preselected(m, key)) == 0 {
+			return picked, true, nil
+		}
+		ok, err := fl.p.ConfirmEmpty(m.Name, Nav{Back: true, Answered: pg.Nav.Answered + 1})
+		if !errors.Is(err, ErrBack) {
+			return picked, ok, err
+		}
+		for _, g := range pg.Groups {
+			for i := range g.Options {
+				g.Options[i].Selected = false
+			}
+		}
+	}
+}
+
+// componentPages is what the component step asks about m: the destinations whose picks are still
+// open (missing), and the pages that ask them, nil when no page does: no component can be picked
+// there, or m has one component and no exclusion. One page asks every destination, or one page
+// each when their preselections or rules differ.
+func (fl *installFlow) componentPages(m *engine.ModuleChoice) (missing []engine.ScopeChoice, pages [][]engine.ScopeChoice) {
+	for _, c := range fl.scopes {
+		if _, ok := fl.picks[c.Scope.Key()][m.Name]; !ok {
+			missing = append(missing, c)
+		}
+	}
+	if len(missing) == 0 {
+		return nil, nil
+	}
+	pickable := slices.ContainsFunc(missing, func(d engine.ScopeChoice) bool {
+		return slices.ContainsFunc(m.Components, func(c engine.ComponentChoice) bool {
+			return c.Kind != config.KindRule || !fl.rulesOff(m, d.Scope.Key())
+		})
+	})
+	single := len(m.Components) == 1 && !slices.ContainsFunc(missing, func(d engine.ScopeChoice) bool { return len(m.Scope(d.Scope.Key()).Excluded) > 0 })
+	if !pickable || single {
+		return missing, nil
+	}
+	first := missing[0].Scope.Key()
+	if slices.ContainsFunc(missing[1:], func(d engine.ScopeChoice) bool {
+		return !slices.Equal(fl.preselected(m, first), fl.preselected(m, d.Scope.Key())) || fl.rulesOff(m, first) != fl.rulesOff(m, d.Scope.Key())
+	}) {
+		for _, d := range missing {
+			pages = append(pages, []engine.ScopeChoice{d})
+		}
+		return missing, pages
+	}
+	return missing, [][]engine.ScopeChoice{missing}
 }
 
 // kindTitles name the kinds on a component page.

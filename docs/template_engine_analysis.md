@@ -1,7 +1,9 @@
 # Template engine analysis of alternatives
 
-Roadmap item 7 adds opt-in, per-file templating of module content
-([#195](https://github.com/LobsterTrap/lola/issues/195)). This document records which Go template
+Roadmap item 7 ([roadmap](roadmap.md)), Plan 7, adds opt-in, per-file templating of module content
+([#195](https://github.com/LobsterTrap/lola/issues/195)). Plan 7's design spec is
+`docs/superpowers/specs/2026-10-22-plan-7-templating-design.md`, a local maintainer file that is
+not published; its sub-plans are 7.1 to 7.5. This document records which Go template
 engines were considered, how they were tested, and why lola uses Liquid through
 [`github.com/osteele/liquid`](https://github.com/osteele/liquid) v1.9.2.
 
@@ -30,10 +32,11 @@ In priority order:
 ## Method
 
 Each engine was pinned at its latest release in a throwaway Go module, outside the repository.
-Adversarial templates were run in a child process killed after 10 s, with a 6 GB address-space
-limit, so a "fatal" result below is a real crash of the rendering process, not a test artifact.
+Adversarial templates were run in a child process killed after 10 s, with a limit of 6 GB on its
+address space, so a "fatal" result below is a real crash of the rendering process, not a test
+artifact.
 
-The probes:
+A probe is one such template, written to test one failure mode. The probes:
 
 - **Recursion:** a template that includes itself, a recursive macro or block, and deeply nested
   expressions.
@@ -62,8 +65,10 @@ The probes:
 
 ### Findings that apply to every engine
 
-- **Memory cannot be bounded in-process.** No Go engine tested limits allocation, so every option
-  needs a render timeout and an output cap from lola, and only a separate process can cap memory.
+- **Memory cannot be bounded in-process.** No Go engine tested limits how much a template
+  allocates in general: Notifuse/liquidgo's memory limits stopped string doubling, but not its own
+  `(1..1e9)` range. Every option therefore needs a render timeout and an output cap from lola, and
+  only a separate process can cap memory.
 - **Context cancellation** is not supported natively by any engine.
 - **Method calls:** every engine calls methods on bound Go values. pongo2, gonja, stick and
   text/template also pass arguments (`obj.Delete("/x")`); osteele/liquid and mustache call only
@@ -78,10 +83,14 @@ The probes:
   `ParseTemplateLocation(src, path, 1)`.
 - An unknown opening tag followed by its closing tag reports "endif not inside" rather than
   "undefined tag".
-- `(1..n)` builds a `values.Range`, a Go struct whose exported `AsArray` a template can call:
-  `{{ r.AsArray | size }}` on `(1..50000000)` peaked at 1.1 GB RSS (`values/range.go:20-27`).
-  Binding plain data does not prevent it, since the engine builds the range itself; Plan 7 refuses
-  `..` anywhere inside `{{ }}` and `{% %}`.
+- A range literal `(1..n)` exposes a callable method.
+  - It builds a `values.Range`, liquid's own Go struct for a range, and a template can call its
+    exported `AsArray` method.
+  - `{{ r.AsArray | size }}` on `(1..50000000)` peaked at 1.1 GB RSS (`values/range.go:20-27`).
+  - Binding plain data leaves this open, since the engine builds the range itself.
+  - The analysis proposed refusing `..` anywhere inside `{{ }}` and `{% %}`. Plan 7.5 narrowed
+    that: lola's screen refuses `..` outside a quoted string in a tag or object ("ranges like
+    (1..n) are not available in lola templates; loop over a list").
 - Chained right-trimmed output (`{{ s -}}{{ s -}}…`) buffers in the engine's `trimWriter`, past
   the caller's capped writer: 2000 links of a 64 KiB `s` allocated about 400 MB against a 1 MiB
   cap. lola vendors v1.9.2 with a one-hunk fix (`third_party/liquid/PATCHES.md`).
@@ -89,8 +98,8 @@ The probes:
   identifier that is not a valid Unicode identifier, such as `{{ ☃ }}`
   (`expressions/scanner.go:563-565`, `:674-676`), and the parser re-panics everything but its own
   errors (`expressions/parser.go:43-56`).
-- Its `go.mod` lists linters as `tool` lines, so `go mod graph` shows 230 edges; only three modules
-  are compiled in, adding about two indirect lines to lola's `go.mod`.
+- Its `go.mod` lists its linters in `tool` directives, so `go mod graph` shows 230 edges, but only
+  three modules are compiled in; they add about two indirect lines to lola's `go.mod`.
 
 ## Decision
 
@@ -122,7 +131,45 @@ attack surface, but authors cannot compare values, and its default partial loade
 
 ## Required mitigations
 
-Plan 7 must implement these around osteele/liquid:
+The analysis required these around osteele/liquid. Plan 7 implemented them in
+`internal/templating`; where the code differs from what the analysis proposed, the item says so.
+
+The guards nest: the timeout and `recover` wrap the whole render, the screen runs before
+liquid compiles anything, and the bounded writer and the partial store sit inside liquid's
+render.
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {
+  'primaryColor': '#2f6dab',
+  'primaryTextColor': '#1e1e1e',
+  'primaryBorderColor': '#7c8ba1',
+  'lineColor': '#7c8ba1',
+  'edgeLabelBackground': '#eef2f8',
+  'tertiaryColor': 'transparent',
+  'tertiaryTextColor': '#7c8ba1',
+  'tertiaryBorderColor': '#7c8ba1',
+  'clusterBkg': 'transparent',
+  'clusterBorder': '#7c8ba1',
+  'titleColor': '#7c8ba1',
+  'noteBkgColor': '#eef2f8',
+  'noteTextColor': '#1e1e1e',
+  'fontFamily': 'system-ui, sans-serif'
+}, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+flowchart TD
+  Size[template size cap] --> Timeout
+  subgraph Timeout["goroutine with a 2 s timeout"]
+    subgraph Recover["recover"]
+      Screen["screen: tag allowlist and no ranges"] --> Compile["compile: lola's filters, strict variables"]
+      Compile --> Render[render plain data]
+      Render --> Writer["bounded writer, 1 MiB"]
+      Render --> Store["in-memory partial store, 64 reads"]
+    end
+  end
+  classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
+  classDef sysB fill:#1d7848,color:#ffffff,stroke:#7c8ba1
+  class Size,Screen sysA
+  class Compile,Render,Writer,Store sysB
+```
 
 1. **No disk access.** Unregister the `render` tag with `UnregisterTag`. Let lola's screen pass
    only an `include` of a quoted partial name, and give the engine a `TemplateStore` that serves
@@ -131,25 +178,72 @@ Plan 7 must implement these around osteele/liquid:
 2. **Plain data only.** Bind `map[string]any` holding strings, lists and maps; never structs, so
    no method is callable.
 3. **Recover panics** in the goroutine that compiles and renders, since compiling panics too.
-4. **Output cap.** Render through a bounded `FRender` writer, about 1 MiB per file. The cap holds
-   only with the `trimWriter` patch above.
+4. **Output cap.** About 1 MiB per file. The analysis proposed a bounded `FRender` writer; lola
+   renders with `render.Render` into its own `boundedWriter`, which refuses the write that would
+   pass 1 MiB (`Limits.Output`) and every write after the deadline. The cap holds only with the
+   `trimWriter` patch described under the defects above (`third_party/liquid/PATCHES.md`).
 5. **Wall-clock timeout.** About 2 s per render, in a goroutine. On timeout, return an error and
    let the process exit; the goroutine keeps running until then.
-6. **Template size cap** of about 256 KiB, strict variables (`StrictVariables()`), and
-   `ParseTemplateLocation(src, path, 1)` for correct line numbers.
-7. **Fewer filters.** Replace `append`, `prepend` and `replace` with length-bounded versions
-   through `RegisterFilter`, and remove the `capture` tag. This narrows the memory blow-up but
-   does not close it. `UnregisterTag` cannot remove `capture`: it deletes only tags
-   (`render/tags.go:22-25`), and `capture` and `tablerow` are blocks, kept in a separate table that
-   nothing deletes from (`render/blocks.go:50-55`). A probe rendered `capture` after
-   `UnregisterTag("capture")`. Plan 7 instead refuses them, with every tag outside an allowlist,
-   by screening liquid's token scanner (`parser.Scan`) before compiling.
+6. **A cap on template size** of about 256 KiB, strict variables, and correct line numbers. The
+   analysis proposed `StrictVariables()` and `ParseTemplateLocation(src, path, 1)`; lola sets the
+   `StrictVariables` field of liquid's `render.Config` and compiles with `cfg.Compile`, passing
+   `parser.SourceLoc{Pathname: src.File, LineNo: src.Line}` with the line at least 1.
+7. **Fewer filters and tags.**
+   - The analysis proposed replacing `append`, `prepend` and `replace` with length-bounded
+     versions through `RegisterFilter`, and removing the `capture` tag. This narrows the memory
+     blow-up but does not close it.
+   - lola goes further on filters: its `render.Config` starts with no filters, and it adds only
+     its own 41 with `AddFilter` (`internal/templating/filters.go`).
+   - Each behaves as liquid's filter of the same name, but refuses an input, argument or result
+     over the caps (64 KiB per value, 4096 list items) before building it.
+   - `UnregisterTag` cannot remove `capture`: it deletes only tags (`render/tags.go:22-25`), and
+     `capture` and `tablerow` are blocks, kept in a separate table that nothing deletes from
+     (`render/blocks.go:50-55`). A probe rendered `capture` after `UnregisterTag("capture")`.
+   - Plan 7 instead refuses them, with every tag outside an allowlist, by screening liquid's token
+     scanner (`parser.Scan`) before compiling (`screenTag` in `internal/templating/screen.go`).
+
+   ```mermaid
+   %%{init: {'theme': 'base', 'themeVariables': {
+     'primaryColor': '#2f6dab',
+     'primaryTextColor': '#1e1e1e',
+     'primaryBorderColor': '#7c8ba1',
+     'lineColor': '#7c8ba1',
+     'edgeLabelBackground': '#eef2f8',
+     'tertiaryColor': 'transparent',
+     'tertiaryTextColor': '#7c8ba1',
+     'tertiaryBorderColor': '#7c8ba1',
+     'clusterBkg': 'transparent',
+     'clusterBorder': '#7c8ba1',
+     'titleColor': '#7c8ba1',
+     'noteBkgColor': '#eef2f8',
+     'noteTextColor': '#1e1e1e',
+     'fontFamily': 'system-ui, sans-serif'
+   }, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
+   flowchart LR
+     Tag[tag in a template] --> Screen{"lola's screen - on the allowlist?"}
+     Screen -->|"no - capture, tablerow, render, unknown"| Refused[refused before compiling]
+     Screen -->|yes| Compile[liquid compiles]
+     subgraph Grammar["liquid's grammar"]
+       Tags["tags table: UnregisterTag removed render"]
+       Blocks["blocks table: capture and tablerow stay"]
+     end
+     Compile --> Tags
+     Compile --> Blocks
+     classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
+     classDef sysB fill:#1d7848,color:#ffffff,stroke:#7c8ba1
+     classDef sysC fill:#7457b8,color:#ffffff,stroke:#7c8ba1
+     class Tag,Screen sysA
+     class Compile,Tags,Blocks sysB
+     class Refused sysC
+   ```
 8. **Render every file before writing any**, so a failed render cannot leave a half-applied
    install.
 
 Open for Plan 7's design: rendering in a re-executed lola child process with a memory limit and a
 timeout would close the out-of-memory gap. The memory limit is enforced on Linux; macOS largely
-ignores it, and Windows needs Job Objects.
+ignores it, and Windows needs Job Objects. Plan 7 renders in-process, in a goroutine
+(`renderWith` in `internal/templating/templating.go`), with no child process, so the memory risk
+below stands.
 
 ## Residual risks
 

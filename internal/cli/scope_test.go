@@ -189,16 +189,6 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(r.err).To(Equal("error: you have no marketplace acmee\n  hint: lola market\n"), "a false output flag is no output flag")
 	})
 
-	It("asks a one-scope picker again when the answer is empty", func() {
-		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
-		GinkgoT().Chdir(proj)
-		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(), scopes(cli.ScopeProject)}}
-		r := lolaP(p, "render")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps).To(HaveLen(2))
-		Expect(p.scopeSteps[1].Problem).To(Equal("pick at least one scope"))
-	})
-
 	It("uninstall and render take a project at the home directory an older lola installed; install and sync refuse it", func() {
 		home := os.Getenv("HOME")
 		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))

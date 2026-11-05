@@ -148,7 +148,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} market general --add http://127.0.0.1:8765/market.git"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"✓ marketplace general: 1 entry (Python lola YAML) from http://127.0.0.1:8765/market.git at 6e73046\""
+          - "result.systemout ShouldContainSubstring \"✓ marketplace general: 1 entry (lola YAML catalog) from http://127.0.0.1:8765/market.git at 6e73046\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} market --json > /tmp/m7.json'"
         assertions:

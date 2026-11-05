@@ -177,5 +177,38 @@ var _ = Describe("hints", func() {
 				return []string{"render", "-C", proj, "--json"}
 			},
 			func(proj string) []string { return []string{"git -C " + proj + " rm --cached .lola/lock.json"} }),
+		Entry("list's refusal of an unknown lock.json target, whose lola repair keeps -C",
+			func(proj string) []string { plantTarget(proj); return []string{"list", "-C", proj} },
+			func(proj string) []string { return []string{"lola repair -C " + proj} }),
+		Entry("the same refusal under --json and --no-pager, which its lola repair keeps",
+			func(proj string) []string {
+				plantTarget(proj)
+				return []string{"list", "-C", proj, "--json", "--no-pager"}
+			},
+			func(proj string) []string { return []string{"lola repair -C " + proj + " --json --no-pager"} }),
 	)
 })
+
+// editLock edits proj's lock.json as a hand edit would: f changes the decoded document.
+func editLock(proj string, f func(doc map[string]any)) {
+	GinkgoHelper()
+	lp := filepath.Join(proj, ".lola", "lock.json")
+	b, err := os.ReadFile(lp)
+	Expect(err).NotTo(HaveOccurred())
+	var doc map[string]any
+	Expect(json.Unmarshal(b, &doc)).To(Succeed())
+	f(doc)
+	b, err = json.Marshal(doc)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(os.WriteFile(lp, b, 0o600)).To(Succeed())
+}
+
+// plantTarget points kit's lock.json entry at a target lola does not know, with an artifact on it.
+func plantTarget(proj string) {
+	GinkgoHelper()
+	editLock(proj, func(doc map[string]any) {
+		kit := doc["modules"].(map[string]any)["kit"].(map[string]any)
+		kit["targets"] = append(kit["targets"].([]any), "bogus")
+		kit["artifacts"] = append(kit["artifacts"].([]any), map[string]any{"target": "bogus", "kind": "file", "path": "x.md"})
+	})
+}

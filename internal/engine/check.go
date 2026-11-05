@@ -9,7 +9,6 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
-	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/module"
@@ -60,7 +59,7 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 		return nil, err
 	}
 	probes := e.newProbeRun(ctx)
-	led, err := ledger.Load(e.files(sc).ledger)
+	led, err := e.Ledger(sc)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +79,7 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 	}
 	if err != nil {
 		rep.Findings = append(rep.Findings, target.Finding{Severity: target.SeverityInfo, Kind: "module", Code: "vars-defaults",
-			Text: untrusted.CleanErr(err).Error() + "; lola check renders every module with its default vars"})
+			Text: untrusted.CleanErr(err).Error() + "; lola check renders every module with its default vars", Hint: strings.Join(errs.Hints(err), "; ")})
 	} else {
 		want, _ = desired(layers)
 	}
@@ -117,8 +116,11 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 	// A bad override is the module's skip finding, as a template error is, and it renders with
 	// its defaults; a staged source is no cached version, so the refusal carries no hint.
 	if err := e.checkVars(sc, m, ment, from, "", display); err != nil {
-		cm.Findings = append(cm.Findings, target.Finding{Severity: target.SeveritySkip, Module: m.Name, Kind: "module", Code: "vars-override",
-			Text: err.Error()})
+		f := target.Finding{Severity: target.SeveritySkip, Module: m.Name, Kind: "module", Code: "vars-override", Text: err.Error()}
+		if vr, ok := errors.AsType[*varsRefusal](err); ok {
+			f.Hint = vr.fix
+		}
+		cm.Findings = append(cm.Findings, f)
 		ment = nil
 	}
 	cm.Findings = append(cm.Findings, attrsUndefined(m)...)
@@ -249,11 +251,13 @@ func attrsUndefined(m *module.Module) []target.Finding {
 		if slices.ContainsFunc(files, func(a map[string]any) bool { return definesPath(a, ref.Path) }) {
 			continue
 		}
+		key, file := untrusted.Text(strings.Join(ref.Path, "."), untrusted.MaxName), untrusted.Text(ref.File, untrusted.MaxName)
 		text := fmt.Sprintf("%s:%d: attrs.%s is defined by no attribute file of %s, for any target; it always reads as nil",
-			untrusted.Text(ref.File, untrusted.MaxName), ref.Line, untrusted.Text(strings.Join(ref.Path, "."), untrusted.MaxName), untrusted.Text(m.Name, untrusted.MaxName))
+			file, ref.Line, key, untrusted.Text(m.Name, untrusted.MaxName))
 		if !seen[text] {
 			seen[text] = true
-			finds = append(finds, target.Finding{Severity: target.SeverityWarn, Module: m.Name, Kind: "module", Code: "attrs-undefined", Text: text})
+			finds = append(finds, target.Finding{Severity: target.SeverityWarn, Module: m.Name, Kind: "module", Code: "attrs-undefined", Text: text,
+				Hint: fmt.Sprintf("correct attrs.%s at %s:%d, or define it for an assistant in the .targets.yaml beside the component that reads it", key, file, ref.Line)})
 		}
 	}
 	slices.SortFunc(finds, func(a, b target.Finding) int { return strings.Compare(a.Text, b.Text) })

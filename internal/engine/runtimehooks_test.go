@@ -507,7 +507,10 @@ var _ = Describe("runtime hooks", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Steps).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionAbsent), "Kind": Equal("runtime-hook")})))
 			Expect(res.Findings).To(ContainElement(MatchFields(IgnoreExtras, Fields{"Severity": Equal(target.SeverityInfo), "Module": Equal("deploy"),
-				"Code": Equal("claude-code/runtime-hook-drift"), "Hint": Equal("run with --force to restore it")})))
+				"Code": Equal("claude-code/runtime-hook-drift"), "Hint": Equal("restore it: " + e.Command(sc, "render", "--force"))})))
+			res, err = e.Render(ctx, sc, engine.Options{Targets: []string{"claude-code"}, ForceRun: "lola render --project --force", Display: []string{"--json"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Findings).To(ContainElement(HaveField("Hint", "restore it: lola render --project --force")), "the run's own --force run, when it has one")
 			_, err = e.Render(ctx, sc, engine.Options{Targets: []string{"claude-code"}, Strict: true})
 			Expect(err).NotTo(HaveOccurred(), "drift reports the user's choice; --strict does not escalate it")
 			b, err := os.ReadFile(filepath.Join(proj, settings))

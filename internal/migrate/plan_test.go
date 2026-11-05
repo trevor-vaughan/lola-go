@@ -34,16 +34,18 @@ var _ = Describe("NewPlan", func() {
 		}
 		writeTree(src, reviewModule)
 		h.source("review", map[string]string{"source": src, "type": "folder"})
+		installAssistants(tmp)
 		e = newEngine()
 	})
 	ctx := context.Background()
-	plan := func() *migrate.Plan {
+	planWith := func(opts migrate.Options) *migrate.Plan {
 		st, err := migrate.Load(h.dir, userHome)
 		Expect(err).NotTo(HaveOccurred())
-		p, err := migrate.NewPlan(ctx, e, st, nil)
+		p, err := migrate.NewPlan(ctx, e, st, opts)
 		Expect(err).NotTo(HaveOccurred())
 		return p
 	}
+	plan := func() *migrate.Plan { return planWith(migrate.Options{}) }
 	// unpinned drops the cached version each install is pinned to, which differs per run.
 	unpinned := func(list []migrate.Install) []migrate.Install {
 		for i := range list {
@@ -239,7 +241,7 @@ var _ = Describe("NewPlan", func() {
 			Expect(err).NotTo(HaveOccurred())
 			cctx, cancel := context.WithCancel(ctx)
 			cancel()
-			_, err = migrate.NewPlan(cctx, e, st, nil)
+			_, err = migrate.NewPlan(cctx, e, st, migrate.Options{})
 			Expect(err).To(MatchError(context.Canceled))
 		})
 	})
@@ -457,5 +459,239 @@ var _ = Describe("NewPlan", func() {
 			shown{migrate.ItemInstructions, filepath.Join(tmp, "config", "opencode", "AGENTS.md"), block},
 			shown{migrate.ItemPluginData, filepath.Join(h.dir, "plugin-data", "review"), ""},
 		))
+	})
+
+	Context("project paths another machine had (Plan 10 §3.1)", func() {
+		It("looks for a missing project path at the same place below a --map-root's new root, and installs there", func() {
+			h.install(at(filepath.Join(tmp, "old", "a-proj"), "claude-code"))
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: filepath.Join(tmp, "old"), New: tmp}}})
+			Expect(p.Unmappable).To(BeEmpty())
+			Expect(p.RootSuggestions).To(BeEmpty(), "a moved path is never suggested again")
+			Expect(p.Destinations).To(HaveLen(1))
+			Expect(p.Destinations[0].Root).To(Equal(projA))
+			Expect(p.Destinations[0].Installs).To(HaveLen(1))
+		})
+
+		It("leaves a moved path that is still missing unmappable, naming where it looked", func() {
+			h.install(at(filepath.Join(tmp, "old", "a-proj"), "claude-code"))
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: filepath.Join(tmp, "old"), New: filepath.Join(tmp, "nowhere")}}})
+			Expect(p.Destinations).To(BeEmpty())
+			Expect(p.Unmappable).To(HaveLen(1))
+			Expect(p.Unmappable[0].Reason).To(Equal("project_path " + filepath.Join(tmp, "nowhere", "a-proj") + " no longer exists"))
+			Expect(p.Unmappable[0].ProjectPath).To(Equal(filepath.Join(tmp, "nowhere", "a-proj")))
+			Expect(p.Unmappable[0].Hints).To(ConsistOf(HavePrefix("rerun lola migrate with --map-root <old root>=<where it is on this machine>;")),
+				"no root to offer for a path a map moved")
+			Expect(p.RootSuggestions).To(BeEmpty(), "a moved path is never suggested again")
+		})
+
+		It("applies the longest --map-root that matches, and only at a whole name", func() {
+			h.install(at(filepath.Join(tmp, "old", "deep", "a-proj"), "claude-code"), at(filepath.Join(tmp, "older", "b-proj"), "claude-code"))
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: filepath.Join(tmp, "old"), New: filepath.Join(tmp, "nowhere")},
+				{Old: filepath.Join(tmp, "old", "deep"), New: tmp}}})
+			Expect(p.Destinations).To(HaveLen(1))
+			Expect(p.Destinations[0].Root).To(Equal(projA))
+			Expect(p.Unmappable).To(HaveLen(1))
+			Expect(p.Unmappable[0].ProjectPath).To(Equal(filepath.Join(tmp, "older", "b-proj")), "old is not a name of older")
+		})
+
+		It("suggests each missing root once, with your home as the new root, and hints --map-root on each record", func() {
+			h.install(at("/Users/alice/src/a", "claude-code"), at("/Users/alice/b", "opencode"),
+				at(filepath.Join(tmp, "gone", "deeper", "c"), "claude-code"), at(`C:\Users\bob\d`, "claude-code"))
+			p := plan()
+			got := map[string]int{}
+			for _, s := range p.RootSuggestions {
+				Expect(s.New).To(Equal(userHome))
+				got[s.Old] = len(s.Records)
+			}
+			Expect(got).To(Equal(map[string]int{"/Users/alice": 2, filepath.Join(tmp, "gone"): 1, `C:\Users\bob`: 1}))
+			Expect(p.RootSuggestions).To(HaveLen(3))
+			Expect(p.Unmappable).To(HaveLen(4))
+			hints := map[string][]string{}
+			for _, u := range p.Unmappable {
+				hints[u.ProjectPath] = u.Hints
+			}
+			hint := func(flag string) []string {
+				return []string{"rerun lola migrate with --map-root " + flag + "; until then it leaves this record and its files as they are"}
+			}
+			Expect(hints).To(Equal(map[string][]string{
+				"/Users/alice/src/a":                      hint("/Users/alice=" + userHome),
+				"/Users/alice/b":                          hint("/Users/alice=" + userHome),
+				filepath.Join(tmp, "gone", "deeper", "c"): hint(filepath.Join(tmp, "gone") + "=" + userHome),
+				`C:\Users\bob\d`:                          hint(`'C:\Users\bob=` + userHome + "'"),
+			}), "each record's hint is the --map-root its root needs, with your home as the new root")
+		})
+
+		It("moves a local source missing here by the same --map-root: one answer per old root covers paths and sources", func() {
+			kit := filepath.Join(userHome, "src", "kit")
+			writeTree(kit, map[string]string{"skills/lint/SKILL.md": "---\ndescription: Lint\n---\nLint.\n"})
+			h.source("kit", map[string]string{"source": "/Users/alice/src/kit", "type": "folder"})
+			moved := filepath.Join(userHome, "proj")
+			Expect(os.MkdirAll(moved, 0o755)).To(Succeed())
+			h.install(rec{"module": "kit", "assistant": "claude-code", "scope": "user", "skills": []string{"lint"}}, at("/Users/alice/proj", "claude-code"))
+			p := plan()
+			Expect(p.RootSuggestions).To(HaveLen(1))
+			Expect(p.RootSuggestions[0].Old).To(Equal("/Users/alice"))
+			Expect(p.RootSuggestions[0].Records).To(HaveLen(2), "the project record and the record whose source is there")
+			Expect(p.Destinations[0].Unmappable).To(ConsistOf(HaveField("Reason", "the local source /Users/alice/src/kit no longer exists")))
+			Expect(p.Destinations[0].Unmappable[0].Hints).To(Equal([]string{"restore it there, rerun lola migrate with --map-root /Users/alice=" + userHome +
+				", or install the module from another source with lola install"}))
+
+			p = planWith(migrate.Options{Roots: []migrate.RootMap{{Old: "/Users/alice", New: userHome}}})
+			Expect(p.RootSuggestions).To(BeEmpty())
+			Expect(p.Unmappable).To(BeEmpty())
+			Expect(p.Warnings).To(BeEmpty())
+			Expect(p.Destinations).To(HaveLen(2))
+			Expect(p.Destinations[0].Root).To(Equal(moved))
+			Expect(p.Destinations[1].Installs).To(ConsistOf(HaveField("Source", kit)))
+		})
+
+		It("leaves a moved source that is still missing unmappable, naming where it looked; another OS's source path is missing", func() {
+			h.source("kit", map[string]string{"source": `C:\Users\alice\src\kit`, "type": "folder"})
+			h.install(rec{"module": "kit", "assistant": "claude-code", "scope": "user"})
+			p := plan()
+			Expect(p.Destinations[0].Unmappable).To(ConsistOf(HaveField("Reason", `the local source C:\Users\alice\src\kit no longer exists`)))
+			Expect(p.RootSuggestions).To(ConsistOf(HaveField("Old", `C:\Users\alice`)))
+
+			p = planWith(migrate.Options{Roots: []migrate.RootMap{{Old: `C:\Users\alice`, New: filepath.Join(tmp, "nowhere")}}})
+			Expect(p.Destinations[0].Unmappable).To(ConsistOf(HaveField("Reason", "the local source "+filepath.Join(tmp, "nowhere", "src", "kit")+" no longer exists")))
+			Expect(p.Destinations[0].Unmappable[0].Hints).To(ConsistOf(ContainSubstring("--map-root <old root>=<where it is on this machine>,")),
+				"no root to offer for a source a map moved")
+			Expect(p.RootSuggestions).To(BeEmpty())
+		})
+
+		It("does not move a path through .., and does not suggest a root for it", func() {
+			h.install(at("/Users/alice/../../etc/kit", "claude-code"))
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: "/Users/alice", New: tmp}}})
+			Expect(p.Destinations).To(BeEmpty())
+			Expect(p.Unmappable).To(ConsistOf(HaveField("Reason", "project_path /Users/alice/../../etc/kit is not in its clean form")))
+			Expect(p.RootSuggestions).To(BeEmpty())
+		})
+
+		It("suggests no root that --map-root would refuse for moving every path, such as a project at a drive root", func() {
+			h.install(at(`E:\`, "claude-code"), at("/", "claude-code"))
+			p := plan()
+			Expect(p.RootSuggestions).To(BeEmpty(), "a hint must be a command that works")
+			Expect(p.Unmappable).To(HaveLen(2), "the records stay unmappable, with their reason")
+			Expect(p.Unmappable[0].ProjectPath).To(Equal(`E:\`))
+			Expect(p.Unmappable[0].Hints).To(Equal([]string{"rerun lola migrate with --map-root <old root>=<where it is on this machine>; " +
+				"until then it leaves this record and its files as they are"}), "no root to offer, so the hint names what to write")
+		})
+
+		It("reports a local source with a .. name as not in its clean form, and suggests no root for it", func() {
+			h.source("win", map[string]string{"source": `C:\Users\alice\..\..\kit`, "type": "folder"})
+			h.source("nat", map[string]string{"source": filepath.Join(tmp, "nowhere") + "/../kit", "type": "folder"})
+			h.install(rec{"module": "win", "assistant": "claude-code", "scope": "user"}, rec{"module": "nat", "assistant": "claude-code", "scope": "user"})
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: tmp, New: userHome}}})
+			Expect(p.Destinations[0].Unmappable).To(ConsistOf(
+				HaveField("Reason", `the local source C:\Users\alice\..\..\kit is not in its clean form`),
+				HaveField("Reason", "the local source "+filepath.Join(tmp, "nowhere")+"/../kit is not in its clean form")))
+			Expect(p.Destinations[0].Unmappable).To(HaveEach(HaveField("Hints", ConsistOf(ContainSubstring("lola install <source>")))))
+			Expect(p.RootSuggestions).To(BeEmpty())
+		})
+
+		It("matches a Windows --map-root whatever its drive letter's case, and does not call a shadowed map unused", func() {
+			h.install(at(`C:\Users\alice\a-proj`, "claude-code"))
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: `c:\Users`, New: filepath.Join(tmp, "nowhere")}, {Old: "C:/Users/alice", New: tmp}}})
+			Expect(p.Warnings).To(BeEmpty())
+			Expect(p.Unmappable).To(BeEmpty())
+			Expect(p.Destinations).To(HaveLen(1))
+			Expect(p.Destinations[0].Root).To(Equal(filepath.Join(tmp, "a-proj")))
+		})
+
+		It("refuses a map that moves a path onto your home", func() {
+			h.install(at("/Users/alice", "claude-code"))
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: "/Users/alice", New: userHome}}})
+			Expect(p.Destinations).To(BeEmpty())
+			Expect(p.Unmappable).To(ConsistOf(HaveField("Reason", "project_path "+userHome+" is your home directory or one of its parents")))
+		})
+
+		It("warns of a --map-root that matches no missing project path or source, and plans as without it", func() {
+			h.install(at(projA, "claude-code"))
+			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: "/Users/bob", New: tmp}}})
+			Expect(p.Warnings).To(ConsistOf("--map-root /Users/bob=" + tmp + " matches no missing project path or source of the Python lola; it changes nothing"))
+			Expect(p.Destinations[0].Installs).To(HaveLen(1))
+		})
+	})
+
+	Context("assistants this machine lacks (Plan 10 §3.2)", func() {
+		BeforeEach(func() { Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed()) })
+
+		It("leaves a record whose assistant is neither on your PATH nor set up where it goes, and suggests those on your PATH", func() {
+			h.install(at(projA, "claude-code"), at(projB, "claude-code"))
+			p := plan()
+			Expect(p.Destinations).To(HaveLen(2))
+			for _, d := range p.Destinations {
+				Expect(d.Installs).To(BeEmpty())
+				Expect(d.Unmappable).To(ConsistOf(HaveField("Reason", "claude-code is not installed here")))
+				Expect(d.Unmappable[0].Hints).To(Equal([]string{"install claude-code and rerun lola migrate, or rerun it with --map-target claude-code=gemini-cli,opencode " +
+					"to install for one you have (claude-code=claude-code installs for claude-code anyway)"}))
+			}
+			Expect(p.TargetSuggestions).To(HaveLen(1))
+			Expect(p.TargetSuggestions[0].Old).To(Equal("claude-code"))
+			Expect(p.TargetSuggestions[0].Detected).To(Equal([]string{"gemini-cli", "opencode"}))
+			Expect(p.TargetSuggestions[0].Records).To(HaveLen(2))
+		})
+
+		It("names no assistant in its hints when none is on your PATH", func() {
+			for _, name := range []string{"gemini", "opencode"} {
+				Expect(os.Remove(filepath.Join(tmp, "bin", name))).To(Succeed())
+			}
+			h.install(at(projA, "claude-code"), at(projB, "cursor"))
+			p := plan()
+			Expect(p.Destinations).To(HaveLen(2))
+			Expect(p.Destinations[0].Unmappable[0].Hints).To(Equal([]string{"install claude-code and rerun lola migrate, or rerun it with --map-target claude-code=<assistant> " +
+				"to install for one you have (claude-code=claude-code installs for claude-code anyway)"}))
+			Expect(p.Destinations[1].Unmappable[0].Hints).To(ContainElement("to install its modules for an assistant you have instead, rerun lola migrate with --map-target cursor=<assistant>"))
+		})
+
+		It("installs for an assistant set up where the record goes, though it is not on your PATH, as lola tidy counts it", func() {
+			Expect(os.MkdirAll(filepath.Join(projA, ".claude"), 0o755)).To(Succeed())
+			h.install(at(projA, "claude-code"))
+			p := plan()
+			Expect(p.Destinations[0].Installs).To(HaveLen(1))
+			Expect(p.TargetSuggestions).To(BeEmpty())
+		})
+
+		It("installs a missing assistant's records for the targets --map-target names, recording none of its paths", func() {
+			h.install(at(projA, "claude-code"), rec{"module": "review", "assistant": "claude-code", "scope": "user", "has_instructions": true})
+			p := planWith(migrate.Options{Targets: map[string][]string{"claude-code": {"opencode", "gemini-cli"}}})
+			Expect(p.TargetSuggestions).To(BeEmpty())
+			Expect(p.Destinations).To(HaveLen(2))
+			for _, d := range p.Destinations {
+				Expect(unpinned(d.Installs)).To(Equal([]migrate.Install{{PythonModules: []string{"review"}, Kind: source.KindFolder, Source: src,
+					Targets: []string{"gemini-cli", "opencode"}}}), "one install, for every target the map names, in registry order")
+				Expect(d.NotMigrated).NotTo(ContainElement(HaveField("What", migrate.ItemInstructions)), "the Python lola's claude-code files are not here")
+			}
+			Expect(p.Destinations[0].Recorded).To(ConsistOf(HaveField("Kind", migrate.KindModuleCopy)), "only the module copy, which the project has")
+			Expect(p.Destinations[1].Recorded).To(BeEmpty(), "the Python lola wrote nothing for gemini-cli or opencode")
+		})
+
+		It("maps an assistant lola has no target for, whose hint names --map-target", func() {
+			h.install(at(projA, "cursor"))
+			p := plan()
+			Expect(p.TargetSuggestions).To(ConsistOf(HaveField("Old", "cursor")))
+			Expect(p.Destinations[0].Unmappable[0].Hints).To(ContainElement("to install its modules for an assistant you have instead, rerun lola migrate with --map-target cursor=gemini-cli,opencode"))
+
+			p = planWith(migrate.Options{Targets: map[string][]string{"cursor": {"opencode"}}})
+			Expect(p.Destinations[0].Installs).To(HaveLen(1))
+			Expect(p.Destinations[0].Installs[0].Targets).To(Equal([]string{"opencode"}))
+		})
+
+		It("warns of a --map-target that matches no record whose assistant is missing here", func() {
+			Expect(os.MkdirAll(filepath.Join(projA, ".claude"), 0o755)).To(Succeed())
+			h.install(at(projA, "claude-code"))
+			p := planWith(migrate.Options{Targets: map[string][]string{"claude-code": {"opencode"}, "cursor": {"opencode"}}})
+			Expect(p.Warnings).To(ConsistOf(
+				"--map-target claude-code=opencode matches no record whose assistant is missing here; it changes nothing",
+				"--map-target cursor=opencode matches no record whose assistant is missing here; it changes nothing"))
+			Expect(p.Destinations[0].Installs[0].Targets).To(Equal([]string{"claude-code"}), "set up here, so the map does not apply")
+		})
+
+		It("reports a record mapped to two targets once when it cannot migrate", func() {
+			h.install(rec{"module": "review", "assistant": "claude-code", "scope": "project", "project_path": projA, "agents": []string{"gone"}})
+			p := planWith(migrate.Options{Targets: map[string][]string{"claude-code": {"gemini-cli", "opencode"}}})
+			Expect(p.Destinations[0].Installs).To(BeEmpty())
+			Expect(p.Destinations[0].Unmappable).To(ConsistOf(HaveField("Reason", ContainSubstring("holds no agent gone"))))
+		})
 	})
 })

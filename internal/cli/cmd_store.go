@@ -56,7 +56,7 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 			if len(args) == 0 {
 				return a.cacheListRun(cmd, args)
 			}
-			return groupRunE(cmd, args)
+			return a.groupRunE(cmd, args)
 		},
 	}
 	cache.AddCommand(a.cacheAddCmd(), a.cacheRmCmd(), a.cacheListCmd(), a.cacheUpdateCmd(), a.cacheSearchCmd(), a.cacheCleanCmd())
@@ -149,7 +149,7 @@ func (a *app) cacheAddCmd() *cobra.Command {
 				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path, outputFlags(cmd))
 			}
 			if err != nil {
-				return tagRefHint(cmd, args, err)
+				return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, args, err)
 			}
 			o, _, err := eng.Store.Origin(v.Name)
 			if err != nil {
@@ -197,7 +197,7 @@ func (a *app) cacheRmCmd() *cobra.Command {
 			if !yes {
 				show := func(w io.Writer) { fmt.Fprintf(w, "will remove from your cache: %s\n", strings.Join(args, ", ")) }
 				plan := map[string]any{"would_remove": args}
-				if err := a.confirm(cmd, args, "Remove "+strings.Join(args, ", ")+" from your cache?", plan, show); err != nil {
+				if err := a.confirm(cmd, args, "Remove "+strings.Join(args, ", ")+" from your cache?", Nav{}, plan, show); err != nil {
 					return err
 				}
 			}
@@ -255,7 +255,7 @@ func (a *app) cacheCleanCmd() *cobra.Command {
 			}
 			if len(plan.Removed) > 0 && !yes {
 				show := func(w io.Writer) { printClean(w, style{}, plan, false) }
-				if err := a.confirm(cmd, nil, "Remove these from your cache?", plan, show); err != nil {
+				if err := a.confirm(cmd, nil, "Remove these from your cache?", Nav{}, plan, show); err != nil {
 					return err
 				}
 			}
@@ -529,7 +529,7 @@ func (a *app) initCmd() *cobra.Command {
 						fmt.Fprintln(w, "    "+f)
 					}
 				}
-				if err := a.confirm(cmd, nil, "Create module "+plan.Name+" in "+path+"?", plan, show); err != nil {
+				if err := a.confirm(cmd, nil, "Create module "+plan.Name+" in "+path+"?", Nav{}, plan, show); err != nil {
 					return err
 				}
 			}
@@ -558,12 +558,13 @@ func (a *app) initCmd() *cobra.Command {
 	return cmd
 }
 
-// tagRefHint is err, the failure of a run of cmd with args and a --ref, hinting that run at the
-// commit an annotated tag object points to when the --ref named the tag object (R-9-27, RR4).
-func tagRefHint(cmd *cobra.Command, args []string, err error) error {
+// tagRefHint is err, the failure of a run of cmd with args and a --ref, hinting that run, as the
+// command words, at the commit an annotated tag object points to when the --ref named the tag
+// object (R-9-27, RR4). showInfo's words are lola info's whichever command ran it.
+func tagRefHint(words []string, cmd *cobra.Command, args []string, err error) error {
 	t, ok := errors.AsType[*source.TagObjectError](err)
 	if !ok {
 		return err
 	}
-	return errs.WithHints(err, runWithout(cmd, args, "ref")+" --ref "+t.Commit)
+	return errs.WithHints(err, runAs(words, cmd, args, "ref")+" --ref "+t.Commit)
 }

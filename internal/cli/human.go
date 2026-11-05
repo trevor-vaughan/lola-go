@@ -24,6 +24,15 @@ func (s style) warn(t string) string { return s.paint("33", "⚠ "+t) }
 func (s style) bad(t string) string  { return s.paint("31", "✗ "+t) }
 func (s style) info(t string) string { return s.paint("36", "→ "+t) }
 
+// strong is bold, which is emphasis, not color: NO_COLOR and LOLA_COLOR=0 keep it, --plain does
+// not.
+func (s style) strong(t string) string {
+	if s.plain {
+		return t
+	}
+	return "\x1b[1m" + t + "\x1b[22m"
+}
+
 // memberShown caps a JSON array member, such as a hook group, in a step line; the full member
 // is in the JSON output.
 const memberShown = 120

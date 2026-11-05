@@ -233,6 +233,22 @@ var _ = Describe("Engine and the trust record", func() {
 				HaveField("Code", code), HaveField("Text", text), HaveField("Hint", hint))
 		}
 
+		It("render's left-out hints keep the run's output flags", func() {
+			Expect(install(claude, src, other, third)).To(Succeed())
+			off := false
+			pulled := *loadManifest().Find("example")
+			pulled.Rules = &off
+			pull(manifest.Change{Set: []manifest.Entry{pulled}, Remove: []string{"other"}})
+			removeRendered()
+
+			res, err := e.Render(ctx, sc, engine.Options{Display: []string{"--json", "--no-pager"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Findings).To(ContainElements(
+				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it",
+					"review and apply it: lola sync --project example --json --no-pager"),
+				leftOut("other", engine.CodeNotInManifest, "project.yml no longer lists it", "review: lola sync --project other --json --no-pager")))
+		})
+
 		It("render refuses untrusted state", func() {
 			Expect(install(claude, src, other, third)).To(Succeed())
 			off := false

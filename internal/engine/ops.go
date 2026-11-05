@@ -55,7 +55,7 @@ func (e *Engine) loadReplacing(sc Scope, dry bool, names []string) (*manifest.Ma
 		unlock()
 		return nil, nil, nil, nil, err
 	}
-	led, err := ledger.Load(e.files(sc).ledger)
+	led, err := e.Ledger(sc)
 	if err != nil {
 		unlock()
 		return nil, nil, nil, nil, err
@@ -1237,7 +1237,7 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 	staged := map[string]*store.Staged{}
 	var names []string
 	for _, name := range sortedNames(led) {
-		out, st, err := e.renderCheck(ctx, sc, man, find(want, name), rec, name, led.Modules[name], run)
+		out, st, err := e.renderCheck(ctx, sc, man, find(want, name), rec, name, led.Modules[name], run, opts.Display)
 		if err != nil {
 			return nil, errs.WithHints(err, renderUninstall(name))
 		}

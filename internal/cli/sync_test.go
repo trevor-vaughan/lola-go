@@ -43,7 +43,7 @@ func (c *confirming) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 	return ans, nil
 }
 
-func (c *confirming) Confirm(question string) (bool, error) {
+func (c *confirming) Confirm(question string, _ cli.Nav) (bool, error) {
 	c.questions, c.before = append(c.questions, question), append(c.before, c.stderr.String())
 	if c.meddle != nil {
 		c.meddle()

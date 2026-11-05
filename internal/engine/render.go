@@ -51,13 +51,15 @@ func newLeftOut(name, code, text string, hints ...string) *leftOut {
 // which it reads into run and returns staged, uncached, when render may install it. The entry of
 // the user's own profile is trusted as at user scope, except for project.yml's top-level targets
 // it installs to when it has none, and for that pin. A project profile's entry is checked as a
-// manifest entry is, against its profile's part of rec (Plan 6b §7, §8.1).
+// manifest entry is, against its profile's part of rec (Plan 6b §7, §8.1). Its remedies keep the
+// run's output flags, display.
 func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manifest, w *Wanted, rec *trust.Record, name string,
-	entry *ledger.Entry, run string) (*leftOut, *store.Staged, error) {
+	entry *ledger.Entry, run string, display []string) (*leftOut, *store.Staged, error) {
 	base := filepath.Base(e.files(sc).manifest)
-	review := "review and apply it: " + e.SyncCommand(sc, name)
+	syncRun := func(args ...string) string { return e.SyncCommand(sc, append(args, display...)...) }
+	review := "review and apply it: " + syncRun(name)
 	if sc.Kind == target.Project && w == nil {
-		return newLeftOut(name, CodeNotInManifest, cmp.Or(entry.From, base)+" no longer lists it", "review: "+e.SyncCommand(sc, name)), nil, nil
+		return newLeftOut(name, CodeNotInManifest, cmp.Or(entry.From, base)+" no longer lists it", "review: "+syncRun(name)), nil, nil
 	}
 	var ment *manifest.Entry
 	if w != nil {
@@ -97,7 +99,7 @@ func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manife
 		spec.Ref, spec.Path = entry.Ref, entry.Path
 		if err := source.CheckReachable(ctx, spec, entry.Commit, run); err != nil {
 			return newLeftOut(name, CodeNotTrusted, "lock.json pins it to "+shown(entry.Commit)+", which lola could not find on its ref: "+
-				shown(untrusted.CleanErr(err).Error()), "re-pin it: "+e.SyncCommand(sc, "--update", name)), nil, nil
+				shown(untrusted.CleanErr(err).Error()), "re-pin it: "+syncRun("--update", name)), nil, nil
 		}
 	}
 	if w.own() {
@@ -112,12 +114,13 @@ func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manife
 	if err != nil { // a pulled edit that no longer loads: the sync it hints shows the error, or refuses it
 		why := strings.TrimPrefix(untrusted.CleanErr(err).Error(), untrusted.Text(name, untrusted.MaxName)+": ")
 		return newLeftOut(name, CodeContentChanged, "its content no longer loads: "+shown(why),
-			append([]string{"review it: " + e.SyncCommand(sc, name), "or remove it: " + e.Command(sc, "uninstall", name)}, errs.Hints(err)...)...), nil, nil
+			append([]string{"review it: " + syncRun(name), "or remove it: " + e.Command(sc, "uninstall", append([]string{name}, display...)...)},
+				errs.Hints(err)...)...), nil, nil
 	}
 	if st.Version.Meta.Digest != entry.Digest {
-		hints := []string{"review it: " + e.SyncCommand(sc, name)}
+		hints := []string{"review it: " + syncRun(name)}
 		if spec.Components == nil { // an install of the folder would take all of it, never the selection
-			hints = append(hints, "edited it yourself? "+e.installFolder(sc, spec.Location))
+			hints = append(hints, "edited it yourself? "+e.installFolder(sc, spec.Location, display...))
 		}
 		return newLeftOut(name, CodeContentChanged, "its content changed since lola installed it", hints...), nil, nil
 	}

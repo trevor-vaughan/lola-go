@@ -59,7 +59,7 @@ var agentName = regexp.MustCompile(`^[a-z0-9_-]+$`)
 var positional = target.ContentRule{Kind: "command", Pattern: regexp.MustCompile(`(?:^|[^\\]|\\\\)\$(?:ARGUMENTS\[\d+\]|\d)`),
 	Severity: target.SeverityWarn, Code: "gemini-cli/positional-arguments",
 	Text: `gemini-cli has no positional or named arguments; they are left as written and the prompt starts with "Arguments: {{args}}"`,
-	Hint: "use $ARGUMENTS"}
+	Hint: "write $ARGUMENTS in place of $N, $ARGUMENTS[N] and declared names; gemini-cli fills it with the whole argument string"}
 
 // toolName is Gemini's tool naming: lowercase names joined by single underscores, like its
 // built-in (read_file), MCP (mcp_server_tool) and wildcard (*) names. Its strict agent schema
@@ -83,7 +83,8 @@ var caps = target.Capabilities{
 			"description":  {Shape: target.ShapeString},
 			"kind":         {Shape: target.ShapeString, Pattern: regexp.MustCompile(`^(local|remote)$`)},
 			"display_name": {Shape: target.ShapeString},
-			"tools":        {Shape: target.ShapeStringList, Pattern: toolName, Guard: target.ToolsGuard("gemini-cli", "list tools by gemini-cli's names")},
+			"tools": {Shape: target.ShapeStringList, Pattern: toolName,
+				Guard: target.ToolsGuard("gemini-cli", "under gemini-cli: in the agent's .targets.yaml, list its tools by gemini-cli's names, such as read_file")},
 			"model":        {Shape: target.ShapeString, Pattern: regexp.MustCompile(`^gemini-`)},
 			"temperature":  {Shape: target.ShapeNumber},
 			"max_turns":    {Shape: target.ShapePositiveInt},
@@ -95,7 +96,8 @@ var caps = target.Capabilities{
 	Rules: append([]target.ContentRule{
 		{Kind: "command", Pattern: target.Shell, Severity: target.SeveritySkip, Forceable: true,
 			Code: "gemini-cli/shell-injection", Text: "gemini-cli does not run !`…`; the command would send it to the model as text",
-			Hint: "Gemini runs shell with !{…}"},
+			Hint: "write the shell as Gemini's !{…} for gemini-cli in the command's .md.liquid template: " +
+				"{% if target == \"gemini-cli\" %}!{git status}{% else %}!`git status`{% endif %}"},
 		// Claude's whole-argument $ARGUMENTS, unescaped and not indexed, is Gemini's {{args}}. A $
 		// is escaped only by exactly one backslash; Claude fills it after a doubled one.
 		{Kind: "command", Pattern: regexp.MustCompile(`(?:^|[^\\]|\\\\)\$ARGUMENTS(?:$|[^\[])`), Severity: target.SeverityInfo,

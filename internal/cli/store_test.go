@@ -530,7 +530,7 @@ var _ = Describe("published alias table", func() {
 		proj := GinkgoT().TempDir()
 		for _, args := range [][]string{
 			{"list", "-C", proj}, {"render", "-C", proj}, {"cache", "list"}, {"cache", "update"},
-			{"search", "x"}, {"cache", "search", "x"}, {"list", "--user"}, {"market"}, {"market", "--update", "--all"},
+			{"search", "x"}, {"cache", "search", "x"}, {"list", "--user"}, {"repair", "-C", proj}, {"market"}, {"market", "--update", "--all"},
 		} {
 			r := lola(append(args, "--json")...)
 			Expect(r.code).To(Equal(0), strings.Join(args, " ")+": "+r.err)

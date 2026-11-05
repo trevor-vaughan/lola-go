@@ -55,6 +55,9 @@ func Isolate() string {
 		"LOLA_COLOR":          "",
 		"LOLA_HOME":           "", // the Python lola's home, which lola migrate reads
 		"COLUMNS":             "", // a width would cut human output's long cells
+		"LINES":               "", // a height would open the viewer on WithTerminals' buffers
+		"LOLA_PAGER":          "", // the caller's pager would page WithTerminals' output
+		"NO_PAGER":            "",
 	}
 	for k, v := range env {
 		t.Setenv(k, v)

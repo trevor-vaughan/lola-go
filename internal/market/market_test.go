@@ -543,7 +543,8 @@ var _ = Describe("names and lookup", func() {
 		verbs[0] = "changed"
 		Expect(market.Verbs()[0]).To(Equal("add"), "a copy: no caller can change the reserved words")
 		for _, v := range market.Verbs() {
-			Expect(market.ValidateName(v)).To(MatchError(ContainSubstring("is reserved")), v)
+			Expect(market.ValidateName(v)).To(MatchError("marketplace name "+v+" is reserved: lola market "+v+
+				" answers with the lola command to run instead, so it cannot name a marketplace"), v)
 		}
 		Expect(market.ValidateName("Acme")).To(MatchError(ContainSubstring("is invalid")))
 		Expect(market.Slug("Lola General Marketplace")).To(Equal("lola-general-marketplace"))
