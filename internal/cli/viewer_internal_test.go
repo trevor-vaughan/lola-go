@@ -90,7 +90,7 @@ func search(m viewerModel, term string) viewerModel {
 // sgr matches every SGR escape sequence: color, bold and resets alike.
 var sgr = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
-var _ = Describe("the viewer (Plan 10 §2)", func() {
+var _ = Describe("the viewer", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
 	// A 30-line text on a 40×10 terminal: 9 lines of text above the footer.
@@ -268,7 +268,7 @@ func keys(typed string) io.Reader {
 // altScreen is the sequence that enters the alternate screen, which only the viewer writes.
 const altScreen = "\x1b[?1049h"
 
-var _ = Describe("a.view, the viewer on the terminal (Plan 10 §2.1)", func() {
+var _ = Describe("a.view, the viewer on the terminal", func() {
 	var out, errb bytes.Buffer
 	var cmd *cobra.Command
 	BeforeEach(func() {
@@ -313,7 +313,7 @@ var _ = Describe("a.view, the viewer on the terminal (Plan 10 §2.1)", func() {
 	)
 })
 
-var _ = Describe("which output opens in the viewer (Plan 10 §2.1)", func() {
+var _ = Describe("which output opens in the viewer", func() {
 	var tmp string
 	BeforeEach(func() {
 		tmp = testenv.Isolate()

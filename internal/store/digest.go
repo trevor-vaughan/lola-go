@@ -14,7 +14,7 @@ import (
 // its mode and its content: path NUL octal(mode) NUL decimal(length) NUL content. The mode is
 // 0755 for a path in executables (the source's own record, Fetched.Executables) and 0644
 // otherwise; the file system's bits are never read, so a platform without execute bits
-// digests the same content the same (Plan 6a §5.2). Symlinks are refused: cache content never
+// digests the same content the same. Symlinks are refused: cache content never
 // contains them.
 func Digest(dir string, executables []string) (string, error) {
 	var files []string

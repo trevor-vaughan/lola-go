@@ -39,10 +39,18 @@ Ginkgo specs, with Gomega matchers, live beside the code, one suite per package.
   - A new key, rule or finding needs a hint, or an entry there with the reason.
 - **No meta tests.** A spec never tests test files, source text, docs or repository layout, and
   never tests a test helper. Convention specs that walk the live cobra tree are fine.
-- **Regression names.** A spec that pins a fix keeps the name its design lists; never rename
-  one. The MVP design (`docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`, §11) names
-  the specs for bugs of the Python lola, [LobsterTrap/lola](https://github.com/LobsterTrap/lola),
-  the tool `lola migrate` moves users from, such as `corrupt JSON config is never overwritten`.
+- **Regression names.** These specs pin bugs of the Python lola,
+  [LobsterTrap/lola](https://github.com/LobsterTrap/lola), the tool `lola migrate` moves users
+  from. Keep their names; never rename one:
+  - `corrupt JSON config is never overwritten, even with --force`
+  - `merges into a commented .mcp.json and uninstall never removes a server lola did not write`
+  - `uninstall and render leave no orphans`
+  - `gemini TOML preserves backslashes`
+  - `an author's agent model is kept for claude-code`
+  - `user-scope state does not depend on the working directory`
+  - `a command without frontmatter installs`
+  - `agent-plugins client namespaces reach only their target`
+  - `a hex-looking branch name is not treated as a commit`
 - **Behaviour lives in `internal/engine`.** A new flow gets engine specs first; `internal/cli`
   only adapts it.
 
@@ -73,7 +81,7 @@ need podman or docker, and neither is on PATH` and exit 0.
 | `market` | Marketplaces, search and `@market/module` installs. |
 | `migrate` | `lola migrate` against the real Python lola. |
 | `tidy` | `lola tidy` with the trash on another file system. |
-| `profile-first` | The spec's S1–S8 walkthroughs: base and profile, edits and overrides, moves, a teammate's home, bundles, the listing, and a new machine given only `~/.config/lola`. |
+| `profile-first` | Scenarios S1–S8: base and profile, edits and overrides, moves, a teammate's home, bundles, the listing, and a new machine given only `~/.config/lola`. |
 | `picks` | A profile's picks: `--edit --only` and `--exact`, `lola profile <name>` and `lola info` showing them, the re-pick hints run as printed, and a new upstream component an `only:` list leaves out. |
 
 ### The runner
@@ -87,6 +95,7 @@ It builds one image once: python:3.13-slim pinned by digest, `git` and `zip`, an
 from upstream at a full-SHA commit, its packages and build backend installed from
 `e2e/image/requirements.txt` with `--require-hashes`. It builds by `run` and `commit`, because
 buildah cannot mount a build context where overlay mounts nest (`e2e/image/build-image.sh`).
+
 Every pin is in `e2e/image/pins.env`, where `BASE_IMAGE` is derived from `BASE_DIGEST` and cannot
 be overridden; the image is named after the commit, a hash of the Python lola's repository, the
 digest and a hash of the recipe, so a change to any of them rebuilds it. The build container
@@ -190,8 +199,8 @@ e2e: 5 passed, 1 failed in 1m12s
   FAIL  market      6s  (log: .test-output/e2e-market/venom.log)
 ```
 
-With the image cached, each suite should finish within 90 s; the summary marks one that does not
-`slow` without failing the run, and the release checklist requires no `slow` mark. Each suite's
+With the image cached, each suite should finish within 90 s; the summary marks a suite that overruns
+`slow` but does not fail the run, and the release checklist requires no `slow` mark. Each suite's
 `.test-output/e2e-<suite>/versions.txt` records the runtime's version, whether it runs rootless,
 and venom's version.
 
@@ -203,7 +212,9 @@ installed them, one `ok` or `FAIL` line per check: every path the Python lola wr
 trash, kept, reported, or byte-identical for an unmappable record; its G1 case pins the one-line
 JSON refusal of `migrate --json` off a terminal; its C cases move a Python home and project from
 another machine, with Claude Code gone, and check the `--map-root` and `--map-target` run that
-`lola migrate` hints, then `lola sync --user`. The **tidy** suite runs `lola tidy` where the trash
+`lola migrate` hints, then `lola sync --user`.
+
+The **tidy** suite runs `lola tidy` where the trash
 is on another file system, which unit specs never reach: `scripts/setup.sh` builds a static fixture
 (a committed `.mcp.json` and command, a module lola-go installed, residue shaped as the Python lola
 leaves it with a `.gemini/skills` directory unit, an instruction file, a `.claude/skills` link out
@@ -218,11 +229,15 @@ user runs: the quickstart (`init`, install, edit, reinstall, uninstall), `check`
 a folder installed for three assistants, `list`, a hand-edited file `render` refuses and its
 `--force` hint restores, git at a tag and on a branch that moves, archives made by the system's
 `zip` and `tar`, user scope, and an accessible-mode confirmation through `script`'s
-pseudo-terminal. `scripts/setup.sh` builds `kit.git` and refuses unless its commits are the SHAs
+pseudo-terminal.
+
+`scripts/setup.sh` builds `kit.git` and refuses unless its commits are the SHAs
 the suite records; the git and archive cases each give lola a cache of their own, since your
 cache refuses a second source for a name it holds. Each refusal case reads its one JSON line
 with `jsoncheck.py` and runs its first hint with `hint.py`; a trust refusal's second hint,
-which applies what the first one shows, runs too. `uninstall` and `cache rm` under `--json` off a
+which applies what the first one shows, runs too.
+
+`uninstall` and `cache rm` under `--json` off a
 terminal refuse in one line carrying the plan, and their hints apply it. Case I17 runs `lola info`
 of a git source and then the install its next step names, as the hint runner runs hints, and
 checks from the request log that info fetched and the install made no request.
@@ -245,12 +260,16 @@ in accessible mode. A project profile committed to the repository is trusted bef
 `uninstall` removes a module's entry from the project profile on and lola's edit stays trusted, a user profile turns on and off, a remote
 profile is fetched by git over HTTPS from `git.lola.test` with the test CA, loopback and
 plain-http profile sources are refused before any request, and a tracked `lock.json` stops
-`render`. Through `script`'s pseudo-terminal, case T14 answers a bare `--trust` run's one receipt
+`render`.
+
+Through `script`'s pseudo-terminal, case T14 answers a bare `--trust` run's one receipt
 No (nothing written) and then yes, and case T15 answers a hook's question yes in `sync --scope
 both`'s collect pass and checks that the hook ran on that consent. Case T16 pulls a commit that
 adds the project's pre-install script, checks that the sync refuses until the hint's
 `--trust=scripts`, then pulls an edit of the script and checks that the next sync refuses for the
-script alone and that the edited script never ran. `scripts/setup.sh` builds `kit.git`,
+script alone and that the edited script never ran.
+
+`scripts/setup.sh` builds `kit.git`,
 `lint.git`, `fmt.git`, `profiles.git` and `team.git`, refuses unless their commits are the SHAs
 the suite records, and runs `tls.sh`.
 
@@ -261,18 +280,21 @@ cache with the `cache rm` that clears it, follows a pin changed in the catalog w
 refuses an `@` address written into `project.yml` before any request, and removes a marketplace
 through its one-line refusal's hint.
 
-The **profile-first** suite walks the scenarios S1 to S8 of the profile-first design spec
-(2026-10-29, §4) in an order one home can: S1 and S2 at user scope (a first install that picks
-user scope and writes `default`; a baseline, a `go-review` profile over it, an override through
-`lola profile --edit` and the way back with `--off`), S4 and S3 in the team project `acme` (a module
-installed into `project.yml` moved into a new profile in one step; an experiment copied from
-`go-review`, then back, keeping the experiment), S5 on a teammate's home (`b_env`: a personal
-profile never touches the files git tracks), then S7 and S8 back in the first home (a bundle whose
-later member wins and an install that asks which member; one glance with `lola profile`, in human,
-`--plain` and `--json`), and S6 last: a new home (`n_env`) is given only a copy of
-`~/.config/lola`. S6 advances `cc-skills-golang`'s `main` (`setup.sh advance`) before the new home
+The **profile-first** suite walks eight scenarios, S1 to S8, in an order one home can: S1 and S2 at
+user scope (a first install that picks user scope and writes `default`; a baseline, a `go-review`
+profile over it, an override through `lola profile --edit` and the way back with `--off`), S4 and S3
+in the team project `acme` (a module installed into `project.yml` moved into a new profile in one
+step; an experiment copied from `go-review`, then back, keeping the experiment), S5 on a teammate's
+home (`b_env`: a personal profile never touches the files git tracks), then S7 and S8 back in the
+first home (a bundle whose later member wins and an install that asks which member; one glance with
+`lola profile`, in human, `--plain` and `--json`), and S6 last: a new home (`n_env`) is given only a
+copy of `~/.config/lola`.
+
+S6 advances `cc-skills-golang`'s `main` (`setup.sh advance`) before the new home
 syncs, then compares both homes' `lock.json`: the same commit and digest for every module, though
-the source has moved on. Its terminals are `script`'s pseudo-terminal in accessible mode
+the source has moved on.
+
+Its terminals are `script`'s pseudo-terminal in accessible mode
 (`LOLA_ACCESSIBLE=1`), answered by number. `scripts/setup.sh` builds the seven repositories
 (`review-kit`, `cc-skills-golang`, `gopls`, `golang-lint`, `team-kit`, `profiles`, `acme`) and
 refuses unless their commits are the recorded SHAs. Refusals are checked with `jsoncheck.py` and
@@ -280,9 +302,8 @@ their hints are run with `hint.py`, so a hint that does not work fails the case.
 
 ## Adding a suite or a case
 
-**The reason rule.** An end-to-end case checks only what an in-process spec cannot. Its row in
-the e2e design's case tables (`docs/superpowers/specs/2026-10-23-plan-8-e2e-docs-design.md`, the
-Reason column) states which of these reasons it has:
+**The reason rule.** An end-to-end case checks only what an in-process spec cannot. Its comment in
+the suite file states which of these reasons it has (`Reason G, W`):
 
 | Reason | The case needs |
 |---|---|
@@ -327,7 +348,7 @@ state earlier ones leave, so a case whose state is missing fails rather than bei
 
 ## Untested by design
 
-- **Migrate's partial move** (R-6d1-8).
+- **Migrate's partial move.**
   - The case: `lola migrate` moves a recorded path or the Python lola's home into the trash across
     file systems, and something changes between the copy and the removal.
   - `trash.Move` leaves the changed entries in place and returns a `*trash.ChangedError`; migrate
@@ -338,7 +359,7 @@ state earlier ones leave, so a case whose state is missing fails rather than bei
     was refused when the branch shipped.
   - What covers it: the trash specs pin the `Move` contract it relies on.
 - **Templating's residual risks**: no in-process spec can probe any of them deterministically.
-  - A path inside the liquid engine that grows memory without writing: the Plan 7 design's review
+  - A path inside the liquid engine that grows memory without writing: the review
     of liquid covered `render`, `tags`, `values` conversion and range code, not all of
     `expressions` ([architecture.md](architecture.md#templates)).
   - A map nested in a list prints in Go syntax.

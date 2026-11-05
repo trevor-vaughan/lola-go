@@ -26,7 +26,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Archive limits (design §5). They are not configuration; specs lower them through fetch.
+// Archive limits. They are not configuration; specs lower them through fetch.
 const (
 	maxEntries = 20_000
 	maxBytes   = 512 << 20 // total uncompressed bytes actually written
@@ -50,11 +50,11 @@ type limits struct {
 	body    int64
 }
 
-// rootMarkers locate an archive's module root (§3.1 rule 2): files, plus the directory
+// rootMarkers locate an archive's module root: files, plus the directory
 // .claude-plugin/.
 var rootMarkers = map[string]bool{"lola.yaml": true, "lola.yml": true, ".lola.yaml": true, ".lola.yml": true, "plugin.json": true}
 
-// contentDirs locate an archive's module root by their parent (§3.1 rule 3).
+// contentDirs locate an archive's module root by their parent.
 var contentDirs = map[string]bool{"skills": true, "commands": true, "agents": true, "rules": true}
 
 // fetchArchive extracts the archive, downloaded first when it is a URL, into scratch, finds
@@ -138,8 +138,8 @@ func fetchedRoot(rel string) string {
 	return rel
 }
 
-// SHA256MismatchError is an archive whose bytes do not have the sha256 its Spec lists (Plan 6c
-// §6.4): nothing of it is extracted.
+// SHA256MismatchError is an archive whose bytes do not have the sha256 its Spec lists: nothing of
+// it is extracted.
 type SHA256MismatchError struct{ Location, Want, Got string }
 
 func (e *SHA256MismatchError) Error() string {
@@ -164,7 +164,7 @@ func checkSHA256(file string, spec Spec) (err error) {
 	return nil
 }
 
-// extractor writes archive entries below root, enforcing the entry rules and limits of §5. It
+// extractor writes archive entries below root, enforcing the entry rules and limits. It
 // records the entries whose mode is executable in execs, the regular files it wrote in files,
 // and each link entry's target by its path in links: it writes no link. refused holds, by its
 // path, the ErrLinkInSource refusal of each link copyLinks wrote nothing for.
@@ -265,7 +265,7 @@ const (
 )
 
 // checkZipDirectory refuses a zip whose central directory could list more than entries
-// files, before archive/zip parses all of it into memory (design §5). It finds the end record
+// files, before archive/zip parses all of it into memory. It finds the end record
 // (and the zip64 one) exactly as archive/zip does, then refuses a declared count over entries,
 // or a declared size or actual span over entries × maxDirBytesPerEntry. The span matters:
 // archive/zip reads records from the directory's start until one does not parse, whatever the
@@ -580,7 +580,7 @@ func (x *extractor) copyOver(src, name string) (err error) {
 	return x.file(name, mode, fi.Size(), in)
 }
 
-// archiveRoot finds the module root of the archive extracted at tree (design §3.1). Each link in
+// archiveRoot finds the module root of the archive extracted at tree. Each link in
 // refused, by its slash path, was not written; the search counts it as the entry it stands for,
 // so that a refused link where a marker, content directory or second top-level entry would be
 // chooses the same root as if it were there, and refusedOnPath then fails on it.

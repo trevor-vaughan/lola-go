@@ -149,7 +149,7 @@ func chooseSSH(name string, f *fetchedMarket, base []string, dry bool, pick func
 	return hosts, nil
 }
 
-// RevokeSSHHosts drops hosts from what the marketplace req.Name allows (spec 2026-10-28 §4), under
+// RevokeSSHHosts drops hosts from what the marketplace req.Name allows, under
 // the exclusive markets lock, and reads its cached catalog again without them, reporting the
 // entries that leave it; a dry run reports the same and writes nothing. A cached catalog that is
 // missing or cannot be read is left to the next --update: only the registration is written.

@@ -15,7 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Runtime hook finding codes (Plan 5b design §7.2).
+// Runtime hook finding codes.
 const (
 	codePathUnsafe       = "claude-code/runtime-hook-path-unsafe"
 	codeShellUnsupported = "claude-code/runtime-hook-shell-unsupported"
@@ -134,7 +134,7 @@ func (s *skipper) skip(code, text, hint string, forceable bool) {
 
 // rewriteEvents rewrites every handler of a hooks event map in place, giving command
 // handlers CLAUDE_PLUGIN_ROOT and CLAUDE_PLUGIN_DATA, which Claude Code exports to plugin hooks
-// but not to settings or component hooks (design §7.2), and reports to sk what it cannot render
+// but not to settings or component hooks, and reports to sk what it cannot render
 // safely; a forced render is made so that no lola path is ever read as shell code. An event
 // name that is not an identifier is removed and reported.
 func rewriteEvents(events map[string][]map[string]json.RawMessage, ctx target.PlanContext, sk *skipper) error {

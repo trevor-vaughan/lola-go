@@ -20,11 +20,11 @@ var yamlLine = regexp.MustCompile(`(?:^yaml: |\n\s*)line (\d+): `)
 // which would end the frontmatter in the written file however its text was built.
 var ErrRenderedFence = errors.New("frontmatter")
 
-// RenderedDoc assembles the Doc of a rendered template from its two regions (Plan 7 §5.6
-// step 1): the frontmatter, when the template opens one, is parsed with ParseDoc's frontmatter
-// rules; the body is kept as rendered. A refusal names the rendered file's line, the opening
-// fence being line 1, when the YAML parser names one, and a line that is --- or ... with only
-// spaces, tabs or a carriage return after it (ErrRenderedFence).
+// RenderedDoc assembles the Doc of a rendered template from its two regions: the frontmatter, when
+// the template opens one, is parsed with ParseDoc's frontmatter rules; the body is kept as
+// rendered. A refusal names the rendered file's line, the opening fence being line 1, when the YAML
+// parser names one, and a line that is --- or ... with only spaces, tabs or a carriage return after
+// it (ErrRenderedFence).
 func RenderedDoc(front []byte, hasFront bool, body []byte) (Doc, error) {
 	if !hasFront {
 		return Doc{Body: string(body)}, nil

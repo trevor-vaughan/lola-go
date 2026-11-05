@@ -15,9 +15,9 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Prof-P2-g: the complement of a non-exact --only is long; it is written as a block list and
+// The complement of a non-exact --only is long; it is written as a block list and
 // shown as the picks it leaves.
-var _ = Describe("Prof-P2-g long complements", func() {
+var _ = Describe("long complements", func() {
 	var (
 		p        paths.Paths
 		tmp, big string

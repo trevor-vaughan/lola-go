@@ -36,7 +36,7 @@ type ChoicesRequest struct {
 	// Without one, the call fetches into a run of its own and caches what it fetches at once (lola
 	// migrate's planning relies on that).
 	Run *StagedRun
-	// DryRun is the run's -n and Display its output flags, which every hint keeps (Plan 6c §11.3).
+	// DryRun is the run's -n and Display its output flags, which every hint keeps.
 	DryRun  bool
 	Display []string
 	Target  TargetRequest // where the install writes (--profile, --override)
@@ -47,7 +47,7 @@ type ChoicesRequest struct {
 	AskWhere func(WhereQuestion) (WhereChoice, error)
 }
 
-// Choices is everything the install pickers need (Plan 5c §7), computed by the engine. Every
+// Choices is everything the install pickers need, computed by the engine. Every
 // author-chosen string in it has gone through untrusted.Text.
 type Choices struct {
 	Scopes    []ScopeChoices `json:"scopes"`
@@ -59,10 +59,10 @@ type Choices struct {
 	Versions []VersionRef `json:"versions"`
 	Warnings []string     `json:"warnings"` // cached modules that could not be loaded
 	// Resolved is, for each module argument that is a marketplace address, where it resolved, as
-	// the summary shows it before Apply (Plan 6c §6.3, ruling R-6c-15).
+	// the summary shows it before Apply.
 	Resolved []string `json:"resolved"`
 	// Markets are your marketplaces with a fetched catalog and the entries each offers, which the
-	// module picker shows after the cache (Plan 6c §6.5).
+	// module picker shows after the cache.
 	Markets []MarketGroup `json:"markets"`
 
 	sel     *config.Selections        // as read, with the scopes' profile entries' picks (withPicks), for Preview
@@ -78,8 +78,7 @@ type Choices struct {
 // ScopeChoices is what one scope offers: its assistants and the targets its write target fixes.
 // FixedTargets are the top-level targets an entry the install writes takes (fileTargets: the
 // write target's, a profile's own or else the base's) when the trust record covers them; when it
-// does not, they are UntrustedTargets instead, which an install may not take unasked (Plan 6a
-// §10.1), so the assistant picker asks and never preselects them. TargetsFrom names the file
+// does not, they are UntrustedTargets instead, which an install may not take unasked, so the assistant picker asks and never preselects them. TargetsFrom names the file
 // they come from, "" for the scope's base (targetsFile).
 type ScopeChoices struct {
 	ScopeChoice
@@ -131,8 +130,7 @@ type ModuleScope struct {
 	Current      []string `json:"current_components"`    // kind/name installed now
 	// New is kind/name of each component the listed version adds over the version installed here
 	// ([] when nothing is installed or that version is no longer cached), and Provider the layer that
-	// provides the module here when it is a profile, as layerLabel names it ("" otherwise)
-	// (cherry-pick design §4.6, §6).
+	// provides the module here when it is a profile, as layerLabel names it ("" otherwise).
 	New      []string `json:"new"`
 	Provider string   `json:"provider"`
 }
@@ -157,8 +155,8 @@ func (c *Choices) Module(name string) *ModuleChoice {
 	return nil
 }
 
-// Mentions is what each component of the version of module name the choices list mentions
-// (cherry-pick design §5.1), read on the first call from that version's content directory (the
+// Mentions is what each component of the version of module name the choices list mentions,
+// read on the first call from that version's content directory (the
 // cache's, or the staged run's for a module argument the run fetched) and kept in the request's
 // run, whose install reads it from there. A module the choices do not list has none. A read that
 // fails is kept too: later calls return its error without reading again.
@@ -207,10 +205,10 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		scopes = append(scopes, s.Scope)
 	}
 	defer func() { err = e.CoachUnresolved(err, scopes, req.DryRun, req.Display) }()
-	// An install of an address may replace an unresolved entry of its name (Plan 6c §6.3), so the
+	// An install of an address may replace an unresolved entry of its name, so the
 	// pickers read such a manifest as that install does.
 	replacing := replacingNames(req.Modules)
-	// The profiles lock comes first (spec 2026-10-29 §16), as an install's does.
+	// The profiles lock comes first, as an install's does.
 	unlockProfiles, err := e.readProfiles(true)
 	if err != nil {
 		return nil, err
@@ -263,8 +261,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 			return nil, e.notTrusted(u.sc, u.rec, u.ent, false, u.unresolved)
 		}
 	}
-	// Marketplace addresses resolve to their catalog entries before anything is fetched (Plan 6c
-	// §6.3).
+	// Marketplace addresses resolve to their catalog entries before anything is fetched.
 	req.Modules = slices.Clone(req.Modules)
 	unlock, err := e.resolveMarkets(req.Modules, true, req.Display)
 	if err != nil {
@@ -449,7 +446,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 			v = a
 		} else {
 			// Installing a cached module takes the head of the ref each scope's entry records,
-			// so that is the version listed (Plan 6a §10.1); one that cannot be listed is
+			// so that is the version listed; one that cannot be listed is
 			// left out, with a warning, so the others can still be picked.
 			// An uncovered entry is checked first, and left out under its scope's one notice:
 			// listing its pulled ref could coach installing it by name, which is refused.
@@ -513,7 +510,7 @@ type uncoveredEntry struct {
 }
 
 // uncoveredEntries maps each module name to the first project scope of scopes whose entry for
-// it the trust record does not cover, and returns the pickers' notices (Plan 6a §10.1): one per
+// it the trust record does not cover, and returns the pickers' notices: one per
 // such scope, naming its uncovered entries and the sync that reviews them.
 func (e *Engine) uncoveredEntries(scopes []ScopeChoice, replacing []string) (map[string]uncoveredEntry, []string, error) {
 	out := map[string]uncoveredEntry{}
@@ -534,7 +531,7 @@ func (e *Engine) uncoveredEntries(scopes []ScopeChoice, replacing []string) (map
 		unresolved := holdsAddress(man)
 		for i := range man.Modules {
 			ent := &man.Modules[i]
-			// An unresolved entry is the install's own to replace, or its warning (Plan 6c §6.3).
+			// An unresolved entry is the install's own to replace, or its warning.
 			if _, _, unresolved := manifest.Address(ent.Source); unresolved || rec.View.Covers(*ent) {
 				continue
 			}
@@ -1012,7 +1009,7 @@ func (c *Choices) Preview(spec InstallSpec, modules []string) (*Preview, error) 
 
 // Place is the file an edit of module at sc writes, as the context line names it (ContextLayer):
 // the write target the choices were listed for, or, when that inherits module's entry
-// (ModuleScope.Inherited), the answer to the inherited-edit question (spec 2026-10-29 §3.6),
+// (ModuleScope.Inherited), the answer to the inherited-edit question,
 // asked through opts.AskWhere as the install asks it (placeEdit), so an AskWhere that answers a
 // question once per run answers the install's with it. It is asked before the edit is known, so
 // its answers say where each part of an edit goes; opts.Target.Override answers without asking.

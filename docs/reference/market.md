@@ -16,16 +16,23 @@ Aliases: `marketplace`, `markets`. Four paths, none of which asks:
 - `lola info @acme/formatter` (see [`lola info`](info.md#lola-info)).
 
 `--add <source>` takes the source, so the name goes before it: `lola market acme --add <source>`,
-not `lola market --add acme <source>` (the refusal that follows hints the working order). It fetches a catalog (Claude Code's `marketplace.json` or a lola YAML catalog) and
+not `lola market --add acme <source>` (the refusal that follows hints the working order).
+
+It fetches a catalog (Claude Code's `marketplace.json` or a lola YAML catalog) and
 registers it. lola looks for `.claude-plugin/marketplace.json`, then `<name>.yml`, `<name>.yaml`,
 `marketplace.yml` and `marketplace.yaml`, and last, only when none of those exists, the original
 lola's `lola.yml` or `lola.yaml` (`name` and `modules`, each with `name`, `description`,
 `version`, `repository`, `ref`, `path` and `tags`; `ref` is the branch, tag or commit of a git
 `repository`, and an entry that gives one for an archive is skipped), at the root or in the
 `--path` directory; `--update` fetches the named ones, or `--all`, again and reports which entries
-changed; `--remove` forgets one (asks; `-y`). `--add` and `--update` ask nothing, but a name when
-yours is taken and, on a terminal, which of the ssh hosts a catalog names to allow (below). Scope
+changed; `--remove` forgets one (asks; `-y`).
+
+`--add` and `--update` ask nothing, but a name when
+yours is taken and, on a terminal, which of the ssh hosts a catalog names to allow (below).
+
+Scope
 flags change nothing but what `lola market <name> <entry>` plans for.
+
 `add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show` and `search` are not `lola market`
 verbs: each is refused with the lola command to run instead.
 
@@ -44,10 +51,14 @@ verbs: each is refused with the lola command to run instead.
 
 A catalog's `ssh://` and `user@host:path` sources are skipped unless you allowed their host. The
 host is a name alone (no scheme, user, port or path; lower-cased; never an IP address or
-`localhost`), and the allowance is per host, whatever the user or port. On a terminal, `--add`
+`localhost`), and the allowance is per host, whatever the user or port.
+
+On a terminal, `--add`
 and `--update` list the hosts the catalog names that you have not allowed, with their entry
 counts, all unticked. Off a terminal, with `-n` or under `--json`, nothing is asked: a notice
-gives the command with `--ssh-host`. `--update` never widens the list on its own, and a host the
+gives the command with `--ssh-host`.
+
+`--update` never widens the list on its own, and a host the
 catalog stops naming stays allowed until `--ssh-host <host> --remove`, which re-applies the
 cached catalog; a plain `--remove` forgets the hosts with the marketplace. `lola market <name>`
 shows them (`ssh hosts`, `via ssh at <host>`). Every other source must still be `https://`.

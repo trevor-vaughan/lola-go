@@ -112,7 +112,7 @@ func (e *Engine) refuseInUse(ctx context.Context, req ProfileRemoveRequest, q st
 	return notices, files, nil
 }
 
-// ownToRemove is the profile of yours req.Name names for --remove (spec 2026-10-29 §6.2), nil when
+// ownToRemove is the profile of yours req.Name names for --remove, nil when
 // it names a remote profile, which RemoveProfile then removes: user:<name>, or a bare name that
 // only a profile of yours has. A bare name that both a profile of yours and a remote one have is
 // refused, hinting each qualified; so are the base (default, base), a project's profile, which is
@@ -179,7 +179,7 @@ func (e *Engine) committedProfile(sc Scope, name, list string) error {
 		"remove it from the project: "+errs.ShellJoin([]string{"git", "-C", shown(sc.ProjectDir), "rm", rel}))
 }
 
-// removeOwn moves i, a profile of yours, to the trash (spec 2026-10-29 §6.2, Q10): refused while
+// removeOwn moves i, a profile of yours, to the trash: refused while
 // it is used (refuseInUse, before -y is offered and again under the exclusive lock), asked about
 // first (Confirm; -y, --force); a bundle file of yours that names it is a notice, as it then
 // refuses to load until edited. A file that changed while you were asked is kept. A link goes to
@@ -337,7 +337,7 @@ func (e *Engine) namingBundles(i profile.Info, remote, dry bool, said, display [
 	return out
 }
 
-// RemoveNames is the names lola profile --remove takes, for completion (spec 2026-10-29 §6.2): your
+// RemoveNames is the names lola profile --remove takes, for completion: your
 // profiles and the remote ones, each bare unless the other kind has its name, which a bare name
 // would leave ambiguous; sorted.
 func (e *Engine) RemoveNames() ([]string, error) {

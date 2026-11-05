@@ -14,10 +14,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 )
 
-// trustFlag is --trust[=kind,…] (Plan 9 §3.2), one definition for every command that can ask a
+// trustFlag is --trust[=kind,…], one definition for every command that can ask a
 // consent question: each occurrence as pflag set it, a bare --trust as engine.TrustBareValue, and
 // how many positional arguments came before it, which finds the argument written right after a bare
-// --trust (R-9-2). kinds is what parse made of them, which a hint repeating the run writes.
+// --trust. kinds is what parse made of them, which a hint repeating the run writes.
 type trustFlag struct {
 	fs     *pflag.FlagSet
 	values []string
@@ -67,7 +67,7 @@ func (t *trustFlag) names(k engine.TrustKinds) bool {
 // addTrustFlag adds --trust to cmd, which asks the kinds of command (engine.CommandTrust's name).
 // Help shows --trust[=entries,profiles] where a bare --trust grants those, and --trust=<kinds>
 // where it grants none and is refused (install, migrate), with no value placeholder, since
-// the value must be joined by = (R-9-2); completion shows the usage as written.
+// the value must be joined by =; completion shows the usage as written.
 func addTrustFlag(cmd *cobra.Command, t *trustFlag, command, usage string) {
 	t.fs = cmd.Flags()
 	cmd.Flags().Var(t, "trust", usage)
@@ -100,7 +100,7 @@ func completeTrust(command string) cobra.CompletionFunc {
 }
 
 // parse is the kinds of trust --trust grants command (engine.CommandTrust's name), checked before
-// any network contact or write (Plan 9 §3.3): a kind written as its own argument after a bare
+// any network contact or write: a kind written as its own argument after a bare
 // --trust is refused first, then whatever engine.ParseTrust refuses; each hint is the run (args are
 // its names) with --trust as it would work. noun is what command's arguments name.
 func (t *trustFlag) parse(cmd *cobra.Command, args []string, command, noun string) (engine.TrustKinds, error) {
@@ -118,8 +118,8 @@ func (t *trustFlag) parse(cmd *cobra.Command, args []string, command, noun strin
 			continue
 		}
 		// The run with the argument as the value it was meant to be, beside the values written:
-		// the bare --trust it followed adds none of its kinds (S-I1), and a kind the command never
-		// asks is refused as written (CR1).
+		// the bare --trust it followed adds none of its kinds, and a kind the command never
+		// asks is refused as written.
 		fixed := slices.Delete(slices.Clone(t.values), i, i+1)
 		fixed = append(fixed, strings.ToLower(args[at]))
 		rest := slices.Delete(slices.Clone(args), at, at+1)
@@ -154,20 +154,19 @@ func fixedRun(cmd *cobra.Command, args []string, k engine.TrustKinds, drop ...st
 	return run
 }
 
-// trustRun is a run's engine Rerun (Plan 9 §3.5): the user's run, its names args, with --trust for
+// trustRun is a run's engine Rerun: the user's run, its names args, with --trust for
 // the kinds a refusal for want of trust names in place of the --trust given.
 func trustRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) string {
 	return func(k engine.TrustKinds) string { return fixedRun(cmd, args, k) }
 }
 
 // consentRun is an install's engine Rerun: trustRun without --dry-run, so a dry run's consent
-// hint is the run that installs what it consents to, as lola sync -n's is (spec 2026-11-03
-// §3.3 P2-6).
+// hint is the run that installs what it consents to, as lola sync -n's is.
 func consentRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) string {
 	return func(k engine.TrustKinds) string { return fixedRun(cmd, args, k, "dry-run") }
 }
 
-// receipt is a run's engine Receipt (Plan 9 §3.4): what given, the run's --trust, covers, grouped by
+// receipt is a run's engine Receipt: what given, the run's --trust, covers, grouped by
 // kind on stderr, then, on a terminal and without yes (-y), one Proceed? [y/N], default No; off a
 // terminal the run proceeds. Under --json it proceeds and prints nothing: the document's trusted
 // key lists the grants, and stderr holds only an error's JSON line (the output contract).

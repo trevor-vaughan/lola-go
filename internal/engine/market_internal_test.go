@@ -54,7 +54,7 @@ var _ = Describe("fetchEntry", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(left).To(BeEmpty(), "nothing was extracted")
 
-		// sync --update following the catalog fetches through the same checks (Plan 6c §6.6).
+		// sync --update following the catalog fetches through the same checks.
 		se := &syncEntry{ent: manifest.Entry{Name: "bundle", Source: spec.Location}, spec: spec, update: true, follow: pick}
 		err = e.resolveSync(context.Background(), Scope{Kind: target.User}, se, run, nil)
 		Expect(err).To(MatchError(ContainSubstring("marketplace acme lists bundle with sha256 " + strings.ToLower(listed) + "; the download is ")))

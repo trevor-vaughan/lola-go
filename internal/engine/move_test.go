@@ -276,7 +276,7 @@ var _ = Describe("lola profile --move", func() {
 		man, err := manifest.Load(projectYML())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(man.Find("notes")).NotTo(BeNil())
-		Expect(man.Find("notes").Targets).To(Equal([]string{"gemini-cli"}), "the move changes no installed file (§4 S4)")
+		Expect(man.Find("notes").Targets).To(Equal([]string{"gemini-cli"}), "the move changes no installed file")
 		Expect(installed(sc).Targets).To(Equal([]string{"gemini-cli"}))
 		Expect(filepath.Join(proj, ".claude", "commands", "notes.md")).NotTo(BeAnExistingFile())
 	})
@@ -331,7 +331,7 @@ var _ = Describe("lola profile --move", func() {
 		}
 		_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "base"})
 		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user --off",
-			"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team"}), "R-8: a run that cannot ask hints no -y it was not given")
+			"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team"}), "a run that cannot ask hints no -y it was not given")
 	})
 
 	// hinted runs the move each hint names (its --to), as the hint would.
@@ -949,7 +949,7 @@ var _ = Describe("lola profile --move", func() {
 			Expect(res.Syncs).To(HaveLen(2))
 			Expect(res.Syncs[1].Removals).To(HaveExactElements(HaveField("Module", "notes")))
 			Expect(res.Syncs[0].ToApply).To(Equal("lola profile --user --move notes --to base"))
-			Expect(res.Syncs[0].OffTerminal).To(BeEmpty(), "R-8: a dry run's hint carries no -y you did not give")
+			Expect(res.Syncs[0].OffTerminal).To(BeEmpty(), "a dry run's hint carries no -y you did not give")
 			Expect(res.Syncs[1].ToApply).To(BeEmpty(), "one run applies both")
 			Expect(read(projectYML())).To(Equal(before))
 			Expect(filepath.Join(p.UserProfiles, "default.yml")).NotTo(BeAnExistingFile())

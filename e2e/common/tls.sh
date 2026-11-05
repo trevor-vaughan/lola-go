@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Serves /srv/git over HTTPS at https://git.lola.test:8443/ inside a suite's container (Plan 8
-# §5.4), for a suite that needs a git server at a host named by name: remote profiles and a
-# catalog's git entries are fetched only from one (the team and market suites run it).
+# Serves /srv/git over HTTPS at https://git.lola.test:8443/ inside a suite's container, for a suite
+# that needs a git server at a host named by name: remote profiles and a catalog's git entries
+# are fetched only from one (the team and market suites run it).
 #
 # It makes a test CA and a leaf for git.lola.test in /run/e2e-tls, the tmpfs the runner mounts
 # at mode 0700 for every suite: the CA is limited to git.lola.test (nameConstraints, pathlen:0),

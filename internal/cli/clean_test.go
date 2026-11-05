@@ -16,8 +16,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Plan 9 §6.5: lola cache clean's refusals and its empty run.
-var _ = Describe("lola cache clean (Plan 9 §6.5)", func() {
+// lola cache clean's refusals and its empty run.
+var _ = Describe("lola cache clean", func() {
 	var p paths.Paths
 	BeforeEach(func() {
 		testenv.Isolate()
@@ -73,7 +73,7 @@ var _ = Describe("lola cache clean (Plan 9 §6.5)", func() {
 			`PATH:3: cache_unused_for: "3x" is not an age`),
 	)
 
-	It("a clean that fails part way says in its JSON what it had removed (A28)", func() {
+	It("a clean that fails part way says in its JSON what it had removed", func() {
 		if os.Geteuid() == 0 {
 			Skip("root renames out of a read-only directory")
 		}
@@ -115,7 +115,7 @@ var _ = Describe("lola cache clean (Plan 9 §6.5)", func() {
 		return filepath.Join(p.Store, "a", "versions", ids[0].Name())
 	}
 
-	DescribeTable("clean prints its plan and its result as rows, with a path that is not plain text cleaned (T6-M2)",
+	DescribeTable("clean prints its plan and its result as rows, with a path that is not plain text cleaned",
 		func(plain bool) {
 			if os.Geteuid() == 0 {
 				Skip("root deletes in a read-only directory")

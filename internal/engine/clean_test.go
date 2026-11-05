@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Plan 9 §6: lola cache clean.
+// lola cache clean.
 // addHead adds a head for ref pointing at version id to the first origin of the index at path.
 func addHead(index, ref, id string) {
 	GinkgoHelper()
@@ -34,7 +34,7 @@ func addHead(index, ref, id string) {
 	Expect(os.WriteFile(index, b, 0o600)).To(Succeed())
 }
 
-var _ = Describe("lola cache clean (Plan 9 §6)", func() {
+var _ = Describe("lola cache clean", func() {
 	var (
 		e   *engine.Engine
 		tmp string
@@ -353,7 +353,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		})
 	}
 
-	It("a clean whose second rename fails leaves every head loadable (A28)", func() {
+	It("a clean whose second rename fails leaves every head loadable", func() {
 		old := fetch("a", "v1\n")
 		day = day.AddDate(0, 0, 10)
 		head := fetch("a", "v2\n")
@@ -376,7 +376,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		Expect(e.Store.Head("b", "")).Error().NotTo(HaveOccurred())
 	})
 
-	It("a module directory swapped for a link after the plan is kept as changed, and nothing outside is removed (A28)", func() {
+	It("a module directory swapped for a link after the plan is kept as changed, and nothing outside is removed", func() {
 		old := fetch("kit", "v1\n")
 		fetch("kit", "v2\n")
 		p := plan(engine.CleanRequest{})
@@ -389,7 +389,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		Expect(filepath.Join(outside, "versions", old)).To(BeADirectory())
 	})
 
-	It("--all shows a cache entry name that is not plain text cleaned in path (A28)", func() {
+	It("--all shows a cache entry name that is not plain text cleaned in path", func() {
 		writeTree(filepath.Join(e.Paths.Store, "x\x1b[31m"), map[string]string{"f": "x"})
 		res := plan(engine.CleanRequest{All: true})
 		Expect(res.Removed).To(HaveLen(1))
@@ -397,7 +397,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		Expect(res.Removed[0].Module).To(BeEmpty())
 	})
 
-	It("a module whose index.yml cannot be read is kept as unreadable, and the clean goes on (A28)", func() {
+	It("a module whose index.yml cannot be read is kept as unreadable, and the clean goes on", func() {
 		old := fetch("kit", "v1\n")
 		fetch("kit", "v2\n")
 		writeTree(filepath.Join(e.Paths.Store, "bad"), map[string]string{"index.yml": "heads: [\n"})
@@ -427,7 +427,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		Expect(removed(res)).To(HaveKeyWithValue(rel(filepath.Dir(filepath.Dir(filepath.Dir(aside[0])))), "scratch"))
 	})
 
-	It("a clean renames into .staging only while it is a real directory (A28)", func() {
+	It("a clean renames into .staging only while it is a real directory", func() {
 		old := fetch("kit", "v1\n")
 		fetch("kit", "v2\n")
 		p := plan(engine.CleanRequest{})
@@ -444,7 +444,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		Expect(o.LastUsed).To(HaveKey(old), "index.yml untouched")
 	})
 
-	It("a rename that fails puts back the heads and last_used of the versions that did not go (A28)", func() {
+	It("a rename that fails puts back the heads and last_used of the versions that did not go", func() {
 		old := fetch("a", "v1\n")
 		day = day.AddDate(0, 0, 10)
 		fetch("a", "v2\n")
@@ -465,7 +465,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		Expect(o.LastUsed).To(HaveKeyWithValue(old, "2026-10-01"))
 	})
 
-	It("a clean that cannot write a later module's index.yml puts back the heads of the modules before it (A28)", func() {
+	It("a clean that cannot write a later module's index.yml puts back the heads of the modules before it", func() {
 		old := fetch("a", "v1\n")
 		day = day.AddDate(0, 0, 10)
 		fetch("a", "v2\n")
@@ -485,7 +485,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		Expect(version("b", superseded)).To(BeADirectory())
 	})
 
-	DescribeTable("a module clean cannot read again under the lock is kept as unreadable, and the clean goes on (A28)",
+	DescribeTable("a module clean cannot read again under the lock is kept as unreadable, and the clean goes on",
 		func(breakModule func(dir string)) {
 			old := fetch("a", "v1\n")
 			fetch("a", "v2\n")

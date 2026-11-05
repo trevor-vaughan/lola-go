@@ -20,9 +20,8 @@ var sshHostRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a
 // maxHostName is the longest DNS name.
 const maxHostName = 253
 
-// CheckSSHHost is host, lower-cased, if it can be allowed for catalog ssh sources (spec 2026-10-28
-// D3, D4): a host name alone, never an IP address or localhost, which source.CheckRemote refuses
-// for a catalog entry whatever you allow. The error says what is wrong.
+// CheckSSHHost is host, lower-cased, if it can be allowed for catalog ssh sources: a host name alone, never an IP address or localhost, which source.CheckRemote refuses for a
+// catalog entry whatever you allow. The error says what is wrong.
 func CheckSSHHost(host string) (string, error) {
 	name := strings.ToLower(host)
 	if !sshHostRE.MatchString(name) || len(name) > maxHostName {

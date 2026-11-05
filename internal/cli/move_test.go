@@ -96,7 +96,7 @@ var _ = Describe("lola profile --move", func() {
 			"  hint: lola profile --move notes --root " + proj + " --to base\n  hint: lola profile --move notes --to default --user\n"))
 		r = lola("profile", "--move", "notes", "--to", "default", "--root", proj, "-y")
 		Expect(r.err).To(HaveSuffix("  hint: lola profile --move notes --to default --user\n"),
-			"R-8: the -y given at the project answers nothing at user scope")
+			"the -y given at the project answers nothing at user scope")
 		Expect(r.err).NotTo(ContainSubstring("--yes"))
 		me, err := os.ReadFile(filepath.Join(p.UserProfiles, "me.yml"))
 		Expect(err).NotTo(HaveOccurred())
@@ -322,7 +322,7 @@ var _ = Describe("lola profile --move", func() {
 			p, err = paths.Resolve(os.Getenv)
 			Expect(err).NotTo(HaveOccurred())
 			proj = filepath.Join(tmp, "proj")
-			// A git source: a project's folder entry never moves into your files (spec 2026-10-29 §16.2).
+			// A git source: a project's folder entry never moves into your files.
 			work := filepath.Join(tmp, "notes")
 			writeTree(work, map[string]string{"lola.yml": "name: notes\n", "commands/notes.md": "N\n"})
 			gitIn(work, "init", "-q", "-b", "main")

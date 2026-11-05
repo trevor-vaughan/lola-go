@@ -7,7 +7,7 @@ import (
 	"github.com/osteele/liquid/parser"
 )
 
-// Codes of the screen's refusals (Plan 7 §5.2).
+// Codes of the screen's refusals.
 const (
 	codeTagUnavailable   = "template-tag-unavailable"
 	codeRangeUnavailable = "template-range-unavailable"
@@ -17,7 +17,7 @@ const (
 	codeIncludeName      = "template-include-name"
 )
 
-// maxToken caps a piece of markup quoted in a refusal (Plan 7 §5.5).
+// maxToken caps a piece of markup quoted in a refusal.
 const maxToken = 120
 
 // mark is a place in a template or partial the include graph needs: a block it opens or an

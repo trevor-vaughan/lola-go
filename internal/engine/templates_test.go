@@ -58,7 +58,7 @@ func kitLiteral(t string) map[string]string {
 	}
 }
 
-var _ = Describe("Templates (Plan 7.2)", func() {
+var _ = Describe("Templates", func() {
 	var (
 		tmp, proj, src string
 		p              paths.Paths
@@ -281,7 +281,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(doc.Frontmatter).To(Equal(map[string]any{"name": "a", "description": "x\nhooks: [Bash]"}), "a var holding a newline stays one string")
 
-		By("a string YAML would not read back as itself refuses unless it ends with json (R-7-U18)")
+		By("a string YAML would not read back as itself refuses unless it ends with json")
 		writeTree(src, map[string]string{"lola.yml": "name: kit\nvars:\n  v: \"sonnet #fast\"\n", "agents/a.md.liquid": "---\ndescription: {{ vars.v }}\n---\nA\n"})
 		_, err = install(engine.Options{Targets: []string{"claude-code"}}, "../src/kit")
 		te, ok = errors.AsType[*engine.TemplateError](err)
@@ -528,7 +528,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 			Expect(err).To(MatchError(HavePrefix(want)), vars)
 		}
 
-		By("Claude Code's capability warnings fire on keys and values a value renders (R-7-56)")
+		By("Claude Code's capability warnings fire on keys and values a value renders")
 		for vars, want := range map[string]types.GomegaMatcher{
 			"  key: allowed-tools\n  value: Bash\n": And(HaveField("Code", "claude-code/allowed-tools"), HaveField("Artifact", "a"),
 				HaveField("Text", "pre-approves tools Claude Code then runs without asking: Bash")),
@@ -1195,7 +1195,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		Expect(read(".claude/agents/h.md")).To(ContainSubstring("echo two"))
 	})
 
-	Describe("attribute files (Plan 7.4)", func() {
+	Describe("attribute files", func() {
 		both := engine.Options{Targets: []string{"claude-code", "opencode"}}
 		frontmatter := func(rel string) map[string]any {
 			GinkgoHelper()
@@ -1270,7 +1270,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 			Expect(te.File).To(Equal("agents/guard.targets.yaml"))
 			Expect(te.Error()).To(HavePrefix("kit: opencode agent guard: agents/guard.targets.yaml (merged for opencode): agent guard: frontmatter hooks: "),
 				"a literal component's attributes are merged, not rendered")
-			Expect(te.JSONFields()["template"]).To(HaveKeyWithValue("rendered", true), "JSON keeps rendered (R-7-21)")
+			Expect(te.JSONFields()["template"]).To(HaveKeyWithValue("rendered", true), "JSON keeps rendered")
 
 			// A declined consent writes no hook from an attribute file.
 			writeTree(src, map[string]string{"agents/guard.targets.yaml": "claude-code:\n  hooks:\n    Stop:\n      - hooks:\n          - type: command\n            command: echo declined\n"})

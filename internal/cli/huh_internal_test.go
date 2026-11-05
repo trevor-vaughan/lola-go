@@ -108,7 +108,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		out.Reset()
 	})
 
-	It("offers Project, User and Other directory…, in that order, with nothing preselected (Plan 5c §14)", func() {
+	It("offers Project, User and Other directory…, in that order, with nothing preselected", func() {
 		got, err := accessible(&out, "3", "1", "0").Scope(ScopeStep{Question: "Install where?", ProjectRoot: "/src/api"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(ConsistOf(ScopeProject, ScopeOther))
@@ -125,7 +125,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("3. ✓ Other directory…\n"))
 	})
 
-	It("shows each scope's context beside it (spec 2026-10-29 §3.8)", func() {
+	It("shows each scope's context beside it", func() {
 		_, err := accessible(&out, "1", "0").Scope(ScopeStep{ProjectRoot: "/src/api", ProjectContext: "project.yml",
 			UserContext: "profile go over default"})
 		Expect(err).NotTo(HaveOccurred())
@@ -133,7 +133,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("2.   User (~) — profile go over default\n"))
 	})
 
-	It("asks a command that acts on one scope with nothing preselected (Plan 6b §3.1)", func() {
+	It("asks a command that acts on one scope with nothing preselected", func() {
 		got, err := accessible(&out, "2", "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal([]string{ScopeUser}))
@@ -148,7 +148,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(got).To(BeEmpty())
 	})
 
-	It("adds Cancel to a where-question of one choice (spec 2026-10-29 §6.1)", func() {
+	It("adds Cancel to a where-question of one choice", func() {
 		st := WhereStep{Title: "c comes from default (base), loaded under every profile at user scope.", Options: []string{"Remove it from default (base)"}}
 		_, err := accessible(&out, "2").Where(st)
 		Expect(err).To(MatchError(ErrAborted))
@@ -198,7 +198,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("could not add ./x; try another source"))
 	})
 
-	DescribeTable("a picker that needs a pick refuses none, naming the keys, and still cancels at end of input (Plan 10 §4)",
+	DescribeTable("a picker that needs a pick refuses none, naming the keys, and still cancels at end of input",
 		func(_ SpecContext, ask func(*huhForms) (any, error), want any) {
 			got, err := ask(accessible(&out, "0", "1", "0"))
 			Expect(err).NotTo(HaveOccurred())
@@ -238,7 +238,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("profile go › modules"))
 	})
 
-	It("asks a module picker of several lists again when nothing in any of them is picked (Plan 10 §4)", func() {
+	It("asks a module picker of several lists again when nothing in any of them is picked", func() {
 		st := ModuleStep{Options: []ModuleOption{{Name: "m", Label: "m"}}, Markets: []ModuleGroup{{Title: "@acme", Options: []ModuleOption{{Name: "@acme/x", Label: "x"}}}}}
 		got, err := accessible(&out, "0", "0", "0", "1", "0").Modules(st)
 		Expect(err).NotTo(HaveOccurred())
@@ -246,14 +246,14 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("nothing selected — type an option's number to select it, 0 confirms, ctrl+c quits"))
 	})
 
-	It("lets tidy's keep picker answer nothing when something moves (Plan 10 §4)", func() {
+	It("lets tidy's keep picker answer nothing when something moves", func() {
 		got, err := accessible(&out, "0").TidyKeep(TidyKeepStep{Options: []TidyOption{{ID: "0", Label: "skill/old  claude-code"}}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(BeEmpty())
 		Expect(out.String()).NotTo(ContainSubstring("nothing selected"))
 	})
 
-	It("a full-screen picker that needs a pick opens with its key help, refuses Enter with nothing ticked, and clears on the next toggle (Plan 10 §4)", func() {
+	It("a full-screen picker that needs a pick opens with its key help, refuses Enter with nothing ticked, and clears on the next toggle", func() {
 		h := &huhForms{in: &eofReader{r: &lineReader{}}, height: 40}
 		var v []string
 		f := huh.NewForm(huh.NewGroup(h.required(h.multi("Pick", "", []huh.Option[string]{huh.NewOption("a", "a")}, &v)))).
@@ -350,7 +350,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("Runtime hooks: 2 (you will be asked before they are installed)"))
 	})
 
-	It("numbers a page's lists across the flow, the disabled ones left out (Plan 10 §5)", func() {
+	It("numbers a page's lists across the flow, the disabled ones left out", func() {
 		pg := ComponentPage{Module: "kit", Title: "kit", Step: Steps{At: 4, Of: 7}, Groups: []ComponentGroup{
 			{Kind: "skill", Title: "skills (1)", Options: []ComponentOption{{ID: "skill/a", Label: "a", Selected: true}}},
 			{Kind: "rule", Title: "rules (1)", Disabled: true, Note: "(off: --no-rules)", Options: []ComponentOption{{ID: "rule/r", Label: "r"}}},
@@ -383,7 +383,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).NotTo(ContainSubstring("Step "))
 	})
 
-	It("tells every list but a form's last that Enter moves on (Plan 10 §5)", func() {
+	It("tells every list but a form's last that Enter moves on", func() {
 		next := func(fields []huh.Field) []bool {
 			var out []bool
 			for _, f := range fields {
@@ -530,7 +530,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
-	It("asks where a missing root is, offering your home, and skips on an empty answer (Plan 10 §3.1)", func() {
+	It("asks where a missing root is, offering your home, and skips on an empty answer", func() {
 		st := MigrateRootStep{Old: "/Users/alice", Suggest: "/home/me", Records: 2}
 		got, err := accessible(&out, "srv", "/srv/me").MigrateRoot(st)
 		Expect(err).NotTo(HaveOccurred())
@@ -546,7 +546,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
-	It("offers the assistants on your PATH for a missing one, all preselected; none skips (Plan 10 §3.2)", func() {
+	It("offers the assistants on your PATH for a missing one, all preselected; none skips", func() {
 		st := MigrateTargetStep{Old: "claude-code", Supported: true, Modules: 2, Options: []string{"gemini-cli", "opencode"}}
 		got, err := accessible(&out, "0").MigrateTargets(st)
 		Expect(err).NotTo(HaveOccurred())
@@ -576,7 +576,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
-	It("shows the review in the viewer's confirm mode on a full terminal, c opening the steps to change (Plan 10 §5)", func() {
+	It("shows the review in the viewer's confirm mode on a full terminal, c opening the steps to change", func() {
 		// review answers the viewer with answers in turn, and the Change menu with Enter.
 		offered := []bool{}
 		review := func(menuKeys string, answers ...viewAnswer) *huhForms {
@@ -646,7 +646,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrBack), "Esc in the menu that replaces the viewer goes back too")
 	})
 
-	DescribeTable("prints the review and asks with the menu, as accessible mode does, when the viewer is bypassed (Plan 10 §2.1)",
+	DescribeTable("prints the review and asks with the menu, as accessible mode does, when the viewer is bypassed",
 		func(noPager bool, setup func()) {
 			if setup != nil {
 				setup()

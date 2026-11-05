@@ -16,11 +16,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// marketActions are lola market's action flags, canonical names in the order a refusal names them
-// (Plan 6c §3.1).
+// marketActions are lola market's action flags, canonical names in the order a refusal names them.
 var marketActions = []engine.MarketAction{engine.MarketAdd, engine.MarketUpdate, engine.MarketRemove}
 
-// marketFlags are the flags each action takes beside the scope and output flags (Plan 6c §3.1):
+// marketFlags are the flags each action takes beside the scope and output flags:
 // one an action does not take, or any of them without an action, is refused, since a flag that
 // does nothing must not look accepted.
 var marketFlags = map[engine.MarketAction][]string{
@@ -30,7 +29,7 @@ var marketFlags = map[engine.MarketAction][]string{
 }
 
 // marketAction is the one action flag set on cmd, "" for none, checked on canonical names after
-// parsing (Plan 6b §19 R7); two refuse, with the run keeping each one as hints (args are its
+// parsing; two refuse, with the run keeping each one as hints (args are its
 // names). A flag the action does not take refuses, naming the actions that do, with the run
 // without it as the hint.
 func marketAction(cmd *cobra.Command, args []string) (engine.MarketAction, error) {
@@ -113,7 +112,7 @@ func given(cmd *cobra.Command, name string) bool {
 }
 
 // outputFlags is the output flags set on cmd (--json, --plain, --no-pager), which every command a
-// lola market hint names keeps, as lola profile's do (Plan 6b §12.3).
+// lola market hint names keeps, as lola profile's do.
 func outputFlags(cmd *cobra.Command) []string {
 	var out []string
 	for _, f := range []string{"json", "plain", "no-pager"} {
@@ -208,10 +207,10 @@ func (a *app) marketCmd() *cobra.Command {
 				return errs.WithHints(errors.New("--target applies to lola market <name> <entry> only"), runWithout(cmd, args, "target"))
 			}
 			if entry {
-				// The run of lola info @<name>/<entry> (Plan 10 U7), which resolves its scope itself.
+				// The run of lola info @<name>/<entry>, which resolves its scope itself.
 				return a.showInfo(cmd, "@"+args[0]+"/"+args[1])
 			}
-			// Scope flags change nothing (Plan 6c D2), but one naming what cannot be is refused.
+			// Scope flags change nothing, but one naming what cannot be is refused.
 			if a.scopeFlag != "" || a.user || a.project || a.root != "" {
 				cwd, err := os.Getwd()
 				if err != nil {
@@ -249,7 +248,7 @@ func (a *app) marketCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// The next step, lola info of the first entry, keeping the run's flags (Plan 10 §7).
+			// The next step, lola info of the first entry, keeping the run's flags.
 			hints := []string{}
 			if len(v.Entries) > 0 {
 				hints = append(hints, runAs([]string{"lola", "info"}, cmd, []string{v.Entries[0].Install}))
@@ -273,13 +272,12 @@ func (a *app) marketCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what the action would do, write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --remove: forget it without asking")
 	a.addTargetFlag(cmd, &targets, "with <name> <entry>: assistants to plan for, as install's -t")
-	// Read beside the reserved word set only, which is answered with the lola command (Plan 6c D8,
-	// Plan 10 §7); hidden.
+	// Read beside the reserved word set only, which is answered with the lola command; hidden.
 	cmd.Flags().BoolVar(&enable, "enable", false, "with set: lola has no disabled state")
 	cmd.Flags().BoolVar(&disable, "disable", false, "with set: lola has no disabled state")
 	_ = cmd.Flags().MarkHidden("enable")
 	_ = cmd.Flags().MarkHidden("disable")
-	// Aliases for muscle memory (Plan 6c §3.2): lola profile and lola cache add, dnf and zypper's
+	// Aliases for muscle memory: lola profile and lola cache add, dnf and zypper's
 	// --refresh. Additive and stable; the published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{
 		string(engine.MarketAdd):    {"get"},
@@ -290,13 +288,13 @@ func (a *app) marketCmd() *cobra.Command {
 }
 
 // marketShown is lola market <name>'s JSON: the marketplace, and hints, the lola info of its first
-// entry with the run's flags ([] without entries; Plan 10 §7).
+// entry with the run's flags ([] without entries).
 type marketShown struct {
 	*engine.MarketView
 	Hints []string `json:"hints"`
 }
 
-// tooManyEntries refuses lola market <name> <entry> <entry>... (Plan 10 §7): it shows one entry.
+// tooManyEntries refuses lola market <name> <entry> <entry>...: it shows one entry.
 // Each hint is the run for one entry the catalog lists and does not skip, with the run's flags;
 // with none (or no such marketplace), the run that lists the marketplace, else the marketplaces.
 func tooManyEntries(cmd *cobra.Command, eng *engine.Engine, args []string) error {
@@ -324,7 +322,7 @@ func tooManyEntries(cmd *cobra.Command, eng *engine.Engine, args []string) error
 		strings.Join(entries, ", ")), hints...)
 }
 
-// marketAdd runs lola market [<name>] --add <source> (Plan 6c §3.1): one name at most; a name
+// marketAdd runs lola market [<name>] --add <source>: one name at most; a name
 // another marketplace has, or a catalog's own name no marketplace can have, is asked again on a
 // terminal, never under --json or a dry run.
 func (a *app) marketAdd(cmd *cobra.Command, eng *engine.Engine, args []string, req engine.MarketAddRequest) error {
@@ -354,9 +352,9 @@ func (a *app) marketAdd(cmd *cobra.Command, eng *engine.Engine, args []string, r
 	return a.emit(cmd, func(w io.Writer, s style) { printMarketResult(w, s, res) }, res)
 }
 
-// marketVerb answers lola market <verb>, a word lola market reserves, with the lola command
-// (Plan 6c D8, §3.1; Plan 10 §7): args[0] is the verb and the rest its operands. Beside an action
-// flag the verb would be a marketplace's name, which it cannot be (market.ValidateName).
+// marketVerb answers lola market <verb>, a word lola market reserves, with the lola command:
+// args[0] is the verb and the rest its operands. Beside an action flag the verb would be a
+// marketplace's name, which it cannot be (market.ValidateName).
 func marketVerb(cmd *cobra.Command, eng *engine.Engine, args []string, ref, path string, sshHosts []string, dry, yes, all, enable, disable bool) error {
 	for _, act := range marketActions {
 		if cmd.Flags().Changed(string(act)) {
@@ -367,7 +365,7 @@ func marketVerb(cmd *cobra.Command, eng *engine.Engine, args []string, ref, path
 		Enable: enable, Disable: disable, SSHHosts: sshHosts, Display: outputFlags(cmd)})
 }
 
-// marketRemove runs lola market <name> --remove (Plan 6c §3.1): one name; it asks on a terminal,
+// marketRemove runs lola market <name> --remove: one name; it asks on a terminal,
 // -y answers, and off a terminal without -y the engine refuses.
 func (a *app) marketRemove(cmd *cobra.Command, eng *engine.Engine, args []string, dry, yes bool) error {
 	if len(args) != 1 {
@@ -419,7 +417,7 @@ func sshPicker(p Prompter) func(engine.MarketSSHStep) ([]string, error) {
 	}
 }
 
-// marketRevoke runs lola market <name> --ssh-host <host>... --remove (spec 2026-10-28 §4): one
+// marketRevoke runs lola market <name> --ssh-host <host>... --remove: one
 // name; it asks nothing and takes no -y, since the host can be allowed again.
 func (a *app) marketRevoke(cmd *cobra.Command, eng *engine.Engine, args, hosts []string, dry, yes bool) error {
 	if yes {
@@ -462,7 +460,7 @@ func (a *app) marketRevoke(cmd *cobra.Command, eng *engine.Engine, args, hosts [
 	}, res)
 }
 
-// marketUpdate runs lola market <name>... --update, or --update --all (Plan 6c §3.1): names and
+// marketUpdate runs lola market <name>... --update, or --update --all: names and
 // --all are exclusive, and one of them is needed, each refusal coaching both forms. A marketplace
 // that failed makes the run fail once the others are written.
 func (a *app) marketUpdate(cmd *cobra.Command, eng *engine.Engine, args []string, all, dry bool, sshHosts []string) error {

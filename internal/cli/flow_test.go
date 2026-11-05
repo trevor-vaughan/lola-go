@@ -295,7 +295,7 @@ func shellWords(line string) []string {
 	return out
 }
 
-var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
+var _ = Describe("the install flow", func() {
 	var tmp, proj, review, deploy, selections, home string
 	BeforeEach(func() {
 		var err error
@@ -430,7 +430,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.calls).To(Equal([]string{"modules"}), "said before the module picker")
 	})
 
-	It("shows in the review the findings a dry run of the install reports, with their hints (Plan 10 §5)", func() {
+	It("shows in the review the findings a dry run of the install reports, with their hints", func() {
 		agents := filepath.Join(tmp, "src", "agents")
 		writeTree(agents, map[string]string{"lola.yml": "name: agents\n", "agents/bare.md": "A bare agent.\n"})
 		p := &scripted{review: []string{cli.ReviewQuit}}
@@ -438,7 +438,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"review"}))
 		Expect(p.reviewSteps[0].Summary).To(ContainSubstring("\n  → agents: 1 notice (claude-code 1) — lola check --user "+agents+" -t claude-code\n"),
-			"P2-6: detail is one line per module, whose lola check names the source the review may decline")
+			"detail is one line per module, whose lola check names the source the review may decline")
 		Expect(filepath.Join(home, ".claude")).NotTo(BeADirectory(), "the dry run wrote nothing")
 
 		p = &scripted{review: []string{cli.ReviewQuit}}
@@ -448,7 +448,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.reviewSteps[0].Summary).NotTo(ContainSubstring("add description:"), "I-2: the hint for the module's author is lola check's")
 	})
 
-	It("keeps the run's output flags in the hints of a review's dry-run refusal (Plan 10 §5)", func() {
+	It("keeps the run's output flags in the hints of a review's dry-run refusal", func() {
 		kit := filepath.Join(tmp, "src", "kit")
 		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/ship.md.liquid": "Ship\n{{ targt }}\n"})
 		p := &scripted{}
@@ -486,7 +486,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(pg.Groups[2].Title).To(Equal("rules (1)"))
 		Expect(p.reviewSteps[0].Options).To(Equal([]string{"apply", "scope", "modules", "assistants", "components", "quit"}))
 
-		// Numbered across the pass (Plan 10 §5): the count is a forecast until the modules are picked,
+		// Numbered across the pass: the count is a forecast until the modules are picked,
 		// then exact; review-kit's page has three lists, deploy's one component no page.
 		Expect([]cli.Steps{p.scopeSteps[0].Step, p.moduleSteps[0].Step, p.assistantSteps[0].Step, pg.Step, p.reviewSteps[0].Step}).To(Equal(
 			[]cli.Steps{{At: 1, Of: 5}, {At: 2, Of: 5}, {At: 3, Of: 7}, {At: 4, Of: 7}, {At: 7, Of: 7}}))
@@ -576,7 +576,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(p.assistantSteps[0].Options).To(Equal([]string{"claude-code", "gemini-cli"}), "agents is offered only where it is set up")
 	})
 
-	It("asks nothing of a run the flags fully specify, and reviews an assistant lola chose (Plan 10 §5)", func() {
+	It("asks nothing of a run the flags fully specify, and reviews an assistant lola chose", func() {
 		p := &scripted{}
 		r := lolaP(p, "install", "deploy", "--scope", "project", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
@@ -612,7 +612,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit"}), "--force confirms the plan as -y does (user decision, 2026-10-22)")
 
-		By("component flags replace the component step, but a --skip that deletes installed files asks first (Pick-P2-b); No keeps them")
+		By("component flags replace the component step, but a --skip that deletes installed files asks first; No keeps them")
 		rule := filepath.Join(proj, ".claude/skills/review/SKILL.md")
 		Expect(rule).To(BeAnExistingFile())
 		p = &scripted{confirm: []bool{false}}
@@ -815,7 +815,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 			dirs: []func(cli.DirectoryStep) (string, error){func(cli.DirectoryStep) (string, error) { return "", cli.ErrAborted }}}),
 	)
 
-	It("preselects nothing on a terminal, though default_scope is set and the project uses lola (Plan 5c §14)", func() {
+	It("preselects nothing on a terminal, though default_scope is set and the project uses lola", func() {
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Dir(selections), 0o700)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(filepath.Dir(selections), "config.yaml"), []byte("version: 1\ndefault_scope: user\n"), 0o600)).To(Succeed())

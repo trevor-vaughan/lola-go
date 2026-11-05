@@ -102,7 +102,7 @@ var _ = Describe("bundles", func() {
 		Expect(string(b)).To(Equal("B from docs\n"))
 	})
 
-	Describe("Prof-P1-a: the bundle view shows the winning member's picks", func() {
+	Describe("the bundle view shows the winning member's picks", func() {
 		var alpha string
 		BeforeEach(func() {
 			alpha = filepath.Join(mods, "alpha")

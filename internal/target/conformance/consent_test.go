@@ -23,7 +23,7 @@ const (
 	unwritten = "unwritten"
 )
 
-// executed is Plan 7.5 task 1's table: for each target, component kind and frontmatter key
+// executed is the table: for each target, component kind and frontmatter key
 // spelling, what lola does with a key an assistant executes (hooks it runs, MCP servers it
 // starts) or that shares a name with one. A key the assistant does not read ("no" in the
 // table) is dropped, so no executing key reaches any assistant ungated under any spelling.
@@ -40,7 +40,7 @@ var executed = map[string]map[string]map[string]string{
 		// Gemini CLI reads only name and description from SKILL.md (skillLoader.ts); a command is
 		// TOML lola writes from description alone; an agent's strict schema starts mcp_servers
 		// (agentLoader.ts), which lola's closed agent keys drop, and so do skills and commands, in
-		// case a future reader starts them there unconsented (R-7-49).
+		// case a future reader starts them there unconsented.
 		"skill": {"hooks": dropped, "Hooks": dropped, "mcpServers": dropped, "MCPSERVERS": dropped,
 			"mcp_servers": dropped, "MCP_SERVERS": dropped, "Mcp_Servers": dropped},
 		"command": {"hooks": dropped, "Hooks": dropped, "mcpServers": dropped, "MCPSERVERS": dropped,

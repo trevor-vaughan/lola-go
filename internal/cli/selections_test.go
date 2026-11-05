@@ -111,7 +111,7 @@ var _ = Describe("selections.yaml in list, check and sync", func() {
 	})
 })
 
-var _ = Describe("lola install --exact (cherry-pick design §3.2, §3.4)", func() {
+var _ = Describe("lola install --exact", func() {
 	var tmp, proj, mod, selections string
 	BeforeEach(func() {
 		var err error
@@ -177,7 +177,7 @@ var _ = Describe("lola install --exact (cherry-pick design §3.2, §3.4)", func(
 	})
 })
 
-var _ = Describe("Pick-P2-b: a pick change that deletes files is confirmed as uninstall is", func() {
+var _ = Describe("a pick change that deletes files is confirmed as uninstall is", func() {
 	var tmp, proj, mod, selections, shipped, tested string
 	BeforeEach(func() {
 		var err error

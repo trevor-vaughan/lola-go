@@ -542,7 +542,7 @@ var _ = Describe("lola profile --edit", func() {
 		}
 	})
 
-	It("narrows picks off a terminal as lola install --skip does (Pick-P2-b): refusing without -y, hinting a run that applies, refusing a hand-edited file with a --force hint that runs", func() {
+	It("narrows picks off a terminal as lola install --skip does: refusing without -y, hinting a run that applies, refusing a hand-edited file with a --force hint that runs", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
 		skill := func(n string) string { return filepath.Join(p.Home, ".claude", "skills", n, "SKILL.md") }
@@ -610,7 +610,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(r.out).To(HavePrefix("✓ new profile mine, a copy of go (0 modules)\n"))
 	})
 
-	It("names the profile --new --from copies bare, qualified only beside a namesake (spec 2026-10-29 §3.8, S3)", func() {
+	It("names the profile --new --from copies bare, qualified only beside a namesake", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		r := lola("profile", "try", "--edit", "--new", "--from", "go", "--user")
 		Expect(r.code).To(Equal(0), r.err)
@@ -658,7 +658,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(lola("profile", "--user", "go").code).To(Equal(0), "the hint runs as printed")
 	})
 
-	It("refuses --edit --bundle with no name, saying to name the bundle, its hints running as printed (ruling P4)", func() {
+	It("refuses --edit --bundle with no name, saying to name the bundle, its hints running as printed", func() {
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nbundle: [go]\n"})
 		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
 		r := lola("profile", "--edit", "--bundle", "notes", "--user")
@@ -701,7 +701,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(os.ReadFile(team)).To(Equal([]byte("version: 1\nbundle: [lint, extra]\n")))
 	})
 
-	It("edits a bundle of yours on at user scope from a project, applying it in both scopes, each scope's context line first (ruling P1)", func() {
+	It("edits a bundle of yours on at user scope from a project, applying it in both scopes, each scope's context line first", func() {
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\n"}) // kit comes through go alone
 		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n",
@@ -819,7 +819,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go, docs, lint]\n")))
 		})
 
-		It("Src-P2-6-bundle: a forceable skip in a profile added to the bundle on hints the bundle edit, not a plain profile run", func() {
+		It("a forceable skip in a profile added to the bundle on hints the bundle edit, not a plain profile run", func() {
 			kit := filepath.Join(tmp, "kit")
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "agents/critic.md": "Criticize.\n"})
 			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n",
@@ -846,7 +846,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(os.ReadFile(filepath.Join(p.UserProfiles, "work.yml"))).To(Equal([]byte("version: 1\nbundle: [go, docs, lint]\n")))
 		})
 
-		It("offers each profile once on a bundle's members page, as its file spells it, and a member that resolves to none on its own (ruling P11)", func() {
+		It("offers each profile once on a bundle's members page, as its file spells it, and a member that resolves to none on its own", func() {
 			work := filepath.Join(p.UserProfiles, "work.yml")
 			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [user:go, gone]\n"})
 			sp := &scripted{members: []func(cli.MembersStep) ([]string, error){func(cli.MembersStep) ([]string, error) { return []string{"user:go", "docs"}, nil }}}
@@ -857,7 +857,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(os.ReadFile(work)).To(Equal([]byte("version: 1\nbundle: ['user:go', docs]\n")))
 		})
 
-		It("never records a pulled member list as trusted from the members page: Enter changes nothing, and a change asks the trust question first, -y or not (ruling P6)", func() {
+		It("never records a pulled member list as trusted from the members page: Enter changes nothing, and a change asks the trust question first, -y or not", func() {
 			proj := filepath.Join(tmp, "proj")
 			team := filepath.Join(proj, ".lola", "profiles", "team.yml")
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n", ".lola/profiles/lint.yml": "version: 1\n",
@@ -1000,7 +1000,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(lola("cache", "add", notes).code).To(Equal(0), "the hint runs as printed")
 		})
 
-		Describe("an inherited module (spec 2026-10-29 S2, §3.6)", func() {
+		Describe("an inherited module", func() {
 			var goYml, defaultYml string
 			var pickA func(cli.ComponentPage) ([]string, error)
 			BeforeEach(func() {
@@ -1028,7 +1028,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:default (base) › kit", "review"}))
 				Expect(sp.reviewSteps[0].Summary).To(ContainSubstring("removals:\n  ✗ kit: claude-code (dropped by your pick change)\n      .claude/skills/b/SKILL.md\n"),
-					"Pick-P2-b: the review lists the files Apply deletes, so its Apply is the confirmation")
+					"the review lists the files Apply deletes, so its Apply is the confirmation")
 				Expect(os.ReadFile(defaultYml)).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 				Expect(os.ReadFile(defaultYml)).NotTo(ContainSubstring("only:"))
 				Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")))

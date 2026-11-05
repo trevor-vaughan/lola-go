@@ -12,7 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 )
 
-// profileRemove runs lola profile <name> --remove (Plan 6b §3.2; spec 2026-10-29 §6.2): one scope,
+// profileRemove runs lola profile <name> --remove: one scope,
 // resolved as every action's is, which with user scope and the project found from here the engine
 // checks the profile is not in use in (--force overrides that); then the question, on a terminal,
 // or -y. --force answers it too (user decision, 2026-10-22). A profile of yours goes to the trash;

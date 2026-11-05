@@ -16,7 +16,7 @@ import (
 const maxNamed = 5
 
 // installedSet is the components of the version of name that entry, its ledger entry at a scope,
-// pins (cherry-pick design §3.3). known is false when nothing is installed or the cache no longer
+// pins. known is false when nothing is installed or the cache no longer
 // holds that version (a cleaned cache): nothing may then be called new. Any other failure to
 // read the version is returned.
 func (e *Engine) installedSet(name string, entry *ledger.Entry) (set []Component, known bool, err error) {
@@ -38,7 +38,7 @@ func (e *Engine) installedSet(name string, entry *ledger.Entry) (set []Component
 }
 
 // newComponentNotices names, in one info notice, the components v adds over the version entry
-// installs at a scope that only the only: list in force leaves out (cherry-pick design §3.4): at
+// installs at a scope that only the only: list in force leaves out: at
 // most maxNamed, then how many more, with the run of the --unskip of those named. repick, the
 // caller's, names the only: list's origin (x's) as output does and gives that run (args: the
 // module, then the flags), keeping the scope's flags; it is asked only for a notice, and its error

@@ -190,7 +190,7 @@ var _ = Describe("install scripts in a dry run", func() {
 			shown = strings.NewReplacer("BIN", filepath.Join(tmp, "bin"), "FLAG", filepath.Join(tmp, "flag")).Replace(shown)
 			args := append([]string{"install", mod, "-C", proj, "-t", "claude-code", "-n"}, setup()...)
 			r := lola(args...)
-			if strings.HasPrefix(shown, "refused:") { // a project's at plan time (A27), a flag's at parse (RR4), on one line
+			if strings.HasPrefix(shown, "refused:") { // a project's at plan time, a flag's at parse, on one line
 				Expect(r.code).To(Equal(1))
 				Expect(r.err).To(ContainSubstring(strings.TrimPrefix(shown, "refused:") + " holds a control character"))
 				Expect(r.err).NotTo(ContainSubstring("\x1b"))

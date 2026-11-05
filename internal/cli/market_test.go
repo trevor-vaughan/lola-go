@@ -62,7 +62,7 @@ var _ = Describe("lola market", func() {
 		Expect(os.MkdirAll(filepath.Join(tmp, "work"), 0o755)).To(Succeed())
 		gitIn(filepath.Join(tmp, "work"), "init", "-q", "-b", "main")
 		publish(map[string]string{".claude-plugin/marketplace.json": marketCatalog, "tools/formatter/skills/f/SKILL.md": "---\nname: f\n---\nF\n"})
-		// You type a marketplace's own source, so a loopback http server may serve it (Plan 6c §12).
+		// You type a marketplace's own source, so a loopback http server may serve it.
 		url = testenv.ServeGit(filepath.Join(tmp, "srv")) + "/plugins.git"
 	})
 
@@ -517,7 +517,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 	})
 
 	It("nothing in a catalog runs a command", func() {
-		// The install summary says what the catalog asked that lola does not do (Plan 6c §12 spec 6).
+		// The install summary says what the catalog asked that lola does not do.
 		marker := filepath.Join(tmp, "MARKER")
 		hooked := filepath.Join(tmp, "hooked")
 		writeTree(hooked, map[string]string{"commands/h.md": "H\n"})
@@ -550,7 +550,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 			"lola-general-marketplace.yml": "name: other\nmodules: []\n"})
 		files := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(marketCatalog)) }))
 		DeferCleanup(files.Close)
-		// 6c.2: a marketplace whose entries come from a host by name (ServeGitTLS, Plan 6c §12), for
+		// A marketplace whose entries come from a host by name (ServeGitTLS), for
 		// the pin, renamed-module, dependency and catalog-move hints.
 		git := func(dir string, args ...string) string {
 			GinkgoHelper()

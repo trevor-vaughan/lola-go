@@ -202,7 +202,7 @@ var _ = Describe("Migrate", func() {
 		Expect(snapshot(proj, h.dir, filepath.Join(tmp, "state"))).To(Equal(before))
 	})
 
-	It("writes what it imports to the base while a profile of yours is on, in its preview as in its install (spec 2026-10-29 §6.1)", func() {
+	It("writes what it imports to the base while a profile of yours is on, in its preview as in its install", func() {
 		python(proj)
 		h.install(record(proj))
 		me := filepath.Join(e.Paths.UserProfiles, "me.yml")
@@ -294,7 +294,7 @@ var _ = Describe("Migrate", func() {
 		Expect(snapshot(proj, h.dir)).To(Equal(before))
 	})
 
-	It("a record mapped to another assistant replaces nothing of yours at that assistant's paths (Plan 10 §3.2)", func() {
+	It("a record mapped to another assistant replaces nothing of yours at that assistant's paths", func() {
 		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
 		mine := filepath.Join(tmp, "config", "opencode", "commands", "ship.md")
 		writeFile(mine, "the user's own command\n")
@@ -1174,7 +1174,7 @@ var _ = Describe("Migrate", func() {
 		Expect(e.Paths.Markets).NotTo(BeAnExistingFile(), "nothing registered")
 	})
 
-	It("reports a destination where every record is left as it is as nothing, and counts the records (Plan 10 §3.3)", func() {
+	It("reports a destination where every record is left as it is as nothing, and counts the records", func() {
 		python(proj)
 		h.install(record(proj), rec{"module": "review", "assistant": "cursor", "scope": "user"})
 		dry, err := run(migrate.Options{Options: engine.Options{DryRun: true}})

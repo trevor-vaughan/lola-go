@@ -18,23 +18,22 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
-// Layer is one file of module entries a scope wants (Plan 6b §6.2; spec 2026-10-29 §3.1): the
-// scope's base (project.yml, or default at user scope) or its active profile. Name is what
-// lock.json's from and every notice call it: project.yml, or ledger.FromProfile of the profile's
-// qualified name. Path is its file. A profile layer's entries come from profile.Entries, with
-// relative local sources resolved against the profile's directory (§19 R5): made absolute for the
-// user's own profiles, and kept relative to the project root, as project.yml's are, for a
-// project's. Key is a project profile's name, its part of the trust record (§8.1), "" for any
-// other layer; read is the profile as read, whose bytes an edit (Profile.Edit) or a sync's pins
-// (Profile.Pin) write; nil for the scope's manifest and a remote profile. member is set on a remote
-// profile a project bundle names: its trust record entry, which records each of its entries in
-// that bundle's part (Key, spec 2026-10-29 §3.10).
+// Layer is one file of module entries a scope wants: the scope's base (project.yml, or default at
+// user scope) or its active profile. Name is what lock.json's from and every notice call it:
+// project.yml, or ledger.FromProfile of the profile's qualified name. Path is its file. A profile
+// layer's entries come from profile.Entries, with relative local sources resolved against the
+// profile's directory: made absolute for the user's own profiles, and kept relative to the project
+// root, as project.yml's are, for a project's. Key is a project profile's name, its part of the
+// trust record, "" for any other layer; read is the profile as read, whose bytes an edit
+// (Profile.Edit) or a sync's pins (Profile.Pin) write; nil for the scope's manifest and a remote
+// profile. member is set on a remote profile a project bundle names: its trust record entry, which
+// records each of its entries in that bundle's part (Key).
 type Layer struct {
 	Name    string
 	Path    string
 	Profile bool
-	Base    bool   // the scope's base: project.yml, or default at user scope (spec 2026-10-29 §3.1)
-	Bundle  string // the qualified name of the bundle on that this member comes through, "" for none (§3.3)
+	Base    bool   // the scope's base: project.yml, or default at user scope
+	Bundle  string // the qualified name of the bundle on that this member comes through, "" for none
 	Key     string
 	Entries []manifest.Entry
 	read    *profile.Profile
@@ -52,11 +51,11 @@ type Layer struct {
 	listed  []listing // a bundle's member: the bundle files that list it, each as it writes it
 }
 
-// Wanted is the entry of one module that a scope's layers want: the entry of the last layer
-// that lists it, whole (§6.2), From that layer's Name and Over the layers whose entry it
-// replaced, lowest first. path is the winning layer's file, profile says it is a profile and key
-// is a project profile's name (Layer.Key); member is the remote profile a project bundle names that
-// the entry comes from (Layer.member), nil for any other.
+// Wanted is the entry of one module that a scope's layers want: the entry of the last layer that
+// lists it, whole, From that layer's Name and Over the layers whose entry it replaced, lowest
+// first. path is the winning layer's file, profile says it is a profile and key is a project
+// profile's name (Layer.Key); member is the remote profile a project bundle names that the entry
+// comes from (Layer.member), nil for any other.
 type Wanted struct {
 	manifest.Entry
 	From     string
@@ -71,8 +70,8 @@ type Wanted struct {
 }
 
 // inherits reports whether ent, an entry of l as the scope reads it, installs to l's top-level
-// targets, which are trust content of a project profile (spec 2026-10-29 §3.10): an entry of the
-// profile's file without targets of its own. Only a project profile's entries do.
+// targets, which are trust content of a project profile: an entry of the profile's file without
+// targets of its own. Only a project profile's entries do.
 func (l Layer) inherits(ent manifest.Entry) bool {
 	if l.Key == "" || l.read == nil || len(l.read.Targets) == 0 {
 		return false
@@ -81,7 +80,7 @@ func (l Layer) inherits(ent manifest.Entry) bool {
 	return k >= 0 && len(l.read.Modules[k].Targets) == 0
 }
 
-// projectBundles is the trust part of each project bundle l comes through (spec 2026-10-29 §3.10).
+// projectBundles is the trust part of each project bundle l comes through.
 func (l Layer) projectBundles() []string {
 	var out []string
 	for _, b := range l.chain {
@@ -100,13 +99,13 @@ func installsToTargets(layers []Layer) bool {
 }
 
 // own reports whether the entry is the user's own: from a profile of theirs, not the project's,
-// trusted as all of yours is (Plan 6b §8.2, §4.3).
+// trusted as all of yours is.
 func (w *Wanted) own() bool { return w.profile && w.key == "" }
 
-// desired is the set of modules a scope should have installed, in name order (Plan 6b §6.2): the
-// layers' entries, lowest layer first, an entry of a later layer replacing an earlier one of the
-// same name whole. Each replacement by a different entry is a notice, which names the layers as
-// layerLabel does without the profiles the scope can use.
+// desired is the set of modules a scope should have installed, in name order: the layers' entries,
+// lowest layer first, an entry of a later layer replacing an earlier one of the same name whole.
+// Each replacement by a different entry is a notice, which names the layers as layerLabel does
+// without the profiles the scope can use.
 func desired(layers []Layer) ([]Wanted, []Notice) { return desiredNoting(layers, nil, nil) }
 
 // desiredNoting is desired with the replacement notices of the modules noted reports (all when
@@ -148,11 +147,10 @@ func sameEntry(a, b manifest.Entry) bool {
 		slices.Equal(a.Only, b.Only) && slices.Equal(a.Skip, b.Skip)
 }
 
-// overrideNotice is the notice of a layer's entry replacing a lower layer's (Plan 6b §6.2), each
-// named by its label (layerLabel): "gopls: profile go overrides default (base) (v2.0 over v1.2)", the versions left out when
-// they read alike; when the replaced entry set vars, or picks (only:, skip:), the winner does not
-// repeat, it says they are dropped, as the winner replaces them whole (Plan 7 §4.2; cherry-pick
-// design §4.2).
+// overrideNotice is the notice of a layer's entry replacing a lower layer's, each named by its
+// label (layerLabel): "gopls: profile go overrides default (base) (v2.0 over v1.2)", the versions
+// left out when they read alike; when the replaced entry set vars, or picks (only:, skip:), the
+// winner does not repeat, it says they are dropped, as the winner replaces them whole.
 func overrideNotice(ent, prev manifest.Entry, layer, under string) Notice {
 	text := shown(ent.Name) + ": " + layer + " overrides " + under
 	if now, was := entryVersion(ent), entryVersion(prev); now != was {
@@ -194,9 +192,9 @@ func find(want []Wanted, name string) *Wanted {
 	return &want[i]
 }
 
-// baseLayer is the scope's base as its lowest layer (spec 2026-10-29 §3.1, §8.2): project.yml at
-// project scope, read as man; at user scope your default profile as loadStack read it, or an empty
-// one when default.yml does not exist (an install writes it).
+// baseLayer is the scope's base as its lowest layer: project.yml at project scope, read as man; at
+// user scope your default profile as loadStack read it, or an empty one when default.yml does not
+// exist (an install writes it).
 func (e *Engine) baseLayer(sc Scope, man *manifest.Manifest, pl *profileLayers) Layer {
 	if sc.Kind == target.User {
 		if pl.def != nil {
@@ -210,10 +208,10 @@ func (e *Engine) baseLayer(sc Scope, man *manifest.Manifest, pl *profileLayers) 
 	return Layer{Name: filepath.Base(path), Path: path, Base: true, Entries: man.Clone().Modules}
 }
 
-// profileLayers is the profile layers a run reads, each once (Plan 6b §19 S6): default's, when
-// its file exists, and the layers of each active profile it was given, by qualified name: the
-// profile's own, or a bundle's members' in order (spec 2026-10-29 §3.3). notices warns about the
-// active profile whose file is gone (§10) and what expanding a bundle noted.
+// profileLayers is the profile layers a run reads, each once: default's, when its file exists, and
+// the layers of each active profile it was given, by qualified name: the profile's own, or a
+// bundle's members' in order. notices warns about the active profile whose file is gone and what
+// expanding a bundle noted.
 type profileLayers struct {
 	def      *Layer
 	named    map[string][]Layer
@@ -222,17 +220,17 @@ type profileLayers struct {
 	notices  []Notice
 }
 
-// loadStack reads the profiles of a scope's stack (spec 2026-10-29 §8.2): default (at user scope)
-// and the active profile of each of actives, each once, so an activation's old and new profile
-// share one parse. infos is the profiles sc can use when the caller listed them already, else nil.
-// A name whose file is gone counts as off, with a warning when the last of actives, the one the
-// run applies, is it; a bundle's remote member that this machine lacks and pins.yaml records is
-// left out, with a warning (expansion.member); a profile that does not load refuses the run, but for a default.yml whose
+// loadStack reads the profiles of a scope's stack: default (at user scope) and the active profile
+// of each of actives, each once, so an activation's old and new profile share one parse. infos is
+// the profiles sc can use when the caller listed them already, else nil. A name whose file is gone
+// counts as off, with a warning when the last of actives, the one the run applies, is it; a
+// bundle's remote member that this machine lacks and pins.yaml records is left out, with a warning
+// (expansion.member); a profile that does not load refuses the run, but for a default.yml whose
 // only fault is entries with a marketplace address, which comes back read beside its
-// *manifest.UnresolvedError (layers reads it so for an install that replaces one). An active remote:<name> that
-// a user profile of its name now shadows is read as that profile, with a notice (Plan 6b §4.4,
-// D8). A project with no active profile in any of actives never lists the user's profiles
-// directory, so a broken one cannot refuse every project.
+// *manifest.UnresolvedError (layers reads it so for an install that replaces one). An active
+// remote:<name> that a user profile of its name now shadows is read as that profile, with a notice.
+// A project with no active profile in any of actives never lists the user's profiles directory, so
+// a broken one cannot refuse every project.
 func (e *Engine) loadStack(sc Scope, infos []profile.Info, actives ...*ledger.Active) (*profileLayers, error) {
 	pl := &profileLayers{named: map[string][]Layer{}, expanded: map[string][]bundleRef{}, reached: map[string]map[string][]listing{}}
 	if sc.Kind == target.Project && !slices.ContainsFunc(actives, func(a *ledger.Active) bool { return a != nil }) {
@@ -263,14 +261,14 @@ func (e *Engine) loadStack(sc Scope, infos []profile.Info, actives ...*ledger.Ac
 		if err != nil {
 			return Layer{}, nil, e.readd(sc, i.Name, err)
 		}
-		// Every entry names a remote source (Plan 6b D4): nothing to resolve beside it.
+		// Every entry names a remote source: nothing to resolve beside it.
 		l := Layer{Name: ledger.FromProfile(i.Qualified()), Path: i.Path, Profile: true, Entries: p.Entries(), origin: &o}
 		remotes[i.Qualified()] = l
 		return l, &o, nil
 	}
 	// left is the warnings about the remote members of a bundle that this machine lacks and
-	// pins.yaml records: each is left out, as the active profile whose file is gone is (§10),
-	// until a run that needs it restores it (restoreRemotes; spec 2026-10-29 §3.4).
+	// pins.yaml records: each is left out, as the active profile whose file is gone is, until a run
+	// that needs it restores it (restoreRemotes).
 	var left []Notice
 	load := func(i profile.Info) (Layer, error) {
 		if i.Kind == profile.KindRemote {
@@ -348,8 +346,8 @@ func (e *Engine) loadStack(sc Scope, infos []profile.Info, actives ...*ledger.Ac
 }
 
 // activeNotices is the warnings about the active profile a (nil for none) that every read of the
-// scope's stack gives: its file is gone, and it counts as off (Plan 6b §10), or a user profile of
-// its name now shadows it and is read in its place (§4.4, D8).
+// scope's stack gives: its file is gone, and it counts as off, or a user profile of its name now
+// shadows it and is read in its place.
 func (e *Engine) activeNotices(sc Scope, infos []profile.Info, a *ledger.Active) []Notice {
 	switch {
 	case a == nil:
@@ -363,9 +361,8 @@ func (e *Engine) activeNotices(sc Scope, infos []profile.Info, a *ledger.Active)
 	return nil
 }
 
-// activeInfo is the index in infos of the profile read for the active profile q (Plan 6b §4.4,
-// D8): the user profile that shadows it when q is remote and one does, else q's own; -1 when its
-// file is gone.
+// activeInfo is the index in infos of the profile read for the active profile q: the user profile
+// that shadows it when q is remote and one does, else q's own; -1 when its file is gone.
 func activeInfo(infos []profile.Info, q string) int {
 	if mine := userShadow(infos, q); mine != nil {
 		return slices.Index(infos, *mine)
@@ -373,10 +370,10 @@ func activeInfo(infos []profile.Info, q string) int {
 	return slices.IndexFunc(infos, func(i profile.Info) bool { return i.Qualified() == q })
 }
 
-// userShadow is the user profile of infos that shadows the active remote profile q (Plan 6b
-// §4.4, D8): the user's own file of its name, which appeared after q was turned on and is used in
-// its place; nil when q is not remote or no such file exists. A project profile never does: it
-// replaces an active profile only when turned on (ruling R-6b3a-1).
+// userShadow is the user profile of infos that shadows the active remote profile q: the user's own
+// file of its name, which appeared after q was turned on and is used in its place; nil when q is
+// not remote or no such file exists. A project profile never does: it replaces an active profile
+// only when turned on.
 func userShadow(infos []profile.Info, q string) *profile.Info {
 	name, ok := strings.CutPrefix(q, string(profile.KindRemote)+":")
 	if !ok {
@@ -388,8 +385,8 @@ func userShadow(infos []profile.Info, q string) *profile.Info {
 	return nil
 }
 
-// shadowing is the local profile of infos that shadows i when i is a remote profile (Plan 6b
-// §4.4, decision 4): the user's of its name, else the project's; nil when none does.
+// shadowing is the local profile of infos that shadows i when i is a remote profile: the user's of
+// its name, else the project's; nil when none does.
 func shadowing(infos []profile.Info, i profile.Info) *profile.Info {
 	if i.Kind != profile.KindRemote {
 		return nil
@@ -402,9 +399,9 @@ func shadowing(infos []profile.Info, i profile.Info) *profile.Info {
 	return nil
 }
 
-// assemble is the scope's layers with active on, lowest first (spec 2026-10-29 §3.1, §8.2): base,
-// then the active profile (none when its file is gone), a bundle as its members in order, whose
-// entry for a module wins over the base's, a later member's over an earlier one's.
+// assemble is the scope's layers with active on, lowest first: base, then the active profile (none
+// when its file is gone), a bundle as its members in order, whose entry for a module wins over the
+// base's, a later member's over an earlier one's.
 func (pl *profileLayers) assemble(base Layer, active *ledger.Active) []Layer {
 	out := []Layer{base}
 	if active != nil {
@@ -415,10 +412,10 @@ func (pl *profileLayers) assemble(base Layer, active *ledger.Active) []Layer {
 	return out
 }
 
-// layers is the scope's layers for the profile lock.json has on, lowest first (spec 2026-10-29
-// §3.1): at user scope default (an empty one when its file is missing), then the active profile; at
-// project scope project.yml, then the active profile. Each profile is read once, here, and its
-// parse feeds the whole run (Plan 6b §19 S6); see loadStack.
+// layers is the scope's layers for the profile lock.json has on, lowest first: at user scope
+// default (an empty one when its file is missing), then the active profile; at project scope
+// project.yml, then the active profile. Each profile is read once, here, and its parse feeds the
+// whole run; see loadStack.
 func (e *Engine) layers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([]Layer, []Notice, error) {
 	pl, err := e.loadStack(sc, nil, led.Profile)
 	if _, ok := errors.AsType[*manifest.UnresolvedError](err); ok && sc.Kind == target.User && holdsAddress(man) {
@@ -432,11 +429,11 @@ func (e *Engine) layers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([
 	return pl.assemble(e.baseLayer(sc, man, pl), led.Profile), pl.notices, nil
 }
 
-// visible is the profiles sc can use, by name (Plan 6b §4.1): the user's, with default at user
-// scope (profile.Visible), at project scope the project's (profile.Project), and the remote ones
+// visible is the profiles sc can use, by name: the user's, with default at user scope
+// (profile.Visible), at project scope the project's (profile.Project), and the remote ones
 // (profile.Remote), in name order. No profile is read. notices are what a listing says about the
-// directories: how many files have names that are not valid profile names, never the names (§4.3,
-// §19 S7), and a project's default.yml, which is not a profile.
+// directories: how many files have names that are not valid profile names, never the names, and a
+// project's default.yml, which is not a profile.
 func (e *Engine) visible(sc Scope) ([]profile.Info, []Notice, error) {
 	infos, invalid, reserved, err := profile.Visible(e.Paths, sc.Kind == target.User)
 	if err != nil {
@@ -484,8 +481,8 @@ func (e *Engine) profilePath(sc Scope, kind profile.Kind, name string) string {
 	return filepath.Join(e.Paths.UserProfiles, name+".yml")
 }
 
-// reservedNotices is the warning about base.yml at path, a file in a profiles directory that is
-// no profile (spec 2026-10-29 §3.1): none when path is "".
+// reservedNotices is the warning about base.yml at path, a file in a profiles directory that is no
+// profile: none when path is "".
 func reservedNotices(path string) []Notice {
 	if path == "" {
 		return nil
@@ -505,10 +502,9 @@ func invalidNotices(dir string, n int) []Notice {
 	return nil
 }
 
-// replacing is an activation's replacement of active user or remote profiles by project profiles
-// of the same name (Plan 6b §4.4, D8; ruling R-6b3a-1): report is what the trust report shows of
-// them.
-// lola sync never makes one; only lola profile project:<name> --on, or --switch naming it, does.
+// replacing is an activation's replacement of active user or remote profiles by project profiles of
+// the same name: report is what the trust report shows of them. lola sync never makes one; only
+// lola profile project:<name> --on, or --switch naming it, does.
 type replacing struct {
 	report []Replacement
 }
@@ -525,9 +521,9 @@ func (r *replacing) add(rep *TrustReport) {
 	}
 }
 
-// replaced is the replacement an activation makes (D8): old, yours or a remote profile, that
-// next, the project's profile of its name, takes the place of, as {user:<name>, project:<name>};
-// none otherwise.
+// replaced is the replacement an activation makes: old, yours or a remote profile, that next, the
+// project's profile of its name, takes the place of, as {user:<name>, project:<name>}; none
+// otherwise.
 func replaced(old, next *ledger.Active) [][2]string {
 	if old == nil || next == nil {
 		return nil
@@ -565,14 +561,14 @@ func replacingOf(pairs [][2]string, old, want []Wanted) *replacing {
 	return r
 }
 
-// replaceable reports whether an active profile of kind gives way to a project profile of its
-// name turned on in its place (Plan 6b §4.4, D8): the user's own and a remote one do.
+// replaceable reports whether an active profile of kind gives way to a project profile of its name
+// turned on in its place: the user's own and a remote one do.
 func replaceable(kind string) bool {
 	return kind == string(profile.KindUser) || kind == string(profile.KindRemote)
 }
 
 // replacements is, for the active profile at project scope, the project profile of infos that has
-// its name when it is yours or a remote one (Plan 6b §4.4, D8), as {user:<name>, project:<name>}.
+// its name when it is yours or a remote one, as {user:<name>, project:<name>}.
 func replacements(infos []profile.Info, active *ledger.Active) [][2]string {
 	if active == nil {
 		return nil
@@ -586,7 +582,7 @@ func replacements(infos []profile.Info, active *ledger.Active) [][2]string {
 }
 
 // replacementNotices is the notice of each project profile with the name of an active user or
-// remote profile (replacements): lola never swaps them on its own, so it says how to (R-6b3a-1).
+// remote profile (replacements): lola never swaps them on its own, so it says how to.
 func (e *Engine) replacementNotices(sc Scope, pending [][2]string) []Notice {
 	var out []Notice
 	for _, p := range pending {
@@ -595,9 +591,9 @@ func (e *Engine) replacementNotices(sc Scope, pending [][2]string) []Notice {
 	return out
 }
 
-// syncLayers is layers for a sync, with a notice for each project profile that has the name of
-// an active user or remote profile (replacements): a sync never swaps one for the other (Plan 6b §4.4,
-// ruling R-6b3a-1). Each profile is read once.
+// syncLayers is layers for a sync, with a notice for each project profile that has the name of an
+// active user or remote profile (replacements): a sync never swaps one for the other. Each profile
+// is read once.
 func (e *Engine) syncLayers(sc Scope, man *manifest.Manifest, led *ledger.Ledger) ([]Layer, []Notice, error) {
 	if sc.Kind != target.Project || led.Profile == nil {
 		return e.layers(sc, man, led)
@@ -613,10 +609,10 @@ func (e *Engine) syncLayers(sc Scope, man *manifest.Manifest, led *ledger.Ledger
 	return pl.assemble(e.baseLayer(sc, man, pl), led.Profile), append(pl.notices, e.replacementNotices(sc, replacements(infos, led.Profile))...), nil
 }
 
-// besideProfile is a profile entry's source with a relative local path joined to dir, the
-// profile's directory (Plan 6b §4.3, §19 R5): absolute for a user's profile, relative to the
-// project root for a project's. URLs, git's scp form, absolute paths and marketplace addresses
-// (an unresolved entry an install replaces, Plan 6c §6.3) are kept as written.
+// besideProfile is a profile entry's source with a relative local path joined to dir, the profile's
+// directory: absolute for a user's profile, relative to the project root for a project's. URLs,
+// git's scp form, absolute paths and marketplace addresses (an unresolved entry an install
+// replaces) are kept as written.
 func besideProfile(src, dir string) string {
 	if _, _, address := manifest.Address(src); address || strings.Contains(src, "://") || source.Host(src) != "" || filepath.IsAbs(src) {
 		return src
@@ -626,7 +622,7 @@ func besideProfile(src, dir string) string {
 
 // saveOnlyNotice is the warning about an entry an edit writes to the file labeled to for module,
 // while the layer labeled winner, higher in the scope, lists it: the winner's entry applies until
-// it is off (spec 2026-10-29 §3.5; plan 12.2a ambiguity 3).
+// it is off.
 func saveOnlyNotice(module, winner, to string) Notice {
 	return Notice{Level: LevelWarn, Text: shown(module) + ": " + winner + "'s entry wins; this change to " + to + " applies when it is off"}
 }

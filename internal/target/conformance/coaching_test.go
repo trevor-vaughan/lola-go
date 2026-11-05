@@ -15,7 +15,7 @@ import (
 )
 
 // nothingToDo lists, for each registered target, the findings it produces that leave the user
-// nothing to do, as "<severity> <code>" with the reason (Plan 10 §6). Every other finding a
+// nothing to do, as "<severity> <code>" with the reason. Every other finding a
 // target produces carries a hint; a finding listed here carries none, and the spec below
 // produces each entry.
 var nothingToDo = map[string]map[string]string{

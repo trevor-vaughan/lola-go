@@ -23,7 +23,7 @@ var mentionsModule = map[string]string{
 	"commands/notes.md":              "Notes.\n",
 }
 
-var _ = Describe("lola info lists mentions (cherry-pick design §5.2)", func() {
+var _ = Describe("lola info lists mentions", func() {
 	var tmp, proj, mod string
 	BeforeEach(func() {
 		var err error
@@ -74,7 +74,7 @@ var _ = Describe("lola info lists mentions (cherry-pick design §5.2)", func() {
 	})
 })
 
-var _ = Describe("mentions in lola install (cherry-pick design §5.2, §5.3)", func() {
+var _ = Describe("mentions in lola install", func() {
 	var tmp, proj, mod, selections string
 	BeforeEach(func() {
 		var err error
@@ -114,7 +114,7 @@ var _ = Describe("mentions in lola install (cherry-pick design §5.2, §5.3)", f
 		Expect(label(p.pages[0], "skill/golang-race")).To(Equal("golang-race — Race (mentions 1)"))
 		Expect(label(p.pages[0], "skill/golang-gopls")).To(Equal("golang-gopls — Gopls"))
 		Expect(r.err).To(ContainSubstring("  → pack: 1 notice (module 1) — lola check --project "+mod+"\n"),
-			"P2-6: detail is one line per module, whose lola check names the source the review may decline")
+			"detail is one line per module, whose lola check names the source the review may decline")
 		c := lola("check", "--project", mod)
 		Expect(c.code).To(Equal(0), c.err)
 		Expect(c.out).To(ContainSubstring("→ pack: skill/golang-testing mentions 2 components you did not pick: skill/golang-gopls, skill/golang-race" +
@@ -151,7 +151,7 @@ var _ = Describe("mentions in lola install (cherry-pick design §5.2, §5.3)", f
 		Expect(filepath.Join(proj, ".claude/skills/golang-lint/SKILL.md")).To(BeARegularFile())
 	})
 
-	It("P2-6: counts what the picks leave out in the module's line, whose lola check names it with the install that adds it", func() {
+	It("counts what the picks leave out in the module's line, whose lola check names it with the install that adds it", func() {
 		r := lola("install", mod, "--project", "-t", "claude-code", "--only", "skill/golang-testing", "--with-mentions")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ pack: 1 notice (module 1) — lola check --project pack\n"))

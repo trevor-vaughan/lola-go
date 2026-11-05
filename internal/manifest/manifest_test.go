@@ -371,7 +371,7 @@ modules:
 		Expect(err).To(MatchError(ContainSubstring("newer lola")))
 	})
 
-	It("Prof-P2-d: names the file and line of an unknown key, and the keys project.yml has, never a Go type", func() {
+	It("names the file and line of an unknown key, and the keys project.yml has, never a Go type", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		Expect(os.WriteFile(path, []byte("version: 1\nfoo: x\n"), 0o600)).To(Succeed())
 		_, err := manifest.Load(path)

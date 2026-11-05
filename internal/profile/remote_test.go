@@ -253,7 +253,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(pr.Modules).To(HaveLen(1))
 		_, _, err = profile.Fetched(dir, "nope")
 		Expect(err).To(MatchError("the source has no profile nope (profiles/nope.yml)"))
-		Expect(errs.Hints(err)).To(Equal([]string{"see the profiles it has: leave out the name"}), "Prof-P2-f: listing works off a terminal too")
+		Expect(errs.Hints(err)).To(Equal([]string{"see the profiles it has: leave out the name"}), "listing works off a terminal too")
 		_, _, err = profile.Fetched(fetched(map[string]string{"README.md": ""}), "go")
 		Expect(err).To(MatchError("the source has no profiles/ directory"))
 		_, _, err = profile.FetchedNames(fetched(map[string]string{"profiles": "a file"}))

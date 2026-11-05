@@ -16,8 +16,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Plan 9 §6.3 (A14): which commands record a use of a cached version in index.yml's last_used.
-var _ = Describe("last_used (Plan 9 §6.3)", func() {
+// Which commands record a use of a cached version in index.yml's last_used.
+var _ = Describe("last_used", func() {
 	var (
 		e        *engine.Engine
 		p        paths.Paths

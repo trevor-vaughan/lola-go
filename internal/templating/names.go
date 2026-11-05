@@ -1,6 +1,6 @@
 package templating
 
-// PartialsDir is the directory, at a module's root, that holds its partials (Plan 7 §3.3).
+// PartialsDir is the directory, at a module's root, that holds its partials.
 const PartialsDir = "_partials"
 
 // PartialName reports whether name is a partial's name: a lowercase letter or digit, then up

@@ -15,7 +15,7 @@ import (
 )
 
 // installMoveHints is what follows the entries a.modules, which an install added to a.t at
-// a.sp's scope (spec 2026-10-29 §3.7; plan 12.2b ambiguity 6): each line one lola profile --move of
+// a.sp's scope: each line one lola profile --move of
 // them all that runs as printed in the state the install leaves. Into another profile of yours
 // visible there that lists none of them (with --switch when it is off, and only when switchTarget
 // takes it), then at user scope into the base when t is a profile and the base lists none: two at
@@ -27,7 +27,7 @@ import (
 // uninstall and install (with the targets they have here when the project names none, and only
 // when they share them). No hint names project.yml or a project profile as a target. No hint
 // carries -y: each names another command, which asks, or off a terminal refuses with a hint that
-// adds it (R-8); a switch that turns a profile off and removes its modules says so. Every hint
+// adds it; a switch that turns a profile off and removes its modules says so. Every hint
 // carries display, the run's output flags.
 // When t is off here, each move names t as its source, an off target takes --keep-off, a move that
 // installs them (into a profile on, or the base) only when it runs as printed (movesAsPrinted),
@@ -35,7 +35,7 @@ import (
 func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Scope, display []string) []Notice {
 	sp, t, modules := a.sp, a.t, a.modules
 	if !t.on && t.Key != "" {
-		return nil // a project profile that is off: the saved-to line says what to do (plan 12.5 P3)
+		return nil // a project profile that is off: the saved-to line says what to do
 	}
 	if sp.sc.Kind == target.Project && !t.Profile && e.picksStay(sp.sc, a.entries, modules) {
 		return nil // every move would be refused; the picks have no form a profile can hold
@@ -54,7 +54,7 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 	}
 	// from names t as the moves' source when it is not on here: what was saved to it is in no
 	// layer here, so a move without a source finds nothing, and with nothing installed from it a
-	// move into a profile that is off keeps that profile off (plan 12.5 ambiguity 4).
+	// move into a profile that is off keeps that profile off.
 	from := ""
 	if !t.on {
 		from = strings.TrimPrefix(layerLabel(infos, t.Name), "profile ")
@@ -164,7 +164,7 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 // project, with the targets they have at user scope when the project names none, or names ones
 // its trust record does not cover for the file the install writes there (targetsCovered), which
 // an install without -t refuses; "" when those differ between modules, as one install takes one
-// -t, or when lola cannot tell. Neither carries -y (R-8); both carry display, the run's output
+// -t, or when lola cannot tell. Neither carries -y; both carry display, the run's output
 // flags.
 func (e *Engine) intoProjectRun(a installAdded, project Scope, there *moveStack, modules []string, display []string) string {
 	t, _, err := e.writeTarget(project, there.layers, there.infos, TargetRequest{}, "install", "", nil)
@@ -195,8 +195,7 @@ func (e *Engine) intoProjectRun(a installAdded, project Scope, there *moveStack,
 }
 
 // inProjectNotices warns, once, at the write, of each entry a.modules that an install added to
-// a.t, a file of yours, whose local source lies inside a project (inProject; spec 2026-10-29
-// §16.2); a later sync says nothing of it. After a user-scope write a warning is followed by the
+// a.t, a file of yours, whose local source lies inside a project (inProject); a later sync says nothing of it. After a user-scope write a warning is followed by the
 // two-step uninstall and install into that project (intoProjectRun), when no layer there lists it,
 // the run (runs) does not act on it, and moves, the run's move hints, do not name that run already.
 func (e *Engine) inProjectNotices(a installAdded, runs []Scope, opts Options, moves []Notice) []Notice {
@@ -239,7 +238,7 @@ func (e *Engine) switchable(layers []Layer, i profile.Info, modules []string) (o
 		return true, nil, !listsAny(layers[k], modules)
 	}
 	l, err := e.offLayer(i)
-	if err != nil || l.read.Shape() == profile.ShapeBundle || listsAny(l, modules) { // a bundle takes no module (spec 2026-10-29 §6.3)
+	if err != nil || l.read.Shape() == profile.ShapeBundle || listsAny(l, modules) { // a bundle takes no module
 		return false, nil, false
 	}
 	return false, &l, true
@@ -332,7 +331,7 @@ func (e *Engine) unlisted(sc Scope, t writeTo, modules []string, runs []Scope) *
 
 // freeName is want, or want-2, want-3 … the first name no profile in infos has, of any kind (a
 // bare --to names the user's, else the project's, else a remote one): the name a hint offers for a
-// new profile of yours (spec 2026-10-29 §3.7).
+// new profile of yours.
 func freeName(infos []profile.Info, want string) string {
 	taken := func(n string) bool {
 		return slices.ContainsFunc(infos, func(i profile.Info) bool { return i.Name == n })

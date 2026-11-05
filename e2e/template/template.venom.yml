@@ -3,7 +3,7 @@ name: lola templates end to end
 # at /opt/lola-go/lola-go, the suite at /e2e and e2e/common at /e2e-common. Every step is
 # {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob, &&, redirection or pipe sits
 # inside a single-quoted sh -c or python3 -c, and no step names a host path. Cases run in order
-# and read the state earlier ones leave (Plan 8 §4.2's Needs column).
+# and read the state earlier ones leave.
 vars:
   root: "."
   runtime: podman

@@ -45,10 +45,10 @@ const (
 )
 
 // Plan is what lola migrate would do with the Python lola's state, before the install is
-// planned: the destinations (Plan 5c §14), the records that cannot be migrated anywhere, what is
-// reported but never acted on, and what becomes of its marketplaces (Plan 6c §6.9).
+// planned: the destinations, the records that cannot be migrated anywhere, what is
+// reported but never acted on, and what becomes of its marketplaces.
 // RootSuggestions and TargetSuggestions are what it leaves unmapped for want of this machine's
-// paths or assistants (Plan 10 §3.1, §3.2), from which the CLI builds the run that maps them.
+// paths or assistants, from which the CLI builds the run that maps them.
 type Plan struct {
 	Home              string
 	Destinations      []*Destination
@@ -112,7 +112,7 @@ type Install struct {
 	Version       *engine.VersionRef
 }
 
-// Recorded is a path the Python lola wrote for a record and recorded in installed.yml (§6):
+// Recorded is a path the Python lola wrote for a record and recorded in installed.yml:
 // a file, a directory, or with Key an MCP entry in the JSON file at Rel. Rel is relative to
 // Root, the target's scope root; Target is "" for a module copy.
 type Recorded struct {
@@ -139,7 +139,7 @@ type Unmapped struct {
 	Hints       []string `json:"hints"`
 }
 
-// Item is something the Python lola wrote that lola migrate reports and never touches (§5):
+// Item is something the Python lola wrote that lola migrate reports and never touches:
 // its file and marker (or JSON pointer), or its path, and how to remove it by hand.
 type Item struct {
 	What   string   `json:"what"`
@@ -149,16 +149,15 @@ type Item struct {
 	Hints  []string `json:"hints"`
 }
 
-// NewPlan groups st's records into destinations and decides each record's outcome (§4): a
-// target lola-go has, at a usable destination, with a source lola-go can fetch, is installed
-// unless the destination's manifest already has its module (matched by source) on that
-// target, and the version lola-go resolves its source to holds every component the record
-// lists. Everything else is unmappable and left as it is. Each install's source is fetched
-// into the cache once, here, and the install pinned to that version, so a preview and the
-// run that follows it install the same thing. opts.Display is the run's output flags, which the
-// hints of a destination's manifest with a marketplace address keep (Plan 6c §6.7). opts.Roots
-// moves missing project paths and opts.Targets maps the assistants this machine lacks (Plan 10
-// §3.1, §3.2); what neither covers is in RootSuggestions and TargetSuggestions.
+// NewPlan groups st's records into destinations and decides each record's outcome: a target lola-go
+// has, at a usable destination, with a source lola-go can fetch, is installed unless the
+// destination's manifest already has its module (matched by source) on that target, and the version
+// lola-go resolves its source to holds every component the record lists. Everything else is
+// unmappable and left as it is. Each install's source is fetched into the cache once, here, and the
+// install pinned to that version, so a preview and the run that follows it install the same thing.
+// opts.Display is the run's output flags, which the hints of a destination's manifest with a
+// marketplace address keep. opts.Roots moves missing project paths and opts.Targets maps the
+// assistants this machine lacks; what neither covers is in RootSuggestions and TargetSuggestions.
 func NewPlan(ctx context.Context, e *engine.Engine, st *State, opts Options) (*Plan, error) {
 	p := &Plan{Home: st.Home, Unmappable: []Unmapped{}, NotMigrated: []Item{}, Markets: []Market{}, Warnings: slices.Clone(st.Warnings), st: st}
 	if len(st.Markets) > 0 {
@@ -269,7 +268,7 @@ type resolved struct {
 	err        error
 }
 
-// plan decides each of d's records (§4): unmappable, already migrated, or installed. The
+// plan decides each of d's records: unmappable, already migrated, or installed. The
 // sources to install are resolved to cached versions, fetching them; a record listing a
 // component its version lacks is unmappable (lola-go found another module root than the
 // Python lola did), and every install is pinned to its version. A module's records at d
@@ -344,7 +343,7 @@ func unfetchableHint(err error) string {
 }
 
 // baseProfile is the --profile migrate writes what it imports to, in its planning as in its
-// install: the scope's base (project.yml, default.yml), never the profile on (spec 2026-10-29 §6.1).
+// install: the scope's base (project.yml, default.yml), never the profile on.
 const baseProfile = "base"
 
 // resolve resolves the sources of list's installs, once each, to cached versions through
@@ -386,9 +385,9 @@ func installKey(in Install) string {
 	return strings.Join([]string{string(in.Kind), in.Source, in.Ref, in.Path}, "\x00")
 }
 
-// lacking names the first component pl's record lists that v lacks, with a hint for each
-// cause, or returns "". A skill the Python lola renamed to <module>_<skill>, when another module had its name,
-// counts as <skill>; other renames are names the user chose and cannot be traced back.
+// lacking names the first component pl's record lists that v lacks, with a hint for each cause, or
+// returns "". A skill the Python lola renamed to <module>_<skill>, when another module had its
+// name, counts as <skill>; other renames are names the user chose and cannot be traced back.
 func lacking(pl planned, v resolved) (string, []string) {
 	for _, kind := range []struct {
 		name  string
@@ -441,7 +440,7 @@ func unmapped(rec Record, reason string, hints ...string) Unmapped {
 
 // mapRecord maps q's record to its targets, with an install for each, or lists it as
 // unmappable at d. A record installs for its own assistant when lola has a target for it and it
-// is installed or set up here (Plan 10 §3.2); otherwise for the targets targets maps it to, or
+// is installed or set up here; otherwise for the targets targets maps it to, or
 // not at all.
 func (d *Destination) mapRecord(e *engine.Engine, st *State, targets map[string][]string, q queued) []planned {
 	rec := q.rec
@@ -516,7 +515,7 @@ func (d *Destination) accept(e *engine.Engine, st *State, pl planned) {
 	d.Installs = merge(d.Installs, pl.in)
 }
 
-// mapSource maps rec's module source to a lola install source (§4): the source as lola install
+// mapSource maps rec's module source to a lola install source: the source as lola install
 // takes it, the record's ref else source.yml's, and content_dirname as --path. content_dirname
 // "/" is the source's root: --path . for a folder or git source, lola-go's own rule for an
 // archive (lola-go already looks for the module inside it); a subdirectory is --path for a
@@ -669,10 +668,9 @@ func root(e *engine.Engine, sc engine.Scope, id string) string {
 	return ""
 }
 
-// recorded lists the paths the Python lola wrote for rec on target id, for "" only the module
-// copy (§6, checked against
-// src/lola/targets/*.py at 91a2885): skill directories, command files with their sidecar
-// directories (claude-code and opencode copy one), agent files, the legacy OpenCode
+// recorded lists the paths the Python lola wrote for rec on target id, for "" only the module copy
+// (checked against src/lola/targets/*.py at 91a2885): skill directories, command files with their
+// sidecar directories (claude-code and opencode copy one), agent files, the legacy OpenCode
 // directories its uninstall still cleans, MCP entries, and at project scope the module copy.
 func recorded(e *engine.Engine, sc engine.Scope, rec Record, id string) []Recorded {
 	r := root(e, sc, id)
@@ -736,7 +734,7 @@ func escapePointer(s string) string {
 	return strings.NewReplacer("~", "~0", "/", "~1").Replace(s)
 }
 
-// notMigrated lists what rec left that lola migrate never touches (§5, §12.4): the
+// notMigrated lists what rec left that lola migrate never touches: the
 // instructions marker block and Gemini's skill section on target id (neither for ""), and the
 // module's plugin data.
 func notMigrated(e *engine.Engine, sc engine.Scope, home string, rec Record, id string) []Item {

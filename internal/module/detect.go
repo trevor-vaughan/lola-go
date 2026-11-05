@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-// adapter converts one plugin format into a lola manifest (Plan 5b design §4). It runs only on
+// adapter converts one plugin format into a lola manifest. It runs only on
 // fetched content, in cache add and check, and its result is written down by Normalize, so a
 // cached module never needs it again.
 type adapter interface {
@@ -31,7 +31,7 @@ func FormatManifests() []string {
 }
 
 // Detect reads the module rooted at freshly fetched content: from its lola manifest, else the
-// first plugin manifest an adapter accepts, else its native layout (Plan 5b design §4). Every
+// first plugin manifest an adapter accepts, else its native layout. Every
 // lower-precedence manifest present is recorded as shadowed, with a warning.
 func Detect(dir, fallbackName string, known []string) (*Module, error) {
 	return detect(dir, fallbackName, known, adapters())

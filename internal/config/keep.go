@@ -28,7 +28,7 @@ type keepSection struct {
 	Entries      []Pattern
 }
 
-// Keep is keep.yaml (Plan 6d §5), validated: per scope, the selectors of what lola tidy never
+// Keep is keep.yaml, validated: per scope, the selectors of what lola tidy never
 // offers. The file is the user's own configuration; a section applies to its scope only.
 type Keep struct {
 	Path     string

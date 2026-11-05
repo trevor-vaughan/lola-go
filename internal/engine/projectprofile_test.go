@@ -207,7 +207,7 @@ var _ = Describe("project profiles", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(record().Part("go").Modules).To(BeEmpty(), "go is off: its entry was neither shown nor accepted")
 
-		// go on: its entry wins over project.yml's (spec 2026-10-29 §3.1), and is asked about with its content.
+		// go on: its entry wins over project.yml's, and is asked about with its content.
 		activate("project:go")
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, ConfirmRemovals: yes})
 		refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
@@ -556,7 +556,7 @@ var _ = Describe("project profiles", func() {
 	})
 })
 
-var _ = Describe("Prof-P1-b: switching to an empty profile in a project with no .lola/", func() {
+var _ = Describe("switching to an empty profile in a project with no .lola/", func() {
 	var (
 		tmp string
 		p   paths.Paths

@@ -1,5 +1,5 @@
-"""Run one hint of a refusal's --json line, as a user pasting it would (Plan 8 §4.0): the first,
-or the one at the index given (ruling R-8-9: a trust refusal's second hint applies what its
+"""Run one hint of a refusal's --json line, as a user pasting it would: the first,
+or the one at the index given (a trust refusal's second hint applies what its
 first shows).
 
 Hints carry author text, so this runs only lola: it takes the chosen hint alone, accepts it

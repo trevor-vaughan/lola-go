@@ -47,9 +47,9 @@ type Scope struct {
 	ProjectDir string
 }
 
-// Key identifies the destination a scope is (Plan 5c §14): "user", or a project's canonical key
-// (paths.ProjectKey) in the form that compares as the OS compares paths, so every spelling of
-// one project root is one destination.
+// Key identifies the destination a scope is: "user", or a project's canonical key
+// (paths.ProjectKey) in the form that compares as the OS compares paths, so every spelling of one
+// project root is one destination.
 func (s Scope) Key() string {
 	if s.Kind == target.User {
 		return config.ScopeUser
@@ -61,10 +61,9 @@ func (s Scope) Key() string {
 	return paths.KeyID(key)
 }
 
-// Engine is the orchestration entry point. Environ is the environment install hooks and
-// version probes inherit; Getwd is the working directory hints are written for (Plan 6a
-// §11.3); HookTimeout bounds each hook run (§9.1) and ProbeTimeout each assistant version
-// probe.
+// Engine is the orchestration entry point. Environ is the environment install hooks and version
+// probes inherit; Getwd is the working directory hints are written for; HookTimeout bounds each
+// hook run and ProbeTimeout each assistant version probe.
 type Engine struct {
 	Paths        paths.Paths
 	Store        *store.Store
@@ -76,8 +75,8 @@ type Engine struct {
 	Getwd        func() (string, error)
 	HookTimeout  time.Duration
 	ProbeTimeout time.Duration
-	// TemplateLimits caps each template render and TemplateBudget each plan pass's rendering
-	// (Plan 7 §5.4), timed with Now; specs lower them.
+	// TemplateLimits caps each template render and TemplateBudget each plan pass's rendering, timed
+	// with Now; specs lower them.
 	TemplateLimits templating.Limits
 	TemplateBudget TemplateBudget
 	// Display is the run's output flags (--json, --plain, --no-pager as given), which the lola
@@ -107,8 +106,8 @@ type recovery struct {
 	judged map[string]bool
 }
 
-// New returns an Engine over the real store and every registered target. The store dates
-// last_used by e.Now, read at each use, so a spec that replaces Now fakes the day (Plan 9 A14).
+// New returns an Engine over the real store and every registered target. The store dates last_used
+// by e.Now, read at each use, so a spec that replaces Now fakes the day.
 func New(p paths.Paths) *Engine {
 	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
 		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
@@ -134,8 +133,8 @@ type Options struct {
 	// a dry run does not. "" means ForceRun is that run.
 	RenderRun string
 	// Then is the scopes the caller applies next, from what an uninstall writes (lola profile
-	// --edit's module page, ruling P1): its notice that a profile it wrote is also on elsewhere
-	// names none of them.
+	// --edit's module page): its notice that a profile it wrote is also on elsewhere names none of
+	// them.
 	Then []Scope
 	// named is the modules the run's command line named (an install's), whose conflicts with
 	// another installed module's destinations hint that module's uninstall.
@@ -156,8 +155,7 @@ type Options struct {
 	// what it has not committed is read as the cache will hold it (Engine.origin).
 	staged *StagedRun
 	// askScripts says the run is a sync, which asks about its project's install scripts even when
-	// it writes no copy for them to wrap: a pulled project.yml that adds or changes one asks (Plan
-	// 9 §7).
+	// it writes no copy for them to wrap: a pulled project.yml that adds or changes one asks.
 	askScripts bool
 	// update says the run re-pins at its refs (lola update, sync --update), so its own --force
 	// run (ForceRun) would upgrade: a drift restore names lola sync instead.
@@ -167,9 +165,9 @@ type Options struct {
 	// names lola sync, and a forceable skip keeps the target's hint.
 	activation bool
 
-	// Trust is the kinds of trust the run's --trust grants (Plan 9 §3.4): an item of a kind it
-	// covers is not asked about but shown once to Receipt, which, when set, is called before the
-	// first write and may answer No (ErrDeclined); the grants are recorded only after it.
+	// Trust is the kinds of trust the run's --trust grants: an item of a kind it covers is not
+	// asked about but shown once to Receipt, which, when set, is called before the first write and
+	// may answer No (ErrDeclined); the grants are recorded only after it.
 	Trust   TrustKinds
 	Receipt func([]Consent) (bool, error)
 	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
@@ -185,26 +183,24 @@ type Options struct {
 	// Expect, when set, is the batch whose one receipt the user answered: the run asks no receipt,
 	// and records its grants just before its own apply only when each is one the batch holds, by
 	// key and digest, and each entries or profiles item one it showed; else it is ErrTrustChanged,
-	// with nothing of it written (R-9-16).
+	// with nothing of it written.
 	Expect *TrustBatch
 
-	// Install hooks (§9.1). Ask, when set, asks the user about hooks without a recorded consent
-	// that Trust does not cover; a yes is recorded. HookOutput receives the hooks' stdout and
-	// stderr.
+	// Install hooks. Ask, when set, asks the user about hooks without a recorded consent that Trust
+	// does not cover; a yes is recorded. HookOutput receives the hooks' stdout and stderr.
 	Ask        func(module string, hooks []HookScript) (bool, error)
 	HookOutput io.Writer
 	// AskScript, when set, asks the user to trust a project's install script without a recorded
-	// consent that Trust does not cover (Plan 9 §5.4); a yes is recorded once the run's receipt is
-	// answered yes (A23). Run is the user's
-	// command, "lola install", which a refusal for want of that trust names.
+	// consent that Trust does not cover; a yes is recorded once the run's receipt is answered yes.
+	// Run is the user's command, "lola install", which a refusal for want of that trust names.
 	AskScript func(ScriptQuestion) (bool, error)
 	Run       string
-	// Target is where the run's edits go (spec 2026-10-29 §3.5, §3.6): --profile and --override
-	// as given, and the run without them, which a refusal hints with each answer's flag form.
+	// Target is where the run's edits go: --profile and --override as given, and the run without
+	// them, which a refusal hints with each answer's flag form.
 	Target TargetRequest
-	// AskWhere, when set, asks a question about where a change goes (WhereQuestion), on a
-	// terminal: never -y's or --force's to answer (spec 2026-10-29 §3.6). It returns one of the
-	// question's choices, or ErrDeclined for Cancel. nil refuses with the flag forms as hints.
+	// AskWhere, when set, asks a question about where a change goes (WhereQuestion), on a terminal:
+	// never -y's or --force's to answer. It returns one of the question's choices, or ErrDeclined
+	// for Cancel. nil refuses with the flag forms as hints.
 	AskWhere func(WhereQuestion) (WhereChoice, error)
 	// Retarget, when set, is the user's uninstall of module alone with its -t replaced by ts (none
 	// for an empty ts), every other flag kept, which a refusal of -t targets module is not
@@ -212,22 +208,20 @@ type Options struct {
 	// <module> -t <ts> with the scope's flags, --profile and Display.
 	Retarget func(module string, ts []string) string
 
-	// Runtime hooks (Plan 5b design §7.3), which an assistant runs on its own events.
-	// AskRuntimeHooks, when set, asks the user about hooks without a recorded consent that Trust
-	// does not cover, and a yes is recorded.
+	// Runtime hooks, which an assistant runs on its own events. AskRuntimeHooks, when set, asks the
+	// user about hooks without a recorded consent that Trust does not cover, and a yes is recorded.
 	AskRuntimeHooks func(module string, hooks []RuntimeHook) (bool, error)
 
-	// PreInstall and PostInstall are install's --pre-install and --post-install scripts (Plan 9
-	// §5.1), which wrap every module copy the run installs or replaces; Given "" for none.
+	// PreInstall and PostInstall are install's --pre-install and --post-install scripts, which wrap
+	// every module copy the run installs or replaces; Given "" for none.
 	PreInstall, PostInstall FlagScript
 
-	// Display is the run's output flags (--json, --plain, --no-pager as given), which every
-	// command a marketplace hint or notice names keeps (Plan 6c §11.3), as does the uninstall a
-	// conflict over another module's destination hints.
+	// Display is the run's output flags (--json, --plain, --no-pager as given), which every command
+	// a marketplace hint or notice names keeps, as does the uninstall a conflict over another
+	// module's destination hints.
 	Display []string
 	// ShowResolved, when set, is given install's resolved marketplace addresses, one line each
-	// ("@acme/formatter → <source> path <path> @ <ref>"), before any consent is asked (Plan 6c
-	// §6.3, ruling R-6c-15).
+	// ("@acme/formatter → <source> path <path> @ <ref>"), before any consent is asked.
 	ShowResolved func(lines []string)
 }
 
@@ -259,8 +253,8 @@ type ModuleResult struct {
 	OnlyIn       string        `json:"only_in,omitempty"`    // where that only: list lives (excludedWhere)
 	Summary      *PicksSummary `json:"-"`                    // Skipped shown as the picks they leave, when they are that (summarizePicks)
 	SavedTo      string        `json:"saved_to"`             // the file this install saved the module's picks to: selections.yaml, or the profile it wrote; "" for none
-	// Market is the marketplace an install through @<market>/<entry> records (Plan 6c §7),
-	// through untrusted.Text; absent otherwise.
+	// Market is the marketplace an install through @<market>/<entry> records, through
+	// untrusted.Text; absent otherwise.
 	Market *manifest.MarketRef `json:"market,omitempty"`
 
 	renderedWith *ledger.RenderedWith // what its templates rendered with, which lock.json records
@@ -301,22 +295,21 @@ type Result struct {
 	Steps    []plan.Step      `json:"steps"`
 	Findings []target.Finding `json:"findings"`
 	Notices  []Notice         `json:"notices"`
-	// Edits is each entry the run wrote into a file (spec 2026-10-29 §3.7, §9): an install's or
-	// uninstall's, which under -n names what it would write, and the pins a sync or update writes
-	// into project.yml or a project profile; [] for a run that writes none.
+	// Edits is each entry the run wrote into a file: an install's or uninstall's, which under -n
+	// names what it would write, and the pins a sync or update writes into project.yml or a project
+	// profile; [] for a run that writes none.
 	Edits []Edit `json:"edits"`
-	// Scripts is each install script for each module and target, in run order (Plan 9 §5.6).
+	// Scripts is each install script for each module and target, in run order.
 	Scripts []ScriptRun `json:"scripts"`
 	DryRun  bool        `json:"dry_run"`
-	// Trusted is what the run's --trust covers (Plan 9 §3.4, §8), and under -n what it would:
-	// [] when nothing, and nil, so absent from the JSON, for a command that takes no --trust.
+	// Trusted is what the run's --trust covers, and under -n what it would: [] when nothing, and
+	// nil, so absent from the JSON, for a command that takes no --trust.
 	Trusted []Consent `json:"trusted,omitzero"`
-	// PicksCleared is, for an uninstall, each module whose picks left selections.yaml with it
-	// (Pick-P2-f), and under -n what would; [] when none, and nil, so absent from the JSON, for
-	// any other command.
+	// PicksCleared is, for an uninstall, each module whose picks left selections.yaml with it, and
+	// under -n what would; [] when none, and nil, so absent from the JSON, for any other command.
 	PicksCleared []PickCleared `json:"picks_cleared,omitzero"`
-	// grants are the consent.json records Trusted's items give, written after the receipt; needs
-	// is the kinds of trust the run met an item of that would be refused without it (R-9-6).
+	// grants are the consent.json records Trusted's items give, written after the receipt; needs is
+	// the kinds of trust the run met an item of that would be refused without it.
 	grants []grant
 	needs  TrustKinds
 	// recorded is the items whose grants confirmTrusted wrote, which a later failure carries.
@@ -347,7 +340,7 @@ func newResult(dry bool) *Result {
 	return &Result{Modules: []ModuleResult{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Notices: []Notice{}, Edits: []Edit{}, Scripts: []ScriptRun{}, DryRun: dry}
 }
 
-// InstallRequest is one install argument (§7.1) with its --ref and --path.
+// InstallRequest is one install argument with its --ref and --path.
 type InstallRequest struct {
 	Arg, Ref, Path string
 	// Targets, when set, are added to the targets the module already has in a scope's manifest
@@ -360,15 +353,15 @@ type InstallRequest struct {
 	// install uses it instead of fetching the source or reading the head again, so it installs
 	// exactly what the pickers listed.
 	Version *VersionRef
-	// market is the catalog entry an @<market>/<entry> argument resolved to (Plan 6c §6.3), set
-	// by the engine under the markets lock before any scope is locked.
+	// market is the catalog entry an @<market>/<entry> argument resolved to, set by the engine
+	// under the markets lock before any scope is locked.
 	market *marketPick
 }
 
 // VersionRef names one cached version of a module. commit is the commit a marketplace entry's
 // version, or the git version lola info showed, was fetched at, which the cache's heads may not
-// record: a catalog's commit pin never moves one (Plan 6c §6.4), and info's install pins the
-// commit in place of the ref it fetched (Plan 9 §4.3).
+// record: a catalog's commit pin never moves one, and info's install pins the commit in place of
+// the ref it fetched.
 type VersionRef struct {
 	Name   string `json:"name"`
 	ID     string `json:"id"`
@@ -379,8 +372,7 @@ type VersionRef struct {
 type StatusRow struct {
 	Scope string `json:"scope"` // project or user
 	Name  string `json:"name"`
-	// From is the layer the module comes from (Plan 6b §7): project.yml, profile:user:go or
-	// profile:default.
+	// From is the layer the module comes from: project.yml, profile:user:go or profile:default.
 	From   string `json:"from"`
 	Target string `json:"target"`
 	Status string `json:"status"` // ok, modified, missing, stale, skipped, unreadable
@@ -398,16 +390,16 @@ type StatusRow struct {
 	// Skipped lists the components selections.yaml excludes at this scope (kind/name).
 	Skipped []string `json:"skipped"`
 	// Only is the only: list in force for the module here (kind/name patterns; [] for none), and
-	// OnlyFrom the layer that sets it as output names it, "" for none (cherry-pick design §4.6).
+	// OnlyFrom the layer that sets it as output names it, "" for none.
 	Only     []string `json:"only"`
 	OnlyFrom string   `json:"only_from"`
-	// Market is the marketplace the entry says it was installed through, as written (Plan 6c §7),
-	// through untrusted.Text; absent when it names none.
+	// Market is the marketplace the entry says it was installed through, as written, through
+	// untrusted.Text; absent when it names none.
 	Market *manifest.MarketRef `json:"market,omitempty"`
 }
 
 // shownMarket is m with its name and source through untrusted.Text, nil for none: a file's
-// provenance, as output shows it (Plan 6c §8).
+// provenance, as output shows it.
 func shownMarket(m *manifest.MarketRef) *manifest.MarketRef {
 	if m == nil {
 		return nil
@@ -415,14 +407,14 @@ func shownMarket(m *manifest.MarketRef) *manifest.MarketRef {
 	return &manifest.MarketRef{Name: shown(m.Name), Source: shown(m.Source)}
 }
 
-// stateFiles are a scope's state locations. lock is empty at project scope: the project's
-// lock file is named after its resolved .lola/ directory (see projectLock). modules holds
-// the module copies that ${PLUGIN_ROOT} points into (§6.4).
+// stateFiles are a scope's state locations. lock is empty at project scope: the project's lock file
+// is named after its resolved .lola/ directory (see projectLock). modules holds the module copies
+// that ${PLUGIN_ROOT} points into.
 type stateFiles struct{ lolaDir, manifest, ledger, lock, pluginData, modules string }
 
 func (e *Engine) files(sc Scope) stateFiles {
 	if sc.Kind == target.User {
-		// User scope has no manifest: its base is your default profile (spec 2026-10-29 §3.1).
+		// User scope has no manifest: its base is your default profile.
 		return stateFiles{ledger: e.Paths.UserLedger, lock: e.Paths.UserLock, pluginData: e.Paths.PluginData, modules: e.Paths.UserModules}
 	}
 	d := filepath.Join(sc.ProjectDir, ".lola")
@@ -508,13 +500,13 @@ func (e *Engine) target(id string) (target.Target, error) {
 	return nil, errs.WithHints(fmt.Errorf("unknown target %q", id), "valid targets: "+strings.Join(ids, ", "))
 }
 
-// Manifest loads the scope's manifest: project.yml at project scope. User scope has none: its
-// base is your default profile (spec 2026-10-29 §3.1), so this is default.yml's top-level targets
-// and its entries, local sources made absolute as its layer reads them, and an empty manifest when
-// it does not exist. A default.yml whose only fault is entries with a marketplace address is
-// refused as manifest.Load refuses project.yml: its *manifest.UnresolvedError carries it as read,
-// which lola install @m/x edits to replace one (Plan 6c §6.3). Readers that write it, or need its
-// layer, read it through the scope's stack (loadStack).
+// Manifest loads the scope's manifest: project.yml at project scope. User scope has none: its base
+// is your default profile, so this is default.yml's top-level targets and its entries, local
+// sources made absolute as its layer reads them, and an empty manifest when it does not exist. A
+// default.yml whose only fault is entries with a marketplace address is refused as manifest.Load
+// refuses project.yml: its *manifest.UnresolvedError carries it as read, which lola install @m/x
+// edits to replace one. Readers that write it, or need its layer, read it through the scope's stack
+// (loadStack).
 func (e *Engine) Manifest(sc Scope) (*manifest.Manifest, error) {
 	if sc.Kind != target.User {
 		return manifest.Load(e.files(sc).manifest)
@@ -554,9 +546,9 @@ func (e *Engine) basePath(sc Scope) string {
 	return e.files(sc).manifest
 }
 
-// manifestName names the scope's base file in a message: project.yml, or at user scope
-// default.yml, which is also where a user-scope entry lock.json records without a profile is said
-// to come from (an earlier build's user.yml, spec 2026-10-29 §7).
+// manifestName names the scope's base file in a message: project.yml, or at user scope default.yml,
+// which is also where a user-scope entry lock.json records without a profile is said to come from
+// (an earlier build's user.yml).
 func (e *Engine) manifestName(sc Scope) string {
 	if sc.Kind == target.User {
 		return profile.DefaultName + ".yml"
@@ -581,11 +573,10 @@ func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
 	return led, nil
 }
 
-// coachLedger adds the way out to a lock.json refused for the profiles list of a pre-release lola
-// (spec 2026-10-29 §7): remove the key, then switch to the last profile that list names, with the
-// scope's flag and the run's output flags. One refused for a profile named base (spec §3.1) is
-// coached to rename that profile's file, when it is there, and the name lock.json records. Any
-// other error is returned as it is.
+// coachLedger adds the way out to a lock.json refused for the profiles list of a pre-release lola:
+// remove the key, then switch to the last profile that list names, with the scope's flag and the
+// run's output flags. One refused for a profile named base is coached to rename that profile's
+// file, when it is there, and the name lock.json records. Any other error is returned as it is.
 func (e *Engine) coachLedger(sc Scope, err error) error {
 	if res, ok := errors.AsType[*ledger.ReservedError](err); ok {
 		kind, _, _ := strings.Cut(res.Name, ":")
@@ -758,9 +749,9 @@ func (e *Engine) Fetch(ctx context.Context, spec source.Spec) (_ store.Version, 
 // Content must declare the module name, when name is set: content declaring another is refused
 // before anything is cached (store.PutRequest.Name). Content that declares no name is named
 // fallback, else name, else after its source (the repository, archive or folder): a module lola
-// already knows by a name keeps it, as a catalog entry's does (Plan 6c §6.3). A source the user
-// names takes the place of a local one the cache records that no longer exists (Plan 6a §6.5);
-// Commit checks that under the cache lock.
+// already knows by a name keeps it, as a catalog entry's does. A source the user names takes the
+// place of a local one the cache records that no longer exists; Commit checks that under the cache
+// lock.
 func (e *Engine) fetchRequest(ctx context.Context, spec source.Spec, name, fallback, run string) (store.PutRequest, error) {
 	f, err := source.Fetch(ctx, spec, run)
 	if err != nil {
@@ -796,9 +787,9 @@ func (e *Engine) stageSource(ctx context.Context, run *StagedRun, spec source.Sp
 	return run.add(e.Store, st, false)
 }
 
-// canonicalRoot is dir with symbolic links resolved: the root a relative source is recorded
-// against and resolved from, so a source recorded through a link to the project resolves again
-// (Plan 6a §8). A root a dry run has not created yet is kept lexically, as paths.ProjectKey does.
+// canonicalRoot is dir with symbolic links resolved: the root a relative source is recorded against
+// and resolved from, so a source recorded through a link to the project resolves again. A root a
+// dry run has not created yet is kept lexically, as paths.ProjectKey does.
 func canonicalRoot(dir string) string {
 	if root, err := filepath.EvalSymlinks(dir); err == nil {
 		return root
@@ -806,16 +797,14 @@ func canonicalRoot(dir string) string {
 	return dir
 }
 
-// resolve implements §7.1 for this build: a marketplace address (resolveEntry), a stored name
-// (no network), then a source.
-// have, when it names a module, is the version this request already resolved to (fetched for
-// another scope, or pinned by InstallRequest.Version): it is used as is, never fetched again.
-// entryRef is the ref the scope's manifest records for a name argument: without --ref the
-// name resolves to the cache head for it (Plan 6a §10.1). A full-SHA ref, either one, is recorded
-// lower-cased (R-9-31). Fetches go into run (StagedRun.add): kept there for a staged install,
-// cached at once for a publishing run.
-// display is the run's output flags, which the `lola cache list` hint of the not-a-source
-// refusal keeps.
+// resolve implements.1 for this build: a marketplace address (resolveEntry), a stored name (no
+// network), then a source. have, when it names a module, is the version this request already
+// resolved to (fetched for another scope, or pinned by InstallRequest.Version): it is used as is,
+// never fetched again. entryRef is the ref the scope's manifest records for a name argument:
+// without --ref the name resolves to the cache head for it. A full-SHA ref, either one, is recorded
+// lower-cased. Fetches go into run (StagedRun.add): kept there for a staged install, cached at once
+// for a publishing run. display is the run's output flags, which the `lola cache list` hint of the
+// not-a-source refusal keeps.
 func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallRequest, have store.Version, entryRef string, run *StagedRun,
 	display []string) (manifest.Entry, store.Version, bool, error) {
 	r.Ref, entryRef = source.RecordedRef(r.Ref), source.RecordedRef(entryRef)
@@ -876,7 +865,7 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	}
 	src := spec.Location
 	// A local path typed relative to the project is recorded that way, relative to the canonical
-	// root as the location is canonical (Plan 6a §8); a URL is kept as given.
+	// root as the location is canonical; a URL is kept as given.
 	if sc.Kind == target.Project && filepath.IsAbs(spec.Location) && !filepath.IsAbs(r.Arg) && !strings.HasPrefix(r.Arg, "file://") {
 		if rel, err := filepath.Rel(canonicalRoot(sc.ProjectDir), spec.Location); err == nil {
 			src = rel
@@ -900,11 +889,11 @@ func (e *Engine) resolve(ctx context.Context, sc Scope, cwd string, r InstallReq
 	return manifest.Entry{Name: v.Name, Source: src, Ref: r.Ref, Path: r.Path}, v, fetched, nil
 }
 
-// cachedCommit is the cached version of the git source spec at spec.Ref when that is a full commit
-// SHA in any case (Plan 9 R-9-21, R-9-27): a module the cache holds from exactly that location, path and component
-// selection, whose version records that commit as the one its fetch resolved. Its content is
-// hashed again into the run directory run before it is used (store.Pinned). A version that is
-// not cached, or any other ref, is the zero Version: the source is fetched.
+// cachedCommit is the cached version of the git source spec at.Ref when that is a full commit SHA
+// in any case: a module the cache holds from exactly that location, path and component selection,
+// whose version records that commit as the one its fetch resolved. Its content is hashed again into
+// the run directory run before it is used (store.Pinned). A version that is not cached, or any
+// other ref, is the zero Version: the source is fetched.
 func (e *Engine) cachedCommit(spec source.Spec, run string) (store.Version, error) {
 	commit, ok := source.CommitRef(spec.Ref)
 	if spec.Kind != source.KindGit || !ok {
@@ -1071,10 +1060,10 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		}
 		return targetPlan{rendered, ins, fs}, nil
 	}
-	// The agents target is planned first: what it delivers, the others leave to it (spec
-	// 2026-11-03 §4); install asks before deleting the copies they no longer write
-	// (leftToAgents). Its error is returned at its place in targets, so a run refused is refused
-	// for the target it names first, and agents is never rendered twice.
+	// The agents target is planned first: what it delivers, the others leave to it; install asks
+	// before deleting the copies they no longer write (leftToAgents). Its error is returned at its
+	// place in targets, so a run refused is refused for the target it names first, and agents is
+	// never rendered twice.
 	var (
 		viaAgents targetPlan
 		agentsErr error
@@ -1215,10 +1204,10 @@ func warningFindings(m *module.Module) []target.Finding {
 	return finds
 }
 
-// StrictError lists the findings --strict refuses: every warn and skip, except skipped
-// artifacts that --force rendered. It returns nil when none remains. rerun is the caller's
-// advice for getting past the findings; offerForce says the command has --force, which is
-// advised only when a refused finding is one --force can render.
+// StrictError lists the findings --strict refuses: every warn and skip, except skipped artifacts
+// that --force rendered. It returns nil when none remains. rerun is the caller's advice for getting
+// past the findings; offerForce says the command has --force, which is advised only when a refused
+// finding is one --force can render.
 func StrictError(finds []target.Finding, rerun string, offerForce bool) error {
 	var bad []target.Finding
 	for _, f := range finds {
@@ -1264,11 +1253,11 @@ type prepared struct {
 }
 
 // ownedConflicts is err, the refusal of ce, saying what frees each destination another installed
-// module owns (ruling R-6cux-7): uninstalling the owner, hinted, when the run's own command line
-// named the module that wants it (opts.named); else removing that module from the file that
-// lists it, a project.yml or a profile, which must never steer you into removing a module you
-// installed. Two targets whose destinations are one real file (a .claude/skills/<n> linked to
-// .agents/skills/<n>) hint the run with each of them alone (opts.TargetRun).
+// module owns: uninstalling the owner, hinted, when the run's own command line named the module
+// that wants it (opts.named); else removing that module from the file that lists it, a project.yml
+// or a profile, which must never steer you into removing a module you installed. Two targets whose
+// destinations are one real file (a .claude/skills/<n> linked to .agents/skills/<n>) hint the run
+// with each of them alone (opts.TargetRun).
 func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, changes []plan.ModuleChange, opts Options) error {
 	var owners, alone []string
 	for i, c := range ce.Conflicts {
@@ -1313,10 +1302,10 @@ func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, cha
 // hook consent. It writes nothing but recorded consents.
 func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, copies []moduleCopy, replace []plan.Replaceable,
 	opts Options, res *Result) (*prepared, error) {
-	// Install scripts are checked before anything is asked (Plan 9 §5.5), when a copy may be
-	// installed or replaced for them to wrap; planScripts plans them once hooks decided which.
-	// A sync that writes no copy asks only about its project's scripts, and a pending one runs alone:
-	// your own and the flag's wrap nothing, so nothing checks them (I2, RR3).
+	// Install scripts are checked before anything is asked, when a copy may be installed or
+	// replaced for them to wrap; planScripts plans them once hooks decided which. A sync that
+	// writes no copy asks only about its project's scripts, and a pending one runs alone: your own
+	// and the flag's wrap nothing, so nothing checks them.
 	var all []installScript
 	read := true
 	switch {
@@ -1389,9 +1378,8 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 	if err != nil {
 		return nil, err
 	}
-	// A post-install hook declined for want of consent stays pending in lock.json until it runs
-	// (Plan 6a §9.3 step 10); a module whose hooks this run does not reach, or whose forced copy
-	// is kept, keeps its mark.
+	// A post-install hook declined for want of consent stays pending in lock.json until it runs; a
+	// module whose hooks this run does not reach, or whose forced copy is kept, keeps its mark.
 	for _, c := range copies {
 		entry := p.Ledger.Modules[c.name]
 		if entry == nil {
@@ -1402,9 +1390,9 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 		kept := !c.runHooks || c.forced && !ran
 		declined := !kept && !ran && post
 		entry.HooksPending = declined || kept && post && led.Modules[c.name] != nil && led.Modules[c.name].HooksPending
-		// So does the project's post-install script declined for want of trust (Plan 9 §5.5),
-		// on a copy it would have wrapped; a copy nothing wraps keeps its mark, which a pending
-		// script that runs alone clears only once it has run (commit).
+		// So does the project's post-install script declined for want of trust, on a copy it would
+		// have wrapped; a copy nothing wraps keeps its mark, which a pending script that runs alone
+		// clears only once it has run (commit).
 		wrapped := slices.ContainsFunc(jobs, func(j *hookJob) bool { return j.name == c.name })
 		entry.ScriptsPending = wrapped && sp.declinedPost || !wrapped && postKept && led.Modules[c.name] != nil && led.Modules[c.name].ScriptsPending
 	}
@@ -1435,8 +1423,8 @@ func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Re
 	if err := e.runHooks(ctx, sc, pr.jobs, pr.scripts.run, PreInstall, opts, res); err != nil {
 		return errors.Join(err, sw.rollback())
 	}
-	// At user scope the apply writes pins.yaml too (spec 2026-10-29 §3.4), last, under pins.lock,
-	// which is held only until the apply returns.
+	// At user scope the apply writes pins.yaml too, last, under pins.lock, which is held only until
+	// the apply returns.
 	unlockPins := func() {}
 	if sc.Kind == target.User {
 		names := slices.Clone(pr.resolved)

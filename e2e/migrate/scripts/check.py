@@ -1,7 +1,7 @@
-"""Check a lola migrate run against the snapshot taken after the Python lola's installs (design
-§9, §12.7). Prints one "ok <check>" or "FAIL <check>: <detail>" line per check and exits 1 when
-any check fails. It also prints, per assistant directory, the paths the Python lola wrote, so the
-design's §6 table can be compared with what was observed.
+"""Check a lola migrate run against the snapshot taken after the Python lola's installs. Prints one
+"ok <check>" or "FAIL <check>: <detail>" line per check and exits 1 when any check fails. It also
+prints, per assistant directory, the paths the Python lola wrote, so the oracle can be compared with
+what was observed.
 
 usage: check.py <before.json> <result.json> [--home-action move|keep] [--untouched DIR]...
 """
@@ -145,7 +145,7 @@ for root in args.untouched:
 if args.untouched:
     report("the unmappable records' files are byte-identical: " + ", ".join(args.untouched), problems)
 
-# The §6 oracle: every file the Python lola wrote under an assistant directory lola-go
+# The oracle: every file the Python lola wrote under an assistant directory lola-go
 # migrates is now lola-go's, in the trash, reported as kept or not migrated, or left untouched
 # for an unmappable record.
 problems = []
@@ -161,7 +161,7 @@ for p in before:
                 problems.append(p)
 for marker, paths in sorted(written.items()):
     print(f"observed {marker}: " + ", ".join(sorted(paths)))
-report("every path the Python lola wrote is lola-go's, in the trash, kept, reported or untouched (§6)", problems)
+report("every path the Python lola wrote is lola-go's, in the trash, kept, reported or untouched", problems)
 
 problems = []
 action = result["home"]["action"]

@@ -13,7 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// localSettings is where runtime hooks go at project scope (Plan 5b design §1, §7.2): the
+// localSettings is where runtime hooks go at project scope: the
 // per-user settings file, which must stay out of the repository.
 const localSettings = ".claude/settings.local.json"
 
@@ -72,7 +72,7 @@ const projectLedger = ".lola/lock.json"
 // project at root: false outside a git work tree. The check runs through source.GitCommand's
 // hardening; git missing from PATH is an error wrapping exec.ErrNotFound, and any other failure is
 // an error too, so a caller refusing a tracked file fails closed. A cloned lock.json
-// (projectLedger) could claim committed files, which a sync would then remove (Plan 6a §9.3 step 1).
+// (projectLedger) could claim committed files, which a sync would then remove.
 func gitTracked(ctx context.Context, root, rel string) (bool, error) {
 	inTree, err := source.InWorkTree(root)
 	if err != nil || !inTree {

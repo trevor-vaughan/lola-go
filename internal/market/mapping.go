@@ -17,7 +17,7 @@ import (
 // who names a catalog entry in source.CheckRemote's refusals.
 const who = source.CatalogEntry
 
-// githubRepoRE is a Claude github source's repo: owner/name (Plan 6c §4.3).
+// githubRepoRE is a Claude github source's repo: owner/name.
 var githubRepoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 
 // sha256RE is an archive source's sha256, in either case.
@@ -32,11 +32,11 @@ func skipped(kind, format string, args ...any) *skip {
 	return &skip{kind: kind, reason: fmt.Sprintf(format, args...)}
 }
 
-// remoteSource checks loc, a network source a catalog names, from its text alone (Plan 6c §4.3,
-// §10, rulings R-6c-10, R-6c-18): at most maxSource bytes; no scheme but https:// and ssh (with
-// git's scp form), and ssh only when its host is in ssh, the hosts the reader allowed, since it
-// would use your ssh keys on that host; and the address rule of source.CheckRemote, which refuses
-// a path, a file:// URL, localhost and addresses inside your network. It is never looked up on disk.
+// remoteSource checks loc, a network source a catalog names, from its text alone: at most maxSource
+// bytes; no scheme but https:// and ssh (with git's scp form), and ssh only when its host is in
+// ssh, the hosts the reader allowed, since it would use your ssh keys on that host; and the address
+// rule of source.CheckRemote, which refuses a path, a file:// URL, localhost and addresses inside
+// your network. It is never looked up on disk.
 func remoteSource(field, loc string, ssh []string) *skip {
 	if len(loc) > maxSource {
 		return skipped("oversized entry", "%s is longer than %d bytes", field, maxSource)
@@ -70,10 +70,10 @@ func remoteSource(field, loc string, ssh []string) *skip {
 	return nil
 }
 
-// pin maps a catalog's ref and sha to a manifest entry's ref and commit (Plan 6c §4.3, ruling
-// R-6c-12): sha must be a full commit; a ref that is a full commit, in any case, becomes the
-// commit, lower-cased (R-9-31), with no ref, so it is checked against the default branch like a sha; a sha and a full-commit ref that
-// differ skip the entry.
+// pin maps a catalog's ref and sha to a manifest entry's ref and commit: sha must be a full commit;
+// a ref that is a full commit, in any case, becomes the commit, lower-cased, with no ref, so it is
+// checked against the default branch like a sha; a sha and a full-commit ref that differ skip the
+// entry.
 func pin(ref, sha string) (string, string, *skip) {
 	if sha != "" && !source.IsFullCommit(sha) {
 		return "", "", skipped("malformed pin", "sha %s is not a full commit SHA (40 or 64 lower-case hex digits)", untrusted.Text(sha, untrusted.MaxName))
@@ -87,8 +87,8 @@ func pin(ref, sha string) (string, string, *skip) {
 	return ref, sha, nil
 }
 
-// checked applies every recorded-source and fetcher rule to e's mapped source of kind (Plan 6c
-// §4.3: source.Recorded.Check, then source.Validate); a refusal skips the entry with its reason.
+// checked applies every recorded-source and fetcher rule to e's mapped source of kind (source.Recorded.Check, then
+// source.Validate); a refusal skips the entry with its reason.
 func checked(e *Entry, kind source.Kind) *skip {
 	r := e.Source
 	if err := (source.Recorded{Source: r.Source, Ref: r.Ref, Path: r.Path, Commit: r.Commit}).Check(); err != nil {
@@ -139,7 +139,7 @@ func githubURL(field, repo string) (string, *skip) {
 // sourceKinds are the keys lola reads in a Claude source object.
 var sourceKinds = []string{"source", "repo", "url", "ref", "sha", "path", "sha256"}
 
-// mapClaudeSource maps a Claude entry's source object, o (Plan 6c §4.3).
+// mapClaudeSource maps a Claude entry's source object, o.
 func mapClaudeSource(e *Entry, o *jval, ssh []string) *skip {
 	if k := ambiguous(o, sourceKinds); k != "" {
 		return skipped("ambiguous entry", "ambiguous key source.%s", untrusted.Text(k, untrusted.MaxName))
@@ -210,7 +210,7 @@ func mapClaudeSource(e *Entry, o *jval, ssh []string) *skip {
 	return skipped("unsupported source", "%s sources are not supported", untrusted.Text(kind, untrusted.MaxName))
 }
 
-// mapRelative maps a Claude relative source, rel, given as a string (Plan 6c §4.3): "./dir" or
+// mapRelative maps a Claude relative source, rel, given as a string: "./dir" or
 // "." from the marketplace root, or a bare name under metadata.pluginRoot (root, cleaned; "" for
 // none). Bind gives it the marketplace's own source.
 func mapRelative(e *Entry, rel, root string) *skip {
@@ -236,7 +236,7 @@ func mapRelative(e *Entry, rel, root string) *skip {
 	return nil
 }
 
-// mapPython maps a Python catalog's repository, ref and path (Plan 6c §4.3): a git source, or
+// mapPython maps a Python catalog's repository, ref and path: a git source, or
 // an https archive when the URL's path ends in an archive suffix.
 func mapPython(e *Entry, repo, ref, sub string, ssh []string) *skip {
 	if s := remoteSource("repository", repo, ssh); s != nil {
@@ -263,9 +263,9 @@ func mapPython(e *Entry, repo, ref, sub string, ssh []string) *skip {
 	return checked(e, source.KindArchive)
 }
 
-// IsCatalogURL reports whether src, a marketplace's own source as typed, is a catalog file (Plan
-// 6c §6.2 step 1): an https:// URL, or an http:// one, whose path ends in .json, .yml or .yaml.
-// The fetcher's rules (plain http only on loopback) apply when it is downloaded.
+// IsCatalogURL reports whether src, a marketplace's own source as typed, is a catalog file: an
+// https:// URL, or an http:// one, whose path ends in .json, .yml or .yaml. The fetcher's rules
+// (plain http only on loopback) apply when it is downloaded.
 func IsCatalogURL(src string) bool {
 	u, err := url.Parse(src)
 	if err != nil || u.Scheme != "https" && u.Scheme != "http" {
@@ -274,7 +274,7 @@ func IsCatalogURL(src string) bool {
 	return FormatOf(u.Path) != ""
 }
 
-// Bind gives cat's relative entries the source of the marketplace whose pin is p (Plan 6c §4.3):
+// Bind gives cat's relative entries the source of the marketplace whose pin is p:
 // its source, ref and commit, at the path joined to the catalog's root, under p.Root (the tree's
 // place in the source, so the entry's --path reaches it there). A folder marketplace's
 // entries are folder sources, unpinned; an archive's are pinned at install by their digest. A

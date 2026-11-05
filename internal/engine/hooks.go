@@ -104,7 +104,7 @@ func fileSHA256(path string) (string, error) {
 // a --trust covering hooks grants it; so does, in a batch's apply pass (opts.Expect), the grant
 // for name and digest the batch holds, a terminal yes of its collect pass; otherwise opts.Ask may
 // ask the user. Each grant is recorded only once the run's receipt is answered yes, before the
-// first write (R-9-3, A23). A dry run
+// first write. A dry run
 // decides the same way but asks nothing and records nothing. A grant by --trust is added to res.Trusted, once per event the
 // module hooks.
 func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts Options, res *Result) (bool, error) {
@@ -143,9 +143,9 @@ func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts 
 }
 
 // reviewOf is the lola info arguments that show exactly v, the version a run would install, as
-// run will leave the cache (Engine.origin; nil is the cache alone) (Plan 9 R-9-32): a git version
+// run will leave the cache (Engine.origin; nil is the cache alone): a git version
 // without a component selection as its source at its commit, which info finds in the cache
-// without fetching (R-9-21), or fetches at that commit when run still holds it; else its cached
+// without fetching, or fetches at that commit when run still holds it; else its cached
 // name, at the head that holds it. It is nil when no lola info command shows it, as for a version
 // run staged and has not committed, whose name the cache does not hold yet.
 func (e *Engine) reviewOf(run *StagedRun, v store.Version) ([]string, error) {
@@ -275,7 +275,7 @@ func (e *hookConsentError) Error() string {
 }
 
 // planHooks prepares the hooks of every copy that runs them, before anything is written, and
-// returns a job for every copy the run installs or replaces, which install scripts wrap (R-9-8):
+// returns a job for every copy the run installs or replaces, which install scripts wrap:
 // a job's scripts are the hooks that run in it, none when its module has none or they were
 // declined. A dry run lists the hooks as would-run. Without consent a pre-install hook is an
 // error, whose hints review the version and consent to it (consentHints), and a post-install hook
@@ -331,7 +331,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, unasked 
 				return nil, errs.WithHints(&hookConsentError{module: c.name}, hints...)
 			}
 			// The hook stays pending in lock.json: sync replaces the copy from the hashed version
-			// and asks again (Plan 6a §11.3).
+			// and asks again.
 			status = HookDeclined
 			text := c.name + ": post-install hook skipped without your consent"
 			if c.forced {
@@ -353,7 +353,7 @@ func (e *Engine) planHooks(sc Scope, copies []moduleCopy, opts Options, unasked 
 }
 
 // runHooks runs, for event, every job's hooks once per target, wrapped in scripts, the install
-// scripts of the run (Plan 9 §5.3): before a module's pre-install hooks, and after its
+// scripts of the run: before a module's pre-install hooks, and after its
 // post-install hooks. A failing pre-install hook or script stops and returns its error; a failing
 // post-install one becomes a warning.
 func (e *Engine) runHooks(ctx context.Context, sc Scope, jobs []*hookJob, scripts []installScript, event string, opts Options, res *Result) error {
@@ -390,7 +390,7 @@ func (e *Engine) runHooks(ctx context.Context, sc Scope, jobs []*hookJob, script
 	return nil
 }
 
-// runHook runs the executable at path in the module copy of j with the §9.1 environment for event
+// runHook runs the executable at path in the module copy of j with the hook environment for event
 // and targetID, and env, streaming its output to out, under e.HookTimeout. LOLA_SCRIPT_SOURCE
 // is set only by env, an install script's: a module hook never inherits one.
 func (e *Engine) runHook(ctx context.Context, sc Scope, j *hookJob, path, event, targetID string, out io.Writer, env ...string) error {

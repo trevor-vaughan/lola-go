@@ -20,10 +20,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// marketPick is an @<market>/<entry> argument resolved against your marketplace (Plan 6c §6.3):
-// the address, your registration of the marketplace, the catalog entry, the entry's dependencies
-// the same catalog offers (which notices coach installing, Plan 6c §7), and the run's output
-// flags, which every hint keeps, with dry for a run that writes nothing.
+// marketPick is an @<market>/<entry> argument resolved against your marketplace: the address, your
+// registration of the marketplace, the catalog entry, the entry's dependencies the same catalog
+// offers (which notices coach installing), and the run's output flags, which every hint keeps, with
+// dry for a run that writes nothing.
 type marketPick struct {
 	addr    market.Address
 	reg     market.Registration
@@ -36,10 +36,10 @@ type marketPick struct {
 // maxBrowse is how many entries the refusal of a bare @<market> names.
 const maxBrowse = 10
 
-// resolveMarkets resolves, in place, every argument of reqs that is a marketplace address (Plan
-// 6c §6.3), under the shared markets lock, which it returns held (taken only when an argument
-// needs it); dry says the run writes nothing. An address with --path is refused: the catalog
-// decides the path. The caller holds the profiles lock and no other (lock order, Plan 6c §5).
+// resolveMarkets resolves, in place, every argument of reqs that is a marketplace address, under
+// the shared markets lock, which it returns held (taken only when an argument needs it); dry says
+// the run writes nothing. An address with --path is refused: the catalog decides the path. The
+// caller holds the profiles lock and no other (lock order).
 func (e *Engine) resolveMarkets(reqs []InstallRequest, dry bool, display []string) (_ func(), err error) {
 	unlock, locked := func() {}, false
 	defer func() {
@@ -73,7 +73,7 @@ func (e *Engine) resolveMarkets(reqs []InstallRequest, dry bool, display []strin
 }
 
 // resolveMarket resolves addr against your registration of its marketplace and the catalog you
-// have cached (Plan 6c §6.3), never fetching the catalog; the caller holds the markets lock. A
+// have cached, never fetching the catalog; the caller holds the markets lock. A
 // marketplace you do not have, or have not fetched, an entry its catalog skips or does not list
 // (naming the close names), and a bare @<market> (naming its first entries) are refused, each
 // with the command that shows what there is.
@@ -118,7 +118,7 @@ func (e *Engine) resolveMarket(addr market.Address, display []string) (*marketPi
 	return pick, nil
 }
 
-// browseRefusal refuses @<market> alone off a terminal (Plan 6c §6.5, ruling R-6c-11), naming
+// browseRefusal refuses @<market> alone off a terminal, naming
 // the first entries of the catalog, as the addresses that install them.
 func browseRefusal(name string, cat market.Catalog) error {
 	var addrs []string
@@ -135,9 +135,8 @@ func browseRefusal(name string, cat market.Catalog) error {
 	return fmt.Errorf("@%s is a marketplace; name the entry to install: %s", name, list)
 }
 
-// spec is where p's entry is fetched from, with the commit it pins ("" for none): its source at
-// the catalog's ref, or at ref, which replaces the catalog's ref and drops its commit pin (Plan 6c
-// §6.3, ruling R-6c-9).
+// spec is where p's entry is fetched from, with the commit it pins ("" for none): its source at the
+// catalog's ref, or at ref, which replaces the catalog's ref and drops its commit pin.
 func (p *marketPick) spec(ref string) (source.Spec, string) {
 	spec, commit := p.entry.Spec(), p.entry.Source.Commit
 	if ref != "" {
@@ -154,7 +153,7 @@ type catalogMismatchError struct{ err error }
 func (e *catalogMismatchError) Error() string { return e.err.Error() }
 func (e *catalogMismatchError) Unwrap() error { return e.err }
 
-// fetchEntry fetches p's entry from spec into run (Plan 6c §6.4, ruling R-6c-12): a commit pin
+// fetchEntry fetches p's entry from spec into run: a commit pin
 // must be reachable from spec's ref, the catalog's (the default branch when it gives none), before
 // anything is fetched, and the fetch, by that commit, must serve it; an archive must have the
 // sha256 the catalog lists before anything is extracted.
@@ -191,7 +190,7 @@ func (e *Engine) fetchEntry(ctx context.Context, p *marketPick, spec source.Spec
 }
 
 // prepareEntry fetches p's entry from spec at commit (fetchEntry) into run and prepares it under
-// the entry's name (Plan 6c §6.3), not cached: a module that names itself otherwise is refused,
+// the entry's name, not cached: a module that names itself otherwise is refused,
 // and one that does not takes the entry's name. Committing it (StagedRun.add) never moves a head
 // for a pinned fetch.
 func (e *Engine) prepareEntry(ctx context.Context, p *marketPick, spec source.Spec, commit, run string) (store.Staged, error) {
@@ -211,7 +210,7 @@ func (e *Engine) prepareEntry(ctx context.Context, p *marketPick, spec source.Sp
 	return st, nil
 }
 
-// resolveEntry is resolve for an argument that is a marketplace address (Plan 6c §6.3, §6.4): its
+// resolveEntry is resolve for an argument that is a marketplace address: its
 // entry, recorded with its real source, path and the catalog's ref (or --ref), and with the
 // marketplace's name and source as provenance unless --ref replaced the catalog's ref; the
 // version is have (the version this request already resolved to) or the entry fetched into run
@@ -265,7 +264,7 @@ func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, h
 	return ent, v, true, nil
 }
 
-// entryNotices are what an install of p says beside the module, once (Plan 6c §6.3, §7): that
+// entryNotices are what an install of p says beside the module, once: that
 // --ref (ref) replaced the catalog's ref, and what the catalog says lola does not do for it (its
 // dependencies, its install scripts).
 func entryNotices(p *marketPick, ref string) []Notice {
@@ -281,7 +280,7 @@ func entryNotices(p *marketPick, ref string) []Notice {
 }
 
 // dependencyNotices are, for each dependency of p's entry that the same marketplace offers, the
-// install that adds it at sc, with dry's -n and the run's output flags (Plan 6c §7): one command
+// install that adds it at sc, with dry's -n and the run's output flags: one command
 // per dependency, never one that installs them all.
 func (e *Engine) dependencyNotices(sc Scope, p *marketPick, dry bool) []Notice {
 	var out []Notice
@@ -298,7 +297,7 @@ func (e *Engine) dependencyNotices(sc Scope, p *marketPick, dry bool) []Notice {
 }
 
 // resolvedLine is how the install summary shows an address resolved to ent, at the commit the
-// fetch pinned (Plan 6c §6.3, ruling R-6c-15): "@acme/formatter → <source> path <path> @ <ref>
+// fetch pinned: "@acme/formatter → <source> path <path> @ <ref>
 // (<commit>)", then any selection of its components, every part through untrusted.Text.
 func resolvedLine(addr string, ent manifest.Entry, commit string) string {
 	line := shown(addr) + " → " + shown(ent.Source)
@@ -320,9 +319,9 @@ func resolvedLine(addr string, ent manifest.Entry, commit string) string {
 }
 
 // AddEntry fetches the entry a marketplace address names into your cache (lola cache add
-// @<market>/<entry>, Plan 6c §3.3), as an install would, without installing it: --ref replaces the
-// catalog's ref; --path is refused, as the catalog gives the path. display is the run's output
-// flags, which every hint keeps.
+// @<market>/<entry>), as an install would, without installing it: --ref replaces the catalog's ref;
+// --path is refused, as the catalog gives the path. display is the run's output flags, which every
+// hint keeps.
 func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []string) (store.Version, error) {
 	v, _, _, err := e.addEntry(ctx, arg, ref, path, display)
 	return v, err
@@ -330,7 +329,7 @@ func (e *Engine) AddEntry(ctx context.Context, arg, ref, path string, display []
 
 // addEntry is AddEntry, which also returns the ref the version was cached under and the commit
 // the catalog pins it at ("" for none: --ref replaces the catalog's pin, and a catalog may give
-// none), which lola info's next step installs by (Plan 9 §4.3).
+// none), which lola info's next step installs by.
 func (e *Engine) addEntry(ctx context.Context, arg, ref, path string, display []string) (_ store.Version, cachedRef, commit string, err error) {
 	reqs := []InstallRequest{{Arg: arg, Ref: ref, Path: path}}
 	unlock, err := e.resolveMarkets(reqs, false, display)
@@ -363,7 +362,7 @@ func (e *Engine) addEntry(ctx context.Context, arg, ref, path string, display []
 	return v, spec.Ref, commit, err
 }
 
-// checkEntry loads the entry a marketplace address names for lola check (Plan 6c §3.3): fetched
+// checkEntry loads the entry a marketplace address names for lola check: fetched
 // as an install would fetch it, into a directory under parent, never cached, named as the entry.
 func (e *Engine) checkEntry(ctx context.Context, arg, parent string, display []string) (*module.Module, string, error) {
 	reqs := []InstallRequest{{Arg: arg}}
@@ -398,10 +397,9 @@ func (e *Engine) checkEntry(ctx context.Context, arg, parent string, display []s
 }
 
 // RenamedEntryError refuses a catalog entry whose module names itself another name than the
-// entry's (Plan 6c §6.3, ruling of 2026-10-22): install, cache add and check alike. Source is
-// what installs or caches the module from its source under its own name, as the catalog lists
-// it (the location, then --ref and --path); nil when no command can, as for an entry whose
-// catalog selects its components.
+// entry's: install, cache add and check alike. Source is what installs or caches the module from
+// its source under its own name, as the catalog lists it (the location, then --ref and --path); nil
+// when no command can, as for an entry whose catalog selects its components.
 type RenamedEntryError struct {
 	Market, Entry, Declared string
 	Source                  []string
@@ -421,9 +419,9 @@ func (e *RenamedEntryError) Error() string {
 
 // renamedEntry is the refusal of p's entry, fetched from spec at commit, whose module names itself
 // declared. Its Source is the module's own source at the commit the catalog pins (else its ref),
-// for the hints to install, cache or check by hand; none for a selection, which no command typed
-// by hand makes, nor for a source a typed command would fetch under looser rules: an archive the
-// catalog lists with a sha256, a source the catalog names (its redirect rule, Plan 6c §10).
+// for the hints to install, cache or check by hand; none for a selection, which no command typed by
+// hand makes, nor for a source a typed command would fetch under looser rules: an archive the
+// catalog lists with a sha256, a source the catalog names (its redirect rule).
 func renamedEntry(p *marketPick, declared string, spec source.Spec, commit string) error {
 	err := &RenamedEntryError{Market: p.reg.Name, Entry: p.entry.Name, Declared: declared}
 	switch {

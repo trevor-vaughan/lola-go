@@ -502,7 +502,7 @@ var _ = Describe("profiles", func() {
 		Expect(err).To(MatchError(HavePrefix(bad + `:3: unknown key "colour" (a profile entry has: `)))
 	})
 
-	It("Prof-P2-d: an unknown target in a profile's targets: names the profile file and the line", func() {
+	It("an unknown target in a profile's targets: names the profile file and the line", func() {
 		a := mod("a", "a", "A")
 		bad := writeProfile("go", "version: 1\ntargets: [nope]\nmodules:\n  - {name: a, source: "+a+"}\n")
 		activate(user, "user:go")
@@ -629,7 +629,7 @@ var _ = Describe("profiles", func() {
 		Expect(pinned()).To(And(HaveField("Commit", first), HaveField("Digest", v1)), "the profile's pin is installed")
 
 		// A project profile is the project's: its unpinned entry is pinned, with the user's trust,
-		// in the profile itself, as project.yml's are (§19 R1).
+		// in the profile itself, as project.yml's are.
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
 			"  # the team's review tooling\n  - {name: example, source: " + url + "}\n"})
 		team := filepath.Join(proj, ".lola", "profiles", "team.yml")
@@ -1190,7 +1190,7 @@ var _ = Describe("profiles", func() {
 	})
 
 	It("holds at most 64 profiles in an active list", func() {
-		// One profile is on at a time (spec 2026-10-29 §3.1): switching through 65 leaves the last on alone.
+		// One profile is on at a time: switching through 65 leaves the last on alone.
 		var names []string
 		for i := range 65 {
 			names = append(names, fmt.Sprintf("p%d", i))

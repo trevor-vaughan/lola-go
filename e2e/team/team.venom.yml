@@ -5,8 +5,8 @@ name: lola sync, trust and profiles for a team sharing a project
 # repositories over HTTPS at https://git.lola.test:8443/, whose test CA a step passes to git
 # with {{.tls}}. Every step is {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob,
 # &&, redirection or pipe sits inside a single-quoted sh -c or python3 -c, and no step names a
-# host path. Cases run in order and read the state earlier ones leave (Plan 8 §4.3's Needs
-# column); a case whose state is missing fails. No assistant is on PATH.
+# host path. Cases run in order and read the state earlier ones leave;
+# a case whose state is missing fails. No assistant is on PATH.
 #
 # team.git is the project a teammate clones: main lists kit pinned at v1 and commits the
 # project profile review (lint); the branch next pins kit at v2, then drops it; the branch
@@ -522,7 +522,7 @@ testcases:
           - result.code ShouldEqual 0
 
   - name: T14 A covered run on a terminal shows one receipt and asks once
-    # Plan 9 §9.5 T14 (Reason P, Needs T4): bare --trust covers the clone's entries, so the
+    # T14 (Reason P, Needs T4): bare --trust covers the clone's entries, so the
     # terminal is asked nothing but the receipt's one question; No writes nothing, and yes
     # applies what it listed.
     steps:
@@ -572,7 +572,7 @@ testcases:
           - result.systemoutjson.trusted ShouldBeEmpty
 
   - name: T15 A terminal yes to a hook in sync --scope both is the consent its apply runs on
-    # Final review I1: the project's hook is asked in the collect pass and answered yes on the
+    # The project's hook is asked in the collect pass and answered yes on the
     # terminal; the apply pass after the one receipt asks nothing, runs the hook and records it.
     steps:
       - type: exec
@@ -599,8 +599,8 @@ testcases:
           - result.systemout ShouldNotContainSubstring "✓ synced hk"
 
   - name: T16 An edited project script needs trust again after a pull
-    # Plan 9 §9.5 T16 (Reasons W, G): a pull that adds the project's pre-install script makes the
-    # next sync off a terminal refuse, though it installs nothing (Plan 9 §7), until the hint's
+    # T16 (Reasons W, G): a pull that adds the project's pre-install script makes the
+    # next sync off a terminal refuse, though it installs nothing, until the hint's
     # --trust=scripts records the script's digest; a pull that edits it refuses again, for the
     # script alone. A fresh clone (proj4), trusted and synced, so earlier cases' state is not read.
     steps:

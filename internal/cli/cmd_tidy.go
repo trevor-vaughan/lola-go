@@ -60,7 +60,7 @@ func (a *app) tidyCmd() *cobra.Command {
 	a.addTargetFlag(cmd, &f.targets, "only tidy these assistants' directories")
 	_ = cmd.RegisterFlagCompletionFunc("keep", completeKinds)
 	_ = cmd.RegisterFlagCompletionFunc("unkeep", a.completeKept)
-	// Aliases for muscle memory (Plan 6d §3.2); lola tidy itself has none. Additive and stable;
+	// Aliases for muscle memory; lola tidy itself has none. Additive and stable;
 	// the published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{"keep": {"protect"}, "unkeep": {"unprotect"}})
 	return cmd
@@ -172,12 +172,12 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 	return a.emit(cmd, func(w io.Writer, s style) { printTidy(w, s, res) }, res)
 }
 
-// tidyChoose asks lola tidy's picker steps (Plan 6d §3.4): which candidates move, then which
+// tidyChoose asks lola tidy's picker steps: which candidates move, then which
 // of the rest join the keep-list; going back from the keep step (Esc) asks the move step again,
 // as answered. The keep step offers one option per escaped literal selector,
 // since a keep entry covers every assistant's item of that name, and none for a selector that
-// would also keep an item chosen to move (R-6d2-6, R-6d2-8). When nothing moves, the keep step
-// needs a pick (TidyKeepStep.Required, Plan 10 §4), so the choice is never empty; Ctrl+C cancels.
+// would also keep an item chosen to move. When nothing moves, the keep step
+// needs a pick (TidyKeepStep.Required), so the choice is never empty; Ctrl+C cancels.
 // It returns how many steps were answered: the move step, and the keep step when it was asked.
 func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, int, error) {
 	opts := make([]TidyOption, len(scan.Candidates))
@@ -244,8 +244,8 @@ func tidyKeep(p Prompter, scan engine.TidyScan, opts []TidyOption, move []string
 	return choice, 0, nil
 }
 
-// bothScopes is the project of a run whose --scope names two scopes, which lola tidy refuses
-// (Plan 6d §3.3); nil when it names one or none.
+// bothScopes is the project of a run whose --scope names two scopes, which lola tidy refuses; nil
+// when it names one or none.
 func (a *app) bothScopes(eng *engine.Engine) (*engine.Scope, error) {
 	if a.scopeFlag == "" {
 		return nil, nil
@@ -357,7 +357,7 @@ func printTidyLists(w io.Writer, s style, r *engine.TidyResult) {
 	}
 }
 
-// printTidy renders a tidy run (Plan 6d §11.1).
+// printTidy renders a tidy run.
 func printTidy(w io.Writer, s style, r *engine.TidyResult) {
 	if !s.plain {
 		where := r.Scope

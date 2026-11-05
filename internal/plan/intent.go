@@ -41,7 +41,7 @@ type Intent struct {
 
 	Pointer string          // SetJSON: RFC 6901 pointer to an object member; AddJSONMember: to the array
 	Value   []byte          // SetJSON: standard JSON
-	Member  json.RawMessage // AddJSONMember: the element lola owns in the array, any JSON value (§6.4, Plan 5b §7.2)
+	Member  json.RawMessage // AddJSONMember: the element lola owns in the array, any JSON value
 
 	Consent *HookConsent // set when the intent installs runtime hooks; the engine writes it only with consent
 }
@@ -52,8 +52,7 @@ type File struct {
 	Data []byte
 }
 
-// HookConsent marks an intent that installs runtime hooks into an assistant (Plan 5b design
-// §7.3): a settings hook group, or any file of a component whose frontmatter carries hooks or,
+// HookConsent marks an intent that installs runtime hooks into an assistant: a settings hook group, or any file of a component whose frontmatter carries hooks or,
 // for an agent, inline MCP servers, which Claude Code starts with the agent.
 // The engine writes it only under the user's recorded consent for its module and Settings.
 type HookConsent struct {

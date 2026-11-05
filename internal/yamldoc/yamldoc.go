@@ -33,7 +33,7 @@ const MaxFile = 1 << 20
 func Read(path string, version int) (*yaml.Node, []byte, error) { return read(path, version, false) }
 
 // ReadNoFollow is Read for a file someone else may have committed, which must not lead lola
-// elsewhere (Plan 6b §19 S3): path itself must not be a symbolic link. It is opened with
+// elsewhere: path itself must not be a symbolic link. It is opened with
 // O_NOFOLLOW where the system has it, and on every system the file opened must be the one
 // os.Lstat finds at path, so a link, or one swapped in while it reads, is refused. The caller
 // coaches a link it finds first.
@@ -117,7 +117,7 @@ func read(path string, version int, noFollow bool) (*yaml.Node, []byte, error) {
 }
 
 // Decode reads b, bytes lola did not write and the caller has already capped in size, as one
-// YAML document node, nil for none (Plan 6c §13, ruling R-6c-16). It refuses a second document,
+// YAML document node, nil for none. It refuses a second document,
 // anchors, aliases and merge keys, which would make one entry stand for another, and a mapping
 // that holds a key twice, which yaml.v3 refuses only when it decodes into a Go value. It applies
 // no version rule. Errors name the line, never a file: the caller says which bytes these are.

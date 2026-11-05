@@ -15,10 +15,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// MarketRemove is lola market's action that forgets a marketplace (Plan 6c §3.1).
+// MarketRemove is lola market's action that forgets a marketplace.
 const MarketRemove MarketAction = "remove"
 
-// MarketRemoveRequest is one lola market <name> --remove (Plan 6c §3.1). Confirm asks whether to
+// MarketRemoveRequest is one lola market <name> --remove. Confirm asks whether to
 // forget the marketplace; nil means it cannot ask, and the run is refused. The CLI passes one that
 // says yes for -y.
 type MarketRemoveRequest struct {
@@ -29,16 +29,16 @@ type MarketRemoveRequest struct {
 	Display []string
 }
 
-// MarketRemoveResult is what lola market --remove reports (Plan 6c §11.2).
+// MarketRemoveResult is what lola market --remove reports.
 type MarketRemoveResult struct {
 	Removed []string `json:"removed"`
 	Notices []Notice `json:"notices"`
 	DryRun  bool     `json:"dry_run"`
 }
 
-// RemoveMarket forgets a marketplace (Plan 6c §3.1): its registration and its cached catalog. It
+// RemoveMarket forgets a marketplace: its registration and its cached catalog. It
 // asks first (Confirm); off a terminal without -y it refuses with the same run and -y, which
-// approves exactly the removal refused and no other question (as ruling R-6b3c-11). There is no
+// approves exactly the removal refused and no other question. There is no
 // safety check, so there is no --force: nothing installed depends on a marketplace. The question is
 // asked under the shared markets lock; the exclusive one is taken only to check the marketplace is
 // still registered, write markets.yaml without it, and remove its cache, renamed aside first so it
@@ -111,7 +111,7 @@ func (e *Engine) RemoveMarket(req MarketRemoveRequest) (*MarketRemoveResult, err
 }
 
 // sameMarketSource reports whether r, your registration of a marketplace, has src, the source an
-// entry's market records (Plan 6c §6.6, R-6c-15).
+// entry's market records.
 func sameMarketSource(r market.Registration, src string) bool {
 	ms := registrySource(r)
 	kind := ms.spec.Kind
@@ -123,7 +123,7 @@ func sameMarketSource(r market.Registration, src string) bool {
 
 // installedFrom is the notice counting the entries of the known scopes (the project found from
 // the working directory, and user scope) whose market is r, its name and source, which removing
-// it leaves as they are (Plan 6c §3.1): they keep their real sources. Once it is gone the notice names the --add
+// it leaves as they are: they keep their real sources. Once it is gone the notice names the --add
 // that brings it back, with display, the run's output flags, as lola sync --update follows a
 // marketplace only while you have it; dry says it is not gone. A manifest it cannot read is a
 // warning of its own.
@@ -134,7 +134,7 @@ func (e *Engine) installedFrom(r market.Registration, dry bool, display []string
 	for _, sc := range scopes {
 		m, err := e.Manifest(sc)
 		if err != nil {
-			// A file with marketplace addresses gets the hints of every reader (Plan 6c §6.7), read
+			// A file with marketplace addresses gets the hints of every reader, read
 			// from markets.yaml as it is now: once r is gone, none names it.
 			err = e.CoachUnresolved(err, []Scope{sc}, dry, display)
 			text := "could not count the entries from " + r.Name + " in " + e.manifestName(sc) + ": " + shown(untrusted.CleanErr(err).Error())

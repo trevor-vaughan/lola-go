@@ -203,7 +203,7 @@ func (a *app) emptyTrash(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	return a.emit(cmd, func(w io.Writer, s style) { printTrashEmpty(w, s, res) }, res)
 }
 
-// pickTrash is bare lola trash on a terminal (design 2026-11-03 §3.5): the picker of list's runs,
+// pickTrash is bare lola trash on a terminal: the picker of list's runs,
 // newest first, each a [whole run] row followed by its files, then the plan of what was ticked,
 // shown before anything is written. Restore ticked restores, from each run, what lola trash <run>
 // [<original>...] --restore would (a run ticked whole, every entry), after asking; when an

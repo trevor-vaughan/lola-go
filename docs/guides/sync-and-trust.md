@@ -24,10 +24,14 @@ listed first and asked about once; off a terminal `-y` confirms them.
 A pinned version comes from your cache when it is there; otherwise a git
 module is fetched by its commit, which must be reachable from the entry's `ref`, and an archive is
 fetched again; either way its content must have the pinned digest. When it does not, sync stops:
-`if you expect the change, re-pin it: lola sync --project --update <module>`. Like every sync
+`if you expect the change, re-pin it: lola sync --project --update <module>`.
+
+Like every sync
 hint, it names the run's scope: `--project` for the project found from where you are, `-C <dir>`
 for another, `--user` at user scope. A moved tag or a force-pushed branch never changes what sync
-installs, nor does `lola cache update`. When a force-push removed the pinned commit from its ref
+installs, nor does `lola cache update`.
+
+When a force-push removed the pinned commit from its ref
 and your cache does not hold it, sync stops: `commit <sha> is not on <ref> at <source>`, with the
 hint `re-pin to what <ref> serves: lola sync … --update <module>`. `lola update` and
 `lola sync --update` take a force-pushed head like any other new version, after the trust question.
@@ -182,12 +186,14 @@ flowchart TD
     flags (a file list's says `… and N more (…)`, without the module).
   - A dry run ends with the command that applies it, `→ to apply: lola sync review-kit`, and, when
     that needs consent, the form for no terminal:
-    `→ off a terminal: lola sync review-kit --trust=entries`. It carries your own names and
-    flags, `-y` only when you gave it, and `--trust=` the kinds you gave and the kinds the run
-    would be refused without: `entries`, `profiles`, `hooks` for a module's pre-install hook
-    without your consent, and `scripts` for a project's pre-install script without it. A run
-    that removes something asks first; off a terminal it is refused with the same command and
-    `-y`.
+    `→ off a terminal: lola sync review-kit --trust=entries`.
+    - It carries your own names and
+      flags, `-y` only when you gave it, and `--trust=` the kinds you gave and the kinds the run
+      would be refused without: `entries`, `profiles`, `hooks` for a module's pre-install hook
+      without your consent, and `scripts` for a project's pre-install script without it.
+    - A run
+      that removes something asks first; off a terminal it is refused with the same command and
+      `-y`.
 - **One origin per source.** Your cache keeps a module by its name and the source it came from, so
   two checkouts or worktrees of one repository, or the same module name from two sources, each
   sync without touching the other's cache.
@@ -197,9 +203,10 @@ flowchart TD
     archive that no longer exists, and the entry's source is local too, sync says `<module>: your
     cache has it from <old>, which no longer exists; caching it from <new>` and drops the old
     record when you trust the new one (lola checks again, under the cache's lock, that the old
-    place is still gone; a dry run replaces nothing). `lola install` of a local source does the
-    same. A folder that is only missing for a while (an unmounted drive) is replaced too; you
-    see the notice and the trust diff.
+    place is still gone; a dry run replaces nothing).
+    - `lola install` of a local source does the same.
+    - A folder that is only missing for a while (an unmounted drive) is replaced too; you
+      see the notice and the trust diff.
   - `lola cache rm <name>` removes every source's copy of the module.
 
 **The trust diff.** At project scope, sync compares `project.yml`, with the pins it would write,
@@ -233,6 +240,7 @@ the content each changed entry brings:
 ```
 
 An entry's [vars](templating.md#vars) are trusted with it: a vars-only edit is a change, listed as `vars`.
+
 The header names the cause: `has not been trusted on this machine (a fresh clone, or a moved
 project):` for a project with no record (its targets row reads `+ targets [claude-code]`),
 `changed since lola last wrote it or you last trusted it:` when the manifest changed, and
@@ -245,19 +253,25 @@ installed yet` for a folder you trusted that lola has not installed (after a No 
 change to or from the `host:path` form always counts, since it may name a folder. A note on an
 entry whose manifest does not pin its content says what it installs: for a git entry its ref (or
 `the default branch`), for an archive `installs what <file or URL> serves now`. Commits and
-digests are printed in full, the old value on the field's line and `→ new` under it. The files
+digests are printed in full, the old value on the field's line and `→ new` under it.
+
+The files
 are compared with the version installed, from your cache: counts, then one path per line,
 changed and removed before added, at most 20 per module, then
 `… and N more (lola sync -n --json lists them all)`, with your own names and flags
 (`lola sync big --update -n --json`); lola's own generated `lola.yml` is listed
 only when it changed or went. When your cache no longer has the version installed, or cannot read
 it, every file is listed as added with a note saying why (lola never fetches the old version to
-compare). Each MCP server and hook is marked `added`, `changed`, `unchanged` or `removed` against
+compare).
+
+Each MCP server and hook is marked `added`, `changed`, `unchanged` or `removed` against
 the version installed: an MCP server shows what it runs, with every argument that is not a plain
 word in quotes (`sh -c "curl x|sh"` is three words), or where it `connects to`, then its `env`,
 `header` and `cwd` lines, and a changed one adds a `was:` line under each part that differs; an
 unchanged one takes one line. A hook is identified by all of its fields, so a hook whose command
-changed is one `removed` and one `added`. Every hook the content declares is listed: install
+changed is one `removed` and one `added`.
+
+Every hook the content declares is listed: install
 hooks, runtime hooks and an agent's own hooks and MCP servers, whatever assistants the entry
 installs for and whichever components you deselected. By accepting the diff you consent to the
 module MCP servers it lists.
@@ -379,7 +393,9 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
     hints fetches it, lists every removal and asks for `-y` then.
   - The hints `see them: lola sync --project -n` and `then accept them: lola sync --project
     --trust=entries -y`, with your other flags and `--trust=` exactly the kinds missing beside
-    those you gave; each keeps the run's `--json`, `--plain` and `--no-pager`.
+    those you gave; each keeps the run's `--json`, `--plain` and `--no-pager`. The accept hint
+    adds `--at <module>=<version>` for each new version the diff showed, so it installs only
+    what you saw ([`--at`](../reference/sync.md#lola-sync)).
   - `-y` confirms removals only, which the error says when you gave it (`…; -y confirms removals
     only; accept them with --trust=entries`).
   - `--trust` alone with removals hints `then confirm them: lola sync --project
@@ -426,15 +442,19 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
 - A `trust.json` from before bundles, which recorded an entry's remote profile as `extends`, is
   refused whole, not read (only a project profile's entry that came from a remote profile it
   extended holds the field): `<trust.json>: it is in the trust format of a lola before bundles: the
-  records of "/old/a" hold the field extends, which lola now records as member`. The hint names the
-  records to remove from `projects` in that file; lola then asks about those projects' modules
-  again and keeps every other project's trust. Renaming the field by hand does not work, because
-  the record's hash covers it.
+  records of "/old/a" hold the field extends, which lola now records as member`.
+  - The hint names the
+    records to remove from `projects` in that file; lola then asks about those projects' modules
+    again and keeps every other project's trust.
+  - Renaming the field by hand does not work, because
+    the record's hash covers it.
 
 **Folder modules in the repository.** `project.yml` names a folder, not its content, so sync
 trusts a folder's content by the version installed (`lock.json`). When a folder you trusted holds
 something else (a pull changed the module, or you edited it), sync shows it as a change of its
-digest with the files, MCP servers and hooks, and asks as for any other change. The diff adds
+digest with the files, MCP servers and hooks, and asks as for any other change.
+
+The diff adds
 `review the edits: git log -p -- mods/notes` when the folder is in a git work tree, and
 `edited it yourself? lola install --project ./mods/notes`: installing it records the content as yours, so
 editing your own module costs one question per sync, or that install. A checkout without
@@ -444,14 +464,20 @@ editing your own module costs one question per sync, or that install. A checkout
 now at the ref `project.yml` records (the default branch when it records none; a tag or full SHA
 stays put unless the tag itself moves; to follow another ref, `lola install <module> --ref <ref>`), fetching a ref only when `cache_fresh_for:` (`config.yaml`; `1d` unless it says otherwise,
 whole days or weeks, `never` to fetch every run) has passed since it was last fetched, or when you
-pass `--fetch`. It installs and removes no module; the files a new version no longer ships are
+pass `--fetch`.
+
+It installs and removes no module; the files a new version no longer ships are
 listed and confirmed as removals are (`-y` off a terminal). Trust is sync's: a fresh head that
 has not moved asks nothing, so within `cache_fresh_for` it works off a terminal without
-`--trust`. A stale head is fetched into the run's private staging before anything is asked, so
+`--trust`.
+
+A stale head is fetched into the run's private staging before anything is asked, so
 one that has not moved asks nothing either; one that moved is refused off a terminal without
 `--trust`, once, with the files it drops and a hint that applies it in one run; in CI, pass
 `--trust` with the kinds you accept (`--trust=entries` for pins). A pin that moved is
-shown and asked about, or answered by `--trust`; `--force` never answers that question. When it
+shown and asked about, or answered by `--trust`; `--force` never answers that question.
+
+When it
 served a ref from the cache it says how many modules, with your run and `--fetch`; it names the
 entries listed but not installed, with the `lola sync` that installs them. It leaves a
 module as installed (no files, copy or hooks touched), with a warning and its remedy, when:
@@ -475,6 +501,7 @@ installed from inside the project, so that a pulled symbolic link cannot lead it
 leaves it is refused before the diff, and neither `--trust` nor `-y` overrides it:
 `<module>: local source ../x resolves outside the project (/home/me/x)`, with the hint to install
 it yourself if you trust it (`lola install /home/me/x`), which records the entry as trusted.
+
 `lola install` warns when it writes such a source into `project.yml` (`<module> comes from
 /home/me/x, outside the project: a teammate's sync will refuse it`), and records a `file://`
 URL as the path it names. A source you installed or trusted outside the project is not checked
@@ -496,11 +523,15 @@ shows the trust diff, the removals it asks about and a dry run's diff and plan i
 printed without the viewer keeps its caps and `… and N more` lines). When that is taller than the
 terminal it opens in lola's viewer ([Output contract](../usage.md#output-contract)), and the
 question comes after you quit it; the diff is then printed, so it stays in your scrollback. Every
-other command's output, and help, opens the same way. A `$LOLA_PAGER` you set is used instead,
+other command's output, and help, opens the same way.
+
+A `$LOLA_PAGER` you set is used instead,
 split on whitespace and run without a shell (`LESS=FRX` when `LESS` is unset; `cat` prints); lola
 never runs a pager found in the current directory (a relative entry in `PATH`): it warns and
 prints the diff instead, as it does when the pager is missing or fails. Ctrl+C belongs to the
-pager while it runs. `--no-pager`, a non-empty `NO_PAGER`, accessible mode (`LOLA_ACCESSIBLE=1`, `TERM=dumb`), or
+pager while it runs.
+
+`--no-pager`, a non-empty `NO_PAGER`, accessible mode (`LOLA_ACCESSIBLE=1`, `TERM=dumb`), or
 `pager: false` in your `config.yaml` (never a project's) turns the viewer off; `--json`, `--plain` and output that is not a terminal never use
 it. lola reads `pager` only when it could open the viewer; a malformed `pager` value is then a
 warning, and the output is printed. Like any malformed key, it still fails a command that reads
@@ -517,75 +548,4 @@ says so (`gopls: profile go's entry wins; this change to default (base) applies 
 
 ## Syncing lola between machines
 
-Keep `~/.config/lola` in your dotfile manager (chezmoi, stow, yadm, a git repository). It holds
-your profiles (`profiles/default.yml` and the others), `pins.yaml`, `config.yaml`,
-`selections.yaml`, `markets.yaml` and `keep.yaml`. Picks for a project in a git clone are keyed by
-its repository, so they apply wherever you clone it on the new machine; other projects' picks and
-`keep.yaml` are keyed by path. On a new machine, restore it, then run
-`lola sync --user`: lola installs the versions `pins.yaml` records, not what the refs serve
-today, and fetches each remote profile you use at the version you accepted.
-
-`pins.yaml` is written by lola: the version installed for each entry of your profiles at user
-scope, and a record of each remote profile you have. It looks like this:
-
-```yaml
-# Written by lola: the versions installed from your profiles at user scope.
-# Safe to sync between machines. Hand edits apply until lola next writes this file.
-version: 1
-modules:
-  cc-skills-golang:
-    - {source: 'https://github.com/samber/cc-skills-golang', ref: main, commit: 4f1c…, digest: 'sha256:…'}
-remotes:
-  go: {source: 'https://github.com/acme/lola-profiles', ref: main, path: profiles/go, commit: 77d2…, digest: 'sha256:…'}
-```
-
-- **When lola writes it.** Every user-scope run that installs, updates or removes entries of your
-  profiles (`lola sync`, `lola update`, `lola install`, `lola uninstall` and the `lola profile`
-  actions that change user scope) rewrites `modules:`, and only when its bytes change.
-  `lola profile --add`, `--update` and `--remove` keep `remotes:` current and leave `modules:` as
-  it was. A sync sets the pins of the modules it resolved or changed. Any other run sets a pin
-  only where it changed the version installed, or `pins.yaml` has none for the key; every other
-  pin stays as it was read, so a newer pin synced from another machine survives
-  `lola install other --user`, and `lola install kit -t gemini-cli --user`, which keeps kit's
-  version. A move between scopes keeps the version installed, and `pins.yaml`'s pin for the key
-  with it, which the next `lola sync --user` applies.
-- **What it never holds.** A folder, a local archive or a `file://` source is never pinned: the
-  file holds no machine paths, consent or trust.
-- **Header and links.** A comment at the top of the file is kept as you wrote it. A link
-  (stow-style) is followed and stays a link, and the file keeps its mode (0600 when lola creates
-  it). With chezmoi's copy model, run `chezmoi re-add` after a run that changed the file. Two
-  machines updating at once conflict in your dotfile manager, not in lola.
-- **Which pin wins.** At user scope an entry of your profiles takes its version from
-  `pins.yaml`, else from `lock.json`; a pin applies only while the entry's `source`, `ref` and
-  `path` equal its key, so an edited entry resolves afresh.
-- **Moving the pins.** `lola update --user` moves them; the next sync of `~/.config/lola` carries
-  them to your other machines, where `lola sync --user` applies them as changes.
-- **Restoring a remote profile.** A run that needs a remote profile this machine lacks and
-  `pins.yaml` records (`lola sync`, `lola install`, `lola profile --move`, `lola profile --switch`
-  or `--on` of it, a remote member of the bundle on, or the profile a `--switch` or `--on` names)
-  fetches it at the recorded commit before planning, checks the recorded digest, and writes it as
-  `--add` does, with no question:
-  `→ restored remote profile go from pins.yaml (https://github.com/acme/lola-profiles @ 77d2c1…)`.
-  Read-only commands do not fetch; `lola list` and `lola profile` show
-  `profile remote:go (not on this machine yet → lola sync --user)`. Under `-n` a run warns
-  `remote:go is not on this machine yet; run this again without -n to restore it from pins.yaml`
-  and fetches nothing.
-- **When it refuses.** The source must pass the same host rules as `--add`, checked before any
-  network contact. If the commit is not on the ref any more, the run stops naming it
-  (`go: commit <commit> is not on <ref> at <source>`); if the source no
-  longer serves the recorded digest, it stops with `go: the source no longer serves the recorded
-  version`. Both hint `review and take what it serves now: lola profile go --add <source> …`. A
-  network failure keeps its own message and hints running the same command again. A file or link
-  at the profile's place under `$XDG_DATA_HOME/lola/remote-profiles` is never written over: the run
-  stops before it plans, naming it (`… is in the way of remote:go, which pins.yaml records; lola
-  never writes over it`), and hints moving it aside; `lola list` shows it in place of the restore.
-- **When it cannot record one.** `lola profile --add` or `--update` that wrote a profile but could
-  not record it warns: a `pins.yaml` that does not load is named with its line, and a sync records
-  the profiles once it is fixed by hand; otherwise a sync records them once the file can be
-  written.
-- **A `pins.yaml` from elsewhere** is checked like any input lola did not write on this machine:
-  a name, source or pin lola would not have written refuses, naming the file and line, before
-  anything is fetched.
-
-`lock.json` and everything under `$XDG_STATE_HOME/lola` and `$XDG_DATA_HOME/lola` stay per
-machine: the profile on is recorded there, so a new machine starts on the base.
+How to keep lola's state in step across machines. It has its own page: [Syncing lola between machines](syncing-lola-between-machines.md).

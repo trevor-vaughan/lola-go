@@ -14,7 +14,7 @@ the trim flag (set by a right trim, `-}}` or `-%}`) is on: then it appended the 
 bytes to the buffer without flushing. A sequence of right-trimmed objects, `{{ s -}}{{ s -}}…`,
 never flushed, so it grew the buffer past lola's output cap, which sees only flushed writes:
 2000 × `{{s-}}` with a 64 KiB `s` allocated 383 MiB against a 1 MiB cap, and a 256 KiB template
-could buffer about 2.7 GiB (security review C1, Plan 7 spec 85).
+could buffer about 2.7 GiB.
 
 The patch flushes the buffer before appending when the trimmed bytes are not empty. The
 trimmed bytes then start with a byte that is not a space, so no later left trim can reach into
@@ -55,10 +55,15 @@ check is recorded here: its date, the advisory IDs read and each verdict.
   advisories (`/repos/osteele/liquid/security-advisories`) each returned none; OSV agrees. The
   same queries for `github.com/gin-gonic/gin` returned its advisories, so the queries work.
   Verdict: nothing applies; the tag is not blocked.
+- **2026-11-05**, release checklist item 3 for v0.1.0, on `mvp` `754778a8`: no advisory exists
+  for `github.com/osteele/liquid` in any of the three sources. The same queries as on
+  2026-10-24 each returned none, and OSV (`api.osv.dev/v1/query`) agrees. The same queries for
+  `github.com/gin-gonic/gin` returned its advisories (5 GHSA, 8 OSV, 1 vuln.go.dev entry), so
+  the queries work. Verdict: nothing applies; the tag is not blocked.
 
 ## When to drop this copy
 
 When an osteele/liquid release fixes the unbounded buffer (reported upstream by the
 maintainer), require that release, remove the `replace` line from `go.mod` and delete this
-directory; Plan 7 spec 85, "chained right-trim output stays under the output cap", must still
+directory; the spec "chained right-trim output stays under the output cap", must still
 pass. Until then, an upgrade means copying the new release here and re-applying the patch.

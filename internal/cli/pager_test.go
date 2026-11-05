@@ -29,7 +29,7 @@ func (p *pagedFirst) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 	return p.confirming.Trust(st)
 }
 
-var _ = Describe("the consent-diff pager (Plan 6b §9)", func() {
+var _ = Describe("the consent-diff pager", func() {
 	var tmp, proj, paged string
 	BeforeEach(func() {
 		var err error
@@ -94,7 +94,7 @@ var _ = Describe("the consent-diff pager (Plan 6b §9)", func() {
 		Expect(os.ReadFile(paged+".env")).To(Equal([]byte("LESS=R\n")), "the user's LESS is kept")
 	})
 
-	It("opens the diff in the viewer, in full, before the question, when $LOLA_PAGER is not set (Plan 10 §2.1)", func() {
+	It("opens the diff in the viewer, in full, before the question, when $LOLA_PAGER is not set", func() {
 		GinkgoT().Setenv("LOLA_PAGER", "")
 		GinkgoT().Setenv("COLUMNS", "80")
 		GinkgoT().Setenv("LINES", "10")
@@ -144,7 +144,7 @@ var _ = Describe("the consent-diff pager (Plan 6b §9)", func() {
 			Expect(r.err).NotTo(ContainSubstring("⚠"))
 		},
 		Entry("with --no-pager", true, nil, "--no-pager"),
-		Entry("with NO_PAGER set, though $LOLA_PAGER is (Plan 10 §2.1)", true, func() { GinkgoT().Setenv("NO_PAGER", "1") }),
+		Entry("with NO_PAGER set, though $LOLA_PAGER is", true, func() { GinkgoT().Setenv("NO_PAGER", "1") }),
 		Entry("with pager: false in config.yaml", true, func() {
 			Expect(os.MkdirAll(filepath.Join(tmp, "config", "lola"), 0o700)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(tmp, "config", "lola", "config.yaml"), []byte("version: 1\npager: false\n"), 0o600)).To(Succeed())

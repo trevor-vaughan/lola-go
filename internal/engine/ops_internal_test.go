@@ -11,7 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("the order InstallAll locks destinations in (Plan 5c §14)", func() {
+var _ = Describe("the order InstallAll locks destinations in", func() {
 	It("locks project roots by canonical key, then the user scope, whatever order they were chosen in", func() {
 		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())

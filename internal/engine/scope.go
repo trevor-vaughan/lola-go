@@ -13,7 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Where an install's scope came from (Plan 5c §5.1), reported as scope_source.
+// Where an install's scope came from, reported as scope_source.
 const (
 	SourceFlag       = "flag"
 	SourceConfig     = "config"
@@ -42,9 +42,9 @@ type ScopeChoice struct {
 	Source string
 }
 
-// ScopeResolution is the outcome of §5.1. Either Scopes is set, or Pick is: the scope picker
+// ScopeResolution is the outcome of the scope rule. Either Scopes is set, or Pick is: the scope picker
 // decides, offering a project at ProjectRoot (Found says it has .lola/) with nothing
-// preselected (§14).
+// preselected.
 type ScopeResolution struct {
 	Scopes      []ScopeChoice
 	Pick        bool
@@ -90,7 +90,7 @@ func Scopes(names []string, root, source string) []ScopeChoice {
 	return out
 }
 
-// ResolveReadScope is the scope rule of the commands that only read (Plan 6b §3.1, D2, §19 R6):
+// ResolveReadScope is the scope rule of the commands that only read:
 // the scope flags when given, --scope both included; otherwise the project found walking up
 // from Cwd, when there is one, then user scope. It never asks for a scope, on a terminal or off
 // it, and default_scope does not apply: every row a read-only command prints names its scope.
@@ -107,10 +107,10 @@ func (e *Engine) ResolveReadScope(req ScopeRequest) ([]ScopeChoice, error) {
 	return append(out, Scopes([]string{config.ScopeUser}, "", SourceDiscovered)...), nil
 }
 
-// ResolveScope implements the resolution table of Plan 5c §5.1, which every command that writes
-// uses (Plan 6b §3.1): --scope, then --user or --project, then -C, then the picker on a
+// ResolveScope implements the resolution table which every command that writes
+// uses: --scope, then --user or --project, then -C, then the picker on a
 // terminal, then a .lola/ project found walking up from Cwd, then default_scope in config.yaml;
-// otherwise an error that names every way to say it. The picker preselects nothing (§14):
+// otherwise an error that names every way to say it. The picker preselects nothing:
 // default_scope and a found project apply off a terminal only.
 func (e *Engine) ResolveScope(req ScopeRequest) (ScopeResolution, error) {
 	switch {
@@ -189,7 +189,7 @@ func (e *Engine) ResolveScope(req ScopeRequest) (ScopeResolution, error) {
 }
 
 // noScopeError is ResolveScope's refusal of a run that names no scope where none is found or
-// configured, which lola info shows as its no-scope section instead (Plan 9 §4.4).
+// configured, which lola info shows as its no-scope section instead.
 type noScopeError struct{ msg string }
 
 func (e *noScopeError) Error() string { return e.msg }

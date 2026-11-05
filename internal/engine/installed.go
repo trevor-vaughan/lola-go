@@ -14,11 +14,11 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// The codes of the findings lola update leaves a module as installed with (spec 2026-10-29 §5.1).
+// The codes of the findings lola update leaves a module as installed with.
 const (
 	CodeNotInManifest = "not-in-manifest" // no layer lists the module
 	CodeTargetsDiffer = "targets-differ"  // its entry asks for other targets than are installed
-	CodeFetchFailed   = "fetch-failed"    // its source could not be fetched (spec §5.2)
+	CodeFetchFailed   = "fetch-failed"    // its source could not be fetched
 	CodeSourceGone    = "source-gone"     // its source folder is gone, so it could not be checked
 )
 
@@ -34,7 +34,7 @@ func (e *fetchFailedError) Error() string { return e.err.Error() }
 func (e *fetchFailedError) Unwrap() error { return e.err }
 
 // FetchesFailedError is a lola update that applied what it could and left Modules as installed
-// because their fetch failed (spec 2026-10-29 §5.2), or Gone, because their source folder is gone
+// because their fetch failed, or Gone, because their source folder is gone
 // and there was nothing to check them against: Sync returns it with the result.
 type FetchesFailedError struct{ Modules, Gone []string }
 
@@ -61,8 +61,7 @@ func (e *Engine) freshFor() (config.Age, error) {
 	return cfg.CacheFreshFor, nil
 }
 
-// fresh reports whether a head fetched at fetched is younger than age at now (spec 2026-10-29
-// §4): never for an unknown time, for never or for the zero Age; a time after now (another
+// fresh reports whether a head fetched at fetched is younger than age at now: never for an unknown time, for never or for the zero Age; a time after now (another
 // machine's clock) is fresh.
 func fresh(fetched, now time.Time, age config.Age) bool {
 	if fetched.IsZero() || age.Never || age.N <= 0 {
@@ -71,7 +70,7 @@ func fresh(fetched, now time.Time, age config.Age) bool {
 	return !age.Covers(int(max(now.Sub(fetched), 0) / (24 * time.Hour)))
 }
 
-// installedLimit is lola update's run (spec 2026-10-29 §5.1): the modules installed in sc (those
+// installedLimit is lola update's run: the modules installed in sc (those
 // named, when any) that a layer lists (want). Each installed module of the run no layer lists is
 // left as installed with a finding whose hints are sync, which would remove it, or listing it
 // again; a named module that is not installed is refused before anything is fetched, hinting its
@@ -108,7 +107,7 @@ func (e *Engine) installedLimit(sc Scope, want []Wanted, led *ledger.Ledger, nam
 }
 
 // listedNotInstalled is lola update's notice of the entries a layer lists (want) that are not
-// installed in sc, which it never installs (spec 2026-10-29 §5.1), naming the sync that installs
+// installed in sc, which it never installs, naming the sync that installs
 // them with flags; none when there are none. An installed module no layer lists is not one: its
 // finding is installedLimit's.
 func (e *Engine) listedNotInstalled(sc Scope, want []Wanted, led *ledger.Ledger, flags []string) []Notice {

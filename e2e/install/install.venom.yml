@@ -3,8 +3,8 @@ name: lola install, list, sync and uninstall across sources, scopes and assistan
 # at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, and a git server on
 # 127.0.0.1:8765 serving /srv/git. Every step is {{.runtime}} exec [<options>] {{.container}}
 # <argv>; any $, glob, &&, redirection or pipe sits inside a single-quoted sh -c or python3 -c,
-# and no step names a host path. Cases run in order and read the state earlier ones leave (Plan 8
-# §4.1's Needs column); a case whose state is missing fails. No assistant is on PATH.
+# and no step names a host path. Cases run in order and read the state earlier ones leave;
+# a case whose state is missing fails. No assistant is on PATH.
 #
 # One module name, kit, comes from four sources (a folder, git, a zip and a gzip tar), and your
 # cache refuses a second source for a name it holds; the git and archive cases therefore give
@@ -84,7 +84,7 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldBeEmpty
 
-  - name: I1 (P2-4) init's try-it hint, run from the module's parent, installs off a terminal
+  - name: I1 init's try-it hint, run from the module's parent, installs off a terminal
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} init /work/authored > /tmp/i1.out; echo exit=$?; cat /tmp/i1.out'"

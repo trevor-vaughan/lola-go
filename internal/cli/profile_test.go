@@ -67,7 +67,7 @@ var _ = Describe("profiles", func() {
 		Expect(lola("list", "--user", "--plain").out).To(Equal("a\tclaude-code\tok\ton\t" + a + "\tuser\tprofile:default\t\n"))
 	})
 
-	It("Prof-P1-c: uninstall -y under a profile on removes the base's module, the one layer that lists it", func() {
+	It("uninstall -y under a profile on removes the base's module, the one layer that lists it", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c", "-y")
@@ -76,7 +76,7 @@ var _ = Describe("profiles", func() {
 			"  - {name: a, source: " + a + "}\n")))
 	})
 
-	It("Prof-P1-c: uninstall -y refuses when two layers list the module, hinting --profile with -y, which works", func() {
+	It("uninstall -y refuses when two layers list the module, hinting --profile with -y, which works", func() {
 		listC := "version: 1\nmodules:\n  - {name: c, source: " + c + "}\n"
 		writeTree(p.UserProfiles, map[string]string{"one.yml": listC, "two.yml": listC, "work.yml": "version: 1\nbundle: [one, two]\n"})
 		Expect(lola("profile", "work", "--switch", "--user", "-y").code).To(Equal(0))
@@ -91,7 +91,7 @@ var _ = Describe("profiles", func() {
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "two.yml"))).To(Equal([]byte("version: 1\n")))
 	})
 
-	It("Prof-P1-c: uninstall without -y refuses off a terminal, and its hint adds -y", func() {
+	It("uninstall without -y refuses off a terminal, and its hint adds -y", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
 		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c")
@@ -103,7 +103,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.code).To(Equal(0), r.err)
 	})
 
-	It("Prof-P1-c: uninstall -t <one target> -y off a terminal still asks which layer a bundled module changes in", func() {
+	It("uninstall -t <one target> -y off a terminal still asks which layer a bundled module changes in", func() {
 		beta := filepath.Join(tmp, "mods", "beta")
 		writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "commands/beta.md": "B\n"})
 		writeTree(p.UserProfiles, map[string]string{"mixed-modules.yml": "version: 1\ntargets: [claude-code, opencode]\nmodules:\n  - {name: beta, source: " + beta + "}\n",
@@ -115,7 +115,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.err).To(ContainSubstring("lola uninstall needs to know whether to change it there, and there is no terminal to ask on"))
 	})
 
-	It("Prof-P1-c: uninstall -y removes a module from the one bundle member that lists it", func() {
+	It("uninstall -y removes a module from the one bundle member that lists it", func() {
 		beta := filepath.Join(tmp, "mods", "beta")
 		writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "commands/beta.md": "B\n"})
 		writeTree(p.UserProfiles, map[string]string{"mixed-modules.yml": "version: 1\nmodules:\n  - {name: beta, source: " + beta + "}\n",
@@ -219,7 +219,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.err).To(Equal(userContext + "error: no profile nope for user scope\n  hint: make it: lola profile nope --switch --new --user\n  hint: profiles user scope can use: user:baseline, default, user:go\n"))
 	})
 
-	It("lists where each profile stands, a bundle on and its members in a project and the profile on at user scope, as one glance (spec 2026-10-29 §4 S8)", func() {
+	It("lists where each profile stands, a bundle on and its members in a project and the profile on at user scope, as one glance", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n", "docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n"})
 		proj := filepath.Join(tmp, "proj")
 		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n"})
@@ -370,7 +370,7 @@ var _ = Describe("profiles", func() {
 
 		conf := &confirming{trusts: []engine.TrustAnswer{{}}}
 		lolaAsking(conf, "profile", "project:go", "--on", "-C", proj)
-		Expect(conf.steps[0].Changes).To(Equal(3), "the replacement, b, and project:go's targets (spec 2026-10-29 §3.10)")
+		Expect(conf.steps[0].Changes).To(Equal(3), "the replacement, b, and project:go's targets")
 		Expect(conf.steps[0].Groups).To(BeEmpty(), "all or none")
 
 		r = lola("profile", "project:go", "--on", "-C", proj, "--trust", "-y")

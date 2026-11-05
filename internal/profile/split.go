@@ -15,8 +15,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// Mixed is a profile file with both bundle: and modules: (spec 2026-10-29 §5.1), read for lola
-// profile --split (§5.2): the bytes the split rewrites, read as Load reads yours or, for a
+// Mixed is a profile file with both bundle: and modules:, read for lola
+// profile --split: the bytes the split rewrites, read as Load reads yours or, for a
 // project's, as LoadProject does.
 type Mixed struct {
 	Path    string
@@ -64,7 +64,7 @@ func ReadMixed(path string, project bool) (*Mixed, error) {
 	return &Mixed{Path: path, read: b, project: project}, nil
 }
 
-// Split is the two files m becomes (spec 2026-10-29 §5.2): bundle, m's file without modules: and
+// Split is the two files m becomes: bundle, m's file without modules: and
 // targets:, its bundle: listing its members and then modules (the new profile's name), every other
 // key and comment kept; and profile, a new file of version, m's targets: and its modules:, each
 // moved whole with its comments.

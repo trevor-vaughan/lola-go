@@ -16,7 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Plan 8 §9.2: a hint that repeats or runs another command keeps the run's output and scope
+// A hint that repeats or runs another command keeps the run's output and scope
 // flags, and carries a consent flag or --force only when it answers its own refusal's question.
 var _ = Describe("hints", func() {
 	var proj string
@@ -224,7 +224,7 @@ func hintLines(stderr string) []string {
 	return got
 }
 
-// Spec 2026-11-03 §3.3: a hint keeps the run's -t and -n, and -y where the hinted command asks
+// A hint keeps the run's -t and -n, and -y where the hinted command asks
 // what the user's -y answered.
 var _ = Describe("hints keep the user's flags", func() {
 	var tmp, proj string
@@ -237,15 +237,15 @@ var _ = Describe("hints keep the user's flags", func() {
 		GinkgoT().Chdir(proj)
 	})
 
-	It("P2-3: tidy -y refused for want of a scope hints each scope with -y", func() {
+	It("tidy -y refused for want of a scope hints each scope with -y", func() {
 		r := lola("tidy", "-y")
 		Expect(r.code).To(Equal(1), r.err)
 		Expect(hintLines(r.err)).To(Equal([]string{"lola tidy --yes --project", "lola tidy --yes --user"}))
 		r = lola("tidy", "-n", "-y")
-		Expect(hintLines(r.err)).To(Equal([]string{"lola tidy --dry-run --project", "lola tidy --dry-run --user"}), "R-8: a dry run asks nothing")
+		Expect(hintLines(r.err)).To(Equal([]string{"lola tidy --dry-run --project", "lola tidy --dry-run --user"}), "a dry run asks nothing")
 	})
 
-	It("P2-3: tidy --dry-run --project refused for want of targets hints a dry run that works", func() {
+	It("tidy --dry-run --project refused for want of targets hints a dry run that works", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\n", ".claude/skills/old/SKILL.md": "x\n"})
 		r := lola("tidy", "--dry-run", "--project")
 		Expect(r.code).To(Equal(1), r.err)
@@ -256,7 +256,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(filepath.Join(proj, ".claude", "skills", "old", "SKILL.md")).To(BeARegularFile(), "the hinted run stays dry")
 	})
 
-	It("R-8: tidy -n -y hints a dry run without -y, which a dry run never asks", func() {
+	It("tidy -n -y hints a dry run without -y, which a dry run never asks", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\n", ".claude/skills/old/SKILL.md": "x\n"})
 		r := lola("tidy", "--project", "-n", "-y")
 		Expect(r.code).To(Equal(1), r.err)
@@ -264,7 +264,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(r.err).NotTo(ContainSubstring(" -y"))
 	})
 
-	It("R-8: sync --scope both -n -y names each scope's run without -y; a run at one scope keeps it", func() {
+	It("sync --scope both -n -y names each scope's run without -y; a run at one scope keeps it", func() {
 		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		writeTree(filepath.Join(proj, "mods", "other"), map[string]string{"lola.yml": "name: other\n", "commands/other.md": "Other\n"})
 		Expect(lola("install", "./mods/kit", "--project", "-t", "claude-code").code).To(Equal(0))
@@ -284,7 +284,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(r.out).To(ContainSubstring("→ off a terminal: lola sync --project --trust=entries -y\n"))
 	})
 
-	It("R-8: a dry run's apply hint and a move hint carry -y only when you gave it", func() {
+	It("a dry run's apply hint and a move hint carry -y only when you gave it", func() {
 		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
 		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		r := lola("tidy", "-n", "skill/old", "--project", "-t", "claude-code")
@@ -304,7 +304,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(r.out+r.err).NotTo(ContainSubstring(" -y"), "the removal is asked, or refused off a terminal with its own hint")
 	})
 
-	It("Prof-P2-a: profile <ambiguous> --switch -y hints each profile with -y, which switches when run verbatim", func() {
+	It("profile <ambiguous> --switch -y hints each profile with -y, which switches when run verbatim", func() {
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(proj, map[string]string{".lola/profiles/mine.yml": "version: 1\n"})
@@ -318,7 +318,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(again.out + again.err).To(ContainSubstring("now: project " + proj + ": profile user:mine over project.yml"))
 	})
 
-	It("Prof-P2-c: profile <no such> --project hints the switch --new that makes it, which runs as printed", func() {
+	It("profile <no such> --project hints the switch --new that makes it, which runs as printed", func() {
 		writeTree(proj, map[string]string{".lola/profiles/other.yml": "version: 1\n"})
 		r := lola("profile", "foo1", "--project")
 		Expect(r.code).To(Equal(1), r.err)
@@ -331,13 +331,13 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(filepath.Join(p.UserProfiles, "foo1.yml")).To(BeARegularFile(), "--new makes yours")
 	})
 
-	It("Prof-P2-c: profile <reserved> shows no make-it hint, which would be refused", func() {
+	It("profile <reserved> shows no make-it hint, which would be refused", func() {
 		r := lola("profile", "project:base", "--project")
 		Expect(r.code).To(Equal(1), r.err)
 		Expect(r.err).NotTo(ContainSubstring("make it"))
 	})
 
-	It("Prof-P2-e: --new project:docs beside user:docs says a bare docs would name two profiles, and hints both qualified runs", func() {
+	It("--new project:docs beside user:docs says a bare docs would name two profiles, and hints both qualified runs", func() {
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n"})
@@ -353,7 +353,7 @@ var _ = Describe("hints keep the user's flags", func() {
 		}
 	})
 
-	It("P2-4: init's try-it hint names the project scope, and installs from a git project off a terminal", func() {
+	It("init's try-it hint names the project scope, and installs from a git project off a terminal", func() {
 		out, err := exec.Command("git", "-C", proj, "init", "-q").CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), string(out))
 		r := lola("init", "my-module")

@@ -133,7 +133,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user user:go --on"))
 		r = lola("profile", "--user", "remote:go", "--on", "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user user:go --on\n"), "R-8: -y answered nothing about another profile")
+		Expect(r.err).To(ContainSubstring("hint: use yours: lola profile --user user:go --on\n"), "-y answered nothing about another profile")
 
 		// Turned on before user:go existed, it is read as user:go, and still shows its own modules.
 		led := ledger.New()
@@ -271,7 +271,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(filepath.Join(p.Home, ".claude", "commands", "ship.md")).To(BeAnExistingFile())
 		})
 
-		It("hints --switch, not --on, when a profile is already on (spec 2026-10-29 §6.2, Q3)", func() {
+		It("hints --switch, not --on, when a profile is already on", func() {
 			mod := filepath.Join(tmp, "mods", "a")
 			writeTree(mod, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
 			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
@@ -280,7 +280,7 @@ var _ = Describe("remote profiles", func() {
 			r := lola("profile", "go", "--add", src, "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
 			hint := "lola profile --user remote:go --switch"
-			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): "+hint+"\n"), "R-8: no -y in a hint naming another command")
+			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): "+hint+"\n"), "no -y in a hint naming another command")
 			r = runConfirmed(hint)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(HavePrefix("user scope: profile mine over default\n"))
@@ -370,7 +370,7 @@ var _ = Describe("remote profiles", func() {
 				map[string]any{"kind": "hooks", "item": "hooked pre-install", "change": "new"}))
 		})
 
-		It("shows an update's sync in the viewer in full (Plan 10 §2.1)", func() {
+		It("shows an update's sync in the viewer in full", func() {
 			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
 			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
 			many := map[string]string{}
@@ -607,7 +607,7 @@ var _ = Describe("remote profiles", func() {
 				"lola profile takes no --force")
 			Expect(r.err).NotTo(ContainSubstring("which --force overrides"))
 			// The same sync would meet the same file: the hint is the one --force lets through,
-			// which says what it overrides and carries none of the run's answers (ruling R-6cux-4).
+			// which says what it overrides and carries none of the run's answers.
 			Expect(r.err).To(HaveSuffix("  hint: apply it later, overwriting what the conflicts list: lola sync --user example --force\n"))
 			Expect(r.err).NotTo(ContainSubstring("apply it later: "))
 			Expect(os.ReadFile(filepath.Join(p.Home, ".claude", "commands", "ship.md"))).To(Equal([]byte("mine now\n")))
@@ -692,7 +692,7 @@ var _ = Describe("remote profiles", func() {
 				"Apply it later: lola sync --project example, then lola sync --user example.\n"))
 			Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).To(BeAnExistingFile())
 
-			// --scope both is every known scope, as no flag is (ruling R-6b3c-2), and its hints keep it.
+			// --scope both is every known scope, as no flag is, and its hints keep it.
 			push("version: 1\ntargets: [claude-code]\ndescription: both\nmodules: []\n", "describe")
 			r = lola("profile", "go", "--update", "--scope", "both", "-n")
 			Expect(r.code).To(Equal(0), r.err)

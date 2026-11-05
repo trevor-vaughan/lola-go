@@ -283,7 +283,7 @@ var _ = Describe("every registered target", func() {
 					force := ctx
 					force.Force = true
 					_, declared := t.Capabilities().Kinds[target.KindRuntimeHook]
-					Expect(declared).To(Equal(t.ID() == "claude-code"), "only claude-code runs runtime hooks (Plan 5b design §7.1)")
+					Expect(declared).To(Equal(t.ID() == "claude-code"), "only claude-code runs runtime hooks")
 					for _, c := range []target.PlanContext{ctx, force} {
 						ins, fs := run(m, c)
 						if declared {

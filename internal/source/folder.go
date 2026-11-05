@@ -24,7 +24,7 @@ var ignoredNames = map[string]bool{".git": true, ".venv": true, "node_modules": 
 // Fetched is module content staged for the store. Dir is a fresh directory the caller owns.
 // Executables are the files the source's own metadata marks executable (git's tree modes, an
 // archive's entry modes, a folder's file system), as sorted slash paths relative to Dir: the
-// digest takes execute bits from them, never from the file system lola copied to (Plan 6a §5.2).
+// digest takes execute bits from them, never from the file system lola copied to.
 type Fetched struct {
 	Dir         string
 	Name        string // fallback module name: the base name of the module root's folder
@@ -66,7 +66,7 @@ func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched,
 	return Fetched{Dir: dst, Name: name, Executables: execs, Root: fetchedRoot(rel)}, nil
 }
 
-// listing says how copyTree enumerates a tree's files (design §3).
+// listing says how copyTree enumerates a tree's files.
 type listing int
 
 const (
@@ -124,7 +124,7 @@ func executablesUnder(all []string, rel, dst string) []string {
 // pathHint coaches a --path of a folder or git source that picks no directory.
 const pathHint = "--path is relative to the source's root: the folder itself, or the top of the git repository"
 
-// folderRoot applies the folder and git module-root rule (design §3.1) to the tree at base:
+// folderRoot applies the folder and git module-root rule to the tree at base:
 // --path, else module/ when it is a directory, else base itself. A --path of "." picks base
 // itself explicitly, skipping module/. The fallback name is baseName unless --path picks a
 // directory below base. Errors show the --path as given, never base, which for git is lola's
@@ -170,7 +170,7 @@ func checkedRoot(base, subpath, name, shown string) (string, string, error) {
 }
 
 // IsWithin reports whether child, after symbolic links, is inside parent, after symbolic links:
-// a path relative to the resolved parent that is filepath.IsLocal (Plan 6a §8). A child that does
+// a path relative to the resolved parent that is filepath.IsLocal. A child that does
 // not exist yet is resolved through its nearest existing ancestor. An error resolving either is
 // returned, never taken as an answer.
 func IsWithin(parent, child string) (bool, error) {

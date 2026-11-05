@@ -70,7 +70,7 @@ var _ = Describe("the frontmatter value check's rewrite", func() {
 		Expect(withValueCheck(Source{File: "a.md.liquid", Line: 1, Body: "k: {{-}} v\nw: {{ x }}\n"})).
 			To(Equal("k: {{ - | " + frontBreakFilter + "}} v\nw: {{ x | " + frontValueFilter + " }}\n"))
 
-		By("only a line's whole value or whole key gets the round-trip check (R-7-57)")
+		By("only a line's whole value or whole key gets the round-trip check")
 		for body, filter := range map[string]string{
 			"k: {{ x }}\n": frontValueFilter, "  - {{ x }} \r\n": frontValueFilter, "- k: {{ x }}": frontValueFilter, "{{ x }}: v\n": frontValueFilter,
 			"  {{ x }}:\n": frontValueFilter, "k: {{ x | json }}\n": frontBreakFilter, "k: v{{ x }}\n": frontBreakFilter,

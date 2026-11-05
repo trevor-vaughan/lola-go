@@ -16,10 +16,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// ProfileSplit is lola profile <name> --split (spec 2026-10-29 §5.2).
+// ProfileSplit is lola profile <name> --split.
 const ProfileSplit ProfileAction = "split"
 
-// SplitRequest is lola profile <name> --split at Scope (spec 2026-10-29 §5.2): Name as typed; To,
+// SplitRequest is lola profile <name> --split at Scope: Name as typed; To,
 // --to, the new profile's name ("" for <name>-modules, -2 … on a collision). Confirm asks "Split?"
 // once the plan is shown; Yes (-y) and Options.Force answer it, and without any of them (off a
 // terminal) the run is refused. WriteOnly writes the two files and applies nothing: the command
@@ -38,7 +38,7 @@ type SplitRequest struct {
 	Show            func(TrustReport)
 }
 
-// SplitPlan is what a split writes (spec 2026-10-29 §5.2): Bundle, the file it rewrites into a
+// SplitPlan is what a split writes: Bundle, the file it rewrites into a
 // bundle, with its members; Profile, the new profile its modules move to, with its top-level
 // targets and the modules, by name. Every string has been through untrusted.Text.
 type SplitPlan struct {
@@ -64,8 +64,7 @@ type SplitResult struct {
 	DryRun bool        `json:"dry_run"`
 }
 
-// SplitOfferError is a run refused by a profile file with both bundle: and modules: (spec
-// 2026-10-29 §5.1): Scope and Name, the profile as lola profile --split names it, which a
+// SplitOfferError is a run refused by a profile file with both bundle: and modules:: Scope and Name, the profile as lola profile --split names it, which a
 // terminal is offered (the CLI); off one the refusal hints the --split.
 type SplitOfferError struct {
 	Scope Scope
@@ -80,12 +79,12 @@ func (e *SplitOfferError) Unwrap() error { return e.err }
 // mixedError is err, the read of i at sc, as a SplitOfferError when it is a *profile.MixedError,
 // coached with the --split that fixes it; any other err as it is. The split names i qualified when
 // it is the project's, or when a profile of another kind sc can use (infos) has its name, so the
-// name resolves to i alone (ruling P2).
+// name resolves to i alone.
 func (e *Engine) mixedError(sc Scope, infos []profile.Info, i profile.Info, err error) error {
 	if _, mixed := errors.AsType[*profile.MixedError](err); !mixed {
 		return err
 	}
-	if i.Kind == profile.KindDefault { // the base lists modules: no split makes it a bundle (spec 2026-10-29 §3.1)
+	if i.Kind == profile.KindDefault { // the base lists modules: no split makes it a bundle
 		return errs.WithHints(errors.New(err.Error()), e.baseMembersHint(i.Path))
 	}
 	name := i.Name
@@ -99,8 +98,7 @@ func (e *Engine) mixedError(sc Scope, infos []profile.Info, i profile.Info, err 
 }
 
 // splitOn reports whether i is on at sc once split by w: the profile on, or a member of the bundle
-// on, which the expansion then reaches through i to made, the profile the split makes (ruling P3:
-// decided through the expansion, the files w writes read in place of the disk; a bundle is never a
+// on, which the expansion then reaches through i to made, the profile the split makes (decided through the expansion, the files w writes read in place of the disk; a bundle is never a
 // layer itself).
 func (e *Engine) splitOn(sc Scope, i profile.Info, made string, w *profileWrites) (bool, error) {
 	led, err := e.Ledger(sc)
@@ -157,7 +155,7 @@ func (e *Engine) baseMembersHint(path string) string {
 		e.bundleRun(user, freeName(infos, "default-bundle"), members, nil)
 }
 
-// Split splits req.Name's file (spec 2026-10-29 §5.2): its modules and top-level targets move,
+// Split splits req.Name's file: its modules and top-level targets move,
 // whole, into a new profile of its kind, and the file becomes a bundle of its old members and then
 // the new profile, so its own entries still win over its members'. Your profile is split at any
 // scope; a project's only in its project. The plan is asked about (Confirm, -y, --force) before

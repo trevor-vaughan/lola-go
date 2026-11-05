@@ -4,8 +4,7 @@ linters:
   settings:
     # depguard lets internal/market import source, yamldoc, manifest and module for their lexical
     # rules; these are the functions of theirs that reach the disk, the network or git, which no
-    # catalog string may (Plan 6c §6.1, ruling R-6c-10). Scoped to internal/market by the
-    # exclusion below.
+    # catalog string may. Scoped to internal/market by the exclusion below.
     forbidigo:
       analyze-types: true
       forbid:
@@ -40,7 +39,7 @@ linters:
             - go.yaml.in/yaml/v3
             - github.com/BurntSushi/toml
             - golang.org/x/mod/semver
-        # Profiles are read, never fetched or written (Plan 6b §6.1): no network, no engine,
+        # Profiles are read, never fetched or written: no network, no engine,
         # no state but the profile files themselves.
         profile:
           list-mode: strict
@@ -59,8 +58,8 @@ linters:
             - github.com/trevor-vaughan/lola-go/internal/untrusted
             - github.com/trevor-vaughan/lola-go/internal/yamldoc
             - go.yaml.in/yaml/v3
-        # Catalogs are a stranger's input, classified from their text alone (Plan 6c §6.1, ruling
-        # R-6c-10): no file system, so no catalog string can reach the disk from here.
+        # Catalogs are a stranger's input, classified from their text alone:
+        # no file system, so no catalog string can reach the disk from here.
         market:
           list-mode: strict
           files:
@@ -77,11 +76,11 @@ linters:
             - go.yaml.in/yaml/v3
           deny:
             - pkg: os
-              desc: the market package reads no files; the engine does (Plan 6c §6.1)
+              desc: the market package reads no files; the engine does
             - pkg: io/fs
-              desc: the market package reads no files; the engine does (Plan 6c §6.1)
+              desc: the market package reads no files; the engine does
         # The trash moves and copies what lola takes out of a destination; it decides nothing, so it
-        # needs no state, no engine and no target (Plan 6d §6.1).
+        # needs no state, no engine and no target.
         trash:
           list-mode: strict
           files:
@@ -102,7 +101,7 @@ linters:
             - $gostd
             - github.com/trevor-vaughan/lola-go/internal/module # name rules
             - github.com/trevor-vaughan/lola-go/internal/untrusted
-        # Templates are a stranger's input rendered in-process (Plan 7 §5): the sandbox reads no
+        # Templates are a stranger's input rendered in-process: the sandbox reads no
         # files and opens no connection, so a template cannot reach the disk or the network.
         templating:
           list-mode: strict
@@ -115,30 +114,30 @@ linters:
             - github.com/trevor-vaughan/lola-go/internal/untrusted
           deny:
             - pkg: os
-              desc: the templating package reads no files; the engine does (Plan 7 §5)
+              desc: the templating package reads no files; the engine does
             - pkg: io/fs
-              desc: the templating package reads no files; the engine does (Plan 7 §5)
+              desc: the templating package reads no files; the engine does
             - pkg: net
-              desc: the templating package opens no connection (Plan 7 §5)
+              desc: the templating package opens no connection
             - pkg: os/exec
-              desc: the templating package runs no program (Plan 7 §5)
+              desc: the templating package runs no program
             - pkg: io/ioutil
-              desc: the templating package reads no files; the engine does (Plan 7 §5)
+              desc: the templating package reads no files; the engine does
             - pkg: syscall
-              desc: the templating package makes no system call (Plan 7 §5)
+              desc: the templating package makes no system call
             - pkg: unsafe
-              desc: the templating package stays inside Go's memory safety (Plan 7 §5)
+              desc: the templating package stays inside Go's memory safety
             - pkg: plugin
-              desc: the templating package loads no code (Plan 7 §5)
+              desc: the templating package loads no code
         # Only the sandbox may import the template engine, so every template is screened, capped and
-        # rendered with lola's own filters (Plan 7 §5).
+        # rendered with lola's own filters.
         liquid:
           files:
             - "**"
             - "!**/internal/templating/**"
           deny:
             - pkg: github.com/osteele/liquid
-              desc: templates render only through internal/templating (Plan 7 §5)
+              desc: templates render only through internal/templating
     errcheck:
       exclude-functions:
         # Human output: a failed write to stdout/stderr has no better channel to report on.
@@ -164,8 +163,8 @@ linters:
         linters: [gosec]
         text: G504
       # G703 (taint: an environment-derived path reaching a file write) flags spec setups, whose
-      # paths come from paths.Resolve(os.Getenv) under testenv.Isolate's temporary directories
-      # (R-9-U11). Production code keeps it.
+      # paths come from paths.Resolve(os.Getenv) under testenv.Isolate's temporary directories.
+      # Production code keeps it.
       - path: _test\.go$
         linters: [gosec]
         text: G703

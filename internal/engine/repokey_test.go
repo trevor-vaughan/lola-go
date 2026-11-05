@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository", func() {
+var _ = Describe("a project's base picks are keyed by its repository", func() {
 	const repoKey = "git:example.com/o/r#."
 	var (
 		tmp, src string
@@ -77,7 +77,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 		writeTree(src, exampleModule)
 	})
 
-	It("Pick-P2-a: a fresh clone of the repository at another path installs only the pick", func() {
+	It("a fresh clone of the repository at another path installs only the pick", func() {
 		a := clone(filepath.Join(tmp, "a", "r"), "https://user:tok@example.com/o/r.git")
 		res := install(a, only("command/ship"))
 		Expect(selections()).To(ContainSubstring("projects:\n  " + repoKey + ":\n    example:\n"))
@@ -91,7 +91,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 		Expect(exists(b, ".claude/skills/review/SKILL.md")).To(BeFalse(), "the pick follows the repository")
 	})
 
-	It("Pick-P2-a: an scp-style origin carrying a token keeps the path key, and the token reaches neither the file nor the output", func() {
+	It("an scp-style origin carrying a token keeps the path key, and the token reaches neither the file nor the output", func() {
 		a := clone(filepath.Join(tmp, "a", "r"), "x-access-token:tok@example.com:o/r")
 		res := install(a, only("command/ship"))
 		Expect(selections()).To(ContainSubstring("projects:\n  " + a + ":\n"))
@@ -101,7 +101,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 		}
 	})
 
-	It("Pick-P2-a: a section under the project's path still applies, and the next pick write rewrites it to the repository key", func() {
+	It("a section under the project's path still applies, and the next pick write rewrites it to the repository key", func() {
 		a := clone(filepath.Join(tmp, "a", "r"), "https://example.com/o/r")
 		other := "  /elsewhere: # theirs\n    zeta:\n      skip: [agent/x]\n"
 		Expect(os.MkdirAll(filepath.Dir(p.Selections), 0o700)).To(Succeed())
@@ -115,7 +115,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 		Expect(exists(a, ".claude/skills/review/SKILL.md")).To(BeTrue())
 	})
 
-	It("Pick-P2-a: the ignored-section warning names the path key as the file writes it while the entry is still under it", func() {
+	It("the ignored-section warning names the path key as the file writes it while the entry is still under it", func() {
 		a := clone(filepath.Join(tmp, "a", "r"), "https://example.com/o/r")
 		Expect(os.Symlink(filepath.Join(tmp, "a"), filepath.Join(tmp, "link"))).To(Succeed())
 		linked := filepath.Join(tmp, "link", "r")
@@ -131,7 +131,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 		Expect(res.Notices).To(ContainElement(HaveField("Text", HavePrefix("selections.yaml projects["+linked+"] example is ignored: profile go provides it; delete it from "))))
 	})
 
-	It("Pick-P2-a: lola check in a clone git cannot read applies the path key's picks instead of refusing", func() {
+	It("lola check in a clone git cannot read applies the path key's picks instead of refusing", func() {
 		a := filepath.Join(tmp, "a", "r")
 		writeTree(a, map[string]string{".git": "gitdir: nowhere\n"})
 		writeTree(filepath.Dir(p.Selections), map[string]string{"selections.yaml": "version: 1\nprojects:\n  " + a + ":\n    example:\n      only: [command/ship]\n"})
@@ -144,7 +144,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 			HaveField("Hint", ""))))
 	})
 
-	It("Pick-P2-a: lola info in a clone git cannot read says its picks are keyed by path", func() {
+	It("lola info in a clone git cannot read says its picks are keyed by path", func() {
 		a := filepath.Join(tmp, "a", "r")
 		writeTree(a, map[string]string{".git": "gitdir: nowhere\n"})
 		info, err := e.Info(ctx, engine.InfoRequest{Cwd: a, Arg: src, Scope: engine.ScopeRequest{Project: true, Cwd: a}, Targets: claude.Targets,
@@ -155,7 +155,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 			": fatal: not a git repository: " + filepath.Join(a, "nowhere") + "; picks for this project are keyed by its path"}))
 	})
 
-	It("Pick-P2-a: lola list labels a pick by the key the file writes while the entry is still under the path", func() {
+	It("lola list labels a pick by the key the file writes while the entry is still under the path", func() {
 		a := clone(filepath.Join(tmp, "a", "r"), "https://example.com/o/r")
 		Expect(os.Symlink(filepath.Join(tmp, "a"), filepath.Join(tmp, "link"))).To(Succeed())
 		linked := filepath.Join(tmp, "link", "r")
@@ -167,7 +167,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 			HaveField("OnlyFrom", "selections.yaml projects["+linked+"]"))))
 	})
 
-	It("Pick-P2-a: says picks are personal only when the run's flags write them, not for picker answers or a plain install", func() {
+	It("says picks are personal only when the run's flags write them, not for picker answers or a plain install", func() {
 		a := clone(filepath.Join(tmp, "a", "r"), "https://example.com/o/r")
 		personal := HaveField("Text", ContainSubstring("a project profile shares picks"))
 		sc := engine.Scope{Kind: target.Project, ProjectDir: a}
@@ -184,7 +184,7 @@ var _ = Describe("Pick-P2-a: a project's base picks are keyed by its repository"
 		Expect(install(a, only("skill/review")).Notices).To(ContainElement(personal))
 	})
 
-	It("Pick-P2-a: a project with no origin keeps its path key, printed through untrusted.Text", func() {
+	It("a project with no origin keeps its path key, printed through untrusted.Text", func() {
 		proj := filepath.Join(tmp, "my\u202eproj")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		res := install(proj, only("command/ship"))

@@ -21,16 +21,16 @@ import (
 )
 
 // ProfileUpdate is lola profile's action that fetches a kept remote profile again from its
-// source (Plan 6b §3.2, §6.5); it is also the flag lola profile takes for it.
+// source; it is also the flag lola profile takes for it.
 const ProfileUpdate ProfileAction = "update"
 
-// ProfileUpdateRequest is one lola profile <name>... --update (Plan 6b §3.2): fetch the remote
+// ProfileUpdateRequest is one lola profile <name>... --update: fetch the remote
 // profiles Names names (as typed: go or remote:go), or every remote profile you have when All is
-// set (§19 P21), again from the source, ref and --path each one's source.json records. Scopes
-// are the scopes the scope flags named, none when no flag is given (§19 P20): without them the
+// set, again from the source, ref and --path each one's source.json records. Scopes
+// are the scopes the scope flags named, none when no flag is given: without them the
 // update is applied in every known scope that uses the profiles (knownScopes: the project found
 // from the working directory, then user scope); one narrows it to that scope; --scope both names
-// the project and user scope, in that order (ruling R-6b3c-2). The first of the scopes is the one
+// the project and user scope, in that order. The first of the scopes is the one
 // whose lock.json annotates the content shown.
 type ProfileUpdateRequest struct {
 	Scopes []Scope
@@ -44,28 +44,26 @@ type ProfileUpdateRequest struct {
 	// --no-pager as given), which a hint that repeats the run keeps too.
 	Rerun []string
 	// CannotAsk says no question can be asked (off a terminal, or --json). Without a scope flag,
-	// --trust answers only the profiles' consent, never a found project's trust (ruling
-	// R-6b3c-7): a found project with changes to trust then refuses the run before any network
-	// contact, naming it.
+	// --trust answers only the profiles' consent, never a found project's trust: a found project with
+	// changes to trust then refuses the run before any network contact, naming it.
 	CannotAsk bool
-	// Consent shows how one profile changes and asks whether to keep the new one (Plan 6b §8.2):
+	// Consent shows how one profile changes and asks whether to keep the new one:
 	// it is called once per profile that changed, so a No keeps that one and the run goes on to
 	// the next; an error stops the run (Ctrl+C). nil means it cannot ask: the run is refused
 	// before any network contact, unless Trust covers profiles: then Show, when set, shows each
 	// as a record, and Receipt, when set, is shown every profile that changed once, before any is
-	// written (Plan 9 §3.4).
+	// written.
 	Consent func([]RemoteProfile) (bool, error)
 	Trust   TrustKinds
 	Show    func([]RemoteProfile)
 	Receipt func([]Consent) (bool, error)
 	// Batch, when set, makes the update one of a command's runs (TrustBatch): what --trust covers
 	// goes to it instead of Receipt, and every profile kept is staged, not written: each scope's
-	// sync reads it, and CommitStaged writes it once the command's receipt is answered (CR3).
+	// sync reads it, and CommitStaged writes it once the command's receipt is answered.
 	Batch *TrustBatch
 }
 
-// What became of one remote profile of lola profile --update (Plan 6b §19 P21), as
-// ProfileOutcome.Outcome reports it.
+// What became of one remote profile of lola profile --update, as ProfileOutcome.Outcome reports it.
 const (
 	UpdateUpdated  = "updated"      // the new profile is written
 	UpdateUpToDate = "up_to_date"   // the source serves the pin it has
@@ -120,10 +118,10 @@ func (r *ProfileUpdateResult) UpdatedText() string {
 	return andJoin(updated) + " " + isAre(updated) + " updated"
 }
 
-// UpdateScope is one scope an update applies in (Plan 6b §19 P20): the scope (project or user)
-// and the project's root ("" at user scope), and Apply, the modules the updates move there (§19
-// P9), which the run that applies them syncs; [] when the scope uses none of the profiles written
-// or nothing moves. Of is the scope itself.
+// UpdateScope is one scope an update applies in: the scope (project or user) and the project's root
+// ("" at user scope), and Apply, the modules the updates move there, which the run that applies
+// them syncs; [] when the scope uses none of the profiles written or nothing moves. Of is the scope
+// itself.
 type UpdateScope struct {
 	Scope string   `json:"scope"`
 	Root  string   `json:"root"`
@@ -131,12 +129,11 @@ type UpdateScope struct {
 	Of    Scope    `json:"-"`
 }
 
-// UpdateStoppedError is a lola profile --update stopped by Err (Plan 6b §19 P21): an error of its
-// consent such as Ctrl+C, of taking the profiles lock again after a write, or of a later staged
-// profile that changed before CommitStaged wrote it. What it wrote is
-// kept, nothing after was fetched or asked about, and nothing is applied. Result is the run so
-// far: each profile's outcome (UpdateSkipped from where it stopped) and what each scope would
-// apply.
+// UpdateStoppedError is a lola profile --update stopped by Err: an error of its consent such as
+// Ctrl+C, of taking the profiles lock again after a write, or of a later staged profile that
+// changed before CommitStaged wrote it. What it wrote is kept, nothing after was fetched or asked
+// about, and nothing is applied. Result is the run so far: each profile's outcome (UpdateSkipped
+// from where it stopped) and what each scope would apply.
 type UpdateStoppedError struct {
 	Result *ProfileUpdateResult
 	Err    error
@@ -145,27 +142,26 @@ type UpdateStoppedError struct {
 func (e *UpdateStoppedError) Error() string { return e.Err.Error() }
 func (e *UpdateStoppedError) Unwrap() error { return e.Err }
 
-// UpdateProfile fetches remote profiles again from their recorded sources (Plan 6b §3.2, §6.5): the
-// names, the scopes and whether the run can ask for consent are checked before any network contact,
-// and each profile's recorded source (as --add checks one) before its own fetch; each profile is
-// then fetched, read as untrusted input, and how its entries changed shown with the whole content
-// of every added or changed one (remoteContent), and asked about on its own (§19 P21): a profile
-// whose pin did not change is a notice; a No keeps that one and goes on; a failure to fetch, read,
-// check or write one is its outcome, and the run goes on; an error of the question (Ctrl+C) stops
-// the run, keeping what it wrote (UpdateStoppedError, which carries the run so far). It asks no
-// scope (§19 P20): a profile file is shared by every scope, so without a scope flag the scopes it
-// applies in are every known one (knownScopes), as with --scope both (ruling R-6b3c-2), and a flag
-// that names one scope narrows them to it. A scope lola cannot read is refused before any question,
-// so nothing is kept that cannot be applied, with the run narrowed to the other scopes as hints.
-// Fetching, showing and asking hold the profiles lock shared; it is taken exclusively only to check
-// that a kept profile is still the one shown, and to replace it, crash-safe (writeRemote; ruling
-// R-6b3b-8). In each of its scopes that uses a profile written, as the profile on or a member of
-// the bundle on, Scopes names the modules the updates move there, those
-// whose winning entry changed (§19 P9), and every other pending change is counted in a notice.
-// Unless narrowed, a notice says other checkouts pick the update up at their next sync; narrowed,
-// the other scope a user sees from here (user scope, or from user scope the project found from the
-// working directory) is only read: a notice says how to apply the update there when it uses a
-// profile written, or that it could not be read.
+// UpdateProfile fetches remote profiles again from their recorded sources: the names, the scopes
+// and whether the run can ask for consent are checked before any network contact, and each
+// profile's recorded source (as --add checks one) before its own fetch; each profile is then
+// fetched, read as untrusted input, and how its entries changed shown with the whole content of
+// every added or changed one (remoteContent), and asked about on its own: a profile whose pin did
+// not change is a notice; a No keeps that one and goes on; a failure to fetch, read, check or write
+// one is its outcome, and the run goes on; an error of the question (Ctrl+C) stops the run, keeping
+// what it wrote (UpdateStoppedError, which carries the run so far). It asks no scope: a profile
+// file is shared by every scope, so without a scope flag the scopes it applies in are every known
+// one (knownScopes), as with --scope both, and a flag that names one scope narrows them to it. A
+// scope lola cannot read is refused before any question, so nothing is kept that cannot be applied,
+// with the run narrowed to the other scopes as hints. Fetching, showing and asking hold the
+// profiles lock shared; it is taken exclusively only to check that a kept profile is still the one
+// shown, and to replace it, crash-safe (writeRemote). In each of its scopes that uses a profile
+// written, as the profile on or a member of the bundle on, Scopes names the modules the updates
+// move there, those whose winning entry changed, and every other pending change is counted in a
+// notice. Unless narrowed, a notice says other checkouts pick the update up at their next sync;
+// narrowed, the other scope a user sees from here (user scope, or from user scope the project found
+// from the working directory) is only read: a notice says how to apply the update there when it
+// uses a profile written, or that it could not be read.
 func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_ *ProfileUpdateResult, err error) {
 	given, scopes := req.Scopes, req.Scopes
 	var skipped []Notice
@@ -174,7 +170,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	}
 	defer func() { err = e.CoachUnresolved(err, scopes, req.DryRun, outputOnly(req.Rerun)) }()
 	sc := scopes[0]
-	// Your home directory is user scope's root, never a project (ruling R-6b3c-9): a run named
+	// Your home directory is user scope's root, never a project: a run named
 	// there is refused before anything is fetched or kept, with the run at user scope instead.
 	if len(given) == 1 && e.IsHome(given[0]) {
 		args := []string{"--update", "--all"}
@@ -195,7 +191,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			return nil, err
 		}
 		// Another scope is another question: none of the run's answers (-y, --trust, the hook
-		// flags) travels into it (ruling R-6cux-4).
+		// flags) travels into it.
 		display := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
 		return nil, errs.WithHints(err, "update at user scope only: "+e.ProfileRun([]Scope{{Kind: target.User}}, slices.Concat(args, display)...))
 	}
@@ -242,7 +238,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			"see it: "+e.ProfileRun(given, run("-n")...),
 			"then update it unasked: "+e.ProfileRun(given, trusting()...))
 	}
-	// Every lola profile command refuses a tracked lock.json (Plan 6b §5, §19 S5), in every scope
+	// Every lola profile command refuses a tracked lock.json, in every scope
 	// it applies in; the first annotates the content shown.
 	u := &updateRun{e: e, ctx: ctx, given: given, sc: sc, flags: slices.Concat(req.Flags, req.Rerun), probes: e.newProbeRun(ctx)}
 	for i, s := range scopes {
@@ -263,7 +259,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		return nil, err
 	}
 	res.Notices = append(res.Notices, e.sweepRuns()...)
-	// What each scope wanted before the updates, to tell what they move (§19 P9): every scope they
+	// What each scope wanted before the updates, to tell what they move: every scope they
 	// apply in, which must be readable, and, when a flag narrowed it to one, the other one a user
 	// sees from there, which they only report on.
 	uses := make([]scopeUse, len(scopes))
@@ -331,7 +327,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		}
 	}
 	// trusted is each profile --trust covers: its outcome's index, its profile's and what it
-	// replaces, kept once the receipt is answered (Plan 9 §3.4).
+	// replaces, kept once the receipt is answered.
 	type trustedUpdate struct {
 		out, profile int
 		q            string
@@ -422,18 +418,17 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 	return res, nil
 }
 
-// updateNames is the remote profiles an update names (Plan 6b §19 P21): with All, every remote
-// profile you have (none is no error: the run says so); otherwise Names, each resolved as
-// remoteNamed does (sc, given), a name given twice taken once. Neither is refused; the CLI
-// refuses it first, with hints that keep the run's flags but the answers (-y and --trust), which a
-// hint naming profiles you never named does not carry.
+// updateNames is the remote profiles an update names: with All, every remote profile you have (none
+// is no error: the run says so); otherwise Names, each resolved as remoteNamed does (sc, given), a
+// name given twice taken once. Neither is refused; the CLI refuses it first, with hints that keep
+// the run's flags but the answers (-y and --trust), which a hint naming profiles you never named
+// does not carry.
 func (e *Engine) updateNames(sc Scope, given []Scope, req ProfileUpdateRequest) ([]string, error) {
 	switch {
 	case req.All:
 		return e.RemoteProfileNames()
 	case len(req.Names) == 0:
-		// A hint for profiles never named answers no question for them: no -y or --trust (ruling
-		// R-6b3c-8).
+		// A hint for profiles never named answers no question for them: no -y or --trust.
 		display := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
 		return nil, errs.WithHints(errors.New("--update needs the remote profiles to update, or --all"),
 			"update every one: "+e.ProfileRun(given, append([]string{"--update", "--all"}, display...)...))
@@ -475,9 +470,8 @@ func (o *ProfileOutcome) fail(err error) {
 }
 
 // updateRun is what every profile of one lola profile --update shares: the scopes the flags named
-// (none when empty), the scope whose lock.json (led) annotates the content shown, the run's flags, the
-// assistants' versions probed once, and the one template budget its trust diffs render on (Plan 7
-// §6.2).
+// (none when empty), the scope whose lock.json (led) annotates the content shown, the run's flags,
+// the assistants' versions probed once, and the one template budget its trust diffs render on.
 type updateRun struct {
 	e         *Engine
 	ctx       context.Context
@@ -536,11 +530,11 @@ func (u *updateRun) fetch(name string) (_ *RemoteProfile, was profile.Origin, _ 
 	return rp, was, nil, nil
 }
 
-// write replaces the kept remote profile rp.name with rp under the exclusive profiles lock, once
-// it is still the one whose origin was shown (was), crash-safe (writeRemote; ruling R-6b3b-8).
-// written reports that the new profile is in place; a failure after that is warn, not an error.
-// A profile that changed meanwhile is refused, hinting the update of again, the qualified names
-// of the profiles the refusal leaves unwritten.
+// write replaces the kept remote profile rp.name with rp under the exclusive profiles lock, once it
+// is still the one whose origin was shown (was), crash-safe (writeRemote). written reports that the
+// new profile is in place; a failure after that is warn, not an error. A profile that changed
+// meanwhile is refused, hinting the update of again, the qualified names of the profiles the
+// refusal leaves unwritten.
 func (u *updateRun) write(rp *RemoteProfile, was profile.Origin, again []string) (written bool, warn *Notice, err error) {
 	e := u.e
 	unlock, err := e.lockProfiles(true)
@@ -570,12 +564,12 @@ func (u *updateRun) write(rp *RemoteProfile, was profile.Origin, again []string)
 	return true, nil, nil
 }
 
-// updateScopes reads each scope of an update again once the profiles qs are written and records,
-// in order, the modules they move there (res.Scopes, §19 P9), with a notice for a scope that uses
-// none of them, one where they change nothing installed, and one counting what else is pending.
-// Unnarrowed (every known scope), a notice says other checkouts catch up at their next sync; a
-// narrowed run's other scope, theirs (nil when there is none), gets the notice that says how to
-// apply them there, or that it could not be read.
+// updateScopes reads each scope of an update again once the profiles qs are written and records, in
+// order, the modules they move there (res.Scopes), with a notice for a scope that uses none of
+// them, one where they change nothing installed, and one counting what else is pending. Unnarrowed
+// (every known scope), a notice says other checkouts catch up at their next sync; a narrowed run's
+// other scope, theirs (nil when there is none), gets the notice that says how to apply them there,
+// or that it could not be read.
 func (e *Engine) updateScopes(res *ProfileUpdateResult, scopes []Scope, uses []scopeUse, theirs *scopeUse, qs []string, everywhere bool) error {
 	if theirs != nil && theirs.err == nil {
 		theirs.err = theirs.after(e, qs)
@@ -584,7 +578,7 @@ func (e *Engine) updateScopes(res *ProfileUpdateResult, scopes []Scope, uses []s
 		u := &uses[i]
 		if err := u.after(e, qs); err != nil {
 			// Nothing is applied: the CLI syncs once every scope is read. A whole scope's sync
-			// carries none of the run's answers (ruling R-6b3c-8).
+			// carries none of the run's answers.
 			var hints []string
 			for _, s := range scopes {
 				hints = append(hints, "apply "+itThem(qs)+" "+scopeAt(s)+" once that is fixed: "+e.SyncCommand(s))
@@ -622,11 +616,10 @@ func (e *Engine) updateScopes(res *ProfileUpdateResult, scopes []Scope, uses []s
 
 // narrowUpdate is the refusal of an update that cannot read scopes[failed] for err: err, its
 // message after prefix, with its hints, then the run (args, the arguments that repeat it) narrowed
-// to each other scope it would apply in (Plan 6b §19 P20). A run a flag narrowed to one scope has
-// none, and is err itself when there is no prefix. A run narrowed to one scope is another question,
-// so it carries none of the run's answers: -y and --trust in any form (ruling R-6cux-4). A run
-// with no scope flag (unscoped) says, of a project, which changes there you have not trusted
-// (rulings R-6b3c-7, R-6b3c-8), since its --trust never answered them.
+// to each other scope it would apply in. A run a flag narrowed to one scope has none, and is err
+// itself when there is no prefix. A run narrowed to one scope is another question, so it carries
+// none of the run's answers: -y and --trust in any form. A run with no scope flag (unscoped) says,
+// of a project, which changes there you have not trusted, since its --trust never answered them.
 func narrowUpdate(err error, prefix string, scopes []Scope, failed int, unscoped bool, e *Engine, args []string) error {
 	msg := prefix + untrusted.CleanErr(err).Error()
 	run := slices.DeleteFunc(slices.Clone(args), func(a string) bool { return a == "-y" || trustArg(a) })
@@ -652,7 +645,7 @@ func narrowUpdate(err error, prefix string, scopes []Scope, failed int, unscoped
 
 // refuseUnnamedTrust refuses, before any network contact, an update with no scope flag that
 // cannot ask (req.CannotAsk) when a project among scopes has changes to project.yml or its
-// active profiles you have not trusted (ruling R-6b3c-7): --trust answers only the profiles'
+// active profiles you have not trusted: --trust answers only the profiles'
 // consent there, never that project's trust, so its sync would refuse after the profiles were
 // kept. It names the project and the modules, and hints the run (run, its arguments) with the
 // project named, alone or with --scope both, and --trust covering the kinds they need too.
@@ -671,7 +664,7 @@ func (e *Engine) refuseUnnamedTrust(req ProfileUpdateRequest, scopes []Scope, ru
 		if len(mods) == 0 {
 			continue
 		}
-		// The run with --trust covering the kinds the project's changes need too (Plan 9 §3.5).
+		// The run with --trust covering the kinds the project's changes need too.
 		arg := (req.Trust | need).Arg()
 		args := append(slices.DeleteFunc(run(), trustArg), arg)
 		return errs.WithHints(fmt.Errorf("project %s has changes you have not trusted (%s), which its sync asks about, and no flag named it: "+
@@ -683,7 +676,7 @@ func (e *Engine) refuseUnnamedTrust(req ProfileUpdateRequest, scopes []Scope, ru
 }
 
 // untrustedModules is the modules of sc's project.yml and active project profiles whose entries
-// differ from what you trusted (Plan 6a §7, Plan 6b §8.1), through untrusted.Text: what a sync of
+// differ from what you trusted, through untrusted.Text: what a sync of
 // that project asks about before it installs them; and the kinds of trust they need.
 func (e *Engine) untrustedModules(sc Scope) ([]string, TrustKinds, error) {
 	man, err := e.Manifest(sc)
@@ -700,7 +693,7 @@ func (e *Engine) untrustedModules(sc Scope) ([]string, TrustKinds, error) {
 	}
 	rep := checkParts(rec, trustParts(man, layers, nil))
 	if !installsToTargets(layers) {
-		rep = withoutTargets(rep) // spare: the sync does not ask about them (spec 2026-10-29 §16.1)
+		rep = withoutTargets(rep) // spare: the sync does not ask about them
 	}
 	var out []string
 	for _, c := range rep.Changes {
@@ -741,7 +734,7 @@ func itThem(qs []string) string {
 	return "them"
 }
 
-// scopeUse is how a scope uses remote profiles across an update of them (Plan 6b §6.5, §19 P9):
+// scopeUse is how a scope uses remote profiles across an update of them:
 // what its layers wanted before (old), and, once the updates are written (after), what of it uses
 // them (using: the one of them on, or the bundle on with one as a member; bundled counts its
 // members among them), the modules the updates move there and how many other differences from
@@ -807,10 +800,9 @@ func (u *scopeUse) after(e *Engine, qs []string) error {
 }
 
 // notice is what an update of the remote profiles qs says about the other scope a user sees from
-// here (ruling R-6b3b-2, for a run a scope flag narrowed): that it could not be read; or, when it
-// uses one of them, the command that applies the update there, or that the update changes nothing
-// installed there; of several, it names only the profiles the scope uses. also says the run's scope
-// uses them too.
+// here (for a run a scope flag narrowed): that it could not be read; or, when it uses one of them,
+// the command that applies the update there, or that the update changes nothing installed there; of
+// several, it names only the profiles the scope uses. also says the run's scope uses them too.
 func (u scopeUse) notice(e *Engine, qs []string, also bool) []Notice {
 	if u.err != nil {
 		return []Notice{{Level: LevelWarn, Text: "lola could not check whether " + subject(qs) + " " + isAre(qs) + " in use " + scopeAt(u.sc) + ": " +
@@ -832,8 +824,8 @@ func (u scopeUse) notice(e *Engine, qs []string, also bool) []Notice {
 // usedText says how the scope uses the remote profiles qs (u.using: the one of them on, or the
 // bundle on that has one as a member; also when the run's scope uses them too). Of one, it says it
 // is on, or which bundle it is in; of several, it names the one on or the bundle on as what it is,
-// never that a profile it does not use is in use. A scope has one profile on (spec 2026-10-29
-// §3.3), so u.using names at most one.
+// never that a profile it does not use is in use. A scope has one profile on, so u.using names at
+// most one.
 func (u scopeUse) usedText(qs []string, also bool) string {
 	at, on := scopeAt(u.sc), "on"
 	if also {
@@ -916,7 +908,7 @@ func (e *Engine) noRemote(given []Scope, name string, action ProfileAction) erro
 
 // readd is err, the remote profile name's that does not load, with the commands that replace it
 // with a fresh copy. Removing it takes --force: a profile that does not load is in use wherever
-// it was read, and no check of its use can pass; it never carries -y (ruling R-6b3c-8). Then, when its
+// it was read, and no check of its use can pass; it never carries -y. Then, when its
 // source.json still reads and --add would take its source, ref and --path, add it again from
 // them; when --add would refuse them, say why.
 func (e *Engine) readd(sc Scope, name string, err error) error {
@@ -951,8 +943,8 @@ func pinText(o profile.Origin) string {
 	return "commit " + shown(o.Commit[:min(12, len(o.Commit))]) + ", " + shown(o.Digest)
 }
 
-// uses is sc's layers and lock.json, with the qualified names of what of sc uses the profiles qs
-// (spec 2026-10-29 §3.11): the profile on, when it is one of qs (read as itself, not in place of a
+// uses is sc's layers and lock.json, with the qualified names of what of sc uses the profiles qs:
+// the profile on, when it is one of qs (read as itself, not in place of a
 // user profile that shadows it), or a bundle that reaches one of qs as a member, nested or not,
 // whether or not that member gives a layer (Layer.reached).
 func (e *Engine) uses(sc Scope, qs ...string) ([]Layer, *ledger.Ledger, []string, error) {
@@ -1021,7 +1013,7 @@ type stagedRemote struct {
 }
 
 // stage keeps rp, whose outcome is the update's out-th, in place of the remote profile at its
-// path for the rest of the command (CR3).
+// path for the rest of the command.
 func (e *Engine) stage(rp RemoteProfile, was profile.Origin, out int) {
 	if e.staged == nil {
 		e.staged = map[string]stagedRemote{}

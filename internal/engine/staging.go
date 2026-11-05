@@ -21,7 +21,7 @@ import (
 // cannot yet see.
 const staleRun = time.Minute
 
-// runDir creates the private staging directory of one staging command (Plan 6a §6.3): its
+// runDir creates the private staging directory of one staging command: its
 // fetch scratch, fetched copies, version builds and snapshots all go inside. Commands that report
 // notices sweep first (sweepRuns). done, which the command calls when it ends, removes the
 // directory and its lock (scratch).
@@ -41,8 +41,8 @@ const (
 const scratchTries = 10
 
 // scratch creates a scratch directory, prefix plus a random suffix, under parent for one live
-// run, and holds an exclusive lock on the lock file of its name beside it for the run's life
-// (R-9-9): lola cache clean removes only scratch whose lock it can take without waiting. The lock
+// run, and holds an exclusive lock on the lock file of its name beside it for the run's life:
+// lola cache clean removes only scratch whose lock it can take without waiting. The lock
 // file is created and locked before the directory exists; done removes the directory, then
 // releases and removes the lock. A lock file another lola removed between its creation and its
 // locking (a clean that found it free) holds nothing, so scratch takes another name.
@@ -102,7 +102,7 @@ func lockedAt(fl *flock.Flock, path string) bool {
 }
 
 // sweepRuns removes the run directories under Paths.Staging last modified more than staleRun
-// ago whose lock no live run holds (R-9-9, A28), with their locks, and the run-*.lock files left
+// ago whose lock no live run holds, with their locks, and the run-*.lock files left
 // without their directory under the same rule: what killed processes left behind; a live run
 // waiting at a prompt keeps its directory however long. It is best effort: what it cannot remove is a warning, never a refusal, and the next sweep tries again.
 // lola cache add, which reports no notices, does not sweep.

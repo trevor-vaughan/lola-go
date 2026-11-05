@@ -18,7 +18,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Limits for every JSON file lola reads from a module (Plan 5b design §3.1).
+// Limits for every JSON file lola reads from a module.
 const (
 	maxJSONSize  = 1 << 20 // bytes
 	maxJSONDepth = 64      // nested objects and arrays; module configuration is a few levels deep

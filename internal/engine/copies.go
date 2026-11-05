@@ -13,10 +13,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 )
 
-// moduleCopy is the cache version a module copy must hold (§6.4), whether the copy is
+// moduleCopy is the cache version a module copy must hold, whether the copy is
 // replaced with it, and whether the module's install hooks run in it on targets. forced says the
 // copy holds that version already and is replaced only so that its hooks run from the hashed
-// version, never in the kept copy (Plan 6a §9.3 step 10): keepUnhooked keeps it as it was when
+// version, never in the kept copy: keepUnhooked keeps it as it was when
 // no hook runs. pending says lock.json marks its post-install hook as not run yet.
 type moduleCopy struct {
 	// fromSource is the lola info arguments that show, from a sync's folder or archive source as
@@ -42,7 +42,7 @@ type moduleCopy struct {
 	shows         *store.Version
 	reviewTargets []string
 	// pendingScript offers the project's post-install script, pending on the copy since it was
-	// declined (ledger.Entry.ScriptsPending), to run alone in the copy as it is (Plan 9 §5.5, A4).
+	// declined (ledger.Entry.ScriptsPending), to run alone in the copy as it is.
 	pendingScript bool
 	// scriptNotice says the run keeps that script pending on the copy, and its notice says so.
 	scriptNotice bool
@@ -75,7 +75,7 @@ func addsTargets(installed *ledger.Entry, ts []string) bool {
 // needsCopy reports whether the copy of name under dir must be (re)placed: its version
 // changes (prev is the ledger entry, nil when the module has none) or the copy is missing.
 // An entry that is not a real directory, such as a committed symlink, counts as missing.
-// A copy's own content is never compared: install hooks build in it (§6.4).
+// A copy's own content is never compared: install hooks build in it.
 func needsCopy(dir, name string, prev *ledger.Entry, digest string) (bool, error) {
 	if prev == nil || prev.Digest != digest {
 		return true, nil

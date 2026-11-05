@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
-// Created is a profile file a run made (spec 2026-10-29 §3.7, §4 S2, S3, S7): Profile its
+// Created is a profile file a run made: Profile its
 // qualified name and Path its file; Bundle a bundle's members as written; From the profile it is a
 // copy of, with Modules the entries it got. Every string has been through untrusted.Text.
 type Created struct {
@@ -32,8 +32,7 @@ type Created struct {
 	Modules   int    `json:"modules"`
 }
 
-// profileWrites is the profile files a run makes or rewrites in its apply's transaction (spec
-// 2026-10-29 §6.2 --new, §5.2 --split): files, each with the bytes lola writes and the check run
+// profileWrites is the profile files a run makes or rewrites in its apply's transaction: files, each with the bytes lola writes and the check run
 // just before the write; read, each file's profile as those bytes parse, which the run's layers
 // read in place of the disk (Engine.readFile); infos, the profiles of the files it makes, which
 // the scope's listing lacks until they exist (Engine.visible); made, what the result says it made;
@@ -78,7 +77,7 @@ func (w *profileWrites) add(sc Scope, kind profile.Kind, name, path string, data
 	w.read[path], w.infos, w.made = p, append(w.infos, profile.Info{Name: name, Kind: kind, Path: path}), append(w.made, c)
 }
 
-// newProfiles is what lola profile <name> --switch --new writes at sc (spec 2026-10-29 §6.2): the
+// newProfiles is what lola profile <name> --switch --new writes at sc: the
 // profile ch.Name names, yours or with project:<name> the project's, which must not exist; empty,
 // a copy of ch.From's entries and top-level targets (no pin into a profile of yours), or with
 // ch.Bundle a bundle of those members, each that names no profile made too, empty (newMembers).
@@ -210,7 +209,7 @@ func isDir(i profile.Info) bool {
 }
 
 // NewOrSwitch decides what lola profile <ch.Name> --switch given --from or --bundle without --new
-// means at sc (spec 2026-10-29 §6.2), for the refusal's hint: exists when a switch resolves the name
+// means at sc, for the refusal's hint: exists when a switch resolves the name
 // to a profile (the hint drops the modifier); else nil when --new would make it (the hint adds
 // --new); else the refusal of both (the switch's when the name is ambiguous, else --new's), with
 // their working hints; again is what those keep of the run.
@@ -311,11 +310,10 @@ func (e *Engine) refuseExisting(sc Scope, infos []profile.Info, name string, ch 
 	return errs.WithHints(fmt.Errorf("%s names %s; --new makes a profile that does not exist yet%s", shown(name), andJoin(named), why), hints...)
 }
 
-// newMembers checks the members of a bundle kind:name that --new --bundle makes (spec 2026-10-29
-// §6.2): each resolves as the bundle will read it (expansion.member), and each bare one, or
+// newMembers checks the members of a bundle kind:name that --new --bundle makes: each resolves as the bundle will read it (expansion.member), and each bare one, or
 // user:<name> in a bundle of yours, that names no profile is made empty, of the bundle's own kind,
 // in w. A bundle naming itself, a project: member that names no profile here (making the project's
-// shared file on the side is too big a side effect: ambiguity 10, ruling P12) and a remote profile
+// shared file on the side is too big a side effect) and a remote profile
 // you do not have are refused (the profile package refuses default, base, a name twice and user:
 // in a project's bundle, naming the line, when the bundle's bytes are parsed). runs words the
 // hints.
@@ -363,7 +361,7 @@ func (e *Engine) newMembers(sc Scope, infos []profile.Info, w *profileWrites, ki
 	return nil
 }
 
-// copyOf is the file --new --from makes at path for a profile of kind (spec 2026-10-29 §6.2, Q5):
+// copyOf is the file --new --from makes at path for a profile of kind:
 // from's top-level targets and entries, each as the new file records it (writeTo.fileEntry: no pin
 // in a profile of yours, local sources in the form the new file reads them), or, from a bundle, a
 // bundle of its members. keep is what the trust record takes as trusted in a new project profile:
@@ -429,8 +427,7 @@ func (e *Engine) copyOf(ctx context.Context, sc Scope, infos []profile.Info, kin
 }
 
 // outOfProject refuses the copy of src, i's profile as read, a project profile of sc's, into t, a
-// profile of yours, unless a move of its entries there would go (spec 2026-10-29 §16.2, decisions
-// rows 90, 184): no local source inside a project (localInProject), and every entry installed as
+// profile of yours, unless a move of its entries there would go (decisions rows 90, 184): no local source inside a project (localInProject), and every entry installed as
 // the project's own sync, which judges entries, targets and a folder's content, would leave it
 // (installedAsTrusted). A profile that changed while it was judged is refused too.
 func (e *Engine) outOfProject(ctx context.Context, sc Scope, i profile.Info, src *profile.Profile, t writeTo, display []string) error {
@@ -490,7 +487,7 @@ func (e *Engine) sameMembers(sc Scope, infos []profile.Info, i profile.Info, src
 	return out
 }
 
-// memberName is how a bundle of yours names i as a member (spec 2026-10-29 §3.3): bare when a bare
+// memberName is how a bundle of yours names i as a member: bare when a bare
 // name reads as i there (yours, or a remote one no profile of yours shadows), else qualified.
 func memberName(infos []profile.Info, i profile.Info) string {
 	switch {
@@ -508,16 +505,15 @@ func bundleName(infos []profile.Info, members []string) string {
 	return freeName(infos, strings.Join(bareNames(members), "-"))
 }
 
-// bundleRun is the run that makes the bundle name of members and switches to it at sc (spec
-// 2026-10-29 §6.2, §6.3): lola profile <name> --switch --new --bundle a,b; again is what it keeps
+// bundleRun is the run that makes the bundle name of members and switches to it at sc: lola profile <name> --switch --new --bundle a,b; again is what it keeps
 // of the run.
 func (e *Engine) bundleRun(sc Scope, name string, members []string, again []string) string {
 	return e.Command(sc, "profile", append([]string{name, "--switch", "--new", "--bundle", strings.Join(members, ",")}, again...)...)
 }
 
 // BundleOffer is the run that combines the profiles names (as typed at sc) into a bundle of yours
-// and switches to it: what lola profile --switch a b hints, since one profile is on at a time
-// (spec 2026-10-29 §6.2). Its name is the names joined with -. A name that names no profile, or
+// and switches to it: what lola profile --switch a b hints, since one profile is on at a time.
+// Its name is the names joined with -. A name that names no profile, or
 // several, is refused as --switch refuses it.
 func (e *Engine) BundleOffer(sc Scope, names []string, again []string) (string, error) {
 	infos, _, err := e.visible(sc)

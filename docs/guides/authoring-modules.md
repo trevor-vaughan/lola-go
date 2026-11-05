@@ -75,7 +75,9 @@ targets](../usage.md#scopes-and-targets)) and never edits your `CLAUDE.md`, `GEM
 `AGENTS.md`. Gemini CLI reads them only in folders you trust, and project rules only when it starts
 in the project root. Frontmatter is removed; a `paths:` key is an error, because guidance for some
 files belongs in a skill. The rest of a rule is delivered verbatim: `${PLUGIN_ROOT}` is not expanded
-in rules. A rule whose remaining text starts with `---` gets an empty `---` block first, so that
+in rules.
+
+A rule whose remaining text starts with `---` gets an empty `---` block first, so that
 text is never read as the rule's frontmatter. A module-root `INSTRUCTIONS.md` or `AGENTS.md` is not
 installed; lola warns and suggests moving it to `rules/`. `lola install --no-rules` installs
 everything else and records `rules: false` on the module's entry in the scope's manifest
@@ -97,7 +99,9 @@ lola reads a module from the first of these it finds; the others are ignored, wi
 `lola cache add` detects the format, as do `lola install` and `lola check` given a source. The
 cached copy keeps the plugin's own files where they are and gains a `lola.yml` with `format:` and
 a `components:` section (below) listing every artifact the plugin declared, so loading it never
-interprets the plugin format again. Before it caches a version, lola reloads that copy as
+interprets the plugin format again.
+
+Before it caches a version, lola reloads that copy as
 an install will and refuses the module if it reads differently from the source ("could not
 cache ... faithfully"); that is a lola bug to report. Warnings about the plugin (unsupported
 keys, skipped skills) are shown when the module is added or checked from its source; they are
@@ -235,30 +239,39 @@ as you, unconfined, once per assistant, in the module copy, with `LOLA_MODULE_NA
 `LOLA_MODULE_PATH`, `LOLA_PROJECT_PATH`, `LOLA_ASSISTANT`, `LOLA_SCOPE` and `LOLA_HOOK` set; their
 output goes to stderr, and each run is stopped after 10 minutes. lola runs them only with your
 consent: on a terminal it shows each script with its sha256 and asks (default No), and
-remembers a yes until a hook script changes. Before a hook runs, lola replaces the module copy
+remembers a yes until a hook script changes.
+
+Before a hook runs, lola replaces the module copy
 from the version it verified, so hooks never run in an edited copy; reinstalling the same version
 with no hook to run (no consent, say) keeps the copy and what its hooks built. Consent covers the
 hook scripts themselves, not other files they run, so review those too. `--trust=hooks` consents
 without asking, listed in the run's receipt first, and is recorded as a yes is (until a hook script
 changes); `-y` and `--force` never consent.
+
 Without consent a `pre-install` hook stops the install before anything is written, and a
 `post-install` hook is skipped with a warning. A failing `pre-install` hook installs nothing; a
 failing `post-install` hook leaves the installation in place with a warning. `lola sync` and `lola update` run
 hooks only for modules whose version changed or that gain a target, and `--dry-run` lists hooks without running them
-(`would run`). A `post-install` hook skipped without your consent stays **pending** in
+(`would run`).
+
+A `post-install` hook skipped without your consent stays **pending** in
 `lock.json` (`hooks_pending`): `lola sync <module>` replaces the module copy from the version lola
 hashed, so an edited copy never runs, and asks again showing the scripts; off a terminal,
 `lola sync <module> --trust=hooks` runs it. A sync that does not name the module, and is not
 given `--trust=hooks`, asks nothing about the hook and says
 `pending post-install hook for <module> → lola sync --project <module>` (off a terminal, with the
 `--trust=hooks` form); a dry run says so too, and, naming the module, shows the hook it would
-run. A `pre-install` hook refused off a terminal hints first `review it: lola info …` of exactly the
+run.
+
+A `pre-install` hook refused off a terminal hints first `review it: lola info …` of exactly the
 version the run would install (a git module as its source at the commit; anything else by its
 cached name at the head that holds it, or, for a `lola sync` or `lola update` of a folder or
 archive, which a refused run does not cache, as its source from your working directory, e.g.
 `lola info --project ./mods/kit`; no such hint when no `lola info` can show that version), then
 your run with `--trust=` the kinds you gave, `hooks`, and any other kind the run would still be
-refused for (`scripts`, for the project's untrusted pre-install script). For `lola sync` and
+refused for (`scripts`, for the project's untrusted pre-install script).
+
+For `lola sync` and
 `lola update` that run also pins, with `--at`, each version the refusal showed, so your consent
 covers the hook you reviewed alone: a folder edited since is refused, its hook not run.
 Following the `lola info` hint caches the version it shows (`lola info` is not a refusal).
@@ -301,7 +314,9 @@ stateDiagram-v2
 `lola install --pre-install`/`--post-install` run around every copy of your module an install
 writes, whether or not it has hooks: the pre-install scripts before your `pre-install` hook, the
 post-install ones after your `post-install` hook, once per assistant, in the module copy with the
-same environment plus `LOLA_SCRIPT_SOURCE` (`user`, `project` or `flag`). A hook should not count
+same environment plus `LOLA_SCRIPT_SOURCE` (`user`, `project` or `flag`).
+
+A hook should not count
 on running first or last, nor rewrite files outside the module copy that a script may read: lola
 hashes each script again just before it runs it and does not run one that changed: a pre-install
 script stops the install, nothing written, and a post-install one is skipped with a warning

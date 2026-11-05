@@ -13,7 +13,7 @@ import (
 )
 
 // MarketGroup is one of your marketplaces with a fetched catalog, as the install pickers, search
-// and completion browse it (Plan 6c §6.5, §6.8): its name and description and the entries an
+// and completion browse it: its name and description and the entries an
 // install of its address can take, in catalog order. Every string has been through untrusted.Text.
 type MarketGroup struct {
 	Name        string        `json:"name"`
@@ -36,7 +36,7 @@ type MarketOffer struct {
 }
 
 // MarketGroups are your marketplaces with a fetched catalog, in markets.yaml's order, each with
-// the entries it offers (Plan 6c §6.5, §6.8). It never fetches. A marketplace whose cache cannot
+// the entries it offers. It never fetches. A marketplace whose cache cannot
 // be read is left out, with a warning naming the --update that fetches it again, and an entry
 // whose cache record cannot be read browses as not cached, with a warning naming the lola cache rm
 // that clears it; display is the run's output flags, which those commands keep.
@@ -82,8 +82,7 @@ func (e *Engine) MarketGroups(display []string) ([]MarketGroup, []string, error)
 	return groups, warnings, nil
 }
 
-// MarketMeaning is what the install argument name may mean among your marketplaces (Plan 6c
-// §3.3): when it is a module name your cache does not hold and no source here (cwd), the entries
+// MarketMeaning is what the install argument name may mean among your marketplaces: when it is a module name your cache does not hold and no source here (cwd), the entries
 // of that name your fetched catalogs offer, one per marketplace; otherwise none, as name means
 // the cached module or the source. lola never picks one of them for you.
 func (e *Engine) MarketMeaning(name, cwd string, display []string) ([]MarketOffer, error) {
@@ -109,15 +108,14 @@ func (e *Engine) MarketMeaning(name, cwd string, display []string) ([]MarketOffe
 	return out, nil
 }
 
-// matches reports whether q, lower-cased, is in o's name, description or tags, case-insensitively
-// (Plan 6c §6.8).
+// matches reports whether q, lower-cased, is in o's name, description or tags, case-insensitively.
 func (o MarketOffer) matches(q string) bool {
 	return strings.Contains(strings.ToLower(o.Name), q) || strings.Contains(strings.ToLower(o.Description), q) ||
 		slices.ContainsFunc(o.Tags, func(t string) bool { return strings.Contains(strings.ToLower(t), q) })
 }
 
 // marketCount is how many entries of the scopes' manifests mans name r, by its name and source,
-// as their market (Plan 6c §3.1).
+// as their market.
 func marketCount(r market.Registration, mans []*manifest.Manifest) int {
 	n := 0
 	for _, m := range mans {

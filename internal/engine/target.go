@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 )
 
-// writeTo is the file an edit of a scope writes (spec 2026-10-29 §3.5): Layer, the layer it is,
+// writeTo is the file an edit of a scope writes: Layer, the layer it is,
 // whose Name is lock.json's from and every notice's name for it, and whose Profile, Key, Base and
 // read say what kind of file it is and hold its parse (read nil for project.yml and for a file of
 // yours that does not exist yet); on, whether the scope loads it (the base, or the profile on);
@@ -38,7 +38,7 @@ func (t writeTo) from() string {
 	return ""
 }
 
-// kind is t's kind as an edit names it (spec 2026-10-29 §9): base for the scope's base
+// kind is t's kind as an edit names it: base for the scope's base
 // (project.yml, default.yml), project for a project profile, user for a profile of yours.
 func (t writeTo) kind() string {
 	switch {
@@ -56,16 +56,16 @@ func baseTarget(base Layer) writeTo {
 	return writeTo{Layer: base, on: true, label: layerLabel(nil, base.Name)}
 }
 
-// TargetRequest is what a writing command was told about where its edit goes (spec 2026-10-29
-// §3.5, §3.6): Profile is --profile ("" for none; base, or at user scope default, names the
-// scope's base), Override is --override; Rerun, when set, is the user's run without either and
-// without its consent flags, with extra appended, and UserRun the run at user scope (its project
-// flags replaced by --user): what a refusal hints. Without them a hint is lola <verb> <module>
-// with the scope's flags. Flag is the flag a Profile choice is given with: --profile when empty,
-// --to for a move, whose Rerun leaves its own --to out. Again is what a hint naming another
-// command keeps of the run, as Rerun does: -n and its output flags.
+// TargetRequest is what a writing command was told about where its edit goes: Profile is --profile
+// ("" for none; base, or at user scope default, names the scope's base), Override is --override;
+// Rerun, when set, is the user's run without either and without its consent flags, with extra
+// appended, and UserRun the run at user scope (its project flags replaced by --user): what a
+// refusal hints. Without them a hint is lola <verb> <module> with the scope's flags. Flag is the
+// flag a Profile choice is given with: --profile when empty, --to for a move, whose Rerun leaves
+// its own --to out. Again is what a hint naming another command keeps of the run, as Rerun does: -n
+// and its output flags.
 //
-// Edit says the run is lola profile <Profile> --edit (spec 2026-10-29 §6.2): a hint that would
+// Edit says the run is lola profile <Profile> --edit: a hint that would
 // name lola install names lola profile <name> --edit (installRun), Rerun takes "--profile <name>" in
 // extra as the profile the run names, and the flag form of Override names the write target. New is
 // --new with it: Profile names a profile to make, of yours or with project:<name> the project's,
@@ -129,13 +129,13 @@ func (e *Engine) installRun(sc Scope, req TargetRequest, args ...string) string 
 	return e.Command(sc, "profile", append(words, rest...)...)
 }
 
-// repickRun is the run that changes the picks of module where from provides it at sc (cherry-pick
-// design §6; decision C2 of the 2026-11-01 audit), args following the module, sc's flags kept:
-// lola profile <name> --edit <module> for a profile of yours, the project's or your default (named
-// as editArg names it among infos, the profiles sc can use, and layers' entries); for project.yml's,
-// lola install <module> while no profile is on at sc (on), else lola profile base --edit <module>,
-// which asks nothing about where the change goes; for a remote profile's, which lola does not edit,
-// the switch to a copy of yours (remoteReadOnly's run), without args.
+// repickRun is the run that changes the picks of module where from provides it at sc, args
+// following the module, sc's flags kept: lola profile <name> --edit <module> for a profile of
+// yours, the project's or your default (named as editArg names it among infos, the profiles sc can
+// use, and layers' entries); for project.yml's, lola install <module> while no profile is on at sc
+// (on), else lola profile base --edit <module>, which asks nothing about where the change goes; for
+// a remote profile's, which lola does not edit, the switch to a copy of yours (remoteReadOnly's
+// run), without args.
 func (e *Engine) repickRun(sc Scope, layers []Layer, infos []profile.Info, on bool, from, module string, args ...string) string {
 	rest := append([]string{module}, args...)
 	q, isProfile := strings.CutPrefix(from, ledger.FromProfile(""))
@@ -171,10 +171,9 @@ func ProfileFlag(args []string) (string, []string) {
 	return name, rest
 }
 
-// WhereQuestion is a question about where a change goes (spec 2026-10-29 §3.5 row 4, §3.6), which
-// neither -y nor --force answers: Title says why it is asked, Choices are its answers in order (a
-// picker adds Cancel), Scope the scope it is about and Module the module ("" for the question
-// about the profile on).
+// WhereQuestion is a question about where a change goes, which neither -y nor --force answers:
+// Title says why it is asked, Choices are its answers in order (a picker adds Cancel), Scope the
+// scope it is about and Module the module ("" for the question about the profile on).
 type WhereQuestion struct {
 	Scope   Scope
 	Module  string
@@ -227,7 +226,7 @@ func (e *Engine) flagRun(sc Scope, req TargetRequest, verb, module string, c Whe
 }
 
 // inheritedFrom is the winning entry of module when an edit of it at a scope whose layers are
-// layers, writing t, edits another layer's entry (spec 2026-10-29 §3.6): one from another layer
+// layers, writing t, edits another layer's entry: one from another layer
 // than t (the base, or another member of the bundle on); nil when the entry is t's own, the
 // scope has no entry for module, or t is not loaded or is below the winner (save-only).
 func inheritedFrom(layers []Layer, t writeTo, module string) *Wanted {
@@ -253,9 +252,9 @@ func providerEntry(layers []Layer, w *Wanted) *manifest.Entry {
 	return writeTo{Layer: layers[k]}.layerEntry(w.Name)
 }
 
-// sameRequest reports whether ent, what an install asks for, asks what w's entry says (spec
-// 2026-10-29 §3.6): its source, ref, path, rules and vars, and the assistants each installs to
-// (targets, ent's; wanted, w's), whatever either pins.
+// sameRequest reports whether ent, what an install asks for, asks what w's entry says: its source,
+// ref, path, rules and vars, and the assistants each installs to (targets, ent's; wanted, w's),
+// whatever either pins.
 func sameRequest(ent, w manifest.Entry, targets, wanted []string) bool {
 	return ent.Source == w.Source && ent.Ref == w.Ref && ent.Path == w.Path && ent.RulesOn() == w.RulesOn() &&
 		manifest.SameVars(ent.Vars, w.Vars) && sameSet(targets, wanted)
@@ -271,7 +270,7 @@ func inheritedNotice(module, from string, installed bool) Notice {
 }
 
 // placeEdit is where an install's edit of a module the scope has from w, another layer's entry
-// than sp.target's, goes (spec 2026-10-29 §3.6): --override's answer, the target, without asking;
+// than sp.target's, goes: --override's answer, the target, without asking;
 // else the answer to "Change it in <layer>" (the base: the run with --profile base) or "Override it
 // in <target>" (the target). A read-only layer, a remote profile on or a member of the bundle on,
 // offers Override alone. When the module comes from project.yml and the edit changes its picks
@@ -291,7 +290,7 @@ func (e *Engine) placeEdit(sp *scopePlan, w *Wanted, picksOnly *bool, opts Optio
 	switch {
 	case sp.target.Bundle != "": // a member, which --override alone would ask about again (memberTarget)
 		override.Flags = []string{"--profile", own, "--override"}
-	case opts.Target.Edit && sp.target.Profile && !sp.target.Base: // lola profile <target> --edit <module> --override (spec 2026-10-29 §6.2)
+	case opts.Target.Edit && sp.target.Profile && !sp.target.Base: // lola profile <target> --edit <module> --override
 		override.Flags = []string{"--profile", cmp.Or(opts.Target.Profile, e.editArg(sp.sc, sp.layers, sp.infos, opts.Target.Catalog, opts.Target.CatalogPartial, own)), "--override"}
 	}
 	verb := opts.Target.verb()
@@ -312,7 +311,7 @@ func (e *Engine) placeEdit(sp *scopePlan, w *Wanted, picksOnly *bool, opts Optio
 			change.Label = "Change your picks for project.yml's module  (selections.yaml, not shared)"
 		}
 		title := module + " comes from " + provider + ", loaded under every profile " + scopeWhere(sp.sc) + "."
-		if w.From != sp.layers[0].Name { // another member of the bundle on (spec 2026-10-29 §3.6)
+		if w.From != sp.layers[0].Name { // another member of the bundle on
 			change = WhereChoice{Label: "Change it in " + short + "  (every bundle naming " + short + " sees it)", Profile: short}
 			if opts.Target.Edit {
 				change.Profile = e.editArg(sp.sc, sp.layers, sp.infos, opts.Target.Catalog, opts.Target.CatalogPartial, short)
@@ -338,7 +337,7 @@ func (e *Engine) placeEdit(sp *scopePlan, w *Wanted, picksOnly *bool, opts Optio
 	return &base, nil
 }
 
-// uninstallTarget is the file an uninstall at sc writes without asking (spec 2026-10-29 §6.1):
+// uninstallTarget is the file an uninstall at sc writes without asking:
 // --profile's (req.Profile), the profile on when it is yours or the project's, else the base. A
 // remote profile on asks nothing here: every entry it provides is refused (removeFrom). A bundle
 // on, with members or none (layerlessBundle), has no such file (the zero writeTo): each module is
@@ -365,10 +364,10 @@ func (e *Engine) uninstallTarget(sc Scope, layers []Layer, req TargetRequest) (w
 	return baseTarget(layers[0]), infos, err
 }
 
-// removeFrom is the layer an uninstall removes module's entry from (spec 2026-10-29 §6.1): t, the
+// removeFrom is the layer an uninstall removes module's entry from: t, the
 // target, when --profile named it or when w, the module's winning entry, is t's own; else w's layer,
 // once ask says so (flag form --profile <it>), which --force does not answer; -y answers it only
-// when w's is the one layer that lists the module (§3.6, A3). Under -t (partial), which keeps the
+// when w's is the one layer that lists the module. Under -t (partial), which keeps the
 // entry with fewer targets, the question is about changing it there, and -y does not answer it. A
 // remote profile's entry, on or a bundle's member, is refused, hinting the --off that turns the
 // profile on off. A refusal's hints keep the run's output flags (opts.Display).
@@ -414,9 +413,8 @@ func (e *Engine) removeFrom(sc Scope, layers []Layer, infos []profile.Info, t wr
 
 // remoteOnHints is what works for an edit of an entry of l, a remote profile at sc whose profiles
 // are infos: turning it off, or, for a remote profile on (not a bundle's member), switching to a
-// copy of it of yours (--new --from), which you can edit (spec 2026-10-29 §3.5; plan 12.2b
-// carry-forward). A bundle's member goes off with its bundle. display is the run's output flags,
-// which each keeps.
+// copy of it of yours (--new --from), which you can edit. A bundle's
+// member goes off with its bundle. display is the run's output flags, which each keeps.
 func (e *Engine) remoteOnHints(sc Scope, infos []profile.Info, l Layer, display []string) []string {
 	if l.Bundle != "" { // or take the member out of the bundle files of yours that list it
 		return append([]string{"turn bundle " + bundleLabel(infos, l.Bundle) + " off: " + e.Command(sc, "profile", append([]string{"--off"}, display...)...)},
@@ -452,7 +450,7 @@ func stillWanted(layers []Layer, gone, module string) *Wanted {
 }
 
 // staysNotices say an uninstall left module installed because rest, another layer's entry, still
-// wants it (spec 2026-10-29 §6.1): the run that removes it there (none for a remote profile's, which
+// wants it: the run that removes it there (none for a remote profile's, which
 // lola does not edit); and, when that entry is not the one installed (installed, lock.json's), the
 // sync that applies it. The run is a new one: it keeps the scope's flags only (Engine.Command).
 func (e *Engine) staysNotices(sc Scope, layers []Layer, infos []profile.Info, rest *Wanted, installed *ledger.Entry) []Notice {
@@ -478,9 +476,8 @@ func ledgerFrom(layer string) string {
 
 // pickSection is where module's picks are read and saved at a scope whose layers are layers,
 // writing t, whose picks are saved in picks: the section of the layer the module comes from when an
-// edit of it is inherited (inheritedFrom), so the edit starts from that entry's picks (spec
-// 2026-10-29 §3.6), which for project.yml is selections.yaml's section of the scope, scope; else
-// picks.
+// edit of it is inherited (inheritedFrom), so the edit starts from that entry's picks, which for
+// project.yml is selections.yaml's section of the scope, scope; else picks.
 func pickSection(layers []Layer, t writeTo, picks, scope config.Where, module string) config.Where {
 	w := inheritedFrom(layers, t, module)
 	switch {
@@ -529,7 +526,7 @@ func scopeWhere(sc Scope) string {
 	return "at user scope"
 }
 
-// writeTarget is the file an edit at sc writes (spec 2026-10-29 §3.5), layers being the scope's
+// writeTarget is the file an edit at sc writes, layers being the scope's
 // stack (assemble): --profile's profile (req.Profile), or the base it names; else the profile on,
 // when it is yours or the project's; else, while a remote profile is on, the base once ask says so
 // (nil: a refusal hinting --profile base); else the base. A profile not on in the scope is read for
@@ -578,8 +575,8 @@ func (e *Engine) writeTarget(sc Scope, layers []Layer, infos []profile.Info, req
 		if ask != nil {
 			return writeTo{}, infos, err
 		}
-		// Or keep the remote profile on, bundled with a profile of yours that takes the edit
-		// (spec 2026-10-29 §3.5 row 4): made empty by the bundle's --new.
+		// Or keep the remote profile on, bundled with a profile of yours that takes the edit: made empty
+		// by the bundle's --new.
 		bare := bareName(strings.TrimPrefix(top.Name, ledger.FromProfile("")))
 		members := []string{string(profile.KindRemote) + ":" + bare, freeName(infos, bare+"-extras")}
 		run := e.bundleRun(sc, freeName(infos, bare+"-work"), members, req.Again)
@@ -591,13 +588,13 @@ func (e *Engine) writeTarget(sc Scope, layers []Layer, infos []profile.Info, req
 	return base, infos, nil
 }
 
-// memberTarget is writeTarget while a bundle is on (spec 2026-10-29 §3.5 row 3, §3.6): the
-// member ask names among the writable ones, yours and the project's, last first (the last wins
-// overlaps). It is asked even with one, so an edit under a bundle never lands in a member the user
-// did not name; neither -y nor --force answers it, and without ask (no terminal) it is refused
-// with a --profile per member. A bundle of read-only members only asks where row 4 does: the
-// base, or nothing; so does a bundle that gives no layer (layerlessBundle). on is the bundle's
-// qualified name; what is what the edit writes, as typed ("" when unknown).
+// memberTarget is writeTarget while a bundle is on: the member ask names among the writable ones,
+// yours and the project's, last first (the last wins overlaps). It is asked even with one, so an
+// edit under a bundle never lands in a member the user did not name; neither -y nor --force answers
+// it, and without ask (no terminal) it is refused with a --profile per member. A bundle of
+// read-only members only asks where row 4 does: the base, or nothing; so does a bundle that gives
+// no layer (layerlessBundle). on is the bundle's qualified name; what is what the edit writes, as
+// typed ("" when unknown).
 func (e *Engine) memberTarget(sc Scope, layers []Layer, infos []profile.Info, on string, req TargetRequest, verb, what string,
 	ask func(WhereQuestion) (WhereChoice, error)) (writeTo, error) {
 	bundle := bundleLabel(infos, on)
@@ -650,10 +647,10 @@ func (e *Engine) memberTarget(sc Scope, layers []Layer, infos []profile.Info, on
 	return targets[slices.IndexFunc(choices, func(o WhereChoice) bool { return o.Profile == c.Profile })], nil
 }
 
-// layerlessBundle is the qualified name of the bundle on at sc when it gives no layer (spec
-// 2026-10-29 §3.5 row 3): an empty bundle, or one whose members are all left out, is still on, so
-// an edit asks before it writes the base. "" when no profile is on, its file is gone, or it is not
-// a bundle. infos is listed when nil and a profile is on, and returned.
+// layerlessBundle is the qualified name of the bundle on at sc when it gives no layer: an empty
+// bundle, or one whose members are all left out, is still on, so an edit asks before it writes the
+// base. "" when no profile is on, its file is gone, or it is not a bundle. infos is listed when nil
+// and a profile is on, and returned.
 func (e *Engine) layerlessBundle(sc Scope, infos []profile.Info) (string, []profile.Info, error) {
 	led, err := ledger.LoadKeepingStrays(e.files(sc).ledger)
 	if err != nil || led.Profile == nil {
@@ -738,7 +735,7 @@ func (e *Engine) namedTarget(sc Scope, layers []Layer, infos []profile.Info, req
 	return writeTo{Layer: l, label: layerLabel(infos, name)}, nil
 }
 
-// madeTarget is namedTarget for lola profile <req.Profile> --edit --new (spec 2026-10-29 §6.2): the
+// madeTarget is namedTarget for lola profile <req.Profile> --edit --new: the
 // profile --new makes, yours or with project:<name> the project's, refused as --switch --new
 // refuses it (newTarget), with the hints worded as the run words them (req.Rerun): a file of yours,
 // or the project's, that the run creates in its transaction and does not apply (it is not on).
@@ -755,7 +752,7 @@ func (e *Engine) madeTarget(sc Scope, infos []profile.Info, req TargetRequest) (
 	return writeTo{Layer: l, label: layerLabel(append(slices.Clone(infos), profile.Info{Name: name, Kind: k, Path: l.Path}), l.Name)}, nil
 }
 
-// BundleTargetError is a --profile or --to that names a bundle (spec 2026-10-29 §3.3, §6.3): a
+// BundleTargetError is a --profile or --to that names a bundle: a
 // bundle lists profiles, never modules. Its hints name each writable member in its place.
 type BundleTargetError struct{ err error }
 
@@ -799,7 +796,7 @@ func namesBase(name string) (isBase, isDefault bool) {
 	return name == baseName, bare == profile.DefaultName && (kind == "" || kind == string(profile.KindUser))
 }
 
-// readProfile reads i with the loader its kind takes (spec 2026-10-29 §16): a remote profile's
+// readProfile reads i with the loader its kind takes: a remote profile's
 // profile.yml, a project's without following a link, else yours (default.yml included); dir is the
 // directory its relative local sources are resolved against (besideProfile), "" for a remote one,
 // whose entries name remote sources only. A loader's profile comes back beside its error.
@@ -934,8 +931,8 @@ func (t writeTo) layerEntry(name string) *manifest.Entry {
 }
 
 // fileEntry is ent, an entry as the scope reads it, as t's file records it: a profile of yours
-// never holds a pin (spec 2026-10-29 U8), and the source is in the form t's file reads it
-// (fileSource), or as the file holds it already while that names the same place.
+// never holds a pin, and the source is in the form t's file reads it (fileSource), or as the file
+// holds it already while that names the same place.
 func (t writeTo) fileEntry(sc Scope, ent manifest.Entry) manifest.Entry {
 	if t.Profile && t.Key == "" {
 		ent.Commit, ent.Digest = "", ""
@@ -957,7 +954,7 @@ func (t writeTo) fileEntry(sc Scope, ent manifest.Entry) manifest.Entry {
 }
 
 // fileSource is src, a local source as sc reads it (absolute, or relative to the project root at
-// project scope), as t's file records it (Plan 6b §4.3, §19 R5): a profile of yours is read from
+// project scope), as t's file records it: a profile of yours is read from
 // your profiles directory, so a relative path is made absolute; a project profile is read from
 // .lola/profiles, so it is made relative to it; project.yml keeps it. URLs, git's scp form,
 // marketplace addresses and absolute paths are kept.

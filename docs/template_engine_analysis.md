@@ -1,9 +1,7 @@
 # Template engine analysis of alternatives
 
-Roadmap item 7 ([roadmap](roadmap.md)), Plan 7, adds opt-in, per-file templating of module content
-([#195](https://github.com/LobsterTrap/lola/issues/195)). Plan 7's design spec is
-`docs/superpowers/specs/2026-10-22-plan-7-templating-design.md`, a local maintainer file that is
-not published; its sub-plans are 7.1 to 7.5. This document records which Go template
+lola templates module content opt-in, per file
+([#195](https://github.com/LobsterTrap/lola/issues/195)). This document records which Go template
 engines were considered, how they were tested, and why lola uses Liquid through
 [`github.com/osteele/liquid`](https://github.com/osteele/liquid) v1.9.2.
 
@@ -88,7 +86,7 @@ A probe is one such template, written to test one failure mode. The probes:
     exported `AsArray` method.
   - `{{ r.AsArray | size }}` on `(1..50000000)` peaked at 1.1 GB RSS (`values/range.go:20-27`).
   - Binding plain data leaves this open, since the engine builds the range itself.
-  - The analysis proposed refusing `..` anywhere inside `{{ }}` and `{% %}`. Plan 7.5 narrowed
+  - The analysis proposed refusing `..` anywhere inside `{{ }}` and `{% %}`. lola narrowed
     that: lola's screen refuses `..` outside a quoted string in a tag or object ("ranges like
     (1..n) are not available in lola templates; loop over a list").
 - Chained right-trimmed output (`{{ s -}}{{ s -}}…`) buffers in the engine's `trimWriter`, past
@@ -131,7 +129,7 @@ attack surface, but authors cannot compare values, and its default partial loade
 
 ## Required mitigations
 
-The analysis required these around osteele/liquid. Plan 7 implemented them in
+The analysis required these around osteele/liquid. lola implements them in
 `internal/templating`; where the code differs from what the analysis proposed, the item says so.
 
 The guards nest: the timeout and `recover` wrap the whole render, the screen runs before
@@ -174,7 +172,7 @@ flowchart TD
 1. **No disk access.** Unregister the `render` tag with `UnregisterTag`. Let lola's screen pass
    only an `include` of a quoted partial name, and give the engine a `TemplateStore` that serves
    the module's partials from memory and refuses every other read; it counts reads per render
-   (cap 64). Plan 7.3 does both (`internal/templating/store.go`, `graph.go`).
+   (cap 64). lola does both (`internal/templating/store.go`, `graph.go`).
 2. **Plain data only.** Bind `map[string]any` holding strings, lists and maps; never structs, so
    no method is callable.
 3. **Recover panics** in the goroutine that compiles and renders, since compiling panics too.
@@ -199,7 +197,7 @@ flowchart TD
    - `UnregisterTag` cannot remove `capture`: it deletes only tags (`render/tags.go:22-25`), and
      `capture` and `tablerow` are blocks, kept in a separate table that nothing deletes from
      (`render/blocks.go:50-55`). A probe rendered `capture` after `UnregisterTag("capture")`.
-   - Plan 7 instead refuses them, with every tag outside an allowlist, by screening liquid's token
+   - lola instead refuses them, with every tag outside an allowlist, by screening liquid's token
      scanner (`parser.Scan`) before compiling (`screenTag` in `internal/templating/screen.go`).
 
    ```mermaid
@@ -239,9 +237,9 @@ flowchart TD
 8. **Render every file before writing any**, so a failed render cannot leave a half-applied
    install.
 
-Open for Plan 7's design: rendering in a re-executed lola child process with a memory limit and a
-timeout would close the out-of-memory gap. The memory limit is enforced on Linux; macOS largely
-ignores it, and Windows needs Job Objects. Plan 7 renders in-process, in a goroutine
+Rendering in a re-executed lola child process with a memory limit and a timeout would close the
+out-of-memory gap. The memory limit is enforced on Linux; macOS largely ignores it, and Windows
+needs Job Objects. lola renders in-process, in a goroutine
 (`renderWith` in `internal/templating/templating.go`), with no child process, so the memory risk
 below stands.
 

@@ -37,7 +37,7 @@ var scrubbedGitVars = map[string]bool{"GIT_DIR": true, "GIT_WORK_TREE": true, "G
 // shortSHARE is an abbreviated commit id, which --ref does not accept.
 var shortSHARE = regexp.MustCompile(`^[0-9a-f]{4,39}$`)
 
-// gitEnv is environ for a git command lola runs on a source (design §4): prompts and
+// gitEnv is environ for a git command lola runs on a source: prompts and
 // user-chosen protocols off, optional locks off, and the repository-selecting variables
 // removed. Everything else, credential helpers and the ssh agent included, passes through.
 func gitEnv(environ []string) []string {
@@ -57,7 +57,7 @@ func gitEnv(environ []string) []string {
 // attacker-controlled, so everything that makes git run a configured program (hooks,
 // fsmonitor, the ext transport, LFS filters) or write to the repository is switched off on the
 // command line, which outranks repository config. Line endings are never converted, so a
-// checkout holds the bytes as committed on every machine (Plan 6a §5.2).
+// checkout holds the bytes as committed on every machine.
 func GitCommand(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	full := []string{"-c", "core.hooksPath=/dev/null", "-c", "protocol.ext.allow=never", "-c", "core.fsmonitor=false",
 		"-c", "filter.lfs.smudge=", "-c", "filter.lfs.process=", "-c", "filter.lfs.required=false", "-c", "core.untrackedCache=false",
@@ -291,7 +291,8 @@ func githubWebHint(raw string) (web *WebPage, note string) {
 	return nil, ""
 }
 
-// redirectRE is curl's report, through git, of a redirect it was told not to follow: any 3xx status.
+// redirectRE is curl's report, through git, of a redirect it was told not to follow: any 3xx
+// status.
 var redirectRE = regexp.MustCompile(`returned error: 3[0-9][0-9]\b`)
 
 // refusedRedirect is the location a git command of remoteArgs for a source a catalog named
@@ -308,7 +309,7 @@ func refusedRedirect(args []string, stderr string) (string, bool) {
 
 // remoteArgs is args, a git command that contacts spec's repository, as lola runs it: for a
 // source a stranger's catalog named, git follows no redirect, so a server cannot send the fetch
-// to a host the address rule refuses (Plan 6c §10, ruling R-6c-13).
+// to a host the address rule refuses.
 func remoteArgs(spec Spec, args ...string) []string {
 	if spec.FromCatalog {
 		return append([]string{"-c", "http.followRedirects=false"}, args...)
@@ -317,7 +318,7 @@ func remoteArgs(spec Spec, args ...string) []string {
 }
 
 // fetchGit clones a git source into scratch at its ref, then copies the module root of what
-// is committed there (design §4).
+// is committed there.
 func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fetched, error) {
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
@@ -360,7 +361,7 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 
 // noConversion is $GIT_DIR/info/attributes for every checkout: it outranks the repository's
 // .gitattributes, so no end-of-line conversion, filter program, ident expansion or encoding
-// change applies, and a checkout holds the bytes as committed (Plan 6a §5.2).
+// change applies, and a checkout holds the bytes as committed.
 const noConversion = "* -text -eol -filter -ident -working-tree-encoding\n"
 
 // checkout puts spec's ref of its repository into the empty directory scratch: the default
@@ -395,7 +396,7 @@ func checkout(ctx context.Context, spec Spec, scratch string) ([]string, error) 
 
 // remoteRef names what spec's ref is on its repository: "" for the default branch (ref ""), ref
 // itself for a full commit SHA, which is always that commit and never looked up as a branch or
-// tag of that name (Plan 9 R-9-U10: a pin cannot be moved by pushing a branch named like it), or
+// tag of that name, so a pin cannot be moved by pushing a branch named like it, or
 // refs/heads/<ref> or refs/tags/<ref> for the one branch or tag of that name. It refuses a branch
 // and a tag of one name, and any other ref. It never guesses.
 func remoteRef(ctx context.Context, spec Spec) (string, error) {
@@ -496,7 +497,7 @@ func prepareCheckout(ctx context.Context, scratch, rev, sub string) ([]string, e
 // module path sub, and on Windows one inside it ("" or "." for the whole tree) too, which a
 // checkout without core.symlinks would write as a plain file the copy cannot tell from one.
 // Elsewhere copyFiles resolves a link inside the module path from the checkout; a link outside
-// it never reaches the module and is allowed (Plan 6a §5.2). It returns
+// it never reaches the module and is allowed. It returns
 // the paths whose mode is 100755: the execute bits as committed, whatever the platform checks
 // out. Gitlinks (160000) are skipped, as the copy skips them. A module path that is no
 // directory of the tree, letter case included, is refused too: a case-insensitive file system

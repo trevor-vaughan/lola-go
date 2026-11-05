@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Lock codes (Plan 6d §4.4): destination-level ones skip a whole destination; unit-level ones
+// Lock codes: destination-level ones skip a whole destination; unit-level ones
 // protect one unit. Hard locks yield to nothing; tracked yields to --include-tracked or --force,
 // kept to --unkeep.
 const (
@@ -55,10 +55,10 @@ const (
 )
 
 // whyShared labels a candidate in a destination other tools share (target.DestDir.Shared): what
-// no lock records there another installer put there (spec 2026-11-03 §5).
+// no lock records there another installer put there.
 const whyShared = "skills another tool installed"
 
-// instructionFiles are the names tidy never moves, nor anything holding one (U2, R-6d-3).
+// instructionFiles are the names tidy never moves, nor anything holding one.
 var instructionFiles = []string{"claude.md", "agents.md", "gemini.md"}
 
 // tidyDest is one declared destination of one target: a directory whose direct entries are
@@ -95,7 +95,7 @@ type tidyItem struct {
 	dest       *tidyDest
 	disk       string      // the entry's on-disk name, before Ext is stripped
 	rawName    string      // the unit's name, before untrusted.Text
-	fi         fs.FileInfo // as the scan found it, for §6.4's re-check
+	fi         fs.FileInfo // as the scan found it, for the re-check
 	value      []byte      // an MCP member's canonical JSON
 	owner      string      // the module that owns it
 	ownerScope Scope       // the scope whose ledger records it
@@ -115,7 +115,7 @@ type tidyLedger struct {
 	led *ledger.Ledger
 }
 
-// tidyScanner scans one scope's destinations (§6.2) and moves what is chosen (§6.4).
+// tidyScanner scans one scope's destinations and moves what is chosen.
 type tidyScanner struct {
 	e         *Engine
 	ctx       context.Context
@@ -206,8 +206,8 @@ func (e *Engine) tidyDests(sc Scope, targets []string) ([]*tidyDest, error) {
 }
 
 // overlapsUser reports whether a project destination and a user-scope one are one place or one
-// holds the other (a project at $HOME, or a link between them): the user ledger then counts too
-// (§4.3). A user destination that does not resolve is an error: tidy cannot rule the overlap out.
+// holds the other (a project at $HOME, or a link between them): the user ledger then counts too.
+// A user destination that does not resolve is an error: tidy cannot rule the overlap out.
 func (s *tidyScanner) overlapsUser() (bool, error) {
 	user, err := s.e.tidyDests(Scope{Kind: target.User}, s.targetIDs)
 	if err != nil {
@@ -230,8 +230,8 @@ func within(parent, child string) bool {
 // overlaps reports whether a and b are one place or one holds the other.
 func overlaps(a, b string) bool { return within(a, b) || within(b, a) }
 
-// scan finds the units of every destination and protects what §4.4 protects; ledgers' artifacts
-// count as owned.
+// scan finds the units of every destination and locks what tidy protects; ledgers' artifacts count
+// as owned.
 func (s *tidyScanner) scan(ledgers []tidyLedger) TidyScan {
 	for _, d := range s.dests {
 		s.rootLock(d)
@@ -338,7 +338,7 @@ func (s *tidyScanner) skip(d *tidyDest, code, reason, notice string, hint ...str
 	}
 }
 
-// rootLock skips d when it resolves onto its root, above it or outside it (§4.4): such a
+// rootLock skips d when it resolves onto its root, above it or outside it: such a
 // destination is no place another one can lie in.
 func (s *tidyScanner) rootLock(d *tidyDest) {
 	switch {
@@ -349,7 +349,7 @@ func (s *tidyScanner) rootLock(d *tidyDest) {
 	}
 }
 
-// destLock applies the destination-level locks that need no git (§4.4), after rootLock has
+// destLock applies the destination-level locks that need no git, after rootLock has
 // run on every destination: d overlapping another destination that lies inside the root, git's
 // or lola's own files, or another lola project.
 func (s *tidyScanner) destLock(d *tidyDest) {
@@ -379,8 +379,8 @@ func (s *tidyScanner) destLock(d *tidyDest) {
 }
 
 // otherProject is the root of a lola project, other than this scope's, that d lies in: walking
-// up from d, a directory holding .lola below the target's root (R-6d-S9, R-6d-N4). The root
-// itself never counts: at user scope your home is never a found project (R-6b3c-9).
+// up from d, a directory holding .lola below the target's root. The root
+// itself never counts: at user scope your home is never a found project.
 func (s *tidyScanner) otherProject(d *tidyDest) string {
 	for p := d.dir(); within(d.realRoot, p) && p != d.realRoot; p = filepath.Dir(p) {
 		if dirExists(filepath.Join(p, ".lola")) {
@@ -413,7 +413,7 @@ func (s *tidyScanner) linksOnTheWay(d *tidyDest) []string {
 	return out
 }
 
-// readDir lists d's direct entries as units (§4.2), never following a link.
+// readDir lists d's direct entries as units, never following a link.
 func (s *tidyScanner) readDir(d *tidyDest) {
 	fi, err := os.Stat(d.abs)
 	if err != nil || !fi.IsDir() {
@@ -456,7 +456,7 @@ func (s *tidyScanner) readDir(d *tidyDest) {
 	}
 }
 
-// readServers lists the direct members of d's server map as units (§4.5), skipping a file that
+// readServers lists the direct members of d's server map as units, skipping a file that
 // is not a regular file, does not parse or names a server twice.
 func (s *tidyScanner) readServers(d *tidyDest) {
 	fi, err := os.Stat(d.abs)
@@ -499,7 +499,7 @@ func (s *tidyScanner) readServers(d *tidyDest) {
 	}
 }
 
-// ownedPaths are the ledgers' artifacts, resolved, for §4.3's ownership test.
+// ownedPaths are the ledgers' artifacts, resolved, for the ownership test.
 type ownedPaths []struct {
 	abs, logical, key, module string
 	sc                        Scope
@@ -553,7 +553,7 @@ func (o ownedPaths) owner(it *tidyItem) (string, Scope) {
 	return "", Scope{}
 }
 
-// unitLocks applies the unit-level hard locks (§4.4).
+// unitLocks applies the unit-level hard locks.
 func (s *tidyScanner) unitLocks(it *tidyItem) {
 	if it.dest.mcp() {
 		if strings.ContainsAny(it.dest.abs, "\t\n\r") {
@@ -579,7 +579,7 @@ func (s *tidyScanner) unitLocks(it *tidyItem) {
 	s.selectable(it)
 }
 
-// selectable locks a unit whose name no selector can name exactly (R-6d-S3).
+// selectable locks a unit whose name no selector can name exactly.
 func (s *tidyScanner) selectable(it *tidyItem) {
 	if untrusted.Text(it.rawName, untrusted.MaxName) != it.rawName {
 		it.lock(codeUnselectableName, whyUnselectable)
@@ -630,7 +630,7 @@ func kindOrder(kind string) int {
 	return len(config.Kinds())
 }
 
-// sortTidy sorts items by target, kind, name and path (§6.2).
+// sortTidy sorts items by target, kind, name and path.
 func sortTidy(us []TidyUnit) {
 	slices.SortStableFunc(us, func(a, b TidyUnit) int {
 		return cmp.Or(cmp.Compare(a.Target, b.Target), cmp.Compare(kindOrder(a.Kind), kindOrder(b.Kind)), cmp.Compare(a.Name, b.Name),

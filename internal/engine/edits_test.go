@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
+var _ = Describe("selection edits", func() {
 	var (
 		tmp, proj, src, other string
 		p                     paths.Paths
@@ -227,7 +227,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		Expect(filepath.Join(p.Home, ".claude/agents/critic.md")).NotTo(BeAnExistingFile())
 	})
 
-	It("installs into two project roots and the user scope, each destination with its own section and root (Plan 5c §14)", func() {
+	It("installs into two project roots and the user scope, each destination with its own section and root", func() {
 		proj2 := filepath.Join(tmp, "proj2")
 		Expect(os.MkdirAll(proj2, 0o755)).To(Succeed())
 		pr, pr2, us := project(), project(), user()
@@ -266,7 +266,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 	})
 
-	Describe("a project rooted at the home directory (Plan 5c §14): it renders where the user scope does", func() {
+	Describe("a project rooted at the home directory: it renders where the user scope does", func() {
 		homeProject := func() engine.ScopeInstall {
 			si := project()
 			si.Scope.ProjectDir = p.Home

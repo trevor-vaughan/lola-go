@@ -1,5 +1,4 @@
-// Package activeprofile checks the qualified name of the active profile a scope's lock.json stores
-// (Plan 6b §4.4, §5, D8; spec 2026-10-29 §3.4). It is a leaf: the ledger imports it without reading any profile.
+// Package activeprofile checks the qualified name of the active profile a scope's lock.json stores. It is a leaf: the ledger imports it without reading any profile.
 package activeprofile
 
 import (
@@ -12,13 +11,13 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Max bounds the profiles lock.json's rendered_with records, default aside (Plan 6b §19 S8).
+// Max bounds the profiles lock.json's rendered_with records, default aside.
 const Max = 64
 
 // Default is the profile that is always on in user scope and never listed.
 const Default = "default"
 
-// Base is the name reserved for a scope's base (spec 2026-10-29 §3.1): no profile, active or
+// Base is the name reserved for a scope's base: no profile, active or
 // remote, has it.
 const Base = "base"
 

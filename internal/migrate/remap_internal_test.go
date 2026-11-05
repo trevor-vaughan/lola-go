@@ -10,7 +10,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("Another machine's roots (Plan 10 §3.1)", func() {
+var _ = Describe("Another machine's roots", func() {
 	var tmp string
 	BeforeEach(func() {
 		var err error

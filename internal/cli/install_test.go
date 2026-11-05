@@ -34,7 +34,7 @@ func parseInstall(out string) installJSON {
 	return v
 }
 
-var _ = Describe("install scope (Plan 5c §5.1)", func() {
+var _ = Describe("install scope", func() {
 	var tmp, proj, bare, mod, home string
 	BeforeEach(func() {
 		var err error
@@ -153,7 +153,7 @@ var _ = Describe("install scope (Plan 5c §5.1)", func() {
 	})
 })
 
-var _ = Describe("selection flags (Plan 5c §5.2)", func() {
+var _ = Describe("selection flags", func() {
 	var tmp, proj, mod, selections string
 	BeforeEach(func() {
 		var err error

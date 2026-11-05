@@ -12,13 +12,13 @@ import (
 	"github.com/osteele/liquid/tags"
 )
 
-// Codes of the frontmatter region's refusals (Plan 7 §5.2).
+// Codes of the frontmatter region's refusals.
 const (
 	codeFrontmatterFence = "template-frontmatter-fence"
 	codeFrontmatterValue = "template-frontmatter-value"
 )
 
-// Rendered is a component template's output (Plan 7 §5.2): Front is its rendered frontmatter
+// Rendered is a component template's output: Front is its rendered frontmatter
 // region, without the fences, when the template opens one (HasFront), and Body its rendered
 // body region. The caller assembles the document from the two, never by splitting their
 // concatenation again.
@@ -107,7 +107,7 @@ const yamlBreaks = "\n\r\u0085\u2028\u2029"
 
 // frontValueFilter is the filter lola appends to every {{ }} before compiling it (withValueCheck):
 // in the frontmatter region it refuses a value whose output holds a YAML line break, and a string
-// YAML would not read back as itself; in the body region it does nothing (Plan 7 §5.7.1). Templates
+// YAML would not read back as itself; in the body region it does nothing. Templates
 // may name it; they get the same check. Every other {{ }} gets frontBreakFilter instead, which
 // checks only for line breaks (wholeValue).
 const (
@@ -126,7 +126,7 @@ var namedValueFilter = regexp.MustCompile(`\s*\|\s*(` + frontValueFilter + `|` +
 var endsInJSON = regexp.MustCompile(`\|\s*json\s*$`)
 
 // The text around a {{ }} on its line when it is the line's whole value (after "key: " or "- ")
-// or its whole key (before ":"), each with only whitespace to the line's ends (R-7-57).
+// or its whole key (before ":"), each with only whitespace to the line's ends.
 var (
 	valueBefore = regexp.MustCompile(`^[ \t]*(?:(?:- +)+|(?:- +)*[^\s{}#"'][^{}]*: +)$`)
 	valueAfter  = regexp.MustCompile(`^[ \t]*\r?$`)

@@ -11,8 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// MarketVerb is a run of lola market <verb>, a word lola market reserves (Plan 6c D8, §3.1; Plan
-// 10 §7): the verb, the arguments after it, and the flags typed with it that the lola command it
+// MarketVerb is a run of lola market <verb>, a word lola market reserves: the verb, the arguments after it, and the flags typed with it that the lola command it
 // is answered with keeps or reads.
 type MarketVerb struct {
 	Verb            string
@@ -28,7 +27,7 @@ type MarketVerb struct {
 	Display []string
 }
 
-// The lola commands a reserved word is answered with, each saying what it does (Plan 10 §7).
+// The lola commands a reserved word is answered with, each saying what it does.
 const (
 	verbAdd       = "lola market <name> --add <source> adds a marketplace"
 	verbList      = "lola market lists your marketplaces"
@@ -40,8 +39,7 @@ const (
 	noDisabled    = "; lola has no disabled state"
 )
 
-// CoachMarketVerb refuses lola market <verb> (Plan 6c D8, §3.1, rulings R-6c-11, R-6c-19; Plan 10
-// §7), saying what the lola command is; that command is the hint only when it is complete and
+// CoachMarketVerb refuses lola market <verb>, saying what the lola command is; that command is the hint only when it is complete and
 // runs: a name that cannot be a marketplace, or one you do not have, gets the listing or no hint,
 // and a verb missing its operand gets the message alone. The hint keeps --ref and --path (for
 // add) and -n; --ssh-host for add, and for update with names, one run per name, since it applies

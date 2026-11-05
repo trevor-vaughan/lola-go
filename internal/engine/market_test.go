@@ -54,7 +54,7 @@ var _ = Describe("marketplaces", func() {
 		e.Getwd = func() (string, error) { return tmp, nil }
 		srv = filepath.Join(tmp, "srv")
 		Expect(os.MkdirAll(srv, 0o755)).To(Succeed())
-		// A marketplace's own source is one you type, so a loopback http server may serve it (§12).
+		// A marketplace's own source is one you type, so a loopback http server may serve it.
 		base = testenv.ServeGit(srv)
 	})
 	// repo commits files to the bare repository <name>.git that base serves, creating it on first
@@ -295,7 +295,7 @@ var _ = Describe("marketplaces", func() {
 		Expect(err).NotTo(HaveOccurred(), "the hint runs")
 		Expect(res.Markets[0].Path).To(Equal("acme.yml"))
 
-		// One source and ref at another catalog file is another marketplace (§3.1: source, ref and path).
+		// One source and ref at another catalog file is another marketplace (source, ref and path).
 		nested, _ := repo("nested", map[string]string{"sub/.claude-plugin/marketplace.json": acmeCatalog, "marketplace.yml": "name: root\nmodules: []\n"})
 		_, err = add(engine.MarketAddRequest{Name: "nest", Source: nested, Path: "sub"})
 		Expect(err).NotTo(HaveOccurred())

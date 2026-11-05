@@ -12,10 +12,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// validateEntryName is the module-name rule an entry's name follows (Plan 6c §4.4).
+// validateEntryName is the module-name rule an entry's name follows.
 func validateEntryName(name string) error { return module.ValidateName("entry", name) }
 
-// The fields lola reads in a Python lola catalog and in each of its modules (Plan 6c §4.2).
+// The fields lola reads in a Python lola catalog and in each of its modules.
 var (
 	yamlTopFields    = []string{"name", "description", "version"}
 	yamlModuleFields = []string{"name", "description", "version", "repository", "path", "ref"}
@@ -28,7 +28,7 @@ const scalarAdvice = ", so use a plain or quoted scalar"
 const scriptsNote = "catalog install scripts are ignored"
 
 // plainYAML refuses the catalog when a key of the mapping m, or the text of one of fields in it,
-// a scalar or a list of scalars, would not print as it is (ruling R-6c-20); prefix names m.
+// a scalar or a list of scalars, would not print as it is; prefix names m.
 func plainYAML(m *yaml.Node, prefix string, fields []string) error {
 	for i := 0; i+1 < len(m.Content); i += 2 {
 		k, v := m.Content[i], m.Content[i+1]
@@ -53,7 +53,7 @@ func plainYAML(m *yaml.Node, prefix string, fields []string) error {
 	return nil
 }
 
-// parseYAML reads a Python lola catalog (Plan 6c §4.2) through yamldoc.Decode: one document, no
+// parseYAML reads a Python lola catalog through yamldoc.Decode: one document, no
 // anchors, aliases, merge keys or duplicate keys. Each module needs only a name and a
 // repository; one that cannot be used is skipped with its reason, and the rest load.
 func parseYAML(b []byte, ssh []string) (Catalog, error) {
@@ -178,7 +178,7 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh [
 	return e, mapPython(&e, vals["repository"], vals["ref"], vals["path"], ssh)
 }
 
-// Parse reads b, a catalog in format, into the model (Plan 6c §4): over MaxCatalog bytes, a
+// Parse reads b, a catalog in format, into the model: over MaxCatalog bytes, a
 // catalog that does not decode, or one with an ambiguous key or text that would not print as it
 // is refuses whole, saying why; an entry lola cannot use is skipped with its reason. Relative
 // entries are left for Bind.

@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// infoCmd is lola info (Plan 9 §4): a module, a source or a marketplace entry, fetched into the
+// infoCmd is lola info: a module, a source or a marketplace entry, fetched into the
 // cache as cache add does, shown with what would run code and what installing it here would do.
 func (a *app) infoCmd() *cobra.Command {
 	var targets []string
@@ -63,8 +63,8 @@ func (a *app) infoCmd() *cobra.Command {
 	return cmd
 }
 
-// showInfo is lola info <arg> (Plan 9 §4), which lola market <name> <entry> runs as lola info
-// @<name>/<entry> (Plan 10 U7). It reads --target, --ref and --path from cmd by name, which both
+// showInfo is lola info <arg>, which lola market <name> <entry> runs as lola info
+// @<name>/<entry>. It reads --target, --ref and --path from cmd by name, which both
 // commands define, and every hint it builds names lola info with the run's flags, so the two
 // commands print the same.
 func (a *app) showInfo(cmd *cobra.Command, arg string) error {
@@ -296,7 +296,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 }
 
 // printPicks prints, for the scope of in, what the picks of the layer that provides module do with
-// each component (cherry-pick design §6): which layer provides it, named as the lines name their
+// each component: which layer provides it, named as the lines name their
 // layers, one aligned line per component
 // with its state, the layer whose picks leave it out and (new) for one the version adds over the
 // one installed, then the run that changes them (none when the profiles could not be listed: a
@@ -333,7 +333,7 @@ func printPicks(w io.Writer, s style, module string, in engine.InfoInstall) {
 	}
 }
 
-// printMentions lists what each component mentions (cherry-pick design §5.2): under a mentions:
+// printMentions lists what each component mentions: under a mentions:
 // heading one line per component, or with --plain one mention row per pair.
 func printMentions(w io.Writer, s style, ms []engine.ComponentMentions) {
 	if s.plain {

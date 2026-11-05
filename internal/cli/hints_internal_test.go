@@ -12,7 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Spec 2026-11-03 §3.3 (P2-3, Prof-P2-a), ruling R-8: a hint keeps the run's -t and -n, and -y only
+// A hint keeps the run's -t and -n, and -y only
 // when it completes the run (completeRun) and is no dry run; a hint repeating it for another
 // reason (runWithout with consentFlags) or naming another command (runAs) drops -y. None keeps
 // --trust.
@@ -30,7 +30,7 @@ var _ = Describe("the hint builder", func() {
 		return out
 	}
 
-	It("P2-3: keeps -t and -n on every command that defines them, -y only to complete a run that is no dry run, and never --trust", func() {
+	It("keeps -t and -n on every command that defines them, -y only to complete a run that is no dry run, and never --trust", func() {
 		var checked int
 		var dry bool
 		var walk func(*cobra.Command)
@@ -65,7 +65,7 @@ var _ = Describe("the hint builder", func() {
 		Expect(checked).To(BeNumerically(">", 5))
 	})
 
-	It("P2-3: a hint naming another command keeps the flags it takes, never -y and none it does not take", func() {
+	It("a hint naming another command keeps the flags it takes, never -y and none it does not take", func() {
 		root := NewRootCmd(os.Getenv)
 		install, _, err := root.Find([]string{"install"})
 		Expect(err).NotTo(HaveOccurred())

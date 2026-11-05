@@ -82,7 +82,7 @@ func (s KindSpec) key(k string) (Value, bool) {
 	return Value{}, false
 }
 
-// Admit checks one artifact against caps (§5.1 of the target framework design) and returns its
+// Admit checks one artifact against caps and returns its
 // document without the keys the target drops, the findings, and whether to render it. MCP
 // servers and rules pass an empty Doc: only their kind and name are checked.
 func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc module.Doc) (module.Doc, []Finding, bool) {
@@ -205,7 +205,7 @@ func versionFinding(at Finding, text, version string) Finding {
 }
 
 // keyHint coaches a frontmatter key k that id drops from the artifact of kind named name: the
-// entry of the artifact's attribute file (Plan 7 §3.4) that gives id the value value, or, when
+// entry of the artifact's attribute file that gives id the value value, or, when
 // value is "", leaves k out for id. For name, which attribute files refuse, it names the change
 // to the frontmatter instead.
 func keyHint(id, kind, name, k, value string) string {

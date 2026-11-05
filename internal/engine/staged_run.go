@@ -9,7 +9,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/store"
 )
 
-// StagedRun is one lola install's staged run (cherry-pick design §7): its run directory and the
+// StagedRun is one lola install's staged run: its run directory and the
 // versions the run fetched into it, prepared (store.Prepare) but not in the cache. The CLI opens
 // one before the first picker and closes it when the command ends. InstallChoices and InstallAll
 // given it fetch into it, and read what it holds as the cache will hold it once committed

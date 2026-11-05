@@ -1,4 +1,4 @@
-// Package store manages lola's machine-wide module cache (§6.2): one directory per module
+// Package store manages lola's machine-wide module cache: one directory per module
 // holding index.yml and content-addressed versions, with one head per fetched ref. Names
 // and version ids read back from the cache are validated before they are used in paths.
 package store
@@ -31,7 +31,7 @@ import (
 )
 
 // Head maps a fetched ref ("" = the source's default) to its newest version id, with the
-// commit the fetch that set it resolved (git only; empty in heads written before Plan 6a).
+// commit the fetch that set it resolved (git only; empty in heads written before the commit was recorded).
 type Head struct {
 	Ref    string `yaml:"ref"`
 	Digest string `yaml:"digest"`
@@ -53,7 +53,7 @@ type Origin struct {
 	// (source.Components): a fetch of the name again applies it.
 	Components *source.Components `yaml:"components,omitempty"`
 	Heads      []Head             `yaml:"heads"`
-	// LastUsed is the UTC day (YYYY-MM-DD) a run last used each version, by id (Plan 9 §6.3):
+	// LastUsed is the UTC day (YYYY-MM-DD) a run last used each version, by id:
 	// lola cache clean --unused-for removes the versions unused that long. It is the module's,
 	// not the origin's, since versions are shared by content: the index holds it once.
 	LastUsed map[string]string `yaml:"-"`
@@ -114,7 +114,7 @@ type Meta struct {
 	FetchedAt     string   `yaml:"fetched_at"`
 	Digest        string   `yaml:"digest"`
 	// Executables are the content's files the source marks executable, sorted; Digest reads
-	// execute bits from them (Plan 6a §5.2).
+	// execute bits from them.
 	Executables []string `yaml:"executables,omitempty"`
 }
 
@@ -214,7 +214,7 @@ func (e *DigestError) Error() string {
 }
 
 // Staged is content Prepare checked in the run's staging directory, which is not in the cache
-// until Commit publishes it (Plan 6a §6.3). Version is what the cached version will be, except
+// until Commit publishes it. Version is what the cached version will be, except
 // that its ContentDir is the staged tree, which the run renders from: the bytes that were
 // hashed. Version.Commit is the commit the fetch resolved. Version.Module.Warnings are what
 // detection reported, which install shows; LoadWarnings are what a load of the cached copy
@@ -222,7 +222,7 @@ func (e *DigestError) Error() string {
 //
 // ReplaceGoneOrigin lets Commit drop the origins the cache records for the name that are local
 // folders or archives whose location no longer exists, as a moved project's in-repo modules
-// leave (Plan 6a §6.5), when this version's source is local too: Commit checks again, under the
+// leave, when this version's source is local too: Commit checks again, under the
 // cache lock, that each old location is still missing. Any other origin stays.
 type Staged struct {
 	Version           Version
@@ -247,7 +247,7 @@ func (st Staged) Index(o Origin, found, headIfAbsent bool) Origin {
 	}
 	if !headIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == st.ref }) {
 		h := Head{Ref: st.ref, Digest: st.Version.ID, Commit: st.Version.Commit, Fetched: st.Version.Meta.FetchedAt}
-		// A folder is read every run and never stale (spec 2026-10-29 §4): a stamp nothing reads
+		// A folder is read every run and never stale: a stamp nothing reads
 		// would rewrite index.yml on every run that read it again.
 		if st.typ == string(source.KindFolder) {
 			h.Fetched = ""
@@ -286,7 +286,7 @@ func ValidID(id string) bool { return idRE.MatchString(id) }
 
 // Restore puts back in name's index.yml, for lola cache clean holding the cache lock (Lock), the
 // heads and last_used that before (Store.Origin's view) recorded for the versions ids: Cleaned
-// dropped them, and the clean failed before it removed those versions (Plan 9 A28). Each head
+// dropped them, and the clean failed before it removed those versions. Each head
 // goes back to the origin it came from.
 func (s *Store) Restore(name string, before Origin, ids []string) error {
 	idx, found, err := s.readIndex(name)
@@ -317,7 +317,7 @@ func (s *Store) Restore(name string, before Origin, ids []string) error {
 
 // Cleaned records in name's index.yml what lola cache clean, holding the cache lock (Lock), did:
 // it removed the versions ids, so the heads that point to them go, with their last_used; and it
-// saw every version still cached, so each one without a last_used is dated today (Plan 9 §6.3).
+// saw every version still cached, so each one without a last_used is dated today.
 // It writes index.yml only when that changes it, and never for a module the cache no longer holds.
 func (s *Store) Cleaned(name string, ids []string) error {
 	idx, found, err := s.readIndex(name)
@@ -442,7 +442,7 @@ func (s *Store) Prepare(req PutRequest) (Staged, error) {
 	if err := s.normalize(req.Staged, m); err != nil {
 		return Staged{}, err
 	}
-	// The cache loads a version without format adapters (Plan 5b design §4), so the normalized
+	// The cache loads a version without format adapters, so the normalized
 	// copy must read back as exactly what detection produced.
 	cached, err := module.Load(req.Staged, req.FallbackName, s.targets)
 	if err == nil && !module.SameMeaning(m, cached) {
@@ -588,7 +588,7 @@ func setHead(heads []Head, head Head) []Head {
 
 // Head returns the newest version fetched for ref from the newest origin of name, else from
 // another. A ref that is a full commit SHA, in any case, is served only by a head that records
-// that commit as the one its fetch resolved (R-9-27). A caller that knows the source it means
+// that commit as the one its fetch resolved. A caller that knows the source it means
 // asks HeadFor.
 func (s *Store) Head(name, ref string) (Version, bool, error) {
 	o, found, err := s.Origin(name)
@@ -668,7 +668,7 @@ func (s *Store) AtCommit(name, commit string) (string, error) {
 // Pinned returns the cached version whose digest is digest, read from a snapshot: its
 // content/ is copied into a new directory under dir (the run's private staging) and hashed
 // there with the recorded executables, and the version's module is loaded from that copy, so
-// everything the caller derives from it comes from the bytes that were hashed (Plan 6a §6.1).
+// everything the caller derives from it comes from the bytes that were hashed.
 // found is false when the cache does not hold it. A snapshot whose digest, or whose recorded
 // digest, is not digest is refused and removed.
 func (s *Store) Pinned(name, digest, dir string) (v Version, found bool, err error) {
@@ -711,12 +711,12 @@ func (s *Store) Pinned(name, digest, dir string) (v Version, found bool, err err
 		return Version{}, false, fmt.Errorf("cached version %s/%s: %w", name, id, err)
 	}
 	// Recording the use is best effort: a cache whose index.yml cannot be written still serves
-	// its versions as it did before last_used (Plan 9 §6.3).
+	// its versions as it did before last_used.
 	_ = s.Used(name, id)
 	return Version{Name: name, ID: id, ContentDir: snap, Meta: meta, Module: m}, true, nil
 }
 
-// Used records that a run used name's version id today (last_used, Plan 9 §6.3). It writes
+// Used records that a run used name's version id today (last_used). It writes
 // index.yml, under the cache lock, at most once per version per day, and never for a version or
 // module the cache no longer holds.
 func (s *Store) Used(name, id string) error {
@@ -864,7 +864,7 @@ func (s *Store) readIndex(name string) (idx index, found bool, err error) {
 		}
 	}
 	// A last_used entry lola did not write is dropped, never refused: its key reaches no path, and
-	// its version counts as first seen on the next clean's day (Plan 9 §6.3, R-9-44).
+	// its version counts as first seen on the next clean's day.
 	maps.DeleteFunc(idx.LastUsed, func(id, day string) bool {
 		_, err := time.Parse(dayLayout, day)
 		return !ValidID(id) || err != nil

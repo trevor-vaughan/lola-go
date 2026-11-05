@@ -42,7 +42,7 @@ type CheckReport struct {
 	Modules  []CheckedModule  `json:"modules"`
 	Findings []target.Finding `json:"findings"`
 	// Read says check read the scope's module entries, to render a module the scope installs with
-	// its entry's vars (spec 2026-10-29 §6.1): its layers loaded and list one module or more.
+	// its entry's vars: its layers loaded and list one module or more.
 	Read bool `json:"-"`
 }
 
@@ -51,7 +51,7 @@ type CheckReport struct {
 // nothing and changes no state: a source is staged in a temporary directory, never added to
 // the cache. Components that selections.yaml excludes at sc are reported as skipped, not
 // checked, since sync would not install them. A marketplace address is checked as install
-// would fetch it (Plan 6c §3.3); display is the run's output flags, which its hints keep.
+// would fetch it; display is the run's output flags, which its hints keep.
 func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, display []string) (*CheckReport, error) {
 	given := ids
 	var ts []target.Target
@@ -62,7 +62,7 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 		}
 		ts = append(ts, t)
 	}
-	// The profiles lock comes before anything is read (spec 2026-10-29 §16), as a sync's does.
+	// The profiles lock comes before anything is read, as a sync's does.
 	unlock, err := e.readProfiles(true)
 	if err != nil {
 		return nil, err
@@ -339,7 +339,7 @@ func (e *Engine) checksEntry(sc Scope, cwd, arg string, ent manifest.Entry) bool
 }
 
 // attrsUndefined warns on each literal attrs path that m's templates and partials read and no
-// attribute file of m defines for any target (Plan 7 §5.7.3): attrs reads a missing key as nil,
+// attribute file of m defines for any target: attrs reads a missing key as nil,
 // so a typo there would flip a condition silently. Findings are sorted by their text.
 func attrsUndefined(m *module.Module) []target.Finding {
 	var files []map[string]any

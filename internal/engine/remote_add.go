@@ -16,15 +16,14 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ProfileAdd is lola profile's action that fetches a remote profile and keeps it (Plan 6b §3.2,
-// §6.5); like the activation actions, it is also the flag lola profile takes for it.
+// ProfileAdd is lola profile's action that fetches a remote profile and keeps it; like the activation actions, it is also the flag lola profile takes for it.
 const ProfileAdd ProfileAction = "add"
 
-// ProfileAddRequest is one lola profile --add (Plan 6b §3.2): fetch Source at Ref (a git branch,
+// ProfileAddRequest is one lola profile --add: fetch Source at Ref (a git branch,
 // tag or commit) and read profiles/<Name>.yml under its root, or under Path. Name is as typed: go
 // or remote:go. Scope is the scope a scope flag named, nil for none: it only picks the scope whose
 // lock.json annotates the content shown, since the profile is shared by every scope and adding
-// turns nothing on (§19 P22); without it the read-only rule picks (knownScopes).
+// turns nothing on; without it the read-only rule picks (knownScopes).
 type ProfileAddRequest struct {
 	Scope             *Scope
 	Name              string
@@ -37,17 +36,17 @@ type ProfileAddRequest struct {
 	// count of files whose names are not valid, never shown); nil means it cannot ask, and the run
 	// is refused, listing them.
 	Pick func(names []string, invalid int) ([]string, error)
-	// Consent shows the profiles and asks whether to add them (Plan 6b §8.2). nil means it cannot
+	// Consent shows the profiles and asks whether to add them. nil means it cannot
 	// ask: unless Trust covers profiles, the run is refused before any network contact. When it
 	// does, Show, when set, shows them as a record, and Receipt, when set, is shown them once,
-	// before anything is written (Plan 9 §3.4).
+	// before anything is written.
 	Consent func([]RemoteProfile) (bool, error)
 	Trust   TrustKinds
 	Show    func([]RemoteProfile)
 	Receipt func([]Consent) (bool, error)
 }
 
-// AddProfile fetches a remote profile and adds it (Plan 6b §3.2, §6.5): the name and every source
+// AddProfile fetches a remote profile and adds it: the name and every source
 // rule are checked, and a run that cannot ask for consent refused, before any network contact;
 // the source's profiles/ is fetched into the run's staging and each profile read as untrusted
 // input (profile.Fetched); its entries are shown with the whole content they bring, each module
@@ -55,7 +54,7 @@ type ProfileAddRequest struct {
 // directory of its own (writeRemote). Nothing is cached or kept before consent, and a No or an
 // error leaves nothing behind. Fetching, showing and asking hold the profiles lock shared, so
 // syncs elsewhere go on; it is taken exclusively only to check again that no profile of that
-// name appeared, and write (ruling R-6b3b-8).
+// name appeared, and write.
 func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *RemoteResult, err error) {
 	defer func() { err = e.CoachUnresolved(err, nil, false, outputOnly(req.Rerun)) }()
 	var given []Scope
@@ -70,7 +69,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	display := slices.DeleteFunc(slices.Clone(req.Rerun), func(f string) bool { return trustArg(f) || f == "-n" })
 	// kept is the flags of a hint that repeats the run for another reason, the --update of a
 	// profile you have or the add at user scope: --trust answered this add's question, never
-	// that one, so it is left out (rulings R-6b3c-8, R-6cux-4).
+	// that one, so it is left out.
 	kept := slices.DeleteFunc(slices.Clone(req.Rerun), trustArg)
 	// typed is the run's arguments, the name aside, which every hint that repeats it keeps.
 	typed := []string{"--add", untrusted.Text(req.Source, untrusted.MaxName)}
@@ -107,7 +106,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 			"see it: "+e.ProfileRun(given, slices.Concat(typed, []string{"-n"}, display)...),
 			"then add it unasked: "+e.ProfileRun(given, slices.Concat(typed, []string{TrustProfiles.Arg()}, display)...))
 	}
-	// Every lola profile command refuses a tracked lock.json (Plan 6b §5, §19 S5). The found
+	// Every lola profile command refuses a tracked lock.json. The found
 	// project only labels the content, so the run at user scope is offered too.
 	_, _, led, checked, err := e.profileScope(ctx, sc)
 	if err != nil && len(given) == 0 && sc.Kind == target.Project {
@@ -149,7 +148,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		}
 	}
 	probes := e.newProbeRun(ctx)
-	templates, err := e.newTemplateRun(sc, led.Profile) // one budget for every profile the command renders (Plan 7 §6.2)
+	templates, err := e.newTemplateRun(sc, led.Profile) // one budget for every profile the command renders
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +250,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 			if !ok {
 				continue
 			}
-			args = []string{rp.Profile, "--switch"} // no -y: it names another command, which asks (R-8)
+			args = []string{rp.Profile, "--switch"} // no -y: it names another command, which asks
 			if clause != "" {
 				lead += " (" + clause + ")"
 			}
@@ -262,7 +261,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 }
 
 // addSwitch judges the --switch to rp, just added, that the hint after --add names while a profile
-// is on at sc (--on refuses there: spec 2026-10-29 §6.2, Q3), infos being the profiles sc can use:
+// is on at sc (--on refuses there), infos being the profiles sc can use:
 // ok when its dry run, planned as the sync plans it, succeeds and needs no trust or hook's consent,
 // which no hint answers, and clause what it turns off (switchesOff), which the switch asks before
 // it removes.
@@ -302,9 +301,8 @@ func (e *Engine) refuseKept(given []Scope, name string, flags []string) error {
 	return errs.WithHints(fmt.Errorf("you already have a remote profile %s", shown(q)), "fetch it again: "+e.ProfileRun(given, slices.Concat([]string{q, "--update"}, flags)...))
 }
 
-// pickRemote is the profiles of the fetched tree to add, when none was named (Plan 6b §3.2): the
-// names pick chooses among those of the tree's profiles/ that a remote profile may have (§19 S7,
-// remoteName: default never is one, and counts with the invalid names). Without pick the run is
+// pickRemote is the profiles of the fetched tree to add, when none was named: the
+// names pick chooses among those of the tree's profiles/ that a remote profile may have (remoteName: default never is one, and counts with the invalid names). Without pick the run is
 // refused, listing them, with the command that adds each, or for a dry run shows it (typed is the
 // run's arguments, to repeat, with the scope flag given, none when empty, and display, the run's
 // flags each hint keeps after --trust=profiles or -n). A choice of none is a No.

@@ -1,4 +1,4 @@
-name: lola profile first, the S1-S8 walkthroughs of spec 2026-10-29 §4
+name: lola profile first, the S1-S8 walkthroughs
 # Run by scripts/e2e.sh (task e2e -- profile-first) in the shared e2e container: this checkout's
 # lola-go at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, a git server on
 # 127.0.0.1:8765 serving /srv/git, and, once setup.sh has run e2e/common/tls.sh, the same
@@ -8,7 +8,7 @@ name: lola profile first, the S1-S8 walkthroughs of spec 2026-10-29 §4
 # path. Cases run in order and read the state earlier ones leave; a case whose state is missing
 # fails. No assistant is on PATH, so installs name -t claude-code.
 #
-# The scenarios are the spec's, in an order one home can walk: S1 and S2 at user scope, S4 and
+# The scenarios run in an order one home can walk: S1 and S2 at user scope, S4 and
 # S3 in the team project acme, S5 on a teammate's home (b_env), S7 and S8 back in this home, and
 # S6 last, copying this home's ~/.config/lola into a new one (n_env), which must install the
 # versions this home has although the source has moved on since. A terminal is script's

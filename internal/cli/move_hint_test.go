@@ -14,7 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// runConfirmed runs a hint that names another command as printed. That hint carries no -y (R-8),
+// runConfirmed runs a hint that names another command as printed. That hint carries no -y,
 // so off a terminal a run that removes files refuses, and its last hint is that run with -y (its
 // words as the refusal names them), which runConfirmed runs.
 func runConfirmed(hint string) result {
@@ -36,7 +36,7 @@ func runConfirmed(hint string) result {
 	return runHint(confirm)
 }
 
-var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func() {
+var _ = Describe("the move hint after an install", func() {
 	var (
 		tmp, proj, notes string
 		p                paths.Paths
@@ -343,7 +343,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
 		Expect(doc.Notices).To(ContainElement(HaveField("Text", "meant for every project? lola profile --user --move notes --to base --json")))
 	})
-	It("names both scopes' context when a move takes the entry from the other scope, one when it does not (spec 2026-10-29 §3.8)", func() {
+	It("names both scopes' context when a move takes the entry from the other scope, one when it does not", func() {
 		Expect(lola("install", notes, "--project", "-t", "claude-code").code).To(Equal(0))
 		r := lola("profile", "--user", "--move", "notes", "--to", "base", "-y", "-n")
 		Expect(r.code).To(Equal(0), r.err)
@@ -363,7 +363,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		Expect(strings.Count(r.err, "scope: ")+strings.Count(r.err, "project "+proj+": ")).To(Equal(1), "a move within the project names it alone")
 	})
 
-	Describe("Pick-P1-a: a move out of project.yml carries the module's selections.yaml picks", func() {
+	Describe("a move out of project.yml carries the module's selections.yaml picks", func() {
 		var alpha string
 		BeforeEach(func() {
 			alpha = filepath.Join(tmp, "src", "alpha")
@@ -393,7 +393,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 			Expect(r.out + r.err).NotTo(Or(ContainSubstring("create "), ContainSubstring("delete "), ContainSubstring("is ignored")))
 		}
 
-		It("Pick-P1-a: the keep-it-to-yourself hint, run as printed, keeps the --only pick and changes no installed file", func() {
+		It("the keep-it-to-yourself hint, run as printed, keeps the --only pick and changes no installed file", func() {
 			hints := install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
 			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch"))
 			Expect(installedFiles()).To(Equal([]string{".claude/skills/a1/SKILL.md"}))
@@ -406,7 +406,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 			Expect(lola("sync", "--project").out).NotTo(ContainSubstring("create "), "the next sync installs nothing either")
 		})
 
-		It("Pick-P1-a: --to project:team keeps the pick in the project profile and changes no installed file", func() {
+		It("--to project:team keeps the pick in the project profile and changes no installed file", func() {
 			team := filepath.Join(proj, ".lola", "profiles", "team.yml")
 			writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\n"})
 			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
@@ -418,7 +418,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 			Expect(read(p.Selections)).NotTo(ContainSubstring("alpha"))
 		})
 
-		It("Pick-P1-a: the every-project hint, run as printed, carries the pick into default at user scope", func() {
+		It("the every-project hint, run as printed, carries the pick into default at user scope", func() {
 			hints := install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
 			Expect(hints[len(hints)-1]).To(Equal("meant for every project? lola profile --user --move alpha --to base"))
 
@@ -433,7 +433,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 			Expect(filepath.Join(p.Home, ".claude", "commands", "hello.md")).NotTo(BeAnExistingFile())
 		})
 
-		It("Pick-P1-a: an exact only: list and an include carry as the profile entry's only: list; selections.yaml keeps its other entries as written", func() {
+		It("an exact only: list and an include carry as the profile entry's only: list; selections.yaml keeps its other entries as written", func() {
 			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1", "--exact")
 			install("alpha", "--project", "--unskip", "skill/a2")
 			Expect(read(p.Selections)).To(ContainSubstring("only: [skill/a1]"))
@@ -458,7 +458,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 			Expect(read(p.Selections)).NotTo(ContainSubstring("alpha"))
 		})
 
-		It("Pick-P1-a: a glob skip carries as the profile entry's skip:", func() {
+		It("a glob skip carries as the profile entry's skip:", func() {
 			hints := install(alpha, "--project", "-t", "claude-code", "--skip", "skill/*")
 			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch"))
 			unchanged(runHint(command(hints[0])))
@@ -490,7 +490,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 			Expect(installedFiles()).To(Equal(files))
 		}
 
-		It("Pick-P1-a: an include over a glob skip, with no only: list, refuses the move and hints none after the install", func() {
+		It("an include over a glob skip, with no only: list, refuses the move and hints none after the install", func() {
 			Expect(install(alpha, "--project", "-t", "claude-code", "--skip", "skill/*", "--unskip", "skill/a1")).To(BeEmpty(),
 				"no move hint: the move would be refused")
 			Expect(read(p.Selections)).To(ContainSubstring("include: [skill/a1]"))
@@ -499,7 +499,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 				[]string{".claude/commands/hello.md"})
 		})
 
-		It("Pick-P1-a: an include over a global skip refuses the move and hints none after the install", func() {
+		It("an include over a global skip refuses the move and hints none after the install", func() {
 			writeTree(filepath.Dir(p.Selections), map[string]string{"selections.yaml": "version: 1\nglobal:\n  alpha: {skip: [skill/a1]}\n"})
 			Expect(install(alpha, "--project", "-t", "claude-code", "--unskip", "skill/a1")).To(BeEmpty(), "no move hint: the move would be refused")
 			Expect(read(p.Selections)).To(ContainSubstring("include: [skill/a1]"))
@@ -508,7 +508,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 				[]string{".claude/commands/hello.md", ".claude/skills/a2/SKILL.md", ".claude/skills/a3/SKILL.md"})
 		})
 
-		It("Pick-P1-a: a move of two modules whose picks cannot travel names both", func() {
+		It("a move of two modules whose picks cannot travel names both", func() {
 			beta := filepath.Join(tmp, "src", "beta")
 			writeTree(beta, map[string]string{"lola.yml": "name: beta\n", "skills/b1/SKILL.md": "---\nname: b1\ndescription: B1\n---\nB1\n",
 				"skills/b2/SKILL.md": "---\nname: b2\ndescription: B2\n---\nB2\n"})
@@ -522,7 +522,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 				"include: skill/b1 cannot travel: a profile entry has no include:, and the global skip skill/b1 applies to it; the move would remove skill/b1 here\n"))
 		})
 
-		It("Pick-P2-a: a move whose selections.yaml write fails names the path key the entry is still under in a clone", func() {
+		It("a move whose selections.yaml write fails names the path key the entry is still under in a clone", func() {
 			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
 			for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "https://example.com/o/r"}} {
 				out, err := exec.Command("git", append([]string{"-C", proj}, args...)...).CombinedOutput()
@@ -541,7 +541,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 				":; until then lola warns that it is ignored\n"))
 		})
 
-		It("Pick-P1-a: a move between scopes whose selections.yaml write fails says the move is done, and hints no rerun", func() {
+		It("a move between scopes whose selections.yaml write fails says the move is done, and hints no rerun", func() {
 			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
 			lolaDir := filepath.Dir(p.Selections)
 			Expect(os.MkdirAll(p.UserProfiles, 0o700)).To(Succeed())

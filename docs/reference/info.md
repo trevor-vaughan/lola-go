@@ -11,13 +11,16 @@ runtime hook or MCP server. The argument is what `lola install` takes: a module 
 `lola cache add` fetches it, so installing the cached name afterwards fetches nothing. It prints:
 
 1. The module's identity: name, version, description, source, type, path, digest, format and
-   cached heads. A git source also prints `commit:`, the full 40-hex commit it resolved, and
-   `ref:`, the branch, tag or commit the version shown was read at (`default branch` when none);
-   for a cached module named without `--ref` and installed in the scope, the ref its entry
-   records, which `lola update` follows. `head digest:` is the version digest, never a commit (with several cached heads, each line
-   names its ref). `--json` has `commit`, `""` for a folder or an archive, and `ref` (`""` for the
-   default branch and for a source that is not git); `lola cache add` and `lola cache list` JSON
-   carry `commit` too.
+   cached heads.
+   - A git source also prints `commit:`, the full 40-hex commit it resolved, and `ref:`, the
+     branch, tag or commit the version shown was read at (`default branch` when none); for a
+     cached module named without `--ref` and installed in the scope, the ref its entry records,
+     which `lola update` follows.
+   - `head digest:` is the version digest, never a commit (with several cached heads, each line
+     names its ref).
+   - `--json` has `commit`, `""` for a folder or an archive, and `ref` (`""` for the default
+     branch and for a source that is not git); `lola cache add` and `lola cache list` JSON carry
+     `commit` too.
 2. Its contents: skills, commands, agents, MCP servers, rules, install hooks, warnings, the
    [vars](../guides/templating.md#vars) it declares with their defaults, and its
    [templates](../guides/templating.md#templates), [partials](../guides/templating.md#partials) and
@@ -51,16 +54,18 @@ runtime hook or MCP server. The argument is what `lola install` takes: a module 
      failure (an unreadable file) is `lola info`'s own error.
    - where a layer provides the module (it is in `project.yml`, your default or the profile on),
      each component as that layer's picks leave it, under `components of <module> here, provided
-     by <layer>:` (the layer named as the component lines name theirs): `installed` (the selection takes it), `skipped in <layer>`, `not in the only: list of
-     <layer>` or `rules off`, with `(new)` on one the version shown adds over the one installed
-     there (nothing is new when that version is no longer in your cache), then
-     `→ change it: <command>`: `lola profile <name> --edit <module>` for a profile's or your
-     default's module, `lola install <module>` for `project.yml`'s while no profile is on there
-     (`lola profile base --edit <module>` while one is), and for a remote profile's module the
-     switch to a copy of yours (`lola profile go-mine --switch --new --from remote:go`).
-     For a git module `project.yml` provides while no profile is on there, a second line
-     `→ follow another branch or tag: lola install <module> --ref <ref>` (`<ref>` is yours to
-     fill in) switches it to another ref, keeping its picks and targets.
+     by <layer>:` (the layer named as the component lines name theirs):
+     - `installed` (the selection takes it), `skipped in <layer>`, `not in the only: list of
+       <layer>` or `rules off`;
+     - `(new)` on one the version shown adds over the one installed there (nothing is new when
+       that version is no longer in your cache);
+     - then `→ change it: <command>`: `lola profile <name> --edit <module>` for a profile's or your
+       default's module, `lola install <module>` for `project.yml`'s while no profile is on there
+       (`lola profile base --edit <module>` while one is), and for a remote profile's module the
+       switch to a copy of yours (`lola profile go-mine --switch --new --from remote:go`);
+     - for a git module `project.yml` provides while no profile is on there, a second line
+       `→ follow another branch or tag: lola install <module> --ref <ref>` (`<ref>` is yours to
+       fill in) switches it to another ref, keeping its picks and targets.
    - A copy of the version already installed needs no `hooks` trust: its hooks run only with
      your consent.
 5. The command that installs exactly the version shown, with `--trust=` the kinds still needed
@@ -127,24 +132,37 @@ JSON: one document. The module's identity and contents: `name`, `description`, `
 `agents`, `mcp_servers`, `rules`, `hooks`, `warnings`, `vars` (`[{"name", "type", "default"}]`,
 `type` one of `string`, `boolean`, `number`, `list`; a number's `default` is a JSON number),
 `templates`, `partials` and `attributes` (paths in the module), each `[]` when none, and `path`
-(the module root inside the source) when it has one. Then `mentions`: each component that names
+(the module root inside the source) when it has one.
+
+Then `mentions`: each component that names
 others in its text (`component`, `mentions`, both `kind/name`; `[]` when none), and `notices`
-(each `level`, `text`, `class`; `[]` when none), a warn when the scan could not read the module. Then `runs`: `install_hooks` (each `event`,
+(each `level`, `text`, `class`; `[]` when none), a warn when the scan could not read the module.
+
+Then `runs`: `install_hooks` (each `event`,
 `script`, `sha256`, `first_lines`), `runtime_hooks` (as `lola install` reports them) and
 `mcp_servers` (each `name`, `target`, `command`, `args`, `url`) and `scripts` (each `event`,
-`source`, `path`, `sha256`, `needs_trust`). Then `install`, one element per
+`source`, `path`, `sha256`, `needs_trust`).
+
+Then `install`, one element per
 scope: `scope` (`""` without one), `targets`, `steps`, `findings`, `consent` (each `kind`, `item`,
 `recorded`: `yes`, `no` or `unknown`), `trust_needed` (kinds), `digest` (the version it
 installs), `command` (the next step; `""` without a plan, and in every element when installing at
 any scope would be refused) and, when installing there would be
-refused, `refusal` (`error`, `hints`), and `new_project` (`true` when the install would create `.lola/`
+refused, `refusal` (`error`, `hints`),
+and `new_project` (`true` when the install would create `.lola/`
 at the scope's directory), `from` (the layer that provides the module there, as `lock.json` names
-it; `""` where none does, and where its scope or the cache cannot be read), `components` (each `kind`, `name`, `state`: `installed`, `skipped`,
+it; `""` where none does, and where its scope or the cache cannot be read),
+
+`components` (each `kind`, `name`, `state`: `installed`, `skipped`,
 `not_in_only` or `rules_off`, `origin`: the layer of the picks that leave it out, `""` otherwise,
 `new` and `mentions`; `[]` where no layer provides the module, or its scope or the cache cannot be
-read) `change` (the re-pick; `""` in those cases too) and `follow` (the switch to another ref; `""` for a module that is not git, and where a profile provides it). Under `--json` an unreadable scope or
+read) `change` (the re-pick; `""` in those cases too) and `follow` (the switch to another ref; `""` for a module that is not git, and where a profile provides it).
+
+Under `--json` an unreadable scope or
 cache gives `from: ""`, `components: []` and `change: ""` and no warning: the warning shows only in
-human output. A runtime hook shown as declared has `status` `unknown`. Last,
+human output. A runtime hook shown as declared has `status` `unknown`.
+
+Last,
 `no_scope` (the sentence, only when no scope resolved), `no_assistant` (the sentence, only when a
 scope lacks an assistant to plan for) and `hints` (`[]` when both a scope and an assistant
 resolved).

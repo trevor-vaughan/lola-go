@@ -12,7 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Recorded field limits (Plan 6a §4.3).
+// Recorded field limits.
 const (
 	maxRecordedSource = 4096
 	maxRecordedRef    = 256
@@ -23,7 +23,7 @@ var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // Recorded is a source as project.yml, a profile or lock.json records it. Those files may be
 // someone else's, so their fields are checked when the file is loaded, before any of them can
-// reach git or a path (Plan 6a §4.3).
+// reach git or a path.
 type Recorded struct {
 	Source, Ref, Path, Commit, Digest string
 }

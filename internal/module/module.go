@@ -90,7 +90,7 @@ type MCPServer struct {
 	Targets   []string
 }
 
-// Rule is always-on context (§5.6): rules/<Name>.md with its frontmatter removed. A template
+// Rule is always-on context: rules/<Name>.md with its frontmatter removed. A template
 // (Template set) holds its whole source in Body until the engine renders it.
 type Rule struct {
 	Name, Body string
@@ -99,7 +99,7 @@ type Rule struct {
 }
 
 // RuntimeHookSet is one components.runtime_hooks entry: a Claude Code hooks event map, which
-// the assistant runs on its own events (Plan 5b design §7.1). Source is the hooks file it came
+// the assistant runs on its own events. Source is the hooks file it came
 // from, or "" for an inline entry; Hooks is the event map (without the "hooks" wrapper) as
 // canonical JSON.
 type RuntimeHookSet struct {
@@ -116,7 +116,7 @@ func (h RuntimeHookSet) Name() string {
 	return h.Source
 }
 
-// Hook is an install hook a module declares (§9.1): Script is the module-relative path of an
+// Hook is an install hook a module declares: Script is the module-relative path of an
 // executable regular file. lola runs hooks only with the user's consent.
 type Hook struct {
 	Event  string `json:"event"`
@@ -140,8 +140,8 @@ type Module struct {
 	Rules                                                     []Rule
 	RuntimeHooks                                              []RuntimeHookSet
 	DeclaredHooks                                             []Hook
-	Partials                                                  map[string]string // content-relative path → source (Plan 7 §3.3), nil when none
-	Vars                                                      map[string]any    // lola.yml vars: name → default, a string, bool, int64, float64 or []string (Plan 7 §4.1, §5.7.4); nil when none
+	Partials                                                  map[string]string // content-relative path → source, nil when none
+	Vars                                                      map[string]any    // lola.yml vars: name → default, a string, bool, int64, float64 or []string; nil when none
 	Warnings                                                  []string          // non-fatal load problems, e.g. skipped skills
 
 	components *components // the manifest's components section, which Normalize writes back
@@ -154,10 +154,10 @@ func Supports(targets []string, id string) bool {
 	return len(targets) == 0 || slices.Contains(targets, id)
 }
 
-// SameMeaning reports whether a and b are the same module to every target and to the cache:
-// it ignores how each was read (Format, Manifest, Shadowed) and the warnings. Values compare by their YAML encoding,
-// so an empty list or map equals an absent one, and a number equals itself whether JSON or YAML
-// decoded it.
+// SameMeaning reports whether a and b are the same module to every target and to the cache: it
+// ignores how each was read (Format, Manifest, Shadowed) and the warnings. Values compare by their
+// YAML encoding, so an empty list or map equals an absent one, and a number equals itself whether
+// JSON or YAML decoded it.
 func SameMeaning(a, b *Module) bool {
 	ea, errA := meaning(a)
 	eb, errB := meaning(b)
@@ -175,7 +175,7 @@ type Template struct {
 	File, Body string
 }
 
-// Templates lists m's template files (Plan 7 §3.1): component templates, skill support files and
+// Templates lists m's template files: component templates, skill support files and
 // command sidecars, in the order of m's skills, commands, agents and rules.
 func (m *Module) Templates() []Template {
 	var out []Template
@@ -210,7 +210,7 @@ func (m *Module) Templates() []Template {
 	return out
 }
 
-// AttributeFiles lists the content-relative paths of m's attribute files (Plan 7 §3.4), sorted.
+// AttributeFiles lists the content-relative paths of m's attribute files, sorted.
 func (m *Module) AttributeFiles() []string {
 	var out []string
 	add := func(file string) {

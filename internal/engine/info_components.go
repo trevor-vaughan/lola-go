@@ -10,7 +10,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// The states of a component at a scope (cherry-pick design §6): installed (the selection takes
+// The states of a component at a scope: installed (the selection takes
 // it), skipped (a skip: leaves it out), not_in_only (only the only: list in force leaves it out) or
 // rules_off (a rule, while the module's rules are off).
 const (
@@ -20,8 +20,8 @@ const (
 	ComponentRulesOff  = "rules_off"
 )
 
-// InfoComponent is one component of a module version at one scope that provides the module
-// (cherry-pick design §6): its state, the layer whose picks leave it out (Origin, as output names
+// InfoComponent is one component of a module version at one scope that provides the module:
+// its state, the layer whose picks leave it out (Origin, as output names
 // it; "" unless skipped or not_in_only), whether the version adds it over the version installed
 // there (New; false when that is unknown), and what it mentions ([] for none).
 type InfoComponent struct {
@@ -79,7 +79,7 @@ func componentStates(v store.Version, x config.Exclusions, rulesOn bool, had []C
 }
 
 // infoComponents fills in, lola info's element for sc, with v's module there as info shows it to
-// re-pick (cherry-pick design §6; spec 2026-10-29 §13 item 9): From, the layer that provides it
+// re-pick: From, the layer that provides it
 // (lock.json's form; "" for none), Components, their states (componentStates, against the version
 // installed there), Change, the run that changes its picks (repickRun, a profile being on as
 // the scope's ledger says), and for a git module Follow, the run that switches its ref. It leaves them unset

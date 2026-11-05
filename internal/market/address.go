@@ -10,7 +10,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Address is a marketplace address as typed on the command line (Plan 6c §3.3):
+// Address is a marketplace address as typed on the command line:
 // @<market>/<entry>, or @<market> alone, whose Entry is "".
 type Address struct {
 	Market, Entry string
@@ -24,7 +24,7 @@ func (a Address) String() string {
 	return "@" + a.Market + "/" + a.Entry
 }
 
-// ParseAddress reads arg as an Address (Plan 6c §3.3): ok is false for an argument that does not
+// ParseAddress reads arg as an Address: ok is false for an argument that does not
 // start with "@", a cached name or a source; one that does must be @<market> or
 // @<market>/<entry>, each part passing the module-name rule, else it is an error. A directory
 // named so is written ./@acme/x.
@@ -49,7 +49,7 @@ func ParseAddress(arg string) (_ Address, ok bool, _ error) {
 // maxClose is how many close names a refusal lists.
 const maxClose = 10
 
-// CloseNames are the names of the entries cat offers that are close to name (Plan 6c §6.3, T15),
+// CloseNames are the names of the entries cat offers that are close to name (T15),
 // as closeTo finds them.
 func CloseNames(cat Catalog, name string) []string {
 	var names []string

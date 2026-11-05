@@ -12,7 +12,7 @@ import (
 )
 
 // DeletesRefusedError is an install, or lola profile --edit, whose plan deletes files, refused
-// because it cannot ask (spec 2026-11-03 Pick-P2-b): there is no terminal and neither -y nor
+// because it cannot ask: there is no terminal and neither -y nor
 // --force answered. Removals is what the plan deletes, for the CLI to print; Plan is the dry
 // run's result, the plan a --json refusal carries.
 type DeletesRefusedError struct {

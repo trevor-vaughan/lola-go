@@ -149,7 +149,7 @@ var _ = Describe("core commands", func() {
 		r = lola("install", mod, "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("✗ skipped example: claude-code agent bare: claude-code needs a description in the agent's frontmatter\n"))
-		Expect(r.out).NotTo(ContainSubstring("add description:"), "P2-6: the hint for the module's author is lola check's")
+		Expect(r.out).NotTo(ContainSubstring("add description:"), "the hint for the module's author is lola check's")
 		Expect(lola("check", "example", "-C", proj).out).To(ContainSubstring("    hint: add description: to the agent's frontmatter"))
 		Expect(lola("install", mod, "-C", proj, "--plain").out).To(ContainSubstring("finding\tskip\texample\tclaude-code\tagent\tbare\trequired-key-missing\t"))
 	})
@@ -166,7 +166,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(ContainSubstring("finding\tinfo"))
 	})
 
-	It("P2-10: flags a module whose local source is gone, and only that", func() {
+	It("flags a module whose local source is gone, and only that", func() {
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
 		Expect(lola("ls", "-C", proj).out).NotTo(ContainSubstring("source gone"))
 		Expect(lola("ls", "-C", proj, "--json").out).To(ContainSubstring(`"source_gone": false`))
@@ -184,7 +184,7 @@ var _ = Describe("core commands", func() {
 		Expect(doc.Modules[0].SourceGone).To(BeTrue())
 	})
 
-	It("P2-10: does not call a source gone when it cannot be checked", func() {
+	It("does not call a source gone when it cannot be checked", func() {
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
 		Expect(os.RemoveAll(mod)).To(Succeed())
 		Expect(os.WriteFile(mod, nil, 0o644)).To(Succeed()) // a file where the folder was: lola cannot tell
@@ -737,7 +737,7 @@ var _ = Describe("core commands", func() {
 			writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
 			r := lola(run...)
 			Expect(r.code).To(Equal(1), run[0])
-			// -y answered "remove what lola can remove safely", never "delete my edits" (R-6cux-4):
+			// -y answered "remove what lola can remove safely", never "delete my edits":
 			// --force answers that; the hint completes your own run, so it keeps your -y.
 			want := map[string]string{"update": "lola update --root " + proj + " --strict --force",
 				"sync": "lola sync example --root " + proj + " --yes --force"}[run[0]]

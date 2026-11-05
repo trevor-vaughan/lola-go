@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// minContrast is WCAG 2's AA contrast ratio for text, which Plan 10 §4 asks of every color.
+// minContrast is WCAG 2's AA contrast ratio for text, which every color must meet.
 const minContrast = 4.5
 
 // eachStyle calls visit with every lipgloss.Style in v, a huh.Styles or a struct inside one,
@@ -57,7 +57,7 @@ func (endedInput) Background() (bool, error) {
 	return false, errs.WithHints(errInputEnded, "run lola in a terminal that can answer its questions")
 }
 
-var _ = Describe("the pickers' theme (Plan 10 §4)", func() {
+var _ = Describe("the pickers' theme", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
 	It("measures contrast as WCAG 2 does", func() {
@@ -137,7 +137,7 @@ var _ = Describe("the pickers' theme (Plan 10 §4)", func() {
 	})
 })
 
-var _ = Describe("the pickers' background (Plan 10 §4)", func() {
+var _ = Describe("the pickers' background", func() {
 	var (
 		errb bytes.Buffer
 		cfg  string

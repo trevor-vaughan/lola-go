@@ -13,7 +13,7 @@ import (
 )
 
 // fetchPin fetches the version a pin names into run and prepares it there (store.Prepare), and
-// returns it staged, not cached (Plan 6a §6.4): the caller commits it (store.Commit with
+// returns it staged, not cached: the caller commits it (store.Commit with
 // headIfAbsent, so the pinned fetch never moves a head) once the content may enter the cache.
 // spec is the entry's source with its ref. For git the commit must be reachable from that ref,
 // it is fetched by its SHA, and the fetch must resolve to it; for every kind the content's digest
@@ -81,7 +81,7 @@ func (e *digestMismatchError) Error() string {
 }
 
 // sourceRoot is the directory a scope's recorded relative sources are read against: the
-// project's canonical root (Plan 6a §8), or / at user scope, whose sources are recorded absolute.
+// project's canonical root, or / at user scope, whose sources are recorded absolute.
 func sourceRoot(sc Scope) string {
 	if sc.Kind == target.User {
 		return "/"

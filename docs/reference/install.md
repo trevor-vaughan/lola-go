@@ -7,11 +7,15 @@ lola install [<source|name|@market/module>...]
 Alias: `add`. Fetch the module (if it is a source or a
 [marketplace](../guides/marketplaces.md#marketplaces) entry), render it for each target, record it in
 the file it writes ([Where it is written](#where-an-install-is-written)), and copy what it installs
-into your cache. Where a higher layer lists the module (the scope's active
+into your cache.
+
+Where a higher layer lists the module (the scope's active
 [profile](../guides/profiles.md#profiles) over its base), that layer's entry keeps winning: the
 install writes its entry and installs nothing of it, and when the entries differ it warns
 `<module>: profile go's entry wins; this change to default (base) applies when it is off`. A
-run that is cancelled, refused or `-n` leaves your cache as it was. With no argument on a terminal,
+run that is cancelled, refused or `-n` leaves your cache as it was.
+
+With no argument on a terminal,
 walks you through the choices
 ([Choosing what to install](../guides/choosing-what-to-install.md)). A name installs a module already in your cache without
 touching its source. Without a scope flag it uses, in order, the terminal's scope picker, the
@@ -55,15 +59,21 @@ A `--profile` that is off is written and nothing is applied; the notice says so 
 rust; it is not on at user scope → lola profile --user rust --switch`). Its move hints name that
 profile as the move's source (`lola profile --user rust --move kit --to base`), and a move into a
 profile that is off keeps it off (`--keep-off`); nothing of the module is installed here to move.
-After a write to a project's profile that is off, no move is hinted. A module the target's file
+After a write to a project's profile that is off, no move is hinted.
+
+A module the target's file
 does not list but another layer does (the base under the profile on, or a remote profile as a member
 of the bundle on) asks whether to change it in that layer (`--profile base`) or to override it in
 the target (`--override`; under a bundle, `--profile <member> --override`). When the profile on is a
 bundle, an install asks which member gets the module, and off a terminal refuses with a
-`--profile <member>` per member. A read-only layer offers Override alone, and a request equal to the inherited
+`--profile <member>` per member.
+
+A read-only layer offers Override alone, and a request equal to the inherited
 entry is a notice. `-y` and `--force` answer neither: off a terminal the install refuses, hinting
 both flag forms. An override copies the entry without its pin and keeps the version installed, and
-an install that changes only picks keeps the installed version too; `lola update` moves it. A
+an install that changes only picks keeps the installed version too; `lola update` moves it.
+
+A
 folder module is never pinned: it installs the version your cache holds, as a sync of a cached
 folder does. An
 inherited entry that is pinned installs at its own ref and pin.
@@ -93,7 +103,9 @@ An install that adds a folder or local archive inside a project (at or below a d
 profile of yours) warns once, at that write: `notes (<file>) installs from <path>, inside project
 <root>: changes there install without review wherever that file is on`. lola never asks about your
 own entries, so a later change there (a pulled commit) installs on the next sync of every scope
-that file is on in. After a
+that file is on in.
+
+After a
 user-scope install the warning hints the two-step that keeps it in that project instead (`keep it
 in the project instead: lola uninstall --user notes, then lola install -C <root> notes`, with
 `-t` when the project names no assistants you trust there), when that runs as printed. A later

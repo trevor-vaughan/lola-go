@@ -1,4 +1,4 @@
-// Package source parses source arguments (§7.2) and fetches module content into staging.
+// Package source parses source arguments and fetches module content into staging.
 package source
 
 import (
@@ -37,11 +37,10 @@ var archiveSuffixes = []string{".zip", ".tar", ".tar.gz", ".tgz"}
 // symbolic links resolved when Parse made it, else a URL.
 //
 // SHA256 is the sha256 of an archive's bytes (64 hex digits, either case) that a marketplace's
-// catalog lists: the archive is refused before extraction when its bytes have another (Plan 6c
-// §6.4, ruling R-6c-6). It is never recorded. FromCatalog says a stranger's catalog named the
-// source, not you (Plan 6c §10, ruling R-6c-13): every redirect of its download must pass
-// CheckRemote, and git follows none of its redirects. Components, when set, is the selection a
-// catalog made of the module's directory, which every fetch applies (Components).
+// catalog lists: the archive is refused before extraction when its bytes have another. It is never
+// recorded. FromCatalog says a stranger's catalog named the source, not you: every redirect of its
+// download must pass CheckRemote, and git follows none of its redirects. Components, when set, is
+// the selection a catalog made of the module's directory, which every fetch applies (Components).
 type Spec struct {
 	Kind        Kind
 	Location    string
@@ -72,14 +71,14 @@ const gitCredentialsHint = "remove the credentials, query or fragment; let a git
 var fullSHARE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // CommitRef is ref as the full commit SHA it names, lower-cased (a commit id is hex in any case),
-// and whether it names one: a ref of 40 or 64 hex digits is always a commit (R-9-U10).
+// and whether it names one: a ref of 40 or 64 hex digits is always a commit.
 func CommitRef(ref string) (string, bool) {
 	lower := strings.ToLower(ref)
 	return lower, fullSHARE.MatchString(lower)
 }
 
 // RecordedRef is ref as lola records and shows it: a full commit SHA lower-cased, any other ref
-// as typed (R-9-31).
+// as typed.
 func RecordedRef(ref string) string {
 	if commit, ok := CommitRef(ref); ok {
 		return commit
@@ -98,8 +97,7 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 	}
 	p, isURL := arg, strings.HasPrefix(arg, "file://")
 	// A URL or git's scp form is never looked up on disk: a directory named like it, which a
-	// checkout can hold, must not stand in for the network source it names (Plan 6b ruling
-	// R-6b3b-5). A Windows path with a drive letter is not scp form.
+	// checkout can hold, must not stand in for the network source it names. A Windows path with a drive letter is not scp form.
 	switch {
 	case !isURL && strings.Contains(arg, "://"):
 		return parseRemote(arg)
@@ -138,7 +136,7 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 		return Spec{}, false, nil
 	}
 	if spec.Kind != KindGit {
-		// One form of a local location for every later comparison (Plan 6a §8).
+		// One form of a local location for every later comparison.
 		if spec.Location, err = filepath.EvalSymlinks(filepath.Clean(p)); err != nil {
 			return Spec{}, false, fmt.Errorf("%s: %w", untrusted.Text(arg, untrusted.MaxName), untrusted.CleanErr(err))
 		}
@@ -186,7 +184,7 @@ func SameLocation(kind Kind, recorded, location string) bool {
 	return err == nil && canonical == location
 }
 
-// parseRemote classifies a URL (§2 rows 4-6): an http(s) URL whose path ends in an archive
+// parseRemote classifies a URL: an http(s) URL whose path ends in an archive
 // suffix is an archive, any other http(s) or ssh URL is git.
 func parseRemote(arg string) (Spec, bool, error) {
 	u, err := parseURL(arg)
@@ -274,7 +272,7 @@ func displayURL(u *url.URL) string {
 	return untrusted.Text(u.Scheme+"://"+u.Host+u.EscapedPath(), untrusted.MaxName)
 }
 
-// checkURL refuses what no source URL may carry (§2): a query or fragment, credentials, and
+// checkURL refuses what no source URL may carry: a query or fragment, credentials, and
 // plain http to anything but loopback. The location is written to lola.yml and the cache
 // index, so a secret in it would be committed. A user name in an ssh URL is no secret and is
 // allowed; a password never is. kind picks the hint.
@@ -324,7 +322,7 @@ func archiveSuffix(name string) string {
 	return ""
 }
 
-// Validate refuses a Spec that must never reach a fetcher (design §2). Fetch calls it too:
+// Validate refuses a Spec that must never reach a fetcher. Fetch calls it too:
 // the engine builds Specs from lola.yml and the cache index, which may be someone else's.
 func Validate(spec Spec) error {
 	if err := checkLocation(spec.Location); err != nil {

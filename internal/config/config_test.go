@@ -16,7 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// example is the selections.yaml of the design (§6.2), with its project keys home and dir.
+// example is the selections.yaml with its project keys home and dir.
 func example(home, dir string) string {
 	return `# lola selections: components you chose not to install.
 version: 1
@@ -54,7 +54,7 @@ var _ = Describe("config.yaml", func() {
 		Expect(c.Pager).To(BeTrue())
 	})
 
-	It("reads pager (Plan 6b §9)", func() {
+	It("reads pager", func() {
 		write("version: 1\npager: false\n")
 		c, err := config.LoadConfig(path, "")
 		Expect(err).NotTo(HaveOccurred())
@@ -72,7 +72,7 @@ var _ = Describe("config.yaml", func() {
 		Expect(c.DefaultScope).To(Equal("both"))
 	})
 
-	It("reads pre_install and post_install, expanding ~/ (Plan 9 §5.1)", func() {
+	It("reads pre_install and post_install, expanding ~/", func() {
 		write("version: 1\npre_install: ~/bin/pre.sh\npost_install: /opt/ci/after.sh\n")
 		c, err := config.LoadConfig(path, "/home/u")
 		Expect(err).NotTo(HaveOccurred())
@@ -80,7 +80,7 @@ var _ = Describe("config.yaml", func() {
 		Expect(c.PostInstall).To(Equal(config.Script{Path: "/opt/ci/after.sh", Line: 3, Key: "post_install"}))
 	})
 
-	It("reads theme: dark or light (Plan 10 §4)", func() {
+	It("reads theme: dark or light", func() {
 		write("version: 1\ntheme: dark\n")
 		c, err := config.LoadConfig(path, "")
 		Expect(err).NotTo(HaveOccurred())
@@ -95,7 +95,7 @@ var _ = Describe("config.yaml", func() {
 		Expect(c.Theme).To(BeEmpty(), "no theme: lola asks the terminal, then you")
 	})
 
-	It("saves theme, creating config.yaml or keeping its comments and other keys (Plan 10 §4)", func() {
+	It("saves theme, creating config.yaml or keeping its comments and other keys", func() {
 		Expect(config.SaveTheme(path, "", config.ThemeDark)).To(Succeed())
 		Expect(os.ReadFile(path)).To(Equal([]byte("# lola settings. Safe to edit by hand.\nversion: 1\ntheme: dark\n")))
 
@@ -108,7 +108,7 @@ var _ = Describe("config.yaml", func() {
 		Expect(os.ReadFile(path)).To(Equal([]byte("# mine\nversion: 1\ndefault_scope: user # where I work\ntheme: dark\n")))
 	})
 
-	It("never overwrites a config.yaml that does not load (Plan 10 §4)", func() {
+	It("never overwrites a config.yaml that does not load", func() {
 		write("version: 1\ntheme: blue\n")
 		err := config.SaveTheme(path, "", config.ThemeDark)
 		Expect(err).To(MatchError(ContainSubstring("not saving your theme: " + path + `:2: theme: "blue" is not a theme`)))
@@ -116,7 +116,7 @@ var _ = Describe("config.yaml", func() {
 		Expect(os.ReadFile(path)).To(Equal([]byte("version: 1\ntheme: blue\n")))
 	})
 
-	DescribeTable("reads cache_unused_for (Plan 9 §6.2)",
+	DescribeTable("reads cache_unused_for",
 		func(value string, want config.Age) {
 			write("version: 1\ncache_unused_for: " + value + "\n")
 			c, err := config.LoadConfig(path, "")

@@ -1,6 +1,6 @@
 // Package trash is lola's trash: one directory per run under $XDG_STATE_HOME/lola/trash, where
 // lola moves or copies what it takes out of a destination, with a manifest.txt that says where
-// each item came from (migrate design §6). Only lola trash restores or empties it.
+// each item came from. Only lola trash restores or empties it.
 package trash
 
 import (
@@ -23,12 +23,12 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Trash is one run's directory under $XDG_STATE_HOME/lola/trash (migrate design §6): named after
+// Trash is one run's directory under $XDG_STATE_HOME/lola/trash: named after
 // the UTC time and created exclusively, with one subdirectory per destination and
 // manifest.txt, whose lines are original-path<TAB>trash-path. Each line is appended and synced
 // before its copy or move, so the manifest names everything that may have left its place.
 // Restore moves an entry back. run.yaml beside it records which command made the run and
-// which copies may hold credentials (spec 2026-11-03 §3.5).
+// which copies may hold credentials.
 type Trash struct {
 	Dir         string
 	manifest    *os.File
@@ -981,7 +981,7 @@ func copyDir(from *os.Root, src, dst string, perm fs.FileMode) (err error) {
 }
 
 // UnlinkIfBackedUp removes name, a file or symbolic link in dir, when backup (dir's copy in
-// the trash) holds the same content at name (migrate design §12.8): it was backed up with the
+// the trash) holds the same content at name: it was backed up with the
 // directory, so it is unlinked rather than moved a second time. One that differs from its
 // backup, or that the backup lacks, is kept (false). Both are read through os.Root, so no link
 // is followed out.

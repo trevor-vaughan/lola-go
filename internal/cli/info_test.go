@@ -152,7 +152,7 @@ var _ = Describe("lola info", func() {
 		Expect(readInfo(r.out).Install[0].Command).To(BeEmpty(), "the entry now names claude-code alone")
 	})
 
-	It("P2-5: shows the commit a git source resolved, and none for a folder", func() {
+	It("shows the commit a git source resolved, and none for a folder", func() {
 		work := filepath.Join(tmp, "work")
 		writeTree(work, infoKit)
 		gitIn(work, "init", "-q", "-b", "main")

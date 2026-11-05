@@ -150,7 +150,7 @@ var _ = Describe("frontmatter and body regions", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(r.Body)).To(Equal("[]"))
 
-		By("a string YAML would not read back as itself refuses unless its {{ }} ends with json (R-7-U18)")
+		By("a string YAML would not read back as itself refuses unless its {{ }} ends with json")
 		reads := func(value, what string) string {
 			return "in frontmatter, YAML would read " + value + " as " + what + "; end that {{ }} with | json"
 		}
@@ -196,7 +196,7 @@ var _ = Describe("frontmatter and body regions", func() {
 			Expect(string(r.Front)).To(Equal(fmt.Sprintf("model: %v\n%v: x\n", value, value)))
 		}
 
-		By("only a {{ }} that is a line's whole value or whole key is round-trip checked (R-7-57)")
+		By("only a {{ }} that is a line's whole value or whole key is round-trip checked")
 		vars := func(v map[string]any, body string) (templating.Rendered, error) {
 			d := data
 			d.Vars = v

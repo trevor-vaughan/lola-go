@@ -179,7 +179,7 @@ var _ = Describe("install scripts", func() {
 			return "ci/../check.sh"
 		}),
 		// Join cleans link/.. away, so lola would run <root>/evil.sh, where a shell reading the path
-		// resolves the link first and finds another file (S1)
+		// resolves the link first and finds another file
 		Entry("through a link", func() string {
 			script(filepath.Join(proj, "evil.sh"), "exit 0\n")
 			script(filepath.Join(tmp, "elsewhere", "evil.sh"), "exit 0\n")
@@ -677,7 +677,7 @@ var _ = Describe("install scripts", func() {
 				Expect(pending()).To(BeTrue())
 
 				// on a terminal it names only the sync that asks, and asks nothing: the script would
-				// not run (M3)
+				// not run
 				res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{AskScript: func(engine.ScriptQuestion) (bool, error) {
 					Fail("a sync that does not name the module asks nothing about its pending script")
 					return false, nil
@@ -727,7 +727,7 @@ var _ = Describe("install scripts", func() {
 			Expect(lines()).To(BeNil())
 
 			// a post-install script without trust is only warned of, on a terminal too: nothing is
-			// installed for it to skip, so a question would answer nothing (M3)
+			// installed for it to skip, so a question would answer nothing
 			script(filepath.Join(proj, "ci", "after.sh"), logger("project"))
 			projectYML("targets: [claude-code]\npost_install: ci/after.sh\nmodules:\n  - {name: example, source: ./mods/example}\n")
 			res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: ask})
@@ -839,7 +839,7 @@ var _ = Describe("install scripts", func() {
 			func(name string, setup func(name string) engine.Options, shownPath func(name string) string) {
 				res, err := install(setup(name))
 				shownName := strings.NewReplacer("\x1b", "?", "\n", "?").Replace(name)
-				if shownPath == nil { // a project's is refused at plan time (A27), its path cleaned on one line
+				if shownPath == nil { // a project's is refused at plan time, its path cleaned on one line
 					Expect(err).To(MatchError(ContainSubstring("pre_install: ci/" + shownName + " holds a control character")))
 					return
 				}

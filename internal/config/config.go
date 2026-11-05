@@ -28,7 +28,7 @@ const (
 	ScopeBoth    = "both"
 )
 
-// Theme values of theme: (Plan 10 §4): the terminal background the pickers draw for.
+// Theme values of theme:: the terminal background the pickers draw for.
 const (
 	ThemeDark  = "dark"
 	ThemeLight = "light"
@@ -40,24 +40,24 @@ const themeHint = "write theme: dark or theme: light, for your terminal's backgr
 // Config is config.yaml.
 type Config struct {
 	DefaultScope string // "", project, user or both
-	Pager        bool   // show output taller than the terminal in the viewer (Plan 10 §2.1); pager: false turns it off
-	// PreInstall and PostInstall are the user's own install scripts (Plan 9 §5.1), which wrap every
+	Pager        bool   // show output taller than the terminal in the viewer; pager: false turns it off
+	// PreInstall and PostInstall are the user's own install scripts, which wrap every
 	// module copy a run installs or replaces; Path "" for none.
 	PreInstall, PostInstall Script
 	// CacheUnusedFor is the age at which a bare lola cache clean also removes a cached version
-	// nobody used (Plan 9 §6.2); the zero Age for none.
+	// nobody used; the zero Age for none.
 	CacheUnusedFor Age
 	// CacheFreshFor is how long lola update serves a ref from your cache before it fetches the
 	// ref again (cache_fresh_for:); the zero Age when config.yaml does not say, never to fetch on
 	// every run.
 	CacheFreshFor Age
-	// Theme is the terminal background the pickers draw for (Plan 10 §4): ThemeDark, ThemeLight,
+	// Theme is the terminal background the pickers draw for: ThemeDark, ThemeLight,
 	// or "" when config.yaml does not say.
 	Theme string
 }
 
 // Age is how long a cached version went unused, as lola cache clean --unused-for and
-// cache_unused_for: config.yaml write it (Plan 9 §6.2): N days, or N weeks of 7 days; Never
+// cache_unused_for: config.yaml write it: N days, or N weeks of 7 days; Never
 // turns a configured age off. The zero Age is none.
 type Age struct {
 	N     int

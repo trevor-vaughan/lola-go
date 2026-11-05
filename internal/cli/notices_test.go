@@ -14,7 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("P2-6: a run's notices: safety ones in full, the rest one line per module", func() {
+var _ = Describe("a run's notices: safety ones in full, the rest one line per module", func() {
 	var tmp, proj, mod, summary string
 	BeforeEach(func() {
 		var err error
@@ -160,7 +160,7 @@ var _ = Describe("P2-6: a run's notices: safety ones in full, the rest one line 
 		detail(r.out)
 	})
 
-	It("R-1: the notice that picks do not narrow runtime hooks is a safety notice, printed once per module", func() {
+	It("the notice that picks do not narrow runtime hooks is a safety notice, printed once per module", func() {
 		r := lola("install", mod, "-C", proj, "-t", "claude-code,gemini-cli", "--skip", "agent/a01")
 		Expect(r.code).To(Equal(0), r.err)
 		notice := "→ m: runtime hooks are installed for the whole module; picks do not narrow them\n"

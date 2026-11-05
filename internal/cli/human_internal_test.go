@@ -38,7 +38,7 @@ var _ = Describe("an install's skip lines over two scopes", func() {
 	})
 })
 
-var _ = Describe("Pick-P2-g: an install's lines for components only: leaves out", func() {
+var _ = Describe("an install's lines for components only: leaves out", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
 	It("words them as not in only:, apart from those a skip: leaves out", func() {

@@ -6,7 +6,7 @@ import (
 )
 
 // nameMatcher finds the names of a module's components in a text in one pass, however many
-// names there are (cherry-pick design §5.1: a name is found only as a whole token, bounded by the
+// names there are (a name is found only as a whole token, bounded by the
 // text's ends or a byte outside [A-Za-z0-9_-]; case matters).
 //
 // A name holds only [a-z0-9._-] (module.ValidateName), so it occurs as a whole token just when it

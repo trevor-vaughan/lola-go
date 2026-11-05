@@ -15,7 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("Pick-P2-f: uninstall clears the module's picks at that scope", func() {
+var _ = Describe("uninstall clears the module's picks at that scope", func() {
 	var (
 		tmp, proj, src string
 		p              paths.Paths
@@ -102,7 +102,7 @@ var _ = Describe("Pick-P2-f: uninstall clears the module's picks at that scope",
 		Expect(filepath.Join(proj, ".claude/skills/review/SKILL.md")).To(BeARegularFile())
 	})
 
-	It("restores only: picks with --only --exact, and never gains the -y that answered the uninstall (R-8)", func() {
+	It("restores only: picks with --only --exact, and never gains the -y that answered the uninstall", func() {
 		install(false, engine.SelectionEdit{Op: engine.EditOnly, Selector: sel("skill/review"), Exact: true})
 		res, err := e.Uninstall(ctx, sc, []string{"example"}, engine.Options{Target: engine.TargetRequest{Yes: true}})
 		Expect(err).NotTo(HaveOccurred())

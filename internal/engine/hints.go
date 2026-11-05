@@ -19,7 +19,7 @@ func (e *Engine) FoundHere(sc Scope) bool {
 }
 
 // RootArgs are the flags that point a lola command run from the working directory (Getwd) at
-// sc (Plan 6a §11.3, Plan 6b §12.3): --user at user scope; at project scope --project when sc is
+// sc: --user at user scope; at project scope --project when sc is
 // the project found from there, else -C <root>. A working directory lola cannot read gets -C,
 // which works from anywhere. A command without a scope flag would ask for its scope on a
 // terminal, so every hint carries one.
@@ -33,7 +33,7 @@ func (e *Engine) RootArgs(sc Scope) []string {
 	return []string{"-C", untrusted.Text(sc.ProjectDir, untrusted.MaxName)}
 }
 
-// SyncCommand is every lola sync command a hint, notice or closing line names (Plan 6a §11.3),
+// SyncCommand is every lola sync command a hint, notice or closing line names,
 // built by Command.
 func (e *Engine) SyncCommand(sc Scope, args ...string) string { return e.Command(sc, "sync", args...) }
 
@@ -49,8 +49,8 @@ func (e *Engine) Command(sc Scope, sub string, args ...string) string {
 }
 
 // commandOf is the lola command a hint repeating req names, with extra appended: lola sync, lola
-// update for an Installed run (spec 2026-10-29 §3.1), for an activation lola profile with req's
-// names and the action (Plan 6b §12.3), or for a move lola profile with the move's words
+// update for an Installed run, for an activation lola profile with req's
+// names and the action, or for a move lola profile with the move's words
 // (moveArgs); Sync sets those names to the profiles' qualified names once it has resolved them.
 // Each carries the scope's flags (Command) and the flags of the run (rerun).
 func (e *Engine) commandOf(req SyncRequest, extra ...string) string {
@@ -86,10 +86,8 @@ func (e *Engine) commandOf(req SyncRequest, extra ...string) string {
 	return e.Command(req.Scope, "profile", append(args, req.rerun(extra...)...)...)
 }
 
-// rerun is the names and flags of the user's sync that a hint repeating it carries (Plan 6a
-// §11.3): the names, --update (--fetch for lola update, which always updates) and --force as
-// given, --trust for the kinds given (Plan 9 §3.5), each --at, and -y as given (spec 2026-11-03
-// §3.3): once when extra adds it too, and not when extra makes the run a dry run, which asks
+// rerun is the names and flags of the user's sync that a hint repeating it carries: the names, --update (--fetch for lola update, which always updates) and --force as
+// given, --trust for the kinds given, each --at, and -y as given: once when extra adds it too, and not when extra makes the run a dry run, which asks
 // nothing.
 func (req SyncRequest) rerun(extra ...string) []string {
 	out := append([]string{}, req.Modules...)
@@ -137,7 +135,7 @@ func (req SyncRequest) trusting(kinds TrustKinds) SyncRequest {
 	return req
 }
 
-// ListAll is the command a capped list of sync's output names (Plan 6a §7.5, §11.3): the user's
+// ListAll is the command a capped list of sync's output names: the user's
 // own run as a dry run under --json, which lists every file and step.
 func (e *Engine) ListAll(req SyncRequest) string {
 	return e.commandOf(req, "-n", "--json")
@@ -158,7 +156,7 @@ func (e *Engine) fromHere(location string) string {
 }
 
 // installFolder is the lola install command that records the folder module at location as the
-// user's own (Plan 6a §7.5, §10.3): the folder relative to the working directory, written
+// user's own: the folder relative to the working directory, written
 // ./<folder> so it never reads as an option or a cached name, with the scope's flags and the
 // run's output flags, display.
 func (e *Engine) installFolder(sc Scope, location string, display ...string) string {
@@ -175,8 +173,8 @@ func (e *Engine) pathHere(location string) string {
 	return arg
 }
 
-// reviewFolder is the git command that shows the commits that changed the folder at location
-// (Plan 6a §7.5), relative to the working directory, with ./ before a name starting with '-'.
+// reviewFolder is the git command that shows the commits that changed the folder at location,
+// relative to the working directory, with ./ before a name starting with '-'.
 func (e *Engine) reviewFolder(location string) string {
 	arg := untrusted.Text(e.fromHere(location), untrusted.MaxName)
 	if strings.HasPrefix(arg, "-") {

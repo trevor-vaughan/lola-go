@@ -1,4 +1,4 @@
-// Package market reads marketplaces (Plan 6c §4–§6.1): your registration file, markets.yaml,
+// Package market reads marketplaces: your registration file, markets.yaml,
 // and the catalogs it names, in Claude Code's marketplace.json format or the Python lola's YAML,
 // adapted into one model. A catalog is a stranger's input: every source it names is classified
 // from its text alone, so this package has no file system and no network (depguard denies it os
@@ -18,13 +18,13 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// The catalog formats (Plan 6c §4.1, §4.2).
+// The catalog formats.
 const (
 	FormatClaude = "claude"    // Claude Code's marketplace.json
 	FormatYAML   = "lola-yaml" // the Python lola's catalog
 )
 
-// Limits on a catalog (Plan 6c §4.4): over the first three refuses the whole catalog, over the
+// Limits on a catalog: over the first three refuses the whole catalog, over the
 // others skips only that entry.
 const (
 	MaxCatalog     = 8 << 20 // bytes of a catalog file, applied before decoding
@@ -32,10 +32,10 @@ const (
 	maxDepth       = 64 // JSON nesting
 	maxSource      = 4096
 	maxDescription = 1024 // a catalog's
-	// An entry's description: real catalogs hold ones over 1024 bytes (ruling R-6c1-6).
+	// An entry's description: real catalogs hold ones over 1024 bytes.
 	maxEntryDescription = 4096
 	maxText             = untrusted.MaxName // a catalog's name, owner and version, and an entry's version
-	// What decoding may allocate, which the byte cap alone does not bound (Plan 6c §10): JSON
+	// What decoding may allocate, which the byte cap alone does not bound: JSON
 	// values, YAML bytes (a node costs about 120 bytes decoded) and YAML nodes. Over these refuses
 	// the whole catalog.
 	maxValues      = 1 << 18
@@ -123,7 +123,7 @@ type Entry struct {
 // a file or a directory. Every fetch of the entry's source selects them (source.Components).
 type Components = source.Components
 
-// Spec is where lola fetches e from (Plan 6c §6.4): its source, with the catalog's ref and never
+// Spec is where lola fetches e from: its source, with the catalog's ref and never
 // its commit, which is checked against that ref; an archive's sha256, verified before extraction;
 // and, unless the entry is relative (the marketplace's own source, which you typed), the rules of
 // a source a stranger named (source.Spec.FromCatalog).
@@ -132,15 +132,15 @@ func (e Entry) Spec() source.Spec {
 		FromCatalog: e.Relative == "", Components: e.Components}
 }
 
-// verbs are the Python lola's `lola market` subcommands (Plan 6c D8), which none of your
+// verbs are the Python lola's `lola market` subcommands which none of your
 // marketplaces can be named.
 var verbs = []string{"add", "ls", "list", "rm", "remove", "update", "set", "show", "search"}
 
-// Verbs is the Python lola's `lola market` subcommands, a copy (Plan 6c D8).
+// Verbs is the Python lola's `lola market` subcommands, a copy.
 func Verbs() []string { return slices.Clone(verbs) }
 
 // ValidateName refuses a name no marketplace can have: one that fails the module-name rule, and
-// one of Verbs (Plan 6c §4.4).
+// one of Verbs.
 func ValidateName(name string) error {
 	if err := module.ValidateName("marketplace", name); err != nil {
 		return err
@@ -206,10 +206,10 @@ func FreeName(base string, start int, taken func(string) bool) string {
 // a real catalog.
 func CatalogFallbackFiles() []string { return []string{"lola.yml", "lola.yaml"} }
 
-// CatalogFiles is where lola looks for a catalog at a marketplace's root, in order (Plan 6c §6.2
-// step 3; the Python lola's lookup minus its single-YAML guess): Claude Code's file, then the
-// Python lola's, <name>.yml and .yaml for the marketplace's name (none when name is ""), then
-// marketplace.yml and .yaml.
+// CatalogFiles is where lola looks for a catalog at a marketplace's root, in order (the Python
+// lola's lookup minus its single-YAML guess): Claude Code's file, then the Python lola's,
+// <name>.yml and .yaml for the marketplace's name (none when name is ""), then marketplace.yml and
+// .yaml.
 func CatalogFiles(name string) []string {
 	out := []string{".claude-plugin/marketplace.json"}
 	if name != "" {
@@ -252,9 +252,9 @@ func Root(file string) string {
 	return dir
 }
 
-// CheckRelative refuses a relative path a stranger's file names inside a marketplace (Plan 6c
-// §4.4): it must be slash-separated, relative, with no ".." element and no backslash. It
-// returns the path cleaned, "." for the root itself.
+// CheckRelative refuses a relative path a stranger's file names inside a marketplace: it must be
+// slash-separated, relative, with no ".." element and no backslash. It returns the path cleaned,
+// "." for the root itself.
 func CheckRelative(p string) (string, error) {
 	shown := untrusted.Text(p, untrusted.MaxName)
 	switch {

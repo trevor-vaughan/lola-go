@@ -15,12 +15,11 @@ mean to tag, with a clean work tree.
    whether rootless, and venom's version ([testing.md](testing.md#end-to-end-suites)). Docker
    is unverified ([testing.md](testing.md#untested-by-design)).
 
-3. **The vendored liquid's advisories** (R-7-7, the Plan 7 templating design's requirement that
-   they are checked by hand before each release). `third_party/liquid` is `github.com/osteele/liquid`
-   v1.9.2 with one patch, under a `replace` in `go.mod`. `govulncheck` reports the module as
-   `./third_party/liquid` with no version, so it cannot match advisories for
-   `github.com/osteele/liquid` to it, and `task vuln` passing says nothing about them. Read every
-   advisory for `github.com/osteele/liquid` published since v1.9.2 in:
+3. **The vendored liquid's advisories** (checked by hand before each release). `third_party/liquid`
+   is `github.com/osteele/liquid` v1.9.2 with one patch, under a `replace` in `go.mod`.
+   `govulncheck` reports the module as `./third_party/liquid` with no version, so it cannot match
+   advisories for `github.com/osteele/liquid` to it, and `task vuln` passing says nothing about
+   them. Read every advisory for `github.com/osteele/liquid` published since v1.9.2 in:
    - the GitHub advisory database (GHSA),
      <https://github.com/advisories?query=osteele%2Fliquid>;
    - the Go vulnerability database, <https://pkg.go.dev/vuln/> (vuln.go.dev), searching for
@@ -45,12 +44,12 @@ mean to tag, with a clean work tree.
    again.
 
 6. **The docs, by hand.** Compare, and write each result to a file for the tag's message:
-   - the commands `lola help` lists with the command sections of [usage.md](usage.md#commands):
-     piped, `lola help` prints one `== lola … ==` heading per command and subcommand (for example
-     `== lola cache add ==`). Every heading but `== lola ==` has a `###` or `####` section there,
-     and every such section names a command with a heading;
-   - README's "What works today" and [roadmap.md](roadmap.md) with what ships: nothing listed
-     that does not work, nothing shipped that is called planned;
+   - the commands `lola help` lists with the command pages of [reference/](reference/): piped,
+     `lola help` prints one `== lola … ==` heading per command and subcommand (for example
+     `== lola cache add ==`). Every heading but `== lola ==` has a `` # `lola …` `` or
+     `` ## `lola …` `` heading there (`lola cache add` is a section of `cache.md`), and every such
+     heading names a command `lola help` lists;
+   - README's "What works today" with what ships: nothing listed that does not work;
    - README's quickstart with the cases it is written from. Without the container wrapper and the
      suites' own paths and flags, the commands in the quickstart's steps after the `PATH` step are
      the commands of `Q1` in `e2e/install/install.venom.yml`, and the commands in its teammate
@@ -77,5 +76,5 @@ mean to tag, with a clean work tree.
      `cargo install --locked git-cliff --version 2.14.2 --root .tools`.
 
    Nothing on this list publishes anything. `release:tag` never pushes (`git push origin vX.Y.Z`
-   does, when you are ready), no image is pushed and no binary uploaded, and release automation
-   is post-MVP ([roadmap.md](roadmap.md)).
+   does, when you are ready), no image is pushed and no binary uploaded; there is no release
+   automation.

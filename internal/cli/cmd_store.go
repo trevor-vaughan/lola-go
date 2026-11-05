@@ -436,8 +436,8 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 	}
 }
 
-// searchRun runs a search of your cache, and with markets of your fetched catalogs too (Plan 6c
-// §6.8): lola search searches both, lola cache search the cache alone.
+// searchRun runs a search of your cache, and with markets of your fetched catalogs too: lola search
+// searches both, lola cache search the cache alone.
 func (a *app) searchRun(markets bool) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		return a.search(cmd, args, markets)
@@ -540,7 +540,7 @@ func (a *app) initCmd() *cobra.Command {
 			if len(args) == 1 {
 				dir = args[0]
 			} else if !yes {
-				// A bare init scaffolds wherever you happen to be: ask first (ruling R-8-U8).
+				// A bare init scaffolds wherever you happen to be: ask first.
 				plan, err := engine.PlanInit(dir, format)
 				if err != nil {
 					return err
@@ -585,8 +585,8 @@ func (a *app) initCmd() *cobra.Command {
 // coachSource is err, the failure of a run of cmd with args, with the run that fixes it as a hint,
 // where the failure says what the fix is, as the command words (showInfo's are lola info's
 // whichever command ran it): at the commit an annotated tag object points to when the --ref
-// named the tag object (R-9-27, RR4); at the repository a github.com web URL names, with its ref
-// and path (spec 2026-11-03 §3.3, P2-1); at the directory above a skills/ --path (P2-2). The
+// named the tag object; at the repository a github.com web URL names, with its ref
+// and path; at the directory above a skills/ --path. The
 // source the failure names is the one argument it replaces; no hint when no argument is it.
 func coachSource(words []string, cmd *cobra.Command, args []string, err error) error {
 	if t, ok := errors.AsType[*source.TagObjectError](err); ok {

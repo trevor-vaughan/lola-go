@@ -25,7 +25,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// MarketAction is one of lola market's actions (Plan 6c §3.1); each is also the flag lola market
+// MarketAction is one of lola market's actions; each is also the flag lola market
 // takes for it.
 type MarketAction string
 
@@ -46,7 +46,7 @@ const (
 	MarketStopped     = "skipped"      // the run stopped (Ctrl+C) before it was fetched; the cached catalog is kept
 )
 
-// The files of a cached marketplace, <paths.MarketCache>/<name>/ (Plan 6c §5).
+// The files of a cached marketplace, <paths.MarketCache>/<name>/.
 const (
 	marketPinFile = "source.json"
 	maxPinFile    = 1 << 20
@@ -55,7 +55,7 @@ const (
 // notFetched is how a marketplace without a cached catalog lists.
 const notFetched = "not fetched"
 
-// MarketRow is a marketplace as lola market lists it (Plan 6c §11.2): its registration, and from
+// MarketRow is a marketplace as lola market lists it: its registration, and from
 // its cached catalog the format, the commit, when it was fetched (RFC 3339, "" when not), the
 // counts of entries and skipped entries, and the catalog's description. Fetched is the age for
 // people ("2 days ago", "not fetched"). Every string has been through untrusted.Text.
@@ -73,7 +73,7 @@ type MarketRow struct {
 	Fetched     string `json:"-"`
 }
 
-// MarketView is one marketplace as lola market <name> shows it (Plan 6c §11.1, §11.2): its row,
+// MarketView is one marketplace as lola market <name> shows it: its row,
 // the catalog file, owner and version, every entry it offers and every entry it skips, and the
 // notices. Every string has been through untrusted.Text.
 type MarketView struct {
@@ -134,7 +134,7 @@ type MarketOutcome struct {
 	Err     error    `json:"-"`
 }
 
-// MarketResult is what lola market --add and --update report (Plan 6c §11.2): the marketplaces
+// MarketResult is what lola market --add and --update report: the marketplaces
 // fetched, the changes to their entries, every marketplace's outcome, and the notices.
 type MarketResult struct {
 	Markets []MarketRow     `json:"markets"`
@@ -144,7 +144,7 @@ type MarketResult struct {
 	DryRun  bool            `json:"dry_run"`
 }
 
-// MarketRename asks for the name of a marketplace being added (Plan 6c §3.1, ruling R-6c-11): Why
+// MarketRename asks for the name of a marketplace being added: Why
 // the name it has will not do (another marketplace has it, from its source; or the catalog names
 // itself what no marketplace can be), Suggest the first free name ("" for none), and Problem why
 // the last answer was refused ("" on the first ask).
@@ -152,7 +152,7 @@ type MarketRename struct {
 	Why, Suggest, Problem string
 }
 
-// MarketAddRequest is one lola market [<name>] --add <source> (Plan 6c §3.1, §6.2): fetch Source
+// MarketAddRequest is one lola market [<name>] --add <source>: fetch Source
 // at Ref, find its catalog (under Path, a file or a directory), and register it as Name, else the
 // catalog's own name. Rename asks for another name when it is taken by another source, or when
 // the catalog's own name cannot name a marketplace; nil means it cannot ask, and the run is
@@ -162,7 +162,7 @@ type MarketAddRequest struct {
 	DryRun                  bool
 	// PythonName, set by lola migrate, is the name the Python lola registered the marketplace
 	// under: without Path, a tree's catalog is then the file the Python lola read (pythonCatalog),
-	// never lola's own lookup (Plan 6c §6.9).
+	// never lola's own lookup.
 	PythonName string
 	// Display is the run's output flags (--json, --plain, --no-pager as given), which every
 	// command a hint or notice names keeps.
@@ -174,7 +174,7 @@ type MarketAddRequest struct {
 	PickSSH  func(MarketSSHStep) ([]string, error)
 }
 
-// MarketUpdateRequest is one lola market <name>... --update, or --update --all (Plan 6c §3.1).
+// MarketUpdateRequest is one lola market <name>... --update, or --update --all.
 type MarketUpdateRequest struct {
 	Names  []string
 	All    bool
@@ -198,7 +198,7 @@ func MarketRun(args ...string) string {
 }
 
 // addRun is the arguments of an --add, as a hint repeats it with name (none when "") and path
-// (none when ""): the source, the ref, the ssh hosts, -n of a dry run (Plan 6c §11.3: a slug,
+// (none when ""): the source, the ref, the ssh hosts, -n of a dry run (a slug,
 // collision and two-catalog hint keeps --ref, --path, --ssh-host and -n, never -y), and display,
 // the run's output flags.
 func addRun(name, src, ref, p string, hosts []string, dry bool, display []string) []string {
@@ -228,11 +228,11 @@ type marketSource struct {
 	spec source.Spec
 }
 
-// marketSource classifies src, the source you typed (Plan 6c §6.2 step 1), with the rules of a
+// marketSource classifies src, the source you typed, with the rules of a
 // module's source, since it is your own argument, so a local folder is looked up: an https:// (or
 // loopback http://) URL whose path ends in .json, .yml or .yaml is a catalog file; anything else
 // is a git repository, an archive at an https URL, or a folder, made absolute with its links
-// resolved (ruling R-6c-2). A local catalog file or archive is refused, coached to the folder that
+// resolved. A local catalog file or archive is refused, coached to the folder that
 // holds the file. Every recorded-source rule is checked before any network contact.
 func (e *Engine) marketSource(name, src, ref, p string, hosts []string, dry bool, display []string) (marketSource, error) {
 	shownSrc := untrusted.Text(src, untrusted.MaxName)
@@ -299,7 +299,7 @@ func (e *Engine) marketSource(name, src, ref, p string, hosts []string, dry bool
 }
 
 // unhinted is err without the advice the source, file and lock layers attach as hints: a
-// marketplace's hints are commands only (Plan 6c §11.3), and the message still says what failed.
+// marketplace's hints are commands only, and the message still says what failed.
 // A source.AccessError keeps its hints, which are commands.
 func unhinted(err error) error {
 	if err == nil || len(errs.Hints(err)) == 0 || errors.As(err, new(*source.AccessError)) {
@@ -324,7 +324,7 @@ func registrySource(r market.Registration) marketSource {
 	return marketSource{loc: r.Source, spec: source.Spec{Kind: kind, Location: r.Source, Ref: r.Ref}}
 }
 
-// readMarkets takes the markets lock shared, for a run that reads your marketplaces (Plan 6c §5),
+// readMarkets takes the markets lock shared, for a run that reads your marketplaces,
 // sweeping what a killed writer left in the cache first (readSwept); dry says the run writes
 // nothing.
 func (e *Engine) readMarkets(dry bool) (func(), error) {
@@ -332,7 +332,7 @@ func (e *Engine) readMarkets(dry bool) (func(), error) {
 	return unlock, unhinted(err)
 }
 
-// registry reads markets.yaml (Plan 6c §5) with yamldoc's guards, as a file you edit by hand, and
+// registry reads markets.yaml with yamldoc's guards, as a file you edit by hand, and
 // returns it with its bytes; a missing file is no marketplaces.
 func (e *Engine) registry() (market.Registry, []byte, error) {
 	_, b, err := yamldoc.Read(e.Paths.Markets, market.RegistryVersion)
@@ -357,7 +357,7 @@ func catalogName(format string) string {
 	return "catalog.yml"
 }
 
-// loadMarket reads the cached catalog of r (Plan 6c §5): nil when there is none. The directory and
+// loadMarket reads the cached catalog of r: nil when there is none. The directory and
 // its files must be what lola wrote, never a symbolic link; source.json must check, name r's
 // source, ref and path, and hold the digest of the catalog's bytes; and the catalog must parse.
 func (e *Engine) loadMarket(r market.Registration) (*cachedMarket, error) {
@@ -445,7 +445,7 @@ func (e *Engine) marketRow(r market.Registration, c *cachedMarket) MarketRow {
 	return row
 }
 
-// Markets lists your marketplaces (Plan 6c §3.1, §11): each registration of markets.yaml, in its
+// Markets lists your marketplaces: each registration of markets.yaml, in its
 // order, with what its cached catalog holds. It never fetches and never asks. A marketplace whose
 // cache cannot be read lists as not fetched, with a notice saying why and the --update that
 // fetches it again; display is the run's output flags, which the commands it names keep.
@@ -487,7 +487,7 @@ func (e *Engine) MarketNames() ([]string, error) {
 	return out, nil
 }
 
-// noMarket refuses name, which reg has no marketplace of (Plan 6c §6.3), naming those close to it:
+// noMarket refuses name, which reg has no marketplace of, naming those close to it:
 // the hints are run of each close name (the lola market arguments that repeat the run with it in
 // name's place; nil for none), then the listing, each with display, the run's output flags.
 func noMarket(reg market.Registry, name string, run func(close string) []string, display []string) error {
@@ -505,7 +505,7 @@ func noMarket(reg market.Registry, name string, run func(close string) []string,
 	return errs.WithHints(errors.New(msg), append(hints, MarketRun(display...))...)
 }
 
-// ShowMarket shows the marketplace name (Plan 6c §3.1, §11.1): its registration, its catalog's
+// ShowMarket shows the marketplace name: its registration, its catalog's
 // file, owner and description, every entry with the source lola maps it to, and every skipped
 // entry with its reason, each list by name. It never fetches and never asks. display is the run's output flags, which
 // the commands it names keep.
@@ -582,7 +582,7 @@ type fetchedMarket struct {
 	cat  market.Catalog
 }
 
-// catalogIn finds the catalog of the tree fetched at tree (Plan 6c §6.2 step 3): the file p names,
+// catalogIn finds the catalog of the tree fetched at tree: the file p names,
 // or in the directory it names, else at the root, the first of market.CatalogFiles that is there;
 // two of them refuse, with the --add of each as hints (add builds it from the file; nil for
 // none). Every directory on the way and the file must be real, never a symbolic link. It
@@ -729,7 +729,7 @@ func (e *noPythonCatalogError) Unwrap() error { return ErrNoPythonCatalog }
 // PythonCatalog fetches the tree of src, a marketplace source lola migrate translated from the
 // Python lola's url, into a run directory of its own, and returns the catalog file the Python lola
 // read there for the marketplace it named name (pythonCatalog). It writes nothing but the run
-// directory, which it removes (Plan 6c §6.9).
+// directory, which it removes.
 func (e *Engine) PythonCatalog(ctx context.Context, src, name string) (_ string, err error) {
 	ms, err := e.marketSource("", src, "", "", nil, false, nil)
 	if err != nil {
@@ -751,7 +751,7 @@ func (e *Engine) PythonCatalog(ctx context.Context, src, name string) (_ string,
 }
 
 // realPath is the file at rel, a clean slash path under root ("" for root itself), refusing a
-// symbolic link anywhere on the way or at the end (Plan 6c §6.2 step 3, §10).
+// symbolic link anywhere on the way or at the end.
 func realPath(root, rel string) (fs.FileInfo, error) {
 	cur := root
 	fi, err := os.Lstat(cur)
@@ -774,8 +774,8 @@ func realPath(root, rel string) (fs.FileInfo, error) {
 	return fi, nil
 }
 
-// fetchMarket fetches the marketplace at src into run and reads its catalog (Plan 6c §6.2 steps
-// 2–4): a catalog file is downloaded, at most market.MaxCatalog bytes; a tree is fetched whole
+// fetchMarket fetches the marketplace at src into run and reads its catalog: a catalog
+// file is downloaded, at most market.MaxCatalog bytes; a tree is fetched whole
 // (never through the cache: a marketplace is not a module), so its relative entries can be
 // checked against it, and the fetch refuses links as every fetch does. The catalog is read as a
 // stranger's input (market.Parse); each relative entry's directory must be a real directory in
@@ -915,7 +915,7 @@ func sameSource(r market.Registration, src marketSource, ref string) bool {
 }
 
 // sameMarket reports whether r is the marketplace src at ref, under the --path p as typed ("" for
-// none), looked up by name (Plan 6c §3.1: same source, ref and path): its catalog file is the one
+// none), looked up by name (same source, ref and path): its catalog file is the one
 // p names, or one the lookup in p (the root for none) could read, market.CatalogFiles(name) or
 // market.CatalogFallbackFiles().
 func sameMarket(r market.Registration, src marketSource, ref, p, name string) bool {
@@ -933,10 +933,10 @@ func sameMarket(r market.Registration, src marketSource, ref, p, name string) bo
 		func(f string) bool { return r.Path == path.Join(dir, f) })
 }
 
-// takenName refuses to add a marketplace as name, which r already is (Plan 6c §3.1, ruling
-// R-6c-11): the same marketplace is coached to --update it; another is asked a free name on a
-// terminal (rename), and off one refused with the --add of the first free name, never an --update
-// of a marketplace whose source differs from the one typed. It returns the name to add as.
+// takenName refuses to add a marketplace as name, which r already is: the same marketplace is
+// coached to --update it; another is asked a free name on a terminal (rename), and off one refused
+// with the --add of the first free name, never an --update of a marketplace whose source differs
+// from the one typed. It returns the name to add as.
 func takenName(reg market.Registry, r market.Registration, src marketSource, req MarketAddRequest) (string, error) {
 	if sameMarket(r, src, req.Ref, req.Path, r.Name) {
 		return "", alreadyThis(r.Name, req.SSHHosts, req.DryRun, req.Display)
@@ -958,7 +958,7 @@ func takenName(reg market.Registry, r market.Registration, src marketSource, req
 }
 
 // askName asks rename for the name of a marketplace being added, from step, until the answer is
-// a name no marketplace of reg has (Plan 6c §3.1): a refused answer is asked again, saying why.
+// a name no marketplace of reg has: a refused answer is asked again, saying why.
 func askName(reg market.Registry, step MarketRename, rename func(MarketRename) (string, error)) (string, error) {
 	for {
 		answer, err := rename(step)
@@ -979,7 +979,7 @@ func askName(reg market.Registry, step MarketRename, rename func(MarketRename) (
 	}
 }
 
-// alreadyThis refuses to add the marketplace name again, coaching its --update (Plan 6c §3.1),
+// alreadyThis refuses to add the marketplace name again, coaching its --update,
 // which keeps the ssh hosts, -n and display, the run's output flags.
 func alreadyThis(name string, hosts []string, dry bool, display []string) error {
 	args := slices.Concat([]string{name, "--update"}, sshFlags(hosts))
@@ -989,15 +989,15 @@ func alreadyThis(name string, hosts []string, dry bool, display []string) error 
 	return errs.WithHints(fmt.Errorf("%s is already this marketplace", name), MarketRun(append(args, display...)...))
 }
 
-// AddMarket fetches a catalog and registers it (Plan 6c §3.1, §6.2): it asks nothing but a name on
-// a collision and which ssh hosts the catalog names to allow (D4: a catalog installs and runs
-// nothing, and you typed its source; spec 2026-10-28 §3). The name, every --ssh-host, every
-// source rule and a typed name that is already this marketplace are checked before any network
-// contact; the source is fetched into the run's staging, its catalog found (by the name you typed)
-// and read as a stranger's input; a name another marketplace has is then asked again or refused
-// (takenName), so its hint can name the catalog file found. Then, under the exclusive markets
-// lock, with the name checked again, the cache is written, then the registration, so a failed
-// registration leaves a cache directory that listings ignore and the next --add replaces.
+// AddMarket fetches a catalog and registers it: it asks nothing but a name on a collision and which
+// ssh hosts the catalog names to allow (a catalog installs and runs nothing, and you typed its
+// source). The name, every --ssh-host, every source rule and a typed name that is already this
+// marketplace are checked before any network contact; the source is fetched into the run's staging,
+// its catalog found (by the name you typed) and read as a stranger's input; a name another
+// marketplace has is then asked again or refused (takenName), so its hint can name the catalog file
+// found. Then, under the exclusive markets lock, with the name checked again, the cache is written,
+// then the registration, so a failed registration leaves a cache directory that listings ignore and
+// the next --add replaces.
 func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *MarketResult, err error) {
 	// Checked first: every hint from here on repeats them.
 	if req.SSHHosts, err = checkedHosts(req.SSHHosts); err != nil {
@@ -1074,7 +1074,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 			free := market.FreeName(slug, 1, func(n string) bool { return reg.Find(n) != nil })
 			switch {
 			case req.Rename != nil && !req.DryRun:
-				// On a terminal, as for a taken name (R-6c-11): pre-filled with the free slug.
+				// On a terminal, as for a taken name: pre-filled with the free slug.
 				if name, err = askName(reg, MarketRename{Why: why, Suggest: free}, req.Rename); err != nil {
 					return nil, err
 				}
@@ -1183,7 +1183,7 @@ func writeRegistry(file string, b []byte) error {
 }
 
 // marketChanges is how the entries of the marketplace name changed from was (nil for none) to
-// now, by entry name (Plan 6c §6.2): added, removed, and changed with the fields that differ.
+// now, by entry name: added, removed, and changed with the fields that differ.
 func marketChanges(name string, was *market.Catalog, now market.Catalog) []MarketChange {
 	old := map[string]market.Entry{}
 	if was != nil {
@@ -1226,12 +1226,12 @@ func marketChanges(name string, was *market.Catalog, now market.Catalog) []Marke
 
 // UpdateMarkets fetches the named marketplaces again, or every one with All, each at its
 // registered source, ref and path, replaces its cached catalog and reports how its entries
-// changed (Plan 6c §3.1, §6.2). It asks nothing. Names are checked before any network contact. A
-// failure costs only that marketplace, whose cached catalog is kept (§9: a catalog that no longer
+// changed. It asks nothing. Names are checked before any network contact. A
+// failure costs only that marketplace, whose cached catalog is kept (a catalog that no longer
 // parses keeps the old one); Ctrl+C stops the run, keeping what it wrote. The skipped entries'
 // summary is a notice only when they differ from the cached catalog's, which --add or an earlier
 // --update reported. The ssh hosts each allows are the stored ones, plus for one marketplace the
-// --ssh-host values, plus what the picker ticks on a terminal (spec 2026-10-28 §3, §4).
+// --ssh-host values, plus what the picker ticks on a terminal.
 func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*MarketResult, error) {
 	flagHosts, err := checkedHosts(req.SSHHosts)
 	if err != nil {

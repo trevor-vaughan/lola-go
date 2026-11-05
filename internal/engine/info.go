@@ -25,8 +25,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ModuleView is a cached version's identity and contents (Plan 9 §4.3 items 1 and 2), as lola
-// info, cache add and cache list show it: every text the module gives, cleaned.
+// ModuleView is a cached version's identity and contents, as lola info, cache add and cache list
+// show it: every text the module gives, cleaned.
 type ModuleView struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -50,7 +50,7 @@ type ModuleView struct {
 	Rules      []string      `json:"rules"`
 	Hooks      []module.Hook `json:"hooks"`
 	Warnings   []string      `json:"warnings"`
-	// Plan 7: the vars the module declares, its template files, partials and attribute files,
+	// The vars the module declares, its template files, partials and attribute files,
 	// each author text, cleaned.
 	Vars       []VarView `json:"vars"`
 	Templates  []string  `json:"templates"`
@@ -147,26 +147,26 @@ func NewModuleView(v store.Version, o store.Origin) ModuleView {
 	return mv
 }
 
-// What info knows of a consent an install would meet (Plan 9 §4.3 item 4, A13).
+// What info knows of a consent an install would meet.
 const (
 	RecordedYes     = "yes"     // consent.json holds it for the current digest
 	RecordedNo      = "no"      // it does not: the install asks, or needs --trust off a terminal
 	RecordedUnknown = "unknown" // its key needs what info does not know: a scope and its settings file
 )
 
-// hookLines and hookLineCut bound how much of an install hook's script info shows (§4.3 item 3).
+// hookLines and hookLineCut bound how much of an install hook's script info shows.
 const (
 	hookLines   = 5
 	hookLineCut = 200
 	hookRead    = 1 << 20
 )
 
-// InfoRequest is a lola info run (Plan 9 §4): the argument as install takes it, with --ref and
-// --path, the scope flags (resolved without asking: §4.4), and -t. Display is the run's output
+// InfoRequest is a lola info run: the argument as install takes it, with --ref and
+// --path, the scope flags (resolved without asking), and -t. Display is the run's output
 // flags, which its refusals' hints keep. Rerun is the info run, every flag kept, with extra
 // arguments added: the hints of the no-scope and no-assistant sections. UserRun is the run at
 // user scope, which a refusal of a project at the home directory hints. Install is the install
-// the next step names (§4.3 item 5): of arg, with --ref ref and --path path when set, the run's
+// the next step names: of arg, with --ref ref and --path path when set, the run's
 // other flags kept (its own --ref and --path never) and --trust= the kinds k when any.
 type InfoRequest struct {
 	Cwd            string
@@ -179,16 +179,16 @@ type InfoRequest struct {
 	Install        func(arg, ref, path string, k TrustKinds) string
 }
 
-// Info is what lola info shows of a module (Plan 9 §4.3): its identity and contents, what would
+// Info is what lola info shows of a module: its identity and contents, what would
 // run code, and, per scope, what installing it there would do. NoScope says why no scope
-// resolved (§4.4), "" when one did; NoAssistant says why a scope has no assistant to plan for, ""
-// when every scope has one (R-9-23). Hints are the runs that resolve either, [] otherwise.
+// resolved, "" when one did; NoAssistant says why a scope has no assistant to plan for, ""
+// when every scope has one. Hints are the runs that resolve either, [] otherwise.
 type Info struct {
 	ModuleView
 	// Ref is the ref the version shown was read at, as ModuleView.Ref; "" for the default branch and for a source that is not git.
 	Ref string `json:"ref"`
-	// Mentions is each component that mentions others, in picker order, with what it mentions
-	// (cherry-pick design §5.2); [] when none, or when the scan failed. Notices holds the warning
+	// Mentions is each component that mentions others, in picker order, with what it mentions;
+	// [] when none, or when the scan failed. Notices holds the warning
 	// of a scan that failed, and is [] when the scan succeeded.
 	Mentions []ComponentMentions `json:"mentions"`
 	Notices  []Notice            `json:"notices"`
@@ -201,11 +201,11 @@ type Info struct {
 	NoAssistant       string        `json:"no_assistant,omitempty"`
 	Hints             []string      `json:"hints"`
 	// Scopes is the scopes the plan is for, once one resolved (nil otherwise), for the CLI's
-	// context line (spec 2026-10-29 §3.8).
+	// context line.
 	Scopes []Scope `json:"-"`
 }
 
-// InfoRuns is what in the module would run code, and when (§4.3 item 3).
+// InfoRuns is what in the module would run code, and when.
 type InfoRuns struct {
 	InstallHooks []InfoHook      `json:"install_hooks"`
 	RuntimeHooks []RuntimeHook   `json:"runtime_hooks"`
@@ -213,9 +213,9 @@ type InfoRuns struct {
 	Scripts      []InfoScript    `json:"scripts"`
 }
 
-// InfoScript is an install script that would wrap the module's install (Plan 9 §5.6), in run
+// InfoScript is an install script that would wrap the module's install, in run
 // order: its event and source, its path as configured, through untrusted.Text, its sha256, and
-// whether it needs trust: a project's without a recorded consent for its digest (§5.4).
+// whether it needs trust: a project's without a recorded consent for its digest.
 type InfoScript struct {
 	Event      string `json:"event"`
 	Source     string `json:"source"`
@@ -226,7 +226,7 @@ type InfoScript struct {
 }
 
 // Root is the canonical root of the project whose script s is, which human output shows beside its
-// path (S1); "" for another source's.
+// path; "" for another source's.
 func (s InfoScript) Root() string { return s.root }
 
 // add appends each of hooks and servers that runs does not hold yet, compared by what info shows
@@ -267,7 +267,7 @@ type InfoMCPServer struct {
 
 // InfoInstall is what installing the module at one scope would do: the plan lola install -n
 // prints there, the consent items it meets with whether each is recorded, and the kinds of
-// trust still needed (§4.3 item 4). Scope is "" when none resolved. Command is the install of
+// trust still needed. Scope is "" when none resolved. Command is the install of
 // exactly the version shown (Digest), with --trust= the kinds every scope of the run needs: the
 // run's next step; "" when there is no plan, and in every element whenever any scope's install
 // would be refused or every scope already holds the version as shown (current). Notices are the
@@ -281,12 +281,11 @@ type InfoInstall struct {
 	TrustNeeded []string         `json:"trust_needed"`
 	Digest      string           `json:"digest"`
 	Command     string           `json:"command"`
-	// NewProject says the install would create .lola/ at the scope's directory (R-9-24).
+	// NewProject says the install would create .lola/ at the scope's directory.
 	NewProject bool `json:"new_project"`
 	// From is the layer that provides the module at the scope, as lock.json names it ("" for none),
 	// Components what its picks do with each component there ([] where no layer provides it, or
-	// with no scope) and Change the run that changes those picks ("" where none provides it)
-	// (cherry-pick design §6; spec 2026-10-29 §13 item 9).
+	// with no scope) and Change the run that changes those picks ("" where none provides it).
 	From       string          `json:"from"`
 	Components []InfoComponent `json:"components"`
 	Change     string          `json:"change"`
@@ -328,8 +327,8 @@ type InfoConsent struct {
 	Recorded string `json:"recorded"`
 }
 
-// installBy is how an install takes exactly the version info showed (§4.3 item 5, A3, R-9-11,
-// R-9-U10): the argument, --ref and --path.
+// installBy is how an install takes exactly the version info showed: the argument, --ref and
+// --path.
 type installBy struct {
 	arg, ref, path string
 	// shownRef is the ref of the head the version shown came from, before ref is pinned to a commit.
@@ -339,11 +338,10 @@ type installBy struct {
 // Info resolves req's argument as install does, fetching a source or a marketplace entry into
 // the cache as cache add does, and reports the version: what it holds, what would run code, and
 // the plan install -n would print at each scope install would choose without asking, with the
-// consent it would meet (Plan 9 §4). It runs nothing: no install hook, runtime hook, MCP server
-// or script; templates render only in the plan's sandbox. Without a scope it never guesses one
-// (§4.4).
+// consent it would meet. It runs nothing: no install hook, runtime hook, MCP server
+// or script; templates render only in the plan's sandbox. Without a scope it never guesses one.
 func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error) {
-	req.Ref = source.RecordedRef(req.Ref) // the next step echoes a full-SHA ref lower-cased (R-9-31)
+	req.Ref = source.RecordedRef(req.Ref) // the next step echoes a full-SHA ref lower-cased
 	run, err := e.StageInstall()
 	if err != nil {
 		return nil, err
@@ -381,7 +379,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 			info.Hints = append(info.Hints, req.Rerun("--project"))
 		}
 		info.Hints = append(info.Hints, req.Rerun("--user"))
-		// Without a scope only your own scripts are known: config.yaml's (§4.4).
+		// Without a scope only your own scripts are known: config.yaml's.
 		if info.Runs.Scripts, err = e.infoScripts([]Scope{{Kind: target.User}}, false); err != nil {
 			return nil, err
 		}
@@ -453,7 +451,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	for i, c := range res.Scopes {
 		in, err := e.infoPlan(ctx, req, run, c, scopeTargets[i], shownTargets[i], request, v, hookConsent, func(k TrustKinds) string {
 			// The kinds the install would need as far as known before its plan: hooks, and runtime
-			// hooks the module declares (RR2).
+			// hooks the module declares.
 			return req.Install(by.arg, by.ref, by.path, k|trustNeeded(unplanned("", v, hookConsent, declared).Consent))
 		})
 		if refusal(err) {
@@ -483,7 +481,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	}
 	if refused {
 		// No plan rendered a refused scope's: what would run code there is what the module
-		// declares (RR1, CR-T5-1).
+		// declares.
 		if len(refusedIDs) == 0 {
 			refusedIDs = e.targetIDs()
 		}
@@ -507,7 +505,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 
 // refusal reports whether err, install -n's failure at a scope, is the install refusing what it
 // would do there (a typed refusal, or an error that coaches with hints), which info reports as
-// the plan's (R-9-22); any other failure (an unreadable file, a lock) is info's own error.
+// the plan's; any other failure (an unreadable file, a lock) is info's own error.
 func refusal(err error) bool {
 	if err == nil {
 		return false
@@ -520,7 +518,7 @@ func refusal(err error) bool {
 }
 
 // infoScripts is the install scripts that would wrap an install at scopes, in run order, each
-// once (§4.3 item 3): your own from config.yaml, and a project's in its scope. A script install
+// once: your own from config.yaml, and a project's in its scope. A script install
 // would refuse is left out when planned, since the plan of its scope reports the refusal;
 // without a plan its refusal is info's.
 func (e *Engine) infoScripts(scopes []Scope, planned bool) ([]InfoScript, error) {
@@ -595,12 +593,12 @@ func (e *Engine) scriptConsent(sc Scope) ([]InfoConsent, error) {
 	return out, nil
 }
 
-// infoVersion resolves req's argument as install does (§4.2): a marketplace address is fetched
+// infoVersion resolves req's argument as install does: a marketplace address is fetched
 // through its catalog and a source fetched, each into the cache as cache add does; a cached name
 // is read, or fetched at a --ref the cache has no head for. by is how an install takes exactly
-// that version (§4.3 item 5, R-9-U10): a git source, and an address whose entry is a git source
-// without a component selection, as that source at the commit fetched (R-9-11), which installs
-// from the cache (R-9-21); anything else by its cached name at the head that holds it, which
+// that version: a git source, and an address whose entry is a git source
+// without a component selection, as that source at the commit fetched, which installs
+// from the cache; anything else by its cached name at the head that holds it, which
 // installs from the cache without touching the source (pinEntryRef may pin it further).
 func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRun) (v store.Version, o store.Origin, by installBy, err error) {
 	_, isAddr, err := market.ParseAddress(req.Arg)
@@ -648,7 +646,7 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRu
 			return store.Version{}, store.Origin{}, installBy{}, notASource(req.Arg, req.Display)
 		}
 		// A git source at a full commit SHA the cache holds for it is shown from the cache, hashed
-		// again in run, as install takes it (R-9-21): a review hint names one (R-9-32).
+		// again in run, as install takes it: a review hint names one.
 		spec.Ref, spec.Path = req.Ref, req.Path
 		if v, err = e.cachedCommit(spec, run.dir); err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
@@ -685,7 +683,7 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRu
 
 // pinEntryRef is by, an install of the cached git module v by its name at a head's ref, pinned
 // to that head's commit as its source (o) at the commit when a scope's manifest records the
-// module at another ref (R-9-U10): the install would read that ref's head instead. commit is the
+// module at another ref: the install would read that ref's head instead. commit is the
 // commit v is pinned at then, "" otherwise.
 func (e *Engine) pinEntryRef(by installBy, v store.Version, o store.Origin, scopes []ScopeChoice) (installBy, string, error) {
 	if by.arg != v.Name || o.Type != string(source.KindGit) || o.Components != nil {
@@ -903,7 +901,7 @@ func mustJSON(items []json.RawMessage) []byte {
 
 // unplanned is the install element of a scope info has no plan for (no scope resolved, or no
 // assistant): the hooks' consent, and the module's runtime hooks as needed, their consent unknown
-// without the settings file a scope and an assistant give (§4.4).
+// without the settings file a scope and an assistant give.
 func unplanned(scope string, v store.Version, hookConsent []InfoConsent, declared []RuntimeHook) InfoInstall {
 	consent := append([]InfoConsent{}, hookConsent...)
 	if len(declared) > 0 {
@@ -939,7 +937,7 @@ func kindNames(k TrustKinds) []string {
 // infoTargets is the assistants install would plan for at sc off a terminal, with no -t
 // (DefaultTargets): none when the scope's manifest gives them (the plan uses those, shown), else
 // those set up there (TargetChoice.Here). With none set up, why says so, and hints are the info run
-// with -t and each of RerunTargets, as install's refusal hints (§4.4).
+// with -t and each of RerunTargets, as install's refusal hints.
 func (e *Engine) infoTargets(sc Scope, r InstallRequest, req InfoRequest) (targets, shown []string, why string, hints []string, err error) {
 	choice, err := e.DefaultTargets(sc, []InstallRequest{r}, TargetRequest{})
 	if err != nil {

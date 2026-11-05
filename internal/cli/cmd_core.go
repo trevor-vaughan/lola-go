@@ -93,7 +93,7 @@ func (a *app) completeInstalled(cmd *cobra.Command, _ []string, toComplete strin
 }
 
 // completeAddress completes an argument that starts with @ to a marketplace address, @<market>
-// or @<market>/<entry>, from your fetched catalogs (Plan 6c §3.3); any other argument completes
+// or @<market>/<entry>, from your fetched catalogs; any other argument completes
 // as the shell completes a path.
 func (a *app) completeAddress(_ *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	if !strings.HasPrefix(toComplete, "@") {
@@ -213,7 +213,7 @@ func (a *app) installCmd() *cobra.Command {
 			if f.pinned, err = parseAt(f.at, runWithout(cmd, args, "at")); err != nil {
 				return err
 			}
-			// A script path a hint repeats must print as itself, on one line (RR4).
+			// A script path a hint repeats must print as itself, on one line.
 			for _, s := range []struct{ flag, given string }{{"--pre-install", f.preInstall}, {"--post-install", f.postInstall}} {
 				if s.given != "" && !untrusted.IsPlain(s.given) {
 					// Text keeps a line break and cleans \r to ?, so a \n made \r shows as ?, on one line.
@@ -497,9 +497,9 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 	}
 }
 
-// fromLabel is the name of from, a layer of scope (a list row's), as the context line names it
-// (spec 2026-10-29 §6.1): default, project.yml, profile go-review, or for a member of the bundle on
-// in that scope docs (bundle work). --plain and --json keep lock.json's from.
+// fromLabel is the name of from, a layer of scope (a list row's), as the context line names it:
+// default, project.yml, profile go-review, or for a member of the bundle on in that scope docs
+// (bundle work). --plain and --json keep lock.json's from.
 func fromLabel(scope, from string, contexts []engine.ScopeContext) string {
 	q, ok := strings.CutPrefix(from, "profile:")
 	if !ok {

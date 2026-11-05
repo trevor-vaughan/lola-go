@@ -15,11 +15,11 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ProfileRemove is lola profile's action that deletes a profile of yours or a kept remote profile
-// (Plan 6b §3.2; spec 2026-10-29 §6.2); it is also the flag lola profile takes for it.
+// ProfileRemove is lola profile's action that deletes a profile of yours or a kept remote profile;
+// it is also the flag lola profile takes for it.
 const ProfileRemove ProfileAction = "remove"
 
-// ProfileRemoveRequest is one lola profile <name> --remove (Plan 6b §3.2; spec 2026-10-29 §6.2):
+// ProfileRemoveRequest is one lola profile <name> --remove:
 // delete the profile Name names, a profile of yours (user:try, or a bare name only yours has),
 // which goes to the trash, or a remote one (remote:go, or a bare name only a remote profile has).
 // Scope is the scope the run is in: a profile it, user scope or the project found from the working
@@ -32,8 +32,7 @@ type ProfileRemoveRequest struct {
 	DryRun bool
 	// Yes says the run answered the question with -y, so a hint that repeats it keeps -y.
 	Yes bool
-	// Display is the run's output flags, which the hints of a file with a marketplace address keep
-	// (Plan 6c §6.7).
+	// Display is the run's output flags, which the hints of a file with a marketplace address keep.
 	Display []string
 	// Confirm asks whether to delete the profile, unless Force. nil means it cannot ask: the run is
 	// refused. The CLI passes one that says yes for -y.
@@ -53,7 +52,7 @@ type ProfileRemoveResult struct {
 	DryRun  bool     `json:"dry_run"`
 }
 
-// RemoveProfile deletes the profile req.Name names (Plan 6b §3.2, §6.5; spec 2026-10-29 §6.2): a
+// RemoveProfile deletes the profile req.Name names: a
 // profile of yours goes to the trash (removeOwn); a remote one is deleted. Either is refused while
 // the scope the run is in, user scope or the project found from the working directory uses it (on,
 // or a member of the bundle on; lola keeps no list of every checkout), or cannot be read to tell,
@@ -61,7 +60,7 @@ type ProfileRemoveResult struct {
 // Force, which answers it too. The check and the question hold the profiles lock shared; it is taken exclusively only
 // to check the profile is still there and rename it aside, then remove it, so it is gone in one
 // step. The modules it installed stay until each scope's next sync, which warns about a profile
-// that is on but gone (§10).
+// that is on but gone.
 func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_ *ProfileRemoveResult, err error) {
 	sc := req.Scope
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, req.DryRun, req.Display) }()
@@ -103,7 +102,7 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 	if err != nil {
 		return nil, err
 	}
-	// No hint carries -y but the one that asks for it (ruling R-6b3c-8): a -y answers the question
+	// No hint carries -y but the one that asks for it: a -y answers the question
 	// it was given for, and a hint must not answer another.
 	confirm := slices.Concat(again, []string{"-y"})
 	if req.Confirm == nil && !req.DryRun && !req.Force {

@@ -31,7 +31,7 @@ func askYes(modules ...string) func(string, []engine.HookScript) (bool, error) {
 	return func(m string, _ []engine.HookScript) (bool, error) { return slices.Contains(modules, m), nil }
 }
 
-var _ = Describe("typed trust (Plan 9 §3)", func() {
+var _ = Describe("typed trust", func() {
 	var (
 		tmp, proj, log string
 		p              paths.Paths
@@ -132,7 +132,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		Expect(trusts("kit")).To(BeFalse())
 	})
 
-	DescribeTable("the --trust value is parsed as §3.3 says, a bare --trust told apart by a value no argument can hold",
+	DescribeTable("the --trust value is parsed by its rules, a bare --trust told apart by a value no argument can hold",
 		func(command string, values []string, want engine.TrustKinds, msg string, fix *engine.TrustKinds) {
 			k, err := engine.ParseTrust(command, values)
 			if msg == "" {
@@ -149,7 +149,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 			}
 		},
 		Entry("bare --trust is a value no typed --trust= gives", "sync", []string{engine.TrustBareValue}, engine.TrustBare, "", nil),
-		Entry("--trust=entries,profiles written on profile --add is refused (A21)", "profile --add", []string{"entries,profiles"}, engine.TrustKinds(0),
+		Entry("--trust=entries,profiles written on profile --add is refused", "profile --add", []string{"entries,profiles"}, engine.TrustKinds(0),
 			"lola profile --add never asks for entries trust; it takes --trust=profiles", ptr(engine.TrustProfiles)),
 		Entry("bare --trust beside a kind install takes is still refused", "install", []string{engine.TrustBareValue, "hooks"}, engine.TrustKinds(0),
 			"lola install never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks", ptr(engine.TrustHooks)),
@@ -269,7 +269,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, ConfirmRemovals: no,
 			Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }})
 		Expect(errors.Is(err, engine.ErrDeclined)).To(BeTrue(), "%v", err)
-		Expect(trusts("kit")).To(BeTrue(), "a terminal answer is recorded on a No to the removals (Plan 6a X6)")
+		Expect(trusts("kit")).To(BeTrue(), "a terminal answer is recorded on a No to the removals")
 	})
 
 	It("-y and --force grant no kind of trust", func() {
@@ -497,7 +497,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 	)
 })
 
-var _ = Describe("typed trust after the receipt (Plan 9 A22, A23)", func() {
+var _ = Describe("typed trust after the receipt", func() {
 	var (
 		tmp, proj string
 		p         paths.Paths
@@ -544,7 +544,7 @@ var _ = Describe("typed trust after the receipt (Plan 9 A22, A23)", func() {
 	})
 })
 
-var _ = Describe("a batch applied after its one receipt (Plan 9 R-9-16)", func() {
+var _ = Describe("a batch applied after its one receipt", func() {
 	var (
 		tmp, proj string
 		p         paths.Paths

@@ -10,7 +10,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ContextLayer is one file of a scope's context (spec 2026-10-29 §3.8): Name as JSON names it (a
+// ContextLayer is one file of a scope's context: Name as JSON names it (a
 // profile by its qualified name, the base by its files), Kind (base, user, project or remote),
 // Path its file ("" for a profile whose file is gone), and Label how the context line names it: a
 // profile by its bare name unless a profile of another kind has that name too. Every string has
@@ -29,15 +29,14 @@ type ContextLayer struct {
 }
 
 // ContextProfile is the profile on in a scope: its layer, whether it is a bundle, and a bundle's
-// members as it expands them, in order (spec 2026-10-29 §3.3), [] for a profile.
+// members as it expands them, in order, [] for a profile.
 type ContextProfile struct {
 	ContextLayer
 	Bundle  bool           `json:"bundle"`
 	Members []ContextLayer `json:"members"`
 }
 
-// ScopeContext is what a scope command says of each scope it acts on (spec 2026-10-29 §3.8,
-// §8.3): the scope, its root ("" at user scope), its base, the profile on over it (nil for none),
+// ScopeContext is what a scope command says of each scope it acts on: the scope, its root ("" at user scope), its base, the profile on over it (nil for none),
 // the file an edit writes (nil for a command that edits none), Restore, the command that restores
 // the profile on, a remote profile this machine lacks and pins.yaml records ("" for any other),
 // and Error, why lola could not tell the profile on or read its file, "" when it could.
@@ -54,7 +53,7 @@ type ScopeContext struct {
 // contextBase is the kind of a scope's base in its context.
 const contextBase = "base"
 
-// Context is sc's context (spec 2026-10-29 §3.8), read once the scope is resolved and before the
+// Context is sc's context, read once the scope is resolved and before the
 // command reads the scope: from lock.json, the listing of the profiles sc can use and the active
 // profile's file, read once with the loader its kind takes (readProfile). The base is project.yml,
 // or at user scope default (default.yml). writes is what a command that edits the scope's files
@@ -104,7 +103,7 @@ func (e *Engine) Context(sc Scope, writes *TargetRequest) ScopeContext {
 	}
 	k := activeInfo(infos, q)
 	if k < 0 {
-		// A remote profile pins.yaml records is not gone: a run that needs it restores it (§3.4).
+		// A remote profile pins.yaml records is not gone: a run that needs it restores it.
 		if e.recorded(q) {
 			if at := e.inTheWay(strings.TrimPrefix(q, string(profile.KindRemote)+":")); at != "" {
 				c.Error = at + " is in the way of it; move it aside"
@@ -133,7 +132,7 @@ func (e *Engine) Context(sc Scope, writes *TargetRequest) ScopeContext {
 		p.Bundle = true
 		p.Members = bundleMembers(infos, ms, x)
 		if len(x.left) > 0 {
-			// A remote member pins.yaml records is not gone: a run that needs it restores it (§3.4).
+			// A remote member pins.yaml records is not gone: a run that needs it restores it.
 			c.Restore = e.SyncCommand(sc)
 		}
 	}
@@ -182,7 +181,7 @@ func (x *expansion) leftBefore(infos []profile.Info, k int) []ContextLayer {
 	return out
 }
 
-// writesTo is the file an edit of sc would write, as the context names it (spec 2026-10-29 §3.8):
+// writesTo is the file an edit of sc would write, as the context names it:
 // nil when the run writes nothing (writes nil), when that file needs a question (a remote profile
 // or a bundle on), or when the --profile named cannot be written (the command refuses it, with hints); the base
 // with no profile on, or for --profile base (default, or user:default, at user scope). infos is the
@@ -198,7 +197,7 @@ func (e *Engine) writesTo(sc Scope, c ScopeContext, writes *TargetRequest, infos
 		b := c.Base
 		return &b
 	case name == "" && (c.Profile.Kind == string(profile.KindRemote) || c.Profile.Bundle):
-		return nil // the write target needs a question (spec 2026-10-29 §3.5 rows 3 and 4)
+		return nil // the write target needs a question
 	case name == "":
 		l := c.Profile.ContextLayer
 		return &l

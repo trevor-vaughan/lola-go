@@ -138,7 +138,7 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		res, err = e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: src}}, claude)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Modules[0].Skipped).To(Equal([]string{"agent/critic"}),
-			"default's entry, a profile entry, takes the global skip but not global's only: list (cherry-pick design §4.2)")
+			"default's entry, a profile entry, takes the global skip but not global's only: list")
 	})
 
 	It("an only: list that matches nothing installs nothing of the module and warns, naming its section", func() {

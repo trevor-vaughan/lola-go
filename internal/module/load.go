@@ -26,7 +26,7 @@ var ErrNoModule = errors.New("no module found")
 
 const lookedFor = "skills/*/SKILL.md, SKILL.md, commands/*.md, agents/*.md, mcps.json or rules/*.md"
 
-// lolaFile is the lola.yml schema (§5.4). Only name is required.
+// lolaFile is the lola.yml schema. Only name is required.
 type lolaFile struct {
 	Name        string            `yaml:"name"`
 	Format      string            `yaml:"format,omitempty"`
@@ -68,7 +68,7 @@ const lolaKeys = "name, format, description, version, author, license, homepage,
 
 var unknownFieldRE = regexp.MustCompile(`field (\S+) not found in type (\S+)`)
 
-// Formats whose adapter can write a manifest (Plan 5b design §3.3).
+// Formats whose adapter can write a manifest.
 const (
 	FormatClaudePlugin = "claude-plugin"
 	FormatAgentPlugins = "agent-plugins"
@@ -302,7 +302,7 @@ func agentServer(at string, item json.RawMessage) (name string, inline bool, err
 }
 
 // listed loads a kind from its components entries when the kind is listed, else by discovery
-// (§3.1: listing a kind replaces its discovery).
+// (listing a kind replaces its discovery).
 func listed[E any](entries *[]E, load func([]E) error, discover func() error) func() error {
 	if entries == nil {
 		return discover
@@ -607,7 +607,7 @@ func loadMCP(dir string, m *Module) error {
 	return err
 }
 
-// loadRules reads rules/*.md (§5.6), sorted by name, and warns about anything else in rules/
+// loadRules reads rules/*.md, sorted by name, and warns about anything else in rules/
 // and about legacy instruction files, which are never installed.
 func loadRules(dir string, m *Module) error {
 	es, err := entries(filepath.Join(dir, "rules"))
@@ -648,7 +648,7 @@ func loadRules(dir string, m *Module) error {
 	return nil
 }
 
-// readRule reads a rule file (§5.6): its body, without frontmatter, which may not scope it to
+// readRule reads a rule file: its body, without frontmatter, which may not scope it to
 // paths, or a template's source, which the engine renders and checks so.
 func readRule(dir, rel string, m *Module) (Rule, error) {
 	doc, err := readComponent(dir, rel, m)

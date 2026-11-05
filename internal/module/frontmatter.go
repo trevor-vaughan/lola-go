@@ -18,7 +18,7 @@ import (
 // Doc is a markdown document with optional YAML frontmatter between --- fences.
 // RawFrontmatter is the author's exact text (without fences) so rendering keeps comments,
 // key order and formatting. A template (Template set) is not parsed: Body holds its whole
-// source and Frontmatter is nil until the engine renders it for a target (Plan 7 §3.1).
+// source and Frontmatter is nil until the engine renders it for a target.
 type Doc struct {
 	Frontmatter    map[string]any
 	RawFrontmatter string
@@ -34,9 +34,9 @@ func opensFrontmatter(s string) bool {
 	return strings.HasPrefix(strings.TrimPrefix(s, "\ufeff"), "---")
 }
 
-// ParseDoc splits src into frontmatter and body. A document that does not start with a
-// "---" line has no frontmatter, which is valid. A first line that starts with "---" but is not
-// exactly that line (more dashes, trailing text or whitespace, or no line break) is refused: an assistant's
+// ParseDoc splits src into frontmatter and body. A document that does not start with a "---" line
+// has no frontmatter, which is valid. A first line that starts with "---" but is not exactly that
+// line (more dashes, trailing text or whitespace, or no line break) is refused: an assistant's
 // parser may read frontmatter there, hooks included, that lola would not see (fail closed).
 func ParseDoc(src []byte) (Doc, error) {
 	s := strings.TrimPrefix(string(src), "\ufeff")
@@ -240,8 +240,7 @@ func (d Doc) Without(keys ...string) (Doc, error) {
 var ambiguousScalar = regexp.MustCompile(`(?i)^(y|n|yes|no|on|off|[-+]?0[0-9]+)$`)
 
 // Ambiguous lists, in document order, the top-level frontmatter keys whose values contain an
-// unquoted scalar that assistants' YAML parsers may read differently (§5.2 of the target
-// framework design).
+// unquoted scalar that assistants' YAML parsers may read differently.
 func (d Doc) Ambiguous() ([]string, error) {
 	if d.RawFrontmatter == "" {
 		return nil, nil
@@ -284,7 +283,7 @@ func (d Doc) String(key string) string {
 // PlainRead reports how YAML reads s written as a plain block-context scalar value, `k: s`:
 // ok when it reads s itself, a string; otherwise what it reads instead, for a refusal to name
 // ("a number", "true or false", "null", `a comment after "sonnet"`, …), with a string it reads
-// quoted. A template's value written raw into frontmatter must read back as itself (R-7-U18).
+// quoted. A template's value written raw into frontmatter must read back as itself.
 func PlainRead(s string) (what string, ok bool) {
 	var doc yaml.Node
 	if yaml.Unmarshal([]byte("k: "+s+"\n"), &doc) != nil || len(doc.Content) != 1 || len(doc.Content[0].Content) != 2 {

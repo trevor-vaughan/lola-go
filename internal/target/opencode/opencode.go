@@ -1,4 +1,4 @@
-// Package opencode renders modules for OpenCode (§8). At user scope its root is
+// Package opencode renders modules for OpenCode. At user scope its root is
 // $XDG_CONFIG_HOME/opencode and artifact directories sit directly under it.
 package opencode
 
@@ -249,7 +249,7 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		out = append(out, plan.Intent{Target: id, Kind: "mcp", Op: plan.OpSetJSON, Path: cfg, Pointer: "/mcp/" + s.Name, Value: value})
 	}
 	// Rules are delivered verbatim, with one instructions member per module: OpenCode expands
-	// a wildcard only in the last component of an absolute entry (§8).
+	// a wildcard only in the last component of an absolute entry.
 	rulesDir := d + "lola/" + m.Name
 	rules := false
 	for _, r := range m.Rules {
@@ -273,7 +273,7 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		}
 		out = append(out, plan.Intent{Target: id, Kind: "rule", Op: plan.OpAddJSONMember, Path: cfg, Pointer: "/instructions", Member: plan.StringMember(member)})
 	}
-	// Runtime hooks (Plan 5b design §7.1) are never rendered here: the kind is missing from caps,
+	// Runtime hooks are never rendered here: the kind is missing from caps,
 	// since mapping Claude Code's events and tool names would be a cross-target value conversion.
 	for _, h := range m.RuntimeHooks {
 		if module.Supports(h.Targets, id) {

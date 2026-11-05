@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
-// ProfileAction is what lola profile does to a scope's active profile (Plan 6b §3.2, §6.3).
+// ProfileAction is what lola profile does to a scope's active profile.
 type ProfileAction string
 
 // The activation actions; each is also the flag lola profile takes for it.
@@ -27,26 +27,26 @@ const (
 	ProfileSwitch ProfileAction = "switch"
 )
 
-// ProfileChange is the activation a sync applies under the scope lock (Plan 6b §6.3, §19 R3; spec
-// 2026-10-29 §6.2): Action on Name, the profile's name as the user typed it; "" only for --off,
-// which then turns off whatever profile is on.
+// ProfileChange is the activation a sync applies under the scope lock: Action on Name, the
+// profile's name as the user typed it; "" only for --off, which then turns off whatever profile is
+// on.
 type ProfileChange struct {
 	Action ProfileAction
 	Name   string
-	// New, with --switch, makes Name first (spec 2026-10-29 §6.2 --new): empty, a copy of From's
-	// entries, or with Bundle (members as typed) a bundle; newProfiles.
+	// New, with --switch, makes Name first: empty, a copy of From's entries, or with Bundle (members
+	// as typed) a bundle; newProfiles.
 	New    bool
 	From   string
 	Bundle []string
 }
 
-// Activation is what an activation's sync reports beside the sync's own result (Plan 6b §12.2,
-// §19 R14; spec 2026-10-29 §8.5): Profile, the scope's active profile after the run by qualified
-// name (the one before when the run applied nothing), null when only the base is loaded, and
-// Changes, what the change loads, replaces and unloads. Named is the qualified name of the
-// profile the run turns on or off (for --off, the one it turns off; "" when none is on), File its
-// file ("" when it is gone), and Turned whether the run changes the profile on (false when it is
-// already as asked, which a notice reports), for human output.
+// Activation is what an activation's sync reports beside the sync's own result: Profile, the
+// scope's active profile after the run by qualified name (the one before when the run applied
+// nothing), null when only the base is loaded, and Changes, what the change loads, replaces and
+// unloads. Named is the qualified name of the profile the run turns on or off (for --off, the one
+// it turns off; "" when none is on), File its file ("" when it is gone), and Turned whether the run
+// changes the profile on (false when it is already as asked, which a notice reports), for human
+// output.
 type Activation struct {
 	Profile *string       `json:"profile"`
 	Changes []LayerChange `json:"changes"`
@@ -55,13 +55,13 @@ type Activation struct {
 	Turned  bool          `json:"-"`
 }
 
-// OtherProfileOnError refuses --on of a profile while another is on (spec 2026-10-29 §6.2, §6.3):
+// OtherProfileOnError refuses --on of a profile while another is on:
 // one profile is on at a time, and --on never replaces it without asking; --switch does. On and
 // Name are the qualified names of the profile on and of the one named; the CLI asks on a terminal.
 type OtherProfileOnError struct {
 	On, Name string
 	// Bundle is the bundle of yours a terminal's question offers in their place, and Members its
-	// members, as memberName names them (spec 2026-10-29 §6.2 --on).
+	// members, as memberName names them.
 	Bundle  string
 	Members []string
 	// Into is the bundle on, as lola profile <name> --edit names it, when the one named can join it
@@ -83,11 +83,11 @@ const (
 	ChangeUnload  = "unload"
 )
 
-// LayerChange is one module an activation changes (Plan 6b §19 R14): load (no version is
-// installed), replace (the winning entry is not the one installed) or unload (no layer wants it).
-// From is the layer whose entry wins now, or for an unload the layer lock.json says it came from;
-// Over the layers that entry replaced, lowest first. Version and Was are the versions it asks for
-// and lock.json records, for human output. Every string has been through untrusted.Text.
+// LayerChange is one module an activation changes: load (no version is installed), replace (the
+// winning entry is not the one installed) or unload (no layer wants it). From is the layer whose
+// entry wins now, or for an unload the layer lock.json says it came from; Over the layers that
+// entry replaced, lowest first. Version and Was are the versions it asks for and lock.json records,
+// for human output. Every string has been through untrusted.Text.
 type LayerChange struct {
 	Module  string   `json:"module"`
 	Action  string   `json:"action"`
@@ -98,14 +98,14 @@ type LayerChange struct {
 	name    string   // the module's name, raw
 }
 
-// baseName addresses a scope's base in lola profile (spec 2026-10-29 §3.1): default at user
+// baseName addresses a scope's base in lola profile: default at user
 // scope, project.yml at project scope.
 const baseName = "base"
 
-// activeProfile is the scope's active profile after ch (spec 2026-10-29 §3.1, §6.2), infos being
+// activeProfile is the scope's active profile after ch, infos being
 // the profiles sc can use and cur the one on (nil for none). --switch makes the named profile the
 // one on, whatever is on; --on does when none is, or when it is the project's profile of the name
-// of the one on, yours or a remote one (Plan 6b §4.4, D8; ruling R-6b3a-1), and otherwise refuses
+// of the one on, yours or a remote one, and otherwise refuses
 // (*OtherProfileOnError), hinting --switch: it never replaces a profile without asking. --off is
 // turnOff. A remote profile a local one shadows is refused for --on and --switch (local beats
 // remote). The base, by base or at user scope by default, is baseChange; default at project scope
@@ -163,19 +163,18 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 	}
 	q := i.Qualified()
 	if i.Kind == profile.KindRemote && (cur == nil || cur.Name != q) {
-		// Local beats remote (Plan 6b §4.4, decision 4): a remote profile a local one shadows is
-		// never turned on.
+		// Local beats remote: a remote profile a local one shadows is never turned on.
 		if sh := shadowing(infos, i); sh != nil {
 			return nil, "", "", nil, errs.WithHints(fmt.Errorf("%s is shadowed by %s %s (%s): a local profile always wins over a remote one of its name",
 				shown(q), ownedBy(sh.Kind, false), shown(sh.Qualified()), shown(sh.Path)),
-				// another profile than the one named: the run's -y answered nothing about it (ruling R-8)
+				// another profile than the one named: the run's -y answered nothing about it
 				"use "+ownedBy(sh.Kind, true)+": "+e.Command(sc, "profile", qualifiedArgs(slices.DeleteFunc(slices.Clone(typed),
 					func(a string) bool { return a == "-y" }), ch.Name, sh.Qualified())...),
 				"or use both, bundled: "+e.bundleRun(sc, freeName(infos, i.Name+"-both"), []string{sh.Qualified(), q}, again),
 				"or rename or delete "+shown(sh.Path))
 		}
 	}
-	// standsIn: the profile on is the remote profile q, yours, is read in place of (D8): q is on.
+	// standsIn: the profile on is the remote profile q, yours, is read in place of: q is on.
 	standsIn := cur != nil && i.Kind == profile.KindUser && cur.Name == string(profile.KindRemote)+":"+i.Name &&
 		userShadow(infos, cur.Name) != nil
 	switch {
@@ -194,7 +193,7 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 	if k := slices.IndexFunc(flags, trustArg); k >= 0 {
 		sw = append(sw, flags[k])
 	}
-	// The bundle of both, which the terminal's question offers too (spec 2026-10-29 §6.2 --on).
+	// The bundle of both, which the terminal's question offers too.
 	members := []string{i.Name}
 	if k := activeInfo(infos, cur.Name); k >= 0 {
 		members = []string{memberName(infos, infos[k]), memberName(infos, i)}
@@ -202,7 +201,7 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 	name := bundleName(infos, members)
 	other := &OtherProfileOnError{On: cur.Name, Name: q, Bundle: name, Members: members}
 	hints := []string{e.Command(sc, "profile", append(sw, again...)...), e.bundleRun(sc, name, members, append(slices.Clone(sw[2:]), again...))}
-	// Or add it to the bundle on (spec 2026-10-29 §6.2 --edit --bundle), which keeps the bundle on.
+	// Or add it to the bundle on, which keeps the bundle on.
 	if k := activeInfo(infos, cur.Name); k >= 0 && (infos[k].Kind == profile.KindUser || infos[k].Kind == profile.KindProject && i.Kind != profile.KindUser) {
 		p, _, err := e.readFile(infos[k])
 		var pending *trust.Report
@@ -230,14 +229,14 @@ func (e *Engine) activeProfile(sc Scope, infos []profile.Info, cur *ledger.Activ
 	return nil, "", "", nil, other
 }
 
-// replaces reports whether turning i on puts it in place of cur (Plan 6b §4.4, D8; ruling
-// R-6b3a-1): i is the project's profile of the name of cur, yours or a remote one.
+// replaces reports whether turning i on puts it in place of cur: i is the project's profile of the
+// name of cur, yours or a remote one.
 func replaces(cur *ledger.Active, i profile.Info) bool {
 	kind, name, _ := strings.Cut(cur.Name, ":")
 	return i.Kind == profile.KindProject && name == i.Name && replaceable(kind)
 }
 
-// turnOff is --off's half of activeProfile (spec 2026-10-29 §6.2): name names the profile on, by
+// turnOff is --off's half of activeProfile: name names the profile on, by
 // its qualified name or its bare one, whether or not its file is still there (with one profile on,
 // a bare name cannot mean another: decisions.md, row 85), or name is "": the profile on goes off.
 // A name that resolves to a profile that is not on is a notice, as is a bare name several kinds
@@ -275,7 +274,7 @@ func (e *Engine) turnOff(sc Scope, infos []profile.Info, cur *ledger.Active, nam
 	return cur, "", "", []Notice{{Level: LevelInfo, Text: shown(i.Qualified()) + " is not on"}}, nil
 }
 
-// baseChange is activeProfile for a name of the scope's base (spec 2026-10-29 §3.1, §6.3): --switch
+// baseChange is activeProfile for a name of the scope's base: --switch
 // to it turns the profile on off (a notice when none is), --on of it is a notice when none is on
 // and refused, hinting that --switch, when one is; --off of it is refused, hinting --off when a
 // profile is on. again is what a hint keeps of the run.
@@ -307,7 +306,7 @@ func activeName(a *ledger.Active) string {
 	return a.Name
 }
 
-// layerChanges is the plan of an activation (Plan 6b §6.3 step 3): the difference between want,
+// layerChanges is the plan of an activation: the difference between want,
 // what the scope's layers want with the new active profile, and led, what lola installed. A module
 // wanted and not installed is a load; one installed from another layer or at another source, ref,
 // path or pin is a replace; one installed that no layer wants is an unload. manifest is the scope
@@ -376,11 +375,11 @@ type pinSource struct {
 	update bool
 }
 
-// ownPin is the entry of your profiles resolved to the version a sync installs (spec 2026-10-29
-// §3.4): pins.yaml's pin of its key at user scope, else the version lock.json holds for its key,
-// else a move's seed, which comes before pins.yaml (plan 12.2b ambiguity 5) so the next plain
-// sync applies that pin. resolved is false when none applies, and ent is then w.Entry. validateSync
-// and wantedVersion both resolve through it, so the change line names what the sync installs.
+// ownPin is the entry of your profiles resolved to the version a sync installs: pins.yaml's pin of
+// its key at user scope, else the version lock.json holds for its key, else a move's seed, which
+// comes before pins.yaml so the next plain sync applies that pin. resolved is false when none
+// applies, and ent is then w.Entry. validateSync and wantedVersion both resolve through it, so the
+// change line names what the sync installs.
 func (ps pinSource) ownPin(w Wanted, in *ledger.Entry) (ent manifest.Entry, fromPins, seeded, resolved bool) {
 	ent = w.Entry
 	if !w.own() || ent.Digest != "" || ps.update || source.IsFolderForm(ent.Source) {
@@ -423,12 +422,11 @@ type activation struct {
 	changed bool
 }
 
-// startActivation computes the new active profile of an activation (activeProfile, Plan 6b §6.3
-// step 2) from one listing of the profiles directory. The stored name is kept: an active remote
-// profile that a user profile of its name now shadows is read as that profile on every run
-// (loadStack, D8), never rewritten by an action that does not name it. flags is the run's flags,
-// for hints that repeat it (rerun, and -n in a dry run); again is what a hint naming another run
-// keeps.
+// startActivation computes the new active profile of an activation (activeProfile) from one listing
+// of the profiles directory. The stored name is kept: an active remote profile that a user profile
+// of its name now shadows is read as that profile on every run (loadStack), never rewritten by an
+// action that does not name it. flags is the run's flags, for hints that repeat it (rerun, and -n
+// in a dry run); again is what a hint naming another run keeps.
 func (e *Engine) startActivation(sc Scope, led *ledger.Ledger, ch ProfileChange, flags, again []string) (*activation, []Notice, error) {
 	infos, _, err := e.visible(sc)
 	if err != nil {
@@ -456,7 +454,7 @@ func (e *Engine) startActivation(sc Scope, led *ledger.Ledger, ch ProfileChange,
 }
 
 // moved is the part of all, the difference between what the new profile on wants (want) and
-// lock.json (led), that the change of profile moves (Plan 6b §6.3 step 3): a module whose winning
+// lock.json (led), that the change of profile moves: a module whose winning
 // entry differs from the one the old profile gave (old: absent, from another layer, or another
 // entry), and an installed module no layer of the new profile wants that the old profile wanted
 // or lock.json says the named profile installed (a profile whose file is gone counts as off in the

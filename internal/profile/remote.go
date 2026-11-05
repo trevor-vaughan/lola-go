@@ -23,7 +23,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// The files of a remote profile's directory, <paths.RemoteProfiles>/<name>/ (Plan 6b §4.2), and
+// The files of a remote profile's directory, <paths.RemoteProfiles>/<name>/, and
 // the directory of a source that holds its profiles.
 const (
 	RemoteFile = "profile.yml" // the profile as fetched, byte for byte
@@ -37,9 +37,9 @@ const OriginVersion = 1
 // maxOrigin bounds source.json, which is read whole.
 const maxOrigin = 64 << 10
 
-// Origin is a remote profile's source.json (Plan 6b §4.2): the source, ref and --path it was
+// Origin is a remote profile's source.json: the source, ref and --path it was
 // fetched from, the commit a git source resolved to and the digest of profile.yml. The user's
-// consent at --add or --update covers exactly this pin (§8.2, §19 S1).
+// consent at --add or --update covers exactly this pin.
 type Origin struct {
 	Version int    `json:"version"`
 	Source  string `json:"source"`
@@ -50,8 +50,8 @@ type Origin struct {
 }
 
 // Check refuses an origin lola would not have written: a newer version, a field that fails the
-// recorded-source rules (source.Recorded.Check), a source on this machine (D4,
-// source.CheckRemote), and a pin that is missing its digest, or its commit for a git source.
+// recorded-source rules (source.Recorded.Check), a source on this machine (source.CheckRemote), and
+// a pin that is missing its digest, or its commit for a git source.
 func (o Origin) Check() error {
 	switch {
 	case o.Version > OriginVersion:
@@ -87,10 +87,10 @@ func Digest(b []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-// Remote is the remote profiles lola keeps in p.RemoteProfiles (Plan 6b §4.1), in name order,
+// Remote is the remote profiles lola keeps in p.RemoteProfiles, in name order,
 // from the directory's listing alone: each directory whose name follows the module-name rules,
 // with the count of entries whose names do not. A name starting with "." is a directory lola is
-// writing or removing (§19 R11), never a profile, and is not counted; so is anything that is not
+// writing or removing, never a profile, and is not counted; so is anything that is not
 // a directory, a symbolic link included. A directory holding more than MaxFiles entries is
 // refused, naming it; a missing one holds none.
 func Remote(p paths.Paths) ([]Info, int, error) {
@@ -106,7 +106,7 @@ func Remote(p paths.Paths) ([]Info, int, error) {
 		switch {
 		case strings.HasPrefix(name, "."), !de.IsDir():
 		case module.ValidateName("profile", name) != nil, name == BaseName:
-			invalid++ // base names the scope's base, never a remote profile (spec 2026-10-29 §3.1)
+			invalid++ // base names the scope's base, never a remote profile
 		default:
 			out = append(out, Info{Name: name, Kind: KindRemote, Path: filepath.Join(dir, name, RemoteFile)})
 		}
@@ -116,9 +116,9 @@ func Remote(p paths.Paths) ([]Info, int, error) {
 }
 
 // LoadRemote reads the remote profile at path, <name>/profile.yml under paths.RemoteProfiles,
-// once (Plan 6b §4.2, §6.1), with its origin: the directory must be a directory and the files
-// regular files, none of them a symbolic link (§19 S3); source.json must check (Origin.Check);
-// the file must hold the bytes whose digest it records, which the user consented to (§19 S1);
+// once, with its origin: the directory must be a directory and the files
+// regular files, none of them a symbolic link; source.json must check (Origin.Check);
+// the file must hold the bytes whose digest it records, which the user consented to;
 // and the profile must load as a remote one (Fetched's rules). Every refusal names the file.
 func LoadRemote(path string) (*Profile, Origin, error) {
 	dir := filepath.Dir(path)
@@ -151,7 +151,7 @@ func LoadRemote(path string) (*Profile, Origin, error) {
 	return p, o, err
 }
 
-// ReadOrigin reads source.json in dir, a remote profile's directory (Plan 6b §4.2): a regular
+// ReadOrigin reads source.json in dir, a remote profile's directory: a regular
 // file of at most 64 KiB, never a symbolic link, every key known, its fields checked
 // (Origin.Check).
 func ReadOrigin(dir string) (Origin, error) {
@@ -174,9 +174,8 @@ func ReadOrigin(dir string) (Origin, error) {
 	return o, nil
 }
 
-// FetchedNames is the profiles in dir, the profiles/ directory of a source lola fetched (Plan 6b
-// §3.2 --add), in name order, with the count of files whose names are not valid profile names
-// (§19 S7), as list reads a profiles directory. dir must be a real directory (§19 S3).
+// FetchedNames is the profiles in dir, the profiles/ directory of a source lola fetched, in name order, with the count of files whose names are not valid profile names,
+// as list reads a profiles directory. dir must be a real directory.
 func FetchedNames(dir string) ([]string, int, error) {
 	if err := realDir(dir); err != nil {
 		return nil, 0, err
@@ -192,9 +191,9 @@ func FetchedNames(dir string) ([]string, int, error) {
 }
 
 // Fetched reads <name>.yml from dir, the profiles/ directory of a source lola fetched into
-// staging (Plan 6b §4.2), as untrusted input: dir must be a real directory and the file a regular
-// one, neither a symbolic link, before anything is read (§19 S3); the file loads as a remote
-// profile, whose every entry is pinned and names a remote source (§19 S1, D4) and which may not
+// staging, as untrusted input: dir must be a real directory and the file a regular
+// one, neither a symbolic link, before anything is read; the file loads as a remote
+// profile, whose every entry is pinned and names a remote source and which may not
 // bundle others. Messages name it profiles/<name>.yml. It returns the bytes read, whose digest
 // the pin records.
 func Fetched(dir, name string) (*Profile, []byte, error) {
@@ -235,7 +234,7 @@ func Fetched(dir, name string) (*Profile, []byte, error) {
 }
 
 // realDir refuses dir, a fetched source's profiles/, unless it is a directory and not a symbolic
-// link (§19 S3).
+// link.
 func realDir(dir string) error {
 	fi, err := os.Lstat(dir)
 	switch {
@@ -252,7 +251,7 @@ func realDir(dir string) error {
 	return nil
 }
 
-// checkRemote applies the rules of a remote profile's entries (Plan 6b §4.2, §19 S1, D4) to e:
+// checkRemote applies the rules of a remote profile's entries to e:
 // a remote source, and a pin, its commit for a git source and its digest.
 func checkRemote(e manifest.Entry) error {
 	if err := source.CheckRemote(e.Source, RemoteWho); err != nil {

@@ -1929,7 +1929,7 @@ var _ = Describe("Sync", func() {
 			Expect(staged()).To(BeEmpty())
 
 			// --update of an entry whose ref serves its pin again, while the cache's head for the
-			// ref is another version: the dry run leaves the head where it is (§3.1).
+			// ref is another version: the dry run leaves the head where it is.
 			pinnedCommit := lockFile().Modules["example"].Commit
 			_, err = e.Update(ctx, nil)
 			Expect(err).NotTo(HaveOccurred())
@@ -2052,8 +2052,8 @@ var _ = Describe("Sync", func() {
 			after := state()
 			maps.DeleteFunc(after, func(k, _ string) bool { return strings.HasPrefix(k, filepath.Dir(p.Store)) })
 			maps.DeleteFunc(before, func(k, _ string) bool { return strings.HasPrefix(k, filepath.Dir(p.Store)) })
-			// --trust=hooks recorded its consent once the receipt was answered, before the hook ran
-			// (Plan 9 R-9-3): consent is state, not the project's.
+			// --trust=hooks recorded its consent once the receipt was answered, before the hook ran:
+			// consent is state, not the project's.
 			Expect(after[p.Consent]).NotTo(Equal(before[p.Consent]))
 			delete(after, p.Consent)
 			delete(before, p.Consent)
@@ -2157,7 +2157,7 @@ var _ = Describe("Sync", func() {
 			Expect(sources).To(Equal([]string{b, a}), "the moved folder is an origin of its own, the old one stays")
 		})
 
-		It("Prof-P2-d: an unknown target names the file and the line of the entry", func() {
+		It("an unknown target names the file and the line of the entry", func() {
 			install(sc, engine.InstallRequest{Arg: src})
 			manPath := filepath.Join(proj, ".lola", "project.yml")
 			Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: other\n    source: ../src/other\n    targets: [nope]\n"), 0o600)).To(Succeed())
@@ -2166,7 +2166,7 @@ var _ = Describe("Sync", func() {
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("valid targets: ")))
 		})
 
-		It("Prof-P2-d: an unknown top-level target names the file and the line of targets:", func() {
+		It("an unknown top-level target names the file and the line of targets:", func() {
 			install(sc, engine.InstallRequest{Arg: src})
 			manPath := filepath.Join(proj, ".lola", "project.yml")
 			Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code, nope]\nmodules:\n  - name: other\n    source: ../src/other\n"), 0o600)).To(Succeed())
@@ -2174,7 +2174,7 @@ var _ = Describe("Sync", func() {
 			Expect(err).To(MatchError(`project.yml:2: other: unknown target "nope"`))
 		})
 
-		It("Prof-P2-d: an install names the targets: line of a bad file, but a bad -t as the user gave it", func() {
+		It("an install names the targets: line of a bad file, but a bad -t as the user gave it", func() {
 			user := engine.Scope{Kind: target.User}
 			defaultYML := filepath.Join(e.Paths.UserProfiles, "default.yml")
 			Expect(os.MkdirAll(filepath.Dir(defaultYML), 0o700)).To(Succeed())

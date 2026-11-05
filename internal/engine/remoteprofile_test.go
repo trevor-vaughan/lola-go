@@ -114,7 +114,7 @@ var _ = Describe("remote profiles", func() {
 	turn := func(s engine.Scope, action engine.ProfileAction, name string) (*engine.SyncResult, error) {
 		return e.Sync(ctx, engine.SyncRequest{Scope: s, Profiles: &engine.ProfileChange{Action: action, Name: name}, ConfirmRemovals: yes})
 	}
-	// failed is the error of an update of one profile: the run's, else its profile's (§19 P21).
+	// failed is the error of an update of one profile: the run's, else its profile's.
 	failed := func(res *engine.ProfileUpdateResult, err error) error {
 		if err != nil {
 			return err
@@ -140,7 +140,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(led.Modules["example"].From).To(Equal("profile:remote:go"))
 		Expect(led.Modules["example"].Commit).To(Equal(commit))
 
-		// At project scope it needs no trust: the consent was given when it was added (D5).
+		// At project scope it needs no trust: the consent was given when it was added.
 		res, err = turn(sc, engine.ProfileOn, "remote:go")
 		Expect(err).NotTo(HaveOccurred(), "no Trust callback, and none needed")
 		Expect(res.Trust.Changes).To(BeEmpty())
@@ -205,7 +205,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "user:go now replaces remote:go"}))
 		Expect(shipped(userRoot())).NotTo(BeAnExistingFile(), "yours lists nothing, so the remote's module goes")
 		Expect(active(user)).To(Equal("remote:go"), "a sync never rewrites the list")
-		// --on of another profile never replaces it unasked, and the stored name stays (ruling R-6b3b-8, M13).
+		// --on of another profile never replaces it unasked, and the stored name stays.
 		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n"})
 		_, err = turn(user, engine.ProfileOn, "docs")
 		Expect(err).To(MatchError("remote:go is on, and --on does not replace it without asking; --switch does"))
@@ -931,7 +931,7 @@ var _ = Describe("remote profiles", func() {
 
 		It("never lets a directory named like an entry's URL stand in for it", func() {
 			// A checkout plants a folder module at <proj>/https:/lola.test:<port>/example.git, the
-			// path a remote entry's URL would name if it were looked up on disk (ruling R-6b3b-5).
+			// path a remote entry's URL would name if it were looked up on disk.
 			planted := filepath.Join(proj, strings.Replace(url, "://", ":/", 1))
 			writeTree(planted, map[string]string{"lola.yml": "name: example\n", "commands/planted.md": "Planted\n"})
 			var seen []engine.RemoteProfile
@@ -979,7 +979,7 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("shows the whole content whatever a scope's lock.json says", func() {
-			// A planted lock.json claims the module is installed at its pin (ruling R-6b3b-7).
+			// A planted lock.json claims the module is installed at its pin.
 			led := ledger.New()
 			led.Modules["example"] = &ledger.Entry{Source: url, Commit: commit, Digest: digest, Targets: []string{"claude-code"}}
 			Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
@@ -1289,7 +1289,7 @@ var _ = Describe("remote profiles", func() {
 			})
 
 			It("restores it before a move between scopes plans, whose syncs run under the move's locks", func() {
-				// A git source: a project's folder entry never moves into your files (spec 2026-10-29 §16.2).
+				// A git source: a project's folder entry never moves into your files.
 				nw := filepath.Join(tmp, "notes-work")
 				writeTree(nw, map[string]string{"lola.yml": "name: notes\n", "commands/notes.md": "N\n"})
 				gitIn(nw, "init", "-q", "-b", "main")
@@ -1461,7 +1461,7 @@ var _ = Describe("remote profiles", func() {
 				Expect(shipped(proj)).To(BeARegularFile())
 			})
 
-			// gated runs the project syncs a P9 restore takes once the scope's bundle on reaches
+			// gated runs the project syncs a restore takes once the scope's bundle on reaches
 			// remote:go through project bundles: refused before any fetch, then trusted (the member
 			// still planned missing), then restored.
 			gated := func() {
@@ -1971,7 +1971,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "1 other change is pending → lola sync --user"}))
 
 			// An entry another overrides moves nothing: in bundle mine, own's entry wins over the one
-			// remote:go, the member before it, gives (spec 2026-10-29 §3.3).
+			// remote:go, the member before it, gives.
 			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n", "mine.yml": "version: 1\nbundle: [remote:go, own]\n",
 				"own.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url + ", commit: " + commit + ", digest: " + digest + "}\n"})
 			_, err = turn(user, engine.ProfileSwitch, "mine")
@@ -2677,7 +2677,7 @@ var _ = Describe("remote profiles", func() {
 				"or take remote:go out of bundle mine: lola profile --user mine --edit --bundle ''", HavePrefix("or remove it anyway: ")))
 			activate(user, "user:mine")
 			_, err = remove(user, "user:mine", false, yes)
-			Expect(err).To(MatchError("user:mine is on at user scope"), "a profile of yours is removed too, once off (spec 2026-10-29 §6.2)")
+			Expect(err).To(MatchError("user:mine is on at user scope"), "a profile of yours is removed too, once off")
 			Expect(os.WriteFile(filepath.Join(p.RemoteProfiles, "stray"), nil, 0o600)).To(Succeed())
 			_, err = remove(user, "stray", true, yes)
 			Expect(err).To(MatchError("you have no remote profile stray"), "a file there is no profile")

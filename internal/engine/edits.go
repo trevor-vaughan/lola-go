@@ -23,7 +23,7 @@ const (
 
 // SelectionEdit is one change to selections.yaml an install makes before it plans. Exact, on an
 // EditOnly edit (--only --exact), saves the selector's pattern as the section's only: list
-// instead of skips of the components that exist now (cherry-pick design §3.2). Flag marks an
+// instead of skips of the components that exist now. Flag marks an
 // edit given as a flag (AddFlagEdits sets it), not a pick on the component page: a --skip flag
 // keeps out what --with-mentions would add, an untick on the page does not.
 type SelectionEdit struct {
@@ -37,8 +37,8 @@ func (e SelectionEdit) String() string { return "--" + e.Op + " " + e.Selector.S
 
 // AddFlagEdits adds edits given as flags: to the global section with global, else to the
 // one scope's section. With more than one scope and no --global it refuses, since one flag
-// cannot say which scope it means (Plan 5c §5.2), except for lola profile <name> --edit, whose
-// scopes all write the one profile it names (ruling P1): each scope gets them.
+// cannot say which scope it means, except for lola profile <name> --edit, whose
+// scopes all write the one profile it names: each scope gets them.
 func (spec *InstallSpec) AddFlagEdits(edits []SelectionEdit, global bool) error {
 	if len(edits) == 0 {
 		return nil
@@ -380,9 +380,9 @@ func skip(e *config.Entry, p config.Pattern, hit []Component) {
 // unskip removes the skips that name what p hits (one equal to p, or a literal skip of a hit
 // component). Where a hit component stays excluded (a global skip, a glob, or an only: list that
 // misses it), a scope's section gets p as an include, which overrides them; the global section and
-// a profile entry, which take no include (cherry-pick design §4.1: an entry's picks are only: and
+// a profile entry, which take no include (an entry's picks are only: and
 // skip:), get each hit component's kind/name added to their only: list when they have one and the
-// list misses it (§3.2). A section without an only: list never gets one here.
+// list misses it. A section without an only: list never gets one here.
 func unskip(e *config.Entry, w config.Where, p config.Pattern, hit []Component, excluded func(Component) bool) {
 	e.Skip = slices.DeleteFunc(e.Skip, func(s config.Pattern) bool { return s == p || names(s, hit) })
 	if w.Kind != config.SectionGlobal && w.Kind != config.SectionProfile {

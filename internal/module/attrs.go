@@ -21,7 +21,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
-// Attribute files (Plan 7 §3.4): beside a skill's SKILL.md, a command's or an agent's file,
+// Attribute files: beside a skill's SKILL.md, a command's or an agent's file,
 // <base>.targets.yaml or <base>.targets.jsonc maps target ids to frontmatter keys the engine
 // merges into the component for that target. The file is untrusted data: it is capped, decoded
 // by kind, never into a Go value of the decoder's choosing, and checked by the same rules in

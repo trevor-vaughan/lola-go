@@ -8,14 +8,14 @@ import (
 	"unicode/utf8"
 )
 
-// Codes of the include graph's refusals (Plan 7 §3.3).
+// Codes of the include graph's refusals.
 const (
 	codeIncludeMissing = "template-include-missing"
 	codeIncludeCycle   = "template-include-cycle"
 	codeIncludeTooDeep = "template-include-too-deep"
 )
 
-// graph is a template's include graph for one target (Plan 7 §3.3): every partial its includes
+// graph is a template's include graph for one target: every partial its includes
 // reach, each screened as a template, known before anything renders, because include names are
 // literals.
 type graph struct {
@@ -41,7 +41,7 @@ type node struct {
 // chain of more than lim.Chain partials, more than lim.Assigns assign tags across them, and
 // blocks nested deeper than lim.Depth across them. An include with no partial for target is a
 // missing leaf, with no file and no edges, which contributes to none of these: the store refuses
-// it when a rendering include asks for it (Plan 7 §5.7.5).
+// it when a rendering include asks for it.
 func screen(src Source, p Partials, target string, lim Limits, declared []string) (*graph, error) {
 	info, err := screenFile(src, lim, declared)
 	if err != nil {

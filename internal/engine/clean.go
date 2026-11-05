@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Why lola cache clean removes an item (Plan 9 §6.5).
+// Why lola cache clean removes an item.
 const (
 	CleanSuperseded = "superseded" // a version no head points to
 	CleanUnused     = "unused"     // a version unused for at least the age
@@ -27,17 +27,17 @@ const (
 	CleanAll        = "all"        // anything --all removes
 )
 
-// Why lola cache clean keeps an item it would otherwise remove (Plan 9 §6.5).
+// Why lola cache clean keeps an item it would otherwise remove.
 const (
-	KeptInUse      = "in use"     // scratch a live run holds (A5)
-	KeptChanged    = "changed"    // an item that no longer qualified when clean checked it again (A7)
-	KeptUnreadable = "unreadable" // a module whose index.yml, or an entry, clean could not read (A28)
+	KeptInUse      = "in use"     // scratch a live run holds
+	KeptChanged    = "changed"    // an item that no longer qualified when clean checked it again
+	KeptUnreadable = "unreadable" // a module whose index.yml, or an entry, clean could not read
 )
 
 // cleanPrefix names the directory under Paths.Staging that a clean renames what it removes into.
 const cleanPrefix = "clean-"
 
-// CleanRequest is a lola cache clean run (Plan 9 §6.2): UnusedFor is --unused-for as given, ""
+// CleanRequest is a lola cache clean run: UnusedFor is --unused-for as given, ""
 // for config.yaml's cache_unused_for; All removes everything but held scratch.
 type CleanRequest struct {
 	UnusedFor string
@@ -46,8 +46,8 @@ type CleanRequest struct {
 
 // CleanItem is one item a clean removes, or would. Module and Version are "" for scratch and
 // catalogs. Path is the item's path relative to the cache's root ($XDG_CACHE_HOME/lola), as it
-// is on disk when it is plain text (every validated name and name lola makes is), else cleaned
-// (A28); Bytes counts its regular files.
+// is on disk when it is plain text (every validated name and name lola makes is), else cleaned;
+// Bytes counts its regular files.
 type CleanItem struct {
 	Module  string `json:"module"`
 	Version string `json:"version"`
@@ -79,7 +79,7 @@ type CleanResult struct {
 	modules    []string    // a plan's: the modules it read, whose undated versions a real clean dates
 }
 
-// PlanClean plans lola cache clean (Plan 9 §6.2) and writes nothing: the plan is what -n prints
+// PlanClean plans lola cache clean and writes nothing: the plan is what -n prints
 // and what ApplyClean applies. A version with no last_used counts as used today.
 func (e *Engine) PlanClean(req CleanRequest) (*CleanResult, error) {
 	res := &CleanResult{Removed: []CleanItem{}, Kept: []CleanKept{}, DryRun: true, Notices: []Notice{}, all: req.All}
@@ -184,8 +184,8 @@ func (e *Engine) planVersions(res *CleanResult) error {
 }
 
 // planScratch plans the scratch entry name under parent, whose entries are es: a run's
-// directory with the lock beside it, or a lock alone, is removed when no live run holds the lock
-// (R-9-9), and kept in use otherwise; a lock whose directory is there goes with the directory.
+// directory with the lock beside it, or a lock alone, is removed when no live run holds the lock,
+// and kept in use otherwise; a lock whose directory is there goes with the directory.
 func (e *Engine) planScratch(res *CleanResult, parent, name string, es []fs.DirEntry, reason string) {
 	abs, lock := filepath.Join(parent, name), filepath.Join(parent, name)+lockSuffix
 	if base, ok := strings.CutSuffix(name, lockSuffix); ok {
@@ -211,7 +211,7 @@ func (e *Engine) planScratch(res *CleanResult, parent, name string, es []fs.DirE
 }
 
 // planAll plans --all: every entry of modules/, markets/, .staging/ and tmp/, but scratch a live
-// run holds (A5). The lock file and probes.json, outside those, stay.
+// run holds. The lock file and probes.json, outside those, stay.
 func (e *Engine) planAll(res *CleanResult) error {
 	for _, parent := range []string{e.Paths.Store, e.Paths.MarketCache, e.Paths.Staging, e.Paths.Tmp} {
 		es, err := listDir(parent)
@@ -235,7 +235,7 @@ func (e *Engine) planAll(res *CleanResult) error {
 }
 
 // cleanItem is the item at abs, of module mod's version id when it is one, with its size; abs is
-// never followed if it is a link. An item clean cannot read is kept as unreadable (A28): nil.
+// never followed if it is a link. An item clean cannot read is kept as unreadable: nil.
 func (e *Engine) cleanItem(res *CleanResult, abs, reason, mod, id string) *CleanItem {
 	n, err := regularBytes(abs)
 	if err != nil {
@@ -252,7 +252,7 @@ func (res *CleanResult) add(it *CleanItem) {
 	}
 }
 
-// CleanError is an apply that failed part way (Plan 9 A28): its JSON carries what the clean had
+// CleanError is an apply that failed part way: its JSON carries what the clean had
 // already removed from the cache, and the bytes of it that were deleted.
 type CleanError struct {
 	Err        error
@@ -278,15 +278,15 @@ func (e *CleanError) JSONFields() map[string]any {
 	return map[string]any{"removed": e.Removed, "bytes_freed": e.BytesFreed}
 }
 
-// ApplyClean applies plan, a PlanClean the user confirmed (Plan 9 §6.4). It takes the markets
+// ApplyClean applies plan, a PlanClean the user confirmed. It takes the markets
 // lock for --all, then the cache lock, for its whole removal. Under the lock it first checks
-// every item again (A7): one that no longer qualifies, or whose parent directories are no longer
+// every item again: one that no longer qualifies, or whose parent directories are no longer
 // real directories, is kept as changed, with every item of a module whose directory is not; a
 // module whose index.yml or one of whose versions it cannot read again is kept as unreadable,
 // with all its items and no write of its index.yml, and an item of no module it cannot read is
 // kept as unreadable; and .staging, which items are renamed into, must be a real directory. Then
 // each module's index.yml drops the heads and last_used of its versions that go and dates today
-// every version without a last_used (A28), so no head names a removed version, whatever fails
+// every version without a last_used, so no head names a removed version, whatever fails
 // later; when one cannot be written, those already written are put back. Then each item is
 // renamed aside into .staging/clean-<x>, and a module whose last version went is renamed aside
 // whole. When a rename fails, the heads and last_used of the versions that did not go are put
@@ -450,8 +450,8 @@ func (e *Engine) restore(modules []string, before map[string]store.Origin, gone,
 	return err
 }
 
-// stillQualifies checks a planned item again under the cache lock (A7): every directory between
-// the cache's root and it is still a real directory, never a link (A28); it is still there; a
+// stillQualifies checks a planned item again under the cache lock: every directory between
+// the cache's root and it is still a real directory, never a link; it is still there; a
 // superseded version is still pointed to by no head, and an unused one still unused for age.
 // origins caches the index each module had when the clean took the lock.
 func (e *Engine) stillQualifies(it CleanItem, age config.Age, origins map[string]store.Origin, today string) (bool, error) {
@@ -518,7 +518,7 @@ func moveAside(it CleanItem, dst string, rename func(oldpath, newpath string) er
 }
 
 // realDirs reports whether dir and every directory between it and the cache's root are real
-// directories, never links, as clean checks them again under the lock (A28).
+// directories, never links, as clean checks them again under the lock.
 func (e *Engine) realDirs(dir string) bool {
 	root := filepath.Dir(e.Paths.Store)
 	for d := dir; d != root; d = filepath.Dir(d) {
@@ -594,7 +594,7 @@ func regularBytes(path string) (int64, error) {
 }
 
 // cacheRel is abs relative to the cache's root, with / separators, on one line: as it is when it
-// is plain text, as every validated name and every name lola makes is, else cleaned (A28).
+// is plain text, as every validated name and every name lola makes is, else cleaned.
 func (e *Engine) cacheRel(abs string) string {
 	rel, err := filepath.Rel(filepath.Dir(e.Paths.Store), abs)
 	if err != nil {

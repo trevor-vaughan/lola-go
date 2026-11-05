@@ -12,7 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("P2-6: notice classes", func() {
+var _ = Describe("notice classes", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
 	printed := func(s style, r *engine.Result) string {

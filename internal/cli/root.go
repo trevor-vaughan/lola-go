@@ -96,7 +96,7 @@ func WithTerminals(out, errw bool) Option {
 
 var cobraOnce sync.Once
 
-// setupCobra sets cobra's process-wide globals exactly once (§4.2).
+// setupCobra sets cobra's process-wide globals exactly once.
 func setupCobra() {
 	cobraOnce.Do(func() {
 		cobra.EnableCommandSorting = false

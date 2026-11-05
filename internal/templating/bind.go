@@ -9,7 +9,7 @@ import (
 	"github.com/osteele/liquid/values"
 )
 
-// codeValueType refuses a value of a kind lola does not bind or filter (Plan 7 §5.3).
+// codeValueType refuses a value of a kind lola does not bind or filter.
 const codeValueType = "template-value-type"
 
 // bindings is the variables a template sees, built fresh for every render from d alone, so no
@@ -36,7 +36,7 @@ func bindings(file string, d Data) (map[string]any, error) {
 	return map[string]any{"target": d.Target, "scope": d.Scope, "profiles": profiles, "vars": vars, "attrs": lenient(values.ValueOf(attrs))}, nil
 }
 
-// lenientValue is a value of attrs as a template reads it (Plan 7 §5.7.3): a key or index
+// lenientValue is a value of attrs as a template reads it: a key or index
 // it lacks, at any depth below attrs, reads as absent, never as liquid's undefined, which strict
 // variables refuse. liquid's values.ValueOf returns a values.Value as it is, so a template reaches
 // it only through these methods; Interface hands for, filters and json the plain data, so an
@@ -50,7 +50,7 @@ func (l *lenientValue) PropertyValue(k values.Value) values.Value {
 
 // lenient is v read from attrs: absent for liquid's undefined, else v wrapped so a key or index it
 // lacks reads as absent too: a map's or list's missing key, and any property of a scalar but the
-// built-ins liquid gives it (a string's size), as §5.7.3 reads "at any depth".
+// built-ins liquid gives it (a string's size), at any depth.
 func lenient(v values.Value) values.Value {
 	if values.IsUndefined(v) {
 		return absent{}

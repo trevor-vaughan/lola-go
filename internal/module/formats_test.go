@@ -44,7 +44,7 @@ func sameJSON(a, b any) {
 }
 
 // cachedLoadsLikeFresh checks the fixture in root: detected and normalized as cache add does,
-// then loaded the way the cache loads it, which runs no format adapter (Plan 5b design §4).
+// then loaded the way the cache loads it, which runs no format adapter.
 func cachedLoadsLikeFresh(root string, format string) {
 	fresh, err := module.Detect(root, "fallback", targets.IDs())
 	Expect(err).NotTo(HaveOccurred())

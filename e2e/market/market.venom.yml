@@ -5,8 +5,8 @@ name: lola marketplaces, search and catalog installs
 # repositories over HTTPS at https://git.lola.test:8443/, whose test CA a step passes to git
 # with {{.tls}}. Every step is {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob,
 # &&, redirection or pipe sits inside a single-quoted sh -c or python3 -c, and no step names a
-# host path. Cases run in order and read the state earlier ones leave (Plan 8 §4.4's Needs
-# column); a case whose state is missing fails. No assistant is on PATH.
+# host path. Cases run in order and read the state earlier ones leave;
+# a case whose state is missing fails. No assistant is on PATH.
 #
 # The folder marketplace mine lists kit, a folder next to its catalog, and lint, a git entry
 # that lola maps only from https://, pinned at lint.git's v1.

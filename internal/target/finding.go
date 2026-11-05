@@ -16,8 +16,7 @@ const (
 	SeveritySkip Severity = "skip" // the artifact is not rendered for this target
 )
 
-// Class says how install, sync, update and profile switches show a finding or a notice (spec
-// 2026-11-03 §3.4, U6): a safety one in full, a detail one as a count in its module's summary line,
+// Class says how install, sync, update and profile switches show a finding or a notice: a safety one in full, a detail one as a count in its module's summary line,
 // which -v replaces with them all. JSON gives every one with its class.
 type Class string
 
@@ -31,8 +30,8 @@ const (
 	ClassDetail Class = "detail"
 )
 
-// KindRuntimeHook is the artifact, intent and finding kind of a runtime hook (Plan 5b design
-// §7). The engine's consent gate keys on it, so every target and the engine use this constant.
+// KindRuntimeHook is the artifact, intent and finding kind of a runtime hook.
+// The engine's consent gate keys on it, so every target and the engine use this constant.
 const KindRuntimeHook = "runtime-hook"
 
 // CodeSkillViaAgents is the finding of a target that leaves a skill to the agents target

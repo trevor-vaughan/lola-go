@@ -13,7 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Spec 2026-10-29 §16.2: a local entry inside a project never becomes yours unreviewed.
+// A local entry inside a project never becomes yours unreviewed.
 var _ = Describe("local entries inside a project", func() {
 	var (
 		tmp, proj, notes string

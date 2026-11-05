@@ -18,7 +18,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Plan 8 §9.2: a hint that repeats or runs another command keeps the run's output flags
+// A hint that repeats or runs another command keeps the run's output flags
 // (Options.Display, SyncRequest.Display) and its scope's flags.
 // folderDigest is a content digest in a hint's --at pin.
 var folderDigest = regexp.MustCompile(`=sha256:[0-9a-f]{64}`)
@@ -215,7 +215,7 @@ var _ = Describe("hints", func() {
 			func() []string { return nil }),
 	)
 
-	// Ruling R-8-U5: what no command fixes is said in the error, so every hint is a command.
+	// What no command fixes is said in the error, so every hint is a command.
 	DescribeTable("a refusal says in its error what no command fixes, and its hints are commands",
 		func(run func() error, msg func() string, hints []string) {
 			err := run()

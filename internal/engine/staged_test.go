@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("an install's staged run (cherry-pick design §7)", func() {
+var _ = Describe("an install's staged run", func() {
 	var (
 		tmp, proj, src, other string
 		p                     paths.Paths

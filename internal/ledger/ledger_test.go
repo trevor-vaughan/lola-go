@@ -214,7 +214,7 @@ var _ = Describe("ledger", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(saved)).To(Equal("{\n  \"version\": 1,\n  \"modules\": {\n    \"a\": {\n      \"source\": \"/s/a\",\n      \"digest\": \"" + dg + "\",\n      \"artifacts\": []\n    }\n  },\n  \"created\": []\n}\n"))
 
-		// One profile is on at a time (spec 2026-10-29 §3.4): lock.json records it as profile.
+		// One profile is on at a time: lock.json records it as profile.
 		l.Profile = &ledger.Active{Name: "remote:go", By: ledger.BySwitch}
 		l.Modules["a"].From = ledger.FromProfile("remote:go")
 		l.Modules["b"] = &ledger.Entry{From: ledger.FromProfile("default"), Source: "/s/b", Digest: dg2}

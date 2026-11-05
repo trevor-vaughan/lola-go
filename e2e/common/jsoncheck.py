@@ -1,4 +1,4 @@
-"""Check a lola --json output the way the install and template suites assert it (Plan 8 §4.0),
+"""Check a lola --json output the way the install and template suites assert it,
 then print it on one line, so the venom step that ran this asserts its fields through
 result.systemoutjson.
 

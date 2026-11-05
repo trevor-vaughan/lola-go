@@ -166,7 +166,7 @@ var _ = Describe("an edit of an inherited module", func() {
 		Expect(read("go.yml")).To(ContainSubstring("skip: [skill/b]"))
 	})
 
-	It("Prof-P2-b: --skip --override of a project.yml module names no selections.yaml the file does not have", func() {
+	It("--skip --override of a project.yml module names no selections.yaml the file does not have", func() {
 		writeTree(proj, map[string]string{"kit/lola.yml": "name: kit\n", "kit/commands/a.md": "A\n", "kit/commands/b.md": "B\n",
 			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: kit}\n", ".lola/profiles/team.yml": "version: 1\n"})
 		activate(sc, "project:team")

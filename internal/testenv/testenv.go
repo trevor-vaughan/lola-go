@@ -146,8 +146,7 @@ func gitBackend(root string, seen func(*http.Request)) http.Handler {
 const specHost = "lola.test"
 
 // ServeGitTLS is ServeGitWith over https, at https://lola.test:<port>: lola refuses remote
-// profiles that name a host by an IP address, localhost, or plain http (Plan 6b rulings R-6b3b-6,
-// R-6b3b-9), so specs of remote profiles serve their repositories this way. The server's
+// profiles that name a host by an IP address, localhost, or plain http, so specs of remote profiles serve their repositories this way. The server's
 // certificate is made for the spec, for lola.test alone. A git config of the spec's own, which
 // GIT_CONFIG_GLOBAL points git at for the spec (lola passes it on), resolves lola.test to the
 // server on loopback (http.curloptResolve) and trusts the certificate (http.sslCAInfo); no lola

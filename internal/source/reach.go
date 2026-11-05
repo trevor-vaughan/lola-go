@@ -11,7 +11,7 @@ import (
 
 // CheckReachable refuses commit unless it is reachable from spec.Ref ("" = the default
 // branch) on the git source spec.Location, so a pin cannot name a commit from a branch nobody
-// reviewed (Plan 6a §6.4). It runs in a new repository under stagingParent, apart from any
+// reviewed. It runs in a new repository under stagingParent, apart from any
 // content checkout: the ref is resolved as a fetch resolves it, its history is fetched without
 // trees or blobs (a server without filter support sends everything, which is slower but the
 // same answer), and git merge-base decides. GIT_NO_LAZY_FETCH stops git fetching a missing

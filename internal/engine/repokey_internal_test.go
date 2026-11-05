@@ -14,7 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("Pick-P2-a: a clone git cannot read", func() {
+var _ = Describe("a clone git cannot read", func() {
 	var e *Engine
 	var proj string
 	BeforeEach(func() {
@@ -39,7 +39,7 @@ var _ = Describe("Pick-P2-a: a clone git cannot read", func() {
 		return notes
 	}
 
-	It("Pick-P2-a: keys picks by path when git refuses the repository as someone else's, hinting the command that trusts it", func() {
+	It("keys picks by path when git refuses the repository as someone else's, hinting the command that trusts it", func() {
 		out, err := exec.Command("git", "-C", proj, "init", "-q").CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), string(out))
 		out, err = exec.Command("git", "-C", proj, "remote", "add", "origin", "https://example.com/o/r").CombinedOutput()
@@ -49,7 +49,7 @@ var _ = Describe("Pick-P2-a: a clone git cannot read", func() {
 			": fatal: detected dubious ownership in repository at '" + proj + "'; picks for this project are keyed by its path → git config --global --add safe.directory " + proj}}))
 	})
 
-	It("Pick-P2-a: keys picks by path when git cannot read the clone, naming git's reason", func() {
+	It("keys picks by path when git cannot read the clone, naming git's reason", func() {
 		Expect(os.WriteFile(filepath.Join(proj, ".git"), []byte("gitdir: nowhere\n"), 0o644)).To(Succeed())
 		Expect(section()).To(Equal([]Notice{{Level: LevelWarn, Text: "git could not read the repository of " + proj +
 			": fatal: not a git repository: " + filepath.Join(proj, "nowhere") + "; picks for this project are keyed by its path"}}))

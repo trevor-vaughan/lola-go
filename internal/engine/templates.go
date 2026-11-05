@@ -24,7 +24,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Codes of the refusals lola makes after rendering a template (Plan 7 §5.6, §11.2).
+// Codes of the refusals lola makes after rendering a template.
 const (
 	codeTemplateFrontmatter = "template-frontmatter"
 	codeTemplateFence       = "template-frontmatter-fence"
@@ -34,14 +34,14 @@ const (
 	codeTemplateRunBudget   = "template-run-budget"
 )
 
-// TemplateBudget caps the rendering of one plan pass (Plan 7 §6.2): RunTime of rendering and
+// TemplateBudget caps the rendering of one plan pass: RunTime of rendering and
 // RunOutput bytes of rendered files held at once.
 type TemplateBudget struct {
 	RunOutput int
 	RunTime   time.Duration
 }
 
-// TemplateError is a template that refused a run (Plan 7 §11): the module, the target and scope
+// TemplateError is a template that refused a run: the module, the target and scope
 // it rendered for, the component (Kind, Artifact) and its file, with the line, the code and the
 // reason. Every string is author text that passed untrusted.Text. IncludedFrom is the include
 // site of an error in a partial, "" otherwise.
@@ -75,7 +75,7 @@ func (e *TemplateError) text() string {
 	return (&templating.Error{File: e.File, Line: e.Line, Reason: e.Reason, IncludedFrom: e.IncludedFrom}).Error()
 }
 
-// JSONFields is the template object of the refusal's --json document (Plan 7 §11.2); every
+// JSONFields is the template object of the refusal's --json document; every
 // string in it passed untrusted.Text or is lola's own.
 func (e *TemplateError) JSONFields() map[string]any {
 	return map[string]any{"template": map[string]any{"module": e.Module, "target": e.Target, "scope": e.Scope, "kind": e.Kind,
@@ -157,13 +157,13 @@ func (j templateJob) refusal(d templating.Data) *TemplateError {
 // when it has no template and no attribute file. It never mutates m. A component template's
 // frontmatter is parsed and may not rename the component; then the component's attributes for
 // the target are merged in, and the load checks that read frontmatter run on the copy, consent
-// gating rendered hooks and MCP servers later (Plan 7 §5.6, §5.7.2). The first refusal stops it.
+// gating rendered hooks and MCP servers later. The first refusal stops it.
 func (e *Engine) renderTemplates(ctx context.Context, m *module.Module, d templating.Data, run *templateRun) (*module.Module, error) {
 	out, _, err := e.renderAll(ctx, m, d, run, false)
 	return out, err
 }
 
-// checkTemplates is renderTemplates for lola check (Plan 7 §9): each template refusal but a
+// checkTemplates is renderTemplates for lola check: each template refusal but a
 // timeout or the run budget is returned in refused and leaves its component out of the copy,
 // and rendering goes on, so the author sees every one at once.
 func (e *Engine) checkTemplates(ctx context.Context, m *module.Module, d templating.Data, run *templateRun) (*module.Module, []*TemplateError, error) {
@@ -369,7 +369,7 @@ func attributesData(attrs map[string]any) map[string]any {
 	return attrs
 }
 
-// withAttributes merges a component's attributes for one target into doc (Plan 7 §3.4), one
+// withAttributes merges a component's attributes for one target into doc, one
 // level deep: into a literal component each key replaces the frontmatter key of its name whole,
 // keeping comments and the order of the others, and null removes it; into a rendered template,
 // whose frontmatter wins, only the keys it lacks are added, and null removes nothing.
@@ -401,7 +401,7 @@ func hasAttributes(m *module.Module) bool {
 
 // renderedDoc assembles a rendered component from its regions, then refuses a frontmatter that
 // does not parse or that a rendered --- or ... line would end, and, for a named component, a
-// name: other than its own (Plan 7 §5.6, §5.7.2).
+// name: other than its own.
 func renderedDoc(j templateJob, r templating.Rendered, d templating.Data, named bool) (module.Doc, error) {
 	refuse := func(code, reason string) error {
 		te := j.refusal(d)
@@ -461,7 +461,7 @@ func templateSources(m *module.Module) []templating.Source {
 }
 
 // renderedWith is what m's templates render with in run under an entry that overrides vars,
-// which lock.json records (Plan 7 §6.3): nil for a module without templates; the scope's profiles
+// which lock.json records: nil for a module without templates; the scope's profiles
 // (default where read, then the active profile) only when a template reads them, so a switch
 // re-renders only the modules it changes.
 func renderedWith(m *module.Module, run *templateRun, vars map[string]any) *ledger.RenderedWith {
@@ -524,7 +524,7 @@ func (e *Engine) rerenders(sc Scope, led *ledger.Ledger, active *ledger.Active, 
 	return out, nil
 }
 
-// templateRun is one plan pass's rendering (Plan 7 §6.2): the scope's profiles, in precedence
+// templateRun is one plan pass's rendering: the scope's profiles, in precedence
 // order, which every template of the pass sees, and the budget the pass has spent:
 // rendering time and rendered bytes held.
 type templateRun struct {
@@ -578,11 +578,10 @@ func budgetSize(n int) string {
 	return fmt.Sprintf("%d KiB", (n+1<<10-1)>>10)
 }
 
-// newTemplateRun starts a plan pass at sc that renders with the precedence list (spec 2026-10-29
-// §8.8): default first at user scope when default.yml exists, then the active profile, by
-// qualified name (nil for none), and a bundle's members as it expands them (Engine.members, read
-// for their names alone; a profile that does not read leaves the list at the profile on, and the
-// run's own read refuses it).
+// newTemplateRun starts a plan pass at sc that renders with the precedence list: default first at
+// user scope when default.yml exists, then the active profile, by qualified name (nil for none),
+// and a bundle's members as it expands them (Engine.members, read for their names alone; a profile
+// that does not read leaves the list at the profile on, and the run's own read refuses it).
 func (e *Engine) newTemplateRun(sc Scope, active *ledger.Active) (*templateRun, error) {
 	r := &templateRun{profiles: []string{}}
 	if sc.Kind == target.User {
@@ -611,8 +610,8 @@ func (e *Engine) newTemplateRun(sc Scope, active *ledger.Active) (*templateRun, 
 	return r, nil
 }
 
-// resolvedVars is what m's templates see as vars when ment (nil for none) installs it (Plan 7
-// §4.2): each var m declares, with the entry's value where the entry sets one.
+// resolvedVars is what m's templates see as vars when ment (nil for none) installs it: each var m
+// declares, with the entry's value where the entry sets one.
 func resolvedVars(m *module.Module, ment *manifest.Entry) map[string]any {
 	out := maps.Clone(m.Vars)
 	if out == nil {
@@ -624,11 +623,10 @@ func resolvedVars(m *module.Module, ment *manifest.Entry) map[string]any {
 	return out
 }
 
-// checkVars refuses an override in ment (nil for none), the entry from the layer from ("" for
-// the scope's manifest), of a var m does not declare or of another type than its default (Plan 7
-// §4.2), before anything renders. The hint shows m's vars with the run's scope and output flags,
-// when the cache's current version of m is the one planned, digest: lola info of a cached name
-// shows no other.
+// checkVars refuses an override in ment (nil for none), the entry from the layer from ("" for the
+// scope's manifest), of a var m does not declare or of another type than its default, before
+// anything renders. The hint shows m's vars with the run's scope and output flags, when the cache's
+// current version of m is the one planned, digest: lola info of a cached name shows no other.
 func (e *Engine) checkVars(sc Scope, m *module.Module, ment *manifest.Entry, from, digest string, display []string) error {
 	if ment == nil {
 		return nil

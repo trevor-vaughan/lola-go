@@ -79,12 +79,12 @@ var (
 	entryKeys = []string{"name", "source", "ref", "path", "components", "commit", "digest", "targets", "only", "skip", "rules", "vars", "market"}
 )
 
-// Edit returns the file to write and the manifest at path with c applied (Plan 6a §4.5). The
+// Edit returns the file to write and the manifest at path with c applied. The
 // file is read again, so the caller holds the scope lock and edits made since its own read
 // survive; only the entries and fields c changes are edited, so comments, order and
 // formatting stay. A file that does not load is never edited, except for entries whose source is
 // a marketplace address (UnresolvedError), which stay as written: lola install @m/x replaces one
-// of them and leaves the others (Plan 6c §6.3). A symlinked manifest is written
+// of them and leaves the others. A symlinked manifest is written
 // at its target. The caller writes the bytes with mode 0600 (plan.Apply stages them with the
 // ledger).
 func Edit(path string, c Change) (string, []byte, error) {
@@ -123,7 +123,7 @@ func Edit(path string, c Change) (string, []byte, error) {
 // EditDocument is d, a document yamldoc.Read returned (nil for a missing or empty file), with c
 // applied as Edit applies it, encoded: only the entries and fields c changes are edited, so
 // comments, order, formatting and every key lola does not write stay. A profile's pins are
-// written with it (Plan 6b §6.4). The caller checks that the result loads.
+// written with it. The caller checks that the result loads.
 func EditDocument(d *yaml.Node, c Change) ([]byte, error) {
 	var root *yaml.Node
 	switch {

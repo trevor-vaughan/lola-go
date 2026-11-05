@@ -84,13 +84,14 @@ lola profile go --remove                                          # delete it; a
     - When the found project cannot be read (its `lock.json` tracked by git, say), the refusal
       also offers the run at user scope (`or compare with user scope: lola profile --user go --add
       <source>`).
-  - Adding turns nothing on (`turn it on: lola profile --project remote:go --on`). With a profile
-    already on, the hint is `--switch`, which replaces it; the hint says what it
-    switches off (`turn it on (switches go-review off, removing its modules): lola profile --user
-    remote:go --switch`). It never carries `-y`: the switch asks before it removes anything, and
-    off a terminal it is refused with a hint that adds `-y`.
-    No hint is given when that switch would need a hook's consent, would need trust, or would fail
-    its dry run.
+  - Adding turns nothing on (`turn it on: lola profile --project remote:go --on`):
+    - With a profile already on, the hint is `--switch`, which replaces it; the hint says what it
+      switches off (`turn it on (switches go-review off, removing its modules): lola profile --user
+      remote:go --switch`).
+    - It never carries `-y`: the switch asks before it removes anything, and off a terminal it is
+      refused with a hint that adds `-y`.
+    - No hint is given when that switch would need a hook's consent, would need trust, or would
+      fail its dry run.
   - `--json` gives `remote_profiles` (`profile`, `file`, `source`, `ref`, `path`, `commit`,
     `digest`, `previous_commit` and `previous_digest` (both `""` for `--add`), `compared_with`,
     `description`, `changes` as in the trust diff, `written`), `notices` and `dry_run`.

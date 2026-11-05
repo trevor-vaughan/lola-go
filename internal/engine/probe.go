@@ -35,7 +35,7 @@ func (e *Engine) Detect(sc Scope) []Assistant {
 }
 
 // TargetChoice is what decides the assistants an install plans for at a scope off a terminal,
-// with no -t (Plan 5c §5.3): the top-level targets of its write target's file when it has any
+// with no -t: the top-level targets of its write target's file when it has any
 // (Manifest, fileTargets: a profile's own, else the base's; From names that file, "" for the base,
 // targetsFile),
 // else the installed assistants set up there (Here). Installed is the assistants found on PATH and

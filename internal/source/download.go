@@ -15,25 +15,23 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Download settings for archive URLs (design §5.1).
+// Download settings for archive URLs.
 const (
 	downloadTimeout = 2 * time.Minute // the whole request: about 2 MB/s for the largest body
 	maxRedirects    = 5
 )
 
 // downloaded names what a download fetches, for its messages. coach says its refusals carry
-// advice as hints: a marketplace's hints are commands only (Plan 6c §11.3), and no command
+// advice as hints: a marketplace's hints are commands only, and no command
 // fetches a catalog some other way, so a catalog's carry none. who, when set, names the stranger's
-// file that named the URL (CheckRemote's who): every redirect must pass CheckRemote too (Plan 6c
-// §10, ruling R-6c-13).
+// file that named the URL (CheckRemote's who): every redirect must pass CheckRemote too.
 type downloaded struct {
 	noun  string
 	coach bool
 	who   string
 }
 
-// What lola downloads: a module's archive (design §5.1), and a marketplace's catalog file (Plan
-// 6c §6.2).
+// What lola downloads: a module's archive, and a marketplace's catalog file.
 var (
 	archiveDownload = downloaded{noun: "archive", coach: true}
 	catalogDownload = downloaded{noun: "catalog"}
@@ -133,7 +131,7 @@ func (w downloaded) checkRedirect(req *http.Request, via []*http.Request) error 
 	return nil
 }
 
-// FetchFile downloads the file at rawURL, a marketplace's catalog (Plan 6c §6.2 step 1), into a
+// FetchFile downloads the file at rawURL, a marketplace's catalog, into a
 // new directory under stagingParent, refusing more than limit bytes, and returns its path. The
 // URL follows the source URL rules (no credentials, query or fragment; plain http only on a
 // loopback host); a redirect is followed at most five times, never from https to anything else

@@ -1,7 +1,7 @@
-// Package profile reads profiles (Plan 6b §4): named, shareable sets of module entries in the
+// Package profile reads profiles: named, shareable sets of module entries in the
 // shape of manifest entries. It reads the user's own profiles and default, from
 // paths.UserProfiles; a project's committed profiles, from <root>/.lola/profiles, which it
-// treats as someone else's (§19 S3); remote profiles, which lola profile --add keeps in
+// treats as someone else's; remote profiles, which lola profile --add keeps in
 // paths.RemoteProfiles; and the profiles of a source the engine fetched into staging. It does no
 // network access and writes no file.
 package profile
@@ -35,19 +35,19 @@ import (
 // Version is the profile schema version this binary reads.
 const Version = 1
 
-// Limits (Plan 6b §4.3, §19 S8).
+// Limits.
 const (
 	MaxFiles       = 256 // entries in a profiles directory
 	MaxEntries     = 512 // modules in one profile
 	MaxDescription = 256 // bytes of a description
-	MaxMembers     = 64  // names in bundle: (activeprofile.Max, the cap after expansion; spec 2026-10-29 §3.3)
+	MaxMembers     = 64  // names in bundle: (activeprofile.Max, the cap after expansion)
 )
 
-// BaseName is reserved for a scope's base (spec 2026-10-29 §3.1): a base.yml in a profiles
+// BaseName is reserved for a scope's base: a base.yml in a profiles
 // directory is no profile, and no bundle names it.
 const BaseName = "base"
 
-// Shape is what a profile file holds (spec 2026-10-29 §3.3, §5.1): modules, a bundle of other
+// Shape is what a profile file holds: modules, a bundle of other
 // profiles, or nothing yet.
 type Shape int
 
@@ -58,7 +58,7 @@ const (
 	ShapeBundle               // bundle: lists profiles, and nothing else
 )
 
-// MixedError is a file that has both bundle: and modules: (spec 2026-10-29 §5.1), the one shape
+// MixedError is a file that has both bundle: and modules:, the one shape
 // lola can fix (lola profile <name> --split, which the engine hints): Line is bundle:'s line, Name
 // the profile's name (its file's base name).
 type MixedError struct {
@@ -72,7 +72,7 @@ func (e *MixedError) Error() string {
 		untrusted.Text(e.Path, untrusted.MaxName), e.Line, untrusted.Text(e.Name, untrusted.MaxName))
 }
 
-// Kind is where a profile comes from (Plan 6b §4.1).
+// Kind is where a profile comes from.
 type Kind string
 
 // The kinds this version reads. A qualified name is "<kind>:<name>", except default's, which is
@@ -97,8 +97,8 @@ type Info struct {
 	Path string
 }
 
-// Qualified is the profile's name as lock.json records the active profile and as layers are named
-// (Plan 6b §4.4, D8): "user:go", or "default", user scope's base, which is never the active one.
+// Qualified is the profile's name as lock.json records the active profile and as layers are named:
+// "user:go", or "default", user scope's base, which is never the active one.
 func (i Info) Qualified() string {
 	if i.Kind == KindDefault {
 		return DefaultName
@@ -107,12 +107,12 @@ func (i Info) Qualified() string {
 }
 
 // Visible is the profiles a scope can use, by name and in name order, read from the directory
-// listing alone (Plan 6b §6.1, §19 S8): the user's profiles, and default at user scope
-// (userScope). A file not named <name>.yml is not a profile; one named <name>.yml whose name
-// fails the module-name rules is not either, and the count of those is returned, for listings
-// to report without the names (§4.3, §19 S7). base.yml is no profile either (BaseName, spec
-// 2026-10-29 §3.1): reserved is its path, for listings to warn about ("" when there is none). A
-// directory holding more than MaxFiles entries is refused, naming it; a missing one holds none.
+// listing alone: the user's profiles, and default at user scope (userScope). A file not named
+// <name>.yml is not a profile; one named <name>.yml whose name fails the module-name rules is not
+// either, and the count of those is returned, for listings to report without the names. base.yml is
+// no profile either (BaseName): reserved is its path, for listings to warn about ("" when there is
+// none). A directory holding more than MaxFiles entries is refused, naming it; a missing one holds
+// none.
 func Visible(p paths.Paths, userScope bool) (infos []Info, invalid int, reserved string, err error) {
 	dir := p.UserProfiles
 	names, invalid, err := list(dir)
@@ -137,13 +137,13 @@ func Visible(p paths.Paths, userScope bool) (infos []Info, invalid int, reserved
 	return infos, invalid, reserved, nil
 }
 
-// Project is the profiles of the project rooted at root (Plan 6b §4.1), in name order, read from
+// Project is the profiles of the project rooted at root, in name order, read from
 // the listing of <root>/.lola/profiles alone, as Visible reads the user's, with the count of
 // files whose names are not valid. A project cannot define default: a default.yml there is no
 // profile, and ignored is its path, for listings to warn about ("" when there is none); a base.yml
 // is no profile either, and reserved is its path (Visible). The
 // directory is committed, so it and .lola/ must be directories of the project's own: a symbolic
-// link, or a path that resolves outside root, is refused before anything is listed (§19 S3). A
+// link, or a path that resolves outside root, is refused before anything is listed. A
 // missing one holds none.
 func Project(root string) (infos []Info, invalid int, ignored, reserved string, err error) {
 	if found, err := ownDirs(root); err != nil || !found {
@@ -171,7 +171,7 @@ func Project(root string) (infos []Info, invalid int, ignored, reserved string, 
 }
 
 // ownDirs checks that .lola/ and .lola/profiles/ under root are directories of the project's
-// own (§19 S3): not symbolic links, not other files, and not resolving outside root. found is
+// own: not symbolic links, not other files, and not resolving outside root. found is
 // false when either is missing.
 func ownDirs(root string) (found bool, err error) {
 	for _, rel := range []string{".lola", ProjectDir} {
@@ -197,7 +197,7 @@ func ownDirs(root string) (found bool, err error) {
 
 // list is the names of the profiles in dir, in name order, from its listing alone: each file
 // named <name>.yml whose name follows the module-name rules, and the count of those whose name
-// does not (§4.3, §19 S7). A file not named <name>.yml is not a profile. A directory holding more
+// does not. A file not named <name>.yml is not a profile. A directory holding more
 // than MaxFiles entries is refused, naming it; a missing one holds none.
 func list(dir string) ([]string, int, error) {
 	des, err := readDir(dir)
@@ -222,7 +222,7 @@ func list(dir string) ([]string, int, error) {
 }
 
 // readDir is the listing of dir, a profiles directory: nil for a missing one, refused, naming
-// it, when it holds more than MaxFiles entries (§19 S8) or cannot be read.
+// it, when it holds more than MaxFiles entries or cannot be read.
 func readDir(dir string) ([]os.DirEntry, error) {
 	unreadable := func(err error) error {
 		return errs.WithHints(fmt.Errorf("cannot list %s: %s", untrusted.Text(dir, untrusted.MaxName), untrusted.Text(err.Error(), 2*untrusted.MaxName)),
@@ -252,7 +252,7 @@ func readDir(dir string) ([]os.DirEntry, error) {
 	return des, nil
 }
 
-// Profile is a profile file as read (spec 2026-10-29 §3.3): a list of modules, whose entries
+// Profile is a profile file as read: a list of modules, whose entries
 // without targets of their own use Targets (Entries), or a bundle of other profiles (Bundle), which
 // the engine resolves, since only it lists them. read is the bytes it was read from, which Edit
 // and Pin edit; project says it is a project's, read without following a link.
@@ -299,8 +299,8 @@ func (p *Profile) MemberLine(k int) int { return p.bundleAt[k] }
 func (p *Profile) BundleLine() int { return p.bundleLine }
 
 // entry is a profile's module entry as decoded: manifest.Entry's fields, and the picks only a
-// profile's entry takes (cherry-pick design §4.1). market: and components: are accepted in your
-// profiles and a project's (spec 2026-10-29 §8.1) and refused in a remote one, as the picks are.
+// profile's entry takes. market: and components: are accepted in your
+// profiles and a project's and refused in a remote one, as the picks are.
 // Any other key is refused at load as unknown.
 type entry struct {
 	Name       string              `yaml:"name"`
@@ -318,19 +318,20 @@ type entry struct {
 	Skip       []string            `yaml:"skip"`
 }
 
-// Load reads the profile at path once (Plan 6b §4.3, §6.1): through yamldoc.Read, as lola writes it,
-// which follows a symbolic link (a dotfile manager's, §19 P7) and refuses a file that is not
-// regular, a file over yamldoc.MaxFile, more than one document, anchors and aliases; the version
-// first, so a newer lola's profile is refused for its version; then every key known and every
-// field checked, each refusal naming the file and the line. A missing file is an error that wraps fs.ErrNotExist; an empty one holds no modules.
-// A profile whose only fault is entries whose source is a marketplace address is returned as read
-// with its *manifest.UnresolvedError, so an edit can replace one of them (Edit).
+// Load reads the profile at path once: through yamldoc.Read, as lola writes it, which follows a
+// symbolic link (a dotfile manager's) and refuses a file that is not regular, a file over
+// yamldoc.MaxFile, more than one document, anchors and aliases; the version first, so a newer
+// lola's profile is refused for its version; then every key known and every field checked, each
+// refusal naming the file and the line. A missing file is an error that wraps fs.ErrNotExist; an
+// empty one holds no modules. A profile whose only fault is entries whose source is a marketplace
+// address is returned as read with its *manifest.UnresolvedError, so an edit can replace one of
+// them (Edit).
 func Load(path string) (*Profile, error) {
 	return load(path, yamldoc.Read, "fix it by hand", KindUser)
 }
 
 // LoadProject reads the project profile at path once, as Load reads a user's, except that the
-// file is someone else's (Plan 6b §6.1, §19 S3): it must be a regular file, never a symbolic
+// file is someone else's: it must be a regular file, never a symbolic
 // link, and it is opened without following one (yamldoc.ReadNoFollow). Its refusals coach the
 // fix a committed file takes.
 func LoadProject(path string) (*Profile, error) {
@@ -364,9 +365,9 @@ func ParseProject(path string, b []byte) (*Profile, error) {
 	return parse(path, d, b, hint, KindProject)
 }
 
-// NewBundle is a new bundle file of members, in their order (spec 2026-10-29 §6.2 --new
-// --bundle), as lola writes one: its version and bundle: as a flow list. The caller parses it as
-// the file it is for (Parse, ParseProject), which checks every member.
+// NewBundle is a new bundle file of members, in their order, as lola writes one: its version and
+// bundle: as a flow list. The caller parses it as the file it is for (Parse, ParseProject), which
+// checks every member.
 func NewBundle(members []string) ([]byte, error) {
 	list := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle}
 	for _, m := range members {
@@ -460,10 +461,10 @@ func keyLine(root *yaml.Node, key string) int {
 	return root.Line
 }
 
-// check applies the field rules of Plan 6b §4.3 to a decoded profile, root being its document's
+// check applies the field rules to a decoded profile, root being its document's
 // mapping: each error starts with the line it is about and a colon, but for entries whose source
 // is a marketplace address, which once every other rule passed are reported together in a
-// *manifest.UnresolvedError without its path (Plan 6c §6.7).
+// *manifest.UnresolvedError without its path.
 func (p *Profile) check(root *yaml.Node) error {
 	at := func(key string) int { return keyLine(root, key) }
 	switch {
@@ -538,15 +539,15 @@ func (p *Profile) check(root *yaml.Node) error {
 	return nil
 }
 
-// checkBundle reads bundle: into Bundle and applies the shape rules of spec 2026-10-29 §3.3 and
-// §5.1, root being its document's mapping and at the line of a key: a remote profile holds no
-// bundle:; bundle: is a list (bundle: [] for none yet) of names; a bundle lists no modules (a
-// *MixedError, which lola profile --split fixes) and no targets; it names at most MaxMembers
-// profiles, each once under any spelling, each a profile name, bare or qualified by user:,
-// project: or remote:, never default or base under any of them (always loaded) and, in a
-// project's bundle, never one of yours (U9). An invalid name in a project's bundle reads as one
-// that names no profile, as the engine refuses a member it cannot resolve, so a project file
-// cannot probe what you have. Each refusal starts with the line it is about.
+// checkBundle reads bundle: into Bundle and applies the shape rules, root being its document's
+// mapping and at the line of a key: a remote profile holds no bundle:; bundle: is a list (bundle:
+// [] for none yet) of names; a bundle lists no modules (a *MixedError, which lola profile --split
+// fixes) and no targets; it names at most MaxMembers profiles, each once under any spelling, each a
+// profile name, bare or qualified by user:, project: or remote:, never default or base under any of
+// them (always loaded) and, in a project's bundle, never one of yours. An invalid name in a
+// project's bundle reads as one that names no profile, as the engine refuses a member it cannot
+// resolve, so a project file cannot probe what you have. Each refusal starts with the line it is
+// about.
 func (p *Profile) checkBundle(root *yaml.Node, at func(string) int) error {
 	n := yamldoc.Value(root, "bundle")
 	if n == nil {
@@ -621,7 +622,7 @@ func (p *Profile) checkBundle(root *yaml.Node, at func(string) int) error {
 	return nil
 }
 
-// checkPicks applies cherry-pick design §4.1 to e's only: and skip:, n being e's node (nil for
+// checkPicks applies the cherry-pick rules to e's only: and skip:, n being e's node (nil for
 // none) and line its line: each item is a kind/name selector (config.ParsePattern) without a
 // module, which the entry names. A refusal starts with the item's line.
 func checkPicks(n *yaml.Node, e manifest.Entry, line int) error {
@@ -663,12 +664,11 @@ func checkPicks(n *yaml.Node, e manifest.Entry, line int) error {
 }
 
 // ExtendsError is a profile file of yours or a project's that still has extends:, which bundles
-// replaced (spec 2026-10-29 §7), refused at the key's line. Hint is the edit that keeps what the
-// file named: the remote profiles it extended become members of a bundle, before the file's own
-// modules, which move to a profile of their own beside it (a bundle lists no modules and has no
-// targets: its members' apply, §3.3). default.yml, always loaded and never a bundle, keeps its
-// modules: a bundle of the remote profiles is switched on instead. Every name in it has been
-// through untrusted.Text.
+// replaced, refused at the key's line. Hint is the edit that keeps what the file named: the remote
+// profiles it extended become members of a bundle, before the file's own modules, which move to a
+// profile of their own beside it (a bundle lists no modules and has no targets: its members'
+// apply). default.yml, always loaded and never a bundle, keeps its modules: a bundle of the remote
+// profiles is switched on instead. Every name in it has been through untrusted.Text.
 type ExtendsError struct {
 	Path    string   // the file, as output shows it
 	Line    int      // extends:'s
@@ -735,7 +735,7 @@ func (e *ExtendsError) Hint(taken func(name string) (bool, error), on, split str
 	if len(e.moved) == 0 {
 		return "make it a bundle: in " + e.Path + ", replace extends: with bundle: [" + strings.Join(e.Members, ", ") + "]", nil
 	}
-	// A bundle has no targets: (spec 2026-10-29 §3.3), so its remote members' entries keep theirs.
+	// A bundle has no targets:, so its remote members' entries keep theirs.
 	what := "this file's targets:"
 	if e.targets != "" {
 		what = "targets: " + e.targets
@@ -825,8 +825,8 @@ func extendsGone(path string, root *yaml.Node, kind Kind, hint string) error {
 }
 
 // Pin is the file at path, from which p was read, with each entry of pins taking its commit and
-// digest (Plan 6b §6.4, §19 R1): the bytes p was read from, so what lola writes is what the run
-// checked (§19 S6), with those fields alone edited and comments and every other key kept. pins
+// digest: the bytes p was read from, so what lola writes is what the run
+// checked, with those fields alone edited and comments and every other key kept. pins
 // name modules p lists. A file that no longer holds those bytes is refused, never overwritten,
 // and so is a result that would not load again.
 func (p *Profile) Pin(path string, pins []manifest.Entry) ([]byte, error) {
@@ -867,17 +867,16 @@ func (p *Profile) Pin(path string, pins []manifest.Entry) ([]byte, error) {
 	return out, nil
 }
 
-// Edit is the file at path, from which p was read, with c applied (spec 2026-10-29 §8.1): the
-// bytes p was read from, so what lola writes is what the run checked (Plan 6b §19 S6), edited by
-// manifest.EditDocument, which keeps comments, order and every key c does not change. A nil p is
-// a profile of yours that did not exist when the run read it: the file is created, and must still
-// be missing. Yours is read again through a symbolic link (a dotfile manager's), and dst is the file
-// the link leads to, which the caller writes; a project's is read without following one
-// (yamldoc.ReadNoFollow), and dst is path. A file that no longer holds the bytes p was read from is
-// refused, never overwritten, and so is a result that would not load again, but for entries whose
-// source is a marketplace address that p already holds, which stay as written (Plan 6c §6.3). The
-// caller writes the bytes in its transaction, calling Current (and, for a project's, Unchanged)
-// just before.
+// Edit is the file at path, from which p was read, with c applied: the bytes p was read from, so
+// what lola writes is what the run checked, edited by manifest.EditDocument, which keeps comments,
+// order and every key c does not change. A nil p is a profile of yours that did not exist when the
+// run read it: the file is created, and must still be missing. Yours is read again through a
+// symbolic link (a dotfile manager's), and dst is the file the link leads to, which the caller
+// writes; a project's is read without following one (yamldoc.ReadNoFollow), and dst is path. A file
+// that no longer holds the bytes p was read from is refused, never overwritten, and so is a result
+// that would not load again, but for entries whose source is a marketplace address that p already
+// holds, which stay as written. The caller writes the bytes in its transaction, calling Current
+// (and, for a project's, Unchanged) just before.
 func (p *Profile) Edit(path string, c manifest.Change) (dst string, out []byte, err error) {
 	d, err := p.current(path)
 	if err != nil {
@@ -914,15 +913,14 @@ func (p *Profile) Edit(path string, c manifest.Change) (dst string, out []byte, 
 	return path, out, nil
 }
 
-// SetBundle is the file at path, from which p was read, with its bundle: set to members, in order
-// (spec 2026-10-29 §6.2 --edit --bundle): the bytes p was read from, bundle: replaced in the style
-// it has (a new one as a flow list, added after the keys it has), each member it keeps with its own
-// comments, every other key and comment kept. p is a bundle or an empty
-// profile: one with targets: is refused naming that line (a bundle has none; its members' apply),
-// and one with modules gets its parse's refusal. Like Edit, a file that no longer holds those bytes
-// is refused, never overwritten, and so is a result that would not load again (a member the parse
-// refuses, naming its line). The caller writes the bytes in its transaction, calling Current (for a
-// project's, Unchanged) just before.
+// SetBundle is the file at path, from which p was read, with its bundle: set to members, in order:
+// the bytes p was read from, bundle: replaced in the style it has (a new one as a flow list, added
+// after the keys it has), each member it keeps with its own comments, every other key and comment
+// kept. p is a bundle or an empty profile: one with targets: is refused naming that line (a bundle
+// has none; its members' apply), and one with modules gets its parse's refusal. Like Edit, a file
+// that no longer holds those bytes is refused, never overwritten, and so is a result that would not
+// load again (a member the parse refuses, naming its line). The caller writes the bytes in its
+// transaction, calling Current (for a project's, Unchanged) just before.
 func (p *Profile) SetBundle(path string, members []string) ([]byte, error) {
 	d, err := p.current(path)
 	if err != nil {
@@ -1019,10 +1017,10 @@ func (p *Profile) current(path string) (*yaml.Node, error) {
 }
 
 // Unchanged checks, just before lola writes the profile at path of the project at root, that
-// nothing moved since p was read (ruling R-6b3a-4): .lola/ and .lola/profiles/ are still
+// nothing moved since p was read: .lola/ and .lola/profiles/ are still
 // directories of the project's own (or, for a nil p, a profile lola makes, still missing), and
 // the file still holds the bytes p was read from (a nil p: it is still missing). Any change
-// refuses the write, as Current does (spec 2026-10-29 §6.3), whatever lola was writing.
+// refuses the write, as Current does, whatever lola was writing.
 func (p *Profile) Unchanged(root, path string) error {
 	changed := fmt.Errorf("%s changed while lola was reading it; nothing was written", untrusted.Text(path, untrusted.MaxName))
 	if found, err := ownDirs(root); err != nil || !found && p != nil {

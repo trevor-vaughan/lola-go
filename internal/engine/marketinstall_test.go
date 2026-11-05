@@ -849,7 +849,7 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(catalogFetches.Load()).To(BeZero(), "default.yml's formatter names acme, whose catalog is not fetched")
 		Expect(requests.Load()).To(BeZero())
 
-		By("a tracked lock.json is refused before the profiles it names, sync --update included (Plan 6b §19 S5)")
+		By("a tracked lock.json is refused before the profiles it names, sync --update included")
 		defYML, err := os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(proj, map[string]string{".lola/project.yml": string(defYML)}) // formatter, installed from @acme

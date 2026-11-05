@@ -14,16 +14,16 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// TrustKinds is a set of the kinds of trust --trust grants (Plan 9 §3.2, R-9-U2), one bit per
+// TrustKinds is a set of the kinds of trust --trust grants, one bit per
 // kind, in the canonical order output and hints write them.
 type TrustKinds uint8
 
 // The kinds of trust. Entries and profiles are recorded in trust.json; scripts, hooks and runtime
-// hooks in consent.json, by digest (R-9-3).
+// hooks in consent.json, by digest.
 const (
 	TrustEntries      TrustKinds = 1 << iota // changed entries and top-level targets of project.yml
 	TrustProfiles                            // project profiles, a profile's replacement, a remote profile --add or --update shows
-	TrustScripts                             // a project's pre- and post-install scripts (Plan 9 §5)
+	TrustScripts                             // a project's pre- and post-install scripts
 	TrustHooks                               // module install hooks
 	TrustRuntimeHooks                        // module runtime hooks
 
@@ -33,10 +33,10 @@ const (
 	TrustBare = TrustEntries | TrustProfiles
 )
 
-// TrustBareValue is the value pflag gives --trust when it is written with no value
-// (NoOptDefVal), which ParseTrust takes for bare --trust: TrustBare within the command's kinds. It
-// holds a NUL byte, which no command-line argument can, so no typed --trust= value is taken for
-// it (S-M1): --trust=entries,profiles is those two kinds, written.
+// TrustBareValue is the value pflag gives --trust when it is written with no value (NoOptDefVal),
+// which ParseTrust takes for bare --trust: TrustBare within the command's kinds. It holds a NUL
+// byte, which no command-line argument can, so no typed --trust= value is taken for it:
+// --trust=entries,profiles is those two kinds, written.
 const TrustBareValue = "\x00bare"
 
 // trustKindNames is the name of each kind, in canonical order.
@@ -67,7 +67,7 @@ func (k TrustKinds) String() string {
 	return strings.Join(out, ",")
 }
 
-// Arg is the --trust argument that grants exactly k, its kinds by name, never all (§3.2): a hint
+// Arg is the --trust argument that grants exactly k, its kinds by name, never all: a hint
 // names the kinds it grants; "" for none.
 func (k TrustKinds) Arg() string {
 	if k == 0 {
@@ -82,7 +82,7 @@ func trustArg(f string) bool { return f == "--trust" || strings.HasPrefix(f, "--
 // Covers reports whether k has every kind of o.
 func (k TrustKinds) Covers(o TrustKinds) bool { return k&o == o }
 
-// CommandTrust is the kinds a command can ask (Plan 9 §3.2, R-9-1): command is the command after
+// CommandTrust is the kinds a command can ask: command is the command after
 // lola, "profile --add" for that action of profile. A command that asks none has none.
 func CommandTrust(command string) TrustKinds {
 	switch command {
@@ -110,7 +110,7 @@ func trustKindNamed(arg string, takes TrustKinds) (TrustKinds, bool) {
 
 // TrustArgument reports whether arg, a positional argument of command, names kinds of trust: one,
 // all, or a comma list of them, in any case. Written after a bare --trust it was meant as its
-// value, which pflag gives only after = (R-9-2). It returns the kinds arg names.
+// value, which pflag gives only after =. It returns the kinds arg names.
 func TrustArgument(command, arg string) (TrustKinds, bool) {
 	var k TrustKinds
 	for _, part := range strings.Split(strings.ToLower(arg), ",") {
@@ -123,7 +123,7 @@ func TrustArgument(command, arg string) (TrustKinds, bool) {
 	return k, true
 }
 
-// TrustFlagError is a --trust value command cannot take (Plan 9 §3.3). Fix is the kinds the run a
+// TrustFlagError is a --trust value command cannot take. Fix is the kinds the run a
 // hint offers writes in its --trust, 0 for the run without --trust; HasFix is false when no run
 // works, and no hint is given.
 type TrustFlagError struct {
@@ -138,7 +138,7 @@ func (e *TrustFlagError) Error() string { return e.msg }
 func trustKindList() string { return strings.Join(append(trustKindNames(), "all"), ", ") }
 
 // ParseTrust is the kinds --trust grants command, given values, each occurrence of the flag as
-// pflag set it (Plan 9 §3.2, §3.3): a comma list of kinds, all for the command's kinds, or
+// pflag set it: a comma list of kinds, all for the command's kinds, or
 // TrustBareValue for bare --trust, which is TrustBare within the command's kinds. An unknown or
 // empty kind, a kind written that the command never asks, and a bare --trust where the command
 // asks neither entries nor profiles are refused, before any network contact or write.
@@ -152,7 +152,7 @@ func ParseTrust(command string, values []string) (TrustKinds, error) {
 			continue
 		}
 		if v == "" {
-			// The run with bare --trust where the command takes entries (§3.3), the other values kept.
+			// The run with bare --trust where the command takes entries, the other values kept.
 			fix := slices.Delete(slices.Clone(values), i, i+1)
 			k, err := ParseTrust(command, append(fix, TrustBareValue))
 			return 0, &TrustFlagError{msg: "--trust= names no kind; kinds are " + trustKindList(), Fix: k,
@@ -168,7 +168,7 @@ func ParseTrust(command string, values []string) (TrustKinds, error) {
 	}
 	refused := written &^ takes
 	if bareGiven && bare == 0 {
-		refused |= TrustBare // a bare --trust, where the command asks neither kind it means (CR5)
+		refused |= TrustBare // a bare --trust, where the command asks neither kind it means
 	}
 	if refused == 0 {
 		return written | bare, nil
@@ -187,8 +187,8 @@ func ParseTrust(command string, values []string) (TrustKinds, error) {
 }
 
 // unknownKind refuses name, a kind of values[i] that is none: the hint's run has the closest kind
-// the command takes in its place, within edit distance 2 (never all, A6), or, for an empty one (a
-// stray comma), none in its place, when that run parses.
+// the command takes in its place, within edit distance 2 (never all), or, for an empty one (a stray
+// comma), none in its place, when that run parses.
 func unknownKind(command string, values []string, i int, name string) error {
 	err := &TrustFlagError{msg: fmt.Sprintf("--trust: %q is not a kind of trust; kinds are %s", untrusted.Text(name, untrusted.MaxName), trustKindList())}
 	best, dist := "", 3
@@ -220,7 +220,7 @@ const (
 	ConsentChanged = "changed" // another digest or view is recorded
 )
 
-// Consent is one item a run's --trust kinds cover (Plan 9 §3.4), as the receipt and the trusted
+// Consent is one item a run's --trust kinds cover, as the receipt and the trusted
 // JSON key show it: its kind by name, the item (author text through untrusted.Text) and whether
 // it is new or changed.
 type Consent struct {
@@ -229,8 +229,7 @@ type Consent struct {
 	Change string `json:"change"`
 }
 
-// grant is a consent the run's --trust gives, written to consent.json only after the receipt
-// (R-9-3, A2).
+// grant is a consent the run's --trust gives, written to consent.json only after the receipt.
 type grant struct{ key, digest string }
 
 // cover adds item, of kind, to what the run's --trust covers, with the consent.json grant it
@@ -244,8 +243,8 @@ func (r *Result) cover(kind TrustKinds, item, change string, g *grant) {
 }
 
 // confirmTrusted passes what the run's --trust covers to opts.Receipt, once, before anything is
-// written (§3.4 step 3), in canonical kind order; a No is ErrDeclined. Only then are the run's
-// consent.json grants recorded, the flag's and the terminal's yes answers alike (R-9-3, A2, A23):
+// written, in canonical kind order; a No is ErrDeclined. Only then are the run's
+// consent.json grants recorded, the flag's and the terminal's yes answers alike:
 // with nothing covered, the yes answers are recorded here, just before the first write. A dry run
 // asks nothing and records nothing; its Trusted is sorted too.
 func (e *Engine) confirmTrusted(opts Options, res *Result) error {
@@ -294,8 +293,8 @@ func recordedItems(items []Consent) []Consent {
 	return out
 }
 
-// TrustedError is a run that failed after its consent.json grants were written (A22, S-I3):
-// Trusted lists them, so a --json consumer learns what the failed run recorded.
+// TrustedError is a run that failed after its consent.json grants were written: Trusted lists them,
+// so a --json consumer learns what the failed run recorded.
 type TrustedError struct {
 	Err     error
 	Trusted []Consent
@@ -332,9 +331,9 @@ var ErrBatched = errors.New("collected for the command's one receipt")
 
 // TrustBatch collects, for a command that runs the engine more than once before it writes (sync
 // --scope both, profile --update, migrate), every run's covered items, each once, and grants, so
-// the command shows one receipt (R-9-5, A23): a run given one in Options.Batch stops at its receipt
+// the command shows one receipt: a run given one in Options.Batch stops at its receipt
 // with ErrBatched. Given in Options.Expect, it is what each run's grants are checked against before
-// that run records them (R-9-16).
+// that run records them.
 type TrustBatch struct {
 	Items  []Consent
 	grants []grant
@@ -380,7 +379,7 @@ func (e *Engine) consentChange(key string) (string, error) {
 }
 
 // kind is the kind of trust a change of a sync's report needs: profiles for a project profile's
-// entry, entries for project.yml's (§3.4 step 1).
+// entry, entries for project.yml's.
 func (c TrustChange) kind() TrustKinds {
 	if c.Profile != "" {
 		return TrustProfiles

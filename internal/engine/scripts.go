@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Install script sources (Plan 9 §5.1), in the order a pre-install phase runs them.
+// Install script sources, in the order a pre-install phase runs them.
 const (
 	ScriptUser    = "user"    // config.yaml's pre_install and post_install
 	ScriptProject = "project" // the project's project.yml; needs --trust=scripts
@@ -30,8 +30,8 @@ const (
 // which messages name, and Path, that made absolute when the flag was parsed; Given "" for none.
 type FlagScript struct{ Given, Path string }
 
-// installScript is one install script a run plans (Plan 9 §5): its event and source, the path as
-// configured (shown through untrusted.Text) and the absolute, resolved path it runs from (A1).
+// installScript is one install script a run plans: its event and source, the path as
+// configured (shown through untrusted.Text) and the absolute, resolved path it runs from.
 // where is how a refusal of it names it: "<file>:<line>: <key>: " for a configured one, the flag
 // for a flag's.
 type installScript struct {
@@ -41,12 +41,12 @@ type installScript struct {
 	sha256        string // hex, taken when the run planned it
 	// declined says the run had no trust for it: it is listed where it would run, and not run.
 	declined bool
-	// root is the canonical project root a project's script is consented under and shown beside
-	// (S1), as it is: output shows it through oneLine; "" for others.
+	// root is the canonical project root a project's script is consented under and shown beside,
+	// as it is: output shows it through oneLine; "" for others.
 	root string
 }
 
-// ScriptQuestion is a project's install script the user is asked to trust (Plan 9 §5.4): its event,
+// ScriptQuestion is a project's install script the user is asked to trust: its event,
 // its path from the canonical project root Root, and its sha256. Later says the run writes no
 // copy for it to wrap: a yes trusts it for later runs, and nothing runs now.
 type ScriptQuestion struct {
@@ -54,8 +54,8 @@ type ScriptQuestion struct {
 	Later                     bool
 }
 
-// ScriptRun is one install script for one module and target in an operation's result (Plan 9
-// §5.6): Path as configured, through untrusted.Text; Status one of the hook statuses.
+// ScriptRun is one install script for one module and target in an operation's result: Path as
+// configured, through untrusted.Text; Status one of the hook statuses.
 type ScriptRun struct {
 	Event  string `json:"event"`
 	Source string `json:"source"`
@@ -65,7 +65,7 @@ type ScriptRun struct {
 	Status string `json:"status"`
 	// untrusted says a dry run lists a project's script the run has no trust for: run without -n,
 	// it would ask, or need --trust=scripts off a terminal. root is a project script's canonical
-	// project root, which human output shows beside its path (S1).
+	// project root, which human output shows beside its path.
 	untrusted bool
 	root      string
 }
@@ -78,7 +78,7 @@ func (s ScriptRun) Root() string { return s.root }
 
 // installScripts is the install scripts that wrap the module copies of a run of sc, each checked
 // and hashed: the user's from config.yaml, the project's from project.yml only when sc is that
-// project (A9), and the flag's from opts, in run order (§5.3): pre-install user, project, flag;
+// project, and the flag's from opts, in run order: pre-install user, project, flag;
 // post-install flag, project, user. A script that does not exist, is not a regular file or is not
 // executable is refused, naming where it is configured; a project's that resolves outside the
 // project or is a symbolic link too.
@@ -125,7 +125,7 @@ func (e *Engine) installScripts(sc Scope, opts Options) ([]installScript, error)
 	return runOrder(out)
 }
 
-// runOrder is scripts, given by source (user, project, flag), each hashed, in run order (§5.3):
+// runOrder is scripts, given by source (user, project, flag), each hashed, in run order:
 // the pre-install ones as given, then the post-install ones in reverse.
 func runOrder(scripts []installScript) ([]installScript, error) {
 	var pre, post []installScript
@@ -147,7 +147,7 @@ func runOrder(scripts []installScript) ([]installScript, error) {
 // written given: it must be an executable regular file, and it runs from where it resolves.
 func ownScript(event, src, given, p, at string) (installScript, error) {
 	s := installScript{event: event, source: src, shown: oneLine(given), where: at}
-	// Never relative: Go runs a relative path from the module copy, a file of that name there (A1).
+	// Never relative: Go runs a relative path from the module copy, a file of that name there.
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		return s, fmt.Errorf("%s%s: %w", at, s.shown, untrusted.CleanErr(err))
@@ -164,7 +164,7 @@ func ownScript(event, src, given, p, at string) (installScript, error) {
 }
 
 // projectScripts is the project's install scripts from project.yml, each resolved under the
-// canonical project root, contained in it, and not a symbolic link (Plan 9 §5.1, A12).
+// canonical project root, contained in it, and not a symbolic link.
 func (e *Engine) projectScripts(sc Scope) ([]installScript, error) {
 	man, err := e.Manifest(sc)
 	if ue, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
@@ -184,7 +184,7 @@ func (e *Engine) projectScripts(sc Scope) ([]installScript, error) {
 		}
 		ps := installScript{event: s.event, source: ScriptProject, shown: oneLine(s.rel),
 			where: fmt.Sprintf("%s:%d: %s: ", shown(e.files(sc).manifest), man.ScriptLine(s.key), s.key)}
-		// A path that shows as written and names its file as the OS finds it (A27): plain text,
+		// A path that shows as written and names its file as the OS finds it: plain text,
 		// and no .., which Join would clean lexically past a link a shell would follow.
 		if !untrusted.IsPlain(s.rel) {
 			return nil, scriptProblem("%s%s holds a control character or a line break; lola runs only a script whose path is plain text", ps.where, ps.shown)
@@ -192,7 +192,7 @@ func (e *Engine) projectScripts(sc Scope) ([]installScript, error) {
 		if slices.Contains(strings.Split(filepath.ToSlash(s.rel), "/"), "..") {
 			return nil, scriptProblem("%s%s has a .. component; name the script by its path inside the project", ps.where, ps.shown)
 		}
-		// Relative to the project (§5.1): an absolute path names one machine's checkout.
+		// Relative to the project: an absolute path names one machine's checkout.
 		if filepath.IsAbs(s.rel) {
 			return nil, scriptProblem("%s%s is an absolute path; name the script by its path inside the project", ps.where, ps.shown)
 		}
@@ -257,7 +257,7 @@ func (s installScript) check(chmod string) error {
 // scriptPlan is the install scripts a scope's run plans: run wrap its jobs, in run order;
 // declinedPost says the project's post-install script was declined, pending on every copy it
 // would have wrapped; pending, the project's post-install script, runs alone in each copy of
-// alone (Plan 9 §5.5, A4).
+// alone.
 type scriptPlan struct {
 	run          []installScript
 	declinedPost bool
@@ -267,7 +267,7 @@ type scriptPlan struct {
 
 // planScripts plans scripts, the run's install scripts (installScripts), around every job
 // (planHooks), and the project's post-install script pending on each copy offered it
-// (moduleCopy.pendingScript), before anything is written. A project's script needs trust (§5.4),
+// (moduleCopy.pendingScript), before anything is written. A project's script needs trust,
 // decided once per script: one the run's --trust or a recorded consent for its project, event and
 // digest covers runs; else the user is asked on a terminal. Without it a pre-install script that
 // would wrap a job is refused, and a post-install one is declined with a warning, pending in
@@ -285,7 +285,7 @@ func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob,
 	listed := make([]string, len(scripts))                // the status each is listed with around jobs, "" for none
 	lacksTrust := make([]bool, len(scripts))              // a dry run's project script without the run's trust
 	listAlone, aloneLacksTrust := false, false            // a dry run lists the pending script, alone, as would-run
-	asked := opts.askScripts && sc.Kind == target.Project // a sync asks about its project's scripts in any case (§7)
+	asked := opts.askScripts && sc.Kind == target.Project // a sync asks about its project's scripts in any case
 	for i, s := range scripts {
 		offered := len(alone) > 0 && s.source == ScriptProject && s.event == PostInstall
 		if len(jobs) == 0 && !offered && (!asked || s.source != ScriptProject) {
@@ -294,7 +294,7 @@ func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob,
 		ok := true
 		if s.source == ScriptProject {
 			// With no copy to wrap a pre-install script is asked about for later runs; a post-install
-			// one, which would be declined anyway, is not asked about (R-9-35).
+			// one, which would be declined anyway, is not asked about.
 			later := len(jobs) == 0 && !offered
 			var err error
 			if ok, err = e.trustScript(s, opts, res, !later || s.event == PreInstall, later); err != nil {
@@ -377,7 +377,7 @@ func (e *Engine) planScripts(sc Scope, scripts []installScript, jobs []*hookJob,
 }
 
 // pendingScriptNotice says the project's post-install script is pending on name's copy, and the
-// sync that runs it: the one that asks, and off a terminal the one that trusts it (Plan 9 §5.5).
+// sync that runs it: the one that asks, and off a terminal the one that trusts it.
 func (e *Engine) pendingScriptNotice(sc Scope, name string, opts Options) Notice {
 	text := "pending post-install script for " + name + " → " + e.SyncCommand(sc, name)
 	if opts.AskScript == nil {
@@ -389,9 +389,8 @@ func (e *Engine) pendingScriptNotice(sc Scope, name string, opts Options) Notice
 // trustScript decides whether s, a project's install script without a recorded consent for its
 // project, event and digest, may run: a --trust covering scripts grants it, shown on the receipt;
 // so does, in a batch's apply pass (opts.Expect), the grant the batch holds; otherwise, when ask,
-// opts.AskScript may ask, for later runs when later. Each grant is recorded only once the run's receipt is answered yes
-// (R-9-3, A23); a dry run asks nothing and records nothing. A pre-install script the run lacks
-// consent for is a kind of trust the run needs (R-9-6).
+// opts.AskScript may ask, for later runs when later. Each grant is recorded only once the run's receipt is answered yes; a
+// dry run asks nothing and records nothing. A pre-install script the run lacks consent for is a kind of trust the run needs.
 func (e *Engine) trustScript(s installScript, opts Options, res *Result, ask, later bool) (bool, error) {
 	g := s.grant()
 	if ok, err := e.Consent.Granted(g.key, g.digest); err != nil || ok {
@@ -423,7 +422,7 @@ func (e *Engine) trustScript(s installScript, opts Options, res *Result, ask, la
 }
 
 // scriptNeeds is TrustScripts when sc's project has a pre-install script without a recorded consent
-// for its digest, which a sync asks about whatever it installs (§7).
+// for its digest, which a sync asks about whatever it installs.
 func (e *Engine) scriptNeeds(sc Scope) (TrustKinds, error) {
 	if sc.Kind != target.Project {
 		return 0, nil
@@ -448,7 +447,7 @@ func (e *Engine) scriptNeeds(sc Scope) (TrustKinds, error) {
 }
 
 // grant is the consent of s, a project's install script: keyed by its canonical project root
-// and event, for its digest (§5.4).
+// and event, for its digest.
 func (s installScript) grant() grant {
 	return grant{key: consent.ScriptKey(s.root, s.event), digest: "sha256:" + s.sha256}
 }
@@ -498,7 +497,7 @@ func (e *Engine) refuseScript(sc Scope, s installScript, jobs []*hookJob, copies
 }
 
 // runScripts runs every script of scripts for event around j, once per target: a pre-install
-// failure, or a script that changed since the run planned it (A16), stops and returns its error,
+// failure, or a script that changed since the run planned it, stops and returns its error,
 // nothing written; a post-install one becomes a warning, the installation kept.
 func (e *Engine) runScripts(ctx context.Context, sc Scope, j *hookJob, scripts []installScript, event string, opts Options, res *Result) error {
 	for _, s := range scripts {
@@ -542,7 +541,7 @@ func (e *Engine) runScripts(ctx context.Context, sc Scope, j *hookJob, scripts [
 // errScriptChanged is a script that is no longer the regular file of the digest the run planned.
 var errScriptChanged = errors.New("changed after lola checked it")
 
-// unchanged hashes s again just before it runs (§5.4, A16): it must still be the regular file,
+// unchanged hashes s again just before it runs: it must still be the regular file,
 // not a link, of the digest taken when the run planned it.
 func (s installScript) unchanged() error {
 	fi, err := os.Lstat(s.path)

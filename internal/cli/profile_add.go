@@ -16,11 +16,11 @@ import (
 // remoteFlags are lola profile --add's own flags: its source, and the ref and --path to fetch.
 type remoteFlags struct{ source, ref, path string }
 
-// profileAdd runs lola profile [<name>] --add <source> (Plan 6b §3.2, §6.5): it asks no scope (§19
-// P22); a scope flag, when given, only names the scope whose installed modules the profile's
-// content is compared with, else the engine picks; on a terminal the picker when no name is given,
-// then the profile and its content, paged, and the question; off a terminal --trust, without which
-// the engine refuses before any network contact.
+// profileAdd runs lola profile [<name>] --add <source>: it asks no scope; a scope flag, when given,
+// only names the scope whose installed modules the profile's content is compared with, else the
+// engine picks; on a terminal the picker when no name is given, then the profile and its content,
+// paged, and the question; off a terminal --trust, without which the engine refuses before any
+// network contact.
 func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, rf remoteFlags, f syncFlags) error {
 	if len(args) > 1 {
 		var hints []string
@@ -105,12 +105,12 @@ func profileAddArgs(name string, rf remoteFlags) []string {
 	return args
 }
 
-// printRemoteProfiles shows the remote profiles lola profile --add or --update is about to keep
-// (Plan 6b §6.5): each with the file lola keeps it in, which every scope shares, the scope whose
-// install its content is compared with, its source, ref, --path and pin (the pin it replaces
-// first, for an update), its description, then each entry as the trust diff shows a module's
-// change: its MCP servers and hooks first, then its files, which moreFor's command for the
-// profile, when not "", caps (ruling R-6b3b-8, ADV-5). Every value has been through untrusted.Text.
+// printRemoteProfiles shows the remote profiles lola profile --add or --update is about to keep:
+// each with the file lola keeps it in, which every scope shares, the scope whose install its
+// content is compared with, its source, ref, --path and pin (the pin it replaces first, for an
+// update), its description, then each entry as the trust diff shows a module's change: its MCP
+// servers and hooks first, then its files, which moreFor's command for the profile, when not "",
+// caps. Every value has been through untrusted.Text.
 func printRemoteProfiles(w io.Writer, rps []engine.RemoteProfile, moreFor func(engine.RemoteProfile) string) {
 	for _, rp := range rps {
 		more := moreFor(rp)

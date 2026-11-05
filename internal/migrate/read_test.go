@@ -240,7 +240,7 @@ installations:
 		Expect(err).To(MatchError(ContainSubstring("is larger than 1048576 bytes")))
 	})
 
-	DescribeTable("marks a project_path the design refuses as a problem, not an error",
+	DescribeTable("marks a project_path lola refuses as a problem, not an error",
 		func(path func() string, want string) {
 			installed("installations:\n- module: m\n  assistant: claude-code\n  project_path: '" + path() + "'\n")
 			st, err := load()

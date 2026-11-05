@@ -285,7 +285,7 @@ var _ = Describe("lola sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
 		r := lola("sync", "-C", proj)
-		Expect(r.code).To(Equal(1), "the profile's kit wins over project.yml's (spec 2026-10-29 §3.1), and needs trust")
+		Expect(r.code).To(Equal(1), "the profile's kit wins over project.yml's, and needs trust")
 		Expect(r.err).To(ContainSubstring("  in profile project:go (.lola/profiles/go.yml):\n  + kit"))
 
 		// A pull drops kit from project.yml: the profile's kit wins now, a change in both files.
@@ -294,7 +294,7 @@ var _ = Describe("lola sync", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("trust\tkit\tremoved\t\n"))
 		Expect(r.out).To(ContainSubstring("trust\tkit\tadded\tproject:go\n"))
-		Expect(r.out).To(ContainSubstring("trust\t\ttargets\tproject:go\n"), "go's top-level targets are trust content (spec 2026-10-29 §3.10)")
+		Expect(r.out).To(ContainSubstring("trust\t\ttargets\tproject:go\n"), "go's top-level targets are trust content")
 		c := &confirming{trusts: []engine.TrustAnswer{{}}}
 		lolaAsking(c, "sync", "-C", proj)
 		Expect(c.steps[0].Changes).To(Equal(3), "kit in both files, and go's targets row")
@@ -525,7 +525,7 @@ var _ = Describe("lola sync", func() {
 		r = lola("sync", "-n", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(HaveSuffix("→ to apply: lola sync -C "+proj+"\n→ off a terminal: lola sync -C "+proj+" --trust=entries\n"),
-			"R-8: removals add no -y you did not give; the scope is named from outside the project")
+			"removals add no -y you did not give; the scope is named from outside the project")
 
 		r = lola("sync", "-n", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
@@ -772,7 +772,7 @@ var _ = Describe("lola sync", func() {
 			return out
 		}
 		// machine gives lola another machine's cache, state and config: two checkouts of one
-		// repository with in-repo folder modules cannot share a cache (Plan 6a §12).
+		// repository with in-repo folder modules cannot share a cache.
 		machine := func(name string) {
 			for _, k := range []string{"XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_CONFIG_HOME"} {
 				GinkgoT().Setenv(k, filepath.Join(tmp, name, k))
@@ -850,7 +850,7 @@ var _ = Describe("lola sync", func() {
 				{Module: "other", Label: "+ other source mods/other; MCP server gh added; accepts the top-level targets [claude-code] → [claude-code, opencode]"}}},
 		}))
 
-		// kit installs to the top-level targets, so their change is asked about (spec 2026-10-29 §16.1).
+		// kit installs to the top-level targets, so their change is asked about.
 		kitOnly := "  - name: kit\n    source: " + filepath.Join(proj, "mods", "kit") + "\n"
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code, opencode]\nmodules:\n"+kitOnly), 0o644)).To(Succeed())
 		r = lola("sync", "-C", proj, "--trust", "kit")

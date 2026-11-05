@@ -23,7 +23,7 @@ type HeadUpdate struct {
 }
 
 // SearchHit is one module matching a search: Where is "cache", or "@<market>" for an entry of a
-// marketplace's catalog (Plan 6c §6.8), and Install what lola install takes to install it: the
+// marketplace's catalog, and Install what lola install takes to install it: the
 // cached module's name, or the entry's address.
 type SearchHit struct {
 	Name        string   `json:"name"`
@@ -120,9 +120,8 @@ type UpdateResult struct {
 	Notices []Notice     `json:"notices"`
 }
 
-// Update re-fetches every ref that has a head, for the named modules or all of them (§6.2).
-// Moving a head changes no installation: sync installs the version an entry pins (Plan
-// 6a §10.7), which a notice says when a head moved. display is the run's output flags, which
+// Update re-fetches every ref that has a head, for the named modules or all of them.
+// Moving a head changes no installation: sync installs the version an entry pins, which a notice says when a head moved. display is the run's output flags, which
 // its hints keep.
 func (e *Engine) Update(ctx context.Context, names []string, display ...string) (_ *UpdateResult, err error) {
 	swept := e.sweepRuns()
@@ -166,7 +165,7 @@ func (e *Engine) Update(ctx context.Context, names []string, display ...string) 
 }
 
 // Search matches query case-insensitively against stored modules' names, descriptions and
-// keywords, then, with markets, against the entries of every fetched catalog (Plan 6c §6.8, D7):
+// keywords, then, with markets, against the entries of every fetched catalog:
 // their names, descriptions and tags, cache hits first, never fetching; an entry your cache holds
 // from the same source is its cache hit alone. Unloadable modules and catalogs are not searched;
 // they come back as warnings (see CachedModules, MarketGroups), whose commands keep display, the

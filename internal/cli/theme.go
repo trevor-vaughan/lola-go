@@ -16,13 +16,13 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// The multi-select markers of both themes (Plan 10 §4): a ticked option, and one that is not.
+// The multi-select markers of both themes: a ticked option, and one that is not.
 const (
 	checkedMark   = "[x] "
 	uncheckedMark = "[ ] "
 )
 
-// lolaTheme is the pickers' theme in color (Plan 10 §4): huh's Charm theme with lola's markers
+// lolaTheme is the pickers' theme in color: huh's Charm theme with lola's markers
 // and colors chosen for a dark (isDark) or light background. Every foreground reaches WCAG's
 // 4.5:1 against #000000 when isDark and #FFFFFF otherwise, or against the style's own background
 // where it sets one; the key help included, which huh leaves at bubbles' dark defaults. huh
@@ -130,7 +130,7 @@ func luminance(c color.Color) float64 {
 	return 0.2126*linear(r) + 0.7152*linear(g) + 0.0722*linear(b)
 }
 
-// darkBackground reports whether the terminal the pickers draw on is dark (Plan 10 §4):
+// darkBackground reports whether the terminal the pickers draw on is dark:
 // theme: in config.yaml; else, in accessible mode, light; else the terminal's answer to lola's
 // query; else, on a terminal, the user's answer, saved as theme: so lola asks once (a save that
 // fails is a warning, and the answer still holds for this run); else light.
@@ -192,7 +192,7 @@ func (a *app) darkBackground(cmd *cobra.Command) (bool, error) {
 }
 
 // terminalBackground asks the terminal on stdin or stderr, where the forms draw, for its
-// background color (R-W3-4); an error when neither is a terminal file or the terminal does not
+// background color; an error when neither is a terminal file or the terminal does not
 // answer in time. The color may be nil when the terminal answers without one.
 func terminalBackground(cmd *cobra.Command) (color.Color, error) {
 	in, inFile := cmd.InOrStdin().(*os.File)

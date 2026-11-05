@@ -13,7 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/templating"
 )
 
-// Partials (Plan 7 §3.3): the Liquid files a module's templates include, read from _partials/ at
+// Partials: the Liquid files a module's templates include, read from _partials/ at
 // the module root, flat, as _partials/<name>.liquid or _partials/<name>.<target>.liquid.
 const (
 	partialsDir      = templating.PartialsDir

@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
+var _ = Describe("exact selections", func() {
 	var (
 		tmp, proj, src, other, key string
 		p                          paths.Paths
@@ -105,7 +105,7 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 		Expect(exists(".claude/skills/review/SKILL.md")).To(BeTrue())
 	})
 
-	It("Pick-P2-d: a stale selector warns once with a runnable hint, and a flag naming it removes it from where it is saved", func() {
+	It("a stale selector warns once with a runnable hint, and a flag naming it removes it from where it is saved", func() {
 		selections("projects:\n  " + proj + ":\n    example:\n      only: [command/ship, agent/planner]\n")
 		stale := HaveField("Text", ContainSubstring("has no component agent/planner"))
 		res, err := installAt(sc, false, []string{src})
@@ -129,7 +129,7 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 		Expect(err).To(MatchError(ContainSubstring("matches no component")), "a selector that is not saved is still refused")
 	})
 
-	It("Pick-P2-d: a stale selector given twice is removed, and said, once", func() {
+	It("a stale selector given twice is removed, and said, once", func() {
 		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/planner]\n")
 		res, err := installAt(sc, false, []string{src}, edit(engine.EditSkip, "agent/planner"), edit(engine.EditUnskip, "agent/planner"))
 		Expect(err).NotTo(HaveOccurred())
@@ -139,7 +139,7 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 		Expect(saved(config.Project(key), "example").Skip).To(BeEmpty())
 	})
 
-	It("Pick-P2-d: removing the last entry of an only: list says the module now installs everything, and how to narrow it again", func() {
+	It("removing the last entry of an only: list says the module now installs everything, and how to narrow it again", func() {
 		selections("projects:\n  " + proj + ":\n    example:\n      only: [agent/planner, command/ship]\n")
 		res, err := installAt(sc, false, []string{src}, edit(engine.EditSkip, "agent/planner"))
 		Expect(err).NotTo(HaveOccurred())
@@ -154,7 +154,7 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
 	})
 
-	It("Pick-P2-d: removing a stale selector deletes nothing, so it asks nothing", func() {
+	It("removing a stale selector deletes nothing, so it asks nothing", func() {
 		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/planner]\n")
 		_, err := installAt(sc, false, []string{src})
 		Expect(err).NotTo(HaveOccurred())
@@ -165,7 +165,7 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
 	})
 
-	It("Pick-P2-e: picks do not narrow runtime hooks, and the run says so", func() {
+	It("picks do not narrow runtime hooks, and the run says so", func() {
 		plugin := filepath.Join(tmp, "src", "deploy")
 		writeTree(plugin, map[string]string{".claude-plugin/plugin.json": `{"name":"deploy"}`, "commands/ship.md": "Ship\n", "commands/other.md": "Other\n",
 			"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/stop.sh"}]}]}}`})
@@ -187,7 +187,7 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 		Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("runtime hooks"))), "a module without runtime hooks says nothing")
 	})
 
-	It("Pick-P2-g: components only: leaves out are named apart from those a skip: leaves out", func() {
+	It("components only: leaves out are named apart from those a skip: leaves out", func() {
 		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/critic]\n      only: [command/ship, agent/critic]\n")
 		res, err := installAt(sc, false, []string{src})
 		Expect(err).NotTo(HaveOccurred())
@@ -285,7 +285,7 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 	})
 })
 
-var _ = Describe("new components an only: list leaves out (cherry-pick design §3.3, §3.4)", func() {
+var _ = Describe("new components an only: list leaves out", func() {
 	var (
 		tmp, proj, src string
 		p              paths.Paths
@@ -433,7 +433,7 @@ var _ = Describe("new components an only: list leaves out (cherry-pick design §
 			Text: "example adds command/lint, not installed (only: in default (base)) → lola install --user example --unskip command/lint"}}))
 	})
 
-	// Decision C2 (2026-11-01 audit): a sync's re-pick names the layer that provides the module.
+	// A sync's re-pick names the layer that provides the module.
 	It("hints, from a sync, the edit of the profile that provides the module, or project.yml's change that asks nothing", func() {
 		user := engine.Scope{Kind: target.User}
 		switchTo := func(at engine.Scope, name string) *engine.SyncResult {

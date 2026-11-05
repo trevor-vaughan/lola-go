@@ -21,11 +21,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ProfileMove is lola profile --move: it moves entries between a scope's files (spec 2026-10-29
-// §6.2).
+// ProfileMove is lola profile --move: it moves entries between a scope's files.
 const ProfileMove ProfileAction = "move"
 
-// MoveRequest is lola profile --move (spec 2026-10-29 §6.2, §4 S4). Modules move whole from the
+// MoveRequest is lola profile --move. Modules move whole from the
 // layer each comes from at its scope, or from From (a profile, base, or default and project.yml for
 // the user's and the project's base), to To (a profile of yours or the project's, or base; a missing
 // name creates your profile). Scope is the scope the target is used in, the one the run's scope flag
@@ -49,7 +48,7 @@ type MoveRequest struct {
 	Show            func(TrustReport)
 	Replace         func(module, label string) (bool, error)
 	// Source, when set, is told the other scope once the move knows it takes the entries from there,
-	// before it asks or writes anything: the CLI prints that scope's context (spec 2026-10-29 §3.8).
+	// before it asks or writes anything: the CLI prints that scope's context.
 	Source func(Scope)
 }
 
@@ -62,7 +61,7 @@ type MoveResult struct {
 	Created string        `json:"created,omitempty"`
 }
 
-// moveEdit is a move's edits of one scope's files (spec 2026-10-29 §6.2), which that scope's sync
+// moveEdit is a move's edits of one scope's files, which that scope's sync
 // applies in the transaction that writes lock.json: modules, the moved names; out, per layer
 // name, the modules whose entries leave it; in, per layer name, the entries it gains as the scope
 // reads them; files, per path, the profile files' edits as they record them (order: first touched
@@ -153,7 +152,7 @@ func (m *moveEdit) add(sc Scope, l writeTo, ent manifest.Entry) manifest.Entry {
 }
 
 // keeps reports whether m leaves layers, a scope's stack, as they are: it moves entries only
-// between profiles that are off there (plan 12.5 P1).
+// between profiles that are off there.
 func (m *moveEdit) keeps(layers []Layer) bool {
 	return m.top == nil && !slices.ContainsFunc(layers, func(l Layer) bool { return len(m.out[l.Name])+len(m.in[l.Name]) > 0 })
 }
@@ -209,10 +208,10 @@ func (m *moveEdit) pinned(profPins []profileEdit) []profileEdit {
 	return rest
 }
 
-// trusted is v with lola's own writes recorded as trusted (decisions line 47, spec 2026-10-29
-// §3.10): project.yml's edit, before being the manifest as read, and each project profile's. An
-// entry moves its trust with it, never more: one from a project file whose part of v does not
-// cover it is left out of the edit recorded, so the sync asks about it where it lands.
+// trusted is v with lola's own writes recorded as trusted: project.yml's edit, before being the
+// manifest as read, and each project profile's. An entry moves its trust with it, never more: one
+// from a project file whose part of v does not cover it is left out of the edit recorded, so the
+// sync asks about it where it lands.
 func (m *moveEdit) trusted(v trust.View, before *manifest.Manifest) trust.View {
 	var untrusted []string
 	for name, o := range m.origin {
@@ -337,7 +336,7 @@ func (e *MoveSourceError) Error() string { return e.err.Error() }
 
 func (e *MoveSourceError) Unwrap() error { return e.err }
 
-// moveTarget is --to in st (spec 2026-10-29 §6.2): base (default at user scope) is the base; a
+// moveTarget is --to in st: base (default at user scope) is the base; a
 // profile of yours or the project's, on or off; a name no profile has creates yours (created: its
 // path, which the caller creates before the edits are built, createTarget). A remote profile and
 // project.yml from user scope are refused; req's Options.Target.Rerun is the run without --to,
@@ -379,7 +378,7 @@ func (e *Engine) moveTarget(st *moveStack, req MoveRequest) (t writeTo, created 
 	return writeTo{Layer: l, on: on, label: "profile " + shown(name)}, path, nil
 }
 
-// Move moves req.Modules (spec 2026-10-29 §6.2): every refusal and question before anything is
+// Move moves req.Modules: every refusal and question before anything is
 // written, then the target scope's sync, which writes both files in one transaction with lock.json
 // and applies only what moves.
 func (e *Engine) Move(ctx context.Context, req MoveRequest) (_ *MoveResult, err error) {
@@ -547,9 +546,9 @@ func (e *Engine) Move(ctx context.Context, req MoveRequest) (_ *MoveResult, err 
 }
 
 // yoursHints is the run with --to each profile of yours a move from user scope into dst's project
-// takes (spec 2026-10-29 §6.2): the one on there, else, with --switch, each of yours that can take
-// them when there are at most two (plan 12.2b P13) and switchTarget takes it, led by what the
-// switch turns off; -y when the run cannot ask before it removes the modules' files at user scope.
+// takes: the one on there, else, with --switch, each of yours that can take them when there are at
+// most two and switchTarget takes it, led by what the switch turns off; -y when the run cannot ask
+// before it removes the modules' files at user scope.
 func (e *Engine) yoursHints(ctx context.Context, req MoveRequest, dst *moveStack) []string {
 	var names, clauses []string
 	top := dst.layers[len(dst.layers)-1]
@@ -593,17 +592,17 @@ func (e *Engine) yoursHints(ctx context.Context, req MoveRequest, dst *moveStack
 }
 
 // providers says whether req's modules come from src's scope, the other one, rather than from
-// dst's, the scope of the target (spec 2026-10-29 §6.2): a module comes from dst's layers when
-// they provide it (it moves within dst's scope, plan 12.2b P6), else from src's when they do; one
-// neither provides is dst's to refuse (moveEdits). req.From, the source layer named, is looked
-// for in each scope the same way, base naming dst's. Only a module a scope does not list, or a
-// From naming no profile it can use, sends providers to the other scope; any other refusal is
-// returned as it is (P28). Refused, with the run that moves each part as hints: with req.Across
-// (the run names both scopes) and no From, a module both provide; modules of both scopes in one
-// run; modules of two layers of src's (the run that finishes a move needs its one source layer,
-// moveAcross); and, from a project, modules its own sync would not leave as they are installed
-// (a change not installed or not trusted, a folder's content included), which user scope would
-// install unasked, or whose local source lies inside a project (carriedOut; to, the target).
+// dst's, the scope of the target: a module comes from dst's layers when they provide it (it moves
+// within dst's scope), else from src's when they do; one neither provides is dst's to refuse
+// (moveEdits). req.From, the source layer named, is looked for in each scope the same way, base
+// naming dst's. Only a module a scope does not list, or a From naming no profile it can use, sends
+// providers to the other scope; any other refusal is returned as it is. Refused, with the run that
+// moves each part as hints: with req.Across (the run names both scopes) and no From, a module both
+// provide; modules of both scopes in one run; modules of two layers of src's (the run that finishes
+// a move needs its one source layer, moveAcross); and, from a project, modules its own sync would
+// not leave as they are installed (a change not installed or not trusted, a folder's content
+// included), which user scope would install unasked, or whose local source lies inside a project
+// (carriedOut; to, the target).
 func (e *Engine) providers(ctx context.Context, req MoveRequest, dst, src *moveStack, to writeTo) (bool, error) {
 	look := func(st *moveStack, m string) (*writeTo, error) {
 		t, err := e.moveSource(st, req.From, m, offFlags(req))
@@ -694,9 +693,9 @@ func (e *Engine) movedFrom(req MoveRequest, st *moveStack) func(string) (writeTo
 	return func(m string) (writeTo, error) { return e.moveSource(st, req.From, m, offFlags(req)) }
 }
 
-// localInProject refuses m, an entry of from (a layer of sc's), carried into t, when t is a file
-// of yours and from a project file (project.yml or a project profile) whose local source for m
-// lies inside a project (inProject; spec 2026-10-29 §16.2): a move's and a --new --from's check.
+// localInProject refuses m, an entry of from (a layer of sc's), carried into t, when t is a file of
+// yours and from a project file (project.yml or a project profile) whose local source for m lies
+// inside a project (inProject): a move's and a --new --from's check.
 func (e *Engine) localInProject(sc Scope, t, from writeTo, m string) error {
 	if !t.Profile || t.Key != "" || from.Profile && from.Key == "" {
 		return nil
@@ -708,7 +707,7 @@ func (e *Engine) localInProject(sc Scope, t, from writeTo, m string) error {
 }
 
 // carriedOut refuses modules, entries of sc's files carried into t, a file of yours, where no trust
-// question asks about them (spec 2026-10-29 §16.2): one whose local source lies inside a project
+// question asks about them: one whose local source lies inside a project
 // (localInProject), then any the project's sync would not leave as installed and trusted
 // (installedAsTrusted, the first module's layer saying whether it is on). from is the layer each
 // comes from. A move's, a --new --from's and an install --override's check.
@@ -788,7 +787,7 @@ func (e *Engine) intoYours(dst *moveStack, req MoveRequest, t writeTo) ([]string
 }
 
 // removesUnasked reports whether req cannot ask before it removes files. A hint never answers that
-// for the user: it carries -y only as given (R-8).
+// for the user: it carries -y only as given.
 func removesUnasked(req MoveRequest) bool {
 	return req.ConfirmRemovals == nil && !req.Options.Force
 }
@@ -826,7 +825,7 @@ func (e *Engine) acrossRun(req MoveRequest, dst, src *moveStack, from string, mo
 	return e.Command(dst.sc, "profile", append(args, req.Options.Display...)...)
 }
 
-// moveAcross applies a move between scopes (spec 2026-10-29 §6.2) under the profiles lock Move
+// moveAcross applies a move between scopes under the profiles lock Move
 // holds and both scope locks, taken in lockOrder: add, dst's sync, which adds the entries (seeded
 // with the versions src's scope installed), then rm's, src's, which removes them. Its removals
 // are asked before anything is written: a dry run of rm finds them. A failure between the two
@@ -985,10 +984,9 @@ func (e *Engine) sourceUnchanged(ctx context.Context, req MoveRequest, src *move
 	return nil
 }
 
-// moveHints is the run with each --to the move of req.Modules takes in st as it stands (spec
-// 2026-10-29 §3.7, §6.3: hints that work when run): the profile on, when it is yours or the
-// project's, then the base; each only when every module comes from another layer and it lists
-// none of them. None when neither does.
+// moveHints is the run with each --to the move of req.Modules takes in st as it stands (hints
+// that work when run): the profile on, when it is yours or the project's, then the base; each only
+// when every module comes from another layer and it lists none of them. None when neither does.
 func (e *Engine) moveHints(st *moveStack, req MoveRequest) []string {
 	cands := []writeTo{baseTarget(st.layers[0])}
 	if top := st.layers[len(st.layers)-1]; len(st.layers) > 1 && !remoteLayer(top.Name) {
@@ -1030,12 +1028,12 @@ func (e *Engine) movesAtUser(req MoveRequest) bool {
 	return e.takes(st, req, baseTarget(st.layers[0]))
 }
 
-// offTarget is sync for a move into t when st's scope does not load t (spec 2026-10-29 §4 S4,
-// §6.2): --switch switches to it in the same plan; --keep-off leaves it off, so the moved modules
-// are removed here (the sync asks; -y, --force); without either, AskWhere asks, and without it the
-// move is refused with both as hints. Neither -y nor --force answers the question. A target that
-// is on takes --switch when it is the profile on (Move says it is already on); --keep-off, and
-// --switch with the base, are refused (MoveFlagError: the CLI hints the run without the flag).
+// offTarget is sync for a move into t when st's scope does not load t: --switch switches to it in
+// the same plan; --keep-off leaves it off, so the moved modules are removed here (the sync asks;
+// -y, --force); without either, AskWhere asks, and without it the move is refused with both as
+// hints. Neither -y nor --force answers the question. A target that is on takes --switch when it is
+// the profile on (Move says it is already on); --keep-off, and --switch with the base, are refused
+// (MoveFlagError: the CLI hints the run without the flag).
 func (e *Engine) offTarget(req MoveRequest, st *moveStack, t writeTo, sync SyncRequest) (SyncRequest, error) {
 	if t.on {
 		base := t.Name == st.layers[0].Name
@@ -1099,9 +1097,9 @@ func (e *Engine) creatingActivation(sc Scope, name, file string) (*activation, e
 	return &activation{infos: infos, next: &ledger.Active{Name: name, By: ledger.BySwitch}, action: ProfileSwitch, report: report, changed: true}, nil
 }
 
-// createTarget creates t, a profile of yours a move names that does not exist (spec 2026-10-29
-// §6.2), before the move's edits are built, and reads it into t. undo removes it again when it
-// still holds what was written (one edited since is the user's, and stays).
+// createTarget creates t, a profile of yours a move names that does not exist, before the move's
+// edits are built, and reads it into t. undo removes it again when it still holds what was written
+// (one edited since is the user's, and stays).
 func (e *Engine) createTarget(t *writeTo) (undo func() error, err error) {
 	var none *profile.Profile
 	dst, data, err := none.Edit(t.Path, manifest.Change{})
@@ -1134,8 +1132,8 @@ func (e *Engine) createTarget(t *writeTo) (undo func() error, err error) {
 // rm's of src's files, add's of dst's, one edit when src and dst are one stack (a move within a
 // scope); and the Edits it reports. The entry moves whole: its picks, never a pin into your
 // profile; into project.yml or a project profile, the version src's lock.json records, else its
-// own pin (spec 2026-10-29 §6.2). An entry without targets of its own gets those it installs to
-// when t would give it others (§4 S4: the move changes no installed file). A target that lists
+// own pin. An entry without targets of its own gets those it installs to
+// when t would give it others (the move changes no installed file). A target that lists
 // the module asks to replace it.
 func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveStack, t writeTo) (rm, add *moveEdit, _ []Edit, _ error) {
 	rm, add = newMoveEdit(), newMoveEdit()
@@ -1177,7 +1175,7 @@ func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveS
 		}
 		if sel != nil && !from.Profile {
 			// project.yml's picks live in selections.yaml (picksAt); the entry takes them with it
-			// (spec 2026-11-03 A1: the move changes no installed file).
+			// (the move changes no installed file).
 			w, err := e.scopeSection(src.sc)
 			if err != nil {
 				return nil, nil, nil, err
@@ -1258,7 +1256,7 @@ func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveS
 }
 
 // carryPicks is e, a module's entry in selections.yaml's section of a project, as the picks of a
-// profile entry, which are only: and skip: (cherry-pick design §4.1): an include joins the only:
+// profile entry, which are only: and skip:: an include joins the only:
 // list when there is one, as --unskip adds to a profile entry's (unskip), and drops the skip equal
 // to it. Each list keeps its form, so an exact only: list stays one. What an include does that
 // this cannot say, lostPicks finds.
@@ -1277,7 +1275,7 @@ func carryPicks(e config.Entry) config.Entry {
 
 // picksLostError refuses a move that carries a module out of project.yml into a profile whose
 // entry, holding the picks carryPicks makes, would install another set of its installed
-// components than selections.yaml's section does (spec 2026-11-03 A1: the move changes no
+// components than selections.yaml's section does (the move changes no
 // installed file). --force moves it all the same; a dry run says it and plans that.
 type picksLostError struct{ error }
 
@@ -1286,8 +1284,8 @@ func (e *picksLostError) Unwrap() error { return e.error }
 // lostPicks is the refusal of the move of module, an entry of project.yml whose picks sel's
 // section w holds, into t, a profile whose entry would hold picks (carryPicks), when the two
 // would install different components of the version lock.json's entry installed records: a
-// profile entry has no include:, takes the global skip, and not the global only: list
-// (cherry-pick design §4.2). A rule counts only while rulesOn. nil when the sets match, or when
+// profile entry has no include:, takes the global skip, and not the global only: list.
+// A rule counts only while rulesOn. nil when the sets match, or when
 // lola cannot tell them (nothing installed, or the cache no longer holds that version).
 func (e *Engine) lostPicks(sel *config.Selections, w config.Where, t writeTo, module string, picks config.Entry, installed *ledger.Entry,
 	rulesOn bool) (*picksLostError, error) {
@@ -1354,7 +1352,7 @@ func (e *Engine) lostPicks(sel *config.Selections, w config.Where, t writeTo, mo
 }
 
 // offFlags is the flags of the hint that turns off the remote profile a move's entry comes from:
-// req's output flags. It names another command, so never -y (R-8).
+// req's output flags. It names another command, so never -y.
 func offFlags(req MoveRequest) []string {
 	return slices.Clone(req.Options.Display)
 }
@@ -1379,7 +1377,7 @@ func moveArgs(req MoveRequest) []string {
 	return out
 }
 
-// confirmReplace asks whether a move replaces the entry t has for module (spec 2026-10-29 §6.2):
+// confirmReplace asks whether a move replaces the entry t has for module:
 // -y and --force answer it; on a terminal Replace asks; off one the move is refused, hinting -y.
 func (e *Engine) confirmReplace(req MoveRequest, t writeTo, module string) error {
 	if req.Yes || req.Options.Force {

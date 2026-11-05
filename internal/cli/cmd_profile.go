@@ -20,13 +20,13 @@ import (
 )
 
 // profileActions are lola profile's action flags, canonical names in the order a refusal names
-// them (Plan 6b §3.2).
+// them.
 var profileActions = []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff, engine.ProfileSwitch, engine.ProfileEdit, engine.ProfileMove,
 	engine.ProfileSplit, engine.ProfileAdd, engine.ProfileUpdate, engine.ProfileRemove}
 
-// profileFlags are the flags each action takes beside the scope and output flags (Plan 6b §3.2,
-// §19 P13), in the order a refusal checks them: a flag the run's action does not take, or any of
-// them without an action, is refused, since a flag that does nothing must not look accepted.
+// profileFlags are the flags each action takes beside the scope and output flags, in the order a
+// refusal checks them: a flag the run's action does not take, or any of them without an action, is
+// refused, since a flag that does nothing must not look accepted.
 var profileFlags = map[engine.ProfileAction][]string{
 	engine.ProfileOn:     {"yes", "trust", "dry-run", "force", "verbose"},
 	engine.ProfileOff:    {"yes", "trust", "dry-run", "force", "verbose"},
@@ -81,7 +81,7 @@ func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
 // runAs is runWithout as the command words: the run's flags, kept the same way, on another
 // command (lola info's next step is an install). On another command it keeps only the flags that
 // command takes, and never -y, which answered a question of this one; nor in a dry run, which
-// asks nothing (spec 2026-11-03 §3.3, ruling R-8).
+// asks nothing.
 func runAs(words []string, cmd *cobra.Command, args []string, drop ...string) string {
 	out := slices.Clone(words)
 	for _, a := range args {
@@ -104,7 +104,7 @@ func runAs(words []string, cmd *cobra.Command, args []string, drop ...string) st
 		case f.Name == "yes" && (other != nil || !asks):
 		case other != nil && other.Flags().Lookup(f.Name) == nil && other.InheritedFlags().Lookup(f.Name) == nil:
 		case f.Name == "trust":
-			// as parsed, its kinds after =, never all (Plan 9 §3.2); before it is parsed, as given (M4)
+			// as parsed, its kinds after =, never all; before it is parsed, as given
 			if t, ok := f.Value.(*trustFlag); ok && t.kinds != 0 {
 				out = append(out, t.kinds.Arg())
 			} else if ok {
@@ -130,14 +130,13 @@ func runAs(words []string, cmd *cobra.Command, args []string, drop ...string) st
 
 // consentFlags are the flags that answer a question of the run they are given to (-y and --trust
 // of any kind), which a hint repeating the run for another reason drops: it may ask another
-// question, and only you can answer it (ruling R-6b3c-8, R-6cux-4).
+// question, and only you can answer it.
 var consentFlags = []string{"yes", "trust"}
 
 // completeRun is the user's run, its names args, without the flags named in drop and --trust, for
 // a hint that completes it with what a terminal would have asked (a scope it lacked, an
-// assistant): -y stays, since the completed run asks what it answered (spec 2026-11-03 §3.3,
-// ruling R-8). A hint that changes a scope the user chose, or names another profile, is
-// runWithout with consentFlags.
+// assistant): -y stays, since the completed run asks what it answered. A hint that changes a scope
+// the user chose, or names another profile, is runWithout with consentFlags.
 func completeRun(cmd *cobra.Command, args []string, drop ...string) string {
 	return runWithout(cmd, args, slices.Concat(drop, []string{"trust"})...)
 }
@@ -155,7 +154,7 @@ func renderRun(cmd *cobra.Command, args []string) string {
 }
 
 // rerunFlags is the flags of lola profile --add or --update that a hint repeating the run keeps
-// beside the scope, the names and the flags the engine is given (Plan 6b §12.3): --trust for the
+// beside the scope, the names and the flags the engine is given: --trust for the
 // kinds given (trust), -n, --json, --plain and --no-pager, as given.
 func rerunFlags(cmd *cobra.Command, trust engine.TrustKinds) []string {
 	var out []string
@@ -170,7 +169,7 @@ func rerunFlags(cmd *cobra.Command, trust engine.TrustKinds) []string {
 	return out
 }
 
-// profileAction is the one action flag set on cmd, "" for none (Plan 6b §19 R7): cobra has
+// profileAction is the one action flag set on cmd, "" for none: cobra has
 // parsed, so the check is on canonical names; two different actions refuse, naming both, with
 // the run keeping each one of them as hints (args are its names). Beside --move, --switch is its
 // modifier (switch to the profile it moves into), never an action.
@@ -319,7 +318,7 @@ func (a *app) profileCmd() *cobra.Command {
 				}
 			}
 			// Without a scope flag an update answers only the profiles' question with --trust, never a
-			// project's (ruling R-6b3c-7): entries written there would answer nothing (CR8).
+			// project's: entries written there would answer nothing.
 			if act == engine.ProfileUpdate && trust.names(engine.TrustEntries) && a.scopeFlag == "" && !a.user && !a.project && a.root == "" {
 				return errs.WithHints(errors.New("--trust=entries trusts a project's changes, which lola profile --update answers only in a scope a flag names"),
 					"name the project: "+runWithout(cmd, args)+" --project", "or with user scope too: "+runWithout(cmd, args)+" --scope both")
@@ -386,7 +385,8 @@ func (a *app) profileCmd() *cobra.Command {
 				}
 				states, notices, err := eng.ProfileState(cmd.Context(), scopes, args[0], outputFlags(cmd)...)
 				if engine.IsUnknownProfile(err) {
-					// --switch --new is another action than the show, so it takes none of the run's consent (R-8).
+					// --switch --new is another action than the show, so it takes none of the run's
+					// consent.
 					if exists, refused := eng.NewOrSwitch(scopes[0], engine.ProfileChange{Name: args[0]}, nil); !exists && refused == nil {
 						err = errs.WithHints(err, "make it: "+runAs(strings.Fields(cmd.CommandPath()), cmd,
 							[]string{args[0], "--switch", "--new"}, consentFlags...))
@@ -459,7 +459,7 @@ func (a *app) profileCmd() *cobra.Command {
 	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
 	addTrustFlag(cmd, &trust, "profile", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles; --add takes profiles only (recorded as a yes is; --update without a scope flag: profiles only)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "with --on, --off, --switch or --edit: remove files without asking, edited ones too; with --remove: remove a profile in use, without asking (never answers a consent question, nor --on's question)")
-	// Aliases for muscle memory from other tools (Plan 6b §3.3): systemctl and conda, nvm and
+	// Aliases for muscle memory from other tools: systemctl and conda, nvm and
 	// kubectl. Additive and stable; the published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{
 		string(engine.ProfileOn):     {"enable", "activate"},
@@ -475,12 +475,11 @@ func (a *app) profileCmd() *cobra.Command {
 	return cmd
 }
 
-// oneName refuses two or more names for act, one profile being on at a time (spec 2026-10-29
-// §6.2): --switch and --on hint the bundle of them, made and switched to, after which --switch
-// names it, keeping the run's --trust, -n and output flags (never -y or --force, which would answer
-// removals the switch makes); --off hints the run with each name. The bundle's name and members
-// are the engine's, read at the scope the run would take without asking (a found project, else
-// user scope).
+// oneName refuses two or more names for act, one profile being on at a time: --switch and --on hint
+// the bundle of them, made and switched to, after which --switch names it, keeping the run's
+// --trust, -n and output flags (never -y or --force, which would answer removals the switch makes);
+// --off hints the run with each name. The bundle's name and members are the engine's, read at the
+// scope the run would take without asking (a found project, else user scope).
 func (a *app) oneName(cmd *cobra.Command, eng *engine.Engine, args []string, act engine.ProfileAction, f syncFlags) error {
 	if act == engine.ProfileOff {
 		var hints []string
@@ -527,7 +526,7 @@ func (a *app) readChoice(eng *engine.Engine) (engine.ScopeChoice, error) {
 }
 
 // newFlags refuses --from and --bundle without --new, which they modify, and the two together:
-// a new profile copies one, or bundles several (spec 2026-10-29 §6.2). Each hint is a run that
+// a new profile copies one, or bundles several. Each hint is a run that
 // works: without one of the two; as the engine decides at the run's scope (NewOrSwitch), without
 // the flag when a switch finds the profile, with --new added when --new would make it, else the
 // engine's refusal with its hints.
@@ -557,9 +556,9 @@ func (a *app) newFlags(cmd *cobra.Command, eng *engine.Engine, args []string, ch
 	return errs.WithHints(fmt.Errorf("--%s makes a new profile and goes with --new", flag), "make it: "+runWithout(cmd, args)+" --new")
 }
 
-// profileApply runs one action of lola profile (Plan 6b §6.3): one scope, resolved as every
+// profileApply runs one action of lola profile: one scope, resolved as every
 // writing command's is, then a sync carrying the change, with sync's questions and answers
-// (-y, --trust). Its summary, the changes and the plan, is paged as sync's diff is (§9).
+// (-y, --trust). Its summary, the changes and the plan, is paged as sync's diff is.
 func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.ProfileChange, f syncFlags) error {
 	if ch.Name == "" && ch.Action != engine.ProfileOff {
 		return errs.WithHints(fmt.Errorf("--%s needs the name of a profile", ch.Action), "list them: lola profile")
@@ -579,7 +578,7 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	alone := f
 	alone.alone = true // the change the user named, at its one scope; the terminal's answer below is another
 	res, more, err := a.syncScope(cmd, eng, sc, nil, &ch, alone)
-	// --on never replaces the profile on unasked (spec 2026-10-29 §6.2): a terminal is asked to
+	// --on never replaces the profile on unasked: a terminal is asked to
 	// switch, which -y and --force never answer; off one, or under -n, which asks nothing, the
 	// engine's refusal hints --switch.
 	if other, ok := errors.AsType[*engine.OtherProfileOnError](err); ok && !f.dry && a.prompter(cmd).Interactive() {
@@ -612,7 +611,7 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	if err != nil {
 		return err
 	}
-	// After a change of the profile on, its new context is the run's last line (spec 2026-10-29 §3.8).
+	// After a change of the profile on, its new context is the run's last line.
 	now := ""
 	if !res.DryRun && !res.InSync {
 		now = contextLine(eng.Context(sc, nil))
@@ -620,7 +619,7 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	return a.emit(cmd, func(w io.Writer, s style) { printProfileAction(w, s, manifestName(sc), res, s.more(more), now) }, res)
 }
 
-// printProfileAction prints an action's summary (Plan 6b §12.1): where the named profile the run
+// printProfileAction prints an action's summary: where the named profile the run
 // turns on or off, with its file, now stands (one already as asked is its notice alone), each
 // module it loads (+), replaces (~) or unloads (-) with the layer it comes from and
 // the layers it overrides, then the sync's own lines, then, after a change of the profile on,
@@ -693,7 +692,7 @@ func printCreated(w io.Writer, s style, created []engine.Created, dry bool) {
 	}
 }
 
-// createdLine is the write line of a profile --new made (spec 2026-10-29 §3.7, §4 S2, S3, S7):
+// createdLine is the write line of a profile --new made:
 // "new bundle work (go-review, docs)", "new profile try, a copy of go-review (3 modules)", or
 // "new profile go-review (<path>, empty)". Its strings have been through untrusted.Text.
 func createdLine(c engine.Created) string {
@@ -775,7 +774,7 @@ func (a *app) completeProfile(cmd *cobra.Command, args []string, toComplete stri
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
-// stateText is where a row stands in its scope (spec 2026-10-29 §4 S8): base, on, in bundle <the
+// stateText is where a row stands in its scope: base, on, in bundle <the
 // bundle on>, or off; "(bundle)" marks a bundle that is on or off.
 func stateText(r engine.ProfileRow) string {
 	switch {

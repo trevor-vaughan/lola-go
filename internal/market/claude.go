@@ -15,7 +15,7 @@ import (
 )
 
 // jval is a decoded JSON value whose objects keep every key in order, duplicates and case
-// variants included (Plan 6c §4.1, ruling R-6c-17): encoding/json's struct decoding matches keys
+// variants included: encoding/json's struct decoding matches keys
 // case-insensitively and keeps the last of a duplicate, so a catalog could show one key and act
 // on another. kind is '{', '[', 's' (string), 'n' (number), 'b' (boolean) or 'z' (null).
 type jval struct {
@@ -77,7 +77,7 @@ func decodeJSON(b []byte) (*jval, error) {
 }
 
 // readJSON reads the next value of dec, inside depth containers, spending one of budget's values on
-// it: the byte cap alone does not bound what decoding allocates (Plan 6c §10).
+// it: the byte cap alone does not bound what decoding allocates.
 func readJSON(dec *json.Decoder, depth int, budget *int) (*jval, error) {
 	if *budget--; *budget < 0 {
 		return nil, fmt.Errorf("holds more than %d JSON values", maxValues)
@@ -128,7 +128,7 @@ func readJSON(dec *json.Decoder, depth int, budget *int) (*jval, error) {
 	}
 }
 
-// The keys lola reads, or skips an entry on, in each object of a Claude catalog (Plan 6c §4.1).
+// The keys lola reads, or skips an entry on, in each object of a Claude catalog.
 var (
 	topKeys      = []string{"name", "owner", "plugins", "description", "version", "metadata"}
 	ownerKeys    = []string{"name", "email", "url"}
@@ -136,7 +136,7 @@ var (
 	entryKeys    = []string{"name", "source", "description", "version", "category", "tags", "keywords", "dependencies"}
 )
 
-// skipOn are the entry fields whose presence skips the entry (ruling R-6c-4), with why: lola
+// skipOn are the entry fields whose presence skips the entry, with why: lola
 // never sends a catalog's credentials or runs its commands, and reads components other than the
 // content lists (contentKeys) from the plugin's own files, never from the catalog.
 var skipOn = []struct{ key, kind, reason string }{
@@ -155,9 +155,8 @@ var skipOn = []struct{ key, kind, reason string }{
 const componentsNote = "; lola reads a plugin's components from its own files, never from the catalog"
 
 // contentKeys are the content lists an entry may give: the paths, in its own directory, of the
-// skills, commands and agents that form the module (user decision, 2026-10-21, amending ruling
-// R-6c-4). Only a relative entry may give them, as the marketplace's own tree is then the
-// plugin's.
+// skills, commands and agents that form the module. Only a relative entry may give them, as the
+// marketplace's own tree is then the plugin's.
 var contentKeys = []string{"skills", "commands", "agents"}
 
 // entryKnown is every key lola reads or skips on in an entry.
@@ -180,7 +179,7 @@ func notPlain(s, yaml string) string {
 }
 
 // plain refuses the catalog when a key of an object lola reads, or a string value of a field it
-// reads or skips on (at any depth under that field), would not print as it is (ruling R-6c-20):
+// reads or skips on (at any depth under that field), would not print as it is:
 // field names it, as plugins[12].description.
 func plain(v *jval, field string, walkKeys bool) error {
 	switch v.kind {
@@ -234,7 +233,7 @@ func join(prefix, key string) string {
 	return prefix + "." + key
 }
 
-// parseClaude reads a Claude Code marketplace.json (Plan 6c §4.1): the catalog is refused for
+// parseClaude reads a Claude Code marketplace.json: the catalog is refused for
 // what makes all of it unreadable or ambiguous, and each entry is skipped, with its reason, for
 // what makes only it unusable.
 func parseClaude(b []byte, ssh []string) (Catalog, error) {
@@ -560,7 +559,7 @@ func contentLists(o *jval) (*Components, *skip) {
 	return c, nil
 }
 
-// checkEntryName skips an entry whose name fails the module-name rule (Plan 6c §4.4).
+// checkEntryName skips an entry whose name fails the module-name rule.
 func checkEntryName(name string) *skip {
 	if err := validateEntryName(name); err != nil {
 		return skipped("invalid name", "%s", err.Error())
@@ -595,7 +594,7 @@ func (c *Catalog) add(e Entry, s *skip) {
 }
 
 // dedupe skips every entry whose name two or more entries of the catalog have, skipped ones
-// included (Plan 6c §4.4).
+// included.
 func (c *Catalog) dedupe() {
 	count := map[string]int{}
 	for _, e := range c.Entries {

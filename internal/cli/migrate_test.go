@@ -123,7 +123,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("review has a pre-install hook, and lola runs hooks only with your consent"))
 		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola migrate --force --trust=hooks\n"), "the hint is the command refused")
-		Expect(r.err).NotTo(ContainSubstring("needs confirmation"), "--force answered Migrate? (ruling R-6c3-4)")
+		Expect(r.err).NotTo(ContainSubstring("needs confirmation"), "--force answered Migrate?")
 		Expect(read(filepath.Join(proj, ".claude/commands/ship.md"))).To(Equal("python ship\n"), "nothing was written")
 		Expect(mark).NotTo(BeAnExistingFile())
 
@@ -133,7 +133,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.out).To(ContainSubstring("✓ migrated project " + proj))
 	})
 
-	It("says where nothing migrates and counts the records, in human, plain and JSON output (Plan 10 §3.3)", func() {
+	It("says where nothing migrates and counts the records, in human, plain and JSON output", func() {
 		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- module: review\n  assistant: claude-code\n  scope: project\n  project_path: " + proj +
 			"\n  skills: [review, review_review]\n  commands: [ship]\n- module: review\n  assistant: cursor\n  scope: user\n"})
 		r := lola("migrate", "--dry-run")
@@ -183,7 +183,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.out).NotTo(ContainSubstring("summary:"))
 	})
 
-	Context("from another machine (Plan 10 §3.1, §3.2)", func() {
+	Context("from another machine", func() {
 		var moved string
 		BeforeEach(func() {
 			moved = filepath.Join(tmp, "home", "proj")
@@ -488,7 +488,7 @@ var _ = Describe("lola migrate", func() {
 		r := lola("migrate", "-y")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring(".claude/agents/critic.md: exists and was not written by lola"))
-		Expect(r.err).To(HaveSuffix("  hint: lola migrate --force\n"), "no -y: --force answers Migrate? too (ruling R-6c3-4)")
+		Expect(r.err).To(HaveSuffix("  hint: lola migrate --force\n"), "no -y: --force answers Migrate? too")
 		Expect(trash()).NotTo(BeADirectory())
 		r = lola("migrate", "--force")
 		Expect(r.code).To(Equal(0), r.err)

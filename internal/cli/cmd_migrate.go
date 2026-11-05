@@ -107,7 +107,7 @@ func (a *app) migrateCmd() *cobra.Command {
 			if dry || preview.Nothing {
 				return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
 			}
-			// --force answers the question, as -y does; never the hooks' consent (ruling R-6c3-4).
+			// --force answers the question, as -y does; never the hooks' consent.
 			if !yes && !force {
 				show := func(w io.Writer, s style) { printMigration(w, s, preview) }
 				if err := a.confirm(cmd, nil, "Migrate?", Nav{Answered: answered}, preview, show); err != nil {
@@ -143,7 +143,7 @@ func (a *app) migrateCmd() *cobra.Command {
 
 // askMappings asks, on a terminal, where each root that missing project paths of the Python lola
 // share is on this machine, then which assistants install the records of each assistant this
-// machine lacks (Plan 10 §3.1, §3.2), adding each answer to opts. What the flags map is not
+// machine lacks, adding each answer to opts. What the flags map is not
 // asked; an empty root or no assistant skips that group, and an assistant is asked only when one
 // is on your PATH. The assistants are asked after the roots: a project found again may have its
 // assistant set up. Going back from a question (Esc) asks the one before again, as answered; from
@@ -229,7 +229,7 @@ func askTargets(pr Prompter, eng *engine.Engine, missing []migrate.TargetSuggest
 
 // remapRun is the run again with every map it used, from its flags or its questions, and the
 // --map-root and --map-target flags that map what p leaves for want of this machine's paths or
-// assistants (Plan 10 §3.1, §3.2): each missing root to your home, each missing assistant to
+// assistants: each missing root to your home, each missing assistant to
 // those on your PATH. It keeps the run's other flags but -y and --trust, as every hint repeating a
 // run does; "" when no flag would map anything.
 func remapRun(cmd *cobra.Command, opts migrate.Options, p *migrate.Plan) string {
@@ -427,7 +427,7 @@ func printNextSteps(w io.Writer, s style, r *migrate.Result) {
 	}
 }
 
-// printSummary counts the Python lola's records by outcome (Plan 10 §3.3), when it has any: on a
+// printSummary counts the Python lola's records by outcome, when it has any: on a
 // dry run what would migrate, after a run what did and what failed; and those already migrated
 // and those left as they are.
 func printSummary(w io.Writer, s style, r *migrate.Result) {
@@ -450,7 +450,7 @@ func printSummary(w io.Writer, s style, r *migrate.Result) {
 	fmt.Fprintln(w, "records: "+strings.Join(parts, ", "))
 }
 
-// printMigratedMarkets lists what becomes of the Python lola's marketplaces (Plan 6c §6.9), each one
+// printMigratedMarkets lists what becomes of the Python lola's marketplaces, each one
 // not registered with its reason and hints.
 func printMigratedMarkets(w io.Writer, s style, ms []migrate.Market) {
 	if len(ms) == 0 {

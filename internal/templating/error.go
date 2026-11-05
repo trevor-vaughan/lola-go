@@ -15,7 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Codes of the refusals Render returns (Plan 7 §11.2).
+// Codes of the refusals Render returns.
 const (
 	codeTooLarge        = "template-too-large"
 	codeInvalidUTF8     = "template-invalid-utf8"
@@ -27,7 +27,7 @@ const (
 	codePanic           = "template-panic"
 )
 
-// Byte caps on the author-derived text an Error holds (Plan 7 §5.5).
+// Byte caps on the author-derived text an Error holds.
 const (
 	maxReason = 512 // liquid's cause text, a panic value
 	maxFile   = 256

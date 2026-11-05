@@ -12,7 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("Pick-P2-d: the hint of a stale selector removes it, wherever it is saved", func() {
+var _ = Describe("the hint of a stale selector removes it, wherever it is saved", func() {
 	var (
 		tmp, proj, kit string
 		p              paths.Paths

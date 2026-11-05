@@ -42,7 +42,7 @@ var _ = Describe("help, errors and output contract", func() {
 		Expect(r.out).NotTo(ContainSubstring("GLOBAL FLAGS"))
 	})
 
-	It("P2-9: a command's help off a terminal starts with its description and usage, then the global flags", func() {
+	It("a command's help off a terminal starts with its description and usage, then the global flags", func() {
 		r := lola("install", "--help")
 		Expect(r.code).To(Equal(0))
 		Expect(r.out).NotTo(HavePrefix("GLOBAL FLAGS"))

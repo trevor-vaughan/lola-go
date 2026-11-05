@@ -121,7 +121,7 @@ lola market acme --remove                                    # forget it; asks (
     hosts the catalog now names that you have not allowed, and `--ssh-host <host>` allows one
     without it. A run that cannot ask prints the command, as `--add` does.
   - `--ssh-host` takes exactly one marketplace: not `--all`, not several names.
-  - A host the catalog no longer names stays allowed until you revoke it (**Removing**).
+  - A host the catalog drops stays allowed until you revoke it (**Removing**).
 - **Removing.** `lola market <name> --remove` (aliases `--rm`, `--delete`, `--del`, `--erase`)
   forgets a marketplace: its line in `markets.yaml` and its cached catalog.
   - It asks first; `-y` confirms, and off a terminal without `-y` it is refused with the same
@@ -133,14 +133,14 @@ lola market acme --remove                                    # forget it; asks (
     marketplace again once you add it back (the notice gives that `--add`).
   - `-n` says what it would remove.
   - `--json` gives `removed`, `notices` and `dry_run`.
-  - `lola market <name> --ssh-host <host> --remove` instead stops allowing that host (repeatable)
-    and applies the cached catalog again, without fetching: the entries at that host are skipped
-    from then on (`✓ marketplace acme no longer allows ssh host git.example.com`, then `- a1`).
-    It asks nothing, so `-y` is refused with it, and a host the marketplace does not allow is
-    refused, naming the ones it does.
-    Modules you installed from that host keep their recorded source, so `lola sync --update`
-    still fetches them over ssh (its notice says the marketplace no longer lists them); uninstall
-    them to stop that.
+  - `lola market <name> --ssh-host <host> --remove` instead stops allowing that host (repeatable):
+    - It applies the cached catalog again, without fetching: the entries at that host are skipped
+      from then on (`✓ marketplace acme no longer allows ssh host git.example.com`, then `- a1`).
+    - It asks nothing, so `-y` is refused with it, and a host the marketplace does not allow is
+      refused, naming the ones it does.
+    - Modules you installed from that host keep their recorded source, so `lola sync --update`
+      still fetches them over ssh (its notice says the marketplace no longer lists them); uninstall
+      them to stop that.
   - A plain `--remove` forgets the marketplace's allowed hosts with it. What you installed keeps
     the source it was recorded with, ssh included, and stays installed.
 - **Showing.** `lola market acme` lists the marketplace's entries (what it shows is under
@@ -227,12 +227,14 @@ lola market acme --remove                                    # forget it; asks (
       twice or in another case (`Source`);
     - a description or source over 4096 bytes, more than 64 tags, and skills, commands and
       agents lists naming more than 1024 paths.
-  - An allowed ssh host relaxes only that rule. Every other source still has to be `https://`, an
-    allowed host is still given by name, never an address, and `--path`, `ref`, pin and trust
-    checks apply to its entries as to any other, so a hook or script still waits for your trust.
-    The risk that remains: the operator of an allowed host can see which public keys your ssh
-    agent offers, and the catalog's author chooses any path on that host. Allow only hosts you
-    would connect to with those keys.
+  - An allowed ssh host relaxes only that rule:
+    - Every other source still has to be `https://`.
+    - An allowed host is still given by name, never an address.
+    - `--path`, `ref`, pin and trust checks apply to its entries as to any other, so a hook or
+      script still waits for your trust.
+    - The risk that remains: the operator of an allowed host can see which public keys your ssh
+      agent offers, and the catalog's author chooses any path on that host. Allow only hosts you
+      would connect to with those keys.
   - A relative entry (`"./tools/formatter"`, or a bare name under `metadata.pluginRoot`) must stay
     in the marketplace (no `..`, no backslash, never absolute) and be a directory there. It comes
     from the marketplace's own source, at its commit, and a marketplace fetched as a single

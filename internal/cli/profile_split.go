@@ -13,7 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// profileSplit runs lola profile <name> --split (spec 2026-10-29 §5.2): one name, the scope as
+// profileSplit runs lola profile <name> --split: one name, the scope as
 // --switch resolves it, the plan shown and "Split <name>?" asked on a terminal (-y and --force
 // answer it), then, when the bundle is on there, the scope's apply with sync's questions.
 func (a *app) profileSplit(cmd *cobra.Command, eng *engine.Engine, args []string, to string, f syncFlags) error {
@@ -68,7 +68,7 @@ func (a *app) profileSplit(cmd *cobra.Command, eng *engine.Engine, args []string
 	}, res)
 }
 
-// printSplitPlan prints what a split writes (spec 2026-10-29 §5.2): the file that becomes a bundle,
+// printSplitPlan prints what a split writes: the file that becomes a bundle,
 // with its members, and the new profile, with its targets and modules. --plain rows: split, the
 // profile, its file, and its members or modules, comma-separated.
 func printSplitPlan(w io.Writer, s style, plan engine.SplitPlan) {
@@ -85,7 +85,7 @@ func printSplitPlan(w io.Writer, s style, plan engine.SplitPlan) {
 	fmt.Fprintln(w, line+"  ("+plan.Profile.Path+", new)")
 }
 
-// offerSplit wraps run, a command's RunE, with the offer of spec 2026-10-29 §5.1: a run refused by
+// offerSplit wraps run, a command's RunE, with the offer: a run refused by
 // a profile with both bundle: and modules: shows, on a terminal, the split's plan and asks "Split
 // <name> now?"; yes writes the two files and runs the command again, once. Off a terminal, under
 // --json or -n, and when the answer is no, the refusal stands, with its --split hint. The other
@@ -103,7 +103,7 @@ func (a *app) offerSplit(run func(*cobra.Command, []string) error) func(*cobra.C
 			return err
 		}
 		stderr := style{color: a.color(cmd.ErrOrStderr())}
-		// The plan alone is shown before the question; a No prints the refusal once (ruling P11).
+		// The plan alone is shown before the question; a No prints the refusal once.
 		var yes bool
 		var asking error
 		req := engine.SplitRequest{Scope: offer.Scope, Name: offer.Name, WriteOnly: true, Options: engine.Options{Display: outputFlags(cmd)},

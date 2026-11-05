@@ -14,7 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 )
 
-// printContext reads each scope's context (spec 2026-10-29 §3.8) and prints it (addContext); the
+// printContext reads each scope's context and prints it (addContext); the
 // contexts go into the run's --json document (emit) and its refusal (contextError). writes is what
 // a command that edits the scopes' files (install, uninstall) was told about where its edit goes,
 // nil for any other command (engine.Engine.Context).
@@ -40,7 +40,7 @@ func (a *app) addContext(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope
 	}
 }
 
-// contextRow is a scope's context as --plain prints it (spec 2026-10-29 §3.8): context, the scope,
+// contextRow is a scope's context as --plain prints it: context, the scope,
 // its root ("" at user scope), its base, the profile on by qualified name, - for none or unknown when lola could not read
 // the scope's state (contextFacts's "profile unknown"), and a bundle's members, comma-separated. It goes to stderr with the human line, so stdout's rows keep their
 // shape and a module named context is never read as one (plan 12.5 ambiguity 2).
@@ -101,7 +101,7 @@ func contextFacts(c engine.ScopeContext) string {
 	return p + " over " + c.Base.Label
 }
 
-// memberList is a bundle's members as its context line names them (spec 2026-10-29 §3.8): in
+// memberList is a bundle's members as its context line names them: in
 // order, the members a nested bundle brings grouped after its name (go-all › go, go-lint), groups
 // then separated by "; ", cut after six names with "and N more".
 func memberList(ms []engine.ContextLayer) string {
@@ -142,7 +142,7 @@ func choiceScopes(cs []engine.ScopeChoice) []engine.Scope {
 	return out
 }
 
-// withContext puts the run's contexts first in doc, a JSON object (spec 2026-10-29 §3.8, §9); doc
+// withContext puts the run's contexts first in doc, a JSON object; doc
 // is returned as it is when the run read none, or when it is not an object.
 func withContext(doc []byte, contexts []engine.ScopeContext) ([]byte, error) {
 	if contexts == nil || len(doc) < 2 || doc[0] != '{' {
@@ -160,7 +160,7 @@ func withContext(doc []byte, contexts []engine.ScopeContext) ([]byte, error) {
 }
 
 // contextError is a refusal after the scopes were resolved: its --json line carries the run's
-// contexts beside error, hints and every other field the error carries (spec 2026-10-29 §9).
+// contexts beside error, hints and every other field the error carries.
 type contextError struct {
 	error
 	contexts []engine.ScopeContext

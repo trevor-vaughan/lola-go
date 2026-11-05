@@ -21,7 +21,7 @@ const (
 // pad is the trust diff's value column, under "  ~ <module>     ".
 const pad = "                  "
 
-// printSync renders a sync result (Plan 6a §11.1): in a dry run the trust diff first; then the
+// printSync renders a sync result: in a dry run the trust diff first; then the
 // plan as install shows it, with the MCP servers of the modules the diff did not show, the pins
 // (unless the diff on stdout showed them), the removals, findings and notices, and a line per
 // module the run changed, then how many it left unchanged. A run in sync prints its findings
@@ -103,9 +103,9 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 }
 
 // printPins lists the pins a sync writes, each once with its new digest in full (the diff and
-// JSON have the commit and the previous digest), naming the project profile a pin is written into
-// (Plan 6b §6.4); --plain rows are pin, module, digest, reason. Under lola update (installed) a
-// re-pin is the move it makes, "<module>: <previous digest> → <digest>".
+// JSON have the commit and the previous digest), naming the project profile a pin is written into;
+// --plain rows are pin, module, digest, reason. Under lola update (installed) a re-pin is the move
+// it makes, "<module>: <previous digest> → <digest>".
 func printPins(w io.Writer, s style, pins []engine.Pin, installed bool) {
 	if len(pins) == 0 {
 		return
@@ -190,12 +190,12 @@ func printSyncRefusal(w io.Writer, s style, name, run string, refusal *engine.Tr
 	printRemovals(w, s, refusal.Removals)
 }
 
-// printTrustDiff shows how the manifest differs from what the user last trusted (Plan 6a §7.5):
+// printTrustDiff shows how the manifest differs from what the user last trusted:
 // a header naming the cause; a source that changed host first, marked !, then the other modules
 // in module-name order, each marked ~ changed, + added or - removed, with its fields and the
 // content it brings; then the top-level targets; then each project profile's changes in the
-// same order under a line naming the profile (Plan 6b §8.1). A project profile replacing an
-// active one comes first, on a line of its own with the modules it changes (§4.4). Every value
+// same order under a line naming the profile. A project profile replacing an
+// active one comes first, on a line of its own with the modules it changes. Every value
 // has been through untrusted.Text. --plain rows are trust, module, change and the profile (""
 // for project.yml), after a replace row (profile, the one it replaces) per replacement. A report
 // with no change prints nothing. run is the command the header says needs trust (lola sync, or
@@ -397,7 +397,7 @@ func printTrustChange(w io.Writer, c engine.TrustChange, more string) {
 }
 
 // fieldLabel is how the trust diff names a field: market as "market (as written)", since lola
-// never checks which marketplace a file says an entry came from (Plan 6c §8).
+// never checks which marketplace a file says an entry came from.
 func fieldLabel(field string) string {
 	if field == "market" {
 		return "market (as written)"

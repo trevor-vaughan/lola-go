@@ -14,7 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// viewAnswer is how the viewer was answered (Plan 10 §2.1): in confirm mode y applies, c asks to
+// viewAnswer is how the viewer was answered: in confirm mode y applies, c asks to
 // change an answer, n or Ctrl+C cancel, q quits and Esc goes back a screen. Read mode always ends
 // in viewCancel, which its callers ignore.
 type viewAnswer int
@@ -27,7 +27,7 @@ const (
 	viewQuit
 )
 
-// viewerModel is lola's full-screen viewer (Plan 10 §2): a viewport over content, wrapped to the
+// viewerModel is lola's full-screen viewer: a viewport over content, wrapped to the
 // terminal's width and wrapped again when it is resized, above a footer that always shows the
 // position and the keys. In confirm mode only y, c, n, q, Esc and Ctrl+C answer; there is no
 // default answer. nav places a confirm-mode viewer in its flow, as keyed places a form: Esc goes

@@ -14,10 +14,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Vars (Plan 7 §4): a module declares template vars with their defaults in lola.yml vars:, and a
-// manifest entry may override them. A var is a string, true or false, a number (an int64 or a
-// finite float64, Plan 7 §5.7.4) or a list of strings; both places are untrusted input, read from
-// the YAML node by tag under the same caps.
+// Vars: a module declares template vars with their defaults in lola.yml vars:, and a manifest entry
+// may override them. A var is a string, true or false, a number (an int64 or a finite float64) or a
+// list of strings; both places are untrusted input, read from the YAML node by tag under the same
+// caps.
 const (
 	maxVars      = 64       // vars a module declares or an entry sets
 	maxVarString = 4096     // bytes of a string or a list item

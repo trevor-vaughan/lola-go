@@ -27,14 +27,14 @@ func (a gitAnswer) tracked(rel string) bool {
 }
 
 // gitLocks asks git, once per work tree, about the links on the way to dests and, unless
-// units is false, about the units and MCP files in them (§4.4, R-6d-N1): a link git tracks skips
+// units is false, about the units and MCP files in them: a link git tracks skips
 // its destination, and a tracked unit is locked; where git cannot answer, both are.
 func (s *tidyScanner) gitLocks(dests []*tidyDest, includeTracked bool) {
 	type ask struct {
 		wt, rel string
 	}
 	where := map[string]ask{}
-	causes := map[string]string{} // why lola cannot tell whether a path is in a work tree (R-6d-S5)
+	causes := map[string]string{} // why lola cannot tell whether a path is in a work tree
 	queries := map[string][]string{}
 	query := func(p string) {
 		if _, ok := where[p]; ok {
@@ -139,7 +139,7 @@ func (s *tidyScanner) gitLocks(dests []*tidyDest, includeTracked bool) {
 }
 
 // lsFiles asks git which of rels, paths relative to the work tree wt, it tracks: one
-// ls-files with literal pathspecs, so a name like :(glob)* is a name (R-6d-N7).
+// ls-files with literal pathspecs, so a name like :(glob)* is a name.
 func (s *tidyScanner) lsFiles(wt string, rels []string) gitAnswer {
 	out, err := source.GitCommand(s.ctx, wt, append([]string{"--literal-pathspecs", "ls-files", "-z", "--"}, rels...)...).Output()
 	if err != nil {

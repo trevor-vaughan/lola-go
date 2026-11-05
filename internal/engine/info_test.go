@@ -765,7 +765,7 @@ var _ = Describe("lola info", func() {
 		Expect(info.Install[0].TrustNeeded).To(ContainElement("scripts"))
 		Expect(installBy.kinds.Covers(engine.TrustScripts)).To(BeTrue(), "the next step trusts the project's script")
 
-		// once its consent is recorded the project's script needs no trust (M4)
+		// once its consent is recorded the project's script needs no trust
 		Expect(e.Consent.Grant(consent.ScriptKey(proj, engine.PreInstall), "sha256:"+sum(filepath.Join(proj, "ci", "check.sh")))).To(Succeed())
 		info, err = e.Info(ctx, claudeHere())
 		Expect(err).NotTo(HaveOccurred())

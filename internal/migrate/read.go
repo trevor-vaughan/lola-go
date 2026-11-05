@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// maxFile caps installed.yml and each source.yml (§3).
+// maxFile caps installed.yml and each source.yml.
 const maxFile = 1 << 20
 
 // maxNames caps the names, keys and records one file stands for once aliases are followed: the
@@ -35,8 +35,8 @@ const (
 
 // Record is one entry of the Python lola's installed.yml: a module installed for one assistant
 // at one scope. Names are validated single path components; Problem says why a project-scope
-// record's project_path cannot be used (§3), and is "" otherwise. Missing is set when that is
-// because the path does not exist on this machine, which --map-root mends (Plan 10 §3.1).
+// record's project_path cannot be used, and is "" otherwise. Missing is set when that is
+// because the path does not exist on this machine, which --map-root mends.
 type Record struct {
 	Module, Assistant, Scope, ProjectPath, Ref string
 	Skills, Commands, Agents, MCPs             []string
@@ -51,8 +51,8 @@ type Source struct {
 	Location, Type, Ref, ContentDirname string
 }
 
-// PyMarket is one of the Python lola's marketplace registrations, market/<file>.yml (Plan 6c
-// §6.9): its name (the file's, when it records none), its url and whether it is enabled.
+// PyMarket is one of the Python lola's marketplace registrations, market/<file>.yml: its name (the
+// file's, when it records none), its url and whether it is enabled.
 type PyMarket struct {
 	File, Name, URL string
 	Enabled         bool
@@ -69,8 +69,8 @@ type State struct {
 	Warnings []string
 }
 
-// homeHint tells the user how lola finds the Python lola's home.
-// problemAtHome ends the Problem of a project_path that is the home directory or one of its parents.
+// homeHint tells the user how lola finds the Python lola's home. problemAtHome ends the Problem of
+// a project_path that is the home directory or one of its parents.
 const problemAtHome = " is your home directory or one of its parents"
 
 const homeHint = "lola reads the Python lola's state from $LOLA_HOME, else ~/.lola"
@@ -91,7 +91,7 @@ func Home(getenv func(string) string, userHome string) (string, error) {
 }
 
 // Load reads the Python lola's marketplace registrations, its installed.yml and the source.yml
-// of each module it names. All are untrusted (§3): a file that does not parse, or names that are
+// of each module it names. All are untrusted: a file that does not parse, or names that are
 // not single path components, stop the command; unknown keys are warnings. A missing home is an
 // empty state.
 func Load(home, userHome string) (*State, error) {
@@ -440,8 +440,8 @@ func (r *reader) record(n *yaml.Node, at, userHome string) (Record, error) {
 	return rec, nil
 }
 
-// projectProblem says why p cannot be a destination (§3), or "" when it can, and whether that
-// is because p does not exist on this machine (Plan 10 §3.1), as another OS's absolute path
+// projectProblem says why p cannot be a destination, or "" when it can, and whether that
+// is because p does not exist on this machine, as another OS's absolute path
 // never does: it must be an existing directory, absolute and equal to its clean and
 // symlink-free forms, and neither the home directory nor one of its parents.
 func projectProblem(p, userHome string) (string, bool) {

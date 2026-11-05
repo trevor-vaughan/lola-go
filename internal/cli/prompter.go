@@ -7,11 +7,11 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 )
 
-// Prompter asks the install flow's questions (Plan 5c §3, §4): one method per step and one
-// for the review menu; and sync's questions (Plan 6a §3.4): the trust picker and yes/no. The
+// Prompter asks the install flow's questions: one method per step and one
+// for the review menu; and sync's questions: the trust picker and yes/no. The
 // huh adapter draws them inline on stderr; specs inject a scripted one. A method returns
 // ErrAborted when the user cancels. Scope, Modules, Assistants and a Required TidyKeep never
-// answer with nothing picked: the huh adapter refuses that in the form (Plan 10 §4). Other
+// answer with nothing picked: the huh adapter refuses that in the form. Other
 // validation a step needs (one scope, an Other directory that exists) runs in the flow after
 // the method returns, which asks again with Problem set. A method whose step's Nav sets Back
 // returns ErrBack when the user goes back a screen (Esc).
@@ -29,49 +29,48 @@ type Prompter interface {
 	// ConfirmEmpty asks "Install <module> with no components?", default No.
 	ConfirmEmpty(module string, nav Nav) (bool, error)
 	Review(ReviewStep) (string, error)
-	// Trust asks sync's trust question (Plan 6a §7.5): trust all the changes, choose the
+	// Trust asks sync's trust question: trust all the changes, choose the
 	// entries to trust, or cancel, which is ErrAborted (so is choosing nothing).
 	Trust(TrustStep) (engine.TrustAnswer, error)
 	// Confirm asks a yes/no question, default No: sync's removals, and the question that closes
 	// a flow (tidy's, migrate's), whose nav counts the steps answered before it.
 	Confirm(question string, nav Nav) (bool, error)
-	// Where asks where a change goes (spec 2026-10-29 §3.6), or which restore lola trash's review
+	// Where asks where a change goes, or which restore lola trash's review
 	// runs: Title, one row per option and Cancel last, default the first; it answers the index of
 	// the option chosen, ErrAborted for Cancel.
 	Where(WhereStep) (int, error)
 	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
-	// multi-select, nothing preselected (Plan 6b §3.2).
+	// multi-select, nothing preselected.
 	Profiles(ProfileStep) ([]string, error)
 	// Members asks a bundle's members (MembersStep), answering those ticked in option order.
 	Members(MembersStep) ([]string, error)
 	// MarketName asks the name of a marketplace lola market --add adds when the one it has is
-	// another marketplace's, or one no marketplace can have (Plan 6c §3.1), pre-filled with a
+	// another marketplace's, or one no marketplace can have, pre-filled with a
 	// free one.
 	MarketName(MarketNameStep) (string, error)
-	// SSHHosts asks which of the ssh hosts a catalog names lola market --add or --update allows
-	// (spec 2026-10-28 §3): a filterable multi-select, nothing preselected, answering the hosts
-	// ticked; none is an answer.
+	// SSHHosts asks which of the ssh hosts a catalog names lola market --add or --update allows: a
+	// filterable multi-select, nothing preselected, answering the hosts ticked; none is an answer.
 	SSHHosts(SSHHostStep) ([]string, error)
-	// MarketEntry asks which marketplace entry a bare name your cache lacks means (Plan 6c §3.3),
+	// MarketEntry asks which marketplace entry a bare name your cache lacks means,
 	// answering its address.
 	MarketEntry(MarketEntryStep) (string, error)
-	// TidyPick asks which of lola tidy's candidates move to the trash (Plan 6d §3.4): a
+	// TidyPick asks which of lola tidy's candidates move to the trash: a
 	// filterable multi-select, nothing preselected, answering the IDs of the options chosen.
 	TidyPick(TidyPickStep) ([]string, error)
 	// TidyKeep asks which keep-list entries, for the candidates TidyPick left, to add: a
 	// filterable multi-select, nothing preselected, answering the IDs of the options chosen.
 	TidyKeep(TidyKeepStep) ([]string, error)
-	// TrashPick asks lola trash's picker (design 2026-11-03 §3.5): the runs, each followed by its
+	// TrashPick asks lola trash's picker: the runs, each followed by its
 	// files, to tick, then what to do with those ticked, answering the IDs ticked and the action.
 	TrashPick(TrashPickStep) (TrashAnswer, error)
 	// MigrateRoot asks where a root that missing project paths of the Python lola share is on this
-	// machine (Plan 10 §3.1), offering Suggest: an absolute path, or "" to skip them.
+	// machine, offering Suggest: an absolute path, or "" to skip them.
 	MigrateRoot(MigrateRootStep) (string, error)
 	// MigrateTargets asks which assistants install the records of an assistant this machine
-	// lacks (Plan 10 §3.2): a multi-select over Options, all preselected; none skips them.
+	// lacks: a multi-select over Options, all preselected; none skips them.
 	MigrateTargets(MigrateTargetStep) ([]string, error)
-	// Background asks whether the terminal's background is dark, for the pickers' colors (Plan
-	// 10 §4). lola asks once, when neither config.yaml nor the terminal says, and saves the answer.
+	// Background asks whether the terminal's background is dark, for the pickers' colors.
+	// lola asks once, when neither config.yaml nor the terminal says, and saves the answer.
 	Background() (bool, error)
 }
 
@@ -131,7 +130,7 @@ type TidyPickStep struct {
 // TidyKeepStep offers the keep-list entries for the candidates TidyPick did not choose: each
 // option's ID is an escaped literal selector, and its Label the selector and the assistants whose
 // items it keeps, already made safe to print. Required is set when nothing was chosen to move:
-// an empty answer would then do nothing, so the picker refuses it (Plan 10 §4).
+// an empty answer would then do nothing, so the picker refuses it.
 type TidyKeepStep struct {
 	Options  []TidyOption
 	Required bool
@@ -145,9 +144,9 @@ type MarketNameStep struct {
 	Why, Value, Problem string
 }
 
-// SSHHostStep offers the ssh hosts a catalog names that you have not allowed (spec 2026-10-28
-// §3), each with the entries it would admit; nothing is preselected. Strings are raw: the
-// adapter prints them through untrusted.Text.
+// SSHHostStep offers the ssh hosts a catalog names that you have not allowed, each with the entries
+// it would admit; nothing is preselected. Strings are raw: the adapter prints them through
+// untrusted.Text.
 type SSHHostStep struct {
 	Market string
 	Hosts  []SSHHostChoice
@@ -160,14 +159,14 @@ type SSHHostChoice struct {
 }
 
 // ProfileStep offers the profiles a source holds, by name; Invalid counts its files whose names
-// are not valid profile names, never shown (Plan 6b §19 S7).
+// are not valid profile names, never shown.
 type ProfileStep struct {
 	Source  string
 	Names   []string
 	Invalid int
 }
 
-// TrustStep is sync's trust question (Plan 6a §7.5). Changes is the number of changes "Trust
+// TrustStep is sync's trust question. Changes is the number of changes "Trust
 // all" accepts, one per row of the diff, the top-level targets' included. Groups are the entries Choose… offers, one group per kind of change in the
 // diff's order, nothing preselected; with none (the top-level targets are the only change) the
 // question offers only Trust all and Cancel.
@@ -189,14 +188,14 @@ type TrustOption struct {
 	Label  string
 }
 
-// The scope picker's entries (Plan 5c §14), in the order it offers them.
+// The scope picker's entries, in the order it offers them.
 const (
 	ScopeProject = "project"
 	ScopeUser    = "user"
 	ScopeOther   = "other"
 )
 
-// Steps numbers a step's fields across one pass of the install flow (Plan 10 §5): its first
+// Steps numbers a step's fields across one pass of the install flow: its first
 // field is step At of Of. The zero value, which every command but install asks with, numbers
 // nothing.
 type Steps struct{ At, Of int }
@@ -217,8 +216,8 @@ type ScopeStep struct {
 	ProjectRoot string
 	Home        string
 	// ProjectContext and UserContext are what each scope's context line says after its name
-	// (contextFacts), shown in the scope's row so the choice is made with them in view (spec
-	// 2026-10-29 §3.8); "" shows none.
+	// (contextFacts), shown in the scope's row so the choice is made with them in view; "" shows
+	// none.
 	ProjectContext, UserContext string
 	Preselect                   []string
 	Problem                     string
@@ -243,12 +242,11 @@ type ModuleOption struct {
 	Label string
 }
 
-// ModuleStep offers the cached modules, then one group per marketplace with a fetched catalog
-// (Plan 6c §6.5), whose options are named by their addresses (@acme/formatter); with neither, the
-// prompter offers Add a source… and Quit. Browse offers the market groups alone, without Add a
-// source… (lola install @acme). The prompter selects exactly Preselect: nothing on the first run,
-// so an installed module is never picked for the user, and the last answer when the step runs
-// again.
+// ModuleStep offers the cached modules, then one group per marketplace with a fetched catalog,
+// whose options are named by their addresses (@acme/formatter); with neither, the prompter offers
+// Add a source… and Quit. Browse offers the market groups alone, without Add a source… (lola
+// install @acme). The prompter selects exactly Preselect: nothing on the first run, so an installed
+// module is never picked for the user, and the last answer when the step runs again.
 type ModuleStep struct {
 	Options   []ModuleOption
 	Markets   []ModuleGroup
@@ -264,7 +262,7 @@ type ModuleStep struct {
 	None  bool
 }
 
-// MembersStep asks which profiles a bundle combines (spec 2026-10-29 §6.2 --edit --bundle): Title
+// MembersStep asks which profiles a bundle combines: Title
 // names the bundle, Options are the profiles it can name, each Name as its file would write it and
 // Label as the page shows it (a member that names no profile says so), and Preselect its members
 // now; a filterable multi-select, where ticking none is an answer (a bundle of nothing).
@@ -282,7 +280,7 @@ type ModuleGroup struct {
 	Options []ModuleOption
 }
 
-// MarketEntryStep asks which marketplace entry a bare name means (Plan 6c §3.3): Name is the
+// MarketEntryStep asks which marketplace entry a bare name means: Name is the
 // name, which your cache does not hold, and Options the entries your catalogs list under it, one
 // per marketplace, named by their addresses; nothing is preselected.
 type MarketEntryStep struct {
@@ -360,7 +358,7 @@ const (
 	ReviewQuit       = "quit"
 )
 
-// ReviewStep is the install's last step (Plan 10 §5): Summary, what the run will do, already made
+// ReviewStep is the install's last step: Summary, what the run will do, already made
 // safe to print, and Options, the answers it offers, in order: Apply, a Change entry for each step
 // the flags left open, and Quit.
 type ReviewStep struct {

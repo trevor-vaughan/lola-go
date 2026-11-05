@@ -52,7 +52,7 @@ type resolved struct {
 	skipped []string // kind/name of every component the exclusions remove
 }
 
-// resolveComponents is the one resolver (Plan 5c §7): the cached module minus the effective
+// resolveComponents is the one resolver: the cached module minus the effective
 // exclusions, and without rules when they are off. install, sync and check all plan what it
 // returns, so a component excluded after installation is an orphan the planner removes.
 func resolveComponents(m *module.Module, x config.Exclusions, rulesOn bool) resolved {
@@ -139,8 +139,8 @@ func where(sc Scope) (config.Where, error) {
 }
 
 // scopeSection is the selections.yaml section of a scope: user, or the project by its repository
-// key (config.RepoKey), which also matches a section under its path key, else by its path key
-// (spec 2026-11-03 Pick-P2-a). Every read and write of a project's section goes through it; it
+// key (config.RepoKey), which also matches a section under its path key, else by its path key.
+// Every read and write of a project's section goes through it; it
 // asks git once per project in a run (Engine.sections). A clone git cannot read is keyed by its
 // path, never refused: keyNotices says why, once.
 func (e *Engine) scopeSection(sc Scope) (config.Where, error) {
@@ -212,8 +212,8 @@ func (e *Engine) keyNotices(sc Scope) []Notice {
 	return []Notice{{Level: LevelWarn, Text: text}}
 }
 
-// picksAt is the section of selections whose picks apply to a module that from provides at sc
-// (cherry-pick design §4.2): the entry of from when it is a profile layer (profile:<qualified>),
+// picksAt is the section of selections whose picks apply to a module that from provides at sc:
+// the entry of from when it is a profile layer (profile:<qualified>),
 // else selections.yaml's section of sc. from is a layer's or lock.json's name: "" or project.yml for
 // the scope's manifest.
 func (e *Engine) picksAt(sc Scope, from string) (config.Where, error) {
@@ -253,7 +253,7 @@ func originLabel(x config.Exclusions, origin, from string, profiles func() ([]pr
 }
 
 // ignoredSection is the warning that sel's section of sc names module, which from, a profile
-// layer, provides at sc: that profile entry's picks apply instead (cherry-pick design §4.2), so the
+// layer, provides at sc: that profile entry's picks apply instead, so the
 // section is never read for it. It names the profile as layerLabel does among profiles (the
 // profiles sc can use, listed only for a warning), the file to delete the entry from, and, as where
 // module's picks live instead, the edit of the profile's picks (repickRun, with layers and on,
@@ -282,7 +282,7 @@ func (e *Engine) ignoredSection(sel *config.Selections, sc Scope, layers []Layer
 }
 
 // skippedIn names where the picks that leave skipped out (kind/name each, by x) live, as output
-// says it (spec 2026-10-29 S11): "" for none; selections.yaml for a module project.yml provides
+// says it: "" for none; selections.yaml for a module project.yml provides
 // (from, picksAt's, not a profile's); else the profile whose entry holds them, and selections.yaml
 // too where its global skip leaves one out. A profile is named as layerLabel names it among
 // profiles, the profiles the scope can use (visibleOnce).

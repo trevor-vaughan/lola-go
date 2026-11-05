@@ -16,7 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// syncCatalogs are the catalogs a lola sync --update follows (Plan 6c §6.6, ruling R-6c-8): your
+// syncCatalogs are the catalogs a lola sync --update follows: your
 // registrations, the catalog of each marketplace an entry of the run was installed through and
 // that you have from the same source, fetched once this run, and the marketplaces whose fetch
 // failed, which keep their cached catalog.
@@ -29,9 +29,9 @@ type syncCatalogs struct {
 
 // fetchCatalogs fetches again, once each, the catalogs of the marketplaces that the entries of
 // sc's manifest a sync --update of req would update were installed through, when your
-// registration of the name has the source the entry records (Plan 6c §6.6, R-6c-8, R-6c-15), and,
+// registration of the name has the source the entry records, and,
 // at project scope, when the trust record covers the entry before the run: a pulled file you have
-// not trusted triggers no catalog request (ruling of 2026-10-22). The
+// not trusted triggers no catalog request. The
 // manifest is read here only to name the catalogs: the run reads it again under the scope lock,
 // and an entry this read did not see makes no request of its own, though it follows a catalog
 // the run fetched for another entry. Your registrations are read when any entry has a market, so
@@ -45,8 +45,7 @@ func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (
 	if err != nil {
 		return out, none, nil, nil // the scope's load refuses it
 	}
-	// A pulled file you have not trusted makes no request for its entries' catalogs (Plan 6c §6.6,
-	// ruling of 2026-10-22): only entries the trust record covers before the run are followed.
+	// A pulled file you have not trusted makes no request for its entries' catalogs): only entries the trust record covers before the run are followed.
 	var rec *trust.Record
 	if sc.Kind == target.Project {
 		if rec, err = e.Trust.Load(sc.ProjectDir); err != nil {
@@ -70,7 +69,7 @@ func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (
 		return out, none, nil, nil
 	}
 	// A profile the run would read that has a marketplace address refuses it before any catalog is
-	// fetched (Plan 6c §6.7): the scope's own read comes after the fetch. Any other failure to read
+	// fetched: the scope's own read comes after the fetch. Any other failure to read
 	// is left to that read.
 	if led, err := ledger.Load(e.files(sc).ledger); err == nil {
 		if _, err := e.loadStack(sc, nil, led.Profile); err != nil {
@@ -112,12 +111,12 @@ func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (
 }
 
 // follow decides how a sync --update moves ent, an entry of sc's manifest installed through a
-// marketplace, whose recorded source is spec (Plan 6c §6.6): the catalog's entry to follow when
+// marketplace, whose recorded source is spec: the catalog's entry to follow when
 // your marketplace of that name, from the source the entry records, lists it at the same source,
 // path and ref, its commit pin then the new pin (fetchEntry checks it against the ref); otherwise
 // nil, the entry updating as any other, with a notice saying why (an entry not trusted before the
 // run among them, with the sync that follows the catalog next), and, when the catalog moved its ref,
-// the install that takes it there (rulings R-6c-14, R-6c-15).
+// the install that takes it there.
 // A catalog this run did not fetch is never read. req is the run: its dry run, its output flags,
 // and lola update (Installed), whose next run is lola update's.
 func (e *Engine) follow(sc Scope, c *syncCatalogs, ent manifest.Entry, spec source.Spec, req SyncRequest) (*marketPick, *Notice) {
@@ -168,7 +167,7 @@ func (e *Engine) follow(sc Scope, c *syncCatalogs, ent manifest.Entry, spec sour
 	}
 	// The cache holds one module of a name, from one source, path and selection: an install of the
 	// address would be refused while this one is cached, so a move of those is a notice that says
-	// what to do, with no command (ruling of the 6c.2 review, I1).
+	// what to do, with no command.
 	cached := func(why string) *Notice {
 		return &Notice{Level: LevelInfo, Text: "your marketplace " + mkt + " " + why + "; " + name + " updates from its own source (lola caches one " +
 			name + " per machine: to install the catalog's, uninstall it and remove it from your cache first)"}
@@ -192,8 +191,7 @@ func (e *Engine) follow(sc Scope, c *syncCatalogs, ent manifest.Entry, spec sour
 	return &marketPick{addr: market.Address{Market: r.Name, Entry: ent.Name}, reg: *r, entry: en, display: display}, nil
 }
 
-// followPin fetches se's entry as its marketplace's catalog lists it (follow) and stages it (Plan
-// 6c §6.6), through fetchEntry's checks: at the commit the catalog pins, checked against the
+// followPin fetches se's entry as its marketplace's catalog lists it (follow) and stages it, through fetchEntry's checks: at the commit the catalog pins, checked against the
 // entry's ref before anything is fetched, else the ref's head; an archive at the sha256 it lists.
 func (e *Engine) followPin(ctx context.Context, se *syncEntry, run string) error {
 	commit := se.follow.entry.Source.Commit

@@ -19,7 +19,7 @@ about once, before any hook question, on a terminal, and confirmed by `-y` or `-
 
 Two deletions are not removals and are never asked about; both are in the plan (`→ delete …`)
 and in `-n`, and both are deleted, not moved to the trash. A JSON member (an MCP server, or a
-runtime hook entry) that a module's new version no longer ships goes without `-y`, because lola
+runtime hook entry) that a module's new version drops goes without `-y`, because lola
 cannot yet tell a dropped member from one it moved or re-keyed. Files dropped by your own edit of
 `selections.yaml`, or by turning a module's rules off (`rules: false`), go too: the edit is your
 decision (in `project.yml` that field is still a trust change). See [Safety
@@ -42,20 +42,23 @@ Refusals:
   for changes to .lola/project.yml`), hinting `see them: lola sync --project -n` and `then
   accept them: lola sync --project --trust=entries` (the kinds missing: `--trust=profiles` for a
   project profile's changes, `--trust=entries,hooks` when a module's pre-install hook would refuse
-  too). An entry your trust record covers (`--update` of a module you installed, or a covered
-  entry with no pin) is fetched into the run's private staging before the refusal, never into
-  your cache, so the refusal shows its new version's files; an `--update` that finds nothing new
-  needs no trust and is not refused. The files a version read this way no longer ships, as your
-  picks and settings would install it, are listed under `removals:`, and the message adds `and
-  your confirmation to remove the files <module>'s new version drops`. The accept hint carries
-  `-y` only when every removal it would confirm is listed; that is the guarantee. An entry a pull
-  added or changed is never fetched before you trust it, and a source can fail to serve one (a
-  notice says why, with its hints), so while one is installed and unread the hint has no `-y`,
-  not even the `-y` you gave, and the message says `until it reads <module>, the removals listed
-  may change, so -y waits until the next run lists them`; that run fetches it, lists every
-  removal and hints `-y`. A `-y` you type yourself on a hinted run confirms that run's removals,
-  listed or not.
-  A failure of lola's own state (your cache, the staging directory) stops the run instead.
+  too).
+  - An entry your trust record covers (`--update` of a module you installed, or a covered
+    entry with no pin) is fetched into the run's private staging before the refusal, never into
+    your cache, so the refusal shows its new version's files; an `--update` that finds nothing new
+    needs no trust and is not refused.
+  - The files a version read this way no longer ships, as your picks and settings would install
+    it, are listed under `removals:`, and the message adds `and your confirmation to remove the
+    files <module>'s new version drops`.
+  - The accept hint carries `-y` only when every removal it would confirm is listed; that is the
+    guarantee.
+  - An entry a pull added or changed is fetched only after you trust it, and a source can fail
+    to serve one (a notice says why, with its hints), so while one is installed and unread the
+    hint has no `-y`, not even the `-y` you gave, and the message says `until it reads <module>,
+    the removals listed may change, so -y waits until the next run lists them`; that run fetches
+    it, lists every removal and hints `-y`.
+  - A `-y` you type yourself on a hinted run confirms that run's removals, listed or not.
+  - A failure of lola's own state (your cache, the staging directory) stops the run instead.
 - Removals off a terminal: `lola sync needs your confirmation to remove my-module, and there is no
   terminal to ask on`, hinting `see them: lola sync --project -n` and `then confirm them: lola
   sync --project -y`. With the trust it needs given, the run first reads every version it would

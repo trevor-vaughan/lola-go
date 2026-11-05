@@ -13,21 +13,21 @@ type Paths struct {
 
 	Config         string   // ConfigHome/lola/config.yaml: settings (default_scope)
 	Selections     string   // ConfigHome/lola/selections.yaml: components the user chose not to install
-	Pins           string   // ConfigHome/lola/pins.yaml: the versions installed from your profiles at user scope and your remote profiles' records, which lola writes (spec 2026-10-29 §3.4)
-	UserProfiles   string   // ConfigHome/lola/profiles: the user's profiles and default.yml (Plan 6b §4.1)
+	Pins           string   // ConfigHome/lola/pins.yaml: the versions installed from your profiles at user scope and your remote profiles' records, which lola writes
+	UserProfiles   string   // ConfigHome/lola/profiles: the user's profiles and default.yml
 	UserLedger     string   // StateHome/lola/lock.json
 	UserLock       string   // StateHome/lola/.lock
 	Locks          string   // StateHome/lola/locks: one lock file per project, outside the project's .lola/
 	SelectionsLock string   // StateHome/lola/locks/selections.lock: taken before any scope lock
 	PinsLock       string   // StateHome/lola/locks/pins.lock: around pins.yaml's read-check-write, taken last
-	Keep           string   // ConfigHome/lola/keep.yaml: what lola tidy never offers (Plan 6d §5)
-	KeepLock       string   // StateHome/lola/locks/keep.lock: around keep.yaml's read-modify-write, after the scope lock (Plan 6d)
-	ProfilesLock   string   // StateHome/lola/locks/profiles.lock: shared to read remote profiles, exclusive to write them; taken first (Plan 6b §10)
-	Markets        string   // ConfigHome/lola/markets.yaml: your marketplaces (Plan 6c §5)
+	Keep           string   // ConfigHome/lola/keep.yaml: what lola tidy never offers
+	KeepLock       string   // StateHome/lola/locks/keep.lock: around keep.yaml's read-modify-write, after the scope lock
+	ProfilesLock   string   // StateHome/lola/locks/profiles.lock: shared to read remote profiles, exclusive to write them; taken first
+	Markets        string   // ConfigHome/lola/markets.yaml: your marketplaces
 	MarketCache    string   // CacheHome/lola/markets: one directory per marketplace, holding its catalog and source.json
-	MarketsLock    string   // StateHome/lola/locks/markets.lock: shared to read marketplaces, exclusive to write them; after the profiles lock (Plan 6c §5)
-	Consent        string   // StateHome/lola/consent.json: install hook consent (§9.1)
-	Trust          string   // StateHome/lola/trust.json: per project, the project.yml view the user trusted (Plan 6a §7)
+	MarketsLock    string   // StateHome/lola/locks/markets.lock: shared to read marketplaces, exclusive to write them; after the profiles lock
+	Consent        string   // StateHome/lola/consent.json: install hook consent
+	Trust          string   // StateHome/lola/trust.json: per project, the project.yml view the user trusted
 	TrustLock      string   // StateHome/lola/locks/trust.lock: held around trust.json's read-modify-write, after every scope lock
 	Trash          string   // StateHome/lola/trash: what lola migrate and lola tidy back up or move, one directory per run
 	Store          string   // CacheHome/lola/modules: the cache
@@ -35,7 +35,7 @@ type Paths struct {
 	Staging        string   // CacheHome/lola/.staging: same filesystem as Store, so renames never cross devices
 	Tmp            string   // CacheHome/lola/tmp: downloads
 	UserModules    string   // DataHome/lola/user-modules: module copies at user scope
-	RemoteProfiles string   // DataHome/lola/profiles: one directory per remote profile, holding profile.yml and source.json (Plan 6b §4.1, D3)
+	RemoteProfiles string   // DataHome/lola/profiles: one directory per remote profile, holding profile.yml and source.json
 	PluginData     string   // DataHome/lola/plugin-data
 	Probes         string   // CacheHome/lola/probes.json: assistant versions, per binary build
 	Search         []string // absolute PATH entries, where lola looks for assistants' binaries

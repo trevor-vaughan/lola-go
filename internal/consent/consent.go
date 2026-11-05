@@ -1,4 +1,4 @@
-// Package consent records the install hooks the user agreed to run (§9.1): one entry per
+// Package consent records the install hooks the user agreed to run: one entry per
 // module, keyed by the digest of its hooks, so an unchanged hook never asks again and a
 // changed one always does.
 package consent
@@ -25,7 +25,7 @@ type file struct {
 	Modules map[string]string `json:"modules"` // module name → digest of the hooks consented to
 }
 
-// ScriptKey is the key a project's install script of event is consented under (Plan 9 §5.4):
+// ScriptKey is the key a project's install script of event is consented under:
 // per project, by the sha256 of its resolved directory, and per event, so consenting in one
 // project never covers another's script.
 func ScriptKey(projectDir, event string) string {

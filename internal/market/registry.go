@@ -19,10 +19,10 @@ import (
 // RegistryVersion is the markets.yaml schema version this binary reads and writes.
 const RegistryVersion = 1
 
-// registryTemplate starts a markets.yaml lola creates (Plan 6c §5).
+// registryTemplate starts a markets.yaml lola creates.
 const registryTemplate = "# lola marketplaces. Safe to edit by hand.\nversion: 1\n"
 
-// Registration is one marketplace of markets.yaml (Plan 6c §5): its name, the source you added
+// Registration is one marketplace of markets.yaml: its name, the source you added
 // it from, the ref, and Path, the catalog file lola found there at --add ("" for a source that
 // is itself a catalog file). Line is its line in the file, for messages.
 type Registration struct {
@@ -51,7 +51,7 @@ func (r Registry) Find(name string) *Registration {
 }
 
 // ParseRegistry reads b, the markets.yaml at file (named in messages), which you may have
-// edited by hand (Plan 6c §5): one YAML document with yamldoc.Decode's guards, version first, then
+// edited by hand: one YAML document with yamldoc.Decode's guards, version first, then
 // known keys only; each marketplace's name follows ValidateName and is given once; its source,
 // ref and path pass source.Recorded.Check; a folder is an absolute path. Every refusal names the
 // file and line.
@@ -250,7 +250,7 @@ func encode(d *yaml.Node) ([]byte, error) {
 // PinVersion is the source.json schema version this binary reads and writes.
 const PinVersion = 1
 
-// Pin is a cached catalog's source.json (Plan 6c §5): the source, ref and path it was fetched
+// Pin is a cached catalog's source.json: the source, ref and path it was fetched
 // from (the registration's), File, the catalog file read, a slash path in the source (its URL's
 // last element for a catalog file), the commit a git source resolved to, the digest of the
 // cached catalog's bytes, when it was fetched, Absent, the directories the catalog's relative

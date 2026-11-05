@@ -14,7 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("template refusals (Plan 7 §11)", func() {
+var _ = Describe("template refusals", func() {
 	var tmp, proj, mod string
 	BeforeEach(func() {
 		var err error

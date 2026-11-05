@@ -15,7 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("installing from marketplaces on and off a terminal (Plan 6c §3.3, §6.5)", func() {
+var _ = Describe("installing from marketplaces on and off a terminal", func() {
 	var tmp, proj, acme string
 	BeforeEach(func() {
 		var err error

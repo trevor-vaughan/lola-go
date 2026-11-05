@@ -19,8 +19,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// R-9-9: a live run's scratch is held by an exclusive lock on the file of its name plus .lock.
-var _ = Describe("scratch locks (R-9-9)", func() {
+// A live run's scratch is held by an exclusive lock on the file of its name plus .lock.
+var _ = Describe("scratch locks", func() {
 	var e *Engine
 	var tmp string
 	BeforeEach(func() {
@@ -144,7 +144,7 @@ var _ = Describe("scratch locks (R-9-9)", func() {
 		Expect(dir).To(BeADirectory())
 	})
 
-	DescribeTable("sweepRuns removes a stale run directory only when its lock is free (A28)",
+	DescribeTable("sweepRuns removes a stale run directory only when its lock is free",
 		func(held, gone bool) {
 			dir, done, err := e.runDir()
 			Expect(err).NotTo(HaveOccurred())
@@ -203,7 +203,7 @@ var _ = Describe("scratch locks (R-9-9)", func() {
 	})
 })
 
-var _ = Describe("reviewOf a version an install's staged run holds (cherry-pick design §7)", func() {
+var _ = Describe("reviewOf a version an install's staged run holds", func() {
 	var e *Engine
 	BeforeEach(func() {
 		testenv.Isolate()

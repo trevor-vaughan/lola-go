@@ -11,7 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// tidySelect decides what moves (§3.1, §6.3): what the names or --all select, else what Choose
+// tidySelect decides what moves: what the names or --all select, else what Choose
 // answers; then the review, also for a Choose answer that only keeps. It returns nil when
 // nothing moves, and refuses with the result's candidates listed when it needs an answer it
 // cannot ask for.
@@ -42,7 +42,7 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 	case req.All:
 		chosen = slices.Clone(scan.Candidates)
 	case len(scan.Candidates) == 0:
-		return nil, TidyChoice{}, nil // an empty scan (§9)
+		return nil, TidyChoice{}, nil // an empty scan
 	case req.Dry:
 		chosen = slices.Clone(scan.Candidates)
 	case len(req.Keep) > 0 || len(req.Unkeep) > 0:
@@ -77,7 +77,7 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 		choice.Move[i] = c.ID
 	}
 	if req.Dry {
-		apply := req // -y only as given: a dry run's hint never answers a question for you (R-8)
+		apply := req // -y only as given: a dry run's hint never answers a question for you
 		apply.Dry = false
 		switch {
 		case !hasSelection(req) && (len(req.Keep) > 0 || len(req.Unkeep) > 0):
@@ -134,7 +134,7 @@ func CountItems(n int) string {
 }
 
 // offered is the candidates choice moves, refusing a choice that names a unit the scan did not
-// offer, or keeps a selector that is not a candidate's escaped literal selector (R-6d-N3).
+// offer, or keeps a selector that is not a candidate's escaped literal selector.
 func offered(scan TidyScan, choice TidyChoice) ([]TidyUnit, error) {
 	var out []TidyUnit
 	for _, id := range choice.Move {
@@ -156,7 +156,7 @@ func offered(scan TidyScan, choice TidyChoice) ([]TidyUnit, error) {
 }
 
 // Literal is the selector lola writes for u: its kind and its name with * ? [ \ escaped, so it
-// matches u's name and no other (§6.3).
+// matches u's name and no other.
 func (u TidyUnit) Literal() config.Pattern {
 	var b strings.Builder
 	for _, r := range u.Name {
@@ -172,7 +172,7 @@ func (u TidyUnit) Literal() config.Pattern {
 // against the scan: chosen's literal selectors with the run's flags and keep as --keep, -t
 // narrowed to chosen's targets when that is needed; "" when no such command selects exactly
 // chosen, or when it would name a selector both to move and to keep, which a run refuses
-// (§3.1 rule 3, §6.3). hidden reports a command that exists but that untrusted.Text would alter,
+// hidden reports a command that exists but that untrusted.Text would alter,
 // which tidyCommand returns as "".
 func (e *Engine) tidyEquivalent(req TidyRequest, scan TidyScan, chosen []TidyUnit, keep []config.Pattern) (cmd string, hidden bool) {
 	var sels []config.Pattern
@@ -223,7 +223,7 @@ func (e *Engine) tidyEquivalent(req TidyRequest, scan TidyScan, chosen []TidyUni
 }
 
 // tidyUnmatched refuses sel, a name that matches no candidate, saying exactly why for each unit
-// it does match (§11.3), with a hint for each reason a run can lift.
+// it does match, with a hint for each reason a run can lift.
 func (e *Engine) tidyUnmatched(req TidyRequest, s *tidyScanner, sel config.Pattern) error {
 	var why, hints []string
 	hint := func(h string) {
@@ -275,7 +275,7 @@ func (e *Engine) tidyUnmatched(req TidyRequest, s *tidyScanner, sel config.Patte
 	return errs.WithHints(errors.New(strings.Join(why, "; ")), tidyHints(hints...)...)
 }
 
-// keptWhy says which keep entry keeps p and what else it keeps (R-6d-S7).
+// keptWhy says which keep entry keeps p and what else it keeps.
 func (e *Engine) keptWhy(req TidyRequest, s *tidyScanner, p *tidyItem) string {
 	from := "keep.yaml, " + tidyWhere(req.Scope)
 	if !slices.Contains(s.keepHeld, p.keptBy) {

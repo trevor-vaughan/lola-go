@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Limits of the mention scan (cherry-pick design §5.1).
+// Limits of the mention scan.
 const (
 	mentionMinName = 4        // bytes; a shorter name is not searched
 	mentionFileMax = 1 << 20  // bytes; a larger file is skipped
@@ -27,8 +27,8 @@ const (
 	mentionBudget  = 16 << 20 // bytes read per module; the text that would pass it, and every later one, is skipped
 )
 
-// Mentions maps a component of a module to the module's other components its text names
-// (cherry-pick design §5.1), each list sorted by kind/name; a component that names none has no
+// Mentions maps a component of a module to the module's other components its text names,
+// each list sorted by kind/name; a component that names none has no
 // key. A mention is information: never a dependency.
 type Mentions map[Component][]Component
 
@@ -230,7 +230,7 @@ func (s *mentionScan) text(c Component, b []byte) {
 }
 
 // ComponentMentions is a component (kind/name) and what it mentions, sorted, as lola info shows
-// them (cherry-pick design §5.2).
+// them.
 type ComponentMentions struct {
 	Component string   `json:"component"`
 	Mentions  []string `json:"mentions"`
@@ -273,7 +273,7 @@ type mentionModule struct {
 }
 
 // mentionGaps lists, in comps' order, each component x installs (a rule only when rulesOn) that
-// mentions components x leaves out, with those (cherry-pick design §5.2). A rule is never left
+// mentions components x leaves out, with those. A rule is never left
 // out while rules are off: no --unskip installs it then.
 func mentionGaps(comps []Component, ms Mentions, x config.Exclusions, rulesOn bool) []mentionGap {
 	ruled := func(c Component) bool { return rulesOn || c.Kind != config.KindRule }
@@ -363,7 +363,7 @@ func selectionFlags(t editTarget, edits, global []SelectionEdit, dry bool) []str
 }
 
 // mentionNotice names, in one info notice, what gaps, module name's at sc, leave out, with the
-// install that adds them (cherry-pick design §5.2): lola install (or the run's lola profile <name>
+// install that adds them: lola install (or the run's lola profile <name>
 // --edit, installRun) with the run's --profile, sc's flags, words (mentionArgs),
 // --with-mentions and flags (selectionFlags), keeping the run's -t, --rules or --no-rules, -n and
 // output flags. The mentioners are in picker order, the components left out sorted by kind/name;

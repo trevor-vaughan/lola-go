@@ -8,7 +8,7 @@ import (
 // codeIncludeLimit is the refusal of a render that includes more partials than Limits.Reads.
 const codeIncludeLimit = "template-include-limit"
 
-// Partials holds a module's partials (Plan 7 §3.3): content-relative path, _partials/<name>.liquid
+// Partials holds a module's partials: content-relative path, _partials/<name>.liquid
 // or _partials/<name>.<target>.liquid, to source.
 type Partials struct {
 	Files map[string]string
@@ -28,12 +28,12 @@ func (p Partials) resolve(name, target string) (string, bool) {
 	return "", false
 }
 
-// store is the TemplateStore of one render (Plan 7 §3.3). liquid asks for an include of name in
+// store is the TemplateStore of one render. liquid asks for an include of name in
 // a template whose path is file as filepath.Join(filepath.Dir(file), name), and compiles the
 // partial under that path, so a nested include asks in the same directory: served maps each such
 // path to the partial file it stands for, and missing each such path of a partial name that has
 // no file for target to that name. Every read counts, and the one past limit refuses; a read of a
-// missing partial refuses with template-include-missing (Plan 7 §5.7.5). No error wraps
+// missing partial refuses with template-include-missing. No error wraps
 // fs.ErrNotExist, so liquid never falls back to its own cache.
 type store struct {
 	p       Partials

@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
+var _ = Describe("scope for every command", func() {
 	var tmp, proj, bare, mod string
 	BeforeEach(func() {
 		var err error
@@ -189,7 +189,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(r.err).To(HavePrefix(projectContext(proj)), "the line follows the pick")
 	})
 
-	It("no hint turns a flag given as false into one given as true, or carries consent; P2-3: -y stays", func() {
+	It("no hint turns a flag given as false into one given as true, or carries consent; -y stays", func() {
 		GinkgoT().Chdir(bare)
 		for _, run := range [][]string{
 			{"install", mod, "--yes=false", "--json=false", "--no-rules=false"},
@@ -296,7 +296,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(inHome).NotTo(BeAnExistingFile())
 		Expect(os.WriteFile(manPath, was, 0o644)).To(Succeed())
 
-		By("a user scope that fails before the command's one receipt applies neither scope (Plan 9 CR3)")
+		By("a user scope that fails before the command's one receipt applies neither scope")
 		def := filepath.Join(tmp, "config", "lola", "profiles", "default.yml")
 		Expect(os.WriteFile(def, []byte("modules: [\n"), 0o600)).To(Succeed())
 		r = lola("sync", "--scope", "both", "-C", proj, "--json")

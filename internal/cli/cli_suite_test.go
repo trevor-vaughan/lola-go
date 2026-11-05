@@ -58,7 +58,7 @@ func projectWriteContextJSON(dir string) string {
 }
 
 // withoutContext is a --json document as JSON without its context, once checkJSON passed the
-// context: profile and writes_to there are null when unset (spec 2026-10-29 §3.8), where the rest
+// context: profile and writes_to there are null when unset, where the rest
 // of a document holds no null.
 func withoutContext(doc string) string {
 	GinkgoHelper()

@@ -361,10 +361,10 @@ func (p *planner) conflict(a ledger.Artifact, reason string, forceable bool) {
 	p.conflicts = append(p.conflicts, Conflict{Target: a.Target, Path: a.Path, Key: a.Key, Value: shown(a), Reason: reason, Forceable: forceable})
 }
 
-// want plans one desired intent, following the conflict matrix of spec §9. The previous
+// want plans one desired intent, following the conflict matrix. The previous
 // artifact may come from another replanned owner: ownership then moves without a conflict. A
 // destination claimed twice in one operation is a conflict, also when one module claims it
-// twice (Plan 5b design §3.2).
+// twice.
 func (p *planner) want(owner string, in Intent) error {
 	art, err := artifact(in)
 	if err != nil {

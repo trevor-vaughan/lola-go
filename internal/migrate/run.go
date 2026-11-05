@@ -25,10 +25,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Options configure a migration (design §7). The engine options carry --dry-run, --force and
+// Options configure a migration. The engine options carry --dry-run, --force and
 // hook consent; --force also moves and replaces paths git tracks. KeepPython is --keep-python:
 // install (still replacing with backup) but move nothing else to the trash. Roots and Targets
-// are --map-root and --map-target with the answers to their questions (Plan 10 §3.1, §3.2):
+// are --map-root and --map-target with the answers to their questions:
 // NewPlan looks for a missing project path below a root's Old at the same place below its New,
 // and installs the records of an assistant this machine lacks for the targets Targets maps it to.
 type Options struct {
@@ -56,7 +56,7 @@ const (
 	StatusPlanned   = "planned"
 	StatusMigrated  = "migrated"
 	StatusUnchanged = "unchanged" // nothing was installed, replaced or moved
-	StatusNothing   = "nothing"   // every record here is left as it is (Plan 10 §3.3)
+	StatusNothing   = "nothing"   // every record here is left as it is
 	StatusFailed    = "failed"
 )
 
@@ -79,13 +79,13 @@ type Result struct {
 	Markets      []Market      `json:"markets"`
 	Home         HomeResult    `json:"home"`
 	Warnings     []string      `json:"warnings"`
-	// Trusted is what the run's --trust covered in every destination, each item once (Plan 9 §8):
+	// Trusted is what the run's --trust covered in every destination, each item once:
 	// under -n, what it would cover.
 	Trusted []engine.Consent `json:"trusted"`
-	// Summary counts the Python lola's records by what became of them (Plan 10 §3.3).
+	// Summary counts the Python lola's records by what became of them.
 	Summary Summary `json:"summary"`
 	// Remap is the run again with the --map-root and --map-target flags that map what it leaves
-	// for want of this machine's paths or assistants (Plan 10 §3.1, §3.2), "" when no flag would.
+	// for want of this machine's paths or assistants, "" when no flag would.
 	// The CLI sets it: only it knows the run's flags.
 	Remap string `json:"remap"`
 }
@@ -189,7 +189,7 @@ type runner struct {
 	opts  Options
 	trash *trash.Trash
 	// holds names the MCP entries left in place that reference a path (a module copy, the
-	// Python home): such a path stays (§12.5).
+	// Python home): such a path stays.
 	holds map[string][]string
 	// written is what the destinations' installs recorded of what --trust covers, each item once.
 	written []engine.Consent
@@ -197,13 +197,13 @@ type runner struct {
 	blind string
 }
 
-// Migrate previews the migration p plans and, unless opts.DryRun, carries it out (design §6).
-// The same plan serves a preview and the run it confirms: its installs are pinned to the
-// versions it resolved. Every destination is planned first, then every hook consent is asked,
-// so a refusal (a conflict outside the replaceable paths, a hook without consent) or a
-// cancelled prompt writes nothing anywhere. Then each destination is migrated in turn: a failure stops that destination before
-// it writes and the others go on; the Python home moves last, only when everything migrated.
-// The error lists what failed; the result says what happened everywhere.
+// Migrate previews the migration p plans and, unless opts.DryRun, carries it out. The same plan
+// serves a preview and the run it confirms: its installs are pinned to the versions it resolved.
+// Every destination is planned first, then every hook consent is asked, so a refusal (a conflict
+// outside the replaceable paths, a hook without consent) or a cancelled prompt writes nothing
+// anywhere. Then each destination is migrated in turn: a failure stops that destination before it
+// writes and the others go on; the Python home moves last, only when everything migrated. The error
+// lists what failed; the result says what happened everywhere.
 func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Result, error) {
 	st := p.st
 	r := &runner{ctx: ctx, e: e, st: st, opts: opts, holds: map[string][]string{}}
@@ -245,7 +245,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	if err = r.consent(p); err != nil {
 		return nil, err
 	}
-	// From here a failure carries what the destinations recorded (R-9-16), [] before any did.
+	// From here a failure carries what the destinations recorded, [] before any did.
 	r.written, rep.Trusted = []engine.Consent{}, []engine.Consent{}
 	// One run spans every destination; it migrates the Python lola of the user, so it is the user's.
 	if r.trash, err = trash.OpenTrash(e.Paths.Trash, e.Now(), trash.RunRecord{Command: "lola migrate", Scope: ScopeUser}); err != nil {
@@ -301,10 +301,10 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 
 // consent runs every destination's install up to its receipt, so the install and runtime hook
 // prompts are all answered before anything is written, and collects what --trust covers in every
-// destination, with the yes answers, for one receipt (Plan 9 §3.4, A23), shown once all of them
+// destination, with the yes answers, for one receipt, shown once all of them
 // were asked; its No is engine.ErrDeclined. Nothing is recorded here: each destination's install
 // records its own grants just before it writes, when each is one the receipt showed by key and
-// digest, else it fails with engine.ErrTrustChanged, writing nothing (R-9-16, S-M4). The installs
+// digest, else it fails with engine.ErrTrustChanged, writing nothing. The installs
 // that follow ask nothing: what was declined here stays declined.
 func (r *runner) consent(p *Plan) error {
 	batch := &engine.TrustBatch{}
@@ -508,9 +508,9 @@ func installItem(in Install, status string) InstallItem {
 		Ref: untrusted.Text(in.Ref, untrusted.MaxName), Path: untrusted.Text(in.Path, untrusted.MaxName), Targets: in.Targets, Status: status}
 }
 
-// installSpec is d's install: every module on its records' targets, with the recorded paths
-// that may be replaced, written to the scope's base, never the profile on (spec 2026-10-29
-// §6.1). A manifest without targets gets the records' targets.
+// installSpec is d's install: every module on its records' targets, with the recorded paths that
+// may be replaced, written to the scope's base, never the profile on. A manifest without targets
+// gets the records' targets.
 func (r *runner) installSpec(d *Destination, led *ledger.Ledger, opts engine.Options) (engine.InstallSpec, error) {
 	man, err := r.e.Manifest(d.Scope)
 	if err != nil {
@@ -587,8 +587,8 @@ func (r *runner) preview(d *Destination, res *engine.InstallResult, led *ledger.
 }
 
 // collectHolds finds, across every destination, the MCP entries the Python lola added that
-// the installs leave in place, and records the module copies and Python home they reference
-// (§12.5). The Python lola points a user-scope server at the module copy in whatever
+// the installs leave in place, and records the module copies and Python home they reference.
+// The Python lola points a user-scope server at the module copy in whatever
 // directory it ran in, so every destination's recorded copies are checked against every
 // entry, each on its own: an entry that references one copy holds none of its siblings.
 func (r *runner) collectHolds(p *Plan, results []*engine.InstallResult, leds []*ledger.Ledger) error {
@@ -723,7 +723,7 @@ func (r *runner) migrate(d *Destination, dr *DestResult) error {
 	return errors.Join(errList...)
 }
 
-// summarize counts p's records by what rep says became of them (Plan 10 §3.3).
+// summarize counts p's records by what rep says became of them.
 func summarize(p *Plan, rep *Result) Summary {
 	s := Summary{Left: len(p.Unmappable)}
 	for i, d := range p.Destinations {
@@ -900,7 +900,7 @@ func (r *runner) move(dest, base, orig string) (string, error) {
 }
 
 // leftovers removes, from a replaced directory, every file lola-go does not own whose content
-// matches the backup (§12.3, §12.8); a file that differs is kept and listed. Directories it
+// matches the backup; a file that differs is kept and listed. Directories it
 // leaves empty go, the replaced directory included. With --keep-python it removes nothing and
 // lists every such file as kept. The directory and its backup are read through os.Root, so
 // nothing outside them is touched.
@@ -1139,7 +1139,7 @@ func tracked(ctx context.Context, p string) string {
 }
 
 // decide works out every recorded path's fate at d, given the install's computed result (nil
-// when nothing is installed) and the ledger before it (§6, §12): owned paths and guarded ones
+// when nothing is installed) and the ledger before it: owned paths and guarded ones
 // stay, except that a guarded path the install writes with --force is left to its forced
 // steps (forcedSteps), which are backed up and reported; paths the install writes are
 // replaced; the rest move, unless --keep-python. MCP
@@ -1294,7 +1294,7 @@ func covers(rec Recorded, tgt, path, key string) bool {
 	return path == rec.Rel && key == ""
 }
 
-// leftMCP is an MCP entry the Python lola added that lola-go does not write (§12.4).
+// leftMCP is an MCP entry the Python lola added that lola-go does not write.
 func leftMCP(rec Recorded, why string) Item {
 	hint := "it keeps working; remove the entry by hand when you no longer need it"
 	if why != "" {
@@ -1341,7 +1341,7 @@ func (r *runner) held(p string) string {
 	return "referenced by " + strings.Join(slices.Compact(by), ", ")
 }
 
-// home decides the Python home's fate (§6, §12.5, §12.6): it moves to the trash last, only
+// home decides the Python home's fate: it moves to the trash last, only
 // when every record migrated, every destination did, and it holds nothing but what the Python
 // lola writes there.
 func (r *runner) home(p *Plan, rep *Result) HomeResult {
@@ -1359,7 +1359,7 @@ func (r *runner) home(p *Plan, rep *Result) HomeResult {
 	}
 	unmappable := len(p.Unmappable)
 	// A marketplace not registered stays where its Python registration is, as an unmappable
-	// record does (Plan 6c §6.9), but a disabled one: lola has no disabled state, and its listing
+	// record does, but a disabled one: lola has no disabled state, and its listing
 	// names the command that registers it.
 	unregistered := 0
 	for _, m := range rep.Markets {

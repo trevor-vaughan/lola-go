@@ -16,7 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// tidyMove is one run's moves into the trash, which opens only when something moves (§6.5).
+// tidyMove is one run's moves into the trash, which opens only when something moves.
 type tidyMove struct {
 	s    *tidyScanner
 	res  *TidyResult
@@ -50,7 +50,7 @@ func (m *tidyMove) skip(u TidyUnit, code, reason string) {
 	m.res.Notices = append(m.res.Notices, Notice{Level: LevelWarn, Text: u.Kind + "/" + u.Name + " (" + u.Rel + ") " + reason})
 }
 
-// apply moves chosen into the trash, checking each unit again first (§6.4): its destination
+// apply moves chosen into the trash, checking each unit again first: its destination
 // resolves where it did, with no destination-level lock; the entry is the one the scan found;
 // no unit-level lock applies now. The first failed move stops the run; it is returned.
 func (s *tidyScanner) apply(chosen []TidyUnit, res *TidyResult) error {

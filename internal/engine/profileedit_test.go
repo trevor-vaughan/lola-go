@@ -490,7 +490,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.DryRun).To(BeTrue())
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "would be saved to bundle idle; it is not on at user scope"}),
-				"-n never says it saved (ruling P5)")
+				"-n never says it saved")
 			Expect(os.ReadFile(idle)).To(Equal([]byte("version: 1\nbundle: []\n")), "-n writes nothing")
 			res, err = e.EditBundle(ctx, engine.BundleEditRequest{Scope: user, Name: "idle", Members: []string{"go"}, Target: edit(user, "idle")})
 			Expect(err).NotTo(HaveOccurred())
@@ -559,7 +559,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(installed(sc)).To(Equal(map[string]string{"r": "profile:project:review"}))
 		})
 
-		It("refuses no name, saying to name the bundle, hinting the bundle on and a bundle of them, which run as printed (ruling P4)", func() {
+		It("refuses no name, saying to name the bundle, hinting the bundle on and a bundle of them, which run as printed", func() {
 			writeProfile("go", "version: 1\n")
 			_, err := e.EditBundle(ctx, engine.BundleEditRequest{Scope: user, Members: []string{}, Target: edit(user, ""), Options: engine.Options{Display: []string{"--plain"}}})
 			Expect(err).To(MatchError("--bundle sets the members of the bundle --edit names, and none was named: name the bundle to edit, as in " +
@@ -591,7 +591,7 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(os.ReadFile(work)).To(Equal([]byte("version: 1\nbundle: []\n")))
 		})
 
-		It("applies a bundle of yours in each scope it reaches, asking first what each removes (ruling P1)", func() {
+		It("applies a bundle of yours in each scope it reaches, asking first what each removes", func() {
 			kit := mod("kit")
 			writeProfile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: "+kit+"}\n")
 			work := writeProfile("work", "version: 1\nbundle: []\n")

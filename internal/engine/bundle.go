@@ -14,10 +14,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
-// maxNesting is how deep bundles nest (spec 2026-10-29 §3.3): a bundle on, and seven inside it.
+// maxNesting is how deep bundles nest: a bundle on, and seven inside it.
 const maxNesting = 8
 
-// bundleRef is a bundle a member layer comes through (spec 2026-10-29 §3.3, §3.10): its qualified
+// bundleRef is a bundle a member layer comes through: its qualified
 // name, its trust part when it is the project's (its name; "" for one of yours), and its member
 // list as its file writes it, which a project bundle's trust records.
 type bundleRef struct {
@@ -31,8 +31,8 @@ type listing struct {
 	path, typed string
 }
 
-// expansion is one active profile's expansion into layers (spec 2026-10-29 §3.3), within one
-// loadStack: load and remote read a profile file once each (Plan 6b §19 S6), seen holds the
+// expansion is one active profile's expansion into layers, within one
+// loadStack: load and remote read a profile file once each, seen holds the
 // profiles placed and the bundles expanded so far, noted the profiles a notice has said appear
 // twice, placed and bundles count the profiles placed and the bundles expanded, and notices what
 // the expansion noted.
@@ -168,8 +168,7 @@ func (x *expansion) leaveOut(typed string, via []bundleRef) {
 func firstName(via []bundleRef) string { return via[0].name }
 
 // place marks l, a profile layer, as reached through via, and counts it: its Bundle is the bundle
-// on, and a remote member that a project bundle names is trust content of that bundle (spec
-// 2026-10-29 §3.10): its key is the bundle's, and each entry it gives is recorded with the remote
+// on, and a remote member that a project bundle names is trust content of that bundle: its key is the bundle's, and each entry it gives is recorded with the remote
 // profile's name, source and pin (Layer.member).
 func (x *expansion) place(l *Layer, via []bundleRef) {
 	x.placed++
@@ -185,8 +184,7 @@ func (x *expansion) place(l *Layer, via []bundleRef) {
 	}
 }
 
-// member is the profile the k-th name of b, the bundle read from i, names at x's scope (spec
-// 2026-10-29 §3.3). In a bundle of yours a bare name is your profile, else a remote one (local beats
+// member is the profile the k-th name of b, the bundle read from i, names at x's scope. In a bundle of yours a bare name is your profile, else a remote one (local beats
 // remote), never the project's: project:<name> names that, at its project only; in a project's
 // bundle a bare name is the project's profile, else a remote one, and user: was refused at load. A
 // remote profile this machine lacks and pins.yaml records is left out (ok false), with a warning.
@@ -258,7 +256,7 @@ func (x *expansion) member(i profile.Info, b *profile.Profile, k int) (_ profile
 var errPassedOver = errors.New("member passed over")
 
 // unbundleRun is the run that takes the k-th of members, the members of i, a bundle of yours sc can
-// use (infos), as its file writes them, out of it (spec 2026-10-29 §6.2 --edit --bundle), keeping
+// use (infos), as its file writes them, out of it, keeping
 // again.
 func (e *Engine) unbundleRun(sc Scope, infos []profile.Info, i profile.Info, members []string, k int, again []string) string {
 	rest := slices.Delete(slices.Clone(members), k, k+1)
@@ -307,8 +305,8 @@ func bundleLabel(infos []profile.Info, q string) string {
 	return strings.TrimPrefix(layerLabel(infos, ledger.FromProfile(q)), "profile ")
 }
 
-// members is the expansion of i, a profile sc can use (infos), read for names and shapes alone
-// (spec 2026-10-29 §3.8, §8.8): the context line and the templates' profiles list name a bundle's
+// members is the expansion of i, a profile sc can use (infos), read for names and shapes alone:
+// the context line and the templates' profiles list name a bundle's
 // members without loading their entries. Its layers carry each member's name, file and the
 // bundles it comes through; a remote member is not read. x.bundle says i is a bundle, x.left the
 // remote members this machine lacks that pins.yaml records.

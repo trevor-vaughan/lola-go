@@ -12,8 +12,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// A source's refusal hints the user's own command, with the user's flags (spec 2026-11-03 §3.3).
-var _ = Describe("hints of a refused source keep your command (P2-1, P2-2)", func() {
+// A source's refusal hints the user's own command, with the user's flags.
+var _ = Describe("hints of a refused source keep your command", func() {
 	var tmp, proj, web string
 	// serve publishes a bare clone of a repository holding files as o/r on a local server, and
 	// points git's github.com at it, so a github.com URL reaches the fixture.
@@ -47,7 +47,7 @@ var _ = Describe("hints of a refused source keep your command (P2-1, P2-2)", fun
 		web = "https://github.com/o/r/tree/main/skills/"
 	})
 
-	It("Src-P2-1-a: info on a web URL says it is a web page and hints lola info at the repository, keeping its flags", func() {
+	It("info on a web URL says it is a web page and hints lola info at the repository, keeping its flags", func() {
 		r := lola("info", web, "--plain", "-t", "claude-code")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HavePrefix("error: " + web + " is a github.com web page, not a repository URL; "))
@@ -55,7 +55,7 @@ var _ = Describe("hints of a refused source keep your command (P2-1, P2-2)", fun
 		Expect(hintOf(r)).To(Equal("lola info https://github.com/o/r --plain --target claude-code --ref main"))
 	})
 
-	It("Src-P2-1-b: install on a web URL keeps the verb, the scope, -t and -y, and the hint installs", func() {
+	It("install on a web URL keeps the verb, the scope, -t and -y, and the hint installs", func() {
 		r := lola("install", web, "-C", proj, "-t", "claude-code", "-y", "--plain")
 		Expect(r.code).To(Equal(1))
 		hint := hintOf(r)
@@ -64,7 +64,7 @@ var _ = Describe("hints of a refused source keep your command (P2-1, P2-2)", fun
 		Expect(filepath.Join(proj, ".claude/skills/a/SKILL.md")).To(BeARegularFile())
 	})
 
-	It("Src-P2-1-c: a web URL on a directory of skills hints the repository root and offers --path skills/<name> in the message, never --path skills", func() {
+	It("a web URL on a directory of skills hints the repository root and offers --path skills/<name> in the message, never --path skills", func() {
 		r := lola("info", web, "--plain")
 		Expect(r.err).To(ContainSubstring("to take one skill, use --path skills/<name>"))
 		Expect(hintOf(r)).NotTo(ContainSubstring("--path"))
@@ -73,7 +73,7 @@ var _ = Describe("hints of a refused source keep your command (P2-1, P2-2)", fun
 		Expect(hintOf(r)).To(Equal("lola info https://github.com/o/r --plain --ref main --path docs/x"))
 	})
 
-	It("Src-P2-2: --path <dir-of-skills> hints the install itself with your flags, and that install works", func() {
+	It("--path <dir-of-skills> hints the install itself with your flags, and that install works", func() {
 		url := "https://github.com/o/r"
 		r := lola("install", url, "--path", "skills", "-C", proj, "-t", "claude-code", "--plain")
 		Expect(r.code).To(Equal(1))
@@ -85,8 +85,8 @@ var _ = Describe("hints of a refused source keep your command (P2-1, P2-2)", fun
 	})
 })
 
-var _ = Describe("a dry run's hints name the run that does the work (P2-6)", func() {
-	It("Src-P2-6: sync -n with a runtime-hook module hints --trust=runtime-hooks and a real --force run, never --dry-run --force", func() {
+var _ = Describe("a dry run's hints name the run that does the work", func() {
+	It("sync -n with a runtime-hook module hints --trust=runtime-hooks and a real --force run, never --dry-run --force", func() {
 		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 		proj, plugin := filepath.Join(tmp, "proj"), filepath.Join(tmp, "deploy")
@@ -108,8 +108,8 @@ var _ = Describe("a dry run's hints name the run that does the work (P2-6)", fun
 	})
 })
 
-var _ = Describe("a dry run's consent hint is the real run (P2-6)", func() {
-	It("Src-P2-6-consent: install -n with runtime hooks hints the real install with --trust=runtime-hooks, never --dry-run, and it installs them", func() {
+var _ = Describe("a dry run's consent hint is the real run", func() {
+	It("install -n with runtime hooks hints the real install with --trust=runtime-hooks, never --dry-run, and it installs them", func() {
 		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 		proj, plugin := filepath.Join(tmp, "proj"), filepath.Join(tmp, "deploy")
@@ -131,7 +131,7 @@ var _ = Describe("a dry run's consent hint is the real run (P2-6)", func() {
 	})
 })
 
-var _ = Describe("a forceable skip planned under -n hints a real run (P2-6)", func() {
+var _ = Describe("a forceable skip planned under -n hints a real run", func() {
 	var tmp, proj, kit string
 	BeforeEach(func() {
 		var err error
@@ -154,13 +154,13 @@ var _ = Describe("a forceable skip planned under -n hints a real run (P2-6)", fu
 		return line
 	}
 
-	It("Src-P2-6-install: install -n hints the real install, and it renders", func() {
+	It("install -n hints the real install, and it renders", func() {
 		hint := anyway(lola("install", kit, "-C", proj, "-t", "claude-code", "-n", "-v"))
 		Expect(runHint(hint).code).To(Equal(0))
 		Expect(filepath.Join(proj, ".claude/agents/critic.md")).To(BeARegularFile())
 	})
 
-	It("Src-P2-6-split: profile --split -n hints the real split, and it renders", func() {
+	It("profile --split -n hints the real split, and it renders", func() {
 		writeTree(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "profiles"), map[string]string{"base1.yml": "version: 1\n",
 			"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 		sw := lola("profile", "mine", "--switch", "--user", "-y", "--trust=all")
@@ -171,7 +171,7 @@ var _ = Describe("a forceable skip planned under -n hints a real run (P2-6)", fu
 		Expect(runHint(hint).code).To(Equal(0))
 	})
 
-	It("Src-P2-6-edit: profile --edit <module> -n hints the real edit, and it renders", func() {
+	It("profile --edit <module> -n hints the real edit, and it renders", func() {
 		hint := anyway(lola("profile", "--edit", kit, "-C", proj, "-t", "claude-code", "-n", "-v"))
 		Expect(runHint(hint).code).To(Equal(0))
 		Expect(filepath.Join(proj, ".claude/agents/critic.md")).To(BeARegularFile())

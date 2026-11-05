@@ -32,20 +32,19 @@ type installFlags struct {
 	trust                                                                engine.TrustKinds
 	at                                                                   []string          // lola install's --at, as given
 	pinned                                                               map[string]string // --at parsed (parseAt)
-	// edit, when not nil, says the run is lola profile <edit> --edit <module>... (spec 2026-10-29
-	// §6.2): edit holds the profile's name as typed ([] for the one edits go to), which every hint
-	// repeats before the modules; create is its --new; scopes, where it applies, which the run
-	// resolved without asking (engine.EditScopes); catalog, the names your catalogs list
-	// (engine.CatalogNames).
+	// edit, when not nil, says the run is lola profile <edit> --edit <module>...: edit holds the
+	// profile's name as typed ([] for the one edits go to), which every hint repeats before the
+	// modules; create is its --new; scopes, where it applies, which the run resolved without asking
+	// (engine.EditScopes); catalog, the names your catalogs list (engine.CatalogNames).
 	edit    []string
 	create  bool
 	scopes  []engine.ScopeChoice
 	catalog []string
 	// catalogPartial says lola could not read every catalog (engine.TargetRequest.CatalogPartial).
 	catalogPartial bool
-	// keep, when not nil, says the run is lola profile <name> --edit's module page (spec 2026-10-29
-	// §6.2; cherry-pick design §4.3): the profile's modules, preselected, a module unticked there
-	// being removed from it once asked; keepLabel names the profile ("profile go-review").
+	// keep, when not nil, says the run is lola profile <name> --edit's module page: the profile's
+	// modules, preselected, a module unticked there being removed from it once asked; keepLabel
+	// names the profile ("profile go-review").
 	keep      []string
 	keepLabel string
 	// keepAdd is, for each of keep, the lola cache add run of its entry's source
@@ -56,9 +55,9 @@ type installFlags struct {
 // addedSource is a source added to the cache during the run (Add a source…).
 type addedSource struct{ source, ref string }
 
-// installFlow is one run of lola install (Plan 5c §3, §4). It fills every answer the flags
+// installFlow is one run of lola install. It fills every answer the flags
 // leave open, asking the Prompter on a terminal, ends with the review whenever lola chose
-// something the user did not type (Plan 10 §5), and turns the answers into one
+// something the user did not type, and turns the answers into one
 // engine.InstallSpec.
 type installFlow struct {
 	a     *app
@@ -77,10 +76,10 @@ type installFlow struct {
 	prevScopes                  []string             // the scope picker's last answer, preselected when Change scope asks again
 	picker                      *scopePicker
 	choices                     *engine.Choices
-	staged                      *engine.StagedRun   // what the run fetched, out of the cache until Apply commits it (cherry-pick design §7)
+	staged                      *engine.StagedRun   // what the run fetched, out of the cache until Apply commits it
 	pins                        []engine.VersionRef // the versions the module arguments resolved to, kept when Change scope asks again
 	cachePins                   []engine.VersionRef // the versions of the modules picked from the cache, kept the same way
-	marketPicks                 []string            // the marketplace entries picked, by address, in pick order (Plan 6c §6.5)
+	marketPicks                 []string            // the marketplace entries picked, by address, in pick order
 	marketPins                  []engine.VersionRef // the versions they resolved to, kept when Change scope asks again
 	marketNames                 map[string]string   // the module name each picked address resolved to → that address
 	shownAddrs                  []string            // addresses added with Add a source…, shown in their group though cached
@@ -187,7 +186,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if err := fl.expandMarkets(); err != nil {
 		return err
 	}
-	// What the run fetches stays out of the cache until Apply (cherry-pick design §7). The run is
+	// What the run fetches stays out of the cache until Apply. The run is
 	// closed on every path, which drops whatever Apply did not commit.
 	if fl.staged, err = eng.StageInstall(); err != nil {
 		return err
@@ -207,7 +206,7 @@ func (fl *installFlow) hintArgs(args []string) []string {
 }
 
 // expandMarkets replaces each argument that means an entry of your marketplaces with that
-// entry's address (Plan 6c §3.3, §6.5): @<market> alone, on a terminal, by the entries picked
+// entry's address: @<market> alone, on a terminal, by the entries picked
 // from its group (off one the engine refuses it, naming its first entries); and a bare name your
 // catalogs list that your cache lacks and that is no source here (engine.MarketMeaning), by the
 // entry picked on a terminal, never silently; off one the run is refused, every such name at
@@ -264,7 +263,7 @@ func (fl *installFlow) expandMarkets() error {
 const maxBareHints = 10
 
 // bareNames refuses, off a terminal, a run whose bare names listed maps to the marketplace
-// entries each may mean (Plan 6c §3.3): one hint per combination of them, each the run with every
+// entries each may mean: one hint per combination of them, each the run with every
 // such name replaced by an address and every flag kept but --path, so each hint runs; with more
 // combinations than maxBareHints, none, and the message says what to type.
 func (fl *installFlow) bareNames(listed map[string][]engine.MarketOffer) error {
@@ -319,7 +318,7 @@ func (fl *installFlow) bareNames(listed map[string][]engine.MarketOffer) error {
 }
 
 // browse asks for the entries of the marketplace name to install, its group alone (lola
-// install @acme, Plan 6c §6.5), every entry it offers; @name itself when there is no such group,
+// install @acme), every entry it offers; @name itself when there is no such group,
 // which the engine refuses with what there is.
 func (fl *installFlow) browse(name string) ([]string, error) {
 	groups, _, err := fl.eng.MarketGroups(outputFlags(fl.cmd))
@@ -337,7 +336,7 @@ func (fl *installFlow) browse(name string) ([]string, error) {
 	return ans.Names, nil
 }
 
-// offerGroup is g as a group of the module picker (Plan 6c §6.5), titled "@acme — <description>",
+// offerGroup is g as a group of the module picker, titled "@acme — <description>",
 // with the entries show keeps.
 func offerGroup(g engine.MarketGroup, show func(engine.MarketOffer) bool) ModuleGroup {
 	mg := ModuleGroup{Title: "@" + g.Name}
@@ -373,7 +372,7 @@ func offerLabel(name string, o engine.MarketOffer) string {
 
 // missingArgument is install's refusal off a terminal without an argument; when the scope the
 // install would use lists modules lock.json does not record, it hints the sync that installs
-// them (Plan 6a §10.2).
+// them.
 func (fl *installFlow) missingArgument() error {
 	err := fl.guide.args(1)(fl.cmd, fl.args)
 	req, rerr := fl.a.scopeRequest(fl.cwd, false)
@@ -413,7 +412,7 @@ func (a *app) prompter(cmd *cobra.Command) Prompter {
 func (fl *installFlow) run() error {
 	var spec engine.InstallSpec
 	for {
-		fl.done = 0 // each pass numbers the steps it asks (Plan 10 §5)
+		fl.done = 0 // each pass numbers the steps it asks
 		if stage, err := fl.answer(); err != nil {
 			if errors.Is(err, ErrBack) && fl.back(stage) {
 				continue
@@ -471,7 +470,7 @@ func (fl *installFlow) run() error {
 			}
 			return nil
 		}
-		// The review shows the findings a dry run of exactly this install reports (Plan 10 §5):
+		// The review shows the findings a dry run of exactly this install reports:
 		// it asks nothing and writes nothing.
 		dry := spec
 		dry.Options.DryRun = true
@@ -571,8 +570,8 @@ func (fl *installFlow) dropped() []string {
 	return out
 }
 
-// askDrop asks once whether to remove gone, the modules unticked, from the profile (cherry-pick
-// design §4.3), after showing what the removal does (dropPlan) unless the review did; -y and
+// askDrop asks once whether to remove gone, the modules unticked, from the profile after showing
+// what the removal does (dropPlan) unless the review did; -y and
 // --force answer yes, and No keeps them (none is removed).
 func (fl *installFlow) askDrop(gone []string) ([]string, error) {
 	if len(gone) == 0 {
@@ -838,7 +837,7 @@ func (fl *installFlow) back(stage string) bool {
 
 // bySource is the run with the address of renamed replaced by its source, every flag kept but
 // --ref and --path, which the catalog's take the place of: what installs the module under its own
-// name (Plan 6c §6.3). When the source takes --ref or --path, which apply to a single source,
+// name. When the source takes --ref or --path, which apply to a single source,
 // and the run has other arguments, it installs the renamed module alone. ok is false when the
 // address is no argument of the run (a picker's pick), and the engine's hint stands.
 func (fl *installFlow) bySource(renamed *engine.RenamedEntryError) (string, bool) {
@@ -858,7 +857,7 @@ func (fl *installFlow) bySource(renamed *engine.RenamedEntryError) (string, bool
 	return strings.TrimSpace(runWithout(fl.cmd, fl.hintArgs(args), "ref", "path") + " " + errs.ShellJoin(tail)), true
 }
 
-// reviews reports whether the run ends with the review (Plan 10 §5): on a terminal, whenever lola
+// reviews reports whether the run ends with the review: on a terminal, whenever lola
 // chose something the user did not type, a picker's answer or an assistant taken as the only one
 // installed.
 func (fl *installFlow) reviews() bool { return fl.ask && (len(fl.shown) > 0 || fl.auto) }
@@ -955,8 +954,8 @@ func destLabel(sc engine.Scope) string {
 	return sc.Kind.String() + " (" + untrusted.Text(sc.ProjectDir, untrusted.MaxName) + ")"
 }
 
-// ensureScopes resolves the scopes (§5.1), asking on a terminal when no flag gives them, then
-// prints their context lines (spec 2026-10-29 §3.8).
+// ensureScopes resolves the scopes, asking on a terminal when no flag gives them, then
+// prints their context lines.
 func (fl *installFlow) ensureScopes() error {
 	if fl.scopes != nil {
 		return nil
@@ -1005,8 +1004,7 @@ func (fl *installFlow) ensureScopes() error {
 }
 
 // coach prints, once per scope and before the module picker, how many modules the scope's
-// manifest lists that lock.json does not record, and the sync that installs them (Plan 6a
-// §10.2).
+// manifest lists that lock.json does not record, and the sync that installs them.
 func (fl *installFlow) coach() error {
 	if !fl.ask || len(fl.args) > 0 {
 		return nil
@@ -1032,7 +1030,7 @@ func (fl *installFlow) ensureChoices() error {
 	}
 	req := engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests(), DryRun: fl.f.dry,
 		Display: outputFlags(fl.cmd), Run: fl.staged, Target: fl.target()}
-	if fl.f.edit != nil { // lola profile --edit asks which file it writes before any page (spec 2026-10-29 S2)
+	if fl.f.edit != nil { // lola profile --edit asks which file it writes before any page
 		req.AskWhere = fl.where
 	}
 	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), req)
@@ -1197,7 +1195,7 @@ func moduleFields(step ModuleStep) int {
 }
 
 // pickMarkets makes pins the versions of the modules picked from the cache and addrs the
-// marketplace entries picked (Plan 6c §6.5): when addrs changed, the pickers' choices are computed
+// marketplace entries picked: when addrs changed, the pickers' choices are computed
 // again with them, which fetches each as the flow's Add a source… does, so the component picker
 // lists what they install. A pick that cannot be resolved or fetched leaves every pick as it was,
 // listed again; when even that fails, the choices stay nil, and the caller stops.
@@ -1234,10 +1232,10 @@ func (fl *installFlow) offers(addr string) bool {
 	return false
 }
 
-// marketGroups labels each marketplace with a fetched catalog as a group of the module picker
-// (Plan 6c §6.5): "@acme — <description>", each entry "name version — description [tags]
-// (host)". An entry the cache holds from the same source is offered in the cache's group
-// instead, unless it was picked here or added with Add a source….
+// marketGroups labels each marketplace with a fetched catalog as a group of the module picker:
+// "@acme — <description>", each entry "name version — description [tags] (host)". An entry the
+// cache holds from the same source is offered in the cache's group instead, unless it was picked
+// here or added with Add a source….
 func (fl *installFlow) marketGroups() []ModuleGroup {
 	var out []ModuleGroup
 	for _, g := range fl.choices.Markets {
@@ -1304,14 +1302,14 @@ func (fl *installFlow) moduleOptions() []ModuleOption {
 	return out
 }
 
-// ensureAssistants decides each scope's assistants (§4.3): -t, else the targets the scope's
+// ensureAssistants decides each scope's assistants: -t, else the targets the scope's
 // manifest fixes; off a terminal, those set up here (TargetChoice.Here); on one, the targets with
 // no binary (agents) set up here when no assistant is installed, the only assistant installed
 // unless it is not set up here and agents is, else the picker (once, for every scope whose targets
 // are open), which offers agents after the assistants, only where it is set up. On a
 // terminal, top-level targets the trust record does not cover fix nothing: the scope is open,
-// and the picker never preselects them (Plan 6a §10.1). It keeps why each scope's assistants were
-// chosen, which the review says (Plan 10 §5).
+// and the picker never preselects them. It keeps why each scope's assistants were
+// chosen, which the review says.
 func (fl *installFlow) ensureAssistants() error {
 	if fl.targets != nil {
 		return nil
@@ -1424,7 +1422,7 @@ func (fl *installFlow) preselected(m *engine.ModuleChoice, key string) []string 
 	return out
 }
 
-// ensureComponents asks for each module's components (§4.4, §14), one page per module, or one
+// ensureComponents asks for each module's components, one page per module, or one
 // per destination when the destinations' preselections differ; a page for one of several
 // destinations names it. Not asked under --skip, --only or --unskip, or off a terminal. A
 // module with one component and no exclusion, or with only rules while rules are off, needs no
@@ -1660,7 +1658,7 @@ func (fl *installFlow) pickEdits(key string) []engine.SelectionEdit {
 }
 
 // flagScript is the script --pre-install or --post-install names, given, made absolute against the
-// directory lola runs in (Plan 9 §5.1, A1); none for "".
+// directory lola runs in; none for "".
 func (fl *installFlow) flagScript(given string) engine.FlagScript {
 	if given == "" || filepath.IsAbs(given) {
 		return engine.FlagScript{Given: given, Path: given}
@@ -1669,10 +1667,10 @@ func (fl *installFlow) flagScript(given string) engine.FlagScript {
 }
 
 // targetOf is the file the install of m writes at dests, as a page title starts with it: "profile
-// go › ", "default (base) › ", "project.yml › " (spec 2026-10-29 S2, §8.9); "" when the
+// go › ", "default (base) › ", "project.yml › "; "" when the
 // destinations' differ. lola profile --edit and lola install --profile decide the file before the
 // page: --edit asked which file it writes with the choices (ensureChoices), --profile names it,
-// and an inherited m asks the inherited-edit question here (§3.6); each override answered is
+// and an inherited m asks the inherited-edit question here; each override answered is
 // recorded in fl.overrides. A plain lola install names only a file no later question can change:
 // "" while a remote profile or a bundle is on, or for m inherited without --override.
 func (fl *installFlow) targetOf(m *engine.ModuleChoice, dests []engine.ScopeChoice) (string, error) {
@@ -1714,7 +1712,7 @@ func (fl *installFlow) targetOf(m *engine.ModuleChoice, dests []engine.ScopeChoi
 	return label + " › ", nil
 }
 
-// askWhere is the run's AskWhere (spec 2026-10-29 §3.6): when p, the run's prompter, is on a
+// askWhere is the run's AskWhere: when p, the run's prompter, is on a
 // terminal, and not under --json, the where-picker, each question asked once per run (the review's
 // dry run and the apply ask alike), each answer recorded by destination and module in byModule
 // when it is not nil; nil otherwise, so the engine refuses with the flag forms.
@@ -1744,7 +1742,7 @@ func (a *app) askWhere(p Prompter, byModule map[whereKey]engine.WhereChoice) fun
 	}
 }
 
-// target is the run's TargetRequest (spec 2026-10-29 §3.5): --profile and --override, the run
+// target is the run's TargetRequest: --profile and --override, the run
 // without them as each hint's base, and the run at user scope for --profile default in a project;
 // for lola profile --edit, editTarget's.
 func (fl *installFlow) target() engine.TargetRequest {

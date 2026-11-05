@@ -1096,7 +1096,7 @@ var _ = Describe("Engine", func() {
 			Expect(probeFindings(res)).To(ConsistOf(HaveField("Code", "probe/unknown-version")))
 		})
 
-		It("P2-7: says why a probe failed, from its sanitised, one-line, capped stderr", func() {
+		It("says why a probe failed, from its sanitised, one-line, capped stderr", func() {
 			assistant("claude", "printf 'boom\\033[31m\\nsecond line\\n' >&2\nexit 1\n")
 			res, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
 			Expect(err).NotTo(HaveOccurred())
@@ -1490,7 +1490,7 @@ var _ = Describe("Engine", func() {
 			hooks("{pre-install: hooks/pre.sh, post-install: hooks/post.sh}", map[string]string{"hooks/pre.sh": script, "hooks/post.sh": script})
 		})
 
-		It("runs pre-install before anything is written and post-install after, per target, in the module copy, with the §9.1 environment", func() {
+		It("runs pre-install before anything is written and post-install after, per target, in the module copy, with the hook environment", func() {
 			res, err := install(engine.Options{Targets: claude.Targets, Ask: ask(true)}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(Equal([]string{
@@ -1912,7 +1912,7 @@ var _ = Describe("Engine", func() {
 		})
 
 		It("a failed sync leaves the project as it was", func() {
-			// The install form of §14 spec 24: a failing pre-install hook, and (at user scope, where
+			// An install: a failing pre-install hook, and (at user scope, where
 			// the manifest may be a link into another directory than the ledger) a manifest write
 			// that fails inside plan.Apply after the files and the ledger were written.
 			if os.Geteuid() == 0 {

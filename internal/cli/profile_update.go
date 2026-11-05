@@ -18,14 +18,14 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// profileUpdate runs lola profile <name>... --update, or --update --all (Plan 6b §3.2, §6.5, §19
-// P21): it asks no scope (§19 P20); each profile that changed is shown, paged, and asked about on
-// its own, or accepted by --trust off a terminal, which the engine checks before any network
-// contact; a No keeps that profile and goes on, Ctrl+C stops the run keeping what it updated. Then
-// a sync of the modules the updates move in each scope they apply in (every known scope, or the
-// one a scope flag names), in order, with sync's own questions and answers (-y, --trust),
-// stopping at the first that fails or is declined, as lola sync --scope both does. A profile that
-// failed makes the run fail once the others are applied.
+// profileUpdate runs lola profile <name>... --update, or --update --all: it asks no scope; each
+// profile that changed is shown, paged, and asked about on its own, or accepted by --trust off a
+// terminal, which the engine checks before any network contact; a No keeps that profile and goes
+// on, Ctrl+C stops the run keeping what it updated. Then a sync of the modules the updates move in
+// each scope they apply in (every known scope, or the one a scope flag names), in order, with
+// sync's own questions and answers (-y, --trust), stopping at the first that fails or is declined,
+// as lola sync --scope both does. A profile that failed makes the run fail once the others are
+// applied.
 func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []string, all bool, f syncFlags) error {
 	// The scope flags first: a hint of the names' refusal must name scopes that work.
 	given, err := a.flagScope(cmd, eng, args, "")
@@ -41,9 +41,9 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 		flags = append(flags, "-y")
 	}
 	// Without a scope flag, --trust answered only the profiles' consent: a scope's own trust
-	// question, its entries and profiles, is asked, never answered by it (ruling R-6b3c-7; off a
+	// question, its entries and profiles, is asked, never answered by it (off a
 	// terminal the engine refused before any network contact when the found project had changes to
-	// trust). Its other kinds answer each scope's sync (Plan 9 §3.2), and the syncs a hint names
+	// trust). Its other kinds answer each scope's sync, and the syncs a hint names
 	// keep them.
 	scoped := f
 	if len(given) == 0 {
@@ -78,7 +78,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 			return p.Confirm("Update "+rps[0].Profile+"?", Nav{})
 		}
 	}
-	// With --trust the command shows one receipt (Plan 9 R-9-5, CR3): the update stages the
+	// With --trust the command shows one receipt: the update stages the
 	// profiles it keeps, each scope's sync runs up to its receipt against them, and only the yes to
 	// the receipt of all of them writes the profiles, records the grants and applies each scope.
 	batch := f.trust != 0 && !f.dry
@@ -111,10 +111,10 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 		passes, failed, err = a.collectSyncs(cmd, eng, scopes, applies, nil, scoped, f.trust, req.Batch.Items, runWithout(cmd, args))
 		aborted := errors.Is(err, ErrAborted) || cancelled(cmd.Context(), err)
 		if failed >= 0 && aborted {
-			return &abortedError{"aborted; nothing was updated."} // a Cancel, Ctrl+C or a No to the removals (M1)
+			return &abortedError{"aborted; nothing was updated."} // a Cancel, Ctrl+C or a No to the removals
 		}
 		if failed >= 0 {
-			// A scope's sync refused before the receipt (R-9-15): the update is kept, after the
+			// A scope's sync refused before the receipt: the update is kept, after the
 			// receipt of its own items, and that sync refuses again below with the hints that apply
 			// it later.
 			passes, err = nil, nil
@@ -243,14 +243,14 @@ func applyLater(eng *engine.Engine, scopes []engine.UpdateScope, flags []string)
 	return out
 }
 
-// updateNamesRefusal refuses the names of an --update the run cannot take (Plan 6b §19 P21): names
+// updateNamesRefusal refuses the names of an --update the run cannot take: names
 // with --all; neither, listing your remote profiles with both forms; and a name given twice (go
 // and remote:go are one). Each hint is the run, flags kept (runWithout), but one that names
-// profiles you did not name drops the answers: --trust and -y (ruling R-6b3c-8).
+// profiles you did not name drops the answers: --trust and -y.
 func updateNamesRefusal(cmd *cobra.Command, eng *engine.Engine, args []string, all bool) error {
 	switch {
 	case all && len(args) > 0:
-		// A hint for more profiles than were named answers no question for them (ruling R-6b3c-8).
+		// A hint for more profiles than were named answers no question for them.
 		return errs.WithHints(errors.New("--all updates every remote profile you have, and takes no names"),
 			"update every one: "+runWithout(cmd, nil, "trust", "yes"),
 			"or only those named: "+runWithout(cmd, args, "all"))
@@ -321,7 +321,7 @@ func printUpdateResult(w io.Writer, s style, res *engine.ProfileUpdateResult) {
 }
 
 // updateStopped is the end of an update stopped at a question (Ctrl+C) or by a lock it could not
-// take again (Plan 6b §19 P21): the report of each profile handled so far, then what it updated,
+// take again: the report of each profile handled so far, then what it updated,
 // kept and not applied, with the lola sync of each scope that applies it (keeping the run's hook
 // flags and -y). Ctrl+C alone, with no profile failed, is an abort; a failed profile, or any
 // other error, Ctrl+C's companion included, is the run's error, with its hints and those
@@ -391,7 +391,7 @@ func (a *app) updateStopped(cmd *cobra.Command, eng *engine.Engine, stopped *eng
 }
 
 // updateNotApplied is the end of updates kept but not applied in scope u, whose sync failed or
-// was declined with err, before the scopes in rest were reached (Plan 6b §19 P20): it says so,
+// was declined with err, before the scopes in rest were reached: it says so,
 // with the lola sync that applies them later in u and in each of rest that they move something in
 // (keeping the run's --trust for a sync and -y, and display, its output flags), but for a conflict in u, which that sync would meet again:
 // u's is then the sync with --force, without the run's answers, when --force overrides every
@@ -425,9 +425,9 @@ func updateNotApplied(eng *engine.Engine, doc profileUpdateDoc, u engine.UpdateS
 			err = fmt.Errorf("%s; %w", failed.Error(), err)
 		}
 	}
-	// A conflict refuses the same sync again (ruling R-6cux-4 drops the run's answers from a
-	// --force run): u's sync is hinted with --force when it overrides every conflict, else not at
-	// all, the conflicts saying what to remove.
+	// A conflict refuses the same sync again (a --force run drops the run's answers): u's sync is
+	// hinted with --force when it overrides every conflict, else not at all, the conflicts saying
+	// what to remove.
 	var hints []string
 	if ce, ok := errors.AsType[*plan.ConflictError](err); ok {
 		syncs = syncs[1:]
@@ -443,7 +443,7 @@ func updateNotApplied(eng *engine.Engine, doc profileUpdateDoc, u engine.UpdateS
 	return &updateError{err: errs.WithHints(err, hints...), doc: doc}
 }
 
-// updateError is the error of an update run that did not finish as asked (Plan 6b §19 P20, P21):
+// updateError is the error of an update run that did not finish as asked:
 // profiles that failed, a scope not applied, a stop. Its --json document is the run's (doc:
 // remote_profiles, updates, notices, dry_run, and the scopes done), beside the fields of the
 // error it wraps, if any (a sync refused for want of answers carries the changes it needs them
@@ -457,7 +457,7 @@ func (e *updateError) Error() string { return e.err.Error() }
 func (e *updateError) Unwrap() error { return e.err }
 
 // JSONFields carries the run's document beside error and hints, and trusted: the profiles' grants
-// and what each scope's sync recorded, the failed one's included (R-9-16).
+// and what each scope's sync recorded, the failed one's included.
 func (e *updateError) JSONFields() map[string]any {
 	fields := map[string]any{}
 	if f, ok := errors.AsType[jsonFielder](e.err); ok {

@@ -22,7 +22,7 @@ import (
 )
 
 // syncAborted is a sync the user cancelled at a question: exit 0. The cache may already hold
-// content of entries the user trusted, so "nothing changed" would be untrue (Plan 6a §3.4).
+// content of entries the user trusted, so "nothing changed" would be untrue.
 func syncAborted(sc engine.Scope) error {
 	return &abortedError{"aborted; " + unchanged(sc) + " was not changed."}
 }
@@ -35,7 +35,7 @@ func unchanged(sc engine.Scope) string {
 	return "the project"
 }
 
-// removalsDeclined is a No to a sync's removals (Plan 6a §9.3 step 9): nothing was applied, but
+// removalsDeclined is a No to a sync's removals: nothing was applied, but
 // the trust the user accepted before was recorded, which the message says, with what the next
 // run (the sync, or the activation, repeated) asks about again and the sync that installs what was trusted,
 // each command carrying sc's flag.
@@ -72,16 +72,15 @@ type syncFlags struct {
 	atBy                            map[engine.Scope]map[string]string // with several scopes, each one's --at: its modules' alone
 	pass                            *syncPass                          // the scope's part of a command that syncs several behind one receipt
 	// alone says the run is this one scope's, as the user asked it, so a hint repeating it keeps
-	// -y; a pass of several scopes, or an apply another command runs, keeps none (ruling R-8).
+	// -y; a pass of several scopes, or an apply another command runs, keeps none.
 	alone bool
 }
 
-// syncPass is one scope's part of a command that syncs several scopes behind one receipt (Plan 9
-// R-9-5, CR3). Collecting, the scope runs up to its receipt: what --trust covers, and the terminal's
-// yes answers to hooks, go to batch, and the trust and removal answers are kept. Applying, after
-// the command's one receipt, it asks nothing: it replays those answers and records its own grants
-// just before its own apply, refused (again is the run to repeat) when they are not batch's by key
-// and digest (R-9-16).
+// syncPass is one scope's part of a command that syncs several scopes behind one receipt.
+// Collecting, the scope runs up to its receipt: what --trust covers, and the terminal's yes answers
+// to hooks, go to batch, and the trust and removal answers are kept. Applying, after the command's
+// one receipt, it asks nothing: it replays those answers and records its own grants just before its
+// own apply, refused (again is the run to repeat) when they are not batch's by key and digest.
 type syncPass struct {
 	collect  bool
 	batch    *engine.TrustBatch
@@ -94,8 +93,9 @@ type syncPass struct {
 // up to its receipt (syncPass), then shows one receipt, for given (the command's --trust), of what
 // it covers in all of them and extra, the command's own items (an update's profiles); its No is
 // ErrAborted and applies no scope. After its yes the passes returned apply each scope in turn,
-// each recording its own grants (R-9-16). again is the command a changed apply hints. A scope that fails before its receipt returns its
-// error and its index, nothing written or recorded; failed is -1 otherwise.
+// each recording its own grants. again is the command a changed apply hints. A scope that fails
+// before its receipt returns its error and its index, nothing written or recorded; failed is -1
+// otherwise.
 func (a *app) collectSyncs(cmd *cobra.Command, eng *engine.Engine, scopes []engine.Scope, applies [][]string, prof *engine.ProfileChange,
 	f syncFlags, given engine.TrustKinds, extra []engine.Consent, again string) (_ []*syncPass, failed int, _ error) {
 	passes := make([]*syncPass, len(scopes))
@@ -128,7 +128,7 @@ func (a *app) collectSyncs(cmd *cobra.Command, eng *engine.Engine, scopes []engi
 }
 
 // written is the union of what the runs of a command behind one receipt recorded: done, the
-// results of those that applied, and err's, the run that failed after its grants (R-9-16); [] for
+// results of those that applied, and err's, the run that failed after its grants; [] for
 // none.
 func written(done []*engine.SyncResult, err error) []engine.Consent {
 	out := []engine.Consent{}
@@ -193,7 +193,7 @@ func (e *syncedScopesError) Error() string {
 func (e *syncedScopesError) Unwrap() error { return e.err }
 
 // JSONFields carries the synced scopes beside the fields of err's own document, if any, and
-// trusted: what the synced scopes and the failed one recorded (R-9-16).
+// trusted: what the synced scopes and the failed one recorded.
 func (e *syncedScopesError) JSONFields() map[string]any {
 	fields := map[string]any{}
 	if f, ok := errors.AsType[jsonFielder](e.err); ok {
@@ -205,7 +205,7 @@ func (e *syncedScopesError) JSONFields() map[string]any {
 
 // updateFailedError is a lola update that applied what it could and left the modules whose
 // fetch failed as installed: under --json its document is the run's, beside error and hints,
-// the failures being its fetch-failed findings (spec 2026-10-29 §6).
+// the failures being its fetch-failed findings.
 type updateFailedError struct {
 	err error
 	res *engine.SyncResult
@@ -344,11 +344,11 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 			}
 		}
 		a.printContext(cmd, eng, choiceScopes(scs), nil)
-		// Several scopes (Plan 6b §19 R13): in order, each reported under its label as it is
+		// Several scopes: in order, each reported under its label as it is
 		// synced, stopping at the first that fails or is declined; --json prints one document
 		// once every scope is synced.
 		done := []*engine.SyncResult{}
-		// Several scopes share one receipt (CR3): each runs up to it, then all apply after its yes.
+		// Several scopes share one receipt: each runs up to it, then all apply after its yes.
 		var passes []*syncPass
 		if len(scs) > 1 && !f.dry {
 			scopes, applies := make([]engine.Scope, len(scs)), make([][]string, len(scs))
@@ -384,7 +384,7 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 			}
 			out := func(w io.Writer, s style) { human(w, s, s.more(more)) }
 			// lola update applied what it could and left the modules whose fetch failed as
-			// installed: its result is reported, then the run fails (spec 2026-10-29 §5.2, §6).
+			// installed: its result is reported, then the run fails.
 			if _, ok := errors.AsType[*engine.FetchesFailedError](err); ok && res != nil {
 				switch {
 				case a.json && len(scs) == 1:
@@ -433,11 +433,11 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, args []string, prof *engine.ProfileChange,
 	f syncFlags) (res *engine.SyncResult, more string, err error) {
 	opts := engine.Options{DryRun: f.dry, Force: f.force, Strict: f.strict, Display: outputFlags(cmd)}
-	// lola profile's --on, --off and --switch take --force too (spec 2026-10-29 §6.2): their
+	// lola profile's --on, --off and --switch take --force too: their
 	// conflicts hint it, with the profile's name.
 	if cmd.Name() == "sync" || cmd.Name() == "update" {
 		// A conflict's --force completes your own run, so it keeps the --trust and -y you gave: it
-		// answers no question you did not (ruling, 2026-11-03).
+		// answers no question you did not.
 		opts.ForceRun, opts.RenderRun = runWithout(cmd, args, "force")+" --force", renderRun(cmd, args)
 	} else if prof != nil {
 		var names []string
@@ -496,7 +496,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	return res, more, nil
 }
 
-// syncQuestions is what a sync of cmd's run asks on a terminal (Plan 6a §7.5, §9.3), each
+// syncQuestions is what a sync of cmd's run asks on a terminal, each
 // question's page shown through diff, the trust diff of a report: show, the record of what --trust
 // accepted (shown, as a record, unless under --json); trust, the trust question (all or nothing
 // when activation: an activation, or a move, applies all it planned or nothing), setting *asked
@@ -566,14 +566,14 @@ func (a *app) completeSync(cmd *cobra.Command, args []string, toComplete string)
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
-// trustStep is the trust picker for rep (Plan 6a §7.5): its change count, and an option per
+// trustStep is the trust picker for rep: its change count, and an option per
 // changed module, grouped by kind in the diff's order (! source host changed, ~ changed, + added,
 // - removed), each "<glyph> <module> <one-line summary>", the module followed by the files it
-// changed in when a project profile is one of them (Plan 6b §8.1). A module whose entries changed
+// changed in when a project profile is one of them. A module whose entries changed
 // in several files is offered once, summarized by its first change: choosing it trusts all of
 // them. The top-level targets have no option of their own: accepting an entry that installs to
 // them accepts them. A project profile an activation puts in place of an active one counts as a
-// change; an activation offers no Choose… (§4.4, P10).
+// change; an activation offers no Choose….
 func trustStep(rep engine.TrustReport) TrustStep {
 	st := TrustStep{Changes: len(rep.Changes) + len(rep.Replacements)}
 	if rep.Targets != nil {
@@ -664,7 +664,7 @@ func trustSummary(c engine.TrustChange, targets *trust.FieldChange) string {
 }
 
 // trustEcho says the trust answer on stderr, since huh leaves it in the scrollback only as the
-// question (Plan 6a §3.4): "trusting all 4 changes", or the entries trusted and those left as
+// question: "trusting all 4 changes", or the entries trusted and those left as
 // installed.
 func trustEcho(st TrustStep, rep engine.TrustReport, ans engine.TrustAnswer) string {
 	if ans.All {

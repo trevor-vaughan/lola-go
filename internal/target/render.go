@@ -13,8 +13,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 )
 
-// Expand substitutes ${PLUGIN_ROOT} and ${PLUGIN_DATA} (§5.5), and Claude plugins' names for
-// them, ${CLAUDE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_DATA} (Plan 5b design §5.3).
+// Expand substitutes ${PLUGIN_ROOT} and ${PLUGIN_DATA}, and Claude plugins' names for
+// them, ${CLAUDE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_DATA}.
 func Expand(s string, ctx PlanContext) string {
 	return strings.NewReplacer(
 		"${PLUGIN_ROOT}", ctx.PluginRoot,
@@ -42,7 +42,7 @@ func ExpandMap(in map[string]string, ctx PlanContext) map[string]string {
 	return out
 }
 
-// WriteText is the WriteFile intent of a text artifact, with ${…} expanded (§5.5).
+// WriteText is the WriteFile intent of a text artifact, with ${…} expanded.
 func WriteText(id, kind, path, body string, ctx PlanContext) plan.Intent {
 	return plan.Intent{Target: id, Kind: kind, Op: plan.OpWriteFile, Path: path, Data: []byte(Expand(body, ctx)), Mode: 0o644}
 }
@@ -110,7 +110,7 @@ func SkillRules(id string) []ContentRule {
 	}
 }
 
-// argument is one of Claude's argument placeholders (§8.1): $ARGUMENTS[N], $ARGUMENTS, $N or
+// argument is one of Claude's argument placeholders: $ARGUMENTS[N], $ARGUMENTS, $N or
 // $name. Arguments drops a $ARGUMENTS followed by [ and undeclared names.
 var argument = regexp.MustCompile(`\$(?:ARGUMENTS\[(\d+)\]|(ARGUMENTS)|(\d+)|([A-Za-z_][A-Za-z0-9_]*))`)
 

@@ -16,7 +16,7 @@ import (
 	"github.com/osteele/liquid/values"
 )
 
-// codeValueTooLarge refuses a filter input, argument or result over a cap (Plan 7 §5.3).
+// codeValueTooLarge refuses a filter input, argument or result over a cap.
 const codeValueTooLarge = "template-value-too-large"
 
 // filterRefusal is a filter's refusal. Liquid wraps it with the line of the filter's markup,
@@ -38,7 +38,7 @@ type filterFn func(in any, args []any) (any, error)
 
 // allowlist returns lola's 41 filters. Each behaves as liquid v1.9.2's standard filter of the
 // same name for every input it accepts, and refuses an input, argument or result over the caps
-// before it builds what would pass them (Plan 7 §5.3).
+// before it builds what would pass them.
 func allowlist(ctx context.Context, file string, lim Limits) map[string]any {
 	f := &filterSet{ctx: ctx, file: file, lim: lim}
 	m := map[string]any{"default": f.defaultFilter}
@@ -187,7 +187,7 @@ func (f *filterSet) unsupported(name string) error {
 	return &filterRefusal{codeValueType, "a value of an unsupported kind reached " + name}
 }
 
-// size is a value's size as Plan 7 §5.3 defines it: a string's bytes; 8 for a number, a
+// size is a value's size as the filter caps define it: a string's bytes; 8 for a number, a
 // boolean or nil; 16 plus its elements' sizes for a list; 16 plus its keys' bytes and its
 // values' sizes for a map. It reports false for any other kind.
 func size(v any) (int, bool) {
@@ -879,7 +879,7 @@ func (f *filterSet) defaultFilter(value any, args ...any) (any, error) {
 	return value, nil
 }
 
-// The math filters (Plan 7 §5.7.7) follow liquid v1.9.2's numeric semantics on integers and
+// The math filters follow liquid v1.9.2's numeric semantics on integers and
 // floats (filters/standard_filters.go): integers stay int64 and any float makes the result a
 // float64. Where liquid would go silently wrong they refuse: an integer result that overflows
 // int64, a float result that is not finite, and a division by zero.

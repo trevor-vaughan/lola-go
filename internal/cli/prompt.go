@@ -26,7 +26,7 @@ func interactive(cmd *cobra.Command) bool {
 // injected Prompter or the huh adapter asks, under --json too, since the result goes to stdout.
 // Off a terminal it refuses, hinting the run (args are its names) with -y. Under --json that
 // refusal is all lola prints: one JSON line carrying plan, the plan it would have asked about
-// (what -n --json prints, where the command has -n; Plan 8 §9.1), so a script reads the plan
+// (what -n --json prints, where the command has -n), so a script reads the plan
 // without a second run.
 func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Nav, plan any, show func(io.Writer, style)) error {
 	var p Prompter
@@ -119,9 +119,9 @@ func (a *app) askScript(cmd *cobra.Command, q engine.ScriptQuestion) (bool, erro
 }
 
 // hookOptions sets the hook options of a command: install hooks' and scripts' output goes to
-// stderr (§9.1), a refusal for want of trust names the command, and on a terminal lola asks,
-// defaulting to No, about the project's install scripts (Plan 9 §5.4), and per module about the
-// install hooks (§9.1) and runtime hooks (Plan 5b design §7.3), that opts.Trust does not cover;
+// stderr, a refusal for want of trust names the command, and on a terminal lola asks,
+// defaulting to No, about the project's install scripts, and per module about the
+// install hooks and runtime hooks, that opts.Trust does not cover;
 // the engine asks only about those.
 func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
 	opts.HookOutput, opts.Run = cmd.ErrOrStderr(), cmd.CommandPath()

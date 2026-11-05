@@ -24,7 +24,7 @@ const (
 	MarketFailed     = "failed"             // its --add failed
 )
 
-// Market is one of the Python lola's marketplaces as lola migrate registers it (Plan 6c §6.9):
+// Market is one of the Python lola's marketplaces as lola migrate registers it:
 // Name and URL as the Python lola recorded them; Market the name lola registers it as; Source and
 // Path its url translated for lola market --add; Status what happens to it; Reason why it is not
 // registered, and Hints the lola market --add that registers it, when one can. Every string has
@@ -46,11 +46,11 @@ type Market struct {
 }
 
 // lookup reports whether m's catalog file is the one the Python lola found in a tree, which
-// only a fetch can tell: a tree source whose url named no file (Plan 6c §6.9).
+// only a fetch can tell: a tree source whose url named no file.
 func (m Market) lookup() bool { return m.path == "" && !market.IsCatalogURL(m.src) }
 
 // planMarkets decides what lola migrate does with each of pys, the Python lola's marketplaces,
-// given have, yours (Plan 6c §6.9). Nothing is fetched. A url lola cannot add (translate) is not
+// given have, yours. Nothing is fetched. A url lola cannot add (translate) is not
 // registered, with its reason and no hint, since no form of it works. A name that is no
 // marketplace name, or that one of yours has from another source, is not registered, with the
 // --add of a free slug as the hint, as is one whose name an earlier one is registered or hinted
@@ -124,14 +124,14 @@ func shownURL(u string) string {
 	return source.DisplayURL(rest)
 }
 
-// translate is u, a Python marketplace url, as lola market --add takes it (Plan 6c §6.9, [P]
-// models.py Marketplace.from_url): git+ is dropped; a git URL (git+, or http(s) ending in .git)
-// gives its #fragment as the path, as the Python lola reads the catalog file there; git's scp
-// form is git; another https:// URL is a catalog file, which lola reads only when its path ends
-// in .json, .yml or .yaml; a file:// URL or absolute path is a folder, made absolute with its
-// links resolved, and a file there (the Python lola records its catalog file's URI) is the
-// folder's --path. why says why lola cannot add it, with no form that would work ("" when it
-// can): plain http:// off loopback, a relative path, a path that is not there, another scheme.
+// translate is u, a Python marketplace url, as lola market --add takes it ([P] models.py
+// Marketplace.from_url): git+ is dropped; a git URL (git+, or http(s) ending in .git) gives its
+// #fragment as the path, as the Python lola reads the catalog file there; git's scp form is git;
+// another https:// URL is a catalog file, which lola reads only when its path ends in .json, .yml
+// or .yaml; a file:// URL or absolute path is a folder, made absolute with its links resolved, and
+// a file there (the Python lola records its catalog file's URI) is the folder's --path. why says
+// why lola cannot add it, with no form that would work ("" when it can): plain http:// off
+// loopback, a relative path, a path that is not there, another scheme.
 func translate(u string) (src, path, why string) {
 	rest, gitPlus := strings.CutPrefix(u, "git+")
 	if source.IsSCP(rest) { // git's scp form, which takes no fragment
@@ -194,7 +194,7 @@ func local(p string) (src, path, why string) {
 }
 
 // addRun is the lola market --add that registers m as name, keeping display, the run's output
-// flags (Plan 6c §11.3).
+// flags.
 func (m Market) addRun(name string, display []string) string {
 	args := []string{name, "--add", m.src}
 	if m.path != "" {
@@ -220,7 +220,7 @@ func marketReport(ms []Market, display []string) []Market {
 	return out
 }
 
-// registerMarkets registers each of ms planned to be (Plan 6c §6.9), fetching its catalog
+// registerMarkets registers each of ms planned to be, fetching its catalog
 // (engine.AddMarket, which asks nothing), in a tree the file the Python lola read (PythonName). A
 // failure is that marketplace's outcome, never the migration's: its reason, its own hints (a git
 // ls-remote that shows what the server says), then the --add that registers it once the cause is

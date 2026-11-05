@@ -186,7 +186,7 @@ var _ = Describe("Fetch of an archive URL", func() {
 	})
 
 	It("a catalog entry naming a local, http, localhost or private-address source is skipped", func() {
-		// Plan 6c §12 spec 4, from 6c.2: a catalog archive whose download redirects to a loopback host
+		// A catalog archive whose download redirects to a loopback host
 		// is refused, where a typed one follows the redirect.
 		url := serve(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/away.tgz" {

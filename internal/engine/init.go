@@ -16,7 +16,7 @@ import (
 // FormatLola is the native lola layout lola init can scaffold.
 const FormatLola = "lola"
 
-// InitFormats are the formats lola init scaffolds; the first is the default (Plan 5b design §8).
+// InitFormats are the formats lola init scaffolds; the first is the default.
 func InitFormats() []string { return []string{module.FormatAgentPlugins, FormatLola} }
 
 // Scaffolded is what Init wrote, or what PlanInit says it would write.

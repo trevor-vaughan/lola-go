@@ -12,7 +12,7 @@ import (
 // envAssign is a NAME=value word, which never names a server.
 var envAssign = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
-// serverLabel is the one thing human output says about what an MCP server runs (§11.1): the
+// serverLabel is the one thing human output says about what an MCP server runs: the
 // base name of its executable (an array command's first element; a string command's first word
 // after any NAME=value words) unless that is NAME=value or starts with '-', or for a remote
 // server the host of its URL; never arguments, environment, headers or any other part of a URL.

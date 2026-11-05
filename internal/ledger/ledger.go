@@ -1,4 +1,4 @@
-// Package ledger models lock.json: lola's record of what it wrote (§6.4). lola owns it; it is
+// Package ledger models lock.json: lola's record of what it wrote. lola owns it; it is
 // deterministic (sorted, no timestamps) and gitignored.
 package ledger
 
@@ -28,8 +28,8 @@ const Version = 1
 
 // Artifact is one thing lola wrote. Path is relative to the target's scope root; Key is an
 // RFC 6901 pointer for JSON members. When Key is an array, lola owns one element of it: a
-// string is recorded as Value, any other JSON value as Member, in canonical JSON (Plan 5b
-// design §7.2). SHA256 is over the file bytes or the canonical JSON of the member or element.
+// string is recorded as Value, any other JSON value as Member, in canonical JSON.
+// SHA256 is over the file bytes or the canonical JSON of the member or element.
 // Resolved is set only when Path resolves outside the root.
 type Artifact struct {
 	Target   string          `json:"target"`
@@ -72,9 +72,9 @@ type FileRef struct {
 func (r FileRef) ID() string { return r.Target + "\x00" + r.Path + "\x00" + r.Key }
 
 // Entry is one installed module. From is the layer whose entry won when lola last applied it
-// (Plan 6b §5): "profile:<qualified name>", or "profile:default"; empty for the scope's manifest,
+// : "profile:<qualified name>", or "profile:default"; empty for the scope's manifest,
 // so an entry no profile placed is written as before profiles. HooksPending says a post-install hook of the version installed
-// was declined for want of consent and has not run since (Plan 6a §9.3 step 10). Targets are
+// was declined for want of consent and has not run since. Targets are
 // the targets the module is installed on, sorted, including one that rendered none of its
 // files; an entry written before the field records none (see InstalledTargets).
 type Entry struct {
@@ -86,20 +86,19 @@ type Entry struct {
 	Digest       string `json:"digest"`
 	HooksPending bool   `json:"hooks_pending,omitempty"`
 	// ScriptsPending says the project's post-install script was declined for want of trust after
-	// this copy was installed and has not run on it since (Plan 9 §5.5).
+	// this copy was installed and has not run on it since.
 	ScriptsPending bool       `json:"scripts_pending,omitempty"`
 	Targets        []string   `json:"targets,omitempty"`
 	Artifacts      []Artifact `json:"artifacts"`
 	// Components is the selection of the module's directory the entry was installed with, which
-	// render's fetch of the version applies again (Plan 6c §4.1).
+	// render's fetch of the version applies again.
 	Components *source.Components `json:"components,omitempty"`
 	// RenderedWith is what a module with templates was rendered with, nil for one without.
 	RenderedWith *RenderedWith `json:"rendered_with,omitempty"`
 }
 
-// RenderedWith records the inputs of a module's templates that are not its source (Plan 7
-// §6.3): Profiles, the scope's profiles a template sees (default at user scope when its file
-// exists, then the active profile and a bundle's members, spec 2026-10-29 §8.8), when some
+// RenderedWith records the inputs of a module's templates that are not its source: Profiles, the scope's profiles a template sees (default at user scope when its file
+// exists, then the active profile and a bundle's members), when some
 // template reads them (nil otherwise); Vars, the
 // winning entry's var overrides as written, {} for none.
 type RenderedWith struct {
@@ -139,7 +138,7 @@ func (e *Entry) InstalledTargets() []string {
 	return slices.Compact(out)
 }
 
-// Active is a scope's active profile (spec 2026-10-29 §3.4): the qualified name its activation
+// Active is a scope's active profile: the qualified name its activation
 // resolved (activeprofile.Check) and the action that turned it on.
 type Active struct {
 	Name string `json:"name"`
@@ -156,7 +155,7 @@ const (
 func FromProfile(qualified string) string { return "profile:" + qualified }
 
 // Ledger is the observed state of one scope. Profile is its active profile, nil when only the
-// scope's base is loaded, which leaves the key out (spec 2026-10-29 §3.4).
+// scope's base is loaded, which leaves the key out.
 type Ledger struct {
 	Version int               `json:"version"`
 	Profile *Active           `json:"profile,omitempty"`
@@ -196,7 +195,7 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 		return nil, err
 	}
 	// A lock.json of a pre-release lola lists its active profiles as profiles: refused, never read
-	// (spec 2026-10-29 §7), with the names it held for the engine's hint.
+	//, with the names it held for the engine's hint.
 	var old struct {
 		Profiles json.RawMessage `json:"profiles"`
 	}
@@ -233,7 +232,7 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 const restoreHint = "restore lock.json from a backup, or remove the module's entry from it and reinstall the module"
 
 // ProfilesKeyError refuses a lock.json that lists active profiles under profiles, as lola did
-// before one profile was on at a time (spec 2026-10-29 §7). Names is the qualified names it lists
+// before one profile was on at a time. Names is the qualified names it lists
 // that lola could have written, in order, which the engine's hint names.
 type ProfilesKeyError struct {
 	File  string
@@ -246,7 +245,7 @@ func (e *ProfilesKeyError) Error() string {
 
 // ReservedError refuses a lock.json that records a profile named base, as the one on or as where
 // a module comes from, which a lola before base was reserved for the scope's base could write
-// (spec 2026-10-29 §3.1). Name is that profile's qualified name, which the engine's hint names, and
+// . Name is that profile's qualified name, which the engine's hint names, and
 // Recorded every qualified name the file records (Profiles), which the hint's new name avoids.
 type ReservedError struct {
 	File     string
@@ -311,7 +310,7 @@ const (
 
 // Stray is an item of lock.json lola could not have written, which every command refuses and
 // lola repair forgets: an artifact or created item whose path leaves its target's root (Outside;
-// lola writes only paths fsx.Resolve accepted, Plan 6a §4.3), or an artifact, created item or
+// lola writes only paths fsx.Resolve accepted), or an artifact, created item or
 // item of a module's targets on a target lola does not know (Unknown). Module is "" for an item
 // of the created list; Path is "" for a target. id is the artifact's or created item's ID, which
 // Forget matches.
@@ -439,7 +438,7 @@ func (l *Ledger) validate() error {
 			return errs.WithHints(fmt.Errorf("module %s: %w", name, err), restoreHint)
 		}
 		// lock.json may have been planted or committed: its source and ref reach git, so they
-		// pass the rules project.yml's do (Plan 6a §4.3).
+		// pass the rules project.yml's do.
 		if err := (source.Recorded{Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest}).Check(); err != nil {
 			return errs.WithHints(fmt.Errorf("module %s: %w", name, err), restoreHint)
 		}
@@ -482,7 +481,7 @@ func (l *Ledger) validate() error {
 	return nil
 }
 
-// validateProfile checks the active profile (spec 2026-10-29 §3.4): a qualified name, with the
+// validateProfile checks the active profile: a qualified name, with the
 // action lola records.
 func (l *Ledger) validateProfile() error {
 	a := l.Profile

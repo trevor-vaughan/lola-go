@@ -51,15 +51,14 @@ func refuseRemote(format string, args ...any) error {
 		instead: "; use the repository's https:// or ssh:// URL (or user@host:path), with its host name"}
 }
 
-// CheckRemote refuses a source that a stranger's file may not make lola fetch (Plan 6b D4, rulings
-// R-6b3b-6, R-6b3b-9; Plan 6c §10): who names the file's kind in the message ("a remote profile",
-// "a catalog entry"). It reads src's text alone, never the disk (ruling R-6b3b-5), and refuses a
-// path or file:// URL, which is on this machine; any scheme but https:// and ssh:// (git's
-// user@host:path is ssh), plain http:// included; localhost and *.localhost (RFC 6761); a host
-// given as an IP address that is loopback, link-local, unspecified, private or carrier-grade NAT
-// shared space, which would make that fetch a request inside your network; and an IP address in
-// any form but the canonical one, which git and ssh would still connect to. A host name is
-// allowed, and never resolved.
+// CheckRemote refuses a source that a stranger's file may not make lola fetch: who
+// names the file's kind in the message ("a remote profile", "a catalog entry"). It reads src's text
+// alone, never the disk, and refuses a path or file:// URL, which is on this machine; any scheme
+// but https:// and ssh:// (git's user@host:path is ssh), plain http:// included; localhost and
+// *.localhost (RFC 6761); a host given as an IP address that is loopback, link-local, unspecified,
+// private or carrier-grade NAT shared space, which would make that fetch a request inside your
+// network; and an IP address in any form but the canonical one, which git and ssh would still
+// connect to. A host name is allowed, and never resolved.
 func CheckRemote(src, who string) error {
 	shown := untrusted.Text(src, untrusted.MaxName)
 	if strings.Contains(src, "://") {

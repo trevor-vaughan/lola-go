@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs inside the base image; the result is committed as the e2e suites' image. It installs the
-# Python lola from upstream at the full-SHA commit the migrate design was checked against (it
+# Python lola from upstream at the full-SHA commit the migrate tests were checked against (it
 # refuses to build unless the checkout is exactly that commit), with every Python package it
 # needs (and its build backend) pinned by hash in /e2e-image/requirements.txt, so pip fetches
 # nothing unpinned: the dependencies first, then the Python lola alone. The image
@@ -11,6 +11,9 @@ set -euo pipefail
 : "${PY_LOLA_REPO:?}" "${PY_LOLA_COMMIT:?}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
+# The base can lag a Debian security fix to apt itself (DSA-6607-1); take it before apt fetches
+# anything else.
+apt-get install -y -qq --only-upgrade apt >/dev/null
 apt-get install -y -qq --no-install-recommends git zip >/dev/null
 rm -rf /var/lib/apt/lists/*
 git clone --quiet "$PY_LOLA_REPO" /opt/py-lola

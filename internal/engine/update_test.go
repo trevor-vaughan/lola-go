@@ -661,7 +661,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		refusal, refused := errors.AsType[*engine.TrustRefusalError](err)
 		Expect(refused).To(BeTrue())
 		Expect(refusal.Report.Changes).To(ConsistOf(HaveField("Reason", "re-pin from main (--fetch)")))
-		clock = clock.Add(25 * time.Hour) // stale: a fresh head the version installed asks nothing (ruling R7)
+		clock = clock.Add(25 * time.Hour) // stale: a fresh head the version installed asks nothing
 		_, err = sync(engine.SyncRequest{Installed: true, Update: true, Modules: []string{"example"}})
 		refusal, refused = errors.AsType[*engine.TrustRefusalError](err)
 		Expect(refused).To(BeTrue())

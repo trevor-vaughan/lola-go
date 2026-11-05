@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// mentionPack is a module whose components name each other (cherry-pick design §5.1); the
+// mentionPack is a module whose components name each other; the
 // comment above a file says which rule of the scan it exercises.
 func mentionPack() map[string]string {
 	const mib = 1 << 20
@@ -78,7 +78,7 @@ func mentionsOf(m map[string][]string) engine.Mentions {
 	return out
 }
 
-var _ = Describe("the mention scan (cherry-pick design §5.1)", func() {
+var _ = Describe("the mention scan", func() {
 	var (
 		tmp, proj, src string
 		e              *engine.Engine
@@ -117,7 +117,7 @@ var _ = Describe("the mention scan (cherry-pick design §5.1)", func() {
 		return ch
 	}
 
-	It("finds whole-token names of a module's other components in its files, by the rules of §5.1", func() {
+	It("finds whole-token names of a module's other components in its files, by the scan rules", func() {
 		ch := listed(stage(), src)
 		Expect(e.Store.Names()).To(BeEmpty(), "the version is read from the staged run, not the cache")
 		Expect(ch.Mentions("pack")).To(Equal(mentionsOf(packMentions)))
@@ -243,7 +243,7 @@ var _ = Describe("the mention scan (cherry-pick design §5.1)", func() {
 
 })
 
-var _ = Describe("lola info lists what each component mentions (cherry-pick design §5.2)", func() {
+var _ = Describe("lola info lists what each component mentions", func() {
 	var (
 		tmp string
 		e   *engine.Engine
@@ -291,7 +291,7 @@ var _ = Describe("lola info lists what each component mentions (cherry-pick desi
 
 })
 
-var _ = Describe("naming what the picks mention and leave out (cherry-pick design §5.2)", func() {
+var _ = Describe("naming what the picks mention and leave out", func() {
 	var (
 		tmp, proj, src string
 		e              *engine.Engine
@@ -387,7 +387,7 @@ var _ = Describe("naming what the picks mention and leave out (cherry-pick desig
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
 			Text: "pack: skill/golang-race mentions 1 component you did not pick: skill/golang-testing → add them: " +
 				"lola install --project pack --with-mentions --skip pack:skill/golang-lint --global -t claude-code",
-			Class: target.ClassDetail, Module: "pack", Check: "lola check --project pack"}), "P2-6: a mention is detail, counted under its module and lola check")
+			Class: target.ClassDetail, Module: "pack", Check: "lola check --project pack"}), "a mention is detail, counted under its module and lola check")
 	})
 
 	It("repeats under -n every selection flag of the run, which a dry run saved none of", func() {
@@ -435,7 +435,7 @@ var _ = Describe("naming what the picks mention and leave out (cherry-pick desig
 	})
 })
 
-var _ = Describe("lola install --with-mentions (cherry-pick design §5.3)", func() {
+var _ = Describe("lola install --with-mentions", func() {
 	var (
 		tmp, proj, src, key string
 		p                   paths.Paths

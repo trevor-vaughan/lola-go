@@ -197,7 +197,7 @@ var _ = Describe("lola tidy", func() {
 		r = lolaP(p, "tidy", "-C", proj, "-t", "claude-code", "-t", "gemini-cli")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(tidyLabels(p.tidyKeepSteps[0].Options)).To(Equal([]string{"skill/axb  claude-code", "command/solo  claude-code",
-			"command/tmp  claude-code"}), "keeping command/dup would keep the item chosen to move (R-6d2-8)")
+			"command/tmp  claude-code"}), "keeping command/dup would keep the item chosen to move")
 		Expect(os.RemoveAll(filepath.Join(proj, ".gemini"))).To(Succeed())
 		Expect(os.Remove(filepath.Join(proj, ".claude", "commands", "dup.md"))).To(Succeed())
 		Expect(os.Remove(filepath.Join(proj, ".claude", "commands", "solo.md"))).To(Succeed())
@@ -367,7 +367,7 @@ var _ = Describe("lola tidy", func() {
 		Expect(r.out).To(ContainSubstring("→ lola tidy -C "+proj+"\n"), "without names the run it names runs the picker")
 		Expect(p.calls).To(BeEmpty())
 		r = lola("tidy", "-n", "skill/old", "-C", proj)
-		Expect(r.out).To(ContainSubstring("→ lola tidy -C "+proj+" skill/old\n"), "R-8: off a terminal too, -y only as given")
+		Expect(r.out).To(ContainSubstring("→ lola tidy -C "+proj+" skill/old\n"), "off a terminal too, -y only as given")
 	})
 
 	It("a hint keeps --json, --plain and --no-pager as given, and never -n", func() {
@@ -382,7 +382,7 @@ var _ = Describe("lola tidy", func() {
 		Expect(doc["hints"]).To(Equal([]any{"lola tidy -C " + proj + " --all --json"}))
 		words := shellWords(doc["hints"].([]any)[0].(string))
 		r = lola(words[1:]...)
-		Expect(r.code).To(Equal(1), "R-8: the dry run's hint carries no -y you did not give, so off a terminal it is refused")
+		Expect(r.code).To(Equal(1), "the dry run's hint carries no -y you did not give, so off a terminal it is refused")
 		var refusal struct{ Hints []string }
 		Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
 		Expect(refusal.Hints).To(Equal([]string{"lola tidy -C " + proj + " --all -y --json"}))
@@ -466,7 +466,7 @@ var _ = Describe("lola tidy", func() {
 		r = lola("tidy", "--scope", "both", "-C", proj, "skill/old", "-y")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("  hint: lola tidy -C "+proj+" skill/old\n  hint: lola tidy --user skill/old\n"),
-			"R-8: the -y given for both scopes answers neither alone")
+			"the -y given for both scopes answers neither alone")
 	})
 })
 

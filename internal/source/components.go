@@ -14,7 +14,7 @@ import (
 )
 
 // Components are the skills, commands and agents a marketplace's catalog lists for a relative
-// entry (Plan 6c §4.1, user decision of 2026-10-21): paths in the module's directory, cleaned and
+// entry: paths in the module's directory, cleaned and
 // slash-separated, a skill a directory, a command or an agent a file or a directory. The module is
 // those alone, each at <kind>/<its last element>; every fetch of a source that records them
 // selects them, so the module is the same wherever it is fetched again.

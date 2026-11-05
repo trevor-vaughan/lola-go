@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// profileMove runs lola profile --move (spec 2026-10-29 §6.2): the target's scope from the scope
+// profileMove runs lola profile --move: the target's scope from the scope
 // flags (the found project, or user scope), the source layer from the one name given, and the
 // move with the run's questions: replace it (Confirm), removals (sync's), trust (sync's).
 func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules []string, to string, keepOff, switchTo bool, f syncFlags) error {
@@ -118,7 +118,7 @@ func (a *app) namesBothScopes() bool {
 }
 
 // moveScopes is the target scope of lola profile --move and the other scope its modules may come
-// from (spec 2026-10-29 §6.2): with --user and -C, user scope and that project, which must be one
+// from: with --user and -C, user scope and that project, which must be one
 // (ResolveScope's project, with .lola/, not your home directory); else the scope the flags or the
 // picker name, and the other: user scope from a project, the project found from here, when it has
 // .lola/ and is not your home directory, from user scope.

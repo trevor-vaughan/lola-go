@@ -14,7 +14,7 @@ import (
 
 var _ = Describe("lola tidy: refusals and hints", func() {
 	var t *tidyEnv
-	// flags are the run flags every hint spec runs with (§12): -C comes from a working directory
+	// flags are the run flags every hint spec runs with: -C comes from a working directory
 	// outside the project.
 	flags := func(req engine.TidyRequest) engine.TidyRequest {
 		req.Targets, req.IncludeTracked, req.Keep = []string{"claude-code"}, true, pats("skill/k")
@@ -39,7 +39,7 @@ var _ = Describe("lola tidy: refusals and hints", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.DryRun).To(BeTrue())
 			Expect(listed(res.Candidates)).To(Equal([]string{"claude-code command/old"}))
-			yes := "" // R-8: -y only as given
+			yes := "" // -y only as given
 			if req.Yes {
 				yes = " -y"
 			}
@@ -307,7 +307,7 @@ var _ = Describe("lola tidy: refusals and hints", func() {
 
 		err = t.e.TidyOneScope(engine.TidyRequest{Scope: t.sc, All: true, Yes: true, Targets: []string{"claude-code"}})
 		Expect(errs.Hints(err)).To(Equal([]string{run(" --all -t claude-code"), "lola tidy --user --all -t claude-code"}),
-			"R-8: the -y given for both scopes answers neither alone")
+			"the -y given for both scopes answers neither alone")
 		res, err := t.runHint(errs.Hints(err)[0] + " -y")
 		Expect(err).NotTo(HaveOccurred(), "--scope both --all -y: the hint keeps --all")
 		Expect(res.Moved).To(HaveLen(2))

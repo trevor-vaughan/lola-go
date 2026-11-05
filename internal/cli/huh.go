@@ -35,7 +35,7 @@ const addSource = "\x00add"
 // the form's later fields must not wait for input the run will discard.
 //
 // Accessible prompts read stdin in cooked mode, where Ctrl+C is a SIGINT that would kill lola
-// with no message (Plan 6a §3.4). While catch runs a form, a Read waits for the first of the
+// with no message. While catch runs a form, a Read waits for the first of the
 // input and an interrupt, and an interrupt ends the input: the form cancels. A Go
 // read cannot be interrupted, so the read runs in a goroutine; one an interrupt leaves blocked
 // on stdin ends with the process, and nothing reads stdin after it, since the cancel ends the
@@ -116,10 +116,10 @@ func (f *eofFile) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// huhForms is the Prompter that draws the install flow's steps as inline huh forms on stderr
-// (Plan 5c §3): no alternate screen, and in accessible mode huh's line prompts. Only accessible
-// mode reads through in, the eofReader: the full forms need stdin itself, which bubbletea puts
-// in raw mode only when it is a terminal file.
+// huhForms is the Prompter that draws the install flow's steps as inline huh forms on stderr: no
+// alternate screen, and in accessible mode huh's line prompts. Only accessible mode reads through
+// in, the eofReader: the full forms need stdin itself, which bubbletea puts in raw mode only when
+// it is a terminal file.
 type huhForms struct {
 	stdin         io.Reader
 	in            *eofReader
@@ -181,7 +181,7 @@ func (h *huhForms) run(nav Nav, fields ...huh.Field) error {
 	return h.runIn(t, nav, fields...)
 }
 
-// theme is the forms' theme (Plan 10 §4): plainTheme without color; in color, lolaTheme for the
+// theme is the forms' theme: plainTheme without color; in color, lolaTheme for the
 // background h.dark resolves, once, before the first form. The ThemeFunc ignores the background
 // huh guesses and passes it.
 func (h *huhForms) theme() (huh.Theme, error) {
@@ -305,7 +305,7 @@ func (h *huhForms) multi(title, desc string, opts []huh.Option[string], value *[
 
 // Scope offers Project, User and Other directory…, preselecting exactly st.Preselect. It is a
 // multi-select even when st.One, so nothing is chosen until the user ticks it (a select would
-// answer Project on Enter); the form refuses an empty answer (Plan 10 §4).
+// answer Project on Enter); the form refuses an empty answer.
 func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 	project, user := "Project ("+st.ProjectRoot+")", "User (~)"
 	if st.ProjectContext != "" {
@@ -346,7 +346,7 @@ func (h *huhForms) nothingSelected() string {
 	return "nothing selected — space selects, enter confirms, ctrl+c quits"
 }
 
-// requiredPick is a multi-select that needs a pick (Plan 10 §4). huh validates a multi-select
+// requiredPick is a multi-select that needs a pick. huh validates a multi-select
 // when it gains the focus and on every toggle, not only on Enter (field_multiselect.go:236-237,
 // 548), and a group shows a field's error in place of the key help (group.go:396). So the field
 // records whether the key it is handling is Enter, and its validator refuses an empty pick only
@@ -367,7 +367,7 @@ func (r *requiredPick) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	return r, cmd
 }
 
-// required makes ms a picker that needs a pick (Plan 10 §4). In accessible mode, which has no
+// required makes ms a picker that needs a pick. In accessible mode, which has no
 // keys, huh validates only when the user confirms, so the refusal applies at once. Once input has
 // ended (Ctrl+C included) the validator accepts: huh's accessible MultiSelect asks again for as
 // long as it refuses, and at end of input every ask answers 0, so refusing would never end; run
@@ -455,10 +455,10 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 	return ModuleAnswer{Names: chosen}, nil
 }
 
-// withMarkets is the module picker with the marketplace groups (Plan 6c §6.5): the cached modules
+// withMarkets is the module picker with the marketplace groups: the cached modules
 // and Add a source… first, unless st.Browse, then one filterable group per marketplace, so a pick
 // may come from any of them. A lone marketplace group refuses an empty pick in the form; a form
-// of several lists asks again after it instead (Plan 10 §4, R-W3-3), since huh validates a field
+// of several lists asks again after it instead, since huh validates a field
 // on tab and shift+tab too, and would hold the cursor in a list left empty on purpose.
 func (h *huhForms) withMarkets(st ModuleStep) (ModuleAnswer, error) {
 	for {
@@ -487,7 +487,7 @@ func (h *huhForms) withMarkets(st ModuleStep) (ModuleAnswer, error) {
 }
 
 // MarketEntry asks which entry a bare name means, one of the marketplaces listing it, nothing
-// preselected (Plan 6c §3.3).
+// preselected.
 func (h *huhForms) MarketEntry(st MarketEntryStep) (string, error) {
 	opts := make([]huh.Option[string], 0, len(st.Options))
 	for _, o := range st.Options {
@@ -517,8 +517,8 @@ func (h *huhForms) addSource(names []string, nav Nav) (ModuleAnswer, error) {
 }
 
 // marketFields is withMarkets' form, its answers going to cached and picked (one per
-// marketplace). Each list is numbered (st.Step), and every list but the last says Enter moves on
-// (Plan 10 §5). A lone marketplace group, browsed, refuses an empty pick.
+// marketplace). Each list is numbered (st.Step), and every list but the last says Enter moves on. A
+// lone marketplace group, browsed, refuses an empty pick.
 func (h *huhForms) marketFields(st ModuleStep, cached *[]string, picked [][]string) []huh.Field {
 	var fields []huh.Field
 	n := 0 // lists so far
@@ -587,7 +587,7 @@ func (h *huhForms) Components(pg ComponentPage) ([]string, error) {
 }
 
 // pageFields is a component page's form, each group's answer going to values: a filterable list
-// per kind, numbered (pg.Step), every list but the last saying Enter moves on (Plan 10 §5); a
+// per kind, numbered (pg.Step), every list but the last saying Enter moves on; a
 // disabled kind is a note, and the footer a note after them.
 func (h *huhForms) pageFields(pg ComponentPage, values [][]string) []huh.Field {
 	var fields []huh.Field
@@ -636,7 +636,7 @@ func (h *huhForms) ConfirmEmpty(module string, nav Nav) (bool, error) {
 // Trust offers Trust all, Choose… (when there is anything to choose) and Cancel, with Cancel
 // under the cursor, so Enter alone changes nothing; Choose… opens one form of filterable
 // multi-selects, one per kind of change, with nothing preselected, since trust is security
-// consent (Plan 6a §7.5); Esc there goes back to the question. Choosing nothing cancels.
+// consent; Esc there goes back to the question. Choosing nothing cancels.
 func (h *huhForms) Trust(st TrustStep) (engine.TrustAnswer, error) {
 	const all, choose, cancel = "all", "choose", "cancel"
 	opts := []huh.Option[string]{huh.NewOption(trustAllLabel(st.Changes), all)}
@@ -790,8 +790,8 @@ func (h *huhForms) MarketName(st MarketNameStep) (string, error) {
 	return name, err
 }
 
-// TidyPick offers lola tidy's candidates, filterable, preselecting st.Preselect: nothing at first
-// (Plan 6d §3.4), the last answer when the user comes back from the keep step.
+// TidyPick offers lola tidy's candidates, filterable, preselecting st.Preselect: nothing at first,
+// the last answer when the user comes back from the keep step.
 func (h *huhForms) TidyPick(st TidyPickStep) ([]string, error) {
 	var chosen []string
 	err := h.run(Nav{}, h.tidyPick(st, &chosen)...)
@@ -835,7 +835,7 @@ func (h *huhForms) tidyPick(st TidyPickStep, value *[]string) []huh.Field {
 }
 
 // TidyKeep offers the candidates TidyPick left for the keep-list, filterable, nothing
-// preselected (Plan 6d §3.4); when st.Required, it refuses an empty answer (Plan 10 §4).
+// preselected; when st.Required, it refuses an empty answer.
 func (h *huhForms) TidyKeep(st TidyKeepStep) ([]string, error) {
 	var chosen []string
 	ms := h.multi("Add any of the rest to your keep-list?", "what your keep-list names stays, and lola tidy stops offering it",
@@ -961,7 +961,7 @@ const reviewBack = "back"
 var reviewLabels = map[string]string{ReviewApply: "Apply", ReviewScope: "Change scope", ReviewModules: "Change modules",
 	ReviewAssistants: "Change assistants", ReviewComponents: "Change components", ReviewQuit: "Quit", reviewBack: "Back to the review"}
 
-// Review shows the summary and asks what to do with it (Plan 10 §5). On a full terminal it is the
+// Review shows the summary and asks what to do with it. On a full terminal it is the
 // viewer's confirm mode: y applies, n cancels, q quits, Esc goes back to the last step, and c opens
 // the menu of the steps to change (the Change entries of st.Options, or back to the review, which
 // Esc also goes back to), whose answer the flow asks again before it comes back to the review;

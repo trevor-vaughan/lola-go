@@ -47,7 +47,7 @@ func (a *aborting) Confirm(question string, _ cli.Nav) (bool, error) {
 	return false, cli.ErrAborted
 }
 
-var _ = Describe("typed --trust (Plan 9 §3)", func() {
+var _ = Describe("typed --trust", func() {
 	var tmp, proj, kit, mark string
 	var p paths.Paths
 	BeforeEach(func() {
@@ -483,7 +483,7 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 		Expect(r.err).To(ContainSubstring("  hint: name it, and trust them: lola profile --project remote:go --update --trust=entries,profiles,scripts,hooks,runtime-hooks\n"))
 	})
 
-	Describe("sync --scope both after its one receipt (R-9-16)", func() {
+	Describe("sync --scope both after its one receipt", func() {
 		userKit := func(dir, body string) {
 			writeTree(dir, map[string]string{"lola.yml": "name: " + filepath.Base(dir) + "\nhooks: {pre-install: pre.sh}\n", "commands/" + filepath.Base(dir) + ".md": "X\n",
 				"pre.sh": "#!/bin/sh\n" + body + "\n"})

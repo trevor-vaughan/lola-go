@@ -9,7 +9,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 )
 
-// confirmAll answers yes to the files an install that changes picks deletes (Pick-P2-b), as -y does.
+// confirmAll answers yes to the files an install that changes picks deletes, as -y does.
 func confirmAll([]engine.Removal) (bool, error) { return true, nil }
 
 func TestEngine(t *testing.T) {

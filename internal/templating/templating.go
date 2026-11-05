@@ -1,4 +1,4 @@
-// Package templating renders a module's Liquid templates in a sandbox (Plan 7 §5). A template
+// Package templating renders a module's Liquid templates in a sandbox. A template
 // is untrusted input: it sees only plain data, renders through lola's own filters, and runs
 // under caps on its size, its output and its time, so a hostile template can at worst make one
 // lola run fail with an *Error. The package reads no files: callers pass every source in.
@@ -20,7 +20,7 @@ import (
 // Source is one template: the name of the module it belongs to, its content-relative slash
 // path, the line of File its Body starts on (1 when zero), and the text. Frontmatter marks a
 // component's file, whose frontmatter, when it opens one, renders as a region of its own
-// under the rules of Plan 7 §5.2 (RenderDoc).
+// under the rules of RenderDoc.
 type Source struct {
 	Module      string
 	File        string
@@ -53,7 +53,7 @@ type Limits struct {
 	Chain   int           // partials one chain of includes holds
 }
 
-// DefaultLimits returns the caps of Plan 7 §5.4.
+// DefaultLimits returns the caps.
 func DefaultLimits() Limits {
 	return Limits{
 		Body:    256 << 10,
@@ -90,7 +90,7 @@ func Render(ctx context.Context, src Source, p Partials, d Data, lim Limits, dec
 // one is not seen by the other. A {{ }} in the frontmatter, or in a partial it includes, whose
 // output holds a YAML line break refuses unless it ends with the json filter, which escapes them
 // all, as does one that does not end with json and renders a string read says YAML would not read
-// back as itself (Plan 7 §5.7.1, R-7-U18). read must not be nil.
+// back as itself. read must not be nil.
 func RenderDoc(ctx context.Context, src Source, p Partials, d Data, lim Limits, declared []string, read PlainReader) (Rendered, error) {
 	return renderWith(ctx, src, p, d, lim, declared, read, nil)
 }

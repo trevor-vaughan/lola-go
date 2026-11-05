@@ -22,7 +22,7 @@ func shortCommit(c string) string {
 	return c
 }
 
-// marketLine is the one line a fetched marketplace prints (Plan 6c §11.1): its name, entries and
+// marketLine is the one line a fetched marketplace prints: its name, entries and
 // format, and where it came from.
 func marketLine(r engine.MarketRow) string {
 	entries := fmt.Sprintf("%d entries", r.Entries)
@@ -39,7 +39,7 @@ func marketLine(r engine.MarketRow) string {
 	return line
 }
 
-// printMarkets prints lola market's listing (Plan 6c §11.1): a table of your marketplaces, then
+// printMarkets prints lola market's listing: a table of your marketplaces, then
 // the notices. --plain rows are name, format, entries, skipped, fetched_at ("" when not fetched),
 // source, ref and path.
 func printMarkets(w io.Writer, s style, rows []engine.MarketRow, notices []engine.Notice) {
@@ -67,7 +67,7 @@ func printMarkets(w io.Writer, s style, rows []engine.MarketRow, notices []engin
 	}
 }
 
-// printMarket prints one marketplace (Plan 6c §11.1): its source, ref, commit, file, owner and
+// printMarket prints one marketplace: its source, ref, commit, file, owner and
 // description, the entries (name, version, kind, source with its path, ref and commit, and
 // description, cut with an ellipsis to fit width columns; 0 cuts nothing) and the skipped entries
 // grouped by reason, the most common first. --plain rows are "market" with the name, source, ref,
@@ -276,7 +276,7 @@ func fitLines(w io.Writer, text string, width int) {
 
 // wrapWords is text in lines of at most limit columns, broken at spaces only (a name such as
 // clangd-lsp stays whole). A word wider than limit is never cut: it gets a line of its own,
-// wider than limit (ruling R-6cux-6), since a hard break would corrupt what a user copies.
+// wider than limit, since a hard break would corrupt what a user copies.
 func wrapWords(text string, limit int) []string {
 	var lines []string
 	cur := ""
@@ -336,9 +336,9 @@ func components(e engine.MarketEntry) [][2]string {
 // marketGlyphs mark an --update's entry changes.
 var marketGlyphs = map[string]string{"added": "+", "removed": "-", "changed": "~"}
 
-// printMarketResult prints what lola market --add, --update or --ssh-host --remove did (Plan 6c
-// §11.1): a line per marketplace by its outcome (none for a revoke's, which its caller words),
-// with its entry changes under it, then the notices.
+// printMarketResult prints what lola market --add, --update or --ssh-host --remove did: a line per
+// marketplace by its outcome (none for a revoke's, which its caller words), with its entry changes
+// under it, then the notices.
 // --plain rows are the outcome and the marketplace, a "change" row per entry change (change,
 // market, entry, fields comma-separated), then the notices as notice rows.
 func printMarketResult(w io.Writer, s style, res *engine.MarketResult) {

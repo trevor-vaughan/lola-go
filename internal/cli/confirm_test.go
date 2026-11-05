@@ -18,10 +18,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// R-8-1 (Plan 8 §9.1): the commands that confirm a plan (uninstall, cache rm, migrate, cache
-// clean, Plan 9 spec 45, repair, and lola trash --empty, spec 2026-11-03 §3.5), cell by cell of the matrix: on or off a terminal, with or without
-// --json, and the answer.
-var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
+// The commands that confirm a plan (uninstall, cache rm, migrate, cache clean, repair, and
+// lola trash --empty), cell by cell of the matrix: on or off a terminal, with or without --json,
+// and the answer.
+var _ = Describe("a confirmation's JSON refusal", func() {
 	// confirmCase is one command's fixture: the run without its answer, the plan it prints, the
 	// question it asks, the hint off a terminal (under --json) and what its change looks like.
 	type confirmCase struct {
@@ -304,7 +304,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 		return p, result{out: out.String(), err: p.stderr.String(), code: code}
 	}
 
-	DescribeTable("c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question (Plan 10 §2.1)",
+	DescribeTable("c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question",
 		func(command string) {
 			c := fixture(command)
 			p, r := onTerminal(c, "2")
@@ -390,9 +390,9 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 	})
 })
 
-// R-8-U8: a bare lola init, which scaffolds the current directory, asks first; lola init <dir>
+// A bare lola init, which scaffolds the current directory, asks first; lola init <dir>
 // (. too) and -y do not.
-var _ = Describe("lola init asks before scaffolding the current directory (R-8-U8)", func() {
+var _ = Describe("lola init asks before scaffolding the current directory", func() {
 	var tmp, dir string
 	BeforeEach(func() {
 		var err error

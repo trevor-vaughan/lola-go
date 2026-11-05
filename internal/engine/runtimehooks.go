@@ -26,7 +26,7 @@ const (
 	RuntimeHooksDeclined  = "declined"  // not installed; any installed earlier are removed
 )
 
-// promptCut is how much of a prompt or agent hook's text consent shows (design §7.3).
+// promptCut is how much of a prompt or agent hook's text consent shows.
 const promptCut = 200
 
 // RuntimeHook is one runtime hook handler as consent shows it: every string comes from the
@@ -57,7 +57,7 @@ type RuntimeHook struct {
 }
 
 // consentRuntimeHooks decides, per module and settings file, whether the intents that install
-// runtime hooks may be written (design §7.3). Every intent of kind target.KindRuntimeHook must
+// runtime hooks may be written. Every intent of kind target.KindRuntimeHook must
 // carry a plan.HookConsent; one without is refused. Consent is recorded under
 // "<module>/runtime-hooks/<sha256 of the settings file's resolved absolute path>" for a digest
 // of the rendered hooks and the module version, so a new version, a changed rendering, another
@@ -201,10 +201,10 @@ func (e *Engine) consentKey(sc Scope, module, targetID, settings string) (string
 
 // runtimeHookConsent returns the consent status of module's runtime hooks with digest in the
 // settings file at settings (root-relative), keyed by key: a recorded consent grants it; a --trust
-// covering runtime hooks grants it, added to res.Trusted and recorded only after the receipt
-// (R-9-3, A2); in a batch's apply pass (opts.Expect), the grant for key and digest the batch
+// covering runtime hooks grants it, added to res.Trusted and recorded only after the receipt;
+// in a batch's apply pass (opts.Expect), the grant for key and digest the batch
 // holds, a terminal yes of its collect pass, grants it and is recorded the same way; otherwise
-// AskRuntimeHooks may ask, and a yes is recorded with them (A23). A dry run
+// AskRuntimeHooks may ask, and a yes is recorded with them. A dry run
 // decides like a real run but never asks or records.
 func (e *Engine) runtimeHookConsent(key, module, settings, digest string, hooks []RuntimeHook, opts Options, res *Result) (string, error) {
 	ok, err := e.Consent.Granted(key, digest)
@@ -239,7 +239,7 @@ func (e *Engine) runtimeHookConsent(key, module, settings, digest string, hooks 
 // (once, though several of its intents carry them). It returns the digest consent is keyed by:
 // sha256 over each group's target, pointer and canonical JSON, each component's target, kind,
 // name and canonical hooks and servers, all as rendered, and the content digest of the module
-// version (design §7.3).
+// version.
 func describeRuntimeHooks(gated []plan.Intent, versionDigest string) ([]RuntimeHook, string, error) {
 	all := sha256.New()
 	var out []RuntimeHook
@@ -520,7 +520,7 @@ func cut(s string) string {
 // driftFindings reports runtime hook groups lola installed that are no longer in their
 // settings file as it wrote them: the user edited or removed them, and since a group is
 // identified by its content the two look the same. Render and install leave such a group
-// absent and still owned (Plan 5b design §14: writing it again would run both copies) and
+// absent and still owned (writing it again would run both copies) and
 // report it as info with a hint, since it records the user's choice rather than something lola
 // lost: --strict does not escalate it, and human output prints it because of its hint, restore,
 // the run with --force that writes it again. Uninstall, or a declined update, forgets it and

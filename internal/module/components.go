@@ -19,7 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// components is the lola.yml components section (Plan 5b design §3). Listing a kind replaces
+// components is the lola.yml components section. Listing a kind replaces
 // discovery of that kind, so a kind listed with no entries has none; the pointers keep a listed
 // empty kind apart from an unlisted one.
 type components struct {
@@ -94,7 +94,7 @@ type loader struct {
 	known []string // the target ids a per-entry targets list may name
 }
 
-// claim is one artifact of a kind, for the duplicate check (§3.2).
+// claim is one artifact of a kind, for the duplicate check.
 type claim struct {
 	name, source string
 	targets      []string
@@ -109,7 +109,7 @@ func entryErr(at, msg string, hints ...string) error {
 	return errs.WithHints(fmt.Errorf("%s: %s", at, msg), hints...)
 }
 
-// path checks an entry's path (§3.1) with localPath. dir says whether it must name a directory
+// path checks an entry's path with localPath. dir says whether it must name a directory
 // or a regular file; suffix, when set, is the file name ending it needs.
 func (l loader) path(at, rel string, dir bool, suffix string) (string, error) {
 	clean, isDir, err := localPath(l.dir, at, rel)
@@ -122,7 +122,7 @@ func (l loader) path(at, rel string, dir bool, suffix string) (string, error) {
 	case !dir && isDir:
 		return "", entryErr(at, fmt.Sprintf("path %q is not a regular file", safeName(rel)),
 			"name a plain file, not a directory or the module root")
-	case suffix == ".md" && IsTemplate(clean): // a .md.liquid path stands wherever a .md one does (Plan 7 §3.1)
+	case suffix == ".md" && IsTemplate(clean): // a .md.liquid path stands wherever a .md one does
 	case suffix != "" && !strings.HasSuffix(clean, suffix):
 		return "", entryErr(at, fmt.Sprintf("path %q does not end in %s", safeName(rel), suffix),
 			"name a file that ends in "+suffix)
@@ -169,7 +169,7 @@ func localPath(dir, at, rel string) (string, bool, error) {
 	return clean, fi.IsDir(), nil
 }
 
-// name is an entry's artifact name (§3.1): its name, or the one its path gives.
+// name is an entry's artifact name: its name, or the one its path gives.
 func (l loader) name(at, kind, name, derived string) (string, error) {
 	if name == "" {
 		name = derived
@@ -193,7 +193,7 @@ func (l loader) targets(at string, ts []string) error {
 	return nil
 }
 
-// unique refuses two artifacts of kind with one name whose effective targets overlap (§3.2).
+// unique refuses two artifacts of kind with one name whose effective targets overlap.
 func (l loader) unique(kind string, cs []claim) error {
 	eff := func(c claim) []string {
 		if len(c.targets) > 0 {

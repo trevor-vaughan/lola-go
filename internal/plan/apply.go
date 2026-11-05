@@ -15,9 +15,9 @@ import (
 // ManifestWrite is a manifest edit Apply writes in the same transaction as the ledger: Data
 // at Path, mode 0600, or with KeepMode the mode of the file it replaces, when there is one (a
 // file of yours, which a dotfiles repository may share). A project profile lola writes pins into
-// is one too (Plan 6b §6.4). Check, when set, runs just before Data is staged: an error refuses
+// is one too. Check, when set, runs just before Data is staged: an error refuses
 // the apply, which restores what it changed (a profile checks that nothing moved since it was
-// read, ruling R-6b3a-4).
+// read).
 type ManifestWrite struct {
 	Path     string
 	Data     []byte

@@ -24,10 +24,10 @@ import (
 )
 
 // ContentMCPServer is a module MCP server as the trust diff shows it, which is the only consent
-// it gets (L1): Runs is the command with each argument quoted unless plain, so the arguments'
+// it gets: Runs is the command with each argument quoted unless plain, so the arguments'
 // boundaries stay visible, or the URL; Env ("NAME=value") and Headers ("Name: value") are
 // sorted, and Cwd is "" when unset, since each can change what runs or where data goes. Change
-// is how it differs from the version installed (Plan 6a §7.3: added, changed, unchanged or
+// is how it differs from the version installed (added, changed, unchanged or
 // removed); a changed server carries Previous, its installed form.
 type ContentMCPServer struct {
 	Name      string            `json:"name"`
@@ -40,7 +40,7 @@ type ContentMCPServer struct {
 	Previous  *ContentMCPServer `json:"previous,omitempty"`
 }
 
-// MCP servers and hooks are marked by how they differ from the version installed (Plan 6a §7.3).
+// MCP servers and hooks are marked by how they differ from the version installed.
 const ChangeUnchanged = "unchanged"
 
 // FileChange is a file a module version adds, changes or removes (trust.Change kinds).
@@ -70,7 +70,7 @@ type ContentHook struct {
 }
 
 // fillContent fills the content of each added or changed module of rep from the version the sync
-// resolved for it (Plan 6a §7.3): files against the version lock.json records, from the cache
+// resolved for it: files against the version lock.json records, from the cache
 // (never fetched: a version the cache lost lists every file as added), MCP servers, and every
 // hook the content declares (declaredRuntimeHooks), each MCP server and hook marked against the
 // version installed. A module nothing was fetched for yet is left without content. display is
@@ -294,8 +294,8 @@ func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, fro
 }
 
 // declaredRuntimeHooks is every runtime hook and agent MCP server v declares, as each assistant
-// lola knows would render it for the entry ent, whatever its targets and the user's selections
-// (Plan 6a §7.3, L1). Describing runs no assistant: one probes has not read is planned as the
+// lola knows would render it for the entry ent, whatever its targets and the user's selections.
+// Describing runs no assistant: one probes has not read is planned as the
 // newest version lola knows. display is the run's output flags, which a template refusal's
 // check hint keeps.
 func (e *Engine) declaredRuntimeHooks(sc Scope, v store.Version, ent manifest.Entry, from string, probes *probeRun, templates *templateRun,
@@ -349,8 +349,7 @@ func contentHook(h RuntimeHook) ContentHook {
 	return ContentHook{Kind: kind, Target: h.Target, Event: h.Event, Detail: strings.Join(parts, ": ")}
 }
 
-// generatedManifest is the lola.yml module.Normalize writes into every cached version (Plan 6a
-// §5.1).
+// generatedManifest is the lola.yml module.Normalize writes into every cached version.
 const generatedManifest = "lola.yml"
 
 // fileChanges lists the files v adds, changes (content or execute bit) and removes against old,
@@ -371,7 +370,7 @@ func fileChanges(v store.Version, old *store.Version) ([]FileChange, error) {
 		switch was, ok := before[p]; {
 		case !ok && p == generatedManifest:
 			// lola's own generated lola.yml comes with every new module; it is listed only when it
-			// changes or goes (Plan 6a §7.3).
+			// changes or goes.
 		case !ok:
 			out = append(out, FileChange{Path: shown(p), Change: trust.ChangeAdded})
 		case was != now[p]:

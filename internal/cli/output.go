@@ -89,7 +89,7 @@ func (a *app) color(w any) bool {
 
 // emit is the one output path: JSON under --json, the run's contexts first (withContext),
 // otherwise the human renderer, through page, which opens the viewer when the output is taller
-// than the terminal (Plan 10 §2.1).
+// than the terminal.
 func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) error {
 	w := cmd.OutOrStdout()
 	if a.json {

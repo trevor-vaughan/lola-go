@@ -20,7 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// pinsWrite is the write of pins.yaml a user-scope apply makes (spec 2026-10-29 §3.4), led being
+// pinsWrite is the write of pins.yaml a user-scope apply makes, led being
 // the ledger the apply leaves, names the modules the run resolved or changed, kept those of them
 // whose version the run kept rather than chose, and man its other writes: under pins.lock, taken last, its next bytes are computed (nextPins) from planned, the
 // file as the run read it to plan (a sync's pin source), else from the file read now. The write is
@@ -57,7 +57,7 @@ func (e *Engine) pinsWrite(planned *config.Pins, led *ledger.Ledger, names, kept
 	return &plan.ManifestWrite{Path: dst, Data: data, Check: pins.Current, KeepMode: true}, unlock, notices, nil
 }
 
-// nextPins is pins.yaml's next bytes (spec 2026-10-29 §3.4) and whether they are a write. The pin
+// nextPins is pins.yaml's next bytes and whether they are a write. The pin
 // of each module in names that an entry of a profile of yours installed (led, the ledger the run
 // leaves; nil sets none) is set, unless it is no pin pins.yaml can hold (a source on this
 // machine), or the module is in kept (the run kept its version rather than chose it) and pins.yaml
@@ -116,7 +116,7 @@ func (e *Engine) nextPins(pins *config.Pins, led *ledger.Ledger, names, kept []s
 	return data, notices, !pins.Same(data) && !nothing, nil
 }
 
-// writePinsNow writes pins.yaml outside a scope's apply (spec 2026-10-29 §3.4: lola profile --add,
+// writePinsNow writes pins.yaml outside a scope's apply (lola profile --add,
 // --update and --remove record your remote profiles): only remotes: changes, as remoteRecords says
 // without the profiles named in drop; modules: is kept as read. It runs under pins.lock, checks the
 // file is unchanged since the read, writes atomically through a link, and writes nothing when the
@@ -264,7 +264,7 @@ func (e *Engine) ownKeys(man []plan.ManifestWrite) (keys map[string][]config.Pin
 	return keys, ""
 }
 
-// remoteRecords is the remote profiles' records pins.yaml holds next (spec 2026-10-29 §3.4):
+// remoteRecords is the remote profiles' records pins.yaml holds next:
 // those held, without the names in drop (a --remove), and each remote profile on disk recorded as
 // its source.json says. A record is never dropped for want of a profile on disk: it restores it.
 // A profile whose source.json does not read, or holds no record pins.yaml can keep (one today's

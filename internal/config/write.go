@@ -93,7 +93,7 @@ func Save(path string, changes []Change) error {
 // configTemplate starts a config.yaml lola creates.
 const configTemplate = "# lola settings. Safe to edit by hand.\nversion: 1\n"
 
-// SaveTheme writes theme: theme to config.yaml at path (Plan 10 §4), replacing the key's value
+// SaveTheme writes theme: theme to config.yaml at path, replacing the key's value
 // or adding the key last; comments, order and every other key are kept. home is LoadConfig's.
 // A file that does not load is never overwritten, and a symlinked file is written at its target.
 func SaveTheme(path, home, theme string) error {
@@ -230,7 +230,7 @@ func projectNode(projects *yaml.Node, key string) (int, error) {
 }
 
 // rekeyNode moves the section under w's path key (Where.Path) to its repository key before
-// module's entry is written or removed there (spec 2026-11-03 Pick-P2-a): with no section under
+// module's entry is written or removed there: with no section under
 // the repository key, the path key is rewritten in place, keeping its comments and the file's
 // other entries; else module's entry leaves the path key's section, which is dropped once empty
 // unless it carries a comment (Selections.rekey).

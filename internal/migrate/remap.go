@@ -18,21 +18,21 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// RootMap is one --map-root OLD=NEW (Plan 10 §3.1): a project path the Python lola recorded at
+// RootMap is one --map-root OLD=NEW: a project path the Python lola recorded at
 // or below Old, missing on this machine, is looked for at the same place below New.
 type RootMap struct{ Old, New string }
 
-// RootSuggestion is a root that missing project paths and local sources of the Python lola share
-// (Plan 10 §3.1): Old as oldRoot finds it, the records whose project path or source is below it,
+// RootSuggestion is a root that missing project paths and local sources of the Python lola share:
+// Old as oldRoot finds it, the records whose project path or source is below it,
 // and New, the root lola suggests (your home).
 type RootSuggestion struct {
 	Old, New string
 	Records  []Record
 }
 
-// TargetSuggestion is an assistant the Python lola installed for that this machine lacks (Plan
-// 10 §3.2): Old, its records, and Detected, the targets whose assistant is on your PATH, which
-// lola suggests installing them for.
+// TargetSuggestion is an assistant the Python lola installed for that this machine lacks: Old, its
+// records, and Detected, the targets whose assistant is on your PATH, which lola suggests
+// installing them for.
 type TargetSuggestion struct {
 	Old      string
 	Detected []string
@@ -53,7 +53,7 @@ func foreignAbs(p string) bool { return drivePath.MatchString(p) || strings.HasP
 // sepAt reports whether p[i] separates two names of p: '/', or '\' in a Windows path.
 func sepAt(p string, i int) bool { return p[i] == '/' || p[i] == '\\' && drivePath.MatchString(p) }
 
-// oldRoot is the root another machine had for p, a project path missing here (Plan 10 §3.1):
+// oldRoot is the root another machine had for p, a project path missing here:
 // the home-shaped prefix p is under, unless it is home, this machine's; else the shallowest
 // ancestor of p that does not exist here; else p. A Windows path is wholly missing on another OS,
 // so its root is its first name after the drive, with nothing to look up.
@@ -129,7 +129,7 @@ func moveBy(p string, roots []RootMap, used map[int]bool) (string, int) {
 	return to, best
 }
 
-// rerooted is recs with roots applied (Plan 10 §3.1): a project record whose path is missing
+// rerooted is recs with roots applied: a project record whose path is missing
 // here, at or below the Old of a map (the longest that matches), moves to the same place below
 // its New and is checked again as Load checks it. moved[i] says whether a map moved recs[i];
 // used gains the index of each map that moved one.
@@ -163,7 +163,7 @@ func sourceMissing(src Source) bool {
 	return errors.Is(err, fs.ErrNotExist)
 }
 
-// rerootedSources is sources with roots applied (Plan 10 §3.1): a local source missing here
+// rerootedSources is sources with roots applied: a local source missing here
 // moves as a project path does, and mapSource checks it again. moved names the modules whose
 // source a map moved; used gains the index of each map that moved one.
 func rerootedSources(sources map[string]Source, roots []RootMap, used map[int]bool) (out map[string]Source, moved map[string]bool) {
@@ -184,7 +184,7 @@ func rerootedSources(sources map[string]Source, roots []RootMap, used map[int]bo
 
 // suggestRoots groups by old root, in order, the records whose project path or local source is
 // missing here and was not moved by a map, each record once per root and each root with your
-// home as the new one (Plan 10 §3.1): one answer per old root covers both.
+// home as the new one: one answer per old root covers both.
 func suggestRoots(e *engine.Engine, recs []Record, moved []bool, srcs map[string]Source, srcMoved map[string]bool) []RootSuggestion {
 	out, at, listed := []RootSuggestion{}, map[string]int{}, map[string]map[int]bool{}
 	add := func(old string, i int, rec Record) {
@@ -233,7 +233,7 @@ func Suggest(e *engine.Engine, st *State, opts Options) ([]RootSuggestion, []Tar
 
 // suggestTargets groups by assistant, in order, the records of recs without a problem whose
 // assistant lola has no target for, or is neither on your PATH nor set up where the record goes,
-// and which targets does not map; each with the assistants on your PATH (Plan 10 §3.2). It does
+// and which targets does not map; each with the assistants on your PATH. It does
 // not check that the record's source can be installed. mapped names each assistant of targets
 // that such a record has.
 func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string) (out []TargetSuggestion, mapped map[string]bool) {
@@ -268,7 +268,7 @@ func suggestTargets(e *engine.Engine, recs []Record, targets map[string][]string
 
 // installedHere is, by target, whether its assistant is on your PATH or set up at sc (its
 // markers exist there), as lola tidy counts it (engine/tidy.go): lola migrate installs a record
-// for its own assistant only where it is (Plan 10 §3.2).
+// for its own assistant only where it is.
 func installedHere(e *engine.Engine, sc engine.Scope) map[string]bool {
 	out := map[string]bool{}
 	for _, a := range e.Detect(sc) {
@@ -298,7 +298,7 @@ func targetOf(e *engine.Engine, assistant string) (string, bool) {
 const mapRootPlaceholder = "--map-root <old root>=<where it is on this machine>"
 
 // mapRootFlag is the --map-root flag that moves p, a path missing here, to the same place below
-// home, as the user types it (Plan 10 §3.1): p's old root, as RootSuggestions offers it, =home;
+// home, as the user types it: p's old root, as RootSuggestions offers it, =home;
 // mapRootPlaceholder when that root is one --map-root refuses, as no suggestion offers it.
 func mapRootFlag(p, home string) string {
 	old := oldRoot(p, home)
@@ -314,7 +314,7 @@ func movesEverything(old string) bool {
 	return old == "" || len(old) == 2 && old[1] == ':'
 }
 
-// ParseRootMaps reads --map-root OLD=NEW flags (Plan 10 §3.1): OLD an absolute path as this
+// ParseRootMaps reads --map-root OLD=NEW flags: OLD an absolute path as this
 // machine or another OS writes it, kept without a trailing separator, and NEW an absolute path
 // here, kept clean.
 func ParseRootMaps(args []string) ([]RootMap, error) {
@@ -339,7 +339,7 @@ func ParseRootMaps(args []string) ([]RootMap, error) {
 	return out, nil
 }
 
-// ParseTargetMaps reads --map-target OLD=NEW[,NEW] flags (Plan 10 §3.2): OLD an assistant the
+// ParseTargetMaps reads --map-target OLD=NEW[,NEW] flags: OLD an assistant the
 // Python lola names, given once, and each NEW a target of e, kept once each.
 func ParseTargetMaps(e *engine.Engine, args []string) (map[string][]string, error) {
 	ids := make([]string, 0, len(e.Targets))

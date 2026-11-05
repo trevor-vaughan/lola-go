@@ -16,8 +16,8 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// editFlags are lola profile --edit's flags beside syncFlags (spec 2026-10-29 §6.2; cherry-pick
-// design §4.3): the install flags it passes on (picks, assistants, --override) and --new.
+// editFlags are lola profile --edit's flags beside syncFlags: the install flags it passes on
+// (picks, assistants, --override) and --new.
 type editFlags struct {
 	targets, skips, onlys, unskips []string
 	exact, withMentions, override  bool
@@ -26,12 +26,12 @@ type editFlags struct {
 	members                        []string // --bundle (nil when not given; [] for --bundle "")
 }
 
-// profileEdit runs lola profile [<name>] --edit [<module>...] (spec 2026-10-29 §6.2; cherry-pick
-// design §4.3): the arguments are split into the profile and the modules at the one scope the run
-// takes without asking (EditArgs, which asks which a name is when it is both); with modules, the
-// edit is lola install of them into that profile (its --profile), or into the one edits go to when
-// it names none, applied in each scope the profile is on (EditScopes), its hints worded as this run;
-// without, --new makes the profile, and anything else is refused, saying how to name a module.
+// profileEdit runs lola profile [<name>] --edit [<module>...]: the arguments are split into the
+// profile and the modules at the one scope the run takes without asking (EditArgs, which asks which
+// a name is when it is both); with modules, the edit is lola install of them into that profile (its
+// --profile), or into the one edits go to when it names none, applied in each scope the profile is
+// on (EditScopes), its hints worded as this run; without, --new makes the profile, and anything
+// else is refused, saying how to name a module.
 func (a *app) profileEdit(cmd *cobra.Command, args []string, ef editFlags, f syncFlags) error {
 	eng, err := a.engine()
 	if err != nil {
@@ -107,11 +107,11 @@ func (a *app) profileEdit(cmd *cobra.Command, args []string, ef editFlags, f syn
 		edit: lead, create: ef.create, scopes: scopes, catalog: catalog, catalogPartial: !complete})
 }
 
-// editModifiers refuses --from and --bundle where lola profile <name> --edit cannot take them
-// (spec 2026-10-29 §6.2): the two together (a new profile copies one, or bundles several), beside
-// modules (each makes or edits the profile's own file), and --from without --new. Each hint is a
-// run that works as the name reads at sc (req.Profile): one that makes the profile only when no
-// profile has the name, one that sets a bundle's members only on a bundle or an empty profile.
+// editModifiers refuses --from and --bundle where lola profile <name> --edit cannot take them: the
+// two together (a new profile copies one, or bundles several), beside modules (each makes or edits
+// the profile's own file), and --from without --new. Each hint is a run that works as the name
+// reads at sc (req.Profile): one that makes the profile only when no profile has the name, one that
+// sets a bundle's members only on a bundle or an empty profile.
 func editModifiers(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, lead, modules []string, ef editFlags, req engine.TargetRequest) error {
 	from, bundle := ef.from != "", cmd.Flags().Changed("bundle")
 	if !from && !bundle || len(modules) == 0 && (ef.create || !from) && (!from || !bundle) {
@@ -181,13 +181,13 @@ func editModifiers(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, lead
 	return errs.WithHints(msg, hints...)
 }
 
-// editPage is lola profile [<name>] --edit with no module on a terminal (spec 2026-10-29 §6.2;
-// cherry-pick design §4.3): what it edits is asked as an install asks it (the member question under
-// a bundle); a profile's page is the module picker with its modules ticked, then each ticked
-// module's component page, a module unticked being removed from it once asked, applied in each
-// scope it is on (EditScopes); a bundle's is its members page, then editBundle; a name no profile
-// has asks whether the new profile lists modules (the module page, then the profile is made with
-// what was picked, or empty) or bundles profiles (the members page, then the bundle is made).
+// editPage is lola profile [<name>] --edit with no module on a terminal: what it edits is asked as
+// an install asks it (the member question under a bundle); a profile's page is the module picker
+// with its modules ticked, then each ticked module's component page, a module unticked being
+// removed from it once asked, applied in each scope it is on (EditScopes); a bundle's is its
+// members page, then editBundle; a name no profile has asks whether the new profile lists modules
+// (the module page, then the profile is made with what was picked, or empty) or bundles profiles
+// (the members page, then the bundle is made).
 func (a *app) editPage(cmd *cobra.Command, eng *engine.Engine, g argGuide, read engine.ScopeChoice, name string, req engine.TargetRequest, ef editFlags,
 	f syncFlags) error {
 	p, sc := a.prompter(cmd), read.Scope
@@ -269,7 +269,7 @@ func (a *app) membersPage(cmd *cobra.Command, eng *engine.Engine, sc engine.Scop
 	return out, nil
 }
 
-// editTarget is the TargetRequest of lola profile <lead> --edit <modules> (spec 2026-10-29 §6.2): its
+// editTarget is the TargetRequest of lola profile <lead> --edit <modules>: its
 // hints are the run, the profile it names taken from extra's "--profile <name>" (base included) in
 // place of lead, and --override as given; --new kept only when create and the name is the run's own.
 func editTarget(cmd *cobra.Command, lead, modules []string, create bool) engine.TargetRequest {
@@ -306,7 +306,7 @@ func (a *app) nameAModule(cmd *cobra.Command, eng *engine.Engine, sc engine.Scop
 }
 
 // makeProfile runs lola profile <name> --edit --new with no module: the profile is made, empty, a
-// copy (--from) or a bundle (--bundle), and nothing is applied (spec 2026-10-29 §6.2).
+// copy (--from) or a bundle (--bundle), and nothing is applied.
 func (a *app) makeProfile(cmd *cobra.Command, eng *engine.Engine, req engine.MakeRequest) error {
 	res, err := eng.MakeProfile(cmd.Context(), req)
 	if err != nil {
@@ -321,9 +321,9 @@ func (a *app) makeProfile(cmd *cobra.Command, eng *engine.Engine, req engine.Mak
 }
 
 // editBundle runs lola profile <name> --edit --bundle <members> at read's scope: the bundle's members
-// are set, and each scope it reaches applies them (EditScopes, ruling P1), each scope's context line
+// are set, and each scope it reaches applies them (EditScopes), each scope's context line
 // printed first, with sync's questions: removals asked (-y, --force), trust asked or refused off a
-// terminal (--trust) (spec 2026-10-29 §6.2). force is the edit with --force, which a refusal --force
+// terminal (--trust). force is the edit with --force, which a refusal --force
 // overrides hints; render is the same as a real run (no -n), which renders a forceable skip; said says read's context line is printed already (--on's question), so only
 // the other scopes' lines are printed.
 func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.ScopeChoice, name string, members []string, req engine.TargetRequest, f syncFlags,

@@ -86,7 +86,7 @@ modules:
 			Expect(err).To(MatchError(fs.ErrNotExist))
 		})
 
-		It("Prof-P2-d: a newer version is refused with the one hint that fixes it", func() {
+		It("a newer version is refused with the one hint that fixes it", func() {
 			_, err := profile.Load(write("new.yml", "version: 2\nextends: [go]\n"))
 			Expect(errs.Hints(err)).To(Equal([]string{"upgrade lola"}))
 		})
@@ -103,13 +103,13 @@ modules:
 				Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("move it aside")), "lola writes no profile to start anew")
 			},
 			Entry("a version that is not a number, quoted safely", "version: \"1\\u001b[2J\"\n", ":1: version: expected a number, found text"),
-			Entry("Prof-P2-d: an unknown key, naming the keys a profile has", "version: 1\nshell: rm -rf\n",
+			Entry("an unknown key, naming the keys a profile has", "version: 1\nshell: rm -rf\n",
 				`:2: unknown key "shell" (a profile has: version, description, targets, bundle, modules)`),
-			Entry("Prof-P2-d: an unknown key of an entry, naming the keys an entry has", "version: 1\nmodules:\n  - name: a\n    source: ../a\n    extends: x\n",
+			Entry("an unknown key of an entry, naming the keys an entry has", "version: 1\nmodules:\n  - name: a\n    source: ../a\n    extends: x\n",
 				`:5: unknown key "extends" (a profile entry has: name, source, ref, path, commit, digest, targets, rules, vars, market, components, only, skip)`),
-			Entry("Prof-P2-d: a value of the wrong kind, said without a Go type", "version: 1\nmodules:\n  - name: a\n    source: ../a\n    only: skill/b1\n",
+			Entry("a value of the wrong kind, said without a Go type", "version: 1\nmodules:\n  - name: a\n    source: ../a\n    only: skill/b1\n",
 				":5: only: expected a list, found text"),
-			Entry("Prof-P2-d: a wrong kind on a line with several keys, which names none", "version: 1\nmodules:\n  - {name: a, source: ../a, only: x}\n",
+			Entry("a wrong kind on a line with several keys, which names none", "version: 1\nmodules:\n  - {name: a, source: ../a, only: x}\n",
 				":3: expected a list, found text"),
 			Entry("a control character in a source", "version: 1\nmodules:\n  - name: a\n    source: \"https://x/a\\u0007.git\"\n",
 				":3: module a: source holds control or invisible characters"),
@@ -406,7 +406,7 @@ modules:
 			infos, invalid, reserved, err := profile.Visible(p, true)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(invalid).To(Equal(1), "Bad Name.yml is counted, notes.txt is not")
-			Expect(reserved).To(Equal(filepath.Join(p.UserProfiles, "base.yml")), "base.yml is no profile (spec 2026-10-29 §3.1)")
+			Expect(reserved).To(Equal(filepath.Join(p.UserProfiles, "base.yml")), "base.yml is no profile")
 			Expect(infos).To(Equal([]profile.Info{
 				{Name: "default", Kind: profile.KindDefault, Path: filepath.Join(p.UserProfiles, "default.yml")},
 				{Name: "go", Kind: profile.KindUser, Path: filepath.Join(p.UserProfiles, "go.yml")},
@@ -518,7 +518,7 @@ modules:
 			Expect(os.Symlink(real, link)).To(Succeed())
 			_, err := profile.LoadProject(link)
 			Expect(err).To(MatchError(link + " is a symbolic link; a project's profile must be a file of its own"))
-			Expect(profile.Load(link)).NotTo(BeNil(), "a user profile may be a link (P7); a project's may not")
+			Expect(profile.Load(link)).NotTo(BeNil(), "a user profile may be a link; a project's may not")
 		})
 
 		It("names a profile in a directory holding control or format characters only as text that cannot drive the terminal", func() {
@@ -595,7 +595,7 @@ modules:
 
 			Expect(os.WriteFile(path, []byte("version: 1\nmodules:\n  - {name: a, source: https://evil.example/a.git}\n"), 0o644)).To(Succeed())
 			err = pr.Unchanged(root, path)
-			Expect(err).To(MatchError(path+" changed while lola was reading it; nothing was written"), "spec 2026-10-29 §6.3")
+			Expect(err).To(MatchError(path + " changed while lola was reading it; nothing was written"))
 			Expect(errs.Hints(err)).To(Equal([]string{"run the same command again"}))
 
 			symlinks()
@@ -641,7 +641,7 @@ modules:
 			return path
 		}
 
-		// extends: is gone (spec 2026-10-29 §7); its cap and its twice-named and invalid names are
+		// extends: is gone; its cap and its twice-named and invalid names are
 		// bundle:'s own refusals now (the bundle shape entries below).
 		It("refuses extends:, which bundles replaced, at its line, hinting the edit that keeps what it did", func() {
 			refused := func(path, line string, hints ...string) {

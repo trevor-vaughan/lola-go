@@ -9,35 +9,44 @@ lola trash [<run>...] --empty [--older-than <age>] [-n] [-y]
 `lola tidy`, `lola migrate` and `lola profile --remove` move what they take out of place into the
 trash (`$XDG_STATE_HOME/lola/trash/`), one run per command. Each run holds `manifest.txt`, one
 `original<TAB>trash path` line per entry, and `run.yaml`: the command that made it, its scope,
-project and time, and the copies that may hold credentials. lola never deletes what a run holds
-unless you run `lola trash --empty`; a restore that empties a run removes the run.
+project and time, and the copies that may hold credentials. lola deletes what a run holds
+only when you run `lola trash --empty`; a restore that empties a run removes the run.
 
 Without a run, `lola trash` lists the runs, newest first: the id (the run's directory name), its
 time, the command that made it, its scope and project, and its files and size. With no runs it
 prints `✓ the trash is empty`. A run made before lola wrote `run.yaml` shows the command
-`unknown`. With a run, it shows the run's line, then each entry as `<original> → <trash path>`,
+`unknown`.
+
+With a run, it shows the run's line, then each entry as `<original> → <trash path>`,
 and ends with `→ restore them: lola trash <run> --restore`. When an original is there now (always
 so for the config file a tidy copied), that restore would be refused, so the hint is the one that
 works: `→ restore them (replaces <path>, which moves to a new trash run first): lola trash <run>
---restore --force`; `--json` lists those paths as `existing`. An entry that is a copy of an MCP or
+--restore --force`; `--json` lists those paths as `existing`.
+
+An entry that is a copy of an MCP or
 settings file, or a directory holding one, is marked `(may hold credentials)`.
 
 On a terminal, bare `lola trash` (without `--json` or `--plain`) opens a picker instead of the
 list: each run, newest first, as a `[whole run]` row of its time, command, scope and project,
 files and size, followed by its files, indented, each path relative to the run's project (whole
 when the run has none), a copy that may hold credentials marked `(may hold credentials)` before its
-path. `x` ticks a row; `/` filters; Enter moves on to `Do what with the ticked?`: `Restore ticked`
-or `Empty ticked runs`; `q` or Ctrl+C quits, changing nothing. A ticked `[whole run]` row takes the
+path.
+
+`x` ticks a row; `/` filters; Enter moves on to `Do what with the ticked?`: `Restore ticked`
+or `Empty ticked runs`; `q` or Ctrl+C quits, changing nothing.
+
+A ticked `[whole run]` row takes the
 whole run, whatever of its files is ticked; its files' rows stay as they are. The key help under
 the picker says what each key does. Nothing is written before lola shows the plan:
 
 - `Restore ticked` shows, for each run, the plan `lola trash <run> [<original>...] --restore -n`
-  prints (a run ticked whole names no original), then offers `Restore`. When an original exists,
-  the only choice offered is `Restore with --force: first move what is there into a new trash
-  run`, and lola asks once more before moving anything. Cancel goes back to the picker, the ticks
-  kept. Two ticked runs that would restore the same path (or one inside the other) send you back
-  to the picker, naming the path and both runs, before any plan is shown. When nothing ticked is
-  left in the trash, lola says `nothing to restore, so nothing changed`.
+  prints (a run ticked whole names no original), then offers `Restore`.
+  - When an original exists, the only choice offered is `Restore with --force: first move what is
+    there into a new trash run`, and lola asks once more before moving anything.
+  - Cancel goes back to the picker, the ticks kept.
+  - Two ticked runs that would restore the same path (or one inside the other) send you back to
+    the picker, naming the path and both runs, before any plan is shown.
+  - When nothing ticked is left in the trash, lola says `nothing to restore, so nothing changed`.
 - `Empty ticked runs` deletes the runs whose `[whole run]` row is ticked, as `lola trash <run>...
   --empty` does: it shows the plan and asks. Ticking only files asks the picker again.
 
@@ -54,18 +63,25 @@ Off a terminal, bare `lola trash` lists the runs as above.
 
 A restore never writes over what is there: when an original exists, the whole run is refused
 (`-n` lists such paths as `⚠ … exist, so the restore is refused`). A link comes back as a link.
+
 A credential copy comes back at mode 0600, as does a marked file inside a directory entry. The
 lines of the restored entries leave `manifest.txt`, and a run that then lists nothing is removed.
+
 When an entry is back but lola cannot make a credential copy in it private, the restore still
 counts it and warns `restored <path>, but cannot make <path> private (mode 0600): …`.
+
 `lola tidy` keeps a copy of a whole config file (`.mcp.json`, a settings file) when it removes an
 MCP server from it, and the file itself stays. Restoring that copy with `--force` replaces the
 whole file, so every change made since goes with it, MCP servers lola installed later included
-(`lola sync` puts those back). The plan and the review say `⚠ the restore replaces the whole file
+(`lola sync` puts those back).
+
+The plan and the review say `⚠ the restore replaces the whole file
 <path> with the copy trash run <run> holds, at mode 0600 (it may hold credentials); the file there
 now, with every change made since, moves to a new trash run first`, and the restore says
 `⚠ replaced the whole file <path> with the copy from trash run <run>, at mode 0600; the file that
-was there is in trash run <id>`. To keep the later changes, restore nothing and copy the server you
+was there is in trash run <id>`.
+
+To keep the later changes, restore nothing and copy the server you
 want from the trash path that `lola trash <run>` lists.
 `--empty` deletes only what it planned: a run whose files or size changed since the plan (a
 lola still writing it) is kept, with `trash run <id> changed since the plan, so it is kept;

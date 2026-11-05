@@ -26,7 +26,7 @@ const scopeHelp = "Scope: --project, --user, -C <dir> or --scope; else, on a ter
 // scopeFlags are the scope flags, by canonical name, which a hint naming a scope of its own drops.
 var scopeFlags = []string{"scope", "project", "user", "root"}
 
-// scopes resolves the scopes of a command that writes (Plan 6b §3.1): engine.ResolveScope, then,
+// scopes resolves the scopes of a command that writes: engine.ResolveScope, then,
 // on a terminal with no scope flag, the scope picker asking question. both says the command
 // acts on two scopes in one run; the others take one, so the picker asks for one and the engine
 // refuses --scope both or default_scope: both. refuseHome says the engine refuses a project at
@@ -54,7 +54,7 @@ func (a *app) scopes(cmd *cobra.Command, eng *engine.Engine, args []string, ques
 	return res.Scopes, nil
 }
 
-// scopePicker asks the scope picker (Plan 5c §14): Project (the project found from cwd, else
+// scopePicker asks the scope picker: Project (the project found from cwd, else
 // cwd), User and Other directory….
 type scopePicker struct {
 	p          Prompter
@@ -109,7 +109,7 @@ func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]strin
 	}
 }
 
-// otherDirectory asks for the directory of Other directory… (§14) until the answer is an
+// otherDirectory asks for the directory of Other directory… until the answer is an
 // existing directory that is not the project picked above, nor, when sp.refuseHome, the home
 // directory (the user scope's root, which install and sync refuse as a project), and returns it
 // absolute. A relative answer is
@@ -167,12 +167,12 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (str
 	}
 }
 
-// flagScope is the scopes the scope flags name for a lola profile action that never asks for one
-// (Plan 6b §19 P20, P22), none when no flag is given: the engine then picks; default_scope does
-// not apply. --scope both names the project and user scope: with why, the reason the action takes
-// one scope (--add), it is refused with the run without it and the run narrowed to each scope
-// (args are its names); without (--update, ruling R-6b3c-2), it is taken when the project has
-// .lola/, and refused otherwise with the run at user scope in its place.
+// flagScope is the scopes the scope flags name for a lola profile action that never asks for one,
+// none when no flag is given: the engine then picks; default_scope does not apply. --scope both
+// names the project and user scope: with why, the reason the action takes one scope (--add), it is
+// refused with the run without it and the run narrowed to each scope (args are its names); without
+// (--update), it is taken when the project has .lola/, and refused otherwise with the run at user
+// scope in its place.
 func (a *app) flagScope(cmd *cobra.Command, eng *engine.Engine, args []string, why string) ([]engine.Scope, error) {
 	if a.scopeFlag == "" && !a.user && !a.project && a.root == "" {
 		return nil, nil
@@ -198,7 +198,7 @@ func (a *app) flagScope(cmd *cobra.Command, eng *engine.Engine, args []string, w
 		return nil, errs.WithHints(fmt.Errorf("--scope %s names two scopes; %s", both, why),
 			"drop it: "+run, "or name the project: "+run+" --project", "or user scope: "+runWithout(cmd, args, slices.Concat([]string{"scope", "root"}, consentFlags)...)+" --user")
 	case len(res.Scopes) > 1 && res.Found && eng.IsHome(res.Scopes[0].Scope):
-		// Your home directory is user scope's root, never a project (ruling R-6b3c-9).
+		// Your home directory is user scope's root, never a project.
 		return nil, errs.WithHints(fmt.Errorf("--scope %s names a project and user scope, and the project there is your home directory, "+
 			"where user scope installs", both), "update at user scope only: "+runWithout(cmd, args, slices.Concat([]string{"scope", "root"}, consentFlags)...)+" --user")
 	case len(res.Scopes) > 1 && !res.Found:

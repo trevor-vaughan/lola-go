@@ -60,7 +60,7 @@ Guidance for coding agents working on lola (Go).
 - Ginkgo/Gomega. Every spec calls `testenv.Isolate()`.
 - **No meta tests**: never test test files, source text, docs or repository layout, and never
   test test helpers. Convention specs that walk the live cobra tree are fine.
-- Regression specs carry the names listed in the design spec §11; keep them.
+- Regression specs carry the names listed in `docs/testing.md` ("Regression names"); keep them.
 
 ## Driving the TUIs
 

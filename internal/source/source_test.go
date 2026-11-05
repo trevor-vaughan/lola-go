@@ -190,7 +190,7 @@ var _ = Describe("Parse refusals", func() {
 		Expect(errs.Hints(err)).To(ContainElement("for a path, write " + errs.ShellJoin([]string{"./-my skills"})))
 	})
 
-	It("says once in a remote source's refusal what to give instead (ruling R-8-U5)", func() {
+	It("says once in a remote source's refusal what to give instead", func() {
 		testenv.Isolate()
 		for src, want := range map[string]string{
 			"http://example.com/a.git": "http://example.com/a.git uses http://; a remote profile's sources must use https:// or ssh:// " +
@@ -204,7 +204,7 @@ var _ = Describe("Parse refusals", func() {
 		}
 	})
 
-	It("says in the error which sources lola takes when a URL's scheme is none of them (ruling R-8-U5)", func() {
+	It("says in the error which sources lola takes when a URL's scheme is none of them", func() {
 		testenv.Isolate()
 		for spec, want := range map[source.Spec]string{
 			{Kind: source.KindArchive, Location: "ftp://example.com/kit.zip"}: "archive ftp://example.com/kit.zip is neither a file nor an https:// URL",

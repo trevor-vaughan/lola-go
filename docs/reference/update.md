@@ -25,7 +25,10 @@ renamed. Those files are removals, listed before anything is written as `removal
 `✗ <module>: <assistants> (not in the version this run installs)` and the paths, and in `--json`
 `removals` (each with `why`). On a terminal `update` asks; off one it is refused (`lola update
 needs your confirmation to remove the files <module>'s new version drops, and there is no
-terminal to ask on`), hinting the run with `-n` and with `-y`. `-y` or `--force` confirms them; `-n` lists them and writes nothing.
+terminal to ask on`), hinting the run with `-n` and with `-y`.
+
+`-y` or `--force` confirms them; `-n` lists them and writes nothing.
+
 A JSON member (an MCP server, or a runtime hook entry) the new version no longer ships is not a
 removal: `update` deletes it from the JSON file without asking, as `lola sync` does, because lola
 cannot yet tell a dropped member from one it moved or re-keyed. It is in the plan (`→ delete …`)
@@ -35,23 +38,31 @@ Trust is `lola sync`'s ([Sync, pins and trust](../guides/sync-and-trust.md#sync-
 fresh head that has not moved asks nothing, so within `cache_fresh_for` a run with nothing new
 works without a terminal and without `--trust`. A stale head (or every head, with `--fetch`) is
 fetched first, into the run's private staging, never into your cache: a fetch that finds nothing
-new asks nothing, off a terminal too. A pin that moved is shown with its files and asked about,
+new asks nothing, off a terminal too.
+
+A pin that moved is shown with its files and asked about,
 or answered by `--trust`. Off a terminal without `--trust` the run is refused once, writing
 nothing (your cache, `project.yml`, `lock.json`, the trust record and your files stay as they
 were), naming the pins it would write and, when the new version drops files, the confirmation
 they need: `lola update needs your trust for the pins it would write for example; and your
 confirmation to remove the files example's new version drops, and there is no terminal to ask
 on`, hinting `then accept them: lola update --project --fetch --trust=entries --at
-example=<commit> -y`, which applies in one run. `--at` pins each new version the refusal showed:
+example=<commit> -y`, which applies in one run.
+
+`--at` pins each new version the refusal showed:
 that run fetches the branch again, and if it now serves another commit, it is refused, writing
 nothing (`example: its source now serves <commit>, not <commit> as --at says; nothing was
 written`), hinting `see what it serves now:` with `-n`; one whose source no longer serves that
-version says so (`its source does not serve <commit>, which --at names`). A run given `--at`
+version says so (`its source does not serve <commit>, which --at names`).
+
+A run given `--at`
 applies only the versions a refusal showed: any other module whose installed version would
 change (its source moved after the refusal, a pin a pull wrote, or one a refusal could not read)
 is refused before anything is written (`<module> has a new version no refusal showed, and --at does not pin it`), hinting
 `see what changed:` with `-n`, whatever its `--trust`, `-y` or `--force` say. A printed hint
-carries `-y` only when every removal it would confirm is listed; that is the guarantee. While
+carries `-y` only when every removal it would confirm is listed; that is the guarantee.
+
+While
 an installed entry is unread (one a pull changed, or one whose source failed to serve it, which
 a notice names), the hint has none, even if you gave `-y`, the message says `until it reads
 <module>, the removals listed may change, so -y waits until the next run lists them`, and the

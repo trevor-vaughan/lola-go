@@ -11,7 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("Pick-P2-f: lola uninstall clears the module's picks and says how to restore them", func() {
+var _ = Describe("lola uninstall clears the module's picks and says how to restore them", func() {
 	var tmp, proj, mod, review string
 	BeforeEach(func() {
 		var err error

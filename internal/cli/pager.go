@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// paging is how human output reaches the terminal (Plan 10 §2.1): printed (the zero value), shown
+// paging is how human output reaches the terminal: printed (the zero value), shown
 // in the viewer when it is taller than the terminal, or run through argv, the pager an explicit
 // $LOLA_PAGER names, run in env.
 type paging struct {

@@ -23,7 +23,7 @@ const cobraLocalFlags = "{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}"
 // which long help leaves to its preamble (globalFlagsBlock).
 const cobraGlobalFlags = "{{if .HasAvailableInheritedFlags}}\n\nGlobal Flags:\n{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}"
 
-// flagAliasKey is the flag annotation that lists a flag's aliases (Plan 6b §3.3).
+// flagAliasKey is the flag annotation that lists a flag's aliases.
 const flagAliasKey = "lola_aliases"
 
 // installHelp routes -h and `help` through renderHelp, shown as other output is (page), and makes
@@ -106,7 +106,7 @@ func aliasedPad(c *cobra.Command) string {
 }
 
 // aliasFlags gives cmd's flags the aliases in aliases (canonical name → aliases), defining each
-// flag once (Plan 6b §3.3): pflag normalizes an alias to its canonical name before lookup, so
+// flag once: pflag normalizes an alias to its canonical name before lookup, so
 // cobra parses --enable as --on and Changed("on") sees either, and the aliases are kept in the
 // flag's annotations for help (aliasedFlagUsages) and the published alias table.
 func aliasFlags(cmd *cobra.Command, aliases map[string][]string) {
@@ -131,7 +131,7 @@ func aliasFlags(cmd *cobra.Command, aliases map[string][]string) {
 }
 
 // checkFlagAliases panics when a flag alias of c or any command under it names a flag the command
-// inherits, a persistent flag of an ancestor or cobra's help flag (Plan 6b §3.3): cobra merges
+// inherits, a persistent flag of an ancestor or cobra's help flag: cobra merges
 // those into the command's flag set, through the command's normalize function, so the inherited
 // flag would silently become the alias's flag. aliasFlags checks the command's own flags; this
 // runs once the tree is built, when the inherited ones are known.
@@ -191,7 +191,7 @@ func aliasCompletions(cmd *cobra.Command, args []string, toComplete string) ([]c
 }
 
 // showHelp is the single help path for -h, `help` and a bare command group: renderHelp through
-// page, so help taller than the terminal opens in the viewer (Plan 10 §2.1).
+// page, so help taller than the terminal opens in the viewer.
 func (a *app) showHelp(cmd *cobra.Command, long bool) {
 	a.page(cmd, cmd.OutOrStdout(), style{}, func(w io.Writer, _ style) { renderHelp(w, cmd, long) })
 }

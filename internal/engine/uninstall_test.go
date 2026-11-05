@@ -276,7 +276,7 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 			sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
 			yml = filepath.Join(proj, ".lola", "project.yml")
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code, opencode]\n"})
-			// Nothing installs to the targets yet: only --trust=entries records them (spec 2026-10-29 §16.1).
+			// Nothing installs to the targets yet: only --trust=entries records them.
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
 			Expect(err).NotTo(HaveOccurred())
 		})

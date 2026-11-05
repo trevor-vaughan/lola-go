@@ -18,7 +18,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("replaceable paths (migrate design §4, §12)", func() {
+var _ = Describe("replaceable paths", func() {
 	var (
 		proj, src string
 		e         *engine.Engine
@@ -77,7 +77,7 @@ var _ = Describe("replaceable paths (migrate design §4, §12)", func() {
 	})
 })
 
-var _ = Describe("per-module targets and the pre-write callback (migrate design §4)", func() {
+var _ = Describe("per-module targets and the pre-write callback", func() {
 	var (
 		proj, src string
 		e         *engine.Engine

@@ -11,7 +11,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Numbers (Plan 7 §5.7.4): attribute values and vars may be integers, read as int64, or finite
+// Numbers: attribute values and vars may be integers, read as int64, or finite
 // floats, read as float64. Every decoder refuses a float that strconv.ParseFloat cannot read in
 // range or that is not finite, whatever its spelling.
 
@@ -113,7 +113,7 @@ func FloatNode(f float64) *yaml.Node {
 
 // Vars is a set of vars as lola records them in JSON (lock.json's rendered_with, trust.json): each
 // float written with a point or an exponent (floatText), so 2.0 and 2 stay two values, which
-// DecodedNumber reads back as written (Plan 7 R-7-50).
+// DecodedNumber reads back as written.
 type Vars map[string]any
 
 // MarshalJSON writes v as a JSON object, its floats kind-preserving.

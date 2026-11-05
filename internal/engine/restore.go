@@ -18,7 +18,7 @@ import (
 )
 
 // restoreRemotes restores, before a run at sc reads its layers, each remote profile the run needs
-// (needed) that this machine lacks and pins.yaml records (spec 2026-10-29 §3.4); extra is the
+// (needed) that this machine lacks and pins.yaml records; extra is the
 // profile an activation names ("" for none), and retry the run's own command, which a hint names
 // when the source cannot be reached ("" for none). A dry run restores nothing: it warns, and the
 // run's read of its layers plans the profile as missing (loadStack); the same run without -n
@@ -97,7 +97,7 @@ func inTheWayError(name, at, retry string) error {
 	return errs.WithHints(fmt.Errorf("%s is in the way of remote:%s, which pins.yaml records; lola never writes over it", at, shown(name)), hint)
 }
 
-// needed is the remote profiles a run at sc needs, by name (spec 2026-10-29 §3.4): the profile on
+// needed is the remote profiles a run at sc needs, by name: the profile on
 // and extra, the profile an activation names, which becomes the profile on: a remote one itself,
 // when no profile of yours of its name shadows it (activeInfo, resolveProfile), or the remote
 // members a bundle expands to that this machine lacks (Engine.members, read for names alone). A
@@ -106,7 +106,7 @@ func inTheWayError(name, at, retry string) error {
 // bundle on its way: a pulled member list is asked about first, and fetches nothing before it is
 // trusted (the run plans the member missing). A profile file that does not load is left to the
 // run's own read, which refuses it. With no profile on and none named it reads nothing more, so a
-// project run never lists the profiles of yours for it (D8).
+// project run never lists the profiles of yours for it.
 func (e *Engine) needed(sc Scope, extra string) ([]string, error) {
 	led, err := e.Ledger(sc)
 	if err != nil {
@@ -190,7 +190,7 @@ func (e *Engine) needed(sc Scope, extra string) ([]string, error) {
 }
 
 // restoreOne fetches the remote profile name at its record r and writes it as lola profile --add
-// does (spec 2026-10-29 §3.4), with no consent question: the digest proves these are the bytes
+// does, with no consent question: the digest proves these are the bytes
 // you accepted. The source rules come first (remoteSpec, before any network contact); for git the
 // recorded commit must be on the recorded ref, is fetched by its SHA and must be what the fetch
 // resolves; the bytes must have the recorded digest. A source that no longer serves the recorded

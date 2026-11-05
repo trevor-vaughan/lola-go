@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// TrashRun is one run of the trash as lola trash lists it (spec 2026-11-03 §3.5). Every text is
+// TrashRun is one run of the trash as lola trash lists it. Every text is
 // escaped (untrusted.Text): a run's files are data on disk. Time is RFC 3339, UTC, "" when
 // neither run.yaml nor the run's name says; Files counts the files and links its entries hold.
 type TrashRun struct {
@@ -248,7 +248,7 @@ type TrashRestoreResult struct {
 	replacing  []Notice      // the notices of whole-file copies the restore would put over a file, which its result says it did
 }
 
-// PlanTrashRestore plans req and writes nothing (spec 2026-11-03 §3.5): the run's entries, or
+// PlanTrashRestore plans req and writes nothing: the run's entries, or
 // those whose originals req names (each must be one of the run's), less those gone from the
 // trash, which are notices. Two entries of one original, or one inside another's, are refused:
 // a restore of both cannot put both back. The originals that exist are listed; RestoreTrash
@@ -365,7 +365,7 @@ func (e *Engine) forceRestore(req TrashRestoreRequest) string {
 	return trashCommand(slices.Concat([]string{req.Run}, req.Originals, []string{"--restore", "--force"}, req.Display)...)
 }
 
-// RestoreTrash applies plan, a PlanTrashRestore (spec 2026-11-03 §3.5). An original that exists
+// RestoreTrash applies plan, a PlanTrashRestore. An original that exists
 // now refuses the whole restore, unless the plan's request has Force: then each one is moved into
 // a new trash run first, never deleted (marked a credential copy when the entry put back is
 // one), and a whole-file copy put back over its file says so, naming that run. Each entry is then
@@ -482,7 +482,7 @@ type TrashEmptyResult struct {
 	rerun      string     // a plan's: the lola trash run that plans it again
 }
 
-// PlanTrashEmpty plans req and writes nothing (spec 2026-11-03 §3.5): the named runs, each of
+// PlanTrashEmpty plans req and writes nothing: the named runs, each of
 // which must be one, or every run; with an age, only those older than it. A run whose time is
 // unknown is kept, with a notice, when an age is given.
 func (e *Engine) PlanTrashEmpty(req TrashEmptyRequest) (*TrashEmptyResult, error) {

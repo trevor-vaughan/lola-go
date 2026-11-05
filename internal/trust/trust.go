@@ -1,4 +1,4 @@
-// Package trust keeps the trust record (Plan 6a §7): per project, the view of project.yml that
+// Package trust keeps the trust record: per project, the view of project.yml that
 // lola last wrote or the user last trusted, in $XDG_STATE_HOME/lola/trust.json. A manifest entry
 // the record covers is one lola may act on as written; any other entry came from somewhere else
 // (a pull, a hand edit) and is refused until the user reviews and trusts it with lola sync. User
@@ -39,8 +39,7 @@ const Version = 1
 const maxSize = 4 << 20
 
 // Entry is one module's view fields: everything of a manifest entry that changes what lola
-// fetches or writes. Member is set on an entry a project file gets from a remote profile (Plan 6b
-// §8.1; spec 2026-10-29 §3.10: a member of a project bundle), and omitted otherwise.
+// fetches or writes. Member is set on an entry a project file gets from a remote profile (a member of a project bundle), and omitted otherwise.
 type Entry struct {
 	Name    string      `json:"name"`
 	Source  string      `json:"source,omitempty"`
@@ -51,24 +50,23 @@ type Entry struct {
 	Targets []string    `json:"targets,omitempty"`
 	Rules   *bool       `json:"rules,omitempty"`
 	Member  *MemberView `json:"member,omitempty"`
-	// Market is the entry's marketplace as its file writes it (Plan 6c §8): provenance, shown as
+	// Market is the entry's marketplace as its file writes it: provenance, shown as
 	// written and never verified. Omitted when absent, so a view without it hashes as before.
 	Market *manifest.MarketRef `json:"market,omitempty"`
-	// Components is the selection of the module's directory the entry records (Plan 6c §4.1):
+	// Components is the selection of the module's directory the entry records:
 	// it decides what is installed, so it is trusted like the source. Omitted when absent.
 	Components *source.Components `json:"components,omitempty"`
-	// Only and Skip are a profile entry's picks (cherry-pick design §4.5): they decide what is
+	// Only and Skip are a profile entry's picks: they decide what is
 	// installed, so a project profile's are trusted like its source. Omitted when absent, so a view
 	// without them hashes as before.
 	Only []string `json:"only,omitempty"`
 	Skip []string `json:"skip,omitempty"`
-	// Vars overrides the module's template vars (Plan 7 §8): what its templates render with is
+	// Vars overrides the module's template vars: what its templates render with is
 	// trusted like the source. Omitted when absent, so a view without it hashes as before.
 	Vars module.Vars `json:"vars,omitempty"`
 }
 
-// MemberView is the remote profile an entry of a project file comes from (Plan 6b §8.1, §19 S4;
-// spec 2026-10-29 §3.10): its qualified name and the source and pin of its source.json. Another
+// MemberView is the remote profile an entry of a project file comes from: its qualified name and the source and pin of its source.json. Another
 // pin (after lola profile --update) or another source of that name is a change to every entry it
 // gives.
 type MemberView struct {
@@ -78,10 +76,9 @@ type MemberView struct {
 	Digest string `json:"digest"`
 }
 
-// View is a manifest's top-level targets and entries, modules sorted by name (§7.2), and the
-// views of the project's profiles that the user trusted or lola wrote, by profile name (Plan 6b
-// §8.1). Profiles is omitted when empty, so a view without profiles hashes as in Plan 6a. Bundle is
-// set only in a project bundle's part (Part): its member list (spec 2026-10-29 §3.10).
+// View is a manifest's top-level targets and entries, modules sorted by name, and the
+// views of the project's profiles that the user trusted or lola wrote, by profile name. Profiles is omitted when empty, so a view without profiles hashes as before. Bundle is
+// set only in a project bundle's part (Part): its member list.
 type View struct {
 	Targets  []string               `json:"targets,omitempty"`
 	Bundle   []string               `json:"bundle,omitempty"`
@@ -89,13 +86,13 @@ type View struct {
 	Profiles map[string]ProfileView `json:"profiles,omitempty"`
 }
 
-// ProfileView is a project profile's part of a view (Plan 6b §8.1): its top-level targets
-// (spec 2026-10-29 §3.10: trust content, as project.yml's are; omitted when it has none, so a part
+// ProfileView is a project profile's part of a view: its top-level targets
+// (trust content, as project.yml's are; omitted when it has none, so a part
 // without them hashes as before), and its entries, sorted by name, each with the targets it
 // installs to, its own or else the profile's, so a change to a profile's targets is a change to
 // every entry it gives them to.
 //
-// Bundle is a project bundle's member list, as its file writes it (spec 2026-10-29 §3.10): which
+// Bundle is a project bundle's member list, as its file writes it: which
 // profiles install is trust content; omitted for a profile, so its part hashes as before.
 type ProfileView struct {
 	Targets []string `json:"targets,omitempty"`
@@ -259,12 +256,12 @@ func sameMember(a, b *MemberView) bool {
 
 func sameRules(a, b *bool) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
 
-// Refresh is the record r after a write by lola turned loaded into saved (§7.4), loaded and
+// Refresh is the record r after a write by lola turned loaded into saved, loaded and
 // saved being the views of the file whose part of r key names (Part): every top-level or module
 // field the write changed takes its saved value, an entry the write added is recorded whole and
 // one it removed is dropped. Every other field keeps its trust state, so an entry r does not
 // cover stays uncovered unless the write made every field match; a field changed in an entry r
-// does not hold at all is not recorded. Every other part of r is kept as it is (Plan 6b §19 R2).
+// does not hold at all is not recorded. Every other part of r is kept as it is.
 func Refresh(r View, key string, loaded, saved View) View {
 	return r.WithPart(key, refresh(r.Part(key), loaded, saved))
 }
@@ -300,9 +297,9 @@ func refresh(r, loaded, saved View) View {
 // Accept is the record r after the user trusted, in the view v of the file as loaded whose part
 // of r key names (Part), the entries named in modules (an entry v lacks is dropped from the
 // record), and the top-level targets, or a project bundle's member list, when targets is set
-// (§7.4; spec 2026-10-29 §3.10: a bundle has no targets). Every other entry keeps its
+// (a bundle has no targets). Every other entry keeps its
 // record, so a declined or unnamed entry stays as covered, or as uncovered, as it was, and so
-// does every other part of r (Plan 6b §19 R2). Accepting every change of v and its targets makes
+// does every other part of r. Accepting every change of v and its targets makes
 // v that part.
 func Accept(r View, key string, v View, modules []string, targets bool) View {
 	return r.WithPart(key, accept(r.Part(key), v, modules, targets))
@@ -380,7 +377,7 @@ func (e Entry) clone() Entry {
 	return e
 }
 
-// Statuses of a manifest against its project's trust record (§7.3).
+// Statuses of a manifest against its project's trust record.
 const (
 	StatusTrusted = "trusted" // the record is the manifest's view, or the manifest is empty
 	StatusNew     = "new"     // the project has no record: nothing is covered
@@ -407,7 +404,7 @@ type FieldChange struct {
 // nil), removed (every field it had, to nil) or changed (each differing field). HostChanged says
 // a changed source names another host, scheme or kind of place (local or remote); ContentFixed
 // says the entry pins its content by digest. Profile names the project profile whose entry it is
-// (project:<name>, Plan 6b §8.1), "" for project.yml's: Check leaves it for the caller to set.
+// (project:<name>), "" for project.yml's: Check leaves it for the caller to set.
 type Change struct {
 	Module       string        `json:"module"`
 	Profile      string        `json:"profile,omitempty"`
@@ -418,8 +415,7 @@ type Change struct {
 }
 
 // Report is the result of Check: the status, the top-level targets when the record does not
-// cover them (nil when it does), a project bundle's member list likewise (Bundle, spec
-// 2026-10-29 §3.10), and each module's change in name order. ProfileTargets is, in a
+// cover them (nil when it does), a project bundle's member list likewise (Bundle), and each module's change in name order. ProfileTargets is, in a
 // report of several parts (the engine's), each project profile's top-level targets the record
 // does not cover, by the profile's qualified name (Change.Profile); Check leaves it nil.
 type Report struct {
@@ -430,7 +426,7 @@ type Report struct {
 	ProfileTargets map[string]*FieldChange
 }
 
-// Check compares v, the view of a manifest, with the record r (§7.3): with r's project.yml part
+// Check compares v, the view of a manifest, with the record r: with r's project.yml part
 // (View.Part("")), never its profiles'. A profile's view is checked against a record holding
 // that profile's part.
 func Check(r *Record, v View) Report {
@@ -551,7 +547,7 @@ func componentsValue(c *source.Components) any {
 
 // marketValue is an entry's marketplace as a field change shows it, as its file writes it, each
 // part through untrusted.Text: "acme from https://github.com/acme/plugins". lola never checks it
-// (Plan 6c §8).
+// .
 func marketValue(m *manifest.MarketRef) any {
 	if m == nil {
 		return nil
@@ -648,7 +644,7 @@ func (s *Store) Save(root string, v View) error {
 	if err != nil {
 		return err
 	}
-	// The lock file is created only in directories read would accept (§7.1).
+	// The lock file is created only in directories read would accept.
 	for _, c := range []struct {
 		path string
 		dir  bool
@@ -701,7 +697,7 @@ func projectKey(root string) (string, error) {
 
 // read loads trust.json with the strictness of consent.json and at most maxSize bytes; a
 // missing file has no records. The file and its directory are refused when either is a
-// symbolic link or writable by others (§7.1).
+// symbolic link or writable by others.
 func (s *Store) read() (*file, error) {
 	f := &file{Version: Version, Projects: map[string]project{}}
 	if err := checkPath(filepath.Dir(s.path), true); err != nil {
@@ -782,8 +778,7 @@ func (s *Store) read() (*file, error) {
 }
 
 // beforeBundles is the refusal of b, the trust file at path, when a lola before bundles wrote it:
-// some project's record holds an entry with the extends field, now Member (spec 2026-10-29
-// §3.10). It names those records, sorted, since only they are lost to the change; nil otherwise.
+// some project's record holds an entry with the extends field, now Member. It names those records, sorted, since only they are lost to the change; nil otherwise.
 func beforeBundles(path string, b []byte) error {
 	type part struct {
 		Modules []map[string]json.RawMessage `json:"modules"`

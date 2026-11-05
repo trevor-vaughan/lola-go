@@ -11,8 +11,8 @@ what it installed and moves its files to a trash you can restore from with `lola
 
 ## What works today
 
-- **Assistants:** Claude Code, Gemini CLI and OpenCode, at project scope or user scope
-  (`--user`).
+- **Assistants:** Claude Code, Gemini CLI and OpenCode, and through the `agents` target the
+  skills of Codex, Cursor, Copilot and others, at project scope or user scope (`--user`).
 - **Modules:** in lola's native layout (with an optional `lola.yml`), Claude Code plugins and
   Agent Plugins packages, from a local folder, a git repository (`--ref` for a branch, tag or
   commit), or a zip or tar archive, local or downloaded.
@@ -164,6 +164,7 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
    ✓ added my-module to project.yml (base)
      ✓ create claude-code .claude/commands/hello.md
      ✓ create claude-code .claude/skills/hello/SKILL.md
+   ⚠ my-module comes from ../my-module, outside the project: a teammate's sync will refuse it; share a module through a git repository or an https:// archive
    → keep it to yourself: lola profile --project --move my-module --to mine --switch
    → meant for every project? lola profile --user --move my-module --to base
    ✓ installed my-module (claude-code)
@@ -204,17 +205,17 @@ yet, so off a terminal the first sync shows what it would install and refuses wi
    lola sync                   # error: lola sync needs your trust for .lola/project.yml, …
    ```
 
-3. See the changes. `--project` acts on this project's scope; `-n` (`--dry-run`) prints the
-   plan and writes nothing:
+3. See the changes. `-n` (`--dry-run`) prints the plan and writes nothing:
 
    ```sh
-   lola sync --project -n      # see them: the plan, nothing written
+   lola sync -n                # see them: the plan, nothing written
    ```
 
-4. Accept them, which trusts the entries and installs them:
+4. Accept them, which trusts the entries and installs them. The hint names each module at the
+   version the plan showed, so the run installs only what you saw:
 
    ```sh
-   lola sync --project --trust=entries # then accept them: trust and install
+   lola sync --trust=entries --at <module>=<version>   # then accept them: trust and install
    ```
 
 5. Check the result:
@@ -250,5 +251,4 @@ own place for it: [docs/reference/completion.md](docs/reference/completion.md#se
 - [Removing lola](docs/usage.md#removing-lola): uninstall your modules, then delete what lola
   keeps and the binary.
 - [docs/architecture.md](docs/architecture.md): how lola works, for contributors.
-- [docs/decisions.md](docs/decisions.md) and [docs/roadmap.md](docs/roadmap.md): where this
-  build departs from the upstream ADRs, and what comes next.
+- [docs/decisions.md](docs/decisions.md): where this build departs from the upstream ADRs.

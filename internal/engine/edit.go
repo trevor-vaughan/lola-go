@@ -20,8 +20,7 @@ const (
 	EditRemoved = "removed"
 )
 
-// Edit is one entry a command wrote into a file, as its write line and JSON name it (spec
-// 2026-10-29 §3.7, §9): Module; Action (added, changed or removed); the file's Profile by
+// Edit is one entry a command wrote into a file, as its write line and JSON name it: Module; Action (added, changed or removed); the file's Profile by
 // qualified name (default, user:go, project:team, or project.yml for a project's base), its Kind
 // (base, user or project), Path and Scope. For human output: Label names the file (default (base),
 // profile go), Created says the run created it, Shared that git tracks it, Only counts the entry's
@@ -97,7 +96,7 @@ func onlyText(only []string) string {
 }
 
 // alsoOn is the notice that t, a profile of yours a run at sc wrote, is on in the other scope the
-// run knows (spec 2026-10-29 §3.9): user scope, or from user scope the project found from the
+// run knows: user scope, or from user scope the project found from the
 // working directory; nothing when it is not, or when the run acts on that scope too (others).
 func (e *Engine) alsoOn(sc Scope, t writeTo, others []Scope) []Notice {
 	if !t.Profile || t.Base || t.Key != "" {

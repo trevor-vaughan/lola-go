@@ -1,4 +1,4 @@
-// Package gemini renders modules for Gemini CLI (§8, §8.1).
+// Package gemini renders modules for Gemini CLI.
 package gemini
 
 import (
@@ -195,7 +195,7 @@ func (g Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 	}
 	// Gemini has no rules directory: a module's rules become one GEMINI.md, in name order,
 	// in a directory listed in context.includeDirectories, which Gemini reads in trusted
-	// folders (§8). Rules are delivered verbatim.
+	// folders. Rules are delivered verbatim.
 	var bodies []string
 	for _, r := range m.Rules {
 		if ctx.SkipRules {
@@ -219,7 +219,7 @@ func (g Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 			plan.Intent{Target: id, Kind: "rule", Op: plan.OpWriteFile, Path: dir + "/GEMINI.md", Data: []byte(module.Doc{Body: strings.Join(bodies, "\n")}.Render()), Mode: 0o644},
 			plan.Intent{Target: id, Kind: "rule", Op: plan.OpAddJSONMember, Path: ".gemini/settings.json", Pointer: "/context/includeDirectories", Member: plan.StringMember(member)})
 	}
-	// Runtime hooks (Plan 5b design §7.1) are never rendered here: the kind is missing from caps,
+	// Runtime hooks are never rendered here: the kind is missing from caps,
 	// since mapping Claude Code's events and tool names would be a cross-target value conversion.
 	for _, h := range m.RuntimeHooks {
 		if module.Supports(h.Targets, id) {
@@ -230,7 +230,7 @@ func (g Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 	return out, finds, nil
 }
 
-// command encodes a command as Gemini TOML (§8.1): description from the frontmatter and the
+// command encodes a command as Gemini TOML: description from the frontmatter and the
 // expanded body as prompt. When the body has single-argument placeholders (indexed), which
 // Gemini cannot fill, the prompt starts with the whole argument string.
 func command(doc module.Doc, indexed bool, ctx target.PlanContext) ([]byte, error) {

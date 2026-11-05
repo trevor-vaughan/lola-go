@@ -76,7 +76,7 @@ var _ = Describe("NewPlan", func() {
 		Expect(p.Destinations[0].Targets).To(Equal([]string{"claude-code", "opencode"}))
 	})
 
-	DescribeTable("decides each record's outcome (§4)",
+	DescribeTable("decides each record's outcome",
 		func(assistant string, setup func(), outcome, want string) {
 			if setup != nil {
 				setup()
@@ -379,7 +379,7 @@ var _ = Describe("NewPlan", func() {
 		Expect(d.Installs).To(HaveLen(1))
 	})
 
-	It("lists the paths each assistant recorded at project scope (§6)", func() {
+	It("lists the paths each assistant recorded at project scope", func() {
 		h.install(rec{"module": "review", "assistant": "claude-code", "project_path": projA, "skills": []string{"review"},
 			"commands": []string{"ship"}, "agents": []string{"critic"}, "mcps": []string{"lola-gh"}},
 			rec{"module": "review", "assistant": "gemini-cli", "project_path": projA, "skills": []string{"review"},
@@ -437,7 +437,7 @@ var _ = Describe("NewPlan", func() {
 		), "no module copy at user scope: the Python lola does not record where it was")
 	})
 
-	It("reports what is never migrated, each with its file and marker or path and a hint (§5)", func() {
+	It("reports what is never migrated, each with its file and marker or path and a hint", func() {
 		writeFile(filepath.Join(projA, ".lola-req"), "review>=1\n")
 		Expect(os.MkdirAll(filepath.Join(projA, ".lola", "plugin-data", "review"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Join(h.dir, "market"), 0o755)).To(Succeed())
@@ -455,7 +455,7 @@ var _ = Describe("NewPlan", func() {
 			rec{"module": "review", "assistant": "gemini-cli", "scope": "user", "has_instructions": true},
 			rec{"module": "review", "assistant": "opencode", "scope": "user", "has_instructions": true})
 		p := plan()
-		Expect(p.NotMigrated).To(BeEmpty(), "marketplaces are registered (Plan 6c §6.9), and an empty market/ holds none")
+		Expect(p.NotMigrated).To(BeEmpty(), "marketplaces are registered, and an empty market/ holds none")
 		Expect(p.Markets).To(BeEmpty())
 		type shown struct{ What, Path, Marker string }
 		items := func(d *migrate.Destination) []shown {
@@ -495,7 +495,7 @@ var _ = Describe("NewPlan", func() {
 		}
 	})
 
-	Context("project paths another machine had (Plan 10 §3.1)", func() {
+	Context("project paths another machine had", func() {
 		It("looks for a missing project path at the same place below a --map-root's new root, and installs there", func() {
 			h.install(at(filepath.Join(tmp, "old", "a-proj"), "claude-code"))
 			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: filepath.Join(tmp, "old"), New: tmp}}})
@@ -660,7 +660,7 @@ var _ = Describe("NewPlan", func() {
 		})
 	})
 
-	Context("assistants this machine lacks (Plan 10 §3.2)", func() {
+	Context("assistants this machine lacks", func() {
 		BeforeEach(func() { Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed()) })
 
 		It("leaves a record whose assistant is neither on your PATH nor set up where it goes, and suggests those on your PATH", func() {

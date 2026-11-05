@@ -205,7 +205,7 @@ func printEdits(w io.Writer, s style, edits []engine.Edit, dry bool) {
 	}
 }
 
-// editLine is a write line (spec 2026-10-29 §3.7): "✓ added kit to profile go  (<path>)", the path
+// editLine is a write line: "✓ added kit to profile go  (<path>)", the path
 // for a file of yours (", new" when the run created it), the base or a project profile said shared
 // when git tracks it, then the entry's only: count, the layer an override copied and where a move
 // carried its picks from; under -n
@@ -348,7 +348,7 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 	printScripts(w, s, r.Scripts)
 }
 
-// printScripts lists the install scripts of a run in run order (Plan 9 §5.6): each with its module,
+// printScripts lists the install scripts of a run in run order: each with its module,
 // event, source and target, and its status; a dry run's project script the run has no trust for
 // says it needs --trust=scripts. A --plain row is "script", module, event, source, path, target
 // and status.
@@ -367,7 +367,7 @@ func printScripts(w io.Writer, s style, scripts []engine.ScriptRun) {
 		}
 		source := sr.Source
 		if sr.Root() != "" {
-			source += " at " + sr.Root() // the path is from that root (S1)
+			source += " at " + sr.Root() // the path is from that root
 		}
 		line := fmt.Sprintf("%s %s script %s (%s, %s): %s", sr.Module, sr.Event, sr.Path, source, sr.Target, status)
 		switch sr.Status {
@@ -430,14 +430,14 @@ func printFindings(w io.Writer, s style, findings []target.Finding) {
 	}
 }
 
-// printNotices prints the findings and notices of an install, sync, update or profile switch
-// (spec 2026-11-03 §3.4, U6): safety ones in full, as printFindings and noticeLine do; detail ones
-// (target.ClassDetail) in full under -v or --plain, else as one line per module and lola check (a
-// scope's), in the order they first appear: "<module>: 30 notices (claude-code 15, gemini-cli 15)
-// — <the lola check> -t claude-code,gemini-cli", -t naming the targets counted. A detail notice
-// with no target counts as "module". Detail that no lola check names (its Check is "") is printed
-// in full. A hint for the module's author (target.Finding.AuthorHint) is never printed here, only
-// what the engine added for the user: lola check prints the rest.
+// printNotices prints the findings and notices of an install, sync, update or profile switch:
+// safety ones in full, as printFindings and noticeLine do; detail ones (target.ClassDetail) in full
+// under -v or --plain, else as one line per module and lola check (a scope's), in the order they
+// first appear: "<module>: 30 notices (claude-code 15, gemini-cli 15) — <the lola check> -t
+// claude-code,gemini-cli", -t naming the targets counted. A detail notice with no target counts as
+// "module". Detail that no lola check names (its Check is "") is printed in full. A hint for the
+// module's author (target.Finding.AuthorHint) is never printed here, only what the engine added for
+// the user: lola check prints the rest.
 func printNotices(w io.Writer, s style, r *engine.Result) {
 	findings := make([]target.Finding, 0, len(r.Findings))
 	for _, f := range r.Findings {

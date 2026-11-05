@@ -21,7 +21,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("InstallChoices (Plan 5c §7)", func() {
+var _ = Describe("InstallChoices", func() {
 	var (
 		tmp, proj, src, other string
 		p                     paths.Paths
@@ -234,7 +234,7 @@ var _ = Describe("InstallChoices (Plan 5c §7)", func() {
 		Expect(again.Module("example").Components).NotTo(ContainElement(HaveField("Component.Name", "new")))
 	})
 
-	It("reports a module's state per destination, two project roots apart (Plan 5c §14)", func() {
+	It("reports a module's state per destination, two project roots apart", func() {
 		_, err := e.Install(ctx, scopes[0].Scope, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"claude-code"}})
 		Expect(err).NotTo(HaveOccurred())
 		proj2 := filepath.Join(tmp, "proj2")

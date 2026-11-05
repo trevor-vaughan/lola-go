@@ -14,7 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("scope resolution (Plan 5c §5.1, Plan 6b §3.1)", func() {
+var _ = Describe("scope resolution", func() {
 	var (
 		tmp, proj, sub, bare string
 		p                    paths.Paths
@@ -87,7 +87,7 @@ var _ = Describe("scope resolution (Plan 5c §5.1, Plan 6b §3.1)", func() {
 			}),
 	)
 
-	DescribeTable("read-only commands: the flags, else the found project and user scope, never asking (Plan 6b §19 R6)",
+	DescribeTable("read-only commands: the flags, else the found project and user scope, never asking",
 		func(req func() engine.ScopeRequest, want func() []engine.ScopeChoice) {
 			config("version: 1\ndefault_scope: project\n")
 			got, err := e.ResolveReadScope(req())
@@ -115,7 +115,7 @@ var _ = Describe("scope resolution (Plan 5c §5.1, Plan 6b §3.1)", func() {
 		Expect(err).To(MatchError("--project and --scope user disagree"))
 	})
 
-	It("leaves the scope to the picker on a terminal, preselecting nothing whatever default_scope or a found project says (Plan 5c §14)", func() {
+	It("leaves the scope to the picker on a terminal, preselecting nothing whatever default_scope or a found project says", func() {
 		config("version: 1\ndefault_scope: user\n")
 		res, err := e.ResolveScope(engine.ScopeRequest{Cwd: sub, Interactive: true})
 		Expect(err).NotTo(HaveOccurred())

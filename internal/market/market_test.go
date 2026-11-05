@@ -498,8 +498,7 @@ modules:
 	})
 
 	It("a catalog skills list selects the module's skills from the marketplace's own tree", func() {
-		// Anthropic's anthropics/skills marketplace lists its plugins this way (user decision,
-		// 2026-10-21, amending ruling R-6c-4).
+		// Anthropic's anthropics/skills marketplace lists its plugins this way.
 		cat := parsed(`{"name": "document-skills", "source": "./", "strict": false, "skills": ["./skills/xlsx", "./skills/docx"]}`,
 			`{"name": "tools", "source": "./plugins/tools", "commands": ["./commands/fmt.md", "./more"], "agents": "./agents/reviewer.md"}`,
 			`{"name": "up", "source": "./", "skills": ["./skills/../../x"]}`,
@@ -610,7 +609,7 @@ modules:
 		Expect(specs).To(Equal(map[string]source.Spec{
 			"bundle": {Kind: source.KindArchive, Location: "https://dl.example.com/b.tar.gz", SHA256: strings.ToLower(sum), FromCatalog: true},
 			"plain":  {Kind: source.KindArchive, Location: "https://dl.example.com/p.zip", FromCatalog: true},
-			// The ref, never the commit: the commit is checked against the ref (Plan 6c §6.4).
+			// The ref, never the commit: the commit is checked against the ref.
 			"linter": {Kind: source.KindGit, Location: "https://git.example.com/linter.git", Ref: "v1", FromCatalog: true},
 			// A relative entry is the marketplace's own source, which you typed.
 			"formatter": {Kind: source.KindGit, Location: "https://git.example.com/acme/plugins.git", Ref: "main", Path: "tools/formatter"},

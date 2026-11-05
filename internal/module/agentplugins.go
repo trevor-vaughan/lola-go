@@ -41,7 +41,7 @@ var (
 	headerNameRE = regexp.MustCompile("^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 )
 
-// apNamespaces maps the client namespaces lola renders to their targets (Plan 5b design §6.3),
+// apNamespaces maps the client namespaces lola renders to their targets,
 // in the order they are read; dev.getlola, last, reaches every target.
 var apNamespaces = []apNamespace{
 	{"com.anthropic.claude", []string{"claude-code"}},
@@ -57,7 +57,7 @@ type apNamespace struct {
 	targets []string
 }
 
-// agentPlugins adapts an Agent Plugins 1.0.0 package (Plan 5b design §6).
+// agentPlugins adapts an Agent Plugins 1.0.0 package.
 type agentPlugins struct{}
 
 func (agentPlugins) manifest() string { return apManifest }
@@ -171,7 +171,7 @@ func (a *apReader) convert() (*lolaFile, error) {
 }
 
 // keptExtensions is the extensions object lola records in the cached manifest. A namespace lola
-// does not render is ignored without reading its contents (Agent Plugins §8.1), so one whose
+// does not render is ignored without reading its contents, so one whose
 // values lola cannot represent, such as 1e999, is left out; a rendered namespace must convert.
 func (a *apReader) keptExtensions() (any, bool, error) {
 	b, ok := a.raw["extensions"]
@@ -196,7 +196,7 @@ func (a *apReader) keptExtensions() (any, bool, error) {
 	return kept, true, nil
 }
 
-// apName checks the manifest name (§6.1).
+// apName checks the manifest name.
 func apName(name string) error {
 	if name == "" {
 		return apFail(apManifest, "name", "is required", "set name in plugin.json")
@@ -207,7 +207,7 @@ func apName(name string) error {
 	return nil
 }
 
-// ValidatePluginName enforces Agent Plugins' name rule (Plan 5b design §6.1), which is stricter
+// ValidatePluginName enforces Agent Plugins' name rule, which is stricter
 // than ValidateName: no '_', no "--", and a letter or digit at both ends.
 func ValidatePluginName(name string) error {
 	if len(name) > 64 || !apNameRE.MatchString(name) || strings.Contains(name, "--") || strings.Contains(name, "..") {
@@ -218,7 +218,7 @@ func ValidatePluginName(name string) error {
 }
 
 // extensions returns the namespace objects. A value that is not an object is reported and
-// ignored (Agent Plugins §8.1, Plan 5b design §6.3).
+// ignored (Agent Plugins §8.1).
 func (a *apReader) extensions() (map[string]map[string]json.RawMessage, error) {
 	out := map[string]map[string]json.RawMessage{}
 	b, ok := a.raw["extensions"]
@@ -252,7 +252,7 @@ func (a *apReader) extensions() (map[string]map[string]json.RawMessage, error) {
 	return out, nil
 }
 
-// skills discovers the portable skills (§6.2): skills/*/SKILL.md, one level deep. A skill that
+// skills discovers the portable skills: skills/*/SKILL.md, one level deep. A skill that
 // breaks the agentskills.io rules is reported and skipped; a skill directory lola cannot read
 // refuses, as in the other formats.
 func (a *apReader) skills() ([]pathEntry, error) {
@@ -298,7 +298,7 @@ func (a *apReader) skills() ([]pathEntry, error) {
 			continue
 		}
 		if file == skillTemplate {
-			// its frontmatter exists only once rendered, where the name check runs (Plan 7 §5.6)
+			// its frontmatter exists only once rendered, where the name check runs
 			out = append(out, pathEntry{Path: rel})
 			continue
 		}
@@ -364,7 +364,7 @@ func agentSkillDoc(doc Doc, dirName string) string {
 	return ""
 }
 
-// mcp reads mcp.json, strictly (§6.2): any rule broken is a load error. Each server becomes an
+// mcp reads mcp.json, strictly: any rule broken is a load error. Each server becomes an
 // inline entry in the IR's shape, so a cached load needs no Agent Plugins rule.
 func (a *apReader) mcp() ([]mcpComponent, error) {
 	out := []mcpComponent{}
@@ -418,7 +418,7 @@ func (a *apReader) mcp() ([]mcpComponent, error) {
 }
 
 // stdio checks a stdio server and converts it. lola provides PLUGIN_ROOT and PLUGIN_DATA to the
-// process through its env, as the Agent Plugins host must (§6.2).
+// process through its env, as the Agent Plugins host must.
 func (a *apReader) stdio(at string, b json.RawMessage) (*serverSpec, error) {
 	var s struct {
 		Type    string            `json:"type"`
@@ -483,7 +483,7 @@ func (a *apReader) stdio(at string, b json.RawMessage) (*serverSpec, error) {
 var placeholderRE = regexp.MustCompile(`\$\{([^}]*)\}`)
 
 // literals warns about each placeholder in v other than ${PLUGIN_ROOT} and ${PLUGIN_DATA}:
-// Agent Plugins keeps it as literal text (§9.2), but the assistants expand ${NAME} in MCP
+// Agent Plugins keeps it as literal text, but the assistants expand ${NAME} in MCP
 // server settings, so it would not reach the server as written.
 func (a *apReader) literals(field, v string) {
 	for _, m := range placeholderRE.FindAllStringSubmatch(v, -1) {
@@ -494,7 +494,7 @@ func (a *apReader) literals(field, v string) {
 	}
 }
 
-// apCwd checks a stdio cwd (§6.2): ./path, ${PLUGIN_ROOT}[/path] or ${PLUGIN_DATA}[/path], with
+// apCwd checks a stdio cwd: ./path, ${PLUGIN_ROOT}[/path] or ${PLUGIN_DATA}[/path], with
 // the path staying inside. A ./ path becomes ${PLUGIN_ROOT}/path.
 func apCwd(at, cwd string) (string, error) {
 	base, rest := "", ""
@@ -517,7 +517,7 @@ func apCwd(at, cwd string) (string, error) {
 	return base + "/" + path.Clean(rest), nil
 }
 
-// remote checks a streamable-http or sse server (§6.2) and converts it: streamable-http is the
+// remote checks a streamable-http or sse server and converts it: streamable-http is the
 // IR's http.
 func remote(at string, b json.RawMessage) (*serverSpec, error) {
 	var s struct {
@@ -582,8 +582,8 @@ type nsEntry struct {
 	targets              []string
 }
 
-// namespaces reads each client namespace's commands, agents and instructions (ADR #237;
-// Plan 5b design §6.3), routes them to the namespace's targets, and resolves collisions.
+// namespaces reads each client namespace's commands, agents and instructions (ADR #237), routes
+// them to the namespace's targets, and resolves collisions.
 func (a *apReader) namespaces(exts map[string]map[string]json.RawMessage, module string) ([]commandEntry, []pathEntry, []pathEntry, error) {
 	var all []nsEntry
 	for _, n := range apNamespaces {
@@ -676,7 +676,7 @@ func (a *apReader) nsPath(ns, key string, raw json.RawMessage, def string, dir b
 	return rel, nil
 }
 
-// resolve applies the collision rules (§6.3) to the namespace artifacts: dev.getlola wins over a
+// resolve applies the collision rules to the namespace artifacts: dev.getlola wins over a
 // client namespace, with a warning; two client namespaces that reach one target with one name
 // are an error.
 func (a *apReader) resolve(all []nsEntry) ([]nsEntry, error) {

@@ -96,7 +96,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
 
-  - name: lola migrate installs, replaces with backup and cleans up (§12.7 checks)
+  - name: lola migrate installs, replaces with backup and cleans up
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} migrate -y --json > /tmp/result.json'"

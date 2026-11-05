@@ -15,13 +15,13 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// UnitID identifies one unit lola tidy offers (Plan 6d §6.1): its target and kind, its
+// UnitID identifies one unit lola tidy offers: its target and kind, its
 // resolved absolute path (a link unit's through its parent, never through the link), and for an
 // MCP unit the member's JSON Pointer.
 type UnitID struct{ Target, Kind, Path, Key string }
 
 // TidyUnit is one item a tidy run lists: a unit (candidate, moved or protected), or in Skipped
-// a whole destination. Path and Trash are raw, but for JSON's escaping (R-6d-9); Name, Key,
+// a whole destination. Path and Trash are raw, but for JSON's escaping; Name, Key,
 // Reason and every json:"-" string have been through untrusted.Text. Code is a lock's; a
 // candidate has none, and a Reason only when it lies where other tools install too (whyShared).
 type TidyUnit struct {
@@ -37,24 +37,24 @@ type TidyUnit struct {
 	ID    UnitID `json:"-"`
 	Rel   string `json:"-"` // root-relative and slash-separated: what human output shows
 	Link  string `json:"-"` // a link unit's target
-	Label string `json:"-"` // an MCP unit's server label (§11.1), "" for none
+	Label string `json:"-"` // an MCP unit's server label, "" for none
 	Size  int64  `json:"-"` // bytes in the unit's files
 	Dir   bool   `json:"-"` // the unit is a directory
 }
 
-// TidyScan is what a scan found (§6.2): the candidates, the units locked against tidy, and the
+// TidyScan is what a scan found: the candidates, the units locked against tidy, and the
 // destinations it skipped whole, each sorted by target, kind, name and path.
 type TidyScan struct {
 	Candidates, Protected, Skipped []TidyUnit
 }
 
 // TidyChoice is what moves, by unit identity, and what joins the keep-list (escaped literal
-// selectors, §6.3), with the equivalent command when one selects exactly Move ("" otherwise).
-// Items are the units Move names, for the review to list. KeepAdd and KeepRemove are the
-// keep-list edits the run makes, through untrusted.Text: each entry once, with KeepAdd leaving
-// out what keep.yaml already holds. Hidden says an equivalent command exists but untrusted.Text
-// would alter it (a project root with characters lola does not print, or a word over
-// untrusted.MaxName), so Command is "".
+// selectors), with the equivalent command when one selects exactly Move ("" otherwise). Items are
+// the units Move names, for the review to list. KeepAdd and KeepRemove are the keep-list edits the
+// run makes, through untrusted.Text: each entry once, with KeepAdd leaving out what keep.yaml
+// already holds. Hidden says an equivalent command exists but untrusted.Text would alter it (a
+// project root with characters lola does not print, or a word over untrusted.MaxName), so Command
+// is "".
 type TidyChoice struct {
 	Move                []UnitID
 	Keep                []config.Pattern
@@ -64,13 +64,13 @@ type TidyChoice struct {
 	KeepAdd, KeepRemove []string
 }
 
-// TidyRequest is one lola tidy run (Plan 6d §6.1). Choose and Confirm are nil when lola cannot
+// TidyRequest is one lola tidy run. Choose and Confirm are nil when lola cannot
 // ask: off a terminal; on one the CLI sets both, and the engine calls Choose only for a run
 // without names, --all, -n, --force, --keep or --unkeep.
 type TidyRequest struct {
 	Scope          Scope
-	Targets        []string         // -t; nil: the scope's targets (§4.3)
-	Select         []config.Pattern // names; nil with All false: Choose, or refuse (§6.3)
+	Targets        []string         // -t; nil: the scope's targets
+	Select         []config.Pattern // names; nil with All false: Choose, or refuse
 	All            bool
 	IncludeTracked bool // --include-tracked as given; Force implies it
 	Force          bool // names or All required; Confirm is never called
@@ -82,7 +82,7 @@ type TidyRequest struct {
 	// --all, which runs the picker there.
 	Interactive bool
 	// Display is the run's output flags as given (--json, --plain, --no-pager), which every hint
-	// keeps (6b §12.3, R-6d2-5).
+	// keeps.
 	Display []string
 	// Choose asks which units to move and which to keep; nil means it cannot ask.
 	Choose func(TidyScan) (TidyChoice, error)
@@ -93,7 +93,7 @@ type TidyRequest struct {
 // includeTracked reports whether tracked units are offered: --include-tracked or --force.
 func (req TidyRequest) includeTracked() bool { return req.IncludeTracked || req.Force }
 
-// TidyResult is what lola tidy reports (§11.2). Arrays are never nil.
+// TidyResult is what lola tidy reports. Arrays are never nil.
 type TidyResult struct {
 	Scope            string     `json:"scope"`
 	Root             string     `json:"root"`
@@ -140,12 +140,12 @@ func (e *TidyError) JSONFields() map[string]any {
 		"keep_added": r.KeepAdded, "keep_removed": r.KeepRemoved, "trash_credentials": r.TrashCredentials, "notices": r.Notices}
 }
 
-// errUnoffered refuses a picker answer that names what the scan did not offer (R-6d-N3).
+// errUnoffered refuses a picker answer that names what the scan did not offer.
 var errUnoffered = errors.New("the picker answered with an item lola did not offer")
 
-// TidyOneScope refuses a run given two scopes (--scope both, §3.3): each run is one scope's
-// consent. The hints are the run at req.Scope, the project, and at user scope, without -y, which
-// answered for both (ruling R-8).
+// TidyOneScope refuses a run given two scopes (--scope both): each run is one scope's consent. The
+// hints are the run at req.Scope, the project, and at user scope, without -y, which answered for
+// both.
 func (e *Engine) TidyOneScope(req TidyRequest) error {
 	req.Yes = false
 	user := req
@@ -153,9 +153,8 @@ func (e *Engine) TidyOneScope(req TidyRequest) error {
 	return errs.WithHints(errors.New("lola tidy acts on one scope per run"), tidyHints(e.tidyRerun(req), e.tidyRerun(user))...)
 }
 
-// Tidy moves what lola does not manage out of the scope's destinations into the trash (Plan
-// 6d): it scans, selects by names, --all or Choose, asks Confirm, moves, then writes the
-// keep-list edits.
+// Tidy moves what lola does not manage out of the scope's destinations into the trash: it scans,
+// selects by names, --all or Choose, asks Confirm, moves, then writes the keep-list edits.
 func (e *Engine) Tidy(ctx context.Context, req TidyRequest) (*TidyResult, error) {
 	if err := e.tidyArgs(req); err != nil {
 		return nil, err
@@ -190,7 +189,7 @@ func (e *Engine) Tidy(ctx context.Context, req TidyRequest) (*TidyResult, error)
 	return done.finish(req, res)
 }
 
-// tidyArgs refuses what the arguments alone decide (§3.1 rules 2 and 3).
+// tidyArgs refuses what the arguments alone decide.
 func (e *Engine) tidyArgs(req TidyRequest) error {
 	if req.All && len(req.Select) > 0 {
 		names := req
@@ -223,10 +222,10 @@ func tidyNames(ps []config.Pattern) []string {
 	return out
 }
 
-// tidyRun is the lola tidy command a hint names (§3.1): the scope's flags, names, extra, then
+// tidyRun is the lola tidy command a hint names: the scope's flags, names, extra, then
 // the run flags as given (-t, --include-tracked, --keep, --unkeep), then --force, or -y when the
 // hint is no dry run, which asks nothing (as SyncRequest.rerun), then -n and the output flags as
-// given (spec 2026-11-03 §3.3); a hint naming the real run clears req.Dry. --all goes in extra, and
+// given; a hint naming the real run clears req.Dry. --all goes in extra, and
 // -n once when extra has it too. "" when no such command works (tidyCommand).
 func (e *Engine) tidyRun(req TidyRequest, names []string, extra ...string) string {
 	args := append(slices.Clone(names), extra...)
@@ -272,7 +271,7 @@ func (e *Engine) tidyCommand(sc Scope, sub string, args ...string) string {
 }
 
 // tidyHints are hs without the "" of a command that does not work: a refusal no hint can fix
-// carries none (§3.1).
+// carries none.
 func tidyHints(hs ...string) []string {
 	return slices.DeleteFunc(hs, func(h string) bool { return h == "" })
 }
@@ -291,7 +290,7 @@ func (e *Engine) tidyRerun(req TidyRequest) string {
 type tidyDone struct {
 	keep    *tidyKeep
 	empty   bool  // the scan found no candidate
-	failure error // the first failed move, which stops the run (§6.4)
+	failure error // the first failed move, which stops the run
 	keepErr error // writing the keep-list failed
 	// keepCmd is the keep-only run that makes this run's keep edits; a keep-only run needs no -y.
 	keepCmd string
@@ -394,7 +393,7 @@ func (d *tidyDone) finish(req TidyRequest, res *TidyResult) (*TidyResult, error)
 // hasSelection reports whether the run names what moves.
 func hasSelection(req TidyRequest) bool { return req.All || len(req.Select) > 0 }
 
-// nothingToTidy is the notice of an empty scan (§9), with the count of what was locked.
+// nothingToTidy is the notice of an empty scan, with the count of what was locked.
 func nothingToTidy(sc Scope, res *TidyResult) Notice {
 	text := "nothing to tidy at " + tidyWhere(sc)
 	if n := len(res.Protected); n > 0 {
@@ -411,8 +410,8 @@ func tidyWhere(sc Scope) string {
 	return "project " + untrusted.Text(sc.ProjectDir, untrusted.MaxName)
 }
 
-// tidyLedgerCheck refuses a project whose lock.json git tracks, or about which git cannot say
-// (§4.3, R-6d-S5): unlike sync, tidy treats "cannot check" as tracked.
+// tidyLedgerCheck refuses a project whose lock.json git tracks, or about which git cannot say:
+// unlike sync, tidy treats "cannot check" as tracked.
 func (e *Engine) tidyLedgerCheck(ctx context.Context, sc Scope) error {
 	if sc.Kind != target.Project {
 		return nil
@@ -427,7 +426,7 @@ func (e *Engine) tidyLedgerCheck(ctx context.Context, sc Scope) error {
 	return nil
 }
 
-// tidyTargets are the targets a run scans (§4.3): -t when given; else the manifest's targets as
+// tidyTargets are the targets a run scans: -t when given; else the manifest's targets as
 // far as trust covers them, and every target the ledger records.
 func (e *Engine) tidyTargets(sc Scope, led *ledger.Ledger, req TidyRequest, res *TidyResult) ([]string, error) {
 	var want []string
@@ -488,7 +487,7 @@ func (e *Engine) tidyTargets(sc Scope, led *ledger.Ledger, req TidyRequest, res 
 	return out, nil
 }
 
-// tidyKeep is the keep-list as this run reads it and the edits it writes (§5).
+// tidyKeep is the keep-list as this run reads it and the edits it writes.
 type tidyKeep struct {
 	where   config.Where
 	held    []config.Pattern // the section as the file holds it

@@ -16,7 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// Templates (Plan 7 §3.1): a Markdown component whose file name ends in exactly .md.liquid is a
+// Templates: a Markdown component whose file name ends in exactly .md.liquid is a
 // Liquid template the engine renders per target; load reads its source, capped, and never
 // parses it.
 const (

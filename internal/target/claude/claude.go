@@ -1,4 +1,4 @@
-// Package claude renders modules for Claude Code (§8).
+// Package claude renders modules for Claude Code.
 package claude
 
 import (
@@ -56,7 +56,7 @@ var noServers = target.Value{Drop: target.SeverityWarn, Fold: true, Note: "claud
 
 // caps: Claude Code takes every artifact kind and keeps every frontmatter key as authored,
 // except that an agent's description must be a string and a skill or command drops
-// mcpServers. It is the only target with runtime hooks (Plan 5b design §7.1).
+// mcpServers. It is the only target with runtime hooks.
 var caps = target.Capabilities{Kinds: map[string]target.KindSpec{
 	"skill":   {Open: true, Keys: map[string]target.Value{"mcpServers": noServers}},
 	"command": {Open: true, Keys: map[string]target.Value{"mcpServers": noServers}},
@@ -82,7 +82,7 @@ func (c Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 	id := c.ID()
 	var out []plan.Intent
 	var finds []target.Finding
-	// Runtime hooks go to the per-user settings file (Plan 5b design §1, §7.2); its consent also
+	// Runtime hooks go to the per-user settings file; its consent also
 	// covers the hooks in a component's frontmatter.
 	settings := ".claude/settings.local.json"
 	if ctx.Scope == target.User {
@@ -185,7 +185,7 @@ func (c Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		out = append(out, plan.Intent{Target: id, Kind: "mcp", Op: plan.OpSetJSON, Path: mcpFile, Pointer: "/mcpServers/" + s.Name, Value: value})
 	}
 	// Claude Code loads every .claude/rules/**/*.md without paths: frontmatter in every
-	// session, at project and user scope, so rules never touch CLAUDE.md (§5.6).
+	// session, at project and user scope, so rules never touch CLAUDE.md.
 	for _, r := range m.Rules {
 		if ctx.SkipRules {
 			break

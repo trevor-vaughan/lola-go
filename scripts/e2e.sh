@@ -16,7 +16,7 @@
 # and e2e/common, and the binary this script builds, all in a mktemp -d directory it makes
 # under $OUT_ROOT and removes on exit, so nothing in the source tree or already under $OUT_ROOT
 # is mounted or relabeled. The Python lola's setup needs no capability (checked under
-# --cap-drop ALL, Plan 8 8.1 task 1). The container's main process is the git server,
+# --cap-drop ALL). The container's main process is the git server,
 # e2e/common/gitserve.py; the suite execs into it.
 #
 # MODE=human (default) streams venom's output; MODE=llm prints one ok line per suite or its

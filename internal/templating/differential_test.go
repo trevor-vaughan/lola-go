@@ -27,7 +27,7 @@ type row struct {
 }
 
 // corpus holds rows for every allowlisted filter: nil, empty and multibyte inputs, negative
-// and zero arguments, mixed lists, and the inputs Plan 7 §12 spec 18 names. Its listed
+// and zero arguments, mixed lists, and the inputs the spec names. Its listed
 // differences: capped inputs refuse, json drops HTML escaping and escapes DEL and C1, join
 // refuses nested lists, a map where a list is expected refuses, since liquid would list the
 // map's values in random order, a list or map argument to a string filter refuses, since liquid

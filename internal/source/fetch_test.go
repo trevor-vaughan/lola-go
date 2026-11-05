@@ -23,7 +23,7 @@ var _ = Describe("Fetch", func() {
 	})
 
 	It("refuses a hostile Spec that never went through Parse", func() {
-		// Coached by a hint, or, when no command fixes it, in the error (ruling R-8-U5).
+		// Coached by a hint, or, when no command fixes it, in the error.
 		refused := func(spec source.Spec, msg string, hints []string) {
 			GinkgoHelper()
 			_, err := source.Fetch(ctx, spec, staging)
@@ -40,7 +40,7 @@ var _ = Describe("Fetch", func() {
 	})
 
 	It("refuses a hand-built location of the wrong form without echoing its password", func() {
-		// Coached by a hint, or, when no command fixes it, in the error (ruling R-8-U5).
+		// Coached by a hint, or, when no command fixes it, in the error.
 		refused := func(kind source.Kind, loc, msg string, hints []string) {
 			GinkgoHelper()
 			_, err := source.Fetch(ctx, source.Spec{Kind: kind, Location: loc}, staging)
@@ -103,7 +103,7 @@ var _ = Describe("Fetch", func() {
 		}
 	})
 
-	It("P2-8: names a bare git repository and says how to clone it", func() {
+	It("names a bare git repository and says how to clone it", func() {
 		bare := filepath.Join(tmp, "mods.git")
 		writeTree(bare, map[string]string{"HEAD": "ref: refs/heads/main\n", "objects/.keep": "", "refs/.keep": "", "commands/a.md": "A"})
 		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: bare}, staging)

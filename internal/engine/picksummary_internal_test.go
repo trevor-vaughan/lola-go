@@ -10,7 +10,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("Prof-P2-g summarizePicks", func() {
+var _ = Describe("summarizePicks", func() {
 	var all []Component
 	skips := func(from, to int) []config.Pattern {
 		var out []config.Pattern

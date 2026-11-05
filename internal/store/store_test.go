@@ -451,7 +451,7 @@ var _ = Describe("Store", func() {
 	})
 
 	It("the digest of a fixture module is stable", func() {
-		// A golden value (Plan 6a §4.4, §14 spec 20): it changes only when the digest's input, a
+		// A golden value: it changes only when the digest's input, a
 		// fetch or module.Normalize changes the bytes for unchanged content, which bumps
 		// manifest.Version.
 		v, err := s.Put(store.PutRequest{Staged: stage(goldenFixture), FallbackName: "example", Source: "/src/example", Type: "folder", Now: now, Executables: []string{"hooks/build.sh"}})
@@ -948,7 +948,7 @@ var _ = Describe("Store", func() {
 		Expect(s.Names()).To(Equal([]string{"alpha"}))
 	})
 
-	// Plan 9 spec 40 (A14): Used records a version's use under the cache lock, at most once a day.
+	// Used records a version's use under the cache lock, at most once a day.
 	DescribeTable("last_used is written at most once a day under the cache lock",
 		func(later time.Duration, writes bool) {
 			v, err := put(map[string]string{"commands/a.md": "A"}, "")

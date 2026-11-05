@@ -38,7 +38,7 @@ var (
 	claudeComponents = []string{"skills", "commands", "agents", "mcpServers", "hooks"}
 )
 
-// claudePlugin adapts a Claude Code plugin (Plan 5b design §5).
+// claudePlugin adapts a Claude Code plugin.
 type claudePlugin struct{}
 
 func (claudePlugin) manifest() string { return claudeManifest }
@@ -192,7 +192,7 @@ func (c *claudeReader) paths(key string) ([]string, error) {
 	return many, nil
 }
 
-// rel resolves a manifest path (§5.2): it starts with "./" (skills also take "."), and stays
+// rel resolves a manifest path: it starts with "./" (skills also take "."), and stays
 // in the plugin, through no symbolic link, at something that exists. It returns the path
 // relative to the plugin root and whether it is a directory.
 func (c *claudeReader) rel(key, p string, rootOK bool) (string, bool, error) {
@@ -275,7 +275,7 @@ func derived(kind, name, source string) error {
 	return nil
 }
 
-// skills adds the listed directories to the default skills/ (§5.3) and expands each into its
+// skills adds the listed directories to the default skills/ and expands each into its
 // skills: a directory holding SKILL.md is one, otherwise each <name>/SKILL.md below it is.
 func (c *claudeReader) skills(module string) (*[]pathEntry, error) {
 	var dirs []string
@@ -388,7 +388,7 @@ func (c *claudeReader) markdown(key, rel string) ([]string, error) {
 	return out, err
 }
 
-// files expands a replacing key's paths (§5.3): files, and with dirs, directories of .md
+// files expands a replacing key's paths: files, and with dirs, directories of .md
 // files. Without the key it expands the default directory. It warns, as Claude Code does,
 // when the key leaves the default directory out.
 func (c *claudeReader) files(key, def string, dirs bool, ps []string) ([]string, error) {
@@ -444,7 +444,7 @@ type claudeCommand struct {
 	AllowedTools []string `json:"allowedTools"`
 }
 
-// commands replaces the default commands/ (§5.3): paths of files and directories, or an object
+// commands replaces the default commands/: paths of files and directories, or an object
 // map whose entries become inline commands.
 func (c *claudeReader) commands() (*[]commandEntry, error) {
 	out, sources := []commandEntry{}, map[string]string{}
@@ -530,7 +530,7 @@ func (c *claudeReader) commands() (*[]commandEntry, error) {
 	return &out, nil
 }
 
-// agents replaces the default agents/ (§5.3) with .md files; a listed directory is an error,
+// agents replaces the default agents/ with .md files; a listed directory is an error,
 // as in Claude Code.
 func (c *claudeReader) agents() (*[]pathEntry, error) {
 	var ps []string
@@ -559,7 +559,7 @@ func (c *claudeReader) agents() (*[]pathEntry, error) {
 	return &out, nil
 }
 
-// values reads a merging key (§5.3) as one value or a list of values: strings and objects.
+// values reads a merging key as one value or a list of values: strings and objects.
 func (c *claudeReader) values(key string) (values []json.RawMessage, isList bool) {
 	b, ok := c.raw[key]
 	if !ok {
@@ -580,8 +580,8 @@ func mcpEntryFields() []string {
 	return out
 }
 
-// mcp merges the default .mcp.json with the declared files and inline servers (§5.3). A server
-// name declared twice is an error (§3.2). Bundles are not supported: they warn and are kept.
+// mcp merges the default .mcp.json with the declared files and inline servers. A server
+// name declared twice is an error. Bundles are not supported: they warn and are kept.
 func (c *claudeReader) mcp() (*[]mcpComponent, error) {
 	out, sources := []mcpComponent{}, map[string]string{}
 	file := func(rel string) error {
@@ -670,7 +670,7 @@ func (c *claudeReader) mcp() (*[]mcpComponent, error) {
 }
 
 // hooks merges the default hooks/hooks.json with the declared hooks files and inline event
-// maps (§5.3). They become runtime hooks, which lola does not render yet.
+// maps. They become runtime hooks, which lola does not render yet.
 func (c *claudeReader) hooks() (*[]hooksEntry, error) {
 	out := []hooksEntry{}
 	if _, err := os.Lstat(filepath.Join(c.dir, "hooks", "hooks.json")); err == nil {

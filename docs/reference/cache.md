@@ -80,9 +80,13 @@ A version is used when a run installs it (`install`), fetches it (an `install` t
 `info`, of a source, `cache add`, `cache update`, `sync`, `update` fetching it again, `profile
 --update`) or renders the version a project records (`sync`, `update`, `profile --on`, `--switch`,
 `--update`, their dry runs included); `index.yml` records the day (UTC) as `last_used`, at most
-once a day. `lola info` and `install -n` of a cached name, `cache list`, `check`, `list` and
+once a day.
+
+`lola info` and `install -n` of a cached name, `cache list`, `check`, `list` and
 `cache clean -n` record nothing. A version cached before lola recorded uses counts as used the
-day a clean first sees it, as does one whose `last_used` entry is not a day lola wrote. A cache
+day a clean first sees it, as does one whose `last_used` entry is not a day lola wrote.
+
+A cache
 whose `index.yml` lola cannot write (a read-only cache) still installs and renders; the use is
 not recorded.
 
@@ -91,9 +95,13 @@ these from your cache?`; under `-n` it prints the same and asks nothing. With no
 prints `✓ nothing to clean` and asks nothing. Each item is checked again before it goes: one that
 changed since the plan (a head moved onto it, a run used it, it is gone, a directory above it is no
 longer a real directory) is kept and reported; when every item changed, clean prints `→ nothing
-removed`. A module whose `index.yml`, or an entry, clean
+removed`.
+
+A module whose `index.yml`, or an entry, clean
 cannot read, when it plans or when it checks again, is kept as `unreadable`, and the clean goes
-on. `index.yml` stops naming a version
+on.
+
+`index.yml` stops naming a version
 before the version is removed, and a clean that fails part way puts back the heads of the
 versions it did not remove, so no head names a removed version; its error (under `--json`, with
 `removed` and `bytes_freed`) says what it had removed. Clean sets items aside only in a
@@ -117,10 +125,14 @@ the run with `-y`.
 JSON: `removed` (each `module`, `version`, `reason`, `path`, `bytes`), `kept` (each `module`,
 `version`, `reason`, `path`), `bytes_freed`, `dry_run` and `notices`. `reason` is `superseded`,
 `unused`, `scratch` or `all` for a removed item, `in use` (scratch a running lola holds),
-`changed` or `unreadable` for a kept one; `module` and `version` are `""` for scratch and
+`changed` or `unreadable` for a kept one.
+
+`module` and `version` are `""` for scratch and
 catalogs, and `version` is `""` for a module `--all` removes; `path` is relative to
 `$XDG_CACHE_HOME/lola`, as it is on disk when it is plain text, with control and format
-characters replaced otherwise. The refusal off a terminal carries the keys `-n --json` prints
+characters replaced otherwise.
+
+The refusal off a terminal carries the keys `-n --json` prints
 beside `error` and `hints`. `--plain` rows: `remove` (under `-n`), `removed` or `kept`, then the
 reason, the path and the bytes, and a `notice` row per notice.
 

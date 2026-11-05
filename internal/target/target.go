@@ -31,9 +31,9 @@ type PlanContext struct {
 	Scope      Scope
 	Root       string // absolute scope root of this target: Root(Scope, …)
 	ContentDir string // absolute content dir of the cached module version, which artifacts are read from
-	PluginRoot string // absolute ${PLUGIN_ROOT}: the module copy (§6.4)
+	PluginRoot string // absolute ${PLUGIN_ROOT}: the module copy
 	PluginData string // absolute ${PLUGIN_DATA} dir for this module and scope
-	SkipRules  bool   // the manifest entry says rules: false (§5.6)
+	SkipRules  bool   // the manifest entry says rules: false
 	Force      bool   // render forceable skips (Skipped)
 	Version    string // the installed assistant's version, "" when unknown; adds findings only (Bounds)
 	// LocalSettingsExposed says, at project scope, why git could commit the project's
@@ -59,8 +59,8 @@ type Target interface {
 	Capabilities() Capabilities
 	// Probe tells lola how to find the assistant and read its version.
 	Probe() Probe
-	// Destinations are where the target writes at scope, as lola tidy sweeps them (Plan 6d
-	// §4.1). Pure like Plan: root is the target's root for scope.
+	// Destinations are where the target writes at scope, as lola tidy sweeps them.
+	// Pure like Plan: root is the target's root for scope.
 	Destinations(scope Scope, root string) (Destinations, error)
 	// Plan returns the module's intents for this target and what rendering loses. A content
 	// problem is a Finding; the error is for failures that are not about the module's content.

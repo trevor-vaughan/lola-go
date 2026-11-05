@@ -18,16 +18,15 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ProfileRow is one profile a scope can use, as lola profile lists it (Plan 6b §12.2; spec
-// 2026-10-29 §6.2): Name is the profile's own name and Kind where it comes from; State is where it
-// stands in the scope: base (default, at user scope), on (the profile on), member (reached by the
-// bundle on, In naming that bundle) or off; Active is State other than off. Bundle says the file is a
-// bundle, and Members is its members as it expands them ([] for a profile, and for a bundle whose
-// expansion fails, which a notice reports). A remote profile's Source, Ref, Commit and Digest are its
-// source.json's: where it came from and the pin you consented to ("" for a local profile, and for a
-// remote one whose source.json cannot be read, which a notice reports); ShadowedBy is the local
-// profile of its name that shadows it, nil when none does (§4.4).
-// Every string has been through untrusted.Text.
+// ProfileRow is one profile a scope can use, as lola profile lists it: Name is the profile's own
+// name and Kind where it comes from; State is where it stands in the scope: base (default, at user
+// scope), on (the profile on), member (reached by the bundle on, In naming that bundle) or off;
+// Active is State other than off. Bundle says the file is a bundle, and Members is its members as
+// it expands them ([] for a profile, and for a bundle whose expansion fails, which a notice
+// reports). A remote profile's Source, Ref, Commit and Digest are its source.json's: where it came
+// from and the pin you consented to ("" for a local profile, and for a remote one whose source.json
+// cannot be read, which a notice reports); ShadowedBy is the local profile of its name that shadows
+// it, nil when none does. Every string has been through untrusted.Text.
 type ProfileRow struct {
 	Name       string   `json:"name"`
 	Kind       string   `json:"kind"`
@@ -47,7 +46,7 @@ type ProfileRow struct {
 	Root       string   `json:"-"`
 }
 
-// The states of a ProfileRow (spec 2026-10-29 §6.2).
+// The states of a ProfileRow.
 const (
 	StateBase   = "base"
 	StateOn     = "on"
@@ -55,9 +54,9 @@ const (
 	StateOff    = "off"
 )
 
-// ProfileState is one profile's state in a scope (Plan 6b §12.1, §12.2): its row and each of its
+// ProfileState is one profile's state in a scope: its row and each of its
 // modules with the layer whose entry wins there. ReadAs is, for an active remote profile, the
-// user profile of its name read in its place (D8), nil otherwise: a project profile that shadows
+// user profile of its name read in its place, nil otherwise: a project profile that shadows
 // it takes its place only when turned on.
 type ProfileState struct {
 	ProfileRow
@@ -72,7 +71,7 @@ type ProfileModule struct {
 	Name      string   `json:"name"`
 	From      string   `json:"from"`
 	Overrides []string `json:"overrides"`
-	// Only and Skip are the entry's picks (cherry-pick design §4.6), kind/name patterns as the
+	// Only and Skip are the entry's picks, kind/name patterns as the
 	// profile writes them; [] for none.
 	Only []string `json:"only"`
 	Skip []string `json:"skip"`
@@ -83,7 +82,7 @@ type ProfileModule struct {
 
 // profileScope is what lola profile reads of a scope: the profiles it can use, with what a
 // listing says about their directories (visible), and its lock.json. A project whose lock.json
-// git tracks is refused before the profiles it names are read (Plan 6b §5, §19 S5); a warning
+// git tracks is refused before the profiles it names are read; a warning
 // that git is missing is in notices, after the listing's.
 func (e *Engine) profileScope(ctx context.Context, sc Scope) (infos []profile.Info, listing []Notice, led *ledger.Ledger, notices []Notice, err error) {
 	if err := e.refuseSymlinkedState(sc); err != nil {
@@ -102,13 +101,13 @@ func (e *Engine) profileScope(ctx context.Context, sc Scope) (infos []profile.In
 	return infos, listing, led, checked.Notices, nil
 }
 
-// Profiles is every profile sc can use, in name order (Plan 6b §3.2 "lola profile"), with its state
-// in the scope (spec 2026-10-29 §6.2). It reads the profiles directories' listings, lock.json, each
+// Profiles is every profile sc can use, in name order, with its state
+// in the scope. It reads the profiles directories' listings, lock.json, each
 // remote profile's source.json and each profile file of yours and the project's, to tell a bundle
-// and its members: one that does not load is listed all the same, with a notice (§3.8: a listing is
+// and its members: one that does not load is listed all the same, with a notice (a listing is
 // never refused by a profile it does not need). An active profile whose file is gone is a notice,
-// as in a sync (§10), and so is a remote profile a user profile now shadows; files whose names are
-// not valid profile names are a count, never shown (§4.3, §19 S7).
+// as in a sync, and so is a remote profile a user profile now shadows; files whose names are
+// not valid profile names are a count, never shown.
 func (e *Engine) Profiles(ctx context.Context, sc Scope) ([]ProfileRow, []Notice, error) {
 	unlock, err := e.readProfiles(true)
 	if err != nil {
@@ -213,7 +212,7 @@ func (e *Engine) profileRow(sc Scope, infos []profile.Info, i profile.Info, led 
 			by := shown(sh.Qualified())
 			row.ShadowedBy = &by
 		}
-		return row, notes // a remote profile never bundles (spec 2026-10-29 §3.3)
+		return row, notes // a remote profile never bundles
 	}
 	if i.Kind == profile.KindDefault || isDir(i) {
 		return row, notes
@@ -239,9 +238,8 @@ func (e *Engine) profileRow(sc Scope, infos []profile.Info, i profile.Info, led 
 	return row, notes
 }
 
-// goneProfile is the warning about an active profile whose file is gone (Plan 6b §10), or, for a
-// remote profile pins.yaml records, not on this machine yet: a sync restores it (spec 2026-10-29
-// §3.4).
+// goneProfile is the warning about an active profile whose file is gone, or, for a remote profile
+// pins.yaml records, not on this machine yet: a sync restores it.
 func (e *Engine) goneProfile(sc Scope, q string) Notice {
 	if e.recorded(q) {
 		if at := e.inTheWay(strings.TrimPrefix(q, string(profile.KindRemote)+":")); at != "" {
@@ -253,13 +251,13 @@ func (e *Engine) goneProfile(sc Scope, q string) Notice {
 	return Notice{Level: LevelWarn, Text: "profile " + shown(q) + " is on but no longer exists → " + e.Command(sc, "profile", q, "--off")}
 }
 
-// ProfileState is the state of the profile name names in each of scopes that has it (Plan 6b
-// §12.1): its row and, for each module it lists, the layer whose entry wins in that scope; for a
-// profile that is off, the layer that would win were it switched to, in place of the profile on,
-// as --switch does. A scope the name does not resolve in is left out (default at project scope, say);
-// when it resolves in none, the first scope's refusal is returned. The named profile is read, and
-// the scope's active ones, once each, as a sync reads them. display is the run's output flags,
-// which the hints of a file with a marketplace address keep (Plan 6c §6.7).
+// ProfileState is the state of the profile name names in each of scopes that has it: its row and,
+// for each module it lists, the layer whose entry wins in that scope; for a profile that is off,
+// the layer that would win were it switched to, in place of the profile on, as --switch does. A
+// scope the name does not resolve in is left out (default at project scope, say); when it resolves
+// in none, the first scope's refusal is returned. The named profile is read, and the scope's active
+// ones, once each, as a sync reads them. display is the run's output flags, which the hints of a
+// file with a marketplace address keep.
 func (e *Engine) ProfileState(ctx context.Context, scopes []Scope, name string, display ...string) (_ []ProfileState, _ []Notice, err error) {
 	defer func() { err = e.CoachUnresolved(err, scopes, false, display) }()
 	unlock, err := e.readProfiles(true)
@@ -305,8 +303,8 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 	notices = append(notices, notes...)
 	st := &ProfileState{ProfileRow: row, Modules: []ProfileModule{}}
 	view := led.Clone()
-	// A remote profile a local one shadows cannot be turned on (§4.4), and one that is on is read
-	// as the local one (D8): either is shown as it stands, its own entries.
+	// A remote profile a local one shadows cannot be turned on, and one that is on is read
+	// as the local one: either is shown as it stands, its own entries.
 	shadowed := i.Kind == profile.KindRemote && st.ShadowedBy != nil
 	if shadowed && st.State == StateOn {
 		if mine := userShadow(infos, i.Qualified()); mine != nil {
@@ -438,7 +436,7 @@ type unknownProfileError struct{ error }
 
 func (e *unknownProfileError) Unwrap() error { return e.error }
 
-// ambiguousProfileError is a bare profile name that profiles of several local kinds define (D8),
+// ambiguousProfileError is a bare profile name that profiles of several local kinds define,
 // with those profiles, so --off can say which of them are on.
 type ambiguousProfileError struct {
 	error
@@ -447,12 +445,12 @@ type ambiguousProfileError struct {
 
 func (e *ambiguousProfileError) Unwrap() error { return e.error }
 
-// resolveProfile is the profile a name typed on the command line names in sc (Plan 6b §4.4),
+// resolveProfile is the profile a name typed on the command line names in sc,
 // among infos, the profiles sc can use. A bare name is a local profile of that name, at project
 // scope the project's or the user's, at user scope the user's; else the remote one: local beats
 // remote, which a local namesake shadows. A bare name that local profiles of two or more kinds
 // define is ambiguous and refused, naming every one of them and its file and hinting, for each,
-// the user's command with the name qualified (D8). default is default.yml, at user scope only. A
+// the user's command with the name qualified. default is default.yml, at user scope only. A
 // qualified name (user:go, project:go, remote:go) names its kind. Any other name is refused,
 // listing the profiles sc can use. args is what the user typed after lola profile, the names and
 // the action flag, or nil for the state form of a single name.

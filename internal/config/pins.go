@@ -29,11 +29,11 @@ const pinsHint = "fix it by hand, or remove it: the next lola sync --user writes
 // this package cannot import: profile imports config).
 const remoteWho = "a remote profile"
 
-// Pin is the version installed for one entry of yours at user scope (spec 2026-10-29 §3.4), keyed
+// Pin is the version installed for one entry of yours at user scope, keyed
 // by the entry's Source (as the scope reads it), Ref and Path; Commit (git) and Digest pin it.
 type Pin struct{ Source, Ref, Path, Commit, Digest string }
 
-// Remote is the record of a remote profile you have (spec 2026-10-29 §3.4, Q4b): the source,
+// Remote is the record of a remote profile you have: the source,
 // ref, path, commit and digest its source.json holds.
 type Remote struct{ Source, Ref, Path, Commit, Digest string }
 
@@ -46,7 +46,7 @@ type Pins struct {
 	read    []byte
 }
 
-// LoadPins reads pins.yaml at path (spec 2026-10-29 §8.6a): through yamldoc.Read, which follows a
+// LoadPins reads pins.yaml at path: through yamldoc.Read, which follows a
 // symbolic link (a dotfile manager's) and caps the size; every key known; module names by the
 // module-name rule, remote names as a qualified remote:<name> is checked (activeprofile.Check),
 // each pin and record as untrusted input (Pin.Check, Remote.Check). Each refusal names the file and
@@ -141,7 +141,7 @@ func (p *Pins) decodeRemotes(d doc, n *yaml.Node, at string) error {
 	return nil
 }
 
-// Check applies to pin the rules an entry's pin has (spec 2026-10-29 §8.6a), on every read and
+// Check applies to pin the rules an entry's pin has, on every read and
 // before a write: the recorded-source rules (source.Recorded.Check), and, lexically, the engine's
 // pin-shape rules (checkPinShape): a source on this machine is never pinned, every pin has its
 // digest, a git one its commit, and only git has a ref.
@@ -175,7 +175,7 @@ func (r Remote) Check() error {
 }
 
 // Find is the pin of module whose key is source, ref and path; nil when there is none (an edited
-// entry resolves afresh, spec 2026-10-29 §3.4).
+// entry resolves afresh).
 func (p *Pins) Find(module, source, ref, path string) *Pin {
 	for _, pin := range p.Modules[module] {
 		if pin.Source == source && pin.Ref == ref && pin.Path == path {

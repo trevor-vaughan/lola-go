@@ -19,17 +19,15 @@ const (
 	SectionGlobal  = "global"
 	SectionUser    = "user"
 	SectionProject = "project"
-	// a profile entry's picks, held for the run: read from and written to the profile, never to selections.yaml (cherry-pick design §4.2)
+	// a profile entry's picks, held for the run: read from and written to the profile, never to selections.yaml
 	SectionProfile = "profile"
 )
 
 // Where names one section of selections.yaml: global, user, or a project by its key, its
 // repository's (RepoKey) or its paths.ProjectKey; or, held for the run only, a profile entry's
-// picks (SectionProfile), by the profile layer's name, profile:<qualified> (spec 2026-10-29 §13
-// item 2). Path is, for a project keyed by its repository, its path key: the file's section under
+// picks (SectionProfile), by the profile layer's name, profile:<qualified>. Path is, for a project keyed by its repository, its path key: the file's section under
 // it, written before lola keyed projects by repository, still applies, under the repository key's
-// entries, and a write of one of its modules moves it to the repository key (spec 2026-11-03
-// Pick-P2-a).
+// entries, and a write of one of its modules moves it to the repository key.
 type Where struct {
 	Kind    string
 	Project string
@@ -70,7 +68,7 @@ func (w Where) Origin() string {
 }
 
 // Entry is one module's entry in a section. Only, when set, is the list of the components the
-// module installs at the section's scope (spec 2026-10-29 cherry-pick §3.1); only: [] is none.
+// module installs at the section's scope; only: [] is none.
 type Entry struct {
 	Skip, Include, Only []Pattern
 }
@@ -122,7 +120,7 @@ func loadSelections(path string) (*Selections, *yaml.Node, error) {
 
 func (s *Selections) decode(root *yaml.Node) error {
 	d := doc{path: s.Path}
-	// The user section went with user.yml (spec 2026-10-29 §7): user-scope modules come from
+	// The user section went with user.yml: user-scope modules come from
 	// profiles, whose picks live in their entries. Its key's line names it.
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		if k := root.Content[i]; k.Value == SectionUser {
@@ -391,7 +389,7 @@ type Layer struct {
 
 // Exclusions are a module's selectors at a scope, one Layer per place that sets them: Global is
 // selections.yaml's global section, Scope the scope's own section (zero when the global section
-// itself is edited). The zero value excludes nothing. Precedence (cherry-pick design §3.1): the
+// itself is edited). The zero value excludes nothing. Precedence: the
 // scope's include always installs a match; every layer's skip excludes its matches; the only: list
 // of the most specific layer that has one excludes what it misses, replacing the others.
 type Exclusions struct {
@@ -400,7 +398,7 @@ type Exclusions struct {
 
 // Exclusions returns module's effective exclusions at scope (User(), a Project, or a profile
 // entry's Picks). A profile entry's picks replace every section's but the global skip, a "never
-// anywhere" choice (cherry-pick design §4.2): the global only: does not apply to them.
+// anywhere" choice: the global only: does not apply to them.
 func (s *Selections) Exclusions(scope Where, module string) Exclusions {
 	x := Layered(scope, s.Entry(Global(), module), s.Entry(scope, module))
 	x.Scope.Origin = s.Origin(scope, module) // a project's key as the file writes it (WrittenKey)

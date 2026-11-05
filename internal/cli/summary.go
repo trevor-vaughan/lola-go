@@ -45,8 +45,8 @@ func (fl *installFlow) assistants(key string) []string {
 // --force, or an installed module whose files lola list does not report ok (missing, hand-edited,
 // stale): the engine repairs or reports those. A target that renders nothing of a module (skipped)
 // stays as it is. A module the active profile lists
-// (pv.SaveOnly) changes only by its manifest entry: the install installs nothing of it (spec
-// 2026-10-29 §3.1), so neither its components nor its files count.
+// (pv.SaveOnly) changes only by its manifest entry: the install installs nothing of it, so neither
+// its components nor its files count.
 func (fl *installFlow) changes(pv *engine.Preview) (bool, error) {
 	if len(pv.Changes) > 0 || fl.f.force {
 		return true, nil
@@ -92,7 +92,7 @@ func (fl *installFlow) changes(pv *engine.Preview) (bool, error) {
 
 // repins reports whether an install re-pins the module ms is at a destination: installed, its
 // entry is the write target's own, and the commit the install pins there is another than the one
-// lock.json records (spec 2026-10-29 §16).
+// lock.json records.
 func repins(ms engine.ModuleScope) bool {
 	return ms.Installed && ms.Listed && ms.ListedCommit != "" && ms.ListedCommit != ms.Commit
 }
@@ -114,7 +114,7 @@ func diffLine(d engine.ComponentDiff) string {
 	return strings.Join(parts, ", ")
 }
 
-// printSummary writes the review's summary (§4.5, Plan 10 §5): each destination with its
+// printSummary writes the review's summary: each destination with its
 // directory and where it came from; per assistant, why it was chosen, and each module's component
 // diff, or for a module the install saves but installs nothing of (pv.SaveOnly) that it saves the
 // entry of its write target (pv.WritesTo), and why: a higher layer's entry wins, or that file is not
@@ -151,7 +151,7 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 		}
 	}
 	// Picks a profile entry holds are listed under that profile, and an override's under the profile
-	// it writes (spec 2026-10-29 §3.6); selections.yaml holds the rest.
+	// it writes; selections.yaml holds the rest.
 	var onFile []config.Change
 	var files []string
 	entries := map[string][]string{}
@@ -246,7 +246,7 @@ func entryText(e config.Entry) string {
 	return strings.Join(parts, ", ")
 }
 
-// equivalents are the commands that do what this run does off a terminal (§4.5, §14): a lola
+// equivalents are the commands that do what this run does off a terminal: a lola
 // cache add for each source added, then one lola install line per destination (one per group of
 // modules whose where-answers there are alike), quoted for the
 // user's shell (errs.ShellJoin) and without --dry-run. With more than one destination every
@@ -300,7 +300,7 @@ func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 	}
 	// where is the flag form of the where-question answered on the terminal for module at the
 	// destination key, or else for the profile on there (module ""), as --profile and --override
-	// say it (spec 2026-10-29 §3.6); nil when none was, or the run's own flag answers it.
+	// say it; nil when none was, or the run's own flag answers it.
 	where := func(key, module string) []string {
 		c, ok := fl.answers[whereKey{key, module}]
 		if !ok {

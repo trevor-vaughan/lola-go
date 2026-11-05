@@ -9,7 +9,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 )
 
-// projectSource is a local source of an entry that lies inside a project (spec 2026-10-29 §16.2):
+// projectSource is a local source of an entry that lies inside a project:
 // path, the source as a file of yours reads it, and root, the project. User scope never asks about
 // an entry of yours, so what changes there later installs unreviewed.
 type projectSource struct {

@@ -195,7 +195,7 @@ var _ = Describe("Admit", func() {
 				Expect(ok).To(BeFalse())
 				Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "t", Kind: "agent", Artifact: "rev",
 					Code: "x/unenforceable", Text: "t cannot enforce it", Hint: "fix it", Forceable: true, Class: target.ClassSafety, AuthorHint: true}}),
-					"P2-6: rendered anyway, the agent could do more than its author allowed")
+					"rendered anyway, the agent could do more than its author allowed")
 				ctx.Force = true
 				d, fs, ok := admitGuarded(src)
 				Expect(ok).To(BeTrue())
@@ -250,7 +250,7 @@ var _ = Describe("Admit", func() {
 			Code: "kind-unsupported", Text: "t has no place for hooks", Class: target.ClassDetail}}))
 	})
 
-	It("P2-6: classes a runtime hook a target has no place for as safety: it is the user's to know", func() {
+	It("classes a runtime hook a target has no place for as safety: it is the user's to know", func() {
 		_, fs, ok := admit(target.KindRuntimeHook, "hooks/hooks.json", "x\n")
 		Expect(ok).To(BeFalse())
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "t", Kind: target.KindRuntimeHook, Artifact: "hooks/hooks.json",

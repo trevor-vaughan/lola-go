@@ -70,7 +70,7 @@ func zipTree(file, root string) {
 }
 
 // installAssistants puts claude, gemini and opencode on the spec's PATH (testenv.Isolate's bin/
-// under root), so lola migrate finds every assistant it has a target for installed (Plan 10 §3.2).
+// under root), so lola migrate finds every assistant it has a target for installed.
 func installAssistants(root string) {
 	for _, name := range []string{"claude", "gemini", "opencode"} {
 		writeFile(filepath.Join(root, "bin", name), "#!/bin/sh\n")

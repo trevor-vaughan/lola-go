@@ -17,7 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-var _ = Describe("moveAside (R-9-42)", func() {
+var _ = Describe("moveAside", func() {
 	It("holds a lock alone across its own rename, but on Windows, where an open file cannot be renamed", func() {
 		tmp := testenv.Isolate()
 		lock := filepath.Join(tmp, "run-1.lock")
@@ -41,7 +41,7 @@ var _ = Describe("moveAside (R-9-42)", func() {
 	})
 })
 
-var _ = Describe("restore (A28)", func() {
+var _ = Describe("restore", func() {
 	It("puts back the head of a version it cannot examine, which may still be cached", func() {
 		if os.Geteuid() == 0 {
 			Skip("root examines entries of a directory it may not search")

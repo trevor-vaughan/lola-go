@@ -132,7 +132,7 @@ var _ = Describe("profile entry picks", func() {
 		Expect(res.Notices).NotTo(ContainElement(isIgnored), "a section naming another module says nothing")
 	})
 
-	It("a profile's state lists each entry's only: and skip: as written, [] for none (cherry-pick design §4.6)", func() {
+	It("a profile's state lists each entry's only: and skip: as written, [] for none", func() {
 		dir := kit()
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + dir + ", only: ['skill/*'], skip: [skill/c]}\n" +
 			"  - {name: other, source: " + dir + "}\n"})
