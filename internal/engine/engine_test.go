@@ -88,7 +88,7 @@ var _ = Describe("Engine", func() {
 		return e.Install(ctx, sc, proj, reqs, opts)
 	}
 	status := func() []string {
-		rows, err := e.Status(sc)
+		rows, _, err := e.Status(ctx, sc)
 		Expect(err).NotTo(HaveOccurred())
 		var out []string
 		for _, r := range rows {
@@ -386,7 +386,8 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		locks, err := filepath.Glob(filepath.Join(p.Locks, "*.lock"))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(locks).To(ConsistOf(MatchRegexp(`[0-9a-f]{16}\.lock$`), HaveSuffix("trust.lock")), "one scope lock, beside the trust record's")
+		Expect(locks).To(ConsistOf(MatchRegexp(`[0-9a-f]{16}\.lock$`), HaveSuffix("trust.lock"), HaveSuffix("profiles.lock")),
+			"one scope lock, beside the trust record's and the profiles'")
 	})
 
 	It("records rules: false per module, honors it on render and reinstall, and clears it with Rules=true", func() {
@@ -399,7 +400,7 @@ var _ = Describe("Engine", func() {
 		m, err := manifest.Load(filepath.Join(proj, ".lola/project.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Modules[0].Rules).To(Equal(&off))
-		rows, err := e.Status(sc)
+		rows, _, err := e.Status(ctx, sc)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows[0].Rules).To(BeFalse())
 
@@ -523,7 +524,7 @@ var _ = Describe("Engine", func() {
 		writeTree(src, map[string]string{"commands/ship.md": "Ship faster\n"})
 		_, err = e.Fetch(ctx, sourceSpec(src))
 		Expect(err).NotTo(HaveOccurred())
-		rows, err := e.Status(sc)
+		rows, _, err := e.Status(ctx, sc)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows).To(ConsistOf(And(HaveField("Status", "ok"), HaveField("Pin", ""), HaveField("UpdateAvailable", false))))
 		res, err := e.Render(ctx, sc, engine.Options{})
@@ -810,7 +811,7 @@ var _ = Describe("Engine", func() {
 		m, err := manifest.Load(p.UserManifest)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Modules[0].Source).To(Equal(src), "user scope records absolute sources")
-		rows, err := e.Status(user)
+		rows, _, err := e.Status(ctx, user)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows).To(HaveLen(1))
 		lolaDataHome, err := os.Stat(filepath.Join(p.DataHome, "lola"))
@@ -1104,6 +1105,38 @@ var _ = Describe("Engine", func() {
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 		})
 
+		It("refuses list too, since a committed lock.json could name active profiles", func() {
+			gitIn(proj, "add", "-f", ".lola/lock.json")
+			_, _, err := e.Status(ctx, sc)
+			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"))
+			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
+			rows, notices, err := e.Status(ctx, sc)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(rows).NotTo(BeEmpty())
+			Expect(notices).To(BeEmpty())
+		})
+
+		It("refuses before reading the active profiles a committed lock.json names", func() {
+			writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: a, source: ../a, colour: red}\n"})
+			led, err := e.Ledger(sc)
+			Expect(err).NotTo(HaveOccurred())
+			led.Profiles = []ledger.Active{{Name: "user:go", By: ledger.ByOn}}
+			Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
+			gitIn(proj, "add", "-f", ".lola/lock.json")
+			tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"
+
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).To(MatchError(tracked), "sync")
+			_, err = e.Render(ctx, sc, engine.Options{})
+			Expect(err).To(MatchError(tracked), "render")
+			_, _, err = e.Status(ctx, sc)
+			Expect(err).To(MatchError(tracked), "list")
+
+			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).To(MatchError(HavePrefix(filepath.Join(p.UserProfiles, "go.yml")+": ")), "untracked, the profile is read")
+		})
+
 		It("refuses install, the install pickers and uninstall too, before anything is resolved, fetched or written", func() {
 			gitIn(proj, "add", "-f", ".lola/lock.json")
 			// A pull changed the entry, so an install by source would take its targets from the ledger.
@@ -1254,7 +1287,7 @@ var _ = Describe("Engine", func() {
 			expectRefused(err, link)
 			_, err = install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
 			expectRefused(err, link)
-			_, err = e.Status(sc)
+			_, _, err = e.Status(ctx, sc)
 			expectRefused(err, link)
 		})
 

@@ -60,7 +60,7 @@ func (r Recorded) Check() error {
 	if r.Commit != "" && !fullSHARE.MatchString(r.Commit) {
 		return fmt.Errorf("commit %q is not a full commit SHA (40 or 64 lower-case hex digits)", untrusted.Text(r.Commit, untrusted.MaxName))
 	}
-	if r.Commit != "" && !gitForm(r.Source) {
+	if r.Commit != "" && !IsGitForm(r.Source) {
 		return errors.New("commit is recorded only for a git source; an archive or a folder is pinned by its digest alone")
 	}
 	if r.Digest != "" && !digestRE.MatchString(r.Digest) {
@@ -99,10 +99,10 @@ func IsFolderForm(loc string) bool {
 	return !strings.Contains(loc, "://") && !scpRE.MatchString(loc) && archiveSuffix(loc) == ""
 }
 
-// gitForm reports whether loc, as a file records it, can name a git source the way Parse
+// IsGitForm reports whether loc, as a file records it, can name a git source the way Parse
 // classifies one: an ssh URL, an http(s) URL whose path has no archive suffix, or git's scp
 // form. A local path or a file URL is a folder or an archive.
-func gitForm(loc string) bool {
+func IsGitForm(loc string) bool {
 	if !strings.Contains(loc, "://") {
 		return scpRE.MatchString(loc)
 	}

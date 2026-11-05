@@ -78,6 +78,7 @@ func setupCobra() {
 	cobraOnce.Do(func() {
 		cobra.EnableCommandSorting = false
 		cobra.AddTemplateFunc("aliasedPad", aliasedPad)
+		cobra.AddTemplateFunc("aliasedFlagUsages", aliasedFlagUsages)
 	})
 }
 
@@ -129,6 +130,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	a.addStoreCommands(root)
 	a.addMiscCommands(root)
 	installHelp(root)
+	checkFlagAliases(root)
 	return root
 }
 

@@ -95,7 +95,8 @@ var _ = Describe("Parse", func() {
 		DeferCleanup(func() { Expect(os.RemoveAll(outside)).To(Succeed()) })
 		Expect(os.Symlink(outside, filepath.Join(cwd, "mods", "out"))).To(Succeed())
 
-		_, err := source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "out")+"/../x")
+		// out/.. is cwd's parent, shared with other runs: the missing name is this run's own.
+		_, err := source.IsWithin(filepath.Join(cwd, "mods"), filepath.Join(cwd, "mods", "out")+"/../absent-"+filepath.Base(cwd))
 		Expect(err).To(HaveOccurred(), "a missing path through a link and '..' is not cleaned lexically")
 
 		_, err = source.IsWithin(filepath.Join(cwd, "mods"), "mods/x")
@@ -283,13 +284,22 @@ var _ = Describe("Parse of git sources", func() {
 		}
 	})
 
-	It("treats an existing x.git directory, or a path that looks like scp form, as a folder", func() {
-		for _, dir := range []string{"x.git", "host:dir"} {
+	It("treats an existing x.git directory as a folder", func() {
+		Expect(os.MkdirAll(filepath.Join(cwd, "x.git"), 0o755)).To(Succeed())
+		s, ok, err := source.Parse("x.git", cwd)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		Expect(s.Kind).To(Equal(source.KindFolder))
+	})
+
+	It("never looks a URL or scp form up on disk, where a directory named like it could stand in for it", func() {
+		for arg, dir := range map[string]string{"host:dir": "host:dir", "https://example.com/x.git": "https:/example.com/x.git",
+			"http://127.0.0.1/x.git": "http:/127.0.0.1/x.git"} {
 			Expect(os.MkdirAll(filepath.Join(cwd, dir), 0o755)).To(Succeed())
-			s, ok, err := source.Parse(dir, cwd)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(ok).To(BeTrue())
-			Expect(s.Kind).To(Equal(source.KindFolder), dir)
+			s, ok, err := source.Parse(arg, cwd)
+			Expect(err).NotTo(HaveOccurred(), arg)
+			Expect(ok).To(BeTrue(), arg)
+			Expect(s).To(Equal(source.Spec{Kind: source.KindGit, Location: arg}), arg)
 		}
 	})
 

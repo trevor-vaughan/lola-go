@@ -2,6 +2,7 @@ package engine
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -46,6 +47,18 @@ func (e *Engine) Command(sc Scope, sub string, args ...string) string {
 	return errs.ShellJoin(cmd)
 }
 
+// commandOf is the lola command a hint repeating req names, with extra appended: lola sync, or
+// for an activation lola profile with req's names and the action (Plan 6b §12.3); Sync sets
+// those names to the profiles' qualified names once it has resolved them. Both carry the scope's
+// flags (Command) and the flags of the run (rerun).
+func (e *Engine) commandOf(req SyncRequest, extra ...string) string {
+	if req.Profiles == nil {
+		return e.SyncCommand(req.Scope, req.rerun(extra...)...)
+	}
+	args := append(slices.Clone(req.Profiles.Names), "--"+string(req.Profiles.Action))
+	return e.Command(req.Scope, "profile", append(args, req.rerun(extra...)...)...)
+}
+
 // rerun is the names and flags of the user's sync that a hint repeating it carries (Plan 6a
 // §11.3): the names, --update and --force as given, and the hook flags only when given.
 func (req SyncRequest) rerun(extra ...string) []string {
@@ -65,7 +78,7 @@ func (req SyncRequest) rerun(extra ...string) []string {
 // ListAll is the command a capped list of sync's output names (Plan 6a §7.5, §11.3): the user's
 // own run as a dry run under --json, which lists every file and step.
 func (e *Engine) ListAll(req SyncRequest) string {
-	return e.SyncCommand(req.Scope, req.rerun("-n", "--json")...)
+	return e.commandOf(req, "-n", "--json")
 }
 
 // fromHere is location as a user in the working directory (Getwd) types it: relative to it,

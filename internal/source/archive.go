@@ -380,7 +380,16 @@ func archiveRoot(tree, subpath string) (string, error) {
 		}
 		root := filepath.Join(tree, subpath)
 		if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
-			return "", errs.WithHints(fmt.Errorf("--path %q is not a directory in the archive", subpath),
+			exists := path.Dir(filepath.ToSlash(subpath))
+			for ; exists != "."; exists = path.Dir(exists) {
+				if fi, err := os.Stat(filepath.Join(tree, filepath.FromSlash(exists))); err == nil && fi.IsDir() {
+					break
+				}
+			}
+			if exists == "." {
+				exists = ""
+			}
+			return "", errs.WithHints(&MissingPathError{Path: subpath, In: "archive", Exists: exists},
 				"--path is relative to the archive's root, as tar tf or unzip -l show it")
 		}
 		return root, nil

@@ -249,7 +249,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			}
 			_, err = e.Render(ctx, sc, engine.Options{})
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "render, cached: %v", cached)
-			_, err = e.Status(sc)
+			_, _, err = e.Status(ctx, sc)
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "list, cached: %v", cached)
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "sync, cached: %v", cached)
@@ -1057,7 +1057,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		var url string
 		BeforeEach(func() { url, _ = serveRepo() })
 		row := func() engine.StatusRow {
-			rows, err := e.Status(sc)
+			rows, _, err := e.Status(ctx, sc)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rows).To(HaveLen(1))
 			return rows[0]

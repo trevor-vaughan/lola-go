@@ -177,6 +177,127 @@ var _ = Describe("lola sync", func() {
 		Expect(r.out).To(Equal("✓ already in sync\n"))
 	})
 
+	It("shows a project profile's changes under the profile, in the diff, the picker and --plain", func() {
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: other, source: ../../mods/other}\n"})
+		ledgerPath := filepath.Join(proj, ".lola", "lock.json")
+		b, err := os.ReadFile(ledgerPath)
+		Expect(err).NotTo(HaveOccurred())
+		var led map[string]any
+		Expect(json.Unmarshal(b, &led)).To(Succeed())
+		led["profiles"] = []map[string]string{{"name": "project:go", "by": "on"}}
+		b, err = json.Marshal(led)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
+
+		r := lola("sync", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(".lola/profiles/go.yml changed since lola last wrote it or you last trusted it:\n" +
+			"  in profile project:go (.lola/profiles/go.yml):\n  + other         mods/other\n"))
+		Expect(r.err).To(ContainSubstring("error: lola sync needs your trust for changes to .lola/profiles/go.yml, and there is no terminal to ask on\n"))
+		r = lola("sync", "-C", proj, "-n", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("trust\tother\tadded\tproject:go\n"))
+
+		c := &confirming{trusts: []engine.TrustAnswer{{}}}
+		lolaAsking(c, "sync", "-C", proj)
+		Expect(c.steps[0].Groups).To(ConsistOf(HaveField("Options", ConsistOf(And(HaveField("Module", "other"),
+			HaveField("Label", HavePrefix("+ other (project:go) source mods/other")))))))
+
+		r = lola("sync", "-C", proj, "--trust")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).To(BeARegularFile())
+	})
+
+	It("names every file a module's changes are in, in the picker and --plain", func() {
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: ../../mods/kit, rules: false}\n"})
+		ledgerPath := filepath.Join(proj, ".lola", "lock.json")
+		b, err := os.ReadFile(ledgerPath)
+		Expect(err).NotTo(HaveOccurred())
+		var led map[string]any
+		Expect(json.Unmarshal(b, &led)).To(Succeed())
+		led["profiles"] = []map[string]string{{"name": "project:go", "by": "on"}}
+		b, err = json.Marshal(led)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
+		r := lola("sync", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err+r.out)
+		Expect(r.out).To(HaveSuffix("✓ already in sync\n"), "project.yml's kit shadows the profile's, which is not asked about")
+
+		// A pull drops kit from project.yml: the profile's kit wins now, a change in both files.
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\n"), 0o644)).To(Succeed())
+		r = lola("sync", "-C", proj, "-n", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("trust\tkit\tremoved\t\n"))
+		Expect(r.out).To(ContainSubstring("trust\tkit\tadded\tproject:go\n"))
+		c := &confirming{trusts: []engine.TrustAnswer{{}}}
+		lolaAsking(c, "sync", "-C", proj)
+		Expect(c.steps[0].Changes).To(Equal(2))
+		Expect(c.steps[0].Groups).To(ConsistOf(HaveField("Options", ConsistOf(And(HaveField("Module", "kit"),
+			HaveField("Label", HavePrefix("+ kit (project.yml, project:go) ")))))), "one option trusts both changes, and says so")
+	})
+
+	// turnOn records names as the active profiles in lock.json, as lola profile --on does.
+	turnOn := func(names ...string) {
+		GinkgoHelper()
+		ledgerPath := filepath.Join(proj, ".lola", "lock.json")
+		b, err := os.ReadFile(ledgerPath)
+		Expect(err).NotTo(HaveOccurred())
+		var led map[string]any
+		Expect(json.Unmarshal(b, &led)).To(Succeed())
+		var active []map[string]string
+		for _, n := range names {
+			active = append(active, map[string]string{"name": n, "by": "on"})
+		}
+		led["profiles"] = active
+		b, err = json.Marshal(led)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
+	}
+
+	It("names the changed profiles in the header in file order, each with its section", func() {
+		writeTree(filepath.Join(proj, "mods", "alpha"), map[string]string{"lola.yml": "name: alpha\n", "commands/alpha.md": "Alpha\n"})
+		writeTree(filepath.Join(proj, "mods", "zed"), map[string]string{"lola.yml": "name: zed\n", "commands/zed.md": "Zed\n"})
+		writeTree(proj, map[string]string{
+			".lola/profiles/a.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: zed, source: ../../mods/zed}\n",
+			".lola/profiles/b.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: alpha, source: ../../mods/alpha}\n"})
+		turnOn("project:a", "project:b")
+		r := lola("sync", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring(".lola/profiles/a.yml, .lola/profiles/b.yml changed since lola last wrote it or you last trusted it:\n"),
+			"sorted, though b's module sorts first")
+		Expect(r.err).To(ContainSubstring("  in profile project:a (.lola/profiles/a.yml):\n  + zed           mods/zed\n"))
+		Expect(r.err).To(ContainSubstring("  in profile project:b (.lola/profiles/b.yml):\n  + alpha         mods/alpha\n"))
+	})
+
+	It("names the project profile a pin is written into", func() {
+		f, err := os.Create(filepath.Join(proj, "mods", "arch.zip"))
+		Expect(err).NotTo(HaveOccurred())
+		zw := zip.NewWriter(f)
+		w, err := zw.Create("arch/commands/arch.md")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = w.Write([]byte("Arch\n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(zw.Close()).To(Succeed())
+		Expect(f.Close()).To(Succeed())
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: arch, source: ../../mods/arch.zip}\n"})
+		turnOn("project:team")
+		r := lola("sync", "-C", proj, "--trust")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`pins:\n  → arch \(project:team\) pinned sha256:[0-9a-f]{64}\n`))
+	})
+
+	It("names a module left as installed once in the answer's echo, though both files change it", func() {
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: ../../mods/kit, rules: false}\n"})
+		turnOn("project:go")
+		// A pull drops kit from project.yml, so the profile's kit wins, and adds other.
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: other\n    source: mods/other\n"), 0o644)).To(Succeed())
+		c := &confirming{trusts: []engine.TrustAnswer{{Modules: []string{"other"}}}}
+		r := lolaAsking(c, "sync", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(c.steps[0].Changes).To(Equal(3), "kit removed from project.yml, kit added to project:go, other added")
+		Expect(r.err).To(ContainSubstring("→ trusting other; leaving kit as installed\n"))
+	})
+
 	It("shows a project this machine has no record of as new, with + targets", func() {
 		Expect(os.Remove(filepath.Join(tmp, "state", "lola", "trust.json"))).To(Succeed())
 		r := lola("sync", "-n", "-C", proj)

@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -199,6 +200,58 @@ var _ = Describe("ledger", func() {
 			_, err := ledger.Load(path)
 			Expect(err).To(MatchError(ContainSubstring(path)), body)
 			Expect(err).To(MatchError(ContainSubstring(want)), body)
+		}
+	})
+
+	It("records the active profiles in order and each module's winning profile, and leaves both out when empty", func() {
+		l := ledger.New()
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: dg}
+		Expect(l.Save(path)).To(Succeed())
+		saved, err := os.ReadFile(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(saved)).To(Equal("{\n  \"version\": 1,\n  \"modules\": {\n    \"a\": {\n      \"source\": \"/s/a\",\n      \"digest\": \"" + dg + "\",\n      \"artifacts\": []\n    }\n  },\n  \"created\": []\n}\n"))
+
+		l.Profiles = []ledger.Active{{Name: "user:base", By: ledger.ByOn}, {Name: "remote:go", By: ledger.BySwitch}}
+		l.Modules["a"].From = ledger.FromProfile("user:base")
+		l.Modules["b"] = &ledger.Entry{From: ledger.FromProfile("default"), Source: "/s/b", Digest: dg2}
+		Expect(l.Save(path)).To(Succeed())
+		Expect(os.ReadFile(path)).To(MatchJSON(`{"version":1,
+			"profiles":[{"name":"user:base","by":"on"},{"name":"remote:go","by":"switch"}],
+			"modules":{"a":{"from":"profile:user:base","source":"/s/a","digest":"` + dg + `","artifacts":[]},
+			           "b":{"from":"profile:default","source":"/s/b","digest":"` + dg2 + `","artifacts":[]}},
+			"created":[]}`))
+		back, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(back.Profiles).To(Equal(l.Profiles))
+		Expect(back.Modules["b"].From).To(Equal("profile:default"))
+		c := back.Clone()
+		c.Profiles[0].Name = "user:other"
+		Expect(back.Profiles[0].Name).To(Equal("user:base"))
+	})
+
+	DescribeTable("refuses an active list lola never writes",
+		func(profiles, want string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.WriteFile(path, []byte(`{"version":1,"profiles":`+profiles+`,"modules":{},"created":[]}`), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(And(ContainSubstring(path+": profiles"), ContainSubstring(want))))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("remove its profiles list")))
+		},
+		Entry("a bare name", `[{"name":"go","by":"on"}]`, "is not user:, project: or remote:"),
+		Entry("default", `[{"name":"user:default","by":"on"}]`, "default is always on"),
+		Entry("a name listed twice", `[{"name":"user:go","by":"on"},{"name":"user:go","by":"switch"}]`, "user:go is listed twice"),
+		Entry("an unknown action", `[{"name":"user:go","by":"pull"}]`, `has by "pull"`),
+		Entry("an invalid name", `[{"name":"user:../x","by":"on"}]`, "is invalid"),
+		Entry("too many", `[`+strings.TrimSuffix(strings.Repeat(`{"name":"user:x","by":"on"},`, 65), ",")+`]`, "more than 64 profiles"),
+	)
+
+	It("refuses a from lola never writes", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		for _, from := range []string{"project.yml", "default", "profile:", "profile:go", "profile:user:../x", "user:go"} {
+			body := `{"version":1,"modules":{"kit":{"from":"` + from + `","source":"/s","digest":"` + dg + `","artifacts":[]}},"created":[]}`
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(ContainSubstring(path+": module kit: from")), from)
 		}
 	})
 

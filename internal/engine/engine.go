@@ -176,8 +176,11 @@ type VersionRef struct {
 
 // StatusRow is one module × target line of `lola list`.
 type StatusRow struct {
-	Scope  string `json:"scope"` // project or user
-	Name   string `json:"name"`
+	Scope string `json:"scope"` // project or user
+	Name  string `json:"name"`
+	// From is the layer the module comes from (Plan 6b §7): project.yml, user.yml,
+	// profile:user:go or profile:default.
+	From   string `json:"from"`
 	Target string `json:"target"`
 	Status string `json:"status"` // ok, modified, missing, stale, skipped, unreadable
 	Rules  bool   `json:"rules"`  // false when the manifest entry says rules: false
@@ -697,8 +700,9 @@ func (e *Engine) prepare(sc Scope, led *ledger.Ledger, changes []plan.ModuleChan
 }
 
 // commit applies a prepared scope: module copies, pre-install hooks, the plan with the
-// manifest edit man (nil: none) under the scope lock, after (when set), then post-install hooks.
-func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man *plan.ManifestWrite, after func(*plan.Plan) error) error {
+// manifest edits man (none when empty) under the scope lock, after (when set), then
+// post-install hooks.
+func (e *Engine) commit(ctx context.Context, pr *prepared, opts Options, res *Result, man []plan.ManifestWrite, after func(*plan.Plan) error) error {
 	sc, p := pr.sc, pr.plan
 	if err := e.ownGitignore(sc); err != nil {
 		return err

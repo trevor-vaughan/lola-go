@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -155,4 +157,54 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice) (string, erro
 		}
 		step = DirectoryStep{Value: offer(in), Problem: problem}
 	}
+}
+
+// flagScope is the scopes the scope flags name for a lola profile action that never asks for one
+// (Plan 6b §19 P20, P22), none when no flag is given: the engine then picks; default_scope does
+// not apply. --scope both names the project and user scope: with why, the reason the action takes
+// one scope (--add), it is refused with the run without it and the run narrowed to each scope
+// (args are its names); without (--update, ruling R-6b3c-2), it is taken when the project has
+// .lola/, and refused otherwise with the run at user scope in its place.
+func (a *app) flagScope(cmd *cobra.Command, eng *engine.Engine, args []string, why string) ([]engine.Scope, error) {
+	if a.scopeFlag == "" && !a.user && !a.project && a.root == "" {
+		return nil, nil
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	req, err := a.scopeRequest(cwd, false)
+	if err != nil {
+		return nil, err
+	}
+	req.Command, req.Both = cmd.Name(), true
+	res, err := eng.ResolveScope(req)
+	if err != nil {
+		return nil, err
+	}
+	both := untrusted.Text(a.scopeFlag, untrusted.MaxName)
+	switch {
+	case len(res.Scopes) > 1 && why != "":
+		run := runWithout(cmd, args, "scope")
+		// -C names a project, which user scope cannot take: that hint drops it too.
+		return nil, errs.WithHints(fmt.Errorf("--scope %s names two scopes; %s", both, why),
+			"drop it: "+run, "or name the project: "+run+" --project", "or user scope: "+runWithout(cmd, args, "scope", "root")+" --user")
+	case len(res.Scopes) > 1 && res.Found && eng.IsHome(res.Scopes[0].Scope):
+		// Your home directory is user scope's root, never a project (ruling R-6b3c-9).
+		return nil, errs.WithHints(fmt.Errorf("--scope %s names a project and user scope, and the project there is your home directory, "+
+			"where user scope installs", both), "update at user scope only: "+runWithout(cmd, args, "scope", "root")+" --user")
+	case len(res.Scopes) > 1 && !res.Found:
+		where := "no project with .lola/ was found in " + untrusted.Text(cwd, untrusted.MaxName) + " or above it"
+		if a.root != "" {
+			where = untrusted.Text(res.ProjectRoot, untrusted.MaxName) + " has no .lola/"
+		}
+		// -C names a project, which user scope cannot take: the hint drops it too.
+		return nil, errs.WithHints(fmt.Errorf("--scope %s names a project and user scope, and %s", both, where),
+			"update at user scope only: "+runWithout(cmd, args, "scope", "root")+" --user")
+	}
+	var out []engine.Scope
+	for _, c := range res.Scopes {
+		out = append(out, c.Scope)
+	}
+	return out, nil
 }

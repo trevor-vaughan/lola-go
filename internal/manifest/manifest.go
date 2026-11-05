@@ -98,15 +98,16 @@ func (m *Manifest) validate() error {
 			return errs.WithHints(fmt.Errorf("module %s is listed twice", e.Name), "keep one entry per module")
 		}
 		seen[e.Name] = true
-		if err := e.validate(); err != nil {
+		if err := e.Validate(); err != nil {
 			return fmt.Errorf("module %s: %w", e.Name, err)
 		}
 	}
 	return nil
 }
 
-// validate checks one entry's fields and the shape of its pin (§4.1).
-func (e *Entry) validate() error {
+// Validate checks one entry's fields and the shape of its pin (§4.1): the source.Recorded rules,
+// printable targets, and a pin the source can have. A profile's entries are checked by it too.
+func (e *Entry) Validate() error {
 	if err := (source.Recorded{Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest}).Check(); err != nil {
 		return err
 	}

@@ -292,7 +292,7 @@ func checkTree(ctx context.Context, repo, rev, sub string) ([]string, error) {
 	}
 	mod := path.Clean(filepath.ToSlash(sub))
 	var execs []string
-	found, otherCase := mod == "." || !filepath.IsLocal(sub), ""
+	found, otherCase, exists := mod == "." || !filepath.IsLocal(sub), "", ""
 	for _, rec := range strings.Split(string(out), "\x00") {
 		meta, p, ok := strings.Cut(rec, "\t")
 		if ok && !found {
@@ -300,6 +300,13 @@ func checkTree(ctx context.Context, repo, rev, sub string) ([]string, error) {
 				found = true
 			} else if len(p) > len(mod) && p[len(mod)] == '/' && strings.EqualFold(p[:len(mod)], mod) {
 				otherCase = p[:len(mod)]
+			}
+			// The deepest directory on the way to mod that the tree has, for MissingPathError.
+			for dir := path.Dir(mod); dir != "." && len(dir) > len(exists); dir = path.Dir(dir) {
+				if strings.HasPrefix(p, dir+"/") {
+					exists = dir
+					break
+				}
 			}
 		}
 		switch {
@@ -317,7 +324,7 @@ func checkTree(ctx context.Context, repo, rev, sub string) ([]string, error) {
 		if otherCase != "" {
 			hint = "use its exact letter case: " + errs.ShellJoin([]string{"--path", untrusted.Text(otherCase, untrusted.MaxName)})
 		}
-		return nil, errs.WithHints(fmt.Errorf("--path %q is not a directory in the source", untrusted.Text(sub, untrusted.MaxName)), hint)
+		return nil, errs.WithHints(&MissingPathError{Path: sub, In: "source", Exists: exists}, hint)
 	}
 	return execs, nil
 }

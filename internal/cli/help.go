@@ -7,10 +7,17 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // cobraNameCell is the cell cobra's usage template renders for each subcommand name.
 const cobraNameCell = "{{rpad .Name .NamePadding }}"
+
+// cobraLocalFlags is the cell cobra's usage template renders a command's own flags with.
+const cobraLocalFlags = "{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}"
+
+// flagAliasKey is the flag annotation that lists a flag's aliases (Plan 6b §3.3).
+const flagAliasKey = "lola_aliases"
 
 // installHelp routes -h and `help` through renderHelp and makes command lists show aliases.
 func installHelp(root *cobra.Command) {
@@ -18,7 +25,11 @@ func installHelp(root *cobra.Command) {
 	if n := strings.Count(tmpl, cobraNameCell); n != 3 {
 		panic(fmt.Sprintf("cobra's usage template changed: expected 3 %q cells, found %d", cobraNameCell, n))
 	}
-	root.SetUsageTemplate(strings.ReplaceAll(tmpl, cobraNameCell, "{{aliasedPad .}}"))
+	if n := strings.Count(tmpl, cobraLocalFlags); n != 1 {
+		panic(fmt.Sprintf("cobra's usage template changed: expected 1 %q cell, found %d", cobraLocalFlags, n))
+	}
+	tmpl = strings.ReplaceAll(tmpl, cobraNameCell, "{{aliasedPad .}}")
+	root.SetUsageTemplate(strings.ReplaceAll(tmpl, cobraLocalFlags, "{{aliasedFlagUsages .LocalFlags | trimTrailingWhitespaces}}"))
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) { renderHelp(cmd, !isTTY(cmd.OutOrStdout())) })
 
 	var long, short bool
@@ -81,6 +92,68 @@ func aliasedPad(c *cobra.Command) string {
 		}
 	}
 	return fmt.Sprintf("%-*s", width, aliasedName(c))
+}
+
+// aliasFlags gives cmd's flags the aliases in aliases (canonical name → aliases), defining each
+// flag once (Plan 6b §3.3): pflag normalizes an alias to its canonical name before lookup, so
+// cobra parses --enable as --on and Changed("on") sees either, and the aliases are kept in the
+// flag's annotations for help (aliasedFlagUsages) and the published alias table.
+func aliasFlags(cmd *cobra.Command, aliases map[string][]string) {
+	canonical := map[string]string{}
+	for name, as := range aliases {
+		if err := cmd.Flags().SetAnnotation(name, flagAliasKey, as); err != nil {
+			panic(err) // a flag the command does not define: a programming error caught by every spec
+		}
+		for _, a := range as {
+			if cmd.Flags().Lookup(a) != nil {
+				panic("flag alias --" + a + " is a flag of " + cmd.CommandPath()) // a programming error, as above
+			}
+			canonical[a] = name
+		}
+	}
+	cmd.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
+		if c, ok := canonical[name]; ok {
+			return pflag.NormalizedName(c)
+		}
+		return pflag.NormalizedName(name)
+	})
+}
+
+// checkFlagAliases panics when a flag alias of c or any command under it names a flag the command
+// inherits, a persistent flag of an ancestor or cobra's help flag (Plan 6b §3.3): cobra merges
+// those into the command's flag set, through the command's normalize function, so the inherited
+// flag would silently become the alias's flag. aliasFlags checks the command's own flags; this
+// runs once the tree is built, when the inherited ones are known.
+func checkFlagAliases(c *cobra.Command) {
+	c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+		for _, a := range f.Annotations[flagAliasKey] {
+			if a == "help" {
+				panic("flag alias --help of " + c.CommandPath() + " is cobra's help flag") // a programming error caught by every spec
+			}
+			for p := c.Parent(); p != nil; p = p.Parent() {
+				if p.PersistentFlags().Lookup(a) != nil {
+					panic("flag alias --" + a + " of " + c.CommandPath() + " is a flag " + p.CommandPath() + " gives every command") // as above
+				}
+			}
+		}
+	})
+	for _, sub := range c.Commands() {
+		checkFlagAliases(sub)
+	}
+}
+
+// aliasedFlagUsages is fs's usage lines with each flag's aliases after its name:
+// "--on (--enable, --activate)".
+func aliasedFlagUsages(fs *pflag.FlagSet) string {
+	out := pflag.NewFlagSet("", pflag.ContinueOnError)
+	fs.VisitAll(func(f *pflag.Flag) {
+		c := *f
+		if as := f.Annotations[flagAliasKey]; len(as) > 0 {
+			c.Name = f.Name + " (--" + strings.Join(as, ", --") + ")"
+		}
+		out.AddFlag(&c)
+	})
+	return out.FlagUsages()
 }
 
 // aliasCompletions completes subcommand aliases, which cobra itself never offers.
@@ -152,7 +225,7 @@ ENVIRONMENT
   HOME             user-scope root and base of the XDG defaults
   PATH             where lola finds installed assistants; absolute entries only
   XDG_CONFIG_HOME  config.yaml, selections.yaml, the user-scope manifest and OpenCode's user scope (default ~/.config)
-  XDG_DATA_HOME    user-scope module copies and plugin data (default ~/.local/share)
+  XDG_DATA_HOME    user-scope module copies, plugin data and remote profiles (default ~/.local/share)
   XDG_STATE_HOME   the user-scope ledger, hook consent, locks and lola migrate's trash (default ~/.local/state)
   XDG_CACHE_HOME   the cache, downloads and assistant versions (default ~/.cache)
 `)

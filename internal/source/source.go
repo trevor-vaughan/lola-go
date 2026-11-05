@@ -71,6 +71,16 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 		return Spec{}, false, err
 	}
 	p, isURL := arg, strings.HasPrefix(arg, "file://")
+	// A URL or git's scp form is never looked up on disk: a directory named like it, which a
+	// checkout can hold, must not stand in for the network source it names (Plan 6b ruling
+	// R-6b3b-5). A Windows path with a drive letter is not scp form.
+	switch {
+	case !isURL && strings.Contains(arg, "://"):
+		return parseRemote(arg)
+	case !isURL && scpRE.MatchString(arg) && !filepath.IsAbs(arg) && filepath.VolumeName(arg) == "":
+		spec := Spec{Kind: KindGit, Location: arg}
+		return spec, true, Validate(spec)
+	}
 	if isURL {
 		u, err := parseURL(arg)
 		if err != nil {
@@ -98,10 +108,6 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 			"archive names end in "+archiveSuffixList())
 	case isURL:
 		return Spec{}, false, fmt.Errorf("%s: no such directory or archive", untrusted.Text(arg, untrusted.MaxName))
-	case strings.Contains(arg, "://"):
-		return parseRemote(arg)
-	case scpRE.MatchString(arg):
-		spec = Spec{Kind: KindGit, Location: arg}
 	default:
 		return Spec{}, false, nil
 	}
@@ -118,6 +124,20 @@ func Parse(arg, cwd string) (Spec, bool, error) {
 		}
 	}
 	return spec, true, Validate(spec)
+}
+
+// MissingPathError is a --path that names no directory of a fetched source (In: "source" for a
+// git repository, "archive" for an archive), so a caller that chose the path can say what it
+// looked for. Exists is the deepest directory on the way to it that the source has, as a slash
+// path ("" for none but the root).
+type MissingPathError struct {
+	Path   string
+	In     string
+	Exists string
+}
+
+func (e *MissingPathError) Error() string {
+	return fmt.Sprintf("--path %q is not a directory in the %s", untrusted.Text(e.Path, untrusted.MaxName), e.In)
 }
 
 // IsLocal reports whether a source of kind at location is on this machine: a folder, or an

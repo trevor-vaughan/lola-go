@@ -83,6 +83,30 @@ func Edit(path string, c Change) (string, []byte, error) {
 	if err != nil {
 		return "", nil, err
 	}
+	b, err := EditDocument(d, c)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := (&Manifest{}).decode(b); err != nil {
+		return "", nil, errs.WithHints(fmt.Errorf("not writing %s, which lola could not load again: %w", path, err),
+			"nothing was written; if the module came from your cache, remove it with lola cache rm, then install it again")
+	}
+	dst := path
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		if dst, err = filepath.EvalSymlinks(path); err != nil {
+			return "", nil, errs.WithHints(fmt.Errorf("%s is a symlink lola cannot follow: %w", path, untrusted.CleanErr(err)), "point the link at a file, or remove it")
+		}
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", nil, err
+	}
+	return dst, b, nil
+}
+
+// EditDocument is d, a document yamldoc.Read returned (nil for a missing or empty file), with c
+// applied as Edit applies it, encoded: only the entries and fields c changes are edited, so
+// comments, order, formatting and every key lola does not write stay. A profile's pins are
+// written with it (Plan 6b §6.4). The caller checks that the result loads.
+func EditDocument(d *yaml.Node, c Change) ([]byte, error) {
 	var root *yaml.Node
 	switch {
 	case d == nil:
@@ -120,21 +144,9 @@ func Edit(path string, c Change) (string, []byte, error) {
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
 	if err := errors.Join(enc.Encode(d), enc.Close()); err != nil {
-		return "", nil, err
+		return nil, err
 	}
-	if err := (&Manifest{}).decode(b.Bytes()); err != nil {
-		return "", nil, errs.WithHints(fmt.Errorf("not writing %s, which lola could not load again: %w", path, err),
-			"nothing was written; if the module came from your cache, remove it with lola cache rm, then install it again")
-	}
-	dst := path
-	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
-		if dst, err = filepath.EvalSymlinks(path); err != nil {
-			return "", nil, errs.WithHints(fmt.Errorf("%s is a symlink lola cannot follow: %w", path, untrusted.CleanErr(err)), "point the link at a file, or remove it")
-		}
-	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return "", nil, err
-	}
-	return dst, b.Bytes(), nil
+	return b.Bytes(), nil
 }
 
 // entryName is the name of a modules item, or "".

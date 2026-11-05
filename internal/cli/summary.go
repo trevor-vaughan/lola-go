@@ -60,7 +60,7 @@ func (fl *installFlow) changes(pv *engine.Preview) (bool, error) {
 				}
 			}
 		}
-		rows, err := fl.eng.Status(c.Scope)
+		rows, _, err := fl.eng.Status(fl.cmd.Context(), c.Scope)
 		if err != nil {
 			return false, err
 		}
