@@ -1,0 +1,20 @@
+docs/guides/authoring-modules.md
+  s_63149906d5c471::t_58acaea98953bb 255-257,264-266,272-274
+  s_63149906d5c471::t_d3668c9f57940f 78-80,102-104,242-244,250,317-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3bcb742dc6786dd253d7b854fcd27dbe95b0bc76",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
