@@ -1,0 +1,19 @@
+docs/reference/uninstall.md
+  s_63149906d5c471::t_8dc6c73d792674 11-13,15-17,26-28,31-33,37-39,42-44,75-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6ba1166916586d29c3a5ef67790c9ab03d8dbf3",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
