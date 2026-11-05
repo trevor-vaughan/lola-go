@@ -1,0 +1,21 @@
+docs/guides/choosing-what-to-install.md
+  s_63149906d5c471::t_9c5ff1c5d0c32b 110-112,120-121,127,140-142,167,173-175,204-205,225,326,329-331,369,376,416,526-528,532-534,538-540,548-550,554-556,810-812,818-820,825-827,837-839
+  s_63149906d5c471::t_b57931159355f9 122
+  s_63149906d5c471::t_6153160ef3e9cf 424-447,451-461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "770589e33bf06a4804c72ad5d88aa80c26a1f654",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
