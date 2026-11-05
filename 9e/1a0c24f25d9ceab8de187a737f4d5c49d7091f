@@ -1,0 +1,19 @@
+docs/decisions.md
+  s_b288420963cb26::t_9cd908a41612b8 45,117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9e1a0c24f25d9ceab8de187a737f4d5c49d7091f",
+  "prompts": {},
+  "sessions": {
+    "s_b288420963cb26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d656f7bc-11d9-4b8b-abab-630e90935aeb",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
