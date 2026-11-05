@@ -199,6 +199,17 @@ var _ = Describe("Compute", func() {
 			Expect(conflicts(err)[0].Reason).To(ContainSubstring(`also provided by module "a"`))
 		})
 
+		It("refuses one module claiming one destination twice, even with --force", func() {
+			_, err := plan.Compute(req(true, change("a", cmd(".claude/commands/x.md", "A"), cmd(".claude/commands/x.md", "B"))))
+			cs := conflicts(err)
+			Expect(cs).To(HaveLen(1))
+			Expect(cs[0].Reason).To(Equal(`provided twice by module "a"`))
+			Expect(cs[0].Forceable).To(BeFalse())
+			Expect(errs.Hints(err)).To(ConsistOf(ContainSubstring("rename one")))
+			_, err = plan.Compute(req(true, change("a", mcp("gh", `{"command":"a"}`), mcp("gh", `{"command":"b"}`))))
+			Expect(conflicts(err)[0].Reason).To(Equal(`provided twice by module "a"`))
+		})
+
 		It("moves a destination between replanned modules without a conflict or a delete", func() {
 			put(".claude/commands/x.md", "A")
 			own("a", fileArt(".claude/commands/x.md", "A"))

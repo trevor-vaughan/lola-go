@@ -44,6 +44,13 @@ tasks:
     dir: '{{.ROOT_DIR}}'
     cmd: golangci-lint fmt ./...
 
+  cross:
+    desc: Build and vet (tests included) for Windows and macOS
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - for: [windows, darwin]
+        cmd: GOOS={{.ITEM}} go build ./... && GOOS={{.ITEM}} go vet ./...
+
   vuln:
     desc: Scan dependencies and code with govulncheck
     dir: '{{.ROOT_DIR}}'

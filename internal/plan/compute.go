@@ -62,6 +62,7 @@ type planner struct {
 	desired   map[string][]ledger.Artifact
 	steps     []Step
 	conflicts []Conflict
+	twin      bool // a module claimed one destination twice
 }
 
 // owned is one replanned owner's old artifacts, keyed by artifact ID.
@@ -319,15 +320,23 @@ func (p *planner) conflict(in Intent, reason string, forceable bool) {
 }
 
 // want plans one desired intent, following the conflict matrix of spec §9. The previous
-// artifact may come from another replanned owner: ownership then moves without a conflict.
+// artifact may come from another replanned owner: ownership then moves without a conflict. A
+// destination claimed twice in one operation is a conflict, also when one module claims it
+// twice (Plan 5b design §3.2).
 func (p *planner) want(owner string, in Intent) error {
 	id := intentID(in)
 	var prev *ledger.Artifact
 	if a, ok := p.releasing[id]; ok {
 		prev = &a
 	}
-	if other, ok := p.claimed[id]; ok && other != owner {
-		p.conflict(in, fmt.Sprintf("also provided by module %q in this operation", other), false)
+	if other, ok := p.claimed[id]; ok {
+		// One module claiming a destination twice would otherwise be written by its last claim.
+		reason := fmt.Sprintf("provided twice by module %q", owner)
+		p.twin = p.twin || other == owner
+		if other != owner {
+			reason = fmt.Sprintf("also provided by module %q in this operation", other)
+		}
+		p.conflict(in, reason, false)
 		return nil
 	}
 	p.claimed[id] = owner
@@ -473,6 +482,9 @@ func (p *planner) conflictError() error {
 		return nil
 	}
 	hint := "uninstall the module that owns these destinations first; --force cannot override ownership"
+	if p.twin {
+		hint = "two artifacts in this module render to the same place; rename one"
+	}
 	if forceable {
 		hint = "rerun with --force to overwrite or delete them anyway (each one is listed in the summary)"
 	}

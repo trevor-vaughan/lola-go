@@ -127,12 +127,22 @@ func (c Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		if ctx.SkipRules {
 			break
 		}
+		if !module.Supports(r.Targets, id) {
+			continue
+		}
 		_, f, ok := target.Admit(id, caps, ctx, "rule", r.Name, module.Doc{})
 		if finds = append(finds, f...); !ok {
 			continue
 		}
 		out = append(out, plan.Intent{Target: id, Kind: "rule", Op: plan.OpWriteFile,
 			Path: ".claude/rules/lola/" + m.Name + "/" + r.Name + ".md", Data: []byte(r.Body), Mode: 0o644})
+	}
+	// Runtime hooks (Plan 5b design §7) are not rendered yet: the kind is missing from caps.
+	for _, h := range m.RuntimeHooks {
+		if module.Supports(h.Targets, id) {
+			_, f, _ := target.Admit(id, caps, ctx, "runtime-hook", h.Name(), module.Doc{})
+			finds = append(finds, f...)
+		}
 	}
 	return out, finds, nil
 }

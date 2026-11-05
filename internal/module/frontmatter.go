@@ -73,6 +73,55 @@ func (d Doc) Prepend(key, value string) Doc {
 	return Doc{Frontmatter: fm, RawFrontmatter: key + ": " + value + "\n" + d.RawFrontmatter, Body: d.Body}
 }
 
+// With returns a copy whose frontmatter sets each key of fm, replacing a value the document
+// already has and adding the others after its own keys, in key order. Comments and the order of
+// the document's own keys are kept.
+func (d Doc) With(fm map[string]any) (Doc, error) {
+	if len(fm) == 0 {
+		return d, nil
+	}
+	var root yaml.Node
+	if err := yaml.Unmarshal([]byte(d.RawFrontmatter), &root); err != nil {
+		return Doc{}, fmt.Errorf("frontmatter: %w", err)
+	}
+	if len(root.Content) == 0 {
+		root = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}}}
+	}
+	m := root.Content[0]
+	if m.Kind != yaml.MappingNode {
+		return Doc{}, errors.New("frontmatter is not a mapping")
+	}
+	for _, k := range slices.Sorted(maps.Keys(fm)) {
+		var v yaml.Node
+		if err := v.Encode(fm[k]); err != nil {
+			return Doc{}, fmt.Errorf("frontmatter %s: %w", k, err)
+		}
+		i := 0
+		for i < len(m.Content) && m.Content[i].Value != k {
+			i += 2
+		}
+		if i < len(m.Content) {
+			m.Content[i+1] = &v
+			continue
+		}
+		m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k}, &v)
+	}
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(&root); err != nil {
+		return Doc{}, fmt.Errorf("frontmatter: %w", err)
+	}
+	if err := enc.Close(); err != nil {
+		return Doc{}, fmt.Errorf("frontmatter: %w", err)
+	}
+	var parsed map[string]any
+	if err := yaml.Unmarshal([]byte(b.String()), &parsed); err != nil {
+		return Doc{}, fmt.Errorf("frontmatter: %w", err)
+	}
+	return Doc{Frontmatter: parsed, RawFrontmatter: b.String(), Body: d.Body}, nil
+}
+
 // Without returns a copy without the given top-level frontmatter keys. The remaining keys
 // keep their order and comments; when none of keys is present the document is unchanged.
 func (d Doc) Without(keys ...string) (Doc, error) {

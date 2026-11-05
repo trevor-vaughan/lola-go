@@ -1,13 +1,15 @@
 # Architecture
 
 For contributors. The design spec is `docs/superpowers/specs/2026-10-08-lola-go-mvp-design.md`;
-this page describes what is built (Plans 1 to 4).
+this page describes what is built (Plans 1 to 4; 5a, sources, designed in
+`docs/superpowers/specs/2026-10-09-plan-5a-sources-design.md`; and 5b.1, module formats, designed
+in `docs/superpowers/specs/2026-10-09-plan-5b-formats-design.md`).
 
 ## Pipeline
 
 ```
-source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache (content-addressed versions, heads per ref)
-                                      │ module.Load (IR, re-derived each time)
+source ──fetch──▶ staging ──Put (detect, normalize, digest)──▶ cache (content-addressed versions, heads per ref)
+                                      │ module.Load (IR, re-derived each time; no format adapter)
                                       ▼
                      targets (pure: IR → intents + findings)
                                       ▼
@@ -28,8 +30,9 @@ source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache
 |---|---|
 | `paths` | XDG resolution from an injected `getenv`; no globals. |
 | `fsx` | Atomic writes, symlink-aware destination resolution, comment-preserving JSONC edits (object members and string array elements), mode normalization. |
-| `module` | The IR, frontmatter parsing, name rules, loading `lola.yml` + the native layout, rules, hook validation, and normalization. |
-| `source` | Source parsing and the folder fetcher. |
+| `module` | The IR, frontmatter parsing, name rules, format detection and the Claude plugin and Agent Plugins adapters, loading `lola.yml` (with `components`) + the native layout, hardened module JSON reading, rules, hook validation, and normalization. |
+| `untrusted` | Makes text lola did not write safe to print: control characters replaced, length capped, OS errors without their path. |
+| `source` | Source parsing and validation, and the folder, git and archive fetchers. |
 | `store` | The cache's storage: content-addressed versions, per-ref heads, the cache lock. (Internal name; user-facing text says "cache".) |
 | `ledger`, `manifest` | Observed and desired state, deterministic IO. |
 | `consent` | Recorded consent to run a module's install hooks, keyed by the hooks' digest. |
@@ -41,7 +44,7 @@ source ──fetch──▶ staging ──Put (normalize, digest)──▶ cache
 | `engine` | Install, uninstall, render, status, fetch, update, search; module copies and hooks. |
 | `cli` | Commands, help, aliases, completion, output and prompts. |
 | `errs` | Errors that carry coaching hints. |
-| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, and a `PATH` without the developer's assistants). |
+| `testenv` | Test isolation (`Isolate()`: fresh `HOME`, XDG dirs, git config, and a `PATH` without the developer's assistants) and `ServeGit()`, a loopback git server. |
 
 ## Plans and the ledger
 
@@ -122,8 +125,45 @@ The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
   `$XDG_CACHE_HOME/lola/probes.json`. The version only feeds
   `PlanContext.Version`, which `Admit` compares with capability `Bounds` to add findings;
   rendering always follows the newest version, so output is the same on every machine.
-- **`lola check`** (`engine.Check`) stages a folder like `cache add` into a temporary directory
-  (or reads a cached module), runs every target's `Plan` and keeps only the findings.
+- **`lola check`** (`engine.Check`) stages a source like `cache add` into a temporary directory
+  and detects its format (or reads a cached module), runs every target's `Plan` and keeps only
+  the findings.
+
+## Module formats
+
+Detection (`module.Detect`) runs only on fetched content: `Store.Put` (cache add, install of a
+source, update) and `engine.Check` of a source. It walks ADR #243's precedence: a lola
+manifest, else the first plugin manifest an adapter accepts (root `plugin.json` with the Agent
+Plugins `$schema`, then `.claude-plugin/plugin.json`), else the native layout. Every
+lower-precedence manifest present is recorded in `Module.Shadowed` with a warning; an adapter
+that finds the file is not its format declines with a warning and detection moves on.
+
+- **Adapters run once and are written down.** An adapter (`module.adapter`: a manifest path
+  and a `read` that returns a `lolaFile`) converts the plugin manifest into the same structure
+  a `lola.yml` decodes into: metadata, `format`, a `components` section that lists every kind
+  explicitly (an empty list turns discovery off) and `formats.<format>` for data lola does not
+  use. That structure is applied and checked by exactly the code that reads a `lola.yml`, and
+  `Normalize` writes it as the cached `lola.yml`, next to the plugin's untouched files.
+- **The load path is format-free.** `module.Load` is detection with no adapters, and it is how
+  the cache's versions are read: the generated `lola.yml` wins precedence, and its
+  `components` make discovery irrelevant, so the plugin manifests left in the cache are inert
+  and a lola upgrade cannot reinterpret a cached version. A spec loads each format's cached
+  copy this way and checks that every target renders it exactly like the fetched one, and that
+  normalizing it again changes nothing. A cached load does not see what the adapter warned
+  about, so `Store.Put` returns the version with detection's warnings.
+- **`components`** (`internal/module/components.go`): per kind, path or inline entries with
+  optional per-entry `targets`. Paths are checked element by element with `Lstat` (local,
+  existing, no symlink); names follow `ValidateName`; two artifacts of a kind and name whose
+  effective targets overlap are refused. Targets honor per-entry `targets` for every kind,
+  rules included. Runtime hooks (`Module.RuntimeHooks`, canonical JSON of the event map) are
+  loaded but no target lists the `runtime-hook` kind, so `Admit` reports `kind-unsupported`
+  until Plan 5b.2 renders them for Claude Code.
+- **Module JSON** (`mcps.json`, `plugin.json`, `.mcp.json`, `mcp.json`, hooks files) is read by
+  one helper: a regular file, not a symlink, at most 1 MiB, nesting at most 64 levels, and no
+  object key repeated at any depth (a token walk before decoding, naming the key's JSON
+  pointer).
+- **Defense in depth.** The planner refuses one module claiming a destination twice ("provided
+  twice by module X") rather than letting the later intent win.
 
 ## Module copies
 
@@ -183,6 +223,65 @@ error is returned.
 release `.lola/` is removed only if this command created it and nothing was recorded (no
 `project.yml`, and an empty or absent ledger), so a failed or empty first run leaves no trace.
 
+## Fetching sources
+
+`source.Parse` classifies an argument; `source.Fetch` stages a module from a `Spec`. Both call
+one unexported `validate`, because the engine also builds `Spec`s from the ledger and the
+cache index without parsing an argument, and a project's files may be someone else's. `validate` refuses `-`-prefixed locations and refs, remote-helper syntax,
+`git://`, credentials, queries and fragments in URLs (`file://` included), plain `http` off
+loopback, and refs that fail `git check-ref-format` (full SHAs skip that check). A user name is
+allowed only in `ssh://` and scp form, a password never is, and an scp location with
+`user:password@`, `?` or `#` is refused. A local archive must be a regular file, checked with
+`Lstat` before any open, so a pipe cannot block lola.
+
+```
+git      → clone into scratch ──────────── listing: git ls-files in the clone
+archive  → extract into scratch ─────────┐
+URL      → download → extract ───────────┴ listing: directory walk (never git)
+folder   → (in place) ──────────────────── listing: git ls-files in a work tree, else a walk
+            ↓
+         module root → copy (ignore list, no symlinks) → Fetched{Dir, Name, Commit}
+```
+
+Each remote kind produces a local tree in a scratch directory under the staging directory,
+which is removed on success and on error. The copy that every kind shares then runs over the
+tree with an explicit **listing mode**: it never guesses for a fetched tree, so a `.git/`
+inside an archive is never handed to git, and an archive extracted below the user's own
+repository is never filtered by that repository's ignore rules.
+
+- **git.** Every git command starts with `-c core.hooksPath=/dev/null -c
+  protocol.ext.allow=never -c core.fsmonitor=false` and empty LFS filters; user input appears
+  only after `--` or as `--branch=<ref>`. The environment sets `GIT_TERMINAL_PROMPT=0` and
+  `GIT_PROTOCOL_FROM_USER=0` and drops the variables that select or configure a repository
+  (`GIT_DIR`, `GIT_CONFIG_PARAMETERS`, …); the folder fetcher's `git ls-files` uses the same
+  prefix and environment. A ref resolves through `git ls-remote` with full ref names, matched
+  exactly. A full SHA that names no branch or tag is fetched with `init --object-format`,
+  `fetch --depth 1` and `checkout --detach`; clones run with `-q`, so a failure shows git's
+  errors, not its progress. One 5-minute context covers the fetch; `WaitDelay` (5 s) makes git
+  stop on time even when a child keeps its output open, and a timeout is coached by the
+  location's transport (ssh prompts, or the network for https). git's stderr, which carries a
+  remote's `remote:` lines, goes to a `headWriter` that keeps only its first 4 KiB and discards
+  the rest, so a chatty or hostile remote cannot grow lola's memory.
+- **Archives.** Extraction writes through an `os.Root` opened on the scratch directory, so no
+  entry resolves outside it even if a name check has a bug. Only regular files and directories
+  are created, files with `O_EXCL`; every entry is copied through a reader capped at its
+  declared size plus one byte. The entry, byte and ratio limits are constants that specs lower
+  through an unexported parameter. Before `archive/zip` parses a zip's central directory into
+  memory, `checkZipDirectory` finds the end record (and the zip64 one) the way `archive/zip`
+  does and refuses a declared count over the entry limit, or a declared size or actual span
+  over 1 KiB per allowed entry: `archive/zip` reads records until one fails to parse, whatever
+  the declared size, and checks the count only modulo 65536.
+- **Downloads.** A clone of the default transport (proxies honored) with compression
+  disabled, a 2-minute timeout, at most 5 redirects, none from https to http and none to http off loopback, and a body
+  capped at 256 MiB.
+- **Untrusted text.** git's stderr, archive entry names, module-root candidates, HTTP status
+  text and echoed URLs go through `untrusted.Text`, which replaces control characters and invalid
+  UTF-8 with `?`, indents continuation lines, and caps the length. A parsed URL is echoed as
+  scheme, host and path only (`displayURL`); one that does not parse, or was never checked, is
+  echoed up to its first `?` or `#`, and only as its scheme when it holds an `@` (`redactURL`).
+  The redirect target of a failed download and refused `git://` URLs are not echoed at all; OS
+  errors lose their path.
+
 ## Cache
 
 ```
@@ -193,8 +292,9 @@ $XDG_CACHE_HOME/lola/modules/<name>/
     .lola-origin           # format, manifest, others_present, ref, commit, fetched_at, digest
 ```
 
-`cache add` loads the staged module, normalizes it (`module.Normalize`: one generated
-`lola.yml`, every other manifest removed), digests the result, and renames the version into
+`cache add` detects the staged module's format and reads it (`module.Detect`), normalizes it
+(`module.Normalize`: one generated `lola.yml`, every other lola manifest removed), digests the
+result, and renames the version into
 place in whole from `$XDG_CACHE_HOME/lola/.staging/` (same filesystem), under
 `$XDG_CACHE_HOME/lola/.lock`. `.lola-origin` records the detected format and which manifests
 were read and ignored. Module names and version ids read back from the cache are validated
@@ -223,6 +323,11 @@ ledger's.
   a symlink, so a repository cannot point the module-copy swap, uninstall cleanup or plugin
   data outside the project, and it replaces a module copy that is not a real directory, so a
   committed link cannot point `${PLUGIN_ROOT}` and install hooks elsewhere.
+- **Fetched sources.** Residual risks: lola honors the user's environment and git config
+  (credential helpers, `insteadOf`, proxies) by design; git follows an initial http redirect
+  itself, possibly to plain http; and a server can serve different content for the same ref.
+  `cache update` and content digests make a change visible but do not prevent it. Text a
+  module contains (finding texts, for example) is not yet sanitized when lola prints it.
 - **Unparseable files** are never rewritten.
 - lola's own state files are `0600`; its XDG directories `0700`.
 
@@ -234,4 +339,6 @@ directory of symlinks to the few tools specs need (`sh`, `git`, …), so a devel
 is never found. CLI specs run the real command tree in-process with buffered, non-terminal streams.
 Convention specs walk the live command tree, and the conformance suite walks the live target
 registry. Specs named after Python bugs pin the fixes (`corrupt JSON config is never
-overwritten`, …). `task test MODE=llm` prints only failures.
+overwritten`, …). Git specs serve real repositories over loopback HTTP through `git http-backend`
+(`testenv.ServeGit`); archive specs build hostile archives with the standard library's writers.
+No spec uses the network. `task test MODE=llm` prints only failures.

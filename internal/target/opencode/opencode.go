@@ -205,7 +205,8 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 	}
 	// Only MCP servers and rules use the config file, so only they may fail on reading it.
 	var cfg string
-	if (len(m.Rules) > 0 && !ctx.SkipRules) || slices.ContainsFunc(m.MCPServers, func(s module.MCPServer) bool { return module.Supports(s.Targets, id) }) {
+	rulesHere := !ctx.SkipRules && slices.ContainsFunc(m.Rules, func(r module.Rule) bool { return module.Supports(r.Targets, id) })
+	if rulesHere || slices.ContainsFunc(m.MCPServers, func(s module.MCPServer) bool { return module.Supports(s.Targets, id) }) {
 		var err error
 		if cfg, err = config(ctx.Root); err != nil {
 			return nil, nil, err
@@ -235,6 +236,9 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		if ctx.SkipRules {
 			break
 		}
+		if !module.Supports(r.Targets, id) {
+			continue
+		}
 		_, f, ok := target.Admit(id, caps, ctx, "rule", r.Name, module.Doc{})
 		if finds = append(finds, f...); !ok {
 			continue
@@ -248,6 +252,13 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 			member = filepath.Join(ctx.Root, rulesDir, "*.md")
 		}
 		out = append(out, plan.Intent{Target: id, Kind: "rule", Op: plan.OpAddJSONMember, Path: cfg, Pointer: "/instructions", Member: member})
+	}
+	// Runtime hooks (Plan 5b design §7) are not rendered yet: the kind is missing from caps.
+	for _, h := range m.RuntimeHooks {
+		if module.Supports(h.Targets, id) {
+			_, f, _ := target.Admit(id, caps, ctx, "runtime-hook", h.Name(), module.Doc{})
+			finds = append(finds, f...)
+		}
 	}
 	return out, finds, nil
 }

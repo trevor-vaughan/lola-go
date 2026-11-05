@@ -81,11 +81,18 @@ type PutRequest struct {
 	Now                             time.Time
 }
 
-// Store is the machine-wide module store.
-type Store struct{ dir, lock, staging string }
+// Store is the machine-wide module store. targets are the target ids a module's per-entry
+// targets may name. normalize is module.Normalize; specs replace it to break the cached copy.
+type Store struct {
+	dir, lock, staging string
+	targets            []string
+	normalize          func(dir string, m *module.Module) error
+}
 
-// New returns the store at p.Store.
-func New(p paths.Paths) *Store { return &Store{dir: p.Store, lock: p.StoreLock, staging: p.Staging} }
+// New returns the store at p.Store for modules rendered to the targets ids.
+func New(p paths.Paths, targets []string) *Store {
+	return &Store{dir: p.Store, lock: p.StoreLock, staging: p.Staging, targets: targets, normalize: module.Normalize}
+}
 
 func (s *Store) lockStore() (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(s.lock), 0o700); err != nil {
@@ -105,15 +112,26 @@ func describeOrigin(source, path string) string {
 	return source + " (path " + path + ")"
 }
 
-// Put validates the staged content as a module, normalizes it (module.Normalize), stores it
-// as a version (reusing an identical one) and points the head for req.Ref at it.
+// Put detects the staged content's format and reads it as a module (module.Detect), normalizes
+// it (module.Normalize), stores it as a version (reusing an identical one) and points the head
+// for req.Ref at it. The version's module carries the warnings detection reported.
 func (s *Store) Put(req PutRequest) (Version, error) {
-	m, err := module.Load(req.Staged, req.FallbackName)
+	m, err := module.Detect(req.Staged, req.FallbackName, s.targets)
 	if err != nil {
 		return Version{}, err
 	}
-	if err := module.Normalize(req.Staged, m); err != nil {
+	if err := s.normalize(req.Staged, m); err != nil {
 		return Version{}, err
+	}
+	// The cache loads a version without format adapters (Plan 5b design §4), so the normalized
+	// copy must read back as exactly what detection produced.
+	cached, err := module.Load(req.Staged, req.FallbackName, s.targets)
+	if err == nil && !module.SameMeaning(m, cached) {
+		err = errors.New("its cached copy would not read the same as the fetched one")
+	}
+	if err != nil {
+		return Version{}, errs.WithHints(fmt.Errorf("lola could not cache %s faithfully: %w", m.Name, err),
+			"this is a bug in lola, not in the module: please report it, with the module's source")
 	}
 	digest, err := Digest(req.Staged)
 	if err != nil {
@@ -156,7 +174,14 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	if err := writeYAML(filepath.Join(s.dir, m.Name, indexFile), o); err != nil {
 		return Version{}, err
 	}
-	return s.Load(m.Name, id)
+	v, err := s.Load(m.Name, id)
+	if err != nil {
+		return Version{}, err
+	}
+	// A cached load runs no format adapter, so only detection saw what the adapter warned
+	// about; its warnings include everything the cached load warns about.
+	v.Module.Warnings = m.Warnings
+	return v, nil
 }
 
 // addVersion assembles content/ and .lola-origin in staging, then renames the whole version
@@ -219,7 +244,7 @@ func (s *Store) Load(name, id string) (Version, error) {
 		return Version{}, err
 	}
 	content := filepath.Join(vdir, "content")
-	m, err := module.Load(content, name)
+	m, err := module.Load(content, name, s.targets)
 	if err != nil {
 		return Version{}, fmt.Errorf("cached version %s/%s: %w", name, id, err)
 	}

@@ -230,7 +230,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: lola install needs a module or source\n" +
 			"  hint: usage: lola install <source|name>... [-t target]\n" +
-			"  hint: find one: lola cache list (cached modules), or a module directory\n" +
+			"  hint: find one: lola cache list (cached modules), or a module directory, archive or git URL\n" +
 			"  hint: example: lola install ./my-module -t claude-code\n"))
 	})
 

@@ -33,5 +33,11 @@ linters:
         - G302 # rendered project files keep 0644/0755 so teammates' tools can read them
         - G306 # same as G302 for os.WriteFile
         - G204 # git runs with a fixed argv, never through a shell
+  exclusions:
+    rules:
+      # G504 flags httpoxy in Go < 1.6.3. Specs serve git http-backend through net/http/cgi.
+      - path: internal/testenv/
+        linters: [gosec]
+        text: G504
 formatters:
   enable: [gofmt]

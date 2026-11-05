@@ -99,15 +99,18 @@ func (a *app) installCmd() *cobra.Command {
 	var targets []string
 	var ref, path string
 	var dry, force, strict, rules, noRules, allowHooks bool
-	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), or a module directory",
-		usage:    "lola install <source|name>... [-t target]",
-		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review"}}
+	g := argGuide{noun: "module or source", find: "lola cache list (cached modules), or a module directory, archive or git URL",
+		usage: "lola install <source|name>... [-t target]",
+		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review",
+			"lola install https://github.com/acme/review.git --ref v1.2.0", "lola install ./review-1.2.0.tar.gz"}}
 	cmd := &cobra.Command{
 		Use:     "install <source|name>...",
 		Aliases: []string{"add"},
 		Short:   "Install modules into this project (or --user)",
 		Long: "Install modules. Each argument is a module already in your cache (used without\n" +
-			"touching its source) or a source: " + source.AcceptedForms + ".\n" +
+			"touching its source) or a source:\n" + source.AcceptedForms + ".\n" +
+			"--ref picks a git branch, tag or full commit SHA; --path picks the module root inside\n" +
+			"the source.\n" +
 			"The module is copied into your cache, rendered for each target, and recorded in\n" +
 			".lola/project.yml (user scope: $XDG_CONFIG_HOME/lola/user.yml).\n" +
 			"--no-rules installs everything except the module's always-on rules and records that\n" +
@@ -320,13 +323,13 @@ func (a *app) checkCmd() *cobra.Command {
 	var targets []string
 	var strict bool
 	cmd := &cobra.Command{
-		Use:   "check [module-or-folder...]",
+		Use:   "check [module-or-source...]",
 		Short: "Report what each assistant would lose, change or skip from a module",
 		Long: "Render modules for every assistant (or those given with -t) without writing anything, and\n" +
-			"report what each target drops, adapts or cannot express. A folder is read the way lola\n" +
-			"cache add reads it but is not added to your cache; any other argument names a cached\n" +
-			"module. With no argument, the current directory is checked.",
-		Example: "  lola check\n  lola check ./my-module -t gemini-cli\n  lola check my-module --strict",
+			"report what each target drops, adapts or cannot express. A source is fetched the way\n" +
+			"lola cache add fetches it but is not added to your cache; any other argument names a\n" +
+			"cached module. With no argument, the current directory is checked. Sources:\n" + source.AcceptedForms + ".",
+		Example: "  lola check\n  lola check ./my-module -t gemini-cli\n  lola check my-module --strict\n  lola check ./review-1.2.0.zip",
 		GroupID: groupCore,
 		Args:    cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -2,7 +2,13 @@
 // from a module root on disk.
 package module
 
-import "slices"
+import (
+	"bytes"
+	"encoding/json"
+	"slices"
+
+	"go.yaml.in/yaml/v3"
+)
 
 // Author is the module author as declared in lola.yml.
 type Author struct {
@@ -59,6 +65,25 @@ type MCPServer struct {
 // Rule is always-on context (§5.6): rules/<Name>.md with its frontmatter removed.
 type Rule struct {
 	Name, Body string
+	Targets    []string
+}
+
+// RuntimeHookSet is one components.runtime_hooks entry: a Claude Code hooks event map, which
+// the assistant runs on its own events (Plan 5b design §7.1). Source is the hooks file it came
+// from, or "" for an inline entry; Hooks is the event map (without the "hooks" wrapper) as
+// canonical JSON.
+type RuntimeHookSet struct {
+	Source  string
+	Hooks   json.RawMessage
+	Targets []string
+}
+
+// Name identifies the set in findings: its file, or "inline".
+func (h RuntimeHookSet) Name() string {
+	if h.Source == "" {
+		return "inline"
+	}
+	return h.Source
 }
 
 // Hook is an install hook a module declares (§9.1): Script is the module-relative path of an
@@ -75,7 +100,7 @@ type Module struct {
 	Keywords                                                  []string
 	Targets                                                   []string       // declared support matrix; empty = all
 	Formats                                                   map[string]any // verbatim passthrough keyed by format id
-	Format                                                    string         // detected source format: "lola" or "native"
+	Format                                                    string         // "native", "lola", or the format whose adapter wrote the manifest
 	Manifest                                                  string         // manifest file read (ManifestNames), "" for the native layout
 	Shadowed                                                  []string       // lower-precedence manifests that were ignored
 	Skills                                                    []Skill
@@ -83,12 +108,31 @@ type Module struct {
 	Agents                                                    []Agent
 	MCPServers                                                []MCPServer
 	Rules                                                     []Rule
+	RuntimeHooks                                              []RuntimeHookSet
 	DeclaredHooks                                             []Hook
 	Warnings                                                  []string // non-fatal load problems, e.g. skipped skills
+
+	components *components // the manifest's components section, which Normalize writes back
 }
 
 // Supports reports whether an artifact or module restricted to targets applies to id.
 // An empty list means every target.
 func Supports(targets []string, id string) bool {
 	return len(targets) == 0 || slices.Contains(targets, id)
+}
+
+// SameMeaning reports whether a and b are the same module to every target and to the cache:
+// it ignores how each was read (Format, Manifest, Shadowed) and the warnings. Values compare by their YAML encoding,
+// so an empty list or map equals an absent one, and a number equals itself whether JSON or YAML
+// decoded it.
+func SameMeaning(a, b *Module) bool {
+	ea, errA := meaning(a)
+	eb, errB := meaning(b)
+	return errA == nil && errB == nil && bytes.Equal(ea, eb)
+}
+
+func meaning(m *Module) ([]byte, error) {
+	c := *m
+	c.Format, c.Manifest, c.Shadowed, c.Warnings, c.components = "", "", nil, nil, nil
+	return yaml.Marshal(c)
 }

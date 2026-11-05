@@ -13,12 +13,14 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 )
 
-// Expand substitutes ${PLUGIN_ROOT}, ${CLAUDE_PLUGIN_ROOT} and ${PLUGIN_DATA} (§5.5).
+// Expand substitutes ${PLUGIN_ROOT} and ${PLUGIN_DATA} (§5.5), and Claude plugins' names for
+// them, ${CLAUDE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_DATA} (Plan 5b design §5.3).
 func Expand(s string, ctx PlanContext) string {
 	return strings.NewReplacer(
 		"${PLUGIN_ROOT}", ctx.PluginRoot,
 		"${CLAUDE_PLUGIN_ROOT}", ctx.PluginRoot,
 		"${PLUGIN_DATA}", ctx.PluginData,
+		"${CLAUDE_PLUGIN_DATA}", ctx.PluginData,
 	).Replace(s)
 }
 

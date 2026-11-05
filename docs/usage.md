@@ -12,9 +12,9 @@ changes are marked "planned" and tracked in [roadmap.md](roadmap.md).
 | `lola uninstall <module>...` | Remove everything lola wrote for the module. Asks first; `-y` skips the question. |
 | `lola list` | Each installed module × target with a status: `ok`, `modified` (a file lola wrote was edited), `missing` (a file lola wrote, or the module copy, is gone), `stale` (your cache has a newer version), or `skipped` (nothing of the module could be rendered for that target); and whether the module's rules are on. |
 | `lola render` | Render every installed module again from your cache. Removes files a module no longer ships. |
-| `lola check [module-or-folder...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
+| `lola check [module-or-source...]` | Report what each assistant would drop, adapt or skip from a module, without writing anything or adding it to your cache. Defaults to the current directory. |
 | `lola search <query>` | Search your cache by name, description and keyword. |
-| `lola init [dir]` | Scaffold a module: `lola.yml`, one skill, one command. |
+| `lola init [dir] [--format agent-plugins\|lola]` | Scaffold a module named after the directory: by default an Agent Plugins package (`plugin.json`, one skill, one `dev.getlola` command); `--format lola` writes `lola.yml`, one skill and one command. It never overwrites a file and refuses a directory holding a module or a symbolic link on the way to a file it would write. |
 | `lola cache add\|rm\|list\|info\|update\|search` | Manage your cache. Bare `lola cache` lists it. |
 | `lola version`, `lola completion <shell>`, `lola help` | The usual. |
 
@@ -22,25 +22,104 @@ Every command has aliases (for example `rm` for `uninstall`); `lola help` lists 
 
 ## Sources and the cache
 
-A **source** is a directory path or a `file://` URL to a directory. Git, archive and marketplace
-sources are planned. lola copies the module into your **cache**
+A **source** is where a module comes from. lola copies the module into your **cache**
 (`$XDG_CACHE_HOME/lola/modules/`, normally `~/.cache/lola/modules/`), so a source can move or
-disappear without breaking installs.
+disappear without breaking installs. lola recognizes these forms, first match first:
+
+| You pass | lola reads it as |
+|---|---|
+| An existing directory | a folder |
+| An existing file ending in `.zip`, `.tar`, `.tar.gz` or `.tgz` (any case) | an archive |
+| A `file://` URL | a folder or an archive, by what the path is |
+| An `https://` URL whose path ends in an archive suffix | an archive, downloaded |
+| Any other `https://` or `ssh://` URL, or `user@host:path` | a git repository |
+| An `http://` URL | as `https://`, but only for `localhost`, `127.0.0.0/8` or `::1` |
+
+Anything else is not a source: a bare name means a module in your cache. Marketplace sources are
+planned. lola refuses, with a hint:
+
+- an argument, `--ref` or recorded location that starts with `-`;
+- git's `<transport>::<address>` remote-helper syntax and `git://` URLs;
+- credentials in a URL: any user name or password in an `http(s)` URL (GitHub and GitLab take a
+  token as the user name), and any query string or fragment (presigned URLs carry secrets
+  there). The URL is written to `.lola/project.yml` and your cache, where a secret would be
+  committed. For git, let a credential helper or `ssh-agent` supply credentials; for a private
+  archive, download it and install the file. A user name in an `ssh://` URL or in
+  `git@host:path` is fine, but a password never is, and the `user:password@host:path` form is
+  refused (git would pass the password to ssh as part of the remote path). `file://` URLs
+  follow the same rules, and `?` or `#` in `git@host:path` is refused like a URL's query or
+  fragment. No error repeats a URL's password, query or fragment, or the user name of an
+  `http(s)` or `file` URL, not even for a URL that does not parse or the target of a redirect (an `ssh`
+  user name is no secret and may appear);
+- an existing file that is not an archive, and a local archive that is not a regular file (a
+  symlink, pipe or device named like an archive).
 
 Adding a module to the cache normalizes it: the cached copy holds exactly one `lola.yml`,
-generated from the module's metadata. lola reads the first of `lola.yaml`, `lola.yml`,
-`.lola.yaml` and `.lola.yml`, and warns about each one it ignores.
+generated from the module's manifest. lola reads the first manifest it finds (see
+[Module formats](#module-formats)) and warns about each lower-precedence one it ignores. A
+plugin format is converted once, here: the generated `lola.yml` lists every artifact the plugin
+declared, so a cached version means the same thing to every later lola.
 
-- In a git work tree, lola copies the files git would track (`.gitignore` is respected; new,
-  unstaged files are included).
+For every kind of source:
+
 - `.git`, `.venv`, `node_modules`, `.lola`, `__pycache__` and `.DS_Store` are never copied.
-- A directory `module/` inside the source is used as the module root. `--path <dir>` picks a
-  different root, for monorepos.
 - Symlinks inside a module are refused.
+- `--path <dir>` picks the module root inside the source, for monorepos.
+
+**Folders.** In a git work tree, lola copies the files git would track (`.gitignore` is
+respected; new, unstaged files are included). A directory `module/` inside the source is the
+module root unless you pass `--path`. `--ref` is refused.
+
+**Git.** lola runs your `git` (it must be on `PATH`) with a shallow clone of the default
+branch, or of `--ref`: a branch name, a tag name, or a full 40- or 64-character commit SHA.
+lola never guesses: a ref that names both a branch and a tag is an error, an abbreviated SHA
+is an error, and a hex-looking branch name is a branch. A commit that no branch or tag points
+to needs a server that serves such commits (servers speaking git protocol v2 do). Only committed
+files are copied; the module root is `--path`, else `module/`, else the repository root. lola
+records the commit it fetched.
+
+- Your git config, credential helpers and `ssh-agent` are used. Git hooks, `core.fsmonitor`,
+  the `ext::` transport and Git LFS filters are switched off for the repository lola fetches.
+- **Git LFS files are not fetched.** A module receives LFS pointer files as they are committed.
+- git never prompts for a user name or password (`GIT_TERMINAL_PROMPT=0`). ssh still can: it
+  asks on the terminal for a key passphrase or an unknown host key. Load your key into
+  `ssh-agent` and add the host to `known_hosts` first, or the fetch waits until it gives up
+  after 5 minutes. A child process that keeps git's output open (ssh prompting, a stalled
+  https helper) delays that stop by at most 5 more seconds.
+
+**Archives.** zip, tar and gzip tar, chosen by the file name's suffix. `--ref` is refused.
+The module root is the first of:
+
+1. `--path`, relative to the archive's root as `tar tf` or `unzip -l` show it;
+2. the shallowest directory holding `lola.yaml`, `lola.yml`, `.lola.yaml`, `.lola.yml`,
+   `plugin.json` or `.claude-plugin/`;
+3. the parent of the shallowest `skills/`, `commands/`, `agents/` or `rules/` directory;
+4. the archive's single top-level directory, if that is all it holds;
+5. the archive's root.
+
+Two different candidates at the same depth are an error; pick one with `--path`. Without a
+`lola.yml` name, the module is named after its root directory, or after the archive file
+(without its suffix) when the root is the archive's root.
+
+An archive may hold only regular files and directories. lola refuses the whole archive if any
+entry is absolute, contains `..` or a backslash, is a link or device, or repeats a path. Files
+keep only their execute bit (`0755` or `0644`). Limits, which are not configurable:
+
+| Limit | Value |
+|---|---|
+| Entries | 20,000 |
+| Zip central directory | about 19.5 MiB (1 KiB for each of 20,000 entries), checked before it is read |
+| Unpacked size | 512 MiB in total |
+| Compression ratio of one zip entry | 200 to 1 |
+| Download size | 256 MiB |
+| Download time | 2 minutes |
+| Redirects | 5, never from `https` to `http`, and never to `http` off loopback |
 
 Once a module is cached, `lola install <name>` uses the cached copy without touching the source.
-`lola cache update` fetches every cached module again; `lola list` then shows `stale` projects,
-and `lola render` brings them up to date.
+`lola cache update` fetches every cached module again: a git branch (or the default branch) may
+have moved, a local archive is read again, and an archive URL is downloaded again. The content
+digest decides whether anything changed; `lola list` then shows `stale` projects, and
+`lola render` brings them up to date.
 
 Installing a module also gives it a **module copy**: `.lola/modules/<module>/` in the project,
 or `$XDG_DATA_HOME/lola/user-modules/<module>/` at user scope. `${PLUGIN_ROOT}` (below) points
@@ -80,9 +159,10 @@ Without `lola.yml`, the module is named after its directory. Names use `a-z`, `0
 and `-`, start with a letter or digit, and are at most 64 characters.
 
 `${PLUGIN_ROOT}` (or `${CLAUDE_PLUGIN_ROOT}`) in `SKILL.md`, commands, agents and MCP server
-definitions becomes the module copy's directory. `${PLUGIN_DATA}` becomes a per-module data
-directory that lola creates and never deletes (`.lola/plugin-data/<module>` at project scope,
-`$XDG_DATA_HOME/lola/plugin-data/<module>` at user scope).
+definitions becomes the module copy's directory. `${PLUGIN_DATA}` (or `${CLAUDE_PLUGIN_DATA}`)
+becomes a per-module data directory that lola creates and never deletes
+(`.lola/plugin-data/<module>` at project scope, `$XDG_DATA_HOME/lola/plugin-data/<module>` at
+user scope).
 
 **Rules.** Each `rules/<rule>.md` is always-on context: your assistant loads it in every
 session. lola delivers rules where the assistant loads them natively (see the tables below) and
@@ -93,6 +173,140 @@ skill. The rest of a rule is delivered verbatim: `${PLUGIN_ROOT}` is not expande
 module-root `INSTRUCTIONS.md` or `AGENTS.md` is not installed; lola warns and suggests moving it
 to `rules/`. `lola install --no-rules` installs everything else and records `rules: false` on
 the module's manifest entry, so later renders keep it off; `--rules` turns them back on.
+
+### Module formats
+
+lola reads a module from the first of these it finds; the others are ignored, with a warning:
+
+1. `lola.yaml`, `lola.yml`, `.lola.yaml` or `.lola.yml` (in that order);
+2. a root `plugin.json` whose `$schema` is
+   `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`: an
+   [Agent Plugins](https://agent-plugins.org/specification) package. A `plugin.json` with any
+   other `$schema` is not one: lola warns and keeps looking;
+3. `.claude-plugin/plugin.json`: a Claude Code plugin;
+4. the native layout above.
+
+Formats are detected by `cache add`, `install` of a source and `check` of a source. The cached
+copy keeps the plugin's own files where they are and gains a `lola.yml` with `format:` and a
+`components:` section (below) listing every artifact the plugin declared, so loading it never
+interprets the plugin format again. Before storing a version, lola reloads that copy as
+an install will and refuses the module if it reads differently from the source ("could not
+cache ... faithfully"); that is a lola bug to report. Warnings about the plugin (unsupported
+keys, skipped skills) are shown when the module is added or checked from its source; they are
+not stored, so later installs from your cache do not repeat them.
+
+**Claude Code plugins** (`.claude-plugin/plugin.json`):
+
+- `name` (required), `version`, `description`, `author`, `homepage`, `repository`, `license`
+  and `keywords` become the module's metadata. The name must follow lola's name rule.
+- Component paths start with `./` (`skills` also takes `.`), stay inside the plugin and exist;
+  `hooks` and `mcpServers` paths end in `.json`. A `null` component value is an error.
+- `skills` add to `skills/`; every listed directory is one skill if it holds `SKILL.md`,
+  otherwise each `<name>/SKILL.md` below it is. `commands` and `agents` replace `commands/` and
+  `agents/` (lola warns when the default directory is then ignored); directories of commands
+  are read recursively, and the `commands` object map becomes inline commands (`argumentHint`
+  and `allowedTools` become the `argument-hint` and `allowed-tools` frontmatter keys; lola
+  warns that `commands/` is then ignored). A default directory that is a symbolic link is
+  skipped with a warning. An MCP server field lola does not read warns.
+  `mcpServers` and `hooks` merge with `.mcp.json` and `hooks/hooks.json`.
+- lola has no namespaces, so two commands, agents or skills with one name (for example
+  `commands/a/build.md` and `commands/b/build.md`) are an error, and so is an MCP server
+  declared twice, where Claude Code would let the later one replace the earlier one. A plugin
+  that declares nothing lola can install is an error ("declares nothing lola can install"), as
+  is an empty hook set.
+- `${CLAUDE_PLUGIN_ROOT}` and `${CLAUDE_PLUGIN_DATA}` mean `${PLUGIN_ROOT}` and
+  `${PLUGIN_DATA}`; `${CLAUDE_PROJECT_DIR}` is left as written.
+- `lspServers`, `outputStyles`, `workflows`, `experimental`, `settings`, `userConfig`,
+  `channels`, `dependencies`, `types`, MCP bundles (`.mcpb`, `.dxt`) and keys lola does not know
+  are not installed: lola warns and keeps them under `formats.claude-plugin`.
+- Hooks are Claude Code runtime hooks. This build loads them but installs them nowhere: every
+  assistant reports them as `kind-unsupported`. Installing them into Claude Code, with your
+  consent, is planned.
+
+**Agent Plugins packages** (root `plugin.json`):
+
+- The manifest takes only `$schema`, `name`, `version`, `description`, `author`, `homepage`,
+  `repository`, `license`, `keywords` and `extensions`; anything else is an error. `name` uses
+  `a-z`, `0-9`, `.` and `-`, starts and ends with a letter or digit, has no `--` or `..`, and is
+  at most 64 characters.
+- Each `skills/<name>/SKILL.md` is a skill. One that breaks the
+  [Agent Skills](https://agentskills.io/specification) rules (a `name` equal to its directory,
+  a `description` of 1 to 1024 characters, a `compatibility` of at most 500; limits count
+  characters) is skipped with a warning, as is a `skills` that is not a directory. A package
+  that declares nothing lola can install is an error ("declares nothing lola can install").
+- `mcp.json` is checked strictly; any problem is an error: exactly `$schema` and `mcpServers`;
+  types `stdio`, `streamable-http` and `sse`; a `command` that is one bare name or a `./` path, without `..` or control characters;
+  no `PLUGIN_ROOT` or `PLUGIN_DATA` in `env`; a `cwd` under `./`, `${PLUGIN_ROOT}` or
+  `${PLUGIN_DATA}` that stays inside it; `http(s)` URLs without user information or a fragment,
+  `https` unless the host is loopback; no placeholders in `command`, `url` or headers, and no
+  control characters in header values other than tab; `null` where the schema wants a type. lola
+  gives every stdio server `PLUGIN_ROOT` and `PLUGIN_DATA` in its environment. Any other
+  `${NAME}` in a stdio server's `args`, `env` or `cwd` is kept, with a warning: Agent Plugins
+  treats it as literal text, but your assistants expand it.
+- Client namespaces reach only their own assistant: `com.anthropic.claude` and
+  `com.anthropic.claude-code` reach `claude-code`, `ai.opencode` reaches `opencode`,
+  `com.google.gemini-cli` reaches `gemini-cli`, and `dev.getlola` reaches all of them. Each
+  namespace's commands and agents are the `*.md` files in `extensions."<ns>".commands` and
+  `.agents` (`./` directories, by default `<ns>/commands/` and `<ns>/agents/`).
+  `extensions."<ns>".instructions` names a file delivered as the module's rule; a namespace that
+  does not declare it delivers none.
+- When `dev.getlola` and a client namespace provide a command, agent or rule with the same name,
+  `dev.getlola`'s wins, with a warning. The two Anthropic namespaces providing the same name is
+  an error. Other namespaces are ignored with a warning, and their contents are not read; so
+  are keys lola does not read inside a namespace.
+- Nothing is installed into `.agents/plugins/`: lola renders the package into your assistants
+  like any module.
+
+### `components`
+
+`lola.yml` may list a module's artifacts explicitly. Format adapters write this section; you
+can write it too.
+
+```yaml
+name: review
+components:
+  skills:
+    - {path: skills/review}                 # one directory holding SKILL.md
+  commands:
+    - {path: extra/deploy.md}
+    - {path: opencode/fix.md, targets: [opencode]}
+    - name: status                          # frontmatter overrides or adds keys
+      path: commands/status.md
+      frontmatter: {argument-hint: "[env]"}
+    - {name: about, content: "Explain what this module provides."}
+  agents:
+    - {path: agents/reviewer.md}
+  mcp:
+    - {path: .mcp.json}                     # {"mcpServers": {...}}
+    - {name: github, server: {type: stdio, command: gh-mcp}}
+  rules:
+    - {path: docs/STYLE.md, name: style}
+  runtime_hooks:
+    - {path: hooks/hooks.json}              # {"hooks": {...}}
+```
+
+- **A listed kind replaces discovery.** Listing `commands` (even as `[]`) means `commands/` is
+  not read; kinds you do not list are still discovered from the layout above.
+- **Paths** are relative to the module root, stay inside it, exist, and go through no symbolic
+  link. A skill entry names one skill directory; command, agent and rule entries name one `.md`
+  file.
+- **Names** come from `name:`, else the path: the directory for a skill, the file name without
+  `.md` otherwise.
+- **`targets`** restricts an entry to some assistants, within the module's own `targets`.
+- **Duplicates.** Two artifacts of one kind with the same name are an error unless their
+  `targets` keep them apart.
+- `format:` records which adapter wrote the file (`claude-plugin` or `agent-plugins`); leave it
+  out of a `lola.yml` you write. `formats:` holds anything, and lola never reads it.
+- Every JSON file lola reads from a module (`mcps.json`, `plugin.json`, `.mcp.json`,
+  `mcp.json`, hooks files) is a regular file, not a symbolic link, of at most 1 MiB. No object
+  may repeat a key, or hold two keys that differ only in case (such as `command` and
+  `Command`), except the names in a server's `env` or `headers` (exactly
+  `/mcpServers/<server>/env` and `/mcpServers/<server>/headers`), where `HTTP_PROXY` and
+  `http_proxy` may both appear.
+- An MCP server in Claude's `.mcp.json` shape (`mcps.json`, a plugin's `.mcp.json` and inline
+  `mcpServers`) is either local, with `command` and optionally `args`, `env` and `cwd`, or
+  remote, with `url` and optionally `headers`; mixing the two, or a `type` that contradicts
+  the fields, is an error.
 
 **Hooks.** `pre-install` and `post-install` name executable scripts inside the module. They run
 as you, unconfined, once per target, in the module copy, with `LOLA_MODULE_NAME`,
@@ -186,7 +400,7 @@ Each finding has a stable code, shown by `--plain` and `--json`. A forceable ski
 
 | Code | Severity | Forceable | Meaning |
 |---|---|---|---|
-| `kind-unsupported` | skip | no | The target has no place for this kind of artifact. |
+| `kind-unsupported` | skip | no | The target has no place for this kind of artifact (in this build, every target for a module's runtime hooks). |
 | `name-rejected` | skip | yes | The target rejects the artifact's name (for `opencode`, also a skill whose `name` differs from its directory). |
 | `required-key-missing` | skip | yes | A frontmatter key the target needs is absent, empty, or was dropped for having the wrong type. |
 | `agent-tools-unenforceable` | skip | yes | The agent restricts its tools in a way the target cannot enforce (`gemini-cli`: names that are not Gemini's; `opencode`: any non-blank `tools` value, list or string). The assistant would give the agent every tool, so it is left out unless `--force`, which installs it without the list. |
@@ -196,7 +410,7 @@ Each finding has a stable code, shown by `--plain` and `--json`. A forceable ski
 | `frontmatter/yaml-ambiguous` | warn | no | An unquoted frontmatter value that YAML parsers read differently; quote it. |
 | `version/unsupported` | warn | no | Your installed assistant is older than the version lola renders for and ignores something the module uses. |
 | `version/limited` | warn | no | Your installed assistant has a known limitation that affects this module. |
-| `module-warning` | warn | no | The module itself has a problem, such as a legacy instruction file or a skipped rule entry. |
+| `module-warning` | warn | no | The module itself has a problem, such as a legacy instruction file, a skipped rule entry or skill, an ignored manifest, or a plugin key lola does not install. |
 | `mcp-cwd-dropped` | warn | no | The target has no working-directory setting for an MCP server, so `cwd` is dropped. |
 | `command-sidecar-dropped` | warn | no | `opencode` would read a command's `commands/<command>/` files as commands, so the directory is not copied. |
 | `gemini-cli/shell-injection` | skip | yes | A command runs shell with Claude's ``!`…` `` (at a line start or after whitespace) or a ```` ```! ```` fenced block, which Gemini CLI would send to the model as text; Gemini's own syntax is `!{…}`. |
@@ -265,5 +479,7 @@ changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
 | `XDG_DATA_HOME` | User-scope module copies and plugin data (default `~/.local/share`) |
 | `XDG_STATE_HOME` | The user-scope ledger, hook consent and lock files (default `~/.local/state`) |
 | `XDG_CACHE_HOME` | The cache, download scratch space and assistant version cache (default `~/.cache`) |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | Archive downloads (git reads them itself) |
+| `GIT_*`, `SSH_AUTH_SOCK` | Passed to git, except the variables that pick a repository or add config behind lola's back (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, …) |
 
 Relative XDG values are ignored, as the XDG specification requires.
