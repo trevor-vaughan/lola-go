@@ -1,0 +1,34 @@
+internal/targetspec/specs/gemini-cli.yaml
+  s_a7fa0a2062bbb1::t_39be8f99a02096 1-58
+internal/targets/equivalence_test.go
+  s_a7fa0a2062bbb1::t_39be8f99a02096 14,157,165-169
+  s_a7fa0a2062bbb1::t_58e5b7525f19fd 158-164
+internal/target/mech/markdown.go
+  s_a7fa0a2062bbb1::t_a27c8f2bac3d62 1-28
+internal/target/mech/mech.go
+  s_a7fa0a2062bbb1::t_aa35b3913898aa 32-41,48-50
+internal/target/mech/rules.go
+  s_a7fa0a2062bbb1::t_55b4ccd714b436 1-68
+internal/target/mech/servers.go
+  s_a7fa0a2062bbb1::t_f57cf8732cb7e8 1-74
+internal/target/mech/skilldir.go
+  s_a7fa0a2062bbb1::t_c0408ce44bc072 1-34
+internal/target/mech/toml.go
+  s_a7fa0a2062bbb1::t_2e218870304f32 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb9e5d90da3f38f05e598d342ec5cb6660ff59b4",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
