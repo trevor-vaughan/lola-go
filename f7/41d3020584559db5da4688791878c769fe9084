@@ -1,0 +1,21 @@
+docs/testing.md
+  s_63149906d5c471::t_58acaea98953bb 194,230-232
+  s_63149906d5c471::t_63c5d02deb0ca4 281-282,284-285
+  s_63149906d5c471::t_b24cb6d0d7f2b1 90,195,207-209,224-226,255-257,262-264,286-288,290-292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f741d3020584559db5da4688791878c769fe9084",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
