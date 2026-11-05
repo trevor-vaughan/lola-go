@@ -1,0 +1,22 @@
+docs/reference/list.md
+  s_63149906d5c471::t_05b8fe02b5eeca 15
+  s_63149906d5c471::t_393af1502d75b1 19-24,28
+  s_63149906d5c471::t_352687719aebe8 14
+  s_63149906d5c471::t_58acaea98953bb 7-9,30-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "127205a5e006fa7a8a0d282fd394e7a84da7c5e4",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
