@@ -1,0 +1,23 @@
+docs/guides/sources-and-the-cache.md
+  s_63149906d5c471::t_27d232efc520e6 1-322
+docs/reference/output-contract.md
+  s_63149906d5c471::t_27d232efc520e6 1-240
+docs/usage.md
+  s_63149906d5c471::t_27d232efc520e6 62,438
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2431258f6f9217fd79362de32ff7d2b65d36b9a2",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
