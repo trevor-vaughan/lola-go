@@ -1,0 +1,19 @@
+docs/guides/sync-and-trust.md
+  s_63149906d5c471::t_77d5caf5c23f99 27-29,32-34,189-196,206-209,243,256-258,265-267,272-274,445-450,455-457,467-469,472-474,478-480,504,526-528,532-534,576-585,603-607,609-618
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e45eca5b3cac036ac80685710a4f8f8a531b12c6",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
