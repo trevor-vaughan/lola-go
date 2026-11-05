@@ -38,6 +38,29 @@ var _ = Describe("an install's skip lines over two scopes", func() {
 	})
 })
 
+var _ = Describe("Pick-P2-g: an install's lines for components only: leaves out", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("words them as not in only:, apart from those a skip: leaves out", func() {
+		var b bytes.Buffer
+		m := engine.ModuleResult{Name: "kit", Scope: "user", Skipped: []string{"skill/a", "skill/b", "skill/c"}, SkippedIn: "selections.yaml",
+			NotInOnly: []string{"skill/b", "skill/c"}, OnlyIn: "selections.yaml projects[/p]"}
+		printInstall(&b, style{}, &engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}}, Scopes: []engine.ScopeResult{{Scope: "user"}}})
+		Expect(b.String()).To(And(ContainSubstring("→ kit: skipped in selections.yaml: skill/a\n"),
+			ContainSubstring("→ kit: not in only: (selections.yaml projects[/p]): skill/b, skill/c\n")))
+
+		b.Reset()
+		m.Skipped, m.SkippedIn = m.NotInOnly, ""
+		printInstall(&b, style{}, &engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}}, Scopes: []engine.ScopeResult{{Scope: "user"}}})
+		Expect(b.String()).NotTo(ContainSubstring("skipped in"))
+		Expect(b.String()).To(ContainSubstring("→ kit: not in only: (selections.yaml projects[/p]): skill/b, skill/c\n"))
+
+		b.Reset()
+		printInstall(&b, style{}, &engine.InstallResult{Result: &engine.Result{Modules: []engine.ModuleResult{m}, DryRun: true}, Scopes: []engine.ScopeResult{{Scope: "user"}}})
+		Expect(b.String()).To(ContainSubstring("→ kit: would be not in only: (selections.yaml projects[/p]): skill/b, skill/c\n"), "a dry run saves nothing")
+	})
+})
+
 var _ = Describe("printFindings grouping", func() {
 	BeforeEach(func() { testenv.Isolate() })
 

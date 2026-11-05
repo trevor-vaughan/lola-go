@@ -258,7 +258,7 @@ func (e *Engine) removeOwn(ctx context.Context, req ProfileRemoveRequest, i prof
 			return nil, fmt.Errorf("reading the link %s: %w", shown(i.Path), untrusted.CleanErr(err))
 		}
 	}
-	t, err := trash.OpenTrash(e.Paths.Trash, e.Now())
+	t, err := trash.OpenTrash(e.Paths.Trash, e.Now(), trash.RunRecord{Command: e.Command(sc, "profile", again...), Scope: target.User.String()})
 	if err != nil {
 		return nil, err
 	}

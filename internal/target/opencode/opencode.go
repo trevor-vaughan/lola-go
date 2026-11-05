@@ -159,7 +159,7 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		if name, set := doc.Frontmatter["name"]; set && name != s.Name {
 			f, render := target.Skipped(ctx, target.Finding{Target: id, Kind: "skill", Artifact: s.Name, Code: "name-rejected",
 				Text: fmt.Sprintf("opencode needs the skill's name (%v) to equal its directory name", name),
-				Hint: fmt.Sprintf("rename the directory to %v, or set name: %s", name, s.Name), Forceable: true})
+				Hint: fmt.Sprintf("rename the directory to %v, or set name: %s", name, s.Name), Forceable: true, Class: target.ClassDetail, AuthorHint: true})
 			finds, ok = append(finds, f), ok && render
 		}
 		if !ok {
@@ -186,7 +186,7 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 			}
 			return "$" + strconv.Itoa(i+1)
 		})
-		at := target.Finding{Severity: target.SeverityWarn, Target: id, Kind: "command", Artifact: cmd.Name}
+		at := target.Finding{Severity: target.SeverityWarn, Target: id, Kind: "command", Artifact: cmd.Name, Class: target.ClassDetail}
 		if body != cmd.Doc.Body {
 			f := at
 			f.Code, f.Text = "opencode/arguments-renumbered", "Claude's 0-based argument placeholders became OpenCode's 1-based $1, $2, …"
@@ -196,14 +196,14 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		if escaped.MatchString(body) {
 			f := at
 			f.Code, f.Text = "opencode/escaped-arguments", `OpenCode has no escape for $; \$1 and \$ARGUMENTS will still be replaced by arguments`
-			f.Hint = "reword the text so it does not contain $ followed by a digit or ARGUMENTS"
+			f.Hint, f.AuthorHint = "reword the text so it does not contain $ followed by a digit or ARGUMENTS", true
 			finds = append(finds, f)
 		}
 		doc.Body = body
 		out = append(out, target.WriteText(id, "command", d+"commands/"+cmd.Name+".md", doc.Render(), ctx))
 		if cmd.SidecarDir != "" {
 			finds = append(finds, target.Finding{Severity: target.SeverityWarn, Target: id, Kind: "command", Artifact: cmd.Name,
-				Code: "command-sidecar-dropped", Text: fmt.Sprintf("opencode would read the files in %s/ as commands; the sidecar directory is not copied", cmd.SidecarDir)})
+				Class: target.ClassDetail, Code: "command-sidecar-dropped", Text: fmt.Sprintf("opencode would read the files in %s/ as commands; the sidecar directory is not copied", cmd.SidecarDir)})
 		}
 	}
 	for _, a := range m.Agents {
@@ -302,7 +302,7 @@ var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)(:-[^}]*)?\}`)
 // ${VAR} becomes OpenCode's {env:VAR}; ${VAR:-default} loses its default.
 func mcp(id string, s module.MCPServer, ctx target.PlanContext) (map[string]any, []target.Finding) {
 	var finds []target.Finding
-	at := target.Finding{Target: id, Kind: "mcp", Artifact: s.Name}
+	at := target.Finding{Target: id, Kind: "mcp", Artifact: s.Name, Class: target.ClassDetail}
 	env := func(v string) string {
 		return envRef.ReplaceAllStringFunc(target.Expand(v, ctx), func(ref string) string {
 			sub := envRef.FindStringSubmatch(ref)

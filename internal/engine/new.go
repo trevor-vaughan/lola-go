@@ -279,10 +279,15 @@ func newName(name string) error {
 // hints take each one that has it in its place (none a directory by its file name, which no run
 // reads), then make one by a free name with the same modifiers, as runs words them.
 func (e *Engine) refuseExisting(sc Scope, infos []profile.Info, name string, ch ProfileChange, runs newRuns) error {
+	kind, _, qualified := strings.Cut(ch.Name, ":")
 	var named, hints []string
+	var beside profile.Kind // a local profile of the other kind, which a bare name would then share
 	for _, i := range infos {
 		if i.Name != name || i.Kind == profile.KindDefault {
 			continue
+		}
+		if qualified && i.Kind != profile.KindRemote && string(i.Kind) != kind {
+			beside = i.Kind
 		}
 		if isDir(i) {
 			named = append(named, shown(i.Qualified())+" ("+shown(i.Path)+", a directory)")
@@ -295,8 +300,15 @@ func (e *Engine) refuseExisting(sc Scope, infos []profile.Info, name string, ch 
 		return nil
 	}
 	free := freeName(infos, name)
+	if qualified {
+		free = kind + ":" + free
+	}
 	hints = append(hints, "or make another: "+runs.make(free, newModifiers(ch)...))
-	return errs.WithHints(fmt.Errorf("%s names %s; --new makes a profile that does not exist yet", shown(name), andJoin(named)), hints...)
+	why := ""
+	if beside != "" {
+		why = fmt.Sprintf(" (%s beside %s would make a bare %s name two profiles)", shown(ch.Name), shown(string(beside)+":"+name), shown(name))
+	}
+	return errs.WithHints(fmt.Errorf("%s names %s; --new makes a profile that does not exist yet%s", shown(name), andJoin(named), why), hints...)
 }
 
 // newMembers checks the members of a bundle kind:name that --new --bundle makes (spec 2026-10-29

@@ -86,7 +86,7 @@ var _ = Describe("claude-code", func() {
 		Expect(ins[0].Path).To(Equal(".claude/agents/ok.md"))
 		Expect(finds).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "claude-code", Kind: "agent", Artifact: "rev",
 			Code: "required-key-missing", Text: "claude-code needs a description in the agent's frontmatter",
-			Hint: "add description: to the agent's frontmatter", Forceable: true}}))
+			Hint: "add description: to the agent's frontmatter", Forceable: true, Class: target.ClassDetail, AuthorHint: true}}))
 
 		forced := ctx
 		forced.Force = true
@@ -110,7 +110,7 @@ var _ = Describe("claude-code", func() {
 		Expect(p[".mcp.json/mcpServers/web"].Value).To(MatchJSON(`{"type":"http","url":"https://x/mcp","headers":{"A":"b"}}`))
 		Expect(p[".mcp.json/mcpServers/ev"].Value).To(MatchJSON(`{"type":"sse","url":"https://x/sse"}`))
 		Expect(finds).To(ConsistOf(target.Finding{Severity: target.SeverityWarn, Target: "claude-code", Kind: "mcp", Artifact: "gh",
-			Code: "mcp-cwd-dropped", Text: `claude-code has no working-directory setting; cwd "/tmp" dropped`}))
+			Code: "mcp-cwd-dropped", Text: `claude-code has no working-directory setting; cwd "/tmp" dropped`, Class: target.ClassDetail}))
 
 		user := ctx
 		user.Scope = target.User

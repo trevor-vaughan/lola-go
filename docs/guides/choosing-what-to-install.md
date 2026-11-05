@@ -295,6 +295,10 @@ scope unless a flag gives it.
 
 ## Component flags
 
+A pick change that deletes installed files (a `--skip`, or an `--only` that leaves some out) is
+confirmed as `lola uninstall` is: asked on a terminal; off one it refuses, printing the files and
+hinting the same command with `-y`. `-n` writes nothing; `--force` answers without asking.
+
 | Flag | Effect |
 |---|---|
 | `--skip <selector>` | Do not install the matching components; saved as a skip in the profile entry the install writes, or for a `project.yml` module in `selections.yaml` (and a matching include in that section is removed). |
@@ -307,13 +311,29 @@ scope unless a flag gives it.
 A selector is `kind/name` or `module:kind/name`, where `kind` is `skill`, `command`, `agent`,
 `mcp` or `rule` and `name` may be a glob (`review-*`). A bare selector applies to every module
 being installed that has a match; one that matches nothing is an error that lists that kind's
-components (module-qualified). All three repeat, and always save (except under `--dry-run`), saying
+components (module-qualified), unless the section being changed saves that selector for the module
+and the module no longer has such a component (a stale selector): the run removes it from the
+section and says `<module>: removed <selector> from <section>; the module has no such component`.
+When that empties an `only:` list, the module installs every component again, and the run warns
+so: `<module>: only: in <section> is now empty, so <module> installs all its N components → lola
+install … <module> --only <selector>`. All three repeat, and always save (except under `--dry-run`), saying
 `→ saved to <path>`: to the profile entry the install writes when a profile provides the module
 (`only:` and `skip:` of the entry; the global `skip:` of `selections.yaml` still applies, its
-`only:` does not), else to `selections.yaml`. With more than one destination (`--scope
+`only:` does not), else to `selections.yaml`, where a project's picks are yours alone, as the run
+says ([`config.yaml` and `selections.yaml`](#configyaml-and-selectionsyaml)). With more than one destination (`--scope
 both`, or several ticked in the scope step) they need `--global`, since one flag cannot say
 which scope it means. `--no-rules` wins over rule selections. Names in
 selectors, from flags or the file, may not contain control or format characters.
+
+Picks choose components, not runtime hooks: a module's runtime hooks (a Claude plugin's
+`hooks/hooks.json`) install for the whole module, whatever `--only` or `--skip` leave out, and only
+with your consent. When a `skip:` or `only:` selector of the module names a component of it, `install` and `sync` say `<module>: runtime
+hooks are installed for the whole module; picks do not narrow them`. There is no `hook` selector kind.
+
+A saved selector that names a component the module no longer has warns once per run, naming the
+section that holds it, with the command that removes it (`--unskip` of that selector):
+
+    selections.yaml projects[/p]: cc-skills-golang has no component agent/planner → lola install -C /p cc-skills-golang --unskip agent/planner
 
 ```sh
 lola install review-kit --scope project --skip skill/slow-lint --skip 'mcp/internal-*'
@@ -336,6 +356,10 @@ cached installed version that cannot be read gives a warning instead:
 `<module>: cannot tell which components are new: <reason>`.
 With `--json` the line is in `notices`. On a terminal, the component page says
 `only: in <section> — components a new version adds are not installed` while a list decides.
+After an install, `install` and `check` print the components a list leaves out as
+`<module>: not in only: (<section>): <kind/name>, …`, apart from those a skip leaves out
+(`<module>: skipped in <section>: …`); `--json` has `not_in_only` and `only_in` beside `skipped`
+and `skipped_in`.
 The page labels a component the list leaves out `(not in only:)`, one a skip leaves out
 `(skipped in <layer>)`, and one the version adds over the one installed `(new)`; while a profile
 (or your default) provides the module, the footer says so (`cc-skills-golang comes from profile
@@ -351,6 +375,11 @@ while one is (on a terminal either reopens the component page; `--skip`, `--unsk
 `lola profile <name> --edit <module>`, which writes that profile. A `projects[<dir>]` entry of
 `selections.yaml` for a module a profile provides is ignored, and every sync says so, naming the
 profile's edit; delete the entry once its picks are in the profile.
+
+`lola uninstall <module>` at a project also removes the module's entry from that project's
+section of `selections.yaml`, never from `global`, and prints the `lola install … --skip …` (or
+`--unskip`, `--only … --exact`) that saves the picks again; a plain install afterwards installs
+everything.
 
 ## Mentions
 
@@ -369,8 +398,9 @@ dependency, and nothing is installed for one unless you ask.
   stored: lola reads the version it is about to install, also one fetched for this run and not
   yet in your cache. If it cannot read the module's files, a warning says so.
 - **Where it shows:** the component page labels a component `(mentions N)`; `lola info <module>`
-  lists what each component mentions; after the pickers or the flags, `lola install` names what
-  your picks mention but leave out, once per module:
+  lists what each component mentions; after the pickers or the flags, `lola install` counts what
+  your picks mention but leave out in its line of notices for the module, whose `lola check`
+  names it, as `-v` and `--json` do, once per module:
 
       → cc-skills-golang: skill/golang-testing mentions 3 components you did not pick: skill/golang-gopls, skill/golang-lint, skill/golang-race → add them: lola install --project cc-skills-golang --with-mentions
 
@@ -399,7 +429,7 @@ With `--json` these lines are in `notices`.
 
 Both live in `$XDG_CONFIG_HOME/lola/` (normally `~/.config/lola/`), are safe to edit by hand,
 and are checked strictly: unknown keys, wrong types, unknown kinds, bad globs, relative or
-`~` project keys, two keys for one project, control or format characters in selector names,
+`~` project keys, a `git:` key without `#<dir>`, two keys for one project, control or format characters in selector names,
 an `include` in the `global` section, anchors, aliases and merge keys, and files over
 1 MiB are errors that name the file, line and key, with a hint.
 
@@ -431,7 +461,7 @@ global:
   review-kit:                       # module name as `lola list` shows it
     skip: [skill/slow-lint, mcp/internal-db]
 projects:
-  /home/me/src/api:
+  git:github.com/acme/api#.:          # a clone of github.com/acme/api, at its top
     review-kit:
       skip: [command/deploy]
       include: [skill/slow-lint]
@@ -450,8 +480,33 @@ component it does not match. `only: []` is no list. `global` has no includes. A 
 a component the module no longer has is a warning that names its section. With `--global`,
 `--only` or `--unskip` cannot override a glob skip in `global` (it takes no include), so when one
 still skips a component you listed, lola warns, naming the glob and `selections.yaml`: remove
-the glob there. Project keys are absolute paths; a key written through a symlink or with `..`
-still matches its project. lola writes the file under a lock, replacing only the entries of the
+the glob there.
+
+Project keys name the project by its repository when it is a git clone whose `origin` remote is on
+another host: `git:<host>/<path>#<dir>`, the remote without its scheme, user name, password or
+token, query, default port (a port other than the scheme's default stays: `git:<host>:<port>/<path>#<dir>`)
+and `.git`, its host in lower case, and the project's directory in the clone (`.` at
+its top, `sub/dir` for a project below it). Every clone of the repository, wherever you put it,
+uses one entry, so a re-clone keeps your picks, and two clones on one machine share them. Any
+other project, and a clone with no `origin` or a local one, or whose remote would leave an `@` in
+the key, is keyed by its absolute path; a key written through a symlink or with `..` still matches
+its project. In a clone git cannot read (one git refuses as someone else's, say), `install`, `sync`
+and `lola list` refuse before they read any pick, as they cannot tell whether git tracks
+`.lola/lock.json`; `lola check` and `lola info` key its picks by its path and say why, with git's
+reason (`lola check` as the `picks-keyed-by-path` finding), and for a repository git refuses as
+someone else's the `git config --global --add safe.directory <dir>` that trusts it. An entry under a clone's path,
+written before lola keyed clones by repository, still applies, and the next pick lola saves for
+one of its modules moves it under the repository key, leaving the file's other entries as they
+are.
+
+These picks are yours: `selections.yaml` lives in your config directory, so a teammate who
+clones the project does not get them. A [project profile](profiles.md) is how a team shares
+picks: its entries' `only:` and `skip:` are committed with the project, and `lola profile --move
+<module> --to project:<name>` moves a module, picks included, into one. An install
+whose `--only`, `--skip` or `--unskip` saves picks in a project's section of `selections.yaml` says
+so: `picks for review-kit saved in selections.yaml
+projects[git:github.com/acme/api#.]: they are yours, not your teammates'; a project profile shares
+picks with your team`. lola writes the file under a lock, replacing only the entries of the
 modules it changes, so your comments, order and other edits survive, even in a file that holds
 only comments or a null document. A section or project key that a removal empties is dropped,
 unless it carries a comment, in which case it stays as an empty mapping. A symlinked file is

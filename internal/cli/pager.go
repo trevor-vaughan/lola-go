@@ -80,7 +80,7 @@ func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Write
 		return
 	}
 	out := cmd.OutOrStdout()
-	full := style{color: a.color(out), paged: true}
+	full := style{color: a.color(out), paged: true, verbose: s.verbose}
 	var buf bytes.Buffer
 	print(&buf, full)
 	warn := func(problem string) {

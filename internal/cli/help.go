@@ -195,14 +195,23 @@ func (a *app) showHelp(cmd *cobra.Command, long bool) {
 }
 
 // renderHelp writes cmd's help to w. Concise help is the description plus cobra's usage; long help
-// is a preamble plus every command below cmd.
+// is cmd's own help first (unless cmd is the root), a preamble, then every command below cmd.
 func renderHelp(w io.Writer, cmd *cobra.Command, long bool) {
 	if !long {
 		writeCommandHelp(w, cmd, "")
 		return
 	}
+	// A command's own help comes first, so it is not buried under the root's preamble; the root's
+	// own help is the preamble and the whole tree.
+	if cmd != cmd.Root() {
+		writeCommandHelp(w, cmd, globalFlagsBlock(cmd))
+		fmt.Fprintln(w)
+	}
 	writePreamble(w, cmd.Root())
 	walk(cmd, func(c *cobra.Command) {
+		if c == cmd && cmd != cmd.Root() {
+			return
+		}
 		fmt.Fprintf(w, "\n== %s ==\n", c.CommandPath())
 		writeCommandHelp(w, c, globalFlagsBlock(c))
 	})

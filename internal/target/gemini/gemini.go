@@ -147,7 +147,7 @@ func (g Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		})
 		if indexed && !slices.ContainsFunc(f, func(x target.Finding) bool { return x.Code == positional.Code }) {
 			f = append(f, target.Finding{Severity: positional.Severity, Target: id, Kind: "command", Artifact: cmd.Name,
-				Code: positional.Code, Text: positional.Text, Hint: positional.Hint})
+				Code: positional.Code, Text: positional.Text, Hint: positional.Hint, Class: target.ClassDetail, AuthorHint: true})
 		}
 		if finds = append(finds, f...); !ok {
 			continue

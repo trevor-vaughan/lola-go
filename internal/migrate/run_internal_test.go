@@ -45,7 +45,7 @@ var _ = Describe("Moving a recorded path after the install", func() {
 		proj := filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude", "agents"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(proj, ".claude", "agents", "critic.md"), []byte("x\n"), 0o644)).To(Succeed())
-		t, err := trash.OpenTrash(filepath.Join(tmp, "trash"), time.Now())
+		t, err := trash.OpenTrash(filepath.Join(tmp, "trash"), time.Now(), trash.RunRecord{})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(t.Close)
 		rec := Recorded{Target: "claude-code", Kind: KindAgent, Root: proj, Rel: ".claude/agents/critic.md"}

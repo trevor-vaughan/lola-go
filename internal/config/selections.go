@@ -23,12 +23,17 @@ const (
 	SectionProfile = "profile"
 )
 
-// Where names one section of selections.yaml: global, user, or a project by its
-// paths.ProjectKey; or, held for the run only, a profile entry's picks (SectionProfile), by the
-// profile layer's name, profile:<qualified> (spec 2026-10-29 §13 item 2).
+// Where names one section of selections.yaml: global, user, or a project by its key, its
+// repository's (RepoKey) or its paths.ProjectKey; or, held for the run only, a profile entry's
+// picks (SectionProfile), by the profile layer's name, profile:<qualified> (spec 2026-10-29 §13
+// item 2). Path is, for a project keyed by its repository, its path key: the file's section under
+// it, written before lola keyed projects by repository, still applies, under the repository key's
+// entries, and a write of one of its modules moves it to the repository key (spec 2026-11-03
+// Pick-P2-a).
 type Where struct {
 	Kind    string
 	Project string
+	Path    string
 	Profile string
 }
 
@@ -37,6 +42,12 @@ func Global() Where            { return Where{Kind: SectionGlobal} }
 func User() Where              { return Where{Kind: SectionUser} }
 func Project(key string) Where { return Where{Kind: SectionProject, Project: key} }
 func Picks(layer string) Where { return Where{Kind: SectionProfile, Profile: layer} }
+
+// RepoProject names the section of a project by its repository key repo (RepoKey), whose path
+// key (paths.ProjectKey) is path.
+func RepoProject(repo, path string) Where {
+	return Where{Kind: SectionProject, Project: repo, Path: path}
+}
 
 func (w Where) String() string {
 	switch w.Kind {
@@ -132,12 +143,12 @@ func (s *Selections) decode(root *yaml.Node) error {
 			}
 			for i := 0; i+1 < len(n.Content); i += 2 {
 				k, v := n.Content[i], n.Content[i+1]
-				p, err := d.projectKey(k, at)
+				p, err := d.selectionsKey(k, at)
 				if err != nil {
 					return err
 				}
 				for _, q := range s.projects {
-					if paths.SameKey(q.Key, p.Key) {
+					if sameKey(q.Key, p.Key) {
 						return d.fail(k, join(at, k.Value), fmt.Sprintf("names the same project as %q", untrusted.Text(q.Written, untrusted.MaxName)),
 							"merge the two entries into one")
 					}
@@ -169,6 +180,31 @@ func (d doc) projectKey(k *yaml.Node, at string) (projectSection, error) {
 		return projectSection{}, d.fail(k, sub, "cannot be resolved: "+untrusted.CleanErr(err).Error(), "fix the path, or remove the entry")
 	}
 	return projectSection{Key: key, Written: k.Value, Section: Section{}}, nil
+}
+
+// selectionsKey validates a projects key of selections.yaml: a repository key as RepoKey writes
+// it, kept as written, or a project path (projectKey).
+func (d doc) selectionsKey(k *yaml.Node, at string) (projectSection, error) {
+	if k.Kind != yaml.ScalarNode || !strings.HasPrefix(k.Value, repoKeyPrefix) {
+		return d.projectKey(k, at)
+	}
+	sub := join(at, k.Value)
+	if !untrusted.IsPlain(k.Value) {
+		return projectSection{}, d.fail(k, sub, "a repository key holds a control or format character", "write the key as lola writes it, or remove the entry")
+	}
+	if repo, dir, found := strings.Cut(strings.TrimPrefix(k.Value, repoKeyPrefix), "#"); !found || repo == "" || dir == "" {
+		return projectSection{}, d.fail(k, sub, "a repository key ends in #<directory>", "write git:<host>/<path>#. for the repository's top directory, or remove the entry")
+	}
+	return projectSection{Key: k.Value, Written: k.Value, Section: Section{}}, nil
+}
+
+// sameKey reports whether two projects keys name one project: repository keys as written, path
+// keys as the OS compares paths (paths.SameKey); a repository key never names a path key's.
+func sameKey(a, b string) bool {
+	if strings.HasPrefix(a, repoKeyPrefix) || strings.HasPrefix(b, repoKeyPrefix) {
+		return a == b
+	}
+	return paths.SameKey(a, b)
 }
 
 // section decodes module entries into out. The global section takes skip: and only:, not
@@ -252,25 +288,66 @@ func (s *Selections) section(w Where) Section {
 	case SectionProfile:
 		return s.profiles[w.Profile]
 	}
-	for _, p := range s.projects {
-		if paths.SameKey(p.Key, w.Project) {
-			return p.Section
-		}
+	if i := s.projectAt(w.Project); i >= 0 {
+		return s.projects[i].Section
 	}
 	return nil
 }
 
-// Entry returns module's entry in the section w.
-func (s *Selections) Entry(w Where, module string) Entry { return s.section(w)[module] }
+// projectAt is the index of the projects section keyed key, or -1.
+func (s *Selections) projectAt(key string) int {
+	return slices.IndexFunc(s.projects, func(p projectSection) bool { return sameKey(p.Key, key) })
+}
+
+// Entry returns module's entry in the section w: for a project keyed by its repository, its
+// entry under the repository key, else the one under its path key (Where.Path).
+func (s *Selections) Entry(w Where, module string) Entry {
+	e, ok := s.section(w)[module]
+	if ok || w.Kind != SectionProject || w.Path == "" {
+		return e
+	}
+	if i := s.projectAt(w.Path); i >= 0 {
+		return s.projects[i].Section[module]
+	}
+	return Entry{}
+}
+
+// Origin is w.Origin with a project's key as the file writes it in the section that holds
+// module's entry (WrittenKey), so a message names the key the user finds in the file.
+func (s *Selections) Origin(w Where, module string) string {
+	if w.Kind != SectionProject {
+		return w.Origin()
+	}
+	return Project(s.WrittenKey(w, module)).Origin()
+}
+
+// WrittenKey is the key, as the file writes it, of the projects section that holds module's
+// entry for the project w (Entry): the path key's spelling while the entry is still under it;
+// w's own key when no section holds one.
+func (s *Selections) WrittenKey(w Where, module string) string {
+	for _, key := range []string{w.Project, w.Path} {
+		if i := s.projectAt(key); key != "" && i >= 0 {
+			if _, ok := s.projects[i].Section[module]; ok {
+				return s.projects[i].Written
+			}
+		}
+	}
+	return w.Project
+}
 
 // Set replaces module's entry in the section w, in memory; Save writes it. An empty entry
-// removes the module, and a project section it leaves empty.
+// removes the module, and a project section it leaves empty. For a project keyed by its
+// repository, the section under its path key moves to the repository key, or, when the file has
+// both, loses module's entry (rekey).
 func (s *Selections) Set(w Where, module string, e Entry) {
+	if w.Kind == SectionProject && w.Path != "" {
+		s.rekey(w, module)
+	}
 	sec := s.section(w)
 	if e.Empty() {
 		delete(sec, module)
 		if w.Kind == SectionProject && sec != nil && len(sec) == 0 {
-			s.projects = slices.DeleteFunc(s.projects, func(p projectSection) bool { return paths.SameKey(p.Key, w.Project) })
+			s.projects = slices.DeleteFunc(s.projects, func(p projectSection) bool { return sameKey(p.Key, w.Project) })
 		}
 		return
 	}
@@ -286,6 +363,24 @@ func (s *Selections) Set(w Where, module string, e Entry) {
 		}
 	}
 	sec[module] = e
+}
+
+// rekey moves the section under w's path key to its repository key, before module's entry is
+// written there, as Save's rekeyNode does in the file: the whole section when there is none under
+// the repository key, else module's entry is taken out of it, and the section with it once empty.
+func (s *Selections) rekey(w Where, module string) {
+	old := s.projectAt(w.Path)
+	if old < 0 {
+		return
+	}
+	if s.projectAt(w.Project) < 0 {
+		s.projects[old].Key, s.projects[old].Written = w.Project, w.Project
+		return
+	}
+	delete(s.projects[old].Section, module)
+	if len(s.projects[old].Section) == 0 {
+		s.projects = slices.Delete(s.projects, old, old+1)
+	}
 }
 
 // Layer is one place that sets a module's selectors, named in messages by Origin (Where.Origin).
@@ -307,7 +402,9 @@ type Exclusions struct {
 // entry's Picks). A profile entry's picks replace every section's but the global skip, a "never
 // anywhere" choice (cherry-pick design §4.2): the global only: does not apply to them.
 func (s *Selections) Exclusions(scope Where, module string) Exclusions {
-	return Layered(scope, s.Entry(Global(), module), s.Entry(scope, module))
+	x := Layered(scope, s.Entry(Global(), module), s.Entry(scope, module))
+	x.Scope.Origin = s.Origin(scope, module) // a project's key as the file writes it (WrittenKey)
+	return x
 }
 
 // Layered is the exclusions at scope of a module whose global section entry is global and whose

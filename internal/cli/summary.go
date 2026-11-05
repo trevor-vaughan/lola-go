@@ -118,8 +118,8 @@ func diffLine(d engine.ComponentDiff) string {
 // directory and where it came from; per assistant, why it was chosen, and each module's component
 // diff, or for a module the install saves but installs nothing of (pv.SaveOnly) that it saves the
 // entry of its write target (pv.WritesTo), and why: a higher layer's entry wins, or that file is not
-// on here; the selections.yaml changes, the notices, the findings a dry run of the install reports
-// with their hints, dropped answers, and the equivalent commands.
+// on here; the selections.yaml changes, the notices and the findings a dry run of the install
+// reports, as the run prints them (printNotices), dropped answers, and the equivalent commands.
 func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *engine.Preview, findings []target.Finding) {
 	fmt.Fprintln(w, "Summary:")
 	for _, line := range fl.choices.Resolved {
@@ -189,11 +189,8 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 	for _, in := range files {
 		fmt.Fprintf(w, "  %s:\n%s", in, strings.Join(entries[in], ""))
 	}
-	for _, n := range pv.Notices {
-		fmt.Fprintln(w, "  "+noticeLine(style{}, n))
-	}
 	var found strings.Builder
-	printFindings(&found, style{}, findings)
+	printNotices(&found, style{verbose: fl.a.style(fl.cmd).verbose}, &engine.Result{Findings: findings, Notices: pv.Notices})
 	for _, line := range strings.SplitAfter(found.String(), "\n") {
 		if line != "" {
 			fmt.Fprint(w, "  "+line)

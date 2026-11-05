@@ -117,7 +117,7 @@ var _ = Describe("lola update", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
-		Expect(doc["notices"]).To(ContainElement(map[string]any{"level": "info",
+		Expect(doc["notices"]).To(ContainElement(map[string]any{"level": "info", "class": "safety",
 			"text": "2 modules served from your cache (fetched within cache_fresh_for) → lola update -C " + proj + " --fetch --json"}))
 	})
 

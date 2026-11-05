@@ -101,20 +101,7 @@ func (e *Engine) checkHint(sc Scope, err error, ent *manifest.Entry, targets, di
 	case ent.Commit != "" && !fresh: // marketplace entries too
 		return ""
 	}
-	addr := ""
-	switch {
-	case ent.Market != nil:
-		addr = "@" + ent.Market.Name + "/" + ent.Name
-	case ent.Components != nil: // a selection of a source, not through a marketplace, which no check repeats
-		return ""
-	case ent.Source == "": // an install by cache name records no source to check
-	default:
-		spec, isSrc, err := source.Parse(ent.Source, sourceRoot(sc))
-		if err != nil || !isSrc || spec.Kind == source.KindGit && (ent.Ref != "" || ent.Path != "") {
-			return ""
-		}
-		addr = spec.Location
-	}
+	addr := checkAddr(sc, ent)
 	if addr == "" || untrusted.Text(addr, untrusted.MaxName) != addr {
 		return ""
 	}
@@ -123,6 +110,27 @@ func (e *Engine) checkHint(sc Scope, err error, ent *manifest.Entry, targets, di
 		args = append(args, "--target", t)
 	}
 	return e.Command(sc, "check", append(args, display...)...)
+}
+
+// checkAddr is the argument lola check fetches what ent installs at sc by: its marketplace
+// address, its local path, or its git URL when the entry gives no ref or path, which lola check
+// cannot take; "" for none (no entry, a selection of a source, an install by cache name).
+func checkAddr(sc Scope, ent *manifest.Entry) string {
+	switch {
+	case ent == nil:
+		return ""
+	case ent.Market != nil:
+		return "@" + ent.Market.Name + "/" + ent.Name
+	case ent.Components != nil: // a selection of a source, not through a marketplace, which no check repeats
+		return ""
+	case ent.Source == "": // an install by cache name records no source to check
+		return ""
+	}
+	spec, isSrc, err := source.Parse(ent.Source, sourceRoot(sc))
+	if err != nil || !isSrc || spec.Kind == source.KindGit && (ent.Ref != "" || ent.Path != "") {
+		return ""
+	}
+	return spec.Location
 }
 
 // finding is the refusal as lola check reports it: a skip of its component for its target.

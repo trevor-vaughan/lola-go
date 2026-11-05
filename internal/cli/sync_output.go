@@ -49,10 +49,7 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 		printTrustDiff(w, s, name, run, r.Trust, more)
 	}
 	if r.InSync && !diffShown && !s.plain && len(r.Failed) == 0 && len(r.Gone) == 0 { // a module not checked is not up to date
-		printFindings(w, s, r.Findings)
-		for _, n := range r.Notices {
-			fmt.Fprintln(w, noticeLine(s, n))
-		}
+		printNotices(w, s, r.Result)
 		if r.DryRun {
 			fmt.Fprintln(w, s.info(inSync))
 		} else {
@@ -77,10 +74,7 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 		printPins(w, s, r.Pins, r.Installed)
 	}
 	printRemovals(w, s, r.Removals)
-	printFindings(w, s, r.Findings)
-	for _, n := range r.Notices {
-		fmt.Fprintln(w, noticeLine(s, n))
-	}
+	printNotices(w, s, r.Result)
 	if r.DryRun && r.ToApply != "" && !s.plain {
 		fmt.Fprintln(w, s.info("to apply: "+r.ToApply))
 		if r.OffTerminal != "" {
@@ -170,6 +164,9 @@ func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 		why := "(no longer in its targets)"
 		if r.WholeModule {
 			why = "(whole module)"
+		}
+		if r.Why != "" {
+			why = "(" + r.Why + ")"
 		}
 		fmt.Fprintln(w, "  "+s.bad(r.Module+": "+strings.Join(r.Targets, ", ")+" "+why))
 		for _, p := range r.Paths {

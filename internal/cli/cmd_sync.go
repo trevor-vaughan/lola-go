@@ -257,6 +257,7 @@ func (a *app) syncCmd() *cobra.Command {
 	addTrustFlag(cmd, &trust, "sync", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles (recorded as a yes is; never bypasses a refusal)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.update, "update", false, "fetch the refs again and re-pin the modules of the run")
+	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
 	return cmd
 }
 

@@ -182,23 +182,27 @@ after the run, keeping your comments and order; a declined question writes nothi
 `$XDG_STATE_HOME/lola/trash/<UTC time>/`, with one subdirectory per scope (`user`, or a hash of
 the project's path), each item mirrored below the scope's root (its real path, past symbolic
 links), and `manifest.txt`, one `original<TAB>trash path` line per item, written before the item
-moves. The run prints the directory and its size; lola never deletes it.
+moves. The run prints the directory and its size; lola deletes it only when you run `lola trash
+--empty`.
 
-Restore a file or directory by moving it back. Below, `$TRASH` stands for the run's directory and
-`<hash>` for the project's subdirectory; `manifest.txt` gives each item's full trash path:
+`lola trash` lists the runs, newest first, and `lola trash <run>` shows a run's items. Restore a
+file or directory with `lola trash <run> <original> --restore`, or every item of the run without
+naming one ([`lola trash`](../usage.md#lola-trash)):
 
 ```sh
-mv "$TRASH/<hash>/.claude/skills/old-review" /work/app/.claude/skills/old-review
+lola trash 20261103T120000Z /work/app/.claude/skills/old-review --restore
 ```
 
 An MCP server is removed from its file in place, keeping every other byte, comments included; the
 file as lola read it is copied into the trash first, at mode 0600, since it may hold credentials
 (the run says so, naming the file; `--json` lists each copy's trash path in `trash_credentials`).
-Restore a server by copying it back out of that copy. For example, this `jq` command prints the
-entry of a server named `legacy` from the copy of `.mcp.json`:
+`lola trash <run> <path>/.mcp.json --restore --force` puts the whole file back at mode 0600,
+first moving the current file into a new trash run. To restore one server instead, copy it out of
+the copy, whose path `lola trash <run>` shows. For example, this `jq` command prints the entry of
+a server named `legacy`:
 
 ```sh
-jq '.mcpServers.legacy' "$TRASH/<hash>/.mcp.json"   # then paste it into .mcp.json's mcpServers
+jq '.mcpServers.legacy' <trash path of .mcp.json>   # then paste it into .mcp.json's mcpServers
 ```
 
 `lola tidy --json` prints `scope`, `root` (`""` at user scope), `dry_run`, `targets`, `trash`

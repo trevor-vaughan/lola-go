@@ -89,6 +89,7 @@ type moveEdit struct {
 	at         *Scope
 	origin     map[string]moveOrigin
 	selections []config.Change
+	written    []string // the projects key each of selections is under, as the file writes it
 	lost       []*picksLostError
 }
 
@@ -1177,7 +1178,7 @@ func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveS
 		if sel != nil && !from.Profile {
 			// project.yml's picks live in selections.yaml (picksAt); the entry takes them with it
 			// (spec 2026-11-03 A1: the move changes no installed file).
-			w, err := where(src.sc)
+			w, err := e.scopeSection(src.sc)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -1192,6 +1193,7 @@ func (e *Engine) moveEdits(ctx context.Context, req MoveRequest, src, dst *moveS
 					ent.Skip = patternStrings(carry.Skip)
 				}
 				rm.selections = append(rm.selections, config.Change{Section: w, Module: m})
+				rm.written = append(rm.written, sel.WrittenKey(w, m))
 				carried = append(carried, shown(m))
 			}
 			lost, err := e.lostPicks(sel, w, t, m, carry, src.led.Modules[m], ent.RulesOn())
@@ -1348,7 +1350,7 @@ func (e *Engine) lostPicks(sel *config.Selections, w config.Where, t writeTo, mo
 		change = append(change, "install "+strings.Join(added, ", "))
 	}
 	return &picksLostError{fmt.Errorf("%s's picks in %s cannot move into %s as they are: %s; the move would %s here", shown(module),
-		untrusted.Text(w.Origin(), untrusted.MaxName), t.label, strings.Join(reasons, "; "), strings.Join(change, " and "))}, nil
+		untrusted.Text(sel.Origin(w, module), untrusted.MaxName), t.label, strings.Join(reasons, "; "), strings.Join(change, " and "))}, nil
 }
 
 // offFlags is the flags of the hint that turns off the remote profile a move's entry comes from:

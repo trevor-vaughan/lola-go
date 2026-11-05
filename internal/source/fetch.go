@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -47,8 +48,25 @@ func fetch(ctx context.Context, spec Spec, stagingParent string, lim limits) (Fe
 // isGitRepository reports whether dir is a git work tree (it holds .git) or a bare repository
 // (it holds HEAD, objects and refs).
 func isGitRepository(dir string) bool {
+	_, err := os.Lstat(filepath.Join(dir, ".git"))
+	return err == nil || isBareRepository(dir)
+}
+
+// isBareRepository reports whether dir is a bare git repository: HEAD, objects and refs at its
+// top and no .git.
+func isBareRepository(dir string) bool {
 	exists := func(name string) bool { _, err := os.Lstat(filepath.Join(dir, name)); return err == nil }
-	return exists(".git") || exists("HEAD") && exists("objects") && exists("refs")
+	return !exists(".git") && exists("HEAD") && exists("objects") && exists("refs")
+}
+
+// shellWord is s as one shell word for a hint, cleaned by untrusted.Text: left bare when it holds
+// only characters a shell reads literally, else single-quoted.
+func shellWord(s string) string {
+	s = untrusted.Text(s, untrusted.MaxName)
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./-+@:") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // fetchWhole stages spec's whole module directory.
@@ -62,6 +80,12 @@ func fetchWhole(ctx context.Context, spec Spec, stagingParent string, lim limits
 	}
 	switch spec.Kind {
 	case KindFolder:
+		if isBareRepository(spec.Location) {
+			dir := strings.TrimSuffix(filepath.Base(spec.Location), ".git")
+			return Fetched{}, errs.WithHints(
+				fmt.Errorf("%s is a bare git repository; lola reads a local path as a folder", untrusted.Text(spec.Location, untrusted.MaxName)),
+				"git clone "+shellWord(spec.Location)+" "+shellWord(dir))
+		}
 		return fetchFolder(ctx, spec, stagingParent)
 	case KindArchive:
 		return inScratch(stagingParent, func(scratch string) (Fetched, error) {

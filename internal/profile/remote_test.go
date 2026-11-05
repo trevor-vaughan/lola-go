@@ -137,7 +137,7 @@ var _ = Describe("remote profiles", func() {
 		tooLong := "version: 1\ndescription: " + strings.Repeat("x", 257) + "\n"
 		for content, want := range map[string]string{
 			"version: 2\n":                "was written by a newer lola (profile version 2)",
-			"version: 1\nshell: rm -rf\n": "field shell not found",
+			"version: 1\nshell: rm -rf\n": `:2: unknown key "shell"`,
 			"version: 1\nbundle: [go]\n":  ":2: bundle: a remote profile cannot combine profiles; its names would resolve on each reader's machine",
 			"version: 1\nextends: [go]\n": ":2: extends: is no longer a key",
 			tooLong:                       ":2: description is longer than 256 bytes",
@@ -253,6 +253,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(pr.Modules).To(HaveLen(1))
 		_, _, err = profile.Fetched(dir, "nope")
 		Expect(err).To(MatchError("the source has no profile nope (profiles/nope.yml)"))
+		Expect(errs.Hints(err)).To(Equal([]string{"see the profiles it has: leave out the name"}), "Prof-P2-f: listing works off a terminal too")
 		_, _, err = profile.Fetched(fetched(map[string]string{"README.md": ""}), "go")
 		Expect(err).To(MatchError("the source has no profiles/ directory"))
 		_, _, err = profile.FetchedNames(fetched(map[string]string{"profiles": "a file"}))

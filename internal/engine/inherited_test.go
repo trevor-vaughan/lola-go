@@ -72,7 +72,7 @@ var _ = Describe("an edit of an inherited module", func() {
 	}
 	// install installs req at s with a --skip of each of skips, hints repeating the run as the CLI's do.
 	install := func(s engine.Scope, req engine.InstallRequest, opts engine.Options, skips ...string) (*engine.InstallResult, error) {
-		spec := engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{req},
+		spec := engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: tmp, Modules: []engine.InstallRequest{req},
 			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: s, Source: engine.SourceFlag}}}}
 		var edits []engine.SelectionEdit
 		for _, k := range skips {
@@ -164,6 +164,17 @@ var _ = Describe("an edit of an inherited module", func() {
 		_, err = install(user, engine.InstallRequest{Arg: "kit"}, engine.Options{Target: engine.TargetRequest{Override: true}}, "skill/b")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read("go.yml")).To(ContainSubstring("skip: [skill/b]"))
+	})
+
+	It("Prof-P2-b: --skip --override of a project.yml module names no selections.yaml the file does not have", func() {
+		writeTree(proj, map[string]string{"kit/lola.yml": "name: kit\n", "kit/commands/a.md": "A\n", "kit/commands/b.md": "B\n",
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: kit}\n", ".lola/profiles/team.yml": "version: 1\n"})
+		activate(sc, "project:team")
+		sync(sc)
+		res, err := install(sc, engine.InstallRequest{Arg: "kit"}, engine.Options{Target: engine.TargetRequest{Override: true}}, "command/b")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("selections.yaml"))))
+		Expect(p.Selections).NotTo(BeAnExistingFile())
 	})
 
 	It("an install asking for what the inherited entry says is a notice, not a question", func() {
@@ -661,7 +672,7 @@ var _ = Describe("an edit of an inherited module", func() {
 		Expect(err).NotTo(HaveOccurred())
 		sel, err := config.ParseSelector("skill/a")
 		Expect(err).NotTo(HaveOccurred())
-		spec := engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}},
+		spec := engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}},
 			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}}}}
 		Expect(spec.AddFlagEdits([]engine.SelectionEdit{{Op: engine.EditUnskip, Selector: sel}}, false)).To(Succeed())
 		res, err := e.InstallAll(ctx, spec)
@@ -679,7 +690,7 @@ var _ = Describe("an edit of an inherited module", func() {
 		sync(user)
 		sel, err := config.ParseSelector("skill/a")
 		Expect(err).NotTo(HaveOccurred())
-		spec := engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}},
+		spec := engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}},
 			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: user, Source: engine.SourceFlag}}}}
 		Expect(spec.AddFlagEdits([]engine.SelectionEdit{{Op: engine.EditUnskip, Selector: sel}}, false)).To(Succeed())
 		res, err := e.InstallAll(ctx, spec)

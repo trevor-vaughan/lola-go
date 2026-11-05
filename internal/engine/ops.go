@@ -157,10 +157,14 @@ type InstallSpec struct {
 	// profiles, when set, receives each profile file the install writes, as it would write it.
 	then     []Scope
 	profiles *[]fileEdit
-	// ConfirmRemovals, for lola profile <name> --edit applied in several scopes, asks about the
-	// removals a later scope's sync makes, before anything is written (confirmEdited), as a sync's
-	// ConfirmRemovals does; nil cannot ask, and -y gives one that answers yes.
+	// ConfirmRemovals asks about the files a pick change deletes (confirmDeletes) and, for lola
+	// profile <name> --edit applied in several scopes, the removals a later scope's sync makes,
+	// before anything is written (confirmEdited), as a sync's ConfirmRemovals does; nil cannot
+	// ask, and -y gives one that answers yes.
 	ConfirmRemovals func([]Removal) (bool, error)
+	// DeletesConfirmed says the user already answered yes to this plan, which lists the files it
+	// deletes (the review's Apply): a pick change that deletes files asks nothing more (confirmDeletes).
+	DeletesConfirmed bool
 	// UserRun is the user's run at user scope, the hint of a refusal of a project at the home
 	// directory; "" gives it no hint.
 	UserRun string
@@ -193,6 +197,7 @@ type scopePlan struct {
 	sc               Scope
 	man              *manifest.Manifest
 	loaded           *manifest.Manifest
+	saved            *config.Selections // selections.yaml as the file has it, without this run's edits
 	trust            *trust.Record
 	untrustedTargets error
 	unresolved       bool // man holds a marketplace address (holdsAddress)
@@ -443,7 +448,9 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	for _, si := range spec.Scopes {
 		scopes = append(scopes, si.Scope)
 	}
-	defer func() { err = nameTaken(e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display), opts.Display) }()
+	defer func() {
+		err = e.freeNameHints(nameTaken(e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display), opts.Display), scopes, opts.Display)
+	}()
 	swept := e.sweepRuns()
 	run := spec.Staged
 	if run == nil {
@@ -521,6 +528,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	if err != nil {
 		return nil, err
 	}
+	saved := sel // selections.yaml as the file has it: the run's own edits go to the copies withPicks makes
 	res := newResult(opts.DryRun)
 	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
 	res.Notices = append(res.Notices, swept...)
@@ -563,16 +571,17 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 			return nil, err
 		}
 		plans[i] = &scopePlan{sc: si.Scope, man: man, loaded: man.Clone(), trust: rec, led: led, layers: layers, targets: si.Targets,
-			given: si.Targets, replace: si.Replace, unresolved: holdsAddress(man)}
+			given: si.Targets, replace: si.Replace, unresolved: holdsAddress(man), saved: saved}
 		if plans[i].target, plans[i].infos, err = e.writeTarget(si.Scope, layers, nil, opts.Target, opts.Target.verb(), installTyped(spec.Modules), opts.AskWhere); err != nil {
 			return nil, err
 		}
-		if plans[i].picks, err = picksAt(si.Scope, plans[i].target.from()); err != nil {
+		if plans[i].picks, err = e.picksAt(si.Scope, plans[i].target.from()); err != nil {
 			return nil, err
 		}
-		if plans[i].scopePicks, err = where(si.Scope); err != nil {
+		if plans[i].scopePicks, err = e.scopeSection(si.Scope); err != nil {
 			return nil, err
 		}
+		res.Notices = append(res.Notices, e.keyNotices(si.Scope)...)
 		plans[i].profiles = e.visibleOnce(si.Scope)
 		if infos := plans[i].infos; infos != nil {
 			plans[i].profiles = func() ([]profile.Info, error) { return infos, nil }
@@ -610,7 +619,20 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		}
 		for _, id := range sp.targets {
 			if _, err := e.target(id); err != nil {
-				return nil, err
+				if len(si.Targets) > 0 { // the user's -t, not a line of a file
+					return nil, err
+				}
+				path, shownAs := e.basePath(si.Scope), ""
+				switch {
+				case sp.target.ownTargets() && sp.target.Key != "":
+					path, shownAs = sp.target.Path, projectProfileFile(sp.target.Key)
+				case sp.target.ownTargets():
+					path, shownAs = sp.target.Path, shown(sp.target.Path)
+				default:
+					shownAs = filepath.Base(path)
+				}
+				at, _ := targetsOrigin(shownAs, path, "")
+				return nil, fmt.Errorf("%s%w", at, err)
 			}
 		}
 		for _, r := range spec.Modules {
@@ -810,6 +832,30 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 			}
 		}
 	}
+	// A project's base picks are personal (spec 2026-11-03 Pick-P2-a): a run whose --only, --skip
+	// or --unskip flags save picks in a project's section says so once per section, and how a team
+	// shares picks instead; picker answers and a plain install do not.
+	flagged := map[config.Where]bool{}
+	for i, si := range spec.Scopes {
+		if slices.ContainsFunc(si.Edits, func(ed SelectionEdit) bool { return ed.Flag }) {
+			flagged[plans[i].scopePicks] = true
+		}
+	}
+	var personal []config.Where
+	picked := map[config.Where][]string{}
+	for _, c := range onFile {
+		if opts.DryRun || c.Section.Kind != config.SectionProject || !flagged[c.Section] || c.Entry.Empty() || slices.Contains(picked[c.Section], shown(c.Module)) {
+			continue
+		}
+		if picked[c.Section] == nil {
+			personal = append(personal, c.Section)
+		}
+		picked[c.Section] = append(picked[c.Section], shown(c.Module))
+	}
+	for _, w := range personal {
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: fmt.Sprintf("picks for %s saved in %s: they are yours, not your teammates'; a project profile shares picks with your team",
+			strings.Join(picked[w], ", "), untrusted.Text(w.Origin(), untrusted.MaxName))})
+	}
 	res.Findings = append(res.Findings, probes.findings...)
 	var preps []*prepared
 	for _, sp := range plans {
@@ -829,6 +875,9 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 			res.Steps[i].Root = root(sp.sc)
 		}
 		preps = append(preps, pr)
+	}
+	if err := e.confirmDeletes(spec, out); err != nil {
+		return nil, err
 	}
 	// What --trust covers is shown once, before the first write, then recorded (Plan 9 §3.4).
 	if err := e.confirmTrusted(opts, res); err != nil {
@@ -1348,6 +1397,9 @@ func (e *Engine) editSelections(sel *config.Selections, spec InstallSpec, plans 
 		sections, all.layers, all.infos = append(sections, sp.pickSection), append(all.layers, sp.picksLayers()...), append(all.infos, sp.infos...)
 	}
 	global := func(string) config.Where { return config.Global() }
+	all.run = func(args ...string) string {
+		return e.installRun(plans[0].sc, spec.Options.Target, append(slices.Clone(args), "--global")...)
+	}
 	changes, notes, err := applyEdits(sel, global, all, spec.GlobalEdits, targets, sections)
 	if err != nil {
 		return nil, err
@@ -1359,7 +1411,8 @@ func (e *Engine) editSelections(sel *config.Selections, spec InstallSpec, plans 
 		if spec.WithMentions || spec.NameMentions {
 			mods = resolvedMentions(plans[i], spec, scans)
 		}
-		pl := places{path: sel.Path, layers: plans[i].picksLayers(), infos: plans[i].infos}
+		pl := places{path: sel.Path, layers: plans[i].picksLayers(), infos: plans[i].infos,
+			run: func(args ...string) string { return e.installRun(plans[i].sc, spec.Options.Target, args...) }}
 		se, err := editScope(sel, sections[i], pl, si.Edits, spec.GlobalEdits, targets, mods, spec.WithMentions)
 		if err != nil {
 			return nil, err
@@ -1601,11 +1654,11 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		sp.write(sel, *dest, section, v.Name, ent)
 		return nil
 	}
-	x, err := exclusions(sel, sp.sc, from, v.Name)
+	x, err := e.exclusions(sel, sp.sc, from, v.Name)
 	if err != nil {
 		return err
 	}
-	ignored, err := e.ignoredSection(sel, sp.sc, sp.layers, sp.profiles, sp.led.Profile != nil, from, v.Name)
+	ignored, err := e.ignoredSection(sp.saved, sp.sc, sp.layers, sp.profiles, sp.led.Profile != nil, from, v.Name)
 	if err != nil {
 		return err
 	}
@@ -1613,12 +1666,18 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		res.Notices = append(res.Notices, *ignored)
 	}
 	opts.freshPin, opts.entryFrom, opts.profiles = !keepPin, from, sp.profiles
+	opts.checkArg = e.checkName(checkWord(mentionArgs(v.Name, rr.v, rr.req, opts.staged, opts.DryRun)), v, e.committing(opts.staged, opts.DryRun, v.Name))
 	intents, finds, notes, mr, err := e.planModule(sp.sc, v, modTargets, &ent, x, opts, probes, sp.templates)
 	if err != nil {
 		return err
 	}
 	mr.Scope, mr.Root, mr.Market = sp.sc.Kind.String(), root(sp.sc), shownMarket(ent.Market)
 	res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
+	stale, err := e.staleNotices(sp.sc, v.Module, x, func(args ...string) (string, error) { return e.installRun(sp.sc, opts.Target, args...), nil })
+	if err != nil {
+		return err
+	}
+	res.Notices = append(res.Notices, stale...)
 	adds, err := e.newComponentNotices(v, installed, x, ent.RulesOn(), func(origin string, args ...string) (string, string, error) {
 		label, err := originLabel(x, origin, from, sp.profiles)
 		return label, e.installRun(sp.sc, opts.Target, args...), err
@@ -1951,6 +2010,15 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		return nil, err
 	}
 	defer unlockProfiles()
+	// The selections lock comes before the scope's (config.Lock): the run clears the picks of
+	// what it removes from a project's section.
+	if sc.Kind == target.Project && !opts.DryRun {
+		unlockSelections, err := config.Lock(e.Paths.SelectionsLock)
+		if err != nil {
+			return nil, err
+		}
+		defer unlockSelections()
+	}
 	man, led, unlock, err := e.load(sc, opts.DryRun)
 	if err != nil {
 		return nil, err
@@ -1961,6 +2029,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		return nil, err
 	}
 	res := newResult(opts.DryRun)
+	res.PicksCleared = []PickCleared{}
 	// The files an uninstall removes are the ledger's, which is this checkout's own only while
 	// git does not track it.
 	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
@@ -2118,7 +2187,7 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		}
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts})
 		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: slices.DeleteFunc(slices.Clone(ts), func(t string) bool { return !slices.Contains(installed, t) }),
-			MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}, Skipped: []string{}})
+			MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}, Skipped: []string{}, NotInOnly: []string{}})
 	}
 	pr, err := e.prepare(sc, led, changes, nil, nil, opts, res)
 	if err != nil {
@@ -2171,6 +2240,10 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		res.Edits = append(res.Edits, editsOf(ctx, sc, *targets[path], files[path].change.Set, files[path].change.Remove, nil)...)
 		res.Notices = append(res.Notices, e.alsoOn(sc, *targets[path], append([]Scope{sc}, opts.Then...))...)
 	}
+	clearing, err := e.picksToClear(sc, names, changes, pr.plan.Ledger, opts, res)
+	if err != nil {
+		return nil, err
+	}
 	if opts.DryRun {
 		return res, nil
 	}
@@ -2178,6 +2251,12 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	if err := e.saveManifest(sc, man, change, nil, edits, rec, removed, syncAgain(e.SyncCommand(sc)),
 		func(mw []plan.ManifestWrite) error { return e.commit(ctx, pr, opts, res, mw, nil) }); err != nil {
 		return nil, err
+	}
+	if len(clearing) > 0 {
+		if err := config.Save(e.Paths.Selections, clearing); err != nil {
+			return nil, errs.WithHints(fmt.Errorf("lola removed what you uninstalled, but could not clear its picks from selections.yaml: %w", untrusted.CleanErr(err)),
+				"a later install of the module would still apply them; delete its entry from "+untrusted.Text(e.Paths.Selections, untrusted.MaxName))
+		}
 	}
 	for i := range res.Modules {
 		name := res.Modules[i].Name
@@ -2189,6 +2268,64 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 		}
 	}
 	return res, nil
+}
+
+// picksToClear is the removal of the picks a project's uninstall leaves behind (Pick-P2-f): of
+// each module of names the run removes whole (it is in changes and the plan's ledger no longer
+// holds it), the entry in the project's selections.yaml section, which the caller saves. It
+// reports each in res.PicksCleared and a notice naming the command that restores it. A module
+// -t leaves on another target, or another layer still lists, keeps its picks; the global
+// section is never touched, and user scope has no section.
+func (e *Engine) picksToClear(sc Scope, names []string, changes []plan.ModuleChange, after *ledger.Ledger, opts Options, res *Result) ([]config.Change, error) {
+	if sc.Kind != target.Project {
+		return nil, nil
+	}
+	w, err := e.scopeSection(sc)
+	if err != nil {
+		return nil, err
+	}
+	sel, err := e.selections()
+	if err != nil {
+		return nil, err
+	}
+	var clearing []config.Change
+	for _, name := range names {
+		ent := sel.Entry(w, name)
+		if ent.Empty() || after.Modules[name] != nil || !slices.ContainsFunc(changes, func(m plan.ModuleChange) bool { return m.Name == name }) {
+			continue
+		}
+		c := PickCleared{Module: name, Section: untrusted.Text(sel.Origin(w, name), untrusted.MaxName),
+			Skip: patternStrings(ent.Skip), Include: patternStrings(ent.Include), Only: patternStrings(ent.Only)}
+		args := []string{name}
+		for _, f := range []struct {
+			flag string
+			sels []string
+		}{{"--skip", c.Skip}, {"--unskip", c.Include}, {"--only", c.Only}} {
+			for _, s := range f.sels {
+				args = append(args, f.flag, s)
+			}
+		}
+		if len(c.Only) > 0 {
+			args = append(args, "--exact")
+		}
+		if len(opts.Targets) > 0 {
+			args = append(args, "-t", strings.Join(opts.Targets, ","))
+		}
+		c.Restore = e.Command(sc, "install", append(args, opts.Display...)...)
+		res.PicksCleared = append(res.PicksCleared, c)
+		verb := "cleared"
+		if opts.DryRun {
+			verb = "would be cleared"
+		}
+		selectors := slices.Concat(c.Skip, c.Include, c.Only)
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: name + ": picks " + verb + ": " +
+			untrusted.Text(strings.Join(selectors, ", "), untrusted.MaxName*4) + " (restore: " + c.Restore + ")"})
+		clearing = append(clearing, config.Change{Section: w, Module: name})
+	}
+	if len(clearing) > 0 {
+		res.Notices = append(res.Notices, e.keyNotices(sc)...)
+	}
+	return clearing, nil
 }
 
 // notOn is what a refusal of -t says of a module: the targets lock.json records it installed
@@ -2307,6 +2444,10 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		return nil, nil, err
 	}
 	notices = append(notices, checked.Notices...)
+	if _, err := e.scopeSection(sc); err != nil {
+		return nil, nil, err
+	}
+	notices = append(notices, e.keyNotices(sc)...)
 	if what, _, _ := notInstalled(layers, led); what != "" {
 		notices = append(notices, Notice{Level: LevelInfo, Text: what + " → " + e.SyncCommand(sc, display...)})
 	}
@@ -2337,7 +2478,7 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		if w != nil {
 			ment, from = &w.Entry, w.From
 		}
-		x, err := exclusions(sel, sc, from, name)
+		x, err := e.exclusions(sel, sc, from, name)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2360,7 +2501,7 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		}
 		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest))
 		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
-			UpdateAvailable: update, Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom}
+			UpdateAvailable: update, SourceGone: sourceGone(entry.Source, sourceRoot(sc)), Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom}
 		if ment != nil {
 			base.Market = shownMarket(ment.Market)
 		}
@@ -2434,6 +2575,20 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		rows[i].Scope = sc.Kind.String()
 	}
 	return rows, notices, nil
+}
+
+// sourceGone reports whether recorded, a source as lock.json records it, is a local path that
+// does not exist under root. A URL or git's scp form is never looked up, and a path that cannot
+// be checked (permission denied, a file in the way) is not reported as gone.
+func sourceGone(recorded, root string) bool {
+	if strings.Contains(recorded, "://") || source.IsSCP(recorded) {
+		return false
+	}
+	if !filepath.IsAbs(recorded) {
+		recorded = filepath.Join(root, recorded)
+	}
+	_, err := os.Stat(recorded)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // notInstalledRows are the list rows of w, an entry a layer wants that lock.json does not

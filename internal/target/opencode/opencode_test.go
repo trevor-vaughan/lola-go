@@ -87,10 +87,10 @@ var _ = Describe("opencode", func() {
 			"warn skill-arguments-dropped args", "warn skill-arguments-dropped doubled"}), "an escaped $ or one after a character is not a placeholder")
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "opencode", Kind: "skill", Artifact: "inline", Code: "skill-shell-dropped",
 			Text: "opencode does not run shell in skills; it reaches the model as text",
-			Hint: `wrap the shell in {% if target != "opencode" %}…{% endif %} in the skill's SKILL.md.liquid template`}))
+			Hint: `wrap the shell in {% if target != "opencode" %}…{% endif %} in the skill's SKILL.md.liquid template`, Class: target.ClassDetail, AuthorHint: true}))
 		Expect(fs[2]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "opencode", Kind: "skill", Artifact: "args", Code: "skill-arguments-dropped",
 			Text: "opencode does not fill argument placeholders in skills; they reach the model as written",
-			Hint: `wrap the placeholders in {% if target != "opencode" %}…{% endif %} in the skill's SKILL.md.liquid template`}))
+			Hint: `wrap the placeholders in {% if target != "opencode" %}…{% endif %} in the skill's SKILL.md.liquid template`, Class: target.ClassDetail, AuthorHint: true}))
 	})
 
 	It("skips, forceably, skills OpenCode would reject", func() {
@@ -106,7 +106,7 @@ var _ = Describe("opencode", func() {
 		Expect(fs[1].Text).To(Equal("opencode needs skill names matching ^[a-z0-9]+(-[a-z0-9]+)*$"))
 		Expect(fs[3]).To(Equal(target.Finding{Severity: target.SeveritySkip, Target: "opencode", Kind: "skill", Artifact: "lint", Code: "name-rejected",
 			Text: "opencode needs the skill's name (linter) to equal its directory name", Hint: "rename the directory to linter, or set name: lint",
-			Forceable: true}))
+			Forceable: true, Class: target.ClassDetail, AuthorHint: true}))
 		ctx.Force = true
 		ins, fs = plan1(m)
 		Expect(string(byPath(ins)[".opencode/skills/lint/SKILL.md"].Data)).To(Equal("---\nname: linter\ndescription: d\n---\nx\n"), "rendered as written")
@@ -142,9 +142,9 @@ var _ = Describe("opencode", func() {
 		Expect(fs).To(Equal([]target.Finding{
 			{Severity: target.SeverityWarn, Target: "opencode", Kind: "command", Artifact: "inline", Code: "opencode/shell-unchecked",
 				Text: "OpenCode runs !`…` without Claude's permission checks (allowed-tools is dropped)",
-				Hint: "if the shell needs Claude's permission checks, wrap it in {% if target != \"opencode\" %}…{% endif %} in the command's .md.liquid template"},
+				Hint: "if the shell needs Claude's permission checks, wrap it in {% if target != \"opencode\" %}…{% endif %} in the command's .md.liquid template", Class: target.ClassDetail, AuthorHint: true},
 			{Severity: target.SeveritySkip, Target: "opencode", Kind: "command", Artifact: "fence", Code: "opencode/shell-fence",
-				Text: "OpenCode does not run fenced shell; the command would send it to the model as text", Hint: "use inline !`…`", Forceable: true},
+				Text: "OpenCode does not run fenced shell; the command would send it to the model as text", Hint: "use inline !`…`", Forceable: true, Class: target.ClassDetail, AuthorHint: true},
 		}), "a command without shell gets neither finding")
 		ctx.Force = true
 		ins, fs = plan1(m)
@@ -170,7 +170,7 @@ var _ = Describe("opencode", func() {
 			"warn frontmatter-key-dropped all"}), "no renumbering warn for a command that did not change")
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "opencode", Kind: "command", Artifact: "fix",
 			Code: "opencode/arguments-renumbered", Text: "Claude's 0-based argument placeholders became OpenCode's 1-based $1, $2, …",
-			Hint: "check the command with a few arguments; OpenCode may split or join them differently"}))
+			Hint: "check the command with a few arguments; OpenCode may split or join them differently", Class: target.ClassDetail}))
 	})
 
 	It("keeps Claude-escaped placeholders, which OpenCode cannot escape, and warns once per command", func() {
@@ -190,7 +190,7 @@ var _ = Describe("opencode", func() {
 			"OpenCode has no named arguments, so an escaped $name is safe")
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "opencode", Kind: "command", Artifact: "price",
 			Code: "opencode/escaped-arguments", Text: `OpenCode has no escape for $; \$1 and \$ARGUMENTS will still be replaced by arguments`,
-			Hint: "reword the text so it does not contain $ followed by a digit or ARGUMENTS"}))
+			Hint: "reword the text so it does not contain $ followed by a digit or ARGUMENTS", Class: target.ClassDetail, AuthorHint: true}))
 	})
 
 	It("reads a doubled backslash as two literal ones, so the placeholder after it is still renumbered", func() {
@@ -221,10 +221,10 @@ var _ = Describe("opencode", func() {
 		Expect(fs).To(Equal([]target.Finding{
 			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped",
 				Text: "color dropped: opencode needs a string matching ^#[0-9a-fA-F]{6}$",
-				Hint: "in rev.targets.yaml beside the agent, set opencode's color to a string matching ^#[0-9a-fA-F]{6}$, or to null to leave it out"},
+				Hint: "in rev.targets.yaml beside the agent, set opencode's color to a string matching ^#[0-9a-fA-F]{6}$, or to null to leave it out", Class: target.ClassDetail, AuthorHint: true},
 			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped", Text: "model dropped: opencode needs a string matching ^[^/]+/.+$",
-				Hint: "in rev.targets.yaml beside the agent, set opencode's model to a string matching ^[^/]+/.+$, or to null to leave it out"},
-			{Severity: target.SeverityInfo, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-key-dropped", Text: "name dropped: the file name names the agent"},
+				Hint: "in rev.targets.yaml beside the agent, set opencode's model to a string matching ^[^/]+/.+$, or to null to leave it out", Class: target.ClassDetail, AuthorHint: true},
+			{Severity: target.SeverityInfo, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-key-dropped", Text: "name dropped: the file name names the agent", Class: target.ClassDetail},
 		}))
 	})
 
@@ -243,7 +243,7 @@ var _ = Describe("opencode", func() {
 		Expect(codes(fs)).To(Equal([]string{"skip agent-tools-unenforceable list", "skip agent-tools-unenforceable string"}))
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeveritySkip, Target: "opencode", Kind: "agent", Artifact: "list",
 			Code: "agent-tools-unenforceable", Text: "opencode cannot enforce this agent's tool list; without it the agent can use every tool",
-			Hint: "under opencode: in the agent's .targets.yaml, set tools: null and restrict the agent with permission:, as OpenCode does", Forceable: true}))
+			Hint: "under opencode: in the agent's .targets.yaml, set tools: null and restrict the agent with permission:, as OpenCode does", Forceable: true, Class: target.ClassSafety, AuthorHint: true}))
 		ctx.Force = true
 		ins, fs = plan1(m)
 		Expect(string(byPath(ins)[".opencode/agents/list.md"].Data)).To(Equal("---\nmode: subagent\ndescription: d\n---\nL.\n"))
@@ -291,12 +291,12 @@ var _ = Describe("opencode", func() {
 		Expect(p["opencode.json/mcp/web"].Value).To(MatchJSON(`{"type":"remote","url":"https://x/mcp","headers":{"Authorization":"Bearer {env:API_KEY}"}}`))
 		Expect(p["opencode.json/mcp/ev"].Value).To(MatchJSON(`{"type":"remote","url":"https://x/sse"}`))
 		Expect(fs).To(Equal([]target.Finding{
-			{Severity: target.SeverityInfo, Target: "opencode", Kind: "mcp", Artifact: "gh", Code: "opencode/env-reference", Text: "${GH_TOKEN} becomes {env:GH_TOKEN}"},
+			{Severity: target.SeverityInfo, Target: "opencode", Kind: "mcp", Artifact: "gh", Code: "opencode/env-reference", Text: "${GH_TOKEN} becomes {env:GH_TOKEN}", Class: target.ClassDetail},
 			{Severity: target.SeverityWarn, Target: "opencode", Kind: "mcp", Artifact: "gh", Code: "opencode/env-default-dropped",
 				Text: `opencode has no defaults for environment references; ${LOG_LEVEL:-info} becomes {env:LOG_LEVEL}, dropping "info"`,
-				Hint: "set LOG_LEVEL in the environment opencode runs in"},
-			{Severity: target.SeverityWarn, Target: "opencode", Kind: "mcp", Artifact: "gh", Code: "mcp-cwd-dropped", Text: `opencode has no working-directory setting; cwd "/tmp" dropped`},
-			{Severity: target.SeverityInfo, Target: "opencode", Kind: "mcp", Artifact: "web", Code: "opencode/env-reference", Text: "${API_KEY} becomes {env:API_KEY}"},
+				Hint: "set LOG_LEVEL in the environment opencode runs in", Class: target.ClassDetail},
+			{Severity: target.SeverityWarn, Target: "opencode", Kind: "mcp", Artifact: "gh", Code: "mcp-cwd-dropped", Text: `opencode has no working-directory setting; cwd "/tmp" dropped`, Class: target.ClassDetail},
+			{Severity: target.SeverityInfo, Target: "opencode", Kind: "mcp", Artifact: "web", Code: "opencode/env-reference", Text: "${API_KEY} becomes {env:API_KEY}", Class: target.ClassDetail},
 		}))
 	})
 

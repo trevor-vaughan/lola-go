@@ -91,6 +91,7 @@ linters:
             - $gostd
             - github.com/trevor-vaughan/lola-go/internal/errs
             - github.com/trevor-vaughan/lola-go/internal/untrusted
+            - go.yaml.in/yaml/v3 # run.yaml, each run's record
         # The active-list names lock.json stores: a leaf the ledger imports, so it reads no YAML.
         activeprofile:
           list-mode: strict

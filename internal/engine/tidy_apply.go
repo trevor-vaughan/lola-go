@@ -30,7 +30,12 @@ func (m *tidyMove) open() error {
 	if m.t != nil {
 		return nil
 	}
-	t, err := trash.OpenTrash(m.s.e.Paths.Trash, m.s.e.Now())
+	sc := m.s.req.Scope
+	rec := trash.RunRecord{Command: m.s.e.Command(sc, "tidy"), Scope: sc.Kind.String()}
+	if sc.Kind == target.Project {
+		rec.Root = m.base
+	}
+	t, err := trash.OpenTrash(m.s.e.Paths.Trash, m.s.e.Now(), rec)
 	if err != nil {
 		return err
 	}
@@ -232,6 +237,7 @@ func (m *tidyMove) servers(chosen []TidyUnit, fresh map[*tidyDest]*tidyDest) err
 		if err != nil {
 			return err
 		}
+		m.t.MarkCredential(to)
 		m.res.TrashCredentials = append(m.res.TrashCredentials, to)
 		m.res.SizeBytes += int64(len(d.data))
 		if err := fsx.WriteFileAtomic(d.abs, edited, d.mode); err != nil {

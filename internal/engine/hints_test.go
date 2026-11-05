@@ -180,7 +180,10 @@ var _ = Describe("hints", func() {
 					engine.Options{Targets: []string{"claude-code"}, Display: []string{"--plain", "--no-pager"}})
 				return err
 			},
-			func() []string { return []string{"remove the cached one first: lola cache rm kit --plain --no-pager"} }),
+			func() []string {
+				return []string{"kit is installed in this project; uninstall it there first: lola uninstall --project kit --plain --no-pager",
+					"then remove the cached one: lola cache rm kit --plain --no-pager"}
+			}),
 		Entry("uninstall --profile naming a profile that does not list the module",
 			func() error {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})

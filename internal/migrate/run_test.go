@@ -25,6 +25,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/migrate"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/trash"
 )
 
 // snapshot hashes every file and link below each root, so a spec can show nothing changed.
@@ -169,6 +170,11 @@ var _ = Describe("Migrate", func() {
 			_, err := os.Lstat(to)
 			Expect(err).NotTo(HaveOccurred(), "every manifest line names an existing trash path")
 		}
+		record, err := trash.ReadRun(res.Trash)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record).To(And(HaveField("Command", "lola migrate"), HaveField("Scope", "user"), HaveField("Root", "")))
+		Expect(record.Credentials).To(ContainElement(filepath.Join(t, ".mcp.json")), "a settings file holding an MCP entry may hold credentials")
+		Expect(record.Credentials).NotTo(ContainElement(filepath.Join(t, ".claude/commands/ship.md")))
 
 		Expect(res.Home.Action).To(Equal(migrate.HomeMove))
 		Expect(h.dir).NotTo(BeADirectory())

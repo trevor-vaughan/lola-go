@@ -491,7 +491,7 @@ var _ = Describe("profiles", func() {
 
 		bad := writeProfile("go", "version: 1\nmodules: oops\n")
 		_, err = e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: c}}, engine.Options{Targets: []string{"claude-code"}})
-		Expect(err).To(MatchError(HavePrefix(bad+": ")), "an active profile that does not load refuses the install")
+		Expect(err).To(MatchError(HavePrefix(bad+":2: ")), "an active profile that does not load refuses the install")
 		Expect(e.Store.Has("c")).To(BeFalse(), "before anything is fetched")
 	})
 
@@ -499,7 +499,16 @@ var _ = Describe("profiles", func() {
 		bad := writeProfile("go", "version: 1\nmodules:\n  - {name: a, source: ../a, colour: red}\n")
 		activate(user, "user:go")
 		_, err := sync(user)
-		Expect(err).To(MatchError(And(HavePrefix(bad+": "), ContainSubstring("line 3: field colour not found"))))
+		Expect(err).To(MatchError(HavePrefix(bad + `:3: unknown key "colour" (a profile entry has: `)))
+	})
+
+	It("Prof-P2-d: an unknown target in a profile's targets: names the profile file and the line", func() {
+		a := mod("a", "a", "A")
+		bad := writeProfile("go", "version: 1\ntargets: [nope]\nmodules:\n  - {name: a, source: "+a+"}\n")
+		activate(user, "user:go")
+		_, err := sync(user)
+		Expect(err).To(MatchError(HavePrefix(bad + `:2: `)))
+		Expect(err).To(MatchError(ContainSubstring(`unknown target "nope"`)))
 	})
 
 	It("a project with no active profile never lists the user's profiles", func() {
@@ -954,7 +963,7 @@ var _ = Describe("profiles", func() {
 		bad := writeProfile("go", "version: 1\nmodules:\n  - {name: a, nope: 1}\n")
 		_, _, err := e.ProfileState(ctx, []engine.Scope{user}, "go")
 		Expect(err).To(MatchError(ContainSubstring(bad)))
-		Expect(err).To(MatchError(ContainSubstring("line 3")))
+		Expect(err).To(MatchError(ContainSubstring(`:3: unknown key "nope"`)))
 	})
 
 	It("refuses a profile listed but gone when read, without a panic", func() {

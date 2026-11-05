@@ -28,6 +28,12 @@ type CheckedModule struct {
 	Findings  []target.Finding `json:"findings"`
 	Skipped   []string         `json:"skipped"`              // components your picks exclude at the scope sync uses; not checked
 	SkippedIn string           `json:"skipped_in,omitempty"` // where the picks that exclude them live (skippedIn)
+	NotInOnly []string         `json:"not_in_only"`          // those of Skipped the only: list in force alone leaves out
+	OnlyIn    string           `json:"only_in,omitempty"`    // where that only: list lives (excludedWhere)
+	Summary   *PicksSummary    `json:"-"`                    // Skipped shown as the picks they leave, when they are that (summarizePicks)
+	// Notices is what the picks leave out that the module's components mention, with the install
+	// that adds it (mentionNotice), or why its mentions could not be read; [] for none.
+	Notices []Notice `json:"notices"`
 }
 
 // CheckReport is the result of lola check: per-module findings, plus findings about the
@@ -47,6 +53,7 @@ type CheckReport struct {
 // checked, since sync would not install them. A marketplace address is checked as install
 // would fetch it (Plan 6c §3.3); display is the run's output flags, which its hints keep.
 func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, display []string) (*CheckReport, error) {
+	given := ids
 	if len(ids) == 0 {
 		for _, t := range e.Targets {
 			ids = append(ids, t.ID())
@@ -101,17 +108,21 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 	}
 	profiles := e.visibleOnce(sc)
 	for _, arg := range args {
-		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, probes, templates, want, profiles, display)
+		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, given, probes, templates, want, profiles, display)
 		if err != nil {
 			return nil, err
 		}
 		rep.Modules = append(rep.Modules, cm)
 	}
 	rep.Findings = append(rep.Findings, probes.findings...)
+	if failed := e.keyFailure(sc); failed != nil {
+		rep.Findings = append(rep.Findings, target.Finding{Severity: target.SeverityWarn, Kind: "module", Code: "picks-keyed-by-path",
+			Text: keyedByPath(failed), Hint: strings.Join(errs.Hints(failed), "; ")})
+	}
 	return rep, nil
 }
 
-func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, probes *probeRun,
+func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, given []string, probes *probeRun,
 	templates *templateRun, want []Wanted, profiles func() ([]profile.Info, error), display []string) (cm CheckedModule, err error) {
 	full, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg, display)
 	if err != nil {
@@ -122,21 +133,22 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 	if w := find(want, full.Name); w != nil {
 		provider = w.From
 	}
-	x, err := exclusions(sel, sc, provider, full.Name)
+	x, err := e.exclusions(sel, sc, provider, full.Name)
 	if err != nil {
 		return cm, err
 	}
 	r := resolveComponents(full, x, true)
 	m := r.module
-	cm = CheckedModule{Name: m.Name, Targets: []string{}, Findings: warningFindings(m), Skipped: r.skipped}
+	cm = CheckedModule{Name: m.Name, Targets: []string{}, Findings: warningFindings(m), Skipped: r.skipped, NotInOnly: []string{}, Notices: []Notice{}}
 	nf, err := nativeFindings(contentDir, m, arg, display)
 	if err != nil {
 		return cm, err
 	}
 	cm.Findings = append(cm.Findings, nf...)
-	if cm.SkippedIn, err = skippedIn(profiles, x, r.skipped, provider); err != nil {
+	if cm.SkippedIn, cm.NotInOnly, cm.OnlyIn, err = excludedWhere(profiles, x, r.skipped, provider); err != nil {
 		return cm, err
 	}
+	cm.Summary = resolvedSummary(x, full, true, r.skipped)
 	var ment *manifest.Entry
 	from := ""
 	if w := find(want, m.Name); w != nil && e.checksEntry(sc, cwd, arg, w.Entry) {
@@ -153,6 +165,14 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 		ment = nil
 	}
 	cm.Findings = append(cm.Findings, attrsUndefined(m)...)
+	// What the picks leave out that a component mentions, named as install names it, with the
+	// install of arg that adds it at the assistants given (-t).
+	if ms, err := scanMentions(store.Version{Name: full.Name, ContentDir: contentDir, Module: full}); err != nil {
+		cm.Notices = append(cm.Notices, Notice{Level: LevelWarn, Text: err.Error()})
+	} else {
+		gaps := mentionGaps(components(full), ms, x, ment.RulesOn())
+		cm.Notices = append(cm.Notices, e.mentionNotice(sc, m.Name, []string{arg}, nil, gaps, arg, Options{Targets: given, Display: display})...)
+	}
 	vars := resolvedVars(m, ment)
 	for _, t := range ts {
 		if !module.Supports(m.Targets, t.ID()) {

@@ -110,7 +110,7 @@ var _ = Describe("local entries inside a project", func() {
 			Notices []map[string]string `json:"notices"`
 		}
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
-		Expect(doc.Notices).To(ContainElements(map[string]string{"level": "warn", "text": inside(filepath.Join(p.UserProfiles, "default.yml"))},
-			map[string]string{"level": "info", "text": "keep it in the project instead: lola uninstall --user notes -y --json, then lola install -C " + proj + " notes -t claude-code --json"}))
+		Expect(doc.Notices).To(ContainElements(map[string]string{"level": "warn", "class": "safety", "text": inside(filepath.Join(p.UserProfiles, "default.yml"))},
+			map[string]string{"level": "info", "class": "safety", "text": "keep it in the project instead: lola uninstall --user notes -y --json, then lola install -C " + proj + " notes -t claude-code --json"}))
 	})
 })

@@ -594,7 +594,7 @@ var _ = Describe("saving selections", func() {
 
 		Expect(read()).To(Equal("# lola selections: components you chose not to install.\n" +
 			"# Written by `lola install`; safe to edit by hand; takes effect on the next install or render.\n" +
-			"# A scope's section overrides global. Project keys are absolute paths (no ~).\n" +
+			"# A scope's section overrides global. Project keys are git:<host>/<path>#<dir> for a clone, else absolute paths (no ~).\n" +
 			"version: 1\nprojects:\n  " + proj + ":\n    m:\n      skip: [skill/a]\n"))
 		fi, err := os.Stat(path)
 		Expect(err).NotTo(HaveOccurred())

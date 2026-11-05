@@ -86,6 +86,11 @@ modules:
 			Expect(err).To(MatchError(fs.ErrNotExist))
 		})
 
+		It("Prof-P2-d: a newer version is refused with the one hint that fixes it", func() {
+			_, err := profile.Load(write("new.yml", "version: 2\nextends: [go]\n"))
+			Expect(errs.Hints(err)).To(Equal([]string{"upgrade lola"}))
+		})
+
 		DescribeTable("refuses a crafted file with its path and line",
 			func(content, want string) {
 				path := write("bad.yml", content)
@@ -97,9 +102,15 @@ modules:
 				Expect(errs.Hints(err)).To(ContainElement("fix it by hand"))
 				Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("move it aside")), "lola writes no profile to start anew")
 			},
-			Entry("a newer version, before its keys", "version: 2\nextends: [go]\n", "written by a newer lola (profile version 2); upgrade lola"),
-			Entry("a version that is not a number, quoted safely", "version: \"1\\u001b[2J\"\n", "cannot unmarshal"),
-			Entry("an unknown key", "version: 1\nshell: rm -rf\n", "line 2: field shell not found"),
+			Entry("a version that is not a number, quoted safely", "version: \"1\\u001b[2J\"\n", ":1: version: expected a number, found text"),
+			Entry("Prof-P2-d: an unknown key, naming the keys a profile has", "version: 1\nshell: rm -rf\n",
+				`:2: unknown key "shell" (a profile has: version, description, targets, bundle, modules)`),
+			Entry("Prof-P2-d: an unknown key of an entry, naming the keys an entry has", "version: 1\nmodules:\n  - name: a\n    source: ../a\n    extends: x\n",
+				`:5: unknown key "extends" (a profile entry has: name, source, ref, path, commit, digest, targets, rules, vars, market, components, only, skip)`),
+			Entry("Prof-P2-d: a value of the wrong kind, said without a Go type", "version: 1\nmodules:\n  - name: a\n    source: ../a\n    only: skill/b1\n",
+				":5: only: expected a list, found text"),
+			Entry("Prof-P2-d: a wrong kind on a line with several keys, which names none", "version: 1\nmodules:\n  - {name: a, source: ../a, only: x}\n",
+				":3: expected a list, found text"),
 			Entry("a control character in a source", "version: 1\nmodules:\n  - name: a\n    source: \"https://x/a\\u0007.git\"\n",
 				":3: module a: source holds control or invisible characters"),
 			Entry("an invisible character in the description", "version: 1\ndescription: \"a\\u200bb\"\n",
@@ -489,8 +500,7 @@ modules:
 
 		It("a crafted profile file refuses at load", func() {
 			for content, want := range map[string]string{
-				"version: 2\nextends: [go]\n": "written by a newer lola (profile version 2); upgrade lola",
-				"version: 1\nshell: rm -rf\n": "field shell not found",
+				"version: 1\nshell: rm -rf\n": `:2: unknown key "shell"`,
 				"version: 1\nmodules:\n  - name: a\n    source: \"https://x/a\\u0007.git\"\n": ":3: module a: source holds control or invisible characters",
 				"version: 1\ndescription: " + strings.Repeat("x", 257) + "\n":                 ":2: description is longer than 256 bytes",
 			} {
@@ -523,8 +533,8 @@ modules:
 			}
 			for content, want := range map[string]string{
 				"version: 2\n":                                             "written by a newer lola",
-				"version: 1\nshell: rm -rf\n":                              "field shell not found",
-				"version: 1\ndescription: [a, b]\n":                        "cannot unmarshal",
+				"version: 1\nshell: rm -rf\n":                              `:2: unknown key "shell"`,
+				"version: 1\ndescription: [a, b]\n":                        ":2: description: expected text, found a list",
 				"version: 1\n---\nversion: 1\n":                            "holds more than one YAML document",
 				"version: 1\nbundle: [a, a]\n":                             ":2: bundle lists a twice",
 				"version: 1\nmodules:\n  - {name: f, source: '@acme/f'}\n": ":3: f's source is @acme/f",

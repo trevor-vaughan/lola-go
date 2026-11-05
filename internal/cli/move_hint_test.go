@@ -3,6 +3,7 @@ package cli_test
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -497,6 +498,25 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 				"include: skill/a1 cannot travel: a profile entry has no include:, and the global skip skill/a1 applies to it; the move would remove skill/a1 here; " +
 				"beta's picks in selections.yaml projects[" + proj + "] cannot move into profile mine as they are: " +
 				"include: skill/b1 cannot travel: a profile entry has no include:, and the global skip skill/b1 applies to it; the move would remove skill/b1 here\n"))
+		})
+
+		It("Pick-P2-a: a move whose selections.yaml write fails names the path key the entry is still under in a clone", func() {
+			install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
+			for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "https://example.com/o/r"}} {
+				out, err := exec.Command("git", append([]string{"-C", proj}, args...)...).CombinedOutput()
+				Expect(err).NotTo(HaveOccurred(), string(out))
+			}
+			lolaDir := filepath.Dir(p.Selections)
+			Expect(os.MkdirAll(p.UserProfiles, 0o700)).To(Succeed())
+			Expect(os.Chmod(lolaDir, 0o500)).To(Succeed())
+			DeferCleanup(os.Chmod, lolaDir, os.FileMode(0o700))
+
+			r := lola("profile", "--user", "--move", "alpha", "--to", "base", "-y")
+			Expect(os.Chmod(lolaDir, 0o700)).To(Succeed())
+			Expect(r.code).To(Equal(1), r.out)
+			Expect(r.err).To(ContainSubstring("but lola could not remove alpha from selections.yaml's projects[" + proj + "]: "))
+			Expect(r.err).To(ContainSubstring("  hint: no lola command removes it: in " + p.Selections + ", delete alpha under projects: " + proj +
+				":; until then lola warns that it is ignored\n"))
 		})
 
 		It("Pick-P1-a: a move between scopes whose selections.yaml write fails says the move is done, and hints no rerun", func() {

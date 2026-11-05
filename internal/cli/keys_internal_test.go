@@ -211,6 +211,47 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
+	It("the trash picker ticks runs and files with x, then Enter asks what to do with them; its key help says what each key does", func() {
+		st := TrashPickStep{Options: []TidyOption{{ID: "0", Label: "2026-11-03 12:00:00 UTC  lola tidy  project /p  1 file, 5 B"},
+			{ID: "0/0", Label: "    /p/a.md"}}}
+		got, err := onInput(paced("x\r", "\r")).TrashPick(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(TrashAnswer{Picked: []string{"0"}, Action: TrashRestore}))
+		got, err = onInput(paced("jx\r", "j\r")).TrashPick(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(TrashAnswer{Picked: []string{"0/0"}, Action: TrashEmpty}))
+		again := st
+		again.Preselect = []string{"0/0"}
+		got, err = onInput(paced("\r", "\r")).TrashPick(again)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.Picked).To(Equal([]string{"0/0"}), "the last answer stays ticked")
+		_, err = onTerminal("\x03").TrashPick(st)
+		Expect(err).To(MatchError(ErrAborted))
+
+		By("accessible mode numbers the rows and the actions, and shows why it asks again")
+		var out bytes.Buffer
+		again.Preselect, again.Problem = nil, "nothing ticked: tick files or runs, then pick what to do with them"
+		got, err = accessible(&out, "2", "0", "2").TrashPick(again)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(TrashAnswer{Picked: []string{"0/0"}, Action: TrashEmpty}))
+		Expect(out.String()).To(ContainSubstring("nothing ticked: tick files or runs, then pick what to do with them"))
+		Expect(out.String()).To(ContainSubstring("1.   2026-11-03 12:00:00 UTC  lola tidy  project /p  1 file, 5 B\n2.       /p/a.md\n"))
+		Expect(out.String()).To(And(ContainSubstring("1. Restore ticked"), ContainSubstring("2. Empty ticked runs")))
+
+		By("the full form's key help")
+		h := &huhForms{in: &eofReader{r: strings.NewReader("")}, height: 40}
+		var picked []string
+		var action string
+		f, _ := h.form(huh.ThemeFunc(func(bool) *huh.Styles { return plainTheme() }), Nav{}, h.trashFields(st, &picked, &action)...)
+		f.Init()
+		list := shown(f)
+		Expect(list).To(ContainSubstring("Restore or empty which?"))
+		Expect(list).To(ContainSubstring("a [whole run] row takes the whole run, whatever of its files is ticked"))
+		Expect(list).To(ContainSubstring("enter: next"))
+		Expect(list).To(ContainSubstring("q quit • x toggle • ↑ up • ↓ down • / filter • enter confirm"))
+		Expect(list).To(And(ContainSubstring("Do what with the ticked?"), ContainSubstring("> Restore ticked"), ContainSubstring("Empty ticked runs")))
+	})
+
 	It("goes back a screen on Esc, from a picker, a menu and a text input alike", func() {
 		st := two
 		st.Nav = Nav{Back: true}

@@ -32,6 +32,7 @@ type ModuleView struct {
 	Description string        `json:"description"`
 	Version     string        `json:"version"`
 	Digest      string        `json:"digest"`
+	Commit      string        `json:"commit"` // the commit a git source resolved to; "" for any other source
 	Format      string        `json:"format"`
 	Source      string        `json:"source"`
 	Type        string        `json:"type"`
@@ -79,6 +80,9 @@ func NewModuleView(v store.Version, o store.Origin) ModuleView {
 		Source: o.Source, Type: o.Type, Path: o.Path, Heads: []HeadView{}, Skills: []string{}, Commands: []string{}, Agents: []string{},
 		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}, Vars: []VarView{}, Templates: []string{},
 		Partials: []string{}, Attributes: []string{}}
+	if source.Kind(o.Type) == source.KindGit {
+		mv.Commit = cmp.Or(v.Commit, v.Meta.Commit)
+	}
 	for _, h := range o.Heads {
 		mv.Heads = append(mv.Heads, HeadView{Ref: h.Ref, Digest: h.Digest})
 	}
@@ -316,7 +320,12 @@ type InfoConsent struct {
 
 // installBy is how an install takes exactly the version info showed (§4.3 item 5, A3, R-9-11,
 // R-9-U10): the argument, --ref and --path.
-type installBy struct{ arg, ref, path string }
+type installBy struct {
+	arg, ref, path string
+	// fork says the version is staged only: the cache holds another module of its name, so no
+	// install of it works until that one is removed (Pick-P2-c).
+	fork bool
+}
 
 // Info resolves req's argument as install does, fetching a source or a marketplace entry into
 // the cache as cache add does, and reports the version: what it holds, what would run code, and
@@ -326,11 +335,11 @@ type installBy struct{ arg, ref, path string }
 // (§4.4).
 func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error) {
 	req.Ref = source.RecordedRef(req.Ref) // the next step echoes a full-SHA ref lower-cased (R-9-31)
-	run, done, err := e.runDir()
+	run, err := e.StageInstall()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, done()) }()
+	defer func() { err = errors.Join(err, run.Close()) }()
 	v, o, by, err := e.infoVersion(ctx, req, run)
 	if err != nil {
 		return nil, err
@@ -413,6 +422,10 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 					}
 					in.Notices = append(in.Notices, Notice{Level: LevelWarn, Text: text})
 				}
+				if _, err := e.scopeSection(c.Scope); err != nil { // the picks info shows are keyed by it
+					return nil, err
+				}
+				in.Notices = append(in.Notices, e.keyNotices(c.Scope)...)
 				info.Install = append(info.Install, in)
 			}
 			info.Runs.MCPServers, info.Runs.RuntimeHooks = mcpServers(v.Module, e.targetIDs()), declared
@@ -420,7 +433,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 		}
 	}
 	for i, c := range res.Scopes {
-		in, err := e.infoPlan(ctx, req, c, scopeTargets[i], shownTargets[i], request, v, hookConsent, func(k TrustKinds) string {
+		in, err := e.infoPlan(ctx, req, run, c, scopeTargets[i], shownTargets[i], request, v, hookConsent, func(k TrustKinds) string {
 			// The kinds the install would need as far as known before its plan: hooks, and runtime
 			// hooks the module declares (RR2).
 			return req.Install(by.arg, by.ref, by.path, k|trustNeeded(unplanned("", v, hookConsent, declared).Consent))
@@ -436,6 +449,10 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 		if err := e.infoComponents(&in, c.Scope, v, ms); err != nil && in.Refusal == nil {
 			return nil, err
 		}
+		if _, err := e.scopeSection(c.Scope); err != nil { // the picks info shows are keyed by it
+			return nil, err
+		}
+		in.Notices = append(in.Notices, e.keyNotices(c.Scope)...)
 		info.Install = append(info.Install, in)
 	}
 	var refusedIDs []string
@@ -463,6 +480,17 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	}
 	if !slices.ContainsFunc(info.Install, func(in InfoInstall) bool { return !in.current }) {
 		return info, nil // installing it again changes nothing anywhere
+	}
+	if by.fork {
+		// "lola install <name>" would install the cached module of that name, and the source is
+		// refused until it goes: say what frees the name, then the install of the source.
+		users, err := e.nameUsers(v.Name, scopes, req.Display)
+		if err != nil {
+			return nil, err
+		}
+		info.Hints = slices.Concat(info.Hints, users, []string{"then remove the cached one: " + errs.ShellJoin(append([]string{"lola", "cache", "rm", v.Name}, req.Display...)),
+			"then install this source: " + req.Install(req.Arg, req.Ref, req.Path, needs)})
+		return info, nil
 	}
 	for i := range info.Install {
 		info.Install[i].Command = req.Install(by.arg, by.ref, by.path, needs)
@@ -567,12 +595,12 @@ func (e *Engine) scriptConsent(sc Scope) ([]InfoConsent, error) {
 // without a component selection, as that source at the commit fetched (R-9-11), which installs
 // from the cache (R-9-21); anything else by its cached name at the head that holds it, which
 // installs from the cache without touching the source (pinEntryRef may pin it further).
-func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run string) (v store.Version, o store.Origin, by installBy, err error) {
+func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRun) (v store.Version, o store.Origin, by installBy, err error) {
 	_, isAddr, err := market.ParseAddress(req.Arg)
 	if err != nil {
 		return store.Version{}, store.Origin{}, installBy{}, err
 	}
-	cached := false
+	cached, fork := false, false
 	if module.ValidateName("module", req.Arg) == nil {
 		if o, cached, err = e.Store.Origin(req.Arg); err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
@@ -600,7 +628,7 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run string) (
 			return store.Version{}, store.Origin{}, installBy{}, err
 		}
 		if !ok {
-			if v, err = e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: req.Ref, Components: o.Components}, "", req.Arg, run); err != nil {
+			if v, err = e.fetchAs(ctx, source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: req.Ref, Components: o.Components}, "", req.Arg, run.dir); err != nil {
 				return store.Version{}, store.Origin{}, installBy{}, err
 			}
 		}
@@ -615,17 +643,26 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run string) (
 		// A git source at a full commit SHA the cache holds for it is shown from the cache, hashed
 		// again in run, as install takes it (R-9-21): a review hint names one (R-9-32).
 		spec.Ref, spec.Path = req.Ref, req.Path
-		if v, err = e.cachedCommit(spec, run); err != nil {
+		if v, err = e.cachedCommit(spec, run.dir); err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
 		}
 		if v.Name == "" {
-			if v, err = e.AddSource(ctx, req.Cwd, req.Arg, req.Ref, req.Path, req.Display); err != nil {
+			v, err = e.AddSource(ctx, req.Cwd, req.Arg, req.Ref, req.Path, req.Display)
+			if _, taken := errors.AsType[*store.NameTakenError](err); taken {
+				// The cache keeps one source per name: read this one from the run's staging, which
+				// the cache never sees, so info shows a fork beside the module it forks (Pick-P2-c).
+				v, err = e.stageSource(ctx, run, spec, "", "")
+				fork = err == nil
+			}
+			if err != nil {
 				return store.Version{}, store.Origin{}, installBy{}, err
 			}
 		}
 		by = installBy{arg: v.Name, ref: req.Ref}
 	}
-	if o, _, err = e.Store.Origin(v.Name); err != nil {
+	if fork {
+		o, _ = run.alone(v.Name, v.ID)
+	} else if o, _, err = e.Store.Origin(v.Name); err != nil {
 		return store.Version{}, store.Origin{}, installBy{}, err
 	}
 	switch {
@@ -634,6 +671,7 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run string) (
 	case isAddr && o.Type == string(source.KindGit) && v.Commit != "" && o.Components == nil:
 		by = installBy{arg: o.Source, ref: v.Commit, path: o.Path}
 	}
+	by.fork = fork
 	return v, o, by, nil
 }
 
@@ -895,12 +933,12 @@ func (e *Engine) infoTargets(sc Scope, r InstallRequest, req InfoRequest) (targe
 // infoPlan is install -n of the version info showed (r pins it) at c for targets (none: the
 // manifest's, shown), with the consent its hooks and runtime hooks would meet. A project without
 // .lola/ says that install would start it there.
-func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, c ScopeChoice, targets, shownTargets []string, r InstallRequest, v store.Version,
+func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, run *StagedRun, c ScopeChoice, targets, shownTargets []string, r InstallRequest, v store.Version,
 	hookConsent []InfoConsent, rerun func(TrustKinds) string) (InfoInstall, error) {
 	res, err := e.InstallAll(ctx, InstallSpec{Cwd: req.Cwd, Scopes: []ScopeInstall{{ScopeChoice: c, Targets: targets}}, Modules: []InstallRequest{r},
 		Options: Options{Targets: req.Targets, DryRun: true, Display: req.Display, Rerun: rerun, ForceRun: rerun(0) + " --force",
 			Target: TargetRequest{Rerun: func(extra ...string) string { return rerun(0) + " " + errs.ShellJoin(extra) }}},
-		UserRun: req.UserRun})
+		UserRun: req.UserRun, Staged: run})
 	if err != nil {
 		return InfoInstall{}, err
 	}

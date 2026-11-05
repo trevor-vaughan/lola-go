@@ -58,6 +58,25 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Na
 	return &confirmRefusal{error: err, plan: fields}
 }
 
+// deletesRefusal is err, an install's refusal to delete files unasked (engine.DeletesRefusedError),
+// with the plan shown as lola uninstall's refusal shows it: the removals on stderr, or under --json
+// the plan in the refusal's JSON line. Any other error is returned as it is.
+func (a *app) deletesRefusal(cmd *cobra.Command, err error) error {
+	refused, ok := errors.AsType[*engine.DeletesRefusedError](err)
+	if !ok {
+		return err
+	}
+	if !a.json {
+		printRemovals(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, refused.Removals)
+		return err
+	}
+	fields, ferr := planFields(refused.Plan)
+	if ferr != nil {
+		return ferr
+	}
+	return &confirmRefusal{error: err, plan: fields}
+}
+
 // confirmRefusal is confirm's refusal under --json: its JSON line carries the plan's keys.
 type confirmRefusal struct {
 	error

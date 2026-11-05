@@ -473,13 +473,14 @@ func (fl *installFlow) run() error {
 		// it asks nothing and writes nothing.
 		dry := spec
 		dry.Options.DryRun = true
-		dry.Options.Rerun, dry.Options.Display = trustRun(fl.cmd, fl.hintArgs(fl.args)), outputFlags(fl.cmd)
+		dry.Options.Rerun, dry.Options.Display = consentRun(fl.cmd, fl.hintArgs(fl.args)), outputFlags(fl.cmd)
 		planned, err := fl.eng.InstallAll(fl.cmd.Context(), dry)
 		if err != nil {
 			return err
 		}
 		var summary strings.Builder
 		fl.printSummary(&summary, spec, pv, planned.Findings)
+		printRemovals(&summary, style{}, engine.PickDeletes(spec, planned)) // what Apply would delete is shown
 		fl.droppedModule, fl.droppedScope = 0, 0
 		if gone := fl.dropped(); fl.f.keep != nil && len(gone) > 0 { // the review lists the removal it leads to
 			plan, err := fl.dropPlan(gone)
@@ -513,7 +514,7 @@ func (fl *installFlow) run() error {
 	if err != nil {
 		return err
 	}
-	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), trustRun(fl.cmd, fl.hintArgs(fl.args))
+	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), consentRun(fl.cmd, fl.hintArgs(fl.args))
 	fl.a.hookOptions(fl.cmd, &spec.Options)
 	// The review, when there was one, already showed where each address resolved, before Apply.
 	if !fl.a.json && !fl.reviews() {
@@ -525,6 +526,12 @@ func (fl *installFlow) run() error {
 		}
 	}
 	res, err := fl.eng.InstallAll(fl.cmd.Context(), spec)
+	if err != nil {
+		err = fl.a.deletesRefusal(fl.cmd, err)
+	}
+	if errors.Is(err, engine.ErrDeclined) {
+		return ErrAborted
+	}
 	if renamed, ok := errors.AsType[*engine.RenamedEntryError](err); ok && renamed.Source != nil {
 		if run, ok := fl.bySource(renamed); ok {
 			err = errs.WithHints(renamed, run)
@@ -1750,10 +1757,12 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
 	}
-	if fl.f.edit != nil { // a later scope's sync asks its removals as lola sync does (engine.InstallSpec.ConfirmRemovals)
-		var asked bool
-		_, _, spec.ConfirmRemovals = fl.a.syncQuestions(fl.cmd, syncFlags{yes: fl.f.yes}, false, "Remove these too? No writes nothing", nil, &asked)
-	}
+	// The files the plan deletes, and a later scope's sync of lola profile --edit, are asked as
+	// lola uninstall and lola sync ask (engine.InstallSpec.ConfirmRemovals); the review's Apply
+	// already answered the plan's own.
+	var asked bool
+	_, _, spec.ConfirmRemovals = fl.a.syncQuestions(fl.cmd, syncFlags{yes: fl.f.yes}, false, "Remove these and apply? No writes nothing", nil, &asked)
+	spec.DeletesConfirmed = fl.reviews()
 	for _, c := range fl.scopes {
 		key := c.Scope.Key()
 		si := engine.ScopeInstall{ScopeChoice: c, Targets: fl.targets[key]}

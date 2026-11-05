@@ -57,7 +57,7 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(lola("cache", "rm", "deploy", "-y").code).To(Equal(0))
 		r = lola("cache", "add", plugin)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("format:     claude-plugin"))
+		Expect(r.out).To(ContainSubstring("format:       claude-plugin"))
 		Expect(strings.Count(r.out, "lspServers is not supported")).To(Equal(1))
 	})
 
@@ -144,10 +144,10 @@ var _ = Describe("store, search and init commands", func() {
 		out := lola("info", "kit").out
 		Expect(out).To(ContainSubstring(`, language = "` + untrusted.Text("g\u202eo", untrusted.MaxName) + `", strict = false, tools = ["rg", "` +
 			untrusted.Text("j\u202eq", untrusted.MaxName) + `"]` + "\n"))
-		Expect(out).To(ContainSubstring("  templates:  commands/ship.md.liquid, skills/s/ref/x.md.liquid\n"))
-		Expect(out).To(ContainSubstring("  partials:   _partials/head.liquid\n"))
-		Expect(out).To(ContainSubstring("  attributes: agents/a.targets.yaml, commands/ship.targets.yaml\n"))
-		Expect(out).To(ContainSubstring("  commands:   ship\n"), "every label lines up")
+		Expect(out).To(ContainSubstring("  templates:    commands/ship.md.liquid, skills/s/ref/x.md.liquid\n"))
+		Expect(out).To(ContainSubstring("  partials:     _partials/head.liquid\n"))
+		Expect(out).To(ContainSubstring("  attributes:   agents/a.targets.yaml, commands/ship.targets.yaml\n"))
+		Expect(out).To(ContainSubstring("  commands:     ship\n"), "every label lines up")
 		Expect(out).NotTo(ContainSubstring("\u202e"))
 	})
 
@@ -505,12 +505,16 @@ var _ = Describe("published alias table", func() {
 			"lola tidy --keep":      {"protect"},
 			"lola tidy --unkeep":    {"unprotect"},
 			"lola update --fetch":   {"refresh"},
+			"lola trash --restore":  {"undo", "recover"},
+			"lola trash --empty":    {"purge", "clear"},
 		}))
 		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("--on (--enable, --activate) "),
 			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--edit (--pick, --modify) "), ContainSubstring("--move (--mv) strings "), ContainSubstring("--new (--create) "), ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade) "), ContainSubstring("--remove (--rm, --delete, --del, --erase, --uninstall) ")))
 		Expect(lola("help", "market", "--short").out).To(And(ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade, --refresh) "), ContainSubstring("--remove (--rm, --delete, --del, --erase) ")))
+		Expect(lola("help", "trash", "--short").out).To(And(ContainSubstring("--restore (--undo, --recover) "),
+			ContainSubstring("--empty (--purge, --clear) ")))
 	})
 
 	It("the published alias tables include tidy's flags and no alias for tidy", func() {

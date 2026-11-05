@@ -359,7 +359,7 @@ func (e *Engine) picksStay(sc Scope, entries []manifest.Entry, modules []string)
 	if err != nil {
 		return true
 	}
-	w, err := where(sc)
+	w, err := e.scopeSection(sc)
 	if err != nil {
 		return true
 	}

@@ -837,6 +837,31 @@ func (h *huhForms) tidyOptions(in []TidyOption) []huh.Option[string] {
 	return opts
 }
 
+// TrashPick offers lola trash's runs and their files, filterable, preselecting st.Preselect, then
+// asks what to do with those ticked, Restore ticked under the cursor: neither writes anything
+// before lola shows the plan. The list's description says what a [whole run] row means and that
+// Enter moves on; in accessible mode, where huh prints no description, a note above the list says
+// why it asks again.
+func (h *huhForms) TrashPick(st TrashPickStep) (TrashAnswer, error) {
+	var ans TrashAnswer
+	err := h.run(Nav{}, h.trashFields(st, &ans.Picked, &ans.Action)...)
+	return ans, err
+}
+
+// trashFields is TrashPick's form: the list of runs and files, its answer going to picked, then
+// the action, going to action. The options are labelled as tidy's are, so no two share a label.
+func (h *huhForms) trashFields(st TrashPickStep, picked *[]string, action *string) []huh.Field {
+	opts := h.tidyOptions(st.Options)
+	for i, o := range st.Options {
+		opts[i] = opts[i].Selected(contains(st.Preselect, o.ID))
+	}
+	desc := strings.TrimPrefix(st.Problem+"\na [whole run] row takes the whole run, whatever of its files is ticked\nenter: next", "\n")
+	fields := h.withProblem(st.Problem, h.multi("Restore or empty which?", desc, opts, picked).Filterable(true))
+	*action = TrashRestore
+	return append(fields, huh.NewSelect[string]().Title("Do what with the ticked?").
+		Options(huh.NewOption("Restore ticked", TrashRestore), huh.NewOption("Empty ticked runs", TrashEmpty)).Value(action))
+}
+
 // MigrateRoot asks for the new root of a missing one, pre-filled with st.Value; an empty answer
 // skips it. Accessible mode reads an empty answer as the pre-filled one, so there the suggestion
 // is in the title and nothing is pre-filled.

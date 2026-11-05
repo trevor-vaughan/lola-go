@@ -211,7 +211,7 @@ func Fetched(dir, name string) (*Profile, []byte, error) {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, nil, errs.WithHints(fmt.Errorf("the source has no profile %s (%s)", untrusted.Text(name, untrusted.MaxName), shown),
-			"see the profiles it has: leave out the name, on a terminal")
+			"see the profiles it has: leave out the name")
 	case err != nil:
 		return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
 	case fi.Mode()&fs.ModeSymlink != 0:

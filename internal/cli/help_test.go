@@ -36,11 +36,24 @@ var _ = Describe("help, errors and output contract", func() {
 			}
 		}
 		r := lola("install", "--help")
-		Expect(r.out).To(HavePrefix("GLOBAL FLAGS\n"))
-		Expect(r.out).To(MatchRegexp(`== lola install ==\n(.*\n)*Flags:\n(.*\n)*      --strict `), "the command's own flags stay")
+		Expect(r.out).To(MatchRegexp(`Flags:\n(.*\n)*      --strict `), "the command's own flags stay")
 		r = lola("help", "install", "--short")
 		Expect(strings.Count(r.out, "Global Flags:")).To(Equal(1), "concise help keeps cobra's block")
 		Expect(r.out).NotTo(ContainSubstring("GLOBAL FLAGS"))
+	})
+
+	It("P2-9: a command's help off a terminal starts with its description and usage, then the global flags", func() {
+		r := lola("install", "--help")
+		Expect(r.code).To(Equal(0))
+		Expect(r.out).NotTo(HavePrefix("GLOBAL FLAGS"))
+		Expect(r.out).To(MatchRegexp(`\A(.*\n)*?Usage:\n(.*\n)*GLOBAL FLAGS\n`))
+		Expect(strings.Index(r.out, "Usage:")).To(BeNumerically("<", strings.Index(r.out, "GLOBAL FLAGS")))
+		Expect(r.out).To(ContainSubstring("OUTPUT CONTRACT"))
+		r = lola("cache", "-h")
+		Expect(r.out).To(MatchRegexp(`\A(.*\n)*?Usage:\n(.*\n)*GLOBAL FLAGS\n(.*\n)*== lola cache add ==`), "its subcommands follow")
+		Expect(r.out).NotTo(ContainSubstring("== lola cache =="))
+		Expect(lola("-h").out).To(HavePrefix("GLOBAL FLAGS\n"), "the root's help is unchanged")
+		Expect(lola([]string{}...).out).To(HavePrefix("GLOBAL FLAGS\n"), "bare lola is unchanged")
 	})
 
 	It("help --short prints concise grouped help with aliases inline", func() {

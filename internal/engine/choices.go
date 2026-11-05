@@ -191,7 +191,7 @@ func (c *Choices) listedMentions(targets []editTarget, key string, spec InstallS
 		if i := slices.IndexFunc(spec.Modules, func(r InstallRequest) bool { return r.Version != nil && r.Version.Name == t.name }); i >= 0 {
 			r = spec.Modules[i]
 		}
-		out[t.name] = mentionModule{mentions: ms, rulesOn: on, words: mentionArgs(t.name, c.versions[t.name], r, spec.Staged, true)}
+		out[t.name] = mentionModule{mentions: ms, rulesOn: on, words: mentionArgs(t.name, c.versions[t.name], r, spec.Staged, true), v: c.versions[t.name]}
 	}
 	return out
 }
@@ -749,7 +749,7 @@ func moduleChoice(v store.Version, o store.Origin) ModuleChoice {
 // profiles sc can use, which name it (skippedIn).
 func (e *Engine) moduleScope(sel *config.Selections, sc Scope, layers []Layer, t writeTo, from string, man *manifest.Manifest, led *ledger.Ledger, rec *trust.Record, v store.Version,
 	profiles func() ([]profile.Info, error)) (ModuleScope, error) {
-	x, err := exclusions(sel, sc, from, v.Name)
+	x, err := e.exclusions(sel, sc, from, v.Name)
 	if err != nil {
 		return ModuleScope{}, err
 	}
@@ -924,11 +924,11 @@ func (c *Choices) Preview(spec InstallSpec, modules []string) (*Preview, error) 
 	for _, si := range spec.Scopes {
 		key := si.Scope.Key()
 		t := c.targets[key]
-		picks, err := picksAt(si.Scope, t.from())
+		picks, err := c.eng.picksAt(si.Scope, t.from())
 		if err != nil {
 			return nil, err
 		}
-		scope, err := where(si.Scope)
+		scope, err := c.eng.scopeSection(si.Scope)
 		if err != nil {
 			return nil, err
 		}
@@ -952,6 +952,9 @@ func (c *Choices) Preview(spec InstallSpec, modules []string) (*Preview, error) 
 			}
 		}
 	}
+	all.run = func(args ...string) string {
+		return c.eng.installRun(spec.Scopes[0].Scope, spec.Options.Target, append(slices.Clone(args), "--global")...)
+	}
 	changes, notes, err := applyEdits(sel, func(string) config.Where { return config.Global() }, all, spec.GlobalEdits, targets, sections)
 	if err != nil {
 		return nil, err
@@ -963,7 +966,9 @@ func (c *Choices) Preview(spec InstallSpec, modules []string) (*Preview, error) 
 		if spec.WithMentions || spec.NameMentions {
 			mods = c.listedMentions(targets, key, spec)
 		}
-		se, err := editScope(sel, sections[i], all, si.Edits, spec.GlobalEdits, targets, mods, spec.WithMentions)
+		pl := all
+		pl.run = func(args ...string) string { return c.eng.installRun(si.Scope, spec.Options.Target, args...) }
+		se, err := editScope(sel, sections[i], pl, si.Edits, spec.GlobalEdits, targets, mods, spec.WithMentions)
 		if err != nil {
 			return nil, err
 		}

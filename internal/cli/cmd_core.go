@@ -238,6 +238,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
+	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
 	cmd.Flags().BoolVar(&f.noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
 	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
 	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
@@ -454,6 +455,9 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 		}
 		if r.UpdateAvailable {
 			status += " → update available"
+		}
+		if r.SourceGone {
+			status += " " + s.warn("source gone")
 		}
 		rules := "on"
 		if !r.Rules {

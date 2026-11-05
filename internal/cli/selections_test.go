@@ -176,3 +176,82 @@ var _ = Describe("lola install --exact (cherry-pick design §3.2, §3.4)", func(
 		Expect(r.out + r.err).To(ContainSubstring("example --unskip command/lint --unskip command/lint2"))
 	})
 })
+
+var _ = Describe("Pick-P2-b: a pick change that deletes files is confirmed as uninstall is", func() {
+	var tmp, proj, mod, selections, shipped, tested string
+	BeforeEach(func() {
+		var err error
+		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj, mod = filepath.Join(tmp, "proj"), filepath.Join(tmp, "example")
+		writeTree(mod, map[string]string{"commands/ship.md": "Ship $ARGUMENTS\n", "commands/test.md": "Test\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
+		fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
+		selections = filepath.Join(tmp, "config", "lola", "selections.yaml")
+		shipped, tested = filepath.Join(proj, ".claude/commands/ship.md"), filepath.Join(proj, ".claude/commands/test.md")
+		r := lola("install", mod, "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(tested).To(BeAnExistingFile())
+	})
+
+	It("refuses --skip of an installed component off a terminal, printing the plan and hinting the run with -y", func() {
+		r := lola("install", "example", "-C", proj, "--skip", "command/test")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
+		Expect(r.err).To(ContainSubstring("removals:\n"))
+		Expect(r.err).To(ContainSubstring("(dropped by your pick change)"))
+		Expect(r.err).NotTo(ContainSubstring("no longer in its targets"))
+		Expect(r.err).To(ContainSubstring(".claude/commands/test.md"))
+		Expect(r.err).NotTo(ContainSubstring("commands/ship.md"), "the plan lists only what goes")
+		Expect(tested).To(BeAnExistingFile())
+		Expect(selections).NotTo(BeAnExistingFile(), "a refusal saves no picks")
+		var hint string
+		for _, l := range strings.Split(r.err, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(l), "hint: lola install ") {
+				hint = strings.TrimPrefix(strings.TrimSpace(l), "hint: ")
+			}
+		}
+		Expect(hint).To(SatisfyAll(ContainSubstring("--skip command/test"), HaveSuffix(" -y")))
+		Expect(runHint(hint).code).To(Equal(0), "the hint runs as printed")
+		Expect(tested).NotTo(BeAnExistingFile())
+		Expect(shipped).To(BeAnExistingFile())
+	})
+
+	It("deletes with -y", func() {
+		r := lola("install", "example", "-C", proj, "--skip", "command/test", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(tested).NotTo(BeAnExistingFile())
+	})
+
+	It("answers the question with --force, without asking", func() {
+		r := lola("install", "example", "-C", proj, "--skip", "command/test", "--force")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(tested).NotTo(BeAnExistingFile())
+	})
+
+	It("never refuses -n and writes nothing", func() {
+		r := lola("install", "example", "-C", proj, "--skip", "command/test", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(tested).To(BeAnExistingFile())
+		Expect(selections).NotTo(BeAnExistingFile())
+	})
+
+	It("carries the plan in the refusal under --json", func() {
+		r := lola("install", "example", "-C", proj, "--skip", "command/test", "--json")
+		Expect(r.code).To(Equal(1))
+		var v map[string]any
+		Expect(json.Unmarshal([]byte(r.err), &v)).To(Succeed(), r.err)
+		Expect(v).To(HaveKey("error"))
+		Expect(v).To(HaveKey("hints"))
+		Expect(v["steps"]).To(ContainElement(HaveKeyWithValue("action", "delete")))
+		Expect(tested).To(BeAnExistingFile())
+	})
+
+	It("applies a widening change without -y", func() {
+		Expect(lola("install", "example", "-C", proj, "--skip", "command/test", "-y").code).To(Equal(0))
+		Expect(tested).NotTo(BeAnExistingFile())
+		r := lola("install", "example", "-C", proj, "--unskip", "command/test")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(tested).To(BeAnExistingFile())
+	})
+})

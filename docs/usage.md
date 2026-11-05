@@ -67,11 +67,12 @@ project with `.lola/` at or above the current directory, then `default_scope` in
 | `--with-mentions` | Also install the components your picks mention by name, one hop, saved where the picks are ([Mentions](guides/choosing-what-to-install.md#mentions)). |
 | `--no-rules`, `--rules` | Leave the module's always-on rules out, remembered in the manifest; `--rules` puts them back. |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
+| `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](#output-contract)). |
 | `--pre-install <path>`, `--post-install <path>` | Your own script for this run, which wraps every module copy the install writes, once per assistant, around the module's own hooks; a relative path is taken from the directory you run lola in, and the script runs from that absolute path, never a file of its name in the module copy ([Install scripts](guides/choosing-what-to-install.md#install-scripts)). No trust is asked. |
 | `--trust=<kinds>` | Answer yes, without asking, to lola's questions before it runs code you did not write, of the kinds named, recorded as a yes at the prompt is: `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all` for the three ([Trust kinds](guides/choosing-what-to-install.md#trust-kinds)). |
-| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be, and apply without the review question ([Safety rules](#safety-rules)). |
+| `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be, and apply without the review question ([Safety rules](#safety-rules)); it answers the question about files a pick change deletes too. |
 | `-n`, `--dry-run` | Print the plan and write nothing, not even `selections.yaml`. |
-| `-y`, `--yes` | Apply without the review question: the summary is printed, and the install goes on. |
+| `-y`, `--yes` | Apply without the review question: the summary is printed, and the install goes on. Also confirms the files a pick change deletes (below). |
 
 #### Where an install is written
 
@@ -168,7 +169,10 @@ Refusals:
   install it again from its source: lola cache rm my-module`.
 - Another module of that name in your cache: `a different module named "my-module" is already in
   your cache (from <its source>); this one is from <the new source>`, hinting `remove the cached
-  one first: lola cache rm my-module`.
+  one first: lola cache rm my-module`. When `install` finds the cached module installed at user
+  scope or in the project it ran for, the hints name `lola uninstall my-module` for each of
+  those first, then `then remove the cached one: lola cache rm my-module`; lola cannot see other
+  projects.
 - A conflict ([Safety rules](#safety-rules)), `--strict` with a finding (`--strict: 1
   finding(s); nothing was changed`), and a project whose `.lola/lock.json` git tracks.
 - An install script that is missing, not a regular file or not executable, and a project's that
@@ -197,6 +201,7 @@ both` syncs the project, then user scope.
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask: `entries` (the changes to `project.yml`, its top-level targets, and the pins and folder content a sync would write), `profiles` (the changes to its active project profiles, and a project profile taking your profile's place), `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all`; bare `--trust` is `entries,profiles`, which run no code. It never bypasses a refusal ([Trust kinds](guides/choosing-what-to-install.md#trust-kinds)). |
 | `-y`, `--yes` | Confirm removals, and only removals: it never trusts changes. |
 | `--update` | Fetch the refs again and re-pin the modules of the run. |
+| `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](#output-contract)). |
 | `--force` | Overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals. |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. |
 
@@ -252,6 +257,15 @@ anything, or one the same run writes into, stays. A symbolic link is never remov
 directory it leads to, nor one above it; an emptied directory below a link goes when it lies
 inside the assistant's root (`~/.claude` linked to `~/dotfiles/claude`: an emptied
 `~/dotfiles/claude/commands/` goes), and none a link leads out of that root to. Every run that removes files (`sync`, `update`, `profile`) does the same.
+
+A project uninstall that removes a module whole also clears the module's entry from the project's
+section of `selections.yaml` (never the `global` section), so a later plain install installs
+everything. It prints `→ <module>: picks cleared: <selectors> (restore: lola install … --skip …)`:
+the command, with your scope, `-t` and output flags (never `-y`: the install shows the files it deletes before it asks), saves them again
+(`--skip` for `skip:`, `--unskip` for `include:`, `--only … --exact` for `only:`). `-n` writes
+nothing and says `picks would be cleared`. A module that stays installed (another layer lists
+it, or `-t` leaves it on another target) keeps its picks. JSON: `picks_cleared`, an array
+(`[]` when none) of `module`, `section`, `skip`, `include`, `only` and `restore`.
 
 Each entry removed prints a write line (`✓ removed mod1 from profile go  (<path>)`, see
 [Where an install is written](#where-an-install-is-written)). An edit to a profile that is off
@@ -310,8 +324,11 @@ sync --update <module>`); and each target of an entry `project.yml` lists that i
 and naming the sync that installs them (`→ 1 module in project.yml is not installed → lola sync
 --project`, keeping `--json`, `--plain` and `--no-pager`); whether the module's rules are on; and,
 when any module has some, how many of its components `selections.yaml` skips. `--json` adds each
-row's `pin` and `update_available`. `list` never reads the trust record: an entry you declined at
-sync's trust question shows as `stale` or `not installed`. Entries of
+row's `pin` and `update_available`. A module whose recorded source is a local folder or archive
+that no longer exists shows `⚠ source gone` beside its status (`source_gone: true` in
+`--json`); git and URL sources are never checked, as `list` reads no network.
+`list` never reads the trust record: an entry you declined at sync's trust question shows as
+`stale` or `not installed`. Entries of
 [profiles](guides/profiles.md#profiles) are listed as the manifest's are, and when any module comes
 from a profile a `FROM` column names its layer as the context line does: `default`, `project.yml`,
 `profile go-review`, or for a member of a bundle on, `docs (bundle work)`; `--plain` and `--json`
@@ -374,6 +391,7 @@ kinds you accept (`--trust=entries` for pins alone). `--force` never answers a c
 | `--trust[=<kinds>]` | Answer yes, without asking, to the questions of the kinds named that the run would ask, as `lola sync --trust` does (bare: `entries,profiles`); it never bypasses a refusal ([Trust kinds](guides/choosing-what-to-install.md#trust-kinds)). |
 | `--force` | Overwrite unowned or hand-edited files and render skipped artifacts that can be; never answers a consent question. |
 | `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
+| `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](#output-contract)). |
 | `-n`, `--dry-run` | Print the plan and the trust diff, ask nothing and write nothing. At project scope nothing is written; at user scope a dry run may still publish what it fetched into your cache. |
 
 It takes no `-y` (it removes nothing to confirm) and no `-t` (each entry says its own assistants).
@@ -472,7 +490,9 @@ and `off` for a bundle) and its file. `--json` gives `state` (`base|on|member|of
 for a bundle, its `members`. A file that does not load, or a bundle that does not expand, is
 listed all the same, with a notice. With a name, show the profile and, per scope, the layer each of
 its modules comes from, the layers that entry overrides, and its picks (`only:` and `skip:` lines
-under it; `--plain` adds them as two last columns, comma-separated; JSON `only` and `skip` arrays
+under it; a `skip:` list of 10 or more that is the complement of fewer installed components, every
+skip naming one component of the installed version, shows as `only (not exact): <picks>; <n> others
+skipped`, which is what a non-exact `--only` saves; `--plain` adds them as two last columns, comma-separated; JSON `only` and `skip` arrays
 per module); for a profile that is off, what
 switching to it would give. Listing and showing never ask for a scope: without a flag they show the
 project found from here, if any, and user scope. One action per run. One profile is on in a scope
@@ -503,11 +523,13 @@ project). Refuses a project whose `.lola/lock.json` git tracks.
 | `-y`, `--yes` | Confirm removals, and `--remove`; it never trusts changes, nor answers `--on`'s question. |
 | `--force` | With `--on`, `--off`, `--switch` or `--edit`: remove files without asking, edited ones too. With `--remove`: remove a profile in use, without asking. Never a consent question, nor `--on`'s question. |
 | `-n`, `--dry-run` | Print what the action would change, ask nothing and write nothing. |
+| `-v`, `--verbose` | With `--on`, `--off`, `--switch`, `--edit`, `--move`, `--split` or `--update`: print every notice in full instead of one line per module for those that are not about safety ([Output contract](#output-contract)). |
 
 Refusals:
 
-- An unknown name: `no profile nope for user scope` (or `for the project at <dir>`), hinting
-  where to write one.
+- An unknown name: `no profile nope for user scope` (or `for the project at <dir>`), hinting the
+  run that makes it (`make it: lola profile nope --switch --new --user`, with the run's scope and
+  output flags, never `-y`) and the profiles the scope can use, or where to write one.
 - An action without a name: `--on needs the name of a profile`, hinting `list them: lola profile`
   (`--off` without a name turns off the profile on).
 - Two names with `--switch` or `--on`: `one profile is on at a time; to combine go and docs make
@@ -523,11 +545,11 @@ Refusals:
   switch to the named profile, make the bundle of both and switch to it, add it to the bundle on
   (which stays on; offered under the same conditions, and the run's own `--trust` applies to the
   edit), or cancel; `-y` and `--force` answer none.
-- `--new` without `--switch`: `--new applies to --switch only`. `--from` or `--bundle` without
+- `--new` without `--switch` or `--edit`: `--new applies to --switch and --edit only`. `--from` or `--bundle` without
   `--new`: `--from makes a new profile and goes with --new`, hinting the switch to the profile that
   exists. `--from` with `--bundle`: `--from copies a profile and --bundle combines several; pick
   one`, hinting each alone. `--new` for a name that exists: `docs names user:docs (<file>); --new
-  makes a profile that does not exist yet`, hinting the switch and a free name. A name that is
+  makes a profile that does not exist yet`, hinting the switch and a free name; for `project:docs` beside `user:docs` (or the reverse) it adds that a bare `docs` would then name two profiles, and the free name keeps the kind (`project:docs-2`). A name that is
   `base` or `default`: `base is reserved for the scope's base; name the profile something else`. A
   `--bundle` member that is no profile you have, or a `project:` one that does not exist, refuses
   with a hint that makes it first.
@@ -743,7 +765,9 @@ lola check [module-or-source...]
 Report what each assistant would drop, adapt or skip from a module, without writing anything or
 adding it to your cache. A source, or `@market/module`, is fetched as `lola cache add` would;
 any other argument names a cached module. Defaults to the current directory
-([Findings](#findings)).
+([Findings](#findings)). It also names, per module, the components your picks leave out that the
+ones you keep mention, with the `lola install … --with-mentions` that adds them
+([Mentions](guides/choosing-what-to-install.md#mentions)).
 
 | Flag | What it does |
 |---|---|
@@ -754,7 +778,8 @@ Refusals: an argument that is neither (`"nope" is neither a source nor a module 
 pass a module folder or another source, e.g. lola check ./my-module; sources are …`, hinting
 `cached modules: lola cache list`), an unknown target, and `--strict` with a finding.
 
-JSON: `modules` (each `name`, `targets`, `findings`, `skipped`) and `findings`.
+JSON: `modules` (each `name`, `targets`, `findings`, `skipped`, and `notices`: each `level`,
+`text`, `class`, `[]` when none) and `findings`.
 
 ### `lola info`
 
@@ -769,7 +794,9 @@ runtime hook or MCP server. The argument is what `lola install` takes: a module 
 `lola cache add` fetches it, so installing the cached name afterwards fetches nothing. It prints:
 
 1. The module's identity: name, version, description, source, type, path, digest, format and
-   cached heads.
+   cached heads. A git source also prints `commit:`, the full 40-hex commit it resolved; each
+   `head digest:` line is a ref's version digest, never a commit. `--json` has `commit`, `""`
+   for a folder or an archive; `lola cache add` and `lola cache list` JSON carry it too.
 2. Its contents: skills, commands, agents, MCP servers, rules, install hooks, warnings, the
    [vars](guides/templating.md#vars) it declares with their defaults, and its
    [templates](guides/templating.md#templates), [partials](guides/templating.md#partials) and
@@ -867,7 +894,9 @@ format, kind, architectures joined by commas, OS, linkage, sha256.
 Refusals: no argument: `lola info needs a module or source`, hinting `cached modules: lola cache
 list`; an argument that is neither: `"./nope" is neither a module in your cache nor a source;
 sources are …`, hinting `cached modules: lola cache list`; `--path` with `@market/module`; and a
-fetch failure or another module of that name in your cache, as `lola cache add`'s.
+fetch failure, as `lola cache add`'s. A source whose module name your cache already holds from another
+source is read without being cached, so info shows a fork beside the module it forks; installing it
+is what the cache refuses.
 
 JSON: one document. The module's identity and contents: `name`, `description`, `version`,
 `digest`, `format`, `source`, `type`, `heads` (each `ref`, `digest`), `skills`, `commands`,
@@ -876,7 +905,7 @@ JSON: one document. The module's identity and contents: `name`, `description`, `
 `templates`, `partials` and `attributes` (paths in the module), each `[]` when none, and `path`
 (the module root inside the source) when it has one. Then `mentions`: each component that names
 others in its text (`component`, `mentions`, both `kind/name`; `[]` when none), and `notices`
-(each `level`, `text`; `[]` when none), a warn when the scan could not read the module. Then `runs`: `install_hooks` (each `event`,
+(each `level`, `text`, `class`; `[]` when none), a warn when the scan could not read the module. Then `runs`: `install_hooks` (each `event`,
 `script`, `sha256`, `first_lines`), `runtime_hooks` (as `lola install` reports them) and
 `mcp_servers` (each `name`, `target`, `command`, `args`, `url`) and `scripts` (each `event`,
 `source`, `path`, `sha256`, `needs_trust`). Then `install`, one element per
@@ -1186,6 +1215,100 @@ JSON: `dry_run`, `file`, `forgotten` (each `entry`, `kind`, `module`, `target`, 
 `key`), `forgotten_modules` and `notices`. The refusal off a terminal carries the `-n --json`
 keys beside `error` and `hints`.
 
+### `lola trash`
+
+```
+lola trash [<run>]
+lola trash <run> [<original>...] --restore [--force] [-n]
+lola trash [<run>...] --empty [--older-than <age>] [-n] [-y]
+```
+
+`lola tidy`, `lola migrate` and `lola profile --remove` move what they take out of place into the
+trash (`$XDG_STATE_HOME/lola/trash/`), one run per command. Each run holds `manifest.txt`, one
+`original<TAB>trash path` line per entry, and `run.yaml`: the command that made it, its scope,
+project and time, and the copies that may hold credentials. lola never deletes what a run holds
+unless you run `lola trash --empty`; a restore that empties a run removes the run.
+
+Without a run, `lola trash` lists the runs, newest first: the id (the run's directory name), its
+time, the command that made it, its scope and project, and its files and size. With no runs it
+prints `✓ the trash is empty`. A run made before lola wrote `run.yaml` shows the command
+`unknown`. With a run, it shows the run's line, then each entry as `<original> → <trash path>`,
+and ends with `→ restore them: lola trash <run> --restore`. An entry that is a copy of an MCP or
+settings file, or a directory holding one, is marked `(may hold credentials)`.
+
+On a terminal, bare `lola trash` (without `--json` or `--plain`) opens a picker instead of the
+list: each run, newest first, as a `[whole run]` row of its time, command, scope and project,
+files and size, followed by its files, indented, each path relative to the run's project (whole
+when the run has none), a copy that may hold credentials marked `(may hold credentials)` before its
+path. `x` ticks a row; `/` filters; Enter moves on to `Do what with the ticked?`: `Restore ticked`
+or `Empty ticked runs`; `q` or Ctrl+C quits, changing nothing. A ticked `[whole run]` row takes the
+whole run, whatever of its files is ticked; its files' rows stay as they are. The key help under
+the picker says what each key does. Nothing is written before lola shows the plan:
+
+- `Restore ticked` shows, for each run, the plan `lola trash <run> [<original>...] --restore -n`
+  prints (a run ticked whole names no original), then offers `Restore`. When an original exists,
+  the only choice offered is `Restore with --force: first move what is there into a new trash
+  run`, and lola asks once more before moving anything. Cancel goes back to the picker, the ticks
+  kept. Two ticked runs that would restore the same path (or one inside the other) send you back
+  to the picker, naming the path and both runs, before any plan is shown. When nothing ticked is
+  left in the trash, lola says `nothing to restore, so nothing changed`.
+- `Empty ticked runs` deletes the runs whose `[whole run]` row is ticked, as `lola trash <run>...
+  --empty` does: it shows the plan and asks. Ticking only files asks the picker again.
+
+Off a terminal, bare `lola trash` lists the runs as above.
+
+| Flag | What it does |
+|---|---|
+| `--restore` | Move the run's entries back, or only the originals you name (a relative path is taken from the working directory), making the directories they were in. Aliases: `--undo`, `--recover`. |
+| `--force` | With `--restore`: first move what is at an original's path into a new trash run, whose command is `lola trash <run> --restore --force`. Nothing is deleted. |
+| `--empty` | Delete the named runs, or every run. It asks first; off a terminal it needs `-y`. Aliases: `--purge`, `--clear`. |
+| `--older-than <age>` | With `--empty`: only the runs older than `<n>d` or `<n>w` (weeks of 7 days). A run whose time lola cannot tell, or a run you named that is newer, is kept, with a notice. |
+| `-n`, `--dry-run` | With either action: print the plan and change nothing. |
+| `-y`, `--yes` | With `--empty`: do not ask for confirmation. |
+
+A restore never writes over what is there: when an original exists, the whole run is refused
+(`-n` lists such paths as `⚠ … exist, so the restore is refused`). A link comes back as a link.
+A credential copy comes back at mode 0600, as does a marked file inside a directory entry. The
+lines of the restored entries leave `manifest.txt`, and a run that then lists nothing is removed.
+When an entry is back but lola cannot make a credential copy in it private, the restore still
+counts it and warns `restored <path>, but cannot make <path> private (mode 0600): …`.
+`--empty` deletes only what it planned: a run whose files or size changed since the plan (a
+lola still writing it) is kept, with `trash run <id> changed since the plan, so it is kept;
+rerun: lola trash … --empty …`.
+An entry gone from the trash is passed over with a warning, and its line is dropped. A run's
+files are untrusted data: a manifest line whose trash path lies outside the run, or whose
+original is not absolute, is refused with a warning, and `run.yaml` or `manifest.txt` over 1 MiB
+is not read.
+
+Refusals:
+
+- `there is no trash run <id>`, hinting `see the runs: lola trash`.
+- `trash run <id> does not hold <path>`, hinting the run's entries: `lola trash <id>`.
+- `lola trash restores nothing over what is there: <paths> exist`, hinting the run with `--force`.
+- `trash run <id> holds <a> and <b>, which one restore cannot both put back; restore one at a
+  time`, when two entries share an original or one lies inside the other.
+- `--older-than "<age>" is not an age; …`, hinting the run with `--older-than 30d` in its place and
+  without `-y`: a hint never drops the age, which would delete every run.
+- `--restore needs the run to restore from`; `--force applies to --restore only`; `--yes` and
+  `--older-than` apply to `--empty` only; `--restore and --empty cannot be combined`. Each hints
+  the run without the flag.
+- Off a terminal, `--empty` without `-y`: `lola trash needs confirmation, and there is no
+  terminal to ask on`, hinting the run with `-y`.
+
+`--plain` rows: a listing prints `run`, id, time, command, scope, root, files and bytes; showing
+a run adds `entry`, original, trash path and `true` or `false` (may hold credentials). A restore
+prints `restore` (`-n`) or `restored` with the original and trash path, `exists` with an original
+in the way, `displaced` with the new run's id, and `removed` with the run's id when it was
+removed. An empty prints `delete` (`-n`) or `deleted` with the run's id and bytes.
+
+JSON: the listing has `runs` (each `id`, `time` (RFC 3339, UTC; `""` when unknown), `command`,
+`scope`, `root`, `files` and `size_bytes`) and `notices`. Showing a run gives the run's keys,
+`entries` (each `original`, `trash` and `credentials`) and `notices`. A restore gives `run`,
+`restored` (entries), `existing`, `displaced` (`""` for none), `run_removed`, `dry_run` and
+`notices`. An empty gives `removed` (runs), `bytes_freed`, `dry_run` and `notices`, and its
+refusal off a terminal carries the same keys beside `error` and `hints`. Every text a run
+supplies is printed with control and format characters replaced, in JSON too.
+
 ### `lola version`
 
 ```
@@ -1212,7 +1335,8 @@ completion"`.
 lola help [command]
 ```
 
-Show help: concise on a terminal; piped or redirected, the full command tree, with every alias.
+Show help: concise on a terminal; piped or redirected, the full command tree, with every alias. A command's own help (`lola install --help`)
+starts with that command's description and usage, then the global flags and the commands below it.
 
 | Flag | What it does |
 |---|---|
@@ -1588,7 +1712,8 @@ When a target cannot express part of a module, lola tells you instead of failing
 module. Each **finding** has a severity:
 
 - **info**: a lossless adaptation, or a choice you made. Shown by `lola check` and in `--json`
-  output, and by `install`, `sync` and `update` when it carries a hint.
+  output, and by `install`, `sync` and `update` (under `-v` for a detail finding) when it
+  carries a hint.
 - **warn**: something is dropped or changed, but the artifact works; it is installed.
 - **skip**: that artifact is left out for that target, because the assistant could not use it
   (for example an agent without a `description`); everything else is installed.
@@ -1606,6 +1731,21 @@ the change to make to the module: usually an entry in the component's `.targets.
 [attribute file](guides/templating.md), such as `gemini-cli: {hooks: null}`, or a template
 branch on `target` in its `.md.liquid` file. Or the hint is a command. A forceable skip's hint
 ends with your run plus `--force`, for example `or render it anyway: lola install ./kit --force`.
+A hint that tells the module's author what to change in its files is printed by `lola check`
+and kept in `--json`; `install`, `sync`, `update` and `lola profile` print only the rest (the
+`render it anyway:` run), since you may not be able to edit the module. A safety finding that has
+such a fix names first the `lola check` that prints it, for example `the module's own fix: lola
+check --project kit -t gemini-cli; or render it anyway: lola install kit --force`, when a check
+can name the version installed.
+
+Each finding and notice has a **class**, `class` in `--json`. **safety** is what you need to
+know about your own machine and data: runtime hooks skipped or awaiting consent, native
+executables, unowned or hand-edited files, refusals, what a run did to your picks, and what an
+agent may do without asking (`claude-code/allowed-tools`, `claude-code/permission-mode`,
+`agent-tools-unenforceable`). **detail** is what an assistant loses or adapts from a module, and
+the components your picks mention but leave out ([Mentions](guides/choosing-what-to-install.md#mentions)).
+Anything lola does not class is safety. `install`, `sync`, `update` and `lola profile` print
+safety in full and detail as one line per module ([Output contract](#output-contract)).
 Some findings have no hint, because there is nothing to do:
 - `kind-unsupported`, `mcp-cwd-dropped` and `command-sidecar-dropped`: no change gives the
   assistant a place for the item;
@@ -1642,6 +1782,7 @@ the run, `lola check` included: they are never skip findings.
 | `version/limited` | warn | no | Your installed assistant has a known limitation that affects this module. |
 | `vars-override` | skip | no | `lola check`: the scope's entry for the module checked sets a var the module does not declare, or one of another type; the module is checked with its defaults. |
 | `vars-defaults` | info | no | `lola check` could not read the scope's manifest or a profile, so every module is checked with its default vars. |
+| `picks-keyed-by-path` | warn | no | `lola check`: git could not read the project's clone, so its picks in `selections.yaml` are read under its path, not its repository; the hint is the `git config --global --add safe.directory` that trusts a repository git refuses as someone else's. |
 | `attrs-undefined` | warn | no | `lola check`: a template or partial reads a literal `attrs` path that no attribute file of the module defines for any assistant, so it always reads as nil; usually a typo. |
 | `module-warning` | warn | no | The module itself has a problem, such as a legacy instruction file, a skipped rule entry or skill, an ignored manifest, or a plugin key lola does not install. |
 | `module/native-executable` | warn | no | The module installs a native executable (ELF, Mach-O or PE) in a skill or command directory. The text names up to three, with their format and architecture, and counts the rest; the hint is `lola info <module>`, which lists each with the libraries it loads and its sha256. Module-level (no target), with no consent question; `--strict` fails it. |
@@ -1658,7 +1799,7 @@ the run, `lola check` included: they are never skip findings.
 | `opencode/escaped-arguments` | warn | no | A command has a Claude-escaped `\$N` or `\$ARGUMENTS`; OpenCode has no escape and still replaces it with arguments, so reword the text. |
 | `opencode/env-reference` | info | no | `${VAR}` in an MCP server becomes OpenCode's `{env:VAR}`. |
 | `opencode/env-default-dropped` | warn | no | OpenCode has no defaults for environment references: `${VAR:-default}` becomes `{env:VAR}`. |
-| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; its hint is your run with `--trust=` the kinds you gave and `runtime-hooks`, or answer the prompt on a terminal. |
+| `claude-code/runtime-hooks-declined` | warn | no | You did not consent to the module's runtime hooks, so they (or the skill, command or agent whose frontmatter has hooks, or the agent with inline MCP servers) are not installed and any installed earlier are removed; its hint is your run with `--trust=` the kinds you gave and `runtime-hooks` (without `-n`: a dry run's hint is the run that installs them), or answer the prompt on a terminal. |
 | `claude-code/allowed-tools` | warn | no | A skill, command or agent pre-approves tools with `allowed-tools`; Claude Code runs them without asking. Installed as written. |
 | `claude-code/permission-mode` | warn | no | An agent sets the permission mode Claude Code runs it in with `permissionMode`; the finding names the mode. Claude Code v2.1.267+ ignores `bypassPermissions` in a subagent's frontmatter. Installed as written. |
 | `claude-code/runtime-hook-path-unsafe` | skip | yes, unless a path holds a quote, `$`, a backquote or `\` | A shell-form hook needs the paths of the module copy and of the plugin data to hold only letters, digits and `/ . _ + -`, or an exec-form command contains `=` or starts with `-`. |
@@ -1706,7 +1847,7 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, `cache_unused_for`, `cache_fresh_for`, and `theme`. | Yours to keep |
-| `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally and per project (no `user:` section: a file with one is refused, and a user-scope module's picks live in its profile entry). | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally and per project (no `user:` section: a file with one is refused, and a user-scope module's picks live in its profile entry). A project in a git clone whose `origin` is on another host is keyed by its repository (`git:<host>/<path>#<dir>`, no credential), so a re-clone keeps its picks (a project in a subdirectory of an unrelated clone, such as a home directory kept in git, is keyed by that clone and its subdirectory); any other by its absolute path ([`config.yaml` and `selections.yaml`](guides/choosing-what-to-install.md#configyaml-and-selectionsyaml)). Your teammates do not get these picks; a project profile shares picks. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](guides/profiles.md#profiles). lola writes one only on `lola install` or `lola uninstall`, never with a pin; comments and order stay. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/default.yml` | User scope's base, always on: written by `lola install` and `lola uninstall` at user scope (no pins). | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/pins.yaml` | The versions installed from your profiles at user scope (`modules:`: source, ref, path, commit, digest) and a record of each remote profile you have (`remotes:`). Written by lola in every user-scope apply and by `lola profile --add`, `--update` and `--remove`, only when its bytes change; a header comment is kept and a link followed. [Synced with your config](guides/sync-and-trust.md#syncing-lola-between-machines); a run that needs a recorded remote profile this machine lacks restores it. | Yes, with your config |
@@ -1717,7 +1858,7 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 | `$XDG_DATA_HOME/lola/profiles/` | [Remote profiles](guides/remote-profiles.md), one directory each with `profile.yml` and `source.json`. Only `lola profile` writes them. | Yours to keep |
 | `$XDG_STATE_HOME/lola/trust.json` | Per project, the `project.yml` entries lola wrote or you trusted in `lola sync` (see **Trust** in [Sources and the cache](#sources-and-the-cache)). lola stops, and changes nothing, when it or its directory is a symbolic link or writable by others, or when it does not parse (a file a newer lola wrote asks you to upgrade lola; one from before bundles, whose records hold the field `extends`, is refused, naming the records to remove; on Windows, a directory that is a junction is refused as not a directory). Records of moved or deleted projects stay; lola refuses to grow the file past the 4 MiB it reads, and the hint says how to start over. | Never: it is yours alone |
 | `$XDG_STATE_HOME/lola/consent.json` | The consents you gave, by digest: each module's install hooks, its runtime hooks per settings file, and each project's install scripts per event (`project-scripts/<sha256 of the project directory>/<event>`). A changed digest asks again. | Never: it is yours alone |
-| `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved and what `lola tidy` moved, one directory per run with `manifest.txt`. | Yours; delete a run when you no longer need it |
+| `$XDG_STATE_HOME/lola/trash/` | What `lola migrate` backed up or moved and what `lola tidy` moved, one directory per run with `manifest.txt`. | Yours; [`lola trash`](#lola-trash) lists, restores and empties it |
 
 lola owns `.lola/.gitignore` and rewrites it if it changes. The lock lola holds while it
 changes a project lives outside the project, in `$XDG_STATE_HOME/lola/locks/`.
@@ -1750,7 +1891,7 @@ binary. Each step below was run against a throwaway `HOME`.
    | `.lola/` in each project | `project.yml`, `lock.json` (empty of modules), `.gitignore`, an empty `modules/`, and `plugin-data/` with each module's data if a module used `${PLUGIN_DATA}` (uninstall keeps it and says where). `project.yml` is yours and may be committed; remove `.lola/` if you no longer want it. |
    | `$XDG_CONFIG_HOME/lola/` (`~/.config/lola/`) | Your settings (`config.yaml`), keep-list, marketplaces and profiles, including `profiles/default.yml` (no modules left in it), `selections.yaml` with your component picks, and `pins.yaml` with its record of your remote profiles. |
    | `$XDG_DATA_HOME/lola/` (`~/.local/share/lola/`) | An empty `user-modules/`; remote profiles (`profiles/`), if you added any; `plugin-data/` with each user-scope module's data, if one used `${PLUGIN_DATA}`. |
-   | `$XDG_STATE_HOME/lola/` (`~/.local/state/lola/`) | `lock.json` (the user-scope ledger), `trust.json`, `consent.json` once you have consented to a hook, `locks/`, and `trash/` with every run of `lola tidy` and `lola migrate`. Look in `trash/` before deleting it: it is the only copy of what those commands moved. |
+   | `$XDG_STATE_HOME/lola/` (`~/.local/state/lola/`) | `lock.json` (the user-scope ledger), `trust.json`, `consent.json` once you have consented to a hook, `locks/`, and `trash/` with every run of `lola tidy` and `lola migrate`. Look in `trash/` (`lola trash`) before deleting it: it is the only copy of what those commands moved. |
    | `$XDG_CACHE_HOME/lola/` (`~/.cache/lola/`) | Empty `modules/` and `.staging/`, a `.lock` file, and any marketplace catalogs and probe results. |
 
    lola honours an `XDG_*` value only when it is an absolute path; an unset, empty or relative
@@ -1780,8 +1921,8 @@ binary. Each step below was run against a throwaway `HOME`.
   - The refusal lists each conflicting file, by assistant and path, one per line, and why.
   - `--force` overrides conflicts and lists each overridden file in the summary; the refusal's
     hint is your run with `--force` added, keeping its other flags but `-y` and `--trust`.
-  - `--force` also answers the destructive question itself (`install`'s review, `sync`'s
-    removals, `uninstall`, `lola profile --remove`, `lola migrate`, `lola tidy`), on a terminal
+  - `--force` also answers the destructive question itself (`install`'s review and the files a
+    pick change deletes, `sync`'s removals, `uninstall`, `lola profile --remove`, `lola migrate`, `lola tidy`), on a terminal
     or off one, so the hint runs as it is; a `lola sync` refusal whose run also removes modules
     says which (`with --force it also removes, without asking: other (whole module)`).
   - `--force` never answers a consent question: a forced run that needs your trust for a pulled
@@ -1791,6 +1932,10 @@ binary. Each step below was run against a throwaway `HOME`.
     `-y` and `--trust` the same way, and a flag you gave as false is never repeated as true.
   - A refusal for want of a terminal to confirm on hints your run with `-y`, which answers that
     question.
+  - An install or `lola profile --edit` whose pick change (`--skip`, `--only`, a ticked-off
+    component) deletes files asks first on a terminal, as `uninstall` does; off one it prints the
+    files and refuses, hinting the same run with `-y`. `-n` prints the plan and writes nothing, and
+    a change that only adds components asks nothing.
   - A hand-edited file lola would delete (an uninstall, or a component dropped at update or
     sync) refuses the whole run in the same way: nothing is removed, and `--force` deletes it
     with the rest.
@@ -1844,6 +1989,19 @@ binary. Each step below was run against a throwaway `HOME`.
   architect, …; --json lists each)`, with the artifact's name shown as `…` in the text and
   `<artifact>` in the hint. Run with `--json` to see every warning; `--plain`, `--json` and
   `--strict` are unchanged.
+- `install`, `sync`, `update` and the `lola profile` actions that apply print safety findings
+  and notices in full ([Findings](#findings)) and the detail ones as one line per module:
+  `→ ecc: 61 notices (claude-code 20, gemini-cli 21, opencode 20) — lola check --project ecc
+  -t claude-code,gemini-cli,opencode`, whose `lola check` keeps the run's scope and output flags
+  and lists each with the hints for the module's author, and what the picks leave out that the
+  module mentions (counted as `module`). The check names the module by its cache name, or, in a
+  dry run of a version your cache lacks, by its source (the review before Apply counts as one);
+  detail no `lola check` can name is printed in full: a git source with `--ref` or `--path`, a
+  version that is not your cache's newest for its source (a pin behind it, or another ref), or a
+  cache name that a folder or archive of that name in the current directory would stand in for. Under
+  `--scope both` each scope has its own line and check. `-v`/`--verbose` prints them all, grouped
+  as above, without the author's hints, in the review before Apply too; `--plain` prints a row
+  each and `--json` lists each with its `class`.
 - Scope commands (`install`, `uninstall`, `sync`, `update`, `list`, `info`, `check` when it reads
   the scope's entries, `tidy`, `repair`, and `lola profile` listing, showing, `--on`, `--off` and
   `--switch`) print one context line per scope on stderr in human output, once the scope is
@@ -1884,7 +2042,7 @@ binary. Each step below was run against a throwaway `HOME`.
     `repair` and a bare `init` without `-y`) prints only that line, which adds the plan it would
     have asked about; its hint is the run with `-y`:
     - for `uninstall` and `migrate`, the keys their `-n --json` prints (`modules`, `steps`,
-      `findings`, `notices`, `edits`, `scripts` and `dry_run` for `uninstall`);
+      `findings`, `notices`, `edits`, `scripts`, `picks_cleared` and `dry_run` for `uninstall`);
     - for `cache rm`, `would_remove`, the names;
     - for `init`, the keys its `-y --json` prints (`name`, `path`, `format`, `files`);
     - for `cache clean`, the keys its `-n --json` prints (`removed`, `kept`, `bytes_freed`,

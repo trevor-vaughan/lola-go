@@ -247,7 +247,8 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	}
 	// From here a failure carries what the destinations recorded (R-9-16), [] before any did.
 	r.written, rep.Trusted = []engine.Consent{}, []engine.Consent{}
-	if r.trash, err = trash.OpenTrash(e.Paths.Trash, e.Now()); err != nil {
+	// One run spans every destination; it migrates the Python lola of the user, so it is the user's.
+	if r.trash, err = trash.OpenTrash(e.Paths.Trash, e.Now(), trash.RunRecord{Command: "lola migrate", Scope: ScopeUser}); err != nil {
 		return nil, &engine.TrustedError{Err: err, Trusted: r.written}
 	}
 	rep.DryRun, rep.Trash = false, r.trash.Dir
@@ -774,6 +775,9 @@ func (r *runner) backup(d *Destination, decisions []decision, fsteps []forced) e
 		if dc.backup, err = copyOnce(path); err != nil {
 			return err
 		}
+		if dc.rec.Key != "" {
+			r.trash.MarkCredential(dc.backup) // a settings file holding an MCP entry
+		}
 		if dc.rec.Dir {
 			real, err := filepath.EvalSymlinks(path)
 			if err != nil {
@@ -789,11 +793,13 @@ func (r *runner) backup(d *Destination, decisions []decision, fsteps []forced) e
 			return failed(f.file, err)
 		}
 		real = filepath.Join(real, filepath.Base(f.file))
-		if f.backup = copiedWith(dirs, real); f.backup != "" {
-			continue
+		if f.backup = copiedWith(dirs, real); f.backup == "" {
+			if f.backup, err = copyOnce(real); err != nil {
+				return err
+			}
 		}
-		if f.backup, err = copyOnce(real); err != nil {
-			return err
+		if f.step.Key != "" {
+			r.trash.MarkCredential(f.backup) // a JSON member's file: settings or MCP servers
 		}
 	}
 	return nil

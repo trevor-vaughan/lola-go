@@ -26,6 +26,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/trash"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
 
@@ -2714,6 +2715,9 @@ var _ = Describe("remote profiles", func() {
 				Expect(try).NotTo(BeAnExistingFile())
 				Expect(res.Trash).To(And(HavePrefix(p.Trash), HaveSuffix(filepath.Join("profiles", "try.yml"))))
 				Expect(os.ReadFile(res.Trash)).To(Equal([]byte("version: 1\n# an experiment\n")), "restoring is a move back")
+				run, err := trash.ReadRun(filepath.Dir(filepath.Dir(res.Trash)))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(run).To(And(HaveField("Command", "lola profile --user user:try --remove"), HaveField("Scope", "user"), HaveField("Root", "")))
 			})
 
 			It("refuses a bare name both a profile of yours and a remote one have, hinting each qualified, which run as printed", func() {

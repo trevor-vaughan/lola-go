@@ -103,6 +103,19 @@ var _ = Describe("Fetch", func() {
 		}
 	})
 
+	It("P2-8: names a bare git repository and says how to clone it", func() {
+		bare := filepath.Join(tmp, "mods.git")
+		writeTree(bare, map[string]string{"HEAD": "ref: refs/heads/main\n", "objects/.keep": "", "refs/.keep": "", "commands/a.md": "A"})
+		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: bare}, staging)
+		Expect(err).To(MatchError(ContainSubstring("mods.git is a bare git repository; lola reads a local path as a folder")))
+		Expect(errs.Hints(err)).To(ConsistOf("git clone " + bare + " mods"))
+
+		work := filepath.Join(tmp, "work2")
+		writeTree(work, map[string]string{".git/HEAD": "ref: refs/heads/main\n", ".git/objects/.keep": "", ".git/refs/.keep": "", "commands/a.md": "A"})
+		_, err = source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: work}, staging)
+		Expect(err).NotTo(HaveOccurred(), "a work tree is a folder")
+	})
+
 	It("refuses an unknown kind", func() {
 		_, err := source.Fetch(ctx, source.Spec{Kind: "svn", Location: src}, staging)
 		Expect(err).To(MatchError(ContainSubstring(`unknown type "svn"`)))

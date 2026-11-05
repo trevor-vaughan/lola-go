@@ -105,7 +105,7 @@ var _ = Describe("user scope's base", func() {
 	It("install at user scope saves its picks in default's entry", func() {
 		kit := mod("kit")
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n"})
-		spec := engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{{Arg: kit}},
+		spec := engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: tmp, Modules: []engine.InstallRequest{{Arg: kit}},
 			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: user, Source: engine.SourceFlag}}}}
 		Expect(spec.AddFlagEdits([]engine.SelectionEdit{skipEdit("skill/b")}, false)).To(Succeed())
 		res, err := e.InstallAll(ctx, spec)
@@ -123,7 +123,7 @@ var _ = Describe("user scope's base", func() {
 		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: ../../../mods/kit\n"})
 		_, err := sync()
 		Expect(err).NotTo(HaveOccurred())
-		spec := engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}},
+		spec := engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}},
 			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: user, Source: engine.SourceFlag}}}}
 		Expect(spec.AddFlagEdits([]engine.SelectionEdit{skipEdit("skill/b")}, false)).To(Succeed())
 		_, err = e.InstallAll(ctx, spec)

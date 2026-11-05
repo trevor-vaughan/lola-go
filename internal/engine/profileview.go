@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
@@ -75,6 +76,9 @@ type ProfileModule struct {
 	// profile writes them; [] for none.
 	Only []string `json:"only"`
 	Skip []string `json:"skip"`
+	// Summary is Skip shown as the picks it leaves, when it is that (summarizePicks) for the
+	// version installed; output only.
+	Summary *PicksSummary `json:"-"`
 }
 
 // profileScope is what lola profile reads of a scope: the profiles it can use, with what a
@@ -360,6 +364,7 @@ func (e *Engine) profileState(ctx context.Context, sc Scope, name string) (*Prof
 		for _, k := range ent.Skip {
 			m.Skip = append(m.Skip, shown(k))
 		}
+		m.Summary = e.entrySummary(led, ent)
 		if w := find(want, ent.Name); w != nil {
 			m.From = shown(w.From)
 			for _, o := range w.Over {
@@ -525,4 +530,32 @@ func (e *Engine) resolveProfile(sc Scope, infos []profile.Info, name string, arg
 		hint += "; lola profile --add fetches a remote one"
 	}
 	return profile.Info{}, &unknownProfileError{errs.WithHints(fmt.Errorf("no profile %s for %s", untrusted.Text(name, untrusted.MaxName), where), hint)}
+}
+
+// entrySummary is the picks ent's skip: list leaves in the version of the module installed in led, or
+// nil: it has an only: list, nothing is installed, the installed version cannot be read, or the
+// skips are no complement of a few picks (summarizePicks).
+func (e *Engine) entrySummary(led *ledger.Ledger, ent manifest.Entry) *PicksSummary {
+	if len(ent.Only) > 0 || len(ent.Skip) < minSummarizedSkips {
+		return nil
+	}
+	skip := make([]config.Pattern, len(ent.Skip))
+	for i, s := range ent.Skip {
+		p, err := config.ParsePattern(s)
+		if err != nil {
+			return nil
+		}
+		skip[i] = p
+	}
+	all, known, err := e.installedSet(ent.Name, led.Modules[ent.Name])
+	if err != nil || !known {
+		return nil
+	}
+	sum := summarizePicks(skip, all)
+	if sum != nil {
+		for i, p := range sum.Picks {
+			sum.Picks[i] = shown(p)
+		}
+	}
+	return sum
 }

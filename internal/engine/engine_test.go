@@ -1064,6 +1064,18 @@ var _ = Describe("Engine", func() {
 			Expect(probeFindings(res)).To(ConsistOf(HaveField("Code", "probe/unknown-version")))
 		})
 
+		It("P2-7: says why a probe failed, from its sanitised, one-line, capped stderr", func() {
+			assistant("claude", "printf 'boom\\033[31m\\nsecond line\\n' >&2\nexit 1\n")
+			res, err := install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(probeFindings(res)).To(ConsistOf(HaveField("Text", And(ContainSubstring("failed: exit status 1: boom"), HaveSuffix(" second line"), Not(ContainSubstring("\x1b"))))))
+
+			assistant("claude", "head -c 5000 /dev/zero | tr '\\0' x >&2\nexit 1\n")
+			res, err = install(engine.Options{Targets: claude.Targets, DryRun: true}, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(probeFindings(res)).To(ConsistOf(WithTransform(func(f target.Finding) int { return len(f.Text) }, BeNumerically("<", 400))))
+		})
+
 		It("stops a probe whose children keep its output open", func() {
 			assistant("claude", "sleep 8 &\nexec sleep 8\n")
 			e.ProbeTimeout = 200 * time.Millisecond
@@ -1220,7 +1232,7 @@ var _ = Describe("Engine", func() {
 
 			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
-			Expect(err).To(MatchError(HavePrefix(filepath.Join(p.UserProfiles, "go.yml")+": ")), "untracked, the profile is read")
+			Expect(err).To(MatchError(HavePrefix(filepath.Join(p.UserProfiles, "go.yml")+":3: ")), "untracked, the profile is read")
 		})
 
 		It("refuses install, the install pickers and uninstall too, before anything is resolved, fetched or written", func() {

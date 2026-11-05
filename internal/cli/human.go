@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -119,14 +120,18 @@ func findingLine(s style, f target.Finding) string {
 	return line
 }
 
-// printCheck renders a lola check report: every finding, including info ones, and a line for
-// each target that renders a module without loss.
+// printCheck renders a lola check report: every finding, including info ones, each module's
+// notices (what its picks leave out that it mentions), and a line for each target that renders a
+// module without loss.
 func printCheck(w io.Writer, s style, rep *engine.CheckReport) {
 	for _, f := range rep.Findings {
 		fmt.Fprintln(w, checkLine(s, f))
 	}
 	for _, m := range rep.Modules {
-		printExcluded(w, s, m.Name, m.Skipped, m.SkippedIn, false)
+		printExcluded(w, s, m.Name, m.Skipped, m.SkippedIn, m.NotInOnly, m.OnlyIn, m.Summary, false)
+		for _, n := range m.Notices {
+			fmt.Fprintln(w, noticeLine(s, n))
+		}
 		for _, f := range m.Findings {
 			if f.Target == "" {
 				fmt.Fprintln(w, checkLine(s, f))
@@ -181,10 +186,7 @@ func scopeLabel(sc engine.ScopeResult) string {
 func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
 	printEdits(w, s, r.Edits, r.DryRun)
 	printPlan(w, s, r, scopes, "")
-	printFindings(w, s, r.Findings)
-	for _, n := range r.Notices {
-		fmt.Fprintln(w, noticeLine(s, n))
-	}
+	printNotices(w, s, r)
 	if r.DryRun || s.plain {
 		return
 	}
@@ -283,7 +285,9 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 	// A line two scopes would print alike (a profile both apply) is said once; a module whose lines
 	// differ between scopes names the scope of each.
 	excluded, lines := map[string]bool{}, map[string]map[string]bool{}
-	skipLine := func(m engine.ModuleResult) string { return m.SkippedIn + "\x00" + strings.Join(m.Skipped, "\x00") }
+	skipLine := func(m engine.ModuleResult) string {
+		return m.SkippedIn + "\x00" + m.OnlyIn + "\x00" + strings.Join(m.NotInOnly, "\x00") + "\x00" + strings.Join(m.Skipped, "\x00")
+	}
 	for _, m := range r.Modules {
 		if len(m.Skipped) > 0 {
 			if lines[m.Name] == nil {
@@ -299,7 +303,7 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 			if len(lines[m.Name]) > 1 {
 				label += ", " + scopeLabel(engine.ScopeResult{Scope: m.Scope, Root: m.Root})
 			}
-			printExcluded(w, s, label, m.Skipped, m.SkippedIn, r.DryRun)
+			printExcluded(w, s, label, m.Skipped, m.SkippedIn, m.NotInOnly, m.OnlyIn, m.Summary, r.DryRun)
 		}
 		if len(m.MCPServers) > 0 && !s.plain {
 			fmt.Fprintf(w, "%s MCP servers:\n", m.Name)
@@ -412,6 +416,88 @@ func printFindings(w io.Writer, s style, findings []target.Finding) {
 	}
 }
 
+// printNotices prints the findings and notices of an install, sync, update or profile switch
+// (spec 2026-11-03 §3.4, U6): safety ones in full, as printFindings and noticeLine do; detail ones
+// (target.ClassDetail) in full under -v or --plain, else as one line per module and lola check (a
+// scope's), in the order they first appear: "<module>: 30 notices (claude-code 15, gemini-cli 15)
+// — <the lola check> -t claude-code,gemini-cli", -t naming the targets counted. A detail notice
+// with no target counts as "module". Detail that no lola check names (its Check is "") is printed
+// in full. A hint for the module's author (target.Finding.AuthorHint) is never printed here, only
+// what the engine added for the user: lola check prints the rest.
+func printNotices(w io.Writer, s style, r *engine.Result) {
+	findings := make([]target.Finding, 0, len(r.Findings))
+	for _, f := range r.Findings {
+		if f.AuthorHint {
+			f.Hint = f.UserHint
+		}
+		findings = append(findings, f)
+	}
+	if s.plain || s.verbose {
+		printFindings(w, s, findings)
+		for _, n := range r.Notices {
+			fmt.Fprintln(w, noticeLine(s, n))
+		}
+		return
+	}
+	type key struct{ module, check string }
+	type tally struct {
+		total   int
+		targets []string // in the order they first appear
+		count   map[string]int
+	}
+	var order []key
+	tallies := map[key]*tally{}
+	add := func(k key, target string) {
+		t := tallies[k]
+		if t == nil {
+			t = &tally{count: map[string]int{}}
+			tallies[k] = t
+			order = append(order, k)
+		}
+		if t.count[target] == 0 && target != "" {
+			t.targets = append(t.targets, target)
+		}
+		t.total++
+		t.count[target]++
+	}
+	var shown []target.Finding
+	for _, f := range findings {
+		switch {
+		case f.Class != target.ClassDetail || f.Module == "" || f.Check == "":
+			shown = append(shown, f)
+		case f.Severity != target.SeverityInfo || f.Hint != "": // the ones printFindings would print
+			add(key{f.Module, f.Check}, f.Target)
+		}
+	}
+	printFindings(w, s, shown)
+	for _, n := range r.Notices {
+		if n.Class == target.ClassDetail && n.Module != "" && n.Check != "" {
+			add(key{n.Module, n.Check}, "")
+			continue
+		}
+		fmt.Fprintln(w, noticeLine(s, n))
+	}
+	for _, k := range order {
+		t := tallies[k]
+		counts := make([]string, 0, len(t.targets)+1)
+		for _, id := range t.targets {
+			counts = append(counts, fmt.Sprintf("%s %d", id, t.count[id]))
+		}
+		if n := t.count[""]; n > 0 {
+			counts = append(counts, fmt.Sprintf("module %d", n))
+		}
+		noun := "notices"
+		if t.total == 1 {
+			noun = "notice"
+		}
+		check := k.check
+		if len(t.targets) > 0 {
+			check += " -t " + strings.Join(t.targets, ",")
+		}
+		fmt.Fprintln(w, s.info(fmt.Sprintf("%s: %d %s (%s) — %s", untrusted.Text(k.module, untrusted.MaxName), t.total, noun, strings.Join(counts, ", "), check)))
+	}
+}
+
 // printRuntimeHooks lists a module's runtime hooks per target with their consent status. A
 // --plain row is module, target, event, type, status and the component whose frontmatter has
 // the hook ("" for settings hooks); an agent's inline MCP server has "mcp_server:<name>" for
@@ -437,19 +523,30 @@ func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult) {
 	}
 }
 
-// printExcluded names a module's components that the picks in in (selections.yaml, or a profile
-// as the engine labels it, safe to print) exclude; a dry run saved no edit, so it says they would
-// be skipped. A --plain row is "skipped", the module and the component (kind/name).
-func printExcluded(w io.Writer, s style, module string, skipped []string, in string, dry bool) {
+// picksText is a skip: list shown as the picks a non-exact --only keeps, then how many others are
+// skipped.
+func picksText(sum *engine.PicksSummary) string {
+	return "only (not exact): " + strings.Join(sum.Picks, ", ") + "; " + strconv.Itoa(sum.Others) + " others skipped"
+}
+
+// printExcluded names a module's components that the picks exclude: those a skip: leaves out, in
+// in (selections.yaml, or a profile as the engine labels it, safe to print), and those only the
+// only: list at onlyIn leaves out (notInOnly, a subset of skipped); a dry run saved no edit, so it
+// says they would be. sum, when set and no only: list is in force, replaces the skips with the picks
+// they leave. A --plain row is "skipped", the module and the component (kind/name).
+func printExcluded(w io.Writer, s style, module string, skipped []string, in string, notInOnly []string, onlyIn string, sum *engine.PicksSummary, dry bool) {
 	if len(skipped) == 0 {
 		return
 	}
-	names := make([]string, len(skipped))
-	for i, c := range skipped {
-		names[i] = untrusted.Text(c, untrusted.MaxName)
+	names := func(cs []string) []string {
+		out := make([]string, len(cs))
+		for i, c := range cs {
+			out[i] = untrusted.Text(c, untrusted.MaxName)
+		}
+		return out
 	}
 	if s.plain {
-		for _, c := range names {
+		for _, c := range names(skipped) {
 			fmt.Fprintf(w, "skipped\t%s\t%s\n", module, c)
 		}
 		return
@@ -458,5 +555,18 @@ func printExcluded(w io.Writer, s style, module string, skipped []string, in str
 	if dry {
 		verb = "would be skipped"
 	}
-	fmt.Fprintln(w, s.info(module+": "+verb+" in "+in+": "+strings.Join(names, ", ")))
+	if sum != nil && len(notInOnly) == 0 {
+		others := strconv.Itoa(sum.Others) + " others skipped"
+		if dry {
+			others = strconv.Itoa(sum.Others) + " others would be skipped"
+		}
+		fmt.Fprintln(w, s.info(module+": only (not exact) in "+in+": "+strings.Join(sum.Picks, ", ")+"; "+others))
+		return
+	}
+	if rest := slices.DeleteFunc(slices.Clone(skipped), func(c string) bool { return slices.Contains(notInOnly, c) }); len(rest) > 0 {
+		fmt.Fprintln(w, s.info(module+": "+verb+" in "+in+": "+strings.Join(names(rest), ", ")))
+	}
+	if len(notInOnly) > 0 {
+		fmt.Fprintln(w, s.info(module+": "+strings.Replace(verb, "skipped", "not in only:", 1)+" ("+onlyIn+"): "+strings.Join(names(notInOnly), ", ")))
+	}
 }

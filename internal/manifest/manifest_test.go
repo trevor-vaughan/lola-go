@@ -187,7 +187,7 @@ modules:
 				"{name: acme, source: \"https://e.com/p\\u0007\"}":         "module formatter: market: source holds control or invisible characters",
 				"{name: \"a\\u200bb\", source: https://example.com/p.git}": "module formatter: market: name holds control or invisible characters",
 				"{name: acme}": "module formatter: market: source is empty",
-				"{name: acme, source: https://e.com/p.git, ref: main}": "field ref not found",
+				"{name: acme, source: https://e.com/p.git, ref: main}": `:5: unknown key "ref"`,
 			} {
 				write("version: 1\nmodules:\n  - name: formatter\n    source: https://example.com/monorepo.git\n    market: " + market + "\n")
 				_, err := manifest.Load(path)
@@ -207,7 +207,7 @@ modules:
 			for comps, want := range map[string]string{
 				"{skills: [../x]}":          `components: skills path "../x" is not a clean relative path`,
 				"{skills: []}":              "components: selects no skill, command or agent",
-				"{skills: [a], tools: [b]}": "field tools not found",
+				"{skills: [a], tools: [b]}": `:5: unknown key "tools"`,
 				"{commands: [a/x, b/x]}":    "components: commands lists two paths named x",
 				"{skills: [" + strings.Repeat("s/a,", 1024) + "s/a]}": "components: selects 1025 paths; lola takes at most 1024",
 			} {
@@ -236,7 +236,7 @@ modules:
 
 			write("version: 1\nmodules:\n  - name: kit\n    source: https://example.com/kit.git\n    only: [skill/a]\n")
 			_, err = manifest.Load(path)
-			Expect(err).To(MatchError(ContainSubstring("line 5: field only not found")))
+			Expect(err).To(MatchError(ContainSubstring(":5: unknown key \"only\"")))
 		})
 
 		It("never edits a file that does not load", func() {
@@ -277,7 +277,7 @@ modules:
 		project := filepath.Join(dir, "project.yml")
 		refusals := map[string]string{
 			"version: 9\n":                  "written by a newer lola",
-			"version: 1\nbogus: 1\n":        "field bogus not found",
+			"version: 1\nbogus: 1\n":        `:2: unknown key "bogus"`,
 			"version: [\n":                  "does not parse",
 			"version: 1\n---\nversion: 1\n": "holds more than one YAML document",
 			"version: 1\nmodules:\n  - &m\n    name: a\n    source: https://x/a.git\n  - *m\n": "anchors, aliases and merge keys",
@@ -369,6 +369,19 @@ modules:
 		Expect(os.WriteFile(path, []byte("version: 9\n"), 0o600)).To(Succeed())
 		_, err = manifest.Load(path)
 		Expect(err).To(MatchError(ContainSubstring("newer lola")))
+	})
+
+	It("Prof-P2-d: names the file and line of an unknown key, and the keys project.yml has, never a Go type", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("version: 1\nfoo: x\n"), 0o600)).To(Succeed())
+		_, err := manifest.Load(path)
+		Expect(err).To(MatchError(path + `:2: unknown key "foo" (project.yml has: version, targets, modules, pre_install, post_install)`))
+		Expect(os.WriteFile(path, []byte("version: 1\nmodules:\n  - name: a\n    source: ../a\n    only: [skill/a]\n"), 0o600)).To(Succeed())
+		_, err = manifest.Load(path)
+		Expect(err).To(MatchError(ContainSubstring(path + `:5: unknown key "only" (a project.yml entry has: name, source, ref, path, commit, digest, targets, rules, market, components, vars)`)))
+		Expect(os.WriteFile(path, []byte("version: 1\ntargets: one\n"), 0o600)).To(Succeed())
+		_, err = manifest.Load(path)
+		Expect(err).To(MatchError(path + ":2: targets: expected a list, found text"))
 	})
 
 	It("validates module names and rejects path traversal attempts", func() {

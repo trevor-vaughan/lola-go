@@ -120,7 +120,13 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"user scope: profile go over default\""
-          - "result.systemout ShouldEqual \"→ kit: skipped in profile go: skill/bravo, skill/charlie\n→ kit: skill/alpha mentions 1 component you did not pick: skill/bravo → add them: lola profile --user go --edit kit --with-mentions\n✓ installed kit (claude-code)\""
+          - "result.systemout ShouldEqual \"→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n→ kit: 1 notice (module 1) — lola check --user kit\n✓ installed kit (claude-code)\""
+      # The line's lola check names the mention, with the install that adds it.
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} check --user kit"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"→ kit: skill/alpha mentions 1 component you did not pick: skill/bravo → add them: \""
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'grep -E \"only:|skip:\" {{.go}}; ls /home/tester/.claude/skills | paste -sd \" \"'"
         assertions:
@@ -147,7 +153,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} sh -c 'python3 -c \"import json; t = [n[\\\"text\\\"] for n in json.load(open(\\\"/tmp/p5.json\\\"))[\\\"notices\\\"] if \\\" adds \\\" in n[\\\"text\\\"]][0]; print(json.dumps({\\\"hints\\\": [t.split(\\\" → \\\")[-1]]}))\" > /tmp/p5.hint && {{.hint}} /tmp/p5.hint'"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"✓ changed kit in profile go  ({{.go}})  only: 2 skills\n  ✓ create claude-code .claude/skills/delta/SKILL.md\n→ kit: skipped in profile go: skill/bravo, skill/charlie\n→ kit: skill/alpha mentions 1 component you did not pick: skill/bravo → add them: lola profile --user go --edit kit --with-mentions\n✓ installed kit (claude-code)\""
+          - "result.systemout ShouldEqual \"✓ changed kit in profile go  ({{.go}})  only: 2 skills\n  ✓ create claude-code .claude/skills/delta/SKILL.md\n→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n→ kit: 1 notice (module 1) — lola check --user kit\n✓ installed kit (claude-code)\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'grep -E \"only:|skip:\" {{.go}}'"
         assertions:

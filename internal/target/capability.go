@@ -86,7 +86,10 @@ func (s KindSpec) key(k string) (Value, bool) {
 // document without the keys the target drops, the findings, and whether to render it. MCP
 // servers and rules pass an empty Doc: only their kind and name are checked.
 func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc module.Doc) (module.Doc, []Finding, bool) {
-	at := Finding{Target: id, Kind: kind, Artifact: name}
+	at := Finding{Target: id, Kind: kind, Artifact: name, Class: ClassDetail}
+	if kind == KindRuntimeHook {
+		at.Class = ClassSafety // a runtime hook runs with the user's permissions
+	}
 	spec, ok := caps.Kinds[kind]
 	if !ok || !spec.newest() {
 		f := at
@@ -106,7 +109,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	if spec.Name != nil && !spec.Name.MatchString(name) {
 		f := at
 		f.Code, f.Text, f.Forceable = "name-rejected", fmt.Sprintf("%s needs %s names matching %s", id, kind, spec.Name), true
-		f.Hint = fmt.Sprintf("rename the %s so its name matches %s", kind, spec.Name)
+		f.Hint, f.AuthorHint = fmt.Sprintf("rename the %s so its name matches %s", kind, spec.Name), true
 		skip(f)
 	}
 	var drop []string
@@ -120,6 +123,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 			if !blank(doc.Frontmatter[k]) {
 				g := at
 				g.Code, g.Text, g.Hint, g.Forceable = v.Guard.Code, v.Guard.Text, v.Guard.Hint, true
+				g.Class, g.AuthorHint = ClassSafety, true // rendered anyway, the artifact gets more than its author allowed
 				skip(g)
 			}
 			drop = append(drop, k)
@@ -127,14 +131,14 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 		case known && v.Drop != "":
 			f.Severity, f.Text = v.Drop, fmt.Sprintf("%s dropped: %s", k, v.Note)
 			if v.Drop != SeverityInfo { // an info drop is lossless: nothing to do
-				f.Hint = keyHint(id, kind, name, k, "")
+				f.Hint, f.AuthorHint = keyHint(id, kind, name, k, ""), true
 			}
 		case known && !v.accepts(doc.Frontmatter[k]):
 			f.Code, f.Text = "frontmatter-value-dropped", fmt.Sprintf("%s dropped: %s needs %s", k, id, v.describe())
-			f.Hint = keyHint(id, kind, name, k, v.describe())
+			f.Hint, f.AuthorHint = keyHint(id, kind, name, k, v.describe()), true
 		case !known && !spec.Open:
 			f.Text = fmt.Sprintf("%s dropped: %s does not support it", k, id)
-			f.Hint = keyHint(id, kind, name, k, "")
+			f.Hint, f.AuthorHint = keyHint(id, kind, name, k, ""), true
 		case known && v.excludes(ctx.Version):
 			finds = append(finds, versionFinding(at, fmt.Sprintf("%s %s ignores %s (added in %s)", id, ctx.Version, k, v.Since), v.Since))
 			continue
@@ -149,7 +153,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 			f := at
 			f.Code, f.Forceable = "required-key-missing", true
 			f.Text = fmt.Sprintf("%s needs a %s in the %s's frontmatter", id, r, kind)
-			f.Hint = fmt.Sprintf("add %s: to the %s's frontmatter", r, kind)
+			f.Hint, f.AuthorHint = fmt.Sprintf("add %s: to the %s's frontmatter", r, kind), true
 			skip(f)
 		}
 	}
@@ -167,6 +171,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 		}
 		f := at
 		f.Severity, f.Code, f.Text, f.Hint, f.Forceable = rule.Severity, rule.Code, rule.Text, rule.Hint, rule.Forceable
+		f.AuthorHint = rule.Hint != "" // a rule's hint is the change to the artifact's file
 		if f.Severity == SeveritySkip {
 			skip(f)
 			continue
@@ -185,7 +190,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 		f := at
 		f.Severity, f.Code = SeverityWarn, "frontmatter/yaml-ambiguous"
 		f.Text = fmt.Sprintf("%s has an unquoted value that YAML parsers read differently", k)
-		f.Hint = "quote it, e.g. \"yes\" or \"0755\""
+		f.Hint, f.AuthorHint = "quote it, e.g. \"yes\" or \"0755\"", true
 		finds = append(finds, f)
 	}
 	return kept, finds, render

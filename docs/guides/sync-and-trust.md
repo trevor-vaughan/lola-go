@@ -30,6 +30,13 @@ and your cache does not hold it, sync stops: `commit <sha> is not on <ref> at <s
 hint `re-pin to what <ref> serves: lola sync … --update <module>`. `lola update` and
 `lola sync --update` take a force-pushed head like any other new version, after the trust question.
 
+A teammate's sync installs the components `project.yml` and the project's profiles pick, not
+yours: the picks you save for a `project.yml` module (`--only`, `--skip`, the component page) are
+personal, kept in your `selections.yaml` under the project's repository, so they follow you to
+every clone of it but never to a teammate. To share picks, put the module in a project profile
+(`lola profile --move <module> --to project:<name>`), whose entries are committed with the project
+([`config.yaml` and `selections.yaml`](choosing-what-to-install.md#configyaml-and-selectionsyaml)).
+
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
   'primaryColor': '#2f6dab',
@@ -498,7 +505,9 @@ says so (`gopls: profile go's entry wins; this change to default (base) applies 
 
 Keep `~/.config/lola` in your dotfile manager (chezmoi, stow, yadm, a git repository). It holds
 your profiles (`profiles/default.yml` and the others), `pins.yaml`, `config.yaml`,
-`selections.yaml`, `markets.yaml` and `keep.yaml`. On a new machine, restore it, then run
+`selections.yaml`, `markets.yaml` and `keep.yaml`. Picks for a project in a git clone are keyed by
+its repository, so they apply wherever you clone it on the new machine; other projects' picks and
+`keep.yaml` are keyed by path. On a new machine, restore it, then run
 `lola sync --user`: lola installs the versions `pins.yaml` records, not what the refs serve
 today, and fetches each remote profile you use at the version you accepted.
 

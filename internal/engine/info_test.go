@@ -17,11 +17,13 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/consent"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/native/nativetest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -191,6 +193,84 @@ var _ = Describe("lola info", func() {
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url}}, engine.Options{Targets: []string{"claude-code"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(requests.Load()).To(BeNumerically(">", before), "the source is fetched again")
+	})
+
+	Describe("a module whose name the cache holds from another source (Pick-P2-c)", func() {
+		var fork string
+		var sc engine.Scope
+		cacheState := func() store.Origin {
+			o, found, err := e.Store.Origin("kit")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			return o
+		}
+		BeforeEach(func() {
+			Expect(os.RemoveAll(kit)).To(Succeed())
+			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/up.md": "Upstream\n"})
+			fork = filepath.Join(tmp, "forks", "kit")
+			writeTree(fork, map[string]string{"lola.yml": "name: kit\n", "commands/fk.md": "Fork\n"})
+			sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
+			_, err := e.Fetch(ctx, sourceSpec(kit))
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Pick-P2-c: info of the fork reads it, shows the fork, and leaves the cache as it was", func() {
+			before := cacheState()
+			req := claudeHere()
+			req.Arg = fork
+			info, err := e.Info(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.Name).To(Equal("kit"))
+			Expect(info.Source).To(Equal(fork))
+			Expect(info.Commands).To(ConsistOf("fk"))
+			Expect(info.Install).NotTo(BeEmpty())
+			Expect(info.Install[0].Refusal).To(BeNil())
+			Expect(info.Install[0].Steps).NotTo(BeEmpty())
+			for _, st := range info.Install[0].Steps {
+				Expect(st.Path).NotTo(ContainSubstring("up"), "the plan is the fork's, not upstream's")
+			}
+			Expect(info.Install[0].Steps).To(ContainElement(HaveField("Path", ContainSubstring("fk"))))
+			Expect(info.Install[0].Command).To(BeEmpty(), "lola install kit would install the cached module")
+			Expect(info.Hints).To(Equal([]string{"then remove the cached one: lola cache rm kit",
+				"then install this source: lola install " + fork}), "nothing uses the cached module")
+			Expect(cacheState()).To(Equal(before), "the fork was not cached")
+		})
+
+		It("Pick-P2-c: install of the fork refuses, and with no user of the cached module hints cache rm alone", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: fork}}, engine.Options{Targets: []string{"claude-code"}})
+			Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
+			Expect(errs.Hints(err)).To(Equal([]string{"remove the cached one first: lola cache rm kit"}))
+		})
+
+		It("Pick-P2-c: the uninstall hinted for a module a profile placed works as hinted, off a terminal", func() {
+			_, err := e.Store.Remove("kit")
+			Expect(err).NotTo(HaveOccurred())
+			inProj := filepath.Join(proj, "mods", "kit")
+			writeTree(inProj, map[string]string{"lola.yml": "name: kit\n", "commands/up.md": "Upstream\n"})
+			_, err = e.Fetch(ctx, sourceSpec(inProj))
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"review.yml": "version: 1\nmodules:\n  - name: kit\n    source: ../../mods/kit\n    targets: [claude-code]\n"})
+			trustAll := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "review"}, Trust: trustAll})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: fork}}, engine.Options{Targets: []string{"claude-code"}})
+			Expect(errs.Hints(err)).To(HaveLen(2))
+			Expect(errs.Hints(err)[0]).To(HaveSuffix(": " + e.Command(sc, "uninstall", "kit")))
+			_, err = e.Uninstall(ctx, sc, []string{"kit"}, engine.Options{Targets: []string{"claude-code"}})
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("Pick-P2-c: install of the fork names each scope using the cached module, with its uninstall, before cache rm", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "kit"}}, engine.Options{Targets: []string{"claude-code"}})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: fork}}, engine.Options{Targets: []string{"claude-code"}, Display: []string{"--plain"}})
+			Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
+			hints := errs.Hints(err)
+			Expect(hints).To(HaveLen(2))
+			Expect(hints[0]).To(HaveSuffix(": " + e.Command(sc, "uninstall", "kit", "--plain")))
+			Expect(hints[0]).To(ContainSubstring("kit is installed in this project"))
+			Expect(hints[1]).To(Equal("then remove the cached one: lola cache rm kit --plain"))
+		})
 	})
 
 	It("info runs no install hook, runtime hook, MCP server or script", func() {
@@ -550,7 +630,7 @@ var _ = Describe("lola info", func() {
 			Expect(info.Install).To(HaveLen(2))
 			Expect(info.Install[1]).To(And(HaveField("Scope", "user"), HaveField("From", ""), HaveField("Components", []engine.InfoComponent{}), HaveField("Change", "")))
 			Expect(info.Install[1].Notices).To(Equal([]engine.Notice{{Level: engine.LevelWarn, Text: "kit: cannot tell what its picks do at user scope: " +
-				filepath.Join(e.Paths.UserProfiles, "go.yml") + ": yaml: unmarshal errors:\n    line 2: field bogus not found in type profile.file → fix it by hand"}}))
+				filepath.Join(e.Paths.UserProfiles, "go.yml") + ":2: unknown key \"bogus\" (a profile has: version, description, targets, bundle, modules) → fix it by hand"}}))
 		})
 
 		It("info with default_scope both returns one install element per scope, and runtime-hooks consent is unknown without a scope", func() {

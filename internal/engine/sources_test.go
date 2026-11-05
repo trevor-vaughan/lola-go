@@ -1096,7 +1096,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			selector, err := config.ParseSelector("example:command/ship")
 			Expect(err).NotTo(HaveOccurred())
-			_, err = e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Options: claude,
+			_, err = e.InstallAll(ctx, engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: proj, Options: claude,
 				Modules: []engine.InstallRequest{{Arg: "example", Version: &engine.VersionRef{Name: "example", ID: ch.Module("example").ID}}},
 				Scopes:  []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}, Edits: []engine.SelectionEdit{{Op: "skip", Selector: selector}}}}})
 			Expect(err).NotTo(HaveOccurred())

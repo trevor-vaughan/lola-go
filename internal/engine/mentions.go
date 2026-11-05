@@ -15,6 +15,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -260,12 +261,14 @@ type mentionGap struct {
 }
 
 // mentionModule is what the mention handling knows of a module at a scope: what its components
-// mention, whether its rules install there, and the words a hint installs it with (mentionArgs).
-// scanErr is why its mentions could not be read (mentionErr); the install goes on without them.
+// mention, whether its rules install there, the words a hint installs it with (mentionArgs) and
+// the version they name (v), which its lola check must name too (checkName). scanErr is why its
+// mentions could not be read (mentionErr); the install goes on without them.
 type mentionModule struct {
 	mentions Mentions
 	rulesOn  bool
 	words    []string
+	v        store.Version
 	scanErr  error
 }
 
@@ -324,6 +327,15 @@ func mentionArgs(name string, v store.Version, r InstallRequest, run *StagedRun,
 	return args
 }
 
+// checkWord is the argument lola check names a module by, from the words a hint installs it with
+// (mentionArgs): their one word, or "" when they carry --ref or --path, which lola check lacks.
+func checkWord(words []string) string {
+	if len(words) != 1 {
+		return ""
+	}
+	return words[0]
+}
+
 // selectionFlags is the selection flags of the run, edits (a scope's) and global (given with
 // --global), that a hint installing module t repeats: under -n (dry) every --skip, --only and
 // --unskip flag, since a dry run saved none of them; else each --skip flag, which keeps out again
@@ -354,9 +366,10 @@ func selectionFlags(t editTarget, edits, global []SelectionEdit, dry bool) []str
 // install that adds them (cherry-pick design §5.2): lola install (or the run's lola profile <name>
 // --edit, installRun) with the run's --profile, sc's flags, words (mentionArgs),
 // --with-mentions and flags (selectionFlags), keeping the run's -t, --rules or --no-rules, -n and
-// output flags. The mentioners are in picker order, the components left out sorted by kind/name.
-// None without gaps.
-func (e *Engine) mentionNotice(sc Scope, name string, words, flags []string, gaps []mentionGap, opts Options) []Notice {
+// output flags. The mentioners are in picker order, the components left out sorted by kind/name;
+// check is the argument the notice's lola check names the module by ("" for none). None without
+// gaps.
+func (e *Engine) mentionNotice(sc Scope, name string, words, flags []string, gaps []mentionGap, check string, opts Options) []Notice {
 	if len(gaps) == 0 {
 		return nil
 	}
@@ -392,7 +405,8 @@ func (e *Engine) mentionNotice(sc Scope, name string, words, flags []string, gap
 	}
 	args = append(args, opts.Display...)
 	return []Notice{{Level: LevelInfo, Text: fmt.Sprintf("%s: %s %s %d %s you did not pick: %s → add them: %s",
-		untrusted.Text(name, untrusted.MaxName), namedList(by), verb, len(left), what, namedList(left), e.installRun(sc, opts.Target, args...))}}
+		untrusted.Text(name, untrusted.MaxName), namedList(by), verb, len(left), what, namedList(left), e.installRun(sc, opts.Target, args...)),
+		Class: target.ClassDetail, Module: name, Check: e.checkRun(sc, check, opts.Display)}}
 }
 
 // resolvedMentions is, for each module sp resolved, what its version's components mention (read
@@ -414,7 +428,7 @@ func resolvedMentions(sp *scopePlan, spec InstallSpec, scans mentionReads) map[s
 		if spec.Options.Rules != nil {
 			mm.rulesOn = *spec.Options.Rules
 		}
-		mm.words = mentionArgs(rr.v.Name, rr.v, rr.req, spec.Staged, spec.Options.DryRun)
+		mm.words, mm.v = mentionArgs(rr.v.Name, rr.v, rr.req, spec.Staged, spec.Options.DryRun), rr.v
 		out[rr.v.Name] = mm
 	}
 	return out
@@ -434,7 +448,8 @@ func (e *Engine) mentionNotes(dst []Notice, si ScopeInstall, se scopeEdits, targ
 			notes = append(notes, Notice{Level: LevelWarn, Text: mm.scanErr.Error()})
 		case spec.NameMentions:
 			flags := selectionFlags(t, si.Edits, spec.GlobalEdits, spec.Options.DryRun)
-			notes = append(notes, e.mentionNotice(si.Scope, t.name, mm.words, flags, se.gaps[t.name], spec.Options)...)
+			check := e.checkName(checkWord(mm.words), mm.v, e.committing(spec.Staged, spec.Options.DryRun, t.name))
+			notes = append(notes, e.mentionNotice(si.Scope, t.name, mm.words, flags, se.gaps[t.name], check, spec.Options)...)
 		}
 	}
 	for _, n := range notes {

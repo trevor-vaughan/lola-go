@@ -145,9 +145,11 @@ var _ = Describe("core commands", func() {
 		Expect(r.err).To(ContainSubstring("--strict: 1 finding(s); nothing was changed"))
 		Expect(filepath.Join(proj, ".lola/project.yml")).NotTo(BeAnExistingFile())
 
-		r = lola("install", mod, "-C", proj)
+		r = lola("install", mod, "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("✗ skipped example: claude-code agent bare: claude-code needs a description in the agent's frontmatter\n    hint: add description: to the agent's frontmatter"))
+		Expect(r.out).To(ContainSubstring("✗ skipped example: claude-code agent bare: claude-code needs a description in the agent's frontmatter\n"))
+		Expect(r.out).NotTo(ContainSubstring("add description:"), "P2-6: the hint for the module's author is lola check's")
+		Expect(lola("check", "example", "-C", proj).out).To(ContainSubstring("    hint: add description: to the agent's frontmatter"))
 		Expect(lola("install", mod, "-C", proj, "--plain").out).To(ContainSubstring("finding\tskip\texample\tclaude-code\tagent\tbare\trequired-key-missing\t"))
 	})
 
@@ -161,6 +163,31 @@ var _ = Describe("core commands", func() {
 		r = lola("check", "--plain", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("finding\tinfo"))
+	})
+
+	It("P2-10: flags a module whose local source is gone, and only that", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		Expect(lola("ls", "-C", proj).out).NotTo(ContainSubstring("source gone"))
+		Expect(lola("ls", "-C", proj, "--json").out).To(ContainSubstring(`"source_gone": false`))
+		Expect(os.RemoveAll(mod)).To(Succeed())
+		r := lola("ls", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`example\s+claude-code\s+✓ ok.*⚠ source gone`))
+		var doc struct {
+			Modules []struct {
+				SourceGone bool `json:"source_gone"`
+			} `json:"modules"`
+		}
+		Expect(json.Unmarshal([]byte(lola("ls", "-C", proj, "--json").out), &doc)).To(Succeed())
+		Expect(doc.Modules).To(HaveLen(1))
+		Expect(doc.Modules[0].SourceGone).To(BeTrue())
+	})
+
+	It("P2-10: does not call a source gone when it cannot be checked", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		Expect(os.RemoveAll(mod)).To(Succeed())
+		Expect(os.WriteFile(mod, nil, 0o644)).To(Succeed()) // a file where the folder was: lola cannot tell
+		Expect(lola("ls", "-C", proj, "--json").out).To(ContainSubstring(`"source_gone": false`))
 	})
 
 	It("lists a module nothing of which a target could render with the warn glyph", func() {
@@ -381,10 +408,10 @@ var _ = Describe("core commands", func() {
 	It("hints a forceable skip with the run that renders it anyway, and that run renders it", func() {
 		kit := filepath.Join(tmp, "kit")
 		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "agents/critic.md": "Criticize.\n"})
-		r := lola("install", kit, "-C", proj, "-t", "claude-code")
+		r := lola("install", kit, "-C", proj, "-t", "claude-code", "-v")
 		Expect(r.code).To(Equal(0), r.err)
-		run := "lola install " + kit + " --root " + proj + " --target claude-code --force"
-		Expect(r.out).To(ContainSubstring("hint: add description: to the agent's frontmatter; or render it anyway: " + run))
+		run := "lola install " + kit + " --root " + proj + " --target claude-code --verbose --force"
+		Expect(r.out).To(ContainSubstring("\n    hint: render it anyway: " + run + "\n"))
 		agent := filepath.Join(proj, ".claude/agents/critic.md")
 		Expect(agent).NotTo(BeAnExistingFile())
 		Expect(runHint(run).code).To(Equal(0))
@@ -773,8 +800,8 @@ var _ = Describe("core commands", func() {
 		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
 		Expect(v["dry_run"]).To(BeFalse())
 		Expect(v["notices"]).To(Equal([]any{
-			map[string]any{"level": "info", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch -y --json"},
-			map[string]any{"level": "info", "text": "meant for every project? lola profile --user --move example --to base -y -C " + proj + " --json"}}))
+			map[string]any{"level": "info", "class": "safety", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch -y --json"},
+			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? lola profile --user --move example --to base -y -C " + proj + " --json"}}))
 		Expect(v["modules"]).To(HaveLen(1))
 		Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 	})

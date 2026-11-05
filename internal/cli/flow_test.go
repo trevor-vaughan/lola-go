@@ -49,6 +49,7 @@ type scripted struct {
 	sshHosts   []func(cli.SSHHostStep) ([]string, error)
 	where      []int
 	members    []func(cli.MembersStep) ([]string, error)
+	trashPick  []func(cli.TrashPickStep) (cli.TrashAnswer, error)
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -69,6 +70,7 @@ type scripted struct {
 	confirmNavs    []cli.Nav
 	whereSteps     []cli.WhereStep
 	memberSteps    []cli.MembersStep
+	trashPickSteps []cli.TrashPickStep
 
 	summaryTo io.Writer // where Review writes the summary, as the huh adapter leaves it on stderr
 }
@@ -165,6 +167,10 @@ func (s *scripted) TidyPick(st cli.TidyPickStep) ([]string, error) {
 func (s *scripted) TidyKeep(st cli.TidyKeepStep) ([]string, error) {
 	s.calls, s.tidyKeepSteps = append(s.calls, "tidy-keep"), append(s.tidyKeepSteps, st)
 	return pop(&s.tidyKeep, "tidy-keep")(st)
+}
+func (s *scripted) TrashPick(st cli.TrashPickStep) (cli.TrashAnswer, error) {
+	s.calls, s.trashPickSteps = append(s.calls, "trash-pick"), append(s.trashPickSteps, st)
+	return pop(&s.trashPick, "trash-pick")(st)
 }
 func (s *scripted) Background() (bool, error) {
 	s.calls = append(s.calls, "background")
@@ -431,8 +437,15 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		r := lolaP(p, "install", agents, "--scope", "user")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"review"}))
-		Expect(p.reviewSteps[0].Summary).To(MatchRegexp(`\n  ✗ skipped agents: claude-code agent bare: .+\n      hint: \S`))
+		Expect(p.reviewSteps[0].Summary).To(ContainSubstring("\n  → agents: 1 notice (claude-code 1) — lola check --user "+agents+" -t claude-code\n"),
+			"P2-6: detail is one line per module, whose lola check names the source the review may decline")
 		Expect(filepath.Join(home, ".claude")).NotTo(BeADirectory(), "the dry run wrote nothing")
+
+		p = &scripted{review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", agents, "--scope", "user", "-v")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.reviewSteps[0].Summary).To(MatchRegexp(`\n  ✗ skipped agents: claude-code agent bare: .+\n      hint: render it anyway: \S`))
+		Expect(p.reviewSteps[0].Summary).NotTo(ContainSubstring("add description:"), "I-2: the hint for the module's author is lola check's")
 	})
 
 	It("keeps the run's output flags in the hints of a review's dry-run refusal (Plan 10 §5)", func() {
@@ -523,10 +536,19 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit"}), "--force confirms the plan as -y does (user decision, 2026-10-22)")
 
-		p = &scripted{}
-		r = lolaP(p, "install", "review-kit", "--scope", "project", "--skip", "rule/style", "-t", "claude-code")
+		By("component flags replace the component step, but a --skip that deletes installed files asks first (Pick-P2-b); No keeps them")
+		rule := filepath.Join(proj, ".claude/skills/review/SKILL.md")
+		Expect(rule).To(BeAnExistingFile())
+		p = &scripted{confirm: []bool{false}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project", "--skip", "skill/review", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(BeEmpty(), "component flags replace the component step")
+		Expect(p.calls).To(Equal([]string{"confirm:Remove these and apply? No writes nothing"}))
+		Expect(rule).To(BeAnExistingFile())
+		p = &scripted{confirm: []bool{true}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project", "--skip", "skill/review", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"confirm:Remove these and apply? No writes nothing"}))
+		Expect(rule).NotTo(BeAnExistingFile())
 	})
 
 	It("goes back a screen on Esc: the step before asks again with its answer preselected, then the flow carries on", func() {

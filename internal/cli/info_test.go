@@ -151,6 +151,35 @@ var _ = Describe("lola info", func() {
 		Expect(readInfo(r.out).Install[0].Command).To(BeEmpty(), "the entry now names claude-code alone")
 	})
 
+	It("P2-5: shows the commit a git source resolved, and none for a folder", func() {
+		work := filepath.Join(tmp, "work")
+		writeTree(work, infoKit)
+		gitIn(work, "init", "-q", "-b", "main")
+		gitIn(work, "add", "-A")
+		gitIn(work, "commit", "-q", "-m", "v1")
+		head := gitIn(work, "rev-parse", "HEAD")
+		gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "kit.git"))
+		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/kit.git"
+
+		r := lola("info", url, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		var doc struct {
+			Commit string `json:"commit"`
+		}
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
+		Expect(doc.Commit).To(Equal(head))
+		Expect(lola("info", "kit").out).To(MatchRegexp(`(?m)^  commit:\s+` + head + `$`))
+		Expect(lola("info", "kit").out).To(MatchRegexp(`(?m)^  head digest:\s+\(default\) → [0-9a-f]{12}$`))
+
+		Expect(lola("cache", "rm", "kit", "-y").code).To(Equal(0))
+		r = lola("info", kit, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
+		Expect(doc.Commit).To(BeEmpty())
+		Expect(r.out).To(ContainSubstring(`"commit": ""`))
+		Expect(lola("info", "kit").out).NotTo(ContainSubstring("commit:"))
+	})
+
 	DescribeTable("info's hint installs the digest info showed",
 		func(arg func() string, after func()) {
 			r := lola("info", arg(), "-C", proj, "-t", "claude-code", "--json")
@@ -337,7 +366,7 @@ var _ = Describe("lola info", func() {
 	})
 
 	It("cache add and cache list JSON keep the module identity and contents", func() {
-		keys := []string{"name", "description", "version", "digest", "format", "source", "type", "heads", "skills", "commands", "agents",
+		keys := []string{"name", "description", "version", "digest", "commit", "format", "source", "type", "heads", "skills", "commands", "agents",
 			"mcp_servers", "rules", "hooks", "warnings", "vars", "templates", "partials", "attributes"}
 		r := lola("cache", "add", kit, "--json")
 		Expect(r.code).To(Equal(0), r.err)

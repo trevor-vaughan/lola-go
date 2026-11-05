@@ -92,10 +92,10 @@ var _ = Describe("gemini-cli", func() {
 			"warn skill-arguments-dropped args", "warn skill-arguments-dropped doubled"}), "an escaped $ or one after a character is not a placeholder")
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "gemini-cli", Kind: "skill", Artifact: "inline", Code: "skill-shell-dropped",
 			Text: "gemini-cli does not run shell in skills; it reaches the model as text",
-			Hint: `wrap the shell in {% if target != "gemini-cli" %}…{% endif %} in the skill's SKILL.md.liquid template`}))
+			Hint: `wrap the shell in {% if target != "gemini-cli" %}…{% endif %} in the skill's SKILL.md.liquid template`, Class: target.ClassDetail, AuthorHint: true}))
 		Expect(fs[2]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "gemini-cli", Kind: "skill", Artifact: "args", Code: "skill-arguments-dropped",
 			Text: "gemini-cli does not fill argument placeholders in skills; they reach the model as written",
-			Hint: `wrap the placeholders in {% if target != "gemini-cli" %}…{% endif %} in the skill's SKILL.md.liquid template`}))
+			Hint: `wrap the placeholders in {% if target != "gemini-cli" %}…{% endif %} in the skill's SKILL.md.liquid template`, Class: target.ClassDetail, AuthorHint: true}))
 	})
 
 	It("skips a skill without a description, and renders it with Force", func() {
@@ -104,7 +104,7 @@ var _ = Describe("gemini-cli", func() {
 		Expect(ins).To(BeEmpty())
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "gemini-cli", Kind: "skill", Artifact: "review",
 			Code: "required-key-missing", Text: "gemini-cli needs a description in the skill's frontmatter",
-			Hint: "add description: to the skill's frontmatter", Forceable: true}}))
+			Hint: "add description: to the skill's frontmatter", Forceable: true, Class: target.ClassDetail, AuthorHint: true}}))
 		ctx.Force = true
 		ins, fs = plan1(m)
 		Expect(string(byPath(ins)[".gemini/skills/review/SKILL.md"].Data)).To(Equal("---\nname: review\n---\nReview.\n"))
@@ -137,7 +137,7 @@ var _ = Describe("gemini-cli", func() {
 		Expect(decode(ins[0].Data)["prompt"]).To(Equal("Arguments: {{args}}\n\nFix issue $1 in $2\n"))
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeverityWarn, Target: "gemini-cli", Kind: "command", Artifact: "fix",
 			Code: "gemini-cli/positional-arguments", Hint: "write $ARGUMENTS in place of $N, $ARGUMENTS[N] and declared names; gemini-cli fills it with the whole argument string",
-			Text: `gemini-cli has no positional or named arguments; they are left as written and the prompt starts with "Arguments: {{args}}"`}}))
+			Text: `gemini-cli has no positional or named arguments; they are left as written and the prompt starts with "Arguments: {{args}}"`, Class: target.ClassDetail, AuthorHint: true}}))
 	})
 
 	It("treats Claude's 0-based $0, $10 and $ARGUMENTS[N] as positional, never as {{args}}", func() {
@@ -206,7 +206,7 @@ var _ = Describe("gemini-cli", func() {
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "gemini-cli", Kind: "command", Artifact: "status",
 			Code: "gemini-cli/shell-injection", Text: "gemini-cli does not run !`…`; the command would send it to the model as text",
 			Hint: "write the shell as Gemini's !{…} for gemini-cli in the command's .md.liquid template: " +
-				"{% if target == \"gemini-cli\" %}!{git status}{% else %}!`git status`{% endif %}", Forceable: true}}))
+				"{% if target == \"gemini-cli\" %}!{git status}{% else %}!`git status`{% endif %}", Forceable: true, Class: target.ClassDetail, AuthorHint: true}}))
 		ctx.Force = true
 		ins, fs = plan1(m)
 		Expect(decode(ins[0].Data)["prompt"]).To(Equal("Summarize !`git status`\n"), "rendered as written, never converted")
@@ -253,7 +253,7 @@ var _ = Describe("gemini-cli", func() {
 			"skip agent-tools-unenforceable mcp"}), "Claude's names, a Claude comma-separated string and mcp__server__tool")
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeveritySkip, Target: "gemini-cli", Kind: "agent", Artifact: "claude",
 			Code: "agent-tools-unenforceable", Text: "gemini-cli cannot enforce this agent's tool list; without it the agent can use every tool",
-			Hint: "under gemini-cli: in the agent's .targets.yaml, list its tools by gemini-cli's names, such as read_file", Forceable: true}))
+			Hint: "under gemini-cli: in the agent's .targets.yaml, list its tools by gemini-cli's names, such as read_file", Forceable: true, Class: target.ClassSafety, AuthorHint: true}))
 		ctx.Force = true
 		ins, fs = plan1(m)
 		Expect(string(byPath(ins)[".gemini/agents/claude.md"].Data)).To(Equal("---\nname: claude\ndescription: d\n---\nC.\n"))

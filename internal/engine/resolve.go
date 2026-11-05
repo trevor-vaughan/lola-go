@@ -6,10 +6,12 @@ import (
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -48,7 +50,6 @@ func components(m *module.Module) []Component {
 type resolved struct {
 	module  *module.Module
 	skipped []string // kind/name of every component the exclusions remove
-	notes   []Notice // exclusions that name no component of the module
 }
 
 // resolveComponents is the one resolver (Plan 5c §7): the cached module minus the effective
@@ -72,14 +73,52 @@ func resolveComponents(m *module.Module, x config.Exclusions, rulesOn bool) reso
 	if !rulesOn {
 		out.Rules = nil
 	}
+	return r
+}
+
+// narrows reports whether a skip or only: selector of x names a component of m: a stale one narrows
+// nothing, and an include only widens.
+func narrows(x config.Exclusions, m *module.Module) bool {
 	all := components(m)
-	for _, p := range x.Patterns() {
-		if !slices.ContainsFunc(all, func(c Component) bool { return p.Matches(c.Kind, c.Name) }) {
-			r.notes = append(r.notes, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: %s has no component %s; remove it from the file",
-				untrusted.Text(p.Origin, untrusted.MaxName), m.Name, untrusted.Text(p.String(), untrusted.MaxName))})
+	for _, l := range []config.Layer{x.Global, x.Scope} {
+		for _, ps := range [][]config.Pattern{l.Skip, l.Only} {
+			for _, p := range ps {
+				if slices.ContainsFunc(all, func(c Component) bool { return p.Matches(c.Kind, c.Name) }) {
+					return true
+				}
+			}
 		}
 	}
-	return r
+	return false
+}
+
+// staleNotices warns, once per selector and origin, of each selector in x that names no component
+// of m, with the run that removes it: --unskip of it in the section that holds it, which removes a
+// stale selector (applyEdits) and, in the global section, needs --global. repick gives the run
+// that changes m's picks where it is provided (args: the module, then the flags); it is asked
+// only for a selector that is in a scope's section or a profile entry.
+func (e *Engine) staleNotices(sc Scope, m *module.Module, x config.Exclusions, repick func(args ...string) (string, error)) ([]Notice, error) {
+	all := components(m)
+	var out []Notice
+	var seen []config.Sourced
+	for _, p := range x.Patterns() {
+		if slices.ContainsFunc(all, func(c Component) bool { return p.Matches(c.Kind, c.Name) }) || slices.Contains(seen, p) {
+			continue
+		}
+		seen = append(seen, p)
+		var run string
+		if p.Origin == x.Global.Origin {
+			run = e.Command(sc, "install", m.Name, "--global", "--unskip", p.String())
+		} else {
+			var err error
+			if run, err = repick(m.Name, "--unskip", p.String()); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: %s has no component %s → %s",
+			untrusted.Text(p.Origin, untrusted.MaxName), m.Name, untrusted.Text(p.String(), untrusted.MaxName), run)})
+	}
+	return out, nil
 }
 
 // selections loads selections.yaml for one command.
@@ -87,7 +126,7 @@ func (e *Engine) selections() (*config.Selections, error) {
 	return config.LoadSelections(e.Paths.Selections)
 }
 
-// where is the selections.yaml section of a scope.
+// where is keep.yaml's section of a scope: user, or the project by its path key.
 func where(sc Scope) (config.Where, error) {
 	if sc.Kind == target.User {
 		return config.User(), nil
@@ -99,22 +138,96 @@ func where(sc Scope) (config.Where, error) {
 	return config.Project(key), nil
 }
 
+// scopeSection is the selections.yaml section of a scope: user, or the project by its repository
+// key (config.RepoKey), which also matches a section under its path key, else by its path key
+// (spec 2026-11-03 Pick-P2-a). Every read and write of a project's section goes through it; it
+// asks git once per project in a run (Engine.sections). A clone git cannot read is keyed by its
+// path, never refused: keyNotices says why, once.
+func (e *Engine) scopeSection(sc Scope) (config.Where, error) {
+	w, err := where(sc)
+	if err != nil || sc.Kind != target.Project {
+		return w, err
+	}
+	key := w.Project
+	if known, ok := e.sections[key]; ok {
+		return known.w, nil
+	}
+	known := projectSection{w: w}
+	repo, ok, err := config.RepoKey(sc.ProjectDir, source.GitCommand)
+	switch {
+	case err != nil:
+		known.failed = err
+	case ok:
+		known.w = config.RepoProject(repo, key)
+	}
+	if e.sections == nil {
+		e.sections = map[string]*projectSection{}
+	}
+	e.sections[key] = &known
+	return known.w, nil
+}
+
+// projectSection is a project's selections.yaml section as scopeSection resolved it, and failed,
+// why git could not read the clone, which keys it by path, until keyFailure takes it.
+type projectSection struct {
+	w      config.Where
+	failed error
+}
+
+// keyFailure is why git could not read sc's clone, so its picks are keyed by its path
+// (scopeSection), the first time a run asks; nil after, and for any other scope.
+func (e *Engine) keyFailure(sc Scope) error {
+	if sc.Kind != target.Project {
+		return nil
+	}
+	w, err := where(sc)
+	if err != nil {
+		return nil
+	}
+	known := e.sections[w.Project]
+	if known == nil {
+		return nil
+	}
+	failed := known.failed
+	known.failed = nil
+	return failed
+}
+
+// keyedByPath is the text that says sc's picks are keyed by its path because git failed (failed,
+// keyFailure's), without the hints.
+func keyedByPath(failed error) string {
+	return untrusted.CleanErr(failed).Error() + "; picks for this project are keyed by its path"
+}
+
+// keyNotices is keyFailure as the run's warn notice, its hint after →; nil when there is none.
+func (e *Engine) keyNotices(sc Scope) []Notice {
+	failed := e.keyFailure(sc)
+	if failed == nil {
+		return nil
+	}
+	text := keyedByPath(failed)
+	for _, h := range errs.Hints(failed) {
+		text += " → " + h
+	}
+	return []Notice{{Level: LevelWarn, Text: text}}
+}
+
 // picksAt is the section of selections whose picks apply to a module that from provides at sc
 // (cherry-pick design §4.2): the entry of from when it is a profile layer (profile:<qualified>),
 // else selections.yaml's section of sc. from is a layer's or lock.json's name: "" or project.yml for
 // the scope's manifest.
-func picksAt(sc Scope, from string) (config.Where, error) {
+func (e *Engine) picksAt(sc Scope, from string) (config.Where, error) {
 	if strings.HasPrefix(from, ledger.FromProfile("")) {
 		return config.Picks(from), nil
 	}
-	return where(sc)
+	return e.scopeSection(sc)
 }
 
 // exclusions returns module's effective exclusions at sc, provided by from (picksAt). It is the
 // one place a planner, the choices and the preview get them (install, list, sync, check,
 // moduleScope, Preview), so a layer added to the precedence reaches every caller here.
-func exclusions(sel *config.Selections, sc Scope, from, module string) (config.Exclusions, error) {
-	w, err := picksAt(sc, from)
+func (e *Engine) exclusions(sel *config.Selections, sc Scope, from, module string) (config.Exclusions, error) {
+	w, err := e.picksAt(sc, from)
 	if err != nil {
 		return config.Exclusions{}, err
 	}
@@ -151,7 +264,7 @@ func (e *Engine) ignoredSection(sel *config.Selections, sc Scope, layers []Layer
 	if !strings.HasPrefix(from, ledger.FromProfile("")) {
 		return nil, nil
 	}
-	w, err := where(sc)
+	w, err := e.scopeSection(sc)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +277,7 @@ func (e *Engine) ignoredSection(sel *config.Selections, sc Scope, layers []Layer
 	}
 	label := layerLabel(infos, from)
 	return &Notice{Level: LevelWarn, Text: fmt.Sprintf("%s %s is ignored: %s provides it; delete it from %s, and pick %s's components in %s → %s",
-		untrusted.Text(w.Origin(), untrusted.MaxName), shown(module), label, untrusted.Text(sel.Path, untrusted.MaxName), shown(module), label,
+		untrusted.Text(sel.Origin(w, module), untrusted.MaxName), shown(module), label, untrusted.Text(sel.Path, untrusted.MaxName), shown(module), label,
 		e.repickRun(sc, layers, infos, on, from, module))}, nil
 }
 
@@ -198,6 +311,28 @@ func skippedIn(profiles func() ([]profile.Info, error), x config.Exclusions, ski
 		return "selections.yaml", nil
 	}
 	return label, nil
+}
+
+// excludedWhere says where the picks that exclude skipped (kind/name each, by x) live, as output
+// names it: in, for those a skip leaves out (skippedIn), and for those only the only: list in force
+// leaves out, notInOnly and onlyIn, the list's origin as originLabel names it; "" and [] for none.
+func excludedWhere(profiles func() ([]profile.Info, error), x config.Exclusions, skipped []string, from string) (in string, notInOnly []string, onlyIn string, err error) {
+	notInOnly = []string{}
+	var rest []string
+	for _, c := range skipped {
+		kind, name, _ := strings.Cut(c, "/")
+		if x.LeftOutByOnly(kind, name) {
+			notInOnly = append(notInOnly, c)
+		} else {
+			rest = append(rest, c)
+		}
+	}
+	if in, err = skippedIn(profiles, x, rest, from); err != nil || len(notInOnly) == 0 {
+		return in, notInOnly, "", err
+	}
+	_, origin := x.Only()
+	onlyIn, err = originLabel(x, origin, from, profiles)
+	return in, notInOnly, onlyIn, err
 }
 
 // visibleOnce is the profiles sc can use (visible), listed when first asked for and then kept, so

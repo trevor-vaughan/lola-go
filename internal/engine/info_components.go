@@ -119,7 +119,7 @@ func (e *Engine) infoComponents(in *InfoInstall, sc Scope, v store.Version, ms M
 	if sel, err = withPicks(sel, layers); err != nil {
 		return err
 	}
-	x, err := exclusions(sel, sc, w.From, v.Name)
+	x, err := e.exclusions(sel, sc, w.From, v.Name)
 	if err != nil {
 		return err
 	}

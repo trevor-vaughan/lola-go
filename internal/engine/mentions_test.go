@@ -325,7 +325,7 @@ var _ = Describe("naming what the picks mention and leave out (cherry-pick desig
 	// install installs arg at sc for claude-code, with spec's flags and edits given as flags.
 	install := func(arg string, spec engine.InstallSpec, edits ...engine.SelectionEdit) []string {
 		GinkgoHelper()
-		spec.Cwd = proj
+		spec.Cwd, spec.ConfirmRemovals = proj, confirmAll
 		spec.Scopes = []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}, Targets: claude}}
 		spec.Modules = []engine.InstallRequest{{Arg: arg}}
 		if spec.Options.Targets == nil {
@@ -386,7 +386,8 @@ var _ = Describe("naming what the picks mention and leave out (cherry-pick desig
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
 			Text: "pack: skill/golang-race mentions 1 component you did not pick: skill/golang-testing → add them: " +
-				"lola install --project pack --with-mentions --skip pack:skill/golang-lint --global -t claude-code"}))
+				"lola install --project pack --with-mentions --skip pack:skill/golang-lint --global -t claude-code",
+			Class: target.ClassDetail, Module: "pack", Check: "lola check --project pack"}), "P2-6: a mention is detail, counted under its module and lola check")
 	})
 
 	It("repeats under -n every selection flag of the run, which a dry run saved none of", func() {
@@ -429,7 +430,8 @@ var _ = Describe("naming what the picks mention and leave out (cherry-pick desig
 		Expect(err).NotTo(HaveOccurred())
 		Expect(pv.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
 			Text: "pack: skill/golang-testing mentions 4 components you did not pick: agent/deploy, command/deploy, skill/golang-gopls, skill/golang-race → add them: " +
-				"lola install --project " + src + " --with-mentions -t claude-code"}))
+				"lola install --project " + src + " --with-mentions -t claude-code", Class: target.ClassDetail, Module: "pack",
+			Check: "lola check --project " + src}), "I-1: a version the review may decline is checked by its source")
 	})
 })
 

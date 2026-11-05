@@ -28,15 +28,15 @@ var profileActions = []engine.ProfileAction{engine.ProfileOn, engine.ProfileOff,
 // §19 P13), in the order a refusal checks them: a flag the run's action does not take, or any of
 // them without an action, is refused, since a flag that does nothing must not look accepted.
 var profileFlags = map[engine.ProfileAction][]string{
-	engine.ProfileOn:     {"yes", "trust", "dry-run", "force"},
-	engine.ProfileOff:    {"yes", "trust", "dry-run", "force"},
-	engine.ProfileSwitch: {"new", "from", "bundle", "yes", "trust", "dry-run", "force"},
+	engine.ProfileOn:     {"yes", "trust", "dry-run", "force", "verbose"},
+	engine.ProfileOff:    {"yes", "trust", "dry-run", "force", "verbose"},
+	engine.ProfileSwitch: {"new", "from", "bundle", "yes", "trust", "dry-run", "force", "verbose"},
 	engine.ProfileEdit: {"new", "from", "bundle", "skip", "only", "unskip", "exact", "with-mentions", "target", "override", "ref", "path", "yes", "trust",
-		"dry-run", "force"},
-	engine.ProfileMove:   {"to", "keep-off", "yes", "trust", "dry-run", "force"},
-	engine.ProfileSplit:  {"to", "yes", "trust", "dry-run", "force"},
+		"dry-run", "force", "verbose"},
+	engine.ProfileMove:   {"to", "keep-off", "yes", "trust", "dry-run", "force", "verbose"},
+	engine.ProfileSplit:  {"to", "yes", "trust", "dry-run", "force", "verbose"},
 	engine.ProfileAdd:    {"trust", "dry-run", "ref", "path"},
-	engine.ProfileUpdate: {"yes", "trust", "dry-run", "all"},
+	engine.ProfileUpdate: {"yes", "trust", "dry-run", "all", "verbose"},
 	engine.ProfileRemove: {"yes", "dry-run", "force"},
 }
 
@@ -385,6 +385,13 @@ func (a *app) profileCmd() *cobra.Command {
 					scopes = append(scopes, c.Scope)
 				}
 				states, notices, err := eng.ProfileState(cmd.Context(), scopes, args[0], outputFlags(cmd)...)
+				if engine.IsUnknownProfile(err) {
+					// --switch --new is another action than the show, so it takes none of the run's consent (R-8).
+					if exists, refused := eng.NewOrSwitch(scopes[0], engine.ProfileChange{Name: args[0]}, nil); !exists && refused == nil {
+						err = errs.WithHints(err, "make it: "+runAs(strings.Fields(cmd.CommandPath()), cmd,
+							[]string{args[0], "--switch", "--new"}, consentFlags...))
+					}
+				}
 				if err != nil {
 					return err
 				}
@@ -439,6 +446,7 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().StringVar(&add.path, "path", "", "with --add: the directory of the source that holds profiles/; with --edit: the module root inside the source")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
+	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print every notice, not a count per module of those that are not about safety")
 	addTrustFlag(cmd, &trust, "profile", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles; --add takes profiles only (recorded as a yes is; --update without a scope flag: profiles only)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "with --on, --off, --switch or --edit: remove files without asking, edited ones too; with --remove: remove a profile in use, without asking (never answers a consent question, nor --on's question)")
 	// Aliases for muscle memory from other tools (Plan 6b §3.3): systemctl and conda, nvm and
@@ -638,10 +646,7 @@ func printProfileAction(w io.Writer, s style, name string, r *engine.SyncResult,
 	}
 	_ = tw.Flush()
 	if len(act.Changes) == 0 {
-		printFindings(w, s, r.Findings)
-		for _, n := range r.Notices {
-			fmt.Fprintln(w, noticeLine(s, n))
-		}
+		printNotices(w, s, r.Result)
 		if r.DryRun {
 			if r.ToApply != "" {
 				fmt.Fprintln(w, s.info("to apply: "+r.ToApply))
@@ -860,7 +865,10 @@ func printProfileState(w io.Writer, s style, states []engine.ProfileState, notic
 				if len(m.Only) > 0 {
 					fmt.Fprintln(tw, "\tonly: "+strings.Join(m.Only, ", ")) // under FROM, keeping the column
 				}
-				if len(m.Skip) > 0 {
+				switch {
+				case m.Summary != nil:
+					fmt.Fprintln(tw, "\t"+picksText(m.Summary))
+				case len(m.Skip) > 0:
 					fmt.Fprintln(tw, "\tskip: "+strings.Join(m.Skip, ", "))
 				}
 			}

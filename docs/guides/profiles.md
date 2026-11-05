@@ -272,7 +272,9 @@ confirmation.
 - **`lola profile go-review --edit cc-skills-golang --only skill/golang-testing`** writes
   go-review's entry as `lola install --profile go-review` would, and applies it where go-review is
   on (saved where it is off). `--only` means what it means for `lola install`: the entry skips
-  every other component that exists now, so components a later version adds are installed;
+  every other component that exists now, so components a later version adds are installed (a long
+  list of skips is written one a line, and `lola profile <name>` shows it as `only (not exact):
+  <picks>; <n> others skipped`);
   `--only … --exact` writes the entry's `only:` list instead, so they are not. `--skip` and
   `--unskip` edit it too.
 - **What the profile picks**: `lola profile go-review` lists each entry's `only:` and `skip:`; when
@@ -296,8 +298,10 @@ confirmation.
   profile its own. `--override` is
   refused for a project's entry its own sync has not trusted, and for one whose folder lies inside
   a project, whether it is `lola profile --edit` or `lola install` that copies it.
-- **Narrowing picks removes files**, asked on a terminal; off one, it removes them without asking,
-  as `lola install --skip` does. A file you edited by hand is kept and refused, hinting `--force`.
+- **Narrowing picks removes files**, asked on a terminal as `lola uninstall` asks; off one it
+  refuses, printing the files and hinting the same command with `-y`, and `--force` answers without
+  asking. `-n` shows the plan and writes nothing. A change that only
+  adds components asks nothing. A file you edited by hand is kept and refused, hinting `--force`.
 - **`--new`** makes the profile: with modules, written with them; without, empty, a copy
   (`--from <profile>`) or a bundle (`--bundle a,b`). Nothing is switched on. On a terminal with
   no modules the page asks whether it lists modules or bundles profiles.
@@ -550,7 +554,11 @@ profile <bundle>`), whose file lists other profiles in `bundle:` instead of modu
   - at most 512 entries, each checked as a manifest entry;
   - for a bundle, a `bundle:` list of at most 64 names that are strings, each a valid profile
     name, none repeated, beside no `modules:` and no `targets:`;
-  - every refusal names the file and line.
+  - every refusal names the file and line (`go.yml:2: unknown key "foo" (a profile has: …)`), an
+    unknown key lists the keys that are allowed there, and a value of the wrong kind says what was
+    expected (`only: expected a list, found text`);
+  - an empty file (0 bytes, or only comments) is an empty profile: it is accepted and holds no
+    modules.
   - A profile may be a symbolic link (a dotfile manager's), as `default.yml` may; one that is not a
     regular file (a directory, a FIFO) is refused.
   - Each profiles directory (`$XDG_CONFIG_HOME/lola/profiles/`, a project's `.lola/profiles/` and

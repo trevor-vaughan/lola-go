@@ -6,7 +6,7 @@ assistant's native layout and records exactly what it wrote, so it can render ag
 uninstall cleanly, without touching anything it did not write.
 
 Already using [LobsterTrap/lola](https://github.com/LobsterTrap/lola)? `lola migrate` installs
-what it installed and moves its files to a trash you can restore from
+what it installed and moves its files to a trash you can restore from with `lola trash`
 ([docs/guides/migrating.md](docs/guides/migrating.md)).
 
 ## What works today
@@ -17,8 +17,8 @@ what it installed and moves its files to a trash you can restore from
   Agent Plugins packages, from a local folder, a git repository (`--ref` for a branch, tag or
   commit), or a zip or tar archive, local or downloaded.
 - **Portability report:** `lola check ./my-module` shows what each assistant would drop,
-  adapt or skip, without writing anything; `install` prints the same findings, and
-  `--strict` makes them errors.
+  adapt or skip, without writing anything; `install` counts them in one line per module
+  (`-v` prints them), and `--strict` makes them errors.
 - **Safety:** lola only overwrites or deletes files it wrote and nobody has changed, unless
   you pass `--force`; an existing file identical to what lola would write is adopted, not
   rewritten. JSON files keep their comments; a file lola cannot parse is never rewritten.
@@ -61,9 +61,9 @@ flowchart TD
 ```
 
 - **Cleanup:** `lola tidy` moves what lola does not manage out of the assistants' directories
-  and MCP server lists into a trash you can restore from, never an instruction file, nor what git
-  tracks or your [keep-list](docs/guides/tidying.md#tidying) (the names you protect with
-  `lola tidy --keep`) names unless you say so.
+  and MCP server lists into a trash you can restore from with `lola trash`, never an instruction
+  file, nor what git tracks or your [keep-list](docs/guides/tidying.md#tidying) (the names you
+  protect with `lola tidy --keep`) names unless you say so.
 - **Sync and trust:** commit `.lola/project.yml`, and a teammate's `lola sync` installs every
   module at the commit and digest it pins. A fresh clone, a changed pin or a removal is shown
   and waits for your trust; `-y` never gives it
@@ -152,9 +152,27 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
 
    ```sh
    cd my-project
-   # renders into .claude/ and records .lola/project.yml:
    lola install ../my-module --scope project -t claude-code
-   lola list                             # my-module  claude-code  ✓ ok
+   lola list
+   ```
+
+   `install` renders into `.claude/` and records `.lola/project.yml`. The output of both
+   (the path in the context line is wherever you made `my-project`):
+
+   ```text
+   project /tmp/tmp.7PXo8mZbW4/my-project: project.yml
+   ✓ added my-module to project.yml (base)
+     ✓ create claude-code .claude/commands/hello.md
+     ✓ create claude-code .claude/skills/hello/SKILL.md
+   → keep it to yourself: lola profile --project --move my-module --to mine --switch -y
+   → meant for every project? lola profile --user --move my-module --to base -y
+   ✓ installed my-module (claude-code)
+
+   project /tmp/tmp.7PXo8mZbW4/my-project: project.yml
+   user scope: default
+   SCOPE    MODULE     TARGET       STATUS  RULES  SOURCE
+   project  my-module  claude-code  ✓ ok    on     ../my-module
+   nothing installed at user scope (try: lola install --user <source>)
    ```
 
 4. Edit the module and install it again, which renders the edited skill into `.claude/`:

@@ -35,8 +35,9 @@ type Prompter interface {
 	// Confirm asks a yes/no question, default No: sync's removals, and the question that closes
 	// a flow (tidy's, migrate's), whose nav counts the steps answered before it.
 	Confirm(question string, nav Nav) (bool, error)
-	// Where asks where a change goes (spec 2026-10-29 §3.6): Title, one row per option and Cancel
-	// last, default the first; it answers the index of the option chosen, ErrAborted for Cancel.
+	// Where asks where a change goes (spec 2026-10-29 §3.6), or which restore lola trash's review
+	// runs: Title, one row per option and Cancel last, default the first; it answers the index of
+	// the option chosen, ErrAborted for Cancel.
 	Where(WhereStep) (int, error)
 	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
 	// multi-select, nothing preselected (Plan 6b §3.2).
@@ -60,6 +61,9 @@ type Prompter interface {
 	// TidyKeep asks which keep-list entries, for the candidates TidyPick left, to add: a
 	// filterable multi-select, nothing preselected, answering the IDs of the options chosen.
 	TidyKeep(TidyKeepStep) ([]string, error)
+	// TrashPick asks lola trash's picker (design 2026-11-03 §3.5): the runs, each followed by its
+	// files, to tick, then what to do with those ticked, answering the IDs ticked and the action.
+	TrashPick(TrashPickStep) (TrashAnswer, error)
 	// MigrateRoot asks where a root that missing project paths of the Python lola share is on this
 	// machine (Plan 10 §3.1), offering Suggest: an absolute path, or "" to skip them.
 	MigrateRoot(MigrateRootStep) (string, error)
@@ -366,10 +370,34 @@ type ReviewStep struct {
 	Nav     Nav
 }
 
-// WhereStep is a question about where a change goes: its title and its answers' labels.
+// WhereStep is a question about where a change goes, or which restore lola trash runs: its title
+// and its answers' labels.
 type WhereStep struct {
 	Title   string
 	Options []string
+}
+
+// lola trash's picker actions (TrashAnswer.Action).
+const (
+	TrashRestore = "restore" // Restore ticked
+	TrashEmpty   = "empty"   // Empty ticked runs
+)
+
+// TrashPickStep offers lola trash's runs, newest first, each one's [whole run] row followed by its
+// files' rows, indented: a run's row ticked takes the whole run, whatever of its files is ticked
+// (huh shows its files unticked). Labels are already made safe to print. Preselect is the last
+// answer when the picker asks again, and Problem why it does ("" at first).
+type TrashPickStep struct {
+	Options   []TidyOption
+	Preselect []string
+	Problem   string
+}
+
+// TrashAnswer is the trash picker's answer: the IDs of the rows ticked, and TrashRestore or
+// TrashEmpty.
+type TrashAnswer struct {
+	Picked []string
+	Action string
 }
 
 // errNoTerminal is what the non-interactive Prompter answers; the flow never asks it.
@@ -395,6 +423,7 @@ func (noPrompter) MarketEntry(MarketEntryStep) (string, error)  { return "", err
 func (noPrompter) TidyPick(TidyPickStep) ([]string, error)      { return nil, errNoTerminal }
 func (noPrompter) Members(MembersStep) ([]string, error)        { return nil, errNoTerminal }
 func (noPrompter) TidyKeep(TidyKeepStep) ([]string, error)      { return nil, errNoTerminal }
+func (noPrompter) TrashPick(TrashPickStep) (TrashAnswer, error) { return TrashAnswer{}, errNoTerminal }
 func (noPrompter) Trust(TrustStep) (engine.TrustAnswer, error) {
 	return engine.TrustAnswer{}, errNoTerminal
 }

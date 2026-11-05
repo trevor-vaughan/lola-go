@@ -12,6 +12,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // Assistant is what lola found of one target's assistant in a scope.
@@ -177,8 +178,14 @@ func (r *probeRun) read(t target.Target) (string, *target.Finding) {
 	cmd.WaitDelay = r.e.ProbeTimeout // do not wait forever on children that keep the output open
 	out := &headWriter{max: probeOutputLimit}
 	cmd.Stdout = out
+	stderr := &headWriter{max: probeOutputLimit}
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
-		return "", note("probe/unknown-version", fmt.Sprintf("%s %s failed: %v", bin, strings.Join(p.VersionArgs, " "), err))
+		text := fmt.Sprintf("%s %s failed: %v", bin, strings.Join(p.VersionArgs, " "), err)
+		if why := strings.Join(strings.Fields(string(stderr.buf)), " "); why != "" {
+			text += ": " + untrusted.Text(why, untrusted.MaxName)
+		}
+		return "", note("probe/unknown-version", text)
 	}
 	m := p.VersionRE.FindSubmatch(out.buf)
 	if m == nil {

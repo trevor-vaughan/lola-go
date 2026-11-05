@@ -73,17 +73,20 @@ func printModuleView(w io.Writer, s style, mv engine.ModuleView) {
 	if mv.Description != "" {
 		fmt.Fprintf(w, "  %s\n", mv.Description)
 	}
-	fmt.Fprintf(w, "  %-11s %s (%s)\n", "source:", mv.Source, mv.Type)
+	fmt.Fprintf(w, "  %-13s %s (%s)\n", "source:", mv.Source, mv.Type)
 	if mv.Path != "" {
-		fmt.Fprintf(w, "  %-11s %s\n", "path:", mv.Path)
+		fmt.Fprintf(w, "  %-13s %s\n", "path:", mv.Path)
 	}
-	fmt.Fprintf(w, "  %-11s %s\n  %-11s %s\n", "format:", mv.Format, "digest:", mv.Digest)
+	fmt.Fprintf(w, "  %-13s %s\n  %-13s %s\n", "format:", mv.Format, "digest:", mv.Digest)
+	if mv.Commit != "" {
+		fmt.Fprintf(w, "  %-13s %s\n", "commit:", mv.Commit)
+	}
 	for _, h := range mv.Heads {
 		ref := h.Ref
 		if ref == "" {
 			ref = "(default)"
 		}
-		fmt.Fprintf(w, "  %-11s %s → %s\n", "head:", ref, h.Digest)
+		fmt.Fprintf(w, "  %-13s %s → %s\n", "head digest:", ref, h.Digest)
 	}
 	vars := make([]string, len(mv.Vars)) // language = "go"
 	for i, v := range mv.Vars {
@@ -95,7 +98,7 @@ func printModuleView(w io.Writer, s style, mv engine.ModuleView) {
 	}{{"skills", mv.Skills}, {"commands", mv.Commands}, {"agents", mv.Agents}, {"mcp", mv.MCPServers}, {"rules", mv.Rules},
 		{"vars", vars}, {"templates", mv.Templates}, {"partials", mv.Partials}, {"attributes", mv.Attributes}} {
 		if len(kv.v) > 0 {
-			fmt.Fprintf(w, "  %-11s %s\n", kv.k+":", strings.Join(kv.v, ", "))
+			fmt.Fprintf(w, "  %-13s %s\n", kv.k+":", strings.Join(kv.v, ", "))
 		}
 	}
 	if len(mv.Hooks) > 0 {

@@ -2139,6 +2139,35 @@ var _ = Describe("Sync", func() {
 			Expect(state()).To(Equal(before))
 		})
 
+		It("Prof-P2-d: an unknown target names the file and the line of the entry", func() {
+			install(sc, engine.InstallRequest{Arg: src})
+			manPath := filepath.Join(proj, ".lola", "project.yml")
+			Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: other\n    source: ../src/other\n    targets: [nope]\n"), 0o600)).To(Succeed())
+			_, err := sync(engine.SyncRequest{})
+			Expect(err).To(MatchError(`project.yml:4: other: unknown target "nope"`))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("valid targets: ")))
+		})
+
+		It("Prof-P2-d: an unknown top-level target names the file and the line of targets:", func() {
+			install(sc, engine.InstallRequest{Arg: src})
+			manPath := filepath.Join(proj, ".lola", "project.yml")
+			Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code, nope]\nmodules:\n  - name: other\n    source: ../src/other\n"), 0o600)).To(Succeed())
+			_, err := sync(engine.SyncRequest{})
+			Expect(err).To(MatchError(`project.yml:2: other: unknown target "nope"`))
+		})
+
+		It("Prof-P2-d: an install names the targets: line of a bad file, but a bad -t as the user gave it", func() {
+			user := engine.Scope{Kind: target.User}
+			defaultYML := filepath.Join(e.Paths.UserProfiles, "default.yml")
+			Expect(os.MkdirAll(filepath.Dir(defaultYML), 0o700)).To(Succeed())
+			Expect(os.WriteFile(defaultYML, []byte("version: 1\ntargets: [claude-code, nope]\n"), 0o600)).To(Succeed())
+			_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{})
+			Expect(err).To(MatchError(`default.yml:2: unknown target "nope"`))
+			Expect(os.WriteFile(defaultYML, []byte("version: 1\ntargets: [claude-code]\n"), 0o600)).To(Succeed())
+			_, err = e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"nope"}})
+			Expect(err).To(MatchError(`unknown target "nope"`))
+		})
+
 		It("an entry whose pin or ref does not fit its source, or whose targets are unusable", func() {
 			archive := filepath.Join(tmp, "example.tgz")
 			Expect(os.WriteFile(archive, tarGz("example", exampleModule), 0o644)).To(Succeed())

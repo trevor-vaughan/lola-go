@@ -231,7 +231,7 @@ func claudeMCP(id string, s module.MCPServer, ctx target.PlanContext) (map[strin
 			v["env"] = target.ExpandMap(s.Env, ctx)
 		}
 		if s.Cwd != "" {
-			finds = append(finds, target.Finding{Severity: target.SeverityWarn, Target: id, Kind: "mcp", Artifact: s.Name,
+			finds = append(finds, target.Finding{Severity: target.SeverityWarn, Target: id, Kind: "mcp", Artifact: s.Name, Class: target.ClassDetail,
 				Code: "mcp-cwd-dropped", Text: fmt.Sprintf("claude-code has no working-directory setting; cwd %q dropped", s.Cwd)})
 		}
 		return v, finds
@@ -276,7 +276,7 @@ func allowedTools(id, kind, name string, doc module.Doc) []target.Finding {
 		}
 		// Never cut: a cut list could hide a tool such as Bash(*) behind padding.
 		out = append(out, target.Finding{Severity: target.SeverityWarn, Target: id, Kind: kind, Artifact: name, Code: "claude-code/allowed-tools",
-			Text: "pre-approves tools Claude Code then runs without asking: " + strings.Join(tools, ", ")})
+			Class: target.ClassSafety, Text: "pre-approves tools Claude Code then runs without asking: " + strings.Join(tools, ", ")})
 	}
 	return out
 }
@@ -292,7 +292,7 @@ func permissionMode(id, name string, doc module.Doc) []target.Finding {
 			continue
 		}
 		out = append(out, target.Finding{Severity: target.SeverityWarn, Target: id, Kind: "agent", Artifact: name, Code: "claude-code/permission-mode",
-			Text: "sets the permission mode it runs in: " + untrusted.Text(fmt.Sprint(v), untrusted.MaxName) +
+			Class: target.ClassSafety, Text: "sets the permission mode it runs in: " + untrusted.Text(fmt.Sprint(v), untrusted.MaxName) +
 				" (Claude Code v2.1.267+ ignores bypassPermissions in a subagent's frontmatter)"})
 	}
 	return out

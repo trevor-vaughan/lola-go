@@ -84,12 +84,13 @@ type editTarget struct {
 // file to edit as pl does. An exact --only replaces the section's only: list with its patterns,
 // removes the skips naming a match and leaves other skips and includes; with --global it warns
 // about each scope section whose own only: list shadows the new one. --only runs first, then
-// --skip, then --unskip. Every selector must match a component of some chosen module; a
-// module-qualified selector must name a chosen module. scopes name each scope's section of a
+// --skip, then --unskip. Every selector must match a component of some chosen module, or be saved
+// for one at w without matching a component of it (a stale selector, which the edit removes from
+// where it is saved and says so); a module-qualified selector must name a chosen module. scopes name each scope's section of a
 // module, those an --unskip --global can leave an item skipped in.
 func applyEdits(sel *config.Selections, at func(module string) config.Where, pl places, edits []SelectionEdit, mods []editTarget,
 	scopes []func(module string) config.Where) ([]config.Change, []Notice, error) {
-	if err := checkEdits(edits, mods); err != nil {
+	if err := checkEdits(sel, at, edits, mods); err != nil {
 		return nil, nil, err
 	}
 	var changes []config.Change
@@ -98,6 +99,14 @@ func applyEdits(sel *config.Selections, at func(module string) config.Where, pl 
 		w := at(m.name)
 		g, cur := sel.Entry(config.Global(), m.name), sel.Entry(w, m.name)
 		e := config.Entry{Skip: slices.Clone(cur.Skip), Include: slices.Clone(cur.Include), Only: slices.Clone(cur.Only)}
+		dropped := false
+		for _, ed := range edits {
+			if dropStale(&e, ed, m) {
+				dropped = true
+				notes = append(notes, Notice{Level: LevelInfo, Text: fmt.Sprintf("%s: removed %s from %s; the module has no such component",
+					m.name, untrusted.Text(ed.Selector.Pattern.String(), untrusted.MaxName), untrusted.Text(sel.Origin(w, m.name), untrusted.MaxName))})
+			}
+		}
 		// excluded is the module's exclusions at w as edited so far: the global section alone when
 		// w is global, else the global entry under w's as the section takes it (config.Layered).
 		excluded := func(c Component) bool {
@@ -150,7 +159,7 @@ func applyEdits(sel *config.Selections, at func(module string) config.Where, pl 
 				for _, scope := range scopes {
 					if sw := scope(m.name); len(sel.Entry(sw, m.name).Only) > 0 {
 						notes = append(notes, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: only: in %s shadows the global only: list there; edit %s",
-							m.name, untrusted.Text(sw.Origin(), untrusted.MaxName), pl.file(sw))})
+							m.name, untrusted.Text(sel.Origin(sw, m.name), untrusted.MaxName), pl.file(sw))})
 					}
 				}
 			}
@@ -201,6 +210,15 @@ func applyEdits(sel *config.Selections, at func(module string) config.Where, pl 
 					}
 				}
 			}
+		}
+		if dropped && len(cur.Only) > 0 && len(e.Only) == 0 && len(m.comps) > 0 {
+			// The hint's example is a real component whose name prints as it is, since a hint is pasted.
+			narrow := "narrow it again with --only <kind/name>"
+			if k := slices.IndexFunc(m.comps, func(c Component) bool { return untrusted.Text(c.String(), untrusted.MaxName) == c.String() }); k >= 0 {
+				narrow = pl.run(m.name, "--only", m.comps[k].String())
+			}
+			notes = append(notes, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: only: in %s is now empty, so %s installs all its %d components → %s",
+				m.name, untrusted.Text(sel.Origin(w, m.name), untrusted.MaxName), m.name, len(m.comps), narrow)})
 		}
 		if !slices.Equal(e.Skip, cur.Skip) || !slices.Equal(e.Include, cur.Include) || !slices.Equal(e.Only, cur.Only) {
 			sel.Set(w, m.name, e)
@@ -328,6 +346,9 @@ type places struct {
 	path   string
 	layers []Layer
 	infos  []profile.Info
+	// run is the lola install command that applies args (the module, then flags) where the edits
+	// are made, keeping the run's scope flags; it words the hint of a notice.
+	run func(args ...string) string
 }
 
 // name is w: selections.yaml's section, or the profile whose entry holds the picks (layerLabel).
@@ -399,9 +420,22 @@ func matching(s config.Selector, m editTarget) []Component {
 	return out
 }
 
+// dropStale removes from e the patterns equal to ed's selector's when it applies to m and matches
+// no component of m: a stale selector. It reports whether it removed any.
+func dropStale(e *config.Entry, ed SelectionEdit, m editTarget) bool {
+	if (ed.Selector.Module != "" && ed.Selector.Module != m.name) || len(matching(ed.Selector, m)) > 0 {
+		return false
+	}
+	same := func(p config.Pattern) bool { return p == ed.Selector.Pattern }
+	before := len(e.Skip) + len(e.Include) + len(e.Only)
+	e.Skip, e.Include, e.Only = slices.DeleteFunc(e.Skip, same), slices.DeleteFunc(e.Include, same), slices.DeleteFunc(e.Only, same)
+	return len(e.Skip)+len(e.Include)+len(e.Only) < before
+}
+
 // checkEdits refuses a selector that names a module not being installed, or that matches no
-// component of any chosen module; the hint lists what it could have named.
-func checkEdits(edits []SelectionEdit, mods []editTarget) error {
+// component of any chosen module and is not saved as a stale selector for one at its section (at);
+// the hint lists what it could have named.
+func checkEdits(sel *config.Selections, at func(module string) config.Where, edits []SelectionEdit, mods []editTarget) error {
 	var chosen []string
 	for _, m := range mods {
 		chosen = append(chosen, m.name)
@@ -411,7 +445,10 @@ func checkEdits(edits []SelectionEdit, mods []editTarget) error {
 			return errs.WithHints(fmt.Errorf("%s: module %s is not part of this install", ed, ed.Selector.Module),
 				"modules in this install: "+strings.Join(chosen, ", "))
 		}
-		if slices.ContainsFunc(mods, func(m editTarget) bool { return len(matching(ed.Selector, m)) > 0 }) {
+		if slices.ContainsFunc(mods, func(m editTarget) bool {
+			cur := sel.Entry(at(m.name), m.name)
+			return len(matching(ed.Selector, m)) > 0 || dropStale(&config.Entry{Skip: slices.Clone(cur.Skip), Include: slices.Clone(cur.Include), Only: slices.Clone(cur.Only)}, ed, m)
+		}) {
 			continue
 		}
 		var have []string

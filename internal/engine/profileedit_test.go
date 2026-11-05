@@ -93,7 +93,7 @@ var _ = Describe("lola profile --edit", func() {
 
 	// only installs kit at s, its --only skill/a given, with the edit's TargetRequest t.
 	only := func(s engine.Scope, t engine.TargetRequest) (*engine.InstallResult, error) {
-		spec := engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}}, Options: engine.Options{Target: t},
+		spec := engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: tmp, Modules: []engine.InstallRequest{{Arg: "kit"}}, Options: engine.Options{Target: t},
 			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: s, Source: engine.SourceFlag}}}}
 		sel, err := config.ParseSelector("skill/a")
 		Expect(err).NotTo(HaveOccurred())
@@ -368,7 +368,7 @@ var _ = Describe("lola profile --edit", func() {
 			GinkgoHelper()
 			t := edit(sc, "go", "kit")
 			t.Override = override
-			spec := engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: "kit"}},
+			spec := engine.InstallSpec{ConfirmRemovals: confirmAll, Cwd: proj, Modules: []engine.InstallRequest{{Arg: "kit"}},
 				Options: engine.Options{Target: t, AskWhere: func(q engine.WhereQuestion) (engine.WhereChoice, error) {
 					k := slices.IndexFunc(q.Choices, func(c engine.WhereChoice) bool { return strings.HasPrefix(c.Label, answer) })
 					Expect(k).To(BeNumerically(">=", 0), "%v", q.Choices)

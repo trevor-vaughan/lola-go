@@ -17,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/trash"
 )
 
 // trashRuns lists the run directories under the trash.
@@ -239,6 +240,10 @@ var _ = Describe("lola tidy: choosing and moving", func() {
 		Expect(string(b)).To(Equal(filepath.Join(t.proj, ".claude", "skills", "old") + "\t" + res.Moved[0].Trash + "\n" +
 			filepath.Join(t.proj, ".claude", "agents", "scout.md") + "\t" + res.Moved[1].Trash + "\n"))
 		Expect(res.SizeBytes).To(Equal(int64(4)))
+		run, err := trash.ReadRun(runs[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(run).To(And(HaveField("Command", t.e.Command(sc, "tidy")), HaveField("Scope", "project"), HaveField("Root", t.proj),
+			HaveField("Credentials", BeEmpty())), "run.yaml names the run's command and the resolved root")
 	})
 
 	It("an MCP file's verified bytes are copied into the trash at 0600 before the edit, and a linked MCP file stays a link", func() {
@@ -256,6 +261,10 @@ var _ = Describe("lola tidy: choosing and moving", func() {
 		fi, err := os.Stat(copyPath)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
+		run, err := trash.ReadRun(trashRuns(t)[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(run.Credentials).To(Equal([]string{copyPath}), "run.yaml lists the MCP copy as one that may hold credentials")
+		Expect(run.Entries).To(ConsistOf(trash.Entry{Original: filepath.Join(t.proj, "config", "mcp.json"), Trash: copyPath, Credential: true}))
 		Expect(os.Readlink(filepath.Join(t.proj, ".mcp.json"))).To(Equal("config/mcp.json"))
 		Expect(os.ReadFile(filepath.Join(t.proj, "config", "mcp.json"))).To(Equal([]byte(
 			"{\n  // servers\n  \"mcpServers\": {\n    \"b\": {\"command\": \"b-mcp\"}\n  }\n}\n")))

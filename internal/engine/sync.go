@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
@@ -26,6 +27,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
+	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
 
 // SyncRequest is one lola sync (Plan 6a §9.2): make Scope match its manifest. Modules limits the
@@ -105,6 +107,9 @@ type Removal struct {
 	Targets     []string      `json:"targets"`
 	WholeModule bool          `json:"whole_module"`
 	Paths       []RemovedPath `json:"paths"`
+	// Why is the reason when it is not the sync's own: "dropped by your pick change" for an
+	// install that narrows picks (PickDeletes).
+	Why string `json:"why,omitempty"`
 }
 
 // RemovedPath is a path lola wrote for a target and a removal deletes; Path carries a JSON
@@ -1122,7 +1127,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	// The picks a move carried leave selections.yaml once the entries that hold them now are written.
 	if req.move != nil && len(req.move.selections) > 0 {
 		if err := config.Save(e.Paths.Selections, req.move.selections); err != nil {
-			return nil, e.selectionsLeft(req.move.selections, err)
+			return nil, e.selectionsLeft(req.move.selections, req.move.written, err)
 		}
 	}
 	if len(pinned) > 0 {
@@ -1333,10 +1338,14 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on boo
 	probes *probeRun, named []string, postScript bool) (syncPlan, error) {
 	sp := syncPlan{modules: []ModuleResult{}}
 	opts.profiles = e.visibleOnce(sc)
+	if _, err := e.scopeSection(sc); err != nil {
+		return syncPlan{}, err
+	}
+	sp.notices = append(sp.notices, e.keyNotices(sc)...)
 	for _, se := range entries {
 		name := se.ent.Name
 		ent := se.pinned()
-		x, err := exclusions(sel, sc, se.from, name)
+		x, err := e.exclusions(sel, sc, se.from, name)
 		if err != nil {
 			return syncPlan{}, err
 		}
@@ -1347,13 +1356,24 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on boo
 		if ignored != nil {
 			sp.notices = append(sp.notices, *ignored)
 		}
-		opts.entryFrom = se.from
+		opts.entryFrom, opts.checkArg = se.from, e.syncCheckArg(sc, se, &ent, opts.DryRun)
 		intents, finds, notes, mr, err := e.planModule(sc, se.v, se.targets, &ent, x, opts, probes, templates)
 		if err != nil {
 			return syncPlan{}, err
 		}
 		sp.modules, sp.findings, sp.notices = append(sp.modules, mr), append(sp.findings, finds...), append(sp.notices, notes...)
 		installed := led.Modules[name]
+		stale, err := e.staleNotices(sc, se.v.Module, x, func(args ...string) (string, error) {
+			infos, err := opts.profiles()
+			if err != nil {
+				return "", err
+			}
+			return e.repickRun(sc, layers, infos, on, se.from, args[0], args[1:]...), nil
+		})
+		if err != nil {
+			return syncPlan{}, err
+		}
+		sp.notices = append(sp.notices, stale...)
 		// The re-pick names the provider (repickRun), so the profiles are listed only for a notice.
 		adds, err := e.newComponentNotices(se.v, installed, x, ent.RulesOn(), func(origin string, args ...string) (string, string, error) {
 			label, err := originLabel(x, origin, se.from, opts.profiles)
@@ -2347,7 +2367,15 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		}
 		for _, id := range ts {
 			if _, err := e.target(id); err != nil {
-				return nil, nil, fmt.Errorf("%s: %w", name, err)
+				// The ids are the entry's (or its profile's targets:, which it inherits) when it has
+				// any, else the base's; where the file does not write them, no line is named.
+				var at string
+				if len(ent.Targets) > 0 {
+					at, _ = targetsOrigin(base, w.path, name)
+				} else {
+					at, _ = targetsOrigin(filepath.Base(e.basePath(sc)), e.basePath(sc), "")
+				}
+				return nil, nil, fmt.Errorf("%s%s: %w", at, name, err)
 			}
 		}
 		// An entry installed through a marketplace from a source its catalog named, not the
@@ -2402,6 +2430,34 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		out = append(out, se)
 	}
 	return out, kept, nil
+}
+
+// targetsOrigin is "<base>:<line>: " for where the targets that module name installs to are
+// written in the file at path, base being how the refusal shows that file: the module's entry when
+// it has a targets: key, else the file's top-level targets: key (name "" looks at that alone). ok
+// is false when the file does not write them, or no longer holds them.
+func targetsOrigin(base, path, name string) (prefix string, ok bool) {
+	d, _, err := yamldoc.Read(path, manifest.Version)
+	if err != nil {
+		return "", false
+	}
+	root := yamldoc.Root(d)
+	if root == nil {
+		return "", false
+	}
+	if list := yamldoc.Value(root, "modules"); list != nil && name != "" {
+		for _, n := range list.Content {
+			if v := yamldoc.Value(n, "name"); v != nil && v.Value == name && yamldoc.Value(n, "targets") != nil {
+				return base + ":" + strconv.Itoa(n.Line) + ": ", true
+			}
+		}
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "targets" {
+			return base + ":" + strconv.Itoa(root.Content[i].Line) + ": ", true
+		}
+	}
+	return "", false
 }
 
 // checkPinShape refuses a ref or a pin the entry's kind of source cannot have (Plan 6a §4.1): a
@@ -2744,17 +2800,28 @@ func (e *selectionsLeftError) Unwrap() error { return e.error }
 
 // selectionsLeft is the error of a failed write of changes, the removals of a move's carried picks
 // from selections.yaml (moveEdit.selections), after the move was applied: it says what is on disk
-// and names the file and the entries to delete, which no lola command removes. err's own hints,
-// written for an install that wrote nothing, are left out.
-func (e *Engine) selectionsLeft(changes []config.Change, err error) error {
-	var modules []string
-	for _, c := range changes {
+// and names the file and the entries to delete, under each projects key as the file writes it
+// (written, one per change), which no lola command removes. err's own hints, written for an
+// install that wrote nothing, are left out.
+func (e *Engine) selectionsLeft(changes []config.Change, written []string, err error) error {
+	var modules, keys []string
+	under := map[string][]string{}
+	for i, c := range changes {
 		modules = append(modules, shown(c.Module))
+		key := untrusted.Text(written[i], untrusted.MaxName)
+		if under[key] == nil {
+			keys = append(keys, key)
+		}
+		under[key] = append(under[key], shown(c.Module))
 	}
-	list := strings.Join(modules, ", ")
-	key := untrusted.Text(changes[0].Section.Project, untrusted.MaxName)
+	var from, del []string
+	for _, key := range keys {
+		mods := strings.Join(under[key], ", ")
+		from = append(from, fmt.Sprintf("%s from selections.yaml's projects[%s]", mods, key))
+		del = append(del, fmt.Sprintf("%s under projects: %s:", mods, key))
+	}
 	file := untrusted.Text(e.Paths.Selections, untrusted.MaxName)
 	return &selectionsLeftError{errs.WithHints(fmt.Errorf("%s moved: the profile entry holds the picks, and project.yml and lock.json are written, but lola could not "+
-		"remove %s from selections.yaml's projects[%s]: %s", list, list, key, untrusted.CleanErr(err).Error()),
-		fmt.Sprintf("no lola command removes it: in %s, delete %s under projects: %s:; until then lola warns that it is ignored", file, list, key))}
+		"remove %s: %s", strings.Join(modules, ", "), strings.Join(from, ", and "), untrusted.CleanErr(err).Error()),
+		fmt.Sprintf("no lola command removes it: in %s, delete %s; until then lola warns that it is ignored", file, strings.Join(del, ", and ")))}
 }

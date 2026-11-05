@@ -86,7 +86,7 @@ var _ = Describe("Admit", func() {
 		Expect(fs[2].Hint).To(Equal("in rev.targets.yaml beside the agent, set t's model to a string matching ^gemini-, or to null to leave it out"))
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "t", Kind: "agent", Artifact: "rev",
 			Code: "frontmatter-key-dropped", Text: "color dropped: t does not support it",
-			Hint: "leave color out for t: in rev.targets.yaml beside the agent, add t: {color: null}"}))
+			Hint: "leave color out for t: in rev.targets.yaml beside the agent, add t: {color: null}", Class: target.ClassDetail, AuthorHint: true}))
 	})
 
 	It("coaches each finding it can: the attribute file entry, the name, or the version to upgrade to", func() {
@@ -94,9 +94,10 @@ var _ = Describe("Admit", func() {
 		Expect(ok).To(BeFalse())
 		Expect(fs).To(Equal([]target.Finding{
 			{Severity: target.SeveritySkip, Target: "t", Kind: "agent", Artifact: "Rev", Code: "name-rejected",
-				Text: "t needs agent names matching ^[a-z]+$", Hint: "rename the agent so its name matches ^[a-z]+$", Forceable: true},
+				Text: "t needs agent names matching ^[a-z]+$", Hint: "rename the agent so its name matches ^[a-z]+$", Forceable: true, Class: target.ClassDetail, AuthorHint: true},
 			{Severity: target.SeverityWarn, Target: "t", Kind: "agent", Artifact: "Rev", Code: "frontmatter-value-dropped",
-				Text: "hidden dropped: t needs a bool", Hint: "in Rev.targets.yaml beside the agent, set t's hidden to a bool, or to null to leave it out"},
+				Text: "hidden dropped: t needs a bool", Hint: "in Rev.targets.yaml beside the agent, set t's hidden to a bool, or to null to leave it out",
+				Class: target.ClassDetail, AuthorHint: true},
 		}))
 
 		_, fs, _ = admit("agent", "rev", "---\ndescription: d\nname: rev\n---\nx\n")
@@ -124,10 +125,10 @@ var _ = Describe("Admit", func() {
 		Expect(fs).To(Equal([]target.Finding{
 			{Severity: target.SeverityWarn, Target: "t", Kind: "skill", Artifact: "s", Code: "skill-shell-dropped",
 				Text: "t does not run shell in skills; it reaches the model as text",
-				Hint: `wrap the shell in {% if target != "t" %}…{% endif %} in the skill's SKILL.md.liquid template`},
+				Hint: `wrap the shell in {% if target != "t" %}…{% endif %} in the skill's SKILL.md.liquid template`, Class: target.ClassDetail, AuthorHint: true},
 			{Severity: target.SeverityWarn, Target: "t", Kind: "skill", Artifact: "s", Code: "skill-arguments-dropped",
 				Text: "t does not fill argument placeholders in skills; they reach the model as written",
-				Hint: `wrap the placeholders in {% if target != "t" %}…{% endif %} in the skill's SKILL.md.liquid template`},
+				Hint: `wrap the placeholders in {% if target != "t" %}…{% endif %} in the skill's SKILL.md.liquid template`, Class: target.ClassDetail, AuthorHint: true},
 		}))
 	})
 
@@ -193,7 +194,8 @@ var _ = Describe("Admit", func() {
 				_, fs, ok := admitGuarded(src)
 				Expect(ok).To(BeFalse())
 				Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "t", Kind: "agent", Artifact: "rev",
-					Code: "x/unenforceable", Text: "t cannot enforce it", Hint: "fix it", Forceable: true}}))
+					Code: "x/unenforceable", Text: "t cannot enforce it", Hint: "fix it", Forceable: true, Class: target.ClassSafety, AuthorHint: true}}),
+					"P2-6: rendered anyway, the agent could do more than its author allowed")
 				ctx.Force = true
 				d, fs, ok := admitGuarded(src)
 				Expect(ok).To(BeTrue())
@@ -212,7 +214,7 @@ var _ = Describe("Admit", func() {
 		Expect(ok).To(BeTrue())
 		Expect(d.Render()).To(Equal("---\ndescription: d\n---\nx\n"))
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "t", Kind: "agent", Artifact: "rev",
-			Code: "frontmatter-key-dropped", Text: "name dropped: the file name names the agent"}}))
+			Code: "frontmatter-key-dropped", Text: "name dropped: the file name names the agent", Class: target.ClassDetail}}))
 	})
 
 	DescribeTable("skips an artifact missing a required key, forceably",
@@ -221,7 +223,7 @@ var _ = Describe("Admit", func() {
 			Expect(ok).To(BeFalse())
 			Expect(fs).To(ContainElement(target.Finding{Severity: target.SeveritySkip, Target: "t", Kind: "agent", Artifact: "rev",
 				Code: "required-key-missing", Text: "t needs a description in the agent's frontmatter",
-				Hint: "add description: to the agent's frontmatter", Forceable: true}))
+				Hint: "add description: to the agent's frontmatter", Forceable: true, Class: target.ClassDetail, AuthorHint: true}))
 			ctx.Force = true
 			_, fs, ok = admit("agent", "rev", src)
 			Expect(ok).To(BeTrue())
@@ -245,7 +247,14 @@ var _ = Describe("Admit", func() {
 		_, fs, ok := admit("hook", "pre", "x\n")
 		Expect(ok).To(BeFalse())
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "t", Kind: "hook", Artifact: "pre",
-			Code: "kind-unsupported", Text: "t has no place for hooks"}}))
+			Code: "kind-unsupported", Text: "t has no place for hooks", Class: target.ClassDetail}}))
+	})
+
+	It("P2-6: classes a runtime hook a target has no place for as safety: it is the user's to know", func() {
+		_, fs, ok := admit(target.KindRuntimeHook, "hooks/hooks.json", "x\n")
+		Expect(ok).To(BeFalse())
+		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeveritySkip, Target: "t", Kind: target.KindRuntimeHook, Artifact: "hooks/hooks.json",
+			Code: "kind-unsupported", Text: "t has no place for runtime-hooks", Class: target.ClassSafety}}))
 	})
 
 	It("applies content rules of the artifact's kind", func() {
@@ -263,7 +272,7 @@ var _ = Describe("Admit", func() {
 		Expect(ok).To(BeTrue())
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeverityWarn, Target: "t", Kind: "skill", Artifact: "go",
 			Code: "frontmatter/yaml-ambiguous", Text: "user-invocable has an unquoted value that YAML parsers read differently",
-			Hint: "quote it, e.g. \"yes\" or \"0755\""}}))
+			Hint: "quote it, e.g. \"yes\" or \"0755\"", Class: target.ClassDetail, AuthorHint: true}}))
 	})
 
 	Describe("version bounds: output follows the newest version; the installed one only adds findings", func() {

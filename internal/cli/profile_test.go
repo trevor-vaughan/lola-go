@@ -216,7 +216,7 @@ var _ = Describe("profiles", func() {
 			"  hint: or show one: lola profile go\n  hint: or show one: lola profile baseline\n"))
 		r = lola("profile", "nope", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(userContext + "error: no profile nope for user scope\n  hint: profiles user scope can use: user:baseline, default, user:go\n"))
+		Expect(r.err).To(Equal(userContext + "error: no profile nope for user scope\n  hint: make it: lola profile nope --switch --new --user\n  hint: profiles user scope can use: user:baseline, default, user:go\n"))
 	})
 
 	It("lists where each profile stands, a bundle on and its members in a project and the profile on at user scope, as one glance (spec 2026-10-29 §4 S8)", func() {

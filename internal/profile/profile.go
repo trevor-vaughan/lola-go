@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -412,10 +413,10 @@ func parse(path string, d *yaml.Node, b []byte, hint string, kind Kind) (*Profil
 		Version int `yaml:"version"`
 	}
 	if err := root.Decode(&v); err != nil {
-		return nil, fixHint(fmt.Errorf("%s: %s", shown, untrusted.Text(err.Error(), 2*untrusted.MaxName)))
+		return nil, fixHint(errors.New(untrusted.Text(yamldoc.Explain(shown, err, root).Error(), 2*untrusted.MaxName)))
 	}
 	if v.Version > Version {
-		return nil, fixHint(errs.WithHints(fmt.Errorf("%s was written by a newer lola (profile version %d); upgrade lola", shown, v.Version), "upgrade lola"))
+		return nil, errs.WithHints(fmt.Errorf("%s was written by a newer lola (profile version %d); upgrade lola", shown, v.Version), "upgrade lola")
 	}
 	if root.Kind == yaml.MappingNode && yamldoc.Value(root, "extends") != nil {
 		return nil, extendsGone(path, root, kind, hint)
@@ -424,7 +425,9 @@ func parse(path string, d *yaml.Node, b []byte, hint string, kind Kind) (*Profil
 	dec.KnownFields(true)
 	f := file{Version: p.Version}
 	if err := dec.Decode(&f); err != nil && !errors.Is(err, io.EOF) {
-		return nil, fixHint(fmt.Errorf("%s: %s", shown, untrusted.Text(err.Error(), 2*untrusted.MaxName)))
+		err = yamldoc.Explain(shown, err, root, yamldoc.Shape{Type: reflect.TypeFor[file](), Noun: "a profile"},
+			yamldoc.Shape{Type: reflect.TypeFor[entry](), Noun: "a profile entry"})
+		return nil, fixHint(errors.New(untrusted.Text(err.Error(), 2*untrusted.MaxName)))
 	}
 	p.Version, p.Description, p.Targets = f.Version, f.Description, f.Targets
 	for _, e := range f.Modules {

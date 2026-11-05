@@ -419,7 +419,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(os.ReadFile(filepath.Join(proj, ".lola", "project.yml"))).To(ContainSubstring("name: kit"))
 		Expect(os.ReadFile(defaultYml)).To(Equal(before), "one scope: the project's write target alone")
 
-		r = lola("profile", "project:team", "--edit", "kit", "--only", "skill/a")
+		r = lola("profile", "project:team", "--edit", "kit", "--only", "skill/a", "-y")
 		Expect(r.code).To(Equal(0), "a project profile, from its project: "+r.err)
 		Expect(os.ReadFile(filepath.Join(proj, ".lola", "profiles", "team.yml"))).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 		Expect(os.ReadFile(filepath.Join(proj, ".lola", "profiles", "team.yml"))).NotTo(ContainSubstring("only:"))
@@ -428,7 +428,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
 		Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
 		skillB := map[string]string{"user": filepath.Join(p.Home, ".claude", "skills", "b", "SKILL.md"), "project": filepath.Join(proj, ".claude", "skills", "b", "SKILL.md")}
-		r = lola("profile", "go", "--edit", "kit", "--only", "skill/a")
+		r = lola("profile", "go", "--edit", "kit", "--only", "skill/a", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(HavePrefix("project " + proj + ": profile go over project.yml\nuser scope: profile go over default\n"))
 		Expect(strings.Count(r.out, "changed kit in profile go")).To(Equal(1), "written once: "+r.out)
@@ -505,7 +505,7 @@ var _ = Describe("lola profile --edit", func() {
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HaveSuffix("  hint: lola profile base kit --edit --only skill/a --user\n  hint: lola profile user:go kit --edit --only skill/a --user --override\n"),
 			"go might be a catalog's entry too")
-		r = lola("profile", "user:go", "kit", "--edit", "--only", "skill/a", "--user", "--override")
+		r = lola("profile", "user:go", "kit", "--edit", "--only", "skill/a", "--user", "--override", "-y") // -y: the hint's run deletes skill/b, which it asks
 		Expect(r.code).To(Equal(0), "the hint runs as printed: "+r.err)
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).NotTo(ContainSubstring("only:"))
@@ -520,7 +520,11 @@ var _ = Describe("lola profile --edit", func() {
 			"  hint: see profile user:kit, then name a module after it: lola profile --user user:kit\n" +
 			"  hint: edit module kit in default (base): lola profile base kit --edit --only skill/a --user\n"))
 		for _, hint := range []string{"lola profile --user user:kit", "lola profile base kit --edit --only skill/a --user"} {
-			r = lola(strings.Fields(hint)[1:]...)
+			args := strings.Fields(hint)[1:]
+			if strings.Contains(hint, "--edit") {
+				args = append(args, "-y") // the hint's run deletes skill/b, which it asks
+			}
+			r = lola(args...)
 			Expect(r.code).To(Equal(0), hint+": "+r.err)
 		}
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
@@ -538,21 +542,33 @@ var _ = Describe("lola profile --edit", func() {
 		}
 	})
 
-	It("narrows picks off a terminal as lola install --skip does: removing files unasked, refusing a hand-edited one with a --force hint that runs", func() {
+	It("narrows picks off a terminal as lola install --skip does (Pick-P2-b): refusing without -y, hinting a run that applies, refusing a hand-edited file with a --force hint that runs", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
 		skill := func(n string) string { return filepath.Join(p.Home, ".claude", "skills", n, "SKILL.md") }
-		Expect(os.WriteFile(skill("b"), []byte("mine\n"), 0o600)).To(Succeed())
 		r := lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: lola profile --edit needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
+		Expect(r.err).To(ContainSubstring("hint: lola profile go kit --edit --skip skill/b --user -y\n"))
+		Expect(skill("b")).To(BeAnExistingFile())
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).NotTo(ContainSubstring("skip"), "a refusal writes nothing")
+		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(skill("b")).To(BeAnExistingFile())
+		Expect(os.WriteFile(skill("b"), []byte("mine\n"), 0o600)).To(Succeed())
+		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/b", "--user", "-y")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(HaveSuffix("  hint: lola profile go kit --edit --skip skill/b --user --force\n"))
 		Expect(skill("b")).To(BeAnExistingFile())
 		r = lola("profile", "go", "kit", "--edit", "--skip", "skill/b", "--user", "--force")
 		Expect(r.code).To(Equal(0), "the hint runs as printed: "+r.err)
 		Expect(skill("b")).NotTo(BeAnExistingFile())
-		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/a", "--user")
+		r = lola("profile", "go", "--edit", "kit", "--skip", "skill/a", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(skill("a")).NotTo(BeAnExistingFile())
+		r = lola("profile", "go", "--edit", "kit", "--unskip", "skill/a", "--user")
+		Expect(r.code).To(Equal(0), "a widening change asks nothing: "+r.err)
+		Expect(skill("a")).To(BeAnExistingFile())
 	})
 
 	It("refuses an edit of a bundle's modules, hinting each member, and takes its flags only with --edit", func() {
@@ -809,7 +825,7 @@ var _ = Describe("lola profile --edit", func() {
 			writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n", "work.yml": "version: 1\nbundle: [go, docs]\n",
 				"lint.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 			Expect(lola("profile", "work", "--switch", "--user").code).To(Equal(0))
-			r := lolaP(&scripted{where: []int{2}}, "profile", "lint", "--on", "--user")
+			r := lolaP(&scripted{where: []int{2}}, "profile", "lint", "--on", "--user", "-v")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("render it anyway: lola profile --user work --edit --bundle go,docs,lint --force\n"))
 		})
@@ -1011,6 +1027,8 @@ var _ = Describe("lola profile --edit", func() {
 				r := lolaP(sp, "profile", "--edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:default (base) › kit", "review"}))
+				Expect(sp.reviewSteps[0].Summary).To(ContainSubstring("removals:\n  ✗ kit: claude-code (dropped by your pick change)\n      .claude/skills/b/SKILL.md\n"),
+					"Pick-P2-b: the review lists the files Apply deletes, so its Apply is the confirmation")
 				Expect(os.ReadFile(defaultYml)).To(ContainSubstring("  - name: kit\n    source: " + kit + "\n    skip: [skill/b]\n"))
 				Expect(os.ReadFile(defaultYml)).NotTo(ContainSubstring("only:"))
 				Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")))

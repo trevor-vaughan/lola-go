@@ -124,10 +124,10 @@ func (t *trustFlag) parse(cmd *cobra.Command, args []string, command, noun strin
 	return k, err
 }
 
-// fixedRun is the user's run, its names args, with --trust granting k in place of the --trust
-// given; none for 0.
-func fixedRun(cmd *cobra.Command, args []string, k engine.TrustKinds) string {
-	run := runWithout(cmd, args, "trust")
+// fixedRun is the user's run, its names args, without the flags named in drop, with --trust
+// granting k in place of the --trust given; none for 0.
+func fixedRun(cmd *cobra.Command, args []string, k engine.TrustKinds, drop ...string) string {
+	run := runWithout(cmd, args, append([]string{"trust"}, drop...)...)
 	if k != 0 {
 		run += " " + k.Arg()
 	}
@@ -138,6 +138,13 @@ func fixedRun(cmd *cobra.Command, args []string, k engine.TrustKinds) string {
 // the kinds a refusal for want of trust names in place of the --trust given.
 func trustRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) string {
 	return func(k engine.TrustKinds) string { return fixedRun(cmd, args, k) }
+}
+
+// consentRun is an install's engine Rerun: trustRun without --dry-run, so a dry run's consent
+// hint is the run that installs what it consents to, as lola sync -n's is (spec 2026-11-03
+// §3.3 P2-6).
+func consentRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) string {
+	return func(k engine.TrustKinds) string { return fixedRun(cmd, args, k, "dry-run") }
 }
 
 // receipt is a run's engine Receipt (Plan 9 §3.4): what given, the run's --trust, covers, grouped by

@@ -300,6 +300,41 @@ var _ = Describe("hints keep the user's flags", func() {
 		Expect(again.out + again.err).To(ContainSubstring("now: project " + proj + ": profile user:mine over project.yml"))
 	})
 
+	It("Prof-P2-c: profile <no such> --project hints the switch --new that makes it, which runs as printed", func() {
+		writeTree(proj, map[string]string{".lola/profiles/other.yml": "version: 1\n"})
+		r := lola("profile", "foo1", "--project")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(hintLines(r.err)).To(HaveExactElements("make it: lola profile foo1 --switch --new --project",
+			HavePrefix("profiles the project at ")))
+		again := lola(shellWords("lola profile foo1 --switch --new --project")[1:]...)
+		Expect(again.code).To(Equal(0), again.err)
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(p.UserProfiles, "foo1.yml")).To(BeARegularFile(), "--new makes yours")
+	})
+
+	It("Prof-P2-c: profile <reserved> shows no make-it hint, which would be refused", func() {
+		r := lola("profile", "project:base", "--project")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.err).NotTo(ContainSubstring("make it"))
+	})
+
+	It("Prof-P2-e: --new project:docs beside user:docs says a bare docs would name two profiles, and hints both qualified runs", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"docs.yml": "version: 1\n"})
+		r := lola("profile", "project:docs", "--switch", "--new", "--project")
+		Expect(r.code).To(Equal(1), r.err)
+		Expect(r.err).To(ContainSubstring("--new makes a profile that does not exist yet (project:docs beside user:docs would make a bare docs name two profiles)"))
+		hints := hintLines(r.err)
+		Expect(hints).To(HaveExactElements("switch to it: lola profile --project user:docs --switch",
+			"or make another: lola profile --project project:docs-2 --switch --new"))
+		for _, h := range hints {
+			again := lola(shellWords(h[strings.Index(h, "lola "):])[1:]...)
+			Expect(again.code).To(Equal(0), h+": "+again.err)
+		}
+	})
+
 	It("P2-4: init's try-it hint names the project scope, and installs from a git project off a terminal", func() {
 		out, err := exec.Command("git", "-C", proj, "init", "-q").CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), string(out))

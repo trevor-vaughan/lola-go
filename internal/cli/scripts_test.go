@@ -84,7 +84,7 @@ var _ = Describe("install scripts off a terminal", func() {
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
 		Expect(doc.Scripts).To(Equal([]map[string]string{{"event": "post-install", "source": "project", "path": "ci/after.sh", "module": "example",
 			"target": "claude-code", "status": "declined"}}))
-		Expect(doc.Notices).To(ContainElement(map[string]string{"level": "warn", "text": "example: post-install script ci/after.sh (project) skipped without " +
+		Expect(doc.Notices).To(ContainElement(map[string]string{"level": "warn", "class": "safety", "text": "example: post-install script ci/after.sh (project) skipped without " +
 			"your trust; review and run it: lola sync -C " + proj + " example, or trust it without asking: lola sync -C " + proj + " example --trust=scripts"}))
 		b, err = os.ReadFile(filepath.Join(proj, ".lola", "lock.json"))
 		Expect(err).NotTo(HaveOccurred())

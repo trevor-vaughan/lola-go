@@ -101,8 +101,8 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		res, err := install(claude)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElements(
-			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml global: example has no component skill/gone; remove it from the file"},
-			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml global: example has no component agent/x*; remove it from the file"}))
+			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml global: example has no component skill/gone → lola install -C " + proj + " example --global --unskip skill/gone"},
+			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml global: example has no component agent/x* → lola install -C " + proj + " example --global --unskip 'agent/x*'"}))
 	})
 
 	It("installs, syncs, lists and checks through a scope's only: list", func() {
@@ -147,7 +147,7 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Modules[0].Skipped).To(Equal([]string{"skill/review", "command/ship", "agent/critic", "mcp/lola-gh", "rule/style"}))
 		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
-			Text: "selections.yaml projects[" + proj + "]: example has no component skill/gone; remove it from the file"}))
+			Text: "selections.yaml projects[" + proj + "]: example has no component skill/gone → lola install -C " + proj + " example --unskip skill/gone"}))
 	})
 
 	It("--no-rules wins over a rule the selections include", func() {

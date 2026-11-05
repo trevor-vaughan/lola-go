@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -120,7 +121,11 @@ func Load(path string) (*Manifest, error) {
 		ue.Path, ue.Manifest = path, m
 		return nil, ue
 	}
-	if ve, ok := errors.AsType[*module.VarError](err); ok {
+	if _, ok := errors.AsType[*yaml.TypeError](err); ok {
+		err = yamldoc.Explain(shown, err, root, yamldoc.Shape{Type: reflect.TypeFor[Manifest](), Noun: "project.yml"},
+			yamldoc.Shape{Type: reflect.TypeFor[Entry](), Noun: "a project.yml entry"})
+		err = errors.New(untrusted.Text(err.Error(), 2*untrusted.MaxName))
+	} else if ve, ok := errors.AsType[*module.VarError](err); ok {
 		err = fmt.Errorf("%s:%d: %s", shown, ve.Line, ve.Reason)
 	} else if err != nil {
 		err = fmt.Errorf("%s: %w", shown, err)

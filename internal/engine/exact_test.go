@@ -105,6 +105,98 @@ var _ = Describe("exact selections (cherry-pick design §3.2)", func() {
 		Expect(exists(".claude/skills/review/SKILL.md")).To(BeTrue())
 	})
 
+	It("Pick-P2-d: a stale selector warns once with a runnable hint, and a flag naming it removes it from where it is saved", func() {
+		selections("projects:\n  " + proj + ":\n    example:\n      only: [command/ship, agent/planner]\n")
+		stale := HaveField("Text", ContainSubstring("has no component agent/planner"))
+		res, err := installAt(sc, false, []string{src})
+		Expect(err).NotTo(HaveOccurred())
+		var warned []engine.Notice
+		Expect(res.Notices).To(ContainElement(stale, &warned))
+		Expect(warned).To(HaveLen(1))
+		Expect(warned[0].Level).To(Equal(engine.LevelWarn))
+		Expect(warned[0].Text).To(HaveSuffix("→ lola install --project example --unskip agent/planner"))
+
+		for _, op := range []string{engine.EditSkip, engine.EditUnskip, engine.EditOnly} {
+			selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/planner]\n      only: [command/ship, agent/planner]\n")
+			res, err = installAt(sc, false, []string{src}, edit(op, "agent/planner"))
+			Expect(err).NotTo(HaveOccurred(), op)
+			Expect(saved(config.Project(key), "example")).To(Equal(config.Entry{Only: pats("command/ship")}), op)
+			Expect(res.Notices).To(ContainElement(HaveField("Text", "example: removed agent/planner from selections.yaml projects["+key+"]; the module has no such component")), op)
+			Expect(res.Notices).NotTo(ContainElement(stale), op)
+		}
+
+		_, err = installAt(sc, false, []string{src}, edit(engine.EditSkip, "agent/other"))
+		Expect(err).To(MatchError(ContainSubstring("matches no component")), "a selector that is not saved is still refused")
+	})
+
+	It("Pick-P2-d: a stale selector given twice is removed, and said, once", func() {
+		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/planner]\n")
+		res, err := installAt(sc, false, []string{src}, edit(engine.EditSkip, "agent/planner"), edit(engine.EditUnskip, "agent/planner"))
+		Expect(err).NotTo(HaveOccurred())
+		var removed []engine.Notice
+		Expect(res.Notices).To(ContainElement(HaveField("Text", ContainSubstring("removed agent/planner from")), &removed))
+		Expect(removed).To(HaveLen(1))
+		Expect(saved(config.Project(key), "example").Skip).To(BeEmpty())
+	})
+
+	It("Pick-P2-d: removing the last entry of an only: list says the module now installs everything, and how to narrow it again", func() {
+		selections("projects:\n  " + proj + ":\n    example:\n      only: [agent/planner, command/ship]\n")
+		res, err := installAt(sc, false, []string{src}, edit(engine.EditSkip, "agent/planner"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("is now empty"))), "a list that keeps an entry still narrows")
+
+		selections("projects:\n  " + proj + ":\n    example:\n      only: [agent/planner]\n")
+		res, err = installAt(sc, false, []string{src}, edit(engine.EditSkip, "agent/planner"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(saved(config.Project(key), "example").Only).To(BeEmpty())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+			Text: "example: only: in selections.yaml projects[" + key + "] is now empty, so example installs all its 5 components → lola install --project example --only skill/review"}))
+		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
+	})
+
+	It("Pick-P2-d: removing a stale selector deletes nothing, so it asks nothing", func() {
+		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/planner]\n")
+		_, err := installAt(sc, false, []string{src})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
+		res, err := installAt(sc, false, []string{src}, edit(engine.EditUnskip, "agent/planner"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Steps).To(BeEmpty())
+		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
+	})
+
+	It("Pick-P2-e: picks do not narrow runtime hooks, and the run says so", func() {
+		plugin := filepath.Join(tmp, "src", "deploy")
+		writeTree(plugin, map[string]string{".claude-plugin/plugin.json": `{"name":"deploy"}`, "commands/ship.md": "Ship\n", "commands/other.md": "Other\n",
+			"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/stop.sh"}]}]}}`})
+		notice := engine.Notice{Level: engine.LevelInfo, Text: "deploy: runtime hooks are installed for the whole module; picks do not narrow them"}
+		res, err := installAt(sc, false, []string{plugin}, edit(engine.EditOnly, "command/ship"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(notice))
+		res, err = installAt(sc, false, []string{plugin}, edit(engine.EditUnskip, "command/ship"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(notice), "the picks saved earlier still apply")
+
+		selections("projects:\n  " + proj + ":\n    deploy:\n      skip: [agent/planner]\n")
+		res, err = installAt(sc, false, []string{plugin})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).NotTo(ContainElement(notice), "a stale selector narrows nothing")
+
+		res, err = installAt(sc, false, []string{other}, edit(engine.EditOnly, "command/z"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("runtime hooks"))), "a module without runtime hooks says nothing")
+	})
+
+	It("Pick-P2-g: components only: leaves out are named apart from those a skip: leaves out", func() {
+		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/critic]\n      only: [command/ship, agent/critic]\n")
+		res, err := installAt(sc, false, []string{src})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Modules[0].Skipped).To(Equal([]string{"skill/review", "agent/critic", "mcp/lola-gh", "rule/style"}))
+		Expect(res.Modules[0].SkippedIn).To(Equal("selections.yaml"), "only agent/critic is skipped by a skip:")
+		Expect(res.Modules[0].NotInOnly).To(Equal([]string{"skill/review", "mcp/lola-gh", "rule/style"}))
+		Expect(res.Modules[0].OnlyIn).To(Equal("selections.yaml projects[" + key + "]"))
+	})
+
 	It("is idempotent", func() {
 		_, err := installAt(sc, false, []string{src}, exact("command/ship"))
 		Expect(err).NotTo(HaveOccurred())

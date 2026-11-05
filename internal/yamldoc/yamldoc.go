@@ -10,6 +10,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -222,3 +224,140 @@ func RemoveKey(m *yaml.Node, key string) bool {
 
 // Str is a string scalar node.
 func Str(s string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s} }
+
+// MaxFlowItems is the longest list StrList writes on one line.
+const MaxFlowItems = 8
+
+// StrList is a list of strings as lola writes one it is the author of: a flow list up to
+// MaxFlowItems items, a block list (one item a line) beyond, which a long complement of picks
+// needs to stay readable.
+func StrList(ss []string) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	if len(ss) <= MaxFlowItems {
+		n.Style = yaml.FlowStyle
+	}
+	for _, s := range ss {
+		n.Content = append(n.Content, Str(s))
+	}
+	return n
+}
+
+// Shape names a struct a file decodes into and what to call it in a refusal, which lists the
+// keys the struct's yaml tags give it ("a profile has: version, description, …").
+type Shape struct {
+	Type reflect.Type
+	Noun string
+}
+
+var (
+	unknownKeyRE = regexp.MustCompile(`^line (\d+): field (\S+) not found in type (\S+)$`)
+	wrongKindRE  = regexp.MustCompile("^line (\\d+): cannot unmarshal (!!\\w+)(?: `[^`]*`)? into (.+)$")
+	lineRE       = regexp.MustCompile(`^line (\d+): (.*)$`)
+)
+
+// Explain turns the error of a strict decode of the file shown into refusals that start with the
+// file and the line, as the rest of lola's file refusals do, and never name a Go type: an unknown
+// key lists the keys of its shape (shapes, matched by the type yaml names), and a value of the
+// wrong kind says what was expected, and names its key when root, the file's parsed document (nil
+// for none), has exactly one mapping value on that line. The decoder's own words are kept for any
+// other error. The result still holds what the file says, so the caller shows it through untrusted.Text.
+func Explain(shown string, err error, root *yaml.Node, shapes ...Shape) error {
+	var te *yaml.TypeError
+	if !errors.As(err, &te) {
+		return fmt.Errorf("%s: %w", shown, err)
+	}
+	lines := make([]string, 0, len(te.Errors))
+	for _, msg := range te.Errors {
+		lines = append(lines, explainOne(shown, msg, root, shapes))
+	}
+	return errors.New(strings.Join(lines, "\n"))
+}
+
+func explainOne(shown, msg string, root *yaml.Node, shapes []Shape) string {
+	if m := unknownKeyRE.FindStringSubmatch(msg); m != nil {
+		line := fmt.Sprintf("%s:%s: unknown key %q", shown, m[1], untrusted.Text(m[2], untrusted.MaxName))
+		for _, s := range shapes {
+			if s.Type.String() == m[3] {
+				return line + " (" + s.Noun + " has: " + strings.Join(yamlKeys(s.Type), ", ") + ")"
+			}
+		}
+		return line
+	}
+	if m := wrongKindRE.FindStringSubmatch(msg); m != nil {
+		at := m[1]
+		if line, err := strconv.Atoi(m[1]); err == nil {
+			if keys := keysAt(root, line); len(keys) == 1 {
+				at += ": " + untrusted.Text(keys[0], untrusted.MaxName)
+			}
+		}
+		return fmt.Sprintf("%s:%s: expected %s, found %s", shown, at, goKind(m[3]), yamlKind(m[2]))
+	}
+	if m := lineRE.FindStringSubmatch(msg); m != nil {
+		return fmt.Sprintf("%s:%s: %s", shown, m[1], m[2])
+	}
+	return shown + ": " + msg
+}
+
+// yamlKeys lists the keys the yaml tags of struct type t give it, in field order, as the decoder
+// reads them: the tag's name, else the lower-cased field name; "-" and unexported fields have none.
+func yamlKeys(t reflect.Type) []string {
+	var keys []string
+	for f := range t.Fields() {
+		name, _, _ := strings.Cut(f.Tag.Get("yaml"), ",")
+		switch {
+		case !f.IsExported() || name == "-":
+		case name == "":
+			keys = append(keys, strings.ToLower(f.Name))
+		default:
+			keys = append(keys, name)
+		}
+	}
+	return keys
+}
+
+// goKind says what the decoder wanted, from the Go type it names, in the file's terms.
+func goKind(goType string) string {
+	switch {
+	case strings.HasPrefix(goType, "[]"):
+		return "a list"
+	case goType == "string":
+		return "text"
+	case goType == "bool":
+		return "true or false"
+	case strings.HasPrefix(goType, "int"), strings.HasPrefix(goType, "uint"), strings.HasPrefix(goType, "float"):
+		return "a number"
+	}
+	return "a mapping"
+}
+
+// yamlKind says what the file held, from the tag the decoder found.
+func yamlKind(tag string) string {
+	switch tag {
+	case "!!str":
+		return "text"
+	case "!!seq":
+		return "a list"
+	case "!!map":
+		return "a mapping"
+	case "!!bool":
+		return "true or false"
+	case "!!int", "!!float":
+		return "a number"
+	}
+	return "something else"
+}
+
+// keysAt lists the keys, in the mapping nodes under n, whose value starts on line.
+func keysAt(n *yaml.Node, line int) []string {
+	if n == nil {
+		return nil
+	}
+	var keys []string
+	for i, c := range n.Content {
+		if n.Kind == yaml.MappingNode && i%2 == 1 && c.Line == line {
+			keys = append(keys, n.Content[i-1].Value)
+		}
+		keys = append(keys, keysAt(c, line)...)
+	}
+	return keys
+}

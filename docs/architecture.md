@@ -63,9 +63,11 @@ The terms, each covered in its own section below:
 ## Packages
 
 - `paths`: XDG resolution from an injected `getenv`; no globals. `ProjectKey`, the canonical form of
-  a project directory that the project lock and `selections.yaml` share.
+  a project directory that the project lock and `keep.yaml` use, and `selections.yaml` for a
+  project outside a clone.
 - `config`: `config.yaml`, `selections.yaml` and `keep.yaml` (`lola tidy`'s keep-list: a `user`
-  list and per-project lists of selectors, project keys canonical as in `selections.yaml`):
+  list and per-project lists of selectors, project keys canonical path keys), and `RepoKey`, a
+  project's repository key in `selections.yaml`:
   strict loading of untrusted, hand-edited YAML, selectors, effective exclusions, and locked
   node-preserving writes.
 - `yamldoc`: Reading a hand-edited YAML file as one untrusted document.
@@ -268,7 +270,26 @@ path (keys through `untrusted.Text`) with a hint. Project keys pass through `pat
 (absolute, clean, symlinks resolved; on Windows forward slashes and a lower drive letter) and
 compare with `paths.KeyID` (case-folded on darwin and Windows), so two keys for one project are
 refused and a hand-written spelling still matches. The project lock file is named after the same
-key.
+key. In `selections.yaml` a project inside a git clone whose `origin` is on another host is keyed
+by its repository instead (spec 2026-11-03 Pick-P2-a): `config.RepoKey` runs `git rev-parse
+--show-prefix` and `git config --get remote.origin.url` through `source.GitCommand` and writes
+`git:<host>/<path>#<dir>`, the remote's host lowercased and its scheme, userinfo, default port,
+query, trailing `/` and `.git` dropped (so no credential reaches the file; another port stays as
+`<host>:<port>`), and the root's directory below
+the work-tree top (`.` at the top). A local, `file://` or helper remote, or one holding a control or
+format character, keeps the path key; so does a clone git cannot read, which `RepoKey` reports as
+an error with git's first line (and the `safe.directory` command for a repository git refuses as
+someone else's) and `scopeSection` keeps for the run (`keyFailure`): `lola info` shows it as a scope
+notice (`keyNotices`), `lola check` as the `picks-keyed-by-path` finding; install, sync and status
+also add the notice, though their tracked-lock check (`refuseTrackedLedger`) refuses such a clone
+first today. A remote that would leave an `@` in the key (scp-style `user:token@host:path`) keeps
+the path key, so no credential reaches the file; an IPv6 host is bracketed. Messages name a
+section by its key as the file writes it (`Selections.Origin`, `WrittenKey`). The engine resolves a scope's section once per run
+(`Engine.scopeSection`), as a `config.Where` that carries both keys: a section under the path key
+still applies under the repository key's entries, and the next write of one of its modules moves
+it to the repository key (renaming the key node in place when the file has no section under the
+repository key), so the file's other entries stay byte-stable. Repository keys compare as written
+and never match a path key.
 
 **Resolver.** `resolveComponents` (engine) is the one place a module becomes the components a scope
 installs: the cached version minus the effective exclusions and without rules when they are off.
@@ -787,7 +808,20 @@ The design is `docs/superpowers/specs/2026-10-09-target-framework-design.md`.
   - Load warnings become findings about the module; the engine's own messages stay `Notice`s.
   - A finding the user can act on carries a `Hint`. `Admit` names the attribute-file entry, name
     pattern or version; each target names its own template branch or change; and the engine
-    appends the run with `--force` (`Options.ForceRun`) to a forceable skip.
+    appends the run with `--force` (`Options.ForceRun`) to a forceable skip, kept apart in
+    `UserHint`. A hint telling the module's author what to change sets `AuthorHint`, which only
+    `lola check` prints.
+  - Each finding and `Notice` has a `target.Class`, set where it is made (spec 2026-11-03 §3.4):
+    `Admit` classes what a target loses `detail`, and a runtime hook or a guard key `safety`;
+    targets class their own findings; the engine classes mention notices `detail`, with their
+    `Module`. One made without a class marshals as `safety`, so a new kind is shown in full.
+    `planModule` stamps each finding with `Check`, the `lola check` at the run's scope that names
+    the module by `Options.checkArg`: install's `mentionArgs` word, sync's `syncCheckArg` (the cache
+    name, or in a dry run of an uncached version `checkAddr`, the entry's source); a mention
+    notice gets the same from its words. `printNotices` prints safety in full and counts detail
+    per module and check, so each scope has its line, adding `-t`; detail without a `Check` is
+    printed in full; `-v` (`style.verbose`) prints all. The install review page goes through it
+    too. `lola check` reports each module's mention notices (`CheckedModule.Notices`).
   - The coaching spec of the conformance suite drives each target's live table and own
     findings, and fails on a hintless finding its `nothingToDo` list does not explain.
 - **Capability tables.** Each target declares `Capabilities`: supported artifact kinds,

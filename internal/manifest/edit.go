@@ -199,10 +199,10 @@ func setEntry(m *yaml.Node, e Entry) {
 	setKey(m, entryKeys, "targets", ts)
 	var only, skip *yaml.Node
 	if len(e.Only) > 0 {
-		only = flowList(e.Only)
+		only = yamldoc.StrList(e.Only)
 	}
 	if len(e.Skip) > 0 {
-		skip = flowList(e.Skip)
+		skip = yamldoc.StrList(e.Skip)
 	}
 	setKey(m, entryKeys, "only", only)
 	setKey(m, entryKeys, "skip", skip)

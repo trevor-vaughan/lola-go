@@ -100,11 +100,34 @@ var _ = Describe("a dry run's hints name the run that does the work (P2-6)", fun
 		Expect(lola("install", plugin, "-C", proj, "-t", "claude-code", "--trust=hooks").code).To(Equal(0))
 		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())
 
-		r := lola("sync", "-n", "-C", proj)
+		r := lola("sync", "-n", "-C", proj, "-v")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("consent to them: lola sync -C " + proj + " --trust=runtime-hooks"))
-		Expect(r.out).To(ContainSubstring("render it anyway: lola sync --root " + proj + " --force"))
+		Expect(r.out).To(ContainSubstring("render it anyway: lola sync --root " + proj + " --verbose --force"))
 		Expect(r.out).NotTo(ContainSubstring("--dry-run"))
+	})
+})
+
+var _ = Describe("a dry run's consent hint is the real run (P2-6)", func() {
+	It("Src-P2-6-consent: install -n with runtime hooks hints the real install with --trust=runtime-hooks, never --dry-run, and it installs them", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj, plugin := filepath.Join(tmp, "proj"), filepath.Join(tmp, "deploy")
+		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
+		fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
+		writeTree(plugin, map[string]string{
+			".claude-plugin/plugin.json": `{"name":"deploy"}`,
+			"commands/ship.md":           "Ship\n",
+			"hooks/hooks.json":           `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/stop.sh"}]}]}}`,
+		})
+		r := lola("install", plugin, "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		_, after, ok := strings.Cut(r.out, "consent to them: ")
+		Expect(ok).To(BeTrue(), r.out)
+		hint, _, _ := strings.Cut(after, "\n")
+		Expect(hint).To(Equal("lola install " + plugin + " --root " + proj + " --target claude-code --trust=runtime-hooks"))
+		Expect(runHint(hint).code).To(Equal(0))
+		Expect(filepath.Join(proj, ".claude/settings.local.json")).To(BeARegularFile(), "the hinted run installs the hooks")
 	})
 })
 
@@ -132,7 +155,7 @@ var _ = Describe("a forceable skip planned under -n hints a real run (P2-6)", fu
 	}
 
 	It("Src-P2-6-install: install -n hints the real install, and it renders", func() {
-		hint := anyway(lola("install", kit, "-C", proj, "-t", "claude-code", "-n"))
+		hint := anyway(lola("install", kit, "-C", proj, "-t", "claude-code", "-n", "-v"))
 		Expect(runHint(hint).code).To(Equal(0))
 		Expect(filepath.Join(proj, ".claude/agents/critic.md")).To(BeARegularFile())
 	})
@@ -144,12 +167,12 @@ var _ = Describe("a forceable skip planned under -n hints a real run (P2-6)", fu
 		Expect(sw.code).To(Equal(0), sw.err)
 		mixed := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "profiles", "mine.yml") // on, then edited by hand
 		Expect(os.WriteFile(mixed, []byte("version: 1\ntargets: [claude-code]\nbundle: [base1]\nmodules:\n  - {name: kit, source: "+kit+"}\n"), 0o644)).To(Succeed())
-		hint := anyway(lola("profile", "mine", "--split", "--user", "-n"))
+		hint := anyway(lola("profile", "mine", "--split", "--user", "-n", "-v"))
 		Expect(runHint(hint).code).To(Equal(0))
 	})
 
 	It("Src-P2-6-edit: profile --edit <module> -n hints the real edit, and it renders", func() {
-		hint := anyway(lola("profile", "--edit", kit, "-C", proj, "-t", "claude-code", "-n"))
+		hint := anyway(lola("profile", "--edit", kit, "-C", proj, "-t", "claude-code", "-n", "-v"))
 		Expect(runHint(hint).code).To(Equal(0))
 		Expect(filepath.Join(proj, ".claude/agents/critic.md")).To(BeARegularFile())
 	})

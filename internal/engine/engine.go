@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -94,6 +95,9 @@ type Engine struct {
 	// over with a warning naming its take-out (expansion.member), so no take-out is refused for
 	// another's; nil for every other run.
 	recovering *recovery
+	// sections is the selections.yaml section of each project the run named (scopeSection), by
+	// its path key, so git is asked for its repository key once.
+	sections map[string]*projectSection
 }
 
 // recovery is what a run that mends a bundle judges in full (Engine.recovering): judged, by
@@ -139,6 +143,9 @@ type Options struct {
 	// entryFrom is the layer the entry planned comes from, "" for the scope's manifest, which a
 	// refusal of its vars names (checkVars).
 	entryFrom string
+	// checkArg is the argument lola check names the module planned by, which its findings' Check
+	// gives (checkArg); "" for none.
+	checkArg string
 	// profiles is the profiles the scope can use, listed once per scope (visibleOnce), which a
 	// module's skipped-in label reads; nil lists them for the module.
 	profiles func() ([]profile.Info, error)
@@ -241,6 +248,9 @@ type ModuleResult struct {
 	RuntimeHooks []RuntimeHook `json:"runtime_hooks"`
 	Skipped      []string      `json:"skipped"`              // kind/name of each component your picks exclude
 	SkippedIn    string        `json:"skipped_in,omitempty"` // where the picks that exclude them live (skippedIn)
+	NotInOnly    []string      `json:"not_in_only"`          // those of Skipped the only: list in force alone leaves out
+	OnlyIn       string        `json:"only_in,omitempty"`    // where that only: list lives (excludedWhere)
+	Summary      *PicksSummary `json:"-"`                    // Skipped shown as the picks they leave, when they are that (summarizePicks)
 	SavedTo      string        `json:"saved_to"`             // the file this install saved the module's picks to: selections.yaml, or the profile it wrote; "" for none
 	// Market is the marketplace an install through @<market>/<entry> records (Plan 6c §7),
 	// through untrusted.Text; absent otherwise.
@@ -261,8 +271,21 @@ const (
 // Notice is something lola itself tells the user about an operation. What a target loses
 // when it renders a module is a target.Finding instead.
 type Notice struct {
-	Level string `json:"level"`
-	Text  string `json:"text"`
+	Level string       `json:"level"`
+	Text  string       `json:"text"`
+	Class target.Class `json:"class"` // "" is target.ClassSafety
+	// Module is the module a detail notice is about, which install, sync, update and profile
+	// switches count it under, with Check, the lola check that lists it (target.Finding.Check).
+	Module string `json:"-"`
+	Check  string `json:"-"`
+}
+
+// MarshalJSON writes n with its class, target.ClassSafety when it was made without one.
+func (n Notice) MarshalJSON() ([]byte, error) {
+	type notice Notice
+	m := notice(n)
+	m.Class = cmp.Or(m.Class, target.ClassSafety)
+	return json.Marshal(m)
 }
 
 // Result is what install, uninstall and sync report.
@@ -281,12 +304,28 @@ type Result struct {
 	// Trusted is what the run's --trust covers (Plan 9 §3.4, §8), and under -n what it would:
 	// [] when nothing, and nil, so absent from the JSON, for a command that takes no --trust.
 	Trusted []Consent `json:"trusted,omitzero"`
+	// PicksCleared is, for an uninstall, each module whose picks left selections.yaml with it
+	// (Pick-P2-f), and under -n what would; [] when none, and nil, so absent from the JSON, for
+	// any other command.
+	PicksCleared []PickCleared `json:"picks_cleared,omitzero"`
 	// grants are the consent.json records Trusted's items give, written after the receipt; needs
 	// is the kinds of trust the run met an item of that would be refused without it (R-9-6).
 	grants []grant
 	needs  TrustKinds
 	// recorded is the items whose grants confirmTrusted wrote, which a later failure carries.
 	recorded []Consent
+}
+
+// PickCleared is one module's picks removed from selections.yaml by an uninstall: the selectors
+// of its skip:, include: and only: lists, the section as the file writes it, and the lola install
+// that saves them again.
+type PickCleared struct {
+	Module  string   `json:"module"`
+	Section string   `json:"section"`
+	Skip    []string `json:"skip"`
+	Include []string `json:"include"`
+	Only    []string `json:"only"`
+	Restore string   `json:"restore"`
 }
 
 func newResult(dry bool) *Result {
@@ -334,7 +373,10 @@ type StatusRow struct {
 	Source string `json:"source"`
 	Ref    string `json:"ref,omitempty"`
 	Digest string `json:"digest"` // the version installed
-	Pin    string `json:"pin"`    // the digest the manifest pins; "" when unpinned
+	// SourceGone is true when the source lock.json records is a local folder or archive that no
+	// longer exists. Git and URL sources are never checked: list reads no network.
+	SourceGone bool   `json:"source_gone"`
+	Pin        string `json:"pin"` // the digest the manifest pins; "" when unpinned
 	// UpdateAvailable is true when the cache head for the entry's ref holds another version
 	// than the pin (the version installed, when unpinned); never for a folder.
 	UpdateAvailable bool `json:"update_available"`
@@ -933,15 +975,16 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
 	}
 	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{},
-		Skipped: r.skipped}
+		Skipped: r.skipped, NotInOnly: []string{}}
 	var err error
 	profiles := opts.profiles
 	if profiles == nil {
 		profiles = e.visibleOnce(sc)
 	}
-	if mr.SkippedIn, err = skippedIn(profiles, x, r.skipped, opts.entryFrom); err != nil {
+	if mr.SkippedIn, mr.NotInOnly, mr.OnlyIn, err = excludedWhere(profiles, x, r.skipped, opts.entryFrom); err != nil {
 		return nil, nil, nil, mr, err
 	}
+	mr.Summary = resolvedSummary(x, v.Module, ment.RulesOn(), r.skipped)
 	if err := e.checkVars(sc, m, ment, opts.entryFrom, v.Meta.Digest, opts.Display); err != nil {
 		return nil, nil, nil, mr, err
 	}
@@ -951,7 +994,10 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		return nil, nil, nil, mr, err
 	}
 	finds = append(finds, nf...)
-	notes := r.notes
+	var notes []Notice
+	if len(v.Module.RuntimeHooks) > 0 && narrows(x, v.Module) {
+		notes = append(notes, Notice{Level: LevelInfo, Text: m.Name + ": runtime hooks are installed for the whole module; picks do not narrow them"})
+	}
 	var intents []plan.Intent
 	for i, id := range targets {
 		if slices.Contains(targets[:i], id) {
@@ -982,6 +1028,7 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 			// A skip --force can render gets the user's run with --force, after the target's own fix.
 			if run := cmp.Or(opts.RenderRun, opts.ForceRun); fs[i].Severity == target.SeveritySkip && fs[i].Forceable && run != "" && !opts.activation {
 				anyway := "render it anyway: " + run
+				fs[i].UserHint = anyway
 				if fs[i].Hint != "" {
 					anyway = fs[i].Hint + "; or " + anyway
 				}
@@ -1011,7 +1058,80 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		overrides = ment.Vars
 	}
 	mr.renderedWith = renderedWith(m, run, overrides)
+	if check := e.checkRun(sc, opts.checkArg, opts.Display); check != "" {
+		for i := range finds {
+			finds[i].Check = check
+			// A safety finding prints in full without its author's fix (printNotices): it names
+			// the lola check that prints that fix, before what UserHint has (M-2).
+			if f := &finds[i]; f.AuthorHint && cmp.Or(f.Class, target.ClassSafety) == target.ClassSafety {
+				own := "the module's own fix: " + check
+				if f.Target != "" {
+					own += " -t " + f.Target
+				}
+				f.UserHint = strings.Join(slices.DeleteFunc([]string{own, f.UserHint}, func(h string) bool { return h == "" }), "; or ")
+			}
+		}
+	}
 	return intents, finds, notes, mr, nil
+}
+
+// checkRun is the lola check at sc, with the run's output flags (display), that names a module by
+// arg (Options.checkArg); "" for no arg, or one untrusted.Text would change, which would not name
+// it.
+func (e *Engine) checkRun(sc Scope, arg string, display []string) string {
+	if arg == "" || untrusted.Text(arg, untrusted.MaxName) != arg {
+		return ""
+	}
+	return e.Command(sc, "check", append([]string{arg}, display...)...)
+}
+
+// syncCheckArg is the argument lola check names se's version by, synced at sc from entry ent: its
+// name, which the cache holds or the run commits (checkName); but in a dry run of a version the
+// cache lacks, the source ent installs from (checkAddr), "" when lola check cannot name it.
+func (e *Engine) syncCheckArg(sc Scope, se *syncEntry, ent *manifest.Entry, dry bool) string {
+	name := se.ent.Name
+	if dry {
+		if _, ok, err := e.Store.Head(name, ""); err != nil || !ok {
+			return checkAddr(sc, ent)
+		}
+	}
+	return e.checkName(name, se.v, func() (store.Origin, bool, error) {
+		o, found, err := e.Store.Origin(name)
+		if err != nil || dry || se.staged == nil {
+			return o, found, err
+		}
+		if idx, ok := se.staged.Index(o, found, se.headIfAbsent); ok { // as publish will commit it
+			return idx, true, nil
+		}
+		return o, found, nil
+	})
+}
+
+// checkName is arg, the argument lola check names module version v by, or "" when arg is v's
+// name and lola check of it would check something else: a folder or archive of that name in the
+// cwd, which lola check reads as a source, or a cache whose head for the default ref, the version
+// lola check reads, is not v (a pin behind it, another ref) once the run commits what it will
+// (index, the cache's index then). A cwd or index that cannot be read is "" too: then no lola
+// check is sure to name v, and the run prints its notices in full.
+func (e *Engine) checkName(arg string, v store.Version, index func() (store.Origin, bool, error)) string {
+	if arg == "" || arg != v.Name {
+		return arg
+	}
+	cwd, err := e.Getwd()
+	if err != nil {
+		return ""
+	}
+	if _, isSrc, err := source.Parse(arg, cwd); err != nil || isSrc {
+		return ""
+	}
+	o, found, err := index()
+	if err != nil || !found {
+		return ""
+	}
+	if h, ok := o.Head(""); !ok || h.Digest != v.ID {
+		return ""
+	}
+	return arg
 }
 
 // warningFindings turns a module's load warnings (legacy instruction files, skipped rule

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gofrs/flock"
 	"go.yaml.in/yaml/v3"
@@ -21,7 +22,7 @@ import (
 // template starts a selections.yaml lola creates.
 const template = `# lola selections: components you chose not to install.
 # Written by ` + "`lola install`" + `; safe to edit by hand; takes effect on the next install or render.
-# A scope's section overrides global. Project keys are absolute paths (no ~).
+# A scope's section overrides global. Project keys are git:<host>/<path>#<dir> for a clone, else absolute paths (no ~).
 version: 1
 `
 
@@ -80,7 +81,7 @@ func Save(path string, changes []Change) error {
 			}
 			continue
 		}
-		sec, err := sectionNode(root, c.Section)
+		sec, err := sectionNode(root, c.Section, c.Module)
 		if err != nil {
 			return err
 		}
@@ -161,21 +162,18 @@ func writeDoc(path string, d *yaml.Node, outcome string) error {
 func removeEntry(root *yaml.Node, w Where, module string) error {
 	parent, key := root, w.Kind
 	if w.Kind == SectionProject {
+		if err := rekeyNode(root, w, module); err != nil {
+			return err
+		}
 		projects := yamldoc.Value(root, "projects")
 		if projects == nil || projects.Kind != yaml.MappingNode {
 			return nil
 		}
-		parent, key = projects, ""
-		for i := 0; i+1 < len(projects.Content); i += 2 {
-			k, err := paths.ProjectKey(projects.Content[i].Value)
-			if err != nil {
-				return err
-			}
-			if paths.SameKey(k, w.Project) {
-				key = projects.Content[i].Value
-				break
-			}
+		i, err := projectNode(projects, w.Project)
+		if err != nil || i < 0 {
+			return err
 		}
+		parent, key = projects, projects.Content[i].Value
 	}
 	sec := yamldoc.Value(parent, key)
 	if key == "" || sec == nil || sec.Kind != yaml.MappingNode {
@@ -193,22 +191,71 @@ func removeEntry(root *yaml.Node, w Where, module string) error {
 	return nil
 }
 
-// sectionNode returns the mapping of the section w under root, creating it.
-func sectionNode(root *yaml.Node, w Where) (*yaml.Node, error) {
+// sectionNode returns the mapping of the section w under root, creating it; module is the
+// module about to be written there (rekeyNode).
+func sectionNode(root *yaml.Node, w Where, module string) (*yaml.Node, error) {
 	if w.Kind != SectionProject {
 		return mappingAt(root, w.Kind), nil
 	}
+	if err := rekeyNode(root, w, module); err != nil {
+		return nil, err
+	}
 	projects := mappingAt(root, "projects")
-	for i := 0; i+1 < len(projects.Content); i += 2 {
-		key, err := paths.ProjectKey(projects.Content[i].Value)
-		if err != nil {
-			return nil, err
-		}
-		if paths.SameKey(key, w.Project) {
-			return mappingAt(projects, projects.Content[i].Value), nil
-		}
+	i, err := projectNode(projects, w.Project)
+	if err != nil {
+		return nil, err
+	}
+	if i >= 0 {
+		return mappingAt(projects, projects.Content[i].Value), nil
 	}
 	return mappingAt(projects, w.Project), nil
+}
+
+// projectNode is the index in projects' Content of the key that names the project key, or -1:
+// a repository key as written, a path key in any spelling of the path (sameKey).
+func projectNode(projects *yaml.Node, key string) (int, error) {
+	for i := 0; i+1 < len(projects.Content); i += 2 {
+		k := projects.Content[i].Value
+		if !strings.HasPrefix(k, repoKeyPrefix) {
+			var err error
+			if k, err = paths.ProjectKey(k); err != nil {
+				return -1, err
+			}
+		}
+		if sameKey(k, key) {
+			return i, nil
+		}
+	}
+	return -1, nil
+}
+
+// rekeyNode moves the section under w's path key (Where.Path) to its repository key before
+// module's entry is written or removed there (spec 2026-11-03 Pick-P2-a): with no section under
+// the repository key, the path key is rewritten in place, keeping its comments and the file's
+// other entries; else module's entry leaves the path key's section, which is dropped once empty
+// unless it carries a comment (Selections.rekey).
+func rekeyNode(root *yaml.Node, w Where, module string) error {
+	projects := yamldoc.Value(root, "projects")
+	if w.Path == "" || projects == nil || projects.Kind != yaml.MappingNode {
+		return nil
+	}
+	old, err := projectNode(projects, w.Path)
+	if err != nil || old < 0 {
+		return err
+	}
+	repo, err := projectNode(projects, w.Project)
+	if err != nil {
+		return err
+	}
+	if repo < 0 {
+		projects.Content[old].Value = w.Project
+		return nil
+	}
+	key := projects.Content[old].Value
+	if sec := yamldoc.Value(projects, key); sec != nil && sec.Kind == yaml.MappingNode && yamldoc.RemoveKey(sec, module) && len(sec.Content) == 0 {
+		dropUnlessCommented(projects, key)
+	}
+	return nil
 }
 
 // mappingAt returns the mapping under key in m, adding the key or turning an empty value into
@@ -244,18 +291,21 @@ func setList(m *yaml.Node, key string, ps []Pattern) {
 		yamldoc.RemoveKey(m, key)
 		return
 	}
-	items := make([]*yaml.Node, 0, len(ps))
-	for _, p := range ps {
-		items = append(items, yamldoc.Str(p.String()))
+	strs := make([]string, len(ps))
+	for i, p := range ps {
+		strs[i] = p.String()
 	}
+	fresh := yamldoc.StrList(strs)
 	if v := yamldoc.Value(m, key); v != nil {
 		if v.Kind != yaml.SequenceNode {
-			v.Kind, v.Tag, v.Value, v.Style = yaml.SequenceNode, "!!seq", "", yaml.FlowStyle
+			v.Kind, v.Tag, v.Value, v.Style = yaml.SequenceNode, "!!seq", "", fresh.Style
+		} else if len(strs) > yamldoc.MaxFlowItems {
+			v.Style &^= yaml.FlowStyle // a list grown long is a block list, as a new one would be
 		}
-		v.Content = items
+		v.Content = fresh.Content
 		return
 	}
-	m.Content = append(m.Content, yamldoc.Str(key), &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: yaml.FlowStyle, Content: items})
+	m.Content = append(m.Content, yamldoc.Str(key), fresh)
 }
 
 // dropUnlessCommented removes key from m unless the key or its value carries a comment, which
