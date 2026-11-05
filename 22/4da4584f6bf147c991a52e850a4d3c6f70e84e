@@ -1,0 +1,26 @@
+docs/guides/install-trust-kinds.md
+  s_63149906d5c471::t_e43bbc9d423988 1-76
+docs/guides/install-scripts.md
+  s_63149906d5c471::t_27d232efc520e6 1-115
+docs/guides/config-and-selections.md
+  s_63149906d5c471::t_27d232efc520e6 1-99
+docs/guides/choosing-what-to-install.md
+  s_63149906d5c471::t_e43bbc9d423988 566
+  s_63149906d5c471::t_27d232efc520e6 467,562
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "224da4584f6bf147c991a52e850a4d3c6f70e84e",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
