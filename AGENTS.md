@@ -8,7 +8,7 @@ Guidance for coding agents working on lola (Go).
   `task vuln`; `task cross` (Windows/macOS build + vet); `task check` runs all gates. Artifacts go
   to `.test-output/`. `task e2e [-- <suite>...]` runs the container suites under `e2e/` (podman or
   docker, venom, network); it is not part of `check`, and the release checklist requires it.
-  `task release:notes` and `task release:tag -- X.Y.Z <results>` are the release steps
+  `task release:notes` and `task release:bump [-- X.Y.Z]` are the release steps
   (`docs/release.md`).
 
 ## Commits

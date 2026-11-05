@@ -1,21 +1,21 @@
 # git-cliff ~ configuration file
 # https://git-cliff.org/docs/configuration
 #
-# Generates a release's notes from Conventional Commits for the annotated tag's message:
-# `task release:notes` previews them, `task release:tag` writes them into the tag
-# (.taskfiles/release.yml, scripts/release-tag.sh). Adapted from
+# Generates CHANGELOG.md from Conventional Commits: `task release:notes` previews the next
+# release's section, `task release:bump` regenerates the file, commits it and copies the section
+# into the annotated tag's message (.taskfiles/release.yml, scripts/release-bump.sh). Adapted from
 # lolables/lola-mod-review-council. Only the settings that differ from `git-cliff --init`
 # carry comments below; everything else is the upstream default, kept verbatim so a future
 # git-cliff upgrade diffs cleanly against a freshly generated file.
 
 [changelog]
-# The tag message is rendered with --strip all, which drops this header; it only shows if
-# someone renders a full changelog.
+# The tag message is rendered with --strip all, which drops this header.
 header = """
 # Changelog
 
-Generated from [Conventional Commits](https://www.conventionalcommits.org) by
-[git-cliff](https://git-cliff.org).
+All notable changes to this project are documented in this file. It is generated from
+[Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org);
+do not edit it by hand — run `task release:bump` instead.
 """
 # A Tera template to be rendered for each release in the changelog.
 # See https://keats.github.io/tera/docs/#introduction
@@ -52,7 +52,7 @@ postprocessors = [
 # See https://www.conventionalcommits.org
 conventional_commits = true
 # Only release tags count. This is a regex, not a glob, and git-cliff leaves it unanchored:
-# unanchored, `v0.1.0-pre-squash` and the plan/work tags would count. scripts/release-tag.sh
+# unanchored, `v0.1.0-pre-squash` and the plan/work tags would count. scripts/release-bump.sh
 # repeats this regex (RELEASE_TAG_RE); keep the two identical.
 tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
 # Exclude commits that do not match the conventional commits specification: the history
@@ -78,7 +78,9 @@ commit_parsers = [
     { message = "^refactor", group = "<!-- 2 -->🚜 Refactor" },
     { message = "^style", group = "<!-- 5 -->🎨 Styling" },
     { message = "^test", group = "<!-- 6 -->🧪 Testing" },
-    # A release commit (item 3's advisory record) says nothing to a reader of the notes.
+    # Release commits (the changelog `release:bump` commits, item 3's advisory record) say
+    # nothing to a reader of the notes. Skipping them also keeps a later full regeneration of
+    # CHANGELOG.md identical to what each release committed.
     { message = "^chore\\(release\\)", skip = true },
     { message = "^chore\\(deps.*\\)", skip = true },
     { message = "^chore\\(pr\\)", skip = true },
@@ -112,3 +114,6 @@ recurse_submodules = false
 # and a feature bumps the patch; nothing auto-suggests 1.0.0. Both default to true upstream.
 features_always_bump_minor = false
 breaking_always_bump_major = false
+# The version `--bumped-version` suggests when there is no release tag yet. Upstream's default
+# lacks the `v`, so it fails tag_pattern.
+initial_tag = "v0.1.0"

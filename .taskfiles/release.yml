@@ -31,11 +31,13 @@ tasks:
     deps: [tools]
     cmd: '"{{.GIT_CLIFF}}" --config cliff.toml --unreleased --strip all'
 
-  # Usage: task release:tag -- <X.Y.Z> <results-file>
-  tag:
-    desc: "Create the annotated release tag vX.Y.Z on HEAD: notes plus the docs results (never pushes). Usage: task release:tag -- 0.1.0 <results-file>"
+  # Usage: task release:bump [-- X.Y.Z]
+  bump:
+    desc: "Regenerate CHANGELOG.md, commit it and tag vX.Y.Z with the notes (prompts for the version; never pushes). Usage: task release:bump [-- 0.1.0]"
     dir: '{{.ROOT_DIR}}'
     deps: [tools]
+    # interactive so the version prompt reaches the terminal unbuffered.
+    interactive: true
     vars:
       ARGS: '{{.ARGS | default .CLI_ARGS}}'
-    cmd: bash "{{.ROOT_DIR}}/scripts/release-tag.sh" "{{.GIT_CLIFF}}" {{.ARGS}}
+    cmd: bash "{{.ROOT_DIR}}/scripts/release-bump.sh" "{{.GIT_CLIFF}}" {{.ARGS}}

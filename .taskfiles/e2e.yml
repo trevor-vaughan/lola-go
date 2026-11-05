@@ -11,14 +11,6 @@ vars:
   OUT_DIR: '{{.ROOT_DIR}}/{{.TEST_DIR | default ".test-output"}}'
   MODE: '{{.MODE | default "human"}}'
 
-env:
-  GIT_CONFIG_GLOBAL: /dev/null
-  GIT_CONFIG_SYSTEM: /dev/null
-  GIT_AUTHOR_NAME: lola-test
-  GIT_AUTHOR_EMAIL: lola-test@invalid
-  GIT_COMMITTER_NAME: lola-test
-  GIT_COMMITTER_EMAIL: lola-test@invalid
-
 tasks:
   default:
     silent: true
@@ -28,5 +20,15 @@ tasks:
   run:
     desc: Run the container suites against the built binary (MODE=human|llm; -- <suite>... for some); artifacts in .test-output/e2e-<suite>/
     dir: '{{.ROOT_DIR}}'
-    env: {MODE: '{{.MODE}}', TEST_DIR: '{{.OUT_DIR}}'}
+    env:
+      MODE: '{{.MODE}}'
+      TEST_DIR: '{{.OUT_DIR}}'
+      # Task-level, not file-level: Task applies an included Taskfile's top-level env to every
+      # task, so release:bump would commit and tag as lola-test without the user's git config.
+      GIT_CONFIG_GLOBAL: /dev/null
+      GIT_CONFIG_SYSTEM: /dev/null
+      GIT_AUTHOR_NAME: lola-test
+      GIT_AUTHOR_EMAIL: lola-test@invalid
+      GIT_COMMITTER_NAME: lola-test
+      GIT_COMMITTER_EMAIL: lola-test@invalid
     cmd: bash "{{.ROOT_DIR}}/scripts/e2e.sh" {{.CLI_ARGS}}

@@ -43,7 +43,7 @@ mean to tag, with a clean work tree.
    image's Debian release newer than the digest. Otherwise bump `BASE_DIGEST` and run item 2
    again.
 
-6. **The docs, by hand.** Compare, and write each result to a file for the tag's message:
+6. **The docs, by hand.** Compare:
    - the commands `lola help` lists with the command pages of [reference/](reference/): piped,
      `lola help` prints one `== lola … ==` heading per command and subcommand (for example
      `== lola cache add ==`). Every heading but `== lola ==` has a `` # `lola …` `` or
@@ -55,26 +55,31 @@ mean to tag, with a clean work tree.
      the commands of `Q1` in `e2e/install/install.venom.yml`, and the commands in its teammate
      steps are those of `T1` and `T4` in `e2e/team/team.venom.yml`.
 
-7. **Tag.** Tag the release commit: the commit every item above passed on, plus item 3's record,
-   committed as `chore(release): …` so it stays out of the notes.
+7. **Release.** On the commit every item above passed on, plus item 3's record committed as
+   `chore(release): …` so it stays out of the notes, cut the release:
 
    ```sh
-   task release:notes                         # review the notes the tag will carry
-   task release:tag -- 0.1.0 <results-file>   # tag v0.1.0 on HEAD
+   task release:notes             # review the notes the release will carry
+   task release:bump              # prompts for the version git-cliff suggests
+   task release:bump -- 0.1.0     # or name it
    ```
 
-   - **The message:** `lola vX.Y.Z`, then the release's notes, then the docs results under
-     "Release checks". [git-cliff](https://git-cliff.org) generates the notes from the
-     Conventional Commits since the last `vX.Y.Z` tag (`cliff.toml`); commits from before the
-     convention are left out.
+   - **What it does:** regenerates `CHANGELOG.md`, commits it as `chore(release): vX.Y.Z`, and
+     puts an annotated tag `vX.Y.Z` on that commit. [git-cliff](https://git-cliff.org) generates
+     the changelog from the Conventional Commits since the last `vX.Y.Z` tag (`cliff.toml`);
+     commits from before the convention are left out. Never edit `CHANGELOG.md` by hand.
+   - **The version:** the prompt's default is git-cliff's suggestion. While the major version is
+     0, a breaking change bumps the minor and anything else the patch; 1.0.0 is never suggested.
+     The first release is suggested as 0.1.0.
+   - **The tag's message:** `lola vX.Y.Z`, then the release's section of the changelog.
    - **Refusals:** a version that is not `X.Y.Z` or not after the last release, a tag that
-     exists, a dirty work tree, an empty results file, and a release with no Conventional Commit
-     to list.
+     exists, a dirty work tree, and a release with no Conventional Commit to list. If writing or committing `CHANGELOG.md` fails, it is restored; if only the tag
+     fails, the error says how to drop the release commit and run again.
    - **git-cliff:** both tasks first install the pinned git-cliff 2.14.2 into `.tools/bin`
      (`task release:tools`, which checks the download's SHA-512). On a platform with no pinned
      download, install it there yourself:
      `cargo install --locked git-cliff --version 2.14.2 --root .tools`.
 
-   Nothing on this list publishes anything. `release:tag` never pushes (`git push origin vX.Y.Z`
-   does, when you are ready), no image is pushed and no binary uploaded; there is no release
-   automation.
+   Nothing on this list publishes anything. `release:bump` never pushes
+   (`git push origin HEAD vX.Y.Z` does, when you are ready), no image is pushed and no binary
+   uploaded; there is no release automation.
