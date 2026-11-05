@@ -1,0 +1,19 @@
+third_party/liquid/PATCHES.md
+  s_b101380ec03ad1::t_2ac354f7334cf7 58-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3c4f3fd0ccca75c45f69cadb84a300deb7b3521f",
+  "prompts": {},
+  "sessions": {
+    "s_b101380ec03ad1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "651825ff-6978-4aba-b0e0-799bf85c2691",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
