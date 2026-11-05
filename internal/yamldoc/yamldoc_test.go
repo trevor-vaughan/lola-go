@@ -27,3 +27,31 @@ var _ = Describe("ReadNoFollow", func() {
 		Expect(b).To(Equal([]byte("version: 1\n")))
 	})
 })
+
+var _ = Describe("Decode", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("reads one document and refuses what would make one entry stand for another", func() {
+		d, err := yamldoc.Decode([]byte("name: x\nversion: \"1.0\"\nmodules:\n  - {name: a}\n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(yamldoc.Value(yamldoc.Root(d), "version").Value).To(Equal("1.0"))
+
+		d, err = yamldoc.Decode([]byte("  \n"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(d).To(BeNil())
+
+		for in, want := range map[string]string{
+			"a: 1\n---\nb: 2\n":                        "holds more than one YAML document",
+			"a: &x 1\nb: 2\n":                          "line 1: anchors, aliases and merge keys (<<) are not supported",
+			"a: 1\nb: *x\n":                            "does not parse",
+			"base: {a: 1}\nm:\n  <<: {a: 2}\n":         "line 3: anchors, aliases and merge keys (<<) are not supported",
+			"a: 1\nm:\n  - {name: x, name: y}\n":       "line 3: the key name is given twice",
+			"a: 1\na: 2\n":                             "line 2: the key a is given twice",
+			"a: [1\n":                                  "does not parse",
+			"modules:\n  - name: x\n    name: \"y\"\n": "line 3: the key name is given twice",
+		} {
+			_, err := yamldoc.Decode([]byte(in))
+			Expect(err).To(MatchError(ContainSubstring(want)), in)
+		}
+	})
+})

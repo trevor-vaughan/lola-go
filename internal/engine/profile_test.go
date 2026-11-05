@@ -115,6 +115,46 @@ var _ = Describe("profiles", func() {
 		return string(b)
 	}
 
+	It("the winning entry's vars replace a lower layer's whole; a winner without vars renders defaults; the notice says which vars were dropped", func() {
+		kit := filepath.Join(mods, "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n  strict: false\n",
+			"commands/kit.md.liquid": "{{ vars.language }} {{ vars.strict }}\n"})
+		writeProfile("work", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: "+kit+", vars: {language: rust, strict: true}}\n")
+		activate(user, "user:work")
+		_, err := sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(command(p.Home, "kit")).To(Equal("rust true\n"), "the profile's entry sets both")
+
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + ", vars: {strict: true}}\n"})
+		res, err := sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(command(p.Home, "kit")).To(Equal("go true\n"), "the winner's vars replace the profile's whole: language is the default again")
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+			Text: "kit: user.yml overrides profile:user:work; kit's vars from profile:user:work are dropped: the entry from user.yml sets its own"}))
+
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
+		res, err = sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(command(p.Home, "kit")).To(Equal("go false\n"), "a winner without vars renders the defaults")
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+			Text: "kit: user.yml overrides profile:user:work; kit's vars from profile:user:work are dropped: the entry from user.yml sets none"}))
+
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + ", vars: {language: rust, strict: true}}\n"})
+		res, err = sync(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "kit: user.yml overrides profile:user:work"}),
+			"the same vars are not dropped")
+	})
+
+	It("an override refusal of a profile's entry names the profile's layer", func() {
+		kit := filepath.Join(mods, "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\nvars:\n  language: go\n", "commands/kit.md.liquid": "{{ vars.language }}\n"})
+		writeProfile("work", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: "+kit+", vars: {lang: rust}}\n")
+		activate(user, "user:work")
+		_, err := sync(user)
+		Expect(err).To(MatchError("profile:user:work: modules[kit].vars.lang: kit declares no var lang; it declares language"))
+	})
+
 	It("a later layer replaces an earlier entry whole, with a notice", func() {
 		a, b, b2, c := mod("a", "a", "A"), mod("b", "b", "B from go"), mod("b2", "b", "B from user.yml"), mod("c", "c", "C")
 		writeTree(a, map[string]string{"rules/style.md": "Prefer small diffs.\n"})
@@ -168,7 +208,7 @@ var _ = Describe("profiles", func() {
 
 		Expect(os.Remove(gone)).To(Succeed())
 		missing := engine.Notice{Level: engine.LevelWarn, Text: "profile user:go is on but no longer exists → lola profile --user user:go --off"}
-		rows, notices, err := e.Status(ctx, user)
+		rows, notices, err := e.Status(ctx, user, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notices).To(ConsistOf(missing))
 		Expect(rows).To(ContainElement(And(HaveField("Name", "a"), HaveField("From", "profile:user:go"), HaveField("Status", "ok"))),
@@ -217,16 +257,16 @@ var _ = Describe("profiles", func() {
 		a, c := mod("a", "a", "A"), mod("c", "c", "C")
 		writeProfile("default", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: c, source: "+c+"}\n")
 		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + a + "}\n"})
-		rows, notices, err := e.Status(ctx, user)
+		rows, notices, err := e.Status(ctx, user, nil)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(notices).To(BeEmpty())
+		Expect(notices).To(Equal([]engine.Notice{{Level: engine.LevelInfo, Text: "2 modules in profile:default and user.yml are not installed → lola sync --user"}}))
 		Expect(rows).To(ConsistOf(
 			And(HaveField("Name", "a"), HaveField("From", "user.yml"), HaveField("Status", "not_installed"), HaveField("Target", "claude-code")),
 			And(HaveField("Name", "c"), HaveField("From", "profile:default"), HaveField("Status", "not_installed"), HaveField("Target", "claude-code")),
 		))
 		_, err = sync(user)
 		Expect(err).NotTo(HaveOccurred())
-		rows, _, err = e.Status(ctx, user)
+		rows, _, err = e.Status(ctx, user, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows).To(ConsistOf(
 			And(HaveField("Name", "a"), HaveField("From", "user.yml"), HaveField("Status", "ok")),
@@ -286,10 +326,10 @@ var _ = Describe("profiles", func() {
 
 		_, err = e.Uninstall(ctx, user, []string{"a"}, engine.Options{})
 		Expect(err).To(MatchError("a is wanted by profile user:go"), "user.yml lists it too: uninstalling would leave it installed")
-		Expect(errs.Hints(err)).To(Equal([]string{"turn user:go off: lola profile --user user:go --off"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"turn the profile off: lola profile --user user:go --off"}))
 		_, err = e.Uninstall(ctx, user, []string{"b", "c"}, engine.Options{})
-		Expect(err).To(MatchError("c is wanted by profile default"))
-		Expect(errs.Hints(err)).To(Equal([]string{"remove it from " + def + ", which is always on at user scope"}))
+		Expect(err).To(MatchError("c is wanted by profile default; remove it from " + def + ", which is always on at user scope"))
+		Expect(errs.Hints(err)).To(BeEmpty())
 		Expect(os.ReadFile(p.UserLedger)).To(Equal(before), "a refusal changes nothing")
 		Expect(command(p.Home, "b")).To(Equal("B\n"))
 
@@ -706,7 +746,7 @@ var _ = Describe("profiles", func() {
 		activate(sc, "user:go")
 		gitIn(proj, "init", "-q")
 		gitIn(proj, "add", "-f", ".lola/lock.json")
-		tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes"
+		tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"
 		_, _, err := e.Profiles(ctx, sc)
 		Expect(err).To(MatchError(tracked))
 		_, _, err = e.ProfileState(ctx, []engine.Scope{sc}, "go")
@@ -833,7 +873,7 @@ var _ = Describe("profiles", func() {
 		}
 		_, err := turn(user, engine.ProfileSwitch, names...)
 		Expect(err).To(MatchError("at most 64 profiles can be on in a scope"))
-		Expect(errs.Hints(err)).To(Equal([]string{"turn some off: lola profile --user <name>… --off"}))
+		Expect(errs.Hints(err)).To(BeEmpty(), "no command names the profiles to turn off")
 		Expect(turn(user, engine.ProfileSwitch, names[:64]...)).Error().NotTo(HaveOccurred())
 		Expect(activeList(user)).To(HaveLen(64))
 		_, err = turn(user, engine.ProfileOn, names[64])

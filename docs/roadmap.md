@@ -35,7 +35,7 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      `default_scope`); remembered exclusions in `selections.yaml`, written by the pickers and
      by `--skip`/`--only`/`--unskip` and honored by `render` and `check`
      (`docs/superpowers/specs/2026-10-10-plan-5c-install-flow-design.md`).
-6. **`sync`, profiles, marketplaces and `clean`**, one plan each, in this order:
+6. **`sync`, profiles, marketplaces and `tidy`**, one plan each, in this order:
    - **6a. `lola sync`** with content pins in the manifest and trust for a pulled
      `project.yml`, delivered as 6a.1 pins (done: hardened manifest and ledger loading, pins
      written by `install`, machine-independent digests, `render` from the version installed),
@@ -54,13 +54,50 @@ The MVP is delivered in eight plans; each ships a working binary. The authoritat
      every command and the pager, 6b.2a layers, 6b.2b `lola profile`, 6b.3a project profiles
      and 6b.3b remote profiles (done: `--add`, `--update` and `--remove`, `extends:`, and the
      profiles lock) (`docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md`).
-   - **6c. Marketplaces:** `lola market` and `@market/module`, reading the Claude marketplace
-     JSON catalog format, and the Python lola's YAML catalogs for migrated users.
-   - **6d. `lola clean`:** move files lola does not manage out of its destinations.
-7. **Templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
-   using the jet engine, which needs dependency vetting before the plan starts.
-8. **End-to-end suites, container, and the full documentation set.** Venom suites against the
-   built binary in a container.
+   - **6c. Done: marketplaces.** `lola market` and `@market/module`, reading the Claude marketplace
+     JSON catalog format, and the Python lola's YAML catalogs for migrated users, delivered as
+     6c.1 catalogs and `lola market` (done: both formats read into one model as a stranger's
+     input, `--add`, `--update`, `--remove`, listing and showing, folder marketplaces, the markets
+     lock, and the Python lola's `lola market` verbs refused with lola's form as the hint),
+     6c.2 `@market/module` (done: install, `cache add` and `check` of an address, pins bound to a
+     ref, archive sums, the redirect rule, `market:` provenance, the install pickers' marketplace
+     groups, catalog search, `sync --update` following a catalog, and a relative entry's content
+     lists installed exactly, recorded as `components:`) and 6c.3 `@` sources in files (done:
+     every file refuses one before trust and network, coached per entry, `lola install @m/x`
+     replacing such an entry, and `lola migrate` registering the Python lola's marketplaces)
+     (`docs/superpowers/specs/2026-10-21-plan-6c-marketplaces-design.md`).
+   - **6d. `lola tidy`:** move what lola does not manage out of its destinations into the
+     trash, delivered as 6d.1 the engine and the command (done: declared destinations per
+     target, ownership from the ledgers, hard locks, git tracking asked per work tree, the
+     keep-list, MCP entries backed up before the edit, a cross-device trash move that removes only
+     what matches the copy, names and `--all` with every refusal coached) and 6d.2 (done: the
+     move and keep pickers with the review's equivalent command, the `--protect`/`--unprotect`
+     flag aliases, and the `task e2e -- tidy` container suite across two file systems)
+     (`docs/superpowers/specs/2026-10-22-plan-6d-tidy-design.md`).
+7. **Done: templating** ([#195](https://github.com/LobsterTrap/lola/issues/195)): opt-in per file,
+   using Liquid templates through `osteele/liquid`, chosen over jet because a recursive jet
+   template crashes the process; templates are untrusted, so rendering is bounded in time
+   and output and sees plain data only ([analysis](template_engine_analysis.md)). Delivered as
+   7.1 the sandbox, 7.2 whole-file `.md.liquid` templates, 7.3 partials and 7.4 per-target
+   attribute files and module vars (done: `.targets.yaml`/`.targets.jsonc` merged per target and
+   bound as `attrs`, `lola.yml` vars overridden by entries, trusted with them, recorded in
+   `rendered_with`, and shown by `lola cache info`), then 7.5 relaxed the author rules (done: a
+   frontmatter value refuses only when it renders a line break without `| json`, no key guard,
+   missing `attrs` keys read as nil, numbers in attributes and vars, missing partials refused
+   only when included, `..` in quoted strings, and the math filters)
+   (`docs/superpowers/specs/2026-10-22-plan-7-templating-design.md`).
+8. **Done: end-to-end suites, container, and the full documentation set.** Venom suites against
+   the built binary in a container, delivered as 8.1 the shared runner (done: `task e2e [--
+   <suite>...]` discovering every suite, one pinned image, a container with no network and no
+   capabilities, the `migrate` and `tidy` suites moved onto it, and a confirmation refused under
+   `--json` printing one line that carries its plan), 8.2 the `install` and `template` suites
+   (done: the README quickstart run as written, every source kind, user scope, a pseudo-terminal,
+   templates compared byte for byte, and every refusal's hint run), 8.3 the `team` and `market`
+   suites (done: sync and trust from a clone, project, user and remote profiles, remote profiles
+   over HTTPS at a host named by name with a test CA, and marketplaces end to end) and 8.4 the
+   documentation set (done: `docs/usage.md` one section per command, the guides in
+   `docs/guides/`, `docs/testing.md` and the release checklist `docs/release.md`)
+   (`docs/superpowers/specs/2026-10-23-plan-8-e2e-docs-design.md`).
 
 After the MVP:
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
@@ -44,7 +46,7 @@ func (a *app) addStoreCommands(root *cobra.Command) {
 	cache := &cobra.Command{
 		Use:   "cache",
 		Short: "Manage your module cache",
-		Long: "Your cache is lola's machine-wide copy of fetched modules ($XDG_DATA_HOME/lola/modules).\n" +
+		Long: "Your cache is lola's machine-wide copy of fetched modules ($XDG_CACHE_HOME/lola/modules).\n" +
 			"Installing renders from it; removing a module here does not touch installed files.\n" +
 			"With no subcommand, lists the cache.",
 		Example:                    "  lola cache add ./my-module\n  lola cache list\n  lola cache info my-module",
@@ -81,6 +83,23 @@ type moduleView struct {
 	Rules       []string      `json:"rules"`
 	Hooks       []module.Hook `json:"hooks"`
 	Warnings    []string      `json:"warnings"`
+	// Plan 7: the vars the module declares, its template files, partials and attribute files,
+	// each author text, cleaned.
+	Vars       []varView `json:"vars"`
+	Templates  []string  `json:"templates"`
+	Partials   []string  `json:"partials"`
+	Attributes []string  `json:"attributes"`
+}
+
+// maxVarText is the longest var default cache info shows, as a var holds at most 4096 bytes.
+const maxVarText = 4096
+
+// varView is a var a module declares: its name, type (string, boolean or list) and default.
+type varView struct {
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Default any    `json:"default"`
+	text    string // name = default, as the human view shows it
 }
 
 type headView struct {
@@ -92,7 +111,8 @@ func newModuleView(v store.Version, o store.Origin) moduleView {
 	m := v.Module
 	mv := moduleView{Name: m.Name, Description: untrusted.Text(m.Description, 4*untrusted.MaxName), Version: untrusted.Text(m.Version, untrusted.MaxName), Digest: v.Meta.Digest, Format: v.Meta.Format,
 		Source: o.Source, Type: o.Type, Path: o.Path, Heads: []headView{}, Skills: []string{}, Commands: []string{}, Agents: []string{},
-		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}}
+		MCPServers: []string{}, Rules: []string{}, Hooks: []module.Hook{}, Warnings: []string{}, Vars: []varView{}, Templates: []string{},
+		Partials: []string{}, Attributes: []string{}}
 	for _, h := range o.Heads {
 		mv.Heads = append(mv.Heads, headView{Ref: h.Ref, Digest: h.Digest})
 	}
@@ -114,6 +134,34 @@ func newModuleView(v store.Version, o store.Origin) moduleView {
 	for _, h := range m.DeclaredHooks {
 		mv.Hooks = append(mv.Hooks, module.Hook{Event: h.Event, Script: untrusted.Text(h.Script, len(h.Script))})
 	}
+	for _, name := range slices.Sorted(maps.Keys(m.Vars)) {
+		vv := varView{Name: untrusted.Text(name, untrusted.MaxName), text: untrusted.Text(name, untrusted.MaxName) + " = " + module.VarText(m.Vars[name])}
+		switch d := m.Vars[name].(type) {
+		case bool:
+			vv.Type, vv.Default = "boolean", d
+		case int64, float64:
+			vv.Type, vv.Default = "number", d
+		case []string:
+			items := []string{}
+			for _, item := range d {
+				items = append(items, untrusted.Text(item, maxVarText))
+			}
+			vv.Type, vv.Default = "list", items
+		default: // a string
+			vv.Type, vv.Default = "string", untrusted.Text(fmt.Sprint(d), maxVarText)
+		}
+		mv.Vars = append(mv.Vars, vv)
+	}
+	for _, t := range m.Templates() {
+		mv.Templates = append(mv.Templates, untrusted.Text(t.File, untrusted.MaxName))
+	}
+	slices.Sort(mv.Templates)
+	for _, p := range slices.Sorted(maps.Keys(m.Partials)) {
+		mv.Partials = append(mv.Partials, untrusted.Text(p, untrusted.MaxName))
+	}
+	for _, f := range m.AttributeFiles() {
+		mv.Attributes = append(mv.Attributes, untrusted.Text(f, untrusted.MaxName))
+	}
 	mv.Warnings = append(mv.Warnings, m.Warnings...)
 	for _, n := range v.Meta.OthersPresent {
 		// A version fresh from cache add already carries its detection warnings.
@@ -133,24 +181,29 @@ func printModuleView(w io.Writer, s style, mv moduleView) {
 	if mv.Description != "" {
 		fmt.Fprintf(w, "  %s\n", mv.Description)
 	}
-	fmt.Fprintf(w, "  source:   %s (%s)\n", mv.Source, mv.Type)
+	fmt.Fprintf(w, "  %-11s %s (%s)\n", "source:", mv.Source, mv.Type)
 	if mv.Path != "" {
-		fmt.Fprintf(w, "  path:     %s\n", mv.Path)
+		fmt.Fprintf(w, "  %-11s %s\n", "path:", mv.Path)
 	}
-	fmt.Fprintf(w, "  format:   %s\n  digest:   %s\n", mv.Format, mv.Digest)
+	fmt.Fprintf(w, "  %-11s %s\n  %-11s %s\n", "format:", mv.Format, "digest:", mv.Digest)
 	for _, h := range mv.Heads {
 		ref := h.Ref
 		if ref == "" {
 			ref = "(default)"
 		}
-		fmt.Fprintf(w, "  head:     %s → %s\n", ref, h.Digest)
+		fmt.Fprintf(w, "  %-11s %s → %s\n", "head:", ref, h.Digest)
+	}
+	vars := make([]string, len(mv.Vars)) // language = "go"
+	for i, v := range mv.Vars {
+		vars[i] = v.text
 	}
 	for _, kv := range []struct {
 		k string
 		v []string
-	}{{"skills", mv.Skills}, {"commands", mv.Commands}, {"agents", mv.Agents}, {"mcp", mv.MCPServers}, {"rules", mv.Rules}} {
+	}{{"skills", mv.Skills}, {"commands", mv.Commands}, {"agents", mv.Agents}, {"mcp", mv.MCPServers}, {"rules", mv.Rules},
+		{"vars", vars}, {"templates", mv.Templates}, {"partials", mv.Partials}, {"attributes", mv.Attributes}} {
 		if len(kv.v) > 0 {
-			fmt.Fprintf(w, "  %-9s %s\n", kv.k+":", strings.Join(kv.v, ", "))
+			fmt.Fprintf(w, "  %-11s %s\n", kv.k+":", strings.Join(kv.v, ", "))
 		}
 	}
 	if len(mv.Hooks) > 0 {
@@ -166,18 +219,22 @@ func printModuleView(w io.Writer, s style, mv moduleView) {
 
 func (a *app) cacheAddCmd() *cobra.Command {
 	var ref, path string
-	g := argGuide{noun: "source", find: source.AcceptedForms, usage: "lola cache add <source> [--ref ref] [--path dir]",
+	g := argGuide{noun: "source", find: source.AcceptedForms + ", or @market/module", usage: "lola cache add <source|@market/module> [--ref ref] [--path dir]",
 		examples: []string{"lola cache add ./my-module", "lola cache add ./monorepo --path plugins/review",
-			"lola cache add git@github.com:acme/review.git --ref main", "lola cache add https://example.com/review-1.2.0.zip"}}
+			"lola cache add git@github.com:acme/review.git --ref main", "lola cache add https://example.com/review-1.2.0.zip",
+			"lola cache add @acme/formatter"}}
 	cmd := &cobra.Command{
-		Use:     "add <source>",
+		Use:     "add <source|@market/module>",
 		Aliases: []string{"get"},
 		Short:   "Fetch a module into your cache without installing it",
 		Long: "Fetch a module into your cache without installing it. Sources:\n" + source.AcceptedForms + ".\n" +
 			"--ref picks a git branch, tag or full commit SHA; --path picks the module root inside\n" +
-			"the source. lola cache update fetches every cached module from its source again.",
-		Example: g.example(),
-		Args:    cobra.MatchAll(g.args(1), cobra.MaximumNArgs(1)),
+			"the source. @market/module fetches an entry of one of your marketplaces as lola install\n" +
+			"would, its commit pin checked against its ref (--path is refused: the catalog gives it).\n" +
+			"lola cache update fetches every cached module from its source again.",
+		Example:           g.example(),
+		Args:              cobra.MatchAll(g.args(1), cobra.MaximumNArgs(1)),
+		ValidArgsFunction: a.completeAddress,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, err := a.engine()
 			if err != nil {
@@ -187,7 +244,19 @@ func (a *app) cacheAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			v, err := eng.AddSource(cmd.Context(), cwd, args[0], ref, path)
+			addr, isAddr, err := market.ParseAddress(args[0])
+			if err != nil {
+				return err
+			}
+			if isAddr && path != "" {
+				return errs.WithHints(fmt.Errorf("--path does not apply to %s: its catalog gives the path", addr), runWithout(cmd, args, "path"))
+			}
+			var v store.Version
+			if isAddr {
+				v, err = eng.AddEntry(cmd.Context(), args[0], ref, path, outputFlags(cmd))
+			} else {
+				v, err = eng.AddSource(cmd.Context(), cwd, args[0], ref, path, outputFlags(cmd))
+			}
 			if err != nil {
 				return err
 			}
@@ -231,12 +300,13 @@ func (a *app) cacheRmCmd() *cobra.Command {
 				if found, err := eng.Store.Has(n); err != nil {
 					return err
 				} else if !found {
-					return engine.NotStored(n)
+					return engine.NotStored(n, outputFlags(cmd)...)
 				}
 			}
 			if !yes {
-				fmt.Fprintf(cmd.ErrOrStderr(), "will remove from your cache: %s\n", strings.Join(args, ", "))
-				if err := a.confirm(cmd, false, "Remove "+strings.Join(args, ", ")+" from your cache?"); err != nil {
+				show := func(w io.Writer) { fmt.Fprintf(w, "will remove from your cache: %s\n", strings.Join(args, ", ")) }
+				plan := map[string]any{"would_remove": args}
+				if err := a.confirm(cmd, args, "Remove "+strings.Join(args, ", ")+" from your cache?", plan, show); err != nil {
 					return err
 				}
 			}
@@ -320,7 +390,7 @@ func (a *app) cacheInfoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			v, o, err := eng.Current(args[0])
+			v, o, err := eng.Current(args[0], outputFlags(cmd)...)
 			if err != nil {
 				return err
 			}
@@ -343,7 +413,7 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			up, err := eng.Update(cmd.Context(), args)
+			up, err := eng.Update(cmd.Context(), args, outputFlags(cmd)...)
 			if err != nil {
 				return err
 			}
@@ -370,12 +440,20 @@ func (a *app) cacheUpdateCmd() *cobra.Command {
 	}
 }
 
-func (a *app) searchRun(cmd *cobra.Command, args []string) error {
+// searchRun runs a search of your cache, and with markets of your fetched catalogs too (Plan 6c
+// §6.8): lola search searches both, lola cache search the cache alone.
+func (a *app) searchRun(markets bool) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		return a.search(cmd, args, markets)
+	}
+}
+
+func (a *app) search(cmd *cobra.Command, args []string, markets bool) error {
 	eng, err := a.engine()
 	if err != nil {
 		return err
 	}
-	hits, warnings, err := eng.Search(strings.Join(args, " "))
+	hits, warnings, err := eng.Search(strings.Join(args, " "), markets, outputFlags(cmd))
 	if err != nil {
 		return err
 	}
@@ -392,10 +470,13 @@ func printSkipped(w io.Writer, s style, warnings []string) {
 	}
 }
 
+// printHits prints a search's hits, each by what lola install takes to install it (a cached
+// module's name, a catalog entry's @market/module); --plain rows are name, version, where,
+// description and that install value.
 func printHits(w io.Writer, s style, hits []engine.SearchHit) {
 	if s.plain {
 		for _, h := range hits {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", h.Name, h.Version, h.Where, h.Description)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", h.Name, h.Version, h.Where, h.Description, h.Install)
 		}
 		return
 	}
@@ -405,7 +486,7 @@ func printHits(w io.Writer, s style, hits []engine.SearchHit) {
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, h := range hits {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", h.Name, h.Version, h.Where, h.Description)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", h.Install, h.Version, h.Where, h.Description)
 	}
 	_ = tw.Flush()
 }
@@ -419,7 +500,7 @@ func (a *app) cacheSearchCmd() *cobra.Command {
 		Short:   "Search your cache",
 		Example: g.example(),
 		Args:    g.args(1),
-		RunE:    a.searchRun,
+		RunE:    a.searchRun(false),
 	}
 }
 
@@ -430,29 +511,52 @@ func (a *app) searchCmd() *cobra.Command {
 		Use:     "search <query>",
 		Aliases: []string{"find"},
 		Short:   "Search for modules by name, description or keyword",
-		Long:    "Search modules case-insensitively by name, description and keywords. This build searches\nyour cache; marketplaces are on the roadmap.",
+		Long: "Search modules case-insensitively by name, description and keywords: your cache first,\n" +
+			"then the entries of every marketplace catalog you have fetched (lola market), each listed\n" +
+			"by what lola install takes: a cached module's name, or @market/module. It never fetches;\n" +
+			"lola market <name> --update fetches a catalog again. lola cache search searches your cache\n" +
+			"alone.",
 		Example: g.example(),
 		GroupID: groupCore,
 		Args:    g.args(1),
-		RunE:    a.searchRun,
+		RunE:    a.searchRun(true),
 	}
 }
 
 func (a *app) initCmd() *cobra.Command {
 	var format string
+	var yes bool
 	cmd := &cobra.Command{
 		Use:   "init [dir]",
 		Short: "Create a new module in a directory (default: the current one)",
 		Long: "Scaffold a module named after the directory. The default format is an Agent Plugins package:\n" +
 			"plugin.json, a portable skill and a dev.getlola command. --format lola writes the native layout:\n" +
-			"lola.yml, one skill and one command.",
-		Example: "  lola init my-module\n  lola init my_module --format lola\n  lola install ./my-module -t claude-code",
+			"lola.yml, one skill and one command.\n" +
+			"With no dir, lola init asks before scaffolding the current directory; -y answers yes.",
+		Example: "  lola init my-module\n  lola init my_module --format lola\n  lola init -y\n  lola install ./my-module -t claude-code",
 		GroupID: groupCore,
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {
 				dir = args[0]
+			} else if !yes {
+				// A bare init scaffolds wherever you happen to be: ask first (ruling R-8-U8).
+				plan, err := engine.PlanInit(dir, format)
+				if err != nil {
+					return err
+				}
+				// The name is validated; the directories above it may come from a clone or an archive.
+				path := untrusted.Text(plan.Path, untrusted.MaxName)
+				show := func(w io.Writer) {
+					fmt.Fprintf(w, "will create module %s in %s (%s):\n", plan.Name, path, plan.Format)
+					for _, f := range plan.Files {
+						fmt.Fprintln(w, "    "+f)
+					}
+				}
+				if err := a.confirm(cmd, nil, "Create module "+plan.Name+" in "+path+"?", plan, show); err != nil {
+					return err
+				}
 			}
 			s, err := engine.Init(dir, format)
 			if err != nil {
@@ -475,5 +579,6 @@ func (a *app) initCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&format, "format", engine.InitFormats()[0], "the module format: "+strings.Join(engine.InitFormats(), " or "))
 	_ = cmd.RegisterFlagCompletionFunc("format", cobra.FixedCompletions(engine.InitFormats(), cobra.ShellCompDirectiveNoFileComp))
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	return cmd
 }

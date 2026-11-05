@@ -127,18 +127,21 @@ var _ = Describe("scope resolution (Plan 5c §5.1, Plan 6b §3.1)", func() {
 		Expect(res).To(Equal(engine.ScopeResolution{Pick: true, ProjectRoot: bare}))
 	})
 
-	It("refuses no scope at all, naming the command and every way to give one", func() {
-		_, err := e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "install", Both: true})
-		Expect(err).To(MatchError("lola install needs a scope: no .lola/ project was found in " + bare + " or above it"))
-		Expect(errs.Hints(err)).To(Equal([]string{
-			"--project acts on this directory (-C <dir> picks another)",
-			"--user acts on your user scope, for every project",
-			"--scope both does both",
-			"or set a default: default_scope: project in " + p.Config}))
+	It("refuses no scope at all, naming the command and hinting the run with each scope it can take", func() {
+		run := "lola install ./mod --ref v1 --json"
+		_, err := e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "install", Both: true, Run: run})
+		Expect(err).To(MatchError("lola install needs a scope: no .lola/ project was found in " + bare + " or above it, and " + p.Config +
+			" sets no default_scope (default_scope: project, user or both)"))
+		Expect(errs.Hints(err)).To(Equal([]string{run + " --project", run + " --user", run + " --scope both"}))
 
-		_, err = e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "uninstall"})
-		Expect(err).To(MatchError("lola uninstall needs a scope: no .lola/ project was found in " + bare + " or above it"))
-		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("--scope both")), "uninstall acts on one scope")
+		_, err = e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "uninstall", Run: "lola uninstall mod -y"})
+		Expect(err).To(MatchError("lola uninstall needs a scope: no .lola/ project was found in " + bare + " or above it, and " + p.Config +
+			" sets no default_scope (default_scope: project or user)"))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola uninstall mod -y --project", "lola uninstall mod -y --user"}), "uninstall acts on one scope")
+
+		_, err = e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "render"})
+		Expect(err).To(HaveOccurred())
+		Expect(errs.Hints(err)).To(BeEmpty(), "no run, no hint")
 	})
 
 	It("prints no raw control characters from the working directory in the no-scope error", func() {

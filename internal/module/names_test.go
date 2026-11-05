@@ -22,6 +22,28 @@ var _ = Describe("names", func() {
 		Entry("slash", "a/b"), Entry("65 chars", strings.Repeat("a", 65)), Entry("space", "a b"),
 	)
 
+	DescribeTable("an invalid name says what is wrong with it before the rule",
+		func(n, why string) {
+			testenv.Isolate()
+			Expect(module.ValidateName("marketplace", n)).To(MatchError(`marketplace name "` + n + `" is invalid: ` + why +
+				`; use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'`))
+		},
+		Entry("uppercase", "Bad_Name", "B and N are uppercase"),
+		Entry("one uppercase letter, twice", "Acme-Acme", "A is uppercase"),
+		Entry("characters outside the rule", "a b/c", "' ' and '/' are not allowed"),
+		Entry("both", "My Tools", "M and T are uppercase, ' ' is not allowed"),
+		Entry("the first character", "_x", "it starts with '_'"),
+		Entry("dot dot", "a..b", "it has '..'"),
+		Entry("many characters", "ABCDEFGHIJ", "A, B, C, D, E, F, G, H and 2 more are uppercase"),
+		Entry("empty", "", "it is empty"),
+		Entry("too long", strings.Repeat("a", 65), "it is 65 characters long"),
+	)
+
+	It("names a control character escaped", func() {
+		testenv.Isolate()
+		Expect(module.ValidateName("skill", "a\tb")).To(MatchError(HavePrefix(`skill name "a?b" is invalid: '\t' is not allowed; use`)))
+	})
+
 	It("bounds the name it echoes", func() {
 		testenv.Isolate()
 		err := module.ValidateName("skill", strings.Repeat("A", 3000))

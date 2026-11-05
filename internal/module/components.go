@@ -122,6 +122,7 @@ func (l loader) path(at, rel string, dir bool, suffix string) (string, error) {
 	case !dir && isDir:
 		return "", entryErr(at, fmt.Sprintf("path %q is not a regular file", safeName(rel)),
 			"name a plain file, not a directory or the module root")
+	case suffix == ".md" && IsTemplate(clean): // a .md.liquid path stands wherever a .md one does (Plan 7 §3.1)
 	case suffix != "" && !strings.HasSuffix(clean, suffix):
 		return "", entryErr(at, fmt.Sprintf("path %q does not end in %s", safeName(rel), suffix),
 			"name a file that ends in "+suffix)
@@ -137,6 +138,9 @@ func localPath(dir, at, rel string) (string, bool, error) {
 	if rel == "" || !filepath.IsLocal(rel) {
 		return "", false, entryErr(at, fmt.Sprintf("path %q must be relative and inside the module", safeName(rel)),
 			"give a path from the module root, such as skills/review")
+	}
+	if first, _, _ := strings.Cut(clean, "/"); strings.EqualFold(first, partialsDir) {
+		return "", false, entryErr(at, safeName(clean)+": "+partialsDir+" holds partials, not components", "move the component out of "+partialsDir+"/")
 	}
 	if clean == "." {
 		return clean, true, nil
@@ -233,16 +237,18 @@ func (l loader) skills(es []pathEntry) error {
 		if err := l.targets(at, e.Targets); err != nil {
 			return err
 		}
-		if fi, err := os.Lstat(filepath.Join(l.dir, rel, "SKILL.md")); err != nil || !fi.Mode().IsRegular() {
-			return entryErr(at, fmt.Sprintf("%s has no SKILL.md", safeName(rel)), "a skill entry names one directory that holds SKILL.md")
-		}
-		doc, err := readDoc(l.dir, path.Join(rel, "SKILL.md"))
-		if err != nil {
-			return err
-		}
-		s := Skill{Name: name, Dir: rel, Doc: doc, Targets: e.Targets}
+		s := Skill{Name: name, Dir: rel, Targets: e.Targets}
 		if rel == "." {
-			s.Exclude = rootSkillExclude()
+			exclude, err := rootExclude(l.dir)
+			if err != nil {
+				return err
+			}
+			s.Exclude = exclude
+		}
+		if ok, err := skillDoc(l.dir, rel, l.m, &s); err != nil {
+			return err
+		} else if !ok {
+			return entryErr(at, fmt.Sprintf("%s has no SKILL.md", safeName(rel)), "a skill entry names one directory that holds SKILL.md")
 		}
 		l.m.Skills = append(l.m.Skills, s)
 		cs = append(cs, claim{name, safeName(rel), e.Targets})
@@ -265,11 +271,14 @@ func (l loader) commands(es []commandEntry) error {
 			if err != nil {
 				return err
 			}
-			if c.Name, err = l.name(at, "command", e.Name, strings.TrimSuffix(path.Base(rel), ".md")); err != nil {
+			if c.Name, err = l.name(at, "command", e.Name, ComponentName(rel)); err != nil {
 				return err
 			}
-			if c.Doc, err = readDoc(l.dir, rel); err != nil {
+			if c.Doc, err = readComponent(l.dir, rel, l.m); err != nil {
 				return err
+			}
+			if c.Doc.Template != nil && len(e.Frontmatter) > 0 {
+				return entryErr(at, "frontmatter: cannot be set on a template; write the keys in "+safeName(rel))
 			}
 			c.File, source = rel, safeName(rel)
 		case e.Content != "":
@@ -310,14 +319,14 @@ func (l loader) agents(es []pathEntry) error {
 		if err != nil {
 			return err
 		}
-		name, err := l.name(at, "agent", e.Name, strings.TrimSuffix(path.Base(rel), ".md"))
+		name, err := l.name(at, "agent", e.Name, ComponentName(rel))
 		if err != nil {
 			return err
 		}
 		if err := l.targets(at, e.Targets); err != nil {
 			return err
 		}
-		doc, err := readDoc(l.dir, rel)
+		doc, err := readComponent(l.dir, rel, l.m)
 		if err != nil {
 			return err
 		}
@@ -336,18 +345,19 @@ func (l loader) rules(es []pathEntry) error {
 		if err != nil {
 			return err
 		}
-		name, err := l.name(at, "rule", e.Name, strings.TrimSuffix(path.Base(rel), ".md"))
+		name, err := l.name(at, "rule", e.Name, ComponentName(rel))
 		if err != nil {
 			return err
 		}
 		if err := l.targets(at, e.Targets); err != nil {
 			return err
 		}
-		body, err := ruleBody(l.dir, rel)
+		r, err := readRule(l.dir, rel, l.m)
 		if err != nil {
 			return err
 		}
-		l.m.Rules = append(l.m.Rules, Rule{Name: name, Body: body, Targets: e.Targets})
+		r.Name, r.Targets = name, e.Targets
+		l.m.Rules = append(l.m.Rules, r)
 		cs = append(cs, claim{name, safeName(rel), e.Targets})
 	}
 	sort.SliceStable(l.m.Rules, func(i, j int) bool { return l.m.Rules[i].Name < l.m.Rules[j].Name })

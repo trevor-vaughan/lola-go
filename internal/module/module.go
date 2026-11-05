@@ -5,6 +5,7 @@ package module
 import (
 	"bytes"
 	"encoding/json"
+	"path"
 	"slices"
 
 	"go.yaml.in/yaml/v3"
@@ -23,8 +24,20 @@ type Skill struct {
 	Name    string
 	Dir     string
 	Exclude []string
-	Doc     Doc // parsed SKILL.md
+	Doc     Doc         // parsed SKILL.md, or SKILL.md.liquid unparsed
+	Files   []SkillFile `yaml:",omitempty"` // the templated support files, sorted by Source
 	Targets []string
+	Attrs   map[string]map[string]any `yaml:",omitempty"` // target id → frontmatter keys from SKILL.targets.yaml or .jsonc, nil when none
+	// AttrsFile is the content-relative path of the attribute file Attrs came from, "" for none.
+	AttrsFile string `yaml:",omitempty"`
+}
+
+// SkillFile is a templated support file of a skill: Source is its Dir-relative .md.liquid path,
+// Rel the path it is written to (Source without .liquid), and Body its source, or once the
+// engine rendered it for a target, its output. It is never parsed.
+type SkillFile struct {
+	Rel, Source string
+	Body        string
 }
 
 // Command is a slash command. File and SidecarDir are content-relative; SidecarDir is "" when
@@ -35,12 +48,17 @@ type Command struct {
 	Doc                    Doc
 	Sidecars               []Sidecar
 	Targets                []string
+	Attrs                  map[string]map[string]any `yaml:",omitempty"` // target id → frontmatter keys from its attribute file, nil when none
+	AttrsFile              string                    `yaml:",omitempty"` // that file, content-relative; "" for none
 }
 
-// Sidecar is a Markdown file under a command's SidecarDir; File is content-relative.
+// Sidecar is a Markdown file under a command's SidecarDir; File is the content-relative path it
+// has in the copied directory. Source is the content-relative path of its .md.liquid source,
+// "" for a literal file.
 type Sidecar struct {
-	File string
-	Doc  Doc
+	File   string
+	Source string `yaml:",omitempty"`
+	Doc    Doc
 }
 
 // Agent is a subagent definition; File is content-relative.
@@ -48,6 +66,8 @@ type Agent struct {
 	Name, File string
 	Doc        Doc
 	Targets    []string
+	Attrs      map[string]map[string]any `yaml:",omitempty"` // target id → frontmatter keys from its attribute file, nil when none
+	AttrsFile  string                    `yaml:",omitempty"` // that file, content-relative; "" for none
 }
 
 // MCP transports.
@@ -70,9 +90,11 @@ type MCPServer struct {
 	Targets   []string
 }
 
-// Rule is always-on context (§5.6): rules/<Name>.md with its frontmatter removed.
+// Rule is always-on context (§5.6): rules/<Name>.md with its frontmatter removed. A template
+// (Template set) holds its whole source in Body until the engine renders it.
 type Rule struct {
 	Name, Body string
+	Template   *TemplateSource `yaml:",omitempty"`
 	Targets    []string
 }
 
@@ -118,9 +140,12 @@ type Module struct {
 	Rules                                                     []Rule
 	RuntimeHooks                                              []RuntimeHookSet
 	DeclaredHooks                                             []Hook
-	Warnings                                                  []string // non-fatal load problems, e.g. skipped skills
+	Partials                                                  map[string]string // content-relative path → source (Plan 7 §3.3), nil when none
+	Vars                                                      map[string]any    // lola.yml vars: name → default, a string, bool, int64, float64 or []string (Plan 7 §4.1, §5.7.4); nil when none
+	Warnings                                                  []string          // non-fatal load problems, e.g. skipped skills
 
 	components *components // the manifest's components section, which Normalize writes back
+	templates  int         // template files read so far, which load caps
 }
 
 // Supports reports whether an artifact or module restricted to targets applies to id.
@@ -143,4 +168,65 @@ func meaning(m *Module) ([]byte, error) {
 	c := *m
 	c.Format, c.Manifest, c.Shadowed, c.Warnings, c.components = "", "", nil, nil, nil
 	return yaml.Marshal(c)
+}
+
+// Template is one template file of a module: its content-relative path and its source.
+type Template struct {
+	File, Body string
+}
+
+// Templates lists m's template files (Plan 7 §3.1): component templates, skill support files and
+// command sidecars, in the order of m's skills, commands, agents and rules.
+func (m *Module) Templates() []Template {
+	var out []Template
+	for _, s := range m.Skills {
+		if s.Doc.Template != nil {
+			out = append(out, Template{s.Doc.Template.File, s.Doc.Body})
+		}
+		for _, f := range s.Files {
+			out = append(out, Template{path.Join(s.Dir, f.Source), f.Body})
+		}
+	}
+	for _, c := range m.Commands {
+		if c.Doc.Template != nil {
+			out = append(out, Template{c.Doc.Template.File, c.Doc.Body})
+		}
+		for _, sc := range c.Sidecars {
+			if sc.Doc.Template != nil {
+				out = append(out, Template{sc.Source, sc.Doc.Body})
+			}
+		}
+	}
+	for _, a := range m.Agents {
+		if a.Doc.Template != nil {
+			out = append(out, Template{a.Doc.Template.File, a.Doc.Body})
+		}
+	}
+	for _, r := range m.Rules {
+		if r.Template != nil {
+			out = append(out, Template{r.Template.File, r.Body})
+		}
+	}
+	return out
+}
+
+// AttributeFiles lists the content-relative paths of m's attribute files (Plan 7 §3.4), sorted.
+func (m *Module) AttributeFiles() []string {
+	var out []string
+	add := func(file string) {
+		if file != "" {
+			out = append(out, file)
+		}
+	}
+	for _, s := range m.Skills {
+		add(s.AttrsFile)
+	}
+	for _, c := range m.Commands {
+		add(c.AttrsFile)
+	}
+	for _, a := range m.Agents {
+		add(a.AttrsFile)
+	}
+	slices.Sort(out)
+	return out
 }

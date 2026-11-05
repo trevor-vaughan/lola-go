@@ -23,11 +23,15 @@ import (
 // it is fetched by its SHA, and the fetch must resolve to it; for every kind the content's digest
 // must be digest. A tree that fails a check is removed with the run.
 func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, commit, digest, run string) (store.Staged, error) {
-	installAgain := "install what its source serves now: " + installCommand(spec.Location, spec.Ref, spec.Path)
+	// An install by source would take the whole directory, never a selection of it.
+	var installAgain []string
+	if spec.Components == nil {
+		installAgain = []string{"install what its source serves now: " + installCommand(spec.Location, spec.Ref, spec.Path)}
+	}
 	fetch := spec
 	if spec.Kind == source.KindGit {
 		if commit == "" {
-			return store.Staged{}, errs.WithHints(fmt.Errorf("%s: no commit is recorded for the version installed, so lola cannot fetch it", name), installAgain)
+			return store.Staged{}, errs.WithHints(fmt.Errorf("%s: no commit is recorded for the version installed, so lola cannot fetch it", name), installAgain...)
 		}
 		if err := source.CheckReachable(ctx, spec, commit, run); err != nil {
 			return store.Staged{}, fmt.Errorf("%s: %w", name, err)
@@ -42,15 +46,15 @@ func (e *Engine) fetchPin(ctx context.Context, name string, spec source.Spec, co
 		return store.Staged{}, err
 	}
 	if f.Commit != commit {
-		return store.Staged{}, errs.WithHints(&servedCommitError{name: name, location: spec.Location, got: f.Commit, want: commit}, installAgain)
+		return store.Staged{}, errs.WithHints(&servedCommitError{name: name, location: spec.Location, got: f.Commit, want: commit}, installAgain...)
 	}
-	st, err := e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: f.Name, Name: name, Source: spec.Location, Type: string(spec.Kind),
-		Path: spec.Path, Ref: spec.Ref, Commit: commit, Executables: f.Executables, Now: e.Now()})
+	st, err := e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: name, Name: name, Source: spec.Location, Type: string(spec.Kind),
+		Path: spec.Path, Ref: spec.Ref, Commit: commit, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
 	if err != nil {
 		return store.Staged{}, err // a module that renamed itself: fetching again cannot help, and the caller names the way out
 	}
 	if got := st.Version.Meta.Digest; got != digest {
-		return store.Staged{}, errs.WithHints(&digestMismatchError{name: name, got: got, want: digest}, installAgain)
+		return store.Staged{}, errs.WithHints(&digestMismatchError{name: name, got: got, want: digest}, installAgain...)
 	}
 	return st, nil
 }
@@ -93,7 +97,7 @@ func (e *Engine) installedForRender(ctx context.Context, sc Scope, name string, 
 	}
 	if spec.Kind == source.KindFolder {
 		if _, err := os.Stat(spec.Location); err == nil {
-			v, err := e.fetchAs(ctx, spec, name, run)
+			v, err := e.fetchAs(ctx, spec, name, name, run)
 			return v, errs.WithHints(err, uninstall)
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return store.Version{}, fmt.Errorf("%s: %w", name, untrusted.CleanErr(err))
@@ -174,16 +178,19 @@ func (e *Engine) recordedSpec(sc Scope, name string, entry *ledger.Entry) (sourc
 		return source.Spec{}, err
 	}
 	if found {
-		return source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: entry.Ref}, nil
+		return source.Spec{Kind: source.Kind(o.Type), Location: o.Source, Path: o.Path, Ref: entry.Ref, Components: o.Components}, nil
 	}
 	spec, isSrc, err := source.Parse(entry.Source, sourceRoot(sc))
 	if err != nil {
 		return source.Spec{}, fmt.Errorf("%s is no longer in your cache and its recorded source %q is unusable: %w", name, entry.Source, err)
 	}
 	if !isSrc {
-		return source.Spec{}, errs.WithHints(fmt.Errorf("%s is no longer in your cache", name),
-			"fetch it again: "+installCommand(entry.Source, entry.Ref, entry.Path))
+		err := fmt.Errorf("%s is no longer in your cache", name)
+		if entry.Components != nil { // an install by source would take the whole directory
+			return source.Spec{}, err
+		}
+		return source.Spec{}, errs.WithHints(err, "fetch it again: "+installCommand(entry.Source, entry.Ref, entry.Path))
 	}
-	spec.Ref, spec.Path = entry.Ref, entry.Path
+	spec.Ref, spec.Path, spec.Components = entry.Ref, entry.Path, entry.Components.Clone()
 	return spec, nil
 }

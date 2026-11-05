@@ -190,11 +190,37 @@ var _ = Describe("Parse refusals", func() {
 		Expect(errs.Hints(err)).To(ContainElement("for a path, write " + errs.ShellJoin([]string{"./-my skills"})))
 	})
 
+	It("says once in a remote source's refusal what to give instead (ruling R-8-U5)", func() {
+		testenv.Isolate()
+		for src, want := range map[string]string{
+			"http://example.com/a.git": "http://example.com/a.git uses http://; a remote profile's sources must use https:// or ssh:// " +
+				"(or user@host:path), with its host name",
+			"https://127.0.0.1/a.git": "https://127.0.0.1/a.git names the loopback address 127.0.0.1; a remote profile reaches hosts by name " +
+				"only, never inside your network; use the repository's https:// or ssh:// URL (or user@host:path), with its host name",
+		} {
+			err := source.CheckRemote(src, "a remote profile")
+			Expect(err).To(MatchError(want), src)
+			Expect(errs.Hints(err)).To(BeEmpty(), src)
+		}
+	})
+
+	It("says in the error which sources lola takes when a URL's scheme is none of them (ruling R-8-U5)", func() {
+		testenv.Isolate()
+		for spec, want := range map[source.Spec]string{
+			{Kind: source.KindArchive, Location: "ftp://example.com/kit.zip"}: "archive ftp://example.com/kit.zip is neither a file nor an https:// URL",
+			{Kind: source.KindGit, Location: "ftp://example.com/kit.git"}:     "git source ftp://example.com/kit.git is not an https://, ssh:// or user@host:path URL",
+		} {
+			err := source.Validate(spec)
+			Expect(err).To(MatchError(want+"; sources are "+source.AcceptedForms), spec.Location)
+			Expect(errs.Hints(err)).To(BeEmpty(), spec.Location)
+		}
+	})
+
 	It("refuses a git remote helper, but not an IPv6 URL", func() {
 		cwd := testenv.Isolate()
 		_, _, err := source.Parse("fd::0", cwd)
-		Expect(err).To(MatchError(ContainSubstring("remote helper")))
-		Expect(errs.Hints(err)).To(ContainElement("sources are " + source.AcceptedForms))
+		Expect(err).To(MatchError(`source "fd::0" names a git remote helper (<transport>::<address>), which lola never runs; sources are ` + source.AcceptedForms))
+		Expect(errs.Hints(err)).To(BeEmpty())
 		s, ok, err := source.Parse("http://[::1]/x.git", cwd)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())

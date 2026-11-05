@@ -23,30 +23,38 @@ var _ = Describe("Fetch", func() {
 	})
 
 	It("refuses a hostile Spec that never went through Parse", func() {
-		for _, spec := range []source.Spec{
-			{Kind: source.KindFolder, Location: src, Ref: "--upload-pack=touch x"},
-			{Kind: source.KindFolder, Location: "fd::0"},
-			{Kind: source.KindFolder, Location: "-x"},
-		} {
+		// Coached by a hint, or, when no command fixes it, in the error (ruling R-8-U5).
+		refused := func(spec source.Spec, msg string, hints []string) {
+			GinkgoHelper()
 			_, err := source.Fetch(ctx, spec, staging)
-			Expect(err).To(HaveOccurred(), spec.Location+" "+spec.Ref)
-			Expect(errs.Hints(err)).NotTo(BeEmpty())
+			Expect(err).To(MatchError(msg), spec.Location+" "+spec.Ref)
+			Expect(errs.Hints(err)).To(Equal(hints), spec.Location+" "+spec.Ref)
 		}
+		refused(source.Spec{Kind: source.KindFolder, Location: src, Ref: "--upload-pack=touch x"},
+			`ref "--upload-pack=touch x" starts with '-'`, []string{"a branch, tag or commit never starts with '-'"})
+		refused(source.Spec{Kind: source.KindFolder, Location: "fd::0"},
+			`source "fd::0" names a git remote helper (<transport>::<address>), which lola never runs; sources are `+source.AcceptedForms, nil)
+		refused(source.Spec{Kind: source.KindFolder, Location: "-x"},
+			`source "-x" starts with '-', which would be read as an option`, []string{"for a path, write ./-x"})
 		Expect(staging).NotTo(BeADirectory())
 	})
 
 	It("refuses a hand-built location of the wrong form without echoing its password", func() {
-		refused := func(kind source.Kind, loc string) {
+		// Coached by a hint, or, when no command fixes it, in the error (ruling R-8-U5).
+		refused := func(kind source.Kind, loc, msg string, hints []string) {
+			GinkgoHelper()
 			_, err := source.Fetch(ctx, source.Spec{Kind: kind, Location: loc}, staging)
-			Expect(err).To(HaveOccurred(), loc)
-			Expect(err.Error()).NotTo(ContainSubstring("s3cr3t"), loc)
-			Expect(errs.Hints(err)).NotTo(BeEmpty(), loc)
+			Expect(err).To(MatchError(msg), loc)
+			Expect(errs.Hints(err)).To(Equal(hints), loc)
 		}
-		refused(source.KindGit, "ftp://u:s3cr3t@h/r")
-		refused(source.KindFolder, "https://u:s3cr3t@h/r")
-		refused(source.KindFolder, "u:s3cr3t@h://x")
-		refused(source.KindArchive, "//u:s3cr3t@h/r")
-		refused(source.KindArchive, "//u:s3cr3t@h/r.zip")
+		refused(source.KindGit, "ftp://u:s3cr3t@h/r",
+			"git source ftp://h/r is not an https://, ssh:// or user@host:path URL; sources are "+source.AcceptedForms, nil)
+		folder := []string{"give the absolute path of the folder"}
+		refused(source.KindFolder, "https://u:s3cr3t@h/r", "folder source https://… is not an absolute path", folder)
+		refused(source.KindFolder, "u:s3cr3t@h://x", "folder source (not shown: it looks like a URL) is not an absolute path", folder)
+		archive := []string{"give the archive's https:// URL or its absolute path"}
+		refused(source.KindArchive, "//u:s3cr3t@h/r", "archive location starts with //, a URL without a scheme", archive)
+		refused(source.KindArchive, "//u:s3cr3t@h/r.zip", "archive location starts with //, a URL without a scheme", archive)
 	})
 
 	It("names what is wrong with a URL-shaped location it does not echo", func() {

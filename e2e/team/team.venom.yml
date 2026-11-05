@@ -1,0 +1,529 @@
+name: lola sync, trust and profiles for a team sharing a project
+# Run by scripts/e2e.sh (task e2e -- team) in the shared e2e container: this checkout's lola-go
+# at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, a git server on
+# 127.0.0.1:8765 serving /srv/git, and, once setup.sh has run e2e/common/tls.sh, the same
+# repositories over HTTPS at https://git.lola.test:8443/, whose test CA a step passes to git
+# with {{.tls}}. Every step is {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob,
+# &&, redirection or pipe sits inside a single-quoted sh -c or python3 -c, and no step names a
+# host path. Cases run in order and read the state earlier ones leave (Plan 8 §4.3's Needs
+# column); a case whose state is missing fails. No assistant is on PATH.
+#
+# team.git is the project a teammate clones: main lists kit pinned at v1 and commits the
+# project profile review (lint); the branch next pins kit at v2, then drops it. A refused or
+# dry run still takes lola's lock files in $XDG_STATE_HOME/lola/locks, so "nothing written"
+# compares snapshots of /work and /home/tester but for those files and lola's cache
+# ($HOME/.cache), which snapshot.py always leaves out (a refused sync fetches into it).
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-team
+  lola: /opt/lola-go/lola-go
+  hint: python3 /e2e-common/hint.py
+  jsoncheck: python3 /e2e-common/jsoncheck.py
+  snapshot: python3 /e2e-common/snapshot.py
+  tls: -e GIT_SSL_CAINFO=/run/e2e-tls/ca.pem
+  # the fixture repositories' commits (setup.sh asserts them) and the digests lola records
+  kit_v1: 245348b25c023ecf1b98e50033a4abb6256a2e64
+  kit_v2: 1ccc73bdda12695941357c2f62fb1569bb6520ce
+  kit_v1_digest: sha256:9fb233673b21f0f03e6075250d2711ac10ce2a393e628b4adb9a3d0f3fc122df
+  kit_v2_digest: sha256:8808757b4d9d19898b1086946ec8df80192e13cb15362be961a3b6f75110bd10
+  lint: 5d8c4b06e46226fce8c1682714dd33c1738ca2ee
+  fmt: e01efb650866f2a561be1b052ce4a73849db8d5d
+  profiles: 2762cebff61c2eea079290f1a456d03b73e8afce
+  team_main: 2abf98ab50ced3f56b6278e706d6cca1173442d0
+  team_pin: 1ce48b2d5d28628d63c5e7795861e9e605bdecfb
+  team_drop: cec62fcf8a30c468caef468788137050cf18495d
+
+testcases:
+  - name: The fixtures are built, every commit is the one recorded, and git.lola.test serves HTTPS
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh {{.kit_v1}} {{.kit_v2}} {{.lint}} {{.fmt}} {{.profiles}} {{.team_main}} {{.team_pin}} {{.team_drop}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "fixture ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} git ls-remote https://git.lola.test:8443/team.git refs/heads/main"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "{{.team_main}}"
+
+  - name: T1 A clone's first sync off a terminal refuses until trusted
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git clone -q http://127.0.0.1:8765/team.git /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t1-before.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t1.out 2> /tmp/t1.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t1.out /tmp/t1.err"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/t1.err"))
+          assert doc["error"] == "lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, and there is no terminal to ask on", doc["error"]
+          assert doc["trust"]["status"] == "new", doc["trust"]
+          assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("kit", "added")], doc["trust"]["changes"]
+          assert doc["removals"] == [], doc["removals"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust"], doc["hints"]
+          print("ok the first sync asks to trust kit")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the first sync asks to trust kit"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t1-after.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} --compare /tmp/t1-before.json /tmp/t1-after.json /home/tester/.local/state/lola/locks/"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual unchanged
+
+  - name: T2 The dry run ends with the command that applies it
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj -n --json > /tmp/t2.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t2.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+          - result.systemoutjson.trust.status ShouldEqual new
+          - result.systemoutjson.equivalent_commands ShouldHaveLength 1
+          - result.systemoutjson.equivalent_commands.equivalent_commands0 ShouldEqual "lola sync -C /work/proj --trust"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t2-after.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} --compare /tmp/t1-before.json /tmp/t2-after.json /home/tester/.local/state/lola/locks/"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual unchanged
+
+  - name: T3 -y never trusts
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj -y --json > /tmp/t3.out 2> /tmp/t3.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t3.out /tmp/t3.err"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          t1, t3 = json.load(open("/tmp/t1.err")), json.load(open("/tmp/t3.err"))
+          assert t3["error"] == t1["error"] + "; -y confirms removals only; accept the changes with --trust", t3["error"]
+          assert (t3["trust"], t3["removals"]) == (t1["trust"], t1["removals"]), t3
+          assert t3["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust -y"], t3["hints"]
+          print("ok -y is refused as T1 was")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok -y is refused as T1 was"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t3-after.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} --compare /tmp/t1-before.json /tmp/t3-after.json /home/tester/.local/state/lola/locks/"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual unchanged
+
+  - name: T4 The hint trusts and installs
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t1.err > /tmp/t4-see.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t4-see.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t1.err 1 > /tmp/t4.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t4.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeFalse
+          - result.systemoutjson.trust.recorded ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t4-again.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t4-again.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.in_sync ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with kit v1."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"kit\tclaude-code\tok\ton\thttp://127.0.0.1:8765/kit.git\tproject\tproject.yml\""
+
+  - name: T5 A pulled pin change needs trust again
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'git -C /work/proj fetch -q origin next && git -C /work/proj merge -q --ff-only {{.team_pin}}'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t5.out 2> /tmp/t5.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t5.out /tmp/t5.err"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/t5.err"))
+          assert doc["error"] == "lola sync needs your trust for changes to .lola/project.yml, and there is no terminal to ask on", doc["error"]
+          assert doc["trust"]["status"] == "changed", doc["trust"]
+          [change] = doc["trust"]["changes"]
+          assert (change["module"], change["change"]) == ("kit", "changed"), change
+          assert change["fields"] == [
+              {"field": "commit", "from": "{{.kit_v1}}", "to": "{{.kit_v2}}"},
+              {"field": "digest", "from": "{{.kit_v1_digest}}", "to": "{{.kit_v2_digest}}"}], change["fields"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust"], doc["hints"]
+          print("ok the pin change asks for trust")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the pin change asks for trust"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t5.err > /tmp/t5-see.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t5-see.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t5.err 1 > /tmp/t5-apply.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t5-apply.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeFalse
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with kit v2."
+
+  - name: T6 A pulled removal needs -y
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git -C /work/proj merge -q --ff-only {{.team_drop}}"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t6.out 2> /tmp/t6.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t6.out /tmp/t6.err"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/t6.err"))
+          assert doc["error"] == "lola sync needs your trust for changes to .lola/project.yml; and your confirmation to remove kit, and there is no terminal to ask on", doc["error"]
+          assert doc["trust"]["status"] == "changed", doc["trust"]
+          assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("kit", "removed")], doc["trust"]
+          assert doc["removals"] == [{"module": "kit", "targets": ["claude-code"], "whole_module": True,
+              "paths": [{"target": "claude-code", "path": ".claude/commands/deploy.md"}]}], doc["removals"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --json --trust -y"], doc["hints"]
+          print("ok the removal asks for -y")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the removal asks for -y"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t6.err > /tmp/t6-see.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t6-see.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -e /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t6.err 1 > /tmp/t6-apply.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t6-apply.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeFalse
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: T7 A terminal answers trust in accessible mode
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git clone -q http://127.0.0.1:8765/team.git /work/proj2"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"1\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync --project -C /work/proj2\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \".lola/project.yml has not been trusted on this machine (a fresh clone, or a moved project):\""
+          - result.systemout ShouldContainSubstring "1. Trust all 2 changes"
+          - result.systemout ShouldContainSubstring "→ trusting all 2 changes"
+          - result.systemout ShouldContainSubstring "✓ synced kit (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj2 -n --json > /tmp/t7.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t7.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.trust.status ShouldEqual trusted
+          - result.systemoutjson.in_sync ShouldBeTrue
+
+  - name: T8 A project profile from the repo is untrusted until trusted
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile review --on -C /work/proj -y --json > /tmp/t8.out 2> /tmp/t8.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t8.out /tmp/t8.err"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/t8.err"))
+          assert doc["error"] == "lola profile needs your trust for changes to .lola/profiles/review.yml, and there is no terminal to ask on; -y confirms removals only; accept the changes with --trust", doc["error"]
+          assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("lint", "added")], doc["trust"]["changes"]
+          assert doc["hints"] == ["see them: lola profile -C /work/proj project:review --on --json -n",
+              "then accept them: lola profile -C /work/proj project:review --on --json --trust -y"], doc["hints"]
+          print("ok turning the profile on asks to trust it")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok turning the profile on asks to trust it"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t8.err > /tmp/t8-see.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t8-see.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t8.err 1 > /tmp/t8-apply.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/t8-apply.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeFalse
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Lint with the review profile."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\""
+
+  - name: T9 uninstall refuses a module an active profile lists
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} uninstall lint -C /work/proj -y --json > /tmp/t9.out 2> /tmp/t9.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t9.out /tmp/t9.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lint is wanted by profile project:review"
+          - result.systemoutjson.hints ShouldHaveLength 1
+          - "result.systemoutjson.hints.hints0 ShouldEqual \"turn the profile off: lola profile -C /work/proj project:review --off --json\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t9.err < /dev/null > /tmp/t9-hint.out 2> /tmp/t9-hint.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t9-hint.out /tmp/t9-hint.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lola profile needs your confirmation to remove lint, and there is no terminal to ask on"
+          - result.systemoutjson.hints ShouldHaveLength 2
+          - "result.systemoutjson.hints.hints0 ShouldEqual \"see them: lola profile -C /work/proj project:review --off --json -n\""
+          - "result.systemoutjson.hints.hints1 ShouldEqual \"then confirm them: lola profile -C /work/proj project:review --off --json -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -e /work/proj/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: T10 A user profile turns on and off
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p \"$XDG_CONFIG_HOME/lola/profiles\" && cp /e2e/fixtures/mine.yml \"$XDG_CONFIG_HOME/lola/profiles/mine.yml\"'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile mine --on --user -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → on, 1st of 1\""
+          - result.systemout ShouldContainSubstring "✓ synced lint (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -f /home/tester/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile mine --off --user -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → off\""
+          - result.systemout ShouldContainSubstring "✓ removed lint"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /home/tester/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: T11 A remote profile is fetched over HTTPS at a host named by name
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile go --add https://git.lola.test:8443/profiles.git --trust"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldContainSubstring \"remote:go → /home/tester/.local/share/lola/profiles/go/profile.yml (shared by every scope)\""
+          - "result.systemout ShouldContainSubstring \"✓ added remote:go (/home/tester/.local/share/lola/profiles/go/profile.yml)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /home/tester/.local/share/lola/profiles/go/source.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.source ShouldEqual "https://git.lola.test:8443/profiles.git"
+          - result.systemoutjson.commit ShouldEqual {{.profiles}}
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cmp /home/tester/.local/share/lola/profiles/go/profile.yml /e2e/fixtures/profiles/profiles/go.yml"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile remote:go --on --user -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ synced fmt (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /home/tester/.claude/commands/fmt.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Format with gofmt."
+
+  - name: T12 Loopback and plain-http profile sources are refused before any request
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/t12.count'"
+        assertions:
+          - result.code ShouldEqual 0
+      # gitserve logs a request only after the TLS handshake, and the leaf names only git.lola.test,
+      # so the count cannot see a failed handshake with 127.0.0.1: for T12a, "before any request"
+      # rests on the exact error.
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.lola}} profile go --add https://127.0.0.1:8443/profiles.git --json > /tmp/t12a.out 2> /tmp/t12a.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t12a.out /tmp/t12a.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"https://127.0.0.1:8443/profiles.git names the loopback address 127.0.0.1; a remote profile reaches hosts by name only, never inside your network; use the repository's https:// or ssh:// URL (or user@host:path), with its host name\""
+          - result.systemoutjson.hints ShouldBeEmpty
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile go --add http://127.0.0.1:8765/profiles.git --json > /tmp/t12b.out 2> /tmp/t12b.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t12b.out /tmp/t12b.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"http://127.0.0.1:8765/profiles.git uses http://; a remote profile's sources must use https:// or ssh:// (or user@host:path), with its host name\""
+          - result.systemoutjson.hints ShouldBeEmpty
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/t12.count'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: T13 A tracked lock.json makes render refuse
+    # Its hint is a git command, which hint.py does not run: the case runs the command the hint
+    # names, once it has asserted the hint is exactly that command.
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'git -C /work/proj add -f .lola/lock.json && git -C /work/proj commit -q -m \"track lock.json\"'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} render -C /work/proj --json > /tmp/t13.out 2> /tmp/t13.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t13.out /tmp/t13.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync -C /work/proj"
+          - result.systemoutjson.hints ShouldHaveLength 1
+          - result.systemoutjson.hints.hints0 ShouldEqual "git -C /work/proj rm --cached .lola/lock.json"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git -C /work/proj rm --cached .lola/lock.json"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} render -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 0

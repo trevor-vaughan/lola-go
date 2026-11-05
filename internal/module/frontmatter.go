@@ -7,6 +7,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -16,11 +17,13 @@ import (
 
 // Doc is a markdown document with optional YAML frontmatter between --- fences.
 // RawFrontmatter is the author's exact text (without fences) so rendering keeps comments,
-// key order and formatting.
+// key order and formatting. A template (Template set) is not parsed: Body holds its whole
+// source and Frontmatter is nil until the engine renders it for a target (Plan 7 §3.1).
 type Doc struct {
 	Frontmatter    map[string]any
 	RawFrontmatter string
 	Body           string
+	Template       *TemplateSource `yaml:",omitempty"`
 }
 
 // opensFrontmatter reports whether s begins with a line a frontmatter parser might take as an
@@ -141,7 +144,7 @@ func (d Doc) Prepend(key, value string) Doc {
 
 // With returns a copy whose frontmatter sets each key of fm, replacing a value the document
 // already has and adding the others after its own keys, in key order. Comments and the order of
-// the document's own keys are kept.
+// the document's own keys are kept. A << it writes, key or value, is quoted.
 func (d Doc) With(fm map[string]any) (Doc, error) {
 	if len(fm) == 0 {
 		return d, nil
@@ -172,6 +175,7 @@ func (d Doc) With(fm map[string]any) (Doc, error) {
 		}
 		m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: k}, &v)
 	}
+	quoteMerge(&root) // a << key or value set here is text, never a merge key ParseDoc would refuse
 	var b strings.Builder
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
@@ -275,4 +279,44 @@ func hasAmbiguous(n *yaml.Node) bool {
 func (d Doc) String(key string) string {
 	s, _ := d.Frontmatter[key].(string)
 	return s
+}
+
+// PlainRead reports how YAML reads s written as a plain block-context scalar value, `k: s`:
+// ok when it reads s itself, a string; otherwise what it reads instead, for a refusal to name
+// ("a number", "true or false", "null", `a comment after "sonnet"`, …), with a string it reads
+// quoted. A template's value written raw into frontmatter must read back as itself (R-7-U18).
+func PlainRead(s string) (what string, ok bool) {
+	var doc yaml.Node
+	if yaml.Unmarshal([]byte("k: "+s+"\n"), &doc) != nil || len(doc.Content) != 1 || len(doc.Content[0].Content) != 2 {
+		return "a syntax error", false
+	}
+	v := doc.Content[0].Content[1]
+	switch v.Kind {
+	case yaml.MappingNode:
+		return "a map", false
+	case yaml.SequenceNode:
+		return "a list", false
+	case yaml.AliasNode:
+		return "an alias", false
+	}
+	switch v.ShortTag() {
+	case "!!str":
+	case "!!int", "!!float":
+		return "a number", false
+	case "!!bool":
+		return "true or false", false
+	case "!!null":
+		return "null", false
+	case "!!timestamp":
+		return "a date", false
+	default:
+		return "a value tagged " + v.Tag, false
+	}
+	switch {
+	case v.Value == s:
+		return "", true
+	case v.LineComment != "":
+		return "a comment after " + strconv.Quote(v.Value), false
+	}
+	return strconv.Quote(v.Value), false
 }

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -95,10 +96,13 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		GinkgoT().Chdir(bare)
 		r = lola("render")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: lola render needs a scope: no .lola/ project was found in " + bare + " or above it\n" +
-			"  hint: --project acts on this directory (-C <dir> picks another)\n" +
-			"  hint: --user acts on your user scope, for every project\n" +
-			"  hint: or set a default: default_scope: project in " + filepath.Join(tmp, "config", "lola", "config.yaml") + "\n"))
+		Expect(r.err).To(Equal("error: lola render needs a scope: no .lola/ project was found in " + bare + " or above it, and " +
+			filepath.Join(tmp, "config", "lola", "config.yaml") + " sets no default_scope (default_scope: project or user)\n" +
+			"  hint: lola render --project\n  hint: lola render --user\n"))
+		for _, h := range []string{"lola render --project", "lola render --user"} {
+			again := lola(shellWords(h)[1:]...)
+			Expect(again.code).To(Equal(0), h+": "+again.err)
+		}
 		Expect(lola("sync").err).To(HavePrefix("error: lola sync needs a scope"))
 		Expect(os.MkdirAll(filepath.Join(tmp, "config", "lola"), 0o700)).To(Succeed())
 		cfg := filepath.Join(tmp, "config", "lola", "config.yaml")
@@ -151,6 +155,38 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(os.Remove(cfg)).To(Succeed())
 		GinkgoT().Chdir(bare)
 		Expect(lola("profile", "go", "--on").err).To(HavePrefix("error: lola profile needs a scope"))
+	})
+
+	It("no hint turns a flag given as false into one given as true, or carries an answer to another question", func() {
+		GinkgoT().Chdir(bare)
+		hintsOf := func(r result) []string {
+			var out []string
+			for _, line := range strings.Split(r.err, "\n") {
+				if h, ok := strings.CutPrefix(line, "  hint: "); ok {
+					out = append(out, h)
+				}
+			}
+			return out
+		}
+		for _, run := range [][]string{
+			{"install", mod, "--yes=false", "--json=false", "--no-rules=false", "--allow-hooks=false"},
+			{"sync", "--trust=false", "--yes=false", "--json=false", "--allow-runtime-hooks=false"},
+			{"install", mod, "-y", "--allow-hooks", "--allow-runtime-hooks", "-t", "claude-code"}, // answers for this run only
+			{"sync", "-y", "--trust", "--allow-hooks"},
+		} {
+			r := lola(run...)
+			Expect(r.code).To(Equal(1), strings.Join(run, " "))
+			hints := hintsOf(r)
+			Expect(hints).NotTo(BeEmpty(), strings.Join(run, " "))
+			for _, h := range hints {
+				words := shellWords(h)
+				for _, consent := range []string{"--yes", "-y", "--trust", "--allow-hooks", "--allow-runtime-hooks", "--json", "--no-rules"} {
+					Expect(words).NotTo(ContainElement(consent), h)
+				}
+			}
+		}
+		r := lola("market", "acmee", "--json=false")
+		Expect(r.err).To(Equal("error: you have no marketplace acmee\n  hint: lola market\n"), "a false output flag is no output flag")
 	})
 
 	It("asks a one-scope picker again when the answer is empty", func() {

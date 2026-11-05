@@ -66,24 +66,44 @@ func refuseProfileFlags(cmd *cobra.Command, args []string, act engine.ProfileAct
 	return nil
 }
 
-// runWithout is the lola profile command the user ran, its names args and every flag they set
-// but those named in drop, by canonical name, quoted for the shell: what a hint offers to run
-// instead.
+// runWithout is the command the user ran (lola profile, lola market, lola install), its names
+// args and every flag they set but those named in drop, by canonical name, a list flag once per
+// value, a bool only as it was given (never false made true), quoted for the shell: what a hint
+// offers to run instead.
 func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
-	out := []string{"lola", "profile"}
+	out := strings.Fields(cmd.CommandPath())
 	for _, a := range args {
 		out = append(out, untrusted.Text(a, untrusted.MaxName))
 	}
 	cmd.Flags().Visit(func(f *pflag.Flag) {
+		list, isList := f.Value.(pflag.SliceValue)
 		switch {
 		case slices.Contains(drop, f.Name):
-		case f.Value.Type() == "bool":
+		case f.Value.Type() == "bool" && f.Value.String() == "true":
 			out = append(out, "--"+f.Name)
+		case f.Value.Type() == "bool" && f.DefValue == "true":
+			out = append(out, "--"+f.Name+"=false") // a bool given false says something only against a true default
+		case f.Value.Type() == "bool": // given false, as it is by default: nothing to repeat
+		case isList:
+			for _, v := range list.GetSlice() {
+				out = append(out, "--"+f.Name, untrusted.Text(v, untrusted.MaxName))
+			}
 		default:
 			out = append(out, "--"+f.Name, untrusted.Text(f.Value.String(), untrusted.MaxName))
 		}
 	})
 	return errs.ShellJoin(out)
+}
+
+// consentFlags are the flags that answer a question of the run they are given to (-y, --trust,
+// the hook flags), which a hint repeating the run for another reason drops: it may ask another
+// question, and only you can answer it (ruling R-6b3c-8, R-6cux-4).
+var consentFlags = []string{"yes", "trust", "allow-hooks", "allow-runtime-hooks"}
+
+// forceRun is the user's run, with its names args, repeated with --force and none of its
+// consentFlags: what a refusal of conflicts --force overrides hints (engine.Options.ForceRun).
+func forceRun(cmd *cobra.Command, args []string) string {
+	return runWithout(cmd, args, append([]string{"force"}, consentFlags...)...) + " --force"
 }
 
 // rerunFlags is the flags of lola profile --add or --update that a hint repeating the run keeps
@@ -92,7 +112,7 @@ func runWithout(cmd *cobra.Command, args []string, drop ...string) string {
 func rerunFlags(cmd *cobra.Command) []string {
 	var out []string
 	for _, f := range [][2]string{{"trust", "--trust"}, {"dry-run", "-n"}, {"json", "--json"}, {"plain", "--plain"}, {"no-pager", "--no-pager"}} {
-		if cmd.Flags().Changed(f[0]) {
+		if given(cmd, f[0]) {
 			out = append(out, f[1])
 		}
 	}
@@ -173,7 +193,8 @@ func (a *app) profileCmd() *cobra.Command {
 			"--trust answers only for the profiles: a project's own trust is asked, or refused off a\n" +
 			"terminal. Other checkouts pick them up at their next sync.\n" +
 			"--remove deletes a remote profile, asking first (-y); it is refused while the scope, user scope\n" +
-			"or the project found from here uses it, unless --force, which never skips the question.\n\n" +
+			"or the project found from here uses it, unless --force, which also answers the question\n" +
+			"(never trust or hook consent).\n\n" +
 			"Scope without an action: --project, --user, -C <dir> or --scope (both included); without them,\n" +
 			"the project with .lola/ at or above the current directory, if any, and user scope. Listing and\n" +
 			"showing never ask, and default_scope does not apply.\n" +
@@ -229,7 +250,7 @@ func (a *app) profileCmd() *cobra.Command {
 				for _, c := range scs {
 					scopes = append(scopes, c.Scope)
 				}
-				states, notices, err := eng.ProfileState(cmd.Context(), scopes, args[0])
+				states, notices, err := eng.ProfileState(cmd.Context(), scopes, args[0], outputFlags(cmd)...)
 				if err != nil {
 					return err
 				}
@@ -270,7 +291,7 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
 	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its profiles the run installs, a project profile taking your profile's place, and a remote profile --add or --update shows, without asking (never grants hook consent; --update without a scope flag: the profiles only)")
-	cmd.Flags().BoolVar(&f.force, "force", false, "with --remove: remove a remote profile in use (never skips the question)")
+	cmd.Flags().BoolVar(&f.force, "force", false, "with --remove: remove a remote profile in use, without asking (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
 	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
 	// Aliases for muscle memory from other tools (Plan 6b §3.3): systemctl and conda, nvm and
@@ -295,7 +316,7 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 	}
 	question := map[engine.ProfileAction]string{engine.ProfileOn: "Turn them on where?", engine.ProfileOff: "Turn them off where?",
 		engine.ProfileSwitch: "Switch where?"}[ch.Action]
-	scs, err := a.scopes(cmd, eng, question, false, true)
+	scs, err := a.scopes(cmd, eng, ch.Names, question, false, true)
 	if err != nil {
 		return err
 	}

@@ -181,7 +181,7 @@ func (h *huhForms) multi(title, desc string, opts []huh.Option[string], value *[
 	ms := huh.NewMultiSelect[string]().Title(title).Description(desc).Options(opts...).Value(value)
 	height := len(opts) + 1
 	if desc != "" {
-		height++
+		height += strings.Count(desc, "\n") + 1
 	}
 	if h.height > 0 {
 		height = min(height, max(h.height-6, 3))
@@ -240,6 +240,9 @@ func contains(xs []string, x string) bool {
 }
 
 func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
+	if len(st.Markets) > 0 {
+		return h.withMarkets(st)
+	}
 	if len(st.Options) == 0 {
 		choice := "add"
 		err := h.run(huh.NewNote().Title("no modules in your cache"),
@@ -272,6 +275,65 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 		return h.addSource(names)
 	}
 	return ModuleAnswer{Names: chosen}, nil
+}
+
+// withMarkets is the module picker with the marketplace groups (Plan 6c §6.5): the cached modules
+// and Add a source… first, unless st.Browse, then one filterable group per marketplace, so a pick
+// may come from any of them.
+func (h *huhForms) withMarkets(st ModuleStep) (ModuleAnswer, error) {
+	var fields []huh.Field
+	var cached []string
+	if !st.Browse {
+		opts := make([]huh.Option[string], 0, len(st.Options)+1)
+		for _, o := range st.Options {
+			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+		}
+		opts = append(opts, huh.NewOption("Add a source…", addSource))
+		fields = append(fields, h.withProblem(st.Problem, h.multi("Install which modules?", st.Problem, opts, &cached).Filterable(true))...)
+	} else if h.accessible && st.Problem != "" {
+		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
+	}
+	picked := make([][]string, len(st.Markets))
+	for i, g := range st.Markets {
+		opts := make([]huh.Option[string], 0, len(g.Options))
+		for _, o := range g.Options {
+			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+		}
+		desc := ""
+		if st.Browse {
+			desc = st.Problem
+		}
+		fields = append(fields, h.multi(h.cut(g.Title), desc, opts, &picked[i]).Filterable(true))
+	}
+	if err := h.run(fields...); err != nil {
+		return ModuleAnswer{}, err
+	}
+	var chosen []string
+	for _, c := range cached {
+		if c != addSource {
+			chosen = append(chosen, c)
+		}
+	}
+	for _, p := range picked {
+		chosen = append(chosen, p...)
+	}
+	if contains(cached, addSource) {
+		return h.addSource(chosen)
+	}
+	return ModuleAnswer{Names: chosen}, nil
+}
+
+// MarketEntry asks which entry a bare name means, one of the marketplaces listing it, nothing
+// preselected (Plan 6c §3.3).
+func (h *huhForms) MarketEntry(st MarketEntryStep) (string, error) {
+	opts := make([]huh.Option[string], 0, len(st.Options))
+	for _, o := range st.Options {
+		opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name))
+	}
+	var chosen string
+	err := h.run(huh.NewSelect[string]().Title(h.cut(st.Name + " is not in your cache; your marketplaces list it. Install which?")).
+		Options(opts...).Value(&chosen))
+	return chosen, err
 }
 
 // addSource asks for a source and an optional ref; the flow adds it exactly as lola cache add
@@ -416,6 +478,111 @@ func (h *huhForms) Profiles(st ProfileStep) ([]string, error) {
 	var chosen []string
 	err := h.run(h.multi("Add which profiles?", h.cut(desc), opts, &chosen).Filterable(true))
 	return chosen, err
+}
+
+// MarketName asks a marketplace's name, pre-filled with a free one, saying why the name it had
+// will not do, and why the last answer was refused.
+func (h *huhForms) MarketName(st MarketNameStep) (string, error) {
+	var fields []huh.Field
+	if st.Problem != "" {
+		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
+	}
+	name := st.Value
+	fields = append(fields, huh.NewInput().Title("Name the marketplace").
+		Description(h.cut(st.Why)).Value(&name))
+	err := h.run(fields...)
+	return name, err
+}
+
+// TidyPick offers lola tidy's candidates, filterable, nothing preselected (Plan 6d §3.4).
+func (h *huhForms) TidyPick(st TidyPickStep) ([]string, error) {
+	var chosen []string
+	err := h.run(h.tidyPick(st, &chosen)...)
+	return chosen, err
+}
+
+// tidyPick is TidyPick's form: the multi-select, whose description counts and lists what is
+// locked, cut to the terminal height; in accessible mode, where huh prints no description, a
+// note above it lists every locked item.
+func (h *huhForms) tidyPick(st TidyPickStep, value *[]string) []huh.Field {
+	opts := h.tidyOptions(st.Options)
+	if len(st.Locked) == 0 {
+		return []huh.Field{h.multi("Move which to the trash?", "", opts, value).Filterable(true)}
+	}
+	title := fmt.Sprintf("%d locked, which lola tidy never moves:", len(st.Locked))
+	lines := make([]string, len(st.Locked))
+	for i, l := range st.Locked {
+		lines[i] = h.cut("  " + l)
+	}
+	if h.accessible {
+		return []huh.Field{huh.NewNote().Title(title).Description(strings.Join(lines, "\n")),
+			h.multi("Move which to the trash?", "", opts, value).Filterable(true)}
+	}
+	if h.height > 0 {
+		// multi caps the field at max(height-6, 3) rows; keep its title, the locked header and
+		// min(len(opts), 3) option rows, and give the locked lines what is left.
+		room := max(h.height-6, 3) - 2 - min(len(opts), 3)
+		switch {
+		case len(lines) <= room:
+		case room < 2:
+			lines = nil
+		default:
+			lines = append(lines[:room-1:room-1], fmt.Sprintf("  and %d more", len(lines)-room+1))
+		}
+	}
+	desc := strings.Join(append([]string{title}, lines...), "\n")
+	return []huh.Field{h.multi("Move which to the trash?", desc, opts, value).Filterable(true)}
+}
+
+// TidyKeep offers the candidates TidyPick left for the keep-list, filterable, nothing
+// preselected (Plan 6d §3.4).
+func (h *huhForms) TidyKeep(st TidyKeepStep) ([]string, error) {
+	var chosen []string
+	err := h.run(h.multi("Add any of the rest to your keep-list?", "what your keep-list names stays, and lola tidy stops offering it",
+		h.tidyOptions(st.Options), &chosen).Filterable(true))
+	return chosen, err
+}
+
+// tidyOptions are a tidy picker's options, each label cut to the terminal width unless that
+// makes it equal to another's, and labels still equal in full numbered " [n]": huh v2.0.3 toggles
+// every option whose label equals the one under the cursor, which would tick an item the user did
+// not choose.
+func (h *huhForms) tidyOptions(in []TidyOption) []huh.Option[string] {
+	labels := make([]string, len(in))
+	count := map[string]int{}
+	for i, o := range in {
+		labels[i] = h.cut(o.Label)
+		count[labels[i]]++
+	}
+	full := map[string]int{}
+	for i, o := range in {
+		if count[labels[i]] > 1 {
+			labels[i] = o.Label
+		}
+		full[labels[i]]++
+	}
+	used := map[string]bool{}
+	for _, l := range labels {
+		used[l] = true
+	}
+	n := map[string]int{}
+	opts := make([]huh.Option[string], len(in))
+	for i, o := range in {
+		label := labels[i]
+		if full[label] > 1 {
+			base := label
+			for {
+				n[base]++
+				label = fmt.Sprintf("%s [%d]", base, n[base])
+				if !used[label] {
+					break
+				}
+			}
+			used[label] = true
+		}
+		opts[i] = huh.NewOption(label, o.ID)
+	}
+	return opts
 }
 
 // reviewLabels name the review menu's entries.

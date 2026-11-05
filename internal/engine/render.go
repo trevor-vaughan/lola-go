@@ -107,7 +107,7 @@ func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manife
 	if err != nil || !ok || spec.Kind != source.KindFolder {
 		return nil, nil, nil // not a folder, or one that is gone: rendered at the version installed
 	}
-	spec.Path = ment.Path
+	spec.Path, spec.Components = ment.Path, ment.Components.Clone()
 	st, err := e.prepareFetch(ctx, name, spec, run)
 	if err != nil { // a pulled edit that no longer loads: the sync it hints shows the error, or refuses it
 		why := strings.TrimPrefix(untrusted.CleanErr(err).Error(), untrusted.Text(name, untrusted.MaxName)+": ")
@@ -115,8 +115,11 @@ func (e *Engine) renderCheck(ctx context.Context, sc Scope, man *manifest.Manife
 			append([]string{"review it: " + e.SyncCommand(sc, name), "or remove it: " + e.Command(sc, "uninstall", name)}, errs.Hints(err)...)...), nil, nil
 	}
 	if st.Version.Meta.Digest != entry.Digest {
-		return newLeftOut(name, CodeContentChanged, "its content changed since lola installed it",
-			"review it: "+e.SyncCommand(sc, name), "edited it yourself? "+e.installFolder(sc, spec.Location)), nil, nil
+		hints := []string{"review it: " + e.SyncCommand(sc, name)}
+		if spec.Components == nil { // an install of the folder would take all of it, never the selection
+			hints = append(hints, "edited it yourself? "+e.installFolder(sc, spec.Location))
+		}
+		return newLeftOut(name, CodeContentChanged, "its content changed since lola installed it", hints...), nil, nil
 	}
 	return nil, &st, nil
 }
@@ -137,7 +140,7 @@ func (e *Engine) folderMoved(sc Scope, name string, entry *ledger.Entry) (string
 	if source.SameLocation(source.KindFolder, recorded, o.Source) && o.Path == entry.Path {
 		return "", nil
 	}
-	return describeSource(o.Source, o.Path), nil
+	return describeSource(o.Source, o.Path, o.Components), nil
 }
 
 // renderStaged is the folder version renderCheck read for render: committed to the cache, as

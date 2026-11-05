@@ -70,7 +70,7 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		selections("projects:\n  " + proj + ":\n    example:\n      skip: [command/ship, agent/critic]\n")
 		Expect(os.WriteFile(filepath.Join(proj, ".claude/agents/critic.md"), []byte("mine now"), 0o644)).To(Succeed())
 		_, err = e.Render(ctx, sc, engine.Options{})
-		Expect(err).To(MatchError(ContainSubstring(".claude/agents/critic.md: hand-edited since lola wrote it; kept")))
+		Expect(err).To(MatchError(ContainSubstring(".claude/agents/critic.md: hand-edited since lola wrote it; deleting it would lose your edits")))
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue(), "a refused render changes nothing")
 
 		Expect(os.Remove(filepath.Join(proj, ".claude/agents/critic.md"))).To(Succeed())
@@ -80,7 +80,7 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		Expect(exists(".claude/commands/ship.md")).To(BeFalse())
 		Expect(exists(".claude/skills/review/SKILL.md")).To(BeTrue())
 		Expect(res.Modules[0].Skipped).To(Equal([]string{"command/ship", "agent/critic"}))
-		rows, _, err := e.Status(ctx, sc)
+		rows, _, err := e.Status(ctx, sc, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows[0].Status).To(Equal("ok"))
 		Expect(rows[0].Skipped).To(Equal([]string{"command/ship", "agent/critic"}))
@@ -121,17 +121,17 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 
 	It("check reports nothing lost for a skipped component", func() {
 		writeTree(src, map[string]string{"agents/bare.md": "No description.\n"})
-		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"})
+		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).To(ContainElement(HaveField("Artifact", "bare")))
 
 		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/bare]\n")
-		rep, err = e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"})
+		rep, err = e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).NotTo(ContainElement(HaveField("Artifact", "bare")))
 		Expect(rep.Modules[0].Skipped).To(Equal([]string{"agent/bare"}))
 
-		rep, err = e.Check(ctx, engine.Scope{Kind: target.User}, proj, []string{src}, []string{"claude-code"})
+		rep, err = e.Check(ctx, engine.Scope{Kind: target.User}, proj, []string{src}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Skipped).To(BeEmpty(), "the project's section does not apply at user scope")
 	})

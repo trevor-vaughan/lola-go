@@ -54,6 +54,7 @@ func Isolate() string {
 		"NO_COLOR":            "1",
 		"LOLA_COLOR":          "",
 		"LOLA_HOME":           "", // the Python lola's home, which lola migrate reads
+		"COLUMNS":             "", // a width would cut human output's long cells
 	}
 	for k, v := range env {
 		t.Setenv(k, v)

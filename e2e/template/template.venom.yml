@@ -1,0 +1,174 @@
+name: lola templates end to end
+# Run by scripts/e2e.sh (task e2e -- template) in the shared e2e container: this checkout's lola-go
+# at /opt/lola-go/lola-go, the suite at /e2e and e2e/common at /e2e-common. Every step is
+# {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob, &&, redirection or pipe sits
+# inside a single-quoted sh -c or python3 -c, and no step names a host path. Cases run in order
+# and read the state earlier ones leave (Plan 8 §4.2's Needs column).
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-template
+  lola: /opt/lola-go/lola-go
+  hint: python3 /e2e-common/hint.py
+  jsoncheck: python3 /e2e-common/jsoncheck.py
+  snapshot: python3 /e2e-common/snapshot.py
+
+testcases:
+  - name: X1 A templated module renders per assistant, byte for byte
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/tpl -C /work/proj --scope project -t claude-code -t opencode"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ installed tpl (claude-code, opencode)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cmp /work/proj/.claude/commands/review.md /e2e/fixtures/expected/claude-code/review.md && cmp /work/proj/.opencode/commands/review.md /e2e/fixtures/expected/opencode/review.md'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: X2 An entry's var override re-renders after trust
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'echo \"    vars: {team: platform}\" >> /work/proj/.lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/x2.out 2> /tmp/x2.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} refusal /tmp/x2.out /tmp/x2.err > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/x2.err\"))
+          assert doc[\"error\"] == \"lola sync needs your trust for changes to .lola/project.yml, and there is no terminal to ask on\", doc
+          assert doc[\"trust\"][\"status\"] == \"changed\", doc
+          [change] = doc[\"trust\"][\"changes\"]
+          assert (change[\"module\"], change[\"change\"]) == (\"tpl\", \"changed\"), change
+          assert change[\"fields\"] == [{\"field\": \"vars\", \"from\": None, \"to\": \"team = \\\"platform\\\"\"}], change
+          assert doc[\"hints\"][:2] == [\"see them: lola sync -C /work/proj --json -n\", \"then accept them: lola sync -C /work/proj --json --trust\"], doc
+          print(\"ok the trust refusal shows the vars\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the trust refusal shows the vars"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/x2-before.json /work/proj /home/tester/.local/state"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/x2.err > /tmp/x2-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/x2-after.json /work/proj /home/tester/.local/state && cmp /tmp/x2-before.json /tmp/x2-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/x2-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/review.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Team core on claude-code; model sonnet."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/x2.err 1 > /tmp/x2-trust.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/x2-trust.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.trust.recorded ShouldBeTrue
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'tail -q -n 1 /work/proj/.claude/commands/review.md /work/proj/.opencode/commands/review.md | paste -sd \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Team platform on claude-code; model sonnet. Team platform on opencode; model none."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /work/proj/.lola/lock.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.modules.tpl.rendered_with.vars.team ShouldEqual platform
+
+  - name: X3 A value rendering a line break in frontmatter refuses, located
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/x3-before.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/bad -C /work/proj -t claude-code --json > /tmp/x3.out 2> /tmp/x3.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/x3.out /tmp/x3.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.template.code ShouldEqual template-frontmatter-value
+          - result.systemoutjson.template.file ShouldEqual commands/c.md.liquid
+          - result.systemoutjson.template.line ShouldEqual 2
+          - result.systemoutjson.template.rendered ShouldBeFalse
+          - "result.systemoutjson.error ShouldEndWith \"end it with | json so the value stays one YAML value: {{ vars.x | json }}\""
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola check -C /work/proj /e2e/fixtures/bad --target claude-code --json"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/x3-after.json /work /home/tester && cmp /tmp/x3-before.json /tmp/x3-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/x3.err > /tmp/x3-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/x3-hint.json > /dev/null && python3 -c "
+          import json
+          [module] = json.load(open(\"/tmp/x3-hint.json\"))[\"modules\"]
+          got = [(f[\"severity\"], f[\"code\"], f[\"text\"].startswith(\"commands/c.md.liquid:2: in frontmatter, this \"))
+                 for f in module[\"findings\"] if f[\"target\"] == \"claude-code\"]
+          assert got == [(\"skip\", \"template-frontmatter-value\", True)], module
+          print(\"ok check skips the command, located\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok check skips the command, located"
+
+  - name: X4 A template that loops without writing ends the process
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/x4-before.json /work /home/tester"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import os, subprocess, time
+          start = time.monotonic()
+          run = subprocess.run(["/opt/lola-go/lola-go", "install", "/e2e/fixtures/spin", "-C", "/work/proj", "-t", "claude-code"], capture_output=True, text=True, timeout=15)
+          took = time.monotonic() - start
+          assert run.returncode == 1 and took < 7, (run.returncode, took)
+          assert "commands/spin.md.liquid: took longer than 2s to render; lola stops a template after 2s" in run.stderr, run.stderr
+          def comm(pid):
+              try:
+                  with open("/proc/" + pid + "/comm") as f:
+                      return f.read().strip()
+              except (FileNotFoundError, ProcessLookupError):
+                  return ""  # the process ended while the list was read
+          left = [p for p in os.listdir("/proc") if p.isdigit() and comm(p) == "lola-go"]
+          assert not left, left
+          print("ok ended with exit 1, no lola-go left")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok ended with exit 1, no lola-go left"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/x4-after.json /work /home/tester && cmp /tmp/x4-before.json /tmp/x4-after.json'"
+        assertions:
+          - result.code ShouldEqual 0

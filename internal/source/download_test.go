@@ -2,6 +2,8 @@ package source_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -154,6 +156,55 @@ var _ = Describe("Fetch of an archive URL", func() {
 		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
 	})
 
+	It("source.Fetch with Spec.SHA256 refuses a mismatched archive before extraction; staging stays empty", func() {
+		// The archive served holds an entry outside its root, which extraction refuses: the
+		// sha256 refusal proves nothing was extracted.
+		bad := filepath.Join(tmp, "bad.zip")
+		writeZip(bad, file("../escape.md", "x"))
+		hostile, err := os.ReadFile(bad)
+		Expect(err).NotTo(HaveOccurred())
+		url := serve(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, "/bad") {
+				_, _ = w.Write(hostile)
+				return
+			}
+			_, _ = w.Write(body)
+		})
+		want := strings.Repeat("ab", 32)
+		_, err = source.Fetch(ctx, source.Spec{Kind: source.KindArchive, Location: url + "/bad.zip", SHA256: want}, staging)
+		Expect(err).To(MatchError(fmt.Sprintf("the archive downloaded from %s/bad.zip has sha256 %x, not the %s it is listed with",
+			url, sha256.Sum256(hostile), want)))
+		got, ok := errors.AsType[*source.SHA256MismatchError](err)
+		Expect(ok).To(BeTrue())
+		Expect(got.Got).To(Equal(fmt.Sprintf("%x", sha256.Sum256(hostile))))
+		expectNothingStaged()
+
+		sum := strings.ToUpper(fmt.Sprintf("%x", sha256.Sum256(body))) // either case
+		f, err := source.Fetch(ctx, source.Spec{Kind: source.KindArchive, Location: url + "/m.tar.gz", SHA256: sum}, staging)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
+	})
+
+	It("a catalog entry naming a local, http, localhost or private-address source is skipped", func() {
+		// Plan 6c §12 spec 4, from 6c.2: a catalog archive whose download redirects to a loopback host
+		// is refused, where a typed one follows the redirect.
+		url := serve(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/away.tgz" {
+				http.Redirect(w, r, "/m.tgz", http.StatusFound)
+				return
+			}
+			_, _ = w.Write(body)
+		})
+		_, err := fetch(url + "/away.tgz")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = source.Fetch(ctx, source.Spec{Kind: source.KindArchive, Location: url + "/away.tgz", FromCatalog: true}, staging)
+		Expect(err).To(MatchError(ContainSubstring("refusing a redirect to " + url + "/m.tgz: ")))
+		Expect(err).To(MatchError(ContainSubstring("a catalog entry")))
+		Expect(errs.Hints(err)).To(BeEmpty())
+		entries, _ := os.ReadDir(staging)
+		Expect(entries).To(HaveLen(1), "only the typed fetch is staged")
+	})
+
 	It("sanitizes the status text a server sends", func() {
 		url := serve(func(w http.ResponseWriter, r *http.Request) {
 			hj, ok := w.(http.Hijacker)
@@ -166,5 +217,46 @@ var _ = Describe("Fetch of an archive URL", func() {
 		})
 		_, err := fetch(url + "/m.zip")
 		Expect(err).To(MatchError(ContainSubstring("the server answered 500 Bad?[2J")))
+	})
+})
+
+var _ = Describe("FetchFile", func() {
+	It("downloads a catalog file within its limit, with the source URL rules and no hints", func() {
+		staging := filepath.Join(testenv.Isolate(), "staging")
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/big.json":
+				_, _ = w.Write([]byte(strings.Repeat("x", 11)))
+			case "/away.json":
+				http.Redirect(w, r, "http://example.com/m.json", http.StatusFound)
+			case "/gone.json":
+				http.NotFound(w, r)
+			default:
+				_, _ = w.Write([]byte(`{"name": "acme"}`))
+			}
+		}))
+		DeferCleanup(srv.Close)
+		ctx := context.Background()
+		path, err := source.FetchFile(ctx, srv.URL+"/m.json", staging, 1<<10)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.ReadFile(path)).To(Equal([]byte(`{"name": "acme"}`)))
+		Expect(filepath.Dir(filepath.Dir(path))).To(Equal(staging))
+
+		for url, want := range map[string]string{
+			srv.URL + "/big.json":       "the catalog is larger than 10 bytes",
+			srv.URL + "/away.json":      "refusing a redirect to plain http on a host that is not loopback",
+			srv.URL + "/gone.json":      "the server answered 404 Not Found",
+			srv.URL + "/m.json?t=1":     "must not have a query string or fragment",
+			"http://example.com/m.json": "plain http:// is allowed only for a loopback host",
+		} {
+			_, err := source.FetchFile(ctx, url, staging, 10)
+			Expect(err).To(MatchError(ContainSubstring(want)), url)
+			if !strings.Contains(url, "?") && !strings.HasPrefix(url, "http://example.com") {
+				Expect(errs.Hints(err)).To(BeEmpty(), url)
+			}
+		}
+		left, err := os.ReadDir(staging)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(left).To(HaveLen(1), "only the download that succeeded is left, for its caller to remove")
 	})
 })

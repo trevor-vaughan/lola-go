@@ -114,7 +114,8 @@ func (a *app) syncCmd() *cobra.Command {
 			"installed, and remove the ones project.yml no longer lists (asking first; -y confirms).\n" +
 			"Name modules to sync only those. An entry without a pin is installed from your cache's\n" +
 			"version for its ref, and lola writes the pin into project.yml. --update fetches the refs\n" +
-			"again and re-pins.\n" +
+			"again and re-pins; an entry installed through a marketplace (market:) follows its catalog,\n" +
+			"fetched once, at the same source, path and ref only, and says why when it cannot.\n" +
 			"When project.yml changed since lola last wrote it or you last trusted it (after a git pull,\n" +
 			"say), sync shows each change with the files, MCP servers and hooks it brings, and asks before\n" +
 			"anything is cached or installed. Off a terminal, --trust accepts the changes (of the modules\n" +
@@ -136,7 +137,7 @@ func (a *app) syncCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			scs, err := a.scopes(cmd, eng, "Sync where?", true, true)
+			scs, err := a.scopes(cmd, eng, args, "Sync where?", true, true)
 			if err != nil {
 				return err
 			}
@@ -196,7 +197,7 @@ func (a *app) syncCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and the trust diff, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals (only removals: it never trusts changes)")
 	cmd.Flags().BoolVar(&f.trust, "trust", false, "accept the changes to project.yml and its active profiles without asking (never bypasses a refusal or grants hook consent)")
-	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be (never skips a prompt)")
+	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.update, "update", false, "fetch the refs again and re-pin the modules of the run")
 	cmd.Flags().BoolVar(&f.allowHooks, "allow-hooks", false, "run the modules' install hooks without asking (consent for this run)")
 	cmd.Flags().BoolVar(&f.allowRuntime, "allow-runtime-hooks", false, "install the modules' Claude Code runtime hooks without asking (consent is recorded)")
@@ -210,9 +211,12 @@ func (a *app) syncCmd() *cobra.Command {
 // caps.
 func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, pg *pager, sc engine.Scope, args []string, prof *engine.ProfileChange,
 	f syncFlags) (res *engine.SyncResult, more string, err error) {
-	opts := engine.Options{DryRun: f.dry, Force: f.force}
+	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd)}
+	if cmd.Name() == "sync" { // lola profile takes no --force: its conflicts hint nothing
+		opts.ForceRun = forceRun(cmd, args)
+	}
 	a.hookOptions(cmd, &opts, f.allowHooks, f.allowRuntime)
-	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update, Options: opts, Profiles: prof}
+	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update, Options: opts, Profiles: prof, Display: outputFlags(cmd)}
 	question := "Remove these and sync? No applies nothing"
 	if prof != nil {
 		question = "Remove these and apply? No applies nothing"

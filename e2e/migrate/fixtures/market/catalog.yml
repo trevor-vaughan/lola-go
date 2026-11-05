@@ -1,0 +1,8 @@
+name: general
+description: Modules for the migrate suite
+version: "1.0"
+modules:
+  - name: tools
+    description: The tools fixture
+    version: "1.0"
+    repository: https://example.com/tools.git

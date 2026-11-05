@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
@@ -41,6 +43,12 @@ func (e Entry) clone() Entry {
 		r := *e.Rules
 		e.Rules = &r
 	}
+	if e.Market != nil {
+		m := *e.Market
+		e.Market = &m
+	}
+	e.Components = e.Components.Clone()
+	e.Vars = CloneVars(e.Vars)
 	return e
 }
 
@@ -66,17 +74,20 @@ func (m *Manifest) Applied(c Change) *Manifest {
 // keys that come before it in this order.
 var (
 	topKeys   = []string{"version", "targets", "modules"}
-	entryKeys = []string{"name", "source", "ref", "path", "commit", "digest", "targets", "rules"}
+	entryKeys = []string{"name", "source", "ref", "path", "components", "commit", "digest", "targets", "rules", "vars", "market"}
 )
 
 // Edit returns the file to write and the manifest at path with c applied (Plan 6a §4.5). The
 // file is read again, so the caller holds the scope lock and edits made since its own read
 // survive; only the entries and fields c changes are edited, so comments, order and
-// formatting stay. A file that does not load is never edited. A symlinked manifest is written
+// formatting stay. A file that does not load is never edited, except for entries whose source is
+// a marketplace address (UnresolvedError), which stay as written: lola install @m/x replaces one
+// of them and leaves the others (Plan 6c §6.3). A symlinked manifest is written
 // at its target. The caller writes the bytes with mode 0600 (plan.Apply stages them with the
 // ledger).
 func Edit(path string, c Change) (string, []byte, error) {
-	if _, err := Load(path); err != nil {
+	_, err := Load(path)
+	if _, unresolved := errors.AsType[*UnresolvedError](err); err != nil && !unresolved {
 		return "", nil, errs.WithHints(fmt.Errorf("not editing it: %w", err), "nothing was installed or removed")
 	}
 	d, _, err := yamldoc.Read(path, Version)
@@ -87,7 +98,12 @@ func Edit(path string, c Change) (string, []byte, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if err := (&Manifest{}).decode(b); err != nil {
+	var check yaml.Node
+	if err := yaml.Unmarshal(b, &check); err != nil {
+		return "", nil, err
+	}
+	err = (&Manifest{}).decode(b, yamldoc.Root(&check))
+	if _, unresolved := errors.AsType[*UnresolvedError](err); err != nil && !unresolved {
 		return "", nil, errs.WithHints(fmt.Errorf("not writing %s, which lola could not load again: %w", path, err),
 			"nothing was written; if the module came from your cache, remove it with lola cache rm, then install it again")
 	}
@@ -180,6 +196,46 @@ func setEntry(m *yaml.Node, e Entry) {
 	}
 	setKey(m, entryKeys, "targets", ts)
 	setKey(m, entryKeys, "rules", rules)
+	var market *yaml.Node
+	if e.Market != nil {
+		market = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{yamldoc.Str("name"), yamldoc.Str(e.Market.Name),
+			yamldoc.Str("source"), yamldoc.Str(e.Market.Source)}}
+	}
+	setKey(m, entryKeys, "market", market)
+	var comps *yaml.Node
+	if c := e.Components; c != nil {
+		comps = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		for _, l := range []struct {
+			key   string
+			paths []string
+		}{{"skills", c.Skills}, {"commands", c.Commands}, {"agents", c.Agents}} {
+			if len(l.paths) > 0 {
+				comps.Content = append(comps.Content, yamldoc.Str(l.key), flowList(l.paths))
+			}
+		}
+	}
+	setKey(m, entryKeys, "components", comps)
+	var vars *yaml.Node
+	if len(e.Vars) > 0 {
+		vars = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		for _, k := range slices.Sorted(maps.Keys(e.Vars)) {
+			var v *yaml.Node
+			switch x := e.Vars[k].(type) {
+			case bool:
+				v = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(x)}
+			case int64:
+				v = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.FormatInt(x, 10)}
+			case float64:
+				v = module.FloatNode(x)
+			case []string:
+				v = flowList(x)
+			default: // a string
+				v = yamldoc.Str(fmt.Sprint(x))
+			}
+			vars.Content = append(vars.Content, yamldoc.Str(k), v)
+		}
+	}
+	setKey(m, entryKeys, "vars", vars)
 }
 
 // flowList is a flow list of strings.

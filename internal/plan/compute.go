@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 
@@ -25,6 +26,9 @@ type Request struct {
 	Ledger   *ledger.Ledger // observed state; never mutated
 	Changes  []ModuleChange
 	Force    bool
+	// ForceRun is the command that repeats the run with --force, the hint of a refusal --force
+	// would override; "" gives that refusal no hint.
+	ForceRun string
 	// Replace lists unowned destinations the plan overwrites instead of refusing (Replaceable).
 	Replace []Replaceable
 }
@@ -64,7 +68,6 @@ type planner struct {
 	desired   map[string][]ledger.Artifact
 	steps     []Step
 	conflicts []Conflict
-	twin      bool // a module claimed one destination twice
 }
 
 // owned is one replanned owner's old artifacts, keyed by artifact ID.
@@ -163,11 +166,17 @@ func Compute(req Request) (*Plan, error) {
 	return p.finish()
 }
 
-// expand turns a CopyTree into one WriteFile per regular file. Reads go through os.Root, so
-// nothing outside Src can be reached even if the tree changes during the walk.
+// expand turns a CopyTree into one WriteFile per regular file and one per Overlay file, mode
+// 0644, refusing an Overlay path that leaves the tree. Reads go through os.Root, so nothing
+// outside Src can be reached even if the tree changes during the walk.
 func expand(in Intent) (out []Intent, err error) {
 	if in.Op != OpCopyTree {
 		return []Intent{in}, nil
+	}
+	for _, f := range in.Overlay {
+		if !filepath.IsLocal(f.Path) {
+			return nil, fmt.Errorf("%s: overlay file %q is not a path inside the tree", in.Path, f.Path)
+		}
 	}
 	root, err := os.OpenRoot(in.Src)
 	if err != nil {
@@ -199,6 +208,9 @@ func expand(in Intent) (out []Intent, err error) {
 			Data: data, Mode: fsx.NormalizeMode(fi.Mode())})
 		return nil
 	})
+	for _, f := range in.Overlay {
+		out = append(out, Intent{Target: in.Target, Kind: in.Kind, Op: OpWriteFile, Path: path.Join(in.Path, f.Path), Data: f.Data, Mode: 0o644})
+	}
 	return out, err
 }
 
@@ -361,17 +373,17 @@ func (p *planner) want(owner string, in Intent) error {
 	}
 	if other, ok := p.claimed[id]; ok {
 		// One module claiming a destination twice would otherwise be written by its last claim.
-		reason := fmt.Sprintf("provided twice by module %q", owner)
-		p.twin = p.twin || other == owner
+		reason := fmt.Sprintf("provided twice by module %q; its author must rename one of the two", owner)
 		if other != owner {
-			reason = fmt.Sprintf("also provided by module %q in this operation", other)
+			reason = fmt.Sprintf("also provided by module %q in this operation; only one of the two can install it, and --force cannot override that", other)
 		}
 		p.conflict(art, reason, false)
 		return nil
 	}
 	p.claimed[id] = owner
 	if other, ok := p.owners[id]; ok && other != owner {
-		p.conflict(art, fmt.Sprintf("owned by module %q; uninstall it first", other), false)
+		p.conflict(art, fmt.Sprintf("wanted by module %q, owned by module %q; --force cannot override it", owner, other), false)
+		p.conflicts[len(p.conflicts)-1].Owner, p.conflicts[len(p.conflicts)-1].Claimant = other, owner
 		return nil
 	}
 	f, err := p.file(in.Target, in.Path)
@@ -538,7 +550,7 @@ func (p *planner) drop(owner string, a ledger.Artifact) error {
 		return nil
 	case cur != a.SHA256:
 		step.Forced = "hand-edited"
-		p.conflict(a, "hand-edited since lola wrote it; kept", true)
+		p.conflict(a, "hand-edited since lola wrote it; deleting it would lose your edits", true)
 	}
 	step.Action = ActionDelete
 	p.steps = append(p.steps, step)
@@ -570,14 +582,13 @@ func (p *planner) conflictError() error {
 	if forceable && p.req.Force {
 		return nil
 	}
-	hint := "uninstall the module that owns these destinations first; --force cannot override ownership"
-	if p.twin {
-		hint = "two artifacts in this module render to the same place; rename one"
+	// Only --force has a command here: a conflict it cannot override says what to do in its
+	// reason, and the engine hints the uninstall of a destination's owner (Conflict.Owner).
+	ce := &ConflictError{Conflicts: p.conflicts, Overridable: forceable && p.req.ForceRun != ""}
+	if !ce.Overridable {
+		return ce
 	}
-	if forceable {
-		hint = "rerun with --force to overwrite or delete them anyway (each one is listed in the summary)"
-	}
-	return errs.WithHints(&ConflictError{Conflicts: p.conflicts}, hint)
+	return errs.WithHints(ce, p.req.ForceRun)
 }
 
 func (p *planner) finish() (*Plan, error) {

@@ -48,10 +48,30 @@ func WriteText(id, kind, path, body string, ctx PlanContext) plan.Intent {
 }
 
 // SkillTree copies a skill's directory to dst, except SKILL.md, which each target writes
-// itself (possibly rewritten).
+// itself (possibly rewritten), and the sources of its templated support files, which it writes
+// rendered in their place.
 func SkillTree(id string, s module.Skill, ctx PlanContext, dst string) plan.Intent {
-	return plan.Intent{Target: id, Kind: "skill", Op: plan.OpCopyTree, Src: filepath.Join(ctx.ContentDir, s.Dir), Path: dst,
+	in := plan.Intent{Target: id, Kind: "skill", Op: plan.OpCopyTree, Src: filepath.Join(ctx.ContentDir, s.Dir), Path: dst,
 		Exclude: append(slices.Clone(s.Exclude), "SKILL.md")}
+	for _, f := range s.Files {
+		in.Exclude = append(in.Exclude, f.Source)
+		in.Overlay = append(in.Overlay, plan.File{Path: f.Rel, Data: []byte(f.Body)})
+	}
+	return in
+}
+
+// SidecarTree copies a command's sidecar directory to dst under consent, writing each templated
+// sidecar rendered in place of its source.
+func SidecarTree(id string, cmd module.Command, ctx PlanContext, dst string, consent *plan.HookConsent) plan.Intent {
+	in := plan.Intent{Target: id, Kind: "command", Op: plan.OpCopyTree, Src: filepath.Join(ctx.ContentDir, cmd.SidecarDir), Path: dst, Consent: consent}
+	for _, sc := range cmd.Sidecars {
+		if sc.Source == "" {
+			continue
+		}
+		in.Exclude = append(in.Exclude, strings.TrimPrefix(sc.Source, cmd.SidecarDir+"/"))
+		in.Overlay = append(in.Overlay, plan.File{Path: strings.TrimPrefix(sc.File, cmd.SidecarDir+"/"), Data: []byte(sc.Doc.Render())})
+	}
+	return in
 }
 
 // HasAny reports whether root holds the directory dir or any of files: the usual project

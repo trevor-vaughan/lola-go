@@ -61,6 +61,20 @@ func (Target) BaseDirs(scope target.Scope) []string {
 	return []string{".opencode/skills", ".opencode/commands", ".opencode/agents", ".opencode"}
 }
 
+// Destinations implements Target. The server map is in the config file Plan writes to.
+func (Target) Destinations(scope target.Scope, root string) (target.Destinations, error) {
+	cfg, err := config(root)
+	if err != nil {
+		return target.Destinations{}, err
+	}
+	d := dir(scope)
+	return target.Destinations{
+		Dirs: []target.DestDir{{Kind: "skill", Path: d + "skills"}, {Kind: "command", Path: d + "commands", Ext: ".md"},
+			{Kind: "agent", Path: d + "agents", Ext: ".md"}, {Kind: "rule", Path: d + "lola"}},
+		Servers: []target.ServerMap{{File: cfg, Pointer: "/mcp"}},
+	}, nil
+}
+
 // escaped is a Claude-escaped placeholder, whose $ follows exactly one backslash, that OpenCode,
 // which has no escape, still replaces.
 var escaped = regexp.MustCompile(`(?:^|[^\\])\\\$(?:\d|ARGUMENTS)`)
@@ -76,13 +90,21 @@ var color = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 // steps is a positive integer, as OpenCode's agent schema requires of steps and maxSteps.
 var steps = target.Value{Shape: target.ShapePositiveInt}
 
+// noHooks and noServers drop, under any spelling, the keys with which Claude Code runs hooks and
+// starts MCP servers: OpenCode reads neither from a skill or an agent (opencode.ai/docs/skills,
+// opencode.ai/config.json AgentConfig), so lola never writes them there ungated.
+var (
+	noHooks   = target.Value{Drop: target.SeverityWarn, Fold: true, Note: "opencode runs no hooks from frontmatter"}
+	noServers = target.Value{Drop: target.SeverityWarn, Fold: true, Note: "opencode starts no MCP servers from frontmatter"}
+)
+
 // caps: OpenCode needs descriptions on skills and agents and kebab-case skill names, reads a
 // closed set of command keys, names an agent by its file and configures its tools with
 // permissions. It refuses to start on an agent value that does not match its config schema
 // (https://opencode.ai/config.json, AgentConfig), so each key it checks has the shape it needs;
 // permission's nested form has no Value shape and passes unchecked.
 var caps = target.Capabilities{Kinds: map[string]target.KindSpec{
-	"skill": {Open: true, Keys: map[string]target.Value{"description": {Shape: target.ShapeString}},
+	"skill": {Open: true, Keys: map[string]target.Value{"description": {Shape: target.ShapeString}, "hooks": noHooks, "mcpServers": noServers},
 		Required: []string{"description"}, Name: regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)},
 	"command": {Keys: map[string]target.Value{
 		"description": {Shape: target.ShapeString},
@@ -105,6 +127,8 @@ var caps = target.Capabilities{Kinds: map[string]target.KindSpec{
 		"hidden":      {Shape: target.ShapeBool},
 		"disable":     {Shape: target.ShapeBool},
 		"options":     {Shape: target.ShapeMap},
+		"hooks":       noHooks,
+		"mcpServers":  noServers,
 	}, Required: []string{"description"}},
 	"mcp":  {},
 	"rule": {},

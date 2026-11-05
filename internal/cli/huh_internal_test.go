@@ -374,6 +374,10 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		view = (&huhForms{height: 16}).multi("Install which modules?", "", many, &v).WithTheme(huh.ThemeFunc(huh.ThemeBase)).View()
 		Expect(view).To(ContainSubstring("module-00"))
 		Expect(view).NotTo(ContainSubstring("module-12"), "at most the terminal height minus 6 rows")
+
+		three := []huh.Option[string]{huh.NewOption("one", "1"), huh.NewOption("two", "2"), huh.NewOption("three", "3")}
+		view = (&huhForms{height: 40}).multi("Move which to the trash?", "2 locked:\n  a\n  b", three, &v).WithTheme(huh.ThemeFunc(huh.ThemeBase)).View()
+		Expect(view).To(ContainSubstring("three"), "every line of a description counts toward the height")
 	})
 
 	It("keeps a label on one line when its source holds a newline", func() {
@@ -494,5 +498,111 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			Expect(filepath.Join(dir, ".claude/commands/deploy.md")).To(BeARegularFile())
 			Expect(filepath.Join(dir, ".claude/commands/undo.md")).NotTo(BeAnExistingFile())
 		}
+	})
+
+	It("the picker preselects nothing and lists every locked item with its reason", func() {
+		st := TidyPickStep{Options: []TidyOption{{ID: "0", Label: "claude-code  skill/old  .claude/skills/old/"},
+			{ID: "1", Label: "claude-code  command/tmp  .claude/commands/tmp.md"}},
+			Locked: []string{"claude-code  skill/notes  .claude/skills/notes/  on your keep-list (skill/notes)",
+				"claude-code  command/CLAUDE  .claude/commands/CLAUDE.md  is an instruction file", "claude-code  agent/x  .claude/agents/x.md  tracked by git"}}
+		got, err := accessible(&out, "2", "0").TidyPick(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{"1"}))
+		Expect(out.String()).To(ContainSubstring("3 locked, which lola tidy never moves:\n" +
+			"  claude-code  skill/notes  .claude/skills/notes/  on your keep-list (skill/notes)\n" +
+			"  claude-code  command/CLAUDE  .claude/commands/CLAUDE.md  is an instruction file\n" +
+			"  claude-code  agent/x  .claude/agents/x.md  tracked by git\n"))
+		Expect(out.String()).To(ContainSubstring("Move which to the trash?"))
+		Expect(out.String()).To(ContainSubstring("1.   claude-code  skill/old  .claude/skills/old/\n2.   claude-code  command/tmp  .claude/commands/tmp.md\n"),
+			"nothing preselected")
+
+		out.Reset()
+		got, err = accessible(&out, "1", "0").TidyKeep(TidyKeepStep{Options: st.Options})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{"0"}))
+		Expect(out.String()).To(ContainSubstring("Add any of the rest to your keep-list?"))
+		Expect(out.String()).To(ContainSubstring("1.   claude-code  skill/old"), "nothing preselected")
+
+		By("full forms list the locked items in the description, cut to the terminal height")
+		var v []string
+		view := func(h *huhForms) string {
+			fields := h.tidyPick(st, &v)
+			Expect(fields).To(HaveLen(1))
+			return fields[0].(*huh.MultiSelect[string]).WithTheme(huh.ThemeFunc(huh.ThemeBase)).View()
+		}
+		tall := view(&huhForms{height: 40})
+		Expect(tall).To(ContainSubstring("3 locked, which lola tidy never moves:"))
+		Expect(tall).To(ContainSubstring("agent/x  .claude/agents/x.md  tracked by git"))
+		Expect(tall).To(ContainSubstring("command/tmp"))
+		short := view(&huhForms{height: 12})
+		Expect(short).To(ContainSubstring("skill/notes"))
+		Expect(short).To(ContainSubstring("and 2 more"))
+		Expect(short).NotTo(ContainSubstring("tracked by git"))
+		Expect(short).To(ContainSubstring("skill/old"), "the cut leaves room for the options")
+		shorter := view(&huhForms{height: 10})
+		Expect(shorter).To(ContainSubstring("3 locked, which lola tidy never moves:"))
+		Expect(shorter).To(ContainSubstring("skill/old"))
+		Expect(shorter).To(ContainSubstring("command/tmp"))
+		Expect(shorter).NotTo(ContainSubstring("skill/notes"), "no room for a locked line")
+
+		By("labels the width would cut alike stay whole, since huh ticks every option with the label under the cursor")
+		narrow := (&huhForms{width: 40}).tidyOptions([]TidyOption{{ID: "0", Label: "claude-code  skill/a-very-long-name-one  .claude/skills/a-very-long-name-one/"},
+			{ID: "1", Label: "claude-code  skill/a-very-long-name-two  .claude/skills/a-very-long-name-two/"}, {ID: "2", Label: "claude-code  skill/b  .claude/skills/b/"}})
+		Expect([]string{narrow[0].Key, narrow[1].Key}).To(Equal([]string{
+			"claude-code  skill/a-very-long-name-one  .claude/skills/a-very-long-name-one/",
+			"claude-code  skill/a-very-long-name-two  .claude/skills/a-very-long-name-two/"}))
+		Expect(narrow[2].Key).To(Equal("claude-code  skill/b  .claude/s…"), "a label no other shares is cut")
+		same := (&huhForms{}).tidyOptions([]TidyOption{{ID: "0", Label: "x  skill/a  p"}, {ID: "1", Label: "x  skill/a  p"}, {ID: "2", Label: "y"}})
+		Expect([]string{same[0].Key, same[1].Key, same[2].Key}).To(Equal([]string{"x  skill/a  p [1]", "x  skill/a  p [2]", "y"}),
+			"labels equal in full gain a suffix, so no two options share one")
+	})
+
+	It("picker, review, dry-run and refusal labels show only the server label", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj := filepath.Join(tmp, "proj")
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		userinfo := "SENTINEL_USER:SENTINEL_PW"
+		servers := `{"mcpServers": {
+  "stdio": {"command": "TOKEN=SENTINEL_ENVWORD /opt/bin/srv-cmd", "args": ["--token", "SENTINEL_ARG"], "env": {"K": "SENTINEL_ENV"}},
+  "remote": {"type": "http", "url": "https://` + userinfo + `@mcp.example.com/SENTINEL_PATH?q=SENTINEL_QUERY#SENTINEL_FRAG",
+    "headers": {"Authorization": "SENTINEL_HEADER"}}
+}}`
+		run := func(p Prompter, args ...string) (int, string) {
+			GinkgoHelper()
+			Expect(os.WriteFile(filepath.Join(proj, ".mcp.json"), []byte(servers), 0o644)).To(Succeed())
+			opts := []Option{}
+			if p != nil {
+				opts = append(opts, WithPrompter(p))
+			}
+			root := NewRootCmd(os.Getenv, opts...)
+			var stdout, stderr bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			root.SetIn(strings.NewReader(""))
+			root.SetArgs(append([]string{"tidy", "-C", proj, "-t", "claude-code"}, args...))
+			code := Execute(root)
+			Expect(stdout.String()+stderr.String()).NotTo(ContainSubstring("SENTINEL"), "%v", args)
+			return code, stdout.String() + stderr.String()
+		}
+		// move picker: tick the first (mcp/remote), confirm; keep picker: confirm nothing; review: no.
+		var errb bytes.Buffer
+		code, got := run(accessible(&errb, "1", "0", "0", "n"))
+		Expect(code).To(Equal(0), got)
+		Expect(errb.String()).NotTo(ContainSubstring("SENTINEL"))
+		Expect(errb.String()).To(ContainSubstring("1.   claude-code  mcp/remote (mcp.example.com)  .mcp.json /mcpServers/remote\n"))
+		Expect(errb.String()).To(ContainSubstring("2.   claude-code  mcp/stdio (srv-cmd)  .mcp.json /mcpServers/stdio\n"))
+		Expect(errb.String()).To(ContainSubstring("Add any of the rest to your keep-list?"))
+		Expect(errb.String()).To(ContainSubstring("1.   mcp/stdio  claude-code\n"), "the keep picker names the selector it writes")
+		Expect(got).To(ContainSubstring("  → claude-code  mcp/remote (mcp.example.com)  .mcp.json /mcpServers/remote\n"), "the review")
+		Expect(errb.String()).To(ContainSubstring("Move 1 item to the trash?"))
+		Expect(got).To(ContainSubstring("aborted; nothing changed."))
+
+		code, got = run(nil, "-n")
+		Expect(code).To(Equal(0), got)
+		Expect(got).To(ContainSubstring("  → claude-code  mcp/stdio (srv-cmd)  .mcp.json /mcpServers/stdio\n"), "the dry run")
+		code, got = run(nil)
+		Expect(code).To(Equal(1), "the refusal's listing")
+		Expect(got).To(ContainSubstring("  → claude-code  mcp/remote (mcp.example.com)  .mcp.json /mcpServers/remote\n"))
 	})
 })

@@ -19,11 +19,16 @@ type Paths struct {
 	UserLock       string   // StateHome/lola/.lock
 	Locks          string   // StateHome/lola/locks: one lock file per project, outside the project's .lola/
 	SelectionsLock string   // StateHome/lola/locks/selections.lock: taken before any scope lock
+	Keep           string   // ConfigHome/lola/keep.yaml: what lola tidy never offers (Plan 6d §5)
+	KeepLock       string   // StateHome/lola/locks/keep.lock: around keep.yaml's read-modify-write, after the scope lock (Plan 6d)
 	ProfilesLock   string   // StateHome/lola/locks/profiles.lock: shared to read remote profiles, exclusive to write them; taken first (Plan 6b §10)
+	Markets        string   // ConfigHome/lola/markets.yaml: your marketplaces (Plan 6c §5)
+	MarketCache    string   // CacheHome/lola/markets: one directory per marketplace, holding its catalog and source.json
+	MarketsLock    string   // StateHome/lola/locks/markets.lock: shared to read marketplaces, exclusive to write them; after the profiles lock (Plan 6c §5)
 	Consent        string   // StateHome/lola/consent.json: install hook consent (§9.1)
 	Trust          string   // StateHome/lola/trust.json: per project, the project.yml view the user trusted (Plan 6a §7)
 	TrustLock      string   // StateHome/lola/locks/trust.lock: held around trust.json's read-modify-write, after every scope lock
-	Trash          string   // StateHome/lola/trash: lola migrate's backups and removed files, one directory per run
+	Trash          string   // StateHome/lola/trash: what lola migrate and lola tidy back up or move, one directory per run
 	Store          string   // CacheHome/lola/modules: the cache
 	StoreLock      string   // CacheHome/lola/.lock
 	Staging        string   // CacheHome/lola/.staging: same filesystem as Store, so renames never cross devices
@@ -64,7 +69,12 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.UserLock = filepath.Join(p.StateHome, "lola", ".lock")
 	p.Locks = filepath.Join(p.StateHome, "lola", "locks")
 	p.SelectionsLock = filepath.Join(p.Locks, "selections.lock")
+	p.Keep = filepath.Join(p.ConfigHome, "lola", "keep.yaml")
+	p.KeepLock = filepath.Join(p.Locks, "keep.lock")
 	p.ProfilesLock = filepath.Join(p.Locks, "profiles.lock")
+	p.Markets = filepath.Join(p.ConfigHome, "lola", "markets.yaml")
+	p.MarketCache = filepath.Join(p.CacheHome, "lola", "markets")
+	p.MarketsLock = filepath.Join(p.Locks, "markets.lock")
 	p.Consent = filepath.Join(p.StateHome, "lola", "consent.json")
 	p.Trust = filepath.Join(p.StateHome, "lola", "trust.json")
 	p.TrustLock = filepath.Join(p.Locks, "trust.lock")

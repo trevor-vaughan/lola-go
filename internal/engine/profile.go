@@ -105,16 +105,24 @@ func desiredNoting(layers []Layer, noted func(module string) bool) ([]Wanted, []
 // sameEntry reports whether two entries for one module ask for the same thing.
 func sameEntry(a, b manifest.Entry) bool {
 	return a.Source == b.Source && a.Ref == b.Ref && a.Path == b.Path && a.Commit == b.Commit && a.Digest == b.Digest &&
-		slices.Equal(a.Targets, b.Targets) && a.RulesOn() == b.RulesOn()
+		slices.Equal(a.Targets, b.Targets) && a.RulesOn() == b.RulesOn() && manifest.SameVars(a.Vars, b.Vars)
 }
 
 // overrideNotice is the notice of a layer's entry replacing a lower layer's (Plan 6b §6.2):
 // "gopls: project.yml overrides profile:user:go (v2.0 over v1.2)", the versions left out when
-// they read alike.
+// they read alike; when the replaced entry set vars the winner does not repeat, it says they are
+// dropped, as the winner replaces them whole (Plan 7 §4.2).
 func overrideNotice(ent, prev manifest.Entry, layer, under string) Notice {
 	text := shown(ent.Name) + ": " + layer + " overrides " + under
 	if now, was := entryVersion(ent), entryVersion(prev); now != was {
 		text += " (" + now + " over " + was + ")"
+	}
+	if len(prev.Vars) > 0 && !manifest.SameVars(prev.Vars, ent.Vars) {
+		sets := "none"
+		if len(ent.Vars) > 0 {
+			sets = "its own"
+		}
+		text += "; " + shown(ent.Name) + "'s vars from " + under + " are dropped: the entry from " + layer + " sets " + sets
 	}
 	return Notice{Level: LevelWarn, Text: text}
 }
@@ -570,10 +578,11 @@ func overridesProfiles(layers []Layer, written []manifest.Entry) []Notice {
 
 // refuseProfileModule refuses to uninstall a module an active profile or default lists (Plan 6b
 // §7): uninstalling it would leave it wanted, and the next sync would install it again. Each
-// profile gets the hint that turns it off; default, which cannot be turned off, the edit that
-// drops the module.
-func (e *Engine) refuseProfileModule(sc Scope, layers []Layer, name string) error {
+// profile gets the hint that turns it off, with the run's output flags (display); default, which
+// cannot be turned off and has no command that drops the module, names that edit in the error.
+func (e *Engine) refuseProfileModule(sc Scope, layers []Layer, name string, display []string) error {
 	var by, hints []string
+	edit := ""
 	for _, l := range layers {
 		if !l.Profile || !slices.ContainsFunc(l.Entries, func(p manifest.Entry) bool { return p.Name == name }) {
 			continue
@@ -581,10 +590,11 @@ func (e *Engine) refuseProfileModule(sc Scope, layers []Layer, name string) erro
 		q := strings.TrimPrefix(l.Name, "profile:")
 		by = append(by, q)
 		if q == profile.DefaultName {
-			hints = append(hints, "remove it from "+shown(l.Path)+", which is always on at user scope")
+			edit = "; remove it from " + shown(l.Path) + ", which is always on at user scope"
 			continue
 		}
-		hints = append(hints, "turn "+q+" off: "+e.Command(sc, "profile", q, "--off"))
+		// The label is lola's own: the profile's name, author text, is in the command only.
+		hints = append(hints, "turn the profile off: "+e.Command(sc, "profile", append([]string{q, "--off"}, display...)...))
 	}
 	if len(by) == 0 {
 		return nil
@@ -593,5 +603,5 @@ func (e *Engine) refuseProfileModule(sc Scope, layers []Layer, name string) erro
 	if len(by) > 1 {
 		what = "profiles " + andJoin(by)
 	}
-	return errs.WithHints(fmt.Errorf("%s is wanted by %s", untrusted.Text(name, untrusted.MaxName), what), hints...)
+	return errs.WithHints(fmt.Errorf("%s is wanted by %s%s", untrusted.Text(name, untrusted.MaxName), what, edit), hints...)
 }

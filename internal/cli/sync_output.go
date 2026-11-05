@@ -291,7 +291,7 @@ func printTrustChange(w io.Writer, c engine.TrustChange, more string) {
 			case "commit", "digest":
 				hashes = append(hashes, f.Field+" "+shownValue(f.To))
 			default:
-				lines = append(lines, f.Field+" "+shownValue(f.To))
+				lines = append(lines, fieldLabel(f.Field)+" "+shownValue(f.To))
 			}
 		}
 		if len(src) > 0 { // a folder lola never installed adds only its digest
@@ -305,7 +305,7 @@ func printTrustChange(w io.Writer, c engine.TrustChange, more string) {
 			case f.Field == "commit" || f.Field == "digest":
 				hashes = append(hashes, hashLines(f)...)
 			default:
-				lines = append(lines, f.Field+" "+shownValue(f.From)+" → "+shownValue(f.To))
+				lines = append(lines, fieldLabel(f.Field)+" "+shownValue(f.From)+" → "+shownValue(f.To))
 			}
 		}
 	}
@@ -358,6 +358,15 @@ func printTrustChange(w io.Writer, c engine.TrustChange, more string) {
 			fmt.Fprintln(w, "      "+l)
 		}
 	}
+}
+
+// fieldLabel is how the trust diff names a field: market as "market (as written)", since lola
+// never checks which marketplace a file says an entry came from (Plan 6c §8).
+func fieldLabel(field string) string {
+	if field == "market" {
+		return "market (as written)"
+	}
+	return field
 }
 
 // hashLines prints a commit or digest change: from on the field's line and → to under it, the

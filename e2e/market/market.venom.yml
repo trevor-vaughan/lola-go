@@ -1,0 +1,317 @@
+name: lola marketplaces, search and catalog installs
+# Run by scripts/e2e.sh (task e2e -- market) in the shared e2e container: this checkout's lola-go
+# at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, a git server on
+# 127.0.0.1:8765 serving /srv/git, and, once setup.sh has run e2e/common/tls.sh, the same
+# repositories over HTTPS at https://git.lola.test:8443/, whose test CA a step passes to git
+# with {{.tls}}. Every step is {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob,
+# &&, redirection or pipe sits inside a single-quoted sh -c or python3 -c, and no step names a
+# host path. Cases run in order and read the state earlier ones leave (Plan 8 §4.4's Needs
+# column); a case whose state is missing fails. No assistant is on PATH.
+#
+# The folder marketplace mine lists kit, a folder next to its catalog, and lint, a git entry
+# that lola maps only from https://, pinned at lint.git's v1.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-market
+  lola: /opt/lola-go/lola-go
+  hint: python3 /e2e-common/hint.py
+  jsoncheck: python3 /e2e-common/jsoncheck.py
+  snapshot: python3 /e2e-common/snapshot.py
+  tls: -e GIT_SSL_CAINFO=/run/e2e-tls/ca.pem
+  # the fixture repositories' commits (setup.sh asserts them)
+  lint_v1: 74aef5e5cba379ff0e8cf194c45194a9b280d924
+  lint_v2: e9cd40cb865a1d26ce8eea59623376078688e26f
+  market: 6e730462b4cbc467e42243afb5ae7673d9f7b6d1
+
+testcases:
+  - name: The fixtures are built, every commit is the one recorded, and git.lola.test serves HTTPS
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh {{.lint_v1}} {{.lint_v2}} {{.market}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "fixture ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} git ls-remote https://git.lola.test:8443/lint.git refs/heads/main"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "{{.lint_v2}}"
+
+  - name: M1 A folder marketplace registers under its catalog name
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market --add /work/mk"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ marketplace mine: 2 entries (Claude marketplace.json) from /work/mk\""
+          - "result.systemout ShouldContainSubstring \"→ browse: lola install @mine\""
+
+  - name: M2 The registration persists for list
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldStartWith \"mine\tclaude\t2\t0\t\""
+          - "result.systemout ShouldEndWith \"\t/work/mk\t\t.claude-plugin/marketplace.json\""
+
+  - name: M3 search finds a catalog entry
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} search demo --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"kit\t\t@mine\tdemo\t@mine/kit\""
+
+  - name: M4 @mine/kit installs and records its provenance
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install @mine/kit -C /work/proj --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemerr ShouldContainSubstring "→ @mine/kit → /work/mk path kit"
+          - result.systemout ShouldContainSubstring "✓ installed kit (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /work/proj/.lola/project.yml"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"  - name: kit\n    source: /work/mk\n    path: kit\n    market:\n      name: mine\n      source: /work/mk\n\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with kit from the mine marketplace."
+
+  - name: M5 A different cached module of one name refuses, coached
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} cache add /work/other-kit --json > /tmp/m5.out 2> /tmp/m5.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m5.out /tmp/m5.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.hints ShouldHaveLength 1
+          - "result.systemoutjson.hints.hints0 ShouldEqual \"remove the cached one first: lola cache rm kit --json\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          error = json.load(open("/tmp/m5.err"))["error"]
+          assert error == "a different module named \"kit\" is already in your cache (from /work/mk (path kit)); this one is from /work/other-kit", error
+          print("ok the refusal names both sources")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the refusal names both sources"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/m5.err < /dev/null > /tmp/m5-hint.out 2> /tmp/m5-hint.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m5-hint.out /tmp/m5-hint.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lola cache rm needs confirmation, and there is no terminal to ask on"
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola cache rm kit --json -y"
+          - result.systemoutjson.would_remove ShouldHaveLength 1
+          - result.systemoutjson.would_remove.would_remove0 ShouldEqual kit
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} cache list --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"kit\t\tfolder\t/work/mk\""
+
+  - name: M6 A git entry installs through the catalog
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} install @mine/lint -C /work/proj --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemerr ShouldContainSubstring "→ @mine/lint → https://git.lola.test:8443/lint.git @ {{.lint_v1}}"
+          - result.systemout ShouldContainSubstring "✓ installed lint (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Lint with the mine marketplace."
+
+  - name: M7 A YAML catalog over git registers
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market general --add http://127.0.0.1:8765/market.git"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ marketplace general: 1 entry (Python lola YAML) from http://127.0.0.1:8765/market.git at 6e73046\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} market --json > /tmp/m7.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/m7.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.markets.markets1.name ShouldEqual general
+          - result.systemoutjson.markets.markets1.format ShouldEqual lola-yaml
+          - result.systemoutjson.markets.markets1.commit ShouldEqual {{.market}}
+
+  - name: M8 update reports changes; sync follows the catalog
+    # The catalog re-pins lint from v1 to v2. A pin sync writes needs trust, which -y never
+    # gives, so the sync refuses and its hints show the re-pin and then apply it.
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sed -i s/{{.lint_v1}}/{{.lint_v2}}/ /work/mk/.claude-plugin/marketplace.json"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} market mine --update --json > /tmp/m8-update.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/m8-update.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.changes ShouldHaveLength 1
+          - result.systemoutjson.changes.changes0.entry ShouldEqual lint
+          - result.systemoutjson.changes.changes0.change ShouldEqual changed
+          - result.systemoutjson.changes.changes0.fields ShouldHaveLength 1
+          - result.systemoutjson.changes.changes0.fields.fields0 ShouldEqual commit
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.lola}} sync --update lint -C /work/proj -y --json > /tmp/m8.out 2> /tmp/m8.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m8.out /tmp/m8.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lola sync needs your trust for the pins it would write for lint, and there is no terminal to ask on; -y confirms removals only; accept the changes with --trust"
+          - result.systemoutjson.hints ShouldHaveLength 2
+          - "result.systemoutjson.hints.hints0 ShouldEqual \"see them: lola sync -C /work/proj lint --update --json -n\""
+          - "result.systemoutjson.hints.hints1 ShouldEqual \"then accept them: lola sync -C /work/proj lint --update --json --trust -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.hint}} /tmp/m8.err > /tmp/m8-see.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/m8-see.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeTrue
+          - result.systemoutjson.pins.pins0.commit ShouldEqual {{.lint_v2}}
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Lint with the mine marketplace."
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.hint}} /tmp/m8.err 1 > /tmp/m8-apply.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/m8-apply.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.pins.pins0.commit ShouldEqual {{.lint_v2}}
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Lint with lint v2."
+
+  - name: M9 An @ source written into project.yml is refused before trust and any request
+    steps:
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import re
+          p = "/work/proj/.lola/project.yml"
+          s, n = re.subn(r"(?m)^    source: /work/mk$", "    source: \"@mine/kit\"", open(p).read())
+          assert n == 1, s
+          open(p, "w").write(s)
+          print("ok kit names @mine/kit")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok kit names @mine/kit"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/m9.count'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/m9.out 2> /tmp/m9.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m9.out /tmp/m9.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"/work/proj/.lola/project.yml:5: kit's source is @mine/kit, a marketplace address; a file must record the module's real source\""
+          - result.systemoutjson.hints ShouldHaveLength 1
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola install -C /work/proj @mine/kit --json"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/m9.count'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} sh -c '{{.hint}} /tmp/m9.err > /tmp/m9-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/m9-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.modules.modules0.name ShouldEqual kit
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} grep -c @mine/kit /work/proj/.lola/project.yml"
+        assertions:
+          - result.code ShouldEqual 1
+          - result.systemout ShouldEqual 0
+      # The install keeps the quotes of the source the case wrote, so the check reads the YAML.
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import yaml
+          kit = [m for m in yaml.safe_load(open("/work/proj/.lola/project.yml"))["modules"] if m["name"] == "kit"]
+          assert [(m["source"], m["path"]) for m in kit] == [("/work/mk", "kit")], kit
+          print("ok")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual ok
+
+  - name: M10 remove refuses off a terminal under --json in one line
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} market mine --remove --json < /dev/null > /tmp/m10.out 2> /tmp/m10.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m10.out /tmp/m10.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.error ShouldEqual "lola market --remove asks before it forgets a marketplace, and there is no terminal to ask on"
+          - result.systemoutjson.hints ShouldHaveLength 1
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola market mine --remove -y --json"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/m10.err > /tmp/m10-hint.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/m10-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.dry_run ShouldBeFalse
+          - result.systemoutjson.removed ShouldHaveLength 1
+          - result.systemoutjson.removed.removed0 ShouldEqual mine
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldStartWith \"general\tlola-yaml\t\""
+          - result.systemout ShouldNotContainSubstring "mine"

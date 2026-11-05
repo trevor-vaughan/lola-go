@@ -57,6 +57,12 @@ var _ = Describe("InstallChoices (Plan 5c §7)", func() {
 			{Scope: engine.Scope{Kind: target.User}, Source: engine.SourcePicked}}
 	})
 
+	It("labels a template component (template), since its frontmatter exists only once rendered", func() {
+		writeTree(other, map[string]string{"agents/t.md.liquid": "---\ndescription: {{ target | json }}\n---\nT\n"})
+		m := choices(other).Module("zeta")
+		Expect(m.Components).To(ContainElement(HaveField("Description", "(template)")))
+	})
+
 	It("lists cached modules by source then name, with components, labels made safe, and a source argument fetched", func() {
 		_, err := e.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: other})
 		Expect(err).NotTo(HaveOccurred())

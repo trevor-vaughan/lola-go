@@ -19,7 +19,7 @@ const FormatLola = "lola"
 // InitFormats are the formats lola init scaffolds; the first is the default (Plan 5b design §8).
 func InitFormats() []string { return []string{module.FormatAgentPlugins, FormatLola} }
 
-// Scaffolded is what Init wrote.
+// Scaffolded is what Init wrote, or what PlanInit says it would write.
 type Scaffolded struct {
 	Name   string   `json:"name"`
 	Path   string   `json:"path"`
@@ -53,11 +53,8 @@ func scaffold(format, name string) ([][2]string, error) {
 	}, nil
 }
 
-// Init scaffolds a module of format in dir, named after the directory: an Agent Plugins
-// package (plugin.json, a portable skill, a dev.getlola command) or a native lola module. It
-// refuses a directory that already holds a module manifest, and writes nothing when any file it
-// would write exists.
-func Init(dir, format string) (Scaffolded, error) {
+// PlanInit is what Init would scaffold in dir, with every refusal of Init, writing nothing.
+func PlanInit(dir, format string) (Scaffolded, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return Scaffolded{}, err
@@ -97,14 +94,30 @@ func Init(dir, format string) (Scaffolded, error) {
 		if err := checkNew(abs, f[0]); err != nil {
 			return Scaffolded{}, err
 		}
-	}
-	for _, f := range files {
-		if err := writeNew(filepath.Join(abs, f[0]), f[1]); err != nil {
-			return Scaffolded{}, err
-		}
 		out.Files = append(out.Files, f[0])
 	}
 	return out, nil
+}
+
+// Init scaffolds a module of format in dir, named after the directory: an Agent Plugins
+// package (plugin.json, a portable skill, a dev.getlola command) or a native lola module. It
+// refuses a directory that already holds a module manifest, and writes nothing when any file it
+// would write exists.
+func Init(dir, format string) (Scaffolded, error) {
+	plan, err := PlanInit(dir, format)
+	if err != nil {
+		return Scaffolded{}, err
+	}
+	files, err := scaffold(plan.Format, plan.Name)
+	if err != nil {
+		return Scaffolded{}, err
+	}
+	for _, f := range files {
+		if err := writeNew(filepath.Join(plan.Path, f[0]), f[1]); err != nil {
+			return Scaffolded{}, err
+		}
+	}
+	return plan, nil
 }
 
 // checkNew refuses to scaffold rel under root when a directory on the way is a symbolic link

@@ -14,6 +14,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -127,7 +128,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 		if len(u.Apply) > 0 {
 			synced, more, err := a.syncScope(cmd, eng, pg, u.Of, u.Apply, nil, scoped)
 			if err != nil {
-				return updateNotApplied(eng, doc, u, res.Scopes[i+1:], flags, err)
+				return updateNotApplied(eng, doc, u, res.Scopes[i+1:], flags, outputFlags(cmd), err)
 			}
 			d.Sync = synced
 			if !a.json {
@@ -187,7 +188,7 @@ func failedErr(res *engine.ProfileUpdateResult) error {
 }
 
 // applyLater is the lola sync of each of scopes that applies what the updates move there,
-// keeping the run's hook flags and -y (flags).
+// keeping the run's hook flags and -y, and its output flags (flags).
 func applyLater(eng *engine.Engine, scopes []engine.UpdateScope, flags []string) []string {
 	var out []string
 	for _, u := range scopes {
@@ -288,7 +289,7 @@ func (a *app) updateStopped(cmd *cobra.Command, eng *engine.Engine, stopped *eng
 			return err
 		}
 	}
-	syncs := applyLater(eng, res.Scopes, flags)
+	syncs := applyLater(eng, res.Scopes, slices.Concat(flags, outputFlags(cmd)))
 	done := res.UpdatedText()
 	failed := failedErr(res)
 	isAbort := func(err error) bool { return errors.Is(err, ErrAborted) || errors.Is(err, context.Canceled) }
@@ -338,11 +339,13 @@ func (a *app) updateStopped(cmd *cobra.Command, eng *engine.Engine, stopped *eng
 // updateNotApplied is the end of updates kept but not applied in scope u, whose sync failed or
 // was declined with err, before the scopes in rest were reached (Plan 6b §19 P20): it says so,
 // with the lola sync that applies them later in u and in each of rest that they move something in
-// (keeping the run's hook flags and -y). A No at the sync's question is an abort, which says those
+// (keeping the run's hook flags and -y, and display, its output flags), but for a conflict in u, which that sync would meet again:
+// u's is then the sync with --force, without the run's answers, when --force overrides every
+// conflict, and none otherwise. A No at the sync's question is an abort, which says those
 // commands in its message (an abort prints no hints), unless a profile failed; the --json error
 // document is the run's, with the scopes done before (doc).
-func updateNotApplied(eng *engine.Engine, doc profileUpdateDoc, u engine.UpdateScope, rest []engine.UpdateScope, flags []string, err error) error {
-	syncs := applyLater(eng, append([]engine.UpdateScope{u}, rest...), flags)
+func updateNotApplied(eng *engine.Engine, doc profileUpdateDoc, u engine.UpdateScope, rest []engine.UpdateScope, flags, display []string, err error) error {
+	syncs := applyLater(eng, append([]engine.UpdateScope{u}, rest...), slices.Concat(flags, display))
 	head := doc.UpdatedText() + ", but not applied to " + unchanged(u.Of)
 	failed := failedErr(doc.ProfileUpdateResult)
 	// The scopes not reached, which lola sync --scope both names the same way.
@@ -368,7 +371,17 @@ func updateNotApplied(eng *engine.Engine, doc profileUpdateDoc, u engine.UpdateS
 			err = fmt.Errorf("%s; %w", failed.Error(), err)
 		}
 	}
+	// A conflict refuses the same sync again (ruling R-6cux-4 drops the run's answers from a
+	// --force run): u's sync is hinted with --force when it overrides every conflict, else not at
+	// all, the conflicts saying what to remove.
 	var hints []string
+	if ce, ok := errors.AsType[*plan.ConflictError](err); ok {
+		syncs = syncs[1:]
+		if !slices.ContainsFunc(ce.Conflicts, func(c plan.Conflict) bool { return !c.Forceable }) {
+			hints = append(hints, "apply it later, overwriting what the conflicts list: "+
+				eng.SyncCommand(u.Of, slices.Concat(u.Apply, []string{"--force"}, display)...))
+		}
+	}
 	for _, c := range syncs {
 		hints = append(hints, "apply it later: "+c)
 	}

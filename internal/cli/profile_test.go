@@ -61,8 +61,9 @@ var _ = Describe("profiles", func() {
 		Expect(lola("sync", "--user").code).To(Equal(0))
 		r := lola("uninstall", "--user", "c", "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: c is wanted by profile default\n"))
-		Expect(r.err).To(ContainSubstring("hint: remove it from " + filepath.Join(p.UserProfiles, "default.yml") + ", which is always on at user scope"))
+		Expect(r.err).To(ContainSubstring("error: c is wanted by profile default; remove it from " +
+			filepath.Join(p.UserProfiles, "default.yml") + ", which is always on at user scope\n"))
+		Expect(r.err).NotTo(ContainSubstring("hint:"))
 		Expect(lola("uninstall", "--user", "a", "-y").code).To(Equal(0))
 	})
 
@@ -337,6 +338,26 @@ var _ = Describe("profiles", func() {
 		Expect(inHome("c")).To(BeARegularFile(), "default still wants c")
 	})
 
+	It("refuses a conflict of --on, --off or --switch without offering the --force lola profile does not take", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + a + "}\n",
+			"none.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
+		x := filepath.Join(tmp, "mods", "x")
+		writeTree(x, map[string]string{"lola.yml": "name: x\n", "commands/x.md": "X\n"})
+		writeTree(p.UserProfiles, map[string]string{"x.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: x, source: " + x + "}\n"})
+		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
+		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		writeTree(filepath.Join(p.Home, ".claude", "commands"), map[string]string{"a.md": "mine now\n", "x.md": "mine too\n"})
+
+		for _, run := range [][]string{{"go", "--off"}, {"none", "--switch"}, {"x", "--on"}} {
+			r := lola(append(append([]string{"profile"}, run...), "--user", "-y")...)
+			Expect(r.code).To(Equal(1), "%v", run)
+			Expect(r.err).To(HavePrefix("error: refusing to change anything: 1 conflict\n"), "%v: no --force overrides it here", run)
+			Expect(r.err).NotTo(ContainSubstring("--force"), "%v", run)
+			Expect(r.err).NotTo(ContainSubstring("hint:"), "%v: no hint works", run)
+		}
+		Expect(os.ReadFile(filepath.Join(p.Home, ".claude", "commands", "a.md"))).To(Equal([]byte("mine now\n")))
+	})
+
 	It("an action that moves no module still says what applies it, and writes the list", func() {
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + a + "}\n"})
 		Expect(lola("sync", "--user").code).To(Equal(0))
@@ -455,6 +476,6 @@ var _ = Describe("profiles", func() {
 		Expect(r.out).To(ContainSubstring("⚠ profile user:gone is on but no longer exists → lola profile --user user:gone --off\n"))
 		var v struct{ Notices []map[string]string }
 		Expect(json.Unmarshal([]byte(lola("list", "--user", "--json").out), &v)).To(Succeed())
-		Expect(v.Notices).To(ConsistOf(HaveKeyWithValue("text", "profile user:gone is on but no longer exists → lola profile --user user:gone --off")))
+		Expect(v.Notices).To(ContainElement(HaveKeyWithValue("text", "profile user:gone is on but no longer exists → lola profile --user user:gone --off")))
 	})
 })

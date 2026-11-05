@@ -4,6 +4,8 @@ package fsx
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -44,6 +46,37 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	}
 	committed = true
 	return SyncDir(dir)
+}
+
+// ReadOwn reads the regular file at path, a file lola wrote in its own state, refusing a symbolic
+// link, one swapped in while it is opened, and more than limit bytes.
+func ReadOwn(path string, limit int64) ([]byte, error) {
+	before, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !before.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := f.Stat()
+	if err == nil && !os.SameFile(before, fi) {
+		err = errors.New("changed while lola was reading it")
+	}
+	var b []byte
+	if err == nil {
+		b, err = io.ReadAll(io.LimitReader(f, limit+1))
+	}
+	if err = errors.Join(err, f.Close()); err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > limit {
+		return nil, fmt.Errorf("larger than %d bytes", limit)
+	}
+	return b, nil
 }
 
 // SyncDir fsyncs the directory dir, so a rename into it survives a crash.

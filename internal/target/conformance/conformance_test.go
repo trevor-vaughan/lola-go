@@ -4,6 +4,7 @@ package conformance_test
 
 import (
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -146,6 +147,68 @@ var _ = Describe("every registered target", func() {
 									To(BeTrue(), "%s is outside %v", in.Path, bases)
 							}
 						}
+					}
+				})
+
+				It("every file and MCP intent a target plans lies in its tidy destination of the same kind, and every declared destination receives one", func() {
+					dests, err := t.Destinations(scope, ctx.Root)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(dests.Dirs).NotTo(BeEmpty())
+					bases := t.BaseDirs(scope)
+					for _, d := range dests.Dirs {
+						Expect(kinds).To(ContainElement(d.Kind))
+						Expect(d.Path).NotTo(BeElementOf("", "."))
+						Expect(filepath.IsLocal(filepath.FromSlash(d.Path))).To(BeTrue(), d.Path)
+						Expect(path.Clean(d.Path)).To(Equal(d.Path))
+						for _, b := range bases {
+							Expect(strings.HasPrefix(b, d.Path+"/")).To(BeFalse(),
+								"%s holds the assistant's own files beside its component directory %s", d.Path, b)
+						}
+					}
+					for _, sm := range dests.Servers {
+						Expect(filepath.IsLocal(filepath.FromSlash(sm.File))).To(BeTrue(), sm.File)
+						Expect(sm.Pointer).To(HavePrefix("/"))
+					}
+					m := clean()
+					m.Commands[0].SidecarDir = "commands/ship"
+					force := ctx
+					force.Force = true
+					ins, _ := run(m, force)
+					// in returns the declared directory holding p directly, or for skills and rules
+					// one level further down.
+					in := func(kind, p string) (string, bool) {
+						for _, d := range dests.Dirs {
+							if d.Kind != kind {
+								continue
+							}
+							if path.Dir(p) == d.Path || (kind == "skill" || kind == "rule") && path.Dir(path.Dir(p)) == d.Path {
+								return d.Path, true
+							}
+						}
+						return "", false
+					}
+					received := map[string]bool{}
+					for _, i := range ins {
+						switch {
+						case i.Op == plan.OpWriteFile || i.Op == plan.OpCopyTree:
+							d, ok := in(i.Kind, i.Path)
+							Expect(ok).To(BeTrue(), "%s %s lies in no declared %s directory %v", i.Op, i.Path, i.Kind, dests.Dirs)
+							received[d] = true
+						case i.Op == plan.OpSetJSON && i.Kind == "mcp":
+							Expect(dests.Servers).To(ContainElement(SatisfyAll(
+								HaveField("File", i.Path),
+								WithTransform(func(sm target.ServerMap) bool {
+									rest, ok := strings.CutPrefix(i.Pointer, sm.Pointer+"/")
+									return ok && rest != "" && !strings.Contains(rest, "/")
+								}, BeTrue()))), "%s %s", i.Path, i.Pointer)
+							received[i.Path+i.Pointer[:strings.LastIndex(i.Pointer, "/")]] = true
+						}
+					}
+					for _, d := range dests.Dirs {
+						Expect(received).To(HaveKey(d.Path), "nothing lola plans lands in the declared %s directory %s", d.Kind, d.Path)
+					}
+					for _, sm := range dests.Servers {
+						Expect(received).To(HaveKey(sm.File+sm.Pointer), "nothing lola plans lands in %s %s", sm.File, sm.Pointer)
 					}
 				})
 

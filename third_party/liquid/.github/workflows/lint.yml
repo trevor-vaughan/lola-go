@@ -1,0 +1,29 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          # Cache disabled because golangci-lint-action has its own caching
+          cache: false
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.10.1
+          # On PRs, only check new issues introduced by the PR
+          only-new-issues: ${{ github.event_name == 'pull_request' }}
+          args: --timeout=30m

@@ -1,0 +1,8 @@
+{
+  "name": "mine",
+  "owner": {"name": "lola e2e"},
+  "plugins": [
+    {"name": "kit", "source": "./kit", "description": "demo"},
+    {"name": "lint", "source": {"source": "url", "url": "https://git.lola.test:8443/lint.git", "sha": "74aef5e5cba379ff0e8cf194c45194a9b280d924"}, "description": "Lint the project"}
+  ]
+}

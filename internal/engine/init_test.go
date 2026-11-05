@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -107,4 +108,67 @@ var _ = Describe("Init", func() {
 		Expect(readErr).NotTo(HaveOccurred())
 		Expect(entries).To(BeEmpty())
 	})
+})
+
+var _ = Describe("PlanInit", func() {
+	var tmp string
+	BeforeEach(func() { tmp = testenv.Isolate() })
+	// tree lists every path under root, recursively, so a write anywhere below it shows.
+	tree := func(root string) []string {
+		GinkgoHelper()
+		var paths []string
+		Expect(filepath.WalkDir(root, func(p string, _ fs.DirEntry, err error) error {
+			paths = append(paths, p)
+			return err
+		})).To(Succeed())
+		return paths
+	}
+
+	DescribeTable("lists exactly the files Init writes, and writes nothing itself",
+		func(name, format string) {
+			dir := filepath.Join(tmp, name)
+			plan, err := engine.PlanInit(dir, format)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dir).NotTo(BeAnExistingFile(), "planning writes nothing")
+			s, err := engine.Init(dir, format)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan).To(Equal(s))
+			for _, f := range plan.Files {
+				Expect(filepath.Join(dir, f)).To(BeARegularFile())
+			}
+		},
+		Entry("agent-plugins", "my.tools", "agent-plugins"),
+		Entry("lola", "my_module", "lola"),
+	)
+
+	DescribeTable("refuses exactly as Init does, and neither writes",
+		func(setup func(dir string), name, format string) {
+			dir := filepath.Join(tmp, name)
+			setup(dir)
+			before := tree(tmp)
+			_, planErr := engine.PlanInit(dir, format)
+			Expect(planErr).To(HaveOccurred())
+			_, initErr := engine.Init(dir, format)
+			Expect(initErr).To(HaveOccurred())
+			Expect(planErr.Error()).To(Equal(initErr.Error()))
+			Expect(errs.Hints(planErr)).To(Equal(errs.Hints(initErr)))
+			Expect(tree(tmp)).To(Equal(before))
+		},
+		Entry("an invalid name", func(string) {}, "Bad", "lola"),
+		Entry("an unknown format", func(string) {}, "x", "zip"),
+		Entry("an existing manifest", func(dir string) {
+			Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "lola.yml"), []byte("name: x\n"), 0o644)).To(Succeed())
+		}, "existing", "agent-plugins"),
+		Entry("an existing file", func(dir string) {
+			Expect(os.MkdirAll(filepath.Join(dir, "commands"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(dir, "commands", "hello.md"), []byte("mine"), 0o644)).To(Succeed())
+		}, "partial", "lola"),
+		Entry("a symbolic link on the way", func(dir string) {
+			outside := filepath.Join(filepath.Dir(dir), "outside")
+			Expect(os.MkdirAll(outside, 0o755)).To(Succeed())
+			Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+			Expect(os.Symlink(outside, filepath.Join(dir, "skills"))).To(Succeed())
+		}, "linked", "agent-plugins"),
+	)
 })

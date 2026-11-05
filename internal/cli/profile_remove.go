@@ -14,18 +14,18 @@ import (
 // profileRemove runs lola profile <name> --remove (Plan 6b §3.2): one scope, resolved as every
 // action's is, which with user scope and the project found from here the engine checks the
 // profile is not in use in (--force overrides that); then the question, on a terminal, or -y.
-// --force never answers it.
+// --force answers it too (user decision, 2026-10-22).
 func (a *app) profileRemove(cmd *cobra.Command, eng *engine.Engine, args []string, f syncFlags) error {
 	if len(args) != 1 {
 		return errs.WithHints(errors.New("--remove takes one remote profile's name"),
 			"see yours: "+runWithout(cmd, nil, "remove", "yes", "trust", "dry-run", "force", "allow-hooks", "allow-runtime-hooks"))
 	}
-	scs, err := a.scopes(cmd, eng, "Check which scope before removing it?", false, true)
+	scs, err := a.scopes(cmd, eng, args, "Check which scope before removing it?", false, true)
 	if err != nil {
 		return err
 	}
 	sc := scs[0].Scope
-	req := engine.ProfileRemoveRequest{Scope: sc, Name: args[0], Force: f.force, DryRun: f.dry, Yes: f.yes}
+	req := engine.ProfileRemoveRequest{Scope: sc, Name: args[0], Force: f.force, DryRun: f.dry, Yes: f.yes, Display: outputFlags(cmd)}
 	switch p := a.prompter(cmd); {
 	case f.yes:
 		req.Confirm = func(engine.RemoteProfile) (bool, error) { return true, nil }

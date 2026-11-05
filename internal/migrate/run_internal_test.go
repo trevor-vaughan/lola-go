@@ -12,6 +12,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
+	"github.com/trevor-vaughan/lola-go/internal/trash"
 )
 
 var _ = Describe("Cleaning up a replaced directory", func() {
@@ -44,7 +45,7 @@ var _ = Describe("Moving a recorded path after the install", func() {
 		proj := filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude", "agents"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(proj, ".claude", "agents", "critic.md"), []byte("x\n"), 0o644)).To(Succeed())
-		t, err := OpenTrash(filepath.Join(tmp, "trash"), time.Now())
+		t, err := trash.OpenTrash(filepath.Join(tmp, "trash"), time.Now())
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(t.Close)
 		rec := Recorded{Target: "claude-code", Kind: KindAgent, Root: proj, Rel: ".claude/agents/critic.md"}

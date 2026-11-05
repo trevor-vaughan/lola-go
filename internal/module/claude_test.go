@@ -82,6 +82,15 @@ var _ = Describe("the Claude Code plugin adapter", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(paths(m)["skills"]).To(Equal([]string{"a=skills/a", "solo=."}))
 		Expect(m.Skills[1].Exclude).To(ContainElements(".claude-plugin", "skills", "commands"))
+
+		Expect(os.RemoveAll(root)).To(Succeed())
+		m, err = detect(`{"name":"solo"}`, map[string]string{"SKILL.md": "---\ndescription: s\n---\n",
+			"_partials/h.liquid": "h\n", "_Partials/x.liquid": "x\n"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(paths(m)["skills"]).To(Equal([]string{"solo=."}))
+		if es, err := os.ReadDir(root); err == nil && len(es) == 4 { // .claude-plugin, SKILL.md and both: the file system keeps case
+			Expect(m.Skills[0].Exclude).To(ContainElements("_partials", "_Partials"), "a root skill copies neither the partials nor a case variant")
+		}
 	})
 
 	It("reads the default commands/ and agents/ recursively when the manifest does not set them", func() {
@@ -262,7 +271,7 @@ var _ = Describe("the Claude Code plugin adapter", func() {
 		Entry("a command with neither", `{"name":"p","commands":{"x":{"description":"d"}}}`, ".claude-plugin/plugin.json: commands.x: sets exactly one of source or content"),
 		Entry("a command with empty content", `{"name":"p","commands":{"x":{"content":""}}}`, ".claude-plugin/plugin.json: commands.x: content is empty"),
 		Entry("a command with an unknown key", `{"name":"p","commands":{"x":{"content":"c","hint":"h"}}}`, ".claude-plugin/plugin.json: commands.x: must be an object with source or content, and description, argumentHint, model or allowedTools"),
-		Entry("a command with a bad name", `{"name":"p","commands":{"X Y":{"content":"c"}}}`, `.claude-plugin/plugin.json: commands.X Y: command name "X Y" is invalid: use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'`),
+		Entry("a command with a bad name", `{"name":"p","commands":{"X Y":{"content":"c"}}}`, `.claude-plugin/plugin.json: commands.X Y: command name "X Y" is invalid: X and Y are uppercase, ' ' is not allowed; use 1-64 characters from a-z, 0-9, '.', '_' and '-', starting with a letter or digit, with no '..'`),
 		Entry("an agents directory", `{"name":"p","agents":"./agents/x"}`, `.claude-plugin/plugin.json: agents: path "./agents/x" is a directory; list the .md files`),
 		Entry("mcpServers as a number", `{"name":"p","mcpServers":1}`, ".claude-plugin/plugin.json: mcpServers: must be a path, an object of servers, or a list of them"),
 		Entry("an inline server without command or url", `{"name":"p","mcpServers":{"s":{}}}`, `.claude-plugin/plugin.json: mcpServers: server "s" needs a command or a url`),
@@ -451,6 +460,30 @@ var _ = Describe("module formats reading an unreadable directory", func() {
 		_, err = module.Detect(root, "x", targets.IDs())
 		Expect(err).To(MatchError(ContainSubstring("dev.getlola/commands: permission denied")))
 		Expect(err.Error()).NotTo(ContainSubstring(root))
+	})
+
+	It("refuses an unreadable skill directory with a hint, never skipping it as one without SKILL.md", func() {
+		if os.Geteuid() == 0 {
+			Skip("root ignores directory permissions")
+		}
+		root := filepath.Join(testenv.Isolate(), "plugin")
+		write(root, map[string]string{".claude-plugin/plugin.json": `{"name":"p"}`, "skills/a/SKILL.md": "A.\n", "skills/b/SKILL.md": "B.\n"})
+		locked := filepath.Join(root, "skills", "b")
+		Expect(os.Chmod(locked, 0o000)).To(Succeed())
+		DeferCleanup(os.Chmod, locked, os.FileMode(0o755))
+		_, err := module.Detect(root, "x", targets.IDs())
+		Expect(err).To(MatchError(".claude-plugin/plugin.json: skills: skills/b: permission denied"))
+		Expect(errs.Hints(err)).To(Equal([]string{"check that the path can be read"}))
+
+		By("an Agent Plugins package refuses it the same way")
+		Expect(os.Chmod(locked, 0o755)).To(Succeed())
+		Expect(os.RemoveAll(filepath.Join(root, ".claude-plugin"))).To(Succeed())
+		write(root, map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"p"}`,
+			"skills/a/SKILL.md": "---\nname: a\ndescription: A\n---\nA.\n", "skills/b/SKILL.md": "---\nname: b\ndescription: B\n---\nB.\n"})
+		Expect(os.Chmod(locked, 0o000)).To(Succeed())
+		_, err = module.Detect(root, "x", targets.IDs())
+		Expect(err).To(MatchError("skills/b: permission denied"))
+		Expect(errs.Hints(err)).To(Equal([]string{"check that the path can be read"}))
 	})
 
 	It("names an unreadable adapter manifest inside the module", func() {

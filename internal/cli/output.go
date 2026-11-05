@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -19,6 +20,21 @@ import (
 func isTTY(s any) bool {
 	f, ok := s.(*os.File)
 	return ok && term.IsTerminal(int(f.Fd()))
+}
+
+// width is how many columns human output to w may fill: the terminal's when w is one, else
+// $COLUMNS when it is a positive number, else 0, no limit, so a pipe or a file keeps every
+// character.
+func (a *app) width(w any) int {
+	if f, ok := w.(*os.File); ok {
+		if cols, _, err := term.GetSize(int(f.Fd())); err == nil && cols > 0 {
+			return cols
+		}
+	}
+	if n, err := strconv.Atoi(a.getenv("COLUMNS")); err == nil && n > 0 {
+		return n
+	}
+	return 0
 }
 
 // style renders human output: glyphs always, ANSI color only when enabled, nothing fancy

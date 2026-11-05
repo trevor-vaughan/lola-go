@@ -1,0 +1,8 @@
+version: 1
+targets: [claude-code]
+modules:
+  - name: kit
+    source: http://127.0.0.1:8765/kit.git
+    ref: main
+    commit: 1ccc73bdda12695941357c2f62fb1569bb6520ce
+    digest: sha256:8808757b4d9d19898b1086946ec8df80192e13cb15362be961a3b6f75110bd10

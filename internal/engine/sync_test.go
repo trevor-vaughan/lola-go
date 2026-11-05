@@ -304,6 +304,23 @@ var _ = Describe("Sync", func() {
 		Expect(res.InSync).To(BeTrue())
 	})
 
+	It("fetches the module of an entry that names no module itself under the entry's name, in every fetch", func() {
+		user := engine.Scope{Kind: target.User}
+		Expect(os.MkdirAll(filepath.Dir(p.UserManifest), 0o700)).To(Succeed())
+		Expect(os.WriteFile(p.UserManifest, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: tools\n    source: "+url+"\n"), 0o600)).
+			To(Succeed())
+		_, err := sync(engine.SyncRequest{Scope: user})
+		Expect(err).NotTo(HaveOccurred(), "the repository is example, and the entry calls its module tools")
+		names, err := e.Store.Names()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(names).To(Equal([]string{"tools"}))
+		_, err = e.Update(ctx, []string{"tools"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(e.Store.Remove("tools")).To(BeTrue())
+		_, err = e.Render(ctx, user, engine.Options{})
+		Expect(err).NotTo(HaveOccurred(), "render fetches the pinned version again under the entry's name")
+	})
+
 	Describe("trust", func() {
 		It("asks to trust a pulled entry, installs it on a yes, and records the trust after the apply", func() {
 			install(sc, engine.InstallRequest{Arg: src})
@@ -356,13 +373,13 @@ var _ = Describe("Sync", func() {
 				before := state()
 				req.ConfirmRemovals = confirm // -y
 				_, err := sync(req)
-				Expect(err).To(MatchError("lola sync needs your trust for "+want+", and there is no terminal to ask on"), name)
+				Expect(err).To(MatchError("lola sync needs your trust for "+want+", and there is no terminal to ask on; "+
+					"-y confirms removals only; accept the changes with --trust"), name)
 				flags := ""
 				if req.Update {
 					flags = " --update"
 				}
-				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project" + flags + " -n", "then accept them: lola sync --project" + flags + " --trust -y",
-					"-y confirms removals only; accept the changes with --trust"}), name)
+				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project" + flags + " -n", "then accept them: lola sync --project" + flags + " --trust -y"}), name)
 				refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 				Expect(ok).To(BeTrue(), name)
 				Expect(requests.Load()).To(BeZero(), "%s: the git server saw no request", name)
@@ -381,6 +398,18 @@ var _ = Describe("Sync", func() {
 				refusal := refused(name, engine.SyncRequest{}, c.want)
 				Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"), HaveField("Kind", "added"))), name)
 			}
+
+			// --force answers the removals and conflicts, never the trust question (user decision,
+			// 2026-10-22).
+			requests.Store(0)
+			before := state()
+			_, err := sync(engine.SyncRequest{Options: engine.Options{Force: true}})
+			// The last case of the map above is either pulled entry: its pins may or may not be named.
+			Expect(err).To(MatchError(And(HavePrefix("lola sync needs your trust for changes to .lola/project.yml"),
+				HaveSuffix(", and there is no terminal to ask on"))))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project --force -n", "then accept them: lola sync --project --force --trust"}))
+			Expect(requests.Load()).To(BeZero())
+			Expect(state()).To(Equal(before))
 
 			// --update of an entry the user installed, pinned and cached: the record covers it, so the
 			// refusal names the entry it would re-pin, with no field changes yet.
@@ -411,14 +440,18 @@ var _ = Describe("Sync", func() {
 					"your trust for changes to .lola/project.yml; and your confirmation to remove other",
 					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust -y"}, true, true},
 				{"-y alone", engine.SyncRequest{ConfirmRemovals: confirm}, "your trust for changes to .lola/project.yml",
-					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust -y", "-y confirms removals only; accept the changes with --trust"},
+					[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust -y"},
 					true, false},
 				{"--trust alone", engine.SyncRequest{Trust: yes}, "your confirmation to remove other",
 					[]string{"see them: lola sync --project -n", "then confirm them: lola sync --project --trust -y"}, false, true},
 			} {
 				requests.Store(0)
 				_, err := sync(c.req)
-				Expect(err).To(MatchError("lola sync needs "+c.msg+", and there is no terminal to ask on"), c.name)
+				msg := "lola sync needs " + c.msg + ", and there is no terminal to ask on"
+				if c.req.ConfirmRemovals != nil && c.trust {
+					msg += "; -y confirms removals only; accept the changes with --trust"
+				}
+				Expect(err).To(MatchError(msg), c.name)
 				Expect(errs.Hints(err)).To(Equal(c.hints), c.name)
 				refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 				Expect(ok).To(BeTrue(), c.name)
@@ -527,6 +560,71 @@ var _ = Describe("Sync", func() {
 				Expect(asked).To(BeEmpty())
 				Expect(state()).To(Equal(before))
 			}
+		})
+
+		It("a vars edit of a trusted folder outside the project is asked about, not refused as leaving it", func() {
+			varied := filepath.Join(tmp, "src", "varied")
+			writeTree(varied, map[string]string{"lola.yml": "name: varied\nvars: {team: core}\n",
+				"commands/v.md.liquid": "Team {{ vars.team }}.\n"})
+			install(sc, engine.InstallRequest{Arg: varied})
+			platform := map[string]any{"team": "platform"}
+
+			// (a) The record names the same Source and Path: only the vars changed, which trust asks about.
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "varied", Source: varied, Vars: platform}}})
+			before := state()
+			_, err := sync(engine.SyncRequest{})
+			Expect(err).To(MatchError("lola sync needs your trust for changes to .lola/project.yml, and there is no terminal to ask on"))
+			Expect(state()).To(Equal(before))
+			_, err = sync(engine.SyncRequest{Trust: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read(".claude/commands/v.md")).To(Equal("Team platform.\n"))
+
+			// (b) Another Source or Path outside the project, even for the same folder, is refused.
+			Expect(e.Store.Remove("varied")).To(BeTrue()) // as the refusal of another source for the name coaches
+			for _, ent := range []manifest.Entry{
+				{Name: "varied", Source: filepath.Dir(varied), Path: "varied", Vars: platform},
+				{Name: "varied", Source: varied, Path: "commands", Vars: platform},
+				{Name: "varied", Source: "../src/varied", Vars: platform},
+			} {
+				pull(manifest.Change{Set: []manifest.Entry{ent}})
+				before := state()
+				_, err := sync(engine.SyncRequest{Trust: yes})
+				Expect(err).To(MatchError(ContainSubstring("varied: local source "+ent.Source+" resolves outside the project")), ent.Source)
+				Expect(state()).To(Equal(before), ent.Source)
+			}
+
+			// (c) A source written inside the project that now leads out through a link is refused,
+			// though the record names the same Source.
+			inner := filepath.Join(proj, "mods", "inner")
+			writeTree(inner, map[string]string{"lola.yml": "name: inner\nvars: {team: core}\n", "commands/i.md.liquid": "Team {{ vars.team }}.\n"})
+			install(sc, engine.InstallRequest{Arg: "mods/inner"})
+			outside := filepath.Join(tmp, "outside", "inner")
+			writeTree(outside, map[string]string{"lola.yml": "name: inner\nvars: {team: core}\n", "commands/i.md.liquid": "Outside {{ vars.team }}.\n"})
+			Expect(os.RemoveAll(inner)).To(Succeed())
+			Expect(os.Symlink(outside, inner)).To(Succeed())
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "inner", Source: "mods/inner", Vars: platform}}})
+			before = state()
+			_, err = sync(engine.SyncRequest{Trust: yes})
+			Expect(err).To(MatchError("inner: local source mods/inner resolves outside the project (" + outside + ")"))
+			Expect(state()).To(Equal(before))
+
+			// (d) So is one that names the project from outside it, ../<project>/…: lola judges a
+			// relative source after joining it to the project.
+			viaParent := "../" + filepath.Base(proj) + "/mods/back"
+			back := filepath.Join(proj, "mods", "back")
+			writeTree(back, map[string]string{"lola.yml": "name: back\nvars: {team: core}\n", "commands/b.md.liquid": "Team {{ vars.team }}.\n"})
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "back", Source: viaParent}}}) // as a teammate wrote it
+			_, err = sync(engine.SyncRequest{Modules: []string{"back"}, Trust: yes})
+			Expect(err).NotTo(HaveOccurred(), "trusted while it is inside the project")
+			outsideBack := filepath.Join(tmp, "outside", "back")
+			writeTree(outsideBack, map[string]string{"lola.yml": "name: back\nvars: {team: core}\n", "commands/b.md.liquid": "Outside {{ vars.team }}.\n"})
+			Expect(os.RemoveAll(back)).To(Succeed())
+			Expect(os.Symlink(outsideBack, back)).To(Succeed())
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "back", Source: viaParent, Vars: platform}}})
+			before = state()
+			_, err = sync(engine.SyncRequest{Modules: []string{"back"}, Trust: yes})
+			Expect(err).To(MatchError("back: local source " + viaParent + " resolves outside the project (" + outsideBack + ")"))
+			Expect(state()).To(Equal(before))
 		})
 
 		It("a containment refusal's install hint covers an entry without targets of its own", func() {
@@ -680,7 +778,7 @@ var _ = Describe("Sync", func() {
 
 	It("fetches an unpinned entry whose cached git head records no commit, and pins it", func() {
 		user := engine.Scope{Kind: target.User}
-		_, err := e.AddSource(ctx, proj, url, "", "")
+		_, err := e.AddSource(ctx, proj, url, "", "", nil)
 		Expect(err).NotTo(HaveOccurred())
 		index := filepath.Join(p.Store, "example", "index.yml")
 		b, err := os.ReadFile(index)
@@ -851,10 +949,10 @@ var _ = Describe("Sync", func() {
 			_, err := sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("lola sync needs your trust for the changed content of kit, and there is no terminal to ask on"))
 			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust",
-				"or accept some: lola sync --project --trust <module>…", "edited it yourself? lola install --project ./mods/kit"}))
-			// Each hint repeating the run carries its flags; a run of one module has none to pick.
+				"edited it yourself? lola install --project ./mods/kit"}))
+			// Each hint repeating the run carries its flags.
 			_, err = sync(engine.SyncRequest{Update: true})
-			Expect(errs.Hints(err)).To(ContainElement("or accept some: lola sync --project --update --trust <module>…"))
+			Expect(errs.Hints(err)).To(ContainElement("then accept them: lola sync --project --update --trust"))
 			_, err = sync(engine.SyncRequest{Modules: []string{"kit"}})
 			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project kit -n", "then accept them: lola sync --project kit --trust",
 				"edited it yourself? lola install --project ./mods/kit"}))
@@ -1313,6 +1411,26 @@ var _ = Describe("Sync", func() {
 			Expect(state()).To(Equal(before))
 		})
 
+		It("--force answers the removals off a terminal, and never the trust question", func() {
+			drop()
+			res, err := sync(engine.SyncRequest{Options: engine.Options{Force: true, DryRun: true}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.EquivalentCommands).To(Equal([]string{"lola sync --project --force"}), "--force needs no -y")
+			_, err = sync(engine.SyncRequest{Options: engine.Options{Force: true}})
+			Expect(err).NotTo(HaveOccurred(), "the removals are confirmed by --force, unasked")
+			Expect(removals).To(BeEmpty(), "nothing was asked")
+			Expect(filepath.Join(proj, ".claude/commands/other.md")).NotTo(BeAnExistingFile())
+		})
+
+		It("a conflict refusal says what the sync with --force would remove without asking", func() {
+			drop()
+			writeTree(proj, map[string]string{".claude/commands/other.md": "mine"})
+			_, err := sync(engine.SyncRequest{ConfirmRemovals: confirm, Options: engine.Options{ForceRun: "lola sync --project --force"}})
+			Expect(err).To(MatchError(And(ContainSubstring(".claude/commands/other.md: hand-edited"),
+				HaveSuffix("\n  with --force it also removes, without asking: example (opencode), other (whole module)"))))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola sync --project --force"}))
+		})
+
 		// plant adds an artifact to the ledger entry of other, which drop() makes a removal.
 		plant := func(a ledger.Artifact) {
 			GinkgoHelper()
@@ -1709,7 +1827,7 @@ var _ = Describe("Sync", func() {
 
 			_, err := sync(engine.SyncRequest{ConfirmRemovals: confirm})
 			Expect(err).To(MatchError("lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, " +
-				"and there is no terminal to ask on"))
+				"and there is no terminal to ask on; -y confirms removals only; accept the changes with --trust"))
 			Expect(state()).To(Equal(before))
 
 			res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
@@ -1978,7 +2096,7 @@ var _ = Describe("Sync", func() {
 				{"source: " + url + "\n    digest: " + digest, "other: its digest is pinned without the commit it came from",
 					"re-pin it: lola sync --project --update other"},
 				{"source: ../src/other\n    targets: [nope]", `other: unknown target "nope"`, "valid targets: "},
-				{"source: ./missing", "other: ./missing is not a source", "sources are "},
+				{"source: ./missing", "other: ./missing is not a source; sources are " + source.AcceptedForms, ""},
 			} {
 				Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: other\n    "+c.entry+"\n"), 0o600)).To(Succeed())
 				requests.Store(0)

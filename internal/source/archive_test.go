@@ -109,25 +109,27 @@ var _ = Describe("Fetch of an archive", func() {
 	It("finds the module root by --path, markers, content directories, a single directory or the root", func() {
 		archive := filepath.Join(tmp, "bundle.tar.gz")
 		cases := []struct {
-			path, name string
-			entries    []entry
-			want       []string
+			path, name, root string
+			entries          []entry
+			want             []string
 		}{
-			{"plugins/review", "review", []entry{file("plugins/review/commands/a.md", "A"), file("plugins/other/lola.yml", "")}, []string{"commands/a.md"}},
-			{"", "mod", []entry{file("x/mod/lola.yml", ""), file("x/mod/commands/a.md", "A"), file("x/README.md", ""), file("x/y/z/skills/s/SKILL.md", "S")},
-				[]string{"lola.yml", "commands/a.md"}},
-			{"", "plug", []entry{file("plug/.claude-plugin/plugin.json", "{}"), file("plug/agents/a.md", "A"), file("top.md", "")},
+			{"plugins/review", "review", "plugins/review", []entry{file("plugins/review/commands/a.md", "A"), file("plugins/other/lola.yml", "")},
+				[]string{"commands/a.md"}},
+			{"", "mod", "x/mod", []entry{file("x/mod/lola.yml", ""), file("x/mod/commands/a.md", "A"), file("x/README.md", ""),
+				file("x/y/z/skills/s/SKILL.md", "S")}, []string{"lola.yml", "commands/a.md"}},
+			{"", "plug", "plug", []entry{file("plug/.claude-plugin/plugin.json", "{}"), file("plug/agents/a.md", "A"), file("top.md", "")},
 				[]string{".claude-plugin/plugin.json", "agents/a.md"}},
-			{"", "repo-1.0", []entry{file("repo-1.0/rules/r.md", "R"), file("repo-1.0/docs/d.md", "D"), file("NOTICE", "")},
+			{"", "repo-1.0", "repo-1.0", []entry{file("repo-1.0/rules/r.md", "R"), file("repo-1.0/docs/d.md", "D"), file("NOTICE", "")},
 				[]string{"rules/r.md", "docs/d.md"}},
-			{"", "only", []entry{file("only/README.md", "")}, []string{"README.md"}},
-			{"", "bundle", []entry{file("a.md", ""), file("b/c.md", "")}, []string{"a.md", "b/c.md"}},
+			{"", "only", "only", []entry{file("only/README.md", "")}, []string{"README.md"}},
+			{"", "bundle", "", []entry{file("a.md", ""), file("b/c.md", "")}, []string{"a.md", "b/c.md"}},
 		}
 		for _, c := range cases {
 			writeTar(archive, true, c.entries...)
 			f, err := fetch(archive, c.path)
 			Expect(err).NotTo(HaveOccurred(), c.name)
 			Expect(f.Name).To(Equal(c.name))
+			Expect(f.Root).To(Equal(c.root), "where the module root is in the archive, %s", c.name)
 			Expect(listTree(f.Dir)).To(ConsistOf(c.want), c.name)
 			Expect(os.RemoveAll(f.Dir)).To(Succeed())
 		}

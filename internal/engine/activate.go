@@ -261,8 +261,7 @@ func (e *Engine) activeList(sc Scope, infos []profile.Info, led *ledger.Ledger, 
 		}
 	}
 	if len(list) > activeprofile.Max {
-		return nil, nil, nil, nil, errs.WithHints(fmt.Errorf("at most %d profiles can be on in a scope", activeprofile.Max),
-			"turn some off: "+e.Command(sc, "profile")+" <name>… --off")
+		return nil, nil, nil, nil, fmt.Errorf("at most %d profiles can be on in a scope", activeprofile.Max)
 	}
 	return list, named, files, notices, nil
 }

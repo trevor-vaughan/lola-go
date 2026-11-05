@@ -52,12 +52,20 @@ var _ = Describe("install scope (Plan 5c §5.1)", func() {
 		GinkgoT().Chdir(bare)
 		r := lola("install", mod, "-t", "claude-code")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: lola install needs a scope: no .lola/ project was found in " + bare + " or above it\n"))
-		Expect(r.err).To(ContainSubstring("hint: --project acts on this directory (-C <dir> picks another)"))
-		Expect(r.err).To(ContainSubstring("hint: --user acts on your user scope, for every project"))
-		Expect(r.err).To(ContainSubstring("hint: or set a default: default_scope: project in "))
+		Expect(r.err).To(HavePrefix("error: lola install needs a scope: no .lola/ project was found in " + bare + " or above it, and " +
+			filepath.Join(tmp, "config", "lola", "config.yaml") + " sets no default_scope (default_scope: project, user or both)\n"))
 		Expect(filepath.Join(bare, ".lola")).NotTo(BeADirectory())
 		Expect(filepath.Join(bare, ".claude")).NotTo(BeADirectory())
+
+		r = lola("install", mod, "-t", "claude-code", "--strict", "--no-pager")
+		run := "lola install " + mod + " --no-pager --strict --target claude-code"
+		Expect(r.err).To(HaveSuffix("\n  hint: "+run+" --project\n  hint: "+run+" --user\n  hint: "+run+" --scope both\n"),
+			"one hint per scope, each the run with its source and every flag")
+		for _, h := range []string{run + " --project", run + " --user", run + " --scope both"} {
+			again := lola(shellWords(h)[1:]...)
+			Expect(again.code).To(Equal(0), h+": "+again.err)
+		}
+		Expect(filepath.Join(bare, ".claude", "commands", "ship.md")).To(BeARegularFile())
 	})
 
 	It("uses a project found walking up, says so on stderr, and reports it as discovered", func() {
@@ -129,10 +137,12 @@ var _ = Describe("install scope (Plan 5c §5.1)", func() {
 			r := lola(args...)
 			Expect(r.code).To(Equal(1), fmt.Sprint(args))
 			Expect(r.err).To(ContainSubstring("error: project scope at " + home + " is your home directory, where the user scope installs"))
-			Expect(r.err).To(ContainSubstring("hint: install at user scope: lola install " + mod + " --user"))
+			Expect(r.err).To(HaveSuffix("hint: lola install "+mod+" --target claude-code --user\n"), "the run, every flag kept, at user scope")
 			Expect(filepath.Join(home, ".claude")).NotTo(BeADirectory())
 			Expect(filepath.Join(home, ".lola", "lock.json")).NotTo(BeAnExistingFile())
 		}
+		r := lola("install", mod, "--target", "claude-code", "--user")
+		Expect(r.code).To(Equal(0), "the hint runs: "+r.err)
 	})
 })
 
@@ -192,7 +202,7 @@ var _ = Describe("selection flags (Plan 5c §5.2)", func() {
 
 		r = lola("install", mod, "-C", proj, "--global")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: --global changes where --skip, --only and --unskip are saved, and none was given"))
+		Expect(r.err).To(ContainSubstring("error: --global saves --skip, --only and --unskip for every scope, and none was given"))
 
 		r = lola("install", mod, "-C", proj, "--scope", "both", "-t", "claude-code", "--skip", "command/test", "--global")
 		Expect(r.code).To(Equal(0), r.err)

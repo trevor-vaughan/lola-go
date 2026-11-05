@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -15,8 +16,10 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 var _ = Describe("trust record", func() {
@@ -80,6 +83,20 @@ var _ = Describe("trust record", func() {
 			fi, err := os.Stat(p.Trust)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
+		}
+	})
+
+	It("a number var's override must be a number, and cache info, rendered_with and the trust prompt show it", func() {
+		withVar := &manifest.Manifest{Modules: []manifest.Entry{{Name: "kit", Source: "mods/kit", Vars: map[string]any{"n": int64(7)}}}}
+		Expect(s.Save(root, trust.ViewOf(withVar))).To(Succeed())
+		b, err := os.ReadFile(p.Trust)
+		Expect(err).NotTo(HaveOccurred())
+		for _, n := range []string{"99999999999999999999", "1e999"} {
+			edited := regexp.MustCompile(`"n":\s*7`).ReplaceAllString(string(b), `"n": `+n)
+			Expect(edited).NotTo(Equal(string(b)))
+			Expect(os.WriteFile(p.Trust, []byte(edited), 0o600)).To(Succeed())
+			_, err = s.Load(root)
+			Expect(err).To(MatchError(ContainSubstring("holds a var that is not a finite number or beyond 64 bits")), n)
 		}
 	})
 
@@ -343,6 +360,72 @@ var _ = Describe("trust record", func() {
 			Expect(accepted.CoversEntry(now)).To(BeTrue())
 			now.Extends.Digest = "sha256:3"
 			Expect(accepted.Modules[0].Extends.Digest).To(Equal("sha256:2"), "the record shares nothing with the view")
+		})
+
+		It("lists an entry's market as written, through untrusted.Text, and covers only the same one", func() {
+			was, now := pinned, pinned
+			now.Market = &manifest.MarketRef{Name: "acme", Source: "https://example.com/" + strings.Repeat("p", 300)}
+			rec := &trust.Record{View: trust.View{Modules: []trust.Entry{trust.EntryOf(was)}}, Exists: true}
+			rep := trust.Check(rec, trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}))
+			Expect(rep.Changes).To(HaveLen(1))
+			Expect(rep.Changes[0].Fields).To(Equal([]trust.FieldChange{{Field: "market", To: "acme from https://example.com/" +
+				strings.Repeat("p", 256-len("https://example.com/")) + "…"}}))
+			Expect(rec.View.Covers(now)).To(BeFalse())
+			accepted := trust.Accept(rec.View, "", trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}), []string{"kit"}, false)
+			Expect(accepted.Covers(now)).To(BeTrue())
+			now.Market.Name = "other"
+			Expect(accepted.Covers(now)).To(BeFalse(), "the record shares nothing with the entry")
+			h, err := trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{was}}).Hash()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}).Hash()).NotTo(Equal(h))
+		})
+
+		It("trust equal, clone and fieldChanges include vars, and entries without vars hash as before", func() {
+			h, err := trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{pinned}}).Hash()
+			Expect(err).NotTo(HaveOccurred())
+			empty := pinned
+			empty.Vars = map[string]any{}
+			Expect(trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{empty}}).Hash()).To(Equal(h), "no vars and empty vars hash as before")
+
+			now := pinned
+			now.Vars = map[string]any{"language": "rust", "strict": true, "tools": []string{"rg", "j\u202eq"}}
+			rec := &trust.Record{View: trust.View{Modules: []trust.Entry{trust.EntryOf(pinned)}}, Exists: true}
+			rep := trust.Check(rec, trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}))
+			Expect(rep.Status).To(Equal(trust.StatusChanged), "a vars-only edit needs trust")
+			Expect(rep.Changes).To(HaveExactElements(trust.Change{Module: "kit", Kind: trust.ChangeChanged, ContentFixed: true,
+				Fields: []trust.FieldChange{{Field: "vars", To: `language = "rust", strict = true, tools = ["rg", "` + untrusted.Text("j\u202eq", untrusted.MaxName) + `"]`}}}))
+			Expect(trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}).Hash()).NotTo(Equal(h))
+
+			accepted := trust.Accept(rec.View, "", trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}), []string{"kit"}, false)
+			Expect(accepted.Covers(now)).To(BeTrue())
+			now.Vars["tools"].([]string)[0] = "fd"
+			Expect(accepted.Covers(now)).To(BeFalse(), "the record shares no list with the entry")
+
+			b, err := json.Marshal(accepted)
+			Expect(err).NotTo(HaveOccurred())
+			var loaded trust.View
+			Expect(json.Unmarshal(b, &loaded)).To(Succeed())
+			now.Vars["tools"].([]string)[0] = "rg"
+			Expect(loaded.Covers(now)).To(BeTrue(), "vars read back from trust.json are the same vars")
+			now.Vars["strict"] = false
+			Expect(trust.Check(&trust.Record{View: loaded, Exists: true}, trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}})).Changes[0].Fields).To(Equal(
+				[]trust.FieldChange{{Field: "vars", From: `language = "rust", strict = true, tools = ["rg", "` + untrusted.Text("j\u202eq", untrusted.MaxName) + `"]`,
+					To: `language = "rust", strict = false, tools = ["rg", "` + untrusted.Text("j\u202eq", untrusted.MaxName) + `"]`}}))
+
+			refreshed := trust.Refresh(rec.View, "", trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{pinned}}), trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}))
+			Expect(refreshed.Covers(now)).To(BeTrue(), "a write by lola that sets vars records them")
+		})
+
+		It("lists an entry's components as a change of its own, through untrusted.Text", func() {
+			now := pinned
+			now.Components = &source.Components{Skills: []string{"skills/xlsx"}}
+			rec := &trust.Record{View: trust.View{Modules: []trust.Entry{trust.EntryOf(pinned)}}, Exists: true}
+			rep := trust.Check(rec, trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}))
+			Expect(rep.Changes[0].Fields).To(Equal([]trust.FieldChange{{Field: "components", To: "skills skills/xlsx"}}))
+			Expect(rec.View.Covers(now)).To(BeFalse())
+			h, err := trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{pinned}}).Hash()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{now}}).Hash()).NotTo(Equal(h))
 		})
 
 		It("marks a source moved between local and remote, or to another scheme, as a host change, and a path change on one host as none", func() {

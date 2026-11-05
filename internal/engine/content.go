@@ -73,15 +73,21 @@ type ContentHook struct {
 // resolved for it (Plan 6a §7.3): files against the version lock.json records, from the cache
 // (never fetched: a version the cache lost lists every file as added), MCP servers, and every
 // hook the content declares (declaredRuntimeHooks), each MCP server and hook marked against the
-// version installed. A module nothing was fetched for yet is left without content.
-func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, led *ledger.Ledger, probes *probeRun) error {
+// version installed. A module nothing was fetched for yet is left without content. display is
+// the run's output flags, which a template refusal's check hint keeps.
+func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, led *ledger.Ledger, templates *templateRun, probes *probeRun,
+	display []string) error {
 	for i := range rep.Changes {
 		c := &rep.Changes[i]
 		se := entryOf(entries, *c)
 		if c.Kind == trust.ChangeRemoved || se == nil || se.v.ContentDir == "" {
 			continue
 		}
-		now, err := e.contentHooks(sc, se.v, se.pinned(), probes)
+		now, err := e.contentHooks(sc, se.v, se.pinned(), se.from, probes, templates, display)
+		_, badVars := errors.AsType[*varsRefusal](err)
+		if _, refused := errors.AsType[*TemplateError](err); refused || badVars {
+			return err // it names the module, its component and file itself
+		}
 		if err != nil {
 			return fmt.Errorf("%s: runtime hooks: %w", se.ent.Name, err)
 		}
@@ -89,8 +95,29 @@ func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, l
 		var was []ContentHook
 		if old != nil {
 			// The version installed is only what this one is compared with: when its files cannot be
-			// read or its hooks planned, nothing is compared and everything is listed as added.
-			if c.Files, was, err = e.compareInstalled(sc, se, old, probes); err != nil {
+			// read or its hooks planned, nothing is compared and everything is listed as added. It is
+			// rendered with the profiles and vars it was installed under, so the diff shows what a new
+			// list or a vars edit changes.
+			var profiles []string
+			in := led.Modules[se.ent.Name]
+			if in != nil && in.RenderedWith != nil && in.RenderedWith.Profiles != nil {
+				profiles = in.RenderedWith.Profiles
+			} else {
+				recorded, err := e.newTemplateRun(sc, led.Profiles) // the list lock.json has active
+				if err != nil {
+					return err
+				}
+				profiles = recorded.profiles
+			}
+			// Vars it was installed under that lock.json does not record, or not validly, are
+			// unknown: it is rendered with the defaults, never the new entry's, so the diff errs
+			// toward showing a change.
+			installed, ent := templates.under(profiles), se.pinned()
+			ent.Vars = nil
+			if in != nil && in.RenderedWith != nil {
+				ent.Vars = in.RenderedWith.Vars
+			}
+			if c.Files, was, err = e.compareInstalled(sc, se, ent, old, probes, installed, display); err != nil {
 				old, note = nil, unreadableNote(err)
 			}
 		}
@@ -112,13 +139,24 @@ func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, l
 }
 
 // compareInstalled lists the files se's version changes against old, the version installed, and
-// plans old's hooks, which are all that reading old can fail on.
-func (e *Engine) compareInstalled(sc Scope, se *syncEntry, old *store.Version, probes *probeRun) ([]FileChange, []ContentHook, error) {
+// plans old's hooks as ent, se's entry as old was installed, renders them, which are all that
+// reading old can fail on.
+func (e *Engine) compareInstalled(sc Scope, se *syncEntry, ent manifest.Entry, old *store.Version, probes *probeRun, templates *templateRun,
+	display []string) ([]FileChange, []ContentHook, error) {
 	files, err := fileChanges(se.v, old)
 	if err != nil {
 		return nil, nil, err
 	}
-	was, err := e.contentHooks(sc, *old, se.pinned(), probes)
+	// Only the vars old declares, as their default's type: lock.json is editable, and what it
+	// records must not refuse the version it is only compared with.
+	declared := map[string]any{}
+	for k, v := range ent.Vars {
+		if def, ok := old.Module.Vars[k]; ok && varKind(def) == varKind(v) {
+			declared[k] = v
+		}
+	}
+	ent.Vars = declared
+	was, err := e.contentHooks(sc, *old, ent, se.from, probes, templates, display)
 	return files, was, err
 }
 
@@ -240,12 +278,12 @@ func markHooks(now, was []ContentHook, installed bool, files []FileChange) []Con
 
 // contentHooks is every hook v declares, as the diff shows it, unmarked: its install hooks, then
 // its runtime hooks and agent MCP servers (declaredRuntimeHooks).
-func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, probes *probeRun) ([]ContentHook, error) {
+func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, from string, probes *probeRun, templates *templateRun, display []string) ([]ContentHook, error) {
 	var out []ContentHook
 	for _, h := range v.Module.DeclaredHooks {
 		out = append(out, ContentHook{Kind: HookKindInstall, Event: shown(h.Event), Detail: shown(h.Script)})
 	}
-	hooks, err := e.declaredRuntimeHooks(sc, v, ent, probes)
+	hooks, err := e.declaredRuntimeHooks(sc, v, ent, from, probes, templates, display)
 	if err != nil {
 		return nil, err
 	}
@@ -258,8 +296,10 @@ func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, pro
 // declaredRuntimeHooks is every runtime hook and agent MCP server v declares, as each assistant
 // lola knows would render it for the entry ent, whatever its targets and the user's selections
 // (Plan 6a §7.3, L1). Describing runs no assistant: one probes has not read is planned as the
-// newest version lola knows.
-func (e *Engine) declaredRuntimeHooks(sc Scope, v store.Version, ent manifest.Entry, probes *probeRun) ([]RuntimeHook, error) {
+// newest version lola knows. display is the run's output flags, which a template refusal's
+// check hint keeps.
+func (e *Engine) declaredRuntimeHooks(sc Scope, v store.Version, ent manifest.Entry, from string, probes *probeRun, templates *templateRun,
+	display []string) ([]RuntimeHook, error) {
 	quiet := &probeRun{e: e, ctx: probes.ctx, versions: maps.Clone(probes.versions), exposed: probes.exposed}
 	ids := make([]string, len(e.Targets))
 	for i, t := range e.Targets {
@@ -268,7 +308,7 @@ func (e *Engine) declaredRuntimeHooks(sc Scope, v store.Version, ent manifest.En
 			quiet.versions[ids[i]] = ""
 		}
 	}
-	intents, _, _, _, err := e.planModule(sc, v, ids, &ent, config.Exclusions{}, Options{}, quiet)
+	intents, _, _, _, err := e.planModule(sc, v, ids, &ent, config.Exclusions{}, Options{Display: display, entryFrom: from}, quiet, templates)
 	if err != nil {
 		return nil, err
 	}

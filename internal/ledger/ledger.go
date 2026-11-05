@@ -86,6 +86,37 @@ type Entry struct {
 	HooksPending bool       `json:"hooks_pending,omitempty"`
 	Targets      []string   `json:"targets,omitempty"`
 	Artifacts    []Artifact `json:"artifacts"`
+	// Components is the selection of the module's directory the entry was installed with, which
+	// render's fetch of the version applies again (Plan 6c §4.1).
+	Components *source.Components `json:"components,omitempty"`
+	// RenderedWith is what a module with templates was rendered with, nil for one without.
+	RenderedWith *RenderedWith `json:"rendered_with,omitempty"`
+}
+
+// RenderedWith records the inputs of a module's templates that are not its source (Plan 7
+// §6.3): Profiles, the active profiles, when some template reads them (nil otherwise); Vars,
+// the winning entry's var overrides as written, {} for none.
+type RenderedWith struct {
+	Profiles []string    `json:"profiles,omitzero"`
+	Vars     module.Vars `json:"vars"`
+}
+
+// valid reports whether r is what lola writes, and reads its vars as lola wrote them: profiles a
+// list of distinct qualified names, default only first, and vars by the rules of an entry's
+// (module.DecodedVars). lock.json is on disk and editable, so an entry whose RenderedWith is not
+// valid is read as rendered with nothing known, and re-renders.
+func (r *RenderedWith) valid() bool {
+	vars, ok := module.DecodedVars(r.Vars)
+	if len(r.Profiles) > activeprofile.Max+1 || !ok {
+		return false
+	}
+	r.Vars = vars
+	for i, q := range r.Profiles {
+		if slices.Contains(r.Profiles[:i], q) || (q != "default" || i > 0) && activeprofile.Check(q) != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // InstalledTargets is the targets e is installed on, sorted: those it records, else, for an
@@ -144,6 +175,7 @@ func Load(path string) (*Ledger, error) {
 	l := New()
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
+	dec.UseNumber() // rendered_with's vars: an int64 stays exact (module.DecodedVars)
 	if err := dec.Decode(l); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -152,6 +184,11 @@ func Load(path string) (*Ledger, error) {
 	}
 	if err := l.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	for _, e := range l.Modules {
+		if e.RenderedWith != nil && !e.RenderedWith.valid() {
+			e.RenderedWith = nil
+		}
 	}
 	l.normalize()
 	return l, nil
@@ -182,6 +219,11 @@ func (l *Ledger) validate() error {
 		// pass the rules project.yml's do (Plan 6a §4.3).
 		if err := (source.Recorded{Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest}).Check(); err != nil {
 			return errs.WithHints(fmt.Errorf("module %s: %w", name, err), restoreHint)
+		}
+		if e.Components != nil {
+			if err := e.Components.Check(); err != nil {
+				return errs.WithHints(fmt.Errorf("module %s: components: %w", name, err), restoreHint)
+			}
 		}
 		for i, t := range e.Targets {
 			if err := module.ValidateName("target", t); err != nil {

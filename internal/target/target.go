@@ -56,7 +56,25 @@ type Target interface {
 	Capabilities() Capabilities
 	// Probe tells lola how to find the assistant and read its version.
 	Probe() Probe
+	// Destinations are where the target writes at scope, as lola tidy sweeps them (Plan 6d
+	// §4.1). Pure like Plan: root is the target's root for scope.
+	Destinations(scope Scope, root string) (Destinations, error)
 	// Plan returns the module's intents for this target and what rendering loses. A content
 	// problem is a Finding; the error is for failures that are not about the module's content.
 	Plan(m *module.Module, ctx PlanContext) ([]plan.Intent, []Finding, error)
 }
+
+// Destinations are the places a target writes artifacts into: directories whose direct entries
+// are units of one kind, and JSON objects whose direct members are MCP servers. lola tidy offers
+// only what lies there and lola does not own.
+type Destinations struct {
+	Dirs    []DestDir   // root-relative directories whose direct entries are units
+	Servers []ServerMap // JSON files and the object of servers lola writes members into
+}
+
+// DestDir is one destination directory. Path is root-relative, slash-separated; Ext is stripped
+// from a file entry's name to name the unit.
+type DestDir struct{ Kind, Path, Ext string }
+
+// ServerMap is a root-relative JSON file and the JSON Pointer of its object of MCP servers.
+type ServerMap struct{ File, Pointer string }

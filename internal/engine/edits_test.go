@@ -249,8 +249,16 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		}
 		refused := func(err error) {
 			Expect(err).To(MatchError("project scope at " + p.Home + " is your home directory, where the user scope installs"))
-			Expect(errs.Hints(err)).To(Equal([]string{"install at user scope: lola install " + src + " --user"}))
+			Expect(errs.Hints(err)).To(BeEmpty(), "no run, no hint")
 		}
+
+		It("hints the run at user scope it is given, every flag kept", func() {
+			run := "lola install " + src + " --ref v1 --target claude-code --json --user"
+			_, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Scopes: []engine.ScopeInstall{homeProject()}, Modules: []engine.InstallRequest{{Arg: src}},
+				UserRun: run})
+			Expect(err).To(MatchError(ContainSubstring("is your home directory, where the user scope installs")))
+			Expect(errs.Hints(err)).To(Equal([]string{run}))
+		})
 
 		It("is refused on its own, and writes nothing", func() {
 			_, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Scopes: []engine.ScopeInstall{homeProject()}, Modules: []engine.InstallRequest{{Arg: src}}})

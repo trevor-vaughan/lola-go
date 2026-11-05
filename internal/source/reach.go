@@ -28,7 +28,7 @@ func CheckReachable(ctx context.Context, spec Spec, commit, stagingParent string
 	}
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	name, err := remoteRef(ctx, spec.Location, spec.Ref)
+	name, err := remoteRef(ctx, spec)
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func reachable(ctx context.Context, spec Spec, commit, name, repo string) error 
 		return err
 	}
 	noLazy := []string{"GIT_NO_LAZY_FETCH=1"}
-	if _, err := runGitEnv(ctx, noLazy, repo, "fetch", "-q", "--filter=tree:0", "--", spec.Location, name); err != nil {
+	if _, err := runGitEnv(ctx, noLazy, repo, remoteArgs(spec, "fetch", "-q", "--filter=tree:0", "--", spec.Location, name)...); err != nil {
 		return err
 	}
 	notOn := &NotOnRefError{Commit: commit, Ref: spec.Ref, Location: spec.Location}
