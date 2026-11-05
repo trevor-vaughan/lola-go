@@ -2,6 +2,8 @@ package engine
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/module"
+	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -60,5 +63,25 @@ var _ = Describe("the trust diff's parts", func() {
 		Expect(andJoin([]string{"the project at /a"})).To(Equal("the project at /a"))
 		Expect(andJoin([]string{"the project at /a", "the user scope"})).To(Equal("the project at /a and the user scope"))
 		Expect(andJoin([]string{"a", "b", "c"})).To(Equal("a, b and c"))
+	})
+})
+
+var _ = Describe("sourceFailure", func() {
+	It("is a source failing to serve an entry, and never a failure of lola's own state", func() {
+		testenv.Isolate()
+		for _, err := range []error{
+			&fetchFailedError{errors.New("could not resolve host")},
+			fmt.Errorf("example: %w", &source.NotOnRefError{Commit: strings.Repeat("a", 40), Location: "https://example.com/x.git"}),
+			&catalogMismatchError{errs.WithHints(errors.New("marketplace acme lists x at a, which main does not reach"), "lola market acme --update")},
+			&digestMismatchError{name: "example", got: "sha256:b", want: "sha256:a"},
+			&servedCommitError{name: "example", got: "b", want: "a"},
+			&commitFetchError{name: "example", err: errors.New("fetch failed")},
+			fmt.Errorf("example: %w", &source.UnreachableError{Err: errors.New("could not read from remote repository")}),
+		} {
+			Expect(sourceFailure(err)).To(BeTrue(), "%v", err)
+		}
+		for _, err := range []error{errors.New("open versions/sha256-a: permission denied"), fmt.Errorf("staging: %w", os.ErrPermission)} {
+			Expect(sourceFailure(err)).To(BeFalse(), "%v", err)
+		}
 	})
 })

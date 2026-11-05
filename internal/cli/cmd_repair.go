@@ -21,9 +21,10 @@ func (a *app) repairCmd() *cobra.Command {
 			"with them. It deletes and moves no file; lola sync then puts back any file a module lacks. -y\n" +
 			"answers the question, and off a terminal it is needed; -n lists the entries and writes nothing.\n" +
 			"A lock.json lola refuses for another reason keeps that refusal.\n\n" + scopeHelp,
-		Example: "  lola repair\n  lola repair -n\n  lola repair --user -y",
-		GroupID: groupAdditional,
-		Args:    cobra.NoArgs,
+		Example:           "  lola repair\n  lola repair -n\n  lola repair --user -y",
+		GroupID:           groupAdditional,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			eng, err := a.engine()
 			if err != nil {

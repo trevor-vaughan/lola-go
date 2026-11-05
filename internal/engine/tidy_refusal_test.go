@@ -39,12 +39,16 @@ var _ = Describe("lola tidy: refusals and hints", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.DryRun).To(BeTrue())
 			Expect(listed(res.Candidates)).To(Equal([]string{"claude-code command/old"}))
-			want := "lola tidy -C " + fresh + " --all -t claude-code -y"
+			yes := "" // R-8: -y only as given
+			if req.Yes {
+				yes = " -y"
+			}
+			want := "lola tidy -C " + fresh + " --all -t claude-code" + yes
 			switch {
 			case req.Force:
 				want = "lola tidy -C " + fresh + " --all -t claude-code --force"
 			case len(req.Select) > 0:
-				want = "lola tidy -C " + fresh + " command/old -t claude-code -y"
+				want = "lola tidy -C " + fresh + " command/old -t claude-code"
 			}
 			Expect(res.Hints).To(Equal([]string{want}))
 			Expect(filepath.Join(fresh, ".lola")).NotTo(BeAnExistingFile())
@@ -57,7 +61,7 @@ var _ = Describe("lola tidy: refusals and hints", func() {
 		res, err := t.e.Tidy(tidyCtx, engine.TidyRequest{Scope: engine.Scope{Kind: target.Project, ProjectDir: fresh}, Targets: []string{"claude-code"},
 			Dry: true, Display: []string{"--json", "--no-pager"}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Hints).To(Equal([]string{"lola tidy -C " + fresh + " --all -t claude-code -y --json --no-pager"}))
+		Expect(res.Hints).To(Equal([]string{"lola tidy -C " + fresh + " --all -t claude-code --json --no-pager"}))
 
 		By("on a terminal, the run without -n, which asks the review: no -y; without names it runs the picker, but --force still needs --all")
 		for req, want := range map[*engine.TidyRequest]string{

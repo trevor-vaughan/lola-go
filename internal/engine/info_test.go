@@ -430,6 +430,27 @@ var _ = Describe("lola info", func() {
 		Expect(info.Heads).To(ConsistOf(HaveField("Ref", commit)))
 	})
 
+	It("info reports the ref a git module is read at, and no ref for a folder", func() {
+		commit := serveKit()
+		info, err := e.Info(ctx, claudeHere())
+		Expect(err).NotTo(HaveOccurred())
+		Expect([]any{info.Follows, info.Ref}).To(Equal([]any{true, ""}))
+
+		req := claudeHere()
+		req.Ref = commit
+		info, err = e.Info(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect([]any{info.Follows, info.Ref}).To(Equal([]any{true, commit}))
+
+		folder := filepath.Join(tmp, "folder")
+		writeTree(folder, map[string]string{"commands/a.md": "a\n"})
+		req = claudeHere()
+		req.Arg = folder
+		info, err = e.Info(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+		Expect([]any{info.Follows, info.Ref, info.Install[0].Follow}).To(Equal([]any{false, "", ""}))
+	})
+
 	It("info reports a refusal of the install as the plan's, and returns any other error", func() {
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine\n"})
 		info, err := e.Info(ctx, claudeHere())

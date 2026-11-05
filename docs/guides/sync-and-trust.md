@@ -17,7 +17,9 @@ lola sync --update lint-pack # only lint-pack
 It installs every entry at the version its **pin** names (`commit` and `digest`, written by
 `lola install` and by sync itself; see **Pins** in [Sources and the cache](../usage.md#sources-and-the-cache)), renders the modules
 already installed, and removes what the manifest no longer lists: a whole module, or the targets
-an entry no longer names.
+an entry no longer names. The files lola wrote that a version the run installs no longer ships (a
+component a new pin or a re-read folder dropped or renamed) are removals too. Every removal is
+listed first and asked about once; off a terminal `-y` confirms them.
 
 A pinned version comes from your cache when it is there; otherwise a git
 module is fetched by its commit, which must be reachable from the entry's `ref`, and an archive is
@@ -157,7 +159,7 @@ flowchart TD
     plans from the file, before anything is planned, asked or written. lola never records such an entry itself,
     so it was edited, damaged or copied from elsewhere.
     - The refusal names `lock.json`, the module and the path or target, and hints
-      [`lola repair`](../usage.md#lola-repair) for the scope, with your run's scope and output
+      [`lola repair`](../reference/repair.md#lola-repair) for the scope, with your run's scope and output
       flags (`lola repair --project`).
     - `lola repair` lists every such entry, asks, and forgets them; it deletes and moves no file.
       `lola sync --project` then puts back any file a module now lacks.
@@ -179,12 +181,13 @@ flowchart TD
     `… and N more for <module> (lola sync -n --json lists them all)` with your own names and
     flags (a file list's says `… and N more (…)`, without the module).
   - A dry run ends with the command that applies it, `→ to apply: lola sync review-kit`, and, when
-    that needs answers, the form for no terminal:
-    `→ off a terminal: lola sync review-kit --trust=entries -y`. It carries your own names and
-    flags, `-y` when the run removes something (it confirms the removals), and `--trust=` the
-    kinds you gave and the kinds the run would be refused without: `entries`, `profiles`,
-    `hooks` for a module's pre-install hook without your consent, and `scripts` for a project's
-    pre-install script without it.
+    that needs consent, the form for no terminal:
+    `→ off a terminal: lola sync review-kit --trust=entries`. It carries your own names and
+    flags, `-y` only when you gave it, and `--trust=` the kinds you gave and the kinds the run
+    would be refused without: `entries`, `profiles`, `hooks` for a module's pre-install hook
+    without your consent, and `scripts` for a project's pre-install script without it. A run
+    that removes something asks first; off a terminal it is refused with the same command and
+    `-y`.
 - **One source per name.** Your cache keeps one source per module name for every project on the
   machine.
   - An entry whose name your cache holds from another source or path (a pulled `project.yml` that
@@ -359,16 +362,24 @@ right after a bare `--trust`: write the module name before `--trust`, or after `
   hooks and agent MCP servers; `all` is every kind, and bare `--trust` is `entries,profiles`.
   - It prints the diff it accepted on stderr, then the receipt of everything its kinds cover
     (`trusting, as --trust=entries allows:`).
-  - On a terminal it asks `Proceed?` once (`-y` answers; No installs and records nothing;
-    fetched content stays in the cache). Off a terminal it goes on, and under `--json` it prints
+  - On a terminal it asks `Proceed?` once (`-y` answers; No installs and records nothing, and
+    leaves your cache as it was, as every refusal does). Off a terminal it goes on, and under `--json` it prints
     neither (`trust` and `trusted` hold them).
   - `--scope both` asks one receipt for both scopes and applies neither before its yes.
-- **A run without the answers it needs** is refused once, before any network contact, naming
-  every one: `lola sync needs your trust for changes to .lola/project.yml; and your confirmation
-  to remove old-mod, and there is no terminal to ask on`.
-  - On stderr: the diff (fields only for git and archive entries, since nothing was fetched,
-    each entry it would pin by name, and a new or changed folder with its content, read from your
-    disk) and the removals.
+- **A run without the answers it needs** is refused once, before it fetches anything a pull
+  asked for, naming every one: `lola sync needs your trust for changes to .lola/project.yml; and
+  your confirmation to remove old-mod, and there is no terminal to ask on`.
+  - On stderr: the diff (fields only for git and archive entries a pull added or changed, which
+    are not fetched; each entry it would pin by name; and a new or changed folder with its
+    content, read from your disk) and the removals.
+  - An entry your trust record covers that the run would pin (an `--update` or `lola update` of
+    a module you installed) is fetched first, into the run's private staging and never into your
+    cache, so the diff shows its new pin and files, and the files it drops (as your picks would
+    install it) are listed as removals in the same refusal. One that finds nothing new needs no
+    trust and is not refused.
+  - The accept hint carries `-y` only when every removal it would confirm is listed. An entry a
+    pull changed is not fetched yet, so while one is installed the hint has no `-y`; the run it
+    hints fetches it, lists every removal and asks for `-y` then.
   - The hints `see them: lola sync --project -n` and `then accept them: lola sync --project
     --trust=entries -y`, with your other flags and `--trust=` exactly the kinds missing beside
     those you gave; each keeps the run's `--json`, `--plain` and `--no-pager`.
@@ -433,13 +444,16 @@ editing your own module costs one question per sync, or that install. A checkout
 `lock.json` has no version installed, so sync asks about each folder module once.
 
 **What update does.** `lola update` moves each installed module to the version its source holds
-now, fetching a ref only when `cache_fresh_for:` (`config.yaml`; `1d` unless it says otherwise,
+now at the ref `project.yml` records (the default branch when it records none; a tag or full SHA
+stays put unless the tag itself moves; to follow another ref, `lola install <module> --ref <ref>`), fetching a ref only when `cache_fresh_for:` (`config.yaml`; `1d` unless it says otherwise,
 whole days or weeks, `never` to fetch every run) has passed since it was last fetched, or when you
-pass `--fetch`. It installs nothing and removes nothing, and trust is sync's: a fresh head that
+pass `--fetch`. It installs and removes no module; the files a new version no longer ships are
+listed and confirmed as removals are (`-y` off a terminal). Trust is sync's: a fresh head that
 has not moved asks nothing, so within `cache_fresh_for` it works off a terminal without
-`--trust`. A stale head is asked about before it is fetched, as `sync --update` does, even when
-nothing will move, so once a head is stale `update` off a terminal without `--trust` is refused;
-in CI, pass `--trust` with the kinds you accept (`--trust=entries` for pins). A pin that moved is
+`--trust`. A stale head is fetched into the run's private staging before anything is asked, so
+one that has not moved asks nothing either; one that moved is refused off a terminal without
+`--trust`, once, with the files it drops and a hint that applies it in one run; in CI, pass
+`--trust` with the kinds you accept (`--trust=entries` for pins). A pin that moved is
 shown and asked about, or answered by `--trust`; `--force` never answers that question. When it
 served a ref from the cache it says how many modules, with your run and `--fetch`; it names the
 entries listed but not installed, with the `lola sync` that installs them. It leaves a

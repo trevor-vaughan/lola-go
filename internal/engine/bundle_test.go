@@ -443,6 +443,7 @@ var _ = Describe("bundles", func() {
 			spec := engine.InstallSpec{Cwd: tmp, Modules: []engine.InstallRequest{{Arg: arg}},
 				Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: s, Source: engine.SourceFlag}, Targets: targets}}, Options: opts}
 			spec.Options.Target.Rerun = func(extra ...string) string { return e.Command(s, "install", append([]string{arg}, extra...)...) }
+			spec.ConfirmRemovals = yes // as -y: a -t narrower than the module's installed targets removes the others' files
 			return e.InstallAll(ctx, spec)
 		}
 		read := func(path string) string {

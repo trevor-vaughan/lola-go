@@ -189,8 +189,8 @@ testcases:
           assert lines[0] == "✓ added kit to project.yml (base)", lines[0]
           assert sum(l.startswith("  ✓ create ") for l in lines) == 17, lines
           assert lines[18:20] == ["kit MCP servers:", "    kit-tools (stdio) runs: kit-mcp --stdio"], lines[18:20]
-          assert lines[20:22] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch -y",
-                                  "→ meant for every project? lola profile --user --move kit --to base -y -C /work/proj"], lines[20:22]
+          assert lines[20:22] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch",
+                                  "→ meant for every project? lola profile --user --move kit --to base -C /work/proj"], lines[20:22]
           assert lines[22] == "✓ installed kit (claude-code, gemini-cli, opencode)", lines[22]
           print("ok the install printed its 17 creates, the MCP server and the moves that fix where it went")
           '
@@ -218,7 +218,7 @@ testcases:
           '
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"['lola profile -C /work/i3-hint --move kit --to mine --switch -y']\""
+          - "result.systemout ShouldEqual \"['lola profile -C /work/i3-hint --move kit --to mine --switch']\""
       - type: exec
         script: "{{.runtime}} exec {{.i3_homes}} {{.container}} {{.hint}} /tmp/i3-hint.json"
         assertions:
@@ -293,7 +293,7 @@ testcases:
           {{.runtime}} exec {{.container}} python3 -c '
           import subprocess
           out = subprocess.run(["/opt/lola-go/lola-go", "list", "-C", "/work/proj", "--plain"], capture_output=True, text=True, check=True).stdout
-          want = "".join("kit\t%s\tok\ton\t/e2e/fixtures/kit\tproject\tproject.yml\n" % t for t in ("claude-code", "gemini-cli", "opencode"))
+          want = "".join("kit\t%s\tok\ton\t/e2e/fixtures/kit\tproject\tproject.yml\t\n" % t for t in ("claude-code", "gemini-cli", "opencode"))
           assert out == want, repr(out)
           print("ok plain rows")
           '
@@ -483,7 +483,8 @@ testcases:
           - result.systemoutjson.trust.status ShouldEqual changed
           - result.systemoutjson.trust.changes.changes0.module ShouldEqual kit
           - "result.systemoutjson.hints.hints0 ShouldEqual \"see them: lola sync -C /work/proj kit --update --json -n\""
-          - "result.systemoutjson.hints.hints1 ShouldEqual \"then accept them: lola sync -C /work/proj kit --update --trust=entries --json -y\""
+          - "result.systemoutjson.hints.hints1 ShouldStartWith \"then accept them: lola sync -C /work/proj kit --update --trust=entries --at kit=\""
+          - "result.systemoutjson.hints.hints1 ShouldEndWith \" --json -y\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/i11-before.json /work/proj /home/tester/.local/state"
         assertions:

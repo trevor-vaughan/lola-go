@@ -298,8 +298,8 @@ var _ = Describe("the context line", func() {
 		Expect(r.out).To(MatchRegexp(`user\s+kit\s.*\s` + regexpQuote(kit) + `\s+default\n`))
 		Expect(r.out).To(MatchRegexp(`user\s+notes\s.*\s` + regexpQuote(notes) + `\s+docs \(bundle work\)\n`))
 		r = lola("list", "--user", "--plain")
-		Expect(r.out).To(ContainSubstring("\tuser\tprofile:default\n"))
-		Expect(r.out).To(ContainSubstring("\tuser\tprofile:user:docs\n"))
+		Expect(r.out).To(ContainSubstring("\tuser\tprofile:default\t\n"))
+		Expect(r.out).To(ContainSubstring("\tuser\tprofile:user:docs\t\n"))
 
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: notes, source: " + notes + "}\n"})
 		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))

@@ -394,7 +394,7 @@ now: user scope: profile me over default
   modules out of your files`. In your file it would be yours, which nothing asks about, so the next
   pull there would install unreviewed wherever that file is on. Moves between a project's own files
   are unaffected. `lola install` of such a folder into a file of yours warns with that text up to
-  the semicolon, once, at that write (see [`lola install`](../usage.md#lola-install)).
+  the semicolon, once, at that write (see [`lola install`](../reference/install.md#lola-install)).
 - **Refused.** A remote profile, as source or target (it is read-only); `project.yml` as a target
   from user scope; a module both scopes provide, for a cross-scope form (the refusal hints the run
   from each source). Every refusal comes before anything is written.
@@ -411,8 +411,8 @@ shown in the state the install leaves:
 
 The hint names a profile of yours that lists none of the modules (at most two, then a listing),
 or the base, or, after a write to a shared file, a new profile; it adds `--switch` when that
-profile is off, and `-y` when the run cannot ask. A `-y` that switches another profile off says so
-in the hint. A hint never names `project.yml`, a project profile or a bundle as the target and never
+profile is off, and never `-y`: the move asks before it removes anything, and off a terminal it is
+refused with a hint that adds `-y`. A switch that turns another profile off says so in the hint. A hint never names `project.yml`, a project profile or a bundle as the target and never
 carries `--trust`. One install's added modules share one line (`--move a,b,c`).
 
 ## Bundles
@@ -570,7 +570,7 @@ profile <bundle>`), whose file lists other profiles in `bundle:` instead of modu
 Each flow is a scenario of the `profile-first` end-to-end suite (`e2e/profile-first`, S1-S8),
 run against real git repositories with fixture sources and the flags a script needs (`-y`, `-C`).
 Two commands are not run as written: `--move my-notes --to me --switch` appears only as the hint
-lola prints, and `--move my-notes --to base -y` is run with `-n` (a dry run).
+lola prints, and `--move my-notes --to base` is run with `-y -n` (a dry run).
 
 - **A first install.** `lola install <source>` from inside a project, answer with user scope: it
   writes your `default` profile and says `user scope: default`, never "profile".
@@ -583,7 +583,7 @@ lola prints, and `--move my-notes --to base -y` is run with `-n` (a dry run).
   it on; `lola profile go-review --switch -y` goes back and leaves `try` as it was.
 - **The wrong place.** A module installed into the shared `project.yml` moves to a profile of
   yours: `lola profile --move my-notes --to me --switch`, or `lola profile --user --move my-notes
-  --to base -y` for every project. The move prints the target scope's context line first, then the
+  --to base` for every project. The move prints the target scope's context line first, then the
   source's.
 - **A team project.** A teammate runs `lola sync`, then `lola profile me --switch --new`: what
   they install lands in `me` in their home, and git has nothing to show.

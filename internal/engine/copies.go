@@ -19,6 +19,12 @@ import (
 // version, never in the kept copy (Plan 6a §9.3 step 10): keepUnhooked keeps it as it was when
 // no hook runs. pending says lock.json marks its post-install hook as not run yet.
 type moduleCopy struct {
+	// fromSource is the lola info arguments that show, from a sync's folder or archive source as
+	// it reads now, the version the run read there, for when no cached version shows it: a refusal
+	// caches nothing (reviewSource).
+	fromSource []string
+	// at is the version a consent hint pins with --at (PinConsent), as <name>=<version>; "" for none.
+	at       string
 	name     string
 	src      string // cache content dir
 	replace  bool

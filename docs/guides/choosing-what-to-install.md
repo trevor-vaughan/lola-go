@@ -381,6 +381,20 @@ section of `selections.yaml`, never from `global`, and prints the `lola install 
 `--unskip`, `--only … --exact`) that saves the picks again; a plain install afterwards installs
 everything.
 
+## Switching a branch or tag
+
+A git module follows the ref `project.yml` records (the default branch when it records none).
+`lola info <module>` shows it as `ref:`, and `lola list` shows it after the source
+(`https://example.com/kit.git @ v1`). To follow another branch or tag, install the module again
+with `--ref`; its picks and targets stay, and the entry's `ref`, `commit` and `digest` are
+rewritten:
+
+```
+lola install kit --ref v2
+```
+
+`lola info <module>` ends with that run for a git module (`→ follow another branch or tag: …`).
+
 ## Mentions
 
 Skills in a pack point at each other ("see also golang-gopls"). lola reads a module's text for
@@ -676,8 +690,8 @@ trusting, as --trust=entries,hooks allows:
 Proceed? [y/N]
 ```
 
-On a terminal lola then asks once (`-y` answers; No installs and records nothing; fetched content
-stays in the cache); what the kinds do not cover is asked item by item first, as without the flag.
+On a terminal lola then asks once (`-y` answers; No installs and records nothing; `install` keeps
+what it fetched in the cache, while `sync` and `update` leave the cache as it was); what the kinds do not cover is asked item by item first, as without the flag.
 `profile --add`, which takes no `-y`, asks it on a terminal too. A command asks one receipt for
 everything it does: `sync --scope both` runs each scope up to its receipt, shows one, and applies
 the scopes only after its yes, and `profile --update` with `--trust` does the same for the

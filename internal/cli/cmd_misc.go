@@ -24,21 +24,29 @@ func (a *app) printVersion(cmd *cobra.Command) error {
 func (a *app) addMiscCommands(root *cobra.Command) {
 	root.AddCommand(a.migrateCmd(), a.repairCmd(), a.trashCmd())
 	root.AddCommand(&cobra.Command{
-		Use:     "version",
-		Aliases: []string{"ver"},
-		Short:   "Print lola's version",
-		Example: "  lola version\n  lola version --json",
-		GroupID: groupAdditional,
-		Args:    cobra.NoArgs,
+		Use:               "version",
+		Aliases:           []string{"ver"},
+		Short:             "Print lola's version",
+		Example:           "  lola version\n  lola version --json",
+		GroupID:           groupAdditional,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.printVersion(cmd)
 		},
 	})
 	shells := []string{"bash", "zsh", "fish", "powershell"}
 	root.AddCommand(&cobra.Command{
-		Use:       "completion bash|zsh|fish|powershell",
-		Short:     "Print a shell completion script",
-		Long:      "Print a completion script for your shell. It completes commands, their aliases, and flags.",
+		Use:   "completion bash|zsh|fish|powershell",
+		Short: "Print a shell completion script",
+		Long: "Print a completion script for your shell. It completes commands, their aliases, and flags,\n" +
+			"and the values lola knows: module names from your cache and this scope (plus file names, for\n" +
+			"install and check, which take paths); a module's components for --skip, --only and --unskip;\n" +
+			"profile names for --profile, --to, --from and --bundle; the modules --move can move;\n" +
+			"<module>= and the installed version for --at; trash runs, newest first, then a run's files;\n" +
+			"and for -t, the assistants found on this machine first. Completion reads local files only:\n" +
+			"it writes nothing and never uses the network. --ref and other free-text values offer nothing;\n" +
+			"--path and -C offer directories.",
 		Example:   "  source <(lola completion bash)\n  lola completion zsh > \"${fpath[1]}/_lola\"\n  lola completion fish > ~/.config/fish/completions/lola.fish",
 		GroupID:   groupAdditional,
 		ValidArgs: shells,

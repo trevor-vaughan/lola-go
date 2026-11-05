@@ -14,6 +14,28 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
+// runConfirmed runs a hint that names another command as printed. That hint carries no -y (R-8),
+// so off a terminal a run that removes files refuses, and its last hint is that run with -y (its
+// words as the refusal names them), which runConfirmed runs.
+func runConfirmed(hint string) result {
+	GinkgoHelper()
+	r := runHint(hint)
+	if r.code == 0 {
+		return r
+	}
+	hs := hintLines(r.err)
+	if len(hs) == 0 { // under --json the refusal is a document
+		var doc struct{ Hints []string }
+		Expect(json.Unmarshal([]byte(r.err), &doc)).To(Succeed(), r.err)
+		hs = doc.Hints
+	}
+	Expect(hs).NotTo(BeEmpty(), r.err)
+	last := hs[len(hs)-1]
+	confirm := last[strings.Index(last, "lola "):]
+	Expect(confirm).To(HaveSuffix(" -y"), r.err)
+	return runHint(confirm)
+}
+
 var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func() {
 	var (
 		tmp, proj, notes string
@@ -68,8 +90,8 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 		hints := install(notes, "--project", "-t", "claude-code")
 		Expect(hints).To(Equal([]string{
-			"meant for another profile? lola profile --project --move notes --to me --switch -y",
-			"meant for every project? lola profile --user --move notes --to base -y"}))
+			"meant for another profile? lola profile --project --move notes --to me --switch",
+			"meant for every project? lola profile --user --move notes --to base"}))
 		r := runHint(command(hints[0]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "me.yml"))).To(ContainSubstring("name: notes"))
@@ -79,8 +101,8 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 
 	It("after a project.yml write, the move into every project runs as printed, from here and with -C", func() {
 		hints := install(notes, "--project", "-t", "claude-code")
-		Expect(hints).To(ContainElement("meant for every project? lola profile --user --move notes --to base -y"))
-		r := runHint(command(hints[len(hints)-1]))
+		Expect(hints).To(ContainElement("meant for every project? lola profile --user --move notes --to base"))
+		r := runConfirmed(command(hints[len(hints)-1]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("name: notes"))
 		Expect(read(filepath.Join(proj, ".lola", "project.yml"))).NotTo(ContainSubstring("notes"))
@@ -91,8 +113,8 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		writeTree(other, map[string]string{"lola.yml": "name: other\n", "commands/other.md": "O\n"})
 		GinkgoT().Chdir(tmp)
 		hints = install(other, "-C", proj, "-t", "claude-code")
-		Expect(hints).To(ContainElement("meant for every project? lola profile --user --move other --to base -y -C " + proj))
-		r = runHint(command(hints[len(hints)-1]))
+		Expect(hints).To(ContainElement("meant for every project? lola profile --user --move other --to base -C " + proj))
+		r = runConfirmed(command(hints[len(hints)-1]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("name: other"))
 		Expect(read(filepath.Join(proj, ".lola", "project.yml"))).NotTo(ContainSubstring("other"))
@@ -100,7 +122,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 
 	It("with no profile of yours, keep it to yourself creates mine, switches to it and keeps the module installed", func() {
 		hints := install(notes, "--project", "-t", "claude-code")
-		Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move notes --to mine --switch -y"))
+		Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move notes --to mine --switch"))
 		r := runHint(command(hints[0]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "mine.yml"))).To(ContainSubstring("name: notes"))
@@ -112,9 +134,9 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		writeTree(p.UserProfiles, map[string]string{"a.yml": "version: 1\n"})
 		hints := install(notes, "--user", "-t", "claude-code")
 		Expect(hints).To(Equal([]string{
-			"meant for another profile? lola profile --user --move notes --to a --switch -y",
-			"meant for this project only? lola profile --project --move notes --to user:a --switch -y"}))
-		r := runHint(command(hints[1]))
+			"meant for another profile? lola profile --user --move notes --to a --switch",
+			"meant for this project only? lola profile --project --move notes --to user:a --switch"}))
+		r := runConfirmed(command(hints[1]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "a.yml"))).To(ContainSubstring("name: notes"))
 		Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).NotTo(ContainSubstring("notes"))
@@ -140,9 +162,9 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 	It("from the profile on at user scope, the move into another profile names the profile its switch turns off, and runs as printed", func() {
 		hints := onAtUser()
 		Expect(hints).To(Equal([]string{
-			"meant for another profile (switches a off, removing its modules)? lola profile --user --move notes --to b --switch -y",
+			"meant for another profile (switches a off, removing its modules)? lola profile --user --move notes --to b --switch",
 			"meant for another profile? lola profile --user --move notes --to base"}))
-		r := runHint(command(hints[0]))
+		r := runConfirmed(command(hints[0]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "b.yml"))).To(ContainSubstring("name: notes"))
 		Expect(read(filepath.Join(p.UserProfiles, "a.yml"))).NotTo(ContainSubstring("notes"))
@@ -152,7 +174,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 
 	It("from the profile on at user scope, the move into the base turns nothing off, and runs as printed", func() {
 		hints := onAtUser()
-		r := runHint(command(hints[1]))
+		r := runConfirmed(command(hints[1]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("name: notes"))
 		Expect(userNotes()).To(BeAnExistingFile())
@@ -164,9 +186,9 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		writeTree(other, map[string]string{"lola.yml": "name: other\n", "commands/other.md": "O\n"})
 		hints := install(notes, other, "--project", "-t", "claude-code")
 		Expect(hints).To(Equal([]string{
-			"keep it to yourself: lola profile --project --move notes,other --to mine --switch -y",
-			"meant for every project? lola profile --user --move notes,other --to base -y"}))
-		r := runHint(command(hints[1]))
+			"keep it to yourself: lola profile --project --move notes,other --to mine --switch",
+			"meant for every project? lola profile --user --move notes,other --to base"}))
+		r := runConfirmed(command(hints[1]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(And(ContainSubstring("name: notes"), ContainSubstring("name: other")))
 		Expect(read(filepath.Join(proj, ".lola", "project.yml"))).NotTo(Or(ContainSubstring("notes"), ContainSubstring("other")))
@@ -176,11 +198,11 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 
 	It("without a profile of yours, the two-step into this project runs as printed", func() {
 		hints := install(notes, "--user", "-t", "claude-code")
-		Expect(hints).To(Equal([]string{"meant for this project only? lola uninstall --user notes -y, then lola install --project notes -t claude-code"}))
+		Expect(hints).To(Equal([]string{"meant for this project only? lola uninstall --user notes, then lola install --project notes -t claude-code"}))
 		first, second, _ := strings.Cut(command(hints[0]), ", then ")
-		r := runHint(first)
+		r := runConfirmed(first)
 		Expect(r.code).To(Equal(0), r.err)
-		r = runHint(second)
+		r = runConfirmed(second)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(userNotes()).NotTo(BeAnExistingFile())
 		Expect(projectNotes()).To(BeAnExistingFile())
@@ -191,7 +213,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 		writeTree(proj, map[string]string{".lola/profiles/me.yml": "version: 1\n"})
 		hints := install(notes, "--project", "-t", "claude-code")
-		Expect(hints[0]).To(Equal("meant for another profile? lola profile --project --move notes --to user:me --switch -y"))
+		Expect(hints[0]).To(Equal("meant for another profile? lola profile --project --move notes --to user:me --switch"))
 		r := runHint(command(hints[0]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "me.yml"))).To(ContainSubstring("name: notes"))
@@ -203,10 +225,10 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		Expect(r.code).To(Equal(0), r.err)
 		hints := install(notes, "--project", "-t", "claude-code")
 		Expect(hints).To(Equal([]string{
-			"keep it to yourself: lola profile --project --move notes --to mine --switch -y",
-			"meant for every project? lola profile --user --move notes --to base -y"}))
+			"keep it to yourself: lola profile --project --move notes --to mine --switch",
+			"meant for every project? lola profile --user --move notes --to base"}))
 		team := filepath.Join(proj, ".lola", "profiles", "team.yml")
-		r = runHint(command(hints[0]))
+		r = runConfirmed(command(hints[0]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "mine.yml"))).To(ContainSubstring("name: notes"))
 		Expect(read(team)).NotTo(ContainSubstring("notes"))
@@ -217,10 +239,10 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		Expect(lola("profile", "team", "--switch", "--project", "-y").code).To(Equal(0))
 		hints = install(other, "--project", "-t", "claude-code")
 		Expect(hints).To(Equal([]string{
-			"meant for another profile? lola profile --project --move other --to mine --switch -y",
-			"meant for every project? lola profile --user --move other --to base -y"}),
+			"meant for another profile? lola profile --project --move other --to mine --switch",
+			"meant for every project? lola profile --user --move other --to base"}),
 			"a switch to mine installs notes again, which asks nothing")
-		r = runHint(command(hints[1]))
+		r = runConfirmed(command(hints[1]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("name: other"))
 		Expect(read(team)).NotTo(ContainSubstring("other"))
@@ -232,8 +254,8 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 		r := lola("profile", "me", "--switch", "--project", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		hints := install(notes, "--project", "-t", "claude-code")
-		Expect(hints).To(Equal([]string{"meant for every project? lola profile --user --move notes --to base -y"}))
-		r = runHint(command(hints[0]))
+		Expect(hints).To(Equal([]string{"meant for every project? lola profile --user --move notes --to base"}))
+		r = runConfirmed(command(hints[0]))
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(read(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("name: notes"))
 		Expect(read(filepath.Join(p.UserProfiles, "me.yml"))).NotTo(ContainSubstring("notes"))
@@ -319,7 +341,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 			Notices []struct{ Level, Text string } `json:"notices"`
 		}
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
-		Expect(doc.Notices).To(ContainElement(HaveField("Text", "meant for every project? lola profile --user --move notes --to base -y --json")))
+		Expect(doc.Notices).To(ContainElement(HaveField("Text", "meant for every project? lola profile --user --move notes --to base --json")))
 	})
 	It("names both scopes' context when a move takes the entry from the other scope, one when it does not (spec 2026-10-29 §3.8)", func() {
 		Expect(lola("install", notes, "--project", "-t", "claude-code").code).To(Equal(0))
@@ -373,7 +395,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 
 		It("Pick-P1-a: the keep-it-to-yourself hint, run as printed, keeps the --only pick and changes no installed file", func() {
 			hints := install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
-			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch -y"))
+			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch"))
 			Expect(installedFiles()).To(Equal([]string{".claude/skills/a1/SKILL.md"}))
 
 			r := runHint(command(hints[0]))
@@ -398,9 +420,9 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 
 		It("Pick-P1-a: the every-project hint, run as printed, carries the pick into default at user scope", func() {
 			hints := install(alpha, "--project", "-t", "claude-code", "--only", "skill/a1")
-			Expect(hints[len(hints)-1]).To(Equal("meant for every project? lola profile --user --move alpha --to base -y"))
+			Expect(hints[len(hints)-1]).To(Equal("meant for every project? lola profile --user --move alpha --to base"))
 
-			r := runHint(command(hints[len(hints)-1]))
+			r := runConfirmed(command(hints[len(hints)-1]))
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out + r.err).To(ContainSubstring("picks: carried from selections.yaml"))
 			Expect(r.out + r.err).NotTo(ContainSubstring("is ignored"))
@@ -438,7 +460,7 @@ var _ = Describe("the move hint after an install (spec 2026-10-29 §3.7)", func(
 
 		It("Pick-P1-a: a glob skip carries as the profile entry's skip:", func() {
 			hints := install(alpha, "--project", "-t", "claude-code", "--skip", "skill/*")
-			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch -y"))
+			Expect(hints[0]).To(Equal("keep it to yourself: lola profile --project --move alpha --to mine --switch"))
 			unchanged(runHint(command(hints[0])))
 			Expect(installedFiles()).To(Equal([]string{".claude/commands/hello.md"}))
 			Expect(read(filepath.Join(p.UserProfiles, "mine.yml"))).To(ContainSubstring("    skip: [skill/*]\n"))

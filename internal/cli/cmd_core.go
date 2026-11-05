@@ -32,9 +32,9 @@ func (a *app) session(cmd *cobra.Command) (*engine.Engine, engine.Scope, error) 
 	return eng, sc, err
 }
 
-func addTargetFlag(cmd *cobra.Command, dst *[]string, usage string) {
+func (a *app) addTargetFlag(cmd *cobra.Command, dst *[]string, usage string) {
 	cmd.Flags().StringSliceVarP(dst, "target", "t", nil, usage+" (repeatable or comma-separated: "+strings.Join(targets.IDs(), ", ")+")")
-	_ = cmd.RegisterFlagCompletionFunc("target", cobra.FixedCompletions(targets.IDs(), cobra.ShellCompDirectiveNoFileComp))
+	_ = cmd.RegisterFlagCompletionFunc("target", a.completeTargets)
 }
 
 // installOutput is install's JSON: the engine's result and the commands that repeat the run
@@ -204,10 +204,13 @@ func (a *app) installCmd() *cobra.Command {
 		Example:           g.example(),
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: a.completeAddress,
+		ValidArgsFunction: a.completeSource,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var err error
 			if f.trust, err = trust.parse(cmd, args, "install", "module"); err != nil {
+				return err
+			}
+			if f.pinned, err = parseAt(f.at, runWithout(cmd, args, "at")); err != nil {
 				return err
 			}
 			// A script path a hint repeats must print as itself, on one line (RR4).
@@ -221,7 +224,7 @@ func (a *app) installCmd() *cobra.Command {
 			return a.runInstall(cmd, g, args, f)
 		},
 	}
-	addTargetFlag(cmd, &f.targets, "assistants to install for")
+	a.addTargetFlag(cmd, &f.targets, "assistants to install for; naming fewer than a module is installed on removes the others' files, after asking")
 	cmd.Flags().StringSliceVar(&f.skips, "skip", nil, "do not install these components, and remember it in selections.yaml (kind/name or module:kind/name; repeatable or comma-separated)")
 	cmd.Flags().StringSliceVar(&f.onlys, "only", nil, "install only these components of each module that has them, and remember it (repeatable or comma-separated)")
 	cmd.Flags().StringSliceVar(&f.unskips, "unskip", nil, "install these skipped components again, and remember it (repeatable or comma-separated)")
@@ -230,6 +233,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.withMentions, "with-mentions", false, "also install the components your picks mention by name (one hop), and remember them in selections.yaml")
 	cmd.Flags().StringVar(&f.ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&f.path, "path", "", "module root inside the source (monorepos)")
+	cmd.Flags().StringArrayVar(&f.at, "at", nil, atUsage)
 	cmd.Flags().BoolVar(&f.override, "override", false, "when the module comes from another layer (the base under your profile), give the profile its own entry, starting from that one (keeps the version installed)")
 	cmd.Flags().StringVar(&f.profile, "profile", "", "write the entry into this profile (base: the scope's base), not the profile on; one that is off is saved, not applied")
 	cmd.Flags().StringVar(&f.preInstall, "pre-install", "", "a script to run before each module copy the install writes, once per assistant (yours: no trust asked)")
@@ -243,6 +247,15 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
 	cmd.MarkFlagsMutuallyExclusive("rules", "no-rules")
 	addTrustFlag(cmd, &trust, "install", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
+	for _, name := range []string{"skip", "only", "unskip"} {
+		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(0))
+	}
+	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
+	_ = cmd.RegisterFlagCompletionFunc("at", a.completeAt)
+	_ = cmd.RegisterFlagCompletionFunc("profile", a.completeProfiles(true))
+	_ = cmd.RegisterFlagCompletionFunc("pre-install", completeFiles)
+	_ = cmd.RegisterFlagCompletionFunc("post-install", completeFiles)
 	return cmd
 }
 
@@ -320,11 +333,12 @@ func (a *app) uninstallCmd() *cobra.Command {
 			return a.emit(cmd, func(w io.Writer, s style) { printResult(w, s, "uninstalled", res) }, res)
 		},
 	}
-	addTargetFlag(cmd, &targets, "only uninstall from these assistants")
+	a.addTargetFlag(cmd, &targets, "only uninstall from these assistants")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking (never answers a consent question)")
 	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base) instead of the layer the module comes from")
+	_ = cmd.RegisterFlagCompletionFunc("profile", a.completeProfiles(true))
 	return cmd
 }
 
@@ -344,9 +358,10 @@ func (a *app) listCmd() *cobra.Command {
 			"Scope: --project, --user, -C <dir> or --scope (both included); without them, the project with\n" +
 			".lola/ at or above the current directory, if any, and user scope. list never asks, and\n" +
 			"default_scope does not apply. Every row names its scope.",
-		Example: "  lola list\n  lola list --user\n  lola list --scope both -C ~/work/app\n  lola list --json",
-		GroupID: groupCore,
-		Args:    cobra.NoArgs,
+		Example:           "  lola list\n  lola list --user\n  lola list --scope both -C ~/work/app\n  lola list --json",
+		GroupID:           groupCore,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			eng, err := a.engine()
 			if err != nil {
@@ -395,13 +410,13 @@ func (a *app) listCmd() *cobra.Command {
 			}, map[string]any{"modules": rows, "notices": notices})
 		},
 	}
-	addTargetFlag(cmd, &targets, "only show these assistants")
+	a.addTargetFlag(cmd, &targets, "only show these assistants")
 	return cmd
 }
 
 // printStatus prints the rows of every scope list read: a table whose rows each name their
 // scope, then a line per scope with nothing installed, coaching install (the command install
-// names for a scope). --plain rows are name, target, status, rules, source, scope, from.
+// names for a scope). --plain rows are name, target, status, rules, source, scope, from, ref.
 func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, contexts []engine.ScopeContext, install func(engine.Scope) string) {
 	if s.plain {
 		for _, r := range rows {
@@ -409,7 +424,7 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 			if !r.Rules {
 				rules = "off"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source, r.Scope, r.From)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", r.Name, r.Target, r.Status, rules, r.Source, r.Scope, r.From, untrusted.Text(r.Ref, untrusted.MaxName))
 		}
 		return
 	}
@@ -466,7 +481,11 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 		if skipped {
 			rules += "\t" + strconv.Itoa(len(r.Skipped))
 		}
-		line := strings.Join([]string{r.Scope, r.Name, r.Target, status, rules, r.Source}, "\t")
+		source := r.Source
+		if r.Ref != "" {
+			source += " @ " + untrusted.Text(r.Ref, untrusted.MaxName)
+		}
+		line := strings.Join([]string{r.Scope, r.Name, r.Target, status, rules, source}, "\t")
 		if profiled {
 			line += "\t" + fromLabel(r.Scope, r.From, contexts)
 		}
@@ -520,7 +539,7 @@ func (a *app) checkCmd() *cobra.Command {
 			"  lola check @acme/formatter",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: a.completeAddress,
+		ValidArgsFunction: a.completeSource,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			eng, sc, err := a.session(cmd)
 			if err != nil {
@@ -550,7 +569,7 @@ func (a *app) checkCmd() *cobra.Command {
 			return engine.StrictError(all, "fix the module; lola install renders what each target supports", false)
 		},
 	}
-	addTargetFlag(cmd, &targets, "only check these assistants")
+	a.addTargetFlag(cmd, &targets, "only check these assistants")
 	cmd.Flags().BoolVar(&strict, "strict", false, "exit with an error if any target would drop, change or skip part of a module")
 	return cmd
 }

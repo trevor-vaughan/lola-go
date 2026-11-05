@@ -67,7 +67,7 @@ func (a *app) deletesRefusal(cmd *cobra.Command, err error) error {
 		return err
 	}
 	if !a.json {
-		printRemovals(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, refused.Removals)
+		printRemovals(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), plain: a.plain}, refused.Removals)
 		return err
 	}
 	fields, ferr := planFields(refused.Plan)

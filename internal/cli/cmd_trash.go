@@ -48,8 +48,9 @@ func (a *app) trashCmd() *cobra.Command {
 			"needs -y. -n lists what would be deleted.",
 		Example: "  lola trash\n  lola trash 20261103T120000Z\n  lola trash 20261103T120000Z --restore\n" +
 			"  lola trash 20261103T120000Z .claude/commands/ship.md --restore -n\n  lola trash --empty --older-than 30d -y",
-		GroupID: groupAdditional,
-		Args:    cobra.ArbitraryArgs,
+		GroupID:           groupAdditional,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: a.completeTrash,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			act, err := trashAction(cmd, args)
 			if err != nil {
@@ -93,6 +94,8 @@ func (a *app) trashCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&empty, "empty", false, "delete the named runs, or every run")
 	cmd.Flags().BoolVar(&force, "force", false, "with --restore, first move what is where an original was into a new trash run")
 	cmd.Flags().StringVar(&olderThan, "older-than", "", "with --empty, only runs older than this: <n>d or <n>w")
+	_ = cmd.RegisterFlagCompletionFunc("older-than", cobra.FixedCompletions([]cobra.Completion{cobra.CompletionWithDesc("7d", "7 days"),
+		cobra.CompletionWithDesc("30d", "30 days"), cobra.CompletionWithDesc("2w", "2 weeks")}, cobra.ShellCompDirectiveNoFileComp|cobra.ShellCompDirectiveKeepOrder))
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and change nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	// Aliases for muscle memory; additive and stable. The published table is pinned in store_test.go.
@@ -458,7 +461,7 @@ func printTrashShow(w io.Writer, s style, show *engine.TrashShow, again string) 
 		fmt.Fprintln(w, noticeLine(s, n))
 	}
 	if len(show.Entries) > 0 {
-		fmt.Fprintln(w, s.info("restore them: "+again))
+		fmt.Fprintln(w, s.info(show.RestoreHint(again)))
 	}
 }
 

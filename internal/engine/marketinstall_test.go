@@ -541,6 +541,15 @@ var _ = Describe("installing from a marketplace", func() {
 		publish(line+next, line+fork)
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"secdevai"}, Update: true, Trust: trustAll})
 		Expect(err).To(MatchError("secdevai: marketplace acme lists secdevai at " + fork + ", which main does not reach"))
+		// Off a terminal the run reads the entry for its refusal first; a read that fails leaves it
+		// unread, and the run is refused for its trust as before, saying why it could not read it.
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Modules: []string{"secdevai"}, Update: true})
+		refusal, refused := errors.AsType[*engine.TrustRefusalError](err)
+		Expect(refused).To(BeTrue(), "%v", err)
+		Expect(err).To(MatchError(HavePrefix("lola sync needs your trust for the pins it would write for secdevai")))
+		Expect(refusal.Notices).To(ConsistOf(HaveField("Text", "secdevai: could not read the version this run would install, so the files it drops are not listed: "+
+			"secdevai: marketplace acme lists secdevai at "+fork+", which main does not reach → lola market acme --update")), "the failure's hint is kept")
+		Expect(errs.Hints(err)).To(ContainElement("then accept them: lola sync --project secdevai --update --trust=entries"))
 
 		// Another ref, or another source: a notice with the install that takes it there; the entry
 		// keeps its source and ref, and updates from them.

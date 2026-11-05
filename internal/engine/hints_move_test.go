@@ -71,37 +71,37 @@ var _ = Describe("the move hint", func() {
 	It("after a project.yml write, hints the move into a profile of yours and into every project", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 		Expect(install(sc, claude, notes)).To(Equal([]string{
-			"meant for another profile? lola profile --project --move notes --to me --switch -y",
-			"meant for every project? lola profile --user --move notes --to base -y"}))
+			"meant for another profile? lola profile --project --move notes --to me --switch",
+			"meant for every project? lola profile --user --move notes --to base"}))
 	})
 
 	It("with no profile of yours, after a shared write, hints a new one, never a shared file", func() {
 		Expect(install(sc, claude, notes)).To(Equal([]string{
-			"keep it to yourself: lola profile --project --move notes --to mine --switch -y",
-			"meant for every project? lola profile --user --move notes --to base -y"}))
+			"keep it to yourself: lola profile --project --move notes --to mine --switch",
+			"meant for every project? lola profile --user --move notes --to base"}))
 
 		// A profile of another kind named mine would be what --to mine names: the hint picks mine-2.
 		writeTree(proj, map[string]string{".lola/profiles/mine.yml": "version: 1\n"})
 		other := filepath.Join(tmp, "other")
 		writeTree(other, map[string]string{"lola.yml": "name: other\n", "commands/other.md": "O\n"})
-		Expect(install(sc, claude, other)).To(ContainElement("keep it to yourself: lola profile --project --move other --to mine-2 --switch -y"))
+		Expect(install(sc, claude, other)).To(ContainElement("keep it to yourself: lola profile --project --move other --to mine-2 --switch"))
 	})
 
 	It("after a user-scope write in a found project, hints this project only; at most two profiles, then the listing", func() {
 		writeTree(p.UserProfiles, map[string]string{"a.yml": "version: 1\n", "b.yml": "version: 1\n", "c.yml": "version: 1\n"})
 		Expect(install(user, claude, notes)).To(Equal([]string{
-			"meant for another profile? lola profile --user --move notes --to a --switch -y",
-			"meant for another profile? lola profile --user --move notes --to b --switch -y",
+			"meant for another profile? lola profile --user --move notes --to a --switch",
+			"meant for another profile? lola profile --user --move notes --to b --switch",
 			"other profiles: lola profile --user",
-			"meant for this project only? lola profile --project --move notes --to user:a --switch -y"}))
+			"meant for this project only? lola profile --project --move notes --to user:a --switch"}))
 	})
 
-	It("names the profile on without --switch, then the base, and carries no -y on a terminal", func() {
+	It("names the profile on without --switch, then the base, and carries no -y", func() {
 		writeTree(p.UserProfiles, map[string]string{"a.yml": "version: 1\n", "b.yml": "version: 1\n"})
 		activate(user, "user:b")
 		activate(sc, "user:b")
 		Expect(install(user, claude, notes)).To(Equal([]string{
-			"meant for another profile? lola profile --user --move notes --to a --switch -y",
+			"meant for another profile? lola profile --user --move notes --to a --switch",
 			"meant for another profile? lola profile --user --move notes --to base"}),
 			"the target is b, on in the project too, which then lists notes: no move into it")
 
@@ -125,19 +125,19 @@ var _ = Describe("the move hint", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\n"})
 		writeTree(proj, map[string]string{".lola/profiles/me.yml": "version: 1\n"})
 		Expect(install(sc, claude, notes)).To(HaveExactElements(
-			"meant for another profile? lola profile --project --move notes --to user:me --switch -y", HavePrefix("meant for every project? ")))
+			"meant for another profile? lola profile --project --move notes --to user:me --switch", HavePrefix("meant for every project? ")))
 	})
 
 	It("passes over a profile that lists the module already", func() {
 		writeTree(p.UserProfiles, map[string]string{"me.yml": "version: 1\nmodules:\n  - {name: notes, source: " + notes + "}\n"})
 		Expect(install(sc, claude, notes)).To(Equal([]string{
-			"keep it to yourself: lola profile --project --move notes --to mine --switch -y",
-			"meant for every project? lola profile --user --move notes --to base -y"}))
+			"keep it to yourself: lola profile --project --move notes --to mine --switch",
+			"meant for every project? lola profile --user --move notes --to base"}))
 	})
 
 	It("names -C for a project not found from here, and the two-step without a profile of yours", func() {
 		e.Getwd = func() (string, error) { return tmp, nil }
-		Expect(install(sc, claude, notes)).To(ContainElement("meant for every project? lola profile --user --move notes --to base -y -C " + proj))
+		Expect(install(sc, claude, notes)).To(ContainElement("meant for every project? lola profile --user --move notes --to base -C " + proj))
 
 		other := filepath.Join(tmp, "other")
 		writeTree(other, map[string]string{"lola.yml": "name: other\n", "commands/other.md": "O\n"})
@@ -146,7 +146,7 @@ var _ = Describe("the move hint", func() {
 		third := filepath.Join(tmp, "third")
 		writeTree(third, map[string]string{"lola.yml": "name: third\n", "commands/third.md": "T\n"})
 		Expect(install(user, claude, third)).To(Equal([]string{
-			"meant for this project only? lola uninstall --user third -y, then lola install --project third"}), "the project names its targets, from the install above")
+			"meant for this project only? lola uninstall --user third, then lola install --project third"}), "the project names its targets, from the install above")
 	})
 
 	It("follows only what an install adds: nothing for a dry run, a changed entry, or a scope the module is listed in", func() {
@@ -179,8 +179,8 @@ var _ = Describe("the move hint", func() {
 			"c.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: ghost, source: " + ghost + "}\n",
 			"d.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
 		Expect(install(user, claude, notes)).To(Equal([]string{
-			"meant for another profile? lola profile --user --move notes --to c --switch -y",
-			"meant for another profile? lola profile --user --move notes --to d --switch -y"}),
+			"meant for another profile? lola profile --user --move notes --to c --switch",
+			"meant for another profile? lola profile --user --move notes --to d --switch"}),
 			"a's kit would replace the one installed and ask about its hook; b is a bundle; "+
 				"c installs a module without hooks, d kit as it is installed")
 	})
@@ -188,8 +188,8 @@ var _ = Describe("the move hint", func() {
 	It("moves into this project only through a profile of yours that does not list the module", func() {
 		writeTree(p.UserProfiles, map[string]string{"a.yml": "version: 1\nmodules:\n  - {name: notes, source: " + notes + "}\n", "b.yml": "version: 1\n"})
 		Expect(install(user, claude, notes)).To(Equal([]string{
-			"meant for another profile? lola profile --user --move notes --to b --switch -y",
-			"meant for this project only? lola profile --project --move notes --to user:b --switch -y"}))
+			"meant for another profile? lola profile --user --move notes --to b --switch",
+			"meant for this project only? lola profile --project --move notes --to user:b --switch"}))
 	})
 
 	It("names the profile a switch turns off only when the switch removes its modules", func() {
@@ -202,8 +202,8 @@ var _ = Describe("the move hint", func() {
 		Expect(err).NotTo(HaveOccurred())
 		e.Getwd = func() (string, error) { return tmp, nil }
 		Expect(install(user, claude, notes)).To(Equal([]string{
-			"meant for another profile? lola profile --user --move notes --to b --switch -y",
-			"meant for another profile (switches a off, removing its modules)? lola profile --user --move notes --to c --switch -y",
+			"meant for another profile? lola profile --user --move notes --to b --switch",
+			"meant for another profile (switches a off, removing its modules)? lola profile --user --move notes --to c --switch",
 			"other profiles: lola profile --user"}), "b lists kept too: switching to it removes nothing")
 	})
 
@@ -239,6 +239,6 @@ var _ = Describe("the move hint", func() {
 			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc}, Targets: claude.Targets},
 				{ScopeChoice: engine.ScopeChoice{Scope: user}, Targets: claude.Targets}}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(hints(res.Result)).To(Equal([]string{"keep it to yourself: lola profile --project --move notes --to mine --switch -y"}))
+		Expect(hints(res.Result)).To(Equal([]string{"keep it to yourself: lola profile --project --move notes --to mine --switch"}))
 	})
 })

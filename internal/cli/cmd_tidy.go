@@ -43,8 +43,9 @@ func (a *app) tidyCmd() *cobra.Command {
 			"edit this scope's keep-list. -n lists what would move and what is locked, and why.\n\n" + scopeHelp,
 		Example: "  lola tidy\n  lola tidy -n\n  lola tidy skill/old-review 'command/tmp-*' -y\n  lola tidy --all -y -t claude-code\n" +
 			"  lola tidy --keep skill/notes",
-		GroupID: groupCore,
-		Args:    cobra.ArbitraryArgs,
+		GroupID:           groupCore,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runTidy(cmd, args, f)
 		},
@@ -56,7 +57,9 @@ func (a *app) tidyCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.withTracked, "include-tracked", false, "also offer what git tracks")
 	cmd.Flags().StringArrayVar(&f.keep, "keep", nil, "add a kind/name selector to this scope's keep-list (repeatable)")
 	cmd.Flags().StringArrayVar(&f.unkeep, "unkeep", nil, "remove a selector from this scope's keep-list, as written there (repeatable)")
-	addTargetFlag(cmd, &f.targets, "only tidy these assistants' directories")
+	a.addTargetFlag(cmd, &f.targets, "only tidy these assistants' directories")
+	_ = cmd.RegisterFlagCompletionFunc("keep", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("unkeep", cobra.NoFileCompletions)
 	// Aliases for muscle memory (Plan 6d §3.2); lola tidy itself has none. Additive and stable;
 	// the published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{"keep": {"protect"}, "unkeep": {"unprotect"}})

@@ -330,8 +330,8 @@ var _ = Describe("lola profile --move", func() {
 				"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team"}), from)
 		}
 		_, err = e.Move(ctx, engine.MoveRequest{Scope: user, Modules: []string{"notes"}, To: "base"})
-		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user --off -y",
-			"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team -y"}), "a run that cannot ask before removing files: -y")
+		Expect(errs.Hints(err)).To(Equal([]string{"turn it off: lola profile --user --off",
+			"or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team"}), "R-8: a run that cannot ask hints no -y it was not given")
 	})
 
 	// hinted runs the move each hint names (its --to), as the hint would.
@@ -948,7 +948,8 @@ var _ = Describe("lola profile --move", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Syncs).To(HaveLen(2))
 			Expect(res.Syncs[1].Removals).To(HaveExactElements(HaveField("Module", "notes")))
-			Expect(res.Syncs[0].OffTerminal).To(Equal("lola profile --user --move notes --to base -y"))
+			Expect(res.Syncs[0].ToApply).To(Equal("lola profile --user --move notes --to base"))
+			Expect(res.Syncs[0].OffTerminal).To(BeEmpty(), "R-8: a dry run's hint carries no -y you did not give")
 			Expect(res.Syncs[1].ToApply).To(BeEmpty(), "one run applies both")
 			Expect(read(projectYML())).To(Equal(before))
 			Expect(filepath.Join(p.UserProfiles, "default.yml")).NotTo(BeAnExistingFile())

@@ -434,7 +434,7 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&ef.exact, "exact", false, "with --edit --only: save the selectors as the entry's only: list instead, so components a later version adds are not installed")
 	cmd.Flags().BoolVar(&ef.withMentions, "with-mentions", false, "with --edit: also take the components your picks mention by name (one hop)")
 	cmd.Flags().BoolVar(&ef.override, "override", false, "with --edit: when the module comes from another layer, give the profile its own entry, starting from that one")
-	addTargetFlag(cmd, &ef.targets, "with --edit: the assistants a module it adds installs for")
+	a.addTargetFlag(cmd, &ef.targets, "with --edit: the assistants a module it adds installs for")
 	cmd.Flags().BoolVar(&create, "new", false, "with --switch or --edit: make the profile first (yours; project:<name> the project's), empty unless --from or --bundle")
 	cmd.Flags().StringVar(&from, "from", "", "with --new: copy this profile's entries and targets (never a pin)")
 	cmd.Flags().StringSliceVar(&members, "bundle", nil, "with --new: make a bundle of these profiles (comma-separated, in order); with --edit: set a bundle's members; a bare one that does not exist is made empty")
@@ -447,6 +447,16 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print what the action would change, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals, and --remove (only those: it never trusts changes)")
 	cmd.Flags().BoolP("verbose", "v", false, "with an action that applies: print every notice, not a count per module of those that are not about safety")
+	for _, name := range []string{"skip", "only", "unskip"} {
+		_ = cmd.RegisterFlagCompletionFunc(name, a.completeComponents(1)) // lola profile <profile> --edit <module>...
+	}
+	_ = cmd.RegisterFlagCompletionFunc(string(engine.ProfileMove), a.completeMove)
+	_ = cmd.RegisterFlagCompletionFunc("to", a.completeProfiles(true))
+	_ = cmd.RegisterFlagCompletionFunc("from", a.completeProfiles(false))
+	_ = cmd.RegisterFlagCompletionFunc("bundle", a.completeProfiles(false))
+	_ = cmd.RegisterFlagCompletionFunc(string(engine.ProfileAdd), completeFiles)
+	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
 	addTrustFlag(cmd, &trust, "profile", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles; --add takes profiles only (recorded as a yes is; --update without a scope flag: profiles only)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "with --on, --off, --switch or --edit: remove files without asking, edited ones too; with --remove: remove a profile in use, without asking (never answers a consent question, nor --on's question)")
 	// Aliases for muscle memory from other tools (Plan 6b §3.3): systemctl and conda, nvm and

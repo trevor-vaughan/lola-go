@@ -367,7 +367,7 @@ var _ = Describe("lola tidy", func() {
 		Expect(r.out).To(ContainSubstring("→ lola tidy -C "+proj+"\n"), "without names the run it names runs the picker")
 		Expect(p.calls).To(BeEmpty())
 		r = lola("tidy", "-n", "skill/old", "-C", proj)
-		Expect(r.out).To(ContainSubstring("→ lola tidy -C "+proj+" skill/old -y\n"), "off a terminal the run needs -y")
+		Expect(r.out).To(ContainSubstring("→ lola tidy -C "+proj+" skill/old\n"), "R-8: off a terminal too, -y only as given")
 	})
 
 	It("a hint keeps --json, --plain and --no-pager as given, and never -n", func() {
@@ -379,10 +379,16 @@ var _ = Describe("lola tidy", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
-		Expect(doc["hints"]).To(Equal([]any{"lola tidy -C " + proj + " --all -y --json"}))
+		Expect(doc["hints"]).To(Equal([]any{"lola tidy -C " + proj + " --all --json"}))
 		words := shellWords(doc["hints"].([]any)[0].(string))
 		r = lola(words[1:]...)
+		Expect(r.code).To(Equal(1), "R-8: the dry run's hint carries no -y you did not give, so off a terminal it is refused")
+		var refusal struct{ Hints []string }
+		Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
+		Expect(refusal.Hints).To(Equal([]string{"lola tidy -C " + proj + " --all -y --json"}))
+		r = lola(shellWords(refusal.Hints[0])[1:]...)
 		Expect(r.code).To(Equal(0), r.err)
+		doc = nil
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
 		Expect(doc["moved"]).To(HaveLen(1), "the hint, pasted, is the run it names")
 	})

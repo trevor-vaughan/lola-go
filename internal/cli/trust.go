@@ -192,10 +192,6 @@ func trustHelp(command string) string {
 	if b := takes & engine.TrustBare; b != 0 {
 		out += "Bare --trust is " + b.String() + ", which run no code.\n"
 	}
-	if command == "update" { // it has no -y
-		return out + "It lists what it covers before anything is written, and on a terminal asks once;\n" +
-			"a grant is recorded as a yes at the prompt is."
-	}
 	return out + "It lists what it covers before anything is written, and on a terminal asks once (-y\n" +
 		"answers); a grant is recorded as a yes at the prompt is."
 }

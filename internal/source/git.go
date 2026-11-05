@@ -111,6 +111,9 @@ func (w *headWriter) Write(p []byte) (int, error) {
 
 func (w *headWriter) String() string { return w.buf.String() }
 
+// errNoGit is runGit's failure when git is not on PATH: lola's own, never a source's.
+var errNoGit = errors.New("lola needs git for this source, and git is not on PATH")
+
 // runGit runs a git command and returns its stdout. A failure carries git's stderr, made
 // safe to print by untrusted.Text, and coaching for the usual causes.
 func runGit(ctx context.Context, dir string, args ...string) ([]byte, error) {
@@ -128,7 +131,7 @@ func runGitEnv(ctx context.Context, env []string, dir string, args ...string) ([
 		return out, nil
 	}
 	if errors.Is(err, exec.ErrNotFound) {
-		return nil, errs.WithHints(errors.New("lola needs git for this source, and git is not on PATH"), "install git")
+		return nil, errs.WithHints(errNoGit, "install git")
 	}
 	sub := args[0]
 	if sub == "-c" && len(args) > 2 {
@@ -405,8 +408,12 @@ func remoteRef(ctx context.Context, spec Spec) (string, error) {
 	}
 	shown, shownRef := untrusted.Text(url, untrusted.MaxName), untrusted.Text(ref, untrusted.MaxName)
 	out, err := runGit(ctx, "", remoteArgs(spec, "ls-remote", "--", url, "refs/heads/"+ref, "refs/tags/"+ref)...)
-	if err != nil {
-		return "", err
+	switch {
+	case err == nil:
+	case errors.Is(err, errNoGit) || errors.Is(ctx.Err(), context.Canceled):
+		return "", err // lola's own failure, or the run stopping: not the source's
+	default:
+		return "", &UnreachableError{Err: err}
 	}
 	var branch, tag bool
 	for line := range strings.Lines(string(out)) {

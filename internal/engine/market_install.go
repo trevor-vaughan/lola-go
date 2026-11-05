@@ -146,6 +146,14 @@ func (p *marketPick) spec(ref string) (source.Spec, string) {
 	return spec, commit
 }
 
+// catalogMismatchError is a source that does not serve what its marketplace's catalog lists: a
+// commit pin its ref does not reach, or an archive with another sha256. Its message and hints are
+// the wrapped error's.
+type catalogMismatchError struct{ err error }
+
+func (e *catalogMismatchError) Error() string { return e.err.Error() }
+func (e *catalogMismatchError) Unwrap() error { return e.err }
+
 // fetchEntry fetches p's entry from spec into run (Plan 6c §6.4, ruling R-6c-12): a commit pin
 // must be reachable from spec's ref, the catalog's (the default branch when it gives none), before
 // anything is fetched, and the fetch, by that commit, must serve it; an archive must have the
@@ -160,8 +168,8 @@ func (e *Engine) fetchEntry(ctx context.Context, p *marketPick, spec source.Spec
 				if spec.Ref != "" {
 					where = shown(spec.Ref)
 				}
-				return source.Fetched{}, errs.WithHints(fmt.Errorf("marketplace %s lists %s at %s, which %s does not reach", p.reg.Name,
-					p.entry.Name, commit, where), update)
+				return source.Fetched{}, &catalogMismatchError{errs.WithHints(fmt.Errorf("marketplace %s lists %s at %s, which %s does not reach", p.reg.Name,
+					p.entry.Name, commit, where), update)}
 			}
 			return source.Fetched{}, &fetchFailedError{err}
 		}
@@ -169,8 +177,8 @@ func (e *Engine) fetchEntry(ctx context.Context, p *marketPick, spec source.Spec
 	}
 	f, err := source.Fetch(ctx, fetch, run)
 	if mismatch, ok := errors.AsType[*source.SHA256MismatchError](err); ok {
-		return source.Fetched{}, errs.WithHints(fmt.Errorf("marketplace %s lists %s with sha256 %s; the download is %s", p.reg.Name,
-			p.entry.Name, shown(mismatch.Want), mismatch.Got), update)
+		return source.Fetched{}, &catalogMismatchError{errs.WithHints(fmt.Errorf("marketplace %s lists %s with sha256 %s; the download is %s", p.reg.Name,
+			p.entry.Name, shown(mismatch.Want), mismatch.Got), update)}
 	}
 	if err != nil {
 		return source.Fetched{}, &fetchFailedError{err}

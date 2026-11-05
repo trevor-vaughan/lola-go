@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -82,5 +83,26 @@ var _ = Describe("command-tree conventions", func() {
 				Expect(c.ValidArgsFunction).NotTo(BeNil(), c.CommandPath())
 			}
 		}
+	})
+
+	It("every flag that takes a value completes, and every command completes its arguments", func() {
+		// A free-text flag registers cobra.NoFileCompletions: without it the shell offers file names.
+		var missing []string
+		for _, c := range commands() {
+			c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+				if f.NoOptDefVal != "" || f.Hidden {
+					return // a bool, or a flag whose value is optional
+				}
+				if _, ok := c.GetFlagCompletionFunc(f.Name); !ok {
+					missing = append(missing, c.CommandPath()+" --"+f.Name)
+				}
+			})
+			// The shell completes file names for a command that registers nothing, even one that
+			// takes no arguments.
+			if c.ValidArgsFunction == nil && len(c.ValidArgs) == 0 {
+				missing = append(missing, c.CommandPath()+" <args>")
+			}
+		}
+		Expect(missing).To(BeEmpty())
 	})
 })

@@ -165,6 +165,12 @@ type InstallSpec struct {
 	// DeletesConfirmed says the user already answered yes to this plan, which lists the files it
 	// deletes (the review's Apply): a pick change that deletes files asks nothing more (confirmDeletes).
 	DeletesConfirmed bool
+	// At is lola install's --at: per module, the version a refusal showed (a git commit, or a
+	// folder's or archive's content digest). A module its source now serves at another version is
+	// refused before anything is written, hinting AtFresh, the run's dry run without --at, so a
+	// consent hint answers only the version it showed. A name no request resolves to is refused.
+	At      map[string]string
+	AtFresh string
 	// UserRun is the user's run at user scope, the hint of a refusal of a project at the home
 	// directory; "" gives it no hint.
 	UserRun string
@@ -286,7 +292,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 		scopes = append(scopes, si.Scope)
 	}
 	for _, a := range added {
-		moves := e.installMoveHints(ctx, a, scopes, spec.Options.AskWhere != nil, spec.Options.Display)
+		moves := e.installMoveHints(ctx, a, scopes, spec.Options.Display)
 		out.Notices = append(append(out.Notices, e.inProjectNotices(a, scopes, spec.Options, moves)...), moves...)
 	}
 	for _, si := range then {
@@ -533,6 +539,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
 	res.Notices = append(res.Notices, swept...)
 	res.Notices = append(res.Notices, restored...)
+	res.home = e.Paths.Home
 	out := &InstallResult{Result: res, Scopes: []ScopeResult{}}
 	probes := e.newProbeRun(ctx)
 	var fetched []string
@@ -691,6 +698,11 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 			if err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}
+			if want, ok := spec.At[v.Name]; ok {
+				if err := e.installAt(run, v, ent.Ref, want, spec.AtFresh); err != nil {
+					return nil, err
+				}
+			}
 			if didFetch {
 				again := v.Name
 				if r.market != nil {
@@ -722,6 +734,11 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 			}
 		}
 		out.Scopes = append(out.Scopes, ScopeResult{Scope: si.Scope.Kind.String(), Root: root(si.Scope), ScopeSource: si.Source})
+	}
+	for _, name := range slices.Sorted(maps.Keys(spec.At)) {
+		if len(plans) > 0 && !slices.ContainsFunc(plans[0].resolved, func(rr resolvedRequest) bool { return rr.v.Name == name }) {
+			return nil, errs.WithHints(fmt.Errorf("--at names %s, which this install does not include", shown(name)), "run it without --at: "+spec.AtFresh)
+		}
 	}
 	// Each address is shown resolved before any question about what it installs (ruling R-6c-15).
 	if opts.ShowResolved != nil && len(plans) > 0 {
@@ -1686,7 +1703,19 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		return err
 	}
 	res.Notices = append(res.Notices, adds...)
-	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: modTargets, Intents: intents,
+	// -t naming fewer assistants than the module is installed on here narrows the entry the run
+	// writes: the others' files go now, in this plan, as the next sync would remove them, and are
+	// asked about as a pick change's are (confirmDeletes).
+	planned := modTargets
+	if installed != nil && dest != nil && len(given) > 0 && len(r.Targets) == 0 {
+		for _, t := range installed.InstalledTargets() {
+			if !slices.Contains(modTargets, t) {
+				planned = append(slices.Clone(planned), t)
+				res.dropped = append(res.dropped, droppedTarget{root: root(sp.sc), module: v.Name, target: t})
+			}
+		}
+	}
+	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: planned, Intents: intents,
 		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
 			Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, From: from}})
 	// Hooks run only in a copy replaced from the hashed version, after the consent keyed on those
@@ -1732,7 +1761,13 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 			again = nil
 		}
 	}
-	sp.copies = append(sp.copies, moduleCopy{name: v.Name, src: v.ContentDir, replace: true,
+	at := ""
+	if opts.PinConsent {
+		if at = v.Name + "=" + v.Meta.Digest; commit != "" {
+			at = v.Name + "=" + commit
+		}
+	}
+	sp.copies = append(sp.copies, moduleCopy{name: v.Name, src: v.ContentDir, replace: true, at: at,
 		hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true, forced: !replace && !addsTargets(installed, mr.Targets),
 		pending: installed != nil && installed.HooksPending && declaresPostInstall(v.Module.DeclaredHooks), review: review, again: again,
 		shows: shows, reviewTargets: mr.Targets})
@@ -1807,6 +1842,29 @@ func (e *Engine) listedRef(run *StagedRun, v VersionRef) (string, error) {
 		}
 	}
 	return ref, nil
+}
+
+// installAt checks lola install's --at for v, which the run resolved: the kind of version its
+// source takes (atKind), then that it is the one --at names (atHolds), before anything is written.
+func (e *Engine) installAt(run *StagedRun, v store.Version, ref, want, fresh string) error {
+	o, found, err := e.origin(run, v.Name)
+	if err != nil {
+		return err
+	}
+	kind := source.KindArchive
+	if found {
+		kind = source.Kind(o.Type)
+	}
+	if err := atKind(v.Name, kind, want); err != nil {
+		return err
+	}
+	got := v.Meta.Digest
+	if kind == source.KindGit {
+		if got, err = e.pinCommit(run, v, ref); err != nil {
+			return err
+		}
+	}
+	return atHolds(v.Name, got, want, fresh)
 }
 
 // isFolder reports whether the cache has name from a folder source, which is never pinned, as

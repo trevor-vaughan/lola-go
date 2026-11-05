@@ -250,6 +250,25 @@ var _ = Describe("lola trash: listing, restoring and emptying the trash", func()
 		Expect(os.ReadFile(displaced.Entries[0].Trash)).To(Equal([]byte("{\"edited\":true}\n")), "never deleted")
 	})
 
+	It("I-3: a whole-file copy restored over the file there says, in the plan and after --force, that it replaces the whole file", func() {
+		id := makeRun(now.Add(-time.Hour), tidyRec(), []string{".mcp.json"}, ".claude/commands/ship.md")
+		writeTree(proj, map[string]string{".mcp.json": "{\"mcpServers\":{\"kit-tools\":{}}}\n"})
+		replaces := "the restore replaces the whole file " + at(".mcp.json") + " with the copy trash run " + id +
+			" holds, at mode 0600 (it may hold credentials); the file there now, with every change made since, moves to a new trash run first"
+		for _, force := range []bool{false, true} {
+			plan, err := e.PlanTrashRestore(engine.TrashRestoreRequest{Run: id, Force: force, DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: replaces}))
+			Expect(plan.Notices).To(HaveLen(map[bool]int{false: 2, true: 1}[force]), "one notice for the copy, none for a moved file")
+		}
+		plan, err := e.PlanTrashRestore(engine.TrashRestoreRequest{Run: id, Force: true})
+		Expect(err).NotTo(HaveOccurred())
+		res, err := e.RestoreTrash(plan)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelWarn, Text: "replaced the whole file " + at(".mcp.json") +
+			" with the copy from trash run " + id + ", at mode 0600; the file that was there is in trash run " + res.Displaced}))
+	})
+
 	It("recreates the directory an original was in", func() {
 		id := makeRun(now, tidyRec(), nil, ".claude/commands/ship.md")
 		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())

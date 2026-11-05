@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -61,7 +62,7 @@ var _ = Describe("core commands", func() {
 
 		r = lola("ls", "-C", proj)
 		Expect(r.out).To(MatchRegexp(`example\s+claude-code\s+✓ ok`))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\n"))
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\t\n"))
 
 		Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
 		r = lola("sync", "-C", proj)
@@ -274,7 +275,8 @@ var _ = Describe("core commands", func() {
 		r := lola("install", mod, "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(ContainSubstring("hint: review it: lola info -C " + proj + " " + mod + " --target claude-code\n  hint: then consent to it: lola install " + mod + " --root " + proj + " --trust=hooks\n"))
+		Expect(r.err).To(MatchRegexp(regexp.QuoteMeta("hint: review it: lola info -C "+proj+" "+mod+" --target claude-code\n  hint: then consent to it: lola install "+mod+" --root "+proj+
+			" --trust=hooks --at example=sha256:")+`[0-9a-f]{64}\n`), "the consent pins the version shown")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 
 		r = lola("install", mod, "-C", proj, "--dry-run")
@@ -584,7 +586,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.err).To(MatchJSON(`{`+projectWriteContextJSON(proj)+`"error": "no assistant found on your PATH, so lola does not know where to install", "hints": ["`+
 			run+` -t claude-code", "`+run+` -t gemini-cli", "`+run+` -t opencode"]}`), "the typed source and every flag")
 		for _, h := range []string{run + " -t gemini-cli", run + " -t claude-code"} {
-			again := lola(shellWords(h)[1:]...)
+			again := runConfirmed(h) // the second drops gemini-cli, whose files it asks about
 			Expect(again.code).To(Equal(0), h+": "+again.err)
 		}
 		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
@@ -734,9 +736,10 @@ var _ = Describe("core commands", func() {
 			writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
 			r := lola(run...)
 			Expect(r.code).To(Equal(1), run[0])
-			// -y answered "remove what lola can remove safely", never "delete my edits" (R-6cux-4).
+			// -y answered "remove what lola can remove safely", never "delete my edits" (R-6cux-4):
+			// --force answers that; the hint completes your own run, so it keeps your -y.
 			want := map[string]string{"update": "lola update --root " + proj + " --strict --force",
-				"sync": "lola sync example --root " + proj + " --force"}[run[0]]
+				"sync": "lola sync example --root " + proj + " --yes --force"}[run[0]]
 			Expect(r.err).To(HaveSuffix("  hint: "+want+"\n"), run[0])
 			again := lola(shellWords(want)[1:]...)
 			Expect(again.code).To(Equal(0), want+": "+again.err)
@@ -779,7 +782,8 @@ var _ = Describe("core commands", func() {
 		r := lola("sync", "-C", proj, "--force")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("lola sync needs your trust for "))
-		Expect(r.err).To(ContainSubstring("hint: then accept them: lola sync -C " + proj + " --force --trust=entries\n"))
+		Expect(r.err).To(MatchRegexp(`hint: then accept them: lola sync -C `+regexp.QuoteMeta(proj)+` --force --trust=entries --at example=sha256:[0-9a-f]{64}\n`),
+			"the hint pins the folder content it showed")
 		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
 	})
 
@@ -800,8 +804,8 @@ var _ = Describe("core commands", func() {
 		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
 		Expect(v["dry_run"]).To(BeFalse())
 		Expect(v["notices"]).To(Equal([]any{
-			map[string]any{"level": "info", "class": "safety", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch -y --json"},
-			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? lola profile --user --move example --to base -y -C " + proj + " --json"}}))
+			map[string]any{"level": "info", "class": "safety", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch --json"},
+			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? lola profile --user --move example --to base -C " + proj + " --json"}}))
 		Expect(v["modules"]).To(HaveLen(1))
 		Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 	})
@@ -836,7 +840,7 @@ var _ = Describe("core commands", func() {
 		Expect(lola("cache", "update", "kit").code).To(Equal(0))
 
 		Expect(lola("list", "-C", proj).out).To(MatchRegexp(`kit\s+claude-code\s+✓ ok → update available\s`))
-		Expect(lola("list", "-C", proj, "--plain").out).To(Equal("kit\tclaude-code\tok\ton\t" + archive + "\tproject\tproject.yml\n"))
+		Expect(lola("list", "-C", proj, "--plain").out).To(Equal("kit\tclaude-code\tok\ton\t" + archive + "\tproject\tproject.yml\t\n"))
 		var res struct{ Modules []map[string]any }
 		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
 		Expect(res.Modules).To(HaveLen(1))
@@ -871,7 +875,7 @@ var _ = Describe("core commands", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(MatchRegexp(`other\s+claude-code\s+⚠ not installed\s`))
 		Expect(r.out).To(MatchRegexp(`other\s+opencode\s+⚠ not installed\s`))
-		Expect(lola("list", "-C", proj, "--plain").out).To(ContainSubstring("other\tclaude-code\tnot_installed\ton\tmods/other\tproject\tproject.yml\n"))
+		Expect(lola("list", "-C", proj, "--plain").out).To(ContainSubstring("other\tclaude-code\tnot_installed\ton\tmods/other\tproject\tproject.yml\t\n"))
 		var res struct{ Modules []map[string]any }
 		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
 		Expect(res.Modules).To(ContainElement(And(HaveKeyWithValue("name", "other"), HaveKeyWithValue("status", "not_installed"),

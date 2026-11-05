@@ -172,6 +172,10 @@ type Options struct {
 	// Rerun is the user's run with the --trust argument for the kinds given (TrustKinds.Arg), which
 	// a refusal for want of trust hints; nil gives no such hint.
 	Rerun func(TrustKinds) string
+	// PinConsent says the run's command takes --at (lola install): the hint that consents to a
+	// module's hook or script pins the version the refusal showed, so a source changed since is
+	// refused rather than consented to. lola sync and lola update pin theirs in Rerun itself.
+	PinConsent bool
 	// Batch, when set, takes the run's covered items and grants at its receipt instead, which then
 	// stops the run with ErrBatched: the caller asks one receipt for several runs (TrustBatch).
 	Batch *TrustBatch
@@ -314,6 +318,11 @@ type Result struct {
 	needs  TrustKinds
 	// recorded is the items whose grants confirmTrusted wrote, which a later failure carries.
 	recorded []Consent
+	// dropped is each target an install's -t leaves out of a module installed on it, whose files
+	// the plan deletes (planInstallModule, PickDeletes).
+	dropped []droppedTarget
+	// home is the directory user scope writes under, which a removal's Where names (deletedBy).
+	home string
 }
 
 // PickCleared is one module's picks removed from selections.yaml by an uninstall: the selectors
@@ -371,7 +380,7 @@ type StatusRow struct {
 	Status string `json:"status"` // ok, modified, missing, stale, skipped, unreadable
 	Rules  bool   `json:"rules"`  // false when the manifest entry says rules: false
 	Source string `json:"source"`
-	Ref    string `json:"ref,omitempty"`
+	Ref    string `json:"ref"`    // the branch, tag or commit a git module follows; "" for its default branch and any other source
 	Digest string `json:"digest"` // the version installed
 	// SourceGone is true when the source lock.json records is a local folder or archive that no
 	// longer exists. Git and URL sources are never checked: list reads no network.

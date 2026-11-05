@@ -263,12 +263,16 @@ func (a *app) marketCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "with --update: every marketplace you have")
 	cmd.Flags().StringVar(&ref, "ref", "", "with --add: the branch, tag or commit of a git source")
 	cmd.Flags().StringVar(&path, "path", "", "with --add: the catalog file, or the directory to look for it in, inside the source")
+	_ = cmd.RegisterFlagCompletionFunc(string(engine.MarketAdd), completeFiles)
+	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
 	cmd.Flags().BoolVar(&remove, string(engine.MarketRemove), false, "forget the named marketplace and drop its cached catalog (asks; -y)")
 	cmd.Flags().StringArrayVar(&sshHosts, "ssh-host", nil,
 		"with --add or --update: let the catalog's ssh sources at this host use your ssh keys (repeatable); with --remove: stop allowing it")
+	_ = cmd.RegisterFlagCompletionFunc("ssh-host", cobra.NoFileCompletions)
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what the action would do, write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --remove: forget it without asking")
-	addTargetFlag(cmd, &targets, "with <name> <entry>: assistants to plan for, as install's -t")
+	a.addTargetFlag(cmd, &targets, "with <name> <entry>: assistants to plan for, as install's -t")
 	// Read beside the reserved word set only, which is answered with the lola command (Plan 6c D8,
 	// Plan 10 §7); hidden.
 	cmd.Flags().BoolVar(&enable, "enable", false, "with set: lola has no disabled state")

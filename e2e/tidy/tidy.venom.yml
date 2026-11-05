@@ -53,7 +53,7 @@ testcases:
           - 'result.systemout ShouldContainSubstring "tracked by git"'
           - 'result.systemout ShouldContainSubstring "is or holds an instruction file"'
           - 'result.systemout ShouldContainSubstring "leads outside the root"'
-          - result.systemoutjson.hints.hints0 ShouldEqual "lola tidy -C {{.proj}} --all -t claude-code -t gemini-cli -y --json"
+          - result.systemoutjson.hints.hints0 ShouldEqual "lola tidy -C {{.proj}} --all -t claude-code -t gemini-cli --json"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} tidy -C {{.proj}} -t claude-code -t gemini-cli -n --json > /tmp/td1.json && {{.jsoncheck}} doc /tmp/td1.json > /dev/null && echo no null'"
         assertions:

@@ -251,10 +251,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 			if !ok {
 				continue
 			}
-			args = []string{rp.Profile, "--switch"}
-			if req.Consent == nil {
-				args = append(args, "-y")
-			}
+			args = []string{rp.Profile, "--switch"} // no -y: it names another command, which asks (R-8)
 			if clause != "" {
 				lead += " (" + clause + ")"
 			}
@@ -267,8 +264,8 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 // addSwitch judges the --switch to rp, just added, that the hint after --add names while a profile
 // is on at sc (--on refuses there: spec 2026-10-29 §6.2, Q3), infos being the profiles sc can use:
 // ok when its dry run, planned as the sync plans it, succeeds and needs no trust or hook's consent,
-// which no hint answers, and clause what it turns off (switchesOff), which off a terminal the
-// hint's -y removes unasked.
+// which no hint answers, and clause what it turns off (switchesOff), which the switch asks before
+// it removes.
 func (e *Engine) addSwitch(ctx context.Context, sc Scope, infos []profile.Info, rp RemoteProfile) (clause string, ok bool) {
 	res, err := e.Sync(ctx, SyncRequest{Scope: sc, Profiles: &ProfileChange{Action: ProfileSwitch, Name: rp.Profile}, Options: Options{DryRun: true}})
 	if err != nil || !asPrinted(res) {

@@ -81,13 +81,14 @@ func componentStates(v store.Version, x config.Exclusions, rulesOn bool, had []C
 // infoComponents fills in, lola info's element for sc, with v's module there as info shows it to
 // re-pick (cherry-pick design §6; spec 2026-10-29 §13 item 9): From, the layer that provides it
 // (lock.json's form; "" for none), Components, their states (componentStates, against the version
-// installed there), and Change, the run that changes its picks (repickRun, a profile being on as
-// the scope's ledger says). It leaves them unset ("", [], "") where no layer provides the module. A
+// installed there), Change, the run that changes its picks (repickRun, a profile being on as
+// the scope's ledger says), and for a git module Follow, the run that switches its ref. It leaves them unset
+// ("", [], "") where no layer provides the module. A
 // version installed there that the cache holds but cannot read is a warning, and nothing is then
 // new; a failure to list the profiles is a warning, profiles are then named bare and there is no
 // Change. Any other error leaves in as it was: the caller keeps a refused scope's refusal, which
 // already says what fails there (a scope whose profile does not load), rather than fail lola info.
-func (e *Engine) infoComponents(in *InfoInstall, sc Scope, v store.Version, ms Mentions) error {
+func (e *Engine) infoComponents(in *InfoInstall, sc Scope, v store.Version, ms Mentions, git bool) error {
 	unlock, err := e.readProfiles(true)
 	if err != nil {
 		return err
@@ -148,6 +149,9 @@ func (e *Engine) infoComponents(in *InfoInstall, sc Scope, v store.Version, ms M
 	}
 	if listed {
 		in.Change = e.repickRun(sc, layers, infos, led.Profile != nil, w.From, v.Name)
+		if git && !w.profile && led.Profile == nil {
+			in.Follow = e.Command(sc, "install", v.Name, "--ref") + " <ref>"
+		}
 	}
 	return nil
 }

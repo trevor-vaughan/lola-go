@@ -41,6 +41,14 @@ func CheckReachable(ctx context.Context, spec Spec, commit, stagingParent string
 	return err
 }
 
+// UnreachableError is a source lola could not ask about its ref (the network, access, a
+// repository that is gone): the source failing to serve, not a refusal. Its message and hints are
+// Err's.
+type UnreachableError struct{ Err error }
+
+func (e *UnreachableError) Error() string { return e.Err.Error() }
+func (e *UnreachableError) Unwrap() error { return e.Err }
+
 // NotOnRefError is CheckReachable's refusal of a commit its ref does not reach. Ref "" is the
 // source's default branch.
 type NotOnRefError struct{ Commit, Ref, Location string }

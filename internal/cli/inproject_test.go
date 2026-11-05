@@ -77,7 +77,7 @@ var _ = Describe("local entries inside a project", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		def := filepath.Join(p.UserProfiles, "default.yml")
 		// project.yml's targets are not trusted here: the install names the assistants notes has.
-		twoStep := "lola uninstall --user notes -y, then lola install -C " + proj + " notes -t claude-code"
+		twoStep := "lola uninstall --user notes, then lola install -C " + proj + " notes -t claude-code"
 		Expect(r.out).To(ContainSubstring("⚠ " + inside(def) + "\n→ keep it in the project instead: " + twoStep + "\n"))
 
 		again := lola("sync", "--user")
@@ -85,7 +85,7 @@ var _ = Describe("local entries inside a project", func() {
 		Expect(again.out+again.err).NotTo(ContainSubstring("installs from"), "a sync says nothing of it")
 
 		for _, step := range strings.Split(twoStep, ", then ") {
-			r = runHint(step)
+			r = runConfirmed(step)
 			Expect(r.code).To(Equal(0), r.err)
 		}
 		Expect(read(def)).NotTo(ContainSubstring("notes"))
@@ -111,6 +111,6 @@ var _ = Describe("local entries inside a project", func() {
 		}
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
 		Expect(doc.Notices).To(ContainElements(map[string]string{"level": "warn", "class": "safety", "text": inside(filepath.Join(p.UserProfiles, "default.yml"))},
-			map[string]string{"level": "info", "class": "safety", "text": "keep it in the project instead: lola uninstall --user notes -y --json, then lola install -C " + proj + " notes -t claude-code --json"}))
+			map[string]string{"level": "info", "class": "safety", "text": "keep it in the project instead: lola uninstall --user notes --json, then lola install -C " + proj + " notes -t claude-code --json"}))
 	})
 })

@@ -50,9 +50,12 @@ type TrashEntry struct {
 // TrashShow is lola trash <run>: the run and its entries, in manifest order.
 type TrashShow struct {
 	TrashRun
-	Entries []TrashEntry  `json:"entries"`
-	Notices []Notice      `json:"notices"`
-	raw     []trash.Entry // the run's entries, as Entries shows them
+	Entries []TrashEntry `json:"entries"`
+	// Existing is the originals that exist now, escaped: a restore is refused over them unless
+	// it has --force, which moves them into a new trash run first.
+	Existing []string      `json:"existing"`
+	Notices  []Notice      `json:"notices"`
+	raw      []trash.Entry // the run's entries, as Entries shows them
 }
 
 // trashRun is a run read back from the trash: its directory, as lola wrote it (unresolved, so
@@ -80,16 +83,9 @@ func noTrashRun(id string, display []string) error {
 // readTrashRun reads the run id names: one name, a real directory directly under the trash (a
 // link there is no run), holding a manifest.txt.
 func (e *Engine) readTrashRun(id string, display []string) (*trashRun, error) {
-	if id == "" || id == "." || id == ".." || !filepath.IsLocal(id) || filepath.Base(id) != id {
-		return nil, noTrashRun(id, display)
-	}
-	dir := filepath.Join(e.Paths.Trash, id)
-	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
-		return nil, noTrashRun(id, display)
-	}
-	read, err := trash.ReadRun(dir)
+	dir, read, err := e.openTrashRun(id, display)
 	if err != nil {
-		return nil, errs.WithHints(err, "see the runs: "+trashCommand(display...))
+		return nil, err
 	}
 	r := &trashRun{dir: dir, read: read, view: TrashRun{ID: shown(read.ID), Command: shown(read.Command), Scope: shown(read.Scope),
 		Root: shown(read.Root), id: read.ID, at: read.Time}}
@@ -105,6 +101,23 @@ func (e *Engine) readTrashRun(id string, display []string) (*trashRun, error) {
 		r.view.SizeBytes += size
 	}
 	return r, nil
+}
+
+// openTrashRun is the directory of the run id names and what trash.ReadRun read there, measuring
+// nothing: one name, a real directory directly under the trash (a link there is no run).
+func (e *Engine) openTrashRun(id string, display []string) (string, trash.Run, error) {
+	if id == "" || id == "." || id == ".." || !filepath.IsLocal(id) || filepath.Base(id) != id {
+		return "", trash.Run{}, noTrashRun(id, display)
+	}
+	dir := filepath.Join(e.Paths.Trash, id)
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
+		return "", trash.Run{}, noTrashRun(id, display)
+	}
+	read, err := trash.ReadRun(dir)
+	if err != nil {
+		return "", trash.Run{}, errs.WithHints(err, "see the runs: "+trashCommand(display...))
+	}
+	return dir, read, nil
 }
 
 // notices is r's ReadRun notices, which are escaped already, as warnings.
@@ -171,11 +184,28 @@ func (e *Engine) ShowTrash(id string, display []string) (*TrashShow, error) {
 	if err != nil {
 		return nil, err
 	}
-	show := &TrashShow{TrashRun: r.view, Entries: []TrashEntry{}, Notices: r.notices(), raw: r.read.Entries}
+	show := &TrashShow{TrashRun: r.view, Entries: []TrashEntry{}, Existing: []string{}, Notices: r.notices(), raw: r.read.Entries}
 	for _, en := range r.read.Entries {
 		show.Entries = append(show.Entries, r.entry(en))
+		if _, err := os.Lstat(en.Original); err == nil {
+			show.Existing = append(show.Existing, shown(en.Original))
+		}
 	}
 	return show, nil
+}
+
+// RestoreHint is the hint that ends lola trash <run>: restore, the run's restore command, which
+// works only while no original exists; else that command with --force, saying what it replaces
+// and where that goes.
+func (s *TrashShow) RestoreHint(restore string) string {
+	if len(s.Existing) == 0 {
+		return "restore them: " + restore
+	}
+	verb := "moves"
+	if len(s.Existing) > 1 {
+		verb = "move"
+	}
+	return "restore them (replaces " + andJoin(s.Existing) + ", which " + verb + " to a new trash run first): " + restore + " --force"
 }
 
 // TrashEntryRef names one entry of a run by its raw original and trash paths, which its escaped
@@ -215,13 +245,15 @@ type TrashRestoreResult struct {
 	run        *trashRun
 	picked     []trash.Entry // the entries to restore
 	gone       []trash.Entry // entries whose trash path is gone, forgotten with the restored ones
+	replacing  []Notice      // the notices of whole-file copies the restore would put over a file, which its result says it did
 }
 
 // PlanTrashRestore plans req and writes nothing (spec 2026-11-03 §3.5): the run's entries, or
 // those whose originals req names (each must be one of the run's), less those gone from the
 // trash, which are notices. Two entries of one original, or one inside another's, are refused:
 // a restore of both cannot put both back. The originals that exist are listed; RestoreTrash
-// refuses them unless req.Force.
+// refuses them unless req.Force. A whole-file copy restored over the file there (wholeCopy) says
+// so in a notice: it replaces the file, changes made since included.
 func (e *Engine) PlanTrashRestore(req TrashRestoreRequest) (*TrashRestoreResult, error) {
 	r, err := e.readTrashRun(req.Run, req.Display)
 	if err != nil {
@@ -277,6 +309,11 @@ func (e *Engine) PlanTrashRestore(req TrashRestoreRequest) (*TrashRestoreResult,
 		res.Restored = append(res.Restored, r.entry(en))
 		if _, err := os.Lstat(en.Original); err == nil {
 			res.Existing = append(res.Existing, shown(en.Original))
+			if r.wholeCopy(en) {
+				n := Notice{Level: LevelWarn, Text: "the restore replaces the whole file " + shown(en.Original) + " with the copy trash run " + r.view.ID +
+					" holds, at mode 0600 (it may hold credentials); the file there now, with every change made since, moves to a new trash run first"}
+				res.Notices, res.replacing = append(res.Notices, n), append(res.replacing, n)
+			}
 		}
 	}
 	if len(res.Existing) > 0 && !req.Force {
@@ -308,6 +345,13 @@ func TrashRestoresOverlap(plans ...*TrashRestoreResult) error {
 	return nil
 }
 
+// wholeCopy reports whether en is a copy of a whole file that may hold credentials, as lola tidy
+// keeps of a config file it removes an MCP server from (the file itself stays): restored, it
+// replaces the file there, at mode 0600.
+func (r *trashRun) wholeCopy(en trash.Entry) bool {
+	return slices.Contains(r.read.Credentials, en.Trash)
+}
+
 // existVerb is " exists" after one path, " exist" after several.
 func existVerb(paths []string) string {
 	if len(paths) == 1 {
@@ -324,12 +368,14 @@ func (e *Engine) forceRestore(req TrashRestoreRequest) string {
 // RestoreTrash applies plan, a PlanTrashRestore (spec 2026-11-03 §3.5). An original that exists
 // now refuses the whole restore, unless the plan's request has Force: then each one is moved into
 // a new trash run first, never deleted (marked a credential copy when the entry put back is
-// one). Each entry is then moved back (trash.Restore); the lines of those restored, and of those
-// gone, are dropped from manifest.txt, and a run left empty is removed. A failure part way stops
+// one), and a whole-file copy put back over its file says so, naming that run. Each entry is then
+// moved back (trash.Restore); the lines of those restored, and of those gone, are dropped from
+// manifest.txt, and a run left empty is removed. A failure part way stops
 // there: what was restored is reported in the error and its lines are dropped.
 func (e *Engine) RestoreTrash(plan *TrashRestoreResult) (*TrashRestoreResult, error) {
 	req, r := plan.req, plan.run
-	res := &TrashRestoreResult{Run: plan.Run, Restored: []TrashEntry{}, Existing: []string{}, Notices: slices.Clone(plan.Notices)}
+	res := &TrashRestoreResult{Run: plan.Run, Restored: []TrashEntry{}, Existing: []string{},
+		Notices: slices.DeleteFunc(slices.Clone(plan.Notices), func(n Notice) bool { return slices.Contains(plan.replacing, n) })}
 	var existing []trash.Entry
 	for _, en := range plan.picked {
 		if _, err := os.Lstat(en.Original); err == nil {
@@ -366,6 +412,10 @@ func (e *Engine) RestoreTrash(plan *TrashRestoreResult) (*TrashRestoreResult, er
 		}
 		done = append(done, en)
 		res.Restored = append(res.Restored, r.entry(en))
+		if slices.Contains(existing, en) && r.wholeCopy(en) {
+			res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: "replaced the whole file " + shown(en.Original) + " with the copy from trash run " +
+				r.view.ID + ", at mode 0600; the file that was there is in trash run " + shown(res.Displaced)})
+		}
 	}
 	removed, err := trash.Forget(r.dir, done)
 	if err != nil {

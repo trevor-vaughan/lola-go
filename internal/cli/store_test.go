@@ -340,7 +340,7 @@ var _ = Describe("store, search and init commands", func() {
 	It("completes stored module names and target ids", func() {
 		Expect(lola("cache", "add", mod).code).To(Equal(0))
 		Expect(lola("__complete", "info", "ex").out).To(HavePrefix("example\n"))
-		Expect(lola("__complete", "install", "x", "-t", "").out).To(HavePrefix("claude-code\n"))
+		Expect(lola("__complete", "install", "x", "-t", "").out).To(HavePrefix("claude-code\tnot found on this machine\n"))
 	})
 
 	Describe("with one unloadable cache entry", func() {

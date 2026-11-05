@@ -28,23 +28,28 @@ import (
 // ModuleView is a cached version's identity and contents (Plan 9 §4.3 items 1 and 2), as lola
 // info, cache add and cache list show it: every text the module gives, cleaned.
 type ModuleView struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Version     string        `json:"version"`
-	Digest      string        `json:"digest"`
-	Commit      string        `json:"commit"` // the commit a git source resolved to; "" for any other source
-	Format      string        `json:"format"`
-	Source      string        `json:"source"`
-	Type        string        `json:"type"`
-	Path        string        `json:"path,omitempty"`
-	Heads       []HeadView    `json:"heads"`
-	Skills      []string      `json:"skills"`
-	Commands    []string      `json:"commands"`
-	Agents      []string      `json:"agents"`
-	MCPServers  []string      `json:"mcp_servers"`
-	Rules       []string      `json:"rules"`
-	Hooks       []module.Hook `json:"hooks"`
-	Warnings    []string      `json:"warnings"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Version     string `json:"version"`
+	Digest      string `json:"digest"`
+	Commit      string `json:"commit"` // the commit a git source resolved to; "" for any other source
+	// Ref is the branch, tag or commit a git module is read at ("" for its default branch) and
+	// Follows says Ref means something, which only lola info knows; the human views print them.
+	// Info carries Ref in its own JSON, as cache views do not.
+	Ref        string        `json:"-"`
+	Follows    bool          `json:"-"`
+	Format     string        `json:"format"`
+	Source     string        `json:"source"`
+	Type       string        `json:"type"`
+	Path       string        `json:"path,omitempty"`
+	Heads      []HeadView    `json:"heads"`
+	Skills     []string      `json:"skills"`
+	Commands   []string      `json:"commands"`
+	Agents     []string      `json:"agents"`
+	MCPServers []string      `json:"mcp_servers"`
+	Rules      []string      `json:"rules"`
+	Hooks      []module.Hook `json:"hooks"`
+	Warnings   []string      `json:"warnings"`
 	// Plan 7: the vars the module declares, its template files, partials and attribute files,
 	// each author text, cleaned.
 	Vars       []VarView `json:"vars"`
@@ -180,6 +185,8 @@ type InfoRequest struct {
 // when every scope has one (R-9-23). Hints are the runs that resolve either, [] otherwise.
 type Info struct {
 	ModuleView
+	// Ref is the ref the version shown was read at, as ModuleView.Ref; "" for the default branch and for a source that is not git.
+	Ref string `json:"ref"`
 	// Mentions is each component that mentions others, in picker order, with what it mentions
 	// (cherry-pick design §5.2); [] when none, or when the scan failed. Notices holds the warning
 	// of a scan that failed, and is [] when the scan succeeded.
@@ -283,6 +290,9 @@ type InfoInstall struct {
 	From       string          `json:"from"`
 	Components []InfoComponent `json:"components"`
 	Change     string          `json:"change"`
+	// Follow is the run that switches a git module to another branch or tag, keeping its picks and
+	// targets ("" for any other module, and where a profile's picks provide it).
+	Follow string `json:"follow"`
 	// FromLabel names From as the components' origins name their layers (layerLabel), for the
 	// human output.
 	FromLabel string `json:"-"`
@@ -322,6 +332,8 @@ type InfoConsent struct {
 // R-9-U10): the argument, --ref and --path.
 type installBy struct {
 	arg, ref, path string
+	// shownRef is the ref of the head the version shown came from, before ref is pinned to a commit.
+	shownRef string
 	// fork says the version is staged only: the cache holds another module of its name, so no
 	// install of it works until that one is removed (Pick-P2-c).
 	fork bool
@@ -344,7 +356,9 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	if err != nil {
 		return nil, err
 	}
-	info := &Info{ModuleView: NewModuleView(v, o), Runs: InfoRuns{InstallHooks: []InfoHook{}, RuntimeHooks: []RuntimeHook{}, MCPServers: []InfoMCPServer{},
+	mv := NewModuleView(v, o)
+	mv.Ref, mv.Follows = by.shownRef, o.Type == string(source.KindGit)
+	info := &Info{ModuleView: mv, Ref: mv.Ref, Runs: InfoRuns{InstallHooks: []InfoHook{}, RuntimeHooks: []RuntimeHook{}, MCPServers: []InfoMCPServer{},
 		Scripts: []InfoScript{}},
 		Install: []InfoInstall{}, Hints: []string{}}
 	if info.NativeExecutables, err = infoNative(v.ContentDir, v.Module); err != nil {
@@ -389,6 +403,13 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	if info.Runs.Scripts, err = e.infoScripts(scopes, true); err != nil {
 		return nil, err
 	}
+	// A cached name info read at no --ref, installed in a scope, follows its entry's ref there,
+	// which lola update reads: that is its ref, whatever head of the cache the version came from.
+	if info.Follows && req.Ref == "" && req.Arg == v.Name {
+		if ref, ok := e.followedRef(res.Scopes, v.Name); ok {
+			info.Ref, info.ModuleView.Ref = ref, ref
+		}
+	}
 	pinned, commit, err := e.pinEntryRef(by, v, o, res.Scopes)
 	if err != nil {
 		return nil, err
@@ -415,7 +436,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 				in := unplanned(c.Scope.Kind.String(), v, append(slices.Clone(hookConsent), scripts...), declared)
 				in.root = root(c.Scope)
 				// Without a plan nothing else reads the scope: a failure to is the scope's warning, not info's.
-				if err := e.infoComponents(&in, c.Scope, v, ms); err != nil {
+				if err := e.infoComponents(&in, c.Scope, v, ms, info.Follows); err != nil {
 					text := fmt.Sprintf("%s: cannot tell what its picks do at %s scope: %s", v.Name, c.Scope.Kind, untrusted.CleanErr(err).Error())
 					if hints := errs.Hints(err); len(hints) > 0 {
 						text += " → " + strings.Join(hints, "; ")
@@ -446,7 +467,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 			return nil, err
 		}
 		// A refused scope keeps its refusal: what stops its plan stops this too, and is said there.
-		if err := e.infoComponents(&in, c.Scope, v, ms); err != nil && in.Refusal == nil {
+		if err := e.infoComponents(&in, c.Scope, v, ms, info.Follows); err != nil && in.Refusal == nil {
 			return nil, err
 		}
 		if _, err := e.scopeSection(c.Scope); err != nil { // the picks info shows are keyed by it
@@ -665,13 +686,14 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRu
 	} else if o, _, err = e.Store.Origin(v.Name); err != nil {
 		return store.Version{}, store.Origin{}, installBy{}, err
 	}
+	shownRef := by.ref
 	switch {
 	case !isAddr && !cached && o.Type == string(source.KindGit):
 		by = installBy{arg: req.Arg, ref: v.Commit, path: req.Path}
 	case isAddr && o.Type == string(source.KindGit) && v.Commit != "" && o.Components == nil:
 		by = installBy{arg: o.Source, ref: v.Commit, path: o.Path}
 	}
-	by.fork = fork
+	by.fork, by.shownRef = fork, shownRef
 	return v, o, by, nil
 }
 
@@ -697,6 +719,27 @@ func (e *Engine) pinEntryRef(by installBy, v store.Version, o store.Origin, scop
 		}
 	}
 	return by, "", nil
+}
+
+// followedRef is the ref of name's entry in the first of scopes whose layers want it, as lola list
+// and lola update read it; ok is false when none does. A scope lola cannot read is skipped: its
+// plan reports why.
+func (e *Engine) followedRef(scopes []ScopeChoice, name string) (string, bool) {
+	for _, c := range scopes {
+		man, led, _, err := e.load(c.Scope, true)
+		if err != nil {
+			continue
+		}
+		layers, _, err := e.layers(c.Scope, man, led)
+		if err != nil {
+			continue
+		}
+		want, _ := desired(layers)
+		if w := find(want, name); w != nil {
+			return w.Ref, true
+		}
+	}
+	return "", false
 }
 
 // infoHooks is v's install hooks as info shows them, and the consent items of their events, each

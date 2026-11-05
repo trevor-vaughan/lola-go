@@ -510,7 +510,7 @@ var _ = Describe("install scripts", func() {
 			req := engine.SyncRequest{Scope: sc, Display: []string{"--json"}}
 			_, err := e.Sync(ctx, req)
 			Expect(err).To(HaveOccurred())
-			Expect(errs.Hints(err)).To(ContainElement("then accept them: lola sync --project --trust=entries,scripts --json"))
+			Expect(errs.Hints(err)).To(ContainElement(MatchRegexp(`^then accept them: lola sync --project --trust=entries,scripts --at example=sha256:[0-9a-f]{64} --json$`)))
 			req.Options.Trust = engine.TrustEntries | engine.TrustScripts
 			_, err = e.Sync(ctx, req)
 			Expect(err).NotTo(HaveOccurred())

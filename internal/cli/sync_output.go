@@ -143,17 +143,18 @@ func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 		return
 	}
 	if s.plain {
+		// Every row is module, target, path and scope (project or user).
 		for _, r := range rs {
 			for _, t := range r.Targets {
 				rows := 0
 				for _, p := range r.Paths {
 					if p.Target == t {
-						fmt.Fprintf(w, "remove\t%s\t%s\t%s\n", r.Module, t, p.Path)
+						fmt.Fprintf(w, "remove\t%s\t%s\t%s\t%s\n", r.Module, t, p.Path, r.Scope)
 						rows++
 					}
 				}
 				if rows == 0 {
-					fmt.Fprintf(w, "remove\t%s\t%s\t\n", r.Module, t)
+					fmt.Fprintf(w, "remove\t%s\t%s\t\t%s\n", r.Module, t, r.Scope)
 				}
 			}
 		}
@@ -168,11 +169,25 @@ func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 		if r.Why != "" {
 			why = "(" + r.Why + ")"
 		}
+		if r.Where != "" {
+			why += " — " + r.Where
+		}
 		fmt.Fprintln(w, "  "+s.bad(r.Module+": "+strings.Join(r.Targets, ", ")+" "+why))
 		for _, p := range r.Paths {
 			fmt.Fprintln(w, "      "+p.Path)
 		}
 	}
+}
+
+// printSyncRefusal prints, in human output, what a sync refused off a terminal carries: why it
+// could not read an entry (its notices), its trust diff, which is never in --plain's rows, and
+// its removals.
+func printSyncRefusal(w io.Writer, s style, name, run string, refusal *engine.TrustRefusalError, more string) {
+	for _, n := range refusal.Notices {
+		fmt.Fprintln(w, noticeLine(s, n))
+	}
+	printTrustDiff(w, style{color: s.color}, name, run, refusal.Report, more)
+	printRemovals(w, s, refusal.Removals)
 }
 
 // printTrustDiff shows how the manifest differs from what the user last trusted (Plan 6a §7.5):

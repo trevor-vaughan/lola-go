@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -94,15 +95,15 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 			r := lola(args...)
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(ContainSubstring("error: " + msg + "\n"))
-			for _, h := range hints {
-				Expect(r.err).To(ContainSubstring("  hint: " + fill(h) + "\n"))
+			for _, h := range hints { // a folder's --at pin is its content digest, written here as DIGEST
+				Expect(regexp.MustCompile(`=sha256:[0-9a-f]{64}`).ReplaceAllString(r.err, "=sha256:DIGEST")).To(ContainSubstring("  hint: " + fill(h) + "\n"))
 			}
 			Expect(mark).NotTo(BeAnExistingFile())
 			Expect(consent()).To(BeEmpty())
 		},
 		Entry("sync: entries covered, the hook refused", []string{"sync", "-C", "PROJ", "--trust"},
 			"kit has a pre-install hook, and lola runs hooks only with your consent",
-			[]string{"then consent to it: lola sync -C PROJ --trust=entries,profiles,hooks"}),
+			[]string{"then consent to it: lola sync -C PROJ --trust=entries,profiles,hooks --at kit=sha256:DIGEST"}),
 		Entry("install: bare --trust grants none of its kinds", []string{"install", "KIT", "-C", "PROJ", "--trust"},
 			"lola install never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks",
 			[]string{"lola install KIT --root PROJ"}),
@@ -344,19 +345,20 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 		func(setup func() []string, hint string) {
 			r := lola(setup()...)
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(ContainSubstring("  hint: " + fill(hint) + "\n"))
+			// A folder's --at pin is its content digest, written here as DIGEST.
+			Expect(regexp.MustCompile(`=sha256:[0-9a-f]{64}`).ReplaceAllString(r.err, "=sha256:DIGEST")).To(ContainSubstring("  hint: " + fill(hint) + "\n"))
 			Expect(written()).To(BeFalse())
 		},
 		Entry("entries", func() []string { pull("plain"); return []string{"sync", "-C", proj, "--plain"} },
-			"then accept them: lola sync -C PROJ --trust=entries --plain"),
+			"then accept them: lola sync -C PROJ --trust=entries --at plain=sha256:DIGEST --plain"),
 		Entry("profiles", func() []string {
 			writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: plain, source: ../../mods/plain}\n"})
 			return []string{"profile", "go", "--on", "-C", proj, "--no-pager"}
 		}, "then accept them: lola profile -C PROJ project:go --on --trust=profiles --no-pager"),
 		Entry("hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj, "--trust=entries"} },
-			"then consent to it: lola sync -C PROJ --trust=entries,hooks"),
+			"then consent to it: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("entries+hooks", func() []string { pull("kit"); return []string{"sync", "-C", proj} },
-			"then accept them: lola sync -C PROJ --trust=entries,hooks"),
+			"then accept them: lola sync -C PROJ --trust=entries,hooks --at kit=sha256:DIGEST"),
 		Entry("remote --add", func() []string {
 			return []string{"profile", "go", "--add", "https://example.com/profiles.git", "--user", "--plain"}
 		}, "then add it unasked: lola profile --user go --add https://example.com/profiles.git --trust=profiles --plain"),

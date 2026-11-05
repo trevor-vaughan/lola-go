@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -65,7 +66,11 @@ type syncFlags struct {
 	dry, yes, force, update, strict bool
 	installed, refetch              bool
 	trust                           engine.TrustKinds
-	pass                            *syncPass // the scope's part of a command that syncs several behind one receipt
+	at                              []string                           // --at as given, <module>=<version>
+	pinned                          map[string]string                  // --at parsed (parseAt)
+	atShared                        bool                               // the run gives --at to several scopes
+	atBy                            map[engine.Scope]map[string]string // with several scopes, each one's --at: its modules' alone
+	pass                            *syncPass                          // the scope's part of a command that syncs several behind one receipt
 	// alone says the run is this one scope's, as the user asked it, so a hint repeating it keeps
 	// -y; a pass of several scopes, or an apply another command runs, keeps none (ruling R-8).
 	alone bool
@@ -257,8 +262,40 @@ func (a *app) syncCmd() *cobra.Command {
 	addTrustFlag(cmd, &trust, "sync", "trust these kinds without asking: entries, profiles, scripts, hooks, runtime-hooks or all; bare: entries,profiles (recorded as a yes is; never bypasses a refusal)")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files, render skipped artifacts that can be, and confirm removals (never answers a consent question)")
 	cmd.Flags().BoolVar(&f.update, "update", false, "fetch the refs again and re-pin the modules of the run")
+	cmd.Flags().StringArrayVar(&f.at, "at", nil, atUsage)
+	_ = cmd.RegisterFlagCompletionFunc("at", a.completeAt)
 	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
 	return cmd
+}
+
+// atUsage is --at's help, on lola sync and lola update.
+const atUsage = "install a module only at a version a refusal showed, as its hint pins it: `<module>=<version>`, a commit, " +
+	"or sha256:<digest> for a folder or archive; refused, writing nothing, if its source now serves another (repeatable)"
+
+// atVersion is a version --at takes: a git commit (SHA-1 or SHA-256), or a content digest.
+var atVersion = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64}|sha256:[0-9a-f]{64})$`)
+
+// parseAt reads --at's <module>=<version> values: a commit is taken in either case and kept in
+// lower case, as git prints it; a module given twice alike is given once. without is the run
+// without --at, which a refusal hints.
+func parseAt(values []string, without string) (map[string]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := map[string]string{}
+	for _, v := range values {
+		name, version, ok := strings.Cut(v, "=")
+		version = strings.ToLower(version)
+		if !ok || name == "" || !atVersion.MatchString(version) {
+			return nil, errs.WithHints(fmt.Errorf("--at %s: want <module>=<commit>, or <module>=sha256:<digest> for a folder or archive",
+				untrusted.Text(v, untrusted.MaxName)), "run it without --at: "+without)
+		}
+		if was, twice := out[name]; twice && was != version {
+			return nil, errs.WithHints(fmt.Errorf("--at names %s twice, with two versions", untrusted.Text(name, untrusted.MaxName)), "run it without --at: "+without)
+		}
+		out[name] = version
+	}
+	return out, nil
 }
 
 // syncRun is lola sync's run, and lola update's (f.installed): every scope in order, each reported
@@ -270,6 +307,9 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 		if f.trust, err = trust.parse(cmd, args, command, "module"); err != nil {
 			return err
 		}
+		if f.pinned, err = parseAt(f.at, runWithout(cmd, args, "at")); err != nil {
+			return err
+		}
 		eng, err := a.engine()
 		if err != nil {
 			return err
@@ -277,6 +317,31 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 		scs, err := a.scopes(cmd, eng, args, question, true, true)
 		if err != nil {
 			return err
+		}
+		if f.atShared = len(scs) > 1 && f.pinned != nil; f.atShared {
+			// Each scope is given the --at of its own modules, and one no scope includes is refused.
+			f.atBy = map[engine.Scope]map[string]string{}
+			found := map[string]bool{}
+			for _, c := range scs {
+				names, err := eng.SyncNames(c.Scope)
+				if err != nil {
+					return err
+				}
+				for _, n := range names {
+					if v, ok := f.pinned[n]; ok {
+						if f.atBy[c.Scope] == nil {
+							f.atBy[c.Scope] = map[string]string{}
+						}
+						f.atBy[c.Scope][n], found[n] = v, true
+					}
+				}
+			}
+			for _, n := range slices.Sorted(maps.Keys(f.pinned)) {
+				if !found[n] {
+					return errs.WithHints(fmt.Errorf("--at names %s, which no scope of this run includes", untrusted.Text(n, untrusted.MaxName)),
+						"run it without --at: "+runWithout(cmd, args, "at"))
+				}
+			}
 		}
 		a.printContext(cmd, eng, choiceScopes(scs), nil)
 		// Several scopes (Plan 6b §19 R13): in order, each reported under its label as it is
@@ -371,7 +436,9 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	// lola profile's --on, --off and --switch take --force too (spec 2026-10-29 §6.2): their
 	// conflicts hint it, with the profile's name.
 	if cmd.Name() == "sync" || cmd.Name() == "update" {
-		opts.ForceRun, opts.RenderRun = forceRun(cmd, args), renderRun(cmd, args)
+		// A conflict's --force completes your own run, so it keeps the --trust and -y you gave: it
+		// answers no question you did not (ruling, 2026-11-03).
+		opts.ForceRun, opts.RenderRun = runWithout(cmd, args, "force")+" --force", renderRun(cmd, args)
 	} else if prof != nil {
 		var names []string
 		if prof.Name != "" {
@@ -381,8 +448,12 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	}
 	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
+	at := f.pinned
+	if f.atBy != nil {
+		at = f.atBy[sc]
+	}
 	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update || f.installed, Installed: f.installed, Refetch: f.refetch,
-		Options: opts, Profiles: prof, Yes: f.yes && f.alone, Display: outputFlags(cmd)}
+		Options: opts, Profiles: prof, Yes: f.yes && f.alone, At: at, AtShared: f.atShared, Display: outputFlags(cmd)}
 	question := "Remove these and sync? No applies nothing"
 	if prof != nil {
 		question = "Remove these and apply? No applies nothing"
@@ -408,8 +479,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 		err = errs.WithHints(err, "run it again: "+f.pass.again)
 	}
 	if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !a.json {
-		printTrustDiff(cmd.ErrOrStderr(), stderr, name, run, refusal.Report, more)
-		printRemovals(cmd.ErrOrStderr(), stderr, refusal.Removals)
+		printSyncRefusal(cmd.ErrOrStderr(), style{color: stderr.color, plain: a.plain}, name, run, refusal, more)
 	}
 	if declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err); ok {
 		return nil, more, removalsDeclined(eng, sc, declined)

@@ -79,8 +79,7 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 	}
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
 	if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !a.json {
-		printTrustDiff(cmd.ErrOrStderr(), stderr, name, run, refusal.Report, "")
-		printRemovals(cmd.ErrOrStderr(), stderr, refusal.Removals)
+		printSyncRefusal(cmd.ErrOrStderr(), style{color: stderr.color, plain: a.plain}, name, run, refusal, "")
 	}
 	declined, isDeclined := errors.AsType[*engine.RemovalsDeclinedError](err)
 	aborted := errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted)

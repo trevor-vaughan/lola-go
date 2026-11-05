@@ -77,11 +77,8 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 		choice.Move[i] = c.ID
 	}
 	if req.Dry {
-		apply := req
+		apply := req // -y only as given: a dry run's hint never answers a question for you (R-8)
 		apply.Dry = false
-		if !apply.Force && !req.Interactive {
-			apply.Yes = true
-		}
 		switch {
 		case !hasSelection(req) && (len(req.Keep) > 0 || len(req.Unkeep) > 0):
 			apply.Yes = false // the run without -n edits the keep-list and moves nothing

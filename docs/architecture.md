@@ -60,6 +60,12 @@ The terms, each covered in its own section below:
 
 `internal/engine` runs this pipeline for one scope; `internal/cli` is thin cobra wiring over it.
 
+**The cache is written only when a run applies.** A sync or update fetches into its staging, and
+commits to the cache (`publishRun`) after the last point that could stop it: every refusal (trust,
+removals, `--at`, a conflict, a hook or script consent) and every No (to the trust question, the
+removals, the receipt, a consent) leaves the cache byte for byte as it was, heads and fetch times
+included. A dry run (`-n`) is the one exception: it caches what you trust at its pin.
+
 ## Packages
 
 - `paths`: XDG resolution from an injected `getenv`; no globals. `ProjectKey`, the canonical form of
@@ -395,6 +401,16 @@ modules' entries through the yaml.v3 node API (comments and order survive, also 
 or null document; a section or project key a removal empties is dropped unless it carries a comment,
 then it stays as an empty mapping), writes atomically at a symlink's target with mode 0600, and
 never overwrites a file that does not load.
+
+**Deletions an install asks about.** `confirmDeletes` (`internal/engine/deletes.go`) asks, before
+anything is written, about the files a plan deletes because of the run: every deletion of a run
+that changes picks, and the files of a target an explicit `-t` leaves out of a module installed on
+it at that scope. `planInstallModule` adds such a target to the module's `plan.ModuleChange.Targets`
+with no intents, so `plan.Compute` deletes its artifacts and drops it from `lock.json`, and records
+it in `Result.dropped`; `PickDeletes` labels those removals `target dropped by -t` and the rest
+`dropped by your pick change`. The written entry names the narrower targets, so the next sync plans
+nothing more. `-y` and the review's Apply answer yes, `--force` needs no answer, `-n` never asks,
+and with no way to ask the run is refused (`DeletesRefusedError`) with the run plus `-y`.
 
 **Where-answers in the flow.** The flow's `Context` per destination carries `WritesTo`, the file the
 install writes (`installFlow.targetOf` titles each component page with it:
@@ -2219,9 +2235,26 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
      confined first, since `lock.json` is hostile input).
    - Then the **early refusal**: a run that is not dry and needs an answer it cannot ask (the
      trust question with `Trust` nil, the removals with `ConfirmRemovals` nil) returns one
-     `TrustRefusalError` naming every missing answer and cause (`syncRefusal`), with the
-     field-only report (each entry to pin named with `pinReasons`, changed folders with their
-     content) and the removals, before any fetch or `ls-remote`.
+     `TrustRefusalError` naming every missing answer and cause (`syncRefusal`), with the report
+     (each entry to pin named with `pinReasons`, changed folders with their content) and the
+     removals, before any fetch or `ls-remote` of an entry the record does not cover.
+   - When the trust it needs is missing, it first resolves (step 5) each **covered** entry it
+     would pin into the run's staging: the user trusted that source and ref, so nothing a pull
+     asked for is fetched. `needsPin` is then false for an `--update` that found its pin, so an
+     update with nothing new needs no trust and is not refused; otherwise the report shows the new
+     pin and its files. When no trust is missing (a refusal for removals alone), every entry is
+     resolved this way, since the next run would fetch it anyway. `readEarly` does both: a
+     `sourceFailure` (a failed fetch, a commit its ref does not reach, content other than its pin,
+     catalog or sha256 says) leaves the entry unread with a warn notice carrying the failure and
+     its hints (`TrustRefusalError.Notices`, JSON `notices`); any other error stops the run.
+   - The read entries are planned (`planSync`, with `selections.yaml`, a move's picks and the
+     layers') and `droppedFiles` gives the files their versions no longer ship, which join the
+     refusal's removals. `syncRefusal` names the removals by module and the dropped files
+     (`whyDropped`) as each version's, and puts `-y` in the hint, the user's own included, only
+     when every removal it would confirm is listed: not while an installed entry's new version is
+     unread (`ContentDir` empty and a pin to write, or a pin other than the version installed);
+     the message then says the removals listed may change until it reads them. Nothing is
+     committed to the cache before the refusal.
    - Under `--json` the error document carries both (`JSONFields`, which `writeError` merges).
 5. Resolve each entry:
    - a folder is fetched every run;
@@ -2232,9 +2265,18 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
      an uncovered git entry even on a hit, or fetches it by its commit (`fetchPin`).
    - Every fetch is prepared in the run's staging (`Store.Prepare`) and must declare the entry's
      name.
-   - A covered entry at an unchanged pin (and not a changed folder) is committed to the cache now,
-     without moving a head in a project dry run, and without replacing a gone source in one;
-     everything else stays staged.
+   - `--at` (`SyncRequest.At`, each entry's `at`, checked against the source's kind):
+     `resolveSync` refuses an entry whose resolved commit (git) or content digest (folder,
+     archive) is not the one given, and one whose source does not serve it (a `sourceFailure`
+     while `at` is set, never the soft `fetch-failed` of `lola update`). Once every entry is
+     resolved, a run given `--at` (in any scope of the command, `AtShared`) refuses any entry
+     `--at` does not pin whose installed version would change, a pin a pull wrote included. A
+     refusal's accept hint (`syncRefusal`) adds `--at` for each new version it showed (an entry it
+     read whose content is not the version installed), on `lola sync` and `lola update` only.
+     Under `--scope both` the CLI gives each scope the `--at` of its own modules (`SyncNames`) and
+     refuses one no scope includes.
+   - Everything stays staged until the run applies (`publishRun`, after `confirmTrusted`), so a
+     refusal or a No leaves the cache as it was, every head and fetch time included.
 6. The report compares the record with the manifest **as it will be saved** (the pins the run
    writes applied), so a pin change is a trust change.
    - `fillContent` (`content.go`) adds per added or changed entry:
@@ -2264,11 +2306,14 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
      `left as installed until you trust them` notice, and plans the rest again from the same
      staged trees under the same lock (`planSync` again, no fetch), so the summary is the apply.
    - A declined entry's hooks never reach `prepare`.
-8. Publish (`Store.Commit`, which checks the same-name rule again under the cache lock, and replaces
-   a gone local source only after checking again that it is still missing): pinned fetches with
-   `headIfAbsent`, the rest moving their ref's head; a declined entry's content is never
-   committed. A dry run publishes nothing more, except `--update -n` at user scope.
-9. Removals are confirmed through `ConfirmRemovals` before any hook consent is asked or recorded.
+8. Removals are confirmed through `ConfirmRemovals` before anything is published and before any
+   hook consent is asked or recorded.
+   - `droppedFiles` adds the whole files a version the run installs no longer ships: a plan of the
+     run's changes, computed as `prepare` will but before consent narrows it, deletes them for a
+     module whose digest changes, at a target no other removal covers (`deletedBy`, `not in the
+     version this run installs`). A JSON member a plan moves or re-keys, and a file a pick or a
+     setting drops from the same version, are not listed. One question asks about all of them;
+     a dry run lists them.
    - A No (`declineRemovals`) applies nothing but saves `trust.Accept` of the loaded view for the
      answer given in step 7 (without the pins, which were not written), so the next sync asks
      again only the removals and the accepted entries whose pin or folder content it did not
@@ -2279,12 +2324,17 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
      - says whether the record changes what a sync of the trusted modules installs (`rendersOther`);
      - carries the run to repeat (`Retry`, `commandOf`: the sync, or an activation's
        `lola profile`).
+9. Publish (`Store.Commit`, which checks the same-name rule again under the cache lock, and replaces
+   a gone local source only after checking again that it is still missing): pinned fetches with
+   `headIfAbsent`, the rest moving their ref's head; a declined entry's content is never
+   committed. A dry run publishes nothing more, except `--update -n` at user scope.
 10. `prepare` (consent to runtime hooks, the plan and its conflicts, consent to install hooks,
     the marks of pending hooks).
     - A forced copy whose pending hook was declined again is kept by `keepUnhooked` (a dry run
       keeps it replaced, so its plan shows the hook).
     - A dry run sets its closing commands (`ToApply`, `OffTerminal`, `EquivalentCommands`) and
-      returns.
+      returns. `OffTerminal` adds the `--trust=` kinds the run needs, never a `-y` the user did
+      not give (ruling R-8).
     - `commit` applies the plan with the manifest edit of new pins staged in the same
       `plan.Apply` transaction (`saveManifest`).
     - The trust record is written once, after the apply, and only when the user answered:
@@ -2361,7 +2411,9 @@ not trusted never enters the cache before they accept it, in a dry run included.
 scope (those named, when any) that a layer lists: a named module that is not installed is refused
 before anything is fetched, and an installed module no layer lists is left as installed with a
 `not-in-manifest` warn finding. `validateSync` leaves an entry whose targets are not the installed
-ones with a `targets-differ` finding; the run installs nothing and removes nothing. Freshness: a git
+ones with a `targets-differ` finding; the run installs and removes no module. The files a new
+version no longer ships are its only deletions, listed and confirmed as every sync's are
+(`droppedFiles`, below). Freshness: a git
 or archive entry whose cache head was fetched within `cache_fresh_for:` (`config.Age`, parsed like
 `cache_unused_for`, one day by default, `engine.freshFor`) is resolved from that head by
 `resolveHead` with no network contact; `Store.Commit` stamps `Head.Fetched` (UTC RFC 3339) on every
@@ -2947,8 +2999,9 @@ exists but that `untrusted.Text` would alter. The review is skipped with `-y` or
 nil `Confirm` refuses, hinting `-y`. Hints are built by `tidyRun`: the scope's flags
 (`RootArgs`), names, then the run flags as given, `-n` for a dry run (spec 2026-11-03 §3.3; the
 closing hint that applies it clears `Dry`), and the output flags `--json`, `--plain` and
-`--no-pager` as given (`TidyRequest.Display`, R-6d2-5); a dry-run hint carries no `-y`, and
-`TidyOneScope`'s hints drop it, given for both scopes (ruling R-8). A dry run's closing hint adds `--all`
+`--no-pager` as given (`TidyRequest.Display`, R-6d2-5); a dry-run hint carries no `-y`, the
+closing hint that applies a dry run carries it only as given, and `TidyOneScope`'s hints drop it,
+given for both scopes (ruling R-8). A dry run's closing hint adds `--all`
 to a run without names only off a terminal or with `--force` (`TidyRequest.Interactive`); on
 one, the run without names opens the picker.
 

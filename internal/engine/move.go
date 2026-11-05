@@ -580,7 +580,7 @@ func (e *Engine) yoursHints(ctx context.Context, req MoveRequest, dst *moveStack
 		if !on {
 			flags = append(flags, "--switch")
 		}
-		if req.Yes || removesUnasked(req) {
+		if req.Yes {
 			flags = append(flags, "-y")
 		}
 		hint := e.flagRun(req.Scope, req.Options.Target, "profile", "", WhereChoice{Flags: flags})
@@ -636,7 +636,7 @@ func (e *Engine) providers(ctx context.Context, req MoveRequest, dst, src *moveS
 		case inDst != nil && inSrc != nil:
 			hint := func(st *moveStack, t *writeTo) string {
 				flags := []string{"--to", req.To, sourceName(st, *t)}
-				if req.Yes || st == src && removesUnasked(req) {
+				if req.Yes {
 					flags = append(flags, "-y")
 				}
 				return e.flagRun(dst.sc, req.Options.Target, "profile", "", WhereChoice{Flags: flags})
@@ -656,7 +656,7 @@ func (e *Engine) providers(ctx context.Context, req MoveRequest, dst, src *moveS
 		return false, errs.WithHints(fmt.Errorf("%s %s listed %s and %s %s; a move takes the modules of one scope", strings.Join(shownAll(here), ", "),
 			isAre(here), scopeWhere(dst.sc), strings.Join(shownAll(there), ", "), scopeWhere(src.sc)),
 			e.Command(dst.sc, "profile", append(moveArgs(MoveRequest{From: req.From, Modules: here, To: req.To, Yes: req.Yes}), req.Options.Display...)...),
-			e.acrossRun(req, dst, src, req.From, there, req.Yes || removesUnasked(req)))
+			e.acrossRun(req, dst, src, req.From, there, req.Yes))
 	}
 	var layers []string // src's layers the modules come from, in the order of the first module of each
 	byLayer := map[string][]string{}
@@ -676,7 +676,7 @@ func (e *Engine) providers(ctx context.Context, req MoveRequest, dst, src *moveS
 				part += " " + isAre(byLayer[name])
 			}
 			parts = append(parts, part+" in "+t.label)
-			hints = append(hints, e.acrossRun(req, dst, src, sourceName(src, t), byLayer[name], req.Yes || removesUnasked(req)))
+			hints = append(hints, e.acrossRun(req, dst, src, sourceName(src, t), byLayer[name], req.Yes))
 		}
 		return false, errs.WithHints(fmt.Errorf("%s %s; a move between scopes takes the modules of one layer", andJoin(parts), scopeWhere(src.sc)), hints...)
 	}
@@ -787,8 +787,8 @@ func (e *Engine) intoYours(dst *moveStack, req MoveRequest, t writeTo) ([]string
 	return out, nil
 }
 
-// removesUnasked reports whether req cannot ask before it removes files: a hint naming a run that
-// removes some (turning off a remote profile, a move between scopes) then carries -y.
+// removesUnasked reports whether req cannot ask before it removes files. A hint never answers that
+// for the user: it carries -y only as given (R-8).
 func removesUnasked(req MoveRequest) bool {
 	return req.ConfirmRemovals == nil && !req.Options.Force
 }
@@ -905,7 +905,7 @@ func (e *Engine) moveAcross(ctx context.Context, req MoveRequest, add SyncReques
 	if asked := planned.Removals; len(asked) > 0 && !req.Options.Force {
 		if req.ConfirmRemovals == nil {
 			return nil, e.syncRefusal(src.sc, remove, TrustReport{Status: planned.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}},
-				asked, 0, true, nil)
+				asked, 0, nil)
 		}
 		yes, err := req.ConfirmRemovals(slices.Clone(asked))
 		if err != nil {
@@ -1354,13 +1354,9 @@ func (e *Engine) lostPicks(sel *config.Selections, w config.Where, t writeTo, mo
 }
 
 // offFlags is the flags of the hint that turns off the remote profile a move's entry comes from:
-// req's output flags, and -y when req cannot ask before removing files.
+// req's output flags. It names another command, so never -y (R-8).
 func offFlags(req MoveRequest) []string {
-	out := slices.Clone(req.Options.Display)
-	if removesUnasked(req) {
-		out = append(out, "-y")
-	}
-	return out
+	return slices.Clone(req.Options.Display)
 }
 
 // moveArgs is req as lola profile takes it, after the scope's flags: the source named, the

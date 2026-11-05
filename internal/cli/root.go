@@ -145,6 +145,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	pf.BoolVar(&a.project, "project", false, "act on project scope: --scope project")
 	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory): --scope user")
 	pf.StringVarP(&a.root, "root", "C", "", "the project at this directory; implies project scope")
+	_ = root.RegisterFlagCompletionFunc("root", completeDirs)
 	pf.BoolVar(&a.noPager, "no-pager", false, "print without lola's viewer or a pager")
 
 	root.AddGroup(

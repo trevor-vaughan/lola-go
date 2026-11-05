@@ -53,7 +53,7 @@ var _ = Describe("selections.yaml in list, check and sync", func() {
 		}
 		Expect(json.Unmarshal([]byte(lola("ls", "-C", proj, "--json").out), &v)).To(Succeed())
 		Expect(v.Modules[0].Skipped).To(Equal([]string{"command/test"}))
-		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\tproject\tproject.yml\n"), "--plain rows keep their columns, scope and from last")
+		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t"+mod+"\tproject\tproject.yml\t\n"), "--plain rows keep their columns, scope and from last")
 	})
 
 	It("says a dry run would skip, since it saves nothing", func() {
@@ -253,5 +253,110 @@ var _ = Describe("Pick-P2-b: a pick change that deletes files is confirmed as un
 		r := lola("install", "example", "-C", proj, "--unskip", "command/test")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(tested).To(BeAnExistingFile())
+	})
+})
+
+var _ = Describe("Target-narrowing: install -t of fewer assistants removes the dropped ones' files now, after asking", func() {
+	var tmp, proj, mod, claudeFile, geminiFile, projectYML string
+	BeforeEach(func() {
+		var err error
+		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj, mod = filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
+		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "commands/hi.md": "Hi\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		claudeFile, geminiFile = filepath.Join(proj, ".claude/commands/hi.md"), filepath.Join(proj, ".gemini/commands/hi.toml")
+		projectYML = filepath.Join(proj, ".lola", "project.yml")
+		r := lola("install", mod, "-C", proj, "-t", "claude-code,gemini-cli")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(geminiFile).To(BeAnExistingFile())
+	})
+	agrees := func() {
+		GinkgoHelper()
+		r := lola("list", "-C", proj, "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("\tclaude-code\t"))
+		Expect(r.out).NotTo(ContainSubstring("gemini-cli"), "lola list shows what is installed")
+		r = lola("sync", "-C", proj, "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("→ already in sync\n"), "the next sync changes nothing")
+	}
+
+	It("Target-narrowing: off a terminal it refuses without -y, listing the dropped target's files, and writes nothing", func() {
+		before, err := os.ReadFile(projectYML)
+		Expect(err).NotTo(HaveOccurred())
+		r := lola("install", "m", "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.err).To(ContainSubstring("removals:\n  ✗ m: gemini-cli (target dropped by -t)\n      .gemini/commands/hi.toml\n"))
+		Expect(r.err).To(ContainSubstring("error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\n"))
+		hints := hintLines(r.err)
+		Expect(hints).To(HaveLen(1))
+		Expect(hints[0]).To(SatisfyAll(HavePrefix("lola install m "), ContainSubstring("claude-code"), HaveSuffix(" -y")))
+		Expect(geminiFile).To(BeAnExistingFile())
+		Expect(os.ReadFile(projectYML)).To(Equal(before))
+
+		r = lola("install", "m", "-C", proj, "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.err).To(ContainSubstring("remove\tm\tgemini-cli\t.gemini/commands/hi.toml\tproject\n"), "one scope has the scope column too")
+
+		r = runHint(hints[0])
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(geminiFile).NotTo(BeAnExistingFile())
+		Expect(claudeFile).To(BeAnExistingFile())
+		Expect(os.ReadFile(projectYML)).To(ContainSubstring("targets: [claude-code]"))
+		agrees()
+	})
+
+	It("Target-narrowing: -n shows the removals and writes nothing; -y and --force remove them", func() {
+		r := lola("install", "m", "-C", proj, "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("→ delete gemini-cli  .gemini/commands/hi.toml"))
+		Expect(geminiFile).To(BeAnExistingFile())
+
+		r = lola("install", "m", "-C", proj, "-t", "claude-code", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(geminiFile).NotTo(BeAnExistingFile())
+		agrees()
+
+		Expect(lola("install", "m", "-C", proj, "-t", "claude-code,gemini-cli").code).To(Equal(0), "widening asks nothing")
+		Expect(geminiFile).To(BeAnExistingFile())
+		r = lola("install", "m", "-C", proj, "-t", "claude-code", "--force")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(geminiFile).NotTo(BeAnExistingFile())
+	})
+
+	It("Target-narrowing: on a terminal it lists the removals and asks; No writes nothing, yes removes them", func() {
+		sp := &scripted{confirm: []bool{false}}
+		r := lolaP(sp, "install", "m", "-C", proj, "-t", "claude-code")
+		Expect(r.err).To(ContainSubstring("removals:\n  ✗ m: gemini-cli (target dropped by -t)\n      .gemini/commands/hi.toml\n"))
+		Expect(sp.calls).To(ContainElement(HavePrefix("confirm:Remove these and apply?")))
+		Expect(geminiFile).To(BeAnExistingFile())
+		Expect(os.ReadFile(projectYML)).NotTo(ContainSubstring("targets: [claude-code]\n"))
+
+		sp = &scripted{confirm: []bool{true}}
+		r = lolaP(sp, "install", "m", "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(geminiFile).NotTo(BeAnExistingFile())
+		agrees()
+	})
+
+	It("Target-narrowing: under --scope both each scope's removals name the scope and where it writes", func() {
+		GinkgoT().Chdir(proj)
+		Expect(lola("install", "m", "--user", "-t", "claude-code,gemini-cli").code).To(Equal(0))
+		home := filepath.Join(tmp, "home")
+		r := lola("install", "m", "--scope", "both", "-t", "claude-code")
+		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.err).To(ContainSubstring("  ✗ m: gemini-cli (target dropped by -t) — project " + proj + "\n      .gemini/commands/hi.toml\n"))
+		Expect(r.err).To(ContainSubstring("  ✗ m: gemini-cli (target dropped by -t) — user scope (" + home + ")\n      .gemini/commands/hi.toml\n"))
+		r = lola("install", "m", "--scope", "both", "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(1), r.out)
+		Expect(r.err).To(ContainSubstring("remove\tm\tgemini-cli\t.gemini/commands/hi.toml\tproject\n"))
+		Expect(r.err).To(ContainSubstring("remove\tm\tgemini-cli\t.gemini/commands/hi.toml\tuser\n"))
+	})
+
+	It("Target-narrowing: install --help says a narrower -t removes the others' files, after asking", func() {
+		r := lola("install", "--help")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(strings.Join(strings.Fields(r.out), " ")).To(ContainSubstring("naming fewer than a module is installed on removes the others' files, after asking"))
 	})
 })

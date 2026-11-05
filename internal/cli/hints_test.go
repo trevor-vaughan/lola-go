@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -54,12 +55,15 @@ var _ = Describe("hints", func() {
 					}
 				}
 			}
+			for i := range got { // a folder's --at pin is its content digest, written here as <digest>
+				got[i] = regexp.MustCompile(`=sha256:[0-9a-f]{64}`).ReplaceAllString(got[i], "=sha256:<digest>")
+			}
 			Expect(got).To(Equal(hints(proj)))
 		},
 		Entry("sync's trust refusal under --json",
 			func(proj string) []string { return []string{"sync", "-C", proj, "--json"} },
 			func(proj string) []string {
-				return []string{"see them: lola sync -C " + proj + " --json -n", "then accept them: lola sync -C " + proj + " --trust=entries --json"}
+				return []string{"see them: lola sync -C " + proj + " --json -n", "then accept them: lola sync -C " + proj + " --trust=entries --at other=sha256:<digest> --json"}
 			}),
 		Entry("sync's trust refusal under --plain and --no-pager, with -y, which answers only the refusal that accepts",
 			func(proj string) []string {
@@ -67,13 +71,13 @@ var _ = Describe("hints", func() {
 			},
 			func(proj string) []string {
 				return []string{"see them: lola sync -C " + proj + " other --plain --no-pager -n",
-					"then accept them: lola sync -C " + proj + " other --trust=entries --plain --no-pager -y"}
+					"then accept them: lola sync -C " + proj + " other --trust=entries --at other=sha256:<digest> --plain --no-pager -y"}
 			}),
 		Entry("sync's trust refusal of named modules under --update and --json",
 			func(proj string) []string { return []string{"sync", "other", "-C", proj, "--update", "--json"} },
 			func(proj string) []string {
 				return []string{"see them: lola sync -C " + proj + " other --update --json -n",
-					"then accept them: lola sync -C " + proj + " other --update --trust=entries --json"}
+					"then accept them: lola sync -C " + proj + " other --update --trust=entries --at other=sha256:<digest> --json"}
 			}),
 		Entry("sync's trust refusal after --force and --trust=hooks, which it repeats, adding only the kinds missing",
 			func(proj string) []string {
@@ -81,7 +85,7 @@ var _ = Describe("hints", func() {
 			},
 			func(proj string) []string {
 				return []string{"see them: lola sync -C " + proj + " --force --trust=hooks --json -n",
-					"then accept them: lola sync -C " + proj + " --force --trust=entries,hooks --json"}
+					"then accept them: lola sync -C " + proj + " --force --trust=entries,hooks --at other=sha256:<digest> --json"}
 			}),
 		Entry("install's argument that is neither in the cache nor a source, under --json",
 			func(proj string) []string {
@@ -116,7 +120,7 @@ var _ = Describe("hints", func() {
 				return []string{"sync", "kit", "-C", proj, "--plain"}
 			},
 			func(proj string) []string {
-				return []string{"see them: lola sync -C " + proj + " kit --plain -n", "then accept them: lola sync -C " + proj + " kit --trust=entries --plain",
+				return []string{"see them: lola sync -C " + proj + " kit --plain -n", "then accept them: lola sync -C " + proj + " kit --trust=entries --at kit=sha256:<digest> --plain",
 					"edited it yourself? lola install -C " + proj + " ./proj/mods/kit --plain"}
 			}),
 		Entry("a profile's trust refusal as it turns on, under --json",
@@ -284,6 +288,26 @@ var _ = Describe("hints keep the user's flags", func() {
 		r = lola("sync", "--project", "-n", "-y")
 		Expect(r.out).To(ContainSubstring("→ to apply: lola sync --project -y\n"))
 		Expect(r.out).To(ContainSubstring("→ off a terminal: lola sync --project --trust=entries -y\n"))
+	})
+
+	It("R-8: a dry run's apply hint and a move hint carry -y only when you gave it", func() {
+		writeTree(proj, map[string]string{".claude/skills/old/SKILL.md": "x\n"})
+		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		r := lola("tidy", "-n", "skill/old", "--project", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ lola tidy --project skill/old -t claude-code\n"))
+
+		r = lola("install", "./mods/kit", "--project", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ keep it to yourself: lola profile --project --move kit --to mine --switch\n"))
+		Expect(r.out).To(ContainSubstring("→ meant for every project? lola profile --user --move kit --to base\n"))
+		Expect(r.out + r.err).NotTo(ContainSubstring(" -y"))
+
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
+		r = lola("sync", "--project", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("→ to apply: lola sync --project\n"))
+		Expect(r.out+r.err).NotTo(ContainSubstring(" -y"), "the removal is asked, or refused off a terminal with its own hint")
 	})
 
 	It("Prof-P2-a: profile <ambiguous> --switch -y hints each profile with -y, which switches when run verbatim", func() {

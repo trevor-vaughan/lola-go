@@ -115,7 +115,13 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		for _, a := range args {
 			reqs = append(reqs, engine.InstallRequest{Arg: a})
 		}
-		return e.Install(ctx, sc, proj, reqs, opts)
+		// As -y: a -t narrower than the module's installed targets removes the others' files.
+		r, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Modules: reqs, Options: opts, ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil },
+			Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}, Targets: opts.Targets}}})
+		if err != nil {
+			return nil, err
+		}
+		return r.Result, nil
 	}
 	BeforeEach(func() {
 		var err error

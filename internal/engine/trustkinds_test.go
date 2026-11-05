@@ -124,8 +124,10 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		pull("kit")
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: k}})
 		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project kit",
-			"then consent to it: lola sync --project --trust=entries,profiles,hooks"}))
+		// kit's new version is not in your cache, which a refused run leaves as it was: its folder
+		// shows it.
+		Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project ./mods/kit --target claude-code",
+			MatchRegexp(`^then consent to it: lola sync --project --trust=entries,profiles,hooks --at kit=sha256:[0-9a-f]{64}$`)), "the consent pins the version shown")
 		Expect(ran()).To(BeNil())
 		Expect(trusts("kit")).To(BeFalse())
 	})
@@ -195,7 +197,11 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		func(setup func() error, msg string, hints []string) {
 			err := setup()
 			Expect(err).To(MatchError(ContainSubstring(msg)))
-			Expect(errs.Hints(err)).To(Equal(hints))
+			got := errs.Hints(err)
+			for i := range got {
+				got[i] = folderDigest.ReplaceAllString(got[i], "=sha256:<digest>")
+			}
+			Expect(got).To(Equal(hints))
 			Expect(consented()).To(BeEmpty())
 		},
 		Entry("entries", func() error {
@@ -204,7 +210,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Display: []string{"--json"}}, Display: []string{"--json"}})
 			return err
 		}, "lola sync needs your trust for .lola/project.yml, which has not been trusted on this machine, and there is no terminal to ask on",
-			[]string{"see them: lola sync --project --json -n", "then accept them: lola sync --project --trust=entries --json"}),
+			[]string{"see them: lola sync --project --json -n", "then accept them: lola sync --project --trust=entries --at kit=sha256:<digest> --json"}),
 		Entry("profiles", func() error {
 			kit("")
 			writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: ../../mods/kit}\n"})
@@ -220,14 +226,14 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 				Display: []string{"--plain"}})
 			return err
 		}, "kit has a pre-install hook, and lola runs hooks only with your consent",
-			[]string{"review it: lola info --project kit --plain", "then consent to it: lola sync --project --trust=entries,hooks --plain"}),
+			[]string{"review it: lola info --project ./mods/kit --target claude-code --plain", "then consent to it: lola sync --project --trust=entries,hooks --at kit=sha256:<digest> --plain"}),
 		Entry("entries+hooks", func() error {
 			kit("{pre-install: hooks/pre.sh}")
 			pull("kit")
 			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			return err
 		}, "lola sync needs your trust for .lola/project.yml",
-			[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust=entries,hooks"}),
+			[]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust=entries,hooks --at kit=sha256:<digest>"}),
 		Entry("remote --add", func() error {
 			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Name: "go", Source: "https://example.com/profiles.git", Rerun: []string{"--json"}})
 			return err
@@ -246,7 +252,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 			filepath.Join(proj, "mods", "kit") + "}\n"})
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
 		Expect(err).To(MatchError("lola sync needs your confirmation to remove plain, and there is no terminal to ask on"))
-		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --user -n", "then confirm them: lola sync --user --trust=hooks -y"}))
+		Expect(errs.Hints(err)).To(ConsistOf("see them: lola sync --user -n", MatchRegexp(`^then confirm them: lola sync --user --trust=hooks --at kit=sha256:[0-9a-f]{64} -y$`)))
 	})
 
 	It("a No to the removals records no trust --trust gave, and keeps what a terminal answer accepted", func() {
@@ -290,7 +296,8 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		Expect(res.Notices).To(ContainElement(HaveField("Text", "kit: post-install hook skipped without your consent; "+
 			"review and run it: lola sync --project kit, or consent without asking: lola sync --project kit --trust=hooks")))
 		Expect(res.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hooks-declined"),
-			HaveField("Hint", "review the hooks listed above, then, if you want to install them, consent to them: lola sync --project --trust=entries,runtime-hooks"))))
+			HaveField("Hint", MatchRegexp(`^review the hooks listed above, then, if you want to install them, consent to them: lola sync --project --trust=entries,runtime-hooks`+
+				` --at deploy=sha256:[0-9a-f]{64} --at kit=sha256:[0-9a-f]{64}$`)))))
 		Expect(ran()).To(BeNil())
 	})
 

@@ -46,8 +46,8 @@ var _ = Describe("profiles", func() {
 		r = lola("list", "--user")
 		Expect(r.out).To(MatchRegexp(`user\s+a\s+claude-code\s+✓ ok\s+on\s+` + a + `\s+default\n`))
 		Expect(r.out).To(MatchRegexp(`user\s+c\s+claude-code\s+✓ ok\s+on\s+` + c + `\s+default\n`))
-		Expect(lola("list", "--user", "--plain").out).To(Equal("a\tclaude-code\tok\ton\t" + a + "\tuser\tprofile:default\n" +
-			"c\tclaude-code\tok\ton\t" + c + "\tuser\tprofile:default\n"))
+		Expect(lola("list", "--user", "--plain").out).To(Equal("a\tclaude-code\tok\ton\t" + a + "\tuser\tprofile:default\t\n" +
+			"c\tclaude-code\tok\ton\t" + c + "\tuser\tprofile:default\t\n"))
 		var v struct {
 			Modules []map[string]any `json:"modules"`
 			Notices []any            `json:"notices"`
@@ -64,7 +64,7 @@ var _ = Describe("profiles", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))).To(Equal([]byte("version: 1\ntargets: [claude-code]\nmodules:\n" +
 			"  - {name: a, source: " + a + "}\n")))
-		Expect(lola("list", "--user", "--plain").out).To(Equal("a\tclaude-code\tok\ton\t" + a + "\tuser\tprofile:default\n"))
+		Expect(lola("list", "--user", "--plain").out).To(Equal("a\tclaude-code\tok\ton\t" + a + "\tuser\tprofile:default\t\n"))
 	})
 
 	It("Prof-P1-c: uninstall -y under a profile on removes the base's module, the one layer that lists it", func() {

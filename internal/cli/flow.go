@@ -30,6 +30,8 @@ type installFlags struct {
 	dry, force, strict, rules, noRules, global, yes, exact, withMentions bool
 	override                                                             bool // --override (engine.TargetRequest)
 	trust                                                                engine.TrustKinds
+	at                                                                   []string          // lola install's --at, as given
+	pinned                                                               map[string]string // --at parsed (parseAt)
 	// edit, when not nil, says the run is lola profile <edit> --edit <module>... (spec 2026-10-29
 	// §6.2): edit holds the profile's name as typed ([] for the one edits go to), which every hint
 	// repeats before the modules; create is its --new; scopes, where it applies, which the run
@@ -515,6 +517,10 @@ func (fl *installFlow) run() error {
 		return err
 	}
 	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), consentRun(fl.cmd, fl.hintArgs(fl.args))
+	if fl.cmd.Name() == "install" { // lola install takes --at; lola profile --edit does not
+		spec.Options.PinConsent, spec.At = true, fl.f.pinned
+		spec.AtFresh = runWithout(fl.cmd, fl.hintArgs(fl.args), "at", "dry-run") + " -n"
+	}
 	fl.a.hookOptions(fl.cmd, &spec.Options)
 	// The review, when there was one, already showed where each address resolved, before Apply.
 	if !fl.a.json && !fl.reviews() {
@@ -679,6 +685,9 @@ func (fl *installFlow) removeDropped(res *engine.InstallResult, gone []string) e
 			}
 			r, err := fl.eng.Sync(fl.cmd.Context(), engine.SyncRequest{Scope: c.Scope, ConfirmRemovals: confirm, Display: outputFlags(fl.cmd),
 				Options: engine.Options{Force: fl.f.force, ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Trust: fl.f.trust, Display: outputFlags(fl.cmd)}})
+			if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !fl.a.json {
+				printSyncRefusal(fl.cmd.ErrOrStderr(), style{color: fl.a.color(fl.cmd.ErrOrStderr()), plain: fl.a.plain}, manifestName(c.Scope), "lola sync", refusal, "")
+			}
 			if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
 				err = errors.New("you declined its removals there")
 			}

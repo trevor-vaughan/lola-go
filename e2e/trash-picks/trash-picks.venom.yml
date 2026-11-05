@@ -1,0 +1,236 @@
+name: lola trash restore, repository-keyed picks and confirmed narrowing
+# Run by scripts/e2e.sh (task e2e -- trash-picks) in the shared e2e container: this checkout's
+# lola-go at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, and a git server
+# on 127.0.0.1:8765 serving /srv/git. Every step is {{.runtime}} exec {{.container}} <argv>; any $,
+# glob, redirection or pipe sits inside a single-quoted sh -c, and no step names a host path.
+# Cases run in order and read the state earlier ones leave. The trash is under XDG_STATE_HOME, on
+# its own tmpfs.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-trash-picks
+  lola: /opt/lola-go/lola-go
+  jsoncheck: python3 /e2e-common/jsoncheck.py
+  url: http://127.0.0.1:8765/kit.git
+  state: /home/tester/.local/state
+  selections: /home/tester/.config/lola/selections.yaml
+
+testcases:
+  - name: T1 The fixture is built, and tidy moves the stray command into the trash
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "fixture ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C /work/a -t claude-code --all -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ moved 1 item (11 B) to the trash: {{.state}}/lola/trash/\""
+          - "result.systemout ShouldContainSubstring \"claude-code  command/stray  .claude/commands/stray.md\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -e /work/a/.claude/commands/stray.md"
+        assertions:
+          - result.code ShouldNotEqual 0
+
+  - name: T2 lola trash --json lists the run, and showing it names the file and the restore command
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} trash --json > /tmp/tr.json && {{.jsoncheck}} doc /tmp/tr.json'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.runs.runs0.command ShouldEqual "lola tidy -C /work/a"
+          - result.systemoutjson.runs.runs0.scope ShouldEqual project
+          - result.systemoutjson.runs.runs0.root ShouldEqual /work/a
+          - result.systemoutjson.runs.runs0.files ShouldEqual 1
+          - result.systemoutjson.runs.runs0.size_bytes ShouldEqual 11
+        vars:
+          run:
+            from: result.systemoutjson.runs.runs0.id
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash {{.run}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"  /work/a/.claude/commands/stray.md → {{.state}}/lola/trash/{{.run}}/\""
+          - "result.systemout ShouldContainSubstring \"→ restore them: lola trash {{.run}} --restore\""
+
+  - name: T3 A restore puts the file back with its content and removes the emptied run
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} trash --json | python3 -c \"import json,sys; print(json.load(sys.stdin)[\\\"runs\\\"][0][\\\"id\\\"])\"'"
+        assertions:
+          - result.code ShouldEqual 0
+        vars:
+          run:
+            from: result.systemout
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash {{.run}} --restore"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ restored 1 item from trash run {{.run}}\""
+          - "result.systemout ShouldContainSubstring \"    /work/a/.claude/commands/stray.md\""
+          - "result.systemout ShouldContainSubstring \"→ trash run {{.run}} is empty now, and was removed\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /work/a/.claude/commands/stray.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "stray-body"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "✓ the trash is empty"
+
+  - name: T4 Restoring a run that is not there is refused with the way to list the runs
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash 20000101T000000Z --restore"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"there is no trash run 20000101T000000Z\""
+          - "result.systemerr ShouldContainSubstring \"hint: see the runs: lola trash\""
+
+  - name: K1 A pick made in one clone is saved under the repository's key
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install {{.url}} -C /work/a -t claude-code --skip skill/charlie"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"→ picks for kit saved in selections.yaml projects[git:127.0.0.1:8765/app#.]\""
+          - "result.systemout ShouldContainSubstring \"✓ installed kit (claude-code)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'grep -E \"^  git:|skip:\" {{.selections}}'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"  git:127.0.0.1:8765/app#.:\n      skip: [skill/charlie]\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/a/.claude/skills | paste -sd \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "alpha bravo"
+
+  - name: K2 A second clone of the repository at another path gets the same pick
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install {{.url}} -C /work/b -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"→ kit: skipped in selections.yaml: skill/charlie\""
+          - "result.systemout ShouldContainSubstring \"✓ installed kit (claude-code)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/b/.claude/skills | paste -sd \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "alpha bravo"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'grep -c \"/work\" {{.selections}}'"
+        assertions:
+          - result.code ShouldEqual 1
+          - result.systemout ShouldEqual "0"
+
+  - name: N1 Off a terminal, a pick that deletes installed files is refused without -y and deletes nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"✗ kit: claude-code (dropped by your pick change)\""
+          - "result.systemerr ShouldContainSubstring \".claude/skills/bravo/SKILL.md\""
+          - "result.systemerr ShouldContainSubstring \"error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\""
+          - "result.systemerr ShouldContainSubstring \"hint: lola install kit --root /work/b --skip skill/bravo --target claude-code -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/b/.claude/skills | paste -sd \" \"; grep skip: {{.selections}}'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"alpha bravo\n      skip: [skill/charlie]\""
+
+  - name: N2 With -y the same pick deletes the skill in that clone, and the shared entry records it
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/b -t claude-code --skip skill/bravo -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"→ delete claude-code .claude/skills/bravo/SKILL.md\""
+          - "result.systemout ShouldContainSubstring \"→ kit: skipped in selections.yaml: skill/bravo, skill/charlie\""
+          - "result.systemout ShouldContainSubstring \"✓ installed kit (claude-code)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'ls /work/b/.claude/skills | paste -sd \" \"; ls /work/a/.claude/skills | paste -sd \" \"; grep skip: {{.selections}}'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"alpha\nalpha bravo\n      skip: [skill/charlie, skill/bravo]\""
+
+  - name: E1 Off a terminal, --empty without -y shows what it would delete, is refused and deletes nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} tidy -C /work/a -t claude-code command/stray -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ moved 1 item (11 B) to the trash: {{.state}}/lola/trash/\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash --empty"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"will delete from the trash:\""
+          - "result.systemerr ShouldContainSubstring \"lola tidy -C /work/a  11 B\""
+          - "result.systemerr ShouldContainSubstring \"error: lola trash needs confirmation, and there is no terminal to ask on\""
+          - "result.systemerr ShouldContainSubstring \"hint: lola trash --empty -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} trash --json | python3 -c \"import json,sys; print(len(json.load(sys.stdin)[\\\"runs\\\"]))\"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "1"
+
+  - name: E2 With -y --empty deletes the run, and the trash is empty
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash --empty -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"✓ deleted 1 trash run, freeing 11 B\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} trash"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "✓ the trash is empty"
+
+  - name: X1 Off a terminal, an install whose -t drops an assistant lists its files and is refused without -y
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code,gemini-cli"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"✗ kit: gemini-cli (target dropped by -t)\""
+          - "result.systemerr ShouldContainSubstring \".gemini/skills/alpha/SKILL.md\""
+          - "result.systemerr ShouldContainSubstring \"error: lola install needs your confirmation to remove files, and there is no terminal to ask on; nothing was written\""
+          - "result.systemerr ShouldContainSubstring \"hint: lola install kit --root /work/a --target claude-code -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -f /work/a/.gemini/skills/alpha/SKILL.md"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: X2 With -y it removes them now, and lola list and the next sync agree
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install kit -C /work/a -t claude-code -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"→ delete gemini-cli  .gemini/skills/alpha/SKILL.md\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -e /work/a/.gemini/skills/alpha/SKILL.md"
+        assertions:
+          - result.code ShouldNotEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C /work/a --plain | grep -c gemini-cli'"
+        assertions:
+          - result.code ShouldEqual 1
+          - result.systemout ShouldEqual "0"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} sync -C /work/a -n"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "→ already in sync"

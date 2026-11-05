@@ -139,8 +139,8 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		res, err := install(engine.Options{}, []engine.SelectionEdit{edit("unskip", "command/ship")}, nil, src)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(Equal([]engine.Notice{
-			{Level: engine.LevelInfo, Text: "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch -y"},
-			{Level: engine.LevelInfo, Text: "meant for every project? lola profile --user --move example --to base -y -C " + proj}}), "the move hint alone")
+			{Level: engine.LevelInfo, Text: "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch"},
+			{Level: engine.LevelInfo, Text: "meant for every project? lola profile --user --move example --to base -C " + proj}}), "the move hint alone")
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
 	})
 

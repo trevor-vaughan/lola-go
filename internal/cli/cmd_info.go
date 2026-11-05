@@ -56,9 +56,11 @@ func (a *app) infoCmd() *cobra.Command {
 			return a.showInfo(cmd, args[0])
 		},
 	}
-	addTargetFlag(cmd, &targets, "assistants to plan for, as install's -t")
+	a.addTargetFlag(cmd, &targets, "assistants to plan for, as install's -t")
 	cmd.Flags().StringVar(&ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&path, "path", "", "module root inside the source (monorepos)")
+	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
 	return cmd
 }
 
@@ -219,6 +221,9 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 			if in.Change != "" {
 				fmt.Fprintf(w, "change\t%s\t%s\n", in.Scope, in.Change)
 			}
+			if in.Follow != "" {
+				fmt.Fprintf(w, "follow\t%s\t%s\n", in.Scope, in.Follow)
+			}
 			for _, st := range in.Steps {
 				fmt.Fprintln(w, stepLine(s, st))
 			}
@@ -323,6 +328,9 @@ func printPicks(w io.Writer, s style, module string, in engine.InfoInstall) {
 	_ = tw.Flush()
 	if in.Change != "" {
 		fmt.Fprintln(w, "  "+s.info("change it: "+in.Change))
+	}
+	if in.Follow != "" {
+		fmt.Fprintln(w, "  "+s.info("follow another branch or tag: "+in.Follow))
 	}
 }
 

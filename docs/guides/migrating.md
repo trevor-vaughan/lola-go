@@ -240,7 +240,7 @@ The trash is `$XDG_STATE_HOME/lola/trash/<UTC time>/`:
 `lola trash` lists the runs, and `lola trash <run>` shows a run's entries. `lola trash <run>
 --restore` moves them back, or only the originals you name, and `lola trash --empty` deletes
 runs you no longer need; lola never deletes the trash on its own
-([`lola trash`](../usage.md#lola-trash)).
+([`lola trash`](../reference/trash.md#lola-trash)).
 
 lola refuses to write through a symbolic link inside the trash ("nothing was moved"). A move
 across file systems copies, syncs the copy, then removes only the files and links that match it

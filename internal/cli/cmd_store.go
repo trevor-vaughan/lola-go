@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -81,7 +82,14 @@ func printModuleView(w io.Writer, s style, mv engine.ModuleView) {
 	if mv.Commit != "" {
 		fmt.Fprintf(w, "  %-13s %s\n", "commit:", mv.Commit)
 	}
+	if mv.Follows {
+		fmt.Fprintf(w, "  %-13s %s\n", "ref:", cmp.Or(untrusted.Text(mv.Ref, untrusted.MaxName), "default branch"))
+	}
 	for _, h := range mv.Heads {
+		if len(mv.Heads) == 1 { // the ref line above names its ref
+			fmt.Fprintf(w, "  %-13s %s\n", "head digest:", h.Digest)
+			continue
+		}
 		ref := h.Ref
 		if ref == "" {
 			ref = "(default)"
@@ -170,6 +178,8 @@ func (a *app) cacheAddCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&path, "path", "", "module root inside the source (monorepos)")
+	_ = cmd.RegisterFlagCompletionFunc("ref", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("path", completeDirs)
 	return cmd
 }
 
@@ -239,8 +249,9 @@ func (a *app) cacheCleanCmd() *cobra.Command {
 			"catalog and scratch but what a running lola holds. Installed modules keep working: a project\n" +
 			"whose version was removed fetches it again on its next render, and a marketplace whose\n" +
 			"catalog was removed needs lola market <name> --update before you install from it.",
-		Example: "  lola cache clean\n  lola cache clean --unused-for 30d -n\n  lola cache clean --all -y",
-		Args:    cobra.NoArgs,
+		Example:           "  lola cache clean\n  lola cache clean --unused-for 30d -n\n  lola cache clean --all -y",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if cmd.Flags().Changed("unused-for") && unusedFor == "" {
 				_, err := engine.ParseUnusedFor(unusedFor) // given empty, it must not read as not given
@@ -272,6 +283,9 @@ func (a *app) cacheCleanCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&unusedFor, "unused-for", "", "also remove versions no run used for this long: <n>d, <n>w or never")
+	_ = cmd.RegisterFlagCompletionFunc("unused-for", cobra.FixedCompletions([]cobra.Completion{cobra.CompletionWithDesc("30d", "30 days"),
+		cobra.CompletionWithDesc("90d", "90 days"), cobra.CompletionWithDesc("2w", "2 weeks"), cobra.CompletionWithDesc("never", "not this run")},
+		cobra.ShellCompDirectiveNoFileComp|cobra.ShellCompDirectiveKeepOrder))
 	cmd.Flags().BoolVar(&all, "all", false, "remove every module, catalog and scratch a running lola does not hold")
 	cmd.MarkFlagsMutuallyExclusive("all", "unused-for")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print what would be removed and remove nothing")
@@ -335,12 +349,13 @@ func printClean(w io.Writer, s style, res *engine.CleanResult, planned bool) {
 
 func (a *app) cacheListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List modules in your cache",
-		Example: "  lola cache list\n  lola cache list --json",
-		Args:    cobra.NoArgs,
-		RunE:    a.cacheListRun,
+		Use:               "list",
+		Aliases:           []string{"ls"},
+		Short:             "List modules in your cache",
+		Example:           "  lola cache list\n  lola cache list --json",
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              a.cacheListRun,
 	}
 }
 
@@ -474,12 +489,13 @@ func (a *app) cacheSearchCmd() *cobra.Command {
 	g := argGuide{noun: "query", find: "any word from a module's name, description or keywords", usage: "lola cache search <query>",
 		examples: []string{"lola cache search review"}}
 	return &cobra.Command{
-		Use:     "search <query>",
-		Aliases: []string{"find"},
-		Short:   "Search your cache",
-		Example: g.example(),
-		Args:    g.args(1),
-		RunE:    a.searchRun(false),
+		Use:               "search <query>",
+		Aliases:           []string{"find"},
+		Short:             "Search your cache",
+		Example:           g.example(),
+		Args:              g.args(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              a.searchRun(false),
 	}
 }
 
@@ -495,10 +511,11 @@ func (a *app) searchCmd() *cobra.Command {
 			"by what lola install takes: a cached module's name, or @market/module. It never fetches;\n" +
 			"lola market <name> --update fetches a catalog again. lola cache search searches your cache\n" +
 			"alone.",
-		Example: g.example(),
-		GroupID: groupCore,
-		Args:    g.args(1),
-		RunE:    a.searchRun(true),
+		Example:           g.example(),
+		GroupID:           groupCore,
+		Args:              g.args(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE:              a.searchRun(true),
 	}
 }
 
@@ -512,9 +529,10 @@ func (a *app) initCmd() *cobra.Command {
 			"plugin.json, a portable skill and a dev.getlola command. --format lola writes the native layout:\n" +
 			"lola.yml, one skill and one command.\n" +
 			"With no dir, lola init asks before scaffolding the current directory; -y answers yes.",
-		Example: "  lola init my-module\n  lola init my_module --format lola\n  lola init -y\n  lola install ./my-module -t claude-code",
-		GroupID: groupCore,
-		Args:    cobra.MaximumNArgs(1),
+		Example:           "  lola init my-module\n  lola init my_module --format lola\n  lola init -y\n  lola install ./my-module -t claude-code",
+		GroupID:           groupCore,
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeDirs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {

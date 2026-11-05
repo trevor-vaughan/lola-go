@@ -190,6 +190,8 @@ func (e *Engine) consentHints(sc Scope, c moduleCopy, opts Options, kinds TrustK
 			for _, t := range c.reviewTargets {
 				review = append(review, "--target", t)
 			}
+		} else {
+			review = c.fromSource
 		}
 	}
 	var hints []string
@@ -197,11 +199,19 @@ func (e *Engine) consentHints(sc Scope, c moduleCopy, opts Options, kinds TrustK
 		hints = append(hints, "review it: "+e.Command(sc, "info", append(slices.Clone(review), opts.Display...)...))
 	}
 	k := opts.Trust | kinds
+	var pin []string // the version shown, which the consent alone covers (PinConsent)
+	if c.at != "" {
+		pin = []string{"--at", c.at}
+	}
 	if opts.Rerun != nil {
-		return append(hints, "then consent to it: "+opts.Rerun(k)), nil
+		run := opts.Rerun(k)
+		if pin != nil {
+			run += " " + errs.ShellJoin(pin)
+		}
+		return append(hints, "then consent to it: "+run), nil
 	}
 	if len(c.again) > 0 {
-		hints = append(hints, "then consent to it: "+e.Command(sc, c.again[0], append(append(slices.Clone(c.again[1:]), opts.Display...), k.Arg())...))
+		hints = append(hints, "then consent to it: "+e.Command(sc, c.again[0], slices.Concat(c.again[1:], opts.Display, []string{k.Arg()}, pin)...))
 	}
 	return hints, nil
 }

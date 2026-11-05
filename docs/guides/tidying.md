@@ -15,7 +15,7 @@ lola tidy --all --force                   # also what git tracks; never asks
 lola tidy --keep skill/notes              # never offer skill/notes in this scope again
 ```
 
-Every flag is in the [`lola tidy` reference](../usage.md#lola-tidy).
+Every flag is in the [`lola tidy` reference](../reference/tidy.md#lola-tidy).
 
 **What it sees.** lola tidy looks at each assistant of the scope: the targets the scope's manifest
 lists (`.lola/project.yml`, or your default profile, `default.yml`, at user scope), as far as you trusted them
@@ -187,7 +187,7 @@ moves. The run prints the directory and its size; lola deletes it only when you 
 
 `lola trash` lists the runs, newest first, and `lola trash <run>` shows a run's items. Restore a
 file or directory with `lola trash <run> <original> --restore`, or every item of the run without
-naming one ([`lola trash`](../usage.md#lola-trash)):
+naming one ([`lola trash`](../reference/trash.md#lola-trash)):
 
 ```sh
 lola trash 20261103T120000Z /work/app/.claude/skills/old-review --restore

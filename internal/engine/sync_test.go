@@ -390,47 +390,70 @@ var _ = Describe("Sync", func() {
 				if req.Update {
 					flags = " --update"
 				}
-				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project" + flags + " -n", "then accept them: lola sync --project" + flags + " --trust=entries -y"}), name)
+				// A pin the pull wrote, which the diff shows, is pinned in the hint with --at.
+				at := ""
+				if m := loadManifest().Find("example"); m != nil && m.Commit != "" {
+					at = " --at example=" + m.Commit
+				}
+				Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project" + flags + " -n", "then accept them: lola sync --project" + flags + " --trust=entries" + at + " -y"}), name)
 				refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 				Expect(ok).To(BeTrue(), name)
 				Expect(requests.Load()).To(BeZero(), "%s: the git server saw no request", name)
 				Expect(state()).To(Equal(before), "%s: nothing installed, cached or recorded", name)
 				return refusal
 			}
-			for name, c := range map[string]struct {
+			for _, c := range []struct {
+				name   string
 				change manifest.Change
 				want   string
 			}{
-				"a pulled pinned entry":   {manifest.Change{Set: []manifest.Entry{entry}}, "changes to .lola/project.yml"},
-				"a pulled unpinned entry": {manifest.Change{Set: []manifest.Entry{unpinned}}, "changes to .lola/project.yml and the pins it would write for example"},
+				{"a pulled unpinned entry", manifest.Change{Set: []manifest.Entry{unpinned}}, "changes to .lola/project.yml and the pins it would write for example"},
+				{"a pulled pinned entry", manifest.Change{Set: []manifest.Entry{entry}}, "changes to .lola/project.yml"},
 			} {
 				pull(manifest.Change{Remove: []string{"example"}})
 				pull(c.change)
-				refusal := refused(name, engine.SyncRequest{}, c.want)
-				Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"), HaveField("Kind", "added"))), name)
+				refusal := refused(c.name, engine.SyncRequest{}, c.want)
+				Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"), HaveField("Kind", "added"))), c.name)
 			}
 
 			// --force answers the removals and conflicts, never the trust question (user decision,
-			// 2026-10-22).
+			// 2026-10-22). The pinned entry pulled last is pending: its hint pins the commit with --at.
 			requests.Store(0)
 			before := state()
 			_, err := sync(engine.SyncRequest{Options: engine.Options{Force: true}})
-			// The last case of the map above is either pulled entry: its pins may or may not be named.
-			Expect(err).To(MatchError(And(HavePrefix("lola sync needs your trust for changes to .lola/project.yml"),
-				HaveSuffix(", and there is no terminal to ask on"))))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project --force -n", "then accept them: lola sync --project --force --trust=entries"}))
+			Expect(err).To(MatchError("lola sync needs your trust for changes to .lola/project.yml, and there is no terminal to ask on"))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project --force -n",
+				"then accept them: lola sync --project --force --trust=entries --at example=" + entry.Commit}))
 			Expect(requests.Load()).To(BeZero())
 			Expect(state()).To(Equal(before))
 
-			// --update of an entry the user installed, pinned and cached: the record covers it, so the
-			// refusal names the entry it would re-pin, with no field changes yet.
+			// --update of an entry the user installed, pinned and cached: the record covers its source
+			// and ref, so the run fetches the ref into its staging first. Unmoved, it needs no trust; a
+			// moved tag is refused naming the entry it would re-pin, with its new pin and no field
+			// changes, and leaves the cache as it was.
 			pull(manifest.Change{Remove: []string{"example"}})
 			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"})
 			Expect(covered()).To(BeTrue())
-			refusal := refused("--update of a trusted entry", engine.SyncRequest{Update: true}, "the pins it would write for example")
+			requests.Store(0)
+			_, err = sync(engine.SyncRequest{Update: true, ConfirmRemovals: confirm})
+			Expect(err).NotTo(HaveOccurred(), "v1 has not moved: no pin to write, nothing to trust")
+			Expect(requests.Load()).NotTo(BeZero(), "the trusted ref was fetched")
+			gitIn(work, "tag", "-d", "v1")
+			moved := push(map[string]string{"commands/ship.md": "Ship v2\n"})
+			gitIn(work, "tag", "v1")
+			gitIn(work, "push", "-q", "-f", "--tags", bare)
+			before = state()
+			_, err = sync(engine.SyncRequest{Update: true, ConfirmRemovals: confirm})
+			Expect(err).To(MatchError("lola sync needs your trust for the pins it would write for example, and there is no terminal to ask on; " +
+				"-y confirms removals only; accept them with --trust=entries"))
+			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project --update -n",
+				"then accept them: lola sync --project --update --trust=entries --at example=" + moved + " -y"}))
+			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
+			Expect(ok).To(BeTrue())
 			Expect(refusal.Report.Changes).To(HaveExactElements(And(HaveField("Module", "example"), HaveField("Fields", BeEmpty()),
-				HaveField("Reason", "re-pin from v1 (--update; not fetched yet)"))))
+				HaveField("Reason", "re-pin from v1 (--update)"), HaveField("Pin", HaveField("Commit", moved)))))
 			Expect(refusal.Report.ManifestChanged).To(BeFalse())
+			Expect(state()).To(Equal(before), "nothing installed, cached or recorded")
 		})
 
 		It("off a terminal, one refusal names every answer the run needs", func() {
@@ -476,7 +499,13 @@ var _ = Describe("Sync", func() {
 				} else {
 					Expect(refusal.Removals).To(BeEmpty(), c.name)
 				}
-				Expect(requests.Load()).To(BeZero(), "%s: the git server saw no request", c.name)
+				if c.trust {
+					Expect(requests.Load()).To(BeZero(), "%s: the git server saw no request", c.name)
+				} else {
+					// With its trust given, the run reads the version it would install, so the
+					// refusal lists every removal its -y confirms.
+					Expect(requests.Load()).NotTo(BeZero(), c.name)
+				}
 				Expect(state()).To(Equal(before), c.name)
 				Expect(asked).To(BeEmpty(), "%s: --trust is not asked before the refusal", c.name)
 				Expect(removals).To(BeEmpty(), c.name)
@@ -978,14 +1007,14 @@ var _ = Describe("Sync", func() {
 			before := state()
 			_, err := sync(engine.SyncRequest{})
 			Expect(err).To(MatchError("lola sync needs your trust for the changed content of kit, and there is no terminal to ask on"))
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project -n", "then accept them: lola sync --project --trust=entries",
-				"edited it yourself? lola install --project ./mods/kit"}))
+			Expect(errs.Hints(err)).To(ConsistOf("see them: lola sync --project -n", MatchRegexp(`^then accept them: lola sync --project --trust=entries --at kit=sha256:[0-9a-f]{64}$`),
+				"edited it yourself? lola install --project ./mods/kit"))
 			// Each hint repeating the run carries its flags.
 			_, err = sync(engine.SyncRequest{Update: true})
-			Expect(errs.Hints(err)).To(ContainElement("then accept them: lola sync --project --update --trust=entries"))
+			Expect(errs.Hints(err)).To(ContainElement(MatchRegexp(`^then accept them: lola sync --project --update --trust=entries --at kit=sha256:[0-9a-f]{64}$`)))
 			_, err = sync(engine.SyncRequest{Modules: []string{"kit"}})
-			Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync --project kit -n", "then accept them: lola sync --project kit --trust=entries",
-				"edited it yourself? lola install --project ./mods/kit"}))
+			Expect(errs.Hints(err)).To(ConsistOf("see them: lola sync --project kit -n", MatchRegexp(`^then accept them: lola sync --project kit --trust=entries --at kit=sha256:[0-9a-f]{64}$`),
+				"edited it yourself? lola install --project ./mods/kit"))
 			_, err = sync(engine.SyncRequest{})
 			refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
 			Expect(ok).To(BeTrue())
@@ -1193,7 +1222,8 @@ var _ = Describe("Sync", func() {
 		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: mods/kit\n"), 0o600)).To(Succeed())
 		_, err := sync(engine.SyncRequest{})
-		Expect(errs.Hints(err)).To(Equal([]string{"see them: lola sync -C " + proj + " -n", "then accept them: lola sync -C " + proj + " --trust=entries -y"}),
+		Expect(errs.Hints(err)).To(ConsistOf("see them: lola sync -C "+proj+" -n",
+			MatchRegexp(`^then accept them: lola sync -C `+regexp.QuoteMeta(proj)+` --trust=entries --at kit=sha256:[0-9a-f]{64} -y$`)),
 			"the trust and the removal of example are both missing")
 
 		digest := "sha256:" + strings.Repeat("a", 64)
@@ -1952,7 +1982,7 @@ var _ = Describe("Sync", func() {
 			Expect(string(b)).To(Equal("Ship $ARGUMENTS\n"))
 		})
 
-		It("keeps only the trusted content it fetched when the trust question is declined", func() {
+		It("leaves the cache as it was when the trust question is declined", func() {
 			install(sc, engine.InstallRequest{Arg: url, Ref: "v1"})
 			Expect(e.Store.Remove("example")).To(BeTrue())
 			kit := filepath.Join(proj, "mods", "kit")
@@ -1960,7 +1990,7 @@ var _ = Describe("Sync", func() {
 			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}}})
 			_, err := sync(engine.SyncRequest{Trust: func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{}, nil }})
 			Expect(err).To(MatchError(engine.ErrDeclined))
-			Expect(cacheNames()).To(Equal([]string{"example"}), "the covered entry at its pin is cached, the pulled one is not")
+			Expect(cacheNames()).To(BeEmpty(), "a No caches nothing, not even the covered entry at its pin")
 			Expect(staged()).To(BeEmpty())
 		})
 

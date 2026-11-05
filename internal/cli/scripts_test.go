@@ -56,9 +56,10 @@ var _ = Describe("install scripts off a terminal", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\npre_install: ci/check.sh\n", "ci/check.sh": "#!/bin/sh\nexit 0\n"})
 		r := lola("install", mod, "-C", proj, "-t", "claude-code", "--json")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(`{` + projectWriteContextJSON(proj) + `"error":"lola install needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on",` +
-			`"hints":["review it: lola info -C ` + proj + ` ` + mod + ` --target claude-code --json",` +
-			`"then consent to it: lola install ` + mod + ` --json --root ` + proj + ` --target claude-code --trust=scripts"]}` + "\n"))
+		Expect(r.err).To(MatchRegexp(`^`+regexp.QuoteMeta(`{`+projectWriteContextJSON(proj)+`"error":"lola install needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on",`+
+			`"hints":["review it: lola info -C `+proj+` `+mod+` --target claude-code --json",`+
+			`"then consent to it: lola install `+mod+` --json --root `+proj+` --target claude-code --trust=scripts --at example=sha256:`)+`[0-9a-f]{64}"\]\}\n$`),
+			"the consent pins the version shown")
 
 		r = lola("install", mod, "-C", proj, "-t", "claude-code", "--json", "--trust=scripts")
 		Expect(r.code).To(Equal(0), r.err)

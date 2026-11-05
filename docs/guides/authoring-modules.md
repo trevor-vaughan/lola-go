@@ -1,6 +1,6 @@
 # Module layout
 
-[`lola init`](../usage.md#lola-init) scaffolds a module, and [`lola check`](../usage.md#lola-check)
+[`lola init`](../reference/init.md#lola-init) scaffolds a module, and [`lola check`](../reference/check.md#lola-check)
 reports what each assistant would drop, adapt or skip from it. Templates are in
 [templating.md](templating.md).
 
@@ -253,11 +253,15 @@ given `--trust=hooks`, asks nothing about the hook and says
 `pending post-install hook for <module> → lola sync --project <module>` (off a terminal, with the
 `--trust=hooks` form); a dry run says so too, and, naming the module, shows the hook it would
 run. A `pre-install` hook refused off a terminal hints first `review it: lola info …` of exactly the
-version the run would install, read from your cache without fetching more than the run did (a git
-module as its source at the commit, anything else by its cached name at the head that holds it;
-no such hint when no `lola info` can show that version), then your run with `--trust=` the kinds
-you gave, `hooks`, and any other kind the run would still be refused for (`scripts`, for the
-project's untrusted pre-install script).
+version the run would install (a git module as its source at the commit; anything else by its
+cached name at the head that holds it, or, for a `lola sync` or `lola update` of a folder or
+archive, which a refused run does not cache, as its source from your working directory, e.g.
+`lola info --project ./mods/kit`; no such hint when no `lola info` can show that version), then
+your run with `--trust=` the kinds you gave, `hooks`, and any other kind the run would still be
+refused for (`scripts`, for the project's untrusted pre-install script). For `lola sync` and
+`lola update` that run also pins, with `--at`, each version the refusal showed, so your consent
+covers the hook you reviewed alone: a folder edited since is refused, its hook not run.
+Following the `lola info` hint caches the version it shows (`lola info` is not a refusal).
 
 A `post-install` hook's states:
 

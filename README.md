@@ -107,7 +107,7 @@ stateDiagram-v2
 - **Templating:** a module's `.md.liquid` files render per assistant, with partials, attribute
   files and vars a manifest entry can override ([Templates](docs/guides/templating.md#templates)).
 - **Search:** `lola search` finds modules in your cache and in every marketplace catalog you
-  have fetched ([`lola search`](docs/usage.md#lola-search)).
+  have fetched ([`lola search`](docs/reference/search.md#lola-search)).
 - **Migration:** `lola migrate` installs what LobsterTrap/lola installed and moves its files to
   a trash you can restore from ([Migrating](docs/guides/migrating.md)).
 
@@ -164,8 +164,8 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
    ✓ added my-module to project.yml (base)
      ✓ create claude-code .claude/commands/hello.md
      ✓ create claude-code .claude/skills/hello/SKILL.md
-   → keep it to yourself: lola profile --project --move my-module --to mine --switch -y
-   → meant for every project? lola profile --user --move my-module --to base -y
+   → keep it to yourself: lola profile --project --move my-module --to mine --switch
+   → meant for every project? lola profile --user --move my-module --to base
    ✓ installed my-module (claude-code)
 
    project /tmp/tmp.7PXo8mZbW4/my-project: project.yml

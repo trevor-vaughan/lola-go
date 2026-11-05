@@ -105,10 +105,29 @@ var _ = Describe("lola trash", func() {
 		r = lola("trash", id)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(filepath.Join(proj, ".mcp.json") + " (may hold credentials)"))
-		Expect(r.out).To(ContainSubstring("restore them: lola trash " + id + " --restore"))
+		Expect(r.out).To(ContainSubstring("→ restore them (replaces "+filepath.Join(proj, ".mcp.json")+
+			", which moves to a new trash run first): lola trash "+id+" --restore --force\n"), "the copy's file is there: a plain restore is refused")
 		r = lola("trash", id, "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("entry\t" + filepath.Join(proj, ".mcp.json") + "\t" + filepath.Join(run, ".mcp.json") + "\ttrue\n"))
+	})
+
+	It("I-3: a run whose original is there hints the --force restore that works, saying what it replaces", func() {
+		id := trashRunOf(proj, at, "lola tidy", []string{".mcp.json"})
+		writeTree(proj, map[string]string{".mcp.json": "{\"later\":true}\n"})
+		r := lola("trash", id)
+		Expect(r.code).To(Equal(0), r.err)
+		_, hint, ok := strings.Cut(r.out, "→ restore them (replaces "+filepath.Join(proj, ".mcp.json")+", which moves to a new trash run first): ")
+		Expect(ok).To(BeTrue(), r.out)
+		hint = strings.TrimSuffix(hint, "\n")
+		Expect(hint).To(Equal("lola trash " + id + " --restore --force"))
+		r = runHint(hint)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(read(filepath.Join(proj, ".mcp.json"))).To(Equal("{}\n"))
+
+		id = trashRunOf(proj, at.Add(time.Hour), "lola tidy", nil, ".claude/commands/lint.md")
+		r = lola("trash", id)
+		Expect(r.out).To(HaveSuffix("→ restore them: lola trash "+id+" --restore\n"), "nothing in the way: the plain restore works")
 	})
 
 	It("prints what a run says only escaped", func() {

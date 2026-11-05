@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -295,5 +297,55 @@ var _ = Describe("profile entry picks", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(asked.Changes).To(ContainElement(And(HaveField("Module", "kit"), HaveField("Profile", "project:team"))))
 		Expect(skills(proj)).To(Equal([]string{"a"}))
+	})
+})
+
+var _ = Describe("Target-narrowing: an install whose -t leaves out a target the module is installed on", func() {
+	It("Target-narrowing: plans the dropped target's deletions, asks about them as a pick change's, and leaves nothing for sync", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		e := engine.New(p)
+		ctx := context.Background()
+		proj, mod := filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
+		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "commands/hi.md": "Hi\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
+		spec := func(arg string, ts ...string) engine.InstallSpec {
+			return engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: arg}}, Options: engine.Options{Targets: ts},
+				Scopes: []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}, Targets: ts}}}
+		}
+		_, err = e.InstallAll(ctx, spec(mod, "claude-code", "gemini-cli"))
+		Expect(err).NotTo(HaveOccurred())
+		gemini := filepath.Join(proj, ".gemini", "commands", "hi.toml")
+		Expect(gemini).To(BeAnExistingFile())
+		dropped := engine.Removal{Module: "m", Targets: []string{"gemini-cli"}, Paths: []engine.RemovedPath{{Target: "gemini-cli", Path: ".gemini/commands/hi.toml"}},
+			Why: "target dropped by -t", Scope: "project"}
+
+		_, err = e.InstallAll(ctx, spec("m", "claude-code"))
+		refused, ok := errors.AsType[*engine.DeletesRefusedError](err)
+		Expect(ok).To(BeTrue(), "%v", err)
+		Expect(refused.Removals).To(Equal([]engine.Removal{dropped}))
+		Expect(gemini).To(BeAnExistingFile(), "nothing was written")
+
+		narrow := spec("m", "claude-code")
+		var asked [][]engine.Removal
+		narrow.ConfirmRemovals = func(rs []engine.Removal) (bool, error) { asked = append(asked, rs); return true, nil }
+		res, err := e.InstallAll(ctx, narrow)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(Equal([][]engine.Removal{{dropped}}))
+		Expect(res.Steps).To(ContainElement(And(HaveField("Action", plan.ActionDelete), HaveField("Target", "gemini-cli"))))
+		Expect(gemini).NotTo(BeAnExistingFile())
+		led, err := e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["m"].Targets).To(Equal([]string{"claude-code"}))
+		synced, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(synced.InSync).To(BeTrue(), "the next sync changes nothing")
+
+		_, err = e.InstallAll(ctx, spec("m", "claude-code", "gemini-cli"))
+		Expect(err).NotTo(HaveOccurred(), "a widening -t asks nothing")
+		Expect(gemini).To(BeAnExistingFile())
 	})
 })

@@ -167,6 +167,132 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		Expect(res.Pins).To(BeEmpty())
 	})
 
+	It("Update-removals: lists the files a new version no longer ships, confirms them like any deletion, and writes nothing unasked", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		gitIn(work, "mv", "commands/ship.md", "commands/deploy.md")
+		gitIn(work, "commit", "-q", "-m", "rename")
+		gitIn(work, "push", "-q", "-f", "--all", bare)
+		clock = clock.Add(25 * time.Hour)
+		gone := engine.Removal{Module: "example", Targets: []string{"claude-code"},
+			Paths: []engine.RemovedPath{{Target: "claude-code", Path: ".claude/commands/ship.md"}}, Why: "not in the version this run installs", Scope: "project"}
+
+		res, err := update(engine.SyncRequest{Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Removals).To(Equal([]engine.Removal{gone}), "-n lists them")
+
+		before := state()
+		_, err = update(engine.SyncRequest{})
+		Expect(err).To(MatchError("lola update needs your confirmation to remove the files example's new version drops, and there is no terminal to ask on"))
+		Expect(state()).To(Equal(before), "a refusal leaves the cache (index.yml, versions) and the project as they were")
+		Expect(errs.Hints(err)).To(ContainElement("then confirm them: lola update --project --trust=entries,profiles,scripts,hooks,runtime-hooks --at example=" +
+			gitIn(work, "rev-parse", "HEAD") + " -y"))
+		Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"), "nothing was written")
+
+		var asked [][]engine.Removal
+		res, err = update(engine.SyncRequest{ConfirmRemovals: func(rs []engine.Removal) (bool, error) { asked = append(asked, rs); return true, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(Equal([][]engine.Removal{{gone}}))
+		Expect(res.Removals).To(Equal([]engine.Removal{gone}))
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
+		Expect(read(".claude/commands/deploy.md")).To(Equal("Ship $ARGUMENTS\n"))
+	})
+
+	It("Update-removals: sync --update confirms the files the version it moves to no longer ships, as update does", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		gitIn(work, "mv", "commands/ship.md", "commands/deploy.md")
+		gitIn(work, "commit", "-q", "-m", "rename")
+		gitIn(work, "push", "-q", "-f", "--all", bare)
+		gone := engine.Removal{Module: "example", Targets: []string{"claude-code"},
+			Paths: []engine.RemovedPath{{Target: "claude-code", Path: ".claude/commands/ship.md"}}, Why: "not in the version this run installs", Scope: "project"}
+		_, err := sync(engine.SyncRequest{Update: true, Options: engine.Options{Trust: engine.TrustAll}})
+		Expect(err).To(MatchError("lola sync needs your confirmation to remove the files example's new version drops, and there is no terminal to ask on"))
+		Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"), "nothing was written")
+		var asked [][]engine.Removal
+		res, err := sync(engine.SyncRequest{Update: true, Options: engine.Options{Trust: engine.TrustAll},
+			ConfirmRemovals: func(rs []engine.Removal) (bool, error) { asked = append(asked, rs); return true, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked).To(Equal([][]engine.Removal{{gone}}))
+		Expect(res.Removals).To(Equal([]engine.Removal{gone}))
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("Update-removals: a refusal for removals alone, with its trust given, reads every version first and lists every removal its -y confirms", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"}, engine.InstallRequest{Arg: otherURL, Ref: "main"})
+		gitIn(work, "mv", "commands/ship.md", "commands/deploy.md")
+		gitIn(work, "commit", "-q", "-m", "rename")
+		gitIn(work, "push", "-q", "-f", "--all", bare)
+		pull(manifest.Change{Remove: []string{"other"}})
+		trusted := engine.SyncRequest{Update: true, Options: engine.Options{Trust: engine.TrustAll}}
+		before := state()
+		_, err := sync(trusted)
+		refusal, refused := errors.AsType[*engine.TrustRefusalError](err)
+		Expect(refused).To(BeTrue(), "%v", err)
+		Expect(err).To(MatchError("lola sync needs your confirmation to remove other; and your confirmation to remove the files " +
+			"example's new version drops, and there is no terminal to ask on"))
+		Expect(refusal.Removals).To(ConsistOf(HaveField("Module", "other"), And(HaveField("Module", "example"),
+			HaveField("Paths", ConsistOf(HaveField("Path", ".claude/commands/ship.md"))))), "example's dropped file is listed with other")
+		Expect(errs.Hints(err)).To(ContainElement("then confirm them: lola sync --project --update --trust=entries,profiles,scripts,hooks,runtime-hooks --at example=" +
+			gitIn(work, "rev-parse", "HEAD") + " -y"))
+		Expect(state()).To(Equal(before), "a refusal leaves the cache and the project as they were")
+
+		trusted.ConfirmRemovals = func([]engine.Removal) (bool, error) { return true, nil }
+		_, err = sync(trusted)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("Update-removals: a refusal lists no file a pick keeps out, so it asks no -y for one", func() {
+		Expect(os.MkdirAll(filepath.Dir(p.Config), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(filepath.Dir(p.Config), "selections.yaml"),
+			[]byte("version: 1\nprojects:\n  "+proj+":\n    example:\n      skip: [command/ship]\n"), 0o644)).To(Succeed())
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile(), "skipped")
+		gitIn(work, "rm", "-q", "commands/ship.md")
+		gitIn(work, "commit", "-q", "-m", "drop ship")
+		gitIn(work, "push", "-q", "-f", "--all", bare)
+		clock = clock.Add(25 * time.Hour)
+		_, err := sync(engine.SyncRequest{Installed: true, Update: true})
+		Expect(err).To(MatchError("lola update needs your trust for the pins it would write for example, and there is no terminal to ask on"))
+		refusal, refused := errors.AsType[*engine.TrustRefusalError](err)
+		Expect(refused).To(BeTrue())
+		Expect(refusal.Removals).To(BeEmpty(), "ship.md was never installed")
+		Expect(errs.Hints(err)).To(ContainElement("then accept them: lola update --project --trust=entries --at example=" + gitIn(work, "rev-parse", "HEAD")))
+	})
+
+	It("Update-removals: a refusal leaves the cache as it was, other modules' heads and fetch times included", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"}, engine.InstallRequest{Arg: otherURL, Ref: "main"})
+		gitIn(work, "mv", "commands/ship.md", "commands/deploy.md")
+		gitIn(work, "commit", "-q", "-m", "rename")
+		gitIn(work, "push", "-q", "-f", "--all", bare)
+		clock = clock.Add(25 * time.Hour) // both heads stale: other is fetched too, and has not moved
+		before := state()
+		_, err := update(engine.SyncRequest{})
+		Expect(err).To(MatchError("lola update needs your confirmation to remove the files example's new version drops, and there is no terminal to ask on"))
+		Expect(state()).To(Equal(before), "other's head is not stamped by a refused run")
+	})
+
+	It("says a module pinned with --at whose source no longer serves that version, rather than how the fetch failed", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		pinned := gitIn(work, "rev-parse", "HEAD")
+		writeTree(work, map[string]string{"commands/ship.md": "Ship again\n"})
+		gitIn(work, "commit", "-q", "--amend", "-am", "rewritten")
+		gitIn(work, "push", "-q", "-f", "--all", bare)
+		gitIn(bare, "reflog", "expire", "--expire=now", "--all")
+		gitIn(bare, "gc", "-q", "--prune=now")
+		Expect(e.Store.Remove("example")).To(BeTrue())
+		_, err := sync(engine.SyncRequest{At: map[string]string{"example": pinned}, Options: engine.Options{Trust: engine.TrustAll}})
+		Expect(err).To(MatchError(HavePrefix("example: its source does not serve " + pinned + ", which --at names: ")))
+		Expect(errs.Hints(err)).To(ContainElement("see what it serves now: lola sync --project --trust=entries,profiles,scripts,hooks,runtime-hooks -n"))
+	})
+
+	It("refuses an --at whose version is not the kind its module's source takes", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"}, engine.InstallRequest{Arg: src})
+		_, err := sync(engine.SyncRequest{At: map[string]string{"example": "sha256:" + strings.Repeat("a", 64)}})
+		Expect(err).To(MatchError("example is a git module: --at takes its commit, not a sha256: digest"))
+		_, err = sync(engine.SyncRequest{At: map[string]string{"other": strings.Repeat("a", 40)}})
+		Expect(err).To(MatchError("other is a folder module: --at takes its content digest, sha256:<digest>, not a commit"))
+	})
+
 	It("fetches a stale head and moves the module to it", func() {
 		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
 		commit := push(map[string]string{"commands/ship.md": "Ship v2\n"})
@@ -225,15 +351,38 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		Expect(state()).To(Equal(before))
 	})
 
-	It("asks before fetching a stale head, as sync --update does, even one that will not move", func() {
+	It("fetches a stale head of a trusted entry before asking, and asks nothing, off a terminal, when it has not moved", func() {
 		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
 		clock = clock.Add(25 * time.Hour)
 		requests.Store(0)
+		res, err := sync(engine.SyncRequest{Installed: true, Update: true})
+		Expect(err).NotTo(HaveOccurred(), "nothing moves, so nothing needs trust")
+		Expect(res.Pins).To(BeEmpty())
+		Expect(requests.Load()).NotTo(BeZero(), "the stale head was fetched")
+	})
+
+	It("Update-removals: a stale head that moved is refused once off a terminal, naming the trust and the files it drops, and leaves the cache as it was", func() {
+		install(sc, engine.InstallRequest{Arg: url, Ref: "main"})
+		gitIn(work, "mv", "commands/ship.md", "commands/deploy.md")
+		gitIn(work, "commit", "-q", "-m", "rename")
+		gitIn(work, "push", "-q", "-f", "--all", bare)
+		clock = clock.Add(25 * time.Hour)
+		before := state()
 		_, err := sync(engine.SyncRequest{Installed: true, Update: true})
+		Expect(err).To(MatchError("lola update needs your trust for the pins it would write for example; and your confirmation to remove " +
+			"the files example's new version drops, and there is no terminal to ask on"))
+		Expect(errs.Hints(err)).To(ContainElement("then accept them: lola update --project --trust=entries --at example=" + gitIn(work, "rev-parse", "HEAD") + " -y"))
 		refusal, refused := errors.AsType[*engine.TrustRefusalError](err)
 		Expect(refused).To(BeTrue())
-		Expect(refusal.Report.Changes).To(ConsistOf(HaveField("Reason", "re-pin from main (not fetched yet)")))
-		Expect(requests.Load()).To(BeZero(), "refused before any fetch")
+		Expect(refusal.Report.Changes).To(ConsistOf(And(HaveField("Reason", "re-pin from main"), HaveField("Pin", Not(BeNil())))))
+		Expect(state()).To(Equal(before), "a refusal leaves the cache (index.yml, versions), the trust record and the project as they were")
+
+		res, err := sync(engine.SyncRequest{Installed: true, Update: true, Options: engine.Options{Trust: engine.TrustEntries},
+			ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
+		Expect(err).NotTo(HaveOccurred(), "the hinted run applies in one step")
+		Expect(res.Pins).To(HaveLen(1))
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
+		Expect(read(".claude/commands/deploy.md")).To(Equal("Ship $ARGUMENTS\n"))
 	})
 
 	It("fetches a fresh head with Refetch", func() {
@@ -511,12 +660,12 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		_, err = sync(engine.SyncRequest{Installed: true, Update: true, Refetch: true, Modules: []string{"example"}})
 		refusal, refused := errors.AsType[*engine.TrustRefusalError](err)
 		Expect(refused).To(BeTrue())
-		Expect(refusal.Report.Changes).To(ConsistOf(HaveField("Reason", "re-pin from main (--fetch; not fetched yet)")))
+		Expect(refusal.Report.Changes).To(ConsistOf(HaveField("Reason", "re-pin from main (--fetch)")))
 		clock = clock.Add(25 * time.Hour) // stale: a fresh head the version installed asks nothing (ruling R7)
 		_, err = sync(engine.SyncRequest{Installed: true, Update: true, Modules: []string{"example"}})
 		refusal, refused = errors.AsType[*engine.TrustRefusalError](err)
 		Expect(refused).To(BeTrue())
-		Expect(refusal.Report.Changes).To(ConsistOf(HaveField("Reason", "re-pin from main (not fetched yet)")))
+		Expect(refusal.Report.Changes).To(ConsistOf(HaveField("Reason", "re-pin from main")))
 		Expect(err).To(MatchError(HavePrefix("lola update needs your trust")))
 		Expect(errs.Hints(err)).To(ContainElement("see them: lola update --project example -n"))
 		Expect(strings.Join(errs.Hints(err), "\n")).NotTo(ContainSubstring("lola sync"))
@@ -630,5 +779,41 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		Expect(res).To(BeNil())
 		_, isFetch := errors.AsType[*engine.FetchesFailedError](err)
 		Expect(isFetch).To(BeFalse())
+	})
+})
+
+var _ = Describe("Update-removals: a plain sync of a folder a component left", func() {
+	It("Update-removals: lists the dropped component's files, and is refused off a terminal without an answer", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		e := engine.New(p)
+		ctx := context.Background()
+		proj, mod := filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
+		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "commands/a.md": "A\n", "commands/b.md": "B\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
+		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: mod}}, engine.Options{Targets: []string{"claude-code"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.Remove(filepath.Join(mod, "commands", "b.md"))).To(Succeed())
+		b := filepath.Join(proj, ".claude", "commands", "b.md")
+		gone := engine.Removal{Module: "m", Targets: []string{"claude-code"},
+			Paths: []engine.RemovedPath{{Target: "claude-code", Path: ".claude/commands/b.md"}}, Why: "not in the version this run installs", Scope: "project"}
+
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{DryRun: true, Trust: engine.TrustAll}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Removals).To(Equal([]engine.Removal{gone}), "-n lists them")
+
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustAll}})
+		Expect(err).To(MatchError("lola sync needs your confirmation to remove the files m's new version drops, and there is no terminal to ask on"))
+		Expect(b).To(BeAnExistingFile(), "nothing was written")
+
+		res, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustAll},
+			ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Removals).To(Equal([]engine.Removal{gone}))
+		Expect(b).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(proj, ".claude", "commands", "a.md")).To(BeAnExistingFile())
 	})
 })

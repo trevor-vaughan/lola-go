@@ -78,7 +78,7 @@ testcases:
           assert doc["trust"]["status"] == "new", doc["trust"]
           assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("kit", "added")], doc["trust"]["changes"]
           assert doc["removals"] == [], doc["removals"]
-          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json"], doc["hints"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --at kit={{.kit_v1}} --json"], doc["hints"]
           print("ok the first sync asks to trust kit")
           '
         assertions:
@@ -135,7 +135,7 @@ testcases:
           t1, t3 = json.load(open("/tmp/t1.err")), json.load(open("/tmp/t3.err"))
           assert t3["error"] == t1["error"] + "; -y confirms removals only; accept them with --trust=entries", t3["error"]
           assert (t3["trust"], t3["removals"]) == (t1["trust"], t1["removals"]), t3
-          assert t3["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json -y"], t3["hints"]
+          assert t3["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --at kit={{.kit_v1}} --json -y"], t3["hints"]
           print("ok -y is refused as T1 was")
           '
         assertions:
@@ -190,7 +190,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"kit\tclaude-code\tok\ton\thttp://127.0.0.1:8765/kit.git\tproject\tproject.yml\""
+          - "result.systemout ShouldEqual \"kit\tclaude-code\tok\ton\thttp://127.0.0.1:8765/kit.git\tproject\tproject.yml\tmain\""
 
   - name: T5 A pulled pin change needs trust again
     steps:
@@ -218,7 +218,7 @@ testcases:
           assert change["fields"] == [
               {"field": "commit", "from": "{{.kit_v1}}", "to": "{{.kit_v2}}"},
               {"field": "digest", "from": "{{.kit_v1_digest}}", "to": "{{.kit_v2_digest}}"}], change["fields"]
-          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json"], doc["hints"]
+          assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --at kit={{.kit_v2}} --json"], doc["hints"]
           print("ok the pin change asks for trust")
           '
         assertions:
@@ -271,7 +271,7 @@ testcases:
           assert doc["trust"]["status"] == "changed", doc["trust"]
           assert [(c["module"], c["change"]) for c in doc["trust"]["changes"]] == [("kit", "removed")], doc["trust"]
           assert doc["removals"] == [{"module": "kit", "targets": ["claude-code"], "whole_module": True,
-              "paths": [{"target": "claude-code", "path": ".claude/commands/deploy.md"}]}], doc["removals"]
+              "paths": [{"target": "claude-code", "path": ".claude/commands/deploy.md"}], "scope": "project"}], doc["removals"]
           assert doc["hints"] == ["see them: lola sync -C /work/proj --json -n", "then accept them: lola sync -C /work/proj --trust=entries --json -y"], doc["hints"]
           print("ok the removal asks for -y")
           '
@@ -381,7 +381,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\""
+          - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\tmain\""
 
   - name: T9 uninstall removes a module from the project profile on, and lola's edit stays trusted
     steps:

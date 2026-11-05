@@ -35,6 +35,7 @@ var infoKit = map[string]string{
 type infoDoc struct {
 	Name        string `json:"name"`
 	Digest      string `json:"digest"`
+	Ref         string `json:"ref"`
 	NoScope     string `json:"no_scope"`
 	NoAssistant string `json:"no_assistant"`
 	Hints       []string
@@ -144,7 +145,7 @@ var _ = Describe("lola info", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		hint := readInfo(r.out).Install[0].Command
 		Expect(hint).To(Equal("lola install simple --json --root " + proj + " --target claude-code"))
-		r = runHint(hint)
+		r = runConfirmed(hint) // it drops gemini-cli, whose files it asks about
 		Expect(r.code).To(Equal(0), r.err)
 		r = lola("info", "simple", "-C", proj, "-t", "claude-code", "--json")
 		Expect(r.code).To(Equal(0), r.err)
@@ -169,7 +170,7 @@ var _ = Describe("lola info", func() {
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
 		Expect(doc.Commit).To(Equal(head))
 		Expect(lola("info", "kit").out).To(MatchRegexp(`(?m)^  commit:\s+` + head + `$`))
-		Expect(lola("info", "kit").out).To(MatchRegexp(`(?m)^  head digest:\s+\(default\) → [0-9a-f]{12}$`))
+		Expect(lola("info", "kit").out).To(MatchRegexp(`(?m)^  head digest:\s+[0-9a-f]{12}$`))
 
 		Expect(lola("cache", "rm", "kit", "-y").code).To(Equal(0))
 		r = lola("info", kit, "--json")
@@ -178,6 +179,81 @@ var _ = Describe("lola info", func() {
 		Expect(doc.Commit).To(BeEmpty())
 		Expect(r.out).To(ContainSubstring(`"commit": ""`))
 		Expect(lola("info", "kit").out).NotTo(ContainSubstring("commit:"))
+	})
+
+	It("shows the ref a git module follows in info and list, and offers to follow another", func() {
+		work := filepath.Join(tmp, "work")
+		writeTree(work, map[string]string{"skills/a/SKILL.md": "---\nname: a\ndescription: a skill\n---\nhi\n"})
+		gitIn(work, "init", "-q", "-b", "main")
+		gitIn(work, "add", "-A")
+		gitIn(work, "commit", "-q", "-m", "v1")
+		gitIn(work, "tag", "v1")
+		gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "kit.git"))
+		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/kit.git"
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		r := lola("install", url, "--ref", "v1", "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+
+		out := lola("info", "kit", "-C", proj, "-t", "claude-code").out
+		Expect(out).To(MatchRegexp(`(?m)^  ref:\s+v1$`))
+		Expect(out).NotTo(ContainSubstring("v1 →"))
+		Expect(out).To(ContainSubstring("→ follow another branch or tag: lola install -C " + proj + " kit --ref <ref>\n"))
+		Expect(readInfo(lola("info", "kit", "-C", proj, "--json").out).Ref).To(Equal("v1"))
+		Expect(lola("info", "kit", "-C", proj, "--plain").out).To(ContainSubstring("follow\tproject\tlola install -C " + proj + " kit --ref <ref>\n"))
+
+		Expect(lola("list", "-C", proj).out).To(MatchRegexp(`kit\s+claude-code\s+✓ ok\s+on\s+\S+kit\.git @ v1\n`))
+		Expect(lola("list", "-C", proj, "--plain").out).To(MatchRegexp(`kit\tclaude-code\tok\ton\t\S+kit\.git\tproject\tproject\.yml\tv1\n`))
+		var res struct {
+			Modules []map[string]any `json:"modules"`
+		}
+		Expect(json.Unmarshal([]byte(lola("list", "-C", proj, "--json").out), &res)).To(Succeed())
+		Expect(res.Modules[0]).To(HaveKeyWithValue("ref", "v1"))
+
+		Expect(lola("install", url, "-C", proj, "-t", "claude-code", "--ref", "main").code).To(Equal(0))
+		Expect(lola("list", "-C", proj).out).To(MatchRegexp(`kit\.git @ main\n`))
+	})
+
+	It("shows the ref the scope's entry follows, not the ref of the head the cache read last", func() {
+		work := filepath.Join(tmp, "work")
+		writeTree(work, map[string]string{"skills/a/SKILL.md": "---\nname: a\ndescription: a skill\n---\nhi\n"})
+		gitIn(work, "init", "-q", "-b", "main")
+		gitIn(work, "add", "-A")
+		gitIn(work, "commit", "-q", "-m", "v1")
+		gitIn(work, "tag", "v1")
+		bare := filepath.Join(tmp, "srv", "kit.git")
+		gitIn(tmp, "clone", "-q", "--bare", work, bare)
+		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/kit.git"
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(lola("install", url, "--ref", "v1", "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		writeTree(work, map[string]string{"skills/a/SKILL.md": "---\nname: a\ndescription: a skill\n---\nhi again\n"})
+		gitIn(work, "commit", "-q", "-am", "v2")
+		gitIn(work, "push", "-q", bare, "main")
+		r := lola("cache", "add", url, "--ref", "main")
+		Expect(r.code).To(Equal(0), r.err)
+
+		out := lola("info", "kit", "-C", proj, "-t", "claude-code").out
+		Expect(out).To(MatchRegexp(`(?m)^  ref:\s+v1$`), out)
+		Expect(readInfo(lola("info", "kit", "-C", proj, "--json").out).Ref).To(Equal("v1"))
+		Expect(lola("info", "kit", "--user").out).To(MatchRegexp(`(?m)^  ref:\s+main$`), "not installed there: the cached version's ref")
+	})
+
+	It("says a git module follows the default branch when no ref is recorded, and a folder has no ref", func() {
+		work := filepath.Join(tmp, "work")
+		writeTree(work, map[string]string{"skills/a/SKILL.md": "---\nname: a\ndescription: a skill\n---\nhi\n"})
+		gitIn(work, "init", "-q", "-b", "main")
+		gitIn(work, "add", "-A")
+		gitIn(work, "commit", "-q", "-m", "v1")
+		gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "kit.git"))
+		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/kit.git"
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		Expect(lola("install", url, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		Expect(lola("info", "kit", "-C", proj, "-t", "claude-code").out).To(MatchRegexp(`(?m)^  ref:\s+default branch$`))
+		Expect(lola("list", "-C", proj).out).NotTo(ContainSubstring(" @ "))
+		Expect(lola("list", "-C", proj, "--json").out).To(ContainSubstring(`"ref": ""`))
+
+		out := lola("info", kit, "-C", proj, "-t", "claude-code").out
+		Expect(out).NotTo(ContainSubstring("ref:"))
+		Expect(out).NotTo(ContainSubstring("follow another"))
 	})
 
 	DescribeTable("info's hint installs the digest info showed",

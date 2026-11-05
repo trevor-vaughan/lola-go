@@ -53,7 +53,8 @@ func (a *app) migrateCmd() *cobra.Command {
 		GroupID: groupAdditional,
 		// Arguments reach RunE so that a kind written after a bare --trust is coached
 		// (trust.parse); any other is refused as cobra.NoArgs refuses it.
-		Args: cobra.ArbitraryArgs,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kinds, err := trust.parse(cmd, args, "migrate", "module")
 			if err != nil {
@@ -135,6 +136,8 @@ func (a *app) migrateCmd() *cobra.Command {
 	f.BoolVar(&keep, "keep-python", false, "install and replace with backup, but move nothing else to the trash")
 	f.StringArrayVar(&mapRoots, "map-root", nil, "look for a project path or local source this machine lacks, below OLD, at the same place below NEW (OLD=NEW; repeatable; one matching nothing is a warning)")
 	f.StringArrayVar(&mapTargets, "map-target", nil, "install the modules of OLD, an assistant this machine lacks, for NEW instead (OLD=NEW[,NEW]; repeatable)")
+	_ = cmd.RegisterFlagCompletionFunc("map-root", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("map-target", cobra.NoFileCompletions)
 	return cmd
 }
 

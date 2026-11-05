@@ -279,9 +279,9 @@ var _ = Describe("remote profiles", func() {
 			Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).To(BeARegularFile())
 			r := lola("profile", "go", "--add", src, "--user", "--trust")
 			Expect(r.code).To(Equal(0), r.err)
-			hint := "lola profile --user remote:go --switch -y"
-			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): " + hint + "\n"))
-			r = runHint(hint)
+			hint := "lola profile --user remote:go --switch"
+			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): "+hint+"\n"), "R-8: no -y in a hint naming another command")
+			r = runConfirmed(hint)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(HavePrefix("user scope: profile mine over default\n"))
 			Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).NotTo(BeAnExistingFile())

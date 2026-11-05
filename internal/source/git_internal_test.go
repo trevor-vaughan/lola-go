@@ -177,3 +177,26 @@ var _ = Describe("githubWebHint", func() {
 		Expect(errs.Hints(err)).To(Equal([]string{"git ls-remote -- https://github.com/o/r"}))
 	})
 })
+
+var _ = Describe("remoteRef's failures", func() {
+	It("is UnreachableError only when the source fails to answer, never on a cancelled run or a missing git", func() {
+		tmp := testenv.Isolate()
+		spec := Spec{Kind: KindGit, Location: filepath.Join(tmp, "nowhere.git"), Ref: "main"}
+		_, err := remoteRef(context.Background(), spec)
+		_, unreachable := errors.AsType[*UnreachableError](err)
+		Expect(unreachable).To(BeTrue(), "%v", err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		_, err = remoteRef(ctx, spec)
+		Expect(err).To(HaveOccurred())
+		_, unreachable = errors.AsType[*UnreachableError](err)
+		Expect(unreachable).To(BeFalse(), "a cancelled run: %v", err)
+
+		GinkgoT().Setenv("PATH", filepath.Join(tmp, "empty"))
+		_, err = remoteRef(context.Background(), spec)
+		Expect(err).To(MatchError("lola needs git for this source, and git is not on PATH"))
+		_, unreachable = errors.AsType[*UnreachableError](err)
+		Expect(unreachable).To(BeFalse(), "git is missing: %v", err)
+	})
+})

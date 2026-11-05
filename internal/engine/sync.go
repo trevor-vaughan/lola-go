@@ -60,6 +60,15 @@ type SyncRequest struct {
 	ConfirmRemovals func([]Removal) (bool, error)
 	// Yes is the run's -y, which a hint repeating the run keeps (spec 2026-11-03 §3.3, rerun).
 	Yes bool
+	// At is --at: per module of the run, the version a refusal showed, a git commit or a folder's
+	// or archive's content digest. A run given it applies only the versions a refusal showed: one
+	// whose source serves another, and any other module whose version would change, is refused
+	// before anything is written (resolveSync, unpinnedChange), so its --trust and -y answer only
+	// what was listed. AtShared says the command gave --at to several scopes: At is this scope's
+	// modules' alone (maybe none), a module it does not include is not refused, and the run still
+	// applies only the versions a refusal showed.
+	At       map[string]string
+	AtShared bool
 	// Profiles, when set, changes the scope's active profile and applies the change (Plan 6b §6.3,
 	// §19 R3): the run is limited to the modules whose state differs from what the new profile
 	// wants, and the new profile is written to lock.json in the same commit as the apply.
@@ -110,6 +119,11 @@ type Removal struct {
 	// Why is the reason when it is not the sync's own: "dropped by your pick change" for an
 	// install that narrows picks (PickDeletes).
 	Why string `json:"why,omitempty"`
+	// Scope is the scope the paths are under, project or user. Where names it with its root,
+	// "project <root>" or "user scope (<home>)", when the removals listed with it span more than
+	// one scope (an install's --scope both); "" else.
+	Scope string `json:"scope"`
+	Where string `json:"where,omitempty"`
 }
 
 // RemovedPath is a path lola wrote for a target and a removal deletes; Path carries a JSON
@@ -209,16 +223,19 @@ type TrustChange struct {
 	Hooks         []ContentHook      `json:"hooks"`
 }
 
-// TrustRefusalError is a sync refused, before any network contact, because it needs answers it
-// cannot ask for (Plan 6a §9.3 step 4): the user's trust (SyncRequest.Trust is nil), the
-// confirmation of its removals (ConfirmRemovals is nil), or both. Report holds the trust changes,
-// with fields only for git and archive entries, since nothing was fetched to show their content,
-// and changes: [] when only the removals are missing; Removals lists the removals, [] when only
-// trust is missing.
+// TrustRefusalError is a sync refused, before anything a pull asked for is fetched, because it
+// needs answers it cannot ask for (Plan 6a §9.3 step 4): the user's trust (SyncRequest.Trust is
+// nil), the confirmation of its removals (ConfirmRemovals is nil), or both. Report holds the trust
+// changes, with fields only for the git and archive entries not read yet, and changes: [] when
+// only the removals are missing; Removals lists the removals, with the files the versions read
+// no longer ship, [] when there are none.
 type TrustRefusalError struct {
 	Report   TrustReport
 	Removals []Removal
-	msg      string
+	// Notices says what the refusal could not read: an entry whose fetch failed, whose removals
+	// it therefore does not list.
+	Notices []Notice
+	msg     string
 }
 
 func (e *TrustRefusalError) Error() string { return e.msg }
@@ -227,7 +244,11 @@ func (e *TrustRefusalError) Error() string { return e.msg }
 // hints (Plan 6a §11.2): the changes it needs trust for and the removals, so a CI consumer gets
 // them without a second run.
 func (e *TrustRefusalError) JSONFields() map[string]any {
-	return map[string]any{"trust": e.Report, "removals": e.Removals}
+	notices := e.Notices
+	if notices == nil {
+		notices = []Notice{}
+	}
+	return map[string]any{"trust": e.Report, "removals": e.Removals, "notices": notices}
 }
 
 // Pin reasons: why a sync writes an entry's pin.
@@ -253,9 +274,9 @@ type Pin struct {
 // the scope was already in sync (nothing to write, pin or remove). Changed names, in order, the
 // modules the run changes (a step, a pin, a removal or a replaced copy): a sync limited to them
 // with the same answers applies the same plan. A dry run that is not in sync names the command
-// that applies it, ToApply, and, when that needs answers, the form for no terminal, OffTerminal
-// (Plan 6a §11.1); EquivalentCommands is the one of them that applies it off a terminal, [] for
-// any other run. Equivalent is, after a trust answer, the command that gives the same answers off
+// that applies it, ToApply, and, when that needs consent, the form for no terminal, OffTerminal
+// (Plan 6a §11.1), with --trust; EquivalentCommands is the last of them, [] for any other run.
+// Neither carries a -y the user did not give (R-8). Equivalent is, after a trust answer, the command that gives the same answers off
 // a terminal (§7.5).
 type SyncResult struct {
 	*Result
@@ -320,6 +341,8 @@ type syncEntry struct {
 	follow        *marketPick // the catalog entry an --update follows (Plan 6c §6.6), nil for none
 	fresh         bool        // lola update's cache head for its ref was fetched within cache_fresh_for: the run does not fetch the ref
 	failed        bool        // lola update could not fetch it: it stays as installed
+	at            string      // the version --at says the run installs: a git commit, else a content digest
+	atFresh       string      // the dry run without --at that a refusal for another version than at hints
 	sourceGone    bool        // its source folder is gone: the version installed was rendered
 	installed     string      // the digest lock.json records for the module, "" when none is installed
 	notices       []Notice    // what resolving the entry has to say (a gone folder rendered from the cache)
@@ -392,7 +415,16 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			defer func() { e.recovering = nil }()
 		}
 	}
-	opts.Rerun = func(k TrustKinds) string { return e.commandOf(req.trusting(k), req.Display...) }
+	// shownAt is the versions the run has read once it has resolved its entries (shownVersions),
+	// which the hint that consents to a hook pins, so the consent covers the version shown alone.
+	var shownAt map[string]string
+	opts.Rerun = func(k TrustKinds) string {
+		r := req.trusting(k)
+		if shownAt != nil {
+			r.At = shownAt
+		}
+		return e.commandOf(r, req.Display...)
+	}
 	opts.askScripts, opts.update, opts.activation = true, req.Update, req.Profiles != nil
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); sc.Kind == target.Project && sc.Key() == home.Key() {
 		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
@@ -631,6 +663,24 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
+	for _, name := range slices.Sorted(maps.Keys(req.At)) {
+		k := slices.IndexFunc(entries, func(se *syncEntry) bool { return se.ent.Name == name })
+		switch {
+		case k < 0 && req.AtShared:
+			continue
+		case k < 0:
+			without := req
+			without.At = maps.Clone(req.At)
+			delete(without.At, name)
+			return nil, errs.WithHints(fmt.Errorf("--at names %s, which this run does not include", shown(name)), "drop it: "+e.commandOf(without, req.again()...))
+		}
+		if err := atKind(name, entries[k].spec.Kind, req.At[name]); err != nil {
+			return nil, err
+		}
+		fresh := req
+		fresh.At = nil
+		entries[k].at, entries[k].atFresh = req.At[name], e.commandOf(fresh, append([]string{"-n"}, req.Display...)...)
+	}
 	res.Notices = append(append(res.Notices, catalogNotices...), kept...)
 	// An activation counted the changes it leaves pending above; lola update's findings say what
 	// installed modules it leaves out, and its notice the listed entries it does not install.
@@ -705,8 +755,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		}
 	}
 	// The removals are listed now, from lock.json and the manifest alone, and a run that cannot
-	// ask for an answer it needs is refused here, once, before anything is fetched (Plan 6a §9.3
-	// step 4).
+	// ask for an answer it needs is refused here, once, before anything a pull asked for is
+	// fetched (Plan 6a §9.3 step 4).
 	if !req.Installed { // lola update removes nothing
 		if res.Removals, err = e.syncRemovals(sc, want, led, entries, limit); err != nil {
 			return nil, err
@@ -718,7 +768,59 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if needTrust && req.Trust == nil {
 		missing = need &^ opts.Trust
 	}
+	// readEarly resolves se for a refusal, before the run would. An entry whose source fails to
+	// serve it (sourceFailure) stays unread, as before this read: its removals are not listed, so
+	// the refusal offers no -y for them, and unreadNotes says why, with the failure's hints. The run
+	// that follows the refusal resolves it again and stops on, or reports, the failure as it always
+	// has. A failure of lola's own state (the cache, the staging) stops the run here.
+	var unreadNotes []Notice
+	readEarly := func(se *syncEntry) error {
+		err := e.resolveSync(ctx, sc, se, run, req.Display)
+		if err == nil || ctx.Err() != nil || !sourceFailure(err) {
+			return err
+		}
+		se.v, se.pin, se.staged = store.Version{}, nil, nil
+		text := shown(se.ent.Name) + ": could not read the version this run would install, so the files it drops are not listed: " +
+			untrusted.CleanErr(err).Error()
+		if hints := shownAll(errs.Hints(err)); len(hints) > 0 {
+			text += " → " + strings.Join(hints, "; ")
+		}
+		unreadNotes = append(unreadNotes, Notice{Level: LevelWarn, Text: text})
+		return nil
+	}
+	// A run that cannot ask first fetches, into its staging, the entries the record covers that it
+	// would pin: their source and ref are what the user trusted, so nothing a pull asked for is
+	// fetched, and the refusal can name the files the new version drops (and its -y) at once. An
+	// update that finds nothing new then needs no trust at all.
+	if missing != 0 && !opts.DryRun {
+		for _, se := range entries {
+			if !se.covered || !needsPin(se) || se.v.ContentDir != "" {
+				continue
+			}
+			if err := readEarly(se); err != nil {
+				return nil, err
+			}
+		}
+		needTrust = manifestChanged || repl != nil || slices.ContainsFunc(entries, func(se *syncEntry) bool { return se.folderChanged || needsPin(se) })
+		need, missing = neededTrust(early, repl, entries), 0
+		if needTrust {
+			missing = need &^ opts.Trust
+		}
+	}
 	trustMissing, removalsMissing := missing != 0, len(res.Removals) > 0 && req.ConfirmRemovals == nil && !opts.Force
+	// selections is the picks the run plans with: selections.yaml, a move's, and the layers'.
+	selections := func() (*config.Selections, error) {
+		sel, err := e.selections()
+		if err != nil {
+			return nil, err
+		}
+		if req.move != nil {
+			for _, c := range req.move.selections {
+				sel.Set(c.Section, c.Module, c.Entry)
+			}
+		}
+		return withPicks(sel, layers)
+	}
 	if !opts.DryRun && (trustMissing || removalsMissing) {
 		report := TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}}
 		if sc.Kind == target.Project {
@@ -731,6 +833,18 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		for _, se := range entries {
 			if se.spec.Kind == source.KindFolder && se.v.ContentDir == "" {
 				if err := e.resolveSync(ctx, sc, se, run, req.Display); err != nil {
+					return nil, err
+				}
+			}
+		}
+		// With every trust it needs given, nothing keeps the run from reading each version now, as
+		// it would next, so the refusal lists every removal its -y confirms.
+		if !trustMissing {
+			for _, se := range entries {
+				if se.v.ContentDir != "" {
+					continue
+				}
+				if err := readEarly(se); err != nil {
 					return nil, err
 				}
 			}
@@ -752,7 +866,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				return nil, err
 			}
 			notFixed(&report, entries)
-			pinReasons(&report, entries, false, req.updateFlag())
+			pinReasons(&report, entries, req.updateFlag())
 			if err := e.fillContent(sc, &report, entries, led, templates, e.newProbeRun(ctx), opts.Display); err != nil {
 				return nil, err
 			}
@@ -762,7 +876,32 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		if removalsMissing {
 			removals = res.Removals
 		}
-		return nil, e.syncRefusal(sc, req, report, removals, missing, removalsMissing, entries)
+		// The files the versions read so far no longer ship, planned as the apply plans them (picks
+		// and settings included), so the refusal lists only what the run would remove.
+		if req.ConfirmRemovals == nil && !opts.Force {
+			var read []*syncEntry
+			for _, se := range entries {
+				if se.v.ContentDir != "" {
+					read = append(read, se)
+				}
+			}
+			if len(read) > 0 {
+				sel, err := selections()
+				if err != nil {
+					return nil, err
+				}
+				sp, err := e.planSync(sc, read, layers, active != nil, led, templates, sel, opts, e.newProbeRun(ctx), req.Modules, man.PostInstall != "")
+				if err != nil {
+					return nil, err
+				}
+				removals = append(removals, e.droppedFiles(sc, led, sp.changes, res.Removals, opts)...)
+			}
+		}
+		err = e.syncRefusal(sc, req, report, removals, missing, entries)
+		if refusal, ok := errors.AsType[*TrustRefusalError](err); ok {
+			refusal.Notices = unreadNotes
+		}
+		return nil, err
 	}
 
 	served := 0 // the entries lola update resolved from a fresh cache head, without a fetch
@@ -800,19 +939,24 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		if !se.sourceGone || !req.Installed { // lola update says it as a source-gone finding
 			res.Notices = append(res.Notices, se.notices...)
 		}
-		// What the user trusts at its pin goes into the cache now; everything else waits. A
-		// project dry run moves no head (Plan 6a §3.1), not even for an --update fetch, and
-		// replaces no source the cache records (§6.5).
-		if se.covered && se.pin == nil && !se.folderChanged && (!opts.DryRun || se.goneFrom == "") {
-			if opts.DryRun && sc.Kind == target.Project {
-				se.headIfAbsent = true
-			}
-			if err := e.publish(se); err != nil {
-				return nil, err
-			}
-		}
 	}
 	entries = slices.DeleteFunc(entries, func(se *syncEntry) bool { return se.failed })
+	// A run given --at applies only the versions a refusal showed (the user's "pin in the hint"
+	// ruling, 2026-11-03): any other module whose installed version would change (a pin a pull
+	// wrote included) is refused here, before anything is written, whatever its -y, --force or
+	// --trust say.
+	if (len(req.At) > 0 || req.AtShared) && !opts.DryRun {
+		for _, se := range entries {
+			if se.at != "" || se.v.Meta.Digest == se.installed {
+				continue
+			}
+			fresh := req
+			fresh.At = nil
+			return nil, errs.WithHints(fmt.Errorf("%s has a new version no refusal showed, and --at does not pin it: "+
+				"a run given --at applies only the versions a refusal showed; nothing was written", shown(se.ent.Name)),
+				"see what changed: "+e.commandOf(fresh, append([]string{"-n"}, req.Display...)...))
+		}
+	}
 	if served > 0 {
 		what := fmt.Sprintf("%d modules", served)
 		if served == 1 {
@@ -841,7 +985,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			return nil, err
 		}
 		notFixed(&res.Trust, entries)
-		pinReasons(&res.Trust, entries, true, req.updateFlag())
+		pinReasons(&res.Trust, entries, req.updateFlag())
 		if err := e.fillContent(sc, &res.Trust, entries, led, templates, probes, opts.Display); err != nil {
 			return nil, err
 		}
@@ -854,16 +998,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	// Plan every module now, from the bytes that were hashed, before the trust question: a module
 	// that cannot be planned stops the run before anything is asked (Plan 6a §9.3 step 10).
-	sel, err := e.selections()
+	sel, err := selections()
 	if err != nil {
-		return nil, err
-	}
-	if req.move != nil {
-		for _, c := range req.move.selections {
-			sel.Set(c.Section, c.Module, c.Entry)
-		}
-	}
-	if sel, err = withPicks(sel, layers); err != nil {
 		return nil, err
 	}
 	sp, err := e.planSync(sc, entries, layers, active != nil, led, templates, sel, opts, probes, req.Modules, man.PostInstall != "")
@@ -881,7 +1017,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		switch {
 		case opts.DryRun:
 		case asked.kinds() != 0 && req.Trust == nil: // refused at step 4 already; kept so no path applies untrusted content
-			return nil, e.syncRefusal(sc, req, res.Trust, []Removal{}, asked.kinds(), false, entries)
+			return nil, e.syncRefusal(sc, req, res.Trust, []Removal{}, asked.kinds(), entries)
 		default:
 			if covered.kinds() != 0 && req.Show != nil {
 				req.Show(covered)
@@ -944,29 +1080,24 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			res.Pins = append(res.Pins, pin)
 		}
 	}
-	// Publish what the user trusts now (Plan 6a §9.3 step 8); a declined entry's content is never
-	// committed. A dry run publishes nothing more, except that --update -n at user scope, whose
-	// files are the user's own, fetches into the cache and moves heads, as -n always may there.
-	for _, se := range entries {
-		if opts.DryRun && (sc.Kind != target.User || !se.update) {
-			continue
-		}
-		if err := e.publish(se); err != nil {
-			return nil, err
-		}
-	}
-
-	// Removals are confirmed before any hook consent is asked or recorded (Plan 6a §9.3 step 9).
+	// Removals are confirmed before anything is published (step 8) and before any hook consent is
+	// asked or recorded (Plan 6a §9.3 step 9): a refusal or a No leaves the cache as -n does.
 	changes, copies := sp.changes, sp.copies
 	for _, r := range res.Removals {
 		if r.WholeModule {
 			changes = append(changes, plan.ModuleChange{Name: r.Module, Targets: allTargets(led.Modules[r.Module], nil, &manifest.Manifest{})})
 		}
 	}
+	// The files a version the run installs no longer ships (a component dropped or renamed, at
+	// update, --update or a folder read again) are removals too, asked with the rest (one rule for
+	// every deletion, U3).
+	res.Removals = append(res.Removals, e.droppedFiles(sc, led, changes, res.Removals, opts)...)
 	if len(res.Removals) > 0 && !opts.DryRun && !opts.Force {
-		if req.ConfirmRemovals == nil { // refused at step 4 already; kept so no path removes unasked
+		// The manifest's removals were refused at step 4; the files a version drops are known only
+		// now that it is planned, so they are refused here, before the publish.
+		if req.ConfirmRemovals == nil {
 			return nil, e.syncRefusal(sc, req, TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}},
-				res.Removals, 0, true, entries)
+				res.Removals, 0, entries)
 		}
 		yes, err := req.ConfirmRemovals(slices.Clone(res.Removals))
 		if err != nil {
@@ -978,6 +1109,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	res.Findings = append(res.Findings, probes.findings...)
 
+	shownAt = shownVersions(req, entries)
 	pr, err := e.prepare(sc, led, changes, copies, nil, opts, res.Result)
 	if ce, ok := errors.AsType[*plan.ConflictError](err); ok && ce.Overridable && len(res.Removals) > 0 {
 		// The sync with --force its hint names also answers the removals (user decision,
@@ -1029,13 +1161,20 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	slices.Sort(res.Changed)
 	res.Changed = slices.Compact(res.Changed)
+	// Nothing is written to the cache unless the run applies: every refusal and every No (the
+	// trust question, the removals, the receipt, a hook's consent, a conflict) leaves it as it was.
+	// A dry run caches what the user trusts at its pin, as -n always has (publishRun).
 	if err := e.confirmTrusted(opts, res.Result); err != nil || opts.DryRun {
 		if err != nil {
 			return nil, err
 		}
+		if err := e.publishRun(sc, entries, opts); err != nil {
+			return nil, err
+		}
 		// A dry run ends with the command that applies it: the user's own run without -n, and
-		// the flags that answer its questions off a terminal: --trust for the kinds given and the
-		// kinds the run would be refused without (R-9-6), and -y for its removals.
+		// the flags that answer its consent questions off a terminal: --trust for the kinds given
+		// and the kinds the run would be refused without (R-9-6). -y only as given (R-8): off a
+		// terminal a run with removals refuses, and its hint adds -y.
 		// A sync in sync applies a trust it needs too: its project's scripts' (Plan 9 §7).
 		needTrust := res.Trust.Status != trust.StatusTrusted && res.Trust.Status != TrustStatusNotApplicable
 		if !res.InSync || needTrust || res.needs&^opts.Trust != 0 {
@@ -1045,13 +1184,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				missing |= res.Trust.kinds()
 			}
 			missing &^= opts.Trust
-			var answers []string
-			if len(res.Removals) > 0 && !opts.Force {
-				answers = append(answers, "-y")
-			}
 			res.EquivalentCommands = []string{res.ToApply}
-			if missing != 0 || len(answers) > 0 {
-				res.OffTerminal = e.commandOf(req.trusting(opts.Trust|missing), answers...)
+			if missing != 0 {
+				res.OffTerminal = e.commandOf(req.trusting(opts.Trust | missing))
 				res.EquivalentCommands = []string{res.OffTerminal}
 			}
 		}
@@ -1059,6 +1194,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			return res, &FetchesFailedError{Modules: res.Failed, Gone: res.Gone}
 		}
 		return res, nil
+	}
+	if err := e.publishRun(sc, entries, opts); err != nil {
+		return nil, err
 	}
 	defer func() { err = res.afterGrants(err) }() // a failure from here on carries the grants written
 	apply := func(mw []plan.ManifestWrite) error {
@@ -1431,7 +1569,8 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on boo
 		shows := se.v
 		sp.copies = append(sp.copies, moduleCopy{name: name, src: se.v.ContentDir, replace: replace || pending,
 			hooks: se.v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace || pending, forced: pending && !replace,
-			pending: pending, pendingScript: offer, scriptNotice: noticed, shows: &shows, again: []string{"sync", name}})
+			pending: pending, pendingScript: offer, scriptNotice: noticed, shows: &shows, fromSource: e.reviewSource(se, mr.Targets),
+			again: []string{"sync", name}})
 	}
 	return sp, nil
 }
@@ -1687,17 +1826,18 @@ func served(se *syncEntry) string {
 // pinReasons gives each change of an entry the run writes a pin for its reason (Plan 6a §7.5):
 // re-pin from its ref, naming flag (SyncRequest.updateFlag), or pin what its ref serves now; an
 // entry whose manifest entry is as trusted gets a change of its own, so the diff names it. Before
-// anything is fetched (fetched false) the pin is not known, which the reason says. A folder whose
-// content changed is given its reason too.
-func pinReasons(rep *TrustReport, entries []*syncEntry, fetched bool, flag string) {
+// an entry is resolved its pin is not known, which the reason says. A folder whose content changed
+// is given its reason too.
+func pinReasons(rep *TrustReport, entries []*syncEntry, flag string) {
 	for _, se := range entries {
 		var reason string
+		fetched := se.v.ContentDir != ""
 		switch {
 		case se.folderChanged && se.notInstalled:
 			reason = "not installed yet"
 		case se.folderChanged:
 			reason = "content changed since lola installed it"
-		case !needsPin(se) || fetched && se.pin == nil:
+		case !needsPin(se):
 			continue
 		case se.update:
 			var notes []string
@@ -1751,11 +1891,12 @@ func shownValue(v any) any {
 // syncRefusal refuses a sync that needs answers it cannot ask for (Plan 6a §9.3 step 4, §11.3),
 // naming in one error every answer missing and every cause: the user's trust (trustMissing) for
 // the manifest, the pins the sync would write and the folders whose content changed, and the
-// confirmation of the removals (removalsMissing), the answers joined by "; and" so a list of
-// names never runs into the next answer. The hints repeat the user's run (req) at its
-// scope with the flags that answer, so the user is never sent from one refusal to the next. The
-// error carries the report and the removals for the caller to show.
-func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removals []Removal, missing TrustKinds, removalsMissing bool,
+// confirmation of removals (those that need it, with the files a version read no longer ships),
+// the answers joined by "; and" so a list of names never runs into the next answer. The hints
+// repeat the user's run (req) at its scope with the flags that answer, so the user is never sent
+// from one refusal to the next. The error carries the report and the removals for the caller to
+// show.
+func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removals []Removal, missing TrustKinds,
 	entries []*syncEntry) error {
 	var answers, hints []string
 	// missing may hold only the hook kind, which the hint adds and the message does not name.
@@ -1813,13 +1954,34 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		}
 		answers = append(answers, "your trust for "+andJoin(causes))
 	}
-	if removalsMissing {
-		var names []string
-		for _, r := range removals {
+	// The removals the run is refused for are named by module; the files a version read for the
+	// refusal no longer ships (droppedFiles, Why whyDropped) as that version's.
+	var names, drops []string
+	for _, r := range removals {
+		switch {
+		case r.Why != whyDropped:
 			names = append(names, r.Module)
+		case !slices.Contains(drops, r.Module+"'s"):
+			drops = append(drops, r.Module+"'s")
 		}
+	}
+	if len(names) > 0 {
 		answers = append(answers, "your confirmation to remove "+strings.Join(names, ", "))
 	}
+	if len(drops) > 0 {
+		answers = append(answers, "your confirmation to remove the files "+andJoin(drops)+" new version drops")
+	}
+	// The hint carries -y only when every removal it would confirm is listed here, the user's own
+	// -y included: while an installed entry's new version is unread (a pulled change is never
+	// fetched before trust, and a source may fail to serve one), the run it hints may remove other
+	// files, so it carries no -y and that run lists them all and asks.
+	var unread []string
+	for _, se := range entries {
+		if se.installed != "" && se.v.ContentDir == "" && (needsPin(se) || se.ent.Digest != se.installed) {
+			unread = append(unread, shown(se.ent.Name))
+		}
+	}
+	yes := len(unread) == 0 && (yesGiven || len(removals) > 0)
 	// Each hint repeats the run in its output format (Plan 8 §9.2), with --trust as given; the
 	// one that accepts the changes adds exactly the kinds missing (Plan 9 §3.5).
 	again := func(r SyncRequest, extra ...string) string {
@@ -1827,13 +1989,17 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 	}
 	hints = append(hints, "see them: "+again(req, "-n"))
 	accepting := req.trusting(req.Options.Trust | missing)
+	accepting.Yes = accepting.Yes && yes
+	accepting.At = shownVersions(req, entries)
 	switch {
-	case trustMissing && (removalsMissing || yesGiven):
+	case trustMissing && yes:
 		hints = append(hints, "then accept them: "+again(accepting, "-y"))
 	case trustMissing:
 		hints = append(hints, "then accept them: "+again(accepting))
-	default:
+	case yes:
 		hints = append(hints, "then confirm them: "+again(accepting, "-y"))
+	default:
+		hints = append(hints, "then fetch and list them all: "+again(accepting))
 	}
 	for _, se := range entries {
 		// An install of the folder would take all of it, never the entry's selection.
@@ -1851,6 +2017,12 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 	msg := run + " needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"
 	if trustMissing && yesGiven {
 		msg += "; -y confirms removals only; accept them with " + missing.Arg()
+	}
+	switch {
+	case len(unread) > 0 && len(removals) > 0:
+		msg += "; until it reads " + andJoin(unread) + ", the removals listed may change, so -y waits until the next run lists them"
+	case len(unread) > 0 && yesGiven:
+		msg += "; until it reads " + andJoin(unread) + ", it cannot list what it removes, so -y waits until the next run lists it"
 	}
 	return errs.WithHints(&TrustRefusalError{Report: rep, Removals: removals, msg: msg}, hints...)
 }
@@ -2015,9 +2187,10 @@ func (e *Engine) folderEdits(sc Scope, rep *TrustReport, entries []*syncEntry, d
 // needsPin reports whether a sync writes a pin for the entry into its file: a git or archive
 // entry of the manifest or of a project profile under --update or without one; a folder is
 // never pinned, and a profile of the user's own never written (Plan 6b §6.4, §19 R1). Each needs
-// the user's trust at project scope (Plan 6a §7.3).
+// the user's trust at project scope (Plan 6a §7.3). Once the entry is resolved, an --update that
+// found the version it pins writes none.
 func needsPin(se *syncEntry) bool {
-	return !se.own() && se.spec.Kind != source.KindFolder && (se.update || se.ent.Digest == "")
+	return !se.own() && se.spec.Kind != source.KindFolder && (se.update || se.ent.Digest == "") && (se.v.ContentDir == "" || se.pin != nil)
 }
 
 // SyncNames is the module names lola sync takes in sc, for completion: every module the scope's
@@ -2557,6 +2730,50 @@ func describeSource(location, path string, comps *source.Components) string {
 // fetches its commit. A new pin is recorded in se.pin. display is the run's output flags, which
 // the hints keep.
 func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run string, display []string) error {
+	err := e.resolveVersion(ctx, sc, se, run, display)
+	if err != nil && se.at != "" && sourceFailure(err) {
+		// A version --at names that the source does not serve is that version's refusal, never a
+		// failed fetch that lola update leaves as installed.
+		return errs.WithHints(fmt.Errorf("%s: its source does not serve %s, which --at names: %s", shown(se.ent.Name), shown(se.at), untrusted.CleanErr(err).Error()),
+			append(shownAll(errs.Hints(err)), "see what it serves now: "+se.atFresh)...)
+	}
+	if err != nil || se.at == "" {
+		return err
+	}
+	got := se.v.Meta.Digest
+	if se.spec.Kind == source.KindGit {
+		got = se.v.Commit
+	}
+	return atHolds(se.ent.Name, got, se.at, se.atFresh)
+}
+
+// atKind refuses an --at version that is not the kind name's source takes: a git module's
+// commit, a folder's or archive's content digest (sha256:<digest>).
+func atKind(name string, kind source.Kind, want string) error {
+	digest := strings.HasPrefix(want, "sha256:")
+	switch {
+	case kind == source.KindGit && digest:
+		return fmt.Errorf("%s is a git module: --at takes its commit, not a sha256: digest", shown(name))
+	case kind == source.KindArchive && !digest:
+		return fmt.Errorf("%s is an archive module: --at takes its content digest, sha256:<digest>, not a commit", shown(name))
+	case kind == source.KindFolder && !digest:
+		return fmt.Errorf("%s is a folder module: --at takes its content digest, sha256:<digest>, not a commit", shown(name))
+	}
+	return nil
+}
+
+// atHolds refuses a module whose source serves got where --at names want, before anything is
+// written, hinting fresh, the run's dry run without --at.
+func atHolds(name, got, want, fresh string) error {
+	if got == want {
+		return nil
+	}
+	return errs.WithHints(fmt.Errorf("%s: its source now serves %s, not %s as --at says; nothing was written", shown(name), shown(got), shown(want)),
+		"see what it serves now: "+fresh)
+}
+
+// resolveVersion is resolveSync's work, before the --at check.
+func (e *Engine) resolveVersion(ctx context.Context, sc Scope, se *syncEntry, run string, display []string) error {
 	name, ent := se.ent.Name, se.ent
 	stage := func() error {
 		st, err := e.prepareFetch(ctx, name, se.spec, run)
@@ -2658,6 +2875,74 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 	return nil
 }
 
+// sourceFailure reports whether err is a source failing to serve an entry: its fetch (network,
+// auth, a ref or source that is gone), a commit its ref does not reach, or content other than its
+// pin, its catalog or its sha256 says; not a failure of lola's own state.
+func sourceFailure(err error) bool {
+	_, fetch := errors.AsType[*fetchFailedError](err)
+	_, notOnRef := errors.AsType[*source.NotOnRefError](err)
+	_, sum := errors.AsType[*source.SHA256MismatchError](err)
+	_, catalog := errors.AsType[*catalogMismatchError](err)
+	_, digest := errors.AsType[*digestMismatchError](err)
+	_, served := errors.AsType[*servedCommitError](err)
+	_, commit := errors.AsType[*commitFetchError](err)
+	_, unreachable := errors.AsType[*source.UnreachableError](err)
+	return fetch || notOnRef || sum || catalog || digest || served || commit || unreachable
+}
+
+// shownVersions is the --at a hint repeating req adds (nil for lola profile, which has no --at):
+// req's own, and each new version the run showed of an entry, so the hinted run answers that
+// version or is refused. An entry it read whose content is not the version installed gives its
+// commit (git) or content digest; one it did not read (a pull's change, never fetched before
+// trust) whose entry pins another version than installed gives that pin, as the diff printed it,
+// so a second pull before the hinted run is refused.
+func shownVersions(req SyncRequest, entries []*syncEntry) map[string]string {
+	if req.move != nil || req.profileArgs != nil || req.Profiles != nil {
+		return nil
+	}
+	at := maps.Clone(req.At)
+	for _, se := range entries {
+		var v string
+		switch {
+		case se.v.ContentDir != "" && se.v.Meta.Digest != se.installed:
+			if v = se.v.Meta.Digest; se.spec.Kind == source.KindGit {
+				v = se.v.Commit
+			}
+		case se.v.ContentDir == "" && se.ent.Digest != "" && se.ent.Digest != se.installed:
+			if v = se.ent.Digest; se.spec.Kind == source.KindGit && se.ent.Commit != "" {
+				v = se.ent.Commit
+			}
+		default:
+			continue
+		}
+		if at == nil {
+			at = map[string]string{}
+		}
+		at[se.ent.Name] = v
+	}
+	return at
+}
+
+// reviewSource is the lola info arguments that show a folder's or archive's version from its
+// source, when the cache does not hold it (a refusal caches nothing): the folder or local archive
+// as the user can type it from here (./ before a relative one, so it never reads as a cached
+// name or an option), an archive's URL as written, and the targets the copy installs to. nil for
+// a git source, whose commit reviewOf names.
+func (e *Engine) reviewSource(se *syncEntry, targets []string) []string {
+	if se.spec.Kind == source.KindGit {
+		return nil
+	}
+	arg := se.spec.Location
+	if se.spec.Kind == source.KindFolder || filepath.IsAbs(arg) {
+		arg = e.pathHere(arg)
+	}
+	out := []string{untrusted.Text(arg, untrusted.MaxName)}
+	for _, t := range targets {
+		out = append(out, "--target", t)
+	}
+	return out
+}
+
 // pinnedIn is where an entry's pin is written, for a pinned fetch's error: the manifest or a
 // project profile, whose pin sync --update rewrites; pins.yaml or lock.json, whichever gave the
 // unpinned entry of the user's own profile its pin, which --update resolves again; or that profile itself, which only the user
@@ -2747,6 +3032,63 @@ func (e *Engine) publish(se *syncEntry) error {
 	return nil
 }
 
+// publishRun commits the run's staged versions to the cache (Plan 6a §9.3 step 8), once nothing
+// is left that could refuse or decline the run, so a refusal or a No leaves the cache as it was,
+// every head and fetch time included; a declined entry, out of entries by then, is never
+// committed. A dry run publishes what the user trusts at its pin (a project dry run moves no head,
+// Plan 6a §3.1, not even for an --update fetch, and replaces no source the cache records, §6.5),
+// and --update -n at user scope, whose files are the user's own, fetches into the cache and moves
+// heads, as -n always may there.
+func (e *Engine) publishRun(sc Scope, entries []*syncEntry, opts Options) error {
+	for _, se := range entries {
+		trusted := se.covered && se.pin == nil && !se.folderChanged
+		if opts.DryRun && (!trusted || se.goneFrom != "") && (sc.Kind != target.User || !se.update) {
+			continue
+		}
+		if opts.DryRun && trusted && sc.Kind == target.Project {
+			se.headIfAbsent = true
+		}
+		if err := e.publish(se); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// droppedFiles is what a version the run installs no longer ships: the whole files lola wrote
+// that changes, planned at sc over led as prepare plans them but before any consent narrows
+// them, delete for a module whose version changes, at a module and target no removal in
+// removals covers. A JSON member a plan moves or re-keys, and a file a pick or a setting drops
+// from the same version, are not. A plan that does not compute (a conflict) lists none: prepare
+// refuses it before anything is written.
+func (e *Engine) droppedFiles(sc Scope, led *ledger.Ledger, changes []plan.ModuleChange, removals []Removal, opts Options) []Removal {
+	moved := map[string]bool{}
+	for _, c := range changes {
+		if was := led.Modules[c.Name]; was != nil && c.Entry != nil && c.Entry.Digest != was.Digest {
+			moved[c.Name] = true
+		}
+	}
+	if len(moved) == 0 {
+		return nil
+	}
+	req := plan.Request{Roots: map[string]string{}, Ledger: led, Changes: changes, Force: opts.Force}
+	for _, t := range e.Targets {
+		req.Roots[t.ID()] = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
+	}
+	p, err := plan.Compute(req)
+	if err != nil {
+		return nil
+	}
+	for i := range p.Steps {
+		p.Steps[i].Scope = sc.Kind.String() // as prepare sets it
+	}
+	steps := slices.DeleteFunc(p.Steps, func(st plan.Step) bool {
+		return !moved[st.Module] || st.Key != "" ||
+			slices.ContainsFunc(removals, func(r Removal) bool { return r.Module == shown(st.Module) && slices.Contains(r.Targets, st.Target) })
+	})
+	return deletedBy(steps, nil, whyDropped, e.Paths.Home)
+}
+
 // removal is what a sync removes of the module name that lock.json records as installed: the
 // targets it is installed on that keep (the targets its entry names; nil for a module the
 // manifest no longer lists, which goes whole), with the paths lola wrote there. It is nil when
@@ -2756,7 +3098,7 @@ func (e *Engine) removal(sc Scope, name string, installed *ledger.Entry, keep []
 	if installed == nil {
 		return nil, nil
 	}
-	r := &Removal{Module: shown(name), Targets: []string{}, WholeModule: keep == nil, Paths: []RemovedPath{}}
+	r := &Removal{Module: shown(name), Targets: []string{}, WholeModule: keep == nil, Paths: []RemovedPath{}, Scope: sc.Kind.String()}
 	var gone []string
 	for _, t := range allTargets(installed, nil, &manifest.Manifest{}) {
 		if !slices.Contains(keep, t) {

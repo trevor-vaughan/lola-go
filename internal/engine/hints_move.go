@@ -25,13 +25,14 @@ import (
 // write; this project only after a user-scope write in a found project, into a profile of yours
 // there switchTarget takes (the one on there first, then by name) or, with none, the two-step
 // uninstall and install (with the targets they have here when the project names none, and only
-// when they share them). No hint names project.yml or a project profile as a target. Off a
-// terminal (ask false) each move that may remove files carries -y, and a switch that turns a
-// profile off and removes its modules says so; every hint carries display, the run's output flags.
+// when they share them). No hint names project.yml or a project profile as a target. No hint
+// carries -y: each names another command, which asks, or off a terminal refuses with a hint that
+// adds it (R-8); a switch that turns a profile off and removes its modules says so. Every hint
+// carries display, the run's output flags.
 // When t is off here, each move names t as its source, an off target takes --keep-off, a move that
 // installs them (into a profile on, or the base) only when it runs as printed (movesAsPrinted),
 // and there is no keep-it-to-yourself or cross-scope line; when t is a project profile that is off, no line.
-func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Scope, ask bool, display []string) []Notice {
+func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Scope, display []string) []Notice {
 	sp, t, modules := a.sp, a.t, a.modules
 	if !t.on && t.Key != "" {
 		return nil // a project profile that is off: the saved-to line says what to do (plan 12.5 P3)
@@ -62,7 +63,7 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 		if from != "" {
 			return moveArgs(MoveRequest{From: from, Modules: modules, To: to, KeepOff: off})
 		}
-		return moveArgs(MoveRequest{Modules: modules, To: to, Switch: off, Yes: off && !ask})
+		return moveArgs(MoveRequest{Modules: modules, To: to, Switch: off})
 	}
 	type choice struct {
 		name, clause string
@@ -116,7 +117,7 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 	user := Scope{Kind: target.User}
 	if sp.sc.Kind == target.Project {
 		if e.unlisted(user, t, modules, runs) != nil {
-			args := e.acrossArgs(MoveRequest{To: baseName}, &moveStack{sc: user}, &moveStack{sc: sp.sc}, "", modules, !ask)
+			args := e.acrossArgs(MoveRequest{To: baseName}, &moveStack{sc: user}, &moveStack{sc: sp.sc}, "", modules, false)
 			hint("meant for every project", "", "?", user, args)
 		}
 		return out
@@ -148,11 +149,11 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 	for _, i := range mine {
 		req := MoveRequest{Scope: project, Other: &user, Modules: modules, To: i.Qualified()}
 		if on, clause, ok := e.switchTarget(ctx, there.layers, there.infos, i, req); ok {
-			hint("meant for this project only", clause, "?", project, moveArgs(MoveRequest{Modules: modules, To: i.Qualified(), Switch: !on, Yes: !ask}))
+			hint("meant for this project only", clause, "?", project, moveArgs(MoveRequest{Modules: modules, To: i.Qualified(), Switch: !on}))
 			return out
 		}
 	}
-	if run := e.intoProjectRun(a, project, there, modules, ask, display); run != "" {
+	if run := e.intoProjectRun(a, project, there, modules, display); run != "" {
 		out = append(out, Notice{Level: LevelInfo, Text: "meant for this project only? " + run})
 	}
 	return out
@@ -163,9 +164,9 @@ func (e *Engine) installMoveHints(ctx context.Context, a installAdded, runs []Sc
 // project, with the targets they have at user scope when the project names none, or names ones
 // its trust record does not cover for the file the install writes there (targetsCovered), which
 // an install without -t refuses; "" when those differ between modules, as one install takes one
-// -t, or when lola cannot tell. Off a terminal (ask false) the uninstall carries -y; both carry
-// display, the run's output flags.
-func (e *Engine) intoProjectRun(a installAdded, project Scope, there *moveStack, modules []string, ask bool, display []string) string {
+// -t, or when lola cannot tell. Neither carries -y (R-8); both carry display, the run's output
+// flags.
+func (e *Engine) intoProjectRun(a installAdded, project Scope, there *moveStack, modules []string, display []string) string {
 	t, _, err := e.writeTarget(project, there.layers, there.infos, TargetRequest{}, "install", "", nil)
 	if err != nil {
 		return ""
@@ -189,11 +190,7 @@ func (e *Engine) intoProjectRun(a installAdded, project Scope, there *moveStack,
 		}
 		again = append(again, "-t", strings.Join(ts, ","))
 	}
-	var yes []string
-	if !ask {
-		yes = []string{"-y"}
-	}
-	return e.Command(Scope{Kind: target.User}, "uninstall", slices.Concat(modules, yes, display)...) + ", then " +
+	return e.Command(Scope{Kind: target.User}, "uninstall", slices.Concat(modules, display)...) + ", then " +
 		e.Command(project, "install", append(again, display...)...)
 }
 
@@ -225,7 +222,7 @@ func (e *Engine) inProjectNotices(a installAdded, runs []Scope, opts Options, mo
 		if there == nil {
 			continue
 		}
-		run := e.intoProjectRun(a, project, there, []string{m}, opts.AskWhere != nil, opts.Display)
+		run := e.intoProjectRun(a, project, there, []string{m}, opts.Display)
 		if run != "" && !slices.ContainsFunc(moves, func(n Notice) bool { return strings.HasSuffix(n.Text, " "+run) }) {
 			out = append(out, Notice{Level: LevelInfo, Text: "keep it in the project instead: " + run})
 		}

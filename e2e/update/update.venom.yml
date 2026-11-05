@@ -1,4 +1,4 @@
-name: lola update fetches by freshness, moves pins and isolates a failed fetch
+name: lola update fetches by freshness, moves pins, isolates a failed fetch and confirms the files a new version drops
 # Run by scripts/e2e.sh (task e2e -- update) in the shared e2e container: this checkout's lola-go
 # at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, and a git server on
 # 127.0.0.1:8765 serving /srv/git. Every step is {{.runtime}} exec [<options>] {{.container}}
@@ -11,6 +11,8 @@ vars:
   container: lola-e2e-update
   lola: /opt/lola-go/lola-go
   url: http://127.0.0.1:8765/pack.git
+  hint: python3 /e2e-common/hint.py
+  snapshot: python3 /e2e-common/snapshot.py
 
 testcases:
   - name: U1 The fixture is built and pack installs from it
@@ -94,7 +96,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
 
-  - name: U4 With every head stale, update asks before it fetches, and with --trust fetches and moves the pin
+  - name: U4 With every head stale, update fetches into its staging, is refused once without --trust writing nothing, and with --trust moves the pin
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh advance v3"
@@ -106,17 +108,28 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/u4.before && cp /work/proj/.lola/project.yml /tmp/u4.yml'"
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/u4.before && cp /work/proj/.lola/project.yml /tmp/u4.yml && {{.snapshot}} /tmp/u4-before.json /work/proj /home/tester/.cache/lola /home/tester/.local'"
         assertions:
           - result.code ShouldEqual 0
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} update -C /work/proj"
         assertions:
           - result.code ShouldEqual 1
-          - result.systemerr ShouldContainSubstring "re-pin from main (not fetched yet)"
-          - 'result.systemerr ShouldContainSubstring "error: lola update needs your trust"'
+          - result.systemerr ShouldContainSubstring "re-pin from main"
+          - result.systemerr ShouldNotContainSubstring "not fetched yet"
+          - result.systemerr ShouldContainSubstring "~ commands/deploy.md"
+          - 'result.systemerr ShouldContainSubstring "error: lola update needs your trust for the pins it would write for pack, and there is no terminal to ask on"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/u4.before'"
+        script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(wc -l < /run/gitserve/requests.log)\" -gt \"$(cat /tmp/u4.before)\"'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/u4-after.json /work/proj /home/tester/.cache/lola /home/tester/.local > /dev/null && {{.snapshot}} --compare /tmp/u4-before.json /tmp/u4-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "unchanged"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/u4.before'"
         assertions:
           - result.code ShouldEqual 0
       - type: exec
@@ -237,3 +250,91 @@ testcases:
         script: "{{.runtime}} exec {{.container}} test ! -e /work/pick/.claude/commands/lint.md"
         assertions:
           - result.code ShouldEqual 0
+
+  - name: U9 Files a new version no longer ships are listed and refused off a terminal without -y, then removed with it
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh pick-rename"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "pick renamed"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick -n"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✗ pick: claude-code (not in the version this run installs)\""
+          - "result.systemout ShouldContainSubstring \".claude/commands/deploy.md\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"✗ pick: claude-code (not in the version this run installs)\""
+          - "result.systemerr ShouldContainSubstring \"needs your confirmation to remove the files pick's new version drops, and there is no terminal to ask on\""
+          - "result.systemerr ShouldContainSubstring \"hint: then confirm them: lola update -C /work/pick --fetch --trust=entries,profiles --at pick=\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test -f /work/pick/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick -y"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /work/pick/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: U10 update --fetch off a terminal without --trust or -y is refused once, naming the trust and the files the new version drops, writes nothing, and its hint applies as printed
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh drop"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "drop ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir /work/drop"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install http://127.0.0.1:8765/drop.git --ref main -C /work/drop --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ installed drop (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh drop-rename"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "drop renamed"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/u10-before.json /work/drop /home/tester/.cache/lola /home/tester/.local"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} update --fetch -C /work/drop --json > /tmp/u10.out 2> /tmp/u10.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /tmp/u10.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"lola update needs your trust for the pins it would write for drop; and your confirmation to remove the files drop's new version drops, and there is no terminal to ask on\""
+          - "result.systemoutjson.hints.hints1 ShouldStartWith \"then accept them: lola update -C /work/drop --fetch --trust=entries --at drop=\""
+          - "result.systemoutjson.hints.hints1 ShouldEndWith \" --json -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.snapshot}} /tmp/u10-after.json /work/drop /home/tester/.cache/lola /home/tester/.local > /dev/null && {{.snapshot}} --compare /tmp/u10-before.json /tmp/u10-after.json'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "unchanged"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/u10.err 1 > /tmp/u10-apply.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /work/drop/.claude/commands/review.md"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /work/drop/.claude/commands/audit.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Review with drop."

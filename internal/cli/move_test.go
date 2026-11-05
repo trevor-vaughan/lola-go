@@ -285,14 +285,14 @@ var _ = Describe("lola profile --move", func() {
 		r = lola("profile", "--move", "notes", "--to", "base", "--user")
 		Expect(r.code).NotTo(Equal(0))
 		Expect(r.err).To(ContainSubstring("notes comes from remote:team, which is read-only; lola does not edit remote profiles\n" +
-			"  hint: turn it off: lola profile --user --off -y\n" +
-			"  hint: or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team -y\n"))
-		r = lola(strings.Fields("profile --user --off -y")...) // the hint as printed
+			"  hint: turn it off: lola profile --user --off\n" +
+			"  hint: or switch to a copy of yours: lola profile --user team-mine --switch --new --from remote:team\n"))
+		r = runConfirmed("lola profile --user --off") // the hint as printed, then with the -y its refusal adds
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("Profile remote:team"))
 
 		Expect(lola("profile", "team", "--switch", "--user", "-y").code).To(Equal(0))
-		r = lola(strings.Fields("profile --user team-mine --switch --new --from remote:team -y")...) // the other hint as printed
+		r = runConfirmed("lola profile --user team-mine --switch --new --from remote:team") // the other hint as printed
 		Expect(r.code).To(Equal(0), r.err)
 		r = lola("profile", "--move", "notes", "--to", "base", "--user", "-y")
 		Expect(r.code).To(Equal(0), "the copy is yours to edit: %s", r.err)
@@ -303,12 +303,12 @@ var _ = Describe("lola profile --move", func() {
 		r = lola("profile", "--move", "notes", "--to", "base", "--user")
 		Expect(r.code).NotTo(Equal(0))
 		Expect(r.err).To(HaveSuffix("error: notes comes from remote:team, which is read-only; lola does not edit remote profiles\n" +
-			"  hint: turn bundle me off: lola profile --user --off -y\n" +
-			"  hint: or take remote:team out of bundle me: lola profile --user me --edit --bundle '' -y\n"))
-		r = lola("profile", "--user", "me", "--edit", "--bundle", "", "-y", "-n") // the hint as printed, under -n
+			"  hint: turn bundle me off: lola profile --user --off\n" +
+			"  hint: or take remote:team out of bundle me: lola profile --user me --edit --bundle ''\n"))
+		r = lola("profile", "--user", "me", "--edit", "--bundle", "", "-n") // the hint as printed, under -n
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("would change bundle me (remote:team → none)"))
-		r = lola(strings.Fields("profile --user --off -y")...) // the hint as printed
+		r = runConfirmed("lola profile --user --off") // the hint as printed, then with the -y its refusal adds
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("Profile user:me"))
 	})
@@ -394,7 +394,7 @@ var _ = Describe("lola profile --move", func() {
 			Expect(r.code).NotTo(Equal(0))
 			Expect(r.err).To(HaveSuffix("error: notes is in default (base) at user scope and in project.yml (base) in this project; name the layer it moves from\n" +
 				"  hint: lola profile --move notes --root " + proj + " --user --to me default\n" +
-				"  hint: lola profile --move notes --root " + proj + " --user --to me project.yml -y\n"))
+				"  hint: lola profile --move notes --root " + proj + " --user --to me project.yml\n"))
 			// The hints are alternatives: each runs as printed from where the refusal was.
 			saved := map[string]string{}
 			for _, f := range []string{filepath.Join(p.UserProfiles, "default.yml"), filepath.Join(p.UserProfiles, "me.yml"), filepath.Join(proj, ".lola", "project.yml"), p.UserLedger} {
@@ -406,7 +406,7 @@ var _ = Describe("lola profile --move", func() {
 			Expect(read(filepath.Join(proj, ".lola", "project.yml"))).To(ContainSubstring("notes"), "within user scope")
 
 			writeTree("/", saved)
-			r = run("lola profile --move notes --root " + proj + " --user --to me project.yml -y")
+			r = runConfirmed("lola profile --move notes --root " + proj + " --user --to me project.yml")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(read(filepath.Join(proj, ".lola", "project.yml"))).NotTo(ContainSubstring("notes"))
 			Expect(read(filepath.Join(p.UserProfiles, "me.yml"))).To(ContainSubstring("name: notes"))

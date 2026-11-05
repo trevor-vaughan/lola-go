@@ -75,12 +75,12 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"user scope: default\""
-          - "result.systemout ShouldContainSubstring \"review-kit  claude-code  ✓ ok    on     {{.git}}/review-kit.git  default\""
+          - "result.systemout ShouldContainSubstring \"review-kit  claude-code  ✓ ok    on     {{.git}}/review-kit.git @ v1.4.0  default\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} list --user --plain"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldEqual \"review-kit\tclaude-code\tok\ton\t{{.git}}/review-kit.git\tuser\tprofile:default\""
+          - "result.systemout ShouldEqual \"review-kit\tclaude-code\tok\ton\t{{.git}}/review-kit.git\tuser\tprofile:default\tv1.4.0\""
           - "result.systemerr ShouldEqual \"context\tuser\t\tdefault\t-\t\""
 
   - name: S2 A baseline of 4 skills, a go-review profile over it, an override and the way back
@@ -155,8 +155,8 @@ testcases:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"project /work/acme: project.yml\""
           - "result.systemout ShouldContainSubstring \"✓ added my-notes to project.yml (base, shared: git tracks it)\""
-          - "result.systemout ShouldContainSubstring \"→ meant for another profile? lola profile --project --move my-notes --to go-review --switch -y\""
-          - "result.systemout ShouldContainSubstring \"→ meant for every project? lola profile --user --move my-notes --to base -y\""
+          - "result.systemout ShouldContainSubstring \"→ meant for another profile? lola profile --project --move my-notes --to go-review --switch\""
+          - "result.systemout ShouldContainSubstring \"→ meant for every project? lola profile --user --move my-notes --to base\""
       - type: exec
         script: "{{.runtime}} exec {{.container}} git -C /work/acme status --porcelain"
         assertions:
@@ -211,7 +211,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"context\tproject\t/work/acme\tproject.yml\tuser:me\t\""
-          - "result.systemout ShouldEqual \"my-notes\tclaude-code\tok\ton\t/e2e/fixtures/my-notes\tproject\tprofile:user:me\nteam-kit\tclaude-code\tok\ton\t{{.git}}/team-kit.git\tproject\tproject.yml\""
+          - "result.systemout ShouldEqual \"my-notes\tclaude-code\tok\ton\t/e2e/fixtures/my-notes\tproject\tprofile:user:me\t\nteam-kit\tclaude-code\tok\ton\t{{.git}}/team-kit.git\tproject\tproject.yml\tmain\""
 
   - name: S3 An experiment copied from go-review, then back to go-review, keeping the experiment
     steps:
@@ -404,7 +404,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"✓ added remote:go (/home/tester/.local/share/lola/profiles/go/profile.yml)\""
-          - "result.systemout ShouldContainSubstring \"→ turn it on (switches go-review off, removing its modules): lola profile --user remote:go --switch -y\""
+          - "result.systemout ShouldContainSubstring \"→ turn it on (switches go-review off, removing its modules): lola profile --user remote:go --switch\""
           - result.systemout ShouldNotContainSubstring "--on"
       - type: exec
         script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile --user remote:go --switch -y -n"
