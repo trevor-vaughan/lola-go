@@ -1,0 +1,19 @@
+AGENTS.md
+  s_f28af037c4b294::t_3a8bc03edc2d56 64-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b09d3bc0a3f8d7e28e39da8dea5fb9ede6c3dde3",
+  "prompts": {},
+  "sessions": {
+    "s_f28af037c4b294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30ed221a-12b9-493e-9998-2f0b74ae6ae7",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
