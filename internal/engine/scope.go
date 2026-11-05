@@ -29,7 +29,7 @@ type ScopeRequest struct {
 	ProjectDir  string // -C/--root, absolute; "" when not given
 	Cwd         string
 	Interactive bool   // the scope picker can run
-	Command     string // the command, named by the refusal: install, sync, uninstall or render
+	Command     string // the command the refusal names, as the user ran it: install, sync, uninstall, …
 	Both        bool   // the command acts on both scopes in one run; else two scopes are refused
 	// Run is the command as run, without its scope flags, quoted for the shell: the refusal of no
 	// scope hints it with each scope flag the command takes. "" gives that refusal no hints.

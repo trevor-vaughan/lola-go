@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,8 +16,10 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
@@ -43,6 +46,9 @@ type scripted struct {
 	background []bool
 	roots      []string
 	mapTargets [][]string
+	sshHosts   []func(cli.SSHHostStep) ([]string, error)
+	where      []int
+	members    []func(cli.MembersStep) ([]string, error)
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -58,8 +64,11 @@ type scripted struct {
 	tidyKeepSteps  []cli.TidyKeepStep
 	rootSteps      []cli.MigrateRootStep
 	mapTargetSteps []cli.MigrateTargetStep
+	sshSteps       []cli.SSHHostStep
 	emptyNavs      []cli.Nav
 	confirmNavs    []cli.Nav
+	whereSteps     []cli.WhereStep
+	memberSteps    []cli.MembersStep
 
 	summaryTo io.Writer // where Review writes the summary, as the huh adapter leaves it on stderr
 }
@@ -84,6 +93,15 @@ func pop[T any](q *[]T, step string) T {
 }
 
 func (s *scripted) Interactive() bool { return true }
+
+// Where answers the option scripted, or, for a negative one, Cancel.
+func (s *scripted) Where(st cli.WhereStep) (int, error) {
+	s.calls, s.whereSteps = append(s.calls, "where"), append(s.whereSteps, st)
+	if i := pop(&s.where, "where"); i >= 0 {
+		return i, nil
+	}
+	return 0, cli.ErrAborted
+}
 func (s *scripted) Scope(st cli.ScopeStep) ([]string, error) {
 	s.calls, s.scopeSteps = append(s.calls, "scope"), append(s.scopeSteps, st)
 	return pop(&s.scope, "scope")(st)
@@ -120,9 +138,17 @@ func (s *scripted) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 	s.calls, s.trustSteps = append(s.calls, "trust"), append(s.trustSteps, st)
 	return pop(&s.trust, "trust")(st)
 }
+func (s *scripted) Members(st cli.MembersStep) ([]string, error) {
+	s.calls, s.memberSteps = append(s.calls, "members"), append(s.memberSteps, st)
+	return pop(&s.members, "members")(st)
+}
 func (s *scripted) Profiles(st cli.ProfileStep) ([]string, error) {
 	s.calls, s.profileSteps = append(s.calls, "profiles"), append(s.profileSteps, st)
 	return pop(&s.profiles, "profiles")(st)
+}
+func (s *scripted) SSHHosts(st cli.SSHHostStep) ([]string, error) {
+	s.calls, s.sshSteps = append(s.calls, "ssh-hosts"), append(s.sshSteps, st)
+	return pop(&s.sshHosts, "ssh-hosts")(st)
 }
 func (s *scripted) MarketName(st cli.MarketNameStep) (string, error) {
 	s.calls, s.nameSteps = append(s.calls, "market-name"), append(s.nameSteps, st)
@@ -342,7 +368,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 
 		r := lola("install", "deploy", "--scope", "project")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: project.yml's top-level targets changed since you last trusted them\n" +
+		Expect(r.err).To(Equal(projectContext(proj) + "error: project.yml's top-level targets changed since you last trusted them\n" +
 			"  hint: review and apply them: lola sync --project\n  hint: or name the assistants: lola install --project deploy -t <id>\n"))
 
 		p := &scripted{
@@ -358,21 +384,21 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(filepath.Join(proj, ".gemini/commands/deploy.toml")).NotTo(BeAnExistingFile())
 	})
 
-	It("coaches lola sync --user for the modules user.yml lists that are not installed", func() {
+	It("coaches lola sync --user for the modules default lists that are not installed", func() {
 		Expect(lola("install", "review-kit", "--user", "-t", "claude-code", "-y").code).To(Equal(0))
-		upath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "user.yml")
+		upath := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "lola", "profiles", "default.yml")
 		b, err := os.ReadFile(upath)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(upath, append(b, []byte("  - name: deploy\n    source: "+deploy+"\n")...), 0o644)).To(Succeed())
 
 		r := lola("install", "--user")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("hint: install what user.yml lists: lola sync --user\n"))
+		Expect(r.err).To(ContainSubstring("hint: install what profile:default lists: lola sync --user\n"))
 
 		aborted := func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, cli.ErrAborted }
 		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){aborted}}
 		r = lolaP(p, "install", "--user")
-		Expect(r.err).To(ContainSubstring("⚠ 1 module in user.yml is not installed → lola sync --user\n"))
+		Expect(r.err).To(ContainSubstring("⚠ 1 module in profile:default is not installed → lola sync --user\n"))
 	})
 
 	It("coaches lola sync for the modules project.yml lists that are not installed", func() {
@@ -430,10 +456,11 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"scope", "modules", "assistants", "components:review-kit", "review"}),
+		Expect(p.calls).To(Equal([]string{"scope", "modules", "assistants", "components:project.yml › review-kit", "review"}),
 			"deploy has one component and no exclusion, so it gets no page")
 
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home, Step: cli.Steps{At: 1, Of: 5}}), "nothing preselected")
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home,
+			ProjectContext: "project.yml", UserContext: "default", Step: cli.Steps{At: 1, Of: 5}}), "nothing preselected")
 		Expect(p.moduleSteps[0].Options).To(Equal([]cli.ModuleOption{
 			{Name: "deploy", Label: deploy + " · deploy"},
 			{Name: "review-kit", Label: review + " · review-kit — Code review helpers"}}))
@@ -441,9 +468,9 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 			Scopes: []string{"project (" + proj + ")"}, Step: cli.Steps{At: 3, Of: 7}, Nav: cli.Nav{Back: true, Answered: 2}}))
 		pg := p.pages[0]
 		Expect(pg.Groups).To(HaveLen(3))
-		Expect(pg.Groups[0].Title).To(Equal("Skills (2)"))
+		Expect(pg.Groups[0].Title).To(Equal("skills (2)"))
 		Expect(pg.Groups[0].Options[0]).To(Equal(cli.ComponentOption{ID: "skill/review", Label: "review — Review code", Selected: true}))
-		Expect(pg.Groups[2].Title).To(Equal("Rules (1)"))
+		Expect(pg.Groups[2].Title).To(Equal("rules (1)"))
 		Expect(p.reviewSteps[0].Options).To(Equal([]string{"apply", "scope", "modules", "assistants", "components", "quit"}))
 
 		// Numbered across the pass (Plan 10 §5): the count is a forecast until the modules are picked,
@@ -488,13 +515,13 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}}
 		r = lolaP(p, "install", "review-kit", "--scope", "project", "-y")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"components:review-kit"}), "-y applies without the review menu")
+		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit"}), "-y applies without the review menu")
 		Expect(r.err).To(ContainSubstring("Summary:"))
 
 		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}}
 		r = lolaP(p, "install", "review-kit", "--scope", "project", "--force")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"components:review-kit"}), "--force confirms the plan as -y does (user decision, 2026-10-22)")
+		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit"}), "--force confirms the plan as -y does (user decision, 2026-10-22)")
 
 		p = &scripted{}
 		r = lolaP(p, "install", "review-kit", "--scope", "project", "--skip", "rule/style", "-t", "claude-code")
@@ -516,7 +543,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		r := lolaP(p, "install", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"scope", "modules", "scope", "modules", "assistants", "modules", "assistants",
-			"components:review-kit", "review", "components:review-kit", "review"}))
+			"components:project.yml › review-kit", "review", "components:project.yml › review-kit", "review"}))
 		Expect(p.scopeSteps[1].Preselect).To(Equal([]string{"project"}), "Esc on the modules went back to the scope, answered")
 		Expect(p.moduleSteps[2].Preselect).To(Equal([]string{"review-kit", "deploy"}), "Esc on the assistants went back to the modules")
 		var again []string
@@ -548,8 +575,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install", "review-kit", "--scope", "project", "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"assistants", "components:review-kit", "assistants", "components:review-kit",
-			"empty:review-kit", "components:review-kit", "review"}))
+		Expect(p.calls).To(Equal([]string{"assistants", "components:project.yml › review-kit", "assistants", "components:project.yml › review-kit",
+			"empty:review-kit", "components:project.yml › review-kit", "review"}))
 		Expect(p.assistantSteps[0].Nav).To(Equal(cli.Nav{}), "the assistants are the run's first screen")
 		Expect(p.assistantSteps[1].Preselect).To(Equal([]string{"gemini-cli"}))
 		Expect(p.emptyNavs).To(Equal([]cli.Nav{{Back: true, Answered: 2}}))
@@ -585,7 +612,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install", "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:review-kit", "review", "components:review-kit", "review", "modules", "review"}))
+		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:project.yml › review-kit", "review", "components:project.yml › review-kit", "review", "modules", "review"}))
 		var second []string
 		for _, g := range p.pages[1].Groups {
 			for _, o := range g.Options {
@@ -612,7 +639,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:review-kit", "review", "scope", "components:review-kit — user", "review"}))
+		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:project.yml › review-kit", "review", "scope", "components:default (base) › review-kit — user", "review"}))
 		Expect(p.scopeSteps[1].Preselect).To(Equal([]string{"project"}))
 		Expect(filepath.Join(proj, ".claude/commands/deploy.md")).To(BeARegularFile())
 		Expect(filepath.Join(home, ".claude/commands/deploy.md")).To(BeARegularFile())
@@ -631,7 +658,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install", review)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"scope", "components:review-kit", "review", "scope", "review"}))
+		Expect(p.calls).To(Equal([]string{"scope", "components:project.yml › review-kit", "review", "scope", "review"}))
 		b, err := os.ReadFile(filepath.Join(proj, ".claude/commands/ship.md"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(ContainSubstring("Ship."), "the source was not fetched again")
@@ -697,7 +724,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){func(st cli.ScopeStep) ([]string, error) { return nil, cli.ErrAborted }}}
 		r := lolaP(p, "install")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home, Step: cli.Steps{At: 1, Of: 5}}))
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Install where?", ProjectRoot: proj, Home: home,
+			ProjectContext: "project.yml", UserContext: "default", Step: cli.Steps{At: 1, Of: 5}}))
 	})
 
 	It("asks for the Other directory again, with the reason, until it is a directory that is not the project above", func() {
@@ -786,8 +814,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 	It("installs into Project, Other and User with a page per destination when their picks differ, and one shared page when equal", func() {
 		other := filepath.Join(tmp, "other")
 		Expect(os.MkdirAll(other, 0o755)).To(Succeed())
-		Expect(os.MkdirAll(filepath.Dir(selections), 0o700)).To(Succeed())
-		Expect(os.WriteFile(selections, []byte("version: 1\nuser:\n  review-kit:\n    skip: [rule/style]\n"), 0o600)).To(Succeed())
+		def := filepath.Join(tmp, "config", "lola", "profiles", "default.yml")
+		writeTree(filepath.Dir(def), map[string]string{"default.yml": "version: 1\nmodules:\n  - {name: review-kit, source: " + review + ", skip: [rule/style]}\n"})
 		p := &scripted{
 			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project", "user", "other")},
 			dirs:       []func(cli.DirectoryStep) (string, error){dir(other)},
@@ -797,8 +825,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"scope", "directory", "modules", "components:review-kit — project (" + proj + ")",
-			"components:review-kit — project (" + other + ")", "components:review-kit — user", "review"}))
+		Expect(p.calls).To(Equal([]string{"scope", "directory", "modules", "components:project.yml › review-kit — project (" + proj + ")",
+			"components:project.yml › review-kit — project (" + other + ")", "components:default (base) › review-kit — user", "review"}))
 		Expect(r.err).To(ContainSubstring("Summary:\n  project (" + proj + "), picked:\n"))
 		Expect(r.err).To(ContainSubstring("\n  project (" + other + "), picked:\n"))
 		Expect(r.err).To(ContainSubstring("\n  user (" + home + "), picked:\n    → for claude-code (from -t)\n"))
@@ -820,6 +848,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(otherSteps).To(ContainSubstring("commands/ship.md"))
 
 		Expect(os.Remove(selections)).To(Succeed())
+		Expect(os.Remove(def)).To(Succeed())
 		p = &scripted{
 			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project", "user", "other")},
 			dirs:       []func(cli.DirectoryStep) (string, error){dir(other)},
@@ -870,8 +899,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 	})
 
 	It("gives each destination its own page when their preselections differ, and one shared page otherwise", func() {
-		Expect(os.MkdirAll(filepath.Dir(selections), 0o700)).To(Succeed())
-		Expect(os.WriteFile(selections, []byte("version: 1\nuser:\n  review-kit:\n    skip: [rule/style]\n"), 0o600)).To(Succeed())
+		def := filepath.Join(tmp, "config", "lola", "profiles", "default.yml")
+		writeTree(filepath.Dir(def), map[string]string{"default.yml": "version: 1\nmodules:\n  - {name: review-kit, source: " + review + ", skip: [rule/style]}\n"})
 		p := &scripted{
 			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project", "user")},
 			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
@@ -880,8 +909,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:review-kit — project (" + proj + ")", "components:review-kit — user", "review"}))
-		Expect(p.pages[1].Groups[2].Options[0].Label).To(Equal("style — Be brief. (skipped in selections.yaml)"))
+		Expect(p.calls).To(Equal([]string{"scope", "modules", "components:project.yml › review-kit — project (" + proj + ")", "components:default (base) › review-kit — user", "review"}))
+		Expect(p.pages[1].Groups[2].Options[0].Label).To(Equal("style — Be brief. (skipped in default (base))"))
 		Expect(equivalents(r.err)).To(Equal([]string{
 			"lola install review-kit --scope project -C " + proj + " -t claude-code --skip review-kit:command/ship",
 			"lola install review-kit --scope user -t claude-code"}))
@@ -889,6 +918,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(filepath.Join(home, ".claude/commands/ship.md")).To(BeARegularFile())
 
 		Expect(os.Remove(selections)).To(Succeed())
+		Expect(os.Remove(def)).To(Succeed())
 		p = &scripted{
 			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project", "user")},
 			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy", "review-kit")},
@@ -916,6 +946,39 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(rules.Options[0].Selected).To(BeFalse())
 		Expect(p.pages[0].Footer).To(Equal("Runtime hooks: 1 (you will be asked before they are installed)"))
 		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t claude-code --no-rules"}))
+	})
+
+	It("says on the component page which only: list decides, and shows --exact's list in the summary", func() {
+		Expect(os.MkdirAll(filepath.Dir(selections), 0o700)).To(Succeed())
+		Expect(os.WriteFile(selections, []byte("version: 1\nprojects:\n  "+proj+":\n    review-kit:\n      only: [skill/review]\n"), 0o600)).To(Succeed())
+		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
+		r := lolaP(p, "install", "review-kit", "--scope", "project", "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.pages[0].Footer).To(Equal("only: in selections.yaml projects[" + proj + "] — components a new version adds are not installed"))
+
+		Expect(os.Remove(selections)).To(Succeed())
+		p = &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes("project")},
+			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")}, review: []string{cli.ReviewApply}}
+		r = lolaP(p, "install", "-t", "claude-code", "-n", "--only", "review-kit:skill/review", "--exact")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.err).To(ContainSubstring("    review-kit in projects[" + proj + "]: only [skill/review]\n"))
+		Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope project -t claude-code --only review-kit:skill/review --exact"}))
+	})
+
+	It("asks scopes on separate pages when only one of them has an only: list, though the same components are picked", func() {
+		Expect(os.MkdirAll(filepath.Dir(selections), 0o700)).To(Succeed())
+		Expect(os.WriteFile(selections, []byte("version: 1\nprojects:\n  "+proj+":\n    review-kit:\n      only: [skill/*, command/*, agent/*, mcp/*, rule/*]\n"), 0o600)).To(Succeed())
+		p := &scripted{
+			scope:      []func(cli.ScopeStep) ([]string, error){scopes("project", "user")},
+			modules:    []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+			components: []func(cli.ComponentPage) ([]string, error){keep(), keep()},
+			review:     []string{cli.ReviewApply},
+		}
+		r := lolaP(p, "install", "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.pages).To(HaveLen(2))
+		Expect(p.pages[0].Footer).To(ContainSubstring("only: in selections.yaml projects[" + proj + "]"))
+		Expect(p.pages[1].Footer).NotTo(ContainSubstring("only:"))
 	})
 
 	It("gives no page to a module whose only components are rules that are off", func() {
@@ -947,7 +1010,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		safe := filepath.Join(tmp, "evil?[2J")
 		r := lola("install", "deploy", "-t", "claude-code", "-n")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(ContainSubstring("scope: project (found .lola/ at " + safe + ")"))
+		Expect(r.err).To(ContainSubstring("project " + safe + ": project.yml\n"))
 		Expect(r.err).NotTo(ContainSubstring("\x1b"))
 
 		p := &scripted{
@@ -971,7 +1034,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}
 		r := lolaP(p, "install", "review-kit", "--scope", "project")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.calls).To(Equal([]string{"components:review-kit", "empty:review-kit"}))
+		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit", "empty:review-kit"}))
 		Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"), "nothing is left to install")
 		Expect(selections).NotTo(BeAnExistingFile())
 
@@ -1057,6 +1120,361 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(r.out).To(ContainSubstring("✓ installed deploy (claude-code)"))
 	})
 
+	It("an install with --profile base of a module the active profile lists saves default's entry, says so, and installs nothing of it", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+			"  - {name: review-kit, source: " + review + ", rules: false}\n  - {name: deploy, source: " + deploy + ", targets: [claude-code]}\n"})
+		Expect(lola("profile", "go", "--on", "--user", "-y").code).To(Equal(0))
+		style := filepath.Join(home, ".claude", "rules", "lola", "review-kit", "style.md")
+		Expect(style).NotTo(BeAnExistingFile(), "go's entry turns rules off")
+		listed := func() string {
+			GinkgoHelper()
+			r := lola("list", "--user", "--plain")
+			Expect(r.code).To(Equal(0), r.err)
+			return r.out
+		}
+		before := listed()
+		Expect(before).To(ContainSubstring("\tprofile:user:go\n"))
+
+		r := lola("install", "review-kit", "--scope", "user", "-t", "claude-code", "--profile", "base", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("⚠ review-kit: profile go's entry wins; this change to default (base) applies when it is off\n"))
+		man, err := os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(man)).To(ContainSubstring("name: review-kit"), "the entry is saved")
+		Expect(style).NotTo(BeAnExistingFile(), "nothing of default's entry is installed")
+		Expect(listed()).To(Equal(before), "go's entry stays installed")
+
+		// On a terminal: deploy's components are go's already, but the entry is a change, so the
+		// review is shown and applying it saves the entry, never "already up to date". The review
+		// says, before Apply, that go's entry wins and nothing of deploy is installed: no
+		// component diff of go's copy is offered as a change.
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")}, review: []string{cli.ReviewApply}}
+		r = lolaP(sp, "install", "--scope", "user", "-t", "claude-code", "--profile", "base")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(sp.reviewSteps).To(HaveLen(1))
+		Expect(sp.reviewSteps[0].Summary).To(HavePrefix("Summary:\n  user (" + home + "), flag:\n    → for claude-code (from -t)\n" +
+			"      deploy: saves default (base)'s entry; installs nothing while profile go's entry wins\n" +
+			"  ⚠ deploy: profile go's entry wins; this change to default (base) applies when it is off\n" +
+			"Equivalent commands:\n  lola install deploy --scope user -t claude-code --profile base\n"))
+		Expect(r.out).NotTo(ContainSubstring("already up to date"))
+		Expect(r.out).To(ContainSubstring("⚠ deploy: profile go's entry wins; this change to default (base) applies when it is off\n"))
+		man, err = os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(man)).To(ContainSubstring("name: deploy"), "the entry is saved")
+		Expect(listed()).To(Equal(before))
+	})
+
+	It("reviews an install with --profile base while a remote profile that lists the module is on, naming the base and the winner", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		// A remote profile as lola profile --add keeps it, on at user scope.
+		body := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: deploy, source: https://example.com/deploy.git, commit: " +
+			strings.Repeat("a", 40) + ", digest: sha256:" + strings.Repeat("b", 64) + "}\n"
+		o, err := json.Marshal(profile.Origin{Version: profile.OriginVersion, Source: "https://example.com/profiles.git",
+			Commit: strings.Repeat("c", 40), Digest: profile.Digest([]byte(body))})
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(filepath.Join(p.RemoteProfiles, "team"), map[string]string{profile.RemoteFile: body, profile.OriginFile: string(o)})
+		led := ledger.New()
+		led.Profile = &ledger.Active{Name: "remote:team", By: ledger.ByOn}
+		Expect(led.Save(p.UserLedger)).To(Succeed())
+
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")}, review: []string{cli.ReviewQuit}}
+		r := lolaP(sp, "install", "--scope", "user", "-t", "claude-code", "--profile", "base")
+		Expect(sp.reviewSteps).To(HaveLen(1), r.err)
+		Expect(sp.reviewSteps[0].Summary).To(HavePrefix("Summary:\n  user (" + home + "), flag:\n    → for claude-code (from -t)\n" +
+			"      deploy: saves default (base)'s entry; installs nothing while remote:team's entry wins\n" +
+			"  ⚠ deploy: remote:team's entry wins; this change to default (base) applies when it is off\n"))
+
+		// Without --profile, the run needs the base question, which only a terminal answers.
+		r = lola("install", "deploy", "--scope", "user", "-t", "claude-code", "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: remote:team is read-only; lola install needs to know whether to write to the base (default), " +
+			"and there is no terminal to ask on\n  hint: lola install deploy --scope user --target claude-code --profile base\n"))
+		r = lola("install", "deploy", "--scope", "user", "-t", "claude-code", "-n")
+		Expect(r.code).To(Equal(1))
+		bundle := "lola profile --user team-work --switch --new --bundle remote:team,team-extras -n"
+		Expect(r.err).To(HaveSuffix("  hint: lola install deploy --dry-run --scope user --target claude-code --profile base\n"+
+			"  hint: or bundle it with a profile of yours: "+bundle+"\n"), "both hints keep -n")
+		r = runHint(bundle)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(p.UserProfiles, "team-work.yml")).NotTo(BeAnExistingFile(), "run as printed, it writes nothing")
+		sp = &scripted{where: []int{0}}
+		r = lolaP(sp, "install", "deploy", "--scope", "user", "-t", "claude-code", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(sp.whereSteps).To(Equal([]cli.WhereStep{{Title: "remote:team is read-only.", Options: []string{"Write to the base (default)"}}}),
+			"asked once, though the review's dry run and the apply both plan")
+		def, err := os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(def)).To(ContainSubstring("name: deploy"))
+	})
+
+	It("titles the component page with the file the install writes", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\n"})
+		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+			components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
+		r := lolaP(sp, "install", "--scope", "user")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(sp.calls).To(ContainElement("components:profile go › review-kit"))
+	})
+
+	DescribeTable("reviews an install that would re-pin a module, never saying it is up to date, and keeps an inherited pin",
+		func(profileOn, repins bool) {
+			// A git module whose branch moved to another commit of the same content: the cache's head
+			// is the same version at a new commit.
+			work, srv := filepath.Join(tmp, "repin-work"), filepath.Join(tmp, "repin-srv")
+			writeTree(work, map[string]string{"lola.yml": "name: repin-kit\n", "commands/go.md": "Go.\n"})
+			git := func(dir string, args ...string) string {
+				GinkgoHelper()
+				out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+				Expect(err).NotTo(HaveOccurred(), string(out))
+				return strings.TrimSpace(string(out))
+			}
+			git(work, "init", "-q", "-b", "main")
+			git(work, "add", "-A")
+			git(work, "commit", "-q", "-m", "one")
+			first := git(work, "rev-parse", "HEAD")
+			git(tmp, "clone", "-q", "--bare", work, filepath.Join(srv, "kit.git"))
+			url := testenv.ServeGitTLS(srv, nil) + "/kit.git"
+			p, err := paths.Resolve(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: repin-kit, source: " + url + "}\n",
+				"go.yml": "version: 1\n"})
+			Expect(lola("sync", "--user", "-y").code).To(Equal(0))
+			if profileOn {
+				Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+			}
+			git(work, "commit", "-q", "--allow-empty", "-m", "two")
+			moved := git(work, "rev-parse", "HEAD")
+			git(work, "push", "-q", filepath.Join(srv, "kit.git"), "main")
+			Expect(lola("cache", "update", "repin-kit").code).To(Equal(0))
+
+			sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("repin-kit")}, review: []string{cli.ReviewApply}}
+			r := lolaP(sp, "install", "--scope", "user", "-t", "claude-code")
+			Expect(r.code).To(Equal(0), r.err)
+			led, err := ledger.Load(p.UserLedger)
+			Expect(err).NotTo(HaveOccurred())
+			if repins {
+				Expect(r.out + r.err).NotTo(ContainSubstring("already up to date"))
+				Expect(sp.reviewSteps).To(HaveLen(1))
+				Expect(r.err).To(ContainSubstring("    → repin-kit: re-pinned at " + moved[:7] + "\n"))
+				Expect(led.Modules["repin-kit"].Commit).To(Equal(moved))
+				return
+			}
+			Expect(r.out).To(Equal("✓ already up to date\n"))
+			Expect(sp.reviewSteps).To(BeEmpty())
+			Expect(led.Modules["repin-kit"].Commit).To(Equal(first))
+		},
+		Entry("the entry is the base's own, which the install writes: re-pinned", false, true),
+		Entry("the profile on inherits the base's entry, which the install keeps", true, false),
+	)
+
+	It("judges a re-pin per scope, each at the commit of its own entry's ref", func() {
+		// project.yml pins tag v1 and default.yml tracks main, a later commit of the same content:
+		// one version, two commits, each installed where its ref points.
+		work, srv := filepath.Join(tmp, "repin-work"), filepath.Join(tmp, "repin-srv")
+		writeTree(work, map[string]string{"lola.yml": "name: repin-kit\n", "commands/go.md": "Go.\n"})
+		git := func(dir string, args ...string) string {
+			GinkgoHelper()
+			out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+			Expect(err).NotTo(HaveOccurred(), string(out))
+			return strings.TrimSpace(string(out))
+		}
+		git(work, "init", "-q", "-b", "main")
+		git(work, "add", "-A")
+		git(work, "commit", "-q", "-m", "one")
+		git(work, "tag", "v1")
+		git(work, "commit", "-q", "--allow-empty", "-m", "two")
+		git(tmp, "clone", "-q", "--bare", work, filepath.Join(srv, "kit.git"))
+		url := testenv.ServeGitTLS(srv, nil) + "/kit.git"
+		Expect(lola("install", url, "--ref", "v1", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
+		Expect(lola("install", url, "--scope", "user", "-t", "claude-code", "-y").code).To(Equal(0))
+
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("repin-kit")}}
+		r := lolaP(sp, "install", "--scope", "both", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(Equal("✓ already up to date\n"))
+		Expect(sp.reviewSteps).To(BeEmpty())
+	})
+
+	It("says an install is up to date by the entry of the file it writes, and installs one that file lacks through the engine", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		install := func(args ...string) result {
+			GinkgoHelper()
+			sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+				components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewApply}}
+			r := lolaP(sp, append([]string{"install", "--scope", "user", "-t", "claude-code"}, args...)...)
+			Expect(r.code).To(Equal(0), r.err)
+			return r
+		}
+		// The profile on lists it and the base does not: nothing to do.
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n",
+			"go.yml": "version: 1\nmodules:\n  - {name: review-kit, source: " + review + "}\n"})
+		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(install().out).To(Equal("✓ already up to date\n"))
+
+		// The base, which the install writes, lacks it (Listed false): the engine writes its entry.
+		r := install("--profile", "base")
+		Expect(r.out + r.err).NotTo(ContainSubstring("already up to date"))
+		b, err := os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(ContainSubstring("name: review-kit"))
+
+		// The profile on inherits it from the base unchanged: the install writes nothing.
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
+		Expect(install().out).To(Equal("✓ already up to date\n"))
+		b, err = os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(Equal("version: 1\n"))
+	})
+
+	It("installs a module another layer provides through the engine, which asks where it goes and writes the entry", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: review-kit, source: " + review + "}\n",
+			"go.yml": "version: 1\n"})
+		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+			components: []func(cli.ComponentPage) ([]string, error){keep("skill/review")}, where: []int{1}, review: []string{cli.ReviewApply}}
+		r := lolaP(sp, "install", "--scope", "user", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(sp.whereSteps).To(HaveLen(1), "the review's dry run asks; the apply reuses the answer")
+		Expect(equivalents(r.err)).To(ContainElement(ContainSubstring("--override")))
+		b, err := os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(ContainSubstring("name: review-kit"))
+	})
+
+	DescribeTable("the review's equivalent commands carry the where-question's answer, and do what the run does",
+		func(answer int, flag []string, file string) {
+			p, err := paths.Resolve(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: review-kit, source: " + review + "}\n",
+				"go.yml": "version: 1\n"})
+			Expect(lola("sync", "--user", "-y").code).To(Equal(0))
+			Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+			sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+				components: []func(cli.ComponentPage) ([]string, error){keep("skill/review")}, where: []int{answer}, review: []string{cli.ReviewQuit}}
+			r := lolaP(sp, "install", "--scope", "user", "-t", "claude-code")
+			Expect(sp.reviewSteps).To(HaveLen(1), r.err)
+			Expect(equivalents(r.err)).To(Equal([]string{"lola install review-kit --scope user -t claude-code --skip review-kit:skill/review " + strings.Join(flag, " ")}))
+
+			words := shellWords(equivalents(r.err)[0])
+			r = lola(append(words[1:], "-y")...)
+			Expect(r.code).To(Equal(0), r.err)
+			b, err := os.ReadFile(filepath.Join(p.UserProfiles, file))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).To(ContainSubstring("skip: [skill/review]"))
+		},
+		Entry("change it in the base", 0, []string{"--profile", "base"}, "default.yml"),
+		Entry("override it in the profile on", 1, []string{"--override"}, "go.yml"),
+	)
+
+	It("gives modules answered alike one equivalent line each, which does what the run does for them", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+			"  - {name: review-kit, source: " + review + "}\n  - {name: deploy, source: " + deploy + "}\n", "go.yml": "version: 1\n"})
+		writeTree(deploy, map[string]string{"commands/rollback.md": "Roll back.\n"})
+		Expect(lola("cache", "update", "deploy").code).To(Equal(0))
+		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy", "review-kit")},
+			components: []func(cli.ComponentPage) ([]string, error){keep("command/rollback"), keep("skill/review")},
+			where:      []int{0, 1}, review: []string{cli.ReviewQuit}}
+		r := lolaP(sp, "install", "--scope", "user", "-t", "claude-code")
+		Expect(sp.whereSteps).To(HaveLen(2), r.err)
+		Expect(r.err).NotTo(ContainSubstring("note:"))
+		lines := equivalents(r.err)
+		Expect(lines).To(Equal([]string{
+			"lola install deploy --scope user -t claude-code --skip deploy:command/rollback --profile base",
+			"lola install review-kit --scope user -t claude-code --skip review-kit:skill/review --override"}))
+
+		for _, l := range lines {
+			r = lola(append(shellWords(l)[1:], "-y")...)
+			Expect(r.code).To(Equal(0), r.err)
+		}
+		def, err := os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(def)).To(ContainSubstring("skip: [command/rollback]"))
+		Expect(string(def)).NotTo(ContainSubstring("skip: [skill/review]"))
+		goYml, err := os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(goYml)).To(ContainSubstring("name: review-kit"))
+		Expect(string(goYml)).To(ContainSubstring("skip: [skill/review]"))
+		Expect(string(goYml)).NotTo(ContainSubstring("name: deploy"))
+	})
+
+	It("keeps each scope's where-answers to its own equivalent line and review block", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+			"  - {name: review-kit, source: " + review + "}\n", "go.yml": "version: 1\n"})
+		Expect(lola("sync", "--user", "-y").code).To(Equal(0))
+		Expect(lola("install", "review-kit", "--scope", "project", "-t", "claude-code", "-y").code).To(Equal(0))
+		Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+		Expect(lola("profile", "go", "--switch", "--project", "-y").code).To(Equal(0))
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("review-kit")},
+			components: []func(cli.ComponentPage) ([]string, error){keep("skill/review")}, where: []int{0, 1}, review: []string{cli.ReviewQuit}}
+		r := lolaP(sp, "install", "--scope", "both", "-t", "claude-code")
+		Expect(sp.whereSteps).To(HaveLen(2), r.err)
+		Expect(r.err).To(ContainSubstring("  selections.yaml ("+selections+"):\n    review-kit in projects["+proj+"]: skip [skill/review]\n"+
+			"  profile go:\n    review-kit: skip [skill/review]\nEquivalent commands:\n"), "each change under the file its scope's answer writes")
+		lines := equivalents(r.err)
+		Expect(lines).To(Equal([]string{
+			"lola install review-kit --scope project -C " + proj + " -t claude-code --skip review-kit:skill/review --profile base",
+			"lola install review-kit --scope user -t claude-code --skip review-kit:skill/review --override"}))
+
+		for _, l := range lines {
+			r = lola(append(shellWords(l)[1:], "-y")...)
+			Expect(r.code).To(Equal(0), r.err)
+		}
+		sel, err := os.ReadFile(selections)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(sel)).To(ContainSubstring("skill/review"))
+		goYml, err := os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(goYml)).To(ContainSubstring("name: review-kit"))
+		Expect(string(goYml)).To(ContainSubstring("skip: [skill/review]"))
+		pj, err := os.ReadFile(filepath.Join(proj, ".lola", "project.yml"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(pj)).NotTo(ContainSubstring("skip"))
+	})
+
+	It("takes the assistants of the profile it writes, naming it in the review, and off a terminal where nothing is set up", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\n"})
+		on := func(root string) {
+			GinkgoHelper()
+			led := ledger.New()
+			led.Profile = &ledger.Active{Name: "user:go", By: ledger.ByOn}
+			Expect(led.Save(filepath.Join(root, ".lola", "lock.json"))).To(Succeed())
+		}
+		on(proj)
+		sp := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")}, review: []string{cli.ReviewQuit}}
+		r := lolaP(sp, "install", "--scope", "project")
+		Expect(sp.reviewSteps).To(HaveLen(1), r.err)
+		Expect(sp.reviewSteps[0].Summary).To(HavePrefix("Summary:\n  project ("+proj+"), flag:\n    → for claude-code (from profile go)\n"),
+			"project.yml has no targets: go's apply")
+
+		// A project where no assistant is set up: the install takes go's, as the engine does.
+		bare := filepath.Join(tmp, "bare")
+		Expect(os.MkdirAll(filepath.Join(bare, ".lola"), 0o755)).To(Succeed())
+		on(bare)
+		r = lola("install", "deploy", "-C", bare, "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(bare, ".claude", "commands", "deploy.md")).To(BeAnExistingFile())
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))).To(ContainSubstring("name: deploy"))
+	})
+
 	It("adds a source from the empty cache and selects it, and the summary repeats the cache add", func() {
 		Expect(lola("cache", "rm", "review-kit", "-y").code).To(Equal(0))
 		Expect(lola("cache", "rm", "deploy", "-y").code).To(Equal(0))
@@ -1101,7 +1519,8 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		}{{answer: []string{"project"}}, {answer: []string{"user"}}, {answer: []string{"project", "user"}},
 			{answer: []string{"project", "other", "user"}},
 			{answer: []string{"project"}, flags: []string{"--skip", "review-kit:skill/slow-lint"}},
-			{answer: []string{"project", "user"}, flags: []string{"--only", "review-kit:skill/review", "--global"}}} {
+			{answer: []string{"project", "user"}, flags: []string{"--only", "review-kit:skill/review", "--global"}},
+			{answer: []string{"project"}, flags: []string{"--only", "review-kit:skill/review", "--exact"}}} {
 			answer := tc.answer
 			p := &scripted{
 				scope:   []func(cli.ScopeStep) ([]string, error){scopes(answer...)},

@@ -225,7 +225,7 @@ testcases:
         script: "{{.runtime}} exec {{.c_env}} {{.container}} {{.lola}} sync --user"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemerr ShouldNotContainSubstring "no user.yml"
+          - result.systemerr ShouldNotContainSubstring "no default.yml"
       - type: exec
         script: "{{.runtime}} exec {{.c_env}} {{.container}} sh -c '{{.lola}} list --user --plain | tr \"\\t\" \" \"; {{.lola}} list -C /home/c/proj --plain | tr \"\\t\" \" \"'"
         assertions:

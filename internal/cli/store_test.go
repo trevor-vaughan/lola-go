@@ -35,7 +35,7 @@ var _ = Describe("store, search and init commands", func() {
 		Expect(lola("cache", "add", mod).code).To(Equal(0))
 		r := lola("uninstall", "example", "-y", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: lola uninstall: \"example\" is not installed in this project\n" +
+		Expect(r.err).To(Equal(projectContext(proj) + "error: lola uninstall: \"example\" is not installed in this project\n" +
 			"  hint: still in your cache: lola cache rm example\n  hint: installed here: lola list -C " + proj + "\n"))
 	})
 
@@ -85,7 +85,7 @@ var _ = Describe("store, search and init commands", func() {
 		writeTree(mod, map[string]string{"commands/ship.md": "Ship v2\n"})
 		r = lola("cache", "update", "example")
 		Expect(r.out).To(MatchRegexp(`✓ example \(default\): [0-9a-f]{12} → [0-9a-f]{12}\n`))
-		Expect(r.out).To(ContainSubstring("installed modules keep the versions they were installed at; upgrade one with lola install <module>"))
+		Expect(r.out).To(ContainSubstring("installed modules keep the versions they were installed at; update them with lola update, or one with lola install <module>"))
 		Expect(r.out).NotTo(ContainSubstring("lola render"))
 
 		r = lola("cache", "rm", "example")
@@ -468,7 +468,7 @@ var _ = Describe("published alias table", func() {
 			"lola install":      {"add"},
 			"lola uninstall":    {"remove", "rm", "erase", "delete", "del"},
 			"lola list":         {"ls"},
-			"lola render":       {"update"},
+			"lola update":       {"upgrade"},
 			"lola info":         {"show", "view"},
 			"lola search":       {"find"},
 			"lola cache add":    {"get"},
@@ -493,6 +493,9 @@ var _ = Describe("published alias table", func() {
 			"lola profile --on":     {"enable", "activate"},
 			"lola profile --off":    {"disable", "deactivate"},
 			"lola profile --switch": {"use"},
+			"lola profile --edit":   {"pick", "modify"},
+			"lola profile --move":   {"mv"},
+			"lola profile --new":    {"create"},
 			"lola profile --add":    {"get"},
 			"lola profile --update": {"upgrade"},
 			"lola profile --remove": {"rm", "delete", "del", "erase", "uninstall"},
@@ -501,9 +504,10 @@ var _ = Describe("published alias table", func() {
 			"lola market --remove":  {"rm", "delete", "del", "erase"},
 			"lola tidy --keep":      {"protect"},
 			"lola tidy --unkeep":    {"unprotect"},
+			"lola update --fetch":   {"refresh"},
 		}))
 		Expect(lola("help", "profile", "--short").out).To(And(ContainSubstring("--on (--enable, --activate) "),
-			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--add (--get) string "),
+			ContainSubstring("--off (--disable, --deactivate) "), ContainSubstring("--switch (--use) "), ContainSubstring("--edit (--pick, --modify) "), ContainSubstring("--move (--mv) strings "), ContainSubstring("--new (--create) "), ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade) "), ContainSubstring("--remove (--rm, --delete, --del, --erase, --uninstall) ")))
 		Expect(lola("help", "market", "--short").out).To(And(ContainSubstring("--add (--get) string "),
 			ContainSubstring("--update (--upgrade, --refresh) "), ContainSubstring("--remove (--rm, --delete, --del, --erase) ")))
@@ -529,12 +533,12 @@ var _ = Describe("published alias table", func() {
 	It("JSON array keys are [] in an empty environment", func() {
 		proj := GinkgoT().TempDir()
 		for _, args := range [][]string{
-			{"list", "-C", proj}, {"render", "-C", proj}, {"cache", "list"}, {"cache", "update"},
+			{"list", "-C", proj}, {"update", "-C", proj}, {"cache", "list"}, {"cache", "update"},
 			{"search", "x"}, {"cache", "search", "x"}, {"list", "--user"}, {"repair", "-C", proj}, {"market"}, {"market", "--update", "--all"},
 		} {
 			r := lola(append(args, "--json")...)
 			Expect(r.code).To(Equal(0), strings.Join(args, " ")+": "+r.err)
-			Expect(r.out).NotTo(ContainSubstring("null"), strings.Join(args, " "))
+			Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"), strings.Join(args, " "))
 		}
 	})
 
@@ -542,12 +546,12 @@ var _ = Describe("published alias table", func() {
 		proj := GinkgoT().TempDir()
 		r := lola("tidy", "-n", "-t", "claude-code", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).NotTo(ContainSubstring("null"))
+		Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 		Expect(r.out).To(ContainSubstring("nothing to tidy"))
 		r = lola("tidy", "-n", "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring(`"hints":[]`), "the no-targets refusal")
-		Expect(r.err).NotTo(ContainSubstring("null"))
+		Expect(withoutContext(r.err)).NotTo(ContainSubstring("null"))
 	})
 
 	It("lola --version is lola version, in every output format, and is no flag of a subcommand", func() {

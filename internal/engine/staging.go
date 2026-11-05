@@ -14,8 +14,11 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// staleRun is the age at which a run directory is taken to be left by a process that was killed.
-const staleRun = 24 * time.Hour
+// staleRun is the age beyond which a run directory whose lock nobody holds is taken to be left by
+// a process that was killed. scratch locks before it creates the directory, so a live run always
+// holds its lock; the age only covers a directory created a moment ago, whose lock holdLock
+// cannot yet see.
+const staleRun = time.Minute
 
 // runDir creates the private staging directory of one staging command (Plan 6a §6.3): its
 // fetch scratch, fetched copies, version builds and snapshots all go inside. Commands that report
@@ -99,7 +102,7 @@ func lockedAt(fl *flock.Flock, path string) bool {
 
 // sweepRuns removes the run directories under Paths.Staging last modified more than staleRun
 // ago whose lock no live run holds (R-9-9, A28): what killed processes left behind; a live run
-// waiting at a prompt for longer keeps its directory. It is best effort: what it cannot remove is a warning, never a refusal, and the next sweep tries again.
+// waiting at a prompt keeps its directory however long. It is best effort: what it cannot remove is a warning, never a refusal, and the next sweep tries again.
 // lola cache add, which reports no notices, does not sweep.
 func (e *Engine) sweepRuns() []Notice {
 	es, err := os.ReadDir(e.Paths.Staging)

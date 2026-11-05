@@ -159,8 +159,8 @@ func (e *UpdateStoppedError) Unwrap() error { return e.Err }
 // so nothing is kept that cannot be applied, with the run narrowed to the other scopes as hints.
 // Fetching, showing and asking hold the profiles lock shared; it is taken exclusively only to check
 // that a kept profile is still the one shown, and to replace it, crash-safe (writeRemote; ruling
-// R-6b3b-8). In each of its scopes that uses a profile written, as an active profile or through the
-// extends: of an active profile or default, Scopes names the modules the updates move there, those
+// R-6b3b-8). In each of its scopes that uses a profile written, as the profile on or a member of
+// the bundle on, Scopes names the modules the updates move there, those
 // whose winning entry changed (§19 P9), and every other pending change is counted in a notice.
 // Unless narrowed, a notice says other checkouts pick the update up at their next sync; narrowed,
 // the other scope a user sees from here (user scope, or from user scope the project found from the
@@ -259,7 +259,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			}
 		}
 	}
-	if u.templates, err = e.newTemplateRun(sc, u.led.Profiles); err != nil {
+	if u.templates, err = e.newTemplateRun(sc, u.led.Profile); err != nil {
 		return nil, err
 	}
 	res.Notices = append(res.Notices, e.sweepRuns()...)
@@ -563,6 +563,10 @@ func (u *updateRun) write(rp *RemoteProfile, was profile.Origin, again []string)
 	if err != nil {
 		return true, &Notice{Level: LevelWarn, Text: shown(q) + " is written, but: " + shown(untrusted.CleanErr(err).Error())}, nil
 	}
+	if err := e.writePinsNow(nil); err != nil {
+		n := e.unrecorded(shown(q)+" is written", []string{q}, err)
+		return true, &n, nil
+	}
 	return true, nil, nil
 }
 
@@ -695,6 +699,9 @@ func (e *Engine) untrustedModules(sc Scope) ([]string, TrustKinds, error) {
 		return nil, 0, err
 	}
 	rep := checkParts(rec, trustParts(man, layers, nil))
+	if !installsToTargets(layers) {
+		rep = withoutTargets(rep) // spare: the sync does not ask about them (spec 2026-10-29 §16.1)
+	}
 	var out []string
 	for _, c := range rep.Changes {
 		if m := shown(c.Module); !slices.Contains(out, m) {
@@ -703,6 +710,9 @@ func (e *Engine) untrustedModules(sc Scope) ([]string, TrustKinds, error) {
 	}
 	if rep.Targets != nil {
 		out = append(out, "project.yml's targets")
+	}
+	for _, name := range slices.Sorted(maps.Keys(rep.ProfileTargets)) {
+		out = append(out, projectProfileFile(partKey(name))+"'s "+rep.ProfileTargets[name].Field) // targets, or a bundle's members (bundle)
 	}
 	return out, neededTrust(rep, nil, nil), nil
 }
@@ -732,13 +742,15 @@ func itThem(qs []string) string {
 }
 
 // scopeUse is how a scope uses remote profiles across an update of them (Plan 6b §6.5, §19 P9):
-// what its layers wanted before (old), and, once the updates are written (after), the profiles of
-// it that are one of them or extend one (using), the modules the updates move there and how many
-// other differences from lock.json are pending; err is why the scope could not be read.
+// what its layers wanted before (old), and, once the updates are written (after), what of it uses
+// them (using: the one of them on, or the bundle on with one as a member; bundled counts its
+// members among them), the modules the updates move there and how many other differences from
+// lock.json are pending; err is why the scope could not be read.
 type scopeUse struct {
 	sc      Scope
 	old     []Wanted
 	using   []string
+	bundled int // how many of the updated profiles are members of the bundle on (usedText)
 	moved   []string
 	pending int
 	err     error
@@ -768,7 +780,12 @@ func (u *scopeUse) after(e *Engine, qs []string) error {
 	if err != nil {
 		return err
 	}
-	u.using = using
+	u.using, u.bundled = using, 0
+	for _, q := range qs {
+		if slices.ContainsFunc(layers, func(l Layer) bool { return l.Bundle != "" && l.Name == ledger.FromProfile(q) }) {
+			u.bundled++
+		}
+	}
 	if len(using) == 0 {
 		return nil
 	}
@@ -781,7 +798,7 @@ func (u *scopeUse) after(e *Engine, qs []string) error {
 		}
 	}
 	slices.Sort(u.moved)
-	for _, c := range layerChanges(now, led, filepath.Base(e.files(u.sc).manifest)) {
+	for _, c := range layerChanges(now, led, e.manifestName(u.sc), pinSource{}) {
 		if !slices.Contains(u.moved, c.name) {
 			u.pending++
 		}
@@ -812,10 +829,11 @@ func (u scopeUse) notice(e *Engine, qs []string, also bool) []Notice {
 	return []Notice{{Level: LevelWarn, Text: text + "; " + apply + ": " + e.SyncCommand(u.sc, u.moved...)}}
 }
 
-// usedText says how the scope uses the remote profiles qs (u.using, the scope's profiles that are
-// one of them or extend one; also when the run's scope uses them too). Of one, it says it is on, or
-// which profiles extend it; of several, it names only those on and those extending one, each as
-// what it is, never that a profile it does not use is in use.
+// usedText says how the scope uses the remote profiles qs (u.using: the one of them on, or the
+// bundle on that has one as a member; also when the run's scope uses them too). Of one, it says it
+// is on, or which bundle it is in; of several, it names the one on or the bundle on as what it is,
+// never that a profile it does not use is in use. A scope has one profile on (spec 2026-10-29
+// §3.3), so u.using names at most one.
 func (u scopeUse) usedText(qs []string, also bool) string {
 	at, on := scopeAt(u.sc), "on"
 	if also {
@@ -825,32 +843,21 @@ func (u scopeUse) usedText(qs []string, also bool) string {
 		if slices.Contains(u.using, shown(qs[0])) {
 			return subject(qs) + " is " + on + " " + at
 		}
-		how := "is extended by " + andJoin(u.using) + ","
+		how := "is in bundle " + andJoin(u.using) + ","
 		if also {
-			how = "is also extended by " + andJoin(u.using) + ","
+			how = "is also in bundle " + andJoin(u.using) + ","
 		}
 		return subject(qs) + " " + how + " " + at
 	}
-	var active, ext []string
-	for _, n := range u.using {
-		if slices.ContainsFunc(qs, func(q string) bool { return shown(q) == n }) {
-			active = append(active, n)
-		} else {
-			ext = append(ext, n)
-		}
-	}
-	extend := "extends"
-	if len(ext) > 1 {
-		extend = "extend"
-	}
+	text := andJoin(u.using) + " " + isAre(u.using) + " " + on + " " + at
 	switch {
-	case len(ext) == 0:
-		return andJoin(active) + " " + isAre(active) + " " + on + " " + at
-	case len(active) == 0:
-		return andJoin(ext) + " " + isAre(ext) + " " + on + " " + at + " and " + extend + " one of the updated profiles"
+	case slices.ContainsFunc(qs, func(q string) bool { return slices.Contains(u.using, shown(q)) }):
+	case u.bundled == 1:
+		text += " and bundles one of the updated profiles"
+	default:
+		text += fmt.Sprintf(" and bundles %d of the updated profiles", u.bundled)
 	}
-	return andJoin(active) + " " + isAre(active) + " " + on + " " + at + ", and so " + isAre(ext) + " " + andJoin(ext) + ", which " + extend +
-		" one of the updated profiles"
+	return text
 }
 
 // remoteNamed is the remote profile name names as typed for action (--update, --remove): go or
@@ -944,10 +951,10 @@ func pinText(o profile.Origin) string {
 	return "commit " + shown(o.Commit[:min(12, len(o.Commit))]) + ", " + shown(o.Digest)
 }
 
-// uses is sc's layers and lock.json, with the qualified names of the profiles among those layers
-// that are one of the remote profiles qs or extend one: each of qs that is on there (read as
-// itself, not in place of a user profile that shadows it), and every active profile, or default,
-// whose extends: names one.
+// uses is sc's layers and lock.json, with the qualified names of what of sc uses the profiles qs
+// (spec 2026-10-29 §3.11): the profile on, when it is one of qs (read as itself, not in place of a
+// user profile that shadows it), or a bundle that reaches one of qs as a member, nested or not,
+// whether or not that member gives a layer (Layer.reached).
 func (e *Engine) uses(sc Scope, qs ...string) ([]Layer, *ledger.Ledger, []string, error) {
 	man, err := e.Manifest(sc)
 	if err != nil {
@@ -957,15 +964,25 @@ func (e *Engine) uses(sc Scope, qs ...string) ([]Layer, *ledger.Ledger, []string
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	pl, err := e.loadProfiles(sc, nil, led.Profiles)
+	// A project with no profile on never lists the profiles (loadStack).
+	var infos []profile.Info
+	if led.Profile != nil {
+		if infos, _, err = e.visible(sc); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+	pl, err := e.loadStack(sc, infos, led.Profile)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	layers := pl.assemble(e.manifestLayer(sc, man), led.Profiles)
-	var using []string
-	for _, l := range layers {
-		if slices.ContainsFunc(qs, func(q string) bool { return l.Name == ledger.FromProfile(q) || slices.Contains(l.extends, q) }) {
-			using = append(using, shown(strings.TrimPrefix(l.Name, ledger.FromProfile(""))))
+	layers := pl.assemble(e.baseLayer(sc, man, pl), led.Profile)
+	using := []string{}
+	if led.Profile != nil {
+		if k := activeInfo(infos, led.Profile.Name); k >= 0 {
+			on := infos[k].Qualified()
+			if slices.ContainsFunc(qs, func(q string) bool { return q == on || len(layers[0].reached[q]) > 0 }) {
+				using = append(using, shown(on))
+			}
 		}
 	}
 	return layers, led, using, nil

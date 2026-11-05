@@ -15,6 +15,8 @@ lola market                                                  # list them
 lola market acme                                             # its source, pin, entries and skips
 lola market acme formatter                                   # one entry, as lola info @acme/formatter
 lola market acme --update                                    # fetch it again, report what changed
+lola market acme --update --ssh-host git.example.com         # also let its ssh sources at that host in
+lola market acme --ssh-host git.example.com --remove         # stop allowing that host
 lola market --update --all                                   # every marketplace
 lola market acme --remove                                    # forget it; asks (-y)
 ```
@@ -93,6 +95,19 @@ lola market acme --remove                                    # forget it; asks (
   - `-n` fetches and reports, and writes nothing.
   - It prints the marketplace and how many entries lola skips, with why, grouped (`⚠ 3 entries
     skipped: 2 npm sources, 1 command source → lola market acme`).
+  - `--ssh-host <host>` (repeatable) allows the catalog's `ssh://` and `user@host:path` sources at
+    that host, which are skipped otherwise (see **What a catalog may name**):
+    - Give the host name alone: no scheme, user, port or path. Upper case is lower-cased, and
+      only the host name is kept, so a source's user and port do not matter. An IP address and
+      `localhost` are refused, as they are in a catalog.
+    - The host is stored with the marketplace, and `-n` shows it (`would allow ssh hosts: …`)
+      without writing.
+    - On a terminal, `--add` asks `Allow ssh to which hosts?`: a picker of the hosts the catalog
+      names that you have not allowed, with how many entries each admits, all unticked. No flag
+      ticks it for you.
+    - Off a terminal, with `-n` or under `--json`, nothing is asked. The skips are grouped
+      (`3 ssh sources`), `lola market acme` names each host, and a notice gives the complete command (`⚠ to allow ssh
+      hosts → lola market acme --update --ssh-host git.example.com --ssh-host other.example.org`).
 - **Updating.** `lola market <name>... --update` (aliases `--upgrade`, `--refresh`), or
   `--update --all`, fetches each again from the source, ref and catalog file it was added from.
   - It replaces its cached catalog and reports each entry added (`+`), removed (`-`) or changed
@@ -102,6 +117,11 @@ lola market acme --remove                                    # forget it; asks (
   - A marketplace that fails (offline, a catalog that no longer parses) keeps its cached catalog
     and is reported; the others go on, and the run then fails.
   - Names and `--all` are exclusive.
+  - Your allowed ssh hosts only grow when you say so: on a terminal the same picker asks about the
+    hosts the catalog now names that you have not allowed, and `--ssh-host <host>` allows one
+    without it. A run that cannot ask prints the command, as `--add` does.
+  - `--ssh-host` takes exactly one marketplace: not `--all`, not several names.
+  - A host the catalog no longer names stays allowed until you revoke it (**Removing**).
 - **Removing.** `lola market <name> --remove` (aliases `--rm`, `--delete`, `--del`, `--erase`)
   forgets a marketplace: its line in `markets.yaml` and its cached catalog.
   - It asks first; `-y` confirms, and off a terminal without `-y` it is refused with the same
@@ -113,6 +133,16 @@ lola market acme --remove                                    # forget it; asks (
     marketplace again once you add it back (the notice gives that `--add`).
   - `-n` says what it would remove.
   - `--json` gives `removed`, `notices` and `dry_run`.
+  - `lola market <name> --ssh-host <host> --remove` instead stops allowing that host (repeatable)
+    and applies the cached catalog again, without fetching: the entries at that host are skipped
+    from then on (`✓ marketplace acme no longer allows ssh host git.example.com`, then `- a1`).
+    It asks nothing, so `-y` is refused with it, and a host the marketplace does not allow is
+    refused, naming the ones it does.
+    Modules you installed from that host keep their recorded source, so `lola sync --update`
+    still fetches them over ssh (its notice says the marketplace no longer lists them); uninstall
+    them to stop that.
+  - A plain `--remove` forgets the marketplace's allowed hosts with it. What you installed keeps
+    the source it was recorded with, ssh included, and stays installed.
 - **Showing.** `lola market acme` lists the marketplace's entries (what it shows is under
   **Listing and showing** below) and ends with the next step, `→ lola info @acme/<first entry>`
   (in `hints` under `--json`).
@@ -122,6 +152,10 @@ lola market acme --remove                                    # forget it; asks (
   - Three or more names without an action are refused with one `lola market acme <entry>` per
     given entry the catalog lists and does not skip (`lola market acme` when none is).
   - With `--update` or `--remove`, names are marketplaces.
+  - It shows an `ssh hosts` line with the hosts you allowed, and marks each entry they admit
+    `via ssh at <host>`. Under `--json` that is `ssh_hosts` (`[]` when none) and each entry's
+    `ssh_host`; `--plain` ends the `market` row with the allowed hosts, comma-separated, and each
+    `entry` row with its host.
 - **Reserved words.** `lola market add`, `ls`, `list`, `rm`, `remove`, `update`, `set`, `show`
   and `search` are not `lola market` verbs.
   - Each is refused saying what the lola command is (`ls is not a lola market verb: lola market
@@ -166,7 +200,8 @@ lola market acme --remove                                    # forget it; asks (
     `entries`, `skipped`, `description`) and `notices`. One marketplace's document adds `file`,
     `owner`, `version`, `entries` (`name`, `description`, `version`, `tags`, `source`, `ref`,
     `path`, `commit`, `kind`, `install`, the address that installs it, `notices`, and
-    `components` when its catalog lists them) and `skipped` (`name`, `reason`).
+    `components` when its catalog lists them) and `skipped` (`name`, `reason`); it also gives
+    `ssh_hosts` (never `null`) and each entry's `ssh_host`.
   - `--add` and `--update` give `markets`, `changes` (`market`, `entry`, `change`, `fields`),
     `updates` (`market`, `outcome`: `added`, `would_add`, `updated`, `would_update`,
     `up_to_date`, `failed` or `skipped`, `error`, `hints`), `notices` and `dry_run`.
@@ -175,8 +210,9 @@ lola market acme --remove                                    # forget it; asks (
   - Skipped are:
     - `npm` sources (they run a package manager), `command` sources (they run a program), and
       any other kind lola does not know;
-    - `ssh://` and `user@host:path` sources (they would use your ssh keys on a stranger's host);
-    - any source that is not `https://` at a host given by name (a path, `file://`, `http://`,
+    - `ssh://` and `user@host:path` sources unless you allowed their host with `--ssh-host` (they
+      would use your ssh keys on a stranger's host);
+    - any other source that is not `https://` at a host given by name (a path, `file://`, `http://`,
       `localhost` or an address inside your network, judged from the text alone, never looked up
       on your disk);
     - entries that declare their `hooks`, `outputStyles`, `themes`, `mcpServers`, `lspServers`,
@@ -191,6 +227,12 @@ lola market acme --remove                                    # forget it; asks (
       twice or in another case (`Source`);
     - a description or source over 4096 bytes, more than 64 tags, and skills, commands and
       agents lists naming more than 1024 paths.
+  - An allowed ssh host relaxes only that rule. Every other source still has to be `https://`, an
+    allowed host is still given by name, never an address, and `--path`, `ref`, pin and trust
+    checks apply to its entries as to any other, so a hook or script still waits for your trust.
+    The risk that remains: the operator of an allowed host can see which public keys your ssh
+    agent offers, and the catalog's author chooses any path on that host. Allow only hosts you
+    would connect to with those keys.
   - A relative entry (`"./tools/formatter"`, or a bare name under `metadata.pluginRoot`) must stay
     in the marketplace (no `..`, no backslash, never absolute) and be a directory there. It comes
     from the marketplace's own source, at its commit, and a marketplace fetched as a single
@@ -256,12 +298,12 @@ lola market acme --remove                                    # forget it; asks (
     it.
   - `@market/module` is command-line input only: no file lola reads takes it as a `source:`, so
     what a file installs never depends on the reader's marketplaces.
-    - A `project.yml`, `user.yml` or profile (yours, `default`, a project's or a remote one) that
+    - A `project.yml` or profile (yours, `default`, a project's or a remote one) that
       has one is refused by every command that reads it, `lola list` included, before any trust
       question or network contact, naming the file, the line, the module and the address
       (`.lola/project.yml:14: formatter's source is @acme/formatter, a marketplace address; a
       file must record the module's real source`).
-    - When you have that marketplace, `project.yml` and `user.yml` get one hint per such entry,
+    - When you have that marketplace, `project.yml` and `default.yml` get one hint per such entry,
       `lola install --project @acme/formatter` (`--user`, or `-C <root>`, as the file's scope;
       with `-n` and the output flags when the run had them). It shows where the address resolves
       before anything is asked and replaces that entry with what it resolved; the other such
@@ -274,7 +316,7 @@ lola market acme --remove                                    # forget it; asks (
     - A remote profile with one is refused at `--add` and `--update`.
   - Before anything is asked, the install shows where the address resolved (`→ @acme/formatter →
     https://github.com/acme/monorepo.git path tools/formatter @ v2.0.0 (a1b2c3…)`).
-  - What lands in `project.yml` (or `user.yml`) is the module's real source, `path`, the catalog's
+  - What lands in `project.yml` (or `default.yml`) is the module's real source, `path`, the catalog's
     `ref`, and the pin (`commit` and `digest`, the version sync installs; see
     [Sync, pins and trust](sync-and-trust.md#sync-pins-and-trust)), plus `market:`. The entry, in
     the file's `modules:` list:
@@ -302,7 +344,7 @@ lola market acme --remove                                    # forget it; asks (
     → `lola market acme --update`.
   - An archive's `sha256` must match the download before anything is extracted.
   - A source the catalog names follows no redirect to a host lola would refuse (after install,
-    `render`, `lola cache update`, an install by cached name that fetches again and a `--ref`
+    `sync`, `update`, `lola cache update`, an install by cached name that fetches again and a `--ref`
     install fetch under the rules of a source you type; see
     [the security model](../architecture.md#security-model)).
   - `--ref` replaces the catalog's ref and drops its pin; the entry then records no `market:`
@@ -318,7 +360,7 @@ lola market acme --remove                                    # forget it; asks (
   - An entry whose catalog lists its skills, commands or agents installs exactly those, each as
     `skills/<name>`, `commands/<name>` or `agents/<name>`. The entry records the selection as
     `components: {skills: [skills/xlsx], commands: [...], agents: [...]}`, beside its source;
-    `lock.json` and your cache record it too, so a teammate's sync, `render` and
+    `lock.json` and your cache record it too, so a teammate's sync, `update` and
     `lola cache update` fetch the same selection without the marketplace.
   - A module that names itself otherwise in its `lola.yml` is refused, naming both names.
     - When the entry's source is the marketplace's own (a relative entry), the hint installs that
@@ -346,8 +388,8 @@ lola market acme --remove                                    # forget it; asks (
   - An entry whose cache record lola cannot read is offered as not cached, with a warning naming
     the `lola cache rm` that clears it (completion stays silent).
   - After `--add`, lola prints `→ browse: lola install @acme`.
-- **Provenance.** An entry of `project.yml` or `user.yml` may carry `market: {name, source}`, the
-  marketplace it was installed through.
+- **Provenance.** An entry of `project.yml` or of a profile of yours or a project's may carry `market: {name,
+  source}`, the marketplace it was installed through; a remote profile's entry may not.
 
   ```mermaid
   %%{init: {'theme': 'base', 'themeVariables': {

@@ -100,8 +100,8 @@ each delivered step shipped.
    - **6b. Profiles:** stackable named sets of modules
      ([#223](https://github.com/LobsterTrap/lola/issues/223)), delivered as 6b.1 a scope for
      every command and the pager, 6b.2a layers, 6b.2b `lola profile`, 6b.3a project profiles
-     and 6b.3b remote profiles (done: `--add`, `--update` and `--remove`, `extends:`, and the
-     profiles lock) (`docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md`).
+     and 6b.3b remote profiles (done: `--add`, `--update` and `--remove`, `extends:` (replaced by
+     bundles in 12.3), and the profiles lock) (`docs/superpowers/specs/2026-10-14-plan-6b-profiles-design.md`).
    - **6c. Done: marketplaces.** `lola market` and `@market/module`, reading catalogs in the
      Claude marketplace JSON format and the Python lola's YAML catalogs for migrated users
      (`docs/superpowers/specs/2026-10-21-plan-6c-marketplaces-design.md`), delivered as:

@@ -36,7 +36,8 @@ type Fetched struct {
 
 // fetchFolder copies the module root of a folder source into a new directory under
 // stagingParent. In a git work tree only `git ls-files --cached --others --exclude-standard`
-// content is copied. Symlinks are refused.
+// content is copied. A symbolic link is copied as the file it names inside the folder
+// (resolveLink).
 func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched, error) {
 	root, name, err := folderRoot(spec.Location, spec.Path, filepath.Base(spec.Location))
 	if err != nil {
@@ -56,7 +57,7 @@ func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched,
 	if err != nil {
 		return Fetched{}, err
 	}
-	dst, execs, err := copyTree(ctx, root, stagingParent, listDetect)
+	dst, execs, _, err := copyTree(ctx, spec.Location, root, stagingParent, listDetect)
 	if err != nil {
 		return Fetched{}, err
 	}
@@ -74,25 +75,26 @@ const (
 
 // copyTree copies the files of root, as listed by mode, into a new directory under
 // stagingParent and returns it with the sorted slash paths of the copied files the file
-// system marks executable. Ignored names are skipped and symlinks refused.
-func copyTree(ctx context.Context, root, stagingParent string, mode listing) (string, []string, error) {
+// system marks executable, and copyFiles' links. Ignored names are skipped; a symbolic link is
+// copied as the file it names inside boundary, the source tree root is in.
+func copyTree(ctx context.Context, boundary, root, stagingParent string, mode listing) (string, []string, map[string]string, error) {
 	if err := os.MkdirAll(stagingParent, 0o700); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	files, err := listFiles(ctx, root, mode)
+	files, byGit, err := listFiles(ctx, root, mode)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	dst, err := os.MkdirTemp(stagingParent, "fetch-*")
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
-	execs, err := copyFiles(root, dst, files)
+	execs, links, err := copyFiles(ctx, boundary, root, dst, files, byGit && mode == listDetect)
 	if err != nil {
-		return "", nil, errors.Join(err, os.RemoveAll(dst))
+		return "", nil, nil, errors.Join(err, os.RemoveAll(dst))
 	}
 	slices.Sort(execs)
-	return dst, execs, nil
+	return dst, execs, links, nil
 }
 
 // executablesUnder returns, of all (slash paths relative to a tree), the ones below the
@@ -156,8 +158,7 @@ func checkedRoot(base, subpath, name, shown string) (string, string, error) {
 		case err != nil && !errors.Is(err, fs.ErrNotExist):
 			return "", "", fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
 		case err == nil && fi.Mode()&fs.ModeSymlink != 0:
-			return "", "", fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source",
-				untrusted.Text(filepath.ToSlash(current), untrusted.MaxName))
+			return "", "", refuse(untrusted.Text(filepath.ToSlash(current), untrusted.MaxName), modulePathLink, modulePathLinkHint)
 		case err != nil || !fi.IsDir():
 			return "", "", errs.WithHints(fmt.Errorf("%s is not a directory in the source", shown), pathHint)
 		}
@@ -214,18 +215,20 @@ func ignored(rel string) bool {
 	return slices.ContainsFunc(strings.Split(filepath.ToSlash(rel), "/"), func(seg string) bool { return ignoredNames[seg] })
 }
 
-// listFiles returns root-relative paths of candidate files.
-func listFiles(ctx context.Context, root string, mode listing) ([]string, error) {
+// listFiles returns root-relative paths of candidate files, and whether git listed them.
+func listFiles(ctx context.Context, root string, mode listing) ([]string, bool, error) {
 	switch mode {
 	case listGit:
-		return gitFiles(ctx, root, "--cached")
+		files, err := gitFiles(ctx, root, "--cached")
+		return files, true, err
 	case listDetect:
 		out, err := GitCommand(ctx, root, "rev-parse", "--is-inside-work-tree").Output()
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if err == nil && strings.TrimSpace(string(out)) == "true" {
-			return gitFiles(ctx, root, "--cached", "--others", "--exclude-standard")
+			files, err := gitFiles(ctx, root, "--cached", "--others", "--exclude-standard")
+			return files, true, err
 		}
 	}
 	var files []string
@@ -248,7 +251,7 @@ func listFiles(ctx context.Context, root string, mode listing) ([]string, error)
 		}
 		return nil
 	})
-	return files, err
+	return files, false, err
 }
 
 // gitFiles lists the files under root that git ls-files selects with which.
@@ -271,43 +274,81 @@ func gitFiles(ctx context.Context, root string, which ...string) ([]string, erro
 	return slices.Compact(files), nil
 }
 
-// copyFiles copies files from root to dst and returns the slash paths of those the file
-// system marks executable.
-func copyFiles(root, dst string, files []string) ([]string, error) {
-	execs := []string{}
+// copyFiles copies files, paths relative to root, from root to dst and returns the slash paths
+// of those the file system marks executable. A symbolic link is copied, at its own path, as the
+// regular file it names inside boundary, a directory root is in (resolveLink), read through an
+// os.Root of boundary; askGit also refuses a target git ignores (gitIgnored). links maps each
+// such link, a slash path relative to root, to its target, a slash path relative to boundary.
+func copyFiles(ctx context.Context, boundary, root, dst string, files []string, askGit bool) (execs []string, links map[string]string, err error) {
+	base, err := filepath.Rel(boundary, root)
+	if err != nil {
+		return nil, nil, err
+	}
+	broot, err := os.OpenRoot(boundary)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { err = errors.Join(err, broot.Close()) }()
+	execs, links = []string{}, map[string]string{}
 	for _, rel := range files {
+		shown := untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName)
 		src := filepath.Join(root, rel)
 		fi, err := os.Lstat(src)
 		switch {
 		case os.IsNotExist(err):
 			continue // tracked by git but deleted in the work tree
 		case err != nil:
-			return nil, fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
+			return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
 		case fi.Mode()&fs.ModeSymlink != 0:
-			return nil, fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
+			linkRel := filepath.ToSlash(filepath.Join(base, rel))
+			target, tfi, err := resolveLink(broot, filepath.ToSlash(base), linkRel)
+			if err != nil {
+				return nil, nil, err
+			}
+			if askGit {
+				err := gitIgnored(ctx, root, untrusted.Text(linkRel, untrusted.MaxName), target, filepath.Join(boundary, filepath.FromSlash(target)))
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+			in, err := broot.Open(filepath.FromSlash(target))
+			if err == nil {
+				err = copyOpened(in, filepath.Join(dst, rel), tfi)
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
+			}
+			links[filepath.ToSlash(rel)] = target
+			fi = tfi
 		case fi.IsDir():
 			continue // a git submodule entry
 		case !fi.Mode().IsRegular():
-			return nil, fmt.Errorf("%s: not a regular file", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName))
-		}
-		if err := copyFile(src, filepath.Join(dst, rel), fi); err != nil {
-			return nil, fmt.Errorf("%s: %w", untrusted.Text(filepath.ToSlash(rel), untrusted.MaxName), untrusted.CleanErr(err))
+			return nil, nil, fmt.Errorf("%s: not a regular file", shown)
+		default:
+			if err := copyFile(src, filepath.Join(dst, rel), fi); err != nil {
+				return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
+			}
 		}
 		if fsx.NormalizeMode(fi.Mode()) == 0o755 {
 			execs = append(execs, filepath.ToSlash(rel))
 		}
 	}
-	return execs, nil
+	return execs, links, nil
 }
 
 // copyFile copies src, which the caller found (with Lstat) to be the regular file fi. The
 // opened file must still be that file: one swapped for a symlink or another file between the
 // check and the open is refused, so a source can never redirect lola outside itself.
-func copyFile(src, dst string, fi fs.FileInfo) (err error) {
+func copyFile(src, dst string, fi fs.FileInfo) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
+	return copyOpened(in, dst, fi)
+}
+
+// copyOpened copies in, which must be the regular file fi (copyFile), to dst, and closes it.
+func copyOpened(in *os.File, dst string, fi fs.FileInfo) (err error) {
 	defer func() { err = errors.Join(err, in.Close()) }()
 	opened, err := in.Stat()
 	if err != nil {

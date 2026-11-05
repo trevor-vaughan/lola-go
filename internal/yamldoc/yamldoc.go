@@ -1,5 +1,5 @@
 // Package yamldoc reads the YAML files people edit by hand and commit (config.yaml,
-// selections.yaml, project.yml, user.yml) as one untrusted document. It refuses what would make
+// selections.yaml, project.yml, profiles) as one untrusted document. It refuses what would make
 // lola block, run out of memory, or read one entry as another, before any key is interpreted.
 package yamldoc
 

@@ -1,4 +1,4 @@
-// Package manifest models the desired state of a scope: project.yml (committable) or user.yml.
+// Package manifest models the desired state of a project scope: project.yml (committable), and the shape of the module entries profiles list.
 package manifest
 
 import (
@@ -37,8 +37,8 @@ type Entry struct {
 	Targets []string `yaml:"targets,omitempty,flow"`
 	Rules   *bool    `yaml:"rules,omitempty"`
 	// Market is which marketplace the entry was installed through, as written (Plan 6c §6.4,
-	// ruling R-6c-15): provenance only, accepted in project.yml and user.yml and never in a
-	// profile. Nothing is resolved or decided from it but lola sync --update's catalog lookup,
+	// ruling R-6c-15): provenance only, accepted in project.yml and a profile of yours or
+	// a project's (spec 2026-10-29 §8.1), never in a remote profile. Nothing is resolved or decided from it but lola sync --update's catalog lookup,
 	// which never changes the source, path or ref, and every lola sync's fetch of an entry whose
 	// market names another source than its own, which runs under source.Spec.FromCatalog (that
 	// rule only adds refusals, so a forged market cannot loosen it).
@@ -47,6 +47,11 @@ type Entry struct {
 	// §4.1, user decision of 2026-10-22): the module is those skills, commands and agents alone,
 	// in every fetch of the entry.
 	Components *source.Components `yaml:"components,omitempty"`
+	// Only and Skip are a profile entry's picks (cherry-pick design §4.1; spec 2026-10-29 §13 item
+	// 2): kind/name selectors, its only: and skip: lists, as written. Profiles read and write them;
+	// a manifest's decode never sees them, so project.yml refuses them as unknown keys.
+	Only []string `yaml:"-"`
+	Skip []string `yaml:"-"`
 	// Vars overrides the module's template vars, name → value: a string, a bool or a []string
 	// (Plan 7 §4.2). Read from the file's node by tag (EntryVars), as lola.yml vars are; the
 	// module's declaration is checked when it is planned.
@@ -70,7 +75,7 @@ type Manifest struct {
 	Modules []Entry  `yaml:"modules,omitempty"`
 	// PreInstall and PostInstall are a project's install scripts (Plan 9 §5.1), paths relative to
 	// the project directory as written, which wrap every module copy a run of the project's scope
-	// installs or replaces; "" for none. Only project.yml takes them (LoadUser).
+	// installs or replaces; "" for none. Only project.yml takes them.
 	PreInstall  string `yaml:"pre_install,omitempty"`
 	PostInstall string `yaml:"post_install,omitempty"`
 	// preLine and postLine are the lines that name them, which a refusal of a script names.
@@ -122,25 +127,6 @@ func Load(path string) (*Manifest, error) {
 	}
 	if err != nil {
 		return nil, errs.WithHints(err, "fix it by hand, or restore it from version control")
-	}
-	return m, nil
-}
-
-// LoadUser is Load for user.yml, which refuses install scripts: the user's own are in config.yaml
-// (Plan 9 §5.1).
-func LoadUser(path string) (*Manifest, error) {
-	m, err := Load(path)
-	if err != nil {
-		return nil, err
-	}
-	for _, s := range []struct {
-		key, path string
-		line      int
-	}{{"pre_install", m.PreInstall, m.preLine}, {"post_install", m.PostInstall, m.postLine}} {
-		if s.path != "" {
-			return nil, errs.WithHints(fmt.Errorf("%s:%d: %s: user.yml takes no install scripts; your own go in config.yaml", untrusted.Text(path, untrusted.MaxName), s.line, s.key),
-				"move it to config.yaml as an absolute path or ~/…")
-		}
 	}
 	return m, nil
 }
@@ -285,11 +271,12 @@ type Unresolved struct {
 	Coached              bool
 }
 
-// UnresolvedError refuses a file, project.yml, user.yml or a profile at Path, whose Entries have a
+// UnresolvedError refuses a file, project.yml or a profile at Path, whose Entries have a
 // marketplace address as their source (Plan 6c §6.7): a file must record each module's real
-// source, so that it does not depend on the reader's marketplaces. Manifest is project.yml or
-// user.yml as read, every entry as written, which lola install @m/x edits to replace one (§6.3);
-// nil for a profile. It carries no hints: they depend on the reader's marketplaces.
+// source, so that it does not depend on the reader's marketplaces. Manifest is the scope's base as
+// read, every entry as written, which lola install @m/x edits to replace one (§6.3): project.yml,
+// or default.yml, which the engine sets (Engine.Manifest); nil for any other profile. It carries
+// no hints: they depend on the reader's marketplaces.
 type UnresolvedError struct {
 	Path     string
 	Entries  []Unresolved

@@ -1,0 +1,9 @@
+version: 1
+description: Go tooling
+targets: [claude-code]
+modules:
+  - name: golang-lint
+    source: https://git.lola.test:8443/golang-lint.git
+    ref: main
+    commit: d4308c316a318ecc7af8726dd3b0ae6b42d51c0a
+    digest: sha256:7387b36d3fb26a77bf58babec523c66fdfad0619c51833ab70dcdcc57dc2cb02

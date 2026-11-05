@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/gofrs/flock"
@@ -11,20 +12,21 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// example is the selections.yaml of the design (§6.2), with its project key under dir.
-func example(dir string) string {
+// example is the selections.yaml of the design (§6.2), with its project keys home and dir.
+func example(home, dir string) string {
 	return `# lola selections: components you chose not to install.
 version: 1
 global:
   review-kit:                       # module name as lola list shows it
     skip: [skill/slow-lint, mcp/internal-db]
-user:
-  review-kit:
-    include: [mcp/internal-db]      # overrides a global skip at user scope
 projects:
+  ` + home + `:
+    review-kit:
+      include: [mcp/internal-db]    # overrides a global skip in this project
   ` + dir + `:
     review-kit:
       skip: [command/deploy]
@@ -143,6 +145,37 @@ var _ = Describe("config.yaml", func() {
 		Entry("a list", "[2w]", "must be an age, not a list"),
 	)
 
+	DescribeTable("reads cache_fresh_for",
+		func(value string, want config.Age) {
+			write("version: 1\ncache_fresh_for: " + value + "\n")
+			c, err := config.LoadConfig(path, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.CacheFreshFor).To(Equal(want))
+		},
+		Entry("days", "3d", config.Age{N: 3}),
+		Entry("weeks", "2w", config.Age{N: 2, Weeks: true}),
+		Entry("never", "never", config.Age{Never: true}),
+	)
+
+	It("leaves cache_fresh_for unset when config.yaml does not say", func() {
+		write("version: 1\n")
+		c, err := config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.CacheFreshFor).To(BeZero())
+	})
+
+	DescribeTable("an invalid cache_fresh_for is refused naming the value",
+		func(value, msg string) {
+			write("version: 1\n\ncache_fresh_for: " + value + "\n")
+			_, err := config.LoadConfig(path, "")
+			Expect(err).To(MatchError(path + ":3: cache_fresh_for: " + msg + "; write a whole number of days or weeks, such as 30d or 2w, or never"))
+		},
+		Entry("hours", "1h", `"1h" is not an age`),
+		Entry("zero", "0d", `"0d" is not an age`),
+		Entry("a word", "x", `"x" is not an age`),
+		Entry("empty", "", "must be an age, not empty"),
+	)
+
 	DescribeTable("refuses invalid files, naming the file, line and key with a hint",
 		func(content, msg, hint string) {
 			write(content)
@@ -204,13 +237,15 @@ var _ = Describe("config.yaml", func() {
 })
 
 var _ = Describe("selections.yaml", func() {
-	var dir, proj, path string
+	var dir, proj, home, path string
 	BeforeEach(func() {
 		var err error
 		dir, err = filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 		proj = filepath.Join(dir, "src", "api")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		home, err = paths.ProjectKey(filepath.Join(dir, "src", "home"))
+		Expect(err).NotTo(HaveOccurred())
 		path = filepath.Join(dir, "selections.yaml")
 	})
 	write := func(s string) { Expect(os.WriteFile(path, []byte(s), 0o600)).To(Succeed()) }
@@ -221,16 +256,25 @@ var _ = Describe("selections.yaml", func() {
 	}
 
 	It("has no exclusions when the file is missing", func() {
-		Expect(load().Exclusions(config.User(), "review-kit").Excludes("skill", "x")).To(BeFalse())
+		Expect(load().Exclusions(config.Project(proj), "review-kit").Excludes("skill", "x")).To(BeFalse())
+	})
+
+	It("refuses a selections.yaml user section, naming its line and the profile-entry way out", func() {
+		path := filepath.Join(testenv.Isolate(), "selections.yaml")
+		Expect(os.WriteFile(path, []byte("version: 1\n# mine\nuser:\n  kit:\n    skip: [skill/a]\n"), 0o600)).To(Succeed())
+		_, err := config.LoadSelections(path)
+		Expect(err).To(MatchError(path + ":3: user: is no longer used; picks for user-scope modules live in their profile entries"))
+		Expect(errs.Hints(err)).To(Equal([]string{"delete the user: section from " + path,
+			"then re-apply its picks: lola install <module> --user --skip <kind/name>"}))
 	})
 
 	It("computes effective exclusions: global skip plus the scope's skip, minus the scope's include", func() {
-		write(example(proj))
+		write(example(home, proj))
 		s := load()
-		user := s.Exclusions(config.User(), "review-kit")
-		Expect(user.Excludes("skill", "slow-lint")).To(BeTrue())
-		Expect(user.Excludes("mcp", "internal-db")).To(BeFalse(), "user include overrides the global skip")
-		Expect(user.Excludes("command", "deploy")).To(BeFalse())
+		h := s.Exclusions(config.Project(home), "review-kit")
+		Expect(h.Excludes("skill", "slow-lint")).To(BeTrue())
+		Expect(h.Excludes("mcp", "internal-db")).To(BeFalse(), "the project's include overrides the global skip")
+		Expect(h.Excludes("command", "deploy")).To(BeFalse())
 
 		p := s.Exclusions(config.Project(proj), "review-kit")
 		Expect(p.Excludes("skill", "slow-lint")).To(BeFalse())
@@ -240,12 +284,12 @@ var _ = Describe("selections.yaml", func() {
 
 		other := s.Exclusions(config.Project(filepath.Join(dir, "elsewhere")), "review-kit")
 		Expect(other.Excludes("skill", "slow-lint")).To(BeTrue(), "a project without a section gets global")
-		Expect(s.Exclusions(config.User(), "other-module").Excludes("skill", "slow-lint")).To(BeFalse())
+		Expect(s.Exclusions(config.Project(home), "other-module").Excludes("skill", "slow-lint")).To(BeFalse())
 	})
 
 	It("matches globs", func() {
-		write("version: 1\nuser:\n  m:\n    skip: ['skill/review-*', 'agent/[ab]?']\n")
-		x := load().Exclusions(config.User(), "m")
+		write("version: 1\nprojects:\n  " + proj + ":\n    m:\n      skip: ['skill/review-*', 'agent/[ab]?']\n")
+		x := load().Exclusions(config.Project(proj), "m")
 		Expect(x.Excludes("skill", "review-go")).To(BeTrue())
 		Expect(x.Excludes("skill", "lint")).To(BeFalse())
 		Expect(x.Excludes("agent", "ax")).To(BeTrue())
@@ -269,8 +313,124 @@ var _ = Describe("selections.yaml", func() {
 	})
 
 	It("accepts empty sections, entries and lists", func() {
-		write("version: 1\nglobal:\nuser: {}\nprojects:\n  " + proj + ":\n    m:\n    n:\n      skip: []\n      include:\n")
+		write("version: 1\nglobal:\nprojects:\n  " + proj + ":\n    m:\n    n:\n      skip: []\n      include:\n")
 		Expect(load().Exclusions(config.Project(proj), "m").Excludes("skill", "x")).To(BeFalse())
+	})
+
+	pats := func(ss ...string) []config.Pattern {
+		GinkgoHelper()
+		var out []config.Pattern
+		for _, s := range ss {
+			p, err := config.ParsePattern(s)
+			Expect(err).NotTo(HaveOccurred())
+			out = append(out, p)
+		}
+		return out
+	}
+
+	It("refuses a selector holding a comma, saying a selector names one component", func() {
+		_, err := config.ParsePattern("skill/a,skill/b")
+		Expect(err).To(MatchError(`selector "skill/a,skill/b" holds a comma; a selector names one component, and the flags take comma-separated selectors`))
+		Expect(errs.Hints(err)).To(Equal([]string{"list several selectors as separate items in a file, or comma-separated on the command line (--only skill/a,skill/b)", config.SelectorForms}))
+	})
+
+	It("reads only: in every section, and only: [] as no list", func() {
+		write("version: 1\nglobal:\n  m:\n    only: [skill/a]\nprojects:\n  " + home + ":\n    m:\n      only: ['command/*']\n  " + proj +
+			":\n    m:\n      only: [agent/x]\n    n:\n      only: []\n")
+		s := load()
+		Expect(s.Entry(config.Global(), "m").Only).To(Equal(pats("skill/a")))
+		Expect(s.Entry(config.Project(home), "m").Only).To(Equal(pats("command/*")))
+		Expect(s.Entry(config.Project(proj), "m").Only).To(Equal(pats("agent/x")))
+		Expect(s.Entry(config.Project(proj), "n").Only).To(BeNil())
+		Expect(s.Exclusions(config.Project(proj), "n").Excludes("skill", "anything")).To(BeFalse(), "only: [] excludes nothing")
+		Expect(config.Entry{Only: pats("skill/a")}.Empty()).To(BeFalse(), "an entry with only an only: list is kept")
+	})
+
+	DescribeTable("merges only: by precedence: the scope's list replaces global's, skips and the scope's include apply over it",
+		func(content func(proj string) string, at, comp string, excluded bool) {
+			write("version: 1\n" + content(proj))
+			w := config.Project(proj)
+			if at == "other" {
+				w = config.Project(home)
+			}
+			kind, name, _ := strings.Cut(comp, "/")
+			Expect(load().Exclusions(w, "m").Excludes(kind, name)).To(Equal(excluded))
+		},
+		Entry("global only excludes what it misses", func(string) string { return "global:\n  m:\n    only: [skill/a]\n" }, "project", "skill/b", true),
+		Entry("global only keeps what it lists", func(string) string { return "global:\n  m:\n    only: [skill/a]\n" }, "project", "skill/a", false),
+		Entry("a scope's only replaces global's (no intersection)", func(p string) string {
+			return "global:\n  m:\n    only: [skill/a]\nprojects:\n  " + p + ":\n    m:\n      only: [skill/b]\n"
+		}, "project", "skill/b", false),
+		Entry("what only global's list names is excluded under a scope list", func(p string) string {
+			return "global:\n  m:\n    only: [skill/a]\nprojects:\n  " + p + ":\n    m:\n      only: [skill/b]\n"
+		}, "project", "skill/a", true),
+		Entry("a scope skip beats an only match", func(p string) string {
+			return "projects:\n  " + p + ":\n    m:\n      only: [skill/a]\n      skip: [skill/a]\n"
+		}, "project", "skill/a", true),
+		Entry("a global skip beats a scope only match", func(p string) string {
+			return "global:\n  m:\n    skip: [skill/a]\nprojects:\n  " + p + ":\n    m:\n      only: [skill/a]\n"
+		}, "project", "skill/a", true),
+		Entry("the scope's include beats the only list", func(p string) string {
+			return "projects:\n  " + p + ":\n    m:\n      only: [skill/a]\n      include: [skill/b]\n"
+		}, "project", "skill/b", false),
+		Entry("the scope's include beats global only and global skip together", func(p string) string {
+			return "global:\n  m:\n    only: [skill/a]\n    skip: [skill/b]\nprojects:\n  " + p + ":\n    m:\n      include: [skill/b]\n"
+		}, "project", "skill/b", false),
+		Entry("a project's only does not apply at another project", func(p string) string {
+			return "projects:\n  " + p + ":\n    m:\n      only: [skill/a]\n"
+		}, "other", "skill/b", false),
+		Entry("a project's only applies at that project", func(p string) string {
+			return "projects:\n  " + p + ":\n    m:\n      only: [skill/a]\n"
+		}, "project", "skill/b", true),
+	)
+
+	It("says which only: list is in force, and what that list alone leaves out", func() {
+		write("version: 1\nglobal:\n  m:\n    only: [skill/a]\n    skip: [skill/c]\nprojects:\n  " + proj + ":\n    m:\n      only: [skill/b]\n")
+		s := load()
+		x := s.Exclusions(config.Project(proj), "m")
+		list, origin := x.Only()
+		Expect(list).To(Equal(pats("skill/b")))
+		Expect(origin).To(Equal("selections.yaml projects[" + proj + "]"))
+		Expect(x.LeftOutByOnly("skill", "a")).To(BeTrue())
+		Expect(x.LeftOutByOnly("skill", "c")).To(BeFalse(), "a skip excludes it")
+		Expect(x.LeftOutByOnly("skill", "b")).To(BeFalse(), "it is installed")
+
+		_, origin = s.Exclusions(config.Project(home), "m").Only()
+		Expect(origin).To(Equal("selections.yaml global"))
+		none := s.Exclusions(config.Project(home), "other")
+		list, origin = none.Only()
+		Expect(list).To(BeNil())
+		Expect(origin).To(BeEmpty())
+		Expect(none.LeftOutByOnly("skill", "a")).To(BeFalse(), "no only: list leaves nothing out")
+	})
+
+	It("lists every pattern of every layer with its origin", func() {
+		write("version: 1\nglobal:\n  m:\n    skip: [skill/a]\n    only: [skill/b]\nprojects:\n  " + proj + ":\n    m:\n      include: [skill/c]\n      only: [skill/d]\n")
+		Expect(load().Exclusions(config.Project(proj), "m").Patterns()).To(ConsistOf(
+			config.Sourced{Pattern: pats("skill/a")[0], Origin: "selections.yaml global"},
+			config.Sourced{Pattern: pats("skill/b")[0], Origin: "selections.yaml global"},
+			config.Sourced{Pattern: pats("skill/c")[0], Origin: "selections.yaml projects[" + proj + "]"},
+			config.Sourced{Pattern: pats("skill/d")[0], Origin: "selections.yaml projects[" + proj + "]"}))
+	})
+
+	It("holds a profile entry's picks for the run, which replace every section's but the global skip", func() {
+		write("version: 1\nglobal:\n  kit:\n    skip: [skill/never]\n    only: [skill/g]\n")
+		sel := load()
+		w := config.Picks("profile:user:go")
+		Expect(w.Origin()).To(Equal("profile user:go"))
+		only, err := config.ParsePattern("skill/a")
+		Expect(err).NotTo(HaveOccurred())
+		sel.Set(w, "kit", config.Entry{Only: []config.Pattern{only}})
+		x := sel.Exclusions(w, "kit")
+		Expect(x.Excludes("skill", "a")).To(BeFalse())
+		Expect(x.Excludes("skill", "b")).To(BeTrue(), "the entry's only: list is the one in force")
+		Expect(x.Excludes("skill", "never")).To(BeTrue(), "the global skip still applies")
+		_, from := x.Only()
+		Expect(from).To(Equal("profile user:go"))
+		bare := sel.Exclusions(config.Picks("profile:user:other"), "kit")
+		Expect(bare.Excludes("skill", "b")).To(BeFalse(), "the global only: does not apply")
+		Expect(bare.Excludes("skill", "never")).To(BeTrue())
+		Expect(sel.Clone().Entry(w, "kit")).To(Equal(config.Entry{Only: []config.Pattern{only}}))
 	})
 
 	DescribeTable("refuses hostile or broken files, naming the file, line and key path with a hint",
@@ -290,47 +450,54 @@ var _ = Describe("selections.yaml", func() {
 			return "version: 1\nprojects:\n  " + p + ":\n    m: {}\n  " + filepath.Dir(p) + "/./api/:\n    n: {}\n"
 		}, "names the same project as", "merge the two entries"),
 		Entry("a module written twice", func(string) string {
-			return "version: 1\nuser:\n  m:\n    skip: [skill/a]\n  m:\n    skip: [skill/b]\n"
+			return "version: 1\nglobal:\n  m:\n    skip: [skill/a]\n  m:\n    skip: [skill/b]\n"
 		},
-			":5: user.m: is written twice", "merge"),
-		Entry("a case-variant module name", func(string) string { return "version: 1\nuser:\n  Review-Kit:\n    skip: [skill/a]\n" },
-			`:3: user.Review-Kit: module name "Review-Kit" is invalid`, "as lola list shows it"),
+			":5: global.m: is written twice", "merge"),
+		Entry("a case-variant module name", func(string) string { return "version: 1\nglobal:\n  Review-Kit:\n    skip: [skill/a]\n" },
+			`:3: global.Review-Kit: module name "Review-Kit" is invalid`, "as lola list shows it"),
 		Entry("a list for a section", func(string) string { return "version: 1\nglobal: [m]\n" },
 			":2: global: must be a mapping of module names, not a list", "module-name:"),
 		Entry("a list for projects", func(string) string { return "version: 1\nprojects: [x]\n" },
 			":2: projects: must be a mapping of project paths, not a list", "/absolute/project/path"),
-		Entry("a list for a module entry", func(string) string { return "version: 1\nuser:\n  m: [skill/a]\n" },
-			":3: user.m: must be a mapping, not a list", "key: value"),
-		Entry("a string for skip", func(string) string { return "version: 1\nuser:\n  m:\n    skip: skill/a\n" },
-			":4: user.m.skip: must be a list, not a value", "[skill/slow-lint]"),
-		Entry("a mapping in a list", func(string) string { return "version: 1\nuser:\n  m:\n    skip: [{a: b}]\n" },
-			"user.m.skip[0]: must be a non-empty value, not a mapping", "write kind/name"),
-		Entry("an empty selector", func(string) string { return "version: 1\nuser:\n  m:\n    skip: ['']\n" },
-			"user.m.skip[0]: must be a non-empty value", "write kind/name"),
-		Entry("an unknown kind", func(string) string { return "version: 1\nuser:\n  m:\n    skip: [hook/a]\n" },
-			`user.m.skip[0]: selector "hook/a" has an unknown kind "hook"`, "kind/name"),
-		Entry("a bad glob", func(string) string { return "version: 1\nuser:\n  m:\n    skip: ['skill/[a']\n" },
+		Entry("a list for a module entry", func(string) string { return "version: 1\nglobal:\n  m: [skill/a]\n" },
+			":3: global.m: must be a mapping, not a list", "key: value"),
+		Entry("a string for skip", func(string) string { return "version: 1\nglobal:\n  m:\n    skip: skill/a\n" },
+			":4: global.m.skip: must be a list, not a value", "[skill/slow-lint]"),
+		Entry("a mapping in a list", func(string) string { return "version: 1\nglobal:\n  m:\n    skip: [{a: b}]\n" },
+			"global.m.skip[0]: must be a non-empty value, not a mapping", "write kind/name"),
+		Entry("an empty selector", func(string) string { return "version: 1\nglobal:\n  m:\n    skip: ['']\n" },
+			"global.m.skip[0]: must be a non-empty value", "write kind/name"),
+		Entry("an unknown kind", func(string) string { return "version: 1\nglobal:\n  m:\n    skip: [hook/a]\n" },
+			`global.m.skip[0]: selector "hook/a" has an unknown kind "hook"`, "kind/name"),
+		Entry("a bad glob", func(string) string { return "version: 1\nglobal:\n  m:\n    skip: ['skill/[a']\n" },
 			"is not a valid glob", "kind/name"),
-		Entry("a module-qualified selector", func(string) string { return "version: 1\nuser:\n  m:\n    skip: [m:skill/a]\n" },
+		Entry("a module-qualified selector", func(string) string { return "version: 1\nglobal:\n  m:\n    skip: [m:skill/a]\n" },
 			"names a module; the module is the key above", "write kind/name"),
-		Entry("an escape sequence in a selector", func(string) string { return "version: 1\nuser:\n  m:\n    skip: [\"skill/a\\e[2J\"]\n" },
-			`user.m.skip[0]: selector "skill/a?[2J" holds a control or format character`, "kind/name"),
-		Entry("an unknown entry key", func(string) string { return "version: 1\nuser:\n  m:\n    exclude: [skill/a]\n" },
-			`:4: user.m: unknown key "exclude"`, "known keys: include, skip"),
+		Entry("an escape sequence in a selector", func(string) string { return "version: 1\nglobal:\n  m:\n    skip: [\"skill/a\\e[2J\"]\n" },
+			`global.m.skip[0]: selector "skill/a?[2J" holds a control or format character`, "kind/name"),
+		Entry("an unknown entry key", func(string) string { return "version: 1\nglobal:\n  m:\n    exclude: [skill/a]\n" },
+			`:4: global.m: unknown key "exclude"`, "known keys: include, only, skip"),
 		Entry("an unknown top-level key", func(string) string { return "version: 1\nproject:\n  m: {}\n" },
-			`:2: unknown key "project"`, "known keys: global, projects, user, version"),
+			`:2: unknown key "project"`, "known keys: global, projects, version"),
 		Entry("a merge key", func(string) string {
-			return "version: 1\nglobal:\n  base: &b\n    skip: [skill/a]\nuser:\n  m:\n    <<: *b\n"
+			return "version: 1\nglobal:\n  base: &b\n    skip: [skill/a]\n  m:\n    <<: *b\n"
 		}, "anchors, aliases and merge keys (<<) are not supported", "write each entry out in full"),
-		Entry("an anchor and alias", func(string) string { return "version: 1\nglobal:\n  m: &x\n    skip: [skill/a]\nuser:\n  m: *x\n" },
+		Entry("an anchor and alias", func(string) string { return "version: 1\nglobal:\n  m: &x\n    skip: [skill/a]\n  n: *x\n" },
 			":3: anchors, aliases and merge keys", "in full"),
-		Entry("a second document", func(string) string { return "version: 1\n---\nuser: {}\n" },
+		Entry("a second document", func(string) string { return "version: 1\n---\nglobal: {}\n" },
 			"holds more than one YAML document", "remove every ---"),
-		Entry("a syntax error", func(string) string { return "version: 1\nuser:\n  m: {skip: [\n" },
+		Entry("a syntax error", func(string) string { return "version: 1\nglobal:\n  m: {skip: [\n" },
 			"does not parse", "fix it by hand, or move it aside"),
-		Entry("no version", func(string) string { return "user: {}\n" }, ":1: missing key version", "add version: 1"),
+		Entry("no version", func(string) string { return "global: {}\n" }, ":1: missing key version", "add version: 1"),
 		Entry("an include in global", func(string) string { return "version: 1\nglobal:\n  m:\n    include: [skill/a]\n" },
-			":4: global.m.include: global only skips", "move it to the user: section or a projects: entry"),
+			":4: global.m.include: global takes skip: and only:, not include:", "move it to a projects: entry"),
+		Entry("an unknown kind in only", func(string) string { return "version: 1\nglobal:\n  m:\n    only: [hook/a]\n" },
+			`:4: global.m.only[0]: selector "hook/a" has an unknown kind "hook"`, "kind/name"),
+		Entry("a module-qualified selector in a project's only", func(p string) string {
+			return "version: 1\nprojects:\n  " + p + ":\n    m:\n      only: [m:skill/a]\n"
+		}, "names a module; the module is the key above", "write kind/name"),
+		Entry("a string for only", func(string) string { return "version: 1\nglobal:\n  m:\n    only: skill/a\n" },
+			":4: global.m.only: must be a list, not a value", "[skill/slow-lint]"),
 	)
 
 	It("refuses an oversized file", func() {
@@ -340,7 +507,7 @@ var _ = Describe("selections.yaml", func() {
 	})
 
 	It("shows a hostile key through untrusted.Text", func() {
-		write("version: 1\nuser:\n  \"bad\\e[31mname\":\n    skip: [skill/a]\n")
+		write("version: 1\nglobal:\n  \"bad\\e[31mname\":\n    skip: [skill/a]\n")
 		_, err := config.LoadSelections(path)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
@@ -384,13 +551,15 @@ var _ = Describe("selectors", func() {
 })
 
 var _ = Describe("saving selections", func() {
-	var dir, proj, path, lock string
+	var dir, proj, home, path, lock string
 	BeforeEach(func() {
 		var err error
 		dir, err = filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 		proj = filepath.Join(dir, "src", "api")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		home, err = paths.ProjectKey(filepath.Join(dir, "src", "home"))
+		Expect(err).NotTo(HaveOccurred())
 		path = filepath.Join(dir, "config", "lola", "selections.yaml")
 		lock = filepath.Join(dir, "state", "lola", "locks", "selections.lock")
 	})
@@ -437,19 +606,19 @@ var _ = Describe("saving selections", func() {
 
 	It("replaces only the changed modules' entries, keeping comments, order and edits made since the caller read", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-		Expect(os.WriteFile(path, []byte(example(proj)), 0o644)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(example(home, proj)), 0o644)).To(Succeed())
 		before, err := config.LoadSelections(path)
 		Expect(err).NotTo(HaveOccurred())
 		// Another process adds a module after this one read the file.
-		Expect(os.WriteFile(path, []byte(example(proj)+"  /elsewhere:\n    other:\n      skip: [agent/x]\n"), 0o644)).To(Succeed())
-		before.Set(config.User(), "review-kit", skip("command/deploy"))
-		Expect(config.Save(path, []config.Change{{Section: config.User(), Module: "review-kit", Entry: before.Entry(config.User(), "review-kit")}})).To(Succeed())
+		Expect(os.WriteFile(path, []byte(example(home, proj)+"  /elsewhere:\n    other:\n      skip: [agent/x]\n"), 0o644)).To(Succeed())
+		before.Set(config.Project(home), "review-kit", skip("command/deploy"))
+		Expect(config.Save(path, []config.Change{{Section: config.Project(home), Module: "review-kit", Entry: before.Entry(config.Project(home), "review-kit")}})).To(Succeed())
 		out := read()
 		Expect(out).To(ContainSubstring("# lola selections: components you chose not to install.\n"))
 		Expect(out).To(ContainSubstring("  review-kit: # module name as lola list shows it\n    skip: [skill/slow-lint, mcp/internal-db]\n"))
-		Expect(out).To(ContainSubstring("user:\n  review-kit:\n    skip: [command/deploy]\n"), "include was dropped, skip added")
+		Expect(out).To(ContainSubstring("  "+home+":\n    review-kit:\n      skip: [command/deploy]\n"), "include was dropped, skip added")
 		Expect(out).To(ContainSubstring("  /elsewhere:\n    other:\n      skip: [agent/x]\n"), "the other process's edit survives")
-		Expect(out).To(MatchRegexp(`(?s)global:.*user:.*projects:`))
+		Expect(out).To(MatchRegexp(`(?s)global:.*projects:.*` + regexp.QuoteMeta(home) + `:.*` + regexp.QuoteMeta(proj) + `:`))
 	})
 
 	It("finds a hand-written project key in another form and keeps its spelling", func() {
@@ -464,15 +633,52 @@ var _ = Describe("saving selections", func() {
 	It("keeps the comments of a file that holds only comments", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
 		Expect(os.WriteFile(path, []byte("# my notes: keep slow-lint off at work\n"), 0o600)).To(Succeed())
-		Expect(config.Save(path, []config.Change{{Section: config.User(), Module: "m", Entry: skip("skill/a")}})).To(Succeed())
-		Expect(read()).To(Equal("# my notes: keep slow-lint off at work\nversion: 1\nuser:\n  m:\n    skip: [skill/a]\n"))
+		Expect(config.Save(path, []config.Change{{Section: config.Project(proj), Module: "m", Entry: skip("skill/a")}})).To(Succeed())
+		Expect(read()).To(Equal("# my notes: keep slow-lint off at work\nversion: 1\nprojects:\n  " + proj + ":\n    m:\n      skip: [skill/a]\n"))
 	})
 
 	It("removes a module whose entry became empty", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-		Expect(os.WriteFile(path, []byte("version: 1\nuser:\n  m:\n    skip: [skill/a]\n  n:\n    skip: [skill/b]\n"), 0o600)).To(Succeed())
-		Expect(config.Save(path, []config.Change{{Section: config.User(), Module: "m"}})).To(Succeed())
-		Expect(read()).To(Equal("version: 1\nuser:\n  n:\n    skip: [skill/b]\n"))
+		Expect(os.WriteFile(path, []byte("version: 1\nprojects:\n  "+proj+":\n    m:\n      skip: [skill/a]\n    n:\n      skip: [skill/b]\n"), 0o600)).To(Succeed())
+		Expect(config.Save(path, []config.Change{{Section: config.Project(proj), Module: "m"}})).To(Succeed())
+		Expect(read()).To(Equal("version: 1\nprojects:\n  " + proj + ":\n    n:\n      skip: [skill/b]\n"))
+	})
+
+	It("refuses a profile entry's picks and the user section, writing nothing", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("version: 1\n"), 0o600)).To(Succeed())
+		Expect(config.Save(path, []config.Change{{Section: config.Project(proj), Module: "m", Entry: skip("skill/a")},
+			{Section: config.Picks("profile:user:go"), Module: "m", Entry: skip("skill/b")}})).
+			To(MatchError("not saving your selections: selections.yaml has no profile user:go section"))
+		Expect(config.Save(path, []config.Change{{Section: config.User(), Module: "m", Entry: skip("skill/b")}})).
+			To(MatchError("not saving your selections: selections.yaml has no user section"))
+		Expect(read()).To(Equal("version: 1\n"))
+	})
+
+	It("writes only: in every section after skip, and reads it back", func() {
+		e := config.Entry{Skip: []config.Pattern{{Kind: "skill", Name: "b"}}, Only: []config.Pattern{{Kind: "skill", Name: "a"}}}
+		Expect(config.Save(path, []config.Change{{Section: config.Global(), Module: "m", Entry: e}, {Section: config.Project(home), Module: "m", Entry: e},
+			{Section: config.Project(proj), Module: "m", Entry: e}})).To(Succeed())
+		Expect(read()).To(HaveSuffix("version: 1\nglobal:\n  m:\n    skip: [skill/b]\n    only: [skill/a]\n" +
+			"projects:\n  " + home + ":\n    m:\n      skip: [skill/b]\n      only: [skill/a]\n  " + proj + ":\n    m:\n      skip: [skill/b]\n      only: [skill/a]\n"))
+		s, err := config.LoadSelections(path)
+		Expect(err).NotTo(HaveOccurred())
+		for _, w := range []config.Where{config.Global(), config.Project(home), config.Project(proj)} {
+			Expect(s.Entry(w, "m")).To(Equal(e), w.String())
+		}
+		e.Only = nil
+		Expect(config.Save(path, []config.Change{{Section: config.Project(home), Module: "m", Entry: e}})).To(Succeed())
+		Expect(read()).To(ContainSubstring("  "+home+":\n    m:\n      skip: [skill/b]\n  "+proj+":"), "an emptied only: list loses its key")
+	})
+
+	It("keeps a deep copy of only: in Clone", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("version: 1\nprojects:\n  "+proj+":\n    m:\n      only: [skill/a]\n"), 0o600)).To(Succeed())
+		s, err := config.LoadSelections(path)
+		Expect(err).NotTo(HaveOccurred())
+		c := s.Clone()
+		c.Entry(config.Project(proj), "m").Only[0] = config.Pattern{Kind: "skill", Name: "changed"}
+		Expect(s.Entry(config.Project(proj), "m").Only).To(Equal([]config.Pattern{{Kind: "skill", Name: "a"}}))
 	})
 
 	It("writes a symlinked file at its target and keeps the link", func() {
@@ -492,9 +698,9 @@ var _ = Describe("saving selections", func() {
 
 	It("never overwrites a file that does not parse or does not validate", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-		for _, bad := range []string{"version: 1\nuser: {m: [\n", "version: 1\nuser:\n  m:\n    skip: [hook/x]\n"} {
+		for _, bad := range []string{"version: 1\nglobal: {m: [\n", "version: 1\nglobal:\n  m:\n    skip: [hook/x]\n"} {
 			Expect(os.WriteFile(path, []byte(bad), 0o600)).To(Succeed())
-			err := config.Save(path, []config.Change{{Section: config.User(), Module: "n", Entry: skip("skill/a")}})
+			err := config.Save(path, []config.Change{{Section: config.Project(proj), Module: "n", Entry: skip("skill/a")}})
 			Expect(err).To(MatchError(ContainSubstring("not saving your selections: " + path)))
 			Expect(errs.Hints(err)).To(ContainElement("your picks were not written and nothing was installed"))
 			Expect(read()).To(Equal(bad))
@@ -504,7 +710,7 @@ var _ = Describe("saving selections", func() {
 	It("shows no raw escape sequence from a symlink's target in its errors", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
 		Expect(os.Symlink(filepath.Join(dir, "gone\x1b[31m", "selections.yaml"), path)).To(Succeed())
-		err := config.Save(path, []config.Change{{Section: config.User(), Module: "m", Entry: skip("skill/a")}})
+		err := config.Save(path, []config.Change{{Section: config.Project(proj), Module: "m", Entry: skip("skill/a")}})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
 	})
@@ -513,11 +719,11 @@ var _ = Describe("saving selections", func() {
 		func(content string) {
 			Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
 			Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
-			Expect(config.Save(path, []config.Change{{Section: config.User(), Module: "m", Entry: skip("skill/a")}})).To(Succeed())
+			Expect(config.Save(path, []config.Change{{Section: config.Project(proj), Module: "m", Entry: skip("skill/a")}})).To(Succeed())
 			Expect(read()).To(ContainSubstring("# my notes"))
 			s, err := config.LoadSelections(path)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Exclusions(config.User(), "m").Excludes("skill", "a")).To(BeTrue())
+			Expect(s.Exclusions(config.Project(proj), "m").Excludes("skill", "a")).To(BeTrue())
 		},
 		Entry("a document marker", "# my notes\n---\n"),
 		Entry("a tilde", "# my notes\n~\n"),
@@ -526,11 +732,11 @@ var _ = Describe("saving selections", func() {
 
 	It("leaves the file byte-identical when removing an entry that is not there", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-		content := "version: 1\nuser:\n  n:\n    skip: [skill/b]\n"
+		content := "version: 1\nprojects:\n  " + home + ":\n    n:\n      skip: [skill/b]\n"
 		Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
 		Expect(config.Save(path, []config.Change{
 			{Section: config.Global(), Module: "m"},
-			{Section: config.User(), Module: "m"},
+			{Section: config.Project(home), Module: "m"},
 			{Section: config.Project(proj), Module: "m"},
 		})).To(Succeed())
 		Expect(read()).To(Equal(content))
@@ -541,26 +747,26 @@ var _ = Describe("saving selections", func() {
 
 	It("drops a project key and a section that a removal leaves empty", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-		Expect(os.WriteFile(path, []byte("version: 1\nuser:\n  m:\n    skip: [skill/a]\nprojects:\n  "+proj+":\n    m:\n      skip: [skill/a]\n"), 0o600)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("version: 1\nglobal:\n  m:\n    skip: [skill/a]\nprojects:\n  "+proj+":\n    m:\n      skip: [skill/a]\n"), 0o600)).To(Succeed())
 		Expect(config.Save(path, []config.Change{
 			{Section: config.Project(proj), Module: "m"},
-			{Section: config.User(), Module: "m"},
+			{Section: config.Global(), Module: "m"},
 		})).To(Succeed())
 		Expect(read()).To(Equal("version: 1\n"))
 	})
 
 	It("keeps a commented section as an empty mapping when its last module is removed", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-		Expect(os.WriteFile(path, []byte("version: 1\n# my user skips\nuser:\n  m:\n    skip: [skill/a]\n"), 0o600)).To(Succeed())
-		Expect(config.Save(path, []config.Change{{Section: config.User(), Module: "m"}})).To(Succeed())
-		Expect(read()).To(Equal("version: 1\n# my user skips\nuser: {}\n"))
+		Expect(os.WriteFile(path, []byte("version: 1\n# my global skips\nglobal:\n  m:\n    skip: [skill/a]\n"), 0o600)).To(Succeed())
+		Expect(config.Save(path, []config.Change{{Section: config.Global(), Module: "m"}})).To(Succeed())
+		Expect(read()).To(Equal("version: 1\n# my global skips\nglobal: {}\n"))
 	})
 
 	It("leaves a section that was already empty alone when the module to remove is absent", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-		content := "version: 1\n# my user skips\nuser: {}\n"
+		content := "version: 1\n# my global skips\nglobal: {}\n"
 		Expect(os.WriteFile(path, []byte(content), 0o600)).To(Succeed())
-		Expect(config.Save(path, []config.Change{{Section: config.User(), Module: "m"}})).To(Succeed())
+		Expect(config.Save(path, []config.Change{{Section: config.Global(), Module: "m"}})).To(Succeed())
 		Expect(read()).To(Equal(content))
 	})
 
@@ -569,7 +775,7 @@ var _ = Describe("saving selections", func() {
 		Expect(os.WriteFile(path, []byte("version: 1\n"), 0o600)).To(Succeed())
 		Expect(os.Chmod(filepath.Dir(path), 0o500)).To(Succeed())
 		DeferCleanup(func() { _ = os.Chmod(filepath.Dir(path), 0o700) })
-		err := config.Save(path, []config.Change{{Section: config.User(), Module: "n", Entry: skip("skill/a")}})
+		err := config.Save(path, []config.Change{{Section: config.Project(proj), Module: "n", Entry: skip("skill/a")}})
 		Expect(err).To(MatchError(ContainSubstring("could not write " + path)))
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("close any program that holds it open")))
 		Expect(read()).To(Equal("version: 1\n"))

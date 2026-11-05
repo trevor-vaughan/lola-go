@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,7 +36,7 @@ func unchanged(sc engine.Scope) string {
 
 // removalsDeclined is a No to a sync's removals (Plan 6a §9.3 step 9): nothing was applied, but
 // the trust the user accepted before was recorded, which the message says, with what the next
-// run (the sync, or the activation, repeated) asks about again and what render would now install,
+// run (the sync, or the activation, repeated) asks about again and the sync that installs what was trusted,
 // each command carrying sc's flag.
 func removalsDeclined(eng *engine.Engine, sc engine.Scope, d *engine.RemovalsDeclinedError) error {
 	msg := "removals declined; " + unchanged(sc) + " was not changed."
@@ -52,19 +53,19 @@ func removalsDeclined(eng *engine.Engine, sc engine.Scope, d *engine.RemovalsDec
 	case again != "":
 		msg += " The next " + d.Retry + " asks " + again
 	}
-	if d.Render {
-		msg += " " + eng.Command(sc, "render") + " would install what you trusted."
+	if len(d.Trusted) > 0 {
+		msg += " " + eng.SyncCommand(sc, d.Trusted...) + " installs what you trusted without removing anything."
 	}
 	return &abortedError{msg}
 }
 
-// syncFlags are lola sync's own flags.
-// syncFlags are lola sync's flags, and lola profile's that a sync takes: trust is the kinds --trust
-// grants, once parsed.
+// syncFlags are lola sync's flags, lola update's (installed, with refetch for --fetch), and lola
+// profile's that a sync takes: trust is the kinds --trust grants, once parsed.
 type syncFlags struct {
-	dry, yes, force, update bool
-	trust                   engine.TrustKinds
-	pass                    *syncPass // the scope's part of a command that syncs several behind one receipt
+	dry, yes, force, update, strict bool
+	installed, refetch              bool
+	trust                           engine.TrustKinds
+	pass                            *syncPass // the scope's part of a command that syncs several behind one receipt
 }
 
 // syncPass is one scope's part of a command that syncs several scopes behind one receipt (Plan 9
@@ -143,11 +144,13 @@ func written(done []*engine.SyncResult, err error) []engine.Consent {
 
 // syncedScopesError is a sync over several scopes (--scope both) that stopped at err after the
 // scopes in done (none, when the first failed) were synced: their results stay in the --json
-// error document. skipped names the scopes it never reached, for the human message only.
+// error document. skipped names the scopes it never reached, for the human message only, which
+// says they were not synced, or not updated for lola update (installed).
 type syncedScopesError struct {
-	err     error
-	done    []*engine.SyncResult
-	skipped []engine.Scope
+	err       error
+	done      []*engine.SyncResult
+	skipped   []engine.Scope
+	installed bool
 }
 
 func (e *syncedScopesError) Error() string {
@@ -163,9 +166,14 @@ func (e *syncedScopesError) Error() string {
 			names = append(names, "project scope at "+untrusted.Text(sc.ProjectDir, untrusted.MaxName))
 		}
 	}
-	verb := " was not synced"
+	verb := " was not "
 	if len(names) > 1 {
-		verb = " were not synced"
+		verb = " were not "
+	}
+	if e.installed {
+		verb += "updated"
+	} else {
+		verb += "synced"
 	}
 	msg, period := strings.CutSuffix(msg, ".")
 	msg += "; " + strings.Join(names, ", ") + verb
@@ -185,6 +193,30 @@ func (e *syncedScopesError) JSONFields() map[string]any {
 	}
 	fields["scopes"], fields["trusted"] = e.done, written(e.done, e.err)
 	return fields
+}
+
+// updateFailedError is a lola update that applied what it could and left the modules whose
+// fetch failed as installed: under --json its document is the run's, beside error and hints,
+// the failures being its fetch-failed findings (spec 2026-10-29 §6).
+type updateFailedError struct {
+	err error
+	res *engine.SyncResult
+}
+
+func (e *updateFailedError) Error() string { return e.err.Error() }
+func (e *updateFailedError) Unwrap() error { return e.err }
+
+// JSONFields carries the run's document beside error and hints; none when it cannot be encoded.
+func (e *updateFailedError) JSONFields() map[string]any {
+	b, err := json.Marshal(e.res)
+	if err != nil {
+		return nil
+	}
+	var doc map[string]any
+	if json.Unmarshal(b, &doc) != nil {
+		return nil
+	}
+	return doc
 }
 
 func (a *app) syncCmd() *cobra.Command {
@@ -215,84 +247,7 @@ func (a *app) syncCmd() *cobra.Command {
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeSync,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var err error
-			if f.trust, err = trust.parse(cmd, args, "sync", "module"); err != nil {
-				return err
-			}
-			eng, err := a.engine()
-			if err != nil {
-				return err
-			}
-			scs, err := a.scopes(cmd, eng, args, "Sync where?", true, true)
-			if err != nil {
-				return err
-			}
-			// Several scopes (Plan 6b §19 R13): in order, each reported under its label as it is
-			// synced, stopping at the first that fails or is declined; --json prints one document
-			// once every scope is synced.
-			done := []*engine.SyncResult{}
-			// Several scopes share one receipt (CR3): each runs up to it, then all apply after its yes.
-			var passes []*syncPass
-			if len(scs) > 1 && !f.dry {
-				scopes, applies := make([]engine.Scope, len(scs)), make([][]string, len(scs))
-				for i, c := range scs {
-					scopes[i], applies[i] = c.Scope, args
-				}
-				var failed int
-				if passes, failed, err = a.collectSyncs(cmd, eng, scopes, applies, nil, f, f.trust, nil, runWithout(cmd, args)); err != nil {
-					if failed < 0 {
-						return err
-					}
-					// A scope refused before the receipt: every scope is left as it was.
-					serr := &syncedScopesError{err: err, done: []*engine.SyncResult{}}
-					if !a.json {
-						serr.skipped = slices.Delete(slices.Clone(scopes), failed, failed+1)
-					}
-					return serr
-				}
-			}
-			for i, c := range scs {
-				fi := f
-				if passes != nil {
-					fi.pass = passes[i]
-				}
-				res, more, err := a.syncScope(cmd, eng, c.Scope, args, nil, fi)
-				if err != nil && len(scs) > 1 {
-					serr := &syncedScopesError{err: err, done: done}
-					if !a.json {
-						for _, rest := range scs[i+1:] {
-							serr.skipped = append(serr.skipped, rest.Scope)
-						}
-					}
-					return serr
-				}
-				if err != nil {
-					return err
-				}
-				done = append(done, res)
-				name := manifestName(c.Scope)
-				human := func(w io.Writer, s style, more string) {
-					if len(scs) > 1 && !s.plain {
-						fmt.Fprintln(w, destLabel(c.Scope)+":")
-					}
-					printSync(w, s, name, res, args, more)
-				}
-				out := func(w io.Writer, s style) { human(w, s, s.more(more)) }
-				switch {
-				case len(scs) == 1:
-					return a.emit(cmd, out, res)
-				case !a.json:
-					if err := a.emit(cmd, out, nil); err != nil {
-						return err
-					}
-				}
-			}
-			if a.json {
-				return a.emit(cmd, nil, map[string]any{"scopes": done})
-			}
-			return nil
-		},
+		RunE:              a.syncRun(&f, &trust, "sync", "Sync where?"),
 	}
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and the trust diff, ask nothing and write nothing")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "confirm removals (only removals: it never trusts changes)")
@@ -302,6 +257,104 @@ func (a *app) syncCmd() *cobra.Command {
 	return cmd
 }
 
+// syncRun is lola sync's run, and lola update's (f.installed): every scope in order, each reported
+// under its label, stopping at the first that fails or is declined. command names the command
+// whose --trust kinds trust parses; question is the scope picker's.
+func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		var err error
+		if f.trust, err = trust.parse(cmd, args, command, "module"); err != nil {
+			return err
+		}
+		eng, err := a.engine()
+		if err != nil {
+			return err
+		}
+		scs, err := a.scopes(cmd, eng, args, question, true, true)
+		if err != nil {
+			return err
+		}
+		a.printContext(cmd, eng, choiceScopes(scs), nil)
+		// Several scopes (Plan 6b §19 R13): in order, each reported under its label as it is
+		// synced, stopping at the first that fails or is declined; --json prints one document
+		// once every scope is synced.
+		done := []*engine.SyncResult{}
+		// Several scopes share one receipt (CR3): each runs up to it, then all apply after its yes.
+		var passes []*syncPass
+		if len(scs) > 1 && !f.dry {
+			scopes, applies := make([]engine.Scope, len(scs)), make([][]string, len(scs))
+			for i, c := range scs {
+				scopes[i], applies[i] = c.Scope, args
+			}
+			var failed int
+			if passes, failed, err = a.collectSyncs(cmd, eng, scopes, applies, nil, *f, f.trust, nil, runWithout(cmd, args)); err != nil {
+				if failed < 0 {
+					return err
+				}
+				// A scope refused before the receipt: every scope is left as it was.
+				serr := &syncedScopesError{err: err, done: []*engine.SyncResult{}, installed: f.installed}
+				if !a.json {
+					serr.skipped = slices.Delete(slices.Clone(scopes), failed, failed+1)
+				}
+				return serr
+			}
+		}
+		for i, c := range scs {
+			fi := *f
+			if passes != nil {
+				fi.pass = passes[i]
+			}
+			res, more, err := a.syncScope(cmd, eng, c.Scope, args, nil, fi)
+			name := manifestName(c.Scope)
+			human := func(w io.Writer, s style, more string) {
+				if len(scs) > 1 && !s.plain {
+					fmt.Fprintln(w, destLabel(c.Scope)+":")
+				}
+				printSync(w, s, name, res, args, more)
+			}
+			out := func(w io.Writer, s style) { human(w, s, s.more(more)) }
+			// lola update applied what it could and left the modules whose fetch failed as
+			// installed: its result is reported, then the run fails (spec 2026-10-29 §5.2, §6).
+			if _, ok := errors.AsType[*engine.FetchesFailedError](err); ok && res != nil {
+				switch {
+				case a.json && len(scs) == 1:
+					return &updateFailedError{err: err, res: res}
+				case !a.json:
+					if err := a.emit(cmd, out, nil); err != nil {
+						return err
+					}
+				}
+				done = append(done, res)
+			}
+			if err != nil && len(scs) > 1 {
+				serr := &syncedScopesError{err: err, done: done, installed: f.installed}
+				if !a.json {
+					for _, rest := range scs[i+1:] {
+						serr.skipped = append(serr.skipped, rest.Scope)
+					}
+				}
+				return serr
+			}
+			if err != nil {
+				return err
+			}
+			done = append(done, res)
+			switch {
+			case len(scs) == 1:
+				return a.emit(cmd, out, res)
+			case !a.json:
+				if err := a.emit(cmd, out, nil); err != nil {
+					return err
+				}
+			}
+		}
+		if a.json {
+			return a.emit(cmd, nil, map[string]any{"scopes": done})
+		}
+		return nil
+	}
+}
+
 // syncScope syncs one scope, or applies the activation prof to it (lola profile): the trust
 // question and the removals' confirmation on a terminal, or the answers --trust and -y give; a
 // cancel or a No is an aborted error naming the scope. The diff and the removals a question is
@@ -309,53 +362,100 @@ func (a *app) syncCmd() *cobra.Command {
 // caps.
 func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, args []string, prof *engine.ProfileChange,
 	f syncFlags) (res *engine.SyncResult, more string, err error) {
-	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd)}
-	if cmd.Name() == "sync" { // lola profile takes no --force: its conflicts hint nothing
+	opts := engine.Options{DryRun: f.dry, Force: f.force, Strict: f.strict, Display: outputFlags(cmd)}
+	// lola profile's --on, --off and --switch take --force too (spec 2026-10-29 §6.2): their
+	// conflicts hint it, with the profile's name.
+	if cmd.Name() == "sync" || cmd.Name() == "update" {
 		opts.ForceRun = forceRun(cmd, args)
+	} else if prof != nil {
+		var names []string
+		if prof.Name != "" {
+			names = []string{prof.Name}
+		}
+		opts.ForceRun = forceRun(cmd, names)
 	}
 	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
-	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update, Options: opts, Profiles: prof, Display: outputFlags(cmd)}
+	req := engine.SyncRequest{Scope: sc, Modules: args, Update: f.update || f.installed, Installed: f.installed, Refetch: f.refetch,
+		Options: opts, Profiles: prof, Display: outputFlags(cmd)}
 	question := "Remove these and sync? No applies nothing"
 	if prof != nil {
 		question = "Remove these and apply? No applies nothing"
 	}
 	name, more := manifestName(sc), eng.ListAll(req)
-	p := a.prompter(cmd) // never asks under --json
+	run := "lola sync" // the command the trust diff says needs trust; lola profile's says it too
+	if f.installed {
+		run = "lola update"
+	}
 	stderr := style{color: a.color(cmd.ErrOrStderr())}
 	diff := func(rep engine.TrustReport) func(io.Writer, style) {
-		return func(w io.Writer, s style) { printTrustDiff(w, s, name, rep, s.more(more)) }
+		return func(w io.Writer, s style) { printTrustDiff(w, s, name, run, rep, s.more(more)) }
 	}
 	// asked is a trust answer given at the picker, whose equivalent command is printed once
 	// the removals, if any, are answered.
 	var asked bool
-	// --trust answers the question; the diff it accepted is still shown, as a record.
-	req.Show = func(rep engine.TrustReport) {
+	req.Show, req.Trust, req.ConfirmRemovals = a.syncQuestions(cmd, f, prof != nil, question, diff, &asked)
+	if pp := f.pass; pp != nil {
+		replay(pp, &req, &asked)
+	}
+	res, err = eng.Sync(cmd.Context(), req)
+	if f.pass != nil && errors.Is(err, engine.ErrTrustChanged) {
+		err = errs.WithHints(err, "run it again: "+f.pass.again)
+	}
+	if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !a.json {
+		printTrustDiff(cmd.ErrOrStderr(), stderr, name, run, refusal.Report, more)
+		printRemovals(cmd.ErrOrStderr(), stderr, refusal.Removals)
+	}
+	if declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err); ok {
+		return nil, more, removalsDeclined(eng, sc, declined)
+	}
+	if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
+		return nil, more, syncAborted(sc)
+	}
+	if err != nil {
+		return res, more, err // lola update's failed fetches come with the result of what it applied
+	}
+	if asked && res.Equivalent != "" {
+		fmt.Fprintln(cmd.ErrOrStderr(), stderr.info("the same off a terminal: "+res.Equivalent))
+	}
+	return res, more, nil
+}
+
+// syncQuestions is what a sync of cmd's run asks on a terminal (Plan 6a §7.5, §9.3), each
+// question's page shown through diff, the trust diff of a report: show, the record of what --trust
+// accepted (shown, as a record, unless under --json); trust, the trust question (all or nothing
+// when activation: an activation, or a move, applies all it planned or nothing), setting *asked
+// once answered at the picker; and confirm, the removals question, or yes for -y. trust and
+// confirm are nil when they cannot ask (the prompter never asks under --json).
+func (a *app) syncQuestions(cmd *cobra.Command, f syncFlags, activation bool, question string, diff func(engine.TrustReport) func(io.Writer, style),
+	asked *bool) (show func(engine.TrustReport), trust func(engine.TrustReport) (engine.TrustAnswer, error), confirm func([]engine.Removal) (bool, error)) {
+	p, stderr := a.prompter(cmd), style{color: a.color(cmd.ErrOrStderr())}
+	show = func(rep engine.TrustReport) {
 		if !a.json {
 			a.page(cmd, cmd.ErrOrStderr(), stderr, diff(rep))
 		}
 	}
 	if p.Interactive() {
-		req.Trust = func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+		trust = func(rep engine.TrustReport) (engine.TrustAnswer, error) {
 			a.page(cmd, cmd.ErrOrStderr(), stderr, diff(rep))
 			step := trustStep(rep)
-			if prof != nil {
-				step.Groups = nil // an activation applies all it planned or nothing: no Choose…
+			if activation {
+				step.Groups = nil // all it planned or nothing: no Choose…
 			}
 			ans, err := p.Trust(step)
 			if err != nil {
 				return engine.TrustAnswer{}, err
 			}
-			asked = true
+			*asked = true
 			fmt.Fprintln(cmd.ErrOrStderr(), stderr.info(trustEcho(step, rep, ans)))
 			return ans, nil
 		}
 	}
 	switch {
 	case f.yes:
-		req.ConfirmRemovals = func([]engine.Removal) (bool, error) { return true, nil }
+		confirm = func([]engine.Removal) (bool, error) { return true, nil }
 	case p.Interactive():
-		req.ConfirmRemovals = func(rs []engine.Removal) (bool, error) {
+		confirm = func(rs []engine.Removal) (bool, error) {
 			a.page(cmd, cmd.ErrOrStderr(), stderr, func(w io.Writer, s style) { printRemovals(w, s, rs) })
 			ok, err := p.Confirm(question, Nav{})
 			if err == nil && ok {
@@ -368,30 +468,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 			return ok, err
 		}
 	}
-	if pp := f.pass; pp != nil {
-		replay(pp, &req, &asked)
-	}
-	res, err = eng.Sync(cmd.Context(), req)
-	if f.pass != nil && errors.Is(err, engine.ErrTrustChanged) {
-		err = errs.WithHints(err, "run it again: "+f.pass.again)
-	}
-	if refusal, ok := errors.AsType[*engine.TrustRefusalError](err); ok && !a.json {
-		printTrustDiff(cmd.ErrOrStderr(), stderr, name, refusal.Report, more)
-		printRemovals(cmd.ErrOrStderr(), stderr, refusal.Removals)
-	}
-	if declined, ok := errors.AsType[*engine.RemovalsDeclinedError](err); ok {
-		return nil, more, removalsDeclined(eng, sc, declined)
-	}
-	if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
-		return nil, more, syncAborted(sc)
-	}
-	if err != nil {
-		return nil, more, err
-	}
-	if asked && res.Equivalent != "" {
-		fmt.Fprintln(cmd.ErrOrStderr(), stderr.info("the same off a terminal: "+res.Equivalent))
-	}
-	return res, more, nil
+	return show, trust, confirm
 }
 
 // completeSync offers the names a sync takes: what the engine says the current scope's layers
@@ -427,6 +504,7 @@ func trustStep(rep engine.TrustReport) TrustStep {
 	if rep.Targets != nil {
 		st.Changes++ // the diff's targets row
 	}
+	st.Changes += len(rep.ProfileTargets) // each project profile's targets row
 	for _, g := range []struct {
 		title, glyph string
 		of           func(engine.TrustChange) bool
@@ -455,7 +533,7 @@ func trustStep(rep engine.TrustReport) TrustStep {
 			if len(files) > 1 || c.Profile != "" {
 				module += " (" + strings.Join(files, ", ") + ")"
 			}
-			opts = append(opts, TrustOption{Module: c.Module, Label: g.glyph + " " + module + " " + trustSummary(c, rep.Targets)})
+			opts = append(opts, TrustOption{Module: c.Module, Label: g.glyph + " " + module + " " + trustSummary(c, rep.TargetsOf(c.Profile))})
 		}
 		if len(opts) > 0 {
 			st.Groups = append(st.Groups, TrustGroup{Title: fmt.Sprintf("%s (%d)", g.title, len(opts)), Options: opts})
@@ -536,7 +614,7 @@ func trustEcho(st TrustStep, rep engine.TrustReport, ans engine.TrustAnswer) str
 // manifestName is how output names the scope's manifest.
 func manifestName(sc engine.Scope) string {
 	if sc.Kind == target.User {
-		return "user.yml"
+		return "default.yml"
 	}
 	return filepath.Join(".lola", "project.yml")
 }

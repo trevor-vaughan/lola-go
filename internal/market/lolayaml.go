@@ -56,7 +56,7 @@ func plainYAML(m *yaml.Node, prefix string, fields []string) error {
 // parseYAML reads a Python lola catalog (Plan 6c §4.2) through yamldoc.Decode: one document, no
 // anchors, aliases, merge keys or duplicate keys. Each module needs only a name and a
 // repository; one that cannot be used is skipped with its reason, and the rest load.
-func parseYAML(b []byte) (Catalog, error) {
+func parseYAML(b []byte, ssh []string) (Catalog, error) {
 	if len(b) > maxYAMLCatalog {
 		return Catalog{}, fmt.Errorf("is larger than %d bytes, the most lola reads of a YAML catalog", maxYAMLCatalog)
 	}
@@ -113,7 +113,7 @@ func parseYAML(b []byte) (Catalog, error) {
 		return Catalog{}, fmt.Errorf("lists more than %d modules", maxEntries)
 	}
 	for _, m := range modules.Content {
-		e, s := yamlEntry(m, text)
+		e, s := yamlEntry(m, text, ssh)
 		cat.add(e, s)
 	}
 	cat.dedupe()
@@ -133,7 +133,7 @@ func nodes(d *yaml.Node) int {
 }
 
 // yamlEntry reads one module of a Python catalog, m; text reads a scalar field of it.
-func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool)) (Entry, *skip) {
+func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool), ssh []string) (Entry, *skip) {
 	if m.Kind != yaml.MappingNode {
 		return Entry{}, skipped("malformed entry", "line %d: the module is not a mapping", m.Line)
 	}
@@ -175,14 +175,14 @@ func yamlEntry(m *yaml.Node, text func(*yaml.Node, string) (string, bool)) (Entr
 	if vals["repository"] == "" {
 		return e, skipped("malformed entry", "the module has no repository")
 	}
-	return e, mapPython(&e, vals["repository"], vals["ref"], vals["path"])
+	return e, mapPython(&e, vals["repository"], vals["ref"], vals["path"], ssh)
 }
 
 // Parse reads b, a catalog in format, into the model (Plan 6c §4): over MaxCatalog bytes, a
 // catalog that does not decode, or one with an ambiguous key or text that would not print as it
 // is refuses whole, saying why; an entry lola cannot use is skipped with its reason. Relative
 // entries are left for Bind.
-func Parse(format string, b []byte) (Catalog, error) {
+func Parse(format string, b []byte, sshHosts []string) (Catalog, error) {
 	if len(b) > MaxCatalog {
 		return Catalog{}, fmt.Errorf("is larger than %d bytes", MaxCatalog)
 	}
@@ -190,9 +190,9 @@ func Parse(format string, b []byte) (Catalog, error) {
 	var err error
 	switch format {
 	case FormatClaude:
-		cat, err = parseClaude(b)
+		cat, err = parseClaude(b, sshHosts)
 	case FormatYAML:
-		cat, err = parseYAML(b)
+		cat, err = parseYAML(b, sshHosts)
 	default:
 		return Catalog{}, fmt.Errorf("format %s is not one lola reads", untrusted.Text(format, untrusted.MaxName))
 	}

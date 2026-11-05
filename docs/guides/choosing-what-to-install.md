@@ -75,7 +75,9 @@ stateDiagram-v2
 4. **Components**: one page per module, a list per kind (skills, commands, agents, MCP
    servers, rules).
    - Everything is preselected except what `selections.yaml` skips (labelled `(skipped in
-     selections.yaml)`).
+     selections.yaml)`) or the profile entry the install writes skips.
+   - The page's title names the file the install writes (`profile go › review-kit`,
+     `default › review-kit`, `project.yml › review-kit`).
    - MCP servers that run a command say `(runs a command)`.
    - Rules are shown disabled under `--no-rules` (or when the module's rules are off).
    - A module with runtime hooks ends its page with "Runtime hooks: N (you will be asked before
@@ -127,9 +129,11 @@ The summary lists each destination with its directory (`project (<root>)`, `user
 where it came from; under it, each assistant with why lola uses it (`→ for claude-code
 (picked)`, `(from -t)`, `(from .lola/project.yml)`, `(the only assistant found)`), and each
 module's components: `+` added, `~` updated (a newer cached version), `-` removed,
-`= N unchanged`; then the `selections.yaml` entries the run writes, notices, the
+`= N unchanged` (a re-pin of a listed version shows as `→ review-kit: re-pinned at 1a2b3c4`); then
+the `selections.yaml` entries and profile entries the run writes, notices, the
 [findings](../usage.md#findings) a dry run of exactly this install reports, each with its hint, and the
-**equivalent commands**, which do the same without a terminal. Consent to hooks and scripts
+**equivalent commands**, which do the same without a terminal, with the answers to
+[where the edit goes](profiles.md#where-your-edits-go) (`--profile base`, `--override`). Consent to hooks and scripts
 is still asked after the review, as before:
 
 ```
@@ -153,13 +157,17 @@ When the `-C` path contains control or format characters, the line is shown with
 replaced by `?`, followed by a note that it is not copyable as shown.
 
 Ctrl+C at any step cancels: "aborted; nothing changed"; `q` quits, and Esc goes back a step
-([Keys](#keys-q-quits-esc-goes-back)). Nothing is written before Apply,
-except that Add a source… (and a source you name as an argument) is fetched into your
-cache, which installs nothing. After Apply, when you consent to runtime hooks at the prompt,
-lola records it in `consent.json` at once (a consent `--trust=runtime-hooks` gives, once its
-receipt is answered), before
-`selections.yaml` and the installed files are written; if the run then stops (a refusal, or
-a later prompt you decline), that consent stays recorded and nothing else is written.
+([Keys](#keys-q-quits-esc-goes-back)). Nothing is written before Apply, your cache included.
+A source you name as an argument, or a marketplace entry you pick, is fetched into a private
+staging directory: Apply puts it in your cache, before your scopes' files and `selections.yaml`
+are written, and only if the run installs it. Ctrl+C, `q`, Quit, `-n` or a refusal leave your
+cache as it was; so does a run off a terminal that stops before it writes. Add a source… is the
+exception: it adds the source to your cache at once, as `lola cache add` does, and the review's
+equivalent commands show it as `lola cache add`. After Apply, when you consent to runtime hooks
+at the prompt, lola records it in `consent.json` at once (a consent `--trust=runtime-hooks`
+gives, once its receipt is answered), before `selections.yaml` and the installed files are
+written; if the run then stops (a refusal, or a later prompt you decline), that consent stays
+recorded and nothing else is written.
 `--dry-run` runs the steps and the summary and writes nothing, not even `selections.yaml`.
 
 `LOLA_ACCESSIBLE=1` (or `TERM=dumb`) asks the same questions as numbered line prompts, for
@@ -217,7 +225,7 @@ The scope flags are global: every command takes them.
 
 | Flag | Scope |
 |---|---|
-| `--scope project\|user\|both` (also `project,user`) | that; `-C <dir>` sets the project |
+| `-s`, `--scope project\|user\|both` (also `project,user`) | that; `-C <dir>` sets the project |
 | `--project` | project (`--scope project`) |
 | `--user` | user (`--scope user`) |
 | `-C, --root <dir>` | the project at `<dir>` |
@@ -226,7 +234,7 @@ The scope flags are global: every command takes them.
 and `--scope project` without `-C` use the nearest parent with a `.lola/`, else the current
 directory. `--scope user -C <dir>` is an error.
 
-**Commands that write** (`install`, `sync`, `uninstall`, `render`, `tidy`, and `lola profile`
+**Commands that write** (`install`, `sync`, `update`, `uninstall`, `tidy`, and `lola profile`
 with `--on`, `--off`, `--switch` or `--remove`) never pick a scope silently. lola reads the table
 top to bottom and takes the first row that applies, so on a terminal the picker asks even inside
 a `.lola/` project:
@@ -234,8 +242,8 @@ a `.lola/` project:
 | You give | Scope |
 |---|---|
 | a scope flag | that scope |
-| a terminal | the scope picker (Project, User, Other directory…), with nothing preselected |
-| no flag, off a terminal, in or below a directory with `.lola/` | that project (`install` says `scope: project (found .lola/ at <path>)` on stderr) |
+| a terminal | the scope picker (Project, User, Other directory…), with nothing preselected; the Project and User rows end with the scope's context (`Project (<root>) — profile go over project.yml`, `User (~) — profile go over default`), the Project row naming `project.yml` even before `.lola/` exists, since that is the base the run would use |
+| no flag, off a terminal, in or below a directory with `.lola/` | that project (`install` prints its context line on stderr: `project <path>: project.yml`) |
 | `default_scope` in `config.yaml` | that scope |
 | none of these | an error naming the command and the `config.yaml` that sets no `default_scope`, with your run plus `--project`, plus `--user` (and plus `--scope both` for `install` and `sync`) as hints, each keeping the source, `--ref`, `--path` and every other flag |
 
@@ -243,7 +251,7 @@ a `.lola/` project:
 `install` plans them together, and `sync` syncs the project, then user scope, stopping at the
 first that fails or is declined (its message names the scopes it did not reach), with each
 scope's output under its own `project (<root>):` or `user:` line; `--plain` output carries no
-scope label, as with `install`. `uninstall`, `render`, `tidy` and `lola profile`'s actions act
+scope label, as with `install`. `uninstall`, `tidy` and `lola profile`'s actions act
 on one scope: their picker asks you to tick one (pressing Enter with nothing ticked asks again),
 and two scopes from the flags or `default_scope` are refused with `name one: --project or
 --user` (`tidy` refuses `--scope both` with `lola tidy acts on one scope per run`).
@@ -251,7 +259,7 @@ and two scopes from the flags or `default_scope` are refused with `name one: --p
 **Commands that only read** (`list`, and `lola profile` without an action) never ask: the flags decide, `--scope both` included;
 otherwise they show the project found walking up, if there is one, and user scope, on a terminal
 or off it. `default_scope` does not apply to them, and every row names its scope. When one of
-those two cannot be read (a damaged `user.yml`, say), `list` fails with a hint naming the other
+those two cannot be read (a damaged `default.yml`, say), `list` fails with a hint naming the other
 scope's own command, such as `lola list --project` (`lola profile --project` for `lola profile`).
 
 `lola profile --add` and `--update` never ask either: the remote profile they write is shared by
@@ -271,7 +279,7 @@ as `--user -C <dir>`. `lola migrate` keeps its own.
 You cannot install a project at your home directory: it renders exactly where the user scope
 does (`~/.claude`, …), so the two would claim the same files. `install` refuses it however it
 is chosen (`-C ~`, `--scope project` or `--scope both` run from `~`, or a `.lola/` found in
-`~`), with a hint to use `--user` instead. `render` and `uninstall` still work on a home
+`~`), with a hint to use `--user` instead. `uninstall` still works on a home
 project an older lola installed, so you can remove it. `--json` output lists every destination in
 `scopes`, each with its `scope`, its `root` (for a project) and its `scope_source`: `flag`,
 `config`, `discovered` or `picked`. Modules and steps carry the same `scope` and `root`.
@@ -279,7 +287,7 @@ project an older lola installed, so you can remove it. `--json` output lists eve
 
 **Breaking changes** from the [Python lola](migrating.md), which installs into the current
 directory: off a terminal, in a directory with no `.lola/` above it and no `default_scope`,
-`install`, `sync`, `uninstall` and `render` no longer act on the current directory; pass `--project` (or set `default_scope: project`). On a terminal they ask for the
+`install`, `sync`, `update` and `uninstall` no longer act on the current directory; pass `--project` (or set `default_scope: project`). On a terminal they ask for the
 scope unless a flag gives it.
 
 **Breaking change** from earlier builds of this lola, where `--project <dir>` named the project:
@@ -289,16 +297,20 @@ scope unless a flag gives it.
 
 | Flag | Effect |
 |---|---|
-| `--skip <selector>` | Do not install the matching components; saved as a skip (and a matching include in that section is removed). |
-| `--only <selector>` | For each module with a match, skip every component that does not match and unskip those that do. Saved as skips of the components that exist now, so components a later version adds are installed. Warns when a wider include in the section keeps a non-matching component installed. |
-| `--unskip <selector>` | Install skipped components again: removes the matching skips, and where a global skip still applies, adds an include. With `--global`, warns when a scope section still skips the item. |
+| `--skip <selector>` | Do not install the matching components; saved as a skip in the profile entry the install writes, or for a `project.yml` module in `selections.yaml` (and a matching include in that section is removed). |
+| `--only <selector>` | For each module with a match, skip every component that does not match and unskip those that do. Saved as skips of the components that exist now, so components a later version adds are installed. An `only:` list already in the section stays. Warns when a wider include in the section keeps a non-matching component installed. |
+| `--exact` | With `--only`: save the selectors as the section's `only:` list (replacing one there) instead of skips, and remove the section's skips that name a match, so a component both skipped and listed is installed. Components a later version adds are then not installed; `install`, `sync` and `update` name them (see below). Refused without `--only`. |
+| `--unskip <selector>` | Install skipped components again: removes the matching skips, and where a global skip or an `only:` list still leaves one out, adds an include. With `--global` (where includes are refused) it adds the component's `kind/name` to the global `only:` list when there is one, and warns when a scope section still skips the item. |
 | `--global` | Save the above in the global section instead of the scope's. |
+| `--with-mentions` | Also install the components your picks mention by name, one hop, saved as `--unskip` saves them ([Mentions](#mentions)). |
 
 A selector is `kind/name` or `module:kind/name`, where `kind` is `skill`, `command`, `agent`,
 `mcp` or `rule` and `name` may be a glob (`review-*`). A bare selector applies to every module
 being installed that has a match; one that matches nothing is an error that lists that kind's
-components (module-qualified). All three repeat, and always write `selections.yaml` (except
-under `--dry-run`), saying `→ saved to <path>`. With more than one destination (`--scope
+components (module-qualified). All three repeat, and always save (except under `--dry-run`), saying
+`→ saved to <path>`: to the profile entry the install writes when a profile provides the module
+(`only:` and `skip:` of the entry; the global `skip:` of `selections.yaml` still applies, its
+`only:` does not), else to `selections.yaml`. With more than one destination (`--scope
 both`, or several ticked in the scope step) they need `--global`, since one flag cannot say
 which scope it means. `--no-rules` wins over rule selections. Names in
 selectors, from flags or the file, may not contain control or format characters.
@@ -308,7 +320,80 @@ lola install review-kit --scope project --skip skill/slow-lint --skip 'mcp/inter
 lola install review-kit --scope user --only skill/review --only command/ship
 lola install review-kit --scope project --unskip review-kit:skill/slow-lint
 lola install review-kit deploy --scope both --skip command/deploy --global
+lola install cc-skills-golang --scope project --only 'skill/golang-test*' --only skill/golang-gopls --exact
 ```
+
+When a version adds components that an `only:` list leaves out, `install`, `sync` and `update`
+say so once per module, with the command that adds them where the module comes from:
+
+    → cc-skills-golang adds skill/golang-x, not installed (only: in selections.yaml projects[/p]) → lola install -C /p cc-skills-golang --unskip skill/golang-x
+    → cc-skills-golang adds skill/golang-x, not installed (only: in profile go-review) → lola profile --user go-review --edit cc-skills-golang --unskip skill/golang-x
+
+At most five are named, then `and N more`. Nothing is named when no `only:` list is in force,
+while rules are off (a new rule is not named), or when the version you had installed is no
+longer in your cache (`lola cache clean` removed it), since lola cannot tell what is new. A
+cached installed version that cannot be read gives a warning instead:
+`<module>: cannot tell which components are new: <reason>`.
+With `--json` the line is in `notices`. On a terminal, the component page says
+`only: in <section> — components a new version adds are not installed` while a list decides.
+The page labels a component the list leaves out `(not in only:)`, one a skip leaves out
+`(skipped in <layer>)`, and one the version adds over the one installed `(new)`; while a profile
+(or your default) provides the module, the footer says so (`cc-skills-golang comes from profile
+go-review here`).
+
+## Changing an installed module's components
+
+`lola info <module>` lists, per scope, each component as its picks leave it and ends with the run
+that changes them (`→ change it: …`). For a module `project.yml` provides that is
+`lola install <module>` while no profile is on, and `lola profile --project base --edit <module>`
+while one is (on a terminal either reopens the component page; `--skip`, `--unskip` and
+`--only` work off one), and for a module a profile or your default provides it is
+`lola profile <name> --edit <module>`, which writes that profile. A `projects[<dir>]` entry of
+`selections.yaml` for a module a profile provides is ignored, and every sync says so, naming the
+profile's edit; delete the entry once its picks are in the profile.
+
+## Mentions
+
+Skills in a pack point at each other ("see also golang-gopls"). lola reads a module's text for
+the names of its own other components and shows what it finds; a mention is information, never a
+dependency, and nothing is installed for one unless you ask.
+
+- **What counts:** a component name of 4 bytes or more, in the same case, as a whole token: not
+  inside a longer run of letters, digits, `_` and `-` (`golang-linter` does not mention
+  `golang-lint`). A component never mentions itself; a name two kinds share (`command/deploy`,
+  `agent/deploy`) is a mention of each. Another module's components are never mentions.
+- **What is read:** every file of a skill's directory (but those the skill excludes), a
+  command's file and its `commands/<name>/` files, an agent's file and a rule's text; MCP server
+  definitions are not. Symlinks, files over 1 MiB, binary files (a NUL byte in the first 8 KiB)
+  and, once 16 MiB of a module have been read, every further file are skipped. Nothing is
+  stored: lola reads the version it is about to install, also one fetched for this run and not
+  yet in your cache. If it cannot read the module's files, a warning says so.
+- **Where it shows:** the component page labels a component `(mentions N)`; `lola info <module>`
+  lists what each component mentions; after the pickers or the flags, `lola install` names what
+  your picks mention but leave out, once per module:
+
+      → cc-skills-golang: skill/golang-testing mentions 3 components you did not pick: skill/golang-gopls, skill/golang-lint, skill/golang-race → add them: lola install --project cc-skills-golang --with-mentions
+
+  The command keeps your `-t`, `--rules` or `--no-rules`, `-n` and output flags. A rule is not
+  named while rules are off, and a component this run's `--skip` flag kept out is not named; the
+  command repeats that `--skip` (with `--global` if you gave it), so running it does not add the
+  component. Under `-n`, which saves nothing, it repeats every `--skip`, `--only` and `--unskip`
+  flag of the run that selects a component of the module (and `--exact`). A module this run
+  fetched and has not cached is named by the source you gave, with its `--ref` and `--path`,
+  where the run may end without caching it: under `-n`, and in the review before Apply.
+- **`--with-mentions`** adds, for each component you pick, the components it mentions directly
+  (one hop: what those mention is not followed), saved where the picks are (the profile entry, or
+  the scope's section of `selections.yaml`) as `--unskip` saves them: an include where a global skip or an `only:` list
+  would still leave one out. On a terminal the component page still shows, and the mentions of
+  what you tick are added after it; a component you unticked on the page is added if a ticked
+  one mentions it. The plan names each: `→ cc-skills-golang: + skill/golang-gopls (mentioned by
+  skill/golang-testing)`; with nothing to add, `→ cc-skills-golang: nothing the picked
+  components mention is left out`. A component an explicit `--skip` flag in the same run
+  matches is not added; its line says `<module>: <kind/name> is mentioned by <kind/name> but
+  kept out by --skip <selector>`. A component you unticked on the page is not held out this way.
+  Run it again to follow the next hop.
+
+With `--json` these lines are in `notices`.
 
 ## `config.yaml` and `selections.yaml`
 
@@ -326,13 +411,18 @@ pager: true              # false prints everything without lola's viewer
 pre_install: ~/bin/lola-pre.sh     # your own install scripts: absolute or ~/…, no trust asked
 post_install: ~/bin/lola-post.sh
 cache_unused_for: 30d    # lola cache clean also removes versions unused this long (<n>d, <n>w, never)
+cache_fresh_for: 1d      # lola update serves a ref fetched less long ago from your cache (<n>d, <n>w, never)
 theme: dark              # your terminal's background, dark or light, for the pickers' colors
 ```
 
-`selections.yaml` is the one place that says which components you do not want. `install`,
-`render` and `check` all honor it, so editing it takes effect on the next `render` (a
-component you skip after installing it is removed, unless you edited its file, which is kept
-and reported):
+`selections.yaml` says which components you do not want of the modules `project.yml` lists, and
+globally. A module a profile provides, `default.yml` included, takes its picks from its profile
+entry's `only:` and `skip:` instead (plus the global `skip:`): a profile carries what it installs,
+picks included, wherever it is switched on. At user scope every module comes from a profile, so
+`selections.yaml`'s global `only:` no longer applies there; the picks live in the entries
+(`lola install <module> --user --skip skill/slow-lint`). `install`, `sync`, `update` and `check`
+all honor the file, so editing it takes effect on the next `sync` (a component you skip after
+installing it is removed, unless you edited its file, which is kept and reported):
 
 ```yaml
 # lola selections: components you chose not to install.
@@ -340,25 +430,33 @@ version: 1
 global:
   review-kit:                       # module name as `lola list` shows it
     skip: [skill/slow-lint, mcp/internal-db]
-user:
-  review-kit:
-    include: [mcp/internal-db]      # overrides a global skip at user scope
 projects:
   /home/me/src/api:
     review-kit:
       skip: [command/deploy]
       include: [skill/slow-lint]
+    cc-skills-golang:
+      only: ['skill/golang-test*', skill/golang-gopls]   # install these, and nothing a later version adds
 ```
 
-A module's exclusions at a scope are the global skips, plus that scope's skips, minus that
-scope's includes (`global` has no includes). Project keys are absolute paths; a key written
-through a symlink or with `..` still matches its project. A selector naming a component the
-module no longer has is a warning. lola writes the file under a lock, replacing only the
-entries of the modules it changes, so your comments, order and other edits survive, even in a
-file that holds only comments or a null document. A section or project key that a removal
-empties is dropped, unless it carries a comment, in which case it stays as an empty mapping.
-A symlinked file is written at its target. A file that does not parse is never overwritten.
-Entries for projects you moved are left alone.
+A file with a `user:` section is refused (`user: is no longer used; picks for user-scope modules
+live in their profile entries`): delete the section, then re-apply each pick with `lola install
+<module> --user --skip <kind/name>`.
+
+A module's selection at a scope combines, in this order: the scope's `include`, which always
+installs a match; the skips of `global` and of the scope; and one `only:` list — the scope's if
+it has one, else `global`'s — which replaces the other (no intersection) and leaves out every
+component it does not match. `only: []` is no list. `global` has no includes. A selector naming
+a component the module no longer has is a warning that names its section. With `--global`,
+`--only` or `--unskip` cannot override a glob skip in `global` (it takes no include), so when one
+still skips a component you listed, lola warns, naming the glob and `selections.yaml`: remove
+the glob there. Project keys are absolute paths; a key written through a symlink or with `..`
+still matches its project. lola writes the file under a lock, replacing only the entries of the
+modules it changes, so your comments, order and other edits survive, even in a file that holds
+only comments or a null document. A section or project key that a removal empties is dropped,
+unless it carries a comment, in which case it stays as an empty mapping. A symlinked file is
+written at its target. A file that does not parse is never overwritten. Entries for projects you
+moved are left alone.
 
 ## Off a terminal
 
@@ -372,7 +470,7 @@ equivalent commands from an interactive run to repeat it.
 ## Install scripts
 
 Install scripts are code that runs around each copy of a module that a run installs or replaces
-(`install`, `render` replacing a copy, `sync`, `profile`, `migrate`), once per assistant, whether
+(`install`, `update` replacing a copy, `sync`, `profile`, `migrate`), once per assistant, whether
 or not the module has hooks: your own, the project's (which needs your trust) and the run's, in
 this order:
 
@@ -427,7 +525,7 @@ directory, the hook environment (`LOLA_MODULE_NAME`, `LOLA_MODULE_PATH`, `LOLA_P
 `LOLA_ASSISTANT`, `LOLA_SCOPE`, `LOLA_HOOK`) and `LOLA_SCRIPT_SOURCE` (`user`, `project` or
 `flag`), its output on stderr, under the hook timeout (10 minutes). A project's scripts run only
 in runs whose scope is that project: a `--user` run never runs them, and under `--scope both` they
-wrap the project's modules only. `user.yml` refuses the keys; yours belong in `config.yaml`.
+wrap the project's modules only. `default.yml` refuses the keys; yours belong in `config.yaml`.
 
 - A missing, irregular or non-executable script is refused before anything is asked:
   - The refusal names the file, line and key (`/work/proj/.lola/project.yml:4: pre_install:
@@ -486,7 +584,7 @@ nothing in a sandbox.
 ## Trust kinds
 
 Every question lola asks before it runs or installs something you did not write has a kind, and
-`--trust` answers the kinds you name, on `sync`, `profile`, `install`, `render` and `migrate`:
+`--trust` answers the kinds you name, on `sync`, `update`, `profile`, `install` and `migrate`:
 
 | Kind | Covers | Recorded in |
 |---|---|---|
@@ -507,7 +605,7 @@ would add. `--trust=entries,profiles` written out is those two kinds, so `profil
 it. Bare `--trust` is `entries,profiles`, the kinds that run no code; `all` is every kind the
 command takes.
 
-A kind the command never asks is refused, naming the ones it takes: `install`, `render` and
+A kind the command never asks is refused, naming the ones it takes: `install` and
 `migrate` take `scripts`, `hooks` and `runtime-hooks` (bare `--trust` is refused there, beside
 other kinds too), `profile --add` takes `profiles`, and `sync` and the other `profile` actions
 take all five. An unknown kind is refused, hinting the closest one within two edits (a stray

@@ -21,6 +21,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/migrate"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -195,6 +196,29 @@ var _ = Describe("Migrate", func() {
 		Expect(snapshot(proj, h.dir, filepath.Join(tmp, "state"))).To(Equal(before))
 	})
 
+	It("writes what it imports to the base while a profile of yours is on, in its preview as in its install (spec 2026-10-29 §6.1)", func() {
+		python(proj)
+		h.install(record(proj))
+		me := filepath.Join(e.Paths.UserProfiles, "me.yml")
+		writeTree(e.Paths.UserProfiles, map[string]string{"me.yml": "version: 1\ntargets: [claude-code]\n"})
+		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
+		led, err := e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		led.Profile = &ledger.Active{Name: "user:me", By: ledger.ByOn}
+		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
+
+		preview, err := run(migrate.Options{Options: engine.Options{DryRun: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview.Destinations[0].Installs).To(ConsistOf(HaveField("Module", "review")))
+		_, err = run(migrate.Options{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(read(filepath.Join(proj, ".lola", "project.yml"))).To(ContainSubstring("name: review"))
+		Expect(read(me)).To(Equal("version: 1\ntargets: [claude-code]\n"), "the profile on is not written")
+		led, err = e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["review"].From).To(Equal(""), "installed from project.yml")
+	})
+
 	It("installs the version it planned, though the source changed after the preview", func() {
 		python(proj)
 		h.install(record(proj))
@@ -343,6 +367,7 @@ var _ = Describe("Migrate", func() {
 		Expect(res.Home).To(HaveField("Action", migrate.HomeKeep))
 		Expect(res.Home.Reason).To(HavePrefix("--keep-python"))
 		Expect(res.Home.Reason).To(ContainSubstring("lola-go sees a project at ~"))
+		Expect(res.Home.Hints).To(ContainElement(HavePrefix("to install below ~ before it is gone, move it aside: mv ")))
 		Expect(h.dir).To(BeADirectory())
 	})
 
@@ -604,6 +629,7 @@ var _ = Describe("Migrate", func() {
 			Expect(snapshot(proj)).To(Equal(before))
 			Expect(res.Home.Action).To(Equal(migrate.HomeKeep))
 			Expect(res.Home.Reason).To(HavePrefix("2 record(s) lola-go cannot migrate are still in installed.yml"))
+			Expect(res.Home.Hints).To(ContainElement(ContainSubstring("fix each by its hint and rerun lola migrate")))
 
 			res, err = run(migrate.Options{})
 			Expect(err).NotTo(HaveOccurred())

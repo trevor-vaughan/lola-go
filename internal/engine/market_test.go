@@ -29,6 +29,14 @@ const acmeCatalog = `{"name": "acme", "owner": {"name": "Acme"}, "description": 
   {"name": "npmx", "source": {"source": "npm", "package": "x"}}
 ]}`
 
+// sshCatalog names ssh sources at two hosts, a at a host named with a port and b in scp form, plus
+// one at a private address no one can allow.
+const sshCatalog = `{"name": "priv", "owner": {"name": "P"}, "plugins": [
+  {"name": "a", "source": {"source": "url", "url": "ssh://git@git.corp.test:2222/a.git"}},
+  {"name": "b", "source": {"source": "url", "url": "git@git.corp.test:b.git"}},
+  {"name": "c", "source": {"source": "url", "url": "ssh://git@other.test/c.git"}},
+  {"name": "d", "source": {"source": "url", "url": "ssh://git@10.0.0.5/d.git"}}]}`
+
 var _ = Describe("marketplaces", func() {
 	var (
 		tmp, srv, base string
@@ -70,6 +78,23 @@ var _ = Describe("marketplaces", func() {
 		return map[string]string{".claude-plugin/marketplace.json": acmeCatalog, "tools/formatter/skills/f/SKILL.md": "---\nname: f\n---\nF\n"}
 	}
 	add := func(req engine.MarketAddRequest) (*engine.MarketResult, error) { return e.AddMarket(ctx, req) }
+
+	It("applies the registration's ssh hosts to the cached catalog on every read", func() {
+		url, _ := repo("priv", map[string]string{".claude-plugin/marketplace.json": sshCatalog})
+		_, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
+		Expect(err).NotTo(HaveOccurred())
+		v, err := e.ShowMarket("priv", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Entries).To(BeEmpty())
+		b, err := os.ReadFile(p.Markets)
+		Expect(err).NotTo(HaveOccurred())
+		b, err = market.SetSSHHosts(b, "priv", []string{"git.corp.test"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(p.Markets, b, 0o600)).To(Succeed())
+		v, err = e.ShowMarket("priv", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Entries).To(HaveLen(2))
+	})
 
 	It("reads the catalog the Python lola read when lola migrate names it, and never otherwise", func() {
 		const yml = "name: py\nmodules:\n  - name: tool\n    repository: https://example.com/tool.git\n"
@@ -396,7 +421,7 @@ var _ = Describe("marketplaces", func() {
 
 		_, err = add(engine.MarketAddRequest{Name: "x", Source: url})
 		Expect(err).To(MatchError("the source has no catalog at the source's root: lola looked for .claude-plugin/marketplace.json, x.yml, x.yaml, " +
-			"marketplace.yml, marketplace.yaml"))
+			"marketplace.yml, marketplace.yaml, lola.yml, lola.yaml"))
 		Expect(errs.Hints(err)).To(BeEmpty())
 		_, err = add(engine.MarketAddRequest{Name: "x", Source: url, Path: "nope"})
 		Expect(err).To(MatchError("--path nope is not in the source"))
@@ -408,6 +433,38 @@ var _ = Describe("marketplaces", func() {
 		Expect(res.Updates[0].Error).To(Equal("the source has 2 catalogs under path two, two/.claude-plugin/marketplace.json and " +
 			"two/marketplace.yml; set path: in markets.yaml to the one to read"))
 		Expect(res.Updates[0].Hints).To(BeEmpty())
+	})
+
+	It("reads the original lola's lola.yml only when no other catalog is at the root", func() {
+		const lolaYML = "name: M\nmodules:\n  - {name: a, repository: \"https://example.com/a.git\", version: main}\n"
+		only := filepath.Join(tmp, "only")
+		writeTree(only, map[string]string{"lola.yml": lolaYML})
+		_, err := add(engine.MarketAddRequest{Name: "m", Source: only})
+		Expect(err).NotTo(HaveOccurred())
+		v, err := e.ShowMarket("m", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.File).To(Equal("lola.yml"))
+		Expect(v.Entries).To(HaveLen(1))
+		Expect(v.Entries[0].Name).To(Equal("a"))
+
+		both := filepath.Join(tmp, "both")
+		writeTree(both, map[string]string{".claude-plugin/marketplace.json": acmeCatalog, "lola.yml": lolaYML})
+		_, err = add(engine.MarketAddRequest{Source: both})
+		Expect(err).NotTo(HaveOccurred())
+		v, err = e.ShowMarket("acme", nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.File).To(Equal(".claude-plugin/marketplace.json"))
+
+		broken := filepath.Join(tmp, "broken")
+		writeTree(broken, map[string]string{"lola.yml": "modules: ["})
+		_, err = add(engine.MarketAddRequest{Name: "broken", Source: broken})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("lola.yml"))
+
+		empty := filepath.Join(tmp, "empty")
+		writeTree(empty, map[string]string{"README.md": "x"})
+		_, err = add(engine.MarketAddRequest{Name: "x", Source: empty})
+		Expect(err).To(MatchError(ContainSubstring("marketplace.yml, marketplace.yaml, lola.yml, lola.yaml")))
 	})
 
 	It("a relative entry cannot leave the marketplace tree", func() {
@@ -438,7 +495,7 @@ var _ = Describe("marketplaces", func() {
 		Expect(os.Symlink(filepath.Join(elsewhere, "marketplace.json"), filepath.Join(linkedFile, ".claude-plugin", "marketplace.json"))).To(Succeed())
 		for _, dir := range []string{inside, linkedDir, linkedFile} {
 			_, err := add(engine.MarketAddRequest{Name: "linked", Source: dir})
-			Expect(err).To(MatchError(ContainSubstring("symbolic links are not allowed")), dir)
+			Expect(err).To(MatchError(ContainSubstring("symbolic link refused")), dir)
 		}
 		rows, _, err := e.Markets(nil)
 		Expect(err).NotTo(HaveOccurred())
@@ -511,10 +568,10 @@ var _ = Describe("marketplaces", func() {
 		Expect(os.Symlink(filepath.Join(folder, "skills", "xlsx"), filepath.Join(folder, "skills", "docx"))).To(Succeed())
 		res, err := e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"skills"}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Updates[0].Error).To(ContainSubstring("symbolic links are not allowed"), "a link anywhere in the tree refuses the fetch")
+		Expect(res.Updates[0].Error).To(ContainSubstring("skills/docx: symbolic link refused: it points to"), "an absolute link refuses the fetch")
 	})
 
-	It("installs, renders, updates and trusts a selection of components as its entry records it", func() {
+	It("installs, syncs, updates and trusts a selection of components as its entry records it", func() {
 		proj := filepath.Join(tmp, "proj")
 		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
 		skill := func(n string) string { return "---\nname: " + n + "\ndescription: " + n + "\n---\n" + n + "\n" }
@@ -526,14 +583,18 @@ var _ = Describe("marketplaces", func() {
 		claude := engine.Options{Targets: []string{"claude-code"}}
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "@mine/sel"}}, claude)
 		Expect(err).NotTo(HaveOccurred())
-		res, err := e.Render(ctx, sc, claude)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Findings).NotTo(ContainElement(HaveField("Code", engine.CodeContentChanged)), "render stages the selection, not the folder")
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: claude})
+		Expect(err).NotTo(HaveOccurred(), "sync stages the selection, not the folder, so nothing changed asks for trust")
 
 		writeTree(mine, map[string]string{"skills/a/SKILL.md": skill("a2")})
-		res, err = e.Render(ctx, sc, claude)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Findings).To(ContainElement(And(HaveField("Code", engine.CodeContentChanged), HaveField("Hint", "review it: lola sync -C "+proj+" sel"))),
+		var changed []engine.TrustReport
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: claude, Trust: func(r engine.TrustReport) (engine.TrustAnswer, error) {
+			changed = append(changed, r)
+			return engine.TrustAnswer{}, engine.ErrDeclined
+		}})
+		Expect(err).To(HaveOccurred())
+		Expect(changed).To(HaveLen(1))
+		Expect(changed[0].Changes).To(ConsistOf(And(HaveField("Module", "sel"), HaveField("FolderContent", true), HaveField("InstallOwn", ""))),
 			"no install by source, which would take the whole folder")
 
 		_, err = e.Update(ctx, []string{"sel"})
@@ -767,6 +828,345 @@ var _ = Describe("marketplaces", func() {
 		Expect(err).To(MatchError("--ref applies to git sources only, not to folder " + filepath.Join(tmp, "m")))
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market f --add " + filepath.Join(tmp, "m")}))
 	})
+
+	Describe("catalog ssh hosts", func() {
+		var url string
+		BeforeEach(func() { url, _ = repo("priv", map[string]string{".claude-plugin/marketplace.json": sshCatalog}) })
+		// allowed is the ssh hosts markets.yaml records for name.
+		allowed := func(name string) []string {
+			GinkgoHelper()
+			b, err := os.ReadFile(p.Markets)
+			Expect(err).NotTo(HaveOccurred())
+			reg, err := market.ParseRegistry(p.Markets, b)
+			Expect(err).NotTo(HaveOccurred())
+			return reg.Find(name).SSHHosts
+		}
+		names := func(v *engine.MarketView) []string {
+			var out []string
+			for _, en := range v.Entries {
+				out = append(out, en.Name)
+			}
+			return out
+		}
+		show := func(name string) *engine.MarketView {
+			GinkgoHelper()
+			v, err := e.ShowMarket(name, nil)
+			Expect(err).NotTo(HaveOccurred())
+			return v
+		}
+		hint := func(hosts string) engine.Notice {
+			return engine.Notice{Level: engine.LevelWarn, Text: "to allow ssh hosts → lola market priv --update " + hosts}
+		}
+		noPick := func(engine.MarketSSHStep) ([]string, error) {
+			Fail("the host picker was asked")
+			return nil, nil
+		}
+		// newer is sshCatalog with an entry at a host it did not name before.
+		newer := strings.Replace(sshCatalog, "]}", `,
+  {"name": "e", "source": {"source": "url", "url": "ssh://git@new.test/e.git"}}]}`, 1)
+
+		It("skips every ssh entry of a catalog added without hosts off a terminal, hinting the --update that allows them", func() {
+			res, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElements(
+				engine.Notice{Level: engine.LevelWarn, Text: "4 entries skipped: 3 ssh sources, 1 local or private source → lola market priv"},
+				hint("--ssh-host git.corp.test --ssh-host other.test")))
+			Expect(allowed("priv")).To(BeEmpty())
+			v := show("priv")
+			Expect(v.Entries).To(BeEmpty())
+			Expect(v.SSHHosts).To(Equal([]string{}))
+			Expect(v.Notices).To(ContainElement(hint("--ssh-host git.corp.test --ssh-host other.test")))
+			v, err = e.ShowMarket("priv", []string{"--json"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(v.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "to allow ssh hosts → lola market priv --update --ssh-host git.corp.test --ssh-host other.test --json"}))
+		})
+
+		It("--ssh-host on --add allows the host, stores it, and shows which entries it admits", func() {
+			res, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"Git.Corp.Test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "allowed ssh hosts: git.corp.test"}))
+			Expect(allowed("priv")).To(Equal([]string{"git.corp.test"}))
+			v := show("priv")
+			Expect(names(v)).To(Equal([]string{"a", "b"}))
+			Expect(v.Entries[0]).To(And(HaveField("SSHHost", "git.corp.test"), HaveField("Source", "ssh://git@git.corp.test:2222/a.git")))
+			Expect(v.Entries[1]).To(HaveField("SSHHost", "git.corp.test"))
+			Expect(v.SSHHosts).To(Equal([]string{"git.corp.test"}))
+			Expect(v.Notices).To(ContainElement(hint("--ssh-host other.test")))
+			Expect(v.Notices).NotTo(ContainElement(hint("--ssh-host git.corp.test --ssh-host other.test")))
+		})
+
+		It("an entry that is not ssh has no ssh host", func() {
+			u, _ := repo("plugins", acme())
+			_, err := add(engine.MarketAddRequest{Source: u})
+			Expect(err).NotTo(HaveOccurred())
+			v := show("acme")
+			Expect(v.Entries).NotTo(BeEmpty())
+			for _, en := range v.Entries {
+				Expect(en.SSHHost).To(BeEmpty())
+			}
+			Expect(v.SSHHosts).To(Equal([]string{}))
+		})
+
+		It("the picker on --add offers each host not allowed with its entry count, and allows only what it ticks", func() {
+			var steps []engine.MarketSSHStep
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
+				steps = append(steps, s)
+				return []string{"other.test"}, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(steps).To(Equal([]engine.MarketSSHStep{{Market: "priv", Hosts: []engine.MarketSSHHost{{Host: "git.corp.test", Entries: 2},
+				{Host: "other.test", Entries: 1}}}}), "the private address offers nothing")
+			Expect(names(show("priv"))).To(Equal([]string{"c"}))
+			Expect(allowed("priv")).To(Equal([]string{"other.test"}))
+
+			_, err = add(engine.MarketAddRequest{Name: "bad", Source: url, PickSSH: func(engine.MarketSSHStep) ([]string, error) {
+				return []string{"nope.test"}, nil
+			}})
+			Expect(err).To(MatchError("the host picker returned a host it was not offered"))
+			_, err = e.ShowMarket("bad", nil)
+			Expect(err).To(MatchError(HavePrefix("you have no marketplace bad")), "nothing registered")
+
+			_, err = add(engine.MarketAddRequest{Name: "none", Source: url, PickSSH: func(engine.MarketSSHStep) ([]string, error) { return nil, nil }})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed("none")).To(BeEmpty())
+			Expect(show("none").Entries).To(BeEmpty())
+		})
+
+		It("the picker offers only the hosts --ssh-host did not cover", func() {
+			var steps []engine.MarketSSHStep
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test"}, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
+				steps = append(steps, s)
+				return nil, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(steps).To(Equal([]engine.MarketSSHStep{{Market: "priv", Hosts: []engine.MarketSSHHost{{Host: "other.test", Entries: 1}}}}))
+			Expect(allowed("priv")).To(Equal([]string{"git.corp.test"}))
+		})
+
+		It("a dry run asks nothing, previews the hosts --ssh-host allows, and writes nothing", func() {
+			res, err := add(engine.MarketAddRequest{Name: "priv", Source: url, DryRun: true, SSHHosts: []string{"git.corp.test"}, PickSSH: noPick})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "would allow ssh hosts: git.corp.test"}))
+			Expect(res.Markets).To(HaveLen(1))
+			Expect(res.Markets[0].Entries).To(Equal(2))
+			Expect(p.Markets).NotTo(BeAnExistingFile())
+		})
+
+		It("refuses an --ssh-host that is not a host name lola can allow, before anything is written", func() {
+			for _, h := range []string{"ssh://git.corp.test", "git@x.test", "x.test:22", "10.0.0.5", "localhost", "x.test/a"} {
+				_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"ok.test", h}})
+				Expect(err).To(MatchError(HavePrefix("--ssh-host ")), h)
+			}
+			Expect(p.Markets).NotTo(BeAnExistingFile())
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, SSHHosts: []string{"x.test:22"}})
+			Expect(err).To(MatchError(HavePrefix("--ssh-host ")))
+			Expect(allowed("priv")).To(BeEmpty())
+		})
+
+		It("--update never widens the stored hosts but by the picker", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			repo("priv", map[string]string{".claude-plugin/marketplace.json": newer})
+			up, err := e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Updates[0].Outcome).To(Equal(engine.MarketUpdated))
+			Expect(allowed("priv")).To(Equal([]string{"git.corp.test"}))
+			Expect(up.Notices).To(ContainElement(hint("--ssh-host new.test --ssh-host other.test")))
+			Expect(show("priv").Skipped).To(ContainElement(HaveField("Name", "e")))
+
+			var steps []engine.MarketSSHStep
+			up, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
+				steps = append(steps, s)
+				return []string{"new.test"}, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(steps).To(Equal([]engine.MarketSSHStep{{Market: "priv", Hosts: []engine.MarketSSHHost{{Host: "new.test", Entries: 1},
+				{Host: "other.test", Entries: 1}}}}))
+			Expect(allowed("priv")).To(Equal([]string{"git.corp.test", "new.test"}))
+			Expect(up.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "allowed ssh hosts: new.test"}))
+			Expect(up.Changes).To(Equal([]engine.MarketChange{{Market: "priv", Entry: "e", Change: "added", Fields: []string{}}}))
+			Expect(names(show("priv"))).To(Equal([]string{"a", "b", "e"}))
+
+			up, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, DryRun: true, PickSSH: noPick})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Updates[0].Outcome).To(Equal(engine.MarketWouldUpdate))
+		})
+
+		It("--ssh-host on --update stores the host for one marketplace and refuses more than one", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
+			Expect(err).NotTo(HaveOccurred())
+			u, _ := repo("plugins", acme())
+			_, err = add(engine.MarketAddRequest{Source: u})
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{All: true, SSHHosts: []string{"other.test"}})
+			Expect(err).To(MatchError("--ssh-host applies to one marketplace"))
+			Expect(errs.Hints(err)).To(BeEmpty(), "--all means no one marketplace")
+			_, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv", "acme"}, SSHHosts: []string{"other.test"}, Display: []string{"--json"}})
+			Expect(err).To(MatchError("--ssh-host applies to one marketplace"))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --update --ssh-host other.test --json",
+				"lola market acme --update --ssh-host other.test --json"}))
+			Expect(allowed("priv")).To(BeEmpty())
+
+			up, err := e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, SSHHosts: []string{"other.test"}, DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "would allow ssh hosts: other.test"}))
+			Expect(allowed("priv")).To(BeEmpty())
+
+			up, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, SSHHosts: []string{"other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo, Text: "allowed ssh hosts: other.test"}))
+			Expect(up.Changes).To(Equal([]engine.MarketChange{{Market: "priv", Entry: "c", Change: "added", Fields: []string{}}}))
+			Expect(allowed("priv")).To(Equal([]string{"other.test"}))
+			Expect(names(show("priv"))).To(Equal([]string{"c"}))
+		})
+
+		It("a stored host the catalog no longer names stays allowed", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test", "other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			repo("priv", map[string]string{".claude-plugin/marketplace.json": `{"name": "priv", "owner": {"name": "P"}, "plugins": [
+  {"name": "c", "source": {"source": "url", "url": "ssh://git@other.test/c.git"}}]}`})
+			_, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed("priv")).To(Equal([]string{"git.corp.test", "other.test"}))
+		})
+
+		It("revoking a host re-skips its entries and keeps the marketplace", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			removed := []engine.MarketChange{{Market: "priv", Entry: "a", Change: "removed", Fields: []string{}},
+				{Market: "priv", Entry: "b", Change: "removed", Fields: []string{}}}
+
+			_, err = e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv", Hosts: []string{"other.test"}})
+			Expect(err).To(MatchError("marketplace priv does not allow ssh host other.test; it allows: git.corp.test"))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --ssh-host git.corp.test --remove"}))
+			_, err = e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv", Hosts: []string{"git.corp.test", "other.test"}, DryRun: true, Display: []string{"--json"}})
+			Expect(err).To(MatchError("marketplace priv does not allow ssh host other.test; it allows: git.corp.test"))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --ssh-host git.corp.test --remove -n --json"}), "the run with only the allowed ones")
+			_, err = e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv", Hosts: []string{"other..test"}})
+			Expect(err).To(MatchError(HavePrefix("--ssh-host ")))
+			_, err = e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "prov", Hosts: []string{"git.corp.test"}})
+			Expect(err).To(MatchError("you have no marketplace prov; close names: priv"))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --ssh-host git.corp.test --remove", "lola market"}))
+
+			before, err := os.ReadFile(p.Markets)
+			Expect(err).NotTo(HaveOccurred())
+			dry, err := e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv", Hosts: []string{"Git.Corp.Test"}, DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dry.DryRun).To(BeTrue())
+			Expect(dry.Updates).To(Equal([]engine.MarketOutcome{{Market: "priv", Outcome: engine.MarketWouldRevoke, Hints: []string{}}}))
+			Expect(dry.Changes).To(Equal(removed))
+			Expect(os.ReadFile(p.Markets)).To(Equal(before), "a dry run writes nothing")
+
+			res, err := e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv", Hosts: []string{"git.corp.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Updates).To(Equal([]engine.MarketOutcome{{Market: "priv", Outcome: engine.MarketRevoked, Hints: []string{}}}))
+			Expect(res.Changes).To(Equal(removed))
+			Expect(allowed("priv")).To(BeEmpty())
+			Expect(os.ReadFile(p.Markets)).NotTo(ContainSubstring("ssh_hosts"))
+			v := show("priv")
+			Expect(v.Entries).To(BeEmpty())
+			Expect(v.SSHHosts).To(Equal([]string{}))
+
+			_, err = e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv", Hosts: []string{"git.corp.test"}})
+			Expect(err).To(MatchError("marketplace priv does not allow ssh host git.corp.test; it allows none"))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv"}))
+		})
+
+		It("revoking with no cached catalog writes the registration alone", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test", "other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.RemoveAll(filepath.Join(p.MarketCache, "priv"))).To(Succeed())
+			res, err := e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv", Hosts: []string{"other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Changes).To(BeEmpty())
+			Expect(res.Updates).To(Equal([]engine.MarketOutcome{{Market: "priv", Outcome: engine.MarketRevoked, Hints: []string{}}}))
+			Expect(allowed("priv")).To(Equal([]string{"git.corp.test"}))
+		})
+
+		It("a refused --add hints runs that keep its --ssh-host values", func() {
+			_, err := add(engine.MarketAddRequest{Name: "Priv", Source: url, SSHHosts: []string{"x.test:22"}})
+			Expect(err).To(MatchError(HavePrefix("--ssh-host ")), "the hosts are checked before any hint is built")
+			_, err = add(engine.MarketAddRequest{Name: "Priv", Source: url, SSHHosts: []string{"Other.Test"}})
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --add " + url + " --ssh-host other.test"}))
+			folder := filepath.Join(tmp, "m")
+			writeTree(folder, map[string]string{".claude-plugin/marketplace.json": sshCatalog})
+			_, err = add(engine.MarketAddRequest{Name: "f", Source: folder, Ref: "v1", SSHHosts: []string{"other.test"}})
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market f --add " + folder + " --ssh-host other.test"}))
+
+			_, err = add(engine.MarketAddRequest{Name: "priv", Source: url})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"other.test"}, Display: []string{"--json"}})
+			Expect(err).To(MatchError("priv is already this marketplace"))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --update --ssh-host other.test --json"}))
+			_, err = add(engine.MarketAddRequest{Source: url, SSHHosts: []string{"other.test"}, DryRun: true})
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --update --ssh-host other.test -n"}))
+
+			u, _ := repo("plugins", acme())
+			_, err = add(engine.MarketAddRequest{Name: "priv", Source: u, SSHHosts: []string{"other.test"}})
+			Expect(err).To(MatchError(HavePrefix("priv is already a marketplace")))
+			Expect(errs.Hints(err)).To(Equal([]string{"lola market priv-2 --add " + u + " --path .claude-plugin/marketplace.json --ssh-host other.test"}))
+		})
+
+		It("a dry-run --add hints the --add itself with every host, and none when its --ssh-host covers them", func() {
+			res, err := add(engine.MarketAddRequest{Name: "priv", Source: url, DryRun: true, Display: []string{"--json"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "to allow ssh hosts → lola market priv --add " + url + " --ssh-host git.corp.test --ssh-host other.test --json"}))
+			res, err = add(engine.MarketAddRequest{Name: "priv", Source: url, DryRun: true, SSHHosts: []string{"git.corp.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "to allow ssh hosts → lola market priv --add " + url + " --ssh-host git.corp.test --ssh-host other.test"}))
+			res, err = add(engine.MarketAddRequest{Name: "priv", Source: url, DryRun: true, SSHHosts: []string{"git.corp.test", "other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).NotTo(ContainElement(HaveField("Text", HavePrefix("to allow ssh hosts"))))
+			Expect(p.Markets).NotTo(BeAnExistingFile())
+		})
+
+		It("a dry-run --update hints the --update with its --ssh-host values and the hosts still pending", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
+			Expect(err).NotTo(HaveOccurred())
+			repo("priv", map[string]string{".claude-plugin/marketplace.json": newer})
+			up, err := e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, DryRun: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Notices).To(ContainElement(hint("--ssh-host git.corp.test --ssh-host new.test --ssh-host other.test")))
+			up, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, DryRun: true, SSHHosts: []string{"other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Notices).To(ContainElement(hint("--ssh-host git.corp.test --ssh-host new.test --ssh-host other.test")))
+			up, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv"}, DryRun: true,
+				SSHHosts: []string{"git.corp.test", "new.test", "other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(up.Notices).NotTo(ContainElement(HaveField("Text", HavePrefix("to allow ssh hosts"))))
+			Expect(allowed("priv")).To(BeEmpty())
+		})
+
+		It("--ssh-host on --update counts a marketplace named twice once", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = e.UpdateMarkets(ctx, engine.MarketUpdateRequest{Names: []string{"priv", "priv"}, SSHHosts: []string{"other.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(allowed("priv")).To(Equal([]string{"other.test"}))
+		})
+
+		It("revoking needs a host", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			before, err := os.ReadFile(p.Markets)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = e.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: "priv"})
+			Expect(err).To(MatchError("--remove with --ssh-host needs a host"))
+			Expect(os.ReadFile(p.Markets)).To(Equal(before))
+		})
+
+		It("an allowed host at a private address is still refused", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test"}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(show("priv").Skipped).To(ContainElement(And(HaveField("Name", "d"), HaveField("Reason", ContainSubstring("private address 10.0.0.5")))))
+		})
+	})
 })
 
 var _ = Describe("removing marketplaces and the Python verbs", func() {
@@ -891,6 +1291,35 @@ var _ = Describe("removing marketplaces and the Python verbs", func() {
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --remove -n -y"}), "-y kept only when typed")
 		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "add", Operands: []string{"g", "https://e.example/m.git"}, Ref: "v1", Path: "sub", DryRun: true})
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market g --add https://e.example/m.git --ref v1 --path sub -n"}))
+		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "add", Operands: []string{"priv", "https://e.example/m.git"}, SSHHosts: []string{"x.test", "y.test"},
+			Display: []string{"--json"}})
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market priv --add https://e.example/m.git --ssh-host x.test --ssh-host y.test --json"}))
+		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", Operands: []string{"acme"}, SSHHosts: []string{"x.test"}, DryRun: true})
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update -n --ssh-host x.test"}))
+		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", Operands: []string{"acme", "other"}, SSHHosts: []string{"x.test"}})
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update --ssh-host x.test", "lola market other --update --ssh-host x.test"}),
+			"--ssh-host applies to one marketplace: a run for each")
+		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", Operands: []string{"acmee"}, SSHHosts: []string{"x.test", "y.test"}})
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update --ssh-host x.test --ssh-host y.test", "lola market"}),
+			"the close name's run keeps every --ssh-host")
+		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", Operands: []string{"other", "acmee"}, SSHHosts: []string{"x.test"}, DryRun: true,
+			Display: []string{"--json"}})
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market other --update -n --ssh-host x.test --json",
+			"lola market acme --update -n --ssh-host x.test --json", "lola market --json"}),
+			"--ssh-host applies to one marketplace: a run for each name, the close name in the missing one's place")
+		for _, h := range errs.Hints(err)[:2] {
+			f := strings.Fields(strings.TrimPrefix(h, "lola market "))
+			_, err := e.UpdateMarkets(context.Background(), engine.MarketUpdateRequest{Names: f[:1], DryRun: true, SSHHosts: []string{"x.test"}, Display: []string{"--json"}})
+			Expect(err).NotTo(HaveOccurred(), h)
+		}
+		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", Operands: []string{"acme"}, All: true, SSHHosts: []string{"x.test"}})
+		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --update --ssh-host x.test", "lola market --update --all"}),
+			"--ssh-host applies to one marketplace, never --all")
+		for _, f := range [][]string{{"update"}, {"rm", "acme"}, {"show", "acme"}, {"ls"}, {"search", "fmt"}} {
+			with := e.CoachMarketVerb(engine.MarketVerb{Verb: f[0], Operands: f[1:], SSHHosts: []string{"x.test"}})
+			without := e.CoachMarketVerb(engine.MarketVerb{Verb: f[0], Operands: f[1:]})
+			Expect(errs.Hints(with)).To(Equal(errs.Hints(without)), "%v: --ssh-host is not carried where the command would not allow it", f)
+		}
 		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", All: true})
 		Expect(errs.Hints(err)).To(Equal([]string{"lola market --update --all"}))
 		err = e.CoachMarketVerb(engine.MarketVerb{Verb: "update", Operands: []string{"acme"}, All: true})

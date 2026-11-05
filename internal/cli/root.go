@@ -63,6 +63,7 @@ type app struct {
 	termOut     bool     // stdout is a terminal whatever it is (WithTerminals)
 	termErr     bool     // stderr is a terminal whatever it is (WithTerminals)
 	eng         *engine.Engine
+	contexts    []engine.ScopeContext // the scopes' contexts the run printed (printContext); nil before any
 	newPrompter func(*cobra.Command) Prompter
 	// queryBackground asks the terminal for its background color; nil is terminalBackground.
 	// Specs fake the terminal's answer with it.
@@ -138,7 +139,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	pf := root.PersistentFlags()
 	pf.BoolVar(&a.json, "json", false, "print machine-readable JSON")
 	pf.BoolVar(&a.plain, "plain", false, "print tab-separated lines without color")
-	pf.StringVar(&a.scopeFlag, "scope", "", "act on this scope: project, user or both (also project,user)")
+	pf.StringVarP(&a.scopeFlag, "scope", "s", "", "act on this scope: project, user or both (also project,user)")
 	_ = root.RegisterFlagCompletionFunc("scope", cobra.FixedCompletions([]string{"project", "user", "both"}, cobra.ShellCompDirectiveNoFileComp))
 	pf.BoolVar(&a.project, "project", false, "act on project scope: --scope project")
 	pf.BoolVar(&a.user, "user", false, "act on user scope (your home directory): --scope user")
@@ -154,6 +155,8 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	a.addStoreCommands(root)
 	a.addMiscCommands(root)
 	a.installHelp(root)
+	a.offerSplits(root)
+	a.carryContext(root)
 	checkFlagAliases(root)
 	return root
 }

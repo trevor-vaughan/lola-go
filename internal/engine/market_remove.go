@@ -137,7 +137,7 @@ func (e *Engine) installedFrom(r market.Registration, dry bool, display []string
 			// A file with marketplace addresses gets the hints of every reader (Plan 6c §6.7), read
 			// from markets.yaml as it is now: once r is gone, none names it.
 			err = e.CoachUnresolved(err, []Scope{sc}, dry, display)
-			text := "could not count the entries from " + r.Name + " in " + filepath.Base(e.files(sc).manifest) + ": " + shown(untrusted.CleanErr(err).Error())
+			text := "could not count the entries from " + r.Name + " in " + e.manifestName(sc) + ": " + shown(untrusted.CleanErr(err).Error())
 			if hints := errs.Hints(err); len(hints) > 0 {
 				text += " → " + strings.Join(hints, "; ")
 			}
@@ -161,7 +161,7 @@ func (e *Engine) installedFrom(r market.Registration, dry bool, display []string
 	text := what + "; installed from their real sources, they stay installed"
 	if !dry {
 		text += ", and lola sync --update follows " + r.Name + " again once you add it back → " +
-			MarketRun(addRun(r.Name, r.Source, r.Ref, r.Path, false, display)...)
+			MarketRun(addRun(r.Name, r.Source, r.Ref, r.Path, r.SSHHosts, false, display)...)
 	}
 	return append(out, Notice{Level: LevelInfo, Text: text})
 }

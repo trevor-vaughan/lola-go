@@ -187,7 +187,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		Entry("profile", "profile", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
 		Entry("profile --add", "profile --add", engine.TrustProfiles, "--trust=profiles"),
 		Entry("install", "install", engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=scripts,hooks,runtime-hooks"),
-		Entry("render", "render", engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=scripts,hooks,runtime-hooks"),
+		Entry("update", "update", engine.TrustAll, "--trust=entries,profiles,scripts,hooks,runtime-hooks"),
 		Entry("migrate", "migrate", engine.TrustScripts|engine.TrustHooks|engine.TrustRuntimeHooks, "--trust=scripts,hooks,runtime-hooks"),
 	)
 
@@ -208,7 +208,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		Entry("profiles", func() error {
 			kit("")
 			writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: ../../mods/kit}\n"})
-			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"project:go"}},
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "project:go"},
 				Options: engine.Options{Trust: engine.TrustEntries}})
 			return err
 		}, "lola profile needs your trust for", []string{"see them: lola profile --project project:go --on --trust=entries -n",
@@ -242,7 +242,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		writeTree(tmp, map[string]string{"src/plain/lola.yml": "name: plain\n", "src/plain/commands/plain.md": "Plain\n"})
 		_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: filepath.Join(tmp, "src", "plain")}}, engine.Options{Targets: []string{"claude-code"}})
 		Expect(err).NotTo(HaveOccurred())
-		writeTree(filepath.Dir(p.UserManifest), map[string]string{filepath.Base(p.UserManifest): "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " +
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " +
 			filepath.Join(proj, "mods", "kit") + "}\n"})
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
 		Expect(err).To(MatchError("lola sync needs your confirmation to remove plain, and there is no terminal to ask on"))
@@ -290,7 +290,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		Expect(res.Notices).To(ContainElement(HaveField("Text", "kit: post-install hook skipped without your consent; "+
 			"review and run it: lola sync --project kit, or consent without asking: lola sync --project kit --trust=hooks")))
 		Expect(res.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hooks-declined"),
-			HaveField("Hint", "review the hooks listed above, then consent to them: lola sync --project --trust=entries,runtime-hooks"))))
+			HaveField("Hint", "review the hooks listed above, then, if you want to install them, consent to them: lola sync --project --trust=entries,runtime-hooks"))))
 		Expect(ran()).To(BeNil())
 	})
 
@@ -366,7 +366,7 @@ var _ = Describe("typed trust (Plan 9 §3)", func() {
 		Entry("profiles", engine.TrustEntries|engine.TrustProfiles, func() {
 			kit("")
 			writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: ../../mods/kit}\n"})
-			led := &ledger.Ledger{Version: ledger.Version, Modules: map[string]*ledger.Entry{}, Profiles: []ledger.Active{{Name: "project:go", By: ledger.ByOn}}}
+			led := &ledger.Ledger{Version: ledger.Version, Modules: map[string]*ledger.Entry{}, Profile: &ledger.Active{Name: "project:go", By: ledger.ByOn}}
 			Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 		}, func() {
 			writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: ../../mods/kit, rules: false}\n"})
@@ -591,7 +591,7 @@ var _ = Describe("a batch applied after its one receipt (Plan 9 R-9-16)", func()
 		gitIn(tmp, "clone", "-q", "--bare", work, filepath.Join(tmp, "srv", "kit.git"))
 		url := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/kit.git"
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " + url + ", ref: v1}\n"})
-		writeTree(filepath.Dir(p.UserManifest), map[string]string{filepath.Base(p.UserManifest): "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " +
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " +
 			url + ", ref: v2}\n"})
 		batch := &engine.TrustBatch{}
 		Expect(run(sc, engine.Options{Batch: batch})).To(MatchError(engine.ErrBatched))

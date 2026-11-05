@@ -28,7 +28,7 @@ var _ = Describe("the profiles a template sees", func() {
 		user := engine.Scope{Kind: target.User}
 		led, err := e.Ledger(user)
 		Expect(err).NotTo(HaveOccurred())
-		led.Profiles = []ledger.Active{{Name: "user:work", By: ledger.ByOn}}
+		led.Profile = &ledger.Active{Name: "user:work", By: ledger.ByOn}
 		Expect(led.Save(p.UserLedger)).To(Succeed())
 		home, err := os.UserHomeDir()
 		Expect(err).NotTo(HaveOccurred())

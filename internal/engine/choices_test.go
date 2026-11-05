@@ -10,9 +10,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
@@ -63,6 +66,90 @@ var _ = Describe("InstallChoices (Plan 5c §7)", func() {
 		Expect(m.Components).To(ContainElement(HaveField("Description", "(template)")))
 	})
 
+	It("names the section whose only: list is in force at each destination, and previews through it", func() {
+		Expect(os.MkdirAll(filepath.Dir(p.Selections), 0o700)).To(Succeed())
+		Expect(os.WriteFile(p.Selections, []byte("version: 1\nprojects:\n  "+proj+":\n    example:\n      only: [command/ship]\n"), 0o600)).To(Succeed())
+		ch := choices(src)
+		m := ch.Module("example")
+		at := m.Scope(scopes[0].Scope.Key())
+		Expect(at.OnlyFrom).To(Equal("selections.yaml projects[" + proj + "]"))
+		Expect(at.Excluded).To(ContainElements("skill/review", "agent/critic"))
+		Expect(at.Excluded).NotTo(ContainElement("command/ship"))
+		Expect(m.Scope(scopes[1].Scope.Key()).OnlyFrom).To(BeEmpty(), "no list at user scope")
+		pv, err := ch.Preview(engine.InstallSpec{Scopes: []engine.ScopeInstall{{ScopeChoice: scopes[0]}}}, []string{"example"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pv.Selected[scopes[0].Scope.Key()]["example"]).To(Equal([]string{"command/ship"}))
+	})
+
+	It("previews an install with --profile base of a module the active profile lists as save-only", func() {
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: zeta, source: " + other + "}\n"})
+		user := scopes[1]
+		led, err := e.Ledger(user.Scope)
+		Expect(err).NotTo(HaveOccurred())
+		led.Profile = &ledger.Active{Name: "user:go", By: ledger.ByOn}
+		Expect(led.Save(p.UserLedger)).To(Succeed())
+		scopes = []engine.ScopeChoice{user}
+		ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: scopes, Modules: []engine.InstallRequest{{Arg: src}, {Arg: other}},
+			Target: engine.TargetRequest{Profile: "base"}})
+		Expect(err).NotTo(HaveOccurred())
+		pv, err := ch.Preview(engine.InstallSpec{Scopes: []engine.ScopeInstall{{ScopeChoice: user}}}, []string{"example", "zeta"})
+		Expect(err).NotTo(HaveOccurred())
+		key := user.Scope.Key()
+		Expect(pv.SaveOnly).To(Equal(map[string]map[string]string{key: {"zeta": "profile go"}}), "example is not in go")
+		Expect(pv.WritesTo).To(Equal(map[string]string{key: "default (base)"}))
+		Expect(pv.Selected[key]["zeta"]).To(Equal([]string{}), "the install installs nothing of zeta")
+		Expect(pv.Selected[key]["example"]).NotTo(BeEmpty())
+		Expect(pv.Notices).To(Equal([]engine.Notice{{Level: engine.LevelWarn,
+			Text: "zeta: profile go's entry wins; this change to default (base) applies when it is off"}}))
+	})
+
+	It("previews an install while a remote profile is on as writing the base, the question's answer, under the remote profile's entry", func() {
+		body := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: zeta, source: https://example.com/zeta.git, commit: " +
+			strings.Repeat("a", 40) + ", digest: sha256:" + strings.Repeat("b", 64) + "}\n"
+		o, err := json.Marshal(profile.Origin{Version: profile.OriginVersion, Source: "https://example.com/profiles.git",
+			Commit: strings.Repeat("c", 40), Digest: profile.Digest([]byte(body))})
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(filepath.Join(p.RemoteProfiles, "team"), map[string]string{profile.RemoteFile: body, profile.OriginFile: string(o)})
+		user := scopes[1]
+		led, err := e.Ledger(user.Scope)
+		Expect(err).NotTo(HaveOccurred())
+		led.Profile = &ledger.Active{Name: "remote:team", By: ledger.ByOn}
+		Expect(led.Save(p.UserLedger)).To(Succeed())
+		scopes = []engine.ScopeChoice{user}
+		ch := choices(src, other)
+		pv, err := ch.Preview(engine.InstallSpec{Scopes: []engine.ScopeInstall{{ScopeChoice: user}}}, []string{"example", "zeta"})
+		Expect(err).NotTo(HaveOccurred())
+		key := user.Scope.Key()
+		Expect(pv.WritesTo).To(Equal(map[string]string{key: "default (base)"}))
+		Expect(pv.SaveOnly).To(Equal(map[string]map[string]string{key: {"zeta": "remote:team"}}))
+		Expect(pv.Notices).To(Equal([]engine.Notice{{Level: engine.LevelWarn,
+			Text: "zeta: remote:team's entry wins; this change to default (base) applies when it is off"}}))
+	})
+
+	It("previews --only --exact as the install will save it", func() {
+		sel, err := config.ParseSelector("command/ship")
+		Expect(err).NotTo(HaveOccurred())
+		ch := choices(src)
+		pv, err := ch.Preview(engine.InstallSpec{Scopes: []engine.ScopeInstall{{ScopeChoice: scopes[0],
+			Edits: []engine.SelectionEdit{{Op: engine.EditOnly, Selector: sel, Exact: true}}}}}, []string{"example"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pv.Selected[scopes[0].Scope.Key()]["example"]).To(Equal([]string{"command/ship"}))
+		Expect(pv.Changes).To(HaveLen(1))
+		Expect(pv.Changes[0].Entry.Only).To(Equal([]config.Pattern{{Kind: "command", Name: "ship"}}))
+		Expect(pv.Changes[0].Entry.Skip).To(BeEmpty(), "exact saves no skips")
+	})
+
+	It("previews a user-scope pick as the install saves it: in default's entry", func() {
+		sel, err := config.ParseSelector("command/ship")
+		Expect(err).NotTo(HaveOccurred())
+		ch := choices(src)
+		pv, err := ch.Preview(engine.InstallSpec{Scopes: []engine.ScopeInstall{{ScopeChoice: scopes[1],
+			Edits: []engine.SelectionEdit{{Op: engine.EditSkip, Selector: sel}}}}}, []string{"example"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pv.Changes).To(ConsistOf(And(HaveField("Section", config.Picks("profile:default")), HaveField("Module", "example"))))
+		Expect(pv.Selected[scopes[1].Scope.Key()]["example"]).NotTo(ContainElement("command/ship"))
+	})
+
 	It("lists cached modules by source then name, with components, labels made safe, and a source argument fetched", func() {
 		_, err := e.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: other})
 		Expect(err).NotTo(HaveOccurred())
@@ -89,8 +176,7 @@ var _ = Describe("InstallChoices (Plan 5c §7)", func() {
 	It("reports per scope the assistants, fixed targets, installed state, exclusions and current components", func() {
 		_, err := e.Install(ctx, scopes[0].Scope, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"claude-code"}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(os.MkdirAll(filepath.Dir(p.Selections), 0o700)).To(Succeed())
-		Expect(os.WriteFile(p.Selections, []byte("version: 1\nuser:\n  example:\n    skip: [command/ship]\n"), 0o600)).To(Succeed())
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\nmodules:\n  - {name: example, source: " + src + ", skip: [command/ship]}\n"})
 
 		ch := choices()
 		Expect(ch.Scopes[0].Name).To(Equal("project"))

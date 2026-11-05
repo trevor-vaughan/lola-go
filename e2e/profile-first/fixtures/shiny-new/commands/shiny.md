@@ -1,0 +1,4 @@
+---
+description: Something shiny
+---
+Shiny.

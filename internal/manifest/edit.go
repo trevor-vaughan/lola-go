@@ -50,6 +50,7 @@ func (e Entry) clone() Entry {
 	}
 	e.Components = e.Components.Clone()
 	e.Vars = CloneVars(e.Vars)
+	e.Only, e.Skip = slices.Clone(e.Only), slices.Clone(e.Skip)
 	return e
 }
 
@@ -75,7 +76,7 @@ func (m *Manifest) Applied(c Change) *Manifest {
 // keys that come before it in this order.
 var (
 	topKeys   = []string{"version", "targets", "modules"}
-	entryKeys = []string{"name", "source", "ref", "path", "components", "commit", "digest", "targets", "rules", "vars", "market"}
+	entryKeys = []string{"name", "source", "ref", "path", "components", "commit", "digest", "targets", "only", "skip", "rules", "vars", "market"}
 )
 
 // Edit returns the file to write and the manifest at path with c applied (Plan 6a §4.5). The
@@ -196,6 +197,15 @@ func setEntry(m *yaml.Node, e Entry) {
 		rules = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: strconv.FormatBool(*e.Rules)}
 	}
 	setKey(m, entryKeys, "targets", ts)
+	var only, skip *yaml.Node
+	if len(e.Only) > 0 {
+		only = flowList(e.Only)
+	}
+	if len(e.Skip) > 0 {
+		skip = flowList(e.Skip)
+	}
+	setKey(m, entryKeys, "only", only)
+	setKey(m, entryKeys, "skip", skip)
 	setKey(m, entryKeys, "rules", rules)
 	var market *yaml.Node
 	if e.Market != nil {

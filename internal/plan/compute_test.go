@@ -39,7 +39,7 @@ var _ = Describe("Compute", func() {
 	}
 	req := func(force bool, changes ...plan.ModuleChange) plan.Request {
 		return plan.Request{Roots: map[string]string{tgt: root}, BaseDirs: map[string][]string{tgt: {".claude/commands"}},
-			Ledger: led, Force: force, ForceRun: "lola render --force", Changes: changes}
+			Ledger: led, Force: force, ForceRun: "lola uninstall --force", Changes: changes}
 	}
 	change := func(name string, intents ...plan.Intent) plan.ModuleChange {
 		return plan.ModuleChange{Name: name, Entry: &ledger.Entry{Source: "/s/" + name, Digest: "sha256:new"}, Targets: []string{tgt}, Intents: intents}
@@ -278,7 +278,7 @@ var _ = Describe("Compute", func() {
 			_, err := plan.Compute(req(false, removal("a")))
 			Expect(conflicts(err)[0].Reason).To(Equal("hand-edited since lola wrote it; deleting it would lose your edits"))
 			Expect(err).To(MatchError(HavePrefix("refusing to change anything: 1 conflict, which --force overrides\n")))
-			Expect(errs.Hints(err)).To(Equal([]string{"lola render --force"}), "the hint is the run with --force")
+			Expect(errs.Hints(err)).To(Equal([]string{"lola uninstall --force"}), "the hint is the run with --force")
 			p, err := plan.Compute(req(true, removal("a")))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(p.Files[0].Delete).To(BeTrue())

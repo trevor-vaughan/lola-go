@@ -90,14 +90,15 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		Expect(err).NotTo(HaveOccurred())
 		return string(b)
 	}
-	// activate records names as the scope's active profiles, as lola profile --on does.
-	activate := func(s engine.Scope, names ...string) {
+	// activate records name as the scope's active profile, as lola profile --on does; "" turns off
+	// whatever is on.
+	activate := func(s engine.Scope, name string) {
 		GinkgoHelper()
 		led, err := e.Ledger(s)
 		Expect(err).NotTo(HaveOccurred())
-		led.Profiles = nil
-		for _, n := range names {
-			led.Profiles = append(led.Profiles, ledger.Active{Name: n, By: ledger.ByOn})
+		led.Profile = nil
+		if name != "" {
+			led.Profile = &ledger.Active{Name: name, By: ledger.ByOn}
 		}
 		Expect(led.Save(filepath.Join(s.ProjectDir, ".lola", "lock.json"))).To(Succeed())
 	}
@@ -209,13 +210,13 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 	It("templates render per target with the run's target, scope and profiles", func() {
 		writeTree(p.UserProfiles, map[string]string{"alpha.yml": "version: 1\nmodules: []\n", "work.yml": "version: 1\nmodules: []\n"})
 		writeTree(src, map[string]string{"commands/ship.md.liquid": "{{ target }} {{ scope }} {{ profiles | join: ',' }}\n"})
-		activate(sc, "user:alpha", "user:work")
+		activate(sc, "user:work")
 		_, err := install(engine.Options{Targets: []string{"claude-code", "gemini-cli", "opencode"}}, "../src/kit")
 		Expect(err).NotTo(HaveOccurred())
 		got := files(proj)
 		for prefix, t := range map[string]string{".claude/": "claude-code", ".gemini/": "gemini-cli", ".opencode/": "opencode"} {
 			Expect(slices.ContainsFunc(slices.Collect(maps.Keys(got)), func(k string) bool {
-				return strings.HasPrefix(k, prefix) && strings.Contains(got[k], t+" project user:alpha,user:work")
+				return strings.HasPrefix(k, prefix) && strings.Contains(got[k], t+" project user:work")
 			})).To(BeTrue(), "%s: %v", t, got)
 		}
 		_, err = e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: []string{"claude-code"}})
@@ -361,9 +362,9 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		before = files(proj)
 		activate(sc, "user:alpha")
 		lola = state()
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = sync(engine.Options{})
 		Expect(err).To(MatchError(ContainSubstring("commands/p.md.liquid:2: undefined variable in {{ nope }}")))
-		unchanged("render")
+		unchanged("sync re-rendering for the profiles")
 
 		// git and archive fetches: nothing written, the cache holds the source as fetched, the run's
 		// staging directory is gone
@@ -428,7 +429,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		Expect(files(proj)).To(BeEmpty())
 	})
 
-	It("install, sync, render, market install, check and profile switches all render templates", func() {
+	It("install, sync, market install, check and profile switches all render templates", func() {
 		writeTree(p.UserProfiles, map[string]string{"alpha.yml": "version: 1\nmodules: []\n"})
 		writeTree(src, map[string]string{"commands/ship.md.liquid": "Ship for {{ target }} {{ profiles | join: ',' }}\n"})
 		_, err := install(engine.Options{Targets: []string{"claude-code"}}, "../src/kit")
@@ -441,17 +442,17 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		Expect(read(".claude/commands/ship.md")).To(Equal("Ship for claude-code \n"), "sync")
 
 		activate(sc, "user:alpha")
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = sync(engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(read(".claude/commands/ship.md")).To(Equal("Ship for claude-code user:alpha\n"), "render")
+		Expect(read(".claude/commands/ship.md")).To(Equal("Ship for claude-code user:alpha\n"), "sync re-rendering for the profiles")
 
 		pk := filepath.Join(tmp, "src", "pk")
 		writeTree(pk, map[string]string{"commands/pk.md.liquid": "pk {{ profiles | join: ',' }}\n"})
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: pk, source: " + pk + "}\n"})
-		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"work"}},
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileSwitch, Name: "work"},
 			ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(read(".claude/commands/pk.md")).To(Equal("pk user:alpha,user:work\n"), "a profile switch")
+		Expect(read(".claude/commands/pk.md")).To(Equal("pk user:work\n"), "a profile switch")
 
 		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred())
@@ -680,8 +681,8 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 			Expect(json.Unmarshal([]byte(read(".lola/lock.json")), &l)).To(Succeed())
 			return l["modules"].(map[string]any)
 		}
-		turn := func(action engine.ProfileAction, opts engine.Options, names ...string) (*engine.SyncResult, error) {
-			return e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: opts, Profiles: &engine.ProfileChange{Action: action, Names: names},
+		turn := func(action engine.ProfileAction, opts engine.Options, name string) (*engine.SyncResult, error) {
+			return e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: opts, Profiles: &engine.ProfileChange{Action: action, Name: name},
 				ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
 		}
 		BeforeEach(func() {
@@ -715,14 +716,14 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 			Expect(lock()["noread"]).To(HaveKeyWithValue("rendered_with", map[string]any{"vars": map[string]any{}}), "written again, valid")
 		})
 
-		It("lola render and lola sync re-render a module whose rendered_with changed", func() {
+		It("lola sync re-renders a module whose rendered_with changed", func() {
 			activate(sc, "user:alpha")
-			_, err := e.Render(ctx, sc, engine.Options{})
+			_, err := sync(engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(".claude/commands/r.md")).To(Equal("r user:alpha\n"))
 			Expect(lock()["reads"]).To(HaveKeyWithValue("rendered_with", HaveKeyWithValue("profiles", []any{"user:alpha"})))
 
-			activate(sc)
+			activate(sc, "")
 			_, err = sync(engine.Options{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(".claude/commands/r.md")).To(Equal("r \n"))
@@ -773,7 +774,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 
 			// The trust diff renders the version installed with the profiles it was installed under,
 			// so a list changed since shows in its hooks.
-			activate(sc)
+			activate(sc, "")
 			edited := strings.Replace(read(".lola/project.yml"), "name: hooky\n", "name: hooky\n    rules: false\n", 1)
 			Expect(edited).NotTo(Equal(read(".lola/project.yml")), "the fixture changes hooky's entry")
 			Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte(edited), 0o644)).To(Succeed())

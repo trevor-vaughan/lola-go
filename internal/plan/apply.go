@@ -13,13 +13,16 @@ import (
 )
 
 // ManifestWrite is a manifest edit Apply writes in the same transaction as the ledger: Data
-// at Path, mode 0600. A project profile lola writes pins into is one too (Plan 6b §6.4). Check,
-// when set, runs just before Data is staged: an error refuses the apply, which restores what it
-// changed (a profile checks that nothing moved since it was read, ruling R-6b3a-4).
+// at Path, mode 0600, or with KeepMode the mode of the file it replaces, when there is one (a
+// file of yours, which a dotfiles repository may share). A project profile lola writes pins into
+// is one too (Plan 6b §6.4). Check, when set, runs just before Data is staged: an error refuses
+// the apply, which restores what it changed (a profile checks that nothing moved since it was
+// read, ruling R-6b3a-4).
 type ManifestWrite struct {
-	Path  string
-	Data  []byte
-	Check func() error
+	Path     string
+	Data     []byte
+	Check    func() error
+	KeepMode bool
 }
 
 // Apply makes p's file changes, writes ledger to ledgerPath and then each manifest edit of man,
@@ -94,7 +97,7 @@ func (t *txn) run(p *Plan, ledgerPath string, man []ManifestWrite) error {
 	// Each manifest follows the ledger, staged next to it. The current one stays in place until
 	// the new one is renamed over it, so a crash never leaves the scope without its manifest;
 	// rollback renames the backup over it. Directories it needs are private to the user, as
-	// user.yml's always were.
+	// those of your profiles (default.yml) are.
 	for _, m := range man {
 		if m.Check != nil {
 			if err := m.Check(); err != nil {
@@ -104,7 +107,16 @@ func (t *txn) run(p *Plan, ledgerPath string, man []ManifestWrite) error {
 		if err := t.mkdirAll(filepath.Dir(m.Path), 0o700); err != nil {
 			return err
 		}
-		if err := t.stage(FileChange{Abs: m.Path, Data: m.Data, Mode: 0o600}); err != nil {
+		mode := fs.FileMode(0o600)
+		if m.KeepMode {
+			var err error
+			if mode, err = fsx.KeptMode(m.Path, mode); err != nil {
+				return err
+			}
+		} else if _, err := os.Lstat(m.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		if err := t.stage(FileChange{Abs: m.Path, Data: m.Data, Mode: mode}); err != nil {
 			return err
 		}
 		if err := t.replace(m.Path); err != nil {

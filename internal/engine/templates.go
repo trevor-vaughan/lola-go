@@ -8,7 +8,6 @@ import (
 	"maps"
 	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -454,8 +453,9 @@ func templateSources(m *module.Module) []templating.Source {
 }
 
 // renderedWith is what m's templates render with in run under an entry that overrides vars,
-// which lock.json records (Plan 7 §6.3): nil for a module without templates; the active profiles
-// only when a template reads them, so a switch re-renders only the modules it changes.
+// which lock.json records (Plan 7 §6.3): nil for a module without templates; the scope's profiles
+// (default where read, then the active profile) only when a template reads them, so a switch
+// re-renders only the modules it changes.
 func renderedWith(m *module.Module, run *templateRun, vars map[string]any) *ledger.RenderedWith {
 	srcs := templateSources(m)
 	if len(srcs) == 0 {
@@ -480,12 +480,12 @@ func sameRendering(a, b *ledger.RenderedWith) bool {
 }
 
 // rerenders lists the installed modules at sc whose templates would render with other inputs
-// under the active list: their recorded rendered_with differs from what they would render with
-// now, read from the version installed, or, when the cache no longer holds it, records profiles
-// other than the list's. Any other error reading the cache is returned. load reads a cached
-// version (e.Store.Load).
-func (e *Engine) rerenders(sc Scope, led *ledger.Ledger, list []ledger.Active, load func(name, id string) (store.Version, error)) ([]string, error) {
-	run, err := e.newTemplateRun(sc, list)
+// under the active profile active (nil for none): their recorded rendered_with differs from what
+// they would render with now, read from the version installed, or, when the cache no longer holds
+// it, records profiles other than the run's. Any other error reading the cache is returned. load
+// reads a cached version (e.Store.Load).
+func (e *Engine) rerenders(sc Scope, led *ledger.Ledger, active *ledger.Active, load func(name, id string) (store.Version, error)) ([]string, error) {
+	run, err := e.newTemplateRun(sc, active)
 	if err != nil {
 		return nil, err
 	}
@@ -516,8 +516,8 @@ func (e *Engine) rerenders(sc Scope, led *ledger.Ledger, list []ledger.Active, l
 	return out, nil
 }
 
-// templateRun is one plan pass's rendering (Plan 7 §6.2): the scope's active profiles, in
-// activation order, which every template of the pass sees, and the budget the pass has spent:
+// templateRun is one plan pass's rendering (Plan 7 §6.2): the scope's profiles, in precedence
+// order, which every template of the pass sees, and the budget the pass has spent:
 // rendering time and rendered bytes held.
 type templateRun struct {
 	profiles []string
@@ -570,9 +570,12 @@ func budgetSize(n int) string {
 	return fmt.Sprintf("%d KiB", (n+1<<10-1)>>10)
 }
 
-// newTemplateRun starts a plan pass at sc that renders with the active list: the qualified names
-// lola profile lists as active, default first at user scope when its file exists (Plan 7 §3.2).
-func (e *Engine) newTemplateRun(sc Scope, active []ledger.Active) (*templateRun, error) {
+// newTemplateRun starts a plan pass at sc that renders with the precedence list (spec 2026-10-29
+// §8.8): default first at user scope when default.yml exists, then the active profile, by
+// qualified name (nil for none), and a bundle's members as it expands them (Engine.members, read
+// for their names alone; a profile that does not read leaves the list at the profile on, and the
+// run's own read refuses it).
+func (e *Engine) newTemplateRun(sc Scope, active *ledger.Active) (*templateRun, error) {
 	r := &templateRun{profiles: []string{}}
 	if sc.Kind == target.User {
 		_, err := os.Stat(e.profilePath(sc, profile.KindDefault, profile.DefaultName))
@@ -583,8 +586,19 @@ func (e *Engine) newTemplateRun(sc Scope, active []ledger.Active) (*templateRun,
 			return nil, err
 		}
 	}
-	for _, a := range active {
-		r.profiles = append(r.profiles, a.Name)
+	if active != nil {
+		r.profiles = append(r.profiles, active.Name)
+		infos, _, err := e.visible(sc)
+		if err != nil {
+			return nil, err
+		}
+		if k := activeInfo(infos, active.Name); k >= 0 && infos[k].Kind != profile.KindRemote {
+			if ms, x, err := e.members(sc, infos, infos[k]); err == nil && x.bundle {
+				for _, m := range ms {
+					r.profiles = append(r.profiles, strings.TrimPrefix(m.Name, ledger.FromProfile("")))
+				}
+			}
+		}
 	}
 	return r, nil
 }
@@ -613,7 +627,7 @@ func (e *Engine) checkVars(sc Scope, m *module.Module, ment *manifest.Entry, fro
 	}
 	file := from
 	if file == "" {
-		file = filepath.Base(e.files(sc).manifest)
+		file = e.manifestName(sc)
 	}
 	declared := slices.Sorted(maps.Keys(m.Vars))
 	for _, k := range slices.Sorted(maps.Keys(ment.Vars)) {

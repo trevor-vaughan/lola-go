@@ -23,9 +23,9 @@ var _ = Describe("checkVars", func() {
 		m := &module.Module{Name: "kit", Vars: map[string]any{"since": "x", "n": "1", "tools": []string{"rg"}}}
 		for k, v := range map[string]any{"since": time.Time{}, "n": uint64(1), "tools": []any{"rg"}} {
 			err := e.checkVars(Scope{Kind: target.User}, m, &manifest.Entry{Name: "kit", Vars: map[string]any{k: v}}, "", "", nil)
-			want := "user.yml: modules[kit].vars." + k + ": kit's default is a string; this is unsupported"
+			want := "default.yml: modules[kit].vars." + k + ": kit's default is a string; this is unsupported"
 			if k == "tools" {
-				want = "user.yml: modules[kit].vars.tools: kit's default is a list of strings; this is unsupported"
+				want = "default.yml: modules[kit].vars.tools: kit's default is a list of strings; this is unsupported"
 			}
 			Expect(err).To(MatchError(want), k)
 		}

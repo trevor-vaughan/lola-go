@@ -44,8 +44,9 @@ type installOutput struct {
 	EquivalentCommands []string `json:"equivalent_commands"`
 }
 
-// selectionEdits parses the --skip, --only and --unskip values.
-func selectionEdits(skips, onlys, unskips []string) ([]engine.SelectionEdit, error) {
+// selectionEdits parses the --skip, --only and --unskip values; exact marks the --only edits
+// (--exact).
+func selectionEdits(skips, onlys, unskips []string, exact bool) ([]engine.SelectionEdit, error) {
 	var out []engine.SelectionEdit
 	for _, f := range []struct {
 		op   string
@@ -56,7 +57,7 @@ func selectionEdits(skips, onlys, unskips []string) ([]engine.SelectionEdit, err
 			if err != nil {
 				return nil, fmt.Errorf("--%s: %w", f.op, err)
 			}
-			out = append(out, engine.SelectionEdit{Op: f.op, Selector: sel})
+			out = append(out, engine.SelectionEdit{Op: f.op, Selector: sel, Exact: exact && f.op == engine.EditOnly})
 		}
 	}
 	return out, nil
@@ -127,7 +128,7 @@ func offerAddresses(g engine.MarketGroup) []string {
 }
 
 func (a *app) addCoreCommands(root *cobra.Command) {
-	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.renderCmd(), a.tidyCmd(), a.profileCmd(), a.marketCmd(),
+	root.AddCommand(a.installCmd(), a.syncCmd(), a.uninstallCmd(), a.listCmd(), a.updateCmd(), a.tidyCmd(), a.profileCmd(), a.marketCmd(),
 		a.checkCmd(), a.infoCmd())
 }
 
@@ -138,7 +139,7 @@ func (a *app) installCmd() *cobra.Command {
 		usage: "lola install <source|name|@market/module>... [-t target]",
 		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review",
 			"lola install https://github.com/acme/review.git --ref v1.2.0", "lola install ./review-1.2.0.tar.gz", "lola install @acme/formatter",
-			"lola install review-kit --scope project --skip skill/slow-lint", "lola install"}}
+			"lola install review-kit --scope project --skip skill/slow-lint", "lola install review-kit --unskip skill/slow-lint", "lola install"}}
 	cmd := &cobra.Command{
 		Use:     "install [<source|name|@market/module>...]",
 		Aliases: []string{"add"},
@@ -153,10 +154,10 @@ func (a *app) installCmd() *cobra.Command {
 			"commit pin must be on its ref. --ref replaces the catalog's ref and records no market;\n" +
 			"--path is refused, as the catalog gives the path. @market/module is a command-line\n" +
 			"form only, never a file's source: (a directory of that name is ./@market/module); a\n" +
-			"project.yml, user.yml or profile that has one is refused, naming its line, and\n" +
-			"lola install @market/module replaces such an entry of the module's name.\n" +
+			"project.yml or profile that has one is refused, naming its line, and\n" +
+			"lola install @market/module replaces such an entry of project.yml or default.yml.\n" +
 			"The module is copied into your cache, rendered for each target, and recorded in\n" +
-			".lola/project.yml (user scope: $XDG_CONFIG_HOME/lola/user.yml).\n" +
+			".lola/project.yml (user scope: your default profile, $XDG_CONFIG_HOME/lola/profiles/default.yml).\n" +
 			"\n" +
 			"With no argument on a terminal, lola asks for the scope, modules, assistants and\n" +
 			"components, shows a summary with the equivalent commands, and applies on your say.\n" +
@@ -168,10 +169,22 @@ func (a *app) installCmd() *cobra.Command {
 			"above the current directory; else default_scope in $XDG_CONFIG_HOME/lola/config.yaml\n" +
 			"(version: 1, default_scope: project|user|both); otherwise install refuses to guess.\n" +
 			"\n" +
-			"Components: $XDG_CONFIG_HOME/lola/selections.yaml lists the components you skip, globally,\n" +
-			"at user scope and per project; install, render and check honor it. --skip, --only and\n" +
-			"--unskip take kind/name or module:kind/name (kind: skill, command, agent, mcp, rule;\n" +
-			"name may be a glob) and save to that file; --global saves to its global section.\n" +
+			"Components: $XDG_CONFIG_HOME/lola/selections.yaml lists the components you skip, globally\n" +
+			"and per project; a module from a profile takes its entry's only: and skip: instead (plus the\n" +
+			"global skip). --skip, --only and --unskip take kind/name or module:kind/name (kind: skill,\n" +
+			"command, agent, mcp, rule; name may be a glob) and save to that file, or to the profile entry\n" +
+			"the install writes; --global saves to its global section.\n" +
+			"--only saves skips of the components that exist now, so a later version's new ones\n" +
+			"install; --only --exact saves the selectors as the section's only: list instead, and\n" +
+			"lola names each new component that list leaves out.\n" +
+			"lola names the components your picks mention by name but leave out; --with-mentions\n" +
+			"adds them (one hop), saved as --unskip saves them.\n" +
+			"\n" +
+			"Where it is written: the profile on (yours or the project's), else the scope's base (project.yml;\n" +
+			"at user scope your default profile); --profile <name> writes another (base: the scope's base),\n" +
+			"and one that is off is saved, not applied. A module another layer provides asks on a terminal\n" +
+			"whether to change it there or override it in the profile on; --profile base and --override\n" +
+			"answer off one. -y and --force never answer it.\n" +
 			"\n" +
 			"--no-rules installs everything except the module's always-on rules and records that\n" +
 			"choice, so later renders keep it; --rules turns them back on.\n" +
@@ -209,12 +222,16 @@ func (a *app) installCmd() *cobra.Command {
 		},
 	}
 	addTargetFlag(cmd, &f.targets, "assistants to install for")
-	cmd.Flags().StringArrayVar(&f.skips, "skip", nil, "do not install these components, and remember it in selections.yaml (kind/name or module:kind/name; repeatable)")
-	cmd.Flags().StringArrayVar(&f.onlys, "only", nil, "install only these components of each module that has them, and remember it (repeatable)")
-	cmd.Flags().StringArrayVar(&f.unskips, "unskip", nil, "install these skipped components again, and remember it (repeatable)")
+	cmd.Flags().StringSliceVar(&f.skips, "skip", nil, "do not install these components, and remember it in selections.yaml (kind/name or module:kind/name; repeatable or comma-separated)")
+	cmd.Flags().StringSliceVar(&f.onlys, "only", nil, "install only these components of each module that has them, and remember it (repeatable or comma-separated)")
+	cmd.Flags().StringSliceVar(&f.unskips, "unskip", nil, "install these skipped components again, and remember it (repeatable or comma-separated)")
 	cmd.Flags().BoolVar(&f.global, "global", false, "save --skip, --only and --unskip in the global section of selections.yaml, for every scope")
+	cmd.Flags().BoolVar(&f.exact, "exact", false, "save --only as an only: list in selections.yaml, so components a later version adds are not installed")
+	cmd.Flags().BoolVar(&f.withMentions, "with-mentions", false, "also install the components your picks mention by name (one hop), and remember them in selections.yaml")
 	cmd.Flags().StringVar(&f.ref, "ref", "", "git branch, tag or full commit SHA (git sources)")
 	cmd.Flags().StringVar(&f.path, "path", "", "module root inside the source (monorepos)")
+	cmd.Flags().BoolVar(&f.override, "override", false, "when the module comes from another layer (the base under your profile), give the profile its own entry, starting from that one (keeps the version installed)")
+	cmd.Flags().StringVar(&f.profile, "profile", "", "write the entry into this profile (base: the scope's base), not the profile on; one that is off is saved, not applied")
 	cmd.Flags().StringVar(&f.preInstall, "pre-install", "", "a script to run before each module copy the install writes, once per assistant (yours: no trust asked)")
 	cmd.Flags().StringVar(&f.postInstall, "post-install", "", "a script to run after each module copy the install writes, once per assistant (yours: no trust asked)")
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
@@ -231,13 +248,14 @@ func (a *app) installCmd() *cobra.Command {
 func (a *app) uninstallCmd() *cobra.Command {
 	var targets []string
 	var dry, yes, force bool
+	var profileName string
 	g := argGuide{noun: "module", find: "lola list", usage: "lola uninstall <module>... [-t target] [-y]",
 		examples: []string{"lola uninstall my-module -y", "lola uninstall my-module -t claude-code", "lola uninstall my-module --dry-run"}}
 	cmd := &cobra.Command{
 		Use:     "uninstall <module>...",
 		Aliases: []string{"remove", "rm", "erase", "delete", "del"},
 		Short:   "Remove modules from this project (or --user)",
-		Long: "Remove everything lola wrote for the modules (on -t targets only, if given). The modules stay\nin your cache; remove them there with lola cache rm.\n\n" +
+		Long: "Remove the modules' entries from the layer each comes from — the profile on, or the base (asked\nwhen a profile is on; --profile base answers off a terminal) — and everything lola wrote for\nthem (on -t targets only, if given: the entry keeps the others). A module another layer still\nlists stays installed. The modules stay in your cache; remove them there with lola cache rm.\n\n" +
 			scopeHelp,
 		Example:           g.example(),
 		GroupID:           groupCore,
@@ -252,8 +270,22 @@ func (a *app) uninstallCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			req := engine.TargetRequest{Profile: profileName, Rerun: func(extra ...string) string {
+				return strings.Join(append([]string{runWithout(cmd, args, append([]string{"profile"}, consentFlags...)...)}, extra...), " ")
+			}, UserRun: func() string {
+				return runWithout(cmd, args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
+			}, Again: rerunFlags(cmd, 0)}
+			a.printContext(cmd, eng, []engine.Scope{scs[0].Scope}, &req)
 			sc := scs[0].Scope
-			opts := engine.Options{Targets: targets, DryRun: true, Force: force, ForceRun: forceRun(cmd, args), Display: outputFlags(cmd)}
+			// The preview's where-question is answered once and reused by the run (askWhere remembers it).
+			opts := engine.Options{Targets: targets, DryRun: true, Force: force, ForceRun: forceRun(cmd, args), Display: outputFlags(cmd),
+				Target: req, AskWhere: a.askWhere(a.prompter(cmd), nil), Retarget: func(module string, ts []string) string {
+					run := runWithout(cmd, []string{module}, "target")
+					if len(ts) == 0 {
+						return run
+					}
+					return run + " " + errs.ShellJoin([]string{"-t", untrusted.Text(strings.Join(ts, ","), untrusted.MaxName)})
+				}}
 			// --force answers the question, as -y does (user decision, 2026-10-22).
 			if !dry && !yes && !force {
 				// The preview is a dry run, whose refusal of an @ source would hint -n: coach it as this run.
@@ -266,9 +298,12 @@ func (a *app) uninstallCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				show := func(w io.Writer) { printResult(w, style{}, "", preview) }
-				if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", Nav{}, preview, show); err != nil {
-					return err
+				// A plan that removes no files (it only edits a profile) has nothing to confirm.
+				if len(preview.Modules) > 0 {
+					show := func(w io.Writer) { printResult(w, style{}, "", preview) }
+					if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", Nav{}, preview, show); err != nil {
+						return err
+					}
 				}
 			}
 			opts.DryRun = dry
@@ -283,6 +318,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
 	cmd.Flags().BoolVar(&force, "force", false, "also delete files edited since lola wrote them, without asking (never answers a consent question)")
+	cmd.Flags().StringVar(&profileName, "profile", "", "remove the entry from this profile (base: the scope's base) instead of the layer the module comes from")
 	return cmd
 }
 
@@ -297,7 +333,7 @@ func (a *app) listCmd() *cobra.Command {
 			"than the one installed: run lola sync); not installed (listed in project.yml: run lola sync); or\n" +
 			"skipped (nothing of the module could be rendered for the target).\n" +
 			"→ update available: your cache has a newer version for the ref: lola sync --update <module>.\n" +
-			"FROM, shown when a profile is involved, names where the module comes from: project.yml, user.yml\n" +
+			"FROM, shown when a profile is involved, names where the module comes from: project.yml\n" +
 			"or a profile (profile:default, profile:user:<name>).\n\n" +
 			"Scope: --project, --user, -C <dir> or --scope (both included); without them, the project with\n" +
 			".lola/ at or above the current directory, if any, and user scope. list never asks, and\n" +
@@ -325,6 +361,7 @@ func (a *app) listCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			a.printContext(cmd, eng, choiceScopes(scs), nil)
 			rows, notices := []engine.StatusRow{}, []engine.Notice{}
 			var scopes []engine.Scope
 			for i, c := range scs {
@@ -345,7 +382,7 @@ func (a *app) listCmd() *cobra.Command {
 				scopes = append(scopes, c.Scope)
 			}
 			return a.emit(cmd, func(w io.Writer, s style) {
-				printStatus(w, s, scopes, rows, func(sc engine.Scope) string { return eng.Command(sc, "install") })
+				printStatus(w, s, scopes, rows, a.contexts, func(sc engine.Scope) string { return eng.Command(sc, "install") })
 				for _, n := range notices {
 					fmt.Fprintln(w, noticeLine(s, n))
 				}
@@ -359,7 +396,7 @@ func (a *app) listCmd() *cobra.Command {
 // printStatus prints the rows of every scope list read: a table whose rows each name their
 // scope, then a line per scope with nothing installed, coaching install (the command install
 // names for a scope). --plain rows are name, target, status, rules, source, scope, from.
-func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, install func(engine.Scope) string) {
+func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.StatusRow, contexts []engine.ScopeContext, install func(engine.Scope) string) {
 	if s.plain {
 		for _, r := range rows {
 			rules := "on"
@@ -422,7 +459,7 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 		}
 		line := strings.Join([]string{r.Scope, r.Name, r.Target, status, rules, r.Source}, "\t")
 		if profiled {
-			line += "\t" + r.From
+			line += "\t" + fromLabel(r.Scope, r.From, contexts)
 		}
 		fmt.Fprintln(tw, line)
 	}
@@ -432,57 +469,31 @@ func printStatus(w io.Writer, s style, scopes []engine.Scope, rows []engine.Stat
 	}
 }
 
-func (a *app) renderCmd() *cobra.Command {
-	var targets []string
-	var dry, force, strict bool
-	var trust trustFlag
-	cmd := &cobra.Command{
-		Use:     "render",
-		Aliases: []string{"update"},
-		Short:   "Render every installed module again from your cache",
-		Long: "Re-render every installed module at the version it was installed at (a folder module from its\n" +
-			"folder), fetching that version again if your cache lost it, and remove files the module no\n" +
-			"longer ships. Files edited by hand are reported and kept unless --force.\n" +
-			"Claude Code runtime hooks whose consent no longer matches (a new version, or a moved\n" +
-			"project) are asked about again, and removed unless you consent.\n" + trustHelp("render") + "\n\n" + scopeHelp,
-		Example: "  lola render\n  lola render --dry-run\n  lola render -t claude-code --force",
-		GroupID: groupCore,
-		// Arguments reach RunE so that a kind written after a bare --trust is coached
-		// (trust.parse); any other is refused as cobra.NoArgs refuses it.
-		Args: cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			kinds, err := trust.parse(cmd, args, "render", "module")
-			if err != nil {
-				return err
-			}
-			if err := cobra.NoArgs(cmd, args); err != nil {
-				return err
-			}
-			eng, err := a.engine()
-			if err != nil {
-				return err
-			}
-			scs, err := a.scopes(cmd, eng, nil, "Render where?", false, false)
-			if err != nil {
-				return err
-			}
-			sc := scs[0].Scope
-			opts := engine.Options{Targets: targets, DryRun: dry, Force: force, Strict: strict, ForceRun: forceRun(cmd, nil), Display: outputFlags(cmd),
-				Trust: kinds, Receipt: a.receipt(cmd, kinds, false), Rerun: trustRun(cmd, nil)}
-			a.hookOptions(cmd, &opts)
-			res, err := eng.Render(cmd.Context(), sc, opts)
-			if err != nil {
-				return err
-			}
-			return a.emit(cmd, func(w io.Writer, s style) { printResult(w, s, "rendered", res) }, res)
-		},
+// fromLabel is the name of from, a layer of scope (a list row's), as the context line names it
+// (spec 2026-10-29 §6.1): default, project.yml, profile go-review, or for a member of the bundle on
+// in that scope docs (bundle work). --plain and --json keep lock.json's from.
+func fromLabel(scope, from string, contexts []engine.ScopeContext) string {
+	q, ok := strings.CutPrefix(from, "profile:")
+	if !ok {
+		return from // project.yml
 	}
-	addTargetFlag(cmd, &targets, "only render for these assistants")
-	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "print the plan and write nothing")
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite or delete hand-edited files and render skipped artifacts that can be (never answers a consent question)")
-	cmd.Flags().BoolVar(&strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
-	addTrustFlag(cmd, &trust, "render", "trust these kinds without asking: scripts, hooks, runtime-hooks or all (recorded as a yes is)")
-	return cmd
+	if q == "default" {
+		return q
+	}
+	for _, c := range contexts {
+		if c.Scope != scope || c.Profile == nil {
+			continue
+		}
+		if c.Profile.Name == q {
+			return "profile " + c.Profile.Label
+		}
+		for _, m := range c.Profile.Members {
+			if m.Name == q {
+				return m.Label + " (bundle " + c.Profile.Label + ")"
+			}
+		}
+	}
+	return "profile " + untrusted.Text(q, untrusted.MaxName) // a layer no longer on, which lock.json still names
 }
 
 func (a *app) checkCmd() *cobra.Command {
@@ -516,6 +527,9 @@ func (a *app) checkCmd() *cobra.Command {
 			rep, err := eng.Check(cmd.Context(), sc, cwd, args, targets, outputFlags(cmd))
 			if err != nil {
 				return err
+			}
+			if rep.Read {
+				a.printContext(cmd, eng, []engine.Scope{sc}, nil)
 			}
 			if err := a.emit(cmd, func(w io.Writer, s style) { printCheck(w, s, rep) }, rep); err != nil || !strict {
 				return err

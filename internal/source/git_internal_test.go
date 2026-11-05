@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -37,7 +38,7 @@ var _ = Describe("git environment and listing", func() {
 			Expect(exec.Command("git", append([]string{"-C", dir}, args...)...).Run()).To(Succeed())
 		}
 		Expect(os.WriteFile(filepath.Join(dir, "commands", "untracked.md"), []byte("U"), 0o644)).To(Succeed())
-		files, err := listFiles(context.Background(), dir, listGit)
+		files, _, err := listFiles(context.Background(), dir, listGit)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(files).To(Equal([]string{filepath.Join("commands", "a.md")}))
 	})
@@ -92,15 +93,68 @@ var _ = Describe("git's stderr", func() {
 
 	It("is bounded in memory and in the error when git ls-files writes megabytes of it", func() {
 		var err error
-		Expect(allocated(func() { _, err = listFiles(context.Background(), GinkgoT().TempDir(), listGit) })).To(BeNumerically("<", 2<<20))
+		Expect(allocated(func() { _, _, err = listFiles(context.Background(), GinkgoT().TempDir(), listGit) })).To(BeNumerically("<", 2<<20))
 		Expect(err).To(MatchError(ContainSubstring("git ls-files")))
 		Expect(len(err.Error())).To(BeNumerically("<", 2*maxStderr))
 	})
 
 	It("does not print the directory git ls-files ran in", func() {
 		root := GinkgoT().TempDir()
-		_, err := listFiles(context.Background(), root, listGit)
+		_, _, err := listFiles(context.Background(), root, listGit)
 		Expect(err).To(MatchError(ContainSubstring("git ls-files")))
 		Expect(err.Error()).NotTo(ContainSubstring(root))
+	})
+})
+
+var _ = Describe("githubWebHint", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	DescribeTable("coaches a github.com web URL",
+		func(raw, wantHint, wantNote string) {
+			hint, note := githubWebHint(raw)
+			Expect(hint).To(Equal(wantHint))
+			Expect(note).To(ContainSubstring(wantNote))
+		},
+		Entry("tree", "https://github.com/affaan-m/ECC/tree/main/skills/",
+			"lola install https://github.com/affaan-m/ECC --ref main --path skills", "web page"),
+		Entry("tree with no path", "https://github.com/o/r/tree/main",
+			"lola install https://github.com/o/r --ref main", "web page"),
+		Entry("blob names its directory", "https://github.com/o/r/blob/main/skills/x/SKILL.md",
+			"lola install https://github.com/o/r --ref main --path skills/x", "web page"),
+		Entry("organisation page", "https://github.com/lolables/",
+			"", "organisation"),
+		Entry("blob with a trailing slash", "https://github.com/o/r/blob/main/skills/x/SKILL.md/",
+			"lola install https://github.com/o/r --ref main --path skills/x", "web page"),
+		Entry("blob naming no file", "https://github.com/o/r/blob/main",
+			"lola install https://github.com/o/r --ref main", "web page"),
+		Entry("query and fragment are not the path", "https://github.com/o/r/tree/main/x?tab=a#frag",
+			"lola install https://github.com/o/r --ref main --path x", "web page"),
+		Entry("empty ref gets a note only", "https://github.com/o/r/tree//x", "", "web page"),
+		Entry("option-like ref gets a note only", "https://github.com/o/r/tree/--upload-pack=x/y", "", "web page"),
+		Entry("encoded control characters in an organisation", "https://github.com/%0A%1b[31mx/", "", ""),
+		Entry("encoded control characters in a tree", "https://github.com/o/r/tree/main/%0A%1b[31mx", "", ""),
+		Entry("encoded control characters in a repository", "https://github.com/o/%0Ar/tree/main/x", "", ""),
+		Entry("plain repo gets nothing", "https://github.com/o/r", "", ""),
+		Entry("other hosts get nothing", "https://gitlab.com/o/r/tree/main/x", "", ""),
+		Entry("ssh gets nothing", "git@github.com:o/r.git", "", ""),
+	)
+
+	It("says nothing of a URL whose decoded segments hold control characters", func() {
+		for _, raw := range []string{"https://github.com/%0A%1b[31mx/", "https://github.com/o/r/tree/main/%0A%1b[31mx"} {
+			hint, note := githubWebHint(raw)
+			Expect(hint).To(BeEmpty(), raw)
+			Expect(note).To(BeEmpty(), raw)
+		}
+	})
+
+	It("puts the lola command before the git check in an access error", func() {
+		err := accessDenied([]string{"--", "https://github.com/o/r/tree/main/x"},
+			"fatal: repository 'https://github.com/o/r/tree/main/x/' not found")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("web page"))
+		Expect(errs.Hints(err)).To(Equal([]string{
+			"lola install https://github.com/o/r --ref main --path x",
+			"git ls-remote -- https://github.com/o/r/tree/main/x",
+		}))
 	})
 })

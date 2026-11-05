@@ -138,7 +138,7 @@ var _ = Describe("installing from marketplaces on and off a terminal (Plan 6c §
 	It("lola install @acme offers its group alone on a terminal and names its first entries off one", func() {
 		r := lola("install", "@acme", "--scope", "project", "-t", "claude-code")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: @acme is a marketplace; name the entry to install: @acme/formatter, @acme/linter\n  hint: lola market acme\n"))
+		Expect(r.err).To(Equal(projectContext(proj) + "error: @acme is a marketplace; name the entry to install: @acme/formatter, @acme/linter\n  hint: lola market acme\n"))
 
 		p := &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("@acme/formatter")}}
 		r = lolaP(p, "install", "@acme", "--scope", "project", "-t", "claude-code")

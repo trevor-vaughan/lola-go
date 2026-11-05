@@ -56,7 +56,7 @@ var _ = Describe("install scripts off a terminal", func() {
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\npre_install: ci/check.sh\n", "ci/check.sh": "#!/bin/sh\nexit 0\n"})
 		r := lola("install", mod, "-C", proj, "-t", "claude-code", "--json")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(`{"error":"lola install needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on",` +
+		Expect(r.err).To(Equal(`{` + projectWriteContextJSON(proj) + `"error":"lola install needs your trust for the pre-install script ci/check.sh of this project (new), and there is no terminal to ask on",` +
 			`"hints":["review it: lola info -C ` + proj + ` ` + mod + ` --target claude-code --json",` +
 			`"then consent to it: lola install ` + mod + ` --json --root ` + proj + ` --target claude-code --trust=scripts"]}` + "\n"))
 
@@ -78,7 +78,7 @@ var _ = Describe("install scripts off a terminal", func() {
 		Expect(os.WriteFile(yml, []byte(strings.Replace(string(b), "pre_install: ci/check.sh", "post_install: ci/after.sh", 1)), 0o644)).To(Succeed())
 		writeTree(proj, map[string]string{"ci/after.sh": "#!/bin/sh\nexit 0\n"})
 		Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "example"))).To(Succeed())
-		r = lola("render", "-C", proj, "--json")
+		r = lola("sync", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		doc.Scripts = nil
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
@@ -138,7 +138,7 @@ var _ = Describe("install scripts in a dry run", func() {
 		writeTree(proj, map[string]string{"hooks/pre.sh": "#!/bin/sh\n"}) // -C names the project, not where lola runs
 		r := lola("install", mod, "-C", proj, "-t", "claude-code", "--pre-install", "./hooks/pre.sh", "--json")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(`{"error":"--pre-install ./hooks/pre.sh does not exist","hints":[]}` + "\n"))
+		Expect(r.err).To(Equal(`{` + projectWriteContextJSON(proj) + `"error":"--pre-install ./hooks/pre.sh does not exist","hints":[]}` + "\n"))
 	})
 
 	It("info's --plain script row says whether the script needs trust", func() {

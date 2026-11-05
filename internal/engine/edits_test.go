@@ -138,9 +138,29 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		Expect(os.WriteFile(p.Selections, []byte("version: 1\nglobal:\n  example:\n    skip: [command/ship]\n"), 0o600)).To(Succeed())
 		res, err := install(engine.Options{}, []engine.SelectionEdit{edit("unskip", "command/ship")}, nil, src)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(BeEmpty())
+		Expect(res.Notices).To(Equal([]engine.Notice{
+			{Level: engine.LevelInfo, Text: "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch -y"},
+			{Level: engine.LevelInfo, Text: "meant for every project? lola profile --user --move example --to base -y -C " + proj}}), "the move hint alone")
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
 	})
+
+	DescribeTable("--global warns, naming the glob skip and the file, when a component it lists stays skipped",
+		func(edits ...engine.SelectionEdit) {
+			Expect(os.MkdirAll(filepath.Dir(p.Selections), 0o700)).To(Succeed())
+			Expect(os.WriteFile(p.Selections, []byte("version: 1\nglobal:\n  example:\n    skip: [command/*]\n"), 0o600)).To(Succeed())
+			res, err := install(engine.Options{}, edits, nil, src)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+				Text: "example:command/ship stays skipped by command/* in global; edit " + p.Selections}))
+			Expect(exists(".claude/commands/ship.md")).To(BeFalse())
+		},
+		Entry("--only", edit("only", "command/ship")),
+		Entry("--only --exact", engine.SelectionEdit{Op: "only", Exact: true, Selector: func() config.Selector {
+			s, err := config.ParseSelector("command/ship")
+			Expect(err).NotTo(HaveOccurred())
+			return s
+		}()}),
+		Entry("--unskip", edit("unskip", "command/ship")))
 
 	It("prints no raw escape from a project path in a notice", func() {
 		proj = filepath.Join(tmp, "p\x1b[31m")
@@ -149,8 +169,10 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		Expect(os.WriteFile(p.Selections, []byte("version: 1\nglobal:\n  example:\n    skip: [command/ship]\nprojects:\n  \""+strings.ReplaceAll(proj, "\x1b", `\x1b`)+"\":\n    example:\n      skip: [command/ship]\n"), 0o600)).To(Succeed())
 		res, err := install(engine.Options{}, []engine.SelectionEdit{edit("unskip", "command/ship")}, nil, src)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(HaveLen(1))
-		Expect(res.Notices[0].Text).NotTo(ContainSubstring("\x1b"))
+		Expect(res.Notices).To(HaveLen(3), "the warning, then the move hint")
+		for _, n := range res.Notices {
+			Expect(n.Text).NotTo(ContainSubstring("\x1b"))
+		}
 	})
 
 	It("--only warns when a wider include keeps a component it excludes installed", func() {
@@ -195,8 +217,9 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		us.Edits = []engine.SelectionEdit{edit("skip", "example:agent/critic")}
 		res, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Scopes: []engine.ScopeInstall{pr, us}, Modules: []engine.InstallRequest{{Arg: src}}})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(saved()).To(ContainSubstring("user:\n  example:\n    skip: [agent/critic]\n"))
-		Expect(saved()).To(ContainSubstring("    example:\n      skip: [command/ship]\n"))
+		Expect(saved()).To(HaveSuffix("projects:\n  "+proj+":\n    example:\n      skip: [command/ship]\n"), "selections.yaml holds the project's only")
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))).To(Equal([]byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
+			"  - name: example\n    source: "+src+"\n    skip: [agent/critic]\n")), "the user scope's in default's entry")
 		Expect(res.Modules).To(HaveLen(2))
 		Expect(exists(".claude/agents/critic.md")).To(BeTrue())
 		Expect(filepath.Join(p.Home, ".claude/agents/critic.md")).NotTo(BeAnExistingFile())
@@ -282,7 +305,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).To(BeARegularFile())
 		})
 
-		It("that an older lola installed can still be rendered, which leaves its untrusted modules out, and uninstalled", func() {
+		It("that an older lola installed is refused by sync, which names the user scope, and can still be uninstalled", func() {
 			_, err := e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Scopes: []engine.ScopeInstall{project()}, Modules: []engine.InstallRequest{{Arg: src}}})
 			Expect(err).NotTo(HaveOccurred())
 			for _, d := range []string{".lola", ".claude"} {
@@ -290,9 +313,9 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			}
 			old := engine.Scope{Kind: target.Project, ProjectDir: p.Home}
 			Expect(os.Remove(filepath.Join(p.Home, ".claude/commands/ship.md"))).To(Succeed())
-			res, err := e.Render(ctx, old, engine.Options{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElement(HaveField("Code", engine.CodeNotTrusted)), "this machine has no trust record of it")
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: old})
+			Expect(err).To(MatchError("project scope at " + p.Home + " is your home directory, where the user scope installs"))
+			Expect(errs.Hints(err)).To(Equal([]string{"sync the user scope: lola sync --user"}))
 			Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
 			Expect(os.WriteFile(filepath.Join(p.Home, ".claude/commands/ship.md"), []byte("Ship $ARGUMENTS\n"), 0o644)).To(Succeed())
 			_, err = e.Uninstall(ctx, old, []string{"example"}, engine.Options{})
@@ -346,12 +369,12 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 			Expect(saved()).To(BeEmpty())
 		})
 
-		It("a failure while applying leaves the selections written and says the next render converges", func() {
+		It("a failure while applying leaves the selections written and says the next sync converges", func() {
 			writeTree(src, map[string]string{"lola.yml": "name: example\nhooks: {pre-install: hooks/pre.sh}\n", "hooks/pre.sh": "#!/bin/sh\nexit 3\n"})
 			Expect(os.Chmod(filepath.Join(src, "hooks/pre.sh"), 0o755)).To(Succeed())
 			_, err := install(engine.Options{Trust: engine.TrustHooks, HookOutput: GinkgoWriter}, nil, skipShip, src)
 			Expect(err).To(HaveOccurred())
-			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola render -C " + proj + " applies them once the problem is fixed"))
+			Expect(errs.Hints(err)).To(ContainElement("your selections were saved to " + p.Selections + "; lola sync -C " + proj + " applies them once the problem is fixed"))
 			Expect(saved()).To(ContainSubstring("skip: [command/ship]"))
 			Expect(exists(".claude/agents/critic.md")).To(BeFalse())
 		})

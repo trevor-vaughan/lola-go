@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // addSource is the module picker's Add a source… entry; module names never hold a NUL.
@@ -258,9 +260,16 @@ func (h *huhForms) multi(title, desc string, opts []huh.Option[string], value *[
 // multi-select even when st.One, so nothing is chosen until the user ticks it (a select would
 // answer Project on Enter); the form refuses an empty answer (Plan 10 §4).
 func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
+	project, user := "Project ("+st.ProjectRoot+")", "User (~)"
+	if st.ProjectContext != "" {
+		project += " — " + st.ProjectContext
+	}
+	if st.UserContext != "" {
+		user += " — " + st.UserContext
+	}
 	opts := []huh.Option[string]{
-		huh.NewOption(h.cut("Project ("+st.ProjectRoot+")"), ScopeProject).Selected(contains(st.Preselect, ScopeProject)),
-		huh.NewOption("User (~)", ScopeUser).Selected(contains(st.Preselect, ScopeUser)),
+		huh.NewOption(h.cut(project), ScopeProject).Selected(contains(st.Preselect, ScopeProject)),
+		huh.NewOption(h.cut(user), ScopeUser).Selected(contains(st.Preselect, ScopeUser)),
 		huh.NewOption("Other directory…", ScopeOther).Selected(contains(st.Preselect, ScopeOther)),
 	}
 	desc := st.Problem
@@ -373,7 +382,12 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 	}
 	opts = append(opts, huh.NewOption("Add a source…", addSource))
 	var chosen []string
-	if err := h.run(st.Nav, h.withProblem(st.Problem, h.required(h.multi(st.Step.title(0, "Install which modules?"), st.Problem, opts, &chosen).Filterable(true)))...); err != nil {
+	ms := h.multi(st.Step.title(0, cmp.Or(st.Title, "Install which modules?")), st.Problem, opts, &chosen).Filterable(true)
+	var f huh.Field = ms
+	if !st.None {
+		f = h.required(ms)
+	}
+	if err := h.run(st.Nav, h.withProblem(st.Problem, f)...); err != nil {
 		return ModuleAnswer{}, err
 	}
 	if contains(chosen, addSource) {
@@ -412,7 +426,7 @@ func (h *huhForms) withMarkets(st ModuleStep) (ModuleAnswer, error) {
 		if contains(cached, addSource) {
 			return h.addSource(chosen, Nav{Back: true, Answered: st.Nav.Answered})
 		}
-		if len(chosen) > 0 {
+		if len(chosen) > 0 || st.None {
 			return ModuleAnswer{Names: chosen}, nil
 		}
 		st.Problem = h.nothingSelected()
@@ -465,7 +479,7 @@ func (h *huhForms) marketFields(st ModuleStep, cached *[]string, picked [][]stri
 			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
 		}
 		opts = append(opts, huh.NewOption("Add a source…", addSource))
-		fields = append(fields, h.withProblem(st.Problem, h.multi(st.Step.title(n, "Install which modules?"), desc, opts, cached).Filterable(true))...)
+		fields = append(fields, h.withProblem(st.Problem, h.multi(st.Step.title(n, cmp.Or(st.Title, "Install which modules?")), desc, opts, cached).Filterable(true))...)
 		n++
 	} else if h.accessible && st.Problem != "" {
 		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
@@ -546,7 +560,7 @@ func (h *huhForms) pageFields(pg ComponentPage, values [][]string) []huh.Field {
 		}
 		title := g.Title
 		if i == 0 {
-			title = pg.Title + ": " + title
+			title = pg.Title + " › " + title
 		}
 		desc := ""
 		if i < last {
@@ -644,6 +658,23 @@ func (h *huhForms) Confirm(question string, nav Nav) (bool, error) {
 	return ok, err
 }
 
+// Where asks where a change goes, its options then Cancel, the first under the cursor.
+func (h *huhForms) Where(st WhereStep) (int, error) {
+	opts := make([]huh.Option[int], 0, len(st.Options)+1)
+	for i, o := range st.Options {
+		opts = append(opts, huh.NewOption(h.cut(o), i))
+	}
+	opts = append(opts, huh.NewOption("Cancel", -1))
+	chosen := 0
+	if err := h.run(Nav{}, huh.NewSelect[int]().Title(h.cut(st.Title)).Options(opts...).Value(&chosen)); err != nil {
+		return 0, err
+	}
+	if chosen < 0 {
+		return 0, ErrAborted
+	}
+	return chosen, nil
+}
+
 // Profiles offers a source's profiles to add, filterable, nothing preselected; files whose names
 // are not valid are counted in its description.
 func (h *huhForms) Profiles(st ProfileStep) ([]string, error) {
@@ -660,6 +691,35 @@ func (h *huhForms) Profiles(st ProfileStep) ([]string, error) {
 	}
 	var chosen []string
 	err := h.run(Nav{}, h.multi("Add which profiles?", h.cut(desc), opts, &chosen).Filterable(true))
+	return chosen, err
+}
+
+// Members offers the profiles a bundle can name, its members ticked, filterable; ticking none is
+// an answer.
+func (h *huhForms) Members(st MembersStep) ([]string, error) {
+	opts := make([]huh.Option[string], 0, len(st.Options))
+	for _, o := range st.Options {
+		opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
+	}
+	var chosen []string
+	err := h.run(Nav{}, h.multi(h.cut(st.Title), "the members ticked keep their order, and those you tick follow them; a later member wins where two overlap", opts, &chosen).Filterable(true))
+	return chosen, err
+}
+
+// SSHHosts offers the ssh hosts a catalog names, each with the entries it would admit,
+// filterable, nothing preselected; ticking none is an answer.
+func (h *huhForms) SSHHosts(st SSHHostStep) ([]string, error) {
+	opts := make([]huh.Option[string], 0, len(st.Hosts))
+	for _, c := range st.Hosts {
+		entries := fmt.Sprintf("%d entries", c.Entries)
+		if c.Entries == 1 {
+			entries = "1 entry"
+		}
+		opts = append(opts, huh.NewOption(h.cut(untrusted.Text(c.Host, untrusted.MaxName)+" ("+entries+")"), c.Host))
+	}
+	desc := "for " + untrusted.Text(st.Market, untrusted.MaxName) + ": the catalog's ssh sources use your ssh keys and agent at the host you tick"
+	var chosen []string
+	err := h.run(Nav{}, h.multi("Allow ssh to which hosts?", h.cut(desc), opts, &chosen).Filterable(true))
 	return chosen, err
 }
 

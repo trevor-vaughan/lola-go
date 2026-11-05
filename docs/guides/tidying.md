@@ -18,7 +18,7 @@ lola tidy --keep skill/notes              # never offer skill/notes in this scop
 Every flag is in the [`lola tidy` reference](../usage.md#lola-tidy).
 
 **What it sees.** lola tidy looks at each assistant of the scope: the targets the scope's manifest
-lists (`.lola/project.yml`, or `user.yml` at user scope), as far as you trusted them
+lists (`.lola/project.yml`, or your default profile, `default.yml`, at user scope), as far as you trusted them
 ([Sync, pins and trust](sync-and-trust.md)), and every assistant lola installed for; `-t` names
 others. For each assistant it sees:
 

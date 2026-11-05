@@ -7,8 +7,9 @@ result.systemoutjson.
                                           object with an error string and a list of string hints
 
 Either way no value may be null but those documented as nullable: trust.targets and its from
-and to, and the from and to of a field in trust.changes. On a failed check it prints why on
-stderr and exits 1.
+and to, the from and to of a field in trust.changes, and the profile and writes_to of each scope
+in context, and the shadowed_by of each row of lola profile's profiles. On a failed check it prints
+why on stderr and exits 1.
 
 usage: jsoncheck.py doc <file> | refusal <stdout> <stderr>"""
 import json
@@ -17,6 +18,10 @@ import sys
 
 def nullable(path):
     if path in (["trust", "targets"], ["trust", "targets", "from"], ["trust", "targets", "to"]):
+        return True
+    if len(path) == 3 and path[0] == "context" and path[2] in ("profile", "writes_to"):
+        return True
+    if len(path) == 3 and path[0] == "profiles" and path[2] == "shadowed_by":
         return True
     return (len(path) == 6 and path[:2] == ["trust", "changes"] and path[3] == "fields"
             and path[5] in ("from", "to"))

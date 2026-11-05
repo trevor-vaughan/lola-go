@@ -1,0 +1,239 @@
+name: lola update fetches by freshness, moves pins and isolates a failed fetch
+# Run by scripts/e2e.sh (task e2e -- update) in the shared e2e container: this checkout's lola-go
+# at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, and a git server on
+# 127.0.0.1:8765 serving /srv/git. Every step is {{.runtime}} exec [<options>] {{.container}}
+# <argv>; any $, glob, redirection or pipe sits inside a single-quoted sh -c. Cases run in order
+# and read the state earlier ones leave. The server logs every request to
+# /run/gitserve/requests.log, so a step that made no request leaves that file's line count alone.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-update
+  lola: /opt/lola-go/lola-go
+  url: http://127.0.0.1:8765/pack.git
+
+testcases:
+  - name: U1 The fixture is built and pack installs from it
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "fixture ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install {{.url}} --ref main -C /work/proj --scope project -t claude-code"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ installed pack (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with pack v1."
+
+  - name: U2 An update inside the freshness window contacts no server and finds nothing to do
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/u2.before'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh advance"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "main advanced"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/u2.mid'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "already up to date"
+          - result.systemout ShouldContainSubstring "1 module served from your cache (fetched within cache_fresh_for)"
+          - result.systemout ShouldNotContainSubstring "updated pack"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/u2.mid'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with pack v1."
+
+  - name: U3 Update with --fetch and --trust moves the file and the project.yml pin
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cp /work/proj/.lola/project.yml /tmp/u3.before'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "updated pack"
+          - 'result.systemout ShouldContainSubstring "pack: "'
+          - 'result.systemout ShouldContainSubstring " → "'
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with pack v2."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '! cmp -s /work/proj/.lola/project.yml /tmp/u3.before'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/u3.count'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: U4 With every head stale, update asks before it fetches, and with --trust fetches and moves the pin
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh advance v3"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "main advanced"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p \"$XDG_CONFIG_HOME/lola\" && printf \"version: 1\\ncache_fresh_for: never\\n\" > \"$XDG_CONFIG_HOME/lola/config.yaml\"'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log > /tmp/u4.before && cp /work/proj/.lola/project.yml /tmp/u4.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 1
+          - result.systemerr ShouldContainSubstring "re-pin from main (not fetched yet)"
+          - 'result.systemerr ShouldContainSubstring "error: lola update needs your trust"'
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'wc -l < /run/gitserve/requests.log | cmp - /tmp/u4.before'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update --trust -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "updated pack"
+          - result.systemout ShouldNotContainSubstring "served from your cache"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test \"$(wc -l < /run/gitserve/requests.log)\" -gt \"$(cat /tmp/u4.before)\"'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with pack v3."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '! cmp -s /work/proj/.lola/project.yml /tmp/u4.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'rm \"$XDG_CONFIG_HOME/lola/config.yaml\"'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: U5 A named module that is not installed is refused, coached
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} update nosuch -C /work/proj --json > /tmp/u5.out 2> /tmp/u5.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 /e2e-common/jsoncheck.py refusal /tmp/u5.out /tmp/u5.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.hints ShouldNotBeEmpty
+
+  - name: U6 A module whose fetch fails stays installed, reported as a fetch-failed finding
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh remove"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "pack.git removed"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} update --fetch --trust -C /work/proj --json > /tmp/u6.out 2> /tmp/u6.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.loads(open("/tmp/u6.out").read() or open("/tmp/u6.err").read())
+          codes = [f["code"] for f in doc["findings"]]
+          assert "fetch-failed" in codes, doc
+          assert "failed" not in doc, doc
+          print("ok fetch-failed finding")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok fetch-failed finding"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/proj"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "pack"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /work/proj/.claude/commands/deploy.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Deploy with pack v3."
+
+  - name: U7 The render command is gone
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} render -C /work/proj"
+        assertions:
+          - result.code ShouldNotEqual 0
+          - result.systemerr ShouldContainSubstring "unknown command"
+
+  - name: U8 Under --only --exact, a component a later version adds is named by update and not installed
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh pick"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "pick ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} mkdir /work/pick"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install http://127.0.0.1:8765/pick.git --ref main -C /work/pick --scope project -t claude-code --only command/deploy --exact"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "✓ installed pick (claude-code)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cat \"$XDG_CONFIG_HOME/lola/selections.yaml\"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"only: [command/deploy]\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /work/pick/.claude/commands/review.md"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh pick-add"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "pick advanced"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} update --fetch --trust -C /work/pick"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"pick adds command/lint, not installed (only: in selections.yaml projects[/work/pick]) → lola install -C /work/pick pick --unskip command/lint\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /work/pick/.claude/commands/lint.md"
+        assertions:
+          - result.code ShouldEqual 0

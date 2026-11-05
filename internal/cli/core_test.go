@@ -63,9 +63,11 @@ var _ = Describe("core commands", func() {
 		Expect(r.out).To(MatchRegexp(`example\s+claude-code\s+✓ ok`))
 		Expect(lola("ls", "-C", proj, "--plain").out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\n"))
 
-		r = lola("update", "-C", proj)
+		Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
+		r = lola("sync", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("✓ rendered example (claude-code)"))
+		Expect(r.out).To(ContainSubstring("✓ synced example (claude-code)"))
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 
 		r = lola("rm", "example", "-y", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
@@ -89,7 +91,7 @@ var _ = Describe("core commands", func() {
 			Expect(r.out+r.err).NotTo(MatchRegexp(control), strings.Join(args, " "))
 		}
 		Expect(os.Remove(filepath.Join(proj, ".claude", "skills", "x", "ref", "a\x1b[2Jb.md"))).To(Succeed())
-		r = lola("render", "-C", proj, "--plain")
+		r = lola("sync", "-C", proj, "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(".claude/skills/x/ref/a?[2Jb.md"))
 		Expect(r.out + r.err).NotTo(MatchRegexp(control))
@@ -222,8 +224,8 @@ var _ = Describe("core commands", func() {
 		Expect(json.Unmarshal([]byte(lola("ls", "-C", proj, "--json").out), &rows)).To(Succeed())
 		Expect(rows.Modules[0]["rules"]).To(BeFalse())
 
-		Expect(lola("update", "-C", proj).code).To(Equal(0))
-		Expect(filepath.Join(proj, ".claude/rules/lola/example/style.md")).NotTo(BeAnExistingFile(), "render keeps rules off")
+		Expect(lola("sync", "-C", proj).code).To(Equal(0))
+		Expect(filepath.Join(proj, ".claude/rules/lola/example/style.md")).NotTo(BeAnExistingFile(), "sync keeps rules off")
 		r = lola("install", "example", "--rules", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(filepath.Join(proj, ".claude/rules/lola/example/style.md")).To(BeARegularFile())
@@ -266,16 +268,16 @@ var _ = Describe("core commands", func() {
 		writeTree(mod, map[string]string{"scripts/setup.sh": "#!/bin/sh\necho changed\n"})
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(1), "a changed hook asks again")
 
-		// render refuses a hook its copy runs again without consent, hinting itself with --trust=hooks.
+		// sync refuses a hook its copy runs again without consent, hinting itself with --trust=hooks.
 		writeTree(mod, map[string]string{"scripts/setup.sh": "#!/bin/sh\necho \"setting up for $LOLA_ASSISTANT\"\n"})
 		pp, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.Remove(pp.Consent)).To(Succeed())
-		Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "example"))).To(Succeed(), "render copies the module again, which runs its hooks")
-		r = lola("render", "-C", proj)
+		Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "example"))).To(Succeed(), "sync copies the module again, which runs its hooks")
+		r = lola("sync", "-C", proj)
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(ContainSubstring("error: example has a pre-install hook, and lola runs hooks only with your consent"))
-		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola render --root "+proj+" --trust=hooks\n"), "the hint is the command refused")
+		Expect(r.err).To(ContainSubstring("  hint: then consent to it: lola sync -C "+proj+" --trust=hooks\n"), "the hint is the command refused")
 	})
 
 	It("install --force on a hooked module still refuses for hook consent off a terminal", func() {
@@ -336,7 +338,7 @@ var _ = Describe("core commands", func() {
 		r = lola("install", plugin, "-C", proj, "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("⚠ deploy: claude-code: runtime hooks skipped: they run inside claude-code with your permissions"))
-		Expect(r.out).To(ContainSubstring("hint: review the hooks listed above, then consent to them: lola install " + plugin + " --root " + proj + " --trust=hooks,runtime-hooks"))
+		Expect(r.out).To(ContainSubstring("hint: review the hooks listed above, then, if you want to install them, consent to them: lola install " + plugin + " --root " + proj + " --trust=hooks,runtime-hooks"))
 		Expect(r.out).To(ContainSubstring("deploy runtime hooks for claude-code (declined):"))
 		Expect(settings).NotTo(BeAnExistingFile())
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
@@ -354,20 +356,23 @@ var _ = Describe("core commands", func() {
 			SatisfyAll(HaveKeyWithValue("type", "http"), HaveKeyWithValue("headers", []any{"A: $T"}), HaveKeyWithValue("allowed_env_vars", []any{"T"}))))
 		Expect(settings).To(BeARegularFile())
 
-		r = lola("render", "-C", proj, "--json")
+		r = lola("sync", "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(`"status": "consented"`), "the recorded consent holds off a terminal")
 
 		writeTree(proj, map[string]string{".claude/settings.local.json": `{"hooks": {}}`})
-		r = lola("render", "-C", proj)
+		r = lola("sync", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("→ deploy: claude-code: a Stop hook group lola installed in .claude/settings.local.json is missing"))
-		Expect(lola("render", "-C", proj, "--strict").code).To(Equal(0), "--strict does not escalate drift")
-		restore := "lola render --root " + proj + " --force"
+		Expect(lola("update", "-C", proj, "--strict").code).To(Equal(0), "--strict does not escalate drift")
+		u := lola("update", "-C", proj)
+		Expect(u.code).To(Equal(0), u.err)
+		Expect(u.out).To(ContainSubstring("hint: restore it: lola sync -C "+proj+" deploy --force"), "an update's restore never updates")
+		restore := "lola sync --root " + proj + " --force"
 		Expect(r.out).To(ContainSubstring("hint: restore it: " + restore))
 		Expect(runHint(restore).code).To(Equal(0))
 		Expect(os.ReadFile(settings)).To(ContainSubstring("stop.sh"), "the hint's run restores the group")
-		r = lola("render", "-C", proj, "--trust=runtime-hooks", "--dry-run")
+		r = lola("sync", "-C", proj, "--trust=runtime-hooks", "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
 	})
 
@@ -540,14 +545,14 @@ var _ = Describe("core commands", func() {
 		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())
 		r := lola("install", mod, "-C", proj, "--strict")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: none of your installed assistants (claude-code) is set up here, so lola does not know where to install\n" +
+		Expect(r.err).To(Equal(projectContext(proj) + "error: none of your installed assistants (claude-code) is set up here, so lola does not know where to install\n" +
 			"  hint: lola install " + mod + " --root " + proj + " --strict -t claude-code\n"))
 
 		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
 		r = lola("install", mod, "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
 		run := "lola install " + mod + " --json --root " + proj
-		Expect(r.err).To(MatchJSON(`{"error": "no assistant found on your PATH, so lola does not know where to install", "hints": ["`+
+		Expect(r.err).To(MatchJSON(`{`+projectWriteContextJSON(proj)+`"error": "no assistant found on your PATH, so lola does not know where to install", "hints": ["`+
 			run+` -t claude-code", "`+run+` -t gemini-cli", "`+run+` -t opencode"]}`), "the typed source and every flag")
 		for _, h := range []string{run + " -t gemini-cli", run + " -t claude-code"} {
 			again := lola(shellWords(h)[1:]...)
@@ -574,6 +579,33 @@ var _ = Describe("core commands", func() {
 		Expect(r.err).To(HaveSuffix("hint: lola uninstall example --root "+proj+" -y\n"), "the run with -y, which answers this question")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 		Expect(lola("uninstall", "example", "--root", proj, "-y").code).To(Equal(0))
+	})
+
+	It("refuses -t naming no target the module is installed on, hinting the run on those it is", func() {
+		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
+		r := lola("uninstall", "example", "-C", proj, "-t", "gemini-cli", "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal(projectContext(proj) + "error: example is not installed on gemini-cli; it is installed on claude-code\n" +
+			"  hint: uninstall it there: lola uninstall example --root " + proj + " --yes -t claude-code\n"))
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
+		again := lola(shellWords(strings.TrimPrefix(strings.TrimSpace(strings.SplitN(r.err, "hint: uninstall it there: ", 2)[1]), "lola "))...)
+		Expect(again.code).To(Equal(0), again.err)
+		Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("refuses -t naming no target one of several modules is installed on, hinting a run that works", func() {
+		a, b := filepath.Join(tmp, "a"), filepath.Join(tmp, "b")
+		writeTree(a, map[string]string{"commands/a.md": "A\n"})
+		writeTree(b, map[string]string{"commands/b.md": "B\n"})
+		Expect(lola("install", a, "-C", proj, "-t", "claude-code").code).To(Equal(0))
+		Expect(lola("install", b, "-C", proj, "-t", "gemini-cli").code).To(Equal(0))
+		r := lola("uninstall", "a", "b", "-C", proj, "-t", "gemini-cli", "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(Equal(projectContext(proj)+"error: a is not installed on gemini-cli; it is installed on claude-code\n"+
+			"  hint: uninstall it there: lola uninstall a --root "+proj+" --yes -t claude-code\n"), "the refused module alone: b is not on claude-code")
+		again := lola(shellWords(strings.TrimPrefix(strings.TrimSpace(strings.SplitN(r.err, "hint: uninstall it there: ", 2)[1]), "lola "))...)
+		Expect(again.code).To(Equal(0), again.err)
+		Expect(filepath.Join(proj, ".claude/commands/a.md")).NotTo(BeAnExistingFile())
 	})
 
 	It("--force answers the confirmation, off a terminal too", func() {
@@ -609,7 +641,7 @@ var _ = Describe("core commands", func() {
 	It("dry-run prints the plan and writes nothing", func() {
 		r := lola("install", mod, "-C", proj, "-n")
 		Expect(r.code).To(Equal(0))
-		Expect(r.out).To(HavePrefix("plan (dry run; nothing was written):\n"))
+		Expect(r.out).To(HavePrefix("→ would add example to project.yml (base)\nplan (dry run; nothing was written):\n"))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 	})
 
@@ -617,7 +649,7 @@ var _ = Describe("core commands", func() {
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "mine"})
 		r := lola("install", mod, "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: refusing to change anything: 1 conflict, which --force overrides\n"+
+		Expect(r.err).To(Equal(projectContext(proj)+"error: refusing to change anything: 1 conflict, which --force overrides\n"+
 			"  claude-code: .claude/commands/ship.md: exists and was not written by lola\n  hint: lola install "+mod+" --root "+proj+" --force\n"),
 			"the hint is the run with --force")
 		Expect(filepath.Join(proj, ".mcp.json")).NotTo(BeAnExistingFile())
@@ -633,7 +665,7 @@ var _ = Describe("core commands", func() {
 		r := lola("install", other, "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
 		uninstall := "lola uninstall -C " + proj + " example --json"
-		Expect(r.err).To(MatchJSON(`{"error": "refusing to change anything: 1 conflict\n  claude-code: .claude/commands/ship.md: wanted by module \"other\", ` +
+		Expect(r.err).To(MatchJSON(`{` + projectWriteContextJSON(proj) + `"error": "refusing to change anything: 1 conflict\n  claude-code: .claude/commands/ship.md: wanted by module \"other\", ` +
 			`owned by module \"example\"; --force cannot override it: uninstall example first", "hints": ["` + uninstall + `"]}`))
 		again := lola(shellWords(uninstall)[1:]...)
 		Expect(again.err).To(ContainSubstring("needs confirmation, and there is no terminal to ask on"), "it asks, as every uninstall does")
@@ -669,12 +701,12 @@ var _ = Describe("core commands", func() {
 
 	It("refuses an uninstall a hand-edited file blocks, saying nothing was removed, and hints the run with --force", func() {
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
-		for _, run := range [][]string{{"render", "-C", proj, "--strict"}, {"sync", "example", "-C", proj, "-y"}} {
+		for _, run := range [][]string{{"update", "-C", proj, "--strict"}, {"sync", "example", "-C", proj, "-y"}} {
 			writeTree(proj, map[string]string{".claude/commands/ship.md": "mine now"})
 			r := lola(run...)
 			Expect(r.code).To(Equal(1), run[0])
 			// -y answered "remove what lola can remove safely", never "delete my edits" (R-6cux-4).
-			want := map[string]string{"render": "lola render --root " + proj + " --strict --force",
+			want := map[string]string{"update": "lola update --root " + proj + " --strict --force",
 				"sync": "lola sync example --root " + proj + " --force"}[run[0]]
 			Expect(r.err).To(HaveSuffix("  hint: "+want+"\n"), run[0])
 			again := lola(shellWords(want)[1:]...)
@@ -684,7 +716,7 @@ var _ = Describe("core commands", func() {
 		r := lola("uninstall", "example", "-C", proj, "-y")
 		Expect(r.code).To(Equal(1))
 		force := "lola uninstall example --root " + proj + " --force"
-		Expect(r.err).To(Equal("error: refusing to change anything: 1 conflict, which --force overrides\n"+
+		Expect(r.err).To(Equal(projectContext(proj)+"error: refusing to change anything: 1 conflict, which --force overrides\n"+
 			"  claude-code: .claude/commands/ship.md: hand-edited since lola wrote it; deleting it would lose your edits\n"+
 			"  hint: "+force+"\n"), "the -y given to a safe uninstall answers no forced one")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
@@ -700,7 +732,7 @@ var _ = Describe("core commands", func() {
 		r := lola("uninstall", "example", "-C", proj)
 		Expect(r.code).To(Equal(1))
 		force := "lola uninstall example --root " + proj + " --force"
-		Expect(r.err).To(Equal("error: refusing to change anything: 2 conflicts, which --force overrides\n" +
+		Expect(r.err).To(Equal(projectContext(proj) + "error: refusing to change anything: 2 conflicts, which --force overrides\n" +
 			"  claude-code: .claude/commands/ship.md: hand-edited since lola wrote it; deleting it would lose your edits\n" +
 			"  claude-code: .claude/skills/review/SKILL.md: hand-edited since lola wrote it; deleting it would lose your edits\n" +
 			"  hint: " + force + "\n"))
@@ -738,9 +770,11 @@ var _ = Describe("core commands", func() {
 		var v map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
 		Expect(v["dry_run"]).To(BeFalse())
-		Expect(v["notices"]).To(Equal([]any{}))
+		Expect(v["notices"]).To(Equal([]any{
+			map[string]any{"level": "info", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch -y --json"},
+			map[string]any{"level": "info", "text": "meant for every project? lola profile --user --move example --to base -y -C " + proj + " --json"}}))
 		Expect(v["modules"]).To(HaveLen(1))
-		Expect(r.out).NotTo(ContainSubstring("null"))
+		Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 	})
 
 	It("uninstalls by alias from user scope regardless of the working directory", func() {

@@ -86,11 +86,11 @@ func (k TrustKinds) Covers(o TrustKinds) bool { return k&o == o }
 // lola, "profile --add" for that action of profile. A command that asks none has none.
 func CommandTrust(command string) TrustKinds {
 	switch command {
-	case "sync", "profile":
+	case "sync", "update", "profile":
 		return TrustAll
 	case "profile --add":
 		return TrustProfiles
-	case "install", "render", "migrate":
+	case "install", "migrate":
 		return TrustScripts | TrustHooks | TrustRuntimeHooks
 	}
 	return 0
@@ -389,13 +389,13 @@ func (c TrustChange) kind() TrustKinds {
 }
 
 // kinds is the kinds of trust rep's changes need: entries for project.yml's entries and its
-// top-level targets, profiles for a project profile's entries and a replacement.
+// top-level targets, profiles for a project profile's entries and targets and a replacement.
 func (rep TrustReport) kinds() TrustKinds {
 	var k TrustKinds
 	if rep.Targets != nil {
 		k |= TrustEntries
 	}
-	if len(rep.Replacements) > 0 {
+	if len(rep.ProfileTargets) > 0 || len(rep.Replacements) > 0 {
 		k |= TrustProfiles
 	}
 	for _, c := range rep.Changes {
@@ -423,15 +423,16 @@ func (rep TrustReport) split(k TrustKinds) (covered, asked TrustReport) {
 		covered.Targets = nil
 	}
 	if k.Covers(TrustProfiles) {
-		covered.Replacements = rep.Replacements
+		covered.Replacements, asked.ProfileTargets = rep.Replacements, nil
 	} else {
-		asked.Replacements = rep.Replacements
+		asked.Replacements, covered.ProfileTargets = rep.Replacements, nil
 	}
 	return covered, asked
 }
 
 // consents is rep's changes as the receipt shows them: an entry by its module, a project
-// profile's as "<module> in <profile>", the top-level targets as "targets" and a replacement as
+// profile's as "<module> in <profile>", the top-level targets as "targets", a project profile's
+// as "targets in <profile>", and a replacement as
 // "<profile> replacing <profile>"; new when the record holds nothing for it.
 func (rep TrustReport) consents() []Consent {
 	change := func(added bool) string {
@@ -443,6 +444,9 @@ func (rep TrustReport) consents() []Consent {
 	var out []Consent
 	if rep.Targets != nil {
 		out = append(out, Consent{Kind: TrustEntries.String(), Item: "targets", Change: change(false)})
+	}
+	for _, pt := range rep.ProfileTargets {
+		out = append(out, Consent{Kind: TrustProfiles.String(), Item: pt.Field + " in " + pt.Profile, Change: change(pt.From == nil)}) // targets, or a bundle's members
 	}
 	for _, c := range rep.Changes {
 		item := c.Module
@@ -465,6 +469,9 @@ func neededTrust(early trust.Report, repl *replacing, entries []*syncEntry) Trus
 	var k TrustKinds
 	if early.Targets != nil {
 		k |= TrustEntries
+	}
+	if len(early.ProfileTargets) > 0 {
+		k |= TrustProfiles
 	}
 	for _, c := range early.Changes {
 		k |= TrustChange{Change: c}.kind()

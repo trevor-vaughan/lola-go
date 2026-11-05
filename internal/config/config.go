@@ -47,6 +47,10 @@ type Config struct {
 	// CacheUnusedFor is the age at which a bare lola cache clean also removes a cached version
 	// nobody used (Plan 9 §6.2); the zero Age for none.
 	CacheUnusedFor Age
+	// CacheFreshFor is how long lola update serves a ref from your cache before it fetches the
+	// ref again (cache_fresh_for:); the zero Age when config.yaml does not say, never to fetch on
+	// every run.
+	CacheFreshFor Age
 	// Theme is the terminal background the pickers draw for (Plan 10 §4): ThemeDark, ThemeLight,
 	// or "" when config.yaml does not say.
 	Theme string
@@ -129,19 +133,10 @@ func LoadConfig(path, home string) (*Config, error) {
 			}
 			return n.Decode(&c.Pager)
 		},
-		"pre_install":  func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PreInstall) },
-		"post_install": func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PostInstall) },
-		"cache_unused_for": func(n *yaml.Node, at string) error {
-			if n.Kind != yaml.ScalarNode || n.Tag == "!!null" {
-				return d.fail(n, at, "must be an age, not "+kindName(n)+"; "+AgeForms)
-			}
-			age, ok := ParseAge(n.Value)
-			if !ok {
-				return d.fail(n, at, fmt.Sprintf("%q is not an age; %s", untrusted.Text(n.Value, untrusted.MaxName), AgeForms))
-			}
-			c.CacheUnusedFor = age
-			return nil
-		},
+		"pre_install":      func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PreInstall) },
+		"post_install":     func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PostInstall) },
+		"cache_unused_for": func(n *yaml.Node, at string) error { return d.age(n, at, &c.CacheUnusedFor) },
+		"cache_fresh_for":  func(n *yaml.Node, at string) error { return d.age(n, at, &c.CacheFreshFor) },
 		"theme": func(n *yaml.Node, at string) error {
 			s, err := d.scalar(n, at, themeHint)
 			if err != nil {
@@ -173,6 +168,19 @@ func (d doc) script(n *yaml.Node, at, home string, s *Script) error {
 		return d.fail(n, at, fmt.Sprintf("%q is not an absolute path", untrusted.Text(p, untrusted.MaxName)), hint)
 	}
 	*s = Script{Path: filepath.Clean(p), Line: n.Line, Key: at}
+	return nil
+}
+
+// age reads an age (ParseAge) into dst.
+func (d doc) age(n *yaml.Node, at string, dst *Age) error {
+	if n.Kind != yaml.ScalarNode || n.Tag == "!!null" {
+		return d.fail(n, at, "must be an age, not "+kindName(n)+"; "+AgeForms)
+	}
+	age, ok := ParseAge(n.Value)
+	if !ok {
+		return d.fail(n, at, fmt.Sprintf("%q is not an age; %s", untrusted.Text(n.Value, untrusted.MaxName), AgeForms))
+	}
+	*dst = age
 	return nil
 }
 

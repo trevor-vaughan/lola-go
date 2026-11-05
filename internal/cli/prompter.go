@@ -35,13 +35,22 @@ type Prompter interface {
 	// Confirm asks a yes/no question, default No: sync's removals, and the question that closes
 	// a flow (tidy's, migrate's), whose nav counts the steps answered before it.
 	Confirm(question string, nav Nav) (bool, error)
+	// Where asks where a change goes (spec 2026-10-29 §3.6): Title, one row per option and Cancel
+	// last, default the first; it answers the index of the option chosen, ErrAborted for Cancel.
+	Where(WhereStep) (int, error)
 	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
 	// multi-select, nothing preselected (Plan 6b §3.2).
 	Profiles(ProfileStep) ([]string, error)
+	// Members asks a bundle's members (MembersStep), answering those ticked in option order.
+	Members(MembersStep) ([]string, error)
 	// MarketName asks the name of a marketplace lola market --add adds when the one it has is
 	// another marketplace's, or one no marketplace can have (Plan 6c §3.1), pre-filled with a
 	// free one.
 	MarketName(MarketNameStep) (string, error)
+	// SSHHosts asks which of the ssh hosts a catalog names lola market --add or --update allows
+	// (spec 2026-10-28 §3): a filterable multi-select, nothing preselected, answering the hosts
+	// ticked; none is an answer.
+	SSHHosts(SSHHostStep) ([]string, error)
 	// MarketEntry asks which marketplace entry a bare name your cache lacks means (Plan 6c §3.3),
 	// answering its address.
 	MarketEntry(MarketEntryStep) (string, error)
@@ -132,6 +141,20 @@ type MarketNameStep struct {
 	Why, Value, Problem string
 }
 
+// SSHHostStep offers the ssh hosts a catalog names that you have not allowed (spec 2026-10-28
+// §3), each with the entries it would admit; nothing is preselected. Strings are raw: the
+// adapter prints them through untrusted.Text.
+type SSHHostStep struct {
+	Market string
+	Hosts  []SSHHostChoice
+}
+
+// SSHHostChoice is one host SSHHostStep offers, with the number of entries it would admit.
+type SSHHostChoice struct {
+	Host    string
+	Entries int
+}
+
 // ProfileStep offers the profiles a source holds, by name; Invalid counts its files whose names
 // are not valid profile names, never shown (Plan 6b §19 S7).
 type ProfileStep struct {
@@ -189,11 +212,15 @@ type ScopeStep struct {
 	Question    string
 	ProjectRoot string
 	Home        string
-	Preselect   []string
-	Problem     string
-	One         bool
-	Step        Steps
-	Nav         Nav
+	// ProjectContext and UserContext are what each scope's context line says after its name
+	// (contextFacts), shown in the scope's row so the choice is made with them in view (spec
+	// 2026-10-29 §3.8); "" shows none.
+	ProjectContext, UserContext string
+	Preselect                   []string
+	Problem                     string
+	One                         bool
+	Step                        Steps
+	Nav                         Nav
 }
 
 // DirectoryStep asks for the Other directory. Value is the answer offered to edit (the last
@@ -226,6 +253,21 @@ type ModuleStep struct {
 	Problem   string
 	Step      Steps
 	Nav       Nav
+	// Title, when set, replaces "Install which modules?" (lola profile <name> --edit's page names
+	// the profile: "profile go › modules"), and None makes an empty answer one: every module
+	// unticked.
+	Title string
+	None  bool
+}
+
+// MembersStep asks which profiles a bundle combines (spec 2026-10-29 §6.2 --edit --bundle): Title
+// names the bundle, Options are the profiles it can name, each Name as its file would write it and
+// Label as the page shows it (a member that names no profile says so), and Preselect its members
+// now; a filterable multi-select, where ticking none is an answer (a bundle of nothing).
+type MembersStep struct {
+	Title     string
+	Options   []ModuleOption
+	Preselect []string
 }
 
 // ModuleGroup is one marketplace in the module picker: Title is "@acme — <description>", and
@@ -264,7 +306,7 @@ type AssistantStep struct {
 }
 
 // ComponentOption is one component of a page. Label is "name — first line of description",
-// with "(runs a command)" or "(skipped in selections.yaml)" as they apply.
+// with "(runs a command)" or "(skipped in <where the picks that skip it live>)" as they apply.
 type ComponentOption struct {
 	ID       string // kind/name
 	Label    string
@@ -282,8 +324,8 @@ type ComponentGroup struct {
 }
 
 // ComponentPage is one module's components for one scope, or for both when their
-// preselections are equal. Footer is the read-only runtime hooks line, or "". Step numbers its
-// lists, the disabled ones left out.
+// preselections are equal. Footer is the read-only lines under the lists (runtime hooks, the
+// only: list in force), one per line, or "". Step numbers its lists, the disabled ones left out.
 type ComponentPage struct {
 	Module string
 	Title  string
@@ -324,6 +366,12 @@ type ReviewStep struct {
 	Nav     Nav
 }
 
+// WhereStep is a question about where a change goes: its title and its answers' labels.
+type WhereStep struct {
+	Title   string
+	Options []string
+}
+
 // errNoTerminal is what the non-interactive Prompter answers; the flow never asks it.
 var errNoTerminal = errors.New("there is no terminal to ask on")
 
@@ -339,10 +387,13 @@ func (noPrompter) Components(ComponentPage) ([]string, error)   { return nil, er
 func (noPrompter) ConfirmEmpty(string, Nav) (bool, error)       { return false, errNoTerminal }
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }
 func (noPrompter) Confirm(string, Nav) (bool, error)            { return false, errNoTerminal }
+func (noPrompter) Where(WhereStep) (int, error)                 { return 0, errNoTerminal }
 func (noPrompter) Profiles(ProfileStep) ([]string, error)       { return nil, errNoTerminal }
 func (noPrompter) MarketName(MarketNameStep) (string, error)    { return "", errNoTerminal }
+func (noPrompter) SSHHosts(SSHHostStep) ([]string, error)       { return nil, errNoTerminal }
 func (noPrompter) MarketEntry(MarketEntryStep) (string, error)  { return "", errNoTerminal }
 func (noPrompter) TidyPick(TidyPickStep) ([]string, error)      { return nil, errNoTerminal }
+func (noPrompter) Members(MembersStep) ([]string, error)        { return nil, errNoTerminal }
 func (noPrompter) TidyKeep(TidyKeepStep) ([]string, error)      { return nil, errNoTerminal }
 func (noPrompter) Trust(TrustStep) (engine.TrustAnswer, error) {
 	return engine.TrustAnswer{}, errNoTerminal

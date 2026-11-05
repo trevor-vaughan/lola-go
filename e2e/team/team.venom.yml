@@ -383,33 +383,23 @@ testcases:
           - result.code ShouldEqual 0
           - "result.systemout ShouldEqual \"lint\tclaude-code\tok\ton\thttp://127.0.0.1:8765/lint.git\tproject\tprofile:project:review\""
 
-  - name: T9 uninstall refuses a module an active profile lists
+  - name: T9 uninstall removes a module from the project profile on, and lola's edit stays trusted
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} uninstall lint -C /work/proj -y --json > /tmp/t9.out 2> /tmp/t9.err; echo exit=$?'"
-        assertions:
-          - result.systemout ShouldEqual "exit=1"
-      - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t9.out /tmp/t9.err"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} uninstall lint -C /work/proj -y --json"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemoutjson.error ShouldEqual "lint is wanted by profile project:review"
-          - result.systemoutjson.hints ShouldHaveLength 1
-          - "result.systemoutjson.hints.hints0 ShouldEqual \"turn the profile off: lola profile -C /work/proj project:review --off --json\""
+          - result.systemoutjson.modules.modules0.name ShouldEqual lint
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/t9.err < /dev/null > /tmp/t9-hint.out 2> /tmp/t9-hint.err; echo exit=$?'"
-        assertions:
-          - result.systemout ShouldEqual "exit=1"
-      - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/t9-hint.out /tmp/t9-hint.err"
+        script: "{{.runtime}} exec {{.container}} test ! -e /work/proj/.claude/commands/lint.md"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemoutjson.error ShouldEqual "lola profile needs your confirmation to remove lint, and there is no terminal to ask on"
-          - result.systemoutjson.hints ShouldHaveLength 2
-          - "result.systemoutjson.hints.hints0 ShouldEqual \"see them: lola profile -C /work/proj project:review --off --json -n\""
-          - "result.systemoutjson.hints.hints1 ShouldEqual \"then confirm them: lola profile -C /work/proj project:review --off --json -y\""
       - type: exec
-        script: "{{.runtime}} exec {{.container}} test -e /work/proj/.claude/commands/lint.md"
+        script: "{{.runtime}} exec {{.container}} grep -c 'name: lint' /work/proj/.lola/profiles/review.yml"
+        assertions:
+          - result.systemout ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} sync -C /work/proj"
         assertions:
           - result.code ShouldEqual 0
 
@@ -423,7 +413,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} profile mine --on --user -y"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → on, 1st of 1\""
+          - "result.systemout ShouldContainSubstring \"Profile user:mine (/home/tester/.config/lola/profiles/mine.yml) → on\""
           - result.systemout ShouldContainSubstring "✓ synced lint (claude-code)"
       - type: exec
         script: "{{.runtime}} exec {{.container}} test -f /home/tester/.claude/commands/lint.md"
@@ -503,7 +493,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
 
-  - name: T13 A tracked lock.json makes render refuse
+  - name: T13 A tracked lock.json makes sync refuse
     # Its hint is a git command, which hint.py does not run: the case runs the command the hint
     # names, once it has asserted the hint is exactly that command.
     steps:
@@ -512,7 +502,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} render -C /work/proj --json > /tmp/t13.out 2> /tmp/t13.err; echo exit=$?'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/t13.out 2> /tmp/t13.err; echo exit=$?'"
         assertions:
           - result.systemout ShouldEqual "exit=1"
       - type: exec
@@ -527,7 +517,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} render -C /work/proj"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} sync -C /work/proj"
         assertions:
           - result.code ShouldEqual 0
 

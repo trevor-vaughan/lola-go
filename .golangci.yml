@@ -51,6 +51,7 @@ linters:
             - $gostd
             - github.com/trevor-vaughan/lola-go/internal/errs
             - github.com/trevor-vaughan/lola-go/internal/fsx # a project's profiles directory stays inside it
+            - github.com/trevor-vaughan/lola-go/internal/config # selector grammar of an entry's only:/skip: (ParsePattern), never a file
             - github.com/trevor-vaughan/lola-go/internal/manifest
             - github.com/trevor-vaughan/lola-go/internal/module # name rules
             - github.com/trevor-vaughan/lola-go/internal/paths

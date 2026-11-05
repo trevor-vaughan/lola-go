@@ -55,6 +55,44 @@ var _ = Describe("remote profiles", func() {
 		return "version: 1\nmodules:\n  - {name: gopls, source: https://example.com/gopls.git, commit: " + commit + ", digest: " + digest + "}\n"
 	}
 
+	It("refuses a profile that still has extends:, and its hints make the bundle that does the same", func() {
+		keep("go", "version: 1\n")
+		keep("mine-modules", "version: 1\n") // a bare mine-modules would name it: the split names another
+		mod := filepath.Join(tmp, "mods", "a")
+		writeTree(mod, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
+		mine := filepath.Join(p.UserProfiles, "mine.yml")
+		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nextends: [go]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
+		r := lola("profile", "mine", "--switch", "--user", "-y")
+		Expect(r.code).NotTo(Equal(0))
+		split := "lola profile --user mine --split"
+		Expect(r.err).To(HaveSuffix("error: " + mine + ":3: extends: is no longer a key; a bundle combines profiles now\n" +
+			"  hint: make it a bundle: in " + mine + " replace extends: with bundle: [remote:go]; the entries of remote:go then install to their own targets," +
+			" not targets: [claude-code]; then move its modules: and targets: into a profile of their own: " + split + "\n"))
+		// The hint, as printed.
+		writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nbundle: [remote:go]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
+		r = lola(strings.Fields(split + " -y")[1:]...)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(os.ReadFile(mine)).To(Equal([]byte("version: 1\nbundle: ['remote:go', mine-modules-2]\n")))
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "mine-modules-2.yml"))).To(Equal([]byte("version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + mod + "}\n")))
+		r = lola("profile", "mine", "--switch", "--user", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).To(BeARegularFile())
+
+		// default.yml cannot bundle: the hint switches to a bundle that keeps the profile on.
+		def := filepath.Join(p.UserProfiles, "default.yml")
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\nextends: [go]\n"})
+		r = lola("sync", "--user")
+		Expect(r.code).NotTo(Equal(0))
+		hint := "lola profile --user default-bundle --switch --new --bundle remote:go,mine"
+		Expect(r.err).To(HaveSuffix("error: " + def + ":2: extends: is no longer a key; a bundle combines profiles now\n" +
+			"  hint: remove extends: from " + def + ", then switch to a bundle of them and mine, the profile on now, which the switch keeps: " + hint + "\n"))
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\n"})
+		r = lola(strings.Fields(hint + " -y")[1:]...)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "default-bundle.yml"))).To(Equal([]byte("version: 1\nbundle: ['remote:go', mine]\n")))
+		Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).To(BeARegularFile(), "mine's module stays installed")
+	})
+
 	It("lists remote profiles, says which a local one shadows, and shows one's source and pin", func() {
 		path := keep("go", gopls())
 		keep("docs", "version: 1\n")
@@ -76,7 +114,7 @@ var _ = Describe("remote profiles", func() {
 
 		Expect(lola("__complete", "profile", "--update", "").out).To(HavePrefix("docs\ngo\n:"), "--update completes remote profiles")
 		Expect(lola("__complete", "profile", "--update", "remote:go", "").out).To(HavePrefix("docs\n:"), "remote:go names go")
-		Expect(lola("__complete", "profile", "--remove", "").out).To(HavePrefix("docs\ngo\n:"))
+		Expect(lola("__complete", "profile", "--remove", "").out).To(HavePrefix("docs\nremote:go\nuser:go\n:"), "a name both kinds have is offered qualified")
 		Expect(lola("__complete", "profile", "--remove", "go", "").out).To(HavePrefix(":"), "--remove takes one name")
 		Expect(lola("__complete", "profile", "--update", "--all", "").out).To(HavePrefix(":"), "--all takes no names")
 
@@ -95,12 +133,12 @@ var _ = Describe("remote profiles", func() {
 
 		// Turned on before user:go existed, it is read as user:go, and still shows its own modules.
 		led := ledger.New()
-		led.Profiles = []ledger.Active{{Name: "remote:go", By: ledger.ByOn}}
+		led.Profile = &ledger.Active{Name: "remote:go", By: ledger.ByOn}
 		Expect(os.MkdirAll(filepath.Dir(p.UserLedger), 0o755)).To(Succeed())
 		Expect(led.Save(p.UserLedger)).To(Succeed())
 		r = lola("profile", "--user", "remote:go")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("\nuser: 1st of 1, read as user:go; its modules:\n  gopls  not wanted here\n"))
+		Expect(r.out).To(ContainSubstring("\nuser: on, read as user:go; its modules:\n  gopls  not wanted here\n"))
 		Expect(json.Unmarshal([]byte(lola("profile", "--user", "remote:go", "--json").out), &v)).To(Succeed())
 		Expect(v.Profiles[0]).To(HaveKeyWithValue("read_as", "user:go"))
 	})
@@ -110,13 +148,13 @@ var _ = Describe("remote profiles", func() {
 		proj := filepath.Join(tmp, "proj")
 		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
 		led := ledger.New()
-		led.Profiles = []ledger.Active{{Name: "remote:go", By: ledger.ByOn}}
+		led.Profile = &ledger.Active{Name: "remote:go", By: ledger.ByOn}
 		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 		GinkgoT().Chdir(proj)
 		r := lola("profile", "--project", "remote:go")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).NotTo(ContainSubstring("read as"))
-		Expect(r.out).To(ContainSubstring("\nproject (" + proj + "): 1st of 1, in effect; project:go would take its place if turned on; its modules:\n" +
+		Expect(r.out).To(ContainSubstring("\nproject (" + proj + "): on, in effect; project:go would take its place if turned on; its modules:\n" +
 			"  gopls  profile:remote:go\n"))
 		Expect(r.out).To(ContainSubstring("→ to use project:go instead: lola profile --project project:go --on\n"))
 		var v struct {
@@ -125,20 +163,13 @@ var _ = Describe("remote profiles", func() {
 		Expect(json.Unmarshal([]byte(lola("profile", "--project", "remote:go", "--json").out), &v)).To(Succeed())
 		Expect(v.Profiles[0]).To(And(HaveKeyWithValue("shadowed_by", "project:go"), HaveKeyWithValue("read_as", BeNil())))
 
-		// Both on, the state says so, and offers no --on of what is on.
-		led.Profiles = []ledger.Active{{Name: "remote:go", By: ledger.ByOn}, {Name: "project:go", By: ledger.ByOn}}
+		// project:go on in its place (one profile on at a time): the remote profile is off, shadowed by it.
+		led.Profile = &ledger.Active{Name: "project:go", By: ledger.ByOn}
 		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 		r = lola("profile", "--project", "remote:go")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("\nproject (" + proj + "): 1st of 2, in effect; project:go is on too, 2nd of 2, " +
-			"and its entry wins where both list a module; its modules:\n"))
-		Expect(r.out).NotTo(ContainSubstring("would take its place"))
+		Expect(r.out).To(ContainSubstring("\nproject (" + proj + "): off, shadowed by project:go; its modules:\n"))
 		Expect(r.out).NotTo(ContainSubstring("to use project:go instead"))
-		led.Profiles = []ledger.Active{{Name: "project:go", By: ledger.ByOn}, {Name: "remote:go", By: ledger.ByOn}}
-		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
-		r = lola("profile", "--project", "remote:go")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("): 2nd of 2, in effect; project:go is on too, 1st of 2, and this one's entry wins where both list a module;"))
 	})
 
 	It("refuses --update --scope both when the project is your home directory, before any network contact", func() {
@@ -236,6 +267,23 @@ var _ = Describe("remote profiles", func() {
 			Expect(filepath.Join(p.Home, ".claude", "commands", "ship.md")).To(BeAnExistingFile())
 		})
 
+		It("hints --switch, not --on, when a profile is already on (spec 2026-10-29 §6.2, Q3)", func() {
+			mod := filepath.Join(tmp, "mods", "a")
+			writeTree(mod, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
+			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
+			Expect(lola("profile", "mine", "--switch", "--user").code).To(Equal(0))
+			Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).To(BeARegularFile())
+			r := lola("profile", "go", "--add", src, "--user", "--trust")
+			Expect(r.code).To(Equal(0), r.err)
+			hint := "lola profile --user remote:go --switch -y"
+			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): " + hint + "\n"))
+			r = runHint(hint)
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(HavePrefix("user scope: profile mine over default\n"))
+			Expect(filepath.Join(p.Home, ".claude", "commands", "a.md")).NotTo(BeAnExistingFile())
+			Expect(filepath.Join(p.Home, ".claude", "commands", "ship.md")).To(BeAnExistingFile())
+		})
+
 		It("offers the source's profiles on a terminal, asks after showing them, and adds nothing on No", func() {
 			sp := &scripted{profiles: []func(cli.ProfileStep) ([]string, error){
 				func(st cli.ProfileStep) ([]string, error) { return []string{"docs"}, nil }}, confirm: []bool{false}}
@@ -292,6 +340,20 @@ var _ = Describe("remote profiles", func() {
 			gitIn(work, "commit", "-qm", "add hooked")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
 		}
+		It("hints no --switch that needs a hook's consent, and on a terminal one without -y", func() {
+			mod := filepath.Join(tmp, "mods", "a")
+			writeTree(mod, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "A\n"})
+			writeTree(p.UserProfiles, map[string]string{"mine.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: " + mod + "}\n"})
+			Expect(lola("profile", "mine", "--switch", "--user").code).To(Equal(0))
+			r := lolaP(&scripted{confirm: []bool{true}}, "profile", "go", "--add", src, "--user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(HaveSuffix("→ turn it on (switches mine off, removing its modules): lola profile --user remote:go --switch\n"), "a terminal asks before removing")
+			Expect(lola("profile", "go", "--remove", "--user", "-y").code).To(Equal(0))
+			hookedUpdate("true")
+			r = lola("profile", "go", "--add", src, "--user", "--trust")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(Equal("✓ added remote:go (" + filepath.Join(p.RemoteProfiles, "go", "profile.yml") + ")\n"))
+		})
 		It("an update whose sync fails after its grants carries every grant written so far in the error JSON", func() {
 			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
 			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
@@ -460,12 +522,12 @@ var _ = Describe("remote profiles", func() {
 			writeTree(work, map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
 			gitIn(work, "commit", "-qam", "drop example")
 			gitIn(work, "push", "-q", filepath.Join(tmp, "srv", "profiles.git"), "main")
-			// A module of user.yml not yet installed is a pending change the stopped sync still reports.
+			// A module of default.yml not yet installed is a pending change the stopped sync still reports.
 			pending := func(name string) {
 				GinkgoHelper()
 				dir := filepath.Join(tmp, "mods", name)
 				writeTree(dir, map[string]string{"lola.yml": "name: " + name + "\n", "commands/" + name + ".md": "X\n"})
-				writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: " + name +
+				writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: " + name +
 					", source: " + dir + "}\n"})
 			}
 			pending("extra")
@@ -817,7 +879,7 @@ var _ = Describe("remote profiles", func() {
 				writeTree(p.UserProfiles, map[string]string{"broken.yml": "version: 1\nshell: x\n"})
 				led, err := ledger.Load(p.UserLedger)
 				Expect(err).NotTo(HaveOccurred())
-				led.Profiles = append(led.Profiles, ledger.Active{Name: "user:broken", By: ledger.ByOn})
+				led.Profile = &ledger.Active{Name: "user:broken", By: ledger.ByOn}
 				Expect(led.Save(p.UserLedger)).To(Succeed())
 			}}
 			r := lolaP(sp, "profile", "docs", "go", "--update", "--user")
@@ -849,6 +911,10 @@ var _ = Describe("remote profiles", func() {
 			Expect(r.err).To(Equal("error: lola profile --remove asks before it deletes a profile, and there is no terminal to ask on\n" +
 				"  hint: confirm it: lola profile --user remote:go --remove -y\n"))
 			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			r = lola("profile", "go", "--rm", "--user")
+			Expect(r.code).To(Equal(1))
+			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn the profile off first: lola profile --user remote:go --off\n"+
+				"  hint: or remove it anyway: lola profile --user remote:go --remove --force\n"), "in use is said before -y is offered")
 			r = lola("profile", "go", "--delete", "--user", "-y")
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(Equal("error: remote:go is on at user scope\n  hint: turn the profile off first: lola profile --user remote:go --off\n"+
@@ -901,7 +967,7 @@ var _ = Describe("remote profiles", func() {
 				"  hint: add go: lola profile go --add " + src + " --trust=profiles --user\n  hint: add docs: lola profile docs --add " + src + " --trust=profiles --user\n"))
 			r = lola("profile", "go", "docs", "--remove", "--user", "-y", "--force", "-n")
 			Expect(r.code).To(Equal(1))
-			Expect(r.err).To(Equal("error: --remove takes one remote profile's name\n  hint: see yours: lola profile --user\n"))
+			Expect(r.err).To(Equal("error: --remove takes one profile's name\n  hint: see yours: lola profile --user\n"))
 		})
 
 		It("asks no scope, comparing with the project found here, else user scope, or the one a flag names", func() {

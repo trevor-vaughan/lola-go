@@ -29,11 +29,11 @@ var _ = Describe("lola repair", func() {
 		plantTarget(proj)
 		r := lola("list", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: " + lp + `: module kit: target "bogus" is not a target lola knows` + "\n  hint: lola repair -C " + proj + "\n"))
+		Expect(r.err).To(Equal(projectContext(proj) + "error: " + lp + `: module kit: target "bogus" is not a target lola knows` + "\n  hint: lola repair -C " + proj + "\n"))
 		r = lola(shellWords("lola repair -C " + proj)[1:]...)
 		Expect(r.code).To(Equal(1))
 		Expect(r.out).To(BeEmpty())
-		Expect(r.err).To(Equal("will forget 2 entries in " + lp + "; files are not touched:\n" + listed +
+		Expect(r.err).To(Equal(projectContext(proj) + "will forget 2 entries in " + lp + "; files are not touched:\n" + listed +
 			"error: lola repair needs confirmation, and there is no terminal to ask on\n" +
 			"  hint: lola repair --root " + proj + " -y\n"))
 		r = lola("repair", "--root", proj, "-y")
@@ -50,7 +50,7 @@ var _ = Describe("lola repair", func() {
 		r := lolaAsking(p, "repair", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.questions).To(Equal([]string{"Forget 2 entries lola could not have written? Files are not touched."}))
-		Expect(p.before[0]).To(Equal("will forget 2 entries in " + lp + "; files are not touched:\n" + listed))
+		Expect(p.before[0]).To(Equal(projectContext(proj) + "will forget 2 entries in " + lp + "; files are not touched:\n" + listed))
 		Expect(lola("list", "-C", proj).code).To(Equal(0))
 	})
 
@@ -72,7 +72,7 @@ var _ = Describe("lola repair", func() {
 		Expect(err).NotTo(HaveOccurred())
 		r := lola("repair", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(BeEmpty())
+		Expect(r.err).To(Equal(projectContext(proj)))
 		Expect(r.out).To(Equal("✓ nothing to repair in " + lp + "\n"))
 		Expect(os.ReadFile(lp)).To(Equal(before))
 		r = lola("repair", "-C", proj, "--json")
@@ -80,7 +80,8 @@ var _ = Describe("lola repair", func() {
 		var doc map[string]any
 		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
 		checkJSON(doc, "")
-		Expect(doc).To(Equal(map[string]any{"dry_run": false, "file": lp, "forgotten": []any{}, "forgotten_modules": []any{}, "notices": []any{}}))
+		Expect(doc).To(Equal(map[string]any{"context": []any{projectContextJSON(proj)}, "dry_run": false, "file": lp, "forgotten": []any{},
+			"forgotten_modules": []any{}, "notices": []any{}}))
 	})
 
 	It("keeps the refusal of a lock.json it cannot repair, writing nothing", func() {
@@ -90,7 +91,7 @@ var _ = Describe("lola repair", func() {
 		Expect(err).NotTo(HaveOccurred())
 		r := lola("repair", "-C", proj, "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: " + lp + `: module kit: from "nope" is not a profile lola records` +
+		Expect(r.err).To(Equal("project " + proj + ": project.yml (profile unknown)\n" + "error: " + lp + `: module kit: from "nope" is not a profile lola records` +
 			"\n  hint: restore lock.json from a backup, or remove the module's entry from it and reinstall the module\n"))
 		Expect(os.ReadFile(lp)).To(Equal(before))
 	})

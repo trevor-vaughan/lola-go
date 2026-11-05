@@ -191,6 +191,26 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(dir).To(Equal("q"))
 	})
 
+	It("the ssh host picker filters, x ticks, and Enter answers the raw hosts ticked, none included", func() {
+		st := SSHHostStep{Market: "priv", Hosts: []SSHHostChoice{{Host: "git.corp.test", Entries: 2}, {Host: "other.test", Entries: 1}}}
+		got, err := onTerminal("/other\rx\r").SSHHosts(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{"other.test"}), "the filter left other.test, which x ticked")
+		got, err = onTerminal("x\r").SSHHosts(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{"git.corp.test"}))
+		got, err = onTerminal("\r").SSHHosts(st)
+		Expect(err).NotTo(HaveOccurred(), "ticking nothing is an answer")
+		Expect(got).To(BeEmpty())
+		var out bytes.Buffer
+		got, err = accessible(&out, "0").SSHHosts(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty())
+		Expect(out.String()).To(And(ContainSubstring("git.corp.test (2 entries)"), ContainSubstring("other.test (1 entry)")))
+		_, err = onTerminal("\x03").SSHHosts(st)
+		Expect(err).To(MatchError(ErrAborted))
+	})
+
 	It("goes back a screen on Esc, from a picker, a menu and a text input alike", func() {
 		st := two
 		st.Nav = Nav{Back: true}

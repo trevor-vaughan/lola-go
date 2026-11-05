@@ -58,7 +58,7 @@ func (e *Engine) PlanRepair(req RepairRequest) (*RepairResult, error) {
 	path := e.files(req.Scope).ledger
 	led, err := ledger.LoadKeepingStrays(path)
 	if err != nil {
-		return nil, err
+		return nil, e.coachLedger(req.Scope, err)
 	}
 	strays := led.Strays(e.knows)
 	return e.repaired(req, path, strays, led.Forget(strays), true), nil
@@ -84,7 +84,7 @@ func (e *Engine) ApplyRepair(plan *RepairResult) (*RepairResult, error) {
 	defer unlock()
 	led, err := ledger.LoadKeepingStrays(path)
 	if err != nil {
-		return nil, err
+		return nil, e.coachLedger(req.Scope, err)
 	}
 	strays := led.Strays(e.knows)
 	for _, s := range strays {

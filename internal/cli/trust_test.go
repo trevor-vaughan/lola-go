@@ -13,6 +13,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -148,8 +149,6 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 		},
 		Entry("install", func() []string { return []string{"install", kit, "-C", proj, "--trust=entries,hooks"} },
 			"lola install never asks for entries trust; it takes --trust=scripts,hooks,runtime-hooks", "lola install KIT --root PROJ --trust=hooks"),
-		Entry("render", func() []string { return []string{"render", "-C", proj, "--trust=profiles"} },
-			"lola render never asks for profiles trust; it takes --trust=scripts,hooks,runtime-hooks", "lola render --root PROJ"),
 		Entry("migrate", func() []string { return []string{"migrate", "--trust=entries,profiles,hooks", "-n"} },
 			"lola migrate never asks for entries or profiles trust; it takes --trust=scripts,hooks,runtime-hooks", "lola migrate --dry-run --trust=hooks"),
 		Entry("profile --add", func() []string {
@@ -178,12 +177,10 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 			return []string{"profile", "go", "--add", "https://example.com/profiles.git", "--user", "--trust", "hooks"}
 		}, "error: lola profile --add never asks for hooks trust; it takes --trust=profiles\n"+
 			"  hint: lola profile go --add https://example.com/profiles.git --user\n"),
-		Entry("render, which takes no arguments", func() []string { return []string{"render", "-C", proj, "--trust", "hooks"} },
-			"error: \"hooks\" is a kind of trust, not a module: write --trust=hooks\n  hint: lola render --root PROJ --trust=hooks\n"),
+		Entry("update, as sync", func() []string { return []string{"update", "-C", proj, "--trust", "hooks"} },
+			"error: \"hooks\" is a kind of trust, not a module: write --trust=hooks\n  hint: lola update --root PROJ --trust=hooks\n"),
 		Entry("migrate, which takes no arguments", func() []string { return []string{"migrate", "-n", "--trust", "Hooks"} },
 			"error: \"Hooks\" is a kind of trust, not a module: write --trust=hooks\n  hint: lola migrate --dry-run --trust=hooks\n"),
-		Entry("render, any other argument as before", func() []string { return []string{"render", "-C", proj, "--trust=hooks", "kit"} },
-			"error: unknown command \"kit\" for \"lola render\"\n"),
 	)
 
 	It("an argument after -- is never --trust's value", func() {
@@ -192,10 +189,10 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 	})
 
 	It("help shows --trust[=entries,profiles] where bare --trust grants them, and --trust=<kinds> where it is refused", func() {
-		for _, c := range []string{"sync", "profile"} {
+		for _, c := range []string{"sync", "update", "profile"} {
 			Expect(lola(c, "--help").out).To(ContainSubstring("--trust[=entries,profiles]"), c)
 		}
-		for _, c := range []string{"install", "render", "migrate"} {
+		for _, c := range []string{"install", "migrate"} {
 			out := lola(c, "--help").out
 			Expect(out).To(ContainSubstring("--trust=<kinds>"), c)
 			Expect(out).NotTo(ContainSubstring("[=entries,profiles]"), c)
@@ -226,7 +223,7 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 
 	It("sync --scope both shows one receipt for both scopes; No applies neither", func() {
 		pull("plain")
-		writeTree(filepath.Dir(p.UserManifest), map[string]string{filepath.Base(p.UserManifest): "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " +
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: " +
 			kit + "}\n"})
 		c := &confirming{scripted: scripted{}, answers: []bool{false}}
 		r := lolaAsking(c, "sync", "-C", proj, "--scope", "both", "--trust=entries,hooks")
@@ -365,6 +362,81 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 		}, "then add it unasked: lola profile --user go --add https://example.com/profiles.git --trust=profiles --plain"),
 	)
 
+	It("a project profile's top-level targets a teammate committed are trusted through lola sync, then an install takes them with no -t", func() {
+		// The profile is on in the project; the teammate's commit gives it targets.
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\n"})
+		led := ledger.New()
+		led.Profile = &ledger.Active{Name: "project:go", By: ledger.ByOn}
+		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
+		writeTree(proj, map[string]string{".lola/profiles/go.yml": "version: 1\ntargets: [claude-code]\n"})
+		plain := filepath.Join(proj, "mods", "plain")
+
+		r := lola("install", plain, "-C", proj, "-y")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("error: .lola/profiles/go.yml's top-level targets have not been trusted on this machine\n" +
+			"  hint: review and apply them: lola sync -C " + proj + "\n"))
+
+		r = lola("sync", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.out + r.err).To(ContainSubstring("  in profile project:go (.lola/profiles/go.yml):\n  + targets       [claude-code]\n"))
+		r = lola("sync", "-C", proj, "--trust=profiles")
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("install", plain, "-C", proj, "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(filepath.Join(proj, ".claude", "commands", "plain.md")).To(BeAnExistingFile())
+	})
+
+	It("shows a pulled change of a project bundle's members in the diff, as a profile's targets are, and lola sync --trust=profiles takes it", func() {
+		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
+			".lola/profiles/team.yml": "version: 1\nbundle: [review]\n"})
+		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nbundle: [review, lint]\n"})
+
+		r := lola("sync", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.out + r.err).To(ContainSubstring("  in profile project:team (.lola/profiles/team.yml):\n  ~ bundle        [review] → [review, lint]\n"))
+		r = lola("sync", "-C", proj, "--plain", "-n")
+		Expect(r.out).To(ContainSubstring("trust\t\tbundle\tproject:team\n"))
+		r = lola("sync", "-C", proj, "--trust=profiles")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(lola("sync", "-C", proj).code).To(Equal(0), "trusted once, asked no more")
+	})
+
+	It("asks about a project bundle's members put in another order, since the order decides which wins", func() {
+		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
+			".lola/profiles/team.yml": "version: 1\nbundle: [review, lint]\n"})
+		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nbundle: [lint, review]\n"})
+
+		r := lola("sync", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.out + r.err).To(ContainSubstring("  in profile project:team (.lola/profiles/team.yml):\n  ~ bundle        [review, lint] → [lint, review]\n"))
+	})
+
+	It("judges a nested project bundle's members in its own part", func() {
+		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
+			".lola/profiles/inner.yml": "version: 1\nbundle: [review]\n", ".lola/profiles/team.yml": "version: 1\nbundle: [inner]\n"})
+		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		writeTree(proj, map[string]string{".lola/profiles/inner.yml": "version: 1\nbundle: [review, lint]\n"})
+
+		r := lola("sync", "-C", proj)
+		Expect(r.code).To(Equal(1))
+		Expect(r.out + r.err).To(ContainSubstring("  in profile project:inner (.lola/profiles/inner.yml):\n  ~ bundle        [review] → [review, lint]\n"))
+		Expect(r.out+r.err).NotTo(ContainSubstring("in profile project:team"), "the outer bundle's members did not change")
+	})
+
+	It("-y and --force do not take a pulled change of a project bundle's members", func() {
+		writeTree(proj, map[string]string{".lola/profiles/review.yml": "version: 1\n", ".lola/profiles/lint.yml": "version: 1\n",
+			".lola/profiles/team.yml": "version: 1\nbundle: [review]\n"})
+		Expect(lola("profile", "project:team", "--switch", "-C", proj, "--trust=profiles").code).To(Equal(0))
+		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\nbundle: [review, lint]\n"})
+
+		r := lola("sync", "-C", proj, "-y", "--force")
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(ContainSubstring("; -y confirms removals only; accept them with --trust=profiles\n"))
+		Expect(lola("sync", "-C", proj).code).To(Equal(1), "still asked: nothing was trusted")
+	})
+
 	It("-y and --force grant no kind of trust", func() {
 		pull("kit")
 		r := lola("sync", "-C", proj, "-y", "--force")
@@ -416,7 +488,7 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 			Expect(os.Chmod(filepath.Join(dir, "pre.sh"), 0o755)).To(Succeed())
 		}
 		userList := func(entries string) {
-			writeTree(filepath.Dir(p.UserManifest), map[string]string{filepath.Base(p.UserManifest): "version: 1\ntargets: [claude-code]\nmodules:\n" + entries})
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + entries})
 		}
 
 		It("refuses a scope whose hook digest moved between the receipt and its apply, even under the same receipt line", func() {
@@ -484,8 +556,8 @@ var _ = Describe("typed --trust (Plan 9 §3)", func() {
 		Expect(r.err).To(ContainSubstring("keep --on: lola profile go --on --trust=hooks\n"))
 	})
 
-	It("sync, profile, install, render and migrate have --trust; uninstall, market, tidy, info and every cache command do not; no command has --allow-hooks or --allow-runtime-hooks", func() {
-		with := []string{"lola sync", "lola profile", "lola install", "lola render", "lola migrate"}
+	It("sync, update, profile, install and migrate have --trust; uninstall, market, tidy, info and every cache command do not; no command has --allow-hooks or --allow-runtime-hooks", func() {
+		with := []string{"lola sync", "lola profile", "lola install", "lola update", "lola migrate"}
 		var has []string
 		for _, c := range commands() {
 			Expect(c.Flags().Lookup("allow-hooks")).To(BeNil(), c.CommandPath())

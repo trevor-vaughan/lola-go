@@ -38,7 +38,7 @@ var _ = Describe("last_used (Plan 9 §6.3)", func() {
 		e = engine.New(p)
 		day = time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 		e.Now = func() time.Time { return day }
-		// An archive, which install pins, so render and sync read the version lock.json records.
+		// An archive, which install pins, so sync reads the version lock.json records.
 		src = filepath.Join(tmp, "kit.tar.gz")
 		Expect(os.WriteFile(src, tarGz("kit", map[string]string{"lola.yml": "name: kit\n", "commands/hi.md": "Hi\n"}), 0o644)).To(Succeed())
 		archive = source.Spec{Kind: source.KindArchive, Location: src}
@@ -68,7 +68,7 @@ var _ = Describe("last_used (Plan 9 §6.3)", func() {
 	}
 	profile := func(action engine.ProfileAction) {
 		GinkgoHelper()
-		ok(e.Sync(ctx, engine.SyncRequest{Scope: user, Profiles: &engine.ProfileChange{Action: action, Names: []string{"kits"}},
+		ok(e.Sync(ctx, engine.SyncRequest{Scope: user, Profiles: &engine.ProfileChange{Action: action, Name: "kits"},
 			ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }}))
 	}
 	// step is one command of a row, run on the next fake day.
@@ -87,7 +87,7 @@ var _ = Describe("last_used (Plan 9 §6.3)", func() {
 				}
 			}
 		},
-		Entry("Store.Commit: every fetch committed (cache add, info of a source, install of a source, cache update, sync --update, render's re-fetch)", true,
+		Entry("Store.Commit: every fetch committed (cache add, info of a source, install of a source, cache update, sync --update, sync's re-fetch of a pin the cache lost)", true,
 			step(func() { ok(e.Fetch(ctx, archive)) }),
 			step(func() { ok(e.Info(ctx, info(src))) }),
 			step(func() { ok(e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: src}}, claude)) }),
@@ -98,12 +98,12 @@ var _ = Describe("last_used (Plan 9 §6.3)", func() {
 			}),
 			step(func() {
 				Expect(e.Store.Remove("kit")).To(BeTrue())
-				ok(e.Render(ctx, sc, engine.Options{}))
+				ok(e.Sync(ctx, engine.SyncRequest{Scope: sc}))
 			})),
 		Entry("install of a cached name or a source whose head it reads", true,
 			step(func() { ok(e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: "kit"}}, claude)) })),
-		Entry("Store.Pinned: render, sync and profile --on/--switch reading the recorded version", true,
-			step(func() { ok(e.Render(ctx, sc, engine.Options{})) }),
+		Entry("Store.Pinned: sync and profile --on/--switch reading the recorded version", true,
+			step(func() { ok(e.Sync(ctx, engine.SyncRequest{Scope: sc})) }),
 			step(func() {
 				Expect(os.RemoveAll(filepath.Join(sc.ProjectDir, ".claude"))).To(Succeed())
 				ok(e.Sync(ctx, engine.SyncRequest{Scope: sc}))
@@ -131,7 +131,7 @@ var _ = Describe("last_used (Plan 9 §6.3)", func() {
 			step(func() { ok(e.PlanClean(engine.CleanRequest{UnusedFor: "1d"})) })),
 	)
 
-	It("a use lola cannot record never fails the read: render and install go on as before", func() {
+	It("a use lola cannot record never fails the read: sync and install go on as before", func() {
 		if os.Geteuid() == 0 {
 			Skip("root writes in a read-only directory")
 		}
@@ -139,7 +139,7 @@ var _ = Describe("last_used (Plan 9 §6.3)", func() {
 		Expect(os.Chmod(mod, 0o500)).To(Succeed())
 		DeferCleanup(os.Chmod, mod, os.FileMode(0o700))
 		day = day.AddDate(0, 0, 1)
-		ok(e.Render(ctx, sc, engine.Options{}))
+		ok(e.Sync(ctx, engine.SyncRequest{Scope: sc}))
 		ok(e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: "kit"}}, claude))
 		Expect(lastUsed()).To(Equal("2026-10-01"), "index.yml could not be written")
 	})

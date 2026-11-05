@@ -73,7 +73,7 @@ func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (
 	// fetched (Plan 6c §6.7): the scope's own read comes after the fetch. Any other failure to read
 	// is left to that read.
 	if led, err := ledger.Load(e.files(sc).ledger); err == nil {
-		if _, err := e.loadProfiles(sc, nil, led.Profiles); err != nil {
+		if _, err := e.loadStack(sc, nil, led.Profile); err != nil {
 			if _, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
 				return nil, none, nil, err
 			}
@@ -95,7 +95,7 @@ func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (
 		if _, done := out.fetched[ref.Name]; done || out.failed[ref.Name] || r == nil || !sameMarketSource(*r, ref.Source) {
 			continue
 		}
-		f, _, err := e.updateMarket(ctx, *r, req.Options.DryRun, &unlock)
+		f, _, _, err := e.updateMarket(ctx, *r, nil, req.Options.DryRun, nil, &unlock)
 		if err != nil {
 			if ctx.Err() != nil {
 				unlock()
@@ -118,8 +118,10 @@ func (e *Engine) fetchCatalogs(ctx context.Context, sc Scope, req SyncRequest) (
 // nil, the entry updating as any other, with a notice saying why (an entry not trusted before the
 // run among them, with the sync that follows the catalog next), and, when the catalog moved its ref,
 // the install that takes it there (rulings R-6c-14, R-6c-15).
-// A catalog this run did not fetch is never read. display is the run's output flags.
-func (e *Engine) follow(sc Scope, c *syncCatalogs, ent manifest.Entry, spec source.Spec, dry bool, display []string) (*marketPick, *Notice) {
+// A catalog this run did not fetch is never read. req is the run: its dry run, its output flags,
+// and lola update (Installed), whose next run is lola update's.
+func (e *Engine) follow(sc Scope, c *syncCatalogs, ent manifest.Entry, spec source.Spec, req SyncRequest) (*marketPick, *Notice) {
+	dry, display := req.Options.DryRun, req.Display
 	m := ent.Market
 	name, mkt := shown(ent.Name), shown(m.Name)
 	r := c.reg.Find(m.Name)
@@ -137,8 +139,12 @@ func (e *Engine) follow(sc Scope, c *syncCatalogs, ent manifest.Entry, spec sour
 		// A dry run records no trust: the next run is no more trusted than this one.
 		return nil, plain("lola follows a marketplace only for an entry you trusted before the run")
 	case c.untrusted[ent.Name]:
+		next := e.SyncCommand(sc, append([]string{"--update", ent.Name}, display...)...)
+		if req.Installed {
+			next = e.Command(sc, "update", append([]string{ent.Name}, display...)...)
+		}
 		return nil, &Notice{Level: LevelInfo, Text: name + ": lola follows a marketplace only for an entry you trusted before the run; it " +
-			"updates from its own source, and the next update follows " + mkt + " → " + e.SyncCommand(sc, append([]string{"--update", ent.Name}, display...)...)}
+			"updates from its own source, and the next update follows " + mkt + " → " + next}
 	case c.failed[r.Name]:
 		return nil, nil // the warning of the failed fetch says it
 	}

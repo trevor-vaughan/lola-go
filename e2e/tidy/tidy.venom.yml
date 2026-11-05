@@ -11,6 +11,7 @@ vars:
   lola: /opt/lola-go/lola-go
   proj: /work/proj
   state: /home/tester/.local/state
+  jsoncheck: python3 /e2e-common/jsoncheck.py
 
 testcases:
   - name: The project and the trash are on different file systems, and git reads the project
@@ -41,7 +42,6 @@ testcases:
           - result.systemoutjson.dry_run ShouldBeTrue
           - result.systemoutjson.trash ShouldEqual ""
           - result.systemoutjson.root ShouldEqual "{{.proj}}"
-          - result.systemout ShouldNotContainSubstring null
           - result.systemout ShouldNotContainSubstring legacy-server
           - result.systemout ShouldContainSubstring {{.proj}}/.claude/commands/deploy.md
           - result.systemout ShouldContainSubstring {{.proj}}/.claude/commands/tmp-1.md
@@ -54,6 +54,11 @@ testcases:
           - 'result.systemout ShouldContainSubstring "is or holds an instruction file"'
           - 'result.systemout ShouldContainSubstring "leads outside the root"'
           - result.systemoutjson.hints.hints0 ShouldEqual "lola tidy -C {{.proj}} --all -t claude-code -t gemini-cli -y --json"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} tidy -C {{.proj}} -t claude-code -t gemini-cli -n --json > /tmp/td1.json && {{.jsoncheck}} doc /tmp/td1.json > /dev/null && echo no null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "no null"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'ls {{.proj}}/.claude/commands {{.proj}}/.claude/agents; ls {{.state}}/lola/trash 2>&1'"
         assertions:

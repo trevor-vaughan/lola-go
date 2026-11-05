@@ -32,6 +32,8 @@ type confirming struct {
 	steps     []cli.TrustStep
 	// meddle, when set, runs at each Confirm before it is answered, as another lola run would.
 	meddle func()
+	// fail, when set, is what each Confirm returns in place of an answer (an interrupt, say).
+	fail error
 }
 
 func (c *confirming) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
@@ -47,6 +49,9 @@ func (c *confirming) Confirm(question string, _ cli.Nav) (bool, error) {
 	c.questions, c.before = append(c.questions, question), append(c.before, c.stderr.String())
 	if c.meddle != nil {
 		c.meddle()
+	}
+	if c.fail != nil {
+		return false, c.fail
 	}
 	return pop(&c.answers, "confirm"), nil
 }
@@ -65,15 +70,21 @@ func lolaAsking(c *confirming, args ...string) result {
 }
 
 // checkJSON fails on a key that is not snake_case and on a null anywhere but a trust field's
-// from or to, or the trust report's targets.
+// from or to, the trust report's targets, or the document's own profile (null when no profile is
+// on). key is v's path of keys joined by dots, "" for the document.
 func checkJSON(v any, key string) {
 	GinkgoHelper()
 	switch v := v.(type) {
 	case nil:
-		Expect([]string{"from", "to", "targets"}).To(ContainElement(key), "null at %q", key)
+		last := key[strings.LastIndex(key, ".")+1:]
+		Expect(key == "profile" || key == "context.profile" || key == "context.writes_to" ||
+			last == "from" || last == "to" || last == "targets").To(BeTrue(), "null at %q", key)
 	case map[string]any:
 		for k, x := range v {
 			Expect(k).To(MatchRegexp(`^[a-z0-9_]+$`))
+			if key != "" {
+				k = key + "." + k
+			}
 			checkJSON(x, k)
 		}
 	case []any:
@@ -117,7 +128,7 @@ var _ = Describe("lola sync", func() {
 
 		r = lola("sync", "nope", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: nope is neither in project.yml nor installed here\n  hint: modules in project.yml: kit\n"))
+		Expect(r.err).To(Equal(projectContext(proj) + "error: nope is neither in project.yml nor installed here\n  hint: modules in project.yml: kit\n"))
 	})
 
 	It("hints name the scope the user ran", func() {
@@ -189,7 +200,7 @@ var _ = Describe("lola sync", func() {
 		pull("  - name: sel\n    source: " + acme + "\n    path: sel\n    components:\n      skills: [skills/s1]\n")
 		r := lola("sync", "--trust")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: sel: local source " + acme + " resolves outside the project (" + acme + ")\n"))
+		Expect(r.err).To(Equal(projectContext(proj) + "error: sel: local source " + acme + " resolves outside the project (" + acme + ")\n"))
 		r = lola("sync", "--trust", "--json")
 		Expect(r.code).To(Equal(1))
 		var refusal struct {
@@ -236,7 +247,7 @@ var _ = Describe("lola sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		var led map[string]any
 		Expect(json.Unmarshal(b, &led)).To(Succeed())
-		led["profiles"] = []map[string]string{{"name": "project:go", "by": "on"}}
+		led["profile"] = map[string]string{"name": "project:go", "by": "on"}
 		b, err = json.Marshal(led)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
@@ -267,13 +278,13 @@ var _ = Describe("lola sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		var led map[string]any
 		Expect(json.Unmarshal(b, &led)).To(Succeed())
-		led["profiles"] = []map[string]string{{"name": "project:go", "by": "on"}}
+		led["profile"] = map[string]string{"name": "project:go", "by": "on"}
 		b, err = json.Marshal(led)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
 		r := lola("sync", "-C", proj)
-		Expect(r.code).To(Equal(0), r.err+r.out)
-		Expect(r.out).To(HaveSuffix("✓ already in sync\n"), "project.yml's kit shadows the profile's, which is not asked about")
+		Expect(r.code).To(Equal(1), "the profile's kit wins over project.yml's (spec 2026-10-29 §3.1), and needs trust")
+		Expect(r.err).To(ContainSubstring("  in profile project:go (.lola/profiles/go.yml):\n  + kit"))
 
 		// A pull drops kit from project.yml: the profile's kit wins now, a change in both files.
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\n"), 0o644)).To(Succeed())
@@ -281,26 +292,23 @@ var _ = Describe("lola sync", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("trust\tkit\tremoved\t\n"))
 		Expect(r.out).To(ContainSubstring("trust\tkit\tadded\tproject:go\n"))
+		Expect(r.out).To(ContainSubstring("trust\t\ttargets\tproject:go\n"), "go's top-level targets are trust content (spec 2026-10-29 §3.10)")
 		c := &confirming{trusts: []engine.TrustAnswer{{}}}
 		lolaAsking(c, "sync", "-C", proj)
-		Expect(c.steps[0].Changes).To(Equal(2))
+		Expect(c.steps[0].Changes).To(Equal(3), "kit in both files, and go's targets row")
 		Expect(c.steps[0].Groups).To(ConsistOf(HaveField("Options", ConsistOf(And(HaveField("Module", "kit"),
 			HaveField("Label", HavePrefix("+ kit (project.yml, project:go) ")))))), "one option trusts both changes, and says so")
 	})
 
-	// turnOn records names as the active profiles in lock.json, as lola profile --on does.
-	turnOn := func(names ...string) {
+	// turnOn records name as the active profile in lock.json, as lola profile --on does.
+	turnOn := func(name string) {
 		GinkgoHelper()
 		ledgerPath := filepath.Join(proj, ".lola", "lock.json")
 		b, err := os.ReadFile(ledgerPath)
 		Expect(err).NotTo(HaveOccurred())
 		var led map[string]any
 		Expect(json.Unmarshal(b, &led)).To(Succeed())
-		var active []map[string]string
-		for _, n := range names {
-			active = append(active, map[string]string{"name": n, "by": "on"})
-		}
-		led["profiles"] = active
+		led["profile"] = map[string]string{"name": name, "by": "on"}
 		b, err = json.Marshal(led)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(ledgerPath, b, 0o600)).To(Succeed())
@@ -312,13 +320,13 @@ var _ = Describe("lola sync", func() {
 		writeTree(proj, map[string]string{
 			".lola/profiles/a.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: zed, source: ../../mods/zed}\n",
 			".lola/profiles/b.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: alpha, source: ../../mods/alpha}\n"})
-		turnOn("project:a", "project:b")
+		turnOn("project:b")
 		r := lola("sync", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring(".lola/profiles/a.yml, .lola/profiles/b.yml changed since lola last wrote it or you last trusted it:\n"),
-			"sorted, though b's module sorts first")
-		Expect(r.err).To(ContainSubstring("  in profile project:a (.lola/profiles/a.yml):\n  + zed           mods/zed\n"))
+		Expect(r.err).To(ContainSubstring(".lola/profiles/b.yml changed since lola last wrote it or you last trusted it:\n"),
+			"one profile is on at a time: its file alone heads the diff")
 		Expect(r.err).To(ContainSubstring("  in profile project:b (.lola/profiles/b.yml):\n  + alpha         mods/alpha\n"))
+		Expect(r.err).NotTo(ContainSubstring("project:a"))
 	})
 
 	It("names the project profile a pin is written into", func() {
@@ -346,7 +354,7 @@ var _ = Describe("lola sync", func() {
 		c := &confirming{trusts: []engine.TrustAnswer{{Modules: []string{"other"}}}}
 		r := lolaAsking(c, "sync", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(c.steps[0].Changes).To(Equal(3), "kit removed from project.yml, kit added to project:go, other added")
+		Expect(c.steps[0].Changes).To(Equal(4), "kit removed from project.yml, kit added to project:go, other added, go's targets")
 		Expect(r.err).To(ContainSubstring("→ trusting other; leaving kit as installed\n"))
 	})
 
@@ -542,7 +550,7 @@ var _ = Describe("lola sync", func() {
 		writeTree(filepath.Join(proj, "mods", "third"), map[string]string{"lola.yml": "name: third\n", "commands/third.md": "T\n"})
 		r = lola("install", "./mods/third", "-n", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HavePrefix("create\tthird\tclaude-code\t"))
+		Expect(r.out).To(HavePrefix("edit\tadded\tthird\tproject.yml\t" + manPath + "\ncreate\tthird\tclaude-code\t"))
 	})
 
 	It("a --json refusal carries the changes it needs trust for", func() {
@@ -681,7 +689,7 @@ var _ = Describe("lola sync", func() {
 
 		r = lola("sync", "--update", "-y", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(".lola/project.yml is unchanged; lola sync needs your trust for:\n" +
+		Expect(r.err).To(Equal(projectContext(proj) + ".lola/project.yml is unchanged; lola sync needs your trust for:\n" +
 			"  ~ arch          re-pin from " + filepath.Join(proj, "mods", "arch.zip") + " (--update; not fetched yet)\n" +
 			"error: lola sync needs your trust for the pins it would write for arch, and there is no terminal to ask on; " +
 			"-y confirms removals only; accept them with --trust=entries\n" +
@@ -798,7 +806,7 @@ var _ = Describe("lola sync", func() {
 		Expect(r.err).NotTo(ContainSubstring("the same off a terminal"))
 		Expect(r.err).To(HaveSuffix("removals declined; the project was not changed. The changes you trusted are recorded; "+
 			"the next lola sync --project asks about the removals and about c again: lola records a pin or a folder's content only once it writes it. "+
-			"lola render --project would install what you trusted.\n"), "b, now trusted, is installed")
+			"lola sync --project b c installs what you trusted without removing anything.\n"), "b, now trusted, is installed")
 		c = &confirming{trusts: []engine.TrustAnswer{{}}}
 		lolaAsking(c, "sync", "--project")
 		Expect(c.steps[0].Groups).To(HaveExactElements(And(HaveField("Title", "Added (2)"), HaveField("Options", HaveExactElements(
@@ -832,10 +840,12 @@ var _ = Describe("lola sync", func() {
 				{Module: "other", Label: "+ other source mods/other; MCP server gh added; accepts the top-level targets [claude-code] → [claude-code, opencode]"}}},
 		}))
 
-		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code, opencode]\nmodules:\n"+
-			"  - name: kit\n    source: "+filepath.Join(proj, "mods", "kit")+"\n    targets: [claude-code]\n"), 0o644)).To(Succeed())
+		// kit installs to the top-level targets, so their change is asked about (spec 2026-10-29 §16.1).
+		kitOnly := "  - name: kit\n    source: " + filepath.Join(proj, "mods", "kit") + "\n"
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code, opencode]\nmodules:\n"+kitOnly), 0o644)).To(Succeed())
 		r = lola("sync", "-C", proj, "--trust", "kit")
 		Expect(r.code).To(Equal(0), r.err)
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+kitOnly), 0o644)).To(Succeed())
 		c = &confirming{trusts: []engine.TrustAnswer{{}}}
 		lolaAsking(c, "sync", "-C", proj)
 		Expect(c.steps[0].Changes).To(Equal(1))
@@ -964,7 +974,7 @@ var _ = Describe("lola sync", func() {
 	})
 
 	It("syncs the user scope", func() {
-		writeTree(filepath.Join(tmp, "config", "lola"), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+		writeTree(filepath.Join(tmp, "config", "lola", "profiles"), map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
 			"  - name: kit\n    source: " + filepath.Join(proj, "mods", "kit") + "\n"})
 		r := lola("sync", "--user", "-y")
 		Expect(r.code).To(Equal(0), r.err)

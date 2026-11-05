@@ -12,18 +12,19 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
-	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// ProfileRemove is lola profile's action that deletes a kept remote profile (Plan 6b §3.2); it
-// is also the flag lola profile takes for it.
+// ProfileRemove is lola profile's action that deletes a profile of yours or a kept remote profile
+// (Plan 6b §3.2; spec 2026-10-29 §6.2); it is also the flag lola profile takes for it.
 const ProfileRemove ProfileAction = "remove"
 
-// ProfileRemoveRequest is one lola profile <name> --remove (Plan 6b §3.2): delete the remote
-// profile Name names (go or remote:go). Scope is the scope the run is in: a profile it, user scope
-// or the project found from the working directory uses is not removed unless Force, which
-// overrides that check and answers the question (user decision, 2026-10-22).
+// ProfileRemoveRequest is one lola profile <name> --remove (Plan 6b §3.2; spec 2026-10-29 §6.2):
+// delete the profile Name names, a profile of yours (user:try, or a bare name only yours has),
+// which goes to the trash, or a remote one (remote:go, or a bare name only a remote profile has).
+// Scope is the scope the run is in: a profile it, user scope or the project found from the working
+// directory uses is not removed unless Force, which overrides that check and answers the question
+// (user decision, 2026-10-22).
 type ProfileRemoveRequest struct {
 	Scope  Scope
 	Name   string
@@ -40,19 +41,22 @@ type ProfileRemoveRequest struct {
 }
 
 // ProfileRemoveResult is what lola profile --remove reports: the profile, its file and its
-// source, whether it was removed (false in a dry run), and the notices.
+// source ("" for a profile of yours), whether it was removed (false in a dry run), where a
+// profile of yours went in the trash ("" for a remote one, and in a dry run), and the notices.
 type ProfileRemoveResult struct {
 	Profile string   `json:"profile"`
 	File    string   `json:"file"`
 	Source  string   `json:"source"`
 	Removed bool     `json:"removed"`
+	Trash   string   `json:"trash"`
 	Notices []Notice `json:"notices"`
 	DryRun  bool     `json:"dry_run"`
 }
 
-// RemoveProfile deletes a remote profile (Plan 6b §3.2, §6.5): refused while the scope the run is
-// in, user scope or the project found from the working directory uses it (on, or extended by an
-// active profile or default; lola keeps no list of every checkout), or cannot be read to tell,
+// RemoveProfile deletes the profile req.Name names (Plan 6b §3.2, §6.5; spec 2026-10-29 §6.2): a
+// profile of yours goes to the trash (removeOwn); a remote one is deleted. Either is refused while
+// the scope the run is in, user scope or the project found from the working directory uses it (on,
+// or a member of the bundle on; lola keeps no list of every checkout), or cannot be read to tell,
 // unless Force, which makes those warnings; asked about first (Confirm, which -y answers), unless
 // Force, which answers it too. The check and the question hold the profiles lock shared; it is taken exclusively only
 // to check the profile is still there and rename it aside, then remove it, so it is gone in one
@@ -68,6 +72,12 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 		return nil, err
 	}
 	defer func() { unlock() }()
+	if mine, err := e.ownToRemove(sc, req); err != nil || mine != nil {
+		if err != nil {
+			return nil, err
+		}
+		return e.removeOwn(ctx, req, *mine, &unlock)
+	}
 	name, err := e.remoteNamed(sc, []Scope{sc}, req.Name, ProfileRemove)
 	if err != nil {
 		return nil, err
@@ -77,13 +87,6 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 	if req.Force {
 		again = append(again, "--force")
 	}
-	// No hint carries -y but the one that asks for it (ruling R-6b3c-8): a -y answers the question
-	// it was given for, and a hint must not answer another.
-	confirm := slices.Concat(again, []string{"-y"})
-	if req.Confirm == nil && !req.DryRun && !req.Force {
-		return nil, errs.WithHints(errors.New("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on"),
-			"confirm it: "+e.Command(sc, "profile", confirm...))
-	}
 	dir := filepath.Join(e.Paths.RemoteProfiles, name)
 	res := &ProfileRemoveResult{Profile: shown(q), File: shown(e.profilePath(sc, profile.KindRemote, name)), Notices: []Notice{}, DryRun: req.DryRun}
 	o, originErr := profile.ReadOrigin(dir)
@@ -92,78 +95,22 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 	} else {
 		res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: shown(q) + ": " + shown(untrusted.CleanErr(originErr).Error())})
 	}
-	// The scope of the run, user scope, and the project found from the working directory: lola
-	// keeps no list of every checkout.
-	scopes := []Scope{sc}
-	others := []Scope{{Kind: target.User}}
-	if found, ok := e.foundProject(); ok {
-		others = append(others, found)
-	}
-	for _, o := range others {
-		if !slices.ContainsFunc(scopes, func(s Scope) bool { return s.Key() == o.Key() }) {
-			scopes = append(scopes, o)
-		}
-	}
-	forced := []string{q, "--remove", "--force"}
-	if req.DryRun {
-		forced = append(forced, "-n")
-	}
-	force := "or remove it anyway: " + e.Command(sc, "profile", append(forced, req.Display...)...)
 	// A profile that does not load fails every check that reads it; their hints would name this
 	// very removal, so only --force is offered.
 	_, _, loadErr := profile.LoadRemote(e.profilePath(sc, profile.KindRemote, name))
-	for _, s := range scopes {
-		// Under --force, only a failure of the run's own profileScope (a tracked or unreadable
-		// lock.json) still refuses; a scope whose layers cannot be read becomes a warning.
-		_, _, _, checked, err := e.profileScope(ctx, s)
-		if err != nil && s.Key() == sc.Key() {
-			return nil, err
-		}
-		var using []string
-		if err == nil {
-			res.Notices = append(res.Notices, checked...)
-			_, _, using, err = e.uses(s, q)
-		}
-		if err != nil && req.Force {
-			res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: "could not check whether " + shown(q) + " is in use " + scopeAt(s) + ": " +
-				shown(untrusted.CleanErr(err).Error())})
-			continue
-		}
-		if err != nil && loadErr != nil {
-			return nil, errs.WithHints(errors.New("lola cannot tell whether "+shown(q)+" is in use "+scopeAt(s)+": "+shown(q)+" itself does not load: "+
-				untrusted.CleanErr(loadErr).Error()), force)
-		}
-		if err != nil {
-			return nil, errs.WithHints(errors.New("lola cannot tell whether "+shown(q)+" is in use "+scopeAt(s)+": "+untrusted.CleanErr(err).Error()),
-				append(errs.Hints(err), force)...)
-		}
-		if len(using) == 0 {
-			continue
-		}
-		what := "is on " + scopeAt(s)
-		if !slices.Contains(using, shown(q)) {
-			what = "is extended by " + andJoin(using) + ", on " + scopeAt(s)
-		}
-		if !req.Force {
-			hints := []string{}
-			for _, u := range using {
-				switch u {
-				case profile.DefaultName: // always on: it stops extending q only when edited
-					hints = append(hints, "remove "+shown(name)+" from the extends: of "+shown(e.profilePath(s, profile.KindUser, profile.DefaultName))+" first")
-				case shown(q):
-					hints = append(hints, "turn the profile off first: "+e.Command(s, "profile", append([]string{u, "--off"}, req.Display...)...))
-				default:
-					// The label is lola's own: the profile's name, author text, is in the command only.
-					kind, own, _ := strings.Cut(u, ":")
-					hints = append(hints, "turn the profile off first: "+e.Command(s, "profile", append([]string{u, "--off"}, req.Display...)...),
-						"or remove "+shown(name)+" from the extends: of "+shown(e.profilePath(s, profile.Kind(kind), own)))
-				}
-			}
-			return nil, errs.WithHints(fmt.Errorf("%s %s", shown(q), what), append(hints, force)...)
-		}
-		res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: shown(q) + " " + what + "; its modules stay installed there until the next " +
-			e.SyncCommand(s) + ", which removes them"})
+	// In use is said before -y is offered: a -y hint never names a removal that is then refused.
+	notes, _, err := e.refuseInUse(ctx, req, q, loadErr)
+	if err != nil {
+		return nil, err
 	}
+	// No hint carries -y but the one that asks for it (ruling R-6b3c-8): a -y answers the question
+	// it was given for, and a hint must not answer another.
+	confirm := slices.Concat(again, []string{"-y"})
+	if req.Confirm == nil && !req.DryRun && !req.Force {
+		return nil, errs.WithHints(errors.New("lola profile --remove asks before it deletes a profile, and there is no terminal to ask on"),
+			"confirm it: "+e.Command(sc, "profile", confirm...))
+	}
+	res.Notices = append(res.Notices, notes...)
 	if req.DryRun {
 		text := "to remove it: " + e.Command(sc, "profile", again...)
 		if !req.Force {
@@ -213,5 +160,22 @@ func (e *Engine) RemoveProfile(ctx context.Context, req ProfileRemoveRequest) (_
 		res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: "removed " + shown(q) + ", but could not delete " + shown(aside) + ": " +
 			shown(untrusted.CleanErr(err).Error()) + "; the next lola run removes it"})
 	}
+	if err := e.writePinsNow([]string{name}); err != nil {
+		res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: "removed " + shown(q) + ", but pins.yaml still records it: " +
+			shown(untrusted.CleanErr(err).Error()) + "; delete its entry under remotes: in " + shown(e.Paths.Pins)})
+	}
 	return res, nil
+}
+
+// unlist is the edit that removes a member from the bundle files that list it (listed, each
+// with the member as it writes it).
+func unlist(listed []listing) string {
+	if len(listed) == 1 {
+		return "remove " + shown(listed[0].typed) + " from the bundle: of " + shown(listed[0].path)
+	}
+	parts := make([]string, 0, len(listed))
+	for _, l := range listed {
+		parts = append(parts, shown(l.typed)+" from "+shown(l.path))
+	}
+	return "remove it from each bundle: that lists it: " + strings.Join(parts, ", ")
 }

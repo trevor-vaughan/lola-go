@@ -231,32 +231,63 @@ var _ = Describe("Fetch of a git source", func() {
 		Expect(read(f, "commands/a.md")).To(Equal("first"))
 	})
 
-	It("refuses a committed symlink, naming it", func() {
+	It("refuses a committed absolute symlink, naming it", func() {
 		r := newRemote(tmp, map[string]string{"commands/a.md": "A"})
 		Expect(os.Symlink("/etc/passwd", filepath.Join(r.work, "commands", "b.md"))).To(Succeed())
 		r.commit(nil)
 		_, err := fetch(r.url, "", "")
-		Expect(err).To(MatchError(ContainSubstring("commands/b.md: symbolic links are not allowed")))
+		Expect(err).To(MatchError(source.ErrLinkInSource))
+		Expect(err).To(MatchError(ContainSubstring("commands/b.md: symbolic link refused: it points to /etc/passwd, an absolute path")))
 		entries, _ := os.ReadDir(staging)
 		Expect(entries).To(BeEmpty())
 	})
 
-	It("a symlink in a git tree is refused before checkout", func() {
-		// Without --path the whole tree is the module path, so a link outside module/, where
-		// the copy never looks, is refused too: only the tree listing, which runs before any
-		// checkout, can see it. On Windows with core.symlinks=false a checked-out link is a
-		// plain file the copy cannot tell apart.
+	It("copies a committed link to a file elsewhere in the repository as that file, with its committed mode", func() {
+		r := newRemote(tmp, map[string]string{"module/skills/s/SKILL.md": "S", "reference/x.md": "X", "tools/run.sh": "#!/bin/sh\n"})
+		Expect(os.Chmod(filepath.Join(r.work, "tools", "run.sh"), 0o755)).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(r.work, "module", "skills", "s", "reference"), 0o755)).To(Succeed())
+		Expect(os.Symlink("../../../../reference/x.md", filepath.Join(r.work, "module", "skills", "s", "reference", "x.md"))).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(r.work, "module", "bin"), 0o755)).To(Succeed())
+		Expect(os.Symlink("../../tools/run.sh", filepath.Join(r.work, "module", "bin", "run"))).To(Succeed())
+		r.commit(nil)
+		for _, ref := range []string{"", "main", r.rev("HEAD")} {
+			f, err := fetch(r.url, ref, "")
+			Expect(err).NotTo(HaveOccurred(), "ref %q", ref)
+			Expect(listTree(f.Dir)).To(ConsistOf("skills/s/SKILL.md", "skills/s/reference/x.md", "bin/run"), "ref %q", ref)
+			Expect(read(f, "skills/s/reference/x.md")).To(Equal("X"), "ref %q", ref)
+			Expect(f.Executables).To(Equal([]string{"bin/run"}), "ref %q", ref)
+			expectNoLinks(f.Dir)
+		}
+	})
+
+	It("refuses a committed link that leaves the repository or names its .git", func() {
+		for i, c := range []struct{ to, reason string }{
+			{"../../../../outside.md", "module/commands/b.md: symbolic link refused: its target ../../../../outside.md leaves the source"},
+			{"../../.git/config", "module/commands/b.md: symbolic link refused: its target is in .git/config, which lola never copies"},
+		} {
+			to, reason := c.to, c.reason
+			r := newRemote(filepath.Join(tmp, "repo", string(rune('a'+i))), map[string]string{"module/commands/a.md": "A"})
+			Expect(os.Symlink(to, filepath.Join(r.work, "module", "commands", "b.md"))).To(Succeed())
+			r.commit(nil)
+			_, err := fetch(r.url, "", "")
+			Expect(err).To(MatchError(source.ErrLinkInSource), to)
+			Expect(err).To(MatchError(ContainSubstring(reason)), to)
+			entries, _ := os.ReadDir(staging)
+			Expect(entries).To(BeEmpty(), to)
+		}
+	})
+
+	It("never reads a link outside the module root", func() {
 		r := newRemote(tmp, map[string]string{"module/commands/a.md": "A", "skills/x/commands/a.md": "A"})
 		Expect(os.Symlink("/etc/passwd", filepath.Join(r.work, "docs-link"))).To(Succeed())
 		Expect(os.Symlink("/etc/passwd", filepath.Join(r.work, "skills", "x", "commands", "b.md"))).To(Succeed())
 		r.commit(nil)
-		for _, c := range []struct{ path, link string }{{"", "docs-link"}, {"skills/x", "skills/x/commands/b.md"}} {
-			for _, ref := range []string{"", "main", r.rev("HEAD")} {
-				_, err := fetch(r.url, ref, c.path)
-				Expect(err).To(MatchError(ContainSubstring(c.link+": symbolic links are not allowed in module content")), "ref %q, path %q", ref, c.path)
-				entries, _ := os.ReadDir(staging)
-				Expect(entries).To(BeEmpty())
-			}
+		for _, ref := range []string{"", "main", r.rev("HEAD")} {
+			f, err := fetch(r.url, ref, "")
+			Expect(err).NotTo(HaveOccurred(), "ref %q", ref)
+			Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
+			_, err = fetch(r.url, ref, "skills/x")
+			Expect(err).To(MatchError(ContainSubstring("skills/x/commands/b.md: symbolic link refused: it points to /etc/passwd")), "ref %q", ref)
 		}
 	})
 
@@ -282,7 +313,7 @@ var _ = Describe("Fetch of a git source", func() {
 		for _, ref := range []string{"", "main", r.rev("HEAD")} {
 			for _, path := range []string{"skills/x", "skills"} {
 				_, err := fetch(r.url, ref, path)
-				Expect(err).To(MatchError(ContainSubstring("skills: symbolic links are not allowed in module content")), "ref %q, path %q", ref, path)
+				Expect(err).To(MatchError(ContainSubstring("skills: symbolic link refused: the module path goes through it")), "ref %q, path %q", ref, path)
 				entries, _ := os.ReadDir(staging)
 				Expect(entries).To(BeEmpty())
 			}

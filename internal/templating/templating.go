@@ -30,10 +30,10 @@ type Source struct {
 }
 
 // Data holds what a template may read: the target id, the scope ("project" or "user"), the
-// scope's active profiles in activation order, the module's vars and the component's attributes
-// for the target. A var is a string, a bool, an int64, a float64 or a []string; an attribute is
-// a string, a bool, an int64, a float64, nil, an []any or a map[string]any of these. Any other
-// value refuses the render.
+// scope's profiles lowest first (default where the scope has it, then the active profile), the
+// module's vars and the component's attributes for the target. A var is a string, a bool, an
+// int64, a float64 or a []string; an attribute is a string, a bool, an int64, a float64, nil, an
+// []any or a map[string]any of these. Any other value refuses the render.
 type Data struct {
 	Target, Scope string
 	Profiles      []string

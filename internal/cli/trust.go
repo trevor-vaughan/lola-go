@@ -66,7 +66,7 @@ func (t *trustFlag) names(k engine.TrustKinds) bool {
 
 // addTrustFlag adds --trust to cmd, which asks the kinds of command (engine.CommandTrust's name).
 // Help shows --trust[=entries,profiles] where a bare --trust grants those, and --trust=<kinds>
-// where it grants none and is refused (install, render, migrate), with no value placeholder, since
+// where it grants none and is refused (install, migrate), with no value placeholder, since
 // the value must be joined by = (R-9-2); completion shows the usage as written.
 func addTrustFlag(cmd *cobra.Command, t *trustFlag, command, usage string) {
 	t.fs = cmd.Flags()
@@ -184,6 +184,10 @@ func trustHelp(command string) string {
 		strings.ReplaceAll(takes.String(), ",", ", ") + ", or all for every one.\n"
 	if b := takes & engine.TrustBare; b != 0 {
 		out += "Bare --trust is " + b.String() + ", which run no code.\n"
+	}
+	if command == "update" { // it has no -y
+		return out + "It lists what it covers before anything is written, and on a terminal asks once;\n" +
+			"a grant is recorded as a yes at the prompt is."
 	}
 	return out + "It lists what it covers before anything is written, and on a terminal asks once (-y\n" +
 		"answers); a grant is recorded as a yes at the prompt is."

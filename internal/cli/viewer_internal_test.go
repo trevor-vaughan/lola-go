@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -64,7 +65,27 @@ var (
 	keyY     = tea.KeyPressMsg{Code: 'y', Text: "y"}
 	keyC     = tea.KeyPressMsg{Code: 'c', Text: "c"}
 	keyN     = tea.KeyPressMsg{Code: 'n', Text: "n"}
+	keyShN   = tea.KeyPressMsg{Code: 'n', Text: "N", Mod: tea.ModShift}
+	keySlash = tea.KeyPressMsg{Code: '/', Text: "/"}
+	keyEnter = tea.KeyPressMsg{Code: tea.KeyEnter}
+	keyBksp  = tea.KeyPressMsg{Code: tea.KeyBackspace}
+	keyCtrlN = tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
+	keyCtrlP = tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
 )
+
+// typed is the key presses of text, one per character.
+func typed(text string) []tea.KeyPressMsg {
+	var ks []tea.KeyPressMsg
+	for _, r := range text {
+		ks = append(ks, tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	return ks
+}
+
+// search types term after /, and Enter.
+func search(m viewerModel, term string) viewerModel {
+	return press(m, slices.Concat([]tea.KeyPressMsg{keySlash}, typed(term), []tea.KeyPressMsg{keyEnter})...)
+}
 
 // sgr matches every SGR escape sequence: color, bold and resets alike.
 var sgr = regexp.MustCompile("\x1b\\[[0-9;]*m")
@@ -99,7 +120,7 @@ var _ = Describe("the viewer (Plan 10 §2)", func() {
 		Expect(lines).To(HaveLen(10))
 		Expect(strings.TrimSpace(lines[0])).To(Equal("line 10"))
 		Expect(strings.TrimSpace(lines[8])).To(Equal("line 18"))
-		Expect(lines[9]).To(Equal("lines 10–18 of 30 · 42%  ↑↓/jk line · space/b page · g/G top/end · q quit"))
+		Expect(lines[9]).To(Equal("lines 10–18 of 30 · 42%  ↑↓/jk line · space/b page · g/G top/end · / search · q quit"))
 		Expect(m.View().AltScreen).To(BeTrue())
 	})
 
@@ -188,16 +209,16 @@ var _ = Describe("the viewer (Plan 10 §2)", func() {
 		m := newViewer(numbered(3), true, 200, 10)
 		m.nav = Nav{Back: true}
 		Expect(ansiStrip(m.footer())).To(Equal(
-			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · esc back · q quit · ↑↓/jk line · space/b page · g/G top/end"))
+			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · esc back · q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
 		Expect(ansiStrip(newViewer(numbered(3), true, 200, 10).footer())).To(Equal(
-			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · q quit · ↑↓/jk line · space/b page · g/G top/end"),
+			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · q quit · ↑↓/jk line · space/b page · g/G top/end · / search"),
 			"with no screen to go back to, no esc back")
 	})
 
 	It("without a step to change, offers no c and ignores it", func() {
-		m := newViewer(numbered(3), true, 100, 10)
+		m := newViewer(numbered(3), true, 120, 10)
 		m.noChange = true
-		Expect(ansiStrip(m.footer())).To(Equal("lines 1–3 of 3 · 100%  y apply · n cancel · q quit · ↑↓/jk line · space/b page · g/G top/end"))
+		Expect(ansiStrip(m.footer())).To(Equal("lines 1–3 of 3 · 100%  y apply · n cancel · q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
 		_, q := quits(m, keyC)
 		Expect(q).To(BeFalse(), "c does nothing")
 		m, q = quits(m, keyY)
@@ -387,6 +408,82 @@ var _ = Describe("which output opens in the viewer (Plan 10 §2.1)", func() {
 		Expect(out).To(Equal(want))
 		Expect(errOut).To(Equal("⚠ " + cfg + ":2: pager: must be true or false, not a value; printing without the viewer\n" +
 			"  hint: write pager: false to print without the viewer\n"))
+	})
+	Describe("search", func() {
+		// 30 lines on a 100×10 terminal; "line 2" holds line 20 to line 29.
+		read := func() viewerModel { return newViewer(numbered(30), false, 100, 10) }
+
+		It("jumps to the first match and says which it is, with the line in reverse video", func() {
+			m := search(read(), "line 2")
+			Expect(ansiStrip(m.footer())).To(HavePrefix("lines 17–25 of 30"))
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10  n/N next/prev"))
+			Expect(m.View().Content).To(MatchRegexp("\x1b\\[[0-9;]*7[0-9;]*mline 20"))
+			Expect(ansiStrip(m.View().Content)).To(ContainSubstring("line 20"))
+		})
+
+		It("steps through the matches with n and N, wrapping at the ends", func() {
+			m := search(read(), "line 2")
+			m = press(m, keyN)
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 2 of 10"))
+			m = press(m, keyShN, keyShN)
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 10 of 10"), "N from the first wraps to the last")
+			m = press(m, keyN)
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10"), "n from the last wraps to the first")
+		})
+
+		It("starts at the first match below the top line", func() {
+			m := search(press(read(), keyShG), "line 1")
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 1 1 of 10"), "none below, so the first")
+			m = search(press(read(), keySpace, keySpace), "line 1")
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 1 10 of 10"), "line 19 is at the top, and is the last match")
+		})
+
+		DescribeTable("matches any case for a lowercase term, and exactly for one with a capital",
+			func(term, want string) {
+				m := search(newViewer("Alpha\nbeta\n", false, 40, 10), term)
+				Expect(ansiStrip(m.footer())).To(ContainSubstring(want))
+			},
+			Entry("lowercase", "alpha", "/alpha 1 of 1"),
+			Entry("exact capital", "Alpha", "/Alpha 1 of 1"),
+			Entry("wrong capitals", "ALPHA", "/ALPHA no match"),
+			Entry("absent", "gamma", "/gamma no match"),
+		)
+
+		It("takes q and the other keys as text while typing, and Esc drops the typing", func() {
+			m := press(read(), append([]tea.KeyPressMsg{keySlash}, typed("qn")...)...)
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/qn█"))
+			m = press(m, keyBksp)
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/q█"))
+			m, quit := quits(m, keyQ)
+			Expect(quit).To(BeFalse())
+			m = press(m, keyEsc)
+			Expect(ansiStrip(m.footer())).To(HaveSuffix("g/G top/end · / search · q quit"))
+			Expect(m.term).To(BeEmpty())
+		})
+
+		It("clears the search for an empty term", func() {
+			m := search(search(read(), "line 2"), "")
+			Expect(m.term).To(BeEmpty())
+			Expect(m.View().Content).NotTo(ContainSubstring("\x1b[7m"))
+		})
+
+		It("keeps the search through a resize", func() {
+			m := search(read(), "line 2")
+			m.resize(60, 6)
+			Expect(m.matches).To(HaveLen(10))
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10"))
+		})
+
+		It("leaves n as cancel in confirm mode, where Ctrl+N and Ctrl+P step", func() {
+			m := search(newViewer(numbered(30), true, 140, 10), "line 2")
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("^n/^p next/prev · y apply"))
+			m = press(m, keyCtrlN)
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 2 of 10"))
+			m = press(m, keyCtrlP)
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10"))
+			_, quit := quits(m, keyN)
+			Expect(quit).To(BeTrue())
+		})
 	})
 })
 

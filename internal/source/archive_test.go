@@ -20,11 +20,16 @@ import (
 )
 
 // entry is one archive member. typ is a tar type flag; for zip, a directory is a name ending
-// in "/" and mode carries the file type.
+// in "/" and mode carries the file type. link is a tar link's target, /etc/passwd when empty.
 type entry struct {
-	name, body string
-	mode       os.FileMode
-	typ        byte
+	name, body, link string
+	mode             os.FileMode
+	typ              byte
+}
+
+// symlink is a link entry at name to target, for a tar (typ) or a zip (mode and body).
+func symlink(name, target string) entry {
+	return entry{name: name, link: target, body: target, mode: os.ModeSymlink | 0o777, typ: tar.TypeSymlink}
 }
 
 func file(name, body string) entry {
@@ -38,10 +43,15 @@ func writeTar(path string, gz bool, entries ...entry) {
 		hdr := &tar.Header{Name: e.name, Mode: int64(e.mode.Perm()), Typeflag: e.typ, Size: int64(len(e.body))}
 		if e.typ != tar.TypeReg {
 			hdr.Size, hdr.Linkname = 0, "/etc/passwd"
+			if e.link != "" {
+				hdr.Linkname = e.link
+			}
 		}
 		Expect(tw.WriteHeader(hdr)).To(Succeed())
-		_, err := tw.Write([]byte(e.body))
-		Expect(err).NotTo(HaveOccurred())
+		if e.typ == tar.TypeReg {
+			_, err := tw.Write([]byte(e.body))
+			Expect(err).NotTo(HaveOccurred())
+		}
 	}
 	Expect(tw.Close()).To(Succeed())
 	data := buf.Bytes()
@@ -158,7 +168,7 @@ var _ = Describe("Fetch of an archive", func() {
 		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("--path it's a")))
 	})
 
-	It("refuses unsafe paths and every entry that is not a file or directory, keeping nothing", func() {
+	It("refuses unsafe paths, absolute links and every entry that is not a file, directory or link, keeping nothing", func() {
 		cases := map[string]entry{
 			"../evil.md":   file("../evil.md", "x"),
 			"/abs.md":      file("/abs.md", "x"),
@@ -188,6 +198,193 @@ var _ = Describe("Fetch of an archive", func() {
 		expectNothingStaged()
 		Expect(filepath.Join(tmp, "evil.md")).NotTo(BeAnExistingFile())
 		Expect(filepath.Join(tmp, "z.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("copies a tar or zip link to another file in the archive as that file, with its mode", func() {
+		for _, name := range []string{"links.tar", "links.zip"} {
+			archive := filepath.Join(tmp, name)
+			entries := []entry{file("pkg/skills/s/SKILL.md", "S"), file("pkg/reference/x.md", "X"),
+				{name: "pkg/tools/run.sh", body: "#!/bin/sh\n", mode: 0o755, typ: tar.TypeReg},
+				symlink("pkg/skills/s/x.md", "../../reference/x.md"), symlink("pkg/skills/s/y.md", "x.md"),
+				symlink("pkg/skills/s/run", "../../tools/run.sh")}
+			if name == "links.zip" {
+				writeZip(archive, entries...)
+			} else {
+				writeTar(archive, false, entries...)
+			}
+			f, err := fetch(archive, "")
+			Expect(err).NotTo(HaveOccurred(), name)
+			Expect(listTree(f.Dir)).To(ConsistOf("skills/s/SKILL.md", "skills/s/x.md", "skills/s/y.md", "skills/s/run", "reference/x.md", "tools/run.sh"), name)
+			Expect(os.ReadFile(filepath.Join(f.Dir, "skills/s/x.md"))).To(Equal([]byte("X")), name)
+			Expect(os.ReadFile(filepath.Join(f.Dir, "skills/s/y.md"))).To(Equal([]byte("X")), "a chain of links, %s", name)
+			Expect(f.Executables).To(Equal([]string{"skills/s/run", "tools/run.sh"}), name)
+			expectNoLinks(f.Dir)
+			Expect(os.RemoveAll(f.Dir)).To(Succeed())
+		}
+	})
+
+	It("refuses a link that is absolute, leaves the archive, dangles, loops, names a directory or .git, keeping nothing", func() {
+		cases := []struct {
+			reason string
+			links  []entry
+		}{
+			{"commands/l.md: symbolic link refused: it points to /etc/passwd, an absolute path", []entry{symlink("commands/l.md", "/etc/passwd")}},
+			{"commands/l.md: symbolic link refused: its target ../../x.md leaves the source", []entry{symlink("commands/l.md", "../../x.md")}},
+			{"commands/l.md: symbolic link refused: its target does not exist", []entry{symlink("commands/l.md", "nope.md")}},
+			{"commands/l.md: symbolic link refused: it is a loop or a chain of more than 8 links", []entry{symlink("commands/l.md", "m.md"), symlink("commands/m.md", "l.md")}},
+			{"commands/l.md: symbolic link refused: its target is a directory", []entry{symlink("commands/l.md", "../skills")}},
+			{"commands/l.md: symbolic link refused: its target is in .git/config, which lola never copies", []entry{symlink("commands/l.md", "../.git/config")}},
+			{"commands/l.md: symbolic link refused: its target is in .Git/config, which lola never copies", []entry{symlink("commands/l.md", "../.Git/config")}},
+			{"commands/l.md: symbolic link refused: its target is in GIT~1/config, which lola never copies", []entry{symlink("commands/l.md", "../GIT~1/config")}},
+			{"commands/l.md: symbolic link refused: it goes through the linked directory zd", []entry{symlink("zd", "skills"), symlink("commands/l.md", "../zd/s.md")}},
+		}
+		for _, c := range cases {
+			for _, name := range []string{"bad.tar", "bad.zip"} {
+				archive := filepath.Join(tmp, name)
+				entries := append([]entry{file("commands/a.md", "A"), file("skills/s.md", "S"), file(".git/config", "secret")}, c.links...)
+				if name == "bad.zip" {
+					writeZip(archive, entries...)
+				} else {
+					writeTar(archive, false, entries...)
+				}
+				_, err := fetch(archive, "")
+				Expect(err).To(MatchError(source.ErrLinkInSource), "%s: %s", name, c.reason)
+				Expect(err).To(MatchError(ContainSubstring(c.reason)), name)
+				Expect(errs.Hints(err)).NotTo(BeEmpty(), "%s: %s", name, c.reason)
+			}
+		}
+		expectNothingStaged()
+	})
+
+	Context("with a link lola refuses outside the module root", func() {
+		write := func(name string, entries ...entry) string {
+			archive := filepath.Join(tmp, name)
+			if strings.HasSuffix(name, ".zip") {
+				writeZip(archive, entries...)
+			} else {
+				writeTar(archive, true, entries...)
+			}
+			return archive
+		}
+		module := file("repo/mods/x/skills/demo/SKILL.md", "S")
+		outside := symlink("repo/tests/abs", "/etc/hostname")
+
+		It("installs the module, by --path or found, as a git or folder source would", func() {
+			for _, name := range []string{"repo.tar.gz", "repo.zip"} {
+				archive := write(name, module, outside)
+				for _, p := range []string{"repo/mods/x", ""} {
+					f, err := fetch(archive, p)
+					Expect(err).NotTo(HaveOccurred(), "%s --path %q", name, p)
+					Expect(f.Root).To(Equal("repo/mods/x"), name)
+					Expect(listTree(f.Dir)).To(ConsistOf("skills/demo/SKILL.md"), name)
+					Expect(os.RemoveAll(f.Dir)).To(Succeed())
+				}
+			}
+		})
+
+		It("still copies a link in the module to a file outside it", func() {
+			for _, name := range []string{"repo.tar.gz", "repo.zip"} {
+				archive := write(name, module, outside, file("repo/shared/ref.md", "R"),
+					symlink("repo/mods/x/skills/demo/ref.md", "../../../../shared/ref.md"))
+				f, err := fetch(archive, "repo/mods/x")
+				Expect(err).NotTo(HaveOccurred(), name)
+				Expect(os.ReadFile(filepath.Join(f.Dir, "skills/demo/ref.md"))).To(Equal([]byte("R")), name)
+				expectNoLinks(f.Dir)
+				Expect(os.RemoveAll(f.Dir)).To(Succeed())
+			}
+		})
+
+		It("refuses the same link inside the module root, or one there whose chain goes through it, with its reason", func() {
+			cases := map[string]entry{
+				"repo/mods/x/tests/abs: symbolic link refused: it points to /etc/hostname, an absolute path":                   symlink("repo/mods/x/tests/abs", "/etc/hostname"),
+				"repo/mods/x/skills/demo/h: symbolic link refused: it points to /etc/hostname, an absolute path":               symlink("repo/mods/x/skills/demo/h", "../../../../tests/abs"),
+				"repo/mods/x/skills/demo/d: symbolic link refused: its target does not exist":                                  symlink("repo/mods/x/skills/demo/d", "nope.md"),
+				"repo/mods/x/skills/demo/e: symbolic link refused: it is a loop or a chain of more than 8 links":               symlink("repo/mods/x/skills/demo/e", "e"),
+				"repo/mods/x/skills/demo/g: symbolic link refused: its target is in repo/.git/config, which lola never copies": symlink("repo/mods/x/skills/demo/g", "../../../../.git/config"),
+			}
+			for reason, bad := range cases {
+				for _, name := range []string{"repo.tar.gz", "repo.zip"} {
+					archive := write(name, module, outside, file("repo/.git/config", "secret"), bad)
+					for _, p := range []string{"repo/mods/x", ""} {
+						_, err := fetch(archive, p)
+						Expect(err).To(MatchError(source.ErrLinkInSource), "%s --path %q: %s", name, p, reason)
+						Expect(err).To(MatchError(reason), "%s --path %q", name, p)
+						Expect(errs.Hints(err)).NotTo(BeEmpty(), reason)
+					}
+				}
+			}
+			expectNothingStaged()
+		})
+
+		It("refuses a link it would refuse on the module path, or at a place that would choose the root", func() {
+			cases := []struct {
+				path, reason string
+				entries      []entry
+			}{
+				{"repo/mods/x", "repo/mods: symbolic link refused: it points to /srv/mods, an absolute path",
+					[]entry{file("repo/README.md", ""), symlink("repo/mods", "/srv/mods")}},
+				{"", "repo/skills: symbolic link refused: it points to /srv/skills, an absolute path",
+					[]entry{file("repo/tests/fixture/skills/s/SKILL.md", "S"), symlink("repo/skills", "/srv/skills")}},
+				{"", "repo/lola.yml: symbolic link refused: it points to /srv/lola.yml, an absolute path",
+					[]entry{file("repo/a/skills/s/SKILL.md", "S"), symlink("repo/lola.yml", "/srv/lola.yml")}},
+				{"", "top: symbolic link refused: it points to /srv/top, an absolute path",
+					[]entry{file("repo/README.md", ""), symlink("top", "/srv/top")}},
+			}
+			for _, c := range cases {
+				for _, name := range []string{"repo.tar.gz", "repo.zip"} {
+					_, err := fetch(write(name, c.entries...), c.path)
+					Expect(err).To(MatchError(c.reason), "%s --path %q", name, c.path)
+				}
+			}
+			expectNothingStaged()
+		})
+	})
+
+	It("refuses a link that shares its path with another entry", func() {
+		archive := filepath.Join(tmp, "dup.tar")
+		writeTar(archive, false, file("commands/a.md", "A"), file("commands/l.md", "L"), symlink("commands/l.md", "a.md"))
+		_, err := fetch(archive, "")
+		Expect(err).To(MatchError("commands/l.md: the archive holds this path more than once"))
+		writeTar(archive, false, file("commands/a.md", "A"), symlink("commands/l.md", "a.md"), file("commands/l.md", "L"))
+		_, err = fetch(archive, "")
+		Expect(err).To(MatchError("commands/l.md: the archive holds this path more than once"))
+		expectNothingStaged()
+	})
+
+	It("refuses a zip link whose target is longer than 4096 bytes", func() {
+		archive := filepath.Join(tmp, "long.zip")
+		writeZip(archive, file("commands/a.md", "A"), symlink("commands/l.md", strings.Repeat("a/", 2049)))
+		_, err := fetch(archive, "")
+		Expect(err).To(MatchError(ContainSubstring("commands/l.md: symbolic link refused: its target is longer than 4096 bytes")))
+		expectNothingStaged()
+	})
+
+	It("refuses a tar link with an empty target", func() {
+		archive := filepath.Join(tmp, "empty.tar")
+		var buf bytes.Buffer
+		tw := tar.NewWriter(&buf)
+		Expect(tw.WriteHeader(&tar.Header{Name: "commands/l.md", Typeflag: tar.TypeSymlink})).To(Succeed())
+		Expect(tw.Close()).To(Succeed())
+		Expect(os.WriteFile(archive, buf.Bytes(), 0o644)).To(Succeed())
+		_, err := fetch(archive, "")
+		Expect(err).To(MatchError("commands/l.md: symbolic link refused: its target is empty"))
+		expectNothingStaged()
+	})
+
+	It("copies a link below a --path inside a name lola never copies", func() {
+		archive := filepath.Join(tmp, "nm.tar")
+		writeTar(archive, false, file("node_modules/pkg/commands/a.md", "A"), symlink("node_modules/pkg/commands/b.md", "a.md"))
+		f, err := fetch(archive, "node_modules/pkg")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.ReadFile(filepath.Join(f.Dir, "commands/b.md"))).To(Equal([]byte("A")))
+	})
+
+	It("ignores a link inside a name lola never copies", func() {
+		archive := filepath.Join(tmp, "nm.tar")
+		writeTar(archive, false, file("commands/a.md", "A"), symlink("node_modules/.bin/x", "/etc/passwd"))
+		f, err := fetch(archive, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md"))
 	})
 
 	It("refuses a path the archive holds twice", func() {

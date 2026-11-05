@@ -188,6 +188,7 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, opts Options) (*P
 	}
 	planning := *st
 	planning.Sources = srcs
+	opts.working("looking for the assistants on your PATH")
 	detected := onPath(e)
 	byKey := map[string]*Destination{}
 	for i, rec := range recs {
@@ -200,6 +201,9 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, opts Options) (*P
 				}
 				hint = "rerun lola migrate with " + flag + "; until then it leaves this record and its files as they are"
 			}
+			if strings.HasSuffix(rec.Problem, problemAtHome) {
+				hint = "lola has no project at ~; install the module for the user with lola install <source> --scope user, then uninstall it with the Python lola. Until then lola migrate leaves this record and its files as they are"
+			}
 			p.Unmappable = append(p.Unmappable, unmapped(rec, rec.Problem, hint))
 			continue
 		}
@@ -208,6 +212,7 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, opts Options) (*P
 		if d == nil {
 			d = newDestination(e, sc)
 			d.detected, d.srcMoved = detected, srcMoved
+			opts.working("reading the manifest of %s", where(d))
 			man, err := e.Manifest(sc)
 			if err != nil {
 				return nil, e.CoachUnresolved(err, []engine.Scope{sc}, false, opts.Display)
@@ -224,8 +229,9 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, opts Options) (*P
 		}
 		return a.Scope.Key() < b.Scope.Key()
 	})
-	for _, d := range p.Destinations {
-		if err := d.plan(ctx, e, &planning, opts.Targets); err != nil {
+	for i, d := range p.Destinations {
+		opts.working("planning %s (%d of %d)", where(d), i+1, len(p.Destinations))
+		if err := d.plan(ctx, e, &planning, opts); err != nil {
 			return nil, fmt.Errorf("%s: %w", where(d), err)
 		}
 		d.finish(e)
@@ -269,13 +275,14 @@ type resolved struct {
 // Python lola did), and every install is pinned to its version. A module's records at d
 // migrate all or none: they share the Python lola's copy of the module, which an install
 // would replace under a record left behind.
-func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State, targets map[string][]string) error {
+func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State, opts Options) error {
+	targets := opts.Targets
 	var list []planned
 	for _, q := range d.pending {
 		list = append(list, d.mapRecord(e, st, targets, q)...)
 	}
 	d.pending = nil
-	versions, err := d.resolve(ctx, e, list)
+	versions, err := d.resolve(ctx, e, list, opts)
 	if err != nil {
 		return err
 	}
@@ -299,7 +306,7 @@ func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State, tar
 			if v.err != nil {
 				src := untrusted.Text(pl.in.Source, untrusted.MaxName)
 				leave(pl, "lola-go cannot fetch "+src+": "+untrusted.Text(untrusted.CleanErr(v.err).Error(), 2*untrusted.MaxName),
-					append(errs.Hints(v.err), "rerun lola migrate once the source is reachable")...)
+					append(errs.Hints(v.err), unfetchableHint(v.err))...)
 				continue
 			}
 			if reason, hints := lacking(pl, v); reason != "" {
@@ -327,20 +334,34 @@ func (d *Destination) plan(ctx context.Context, e *engine.Engine, st *State, tar
 	return nil
 }
 
+// unfetchableHint says what to do about a source lola-go could not fetch: a link it refuses is
+// permanent until its author changes it, so rerunning would not help.
+func unfetchableHint(err error) string {
+	if errors.Is(err, source.ErrLinkInSource) {
+		return "the source holds a symbolic link lola refuses; ask its author to remove it or point it at a file inside the source, or keep this module with the Python lola"
+	}
+	return "rerun lola migrate once the source is reachable"
+}
+
+// baseProfile is the --profile migrate writes what it imports to, in its planning as in its
+// install: the scope's base (project.yml, default.yml), never the profile on (spec 2026-10-29 §6.1).
+const baseProfile = "base"
+
 // resolve resolves the sources of list's installs, once each, to cached versions through
 // InstallChoices, which fetches them into the cache. Each install is resolved on its own, so a
 // source that cannot be fetched makes only its records unmappable (resolved.err); a cancelled
 // context aborts. The requests add targets, so a module the destination already has resolves
 // to the version installed there, as the install will.
-func (d *Destination) resolve(ctx context.Context, e *engine.Engine, list []planned) (map[string]resolved, error) {
+func (d *Destination) resolve(ctx context.Context, e *engine.Engine, list []planned, opts Options) (map[string]resolved, error) {
 	out := map[string]resolved{}
 	for _, pl := range list {
 		k := installKey(pl.in)
 		if _, done := out[k]; done || pl.already {
 			continue
 		}
+		opts.working("fetching %s", untrusted.Text(pl.in.Source, untrusted.MaxName))
 		ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: d.Root, Scopes: []engine.ScopeChoice{{Scope: d.Scope, Source: "migrate"}},
-			Modules: []engine.InstallRequest{{Arg: pl.in.Source, Ref: pl.in.Ref, Path: pl.in.Path, Targets: pl.in.Targets}}})
+			Modules: []engine.InstallRequest{{Arg: pl.in.Source, Ref: pl.in.Ref, Path: pl.in.Path, Targets: pl.in.Targets}}, Target: engine.TargetRequest{Profile: baseProfile}})
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()

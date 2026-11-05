@@ -37,6 +37,16 @@ func listTree(root string) []string {
 	return out
 }
 
+// expectNoLinks fails when the tree at root holds a symbolic link: the cache never holds one.
+func expectNoLinks(root string) {
+	GinkgoHelper()
+	Expect(filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		Expect(err).NotTo(HaveOccurred())
+		Expect(d.Type()&os.ModeSymlink).To(BeZero(), p)
+		return nil
+	})).To(Succeed())
+}
+
 func git(dir string, args ...string) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	out, err := cmd.CombinedOutput()
@@ -122,13 +132,119 @@ var _ = Describe("Fetch of a folder", func() {
 		Expect(err).To(MatchError(ContainSubstring(`--path "nope?[31mRED"`)))
 	})
 
-	It("refuses symlinks and leaves nothing staged", func() {
+	It("refuses an absolute symlink and leaves nothing staged", func() {
 		writeTree(src, map[string]string{"commands/a.md": "A"})
 		Expect(os.Symlink("/etc/passwd", filepath.Join(src, "commands", "b.md"))).To(Succeed())
 		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
-		Expect(err).To(MatchError(ContainSubstring("commands/b.md: symbolic links are not allowed")))
+		Expect(err).To(MatchError(source.ErrLinkInSource))
+		Expect(err).To(MatchError(ContainSubstring("commands/b.md: symbolic link refused: it points to /etc/passwd, an absolute path")))
 		entries, _ := os.ReadDir(staging)
 		Expect(entries).To(BeEmpty())
+	})
+
+	Context("with a symbolic link inside the source", func() {
+		BeforeEach(func() {
+			if runtime.GOOS == "windows" {
+				Skip("symbolic links need privileges on Windows")
+			}
+		})
+		link := func(at, to string) {
+			GinkgoHelper()
+			Expect(os.MkdirAll(filepath.Dir(filepath.Join(src, at)), 0o755)).To(Succeed())
+			Expect(os.Symlink(to, filepath.Join(src, at))).To(Succeed())
+		}
+
+		It("copies a link to a file elsewhere in the folder as a regular file with the target's content and mode", func() {
+			writeTree(src, map[string]string{"module/skills/s/SKILL.md": "S", "reference/x.md": "X", "tools/run.sh": "#!/bin/sh\n"})
+			Expect(os.Chmod(filepath.Join(src, "tools/run.sh"), 0o755)).To(Succeed())
+			link("module/skills/s/reference/x.md", "../../../../reference/x.md")
+			link("module/bin/run", "../../tools/run.sh")
+			f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listTree(f.Dir)).To(ConsistOf("skills/s/SKILL.md", "skills/s/reference/x.md", "bin/run"))
+			Expect(os.ReadFile(filepath.Join(f.Dir, "skills/s/reference/x.md"))).To(Equal([]byte("X")))
+			Expect(f.Executables).To(Equal([]string{"bin/run"}))
+			expectNoLinks(f.Dir)
+		})
+
+		It("accepts a link that leaves the --path but stays in the folder", func() {
+			writeTree(src, map[string]string{"module/commands/a.md": "A", "shared/b.md": "B"})
+			link("module/commands/b.md", "../../shared/b.md")
+			f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "module"}, staging)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listTree(f.Dir)).To(ConsistOf("commands/a.md", "commands/b.md"))
+			Expect(os.ReadFile(filepath.Join(f.Dir, "commands/b.md"))).To(Equal([]byte("B")))
+			expectNoLinks(f.Dir)
+		})
+
+		It("refuses a link that leaves the folder, a link into .git, and a link to a directory, leaving nothing staged", func() {
+			outside := filepath.Join(tmp, "outside.md")
+			Expect(os.WriteFile(outside, []byte("secret"), 0o644)).To(Succeed())
+			for to, reason := range map[string]string{
+				"../../outside.md":   "commands/b.md: symbolic link refused: its target ../../outside.md leaves the source",
+				"../.git/config":     "commands/b.md: symbolic link refused: its target is in .git/config, which lola never copies",
+				"../.lola/lock.json": "commands/b.md: symbolic link refused: its target is in .lola/lock.json, which lola never copies",
+				"../skills":          "commands/b.md: symbolic link refused: its target is a directory",
+			} {
+				Expect(os.RemoveAll(src)).To(Succeed())
+				writeTree(src, map[string]string{"commands/a.md": "A", "skills/s/SKILL.md": "S", ".git/config": "secret", ".lola/lock.json": "{}"})
+				link("commands/b.md", to)
+				_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
+				Expect(err).To(MatchError(source.ErrLinkInSource), to)
+				Expect(err).To(MatchError(ContainSubstring(reason)), to)
+				Expect(errs.Hints(err)).NotTo(BeEmpty(), to)
+				entries, _ := os.ReadDir(staging)
+				Expect(entries).To(BeEmpty(), to)
+			}
+		})
+
+		It("copies a link below a --path inside a name lola never copies, and refuses one leaving it for another", func() {
+			writeTree(src, map[string]string{"node_modules/pkg/commands/a.md": "A", "node_modules/other/x.md": "X"})
+			link("node_modules/pkg/commands/b.md", "a.md")
+			f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "node_modules/pkg"}, staging)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.ReadFile(filepath.Join(f.Dir, "commands/b.md"))).To(Equal([]byte("A")))
+			expectNoLinks(f.Dir)
+			link("node_modules/pkg/commands/x.md", "../../other/x.md")
+			_, err = source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "node_modules/pkg"}, staging)
+			Expect(err).To(MatchError(ContainSubstring("its target is in node_modules/other/x.md, which lola never copies")))
+		})
+
+		It("copies a link from a module's git work tree to a file in the folder outside that work tree", func() {
+			writeTree(src, map[string]string{"shared/b.md": "B", "mod/commands/a.md": "A", "mod/.gitignore": "secret.md\n", "mod/secret.md": "S"})
+			git(filepath.Join(src, "mod"), "init", "-q")
+			git(filepath.Join(src, "mod"), "add", ".")
+			git(filepath.Join(src, "mod"), "commit", "-q", "-m", "init")
+			link("mod/commands/b.md", "../../shared/b.md")
+			f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "mod"}, staging)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.ReadFile(filepath.Join(f.Dir, "commands/b.md"))).To(Equal([]byte("B")))
+			expectNoLinks(f.Dir)
+			link("mod/commands/s.md", "../secret.md")
+			_, err = source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "mod"}, staging)
+			Expect(err).To(MatchError(ContainSubstring("mod/commands/s.md: symbolic link refused: git ignores its target mod/secret.md")))
+		})
+
+		It("in a git work tree refuses a link to a file git ignores, and copies one to a tracked or new file", func() {
+			writeTree(src, map[string]string{"commands/a.md": "A", ".gitignore": "secret.md\n", "ref/x.md": "X"})
+			git(src, "init", "-q")
+			git(src, "add", ".")
+			git(src, "commit", "-q", "-m", "init")
+			writeTree(src, map[string]string{"secret.md": "S", "ref/new.md": "N"})
+			link("commands/x.md", "../ref/x.md")
+			link("commands/new.md", "../ref/new.md")
+			f, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.ReadFile(filepath.Join(f.Dir, "commands/x.md"))).To(Equal([]byte("X")))
+			Expect(os.ReadFile(filepath.Join(f.Dir, "commands/new.md"))).To(Equal([]byte("N")))
+			expectNoLinks(f.Dir)
+
+			link("commands/s.md", "../secret.md")
+			_, err = source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
+			Expect(err).To(MatchError(source.ErrLinkInSource))
+			Expect(err).To(MatchError(ContainSubstring("commands/s.md: symbolic link refused: git ignores its target secret.md")))
+			Expect(errs.Hints(err)).NotTo(BeEmpty())
+		})
 	})
 
 	It("in a git work tree copies tracked and new unignored files, not ignored ones", func() {
@@ -170,7 +286,7 @@ var _ = Describe("Fetch of a folder", func() {
 		Expect(os.MkdirAll(src, 0o755)).To(Succeed())
 		Expect(os.Symlink(outside, filepath.Join(src, "module"))).To(Succeed())
 		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src}, staging)
-		Expect(err).To(MatchError(ContainSubstring("module: symbolic links are not allowed")))
+		Expect(err).To(MatchError(ContainSubstring("module: symbolic link refused: the module path goes through it")))
 	})
 
 	It("refuses a --path that goes through a symlink", func() {
@@ -179,7 +295,7 @@ var _ = Describe("Fetch of a folder", func() {
 		Expect(os.MkdirAll(src, 0o755)).To(Succeed())
 		Expect(os.Symlink(outside, filepath.Join(src, "plugins"))).To(Succeed())
 		_, err := source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Path: "plugins/review"}, staging)
-		Expect(err).To(MatchError(ContainSubstring("plugins: symbolic links are not allowed")))
+		Expect(err).To(MatchError(ContainSubstring("plugins: symbolic link refused: the module path goes through it")))
 	})
 })
 

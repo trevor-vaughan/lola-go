@@ -47,7 +47,7 @@ Review the change{% if target == "opencode" %} and say which files you read{% en
     - [findings](../usage.md#findings) are computed;
     - your consent to [hooks](authoring-modules.md#runtime-hooks) is asked on the hooks *as
       rendered* for that assistant, again whenever they render differently.
-  - `lola install`, `sync`, `render`, profile switches and `lola check` render; nothing is
+  - `lola install`, `sync`, `update`, profile switches and `lola check` render; nothing is
     written until every template of the run rendered.
 - **Frontmatter.**
   - When the first line is `---`, the frontmatter ends at the first line that is exactly `---`
@@ -133,8 +133,8 @@ flowchart TD
 - **What a template sees.**
   - `target` (`claude-code`, `gemini-cli` or `opencode`).
   - `scope` (`project` or `user`).
-  - `profiles`: the active profiles as `lola profile` lists them, `default` first at user scope,
-    `[]` when none.
+  - `profiles`: `default` first at user scope (when `default.yml` exists), then the profile on, by
+    qualified name; `[]` when none.
   - `vars`: every var the module declares, with its entry's value or its default
     ([Vars](#vars)). `{{ vars.x }}` reads the var named `x`; one the module does not declare is
     refused, naming the vars it declares.
@@ -398,7 +398,7 @@ A date, or a number in a list, refuses with the quoting that fixes it
 NaN and infinity refuse, and an alias (`*name`) refuses as not supported. An empty `vars: {}`
 declares none.
 
-An entry in `project.yml`, `user.yml` or a profile sets its own values, under the same rules:
+An entry in `project.yml` or a profile (`default.yml` included) sets its own values, under the same rules:
 
 ```yaml
 modules:

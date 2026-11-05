@@ -315,3 +315,20 @@ testcases:
           - result.code ShouldEqual 0
           - "result.systemout ShouldStartWith \"general\tlola-yaml\t\""
           - result.systemout ShouldNotContainSubstring "mine"
+
+  - name: M11 A marketplace whose root holds only lola.yml registers and lists
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/lyml && printf \"name: legacy\\nmodules:\\n  - name: lint\\n    description: Lint the project\\n    version: 1.0.0\\n    repository: https://git.lola.test:8443/lint.git\\n    tags: [demo]\\n\" > /work/lyml/lola.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market --add /work/lyml"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ marketplace legacy: 1 entry (lola YAML catalog) from /work/lyml\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} market legacy --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldContainSubstring "lint"

@@ -9,13 +9,35 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/market"
 )
 
+// baseBundleError refuses a default.yml that is a bundle: the base lists modules (spec 2026-10-29
+// §3.2). hint is the fix, ending in the run that makes the bundle of its members and switches to it,
+// keeping again (a run's -n and output flags); hinted is the error that gives it, which
+// CoachUnresolved gives the run's flags.
+type baseBundleError struct {
+	err    error
+	hint   func(again []string) string
+	hinted *errs.Error
+}
+
+func (b *baseBundleError) Error() string { return b.err.Error() }
+func (b *baseBundleError) Unwrap() error { return b.err }
+
 // CoachUnresolved is err with the hints of Plan 6c §6.7 when it refuses a file whose entries have
 // a marketplace address as their source (*manifest.UnresolvedError, ruling R-6c-7), and err as it
-// is otherwise. scopes are the run's, whose manifests are the files hint (a) can name; dry and
+// is otherwise. scopes are the run's, whose bases (project.yml, default.yml at user scope,
+// basePath) are the files hint (a) can name; dry and
 // display, the run's -n and output flags, are what the hints keep (§11.3). Each entry gets
 // unresolvedHint's hint, said once; an entry with none keeps the message's "edit the entry". An
-// error a reader already coached is returned as it is.
+// error a reader already coached is returned as it is. A default.yml that is a bundle
+// (baseBundleError) gets its hint with the run's flags too.
 func (e *Engine) CoachUnresolved(err error, scopes []Scope, dry bool, display []string) error {
+	if b, ok := errors.AsType[*baseBundleError](err); ok {
+		again := display
+		if dry {
+			again = append([]string{"-n"}, display...)
+		}
+		b.hinted.Hints = []string{b.hint(again)}
+	}
 	ue, ok := errors.AsType[*manifest.UnresolvedError](err)
 	if !ok || slices.ContainsFunc(ue.Entries, func(u manifest.Unresolved) bool { return u.Coached }) {
 		return err
@@ -27,7 +49,7 @@ func (e *Engine) CoachUnresolved(err error, scopes []Scope, dry bool, display []
 	}
 	var in *Scope
 	for i := range scopes {
-		if e.files(scopes[i]).manifest == ue.Path {
+		if e.basePath(scopes[i]) == ue.Path {
 			in = &scopes[i]
 		}
 	}
@@ -47,9 +69,9 @@ func (e *Engine) CoachUnresolved(err error, scopes []Scope, dry bool, display []
 
 // unresolvedHint is the command that fixes u, an entry of a file whose source is a marketplace
 // address (Plan 6c §6.7), for a reader whose marketplaces are reg, or "" for none: (a) in the
-// manifest of in (nil for a profile), when you have the marketplace and the entry has the name
-// the address installs, lola install @m/x at in's scope, keeping -n (dry) and display, which
-// replaces the entry (§6.3); (b) in a profile, or for an entry named otherwise, which that
+// base of in (nil for any other profile), when you have the marketplace and the entry has the
+// name the address installs, lola install @m/x at in's scope, keeping -n (dry) and display, which
+// replaces the entry (§6.3); (b) in another profile, or for an entry named otherwise, which that
 // install would not replace, lola market m, which shows the entry's source, ref and path to copy
 // into the file; (c) none without the marketplace.
 func (e *Engine) unresolvedHint(reg market.Registry, in *Scope, u manifest.Unresolved, dry bool, display []string) string {
@@ -67,7 +89,7 @@ func (e *Engine) unresolvedHint(reg market.Registry, in *Scope, u manifest.Unres
 }
 
 // unresolvedNotices are the warnings of an install that replaced some of the unresolved entries
-// of sc's manifest (Plan 6c §6.3), one for each of others, those it left as written, with its own
+// of sc's base (Plan 6c §6.3), one for each of others, those it left as written, with its own
 // hint (unresolvedHint) or, without one, the message saying to edit it.
 func (e *Engine) unresolvedNotices(sc Scope, others []manifest.Unresolved, dry bool, display []string) []Notice {
 	reg, _, err := e.registry()
@@ -78,7 +100,7 @@ func (e *Engine) unresolvedNotices(sc Scope, others []manifest.Unresolved, dry b
 	for _, u := range others {
 		h := e.unresolvedHint(reg, &sc, u, dry, display)
 		u.Coached = h != ""
-		text := (&manifest.UnresolvedError{Path: e.files(sc).manifest, Entries: []manifest.Unresolved{u}}).Error()
+		text := (&manifest.UnresolvedError{Path: e.basePath(sc), Entries: []manifest.Unresolved{u}}).Error()
 		if h != "" {
 			text += " → " + h
 		}

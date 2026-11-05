@@ -2,7 +2,7 @@
 // lola last wrote or the user last trusted, in $XDG_STATE_HOME/lola/trust.json. A manifest entry
 // the record covers is one lola may act on as written; any other entry came from somewhere else
 // (a pull, a hand edit) and is refused until the user reviews and trusts it with lola sync. User
-// scope has no record: user.yml is the user's own.
+// scope has no record: its files are the user's own.
 package trust
 
 import (
@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/gofrs/flock"
@@ -38,33 +39,39 @@ const Version = 1
 const maxSize = 4 << 20
 
 // Entry is one module's view fields: everything of a manifest entry that changes what lola
-// fetches or writes. Extends is set on a project profile's entry that comes from a remote profile
-// it extends (Plan 6b §8.1), and omitted otherwise, so a view without one hashes as in Plan 6a.
+// fetches or writes. Member is set on an entry a project file gets from a remote profile (Plan 6b
+// §8.1; spec 2026-10-29 §3.10: a member of a project bundle), and omitted otherwise.
 type Entry struct {
-	Name    string       `json:"name"`
-	Source  string       `json:"source,omitempty"`
-	Ref     string       `json:"ref,omitempty"`
-	Path    string       `json:"path,omitempty"`
-	Commit  string       `json:"commit,omitempty"`
-	Digest  string       `json:"digest,omitempty"`
-	Targets []string     `json:"targets,omitempty"`
-	Rules   *bool        `json:"rules,omitempty"`
-	Extends *ExtendsView `json:"extends,omitempty"`
+	Name    string      `json:"name"`
+	Source  string      `json:"source,omitempty"`
+	Ref     string      `json:"ref,omitempty"`
+	Path    string      `json:"path,omitempty"`
+	Commit  string      `json:"commit,omitempty"`
+	Digest  string      `json:"digest,omitempty"`
+	Targets []string    `json:"targets,omitempty"`
+	Rules   *bool       `json:"rules,omitempty"`
+	Member  *MemberView `json:"member,omitempty"`
 	// Market is the entry's marketplace as its file writes it (Plan 6c §8): provenance, shown as
 	// written and never verified. Omitted when absent, so a view without it hashes as before.
 	Market *manifest.MarketRef `json:"market,omitempty"`
 	// Components is the selection of the module's directory the entry records (Plan 6c §4.1):
 	// it decides what is installed, so it is trusted like the source. Omitted when absent.
 	Components *source.Components `json:"components,omitempty"`
+	// Only and Skip are a profile entry's picks (cherry-pick design §4.5): they decide what is
+	// installed, so a project profile's are trusted like its source. Omitted when absent, so a view
+	// without them hashes as before.
+	Only []string `json:"only,omitempty"`
+	Skip []string `json:"skip,omitempty"`
 	// Vars overrides the module's template vars (Plan 7 §8): what its templates render with is
 	// trusted like the source. Omitted when absent, so a view without it hashes as before.
 	Vars module.Vars `json:"vars,omitempty"`
 }
 
-// ExtendsView is the remote profile an entry comes from through extends: (Plan 6b §8.1, §19 S4):
-// its qualified name and the source and pin of its source.json. Another pin (after lola profile
-// --update) or another source of that name is a change to every entry it gives.
-type ExtendsView struct {
+// MemberView is the remote profile an entry of a project file comes from (Plan 6b §8.1, §19 S4;
+// spec 2026-10-29 §3.10): its qualified name and the source and pin of its source.json. Another
+// pin (after lola profile --update) or another source of that name is a change to every entry it
+// gives.
+type MemberView struct {
 	Name   string `json:"name"`
 	Source string `json:"source"`
 	Commit string `json:"commit,omitempty"`
@@ -73,18 +80,27 @@ type ExtendsView struct {
 
 // View is a manifest's top-level targets and entries, modules sorted by name (§7.2), and the
 // views of the project's profiles that the user trusted or lola wrote, by profile name (Plan 6b
-// §8.1). Profiles is omitted when empty, so a view without profiles hashes as in Plan 6a.
+// §8.1). Profiles is omitted when empty, so a view without profiles hashes as in Plan 6a. Bundle is
+// set only in a project bundle's part (Part): its member list (spec 2026-10-29 §3.10).
 type View struct {
 	Targets  []string               `json:"targets,omitempty"`
+	Bundle   []string               `json:"bundle,omitempty"`
 	Modules  []Entry                `json:"modules,omitempty"`
 	Profiles map[string]ProfileView `json:"profiles,omitempty"`
 }
 
-// ProfileView is a project profile's part of a view (Plan 6b §8.1): its entries, sorted by name,
-// each with the targets it installs to, its own or else the profile's, so a change to a
-// profile's targets is a change to every entry it gives them to.
+// ProfileView is a project profile's part of a view (Plan 6b §8.1): its top-level targets
+// (spec 2026-10-29 §3.10: trust content, as project.yml's are; omitted when it has none, so a part
+// without them hashes as before), and its entries, sorted by name, each with the targets it
+// installs to, its own or else the profile's, so a change to a profile's targets is a change to
+// every entry it gives them to.
+//
+// Bundle is a project bundle's member list, as its file writes it (spec 2026-10-29 §3.10): which
+// profiles install is trust content; omitted for a profile, so its part hashes as before.
 type ProfileView struct {
-	Modules []Entry `json:"modules,omitempty"`
+	Targets []string `json:"targets,omitempty"`
+	Bundle  []string `json:"bundle,omitempty"`
+	Modules []Entry  `json:"modules,omitempty"`
 }
 
 // decodedNumbers reads in place each var of v's entries that the decoder kept as a json.Number
@@ -113,42 +129,43 @@ func (v View) decodedNumbers() bool {
 }
 
 // Part is the part of v that one file gives: for key "", project.yml's top-level targets and
-// entries; for any other key, the entries of the project profile of that name, without targets.
-// It shares nothing with v.
+// entries; for any other key, the top-level targets and entries of the project profile of that
+// name. It shares nothing with v.
 func (v View) Part(key string) View {
 	if key == "" {
 		return View{Targets: slices.Clone(v.Targets), Modules: cloneEntries(v.Modules)}
 	}
-	return View{Modules: cloneEntries(v.Profiles[key].Modules)}
+	pv := v.Profiles[key]
+	return View{Targets: slices.Clone(pv.Targets), Bundle: slices.Clone(pv.Bundle), Modules: cloneEntries(pv.Modules)}
 }
 
 // WithPart is v with the part key gives replaced by part, Part's inverse: every other part is
-// kept as it is. A profile's part with no entries leaves the profile out.
+// kept as it is. A profile's part with no targets, members or entries leaves the profile out.
 func (v View) WithPart(key string, part View) View {
 	out := View{Targets: slices.Clone(v.Targets), Modules: cloneEntries(v.Modules)}
 	for k, pv := range v.Profiles {
 		if k != key {
-			out.setProfile(k, pv.Modules)
+			out.setProfile(k, ProfileView{Targets: pv.Targets, Bundle: pv.Bundle, Modules: pv.Modules})
 		}
 	}
 	if key == "" {
 		out.Targets, out.Modules = slices.Clone(part.Targets), cloneEntries(part.Modules)
 	} else {
-		out.setProfile(key, part.Modules)
+		out.setProfile(key, ProfileView{Targets: part.Targets, Bundle: part.Bundle, Modules: part.Modules})
 	}
 	out.sort()
 	return out
 }
 
-// setProfile records a copy of modules as profile key's part, unless there are none.
-func (v *View) setProfile(key string, modules []Entry) {
-	if len(modules) == 0 {
+// setProfile records a copy of pv as profile key's part, unless it holds nothing.
+func (v *View) setProfile(key string, pv ProfileView) {
+	if len(pv.Targets) == 0 && len(pv.Bundle) == 0 && len(pv.Modules) == 0 {
 		return
 	}
 	if v.Profiles == nil {
 		v.Profiles = map[string]ProfileView{}
 	}
-	v.Profiles[key] = ProfileView{Modules: cloneEntries(modules)}
+	v.Profiles[key] = ProfileView{Targets: slices.Clone(pv.Targets), Bundle: slices.Clone(pv.Bundle), Modules: cloneEntries(pv.Modules)}
 }
 
 func cloneEntries(es []Entry) []Entry {
@@ -165,7 +182,7 @@ func cloneEntries(es []Entry) []Entry {
 // EntryOf is the view of one manifest entry.
 func EntryOf(e manifest.Entry) Entry {
 	out := Entry{Name: e.Name, Source: e.Source, Ref: e.Ref, Path: e.Path, Commit: e.Commit, Digest: e.Digest,
-		Targets: slices.Clone(e.Targets), Rules: e.Rules}
+		Targets: slices.Clone(e.Targets), Rules: e.Rules, Only: slices.Clone(e.Only), Skip: slices.Clone(e.Skip)}
 	if e.Market != nil {
 		m := *e.Market
 		out.Market = &m
@@ -219,7 +236,7 @@ func (v View) Find(name string) *Entry {
 // Covers reports whether the view holds an entry named like e whose every view field equals e's.
 func (v View) Covers(e manifest.Entry) bool { return v.CoversEntry(EntryOf(e)) }
 
-// CoversEntry is Covers for an entry's view, which may come from a remote profile (Extends).
+// CoversEntry is Covers for an entry's view, which may come from a remote profile (Member).
 func (v View) CoversEntry(e Entry) bool {
 	r := v.Find(e.Name)
 	return r != nil && r.equal(e)
@@ -227,15 +244,16 @@ func (v View) CoversEntry(e Entry) bool {
 
 func (a Entry) equal(b Entry) bool {
 	return a.Name == b.Name && a.Source == b.Source && a.Ref == b.Ref && a.Path == b.Path && a.Commit == b.Commit &&
-		a.Digest == b.Digest && slices.Equal(a.Targets, b.Targets) && sameRules(a.Rules, b.Rules) && sameExtends(a.Extends, b.Extends) &&
-		sameMarket(a.Market, b.Market) && a.Components.Equal(b.Components) && manifest.SameVars(a.Vars, b.Vars)
+		a.Digest == b.Digest && slices.Equal(a.Targets, b.Targets) && sameRules(a.Rules, b.Rules) && sameMember(a.Member, b.Member) &&
+		sameMarket(a.Market, b.Market) && a.Components.Equal(b.Components) && manifest.SameVars(a.Vars, b.Vars) &&
+		slices.Equal(a.Only, b.Only) && slices.Equal(a.Skip, b.Skip)
 }
 
 func sameMarket(a, b *manifest.MarketRef) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
-func sameExtends(a, b *ExtendsView) bool {
+func sameMember(a, b *MemberView) bool {
 	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
@@ -252,7 +270,7 @@ func Refresh(r View, key string, loaded, saved View) View {
 }
 
 func refresh(r, loaded, saved View) View {
-	out := View{Targets: slices.Clone(r.Targets)}
+	out := View{Targets: slices.Clone(r.Targets), Bundle: slices.Clone(r.Bundle)}
 	for _, e := range r.Modules {
 		if saved.Find(e.Name) != nil || loaded.Find(e.Name) == nil {
 			out.Modules = append(out.Modules, e.clone())
@@ -260,6 +278,9 @@ func refresh(r, loaded, saved View) View {
 	}
 	if !slices.Equal(loaded.Targets, saved.Targets) {
 		out.Targets = slices.Clone(saved.Targets)
+	}
+	if !slices.Equal(loaded.Bundle, saved.Bundle) {
+		out.Bundle = slices.Clone(saved.Bundle)
 	}
 	for _, s := range saved.Modules {
 		l, cur := loaded.Find(s.Name), out.Find(s.Name)
@@ -278,7 +299,8 @@ func refresh(r, loaded, saved View) View {
 
 // Accept is the record r after the user trusted, in the view v of the file as loaded whose part
 // of r key names (Part), the entries named in modules (an entry v lacks is dropped from the
-// record), and the top-level targets when targets is set (§7.4). Every other entry keeps its
+// record), and the top-level targets, or a project bundle's member list, when targets is set
+// (§7.4; spec 2026-10-29 §3.10: a bundle has no targets). Every other entry keeps its
 // record, so a declined or unnamed entry stays as covered, or as uncovered, as it was, and so
 // does every other part of r (Plan 6b §19 R2). Accepting every change of v and its targets makes
 // v that part.
@@ -287,9 +309,9 @@ func Accept(r View, key string, v View, modules []string, targets bool) View {
 }
 
 func accept(r, v View, modules []string, targets bool) View {
-	out := View{Targets: slices.Clone(r.Targets)}
+	out := View{Targets: slices.Clone(r.Targets), Bundle: slices.Clone(r.Bundle)}
 	if targets {
-		out.Targets = slices.Clone(v.Targets)
+		out.Targets, out.Bundle = slices.Clone(v.Targets), slices.Clone(v.Bundle)
 	}
 	for _, e := range r.Modules {
 		if !slices.Contains(modules, e.Name) {
@@ -322,8 +344,8 @@ func (e *Entry) take(l, s Entry) {
 	if !sameRules(l.Rules, s.Rules) {
 		e.Rules = s.Rules
 	}
-	if !sameExtends(l.Extends, s.Extends) {
-		e.Extends = s.Extends
+	if !sameMember(l.Member, s.Member) {
+		e.Member = s.Member
 	}
 	if !sameMarket(l.Market, s.Market) {
 		e.Market = s.Market
@@ -334,13 +356,19 @@ func (e *Entry) take(l, s Entry) {
 	if !manifest.SameVars(l.Vars, s.Vars) {
 		e.Vars = manifest.CloneVars(s.Vars)
 	}
+	if !slices.Equal(l.Only, s.Only) {
+		e.Only = slices.Clone(s.Only)
+	}
+	if !slices.Equal(l.Skip, s.Skip) {
+		e.Skip = slices.Clone(s.Skip)
+	}
 }
 
 func (e Entry) clone() Entry {
 	e.Targets = slices.Clone(e.Targets)
-	if e.Extends != nil {
-		x := *e.Extends
-		e.Extends = &x
+	if e.Member != nil {
+		x := *e.Member
+		e.Member = &x
 	}
 	if e.Market != nil {
 		m := *e.Market
@@ -348,6 +376,7 @@ func (e Entry) clone() Entry {
 	}
 	e.Components = e.Components.Clone()
 	e.Vars = manifest.CloneVars(e.Vars)
+	e.Only, e.Skip = slices.Clone(e.Only), slices.Clone(e.Skip)
 	return e
 }
 
@@ -389,11 +418,16 @@ type Change struct {
 }
 
 // Report is the result of Check: the status, the top-level targets when the record does not
-// cover them (nil when it does), and each module's change in name order.
+// cover them (nil when it does), a project bundle's member list likewise (Bundle, spec
+// 2026-10-29 §3.10), and each module's change in name order. ProfileTargets is, in a
+// report of several parts (the engine's), each project profile's top-level targets the record
+// does not cover, by the profile's qualified name (Change.Profile); Check leaves it nil.
 type Report struct {
-	Status  string
-	Targets *FieldChange
-	Changes []Change
+	Status         string
+	Targets        *FieldChange
+	Bundle         *FieldChange
+	Changes        []Change
+	ProfileTargets map[string]*FieldChange
 }
 
 // Check compares v, the view of a manifest, with the record r (§7.3): with r's project.yml part
@@ -408,6 +442,9 @@ func Check(r *Record, v View) Report {
 	rep := Report{Status: StatusTrusted, Changes: []Change{}}
 	if !slices.Equal(rv.Targets, v.Targets) {
 		rep.Targets = &FieldChange{Field: "targets", From: listValue(rv.Targets), To: listValue(v.Targets)}
+	}
+	if !slices.Equal(rv.Bundle, v.Bundle) {
+		rep.Bundle = &FieldChange{Field: "bundle", From: listValue(rv.Bundle), To: listValue(v.Bundle)}
 	}
 	for _, e := range v.Modules {
 		old := rv.Find(e.Name)
@@ -428,7 +465,7 @@ func Check(r *Record, v View) Report {
 	// Without a record every entry and the targets are changes; a manifest with neither has
 	// nothing to trust.
 	switch {
-	case rep.Targets == nil && len(rep.Changes) == 0:
+	case rep.Targets == nil && rep.Bundle == nil && len(rep.Changes) == 0:
 	case !r.Exists:
 		rep.Status = StatusNew
 	default:
@@ -464,11 +501,19 @@ func fieldChanges(from, to Entry) []FieldChange {
 	if !slices.Equal(from.Targets, to.Targets) {
 		out = append(out, FieldChange{Field: "targets", From: listValue(from.Targets), To: listValue(to.Targets)})
 	}
+	for _, f := range []struct {
+		name     string
+		from, to []string
+	}{{"only", from.Only, to.Only}, {"skip", from.Skip, to.Skip}} {
+		if !slices.Equal(f.from, f.to) {
+			out = append(out, FieldChange{Field: f.name, From: listValue(f.from), To: listValue(f.to)})
+		}
+	}
 	if !sameRules(from.Rules, to.Rules) {
 		out = append(out, FieldChange{Field: "rules", From: boolValue(from.Rules), To: boolValue(to.Rules)})
 	}
-	if !sameExtends(from.Extends, to.Extends) {
-		out = append(out, FieldChange{Field: "extends", From: extendsValue(from.Extends), To: extendsValue(to.Extends)})
+	if !sameMember(from.Member, to.Member) {
+		out = append(out, FieldChange{Field: "member", From: memberValue(from.Member), To: memberValue(to.Member)})
 	}
 	if !sameMarket(from.Market, to.Market) {
 		out = append(out, FieldChange{Field: "market", From: marketValue(from.Market), To: marketValue(to.Market)})
@@ -514,10 +559,10 @@ func marketValue(m *manifest.MarketRef) any {
 	return untrusted.Text(m.Name, untrusted.MaxName) + " from " + untrusted.Text(m.Source, untrusted.MaxName)
 }
 
-// extendsValue is the remote profile an entry comes from, as a field change shows it: its name,
+// memberValue is the remote profile an entry comes from, as a field change shows it: its name,
 // source, commit (12 characters, when it has one) and digest ("remote:go from https://… commit
 // 0123456789ab sha256:…").
-func extendsValue(x *ExtendsView) any {
+func memberValue(x *MemberView) any {
 	if x == nil {
 		return nil
 	}
@@ -710,6 +755,9 @@ func (s *Store) read() (*file, error) {
 	// Hash re-encodes the view without either, so the sha256 only checks the record's integrity
 	dec.UseNumber()
 	if err := dec.Decode(f); err != nil {
+		if old := beforeBundles(s.path, b); old != nil {
+			return nil, old
+		}
 		return nil, unreadable(s.path, err)
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
@@ -731,6 +779,41 @@ func (s *Store) read() (*file, error) {
 		}
 	}
 	return f, nil
+}
+
+// beforeBundles is the refusal of b, the trust file at path, when a lola before bundles wrote it:
+// some project's record holds an entry with the extends field, now Member (spec 2026-10-29
+// §3.10). It names those records, sorted, since only they are lost to the change; nil otherwise.
+func beforeBundles(path string, b []byte) error {
+	type part struct {
+		Modules []map[string]json.RawMessage `json:"modules"`
+	}
+	var f struct {
+		Projects map[string]struct {
+			View struct {
+				Profiles map[string]part `json:"profiles"`
+			} `json:"view"`
+		} `json:"projects"`
+	}
+	if json.Unmarshal(b, &f) != nil {
+		return nil
+	}
+	var old []string
+	for k, p := range f.Projects {
+		for _, pv := range p.View.Profiles {
+			if slices.ContainsFunc(pv.Modules, func(e map[string]json.RawMessage) bool { _, ok := e["extends"]; return ok }) {
+				old = append(old, strconv.Quote(k))
+				break
+			}
+		}
+	}
+	if len(old) == 0 {
+		return nil
+	}
+	slices.Sort(old)
+	list := strings.Join(old, ", ")
+	return errs.WithHints(fmt.Errorf("%s: it is in the trust format of a lola before bundles: the records of %s hold the field extends, which lola now records as member", path, list),
+		"remove the records "+list+" from the projects of "+path+"; lola then asks about those projects' modules again and keeps every other project's trust")
 }
 
 // unreadable is the refusal of a trust file lola cannot read; it is never overwritten.

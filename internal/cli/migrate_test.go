@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -35,6 +36,43 @@ var _ = Describe("lola migrate", func() {
 		})
 	})
 	trash := func() string { return filepath.Join(tmp, "state", "lola", "trash") }
+
+	Describe("progress", func() {
+		// onTerminal runs lola migrate -n with stderr a terminal, as it is when a person waits.
+		onTerminal := func() result {
+			root := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true))
+			var out, errb bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&errb)
+			root.SetIn(strings.NewReader(""))
+			root.SetArgs([]string{"migrate", "-n"})
+			code := cli.Execute(root)
+			return result{out: out.String(), err: errb.String(), code: code}
+		}
+
+		It("says what it is working on, on one line that it clears before the plan", func() {
+			r := onTerminal()
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(ContainSubstring("\r\x1b[2K… planning project " + proj + " (1 of 1)"))
+			Expect(r.err).To(ContainSubstring("\r\x1b[2K… fetching " + src))
+			Expect(r.err).To(ContainSubstring("\r\x1b[2K… previewing project " + proj + " (1 of 1)"))
+			Expect(r.err).To(HaveSuffix("\r\x1b[2K"), "nothing is left on the line")
+			Expect(r.out).To(ContainSubstring("install review"), "the plan is on stdout, untouched")
+		})
+
+		It("is a line per step where the terminal cannot redraw", func() {
+			GinkgoT().Setenv("LOLA_ACCESSIBLE", "1")
+			r := onTerminal()
+			Expect(r.err).To(ContainSubstring("… fetching " + src + "\n"))
+			Expect(r.err).NotTo(ContainSubstring("\x1b"))
+		})
+
+		It("prints nothing extra when stderr is not a terminal", func() {
+			r := lola("migrate", "-n")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(BeEmpty())
+		})
+	})
 
 	It("prints the plan on --dry-run and writes nothing", func() {
 		r := lola("migrate", "--dry-run")
@@ -174,8 +212,11 @@ var _ = Describe("lola migrate", func() {
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("unmappable review (claude-code at /Users/alice/proj): project_path /Users/alice/proj no longer exists\n"))
 			Expect(r.out).To(ContainSubstring("  unmappable review (claude-code): claude-code is not installed here\n"))
-			Expect(r.out).To(HaveSuffix("→ map what this machine lacks: lola migrate --dry-run --map-root /Users/alice=" + filepath.Join(tmp, "home") +
+			Expect(r.out).To(ContainSubstring("next steps:\n→ map what this machine lacks: lola migrate --dry-run --map-root /Users/alice=" + filepath.Join(tmp, "home") +
 				" --map-target claude-code=opencode\n"))
+			aside := filepath.Join(tmp, "home", ".lola.python")
+			Expect(r.out).To(HaveSuffix("→ to install below ~ before it is gone, move it aside: mv " + filepath.Join(tmp, "home", ".lola") + " " + aside + "\n" +
+				"→ the Python lola and lola migrate then read it with LOLA_HOME=" + aside + "\n"))
 
 			r = lola("migrate", "-y", "--json", "--map-target", "claude-code=opencode")
 			Expect(r.code).To(Equal(0), r.err)
@@ -193,7 +234,7 @@ var _ = Describe("lola migrate", func() {
 			Expect(r.out).To(ContainSubstring("records: 3 migrated, 0 left as they are\n"))
 			r = lola("sync", "--user")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).NotTo(ContainSubstring("no user.yml"))
+			Expect(r.err).NotTo(ContainSubstring("no default.yml"))
 			r = lola("sync", "-C", moved)
 			Expect(r.code).To(Equal(0), r.err)
 		})
@@ -237,6 +278,22 @@ var _ = Describe("lola migrate", func() {
 		r = lola("migrate", "--map-target", "claude-code=vim")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal("error: --map-target \"claude-code=vim\": \"vim\" is not an assistant lola installs for; write claude-code, gemini-cli, opencode\n"))
+	})
+
+	It("ends with the consent a run skipped, under next steps", func() {
+		fakeAssistant(tmp, "claude", "1.0.0")
+		writeTree(filepath.Join(tmp, "src", "kit"), map[string]string{
+			".claude-plugin/plugin.json": `{"name":"kit"}`,
+			"skills/lint/SKILL.md":       "---\ndescription: Lint\n---\nLint.\n",
+			"hooks/hooks.json":           `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/stop.sh"}]}]}}`,
+			"stop.sh":                    "#!/bin/sh\nexit 0\n"})
+		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n" +
+			"- {module: kit, assistant: claude-code, scope: user, skills: [lint]}\n",
+			"modules/kit/.lola/source.yml": "source: " + filepath.Join(tmp, "src", "kit") + "\ntype: folder\n"})
+		r := lola("migrate", "-y")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`(?s)next steps:\n→ review the hooks listed above, then, if you want to install them, consent to them: lola migrate --yes --trust=runtime-hooks\n`))
+		Expect(r.out).To(HaveSuffix("--trust=runtime-hooks\n"), "nothing follows the actionable lines")
 	})
 
 	It("lists what it keeps and why when nothing is left to migrate", func() {

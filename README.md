@@ -95,9 +95,10 @@ stateDiagram-v2
   Changed --> Trusted : you accept the change, or --trust=entries
   Changed --> Changed : declined, left as installed, asked again next sync
 ```
-- **Profiles:** named sets of modules you turn on and off per scope: your own, a project's
-  committed ones, or remote ones fetched from a source
-  ([Profiles](docs/guides/profiles.md#profiles)).
+- **Profiles:** each scope has a base that is always loaded (`default` at user scope, the
+  project's `project.yml`) and at most one profile on over it; a bundle combines profiles. Every
+  command that reads a scope names it first (`user scope: profile go-review over default`), and
+  every write names the file it changed ([Profiles](docs/guides/profiles.md#profiles)).
 - **Marketplaces:** `lola market --add` registers a Claude Code `marketplace.json` or a catalog
   in lola's YAML format. `lola market` lists your marketplaces, `lola market acme` lists one's entries,
   and `lola market acme formatter` shows an entry, as `lola info @acme/formatter` does;

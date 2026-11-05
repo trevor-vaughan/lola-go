@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,12 +30,18 @@ import (
 
 // SyncRequest is one lola sync (Plan 6a §9.2): make Scope match its manifest. Modules limits the
 // run to the modules named (§3.1); empty means every entry and every installed module. Update
-// re-pins every git and archive entry of the run at its ref. Options are as for render: DryRun,
+// re-pins every git and archive entry of the run at its ref. Options are as for install: DryRun,
 // Force and the hook options; Targets, Strict and Rules are not used.
 type SyncRequest struct {
 	Scope   Scope
 	Modules []string
 	Update  bool
+	// Installed is lola update (spec 2026-10-29 §5.1): the run is the modules installed in the
+	// scope (those of Modules, when given) that a layer lists; it installs and removes nothing.
+	// Update is set with it.
+	Installed bool
+	// Refetch is lola update --fetch: every ref is fetched, however fresh its cache head.
+	Refetch bool
 	Options Options
 	// Trust asks the user to trust the changes to project.yml since they last trusted it, the
 	// pins the sync would write and the folders whose content changed (Plan 6a §7.5): all of
@@ -47,13 +56,32 @@ type SyncRequest struct {
 	// cannot ask: a sync with removals is refused. The CLI passes an always-yes ConfirmRemovals
 	// for -y.
 	ConfirmRemovals func([]Removal) (bool, error)
-	// Profiles, when set, changes the scope's active profile list and applies the change (Plan 6b
-	// §6.3, §19 R3): the run is limited to the modules whose state differs from what the new list
-	// wants, and the new list is written to lock.json in the same commit as the apply.
+	// Profiles, when set, changes the scope's active profile and applies the change (Plan 6b §6.3,
+	// §19 R3): the run is limited to the modules whose state differs from what the new profile
+	// wants, and the new profile is written to lock.json in the same commit as the apply.
 	Profiles *ProfileChange
 	// Display is the run's output flags (--json, --plain, --no-pager as given), which the install
 	// commands an --update's marketplace notices name keep (Plan 6c §11.3).
 	Display []string
+	// move, when set, is a move's edits of this scope's files (Move): the scope's layers are read
+	// with them, the run is the moved modules, lola's own writes are trusted before the check, and
+	// the files are written in the apply's transaction.
+	move *moveEdit
+	// seed is, per module, the version another scope installed, which an entry of yours a
+	// cross-scope move brings takes when neither pins.yaml nor lock.json pins it (plan 12.2b
+	// ambiguity 5).
+	seed map[string]*ledger.Entry
+	// held says the caller holds the profiles lock and this scope's lock (a cross-scope Move, which
+	// takes both scopes' in lockOrder): the run takes neither, and restores nothing.
+	held bool
+	// write, when set, is the profile files a --split, an --edit --bundle or an --edit --new writes
+	// in this run's transaction, which its layers are read with (profileWrites); writeOnly limits the
+	// run to them: it applies nothing. profileArgs is the lola profile arguments that run it again (name,
+	// --split, --to; name, --edit, --bundle), which the run's hints repeat: lola sync cannot stand
+	// in for it (it cannot load the file a split fixes, nor writes what an edit writes).
+	write       *profileWrites
+	writeOnly   bool
+	profileArgs []string
 }
 
 // TrustAnswer is the user's answer to the trust question (Plan 6a §9.2): All accepts every change
@@ -87,21 +115,45 @@ type RemovedPath struct {
 // ErrDeclined is a sync the user answered No to: nothing more was done.
 var ErrDeclined = errors.New("declined")
 
-// TrustStatusNotApplicable is the trust status of the user scope, whose user.yml is trusted.
+// TrustStatusNotApplicable is the trust status of the user scope, whose files are your own.
 const TrustStatusNotApplicable = "not_applicable"
 
 // TrustReport is how the scope's manifest, with the pins the sync writes, differs from what the
 // user last trusted (Plan 6a §7.3, §11.2). Recorded says this run wrote the trust record.
-// Targets is the top-level targets' change, nil when the record covers them. ManifestChanged
-// says the manifest itself differs from the record; when it does not, the changes are the pins
-// the sync would write and folders whose content changed, which the diff's header says.
+// Targets is the top-level targets' change, nil (and absent from JSON) when the record covers
+// them. ManifestChanged says the manifest itself differs from the record; when it does not, the
+// changes are the pins the sync would write and folders whose content changed, which the diff's
+// header says.
 type TrustReport struct {
 	Status          string             `json:"status"`
 	Recorded        bool               `json:"recorded"`
-	Targets         *trust.FieldChange `json:"targets"`
+	Targets         *trust.FieldChange `json:"targets,omitzero"`
+	ProfileTargets  []ProfileTargets   `json:"profile_targets,omitzero"`
 	Changes         []TrustChange      `json:"changes"`
 	Replacements    []Replacement      `json:"replacements"`
 	ManifestChanged bool               `json:"-"`
+}
+
+// ProfileTargets is a project profile's top-level targets' change in a TrustReport, which the
+// record does not cover (spec 2026-10-29 §3.10): Profile is the profile's qualified name, as
+// TrustChange.Profile gives it, and the change is shown as project.yml's targets are.
+type ProfileTargets struct {
+	Profile string `json:"profile"`
+	trust.FieldChange
+}
+
+// TargetsOf is the change of the top-level targets of the file of part, a TrustChange.Profile:
+// project.yml's for "", else that project profile's; nil when the record covers them.
+func (rep TrustReport) TargetsOf(part string) *trust.FieldChange {
+	if part == "" {
+		return rep.Targets
+	}
+	for i := range rep.ProfileTargets {
+		if rep.ProfileTargets[i].Profile == part {
+			return &rep.ProfileTargets[i].FieldChange
+		}
+	}
+	return nil
 }
 
 // Replacement is a project profile that an activation puts in place of an active profile of the
@@ -207,11 +259,16 @@ type SyncResult struct {
 	Removals           []Removal   `json:"removals"`
 	InSync             bool        `json:"in_sync"`
 	EquivalentCommands []string    `json:"equivalent_commands"`
+	Failed             []string    `json:"-"` // lola update's modules left as installed because their fetch failed; findings in JSON (§6)
+	Installed          bool        `json:"-"` // the run was lola update (SyncRequest.Installed), whose human output says so
 	Changed            []string    `json:"-"`
 	Equivalent         string      `json:"-"`
 	ToApply            string      `json:"-"`
 	OffTerminal        string      `json:"-"`
-	// *Activation is set by an activation (SyncRequest.Profiles) only, adding its profiles and
+	// Created is the profile files a --new makes (spec 2026-10-29 §6.2), in the order made: the
+	// members it makes first, then the profile it switches to. Under -n they are what it would make.
+	Created []Created `json:"created,omitempty"`
+	// *Activation is set by an activation (SyncRequest.Profiles) only, adding its profile and
 	// changes to the JSON document.
 	*Activation
 }
@@ -225,13 +282,19 @@ type SyncResult struct {
 // notInstalled that lock.json records none. from is the profile layer the entry won from
 // (Wanted.From), "" for the scope's manifest, and file that profile's path; key is a project
 // profile's name (Wanted.key), "" for any other layer; ledgerPin says its pin is the one
-// lock.json records for the unpinned entry of the user's own profile.
+// lock.json records for the unpinned entry of the user's own profile, pinsFile that it is
+// the one pins.yaml records, and seeded that it is the version a move between scopes carries
+// (SyncRequest.seed).
 type syncEntry struct {
 	ent        manifest.Entry
 	from, file string
 	key        string
-	via        *trust.ExtendsView // the remote profile the entry comes from through extends: (Wanted.via)
+	inherits   bool              // the entry installs to its project profile's top-level targets (Wanted.inherits)
+	bundles    []string          // the project bundles the entry comes through, by part key (Wanted.bundles)
+	member     *trust.MemberView // the remote profile a project bundle names that the entry comes from (Wanted.member)
 	ledgerPin  bool
+	pinsFile   bool
+	seeded     bool
 	goneFrom   string // the description (describeSource) of the local source the cache records for the name, which no longer exists
 	covered    bool
 	// sameSource says the record holds the entry with this Source and Path, whatever else of it
@@ -247,9 +310,13 @@ type syncEntry struct {
 	headIfAbsent  bool
 	pin           *Pin
 	follow        *marketPick // the catalog entry an --update follows (Plan 6c §6.6), nil for none
+	fresh         bool        // lola update's cache head for its ref was fetched within cache_fresh_for: the run does not fetch the ref
+	failed        bool        // lola update could not fetch it: it stays as installed
+	installed     string      // the digest lock.json records for the module, "" when none is installed
+	notices       []Notice    // what resolving the entry has to say (a gone folder rendered from the cache)
 }
 
-// own reports whether the entry is from a profile of the user's own, trusted as user.yml is
+// own reports whether the entry is from a profile of the user's own, trusted as all of theirs is
 // (Plan 6b §8.2); a project profile's entry is reviewed as project.yml's is (§8.1).
 func (se *syncEntry) own() bool { return se.from != "" && se.key == "" }
 
@@ -280,7 +347,7 @@ func entryOf(entries []*syncEntry, c TrustChange) *syncEntry {
 // view is the entry as the trust record holds it: with the remote profile it comes from.
 func (se *syncEntry) view() trust.Entry {
 	v := trust.EntryOf(se.ent)
-	v.Extends = se.via
+	v.Member = se.member
 	return v
 }
 
@@ -304,21 +371,47 @@ func (se *syncEntry) pinned() manifest.Entry {
 func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err error) {
 	sc, opts := req.Scope, req.Options
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, req.Display) }()
+	if req.write != nil {
+		e.creating = req.write
+		defer func() { e.creating = nil }()
+	}
+	// --off (and a --switch to the base, which is --off) mends a bundle on that names a profile you
+	// no longer have: it turns it off all the same.
+	if ch := req.Profiles; ch != nil && e.recovering == nil {
+		if isBase, isDefault := namesBase(ch.Name); ch.Action == ProfileOff || ch.Action == ProfileSwitch && (isBase || isDefault) {
+			e.recovering = &recovery{}
+			defer func() { e.recovering = nil }()
+		}
+	}
 	opts.Rerun = func(k TrustKinds) string { return e.commandOf(req.trusting(k), req.Display...) }
-	opts.askScripts = true
+	opts.askScripts, opts.update, opts.activation = true, req.Update, req.Profiles != nil
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); sc.Kind == target.Project && sc.Key() == home.Key() {
 		return nil, errs.WithHints(fmt.Errorf("project scope at %s is your home directory, where the user scope installs",
 			untrusted.Text(e.Paths.Home, untrusted.MaxName)), "sync the user scope: "+e.SyncCommand(Scope{Kind: target.User}))
 	}
-	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
-	unlockProfiles, err := e.readProfiles(opts.DryRun)
-	if err != nil {
-		return nil, err
+	// A remote profile the run needs that this machine lacks is restored from pins.yaml first,
+	// under the profiles lock it takes and releases itself (spec 2026-10-29 §3.4).
+	extra := ""
+	if req.Profiles != nil && req.Profiles.Action != ProfileOff {
+		extra = req.Profiles.Name
+	}
+	var restored []Notice
+	unlockProfiles := func() {}
+	if !req.held {
+		if restored, err = e.restoreRemotes(ctx, sc, extra, opts.Rerun(opts.Trust), opts.DryRun); err != nil {
+			return nil, err
+		}
+		// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
+		if unlockProfiles, err = e.readProfiles(opts.DryRun); err != nil {
+			return nil, err
+		}
 	}
 	defer unlockProfiles()
-	res := &SyncResult{Result: newResult(opts.DryRun), Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
-		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}, Replacements: []Replacement{}}, EquivalentCommands: []string{}}
+	res := &SyncResult{Result: newResult(opts.DryRun), Installed: req.Installed, Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
+		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}, Replacements: []Replacement{}}, EquivalentCommands: []string{},
+		Failed: []string{}}
 	res.Trusted = []Consent{}
+	res.Notices = append(res.Notices, restored...)
 	// A committed lock.json is refused before the profiles it names are read (Plan 6b §19 S5).
 	if err := e.refuseTrackedLedger(ctx, sc, res.Result); err != nil {
 		return nil, err
@@ -335,61 +428,104 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		}
 		defer unlockMarkets()
 	}
-	man, led, unlock, err := e.load(sc, opts.DryRun)
+	man, led, unlock, err := e.load(sc, opts.DryRun || req.held)
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
-	// An activation builds the layers of its old and new active lists from one read of each
-	// profile; a list that does not change stops here, with its notice (Plan 6b §6.3 step 2).
+	defer func() { err = e.installedWayOut(sc, led, err, req) }()
+	// An activation builds the layers of its old and new active profile from one read of each
+	// profile; a profile on that does not change stops here, with its notice (Plan 6b §6.3 step 2).
 	names := req.Modules
-	active := led.Profiles // the active list the run renders templates with: an activation's new one
+	active := led.Profile // the profile the run renders templates with: an activation's new one
 	var act *activation
 	var repl *replacing
 	var layers []Layer
 	var layerNotices, overrides []Notice
 	var want []Wanted
+	var moveBefore *manifest.Manifest // the manifest as read, before a move's edit
+	// pins is the pin source of your profiles' entries at user scope (spec 2026-10-29 §3.4). An
+	// activation's change line reads it, so loadPins runs once, where the first reader needs it.
+	var pins *config.Pins
+	loadPins := func() (err error) {
+		if sc.Kind == target.User && pins == nil {
+			pins, err = config.LoadPins(e.Paths.Pins)
+		}
+		return err
+	}
 	if req.Profiles != nil {
 		var notes []Notice
 		var dry []string
 		if req.Options.DryRun {
 			dry = []string{"-n"}
 		}
-		if act, notes, err = e.startActivation(sc, led, *req.Profiles, req.rerun(dry...)); err != nil {
+		switch {
+		case req.move != nil && req.move.creating != "":
+			act, err = e.creatingActivation(sc, req.move.creating, req.move.top.Path)
+		case req.Profiles.New:
+			// --new: the files the switch makes are read in place of the disk until the apply
+			// writes them, with lock.json, or nothing is written (spec 2026-10-29 §6.2).
+			var infos []profile.Info
+			if infos, _, err = e.visible(sc); err != nil {
+				return nil, err
+			}
+			if e.creating, err = e.newProfiles(ctx, sc, infos, *req.Profiles, e.switchRuns(sc, req.again()), req.Display); err != nil {
+				return nil, err
+			}
+			defer func() { e.creating = nil }()
+			res.Created = e.creating.made
+			act, notes, err = e.startActivation(sc, led, *req.Profiles, req.rerun(dry...), req.again())
+		default:
+			act, notes, err = e.startActivation(sc, led, *req.Profiles, req.rerun(dry...), req.again())
+		}
+		if err != nil {
 			return nil, err
 		}
-		res.Activation, res.Notices = act.report, append(append(res.Notices, notes...), e.replacementNotices(sc, replacements(act.infos, act.list))...)
+		res.Activation, res.Notices = act.report, append(append(res.Notices, notes...), e.replacementNotices(sc, replacements(act.infos, act.next))...)
 		if !act.changed {
 			res.InSync = true
 			return res, nil
 		}
-		// Hints that repeat the run name the profiles as resolved (Plan 6b §12.3).
-		req.Profiles = &ProfileChange{Action: req.Profiles.Action, Names: act.report.Named}
-		pl, err := e.loadProfiles(sc, act.infos, led.Profiles, act.list)
+		// Hints that repeat the run name the profile as resolved, and a switch to the base as the --off it is (Plan 6b §12.3).
+		req.Profiles = &ProfileChange{Action: act.action, Name: act.report.Named, New: req.Profiles.New, From: req.Profiles.From, Bundle: req.Profiles.Bundle}
+		pl, err := e.loadStack(sc, act.infos, led.Profile, act.next)
 		if err != nil {
 			return nil, err
 		}
-		top := e.manifestLayer(sc, man)
-		old, _ := desired(pl.assemble(top, led.Profiles))
-		layers, layerNotices = pl.assemble(top, act.list), pl.notices
-		active = act.list
-		// Precedence notices only for the modules the named profiles list.
+		top := e.baseLayer(sc, man, pl)
+		old, _ := desired(pl.assemble(top, led.Profile))
+		layers, layerNotices = pl.assemble(top, act.next), pl.notices
+		if req.move != nil && req.move.creating != "" {
+			// The profile a dry run's move would create reads as gone, which it is not.
+			gone := e.goneProfile(sc, req.move.creating)
+			layerNotices = slices.DeleteFunc(slices.Clone(layerNotices), func(n Notice) bool { return n == gone })
+		}
+		if req.move != nil {
+			moveBefore = man
+			layers, man = req.move.apply(layers), man.Applied(req.move.manifest)
+		}
+		active = act.next
+		// Precedence notices only for the modules the named profile lists.
+		named := pl.named[act.report.Named] // a bundle's members, each
 		want, overrides = desiredNoting(layers, func(m string) bool {
-			return slices.ContainsFunc(act.report.Named, func(q string) bool {
-				return slices.ContainsFunc(pl.named[q].Entries, func(ent manifest.Entry) bool { return ent.Name == m })
+			return slices.ContainsFunc(named, func(l Layer) bool {
+				return slices.ContainsFunc(l.Entries, func(ent manifest.Entry) bool { return ent.Name == m })
 			})
-		})
+		}, act.infos)
 		// A project profile the user names in place of their active namesake is a trust change of
 		// its own, never silent (Plan 6b §4.4, D8; ruling R-6b3a-1).
-		repl = replacingOf(replaced(led.Profiles, act.list), old, want)
-		all := layerChanges(want, led, top.Name)
+		repl = replacingOf(replaced(led.Profile, act.next), old, want)
+		if err := loadPins(); err != nil {
+			return nil, err
+		}
+		all := layerChanges(want, led, top.Name, pinSource{pins: pins, seed: req.seed, update: req.Update})
 		act.report.Changes = moved(all, old, want, led, act.report.Named)
 		names = []string{}
 		for _, c := range act.report.Changes {
 			names = append(names, c.name)
 		}
 		// A module that stays where it is renders again when its templates read the list.
-		rerender, err := e.rerenders(sc, led, act.list, e.Store.Load)
+		rerender, err := e.rerenders(sc, led, act.next, e.Store.Load)
 		if err != nil {
 			return nil, err
 		}
@@ -408,10 +544,33 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		if layers, layerNotices, err = e.syncLayers(sc, man, led); err != nil {
 			return nil, err
 		}
-		want, overrides = desired(layers)
-		// Not for an activation, which always has a profile in play: the one it turns on or off.
-		if err := e.refuseMissingManifest(sc, want, led); err != nil {
-			return nil, err
+		if req.move != nil {
+			moveBefore = man
+			layers, man, names = req.move.apply(layers), man.Applied(req.move.manifest), req.move.modules
+		}
+		if req.writeOnly {
+			names = []string{} // the files alone
+		}
+		// Only a profile on can override the base: then the notices name the layers as the scope's
+		// profiles tell them apart.
+		var infos []profile.Info
+		if len(layers) > 1 {
+			if infos, _, err = e.visible(sc); err != nil {
+				return nil, err
+			}
+		}
+		want, overrides = desiredNoting(layers, nil, infos)
+		if req.move != nil {
+			// An entry that leaves this scope's files uninstalled has nothing to remove here.
+			names = slices.DeleteFunc(slices.Clone(names), func(n string) bool { return find(want, n) == nil && led.Modules[n] == nil })
+		}
+		// Not for an activation, which always has a profile in play: the one it turns on or off,
+		// nor for lola update, which leaves each module no layer lists as installed, nor for a move
+		// between profiles that are off here, which changes no layer.
+		if !req.Installed && !req.writeOnly && (req.move == nil || !req.move.keeps(layers)) { // a split that applies nothing needs no base file
+			if err := e.refuseMissingManifest(sc, want, led); err != nil {
+				return nil, err
+			}
 		}
 	}
 	// The trust diff and the first plan pass render under one budget (Plan 7 §6.2).
@@ -419,11 +578,20 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
-	limit, err := e.limitTo(sc, layers, want, led, names)
-	if err != nil {
-		return nil, err
+	var limit syncLimit
+	if req.Installed {
+		var leftOut []target.Finding
+		if limit, leftOut, err = e.installedLimit(sc, want, led, names, req.Display); err != nil {
+			return nil, err
+		}
+		res.Findings = append(res.Findings, leftOut...)
+	} else {
+		if limit, err = e.limitTo(sc, layers, want, led, names); err != nil {
+			return nil, err
+		}
+		limit.only = act != nil || req.move != nil || req.writeOnly // a move's run is the modules it moves, which may be none here
+		limit.files = req.writeOnly
 	}
-	limit.only = act != nil
 	res.Notices = append(append(append(res.Notices, layerNotices...), overrides...), e.sweepRuns()...)
 	run, done, err := e.runDir()
 	if err != nil {
@@ -431,28 +599,55 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	defer func() { err = errors.Join(err, done()) }()
 
-	entries, kept, err := e.validateSync(sc, man, want, led, req, limit, catalogs)
+	var age config.Age // the zero Age when no head is served from the cache: fresh never holds
+	if req.Installed && !req.Refetch {
+		if age, err = e.freshFor(); err != nil {
+			return nil, err
+		}
+	}
+	if err := loadPins(); err != nil {
+		return nil, err
+	}
+	entries, kept, err := e.validateSync(sc, man, want, led, req, limit, catalogs, age, &res.Findings, pins)
 	if err != nil {
 		return nil, err
 	}
 	res.Notices = append(append(res.Notices, catalogNotices...), kept...)
-	// An activation counted the changes it leaves pending above.
-	if n, ok := outOfSync(want, led, limit, e.SyncCommand(sc)); ok && act == nil {
-		res.Notices = append(res.Notices, n)
+	// An activation counted the changes it leaves pending above; lola update's findings say what
+	// installed modules it leaves out, and its notice the listed entries it does not install.
+	switch {
+	case req.Installed:
+		res.Notices = append(res.Notices, e.listedNotInstalled(sc, want, led, req.again())...)
+	case act == nil:
+		if n, ok := outOfSync(want, led, limit, e.SyncCommand(sc)); ok {
+			res.Notices = append(res.Notices, n)
+		}
 	}
 	res.Notices = append(res.Notices, goneNotices(entries)...)
 	var rec *trust.Record
 	var early trust.Report
 	manifestChanged, needTrust := false, false
 	var need TrustKinds // the kinds of trust the changes known before any fetch need
+	// spare is an unlimited run's top-level targets that changed while no entry it loads installs
+	// to them: never asked about alone, recorded only with a consent that covers entries (spec
+	// 2026-10-29 §16.1).
+	spare := false
 	if sc.Kind == target.Project {
 		if rec, err = e.Trust.Load(sc.ProjectDir); err != nil {
 			return nil, err
 		}
+		if req.move != nil {
+			rec.View = req.move.trusted(rec.View, moveBefore)
+		}
+		if e.creating != nil { // what lola makes is trusted as it writes it (newProfiles)
+			for _, key := range slices.Sorted(maps.Keys(e.creating.trusted)) {
+				rec.View = rec.View.WithPart(key, e.creating.trusted[key])
+			}
+		}
 		// Coverage is the entry's own (§7.2): it decides containment and whether content the
 		// entry pins may be cached before the question. Top-level targets the record does not
 		// cover are a change of the report, which an entry that installs to them waits on.
-		// The entry of a profile of the user's own is trusted as user.yml is (Plan 6b §8.2); a
+		// The entry of a profile of the user's own is trusted as theirs (Plan 6b §8.2); a
 		// project profile's is covered by that profile's part of the record (§8.1).
 		for _, se := range entries {
 			part := rec.View.Part(se.key)
@@ -471,7 +666,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			if !se.covered || se.spec.Kind != source.KindFolder || se.own() {
 				continue
 			}
-			if err := e.resolveSync(ctx, sc, se, run); err != nil {
+			if err := e.resolveSync(ctx, sc, se, run, req.Display); err != nil {
 				return nil, err
 			}
 			installed := led.Modules[se.ent.Name]
@@ -479,6 +674,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			se.folderChanged = installed == nil || installed.Digest != se.v.Meta.Digest
 		}
 		early = runReport(checkParts(rec, trustParts(man, layers, nil)), limit, entries)
+		if spare = early.Targets != nil && !slices.ContainsFunc(entries, func(se *syncEntry) bool { return len(se.ent.Targets) == 0 }); spare {
+			early = withoutTargets(early)
+		}
 		manifestChanged = early.Status != trust.StatusTrusted
 		needTrust = manifestChanged || repl != nil || slices.ContainsFunc(entries, func(se *syncEntry) bool { return se.folderChanged || needsPin(se) })
 		need = neededTrust(early, repl, entries)
@@ -490,8 +688,10 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	// The removals are listed now, from lock.json and the manifest alone, and a run that cannot
 	// ask for an answer it needs is refused here, once, before anything is fetched (Plan 6a §9.3
 	// step 4).
-	if res.Removals, err = e.syncRemovals(sc, want, led, entries, limit); err != nil {
-		return nil, err
+	if !req.Installed { // lola update removes nothing
+		if res.Removals, err = e.syncRemovals(sc, want, led, entries, limit); err != nil {
+			return nil, err
+		}
 	}
 	// --force answers the removals, never the trust question (user decision, 2026-10-22); --trust
 	// answers it for the kinds it covers (Plan 9 §3.4).
@@ -511,7 +711,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		// (§3.5), a refusal for removals alone included (CR10).
 		for _, se := range entries {
 			if se.spec.Kind == source.KindFolder && se.v.ContentDir == "" {
-				if err := e.resolveSync(ctx, sc, se, run); err != nil {
+				if err := e.resolveSync(ctx, sc, se, run, req.Display); err != nil {
 					return nil, err
 				}
 			}
@@ -533,7 +733,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				return nil, err
 			}
 			notFixed(&report, entries)
-			pinReasons(&report, entries, false)
+			pinReasons(&report, entries, false, req.updateFlag())
 			if err := e.fillContent(sc, &report, entries, led, templates, e.newProbeRun(ctx), opts.Display); err != nil {
 				return nil, err
 			}
@@ -546,12 +746,32 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		return nil, e.syncRefusal(sc, req, report, removals, missing, removalsMissing, entries)
 	}
 
+	served := 0 // the entries lola update resolved from a fresh cache head, without a fetch
 	for _, se := range entries {
 		if se.v.ContentDir == "" { // a covered folder at project scope was read above
-			if err := e.resolveSync(ctx, sc, se, run); err != nil {
+			// lola update leaves a module whose source it cannot fetch as installed and goes on
+			// (spec 2026-10-29 §5.2); a folder, and any failure of lola's own state, stops the run.
+			err := e.resolveSync(ctx, sc, se, run, req.Display)
+			if ff, ok := errors.AsType[*fetchFailedError](err); ok && req.Installed && se.spec.Kind != source.KindFolder {
+				name := untrusted.Text(se.ent.Name, untrusted.MaxName)
+				res.Failed = append(res.Failed, name)
+				// The fetch's own hints (install git, check access, the refs there are) say what to
+				// fix before the retry can work, so they come first.
+				hints := append(shownAll(errs.Hints(ff.err)), "retry: "+e.Command(sc, "update", append([]string{se.ent.Name, "--fetch"}, req.Display...)...))
+				res.Findings = append(res.Findings, target.Finding{Severity: target.SeverityWarn, Module: name, Kind: "module", Code: CodeFetchFailed,
+					Text: "could not fetch it: " + untrusted.CleanErr(ff.err).Error() + "; it stays as installed",
+					Hint: strings.Join(hints, "; ")})
+				se.failed = true
+				continue
+			}
+			if err != nil {
 				return nil, err
 			}
 		}
+		if se.fresh && se.staged == nil {
+			served++
+		}
+		res.Notices = append(res.Notices, se.notices...)
 		// What the user trusts at its pin goes into the cache now; everything else waits. A
 		// project dry run moves no head (Plan 6a §3.1), not even for an --update fetch, and
 		// replaces no source the cache records (§6.5).
@@ -564,12 +784,27 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 		}
 	}
+	entries = slices.DeleteFunc(entries, func(se *syncEntry) bool { return se.failed })
+	if served > 0 {
+		what := fmt.Sprintf("%d modules", served)
+		if served == 1 {
+			what = "1 module"
+		}
+		fetch := req
+		fetch.Refetch = true
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo,
+			Text: what + " served from your cache (fetched within cache_fresh_for) → " + e.commandOf(fetch, req.again()...)})
+	}
 	// The pins the sync writes are trust changes too: the question is about the manifest as it
 	// will be saved (Plan 6a §7.3).
 	probes := e.newProbeRun(ctx)
 	var savedRep trust.Report
 	if sc.Kind == target.Project {
 		savedRep = runReport(checkParts(rec, trustParts(man, layers, entries)), limit, entries)
+		// Spare targets join a question the run asks anyway, or a --trust that covers entries.
+		if spare && !opts.Trust.Covers(TrustEntries) && (req.Trust == nil || !needTrust || need&^opts.Trust == 0) {
+			savedRep = withoutTargets(savedRep)
+		}
 		res.Trust = trustReport(savedRep)
 		res.Trust.ManifestChanged = manifestChanged
 		repl.add(&res.Trust)
@@ -578,14 +813,15 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			return nil, err
 		}
 		notFixed(&res.Trust, entries)
-		pinReasons(&res.Trust, entries, true)
+		pinReasons(&res.Trust, entries, true, req.updateFlag())
 		if err := e.fillContent(sc, &res.Trust, entries, led, templates, probes, opts.Display); err != nil {
 			return nil, err
 		}
 		for i := range res.Trust.Changes {
 			c := &res.Trust.Changes[i]
 			se := entryOf(entries, *c)
-			c.InstallsToTargets = res.Trust.Targets != nil && c.Kind != trust.ChangeRemoved && se != nil && len(se.ent.Targets) == 0
+			c.InstallsToTargets = c.Kind != trust.ChangeRemoved && se != nil &&
+				(res.Trust.Targets != nil && len(se.ent.Targets) == 0 || se.inherits && res.Trust.TargetsOf(c.Profile) != nil)
 		}
 	}
 	// Plan every module now, from the bytes that were hashed, before the trust question: a module
@@ -594,7 +830,10 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
-	sp, err := e.planSync(sc, entries, led, templates, sel, opts, probes, req.Modules, man.PostInstall != "")
+	if sel, err = withPicks(sel, layers); err != nil {
+		return nil, err
+	}
+	sp, err := e.planSync(sc, entries, layers, active != nil, led, templates, sel, opts, probes, req.Modules, man.PostInstall != "")
 	if err != nil {
 		return nil, err
 	}
@@ -629,7 +868,8 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 			// An activation commits its new list with the apply, so it applies all it planned or
 			// nothing: an answer leaving some entries as installed is refused.
-			if act != nil && !ans.All && len(ans.Modules) > 0 {
+			// So does a move, which writes its files whatever the answer.
+			if (act != nil || req.move != nil) && !ans.All && len(ans.Modules) > 0 {
 				return nil, errs.WithHints(errors.New("lola profile applies all of its changes or none; trust them all, or cancel"),
 					"see them: "+e.commandOf(req, "-n"))
 			}
@@ -647,6 +887,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				if !acc.targets {
 					res.Trust.Targets = nil
 				}
+				res.Trust.ProfileTargets = slices.DeleteFunc(slices.Clone(res.Trust.ProfileTargets), func(pt ProfileTargets) bool {
+					return !acc.profileTargets[partKey(pt.Profile)]
+				})
 				res.Notices = append(res.Notices, Notice{Level: LevelWarn,
 					Text: "left as installed until you trust them: " + nameList(acc.leave) + " → " + e.SyncCommand(sc)})
 				// the pass after the answer renders again under a budget of its own (Plan 7 §6.2)
@@ -654,7 +897,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				if err != nil {
 					return nil, err
 				}
-				if sp, err = e.planSync(sc, entries, led, fresh, sel, opts, probes, req.Modules, man.PostInstall != ""); err != nil {
+				if sp, err = e.planSync(sc, entries, layers, active != nil, led, fresh, sel, opts, probes, req.Modules, man.PostInstall != ""); err != nil {
 					return nil, err
 				}
 			}
@@ -670,7 +913,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	// Publish what the user trusts now (Plan 6a §9.3 step 8); a declined entry's content is never
 	// committed. A dry run publishes nothing more, except that --update -n at user scope, whose
-	// user.yml is the user's own, fetches into the cache and moves heads, as -n always may there.
+	// files are the user's own, fetches into the cache and moves heads, as -n always may there.
 	for _, se := range entries {
 		if opts.DryRun && (sc.Kind != target.User || !se.update) {
 			continue
@@ -719,14 +962,21 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
+	pr.pins = pins
+	for _, se := range entries {
+		pr.resolved = append(pr.resolved, se.ent.Name)
+		if se.seeded {
+			pr.seeded = append(pr.seeded, se.ent.Name)
+		}
+	}
 	if act != nil {
-		pr.plan.Ledger.Profiles = act.list // written in the apply's commit (Plan 6b §6.3 step 5)
+		pr.plan.Ledger.Profile = act.next // written in the apply's commit (Plan 6b §6.3 step 5)
 	}
 	keepUnhooked(copies, pr.jobs, opts)
-	// A changed active list is a change the apply writes, even when it moves no module.
+	// A changed active profile is a change the apply writes, even when it moves no module.
 	// So is a pending project post-install script that runs alone (Plan 9 §5.5).
 	res.InSync = len(res.Steps) == 0 && len(res.Pins) == 0 && len(res.Removals) == 0 && len(pr.scripts.alone) == 0 &&
-		!slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.replace }) && (act == nil || !act.changed)
+		!slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.replace }) && (act == nil || !act.changed) && req.move == nil
 	for _, st := range res.Steps {
 		res.Changed = append(res.Changed, st.Module)
 	}
@@ -772,6 +1022,9 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				res.EquivalentCommands = []string{res.OffTerminal}
 			}
 		}
+		if len(res.Failed) > 0 {
+			return res, &FetchesFailedError{Modules: res.Failed}
+		}
 		return res, nil
 	}
 	defer func() { err = res.afterGrants(err) }() // a failure from here on carries the grants written
@@ -786,19 +1039,49 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if acc != nil {
 		trusted = &trust.Record{View: acc.record(rec.View, trustParts(man, layers, nil))}
 	}
-	if pinned, profPins := pinsOf(entries, ""), profilePins(layers, entries); len(pinned) > 0 || len(profPins) > 0 {
+	pinned, profPins := pinsOf(entries, ""), profilePins(layers, entries)
+	// A move's edits go in the same transaction: its project.yml change beside the pins (a pin of a
+	// moved entry last, so it wins), and its profile files with the pins of each it edits.
+	var moveFiles []fileEdit
+	c := manifest.Change{Set: pinned}
+	recFor := trusted
+	if req.move != nil {
+		profPins = req.move.pinned(profPins)
+		moveFiles = req.move.fileEdits()
+		c = manifest.Change{Set: append(slices.Clone(req.move.manifest.Set), pinned...), Remove: req.move.manifest.Remove}
+		// lola's own writes into project files are trusted (moveEdit.trusted, above); a move of
+		// files of yours alone leaves the record as it was.
+		if recFor == nil && (len(req.move.manifest.Set)+len(req.move.manifest.Remove) > 0 ||
+			slices.ContainsFunc(moveFiles, func(f fileEdit) bool { return f.layer.Key != "" })) {
+			recFor = rec
+		}
+	}
+	if e.creating != nil {
+		moveFiles = append(moveFiles, e.creating.files...)
+		if recFor == nil && slices.ContainsFunc(e.creating.files, func(f fileEdit) bool { return f.layer.Key != "" }) {
+			recFor = rec
+		}
+	}
+	if len(c.Set)+len(c.Remove) > 0 || len(profPins) > 0 || len(moveFiles) > 0 {
 		var files []string
-		if len(pinned) > 0 {
-			files = append(files, filepath.Base(e.files(sc).manifest))
+		if len(c.Set)+len(c.Remove) > 0 {
+			files = append(files, e.manifestName(sc))
 		}
 		for _, p := range profPins {
 			files = append(files, projectProfileFile(p.layer.Key))
 		}
-		err = e.saveManifest(sc, man, manifest.Change{Set: pinned}, profPins, trusted, "the project's files, lock.json and "+andJoin(files)+" were updated",
+		for _, f := range moveFiles {
+			if f.layer.Key != "" {
+				files = append(files, projectProfileFile(f.layer.Key))
+			} else {
+				files = append(files, shown(f.layer.Path))
+			}
+		}
+		err = e.saveManifest(sc, man, c, profPins, moveFiles, recFor, "the project's files, lock.json and "+andJoin(files)+" were updated",
 			syncAgain(e.SyncCommand(sc)), apply)
 	} else if err = apply(nil); err == nil && trusted != nil {
 		if err = e.saveTrust(sc, trusted.View); err != nil {
-			msg := "lola could not record that you trust " + acc.files(filepath.Base(e.files(sc).manifest))
+			msg := "lola could not record that you trust " + acc.files(e.manifestName(sc))
 			if !res.InSync {
 				msg = "the project's files and lock.json were updated, but " + msg
 			}
@@ -808,12 +1091,21 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	if err != nil {
 		return nil, err
 	}
+	if len(pinned) > 0 {
+		res.Edits = append(res.Edits, editsOf(ctx, sc, baseTarget(layers[0]), pinned, nil, nil)...)
+	}
+	for _, p := range profPins {
+		res.Edits = append(res.Edits, editsOf(ctx, sc, writeTo{Layer: p.layer, on: true, label: layerLabel(nil, p.layer.Name)}, p.pins, nil, nil)...)
+	}
 	res.Trust.Recorded = trusted != nil
 	for i := range res.Pins {
 		res.Pins[i].Written = true
 	}
 	if acc != nil {
 		res.Equivalent = e.equivalent(req, acc, res)
+	}
+	if len(res.Failed) > 0 {
+		return res, &FetchesFailedError{Modules: res.Failed}
 	}
 	return res, nil
 }
@@ -830,7 +1122,7 @@ func (e *Engine) equivalent(req SyncRequest, acc *acceptance, res *SyncResult) s
 	if len(res.Removals) > 0 && !req.Options.Force {
 		yes = append(yes, "-y")
 	}
-	if req.Profiles != nil {
+	if req.Profiles != nil || req.move != nil {
 		return e.commandOf(run, yes...)
 	}
 	if !acc.all {
@@ -862,7 +1154,7 @@ func pinsOf(entries []*syncEntry, part string) []manifest.Entry {
 func profilePins(layers []Layer, entries []*syncEntry) []profileEdit {
 	var out []profileEdit
 	for _, l := range layers {
-		if l.Key == "" {
+		if l.Key == "" || l.read == nil { // a remote member of a project bundle is pinned in its own file
 			continue
 		}
 		if pins := pinsOf(entries, string(profile.KindProject)+":"+l.Key); len(pins) > 0 {
@@ -884,40 +1176,76 @@ type trustPart struct {
 	shadowed  []string
 }
 
-// trustParts is the parts a run checks: project.yml's and each project profile's of layers, the
+// trustParts is the parts a run checks: project.yml's, every entry of it, those the active
+// profile shadows too, as they apply once it is off; and each project profile's of layers, the
 // active ones and those being turned on, each with its winning entries only; with the pins
 // entries write when entries is not nil. Every other part of the record is carried, never
 // checked (§19 R2).
 func trustParts(man *manifest.Manifest, layers []Layer, entries []*syncEntry) []trustPart {
 	out := []trustPart{{view: trust.ViewOf(man.Applied(manifest.Change{Set: pinsOf(entries, "")}))}}
+	// A part may come from several layers: the remote members a project bundle names are its part
+	// (spec 2026-10-29 §3.10).
+	at := map[string]int{}
+	files := map[string]*manifest.Manifest{}
+	vias := map[string]map[string]*trust.MemberView{}
 	for i, l := range layers {
 		if l.Key == "" {
 			continue
 		}
-		p := trustPart{key: l.Key, name: string(profile.KindProject) + ":" + l.Key}
-		m := &manifest.Manifest{}
+		k, seen := at[l.Key]
+		if !seen {
+			out = append(out, trustPart{key: l.Key, name: string(profile.KindProject) + ":" + l.Key})
+			k, at[l.Key], files[l.Key], vias[l.Key] = len(out)-1, len(out)-1, &manifest.Manifest{}, map[string]*trust.MemberView{}
+		}
+		m := files[l.Key]
+		if l.read != nil {
+			m.Targets = slices.Clone(l.read.Targets) // trust content, as project.yml's are (spec 2026-10-29 §3.10)
+		}
 		for _, ent := range l.Entries {
-			if slices.ContainsFunc(layers[i+1:], func(later Layer) bool {
+			later := slices.IndexFunc(layers[i+1:], func(later Layer) bool {
 				return slices.ContainsFunc(later.Entries, func(o manifest.Entry) bool { return o.Name == ent.Name })
-			}) {
-				p.shadowed = append(p.shadowed, ent.Name)
+			})
+			switch {
+			case later >= 0 && layers[i+1+later].Key == l.Key: // a later layer of the part gives its entry
+			case later >= 0:
+				out[k].shadowed = append(out[k].shadowed, ent.Name)
+			default:
+				m.Modules = append(m.Modules, ent)
+				vias[l.Key][ent.Name] = l.member
+			}
+		}
+	}
+	// A project bundle's member list is its part's trust content, whether or not a member gives
+	// the part entries or a layer at all (spec 2026-10-29 §3.10; Layer.expanded).
+	bundles := map[string][]string{}
+	for _, l := range layers {
+		for _, b := range append(slices.Clone(l.expanded), l.chain...) {
+			if b.key == "" {
 				continue
 			}
-			m.Modules = append(m.Modules, ent)
+			bundles[b.key] = b.members
+			if _, seen := at[b.key]; !seen {
+				out = append(out, trustPart{key: b.key, name: string(profile.KindProject) + ":" + b.key})
+				at[b.key], files[b.key] = len(out)-1, &manifest.Manifest{}
+			}
 		}
-		p.view = trust.ViewOf(m.Applied(manifest.Change{Set: pinsOf(entries, p.name)}))
-		// An entry from a remote profile the profile extends is recorded with it (§8.1, §19 S4).
-		for k := range p.view.Modules {
-			p.view.Modules[k].Extends = l.via[p.view.Modules[k].Name]
+	}
+	for k := range out[1:] {
+		p := &out[k+1]
+		p.view = trust.ViewOf(files[p.key].Applied(manifest.Change{Set: pinsOf(entries, p.name)}))
+		p.view.Bundle = slices.Clone(bundles[p.key])
+		// An entry from a remote profile that the project bundle names is recorded with it (§8.1,
+		// §19 S4; spec 2026-10-29 §3.10).
+		for j := range p.view.Modules {
+			p.view.Modules[j].Member = vias[p.key][p.view.Modules[j].Name]
 		}
-		out = append(out, p)
 	}
 	return out
 }
 
 // checkParts is trust.Check of each part against its part of rec, as one report: the top-level
-// targets are project.yml's, each change of a profile's part names the profile, and the status
-// is trusted only when every part is. A shadowed entry's record is left out of the check, so it
+// targets are project.yml's, a profile's are its ProfileTargets, each change of a profile's part
+// names the profile, and the status is trusted only when every part is. A shadowed entry's record is left out of the check, so it
 // is not reported removed.
 func checkParts(rec *trust.Record, parts []trustPart) trust.Report {
 	out := trust.Report{Status: trust.StatusTrusted, Changes: []trust.Change{}}
@@ -925,8 +1253,17 @@ func checkParts(rec *trust.Record, parts []trustPart) trust.Report {
 		rv := rec.View.Part(p.key)
 		rv.Modules = slices.DeleteFunc(rv.Modules, func(e trust.Entry) bool { return slices.Contains(p.shadowed, e.Name) })
 		rep := trust.Check(&trust.Record{View: rv, Exists: rec.Exists}, p.view)
-		if p.key == "" {
+		// A project bundle's member list is a top-level change of its part, as a profile's targets
+		// are; a bundle has no targets, so its part has at most one of them (spec 2026-10-29 §3.10).
+		top := cmp.Or(rep.Targets, rep.Bundle)
+		switch {
+		case p.key == "":
 			out.Targets = rep.Targets
+		case top != nil:
+			if out.ProfileTargets == nil {
+				out.ProfileTargets = map[string]*trust.FieldChange{}
+			}
+			out.ProfileTargets[p.name] = top
 		}
 		for _, c := range rep.Changes {
 			c.Profile = p.name
@@ -955,16 +1292,26 @@ type syncPlan struct {
 // them over the targets lock.json has it on, and its module copy, replaced (running its hooks)
 // when its version changes, the copy is gone or it adds a target, or to offer a pending post-install hook to a run
 // that names its module (named) or gives --trust covering hooks; a pending project post-install
-// script likewise, while project.yml still names one (postScript).
-func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, templates *templateRun, sel *config.Selections, opts Options,
+// script likewise, while project.yml still names one (postScript). layers are sc's, whose entries
+// a re-pick hint's profile name must not read as, and on is whether a profile is on at sc once the
+// run applies (repickRun).
+func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on bool, led *ledger.Ledger, templates *templateRun, sel *config.Selections, opts Options,
 	probes *probeRun, named []string, postScript bool) (syncPlan, error) {
 	sp := syncPlan{modules: []ModuleResult{}}
+	opts.profiles = e.visibleOnce(sc)
 	for _, se := range entries {
 		name := se.ent.Name
 		ent := se.pinned()
-		x, err := exclusions(sel, sc, name)
+		x, err := exclusions(sel, sc, se.from, name)
 		if err != nil {
 			return syncPlan{}, err
+		}
+		ignored, err := e.ignoredSection(sel, sc, layers, opts.profiles, on, se.from, name)
+		if err != nil {
+			return syncPlan{}, err
+		}
+		if ignored != nil {
+			sp.notices = append(sp.notices, *ignored)
 		}
 		opts.entryFrom = se.from
 		intents, finds, notes, mr, err := e.planModule(sc, se.v, se.targets, &ent, x, opts, probes, templates)
@@ -973,6 +1320,22 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, te
 		}
 		sp.modules, sp.findings, sp.notices = append(sp.modules, mr), append(sp.findings, finds...), append(sp.notices, notes...)
 		installed := led.Modules[name]
+		// The re-pick names the provider (repickRun), so the profiles are listed only for a notice.
+		adds, err := e.newComponentNotices(se.v, installed, x, ent.RulesOn(), func(origin string, args ...string) (string, string, error) {
+			label, err := originLabel(x, origin, se.from, opts.profiles)
+			if err != nil {
+				return "", "", err
+			}
+			infos, err := opts.profiles()
+			if err != nil {
+				return "", "", err
+			}
+			return label, e.repickRun(sc, layers, infos, on, se.from, args[0], args[1:]...), nil
+		})
+		if err != nil {
+			return syncPlan{}, err
+		}
+		sp.notices = append(sp.notices, adds...)
 		ts := se.targets
 		for _, t := range allTargets(installed, nil, &manifest.Manifest{}) {
 			if !slices.Contains(ts, t) {
@@ -1025,10 +1388,11 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, led *ledger.Ledger, te
 // top-level targets are; and the modules that leave the run as installed, by the names the
 // report shows.
 type acceptance struct {
-	all     bool
-	modules map[string][]string
-	targets bool
-	leave   []string
+	all            bool
+	modules        map[string][]string
+	targets        bool
+	profileTargets map[string]bool // by part key: whether that project profile's top-level targets are accepted
+	leave          []string
 }
 
 // files names, for a message, the files whose trust the answer records: manifest (the scope
@@ -1044,6 +1408,11 @@ func (a *acceptance) files(manifest string) string {
 			out = append(out, manifest)
 		} else {
 			out = append(out, projectProfileFile(k))
+		}
+	}
+	for _, k := range slices.Sorted(maps.Keys(a.profileTargets)) {
+		if f := projectProfileFile(k); a.profileTargets[k] && !slices.Contains(out, f) {
+			out = append(out, f)
 		}
 	}
 	if a.targets && !slices.Contains(out, manifest) {
@@ -1069,7 +1438,7 @@ func (a *acceptance) names() []string {
 // files the run checked, as the run read them; every other part of r is kept as it is.
 func (a *acceptance) record(r trust.View, parts []trustPart) trust.View {
 	for _, p := range parts {
-		targets := p.key == "" && a.targets
+		targets := p.key == "" && a.targets || p.key != "" && a.profileTargets[p.key]
 		if ms := a.modules[p.key]; len(ms) > 0 || targets {
 			r = trust.Accept(r, p.key, p.view, ms, targets)
 		}
@@ -1092,7 +1461,13 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 	for _, se := range entries {
 		names[shown(se.ent.Name)] = se.ent.Name
 	}
-	acc := &acceptance{all: ans.All, modules: map[string][]string{}, targets: rep.Targets != nil && (ans.All || ans.Kinds.Covers(TrustEntries))}
+	acc := &acceptance{all: ans.All, modules: map[string][]string{}, targets: rep.Targets != nil && (ans.All || ans.Kinds.Covers(TrustEntries)),
+		profileTargets: map[string]bool{}}
+	// A project profile's top-level targets are accepted as project.yml's are: with the answer
+	// that covers its kind, or with an accepted entry that installs to them.
+	for _, pt := range rep.ProfileTargets {
+		acc.profileTargets[partKey(pt.Profile)] = ans.All || ans.Kinds.Covers(TrustProfiles)
+	}
 	for _, c := range rep.Changes {
 		if !ans.All && !slices.Contains(ans.Modules, c.Module) && !ans.Kinds.Covers(c.kind()) {
 			if !slices.Contains(acc.leave, c.Module) {
@@ -1100,38 +1475,60 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 			}
 			continue
 		}
-		key := strings.TrimPrefix(c.Profile, string(profile.KindProject)+":")
+		key := partKey(c.Profile)
 		acc.modules[key] = append(acc.modules[key], names[c.Module])
-		if se := entryOf(entries, c); rep.Targets != nil && c.Kind != trust.ChangeRemoved && se != nil && len(se.ent.Targets) == 0 {
+		se := entryOf(entries, c)
+		if rep.Targets != nil && c.Kind != trust.ChangeRemoved && se != nil && len(se.ent.Targets) == 0 {
 			acc.targets = true
+		}
+		if _, changed := acc.profileTargets[key]; changed && c.Kind != trust.ChangeRemoved && se != nil && se.inherits {
+			acc.profileTargets[key] = true
 		}
 	}
 	// A replacement comes only with an activation, whose answer is all or none (Plan 6b §4.4, P10).
 	replaced := len(rep.Replacements) > 0 && (ans.All || ans.Kinds.Covers(TrustProfiles))
-	if len(acc.modules) == 0 && !acc.targets && !replaced {
+	if len(acc.modules) == 0 && !acc.targets && !slices.Contains(slices.Collect(maps.Values(acc.profileTargets)), true) && !replaced {
 		return nil, ErrDeclined
 	}
-	if rep.Targets != nil && !acc.targets {
-		for _, se := range entries {
-			if len(se.ent.Targets) == 0 && !slices.Contains(acc.leave, shown(se.ent.Name)) {
-				acc.leave = append(acc.leave, shown(se.ent.Name))
-			}
+	leave := func(se *syncEntry) {
+		if !slices.Contains(acc.leave, shown(se.ent.Name)) {
+			acc.leave = append(acc.leave, shown(se.ent.Name))
+		}
+	}
+	for _, se := range entries {
+		if rep.Targets != nil && !acc.targets && len(se.ent.Targets) == 0 {
+			leave(se)
+		}
+		if accepted, changed := acc.profileTargets[se.key]; changed && !accepted && se.inherits {
+			leave(se)
+		}
+		// An entry a project bundle brings waits on the bundle's member list as one that inherits
+		// targets waits on them.
+		if slices.ContainsFunc(se.bundles, func(key string) bool { accepted, changed := acc.profileTargets[key]; return changed && !accepted }) {
+			leave(se)
 		}
 	}
 	slices.Sort(acc.leave)
 	return acc, nil
 }
 
+// partKey is the key of the trust part a TrustChange.Profile names: "" for project.yml, else the
+// project profile's name.
+func partKey(part string) string {
+	return strings.TrimPrefix(part, string(profile.KindProject)+":")
+}
+
 // RemovalsDeclinedError is a sync whose removals the user declined (Plan 6a §9.3 step 9): nothing
 // was applied. Recorded says the trust the user accepted changed the record, so the next sync
 // does not ask about it again; Again names the accepted entries it does ask about again, whose
-// pin or folder content the record holds only once lola writes it; Render says the record
-// changes what lola render installs. Retry is the run to repeat: lola sync, or the activation
+// pin or folder content the record holds only once lola writes it; Trusted names the
+// modules whose trust the user accepted, which lola sync <those> installs without removing
+// anything. Retry is the run to repeat: lola sync, or the activation
 // as lola profile, with the scope's flags.
 type RemovalsDeclinedError struct {
-	Recorded, Render bool
-	Again            []string
-	Retry            string
+	Recorded       bool
+	Trusted, Again []string
+	Retry          string
 }
 
 func (e *RemovalsDeclinedError) Error() string {
@@ -1143,15 +1540,17 @@ func (e *RemovalsDeclinedError) Unwrap() error { return ErrDeclined }
 // but the trust the user accepted (acc, nil when nothing was asked) is recorded, without the pins
 // lola did not write: the answer stands, and the next sync asks again only about the removals and
 // the accepted entries (of entries, the run's) whose new pin or folder content it did not install.
+// A move's answer is not recorded: its record covers the files it did not write.
 func (e *Engine) declineRemovals(req SyncRequest, man *manifest.Manifest, layers []Layer, led *ledger.Ledger, rec *trust.Record, acc *acceptance,
 	entries []*syncEntry) error {
 	sc := req.Scope
-	if acc == nil {
+	// A move writes its files and the trust of its answer together, or neither.
+	if acc == nil || req.move != nil {
 		return &RemovalsDeclinedError{Retry: e.commandOf(req)}
 	}
 	view := acc.record(rec.View, trustParts(man, layers, nil))
 	if err := e.saveTrust(sc, view); err != nil {
-		return errs.WithHints(fmt.Errorf("lola could not record that you trust %s: %w", acc.files(filepath.Base(e.files(sc).manifest)), err),
+		return errs.WithHints(fmt.Errorf("lola could not record that you trust %s: %w", acc.files(e.manifestName(sc)), err),
 			syncAgain(e.SyncCommand(sc)))
 	}
 	was, err := rec.View.Hash()
@@ -1162,48 +1561,21 @@ func (e *Engine) declineRemovals(req SyncRequest, man *manifest.Manifest, layers
 	if err != nil {
 		return err
 	}
-	d := &RemovalsDeclinedError{Recorded: !rec.Exists || now != was, Render: e.rendersOther(sc, rec.View, view, man, led, entries),
-		Retry: e.commandOf(req)}
+	d := &RemovalsDeclinedError{Recorded: !rec.Exists || now != was, Retry: e.commandOf(req)}
 	for _, se := range entries {
 		installed := led.Modules[se.ent.Name]
 		folder := se.spec.Kind == source.KindFolder && (installed == nil || installed.Digest != se.v.Meta.Digest)
-		if slices.Contains(acc.modules[se.key], se.ent.Name) && (se.pin != nil || folder) {
+		if !slices.Contains(acc.modules[se.key], se.ent.Name) {
+			continue
+		}
+		if name := shown(se.ent.Name); !slices.Contains(d.Trusted, name) {
+			d.Trusted = append(d.Trusted, name)
+		}
+		if se.pin != nil || folder {
 			d.Again = append(d.Again, shown(se.ent.Name))
 		}
 	}
 	return d
-}
-
-// rendersOther reports whether trusting view instead of old changes what render installs (Plan
-// 6a §10.3), by render's own check: an installed module whose entry asks for the source lock.json
-// records, that view covers (and, without targets of its own, covers the top-level targets) and
-// old did not, is no longer left out. A folder this run did not stage, or staged with content
-// that differs from the version installed, or whose cached source moved, stays left out,
-// whatever the record says.
-func (e *Engine) rendersOther(sc Scope, old, view trust.View, man *manifest.Manifest, led *ledger.Ledger, entries []*syncEntry) bool {
-	rendered := func(v trust.View, ent manifest.Entry) bool {
-		return v.Covers(ent) && (len(ent.Targets) > 0 || slices.Equal(v.Targets, man.Targets))
-	}
-	for _, ent := range man.Modules {
-		in := led.Modules[ent.Name]
-		if in == nil || ent.Source != in.Source || ent.Ref != in.Ref || ent.Path != in.Path || !rendered(view, ent) || rendered(old, ent) {
-			continue
-		}
-		spec, ok, err := source.Parse(ent.Source, canonicalRoot(sc.ProjectDir))
-		folder := err == nil && ok && spec.Kind == source.KindFolder
-		if folder {
-			// A folder this run did not stage (declined, or outside the run) may have changed content:
-			// render would leave it out, so it is not claimed.
-			k := slices.IndexFunc(entries, func(se *syncEntry) bool { return se.ent.Name == ent.Name })
-			if k < 0 || entries[k].v.Meta.Digest != in.Digest {
-				continue
-			}
-		}
-		if moved, err := e.folderMoved(sc, ent.Name, in); err == nil && moved == "" {
-			return true
-		}
-	}
-	return false
 }
 
 // trustReport is the report of a trust check, every manifest value through untrusted.Text.
@@ -1211,6 +1583,11 @@ func trustReport(rep trust.Report) TrustReport {
 	out := TrustReport{Status: rep.Status, Changes: []TrustChange{}, Replacements: []Replacement{}}
 	if rep.Targets != nil {
 		out.Targets = &trust.FieldChange{Field: rep.Targets.Field, From: shownValue(rep.Targets.From), To: shownValue(rep.Targets.To)}
+	}
+	for _, name := range slices.Sorted(maps.Keys(rep.ProfileTargets)) {
+		t := rep.ProfileTargets[name]
+		out.ProfileTargets = append(out.ProfileTargets, ProfileTargets{Profile: shown(name),
+			FieldChange: trust.FieldChange{Field: t.Field, From: shownValue(t.From), To: shownValue(t.To)}})
 	}
 	for _, c := range rep.Changes {
 		c.Module, c.Profile = shown(c.Module), shown(c.Profile)
@@ -1254,11 +1631,11 @@ func served(se *syncEntry) string {
 }
 
 // pinReasons gives each change of an entry the run writes a pin for its reason (Plan 6a §7.5):
-// re-pin from its ref under --update, or pin what its ref serves now; an entry whose manifest
-// entry is as trusted gets a change of its own, so the diff names it. Before anything is fetched
-// (fetched false) the pin is not known, which the reason says. A folder whose content changed is
-// given its reason too.
-func pinReasons(rep *TrustReport, entries []*syncEntry, fetched bool) {
+// re-pin from its ref, naming flag (SyncRequest.updateFlag), or pin what its ref serves now; an
+// entry whose manifest entry is as trusted gets a change of its own, so the diff names it. Before
+// anything is fetched (fetched false) the pin is not known, which the reason says. A folder whose
+// content changed is given its reason too.
+func pinReasons(rep *TrustReport, entries []*syncEntry, fetched bool, flag string) {
 	for _, se := range entries {
 		var reason string
 		switch {
@@ -1268,10 +1645,18 @@ func pinReasons(rep *TrustReport, entries []*syncEntry, fetched bool) {
 			reason = "content changed since lola installed it"
 		case !needsPin(se) || fetched && se.pin == nil:
 			continue
-		case se.update && fetched:
-			reason = "re-pin from " + served(se) + " (--update)"
 		case se.update:
-			reason = "re-pin from " + served(se) + " (--update; not fetched yet)"
+			var notes []string
+			if flag != "" {
+				notes = append(notes, flag)
+			}
+			if !fetched && !se.fresh { // a fresh head is known without a fetch
+				notes = append(notes, "not fetched yet")
+			}
+			reason = "re-pin from " + served(se)
+			if len(notes) > 0 {
+				reason += " (" + strings.Join(notes, "; ") + ")"
+			}
 		case fetched:
 			reason = "pin what " + served(se) + " serves now"
 		default:
@@ -1333,6 +1718,11 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 				file = projectProfileFile(strings.TrimPrefix(c.Profile, string(profile.KindProject)+":"))
 			}
 			if !c.FolderContent && len(c.Fields) > 0 && !slices.Contains(files, file) {
+				files = append(files, file)
+			}
+		}
+		for _, pt := range rep.ProfileTargets {
+			if file := projectProfileFile(partKey(pt.Profile)); !slices.Contains(files, file) {
 				files = append(files, file)
 			}
 		}
@@ -1398,7 +1788,10 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 		}
 	}
 	run := "lola sync"
-	if req.Profiles != nil {
+	switch {
+	case req.Installed:
+		run = "lola update"
+	case req.Profiles != nil || req.move != nil || req.profileArgs != nil:
 		run = "lola profile"
 	}
 	msg := run + " needs " + strings.Join(answers, "; and ") + ", and there is no terminal to ask on"
@@ -1454,7 +1847,7 @@ func (e *Engine) containLocalSources(sc Scope, entries []*syncEntry, display []s
 	var root string
 	for _, se := range entries {
 		local := source.IsLocal(se.spec.Kind, se.spec.Location)
-		// A folder of the user's own profile is theirs, as user.yml's are; a project profile's is
+		// A folder of the user's own profile is theirs; a project profile's is
 		// checked as project.yml's are (Plan 6b §4.3, §19 R5). An entry whose location the record
 		// trusts is not checked again unless it is written inside the project, where a pulled link
 		// could lead it out.
@@ -1575,12 +1968,12 @@ func needsPin(se *syncEntry) bool {
 
 // SyncNames is the module names lola sync takes in sc, for completion: every module the scope's
 // layers want, installed or not, and every module installed there, in name order. It reads the
-// manifest, lock.json and the user's own active profiles, under the profiles lock taken shared
+// manifest, lock.json and the user's own active profile, under the profiles lock taken shared
 // as a dry run takes it (none before any lola made the lock file), and no other lock; it runs no
 // git, so it does not check that lock.json is untracked, which every command it completes does.
 // So it never reads a project profile: a committed lock.json could name one, and completion would
-// parse checked-in files no command has checked (Plan 6b §19 S5). The modules of active project
-// profiles that are not installed are left out.
+// parse checked-in files no command has checked (Plan 6b §19 S5). The modules of an active project
+// profile that are not installed are left out.
 func (e *Engine) SyncNames(sc Scope) ([]string, error) {
 	unlock, err := e.readProfiles(true)
 	if err != nil {
@@ -1592,9 +1985,9 @@ func (e *Engine) SyncNames(sc Scope) ([]string, error) {
 		return nil, err
 	}
 	own := led.Clone()
-	own.Profiles = slices.DeleteFunc(own.Profiles, func(a ledger.Active) bool {
-		return strings.HasPrefix(a.Name, string(profile.KindProject)+":")
-	})
+	if own.Profile != nil && strings.HasPrefix(own.Profile.Name, string(profile.KindProject)+":") {
+		own.Profile = nil
+	}
 	layers, _, err := e.layers(sc, man, own)
 	if err != nil {
 		return nil, err
@@ -1621,23 +2014,30 @@ func sortedNames(led *ledger.Ledger) []string {
 }
 
 // refuseMissingManifest refuses a sync of a scope with no manifest and no profile in play: nothing
-// a layer wants (want), no active profile and no module a profile installed (led). There is
-// nothing it could make the scope match. A scope with no manifest that a profile wants modules
+// a layer wants (want), no active profile and no module a profile installed (led), at user scope
+// no module at all, whose leftovers from an earlier build's user.yml a sync removes (spec
+// 2026-10-29 §7). There is nothing it could make the scope match. A scope with no manifest that a profile wants modules
 // in, or once did, syncs as an empty manifest (Plan 6b §6.2, §10, §19 R4), so the modules of a
 // profile that is gone are removed; an existing manifest with no modules means "remove
 // everything".
 func (e *Engine) refuseMissingManifest(sc Scope, want []Wanted, led *ledger.Ledger) error {
-	if len(want) > 0 || len(led.Profiles) > 0 || slices.ContainsFunc(sortedNames(led), func(n string) bool { return led.Modules[n].From != "" }) {
+	if len(want) > 0 || led.Profile != nil || slices.ContainsFunc(sortedNames(led), func(n string) bool {
+		return led.Modules[n].From != "" || sc.Kind == target.User
+	}) {
 		return nil
+	}
+	if sc.Kind == target.User {
+		path := e.defaultPath()
+		if _, err := os.Lstat(path); err == nil || !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return errs.WithHints(fmt.Errorf("no default.yml at %s", untrusted.Text(path, untrusted.MaxName)),
+			"install a module at user scope first: lola install --user <source>")
 	}
 	path := e.files(sc).manifest
 	_, err := os.Lstat(path)
 	if err == nil || !errors.Is(err, os.ErrNotExist) {
 		return err
-	}
-	if sc.Kind == target.User {
-		return errs.WithHints(fmt.Errorf("no user.yml at %s", untrusted.Text(path, untrusted.MaxName)),
-			"install a module at user scope first: lola install --user <source>")
 	}
 	return errs.WithHints(fmt.Errorf("no project.yml in %s", untrusted.Text(sc.ProjectDir, untrusted.MaxName)),
 		"start one: "+e.Command(sc, "install")+" <source>", "or sync another project: lola sync -C <dir>")
@@ -1649,6 +2049,10 @@ func (e *Engine) refuseMissingManifest(sc Scope, want []Wanted, led *ledger.Ledg
 type syncLimit struct {
 	names []string
 	only  bool
+	// files says the run writes profile files alone and applies nothing (SyncRequest.writeOnly):
+	// no part of the stack is judged, so a pulled change of the bundle on waits for the run that
+	// applies it (spec 2026-10-29 §16.3).
+	files bool
 }
 
 // all reports whether the run acts on every module.
@@ -1663,12 +2067,17 @@ func (e *Engine) limitTo(sc Scope, layers []Layer, want []Wanted, led *ledger.Le
 	var l syncLimit
 	for _, name := range names {
 		if find(want, name) == nil && led.Modules[name] == nil {
-			base := layers[len(layers)-1].Name
-			if len(layers) > 1 {
-				var profiles []string
-				for _, ly := range layers[:len(layers)-1] {
+			// The base is named apart from the active profile's layers (spec 2026-10-29 §3.1).
+			var base string
+			var profiles []string
+			for _, ly := range layers {
+				if ly.Base {
+					base = ly.Name
+				} else {
 					profiles = append(profiles, ly.Name)
 				}
+			}
+			if len(profiles) > 0 {
 				base += " or a profile (" + strings.Join(profiles, ", ") + ")"
 			}
 			listed, gone := []string{}, []string{}
@@ -1712,10 +2121,30 @@ func runReport(rep trust.Report, limit syncLimit, entries []*syncEntry) trust.Re
 	if slices.ContainsFunc(entries, func(se *syncEntry) bool { return len(se.ent.Targets) == 0 }) {
 		out.Targets = rep.Targets
 	}
-	if out.Targets == nil && len(out.Changes) == 0 {
+	for name, t := range rep.ProfileTargets {
+		// A project bundle's member list (Field bundle) decides which profiles the scope loads: it
+		// is in every run's report that applies the scope, an activation's that loads nothing
+		// included; a run that only writes files applies nothing it could decide.
+		if (t.Field == "bundle" && !limit.files) || slices.ContainsFunc(entries, func(se *syncEntry) bool { return se.inherits && se.part() == shown(name) }) {
+			if out.ProfileTargets == nil {
+				out.ProfileTargets = map[string]*trust.FieldChange{}
+			}
+			out.ProfileTargets[name] = t
+		}
+	}
+	if out.Targets == nil && len(out.ProfileTargets) == 0 && len(out.Changes) == 0 {
 		out.Status = trust.StatusTrusted
 	}
 	return out
+}
+
+// withoutTargets is rep without its top-level targets' change, trusted when nothing else changed.
+func withoutTargets(rep trust.Report) trust.Report {
+	rep.Targets = nil
+	if len(rep.ProfileTargets) == 0 && len(rep.Changes) == 0 {
+		rep.Status = trust.StatusTrusted
+	}
+	return rep
 }
 
 // outOfSync is the notice of a limited run about the modules it left out that are not in sync,
@@ -1770,18 +2199,25 @@ func nameList(names []string) string {
 // the name (§6.5); the effective targets are known: the entry's, else (a profile's entry has its
 // profile's already) the manifest's (Plan 6b §6.2). Errors name the file the entry is in.
 //
-// lola never writes a profile of the user's own (Plan 6b §6.4, D7): its unpinned git or archive
-// entry takes the pin lock.json records for its source, ref and path, as a manifest entry takes
+// lola never writes pins into a profile of the user's own (Plan 6b §6.4, D7): its unpinned git or archive
+// entry takes the pin pins.yaml records for its source, ref and path (pins, read at user scope,
+// nil elsewhere; spec 2026-10-29 §3.4), else the one lock.json records, as a manifest entry takes
 // the one sync wrote into it, until --update resolves its ref again. A project profile's entry is
 // checked, pinned and re-pinned as a manifest entry is (§19 R1). Which layer won before (from)
 // does not matter: a planted lock.json sets it too, so resolveSync checks reachability instead. --update naming a profile's
-// pinned entry is refused, since its pin is in a file lola does not write; an --update that names
+// pinned entry is refused, since its pin is in a file lola does not write pins into; an --update that names
 // no module leaves those entries at their pins, with a notice each (kept).
+//
+// Under lola update (req.Installed, spec 2026-10-29 §5.1) such an entry is left as installed with
+// that notice, never refused; an entry whose targets are not the ones installed is left as
+// installed with a finding appended to leftOut; and a git or archive entry that does not follow
+// its catalog is marked fresh when its cache head was fetched within age.
 func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, led *ledger.Ledger, req SyncRequest,
-	limit syncLimit, catalogs *syncCatalogs) (_ []*syncEntry, kept []Notice, _ error) {
+	limit syncLimit, catalogs *syncCatalogs, age config.Age, leftOut *[]target.Finding, pins *config.Pins) (_ []*syncEntry, kept []Notice, _ error) {
 	var out []*syncEntry
 	for _, w := range want {
-		ent, name, update := w.Entry, w.Name, req.Update
+		ent, name, update, fromPins, seeded := w.Entry, w.Name, req.Update, false, false
+		ps := pinSource{pins: pins, seed: req.seed, update: req.Update}
 		if !limit.has(name) {
 			continue
 		}
@@ -1794,29 +2230,49 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		if w.own() {
 			base, from, file = shown(w.path), w.From, w.path
 		}
-		// The pin of the user's own profile, or of a remote profile a profile extends, is in a
-		// file lola sync never writes (Plan 6b §6.4).
-		if w.own() || w.via != nil {
-			pinFile, editPin := e.ownPin(sc, w.From, w.path, w.via)
+		// The pin of the user's own profile, or of a remote profile a project bundle names, is in a
+		// file lola sync never writes pins into (Plan 6b §6.4).
+		if w.own() || w.member != nil {
+			pinFile, editPin := e.ownPin(sc, w.From, w.path)
 			switch in := led.Modules[name]; {
 			case ent.Digest != "" && update && !limit.all():
 				// --update of a remote profile applies what it moves itself; a hand edit needs a sync.
-				never, then := "lola never writes", editPin+", then: "+e.SyncCommand(sc, name)
-				if remoteLayer(w.From) || w.via != nil {
+				never, then := "lola never writes pins into", editPin+", then: "+e.SyncCommand(sc, name)
+				if remoteLayer(w.From) {
 					never, then = "only lola profile --update changes", editPin
+				}
+				if req.Installed { // lola update leaves it as installed (spec 2026-10-29 §5.1)
+					kept = append(kept, Notice{Level: LevelInfo, Text: shown(name) + ": its pin is in " + pinFile + "; " + then})
+					continue
 				}
 				return nil, nil, errs.WithHints(fmt.Errorf("%s: its pin is in %s, which %s", name, pinFile, never), then)
 			case ent.Digest != "" && update:
 				update = false
 				kept = append(kept, Notice{Level: LevelInfo, Text: name + ": --update leaves the pin " + pinFile + " sets; " + editPin})
-			case w.own() && ent.Digest == "" && !update && in != nil && in.Digest != "" && in.Source == ent.Source && in.Ref == ent.Ref && in.Path == ent.Path &&
-				!source.IsFolderForm(ent.Source):
-				ent.Commit, ent.Digest = in.Commit, in.Digest
+			case w.own() && ent.Digest == "" && !update && !source.IsFolderForm(ent.Source):
+				// At user scope pins.yaml first for a profile of yours, then lock.json (spec
+				// 2026-10-29 §3.4): a missing pins.yaml never causes an unasked upgrade, and a
+				// newer synced pin is a change. A move between scopes keeps the version installed
+				// (plan 12.2b ambiguity 5): its seed comes before pins.yaml, whose pin the next
+				// plain sync applies.
+				if r, pinned, seed, ok := ps.ownPin(w, in); ok {
+					ent, fromPins, seeded = r, pinned, seed
+				}
 			}
 		}
 		spec, ok, err := source.Parse(ent.Source, sourceRoot(sc))
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
+		}
+		in, goneFolder := led.Modules[name], false
+		if !ok && in != nil && in.Digest != "" && in.Source == ent.Source && source.IsFolderForm(ent.Source) {
+			// A folder installed from this very path that is gone now: sync renders the cached
+			// version installed, with a warning.
+			loc := ent.Source
+			if !filepath.IsAbs(loc) {
+				loc = filepath.Join(sourceRoot(sc), loc)
+			}
+			spec, ok, goneFolder = source.Spec{Kind: source.KindFolder, Location: filepath.Clean(loc)}, true, true
 		}
 		if !ok {
 			return nil, nil, fmt.Errorf("%s: %s is not a source; sources are %s", name, untrusted.Text(ent.Source, untrusted.MaxName),
@@ -1825,7 +2281,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		// A remote profile's entry names a remote source (D4): Parse never looks a URL or scp form
 		// up on disk, and a path that still reads as local, a Windows drive, is refused (ruling
 		// R-6b3b-5).
-		if (remoteLayer(w.From) || w.via != nil) && source.IsLocal(spec.Kind, spec.Location) {
+		if remoteLayer(w.From) && source.IsLocal(spec.Kind, spec.Location) {
 			return nil, nil, fmt.Errorf("%s: %s is on this machine; a remote profile names only git repositories and https archives", name,
 				untrusted.Text(ent.Source, untrusted.MaxName))
 		}
@@ -1834,8 +2290,8 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			return nil, nil, fmt.Errorf("%s: %w", name, err)
 		}
 		repin := e.SyncCommand(sc, "--update", name)
-		if (w.own() || w.via != nil) && w.Digest != "" {
-			_, repin = e.ownPin(sc, w.From, w.path, w.via)
+		if (w.own() || w.member != nil) && w.Digest != "" {
+			_, repin = e.ownPin(sc, w.From, w.path)
 		}
 		if err := checkPinShape(name, base, spec.Kind, ent, repin); err != nil {
 			return nil, nil, err
@@ -1843,6 +2299,9 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		gone, err := e.refuseOtherSource(name, base, spec, e.commandOf(req))
 		if err != nil {
 			return nil, nil, err
+		}
+		if goneFolder {
+			gone = "" // nothing is cached from the gone folder: the cached version is what is installed
 		}
 		ts := ent.Targets
 		if len(ts) == 0 {
@@ -1869,7 +2328,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		var follow *marketPick
 		if update && ent.Market != nil && catalogs != nil {
 			var n *Notice
-			if follow, n = e.follow(sc, catalogs, ent, spec, req.Options.DryRun, req.Display); n != nil {
+			if follow, n = e.follow(sc, catalogs, ent, spec, req); n != nil {
 				kept = append(kept, *n)
 			}
 			if follow != nil {
@@ -1877,8 +2336,36 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 				spec.SHA256, spec.FromCatalog = listed.SHA256, spec.FromCatalog || listed.FromCatalog
 			}
 		}
-		out = append(out, &syncEntry{ent: ent, from: from, file: file, key: w.key, via: w.via, ledgerPin: w.own() && w.Digest == "" && ent.Digest != "", goneFrom: gone,
-			spec: spec, targets: ts, update: update, follow: follow})
+		se := &syncEntry{ent: ent, from: from, file: file, key: w.key, inherits: w.inherits, bundles: w.bundles, member: w.member, ledgerPin: w.own() && w.Digest == "" && ent.Digest != "" && !fromPins, pinsFile: fromPins, seeded: seeded, goneFrom: gone,
+			spec: spec, targets: ts, update: update, follow: follow}
+		if in != nil {
+			se.installed = in.Digest
+		}
+		if req.Installed {
+			// lola update changes no module's targets: that is sync's (spec 2026-10-29 §5.1).
+			if installed := allTargets(led.Modules[name], nil, &manifest.Manifest{}); !slices.Equal(slices.Sorted(slices.Values(ts)), installed) {
+				*leftOut = append(*leftOut, target.Finding{Severity: target.SeverityWarn, Module: untrusted.Text(name, untrusted.MaxName), Kind: "module",
+					Code: CodeTargetsDiffer, Text: "its entry asks for other assistants than are installed; it stays as installed",
+					Hint: "apply the change: " + e.SyncCommand(sc, append([]string{name}, req.Display...)...)})
+				continue
+			}
+			// A fresh head serves the ref (§4); an entry that follows its catalog fetches through it,
+			// and one whose cached local source is gone fetches the new one, which replaces it. A
+			// git head from before commits were recorded is fetched again (resolveHead).
+			if update && follow == nil && gone == "" && spec.Kind != source.KindFolder {
+				head, ok, err := e.Store.Head(name, ent.Ref)
+				if err != nil {
+					return nil, nil, err
+				}
+				se.fresh = ok && fresh(head.Fetched, e.Now(), age) && (spec.Kind != source.KindGit || head.Commit != "")
+				// A fresh head that is the pin moves nothing: the entry is synced at its pin, with
+				// no re-pin and so no trust to ask for (ruling R7).
+				if se.fresh && ent.Digest != "" && head.Meta.Digest == ent.Digest && head.Commit == ent.Commit {
+					se.update = false
+				}
+			}
+		}
+		out = append(out, se)
 	}
 	return out, kept, nil
 }
@@ -1925,6 +2412,29 @@ func (e *Engine) refuseOtherSource(name, base string, spec source.Spec, again st
 		"remove it from your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name})+" (add -y off a terminal)", "then: "+again)
 }
 
+// installedWayOut gives a refusal that is one installed module's own state a way out, keeping
+// the run's output flags. The run stays refused. A cache record (index.yml) that does not decode
+// is the cache's copy alone: the hint removes it from the cache and repeats req (a dry run as
+// one), which fetches the module again. Content that no longer loads or now declares another
+// module is the module itself: the hint is the uninstall that removes it. A failure of lola's
+// own state, such as a cache it cannot read, and an entry lola has not installed get none.
+func (e *Engine) installedWayOut(sc Scope, led *ledger.Ledger, err error, req SyncRequest) error {
+	if ie, ok := errors.AsType[*store.IndexError](err); ok && led.Modules[ie.Name] != nil {
+		rm := errs.ShellJoin(append([]string{"lola", "cache", "rm", untrusted.Text(ie.Name, untrusted.MaxName)}, req.Display...))
+		return errs.WithHints(err, "remove it from your cache: "+rm+" (add -y off a terminal)", "then: "+e.commandOf(req, req.again()...))
+	}
+	var name string
+	if oe, ok := errors.AsType[*store.OtherNameError](err); ok {
+		name = oe.Want
+	} else if le, ok := errors.AsType[*store.LoadError](err); ok {
+		name = le.Name
+	}
+	if led.Modules[name] == nil {
+		return err
+	}
+	return errs.WithHints(err, "remove it: "+e.Command(sc, "uninstall", append([]string{name}, req.Display...)...))
+}
+
 // goneNotices are the notices of the entries whose cached local source no longer exists, which
 // the run caches from the entry's source instead (Plan 6a §6.5).
 func goneNotices(entries []*syncEntry) []Notice {
@@ -1954,8 +2464,9 @@ func describeSource(location, path string, comps *source.Components) string {
 // snapshot of the cache or a fetch staged in run: a folder is read every run; --update fetches
 // the ref; an unpinned entry takes the cache head for its ref, or fetches the ref when there is
 // none (or the head predates commits in heads); a pinned entry takes the cached version, or
-// fetches its commit. A new pin is recorded in se.pin.
-func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run string) error {
+// fetches its commit. A new pin is recorded in se.pin. display is the run's output flags, which
+// the hints keep.
+func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run string, display []string) error {
 	name, ent := se.ent.Name, se.ent
 	stage := func() error {
 		st, err := e.prepareFetch(ctx, name, se.spec, run)
@@ -1968,8 +2479,30 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 	}
 	switch {
 	case se.spec.Kind == source.KindFolder:
-		return stage()
+		if _, err := os.Stat(se.spec.Location); err == nil {
+			return stage()
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%s: %w", name, untrusted.CleanErr(err))
+		}
+		v, found, err := e.Store.Pinned(name, se.installed, run)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return errs.WithHints(fmt.Errorf("%s is no longer in your cache, and its source folder is gone", name),
+				"remove it: "+e.Command(sc, "uninstall", append([]string{name}, display...)...))
+		}
+		se.v = v
+		se.notices = append(se.notices, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: its source folder %s is gone; rendered the version installed",
+			name, untrusted.Text(se.spec.Location, untrusted.MaxName))})
+		return nil
 	case se.update:
+		if se.fresh {
+			done, err := e.resolveHead(se, run)
+			if err != nil || done {
+				return err
+			}
+		}
 		get := stage
 		if se.follow != nil {
 			get = func() error { return e.followPin(ctx, se, run) } // the catalog's checks, and its commit pin, not the ref's head
@@ -2036,33 +2569,32 @@ func (e *Engine) resolveSync(ctx context.Context, sc Scope, se *syncEntry, run s
 }
 
 // pinnedIn is where an entry's pin is written, for a pinned fetch's error: the manifest or a
-// project profile, whose pin sync --update rewrites; lock.json for the unpinned entry of the
-// user's own profile, which --update resolves again; or that profile itself, which only the user
+// project profile, whose pin sync --update rewrites; pins.yaml or lock.json, whichever gave the
+// unpinned entry of the user's own profile its pin, which --update resolves again; or that profile itself, which only the user
 // edits (Plan 6b §6.4).
 func (e *Engine) pinnedIn(sc Scope, se *syncEntry) (file, repin string) {
 	switch {
-	case se.via != nil:
-		return e.ownPin(sc, se.from, se.file, se.via)
+	case se.member != nil:
+		return e.ownPin(sc, se.from, se.file)
 	case se.from == "":
-		return filepath.Base(e.files(sc).manifest), e.SyncCommand(sc, "--update", se.ent.Name)
+		return e.manifestName(sc), e.SyncCommand(sc, "--update", se.ent.Name)
 	case se.key != "":
 		return projectProfileFile(se.key), e.SyncCommand(sc, "--update", se.ent.Name)
+	case se.pinsFile:
+		return "pins.yaml", e.SyncCommand(sc, "--update", se.ent.Name)
 	case se.ledgerPin:
 		return "lock.json", e.SyncCommand(sc, "--update", se.ent.Name)
 	}
-	return e.ownPin(sc, se.from, se.file, nil)
+	return e.ownPin(sc, se.from, se.file)
 }
 
 // ownPin is where the pin of an entry from a profile of the user's own, or from a remote
-// profile a profile extends (via), is, as a message names it, and how to change it (Plan 6b
-// §6.4): from is the entry's layer and path its file. A remote profile's pin changes only with
-// lola profile remote:<name> --update; any other's is edited by hand.
-func (e *Engine) ownPin(sc Scope, from, path string, via *trust.ExtendsView) (file, repin string) {
+// profile, is, as a message names it, and how to change it (Plan 6b §6.4): from is the entry's
+// layer and path its file. A remote profile's pin changes only with lola profile
+// remote:<name> --update; any other's is edited by hand.
+func (e *Engine) ownPin(sc Scope, from, path string) (file, repin string) {
 	q := strings.TrimPrefix(from, ledger.FromProfile(""))
-	if via != nil {
-		q = via.Name
-	}
-	if via != nil || remoteLayer(from) {
+	if remoteLayer(from) {
 		return shown(q), "update it: " + e.Command(sc, "profile", q, "--update")
 	}
 	return shown(path), "edit the pin in " + shown(path)
@@ -2104,7 +2636,7 @@ func syncPinError(name, base string, ent manifest.Entry, err error, update strin
 func (e *Engine) prepareFetch(ctx context.Context, name string, spec source.Spec, run string) (store.Staged, error) {
 	f, err := source.Fetch(ctx, spec, run)
 	if err != nil {
-		return store.Staged{}, err
+		return store.Staged{}, &fetchFailedError{err}
 	}
 	return e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: name, Name: name, Source: spec.Location, Type: string(spec.Kind),
 		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), Components: spec.Components})

@@ -134,11 +134,13 @@ var _ = Describe("remote profiles", func() {
 		_, _, err = profile.LoadRemote(path)
 		Expect(err).To(MatchError(ContainSubstring(`unknown field "shell"`)))
 
+		tooLong := "version: 1\ndescription: " + strings.Repeat("x", 257) + "\n"
 		for content, want := range map[string]string{
 			"version: 2\n":                "was written by a newer lola (profile version 2)",
 			"version: 1\nshell: rm -rf\n": "field shell not found",
-			"version: 1\nextends: [go]\n": ":2: a remote profile cannot extend another",
-			"version: 1\ndescription: " + strings.Repeat("x", 257) + "\n": ":2: description is longer than 256 bytes",
+			"version: 1\nbundle: [go]\n":  ":2: bundle: a remote profile cannot combine profiles; its names would resolve on each reader's machine",
+			"version: 1\nextends: [go]\n": ":2: extends: is no longer a key",
+			tooLong:                       ":2: description is longer than 256 bytes",
 		} {
 			path := keep("bad", content, nil)
 			_, _, err := profile.LoadRemote(path)

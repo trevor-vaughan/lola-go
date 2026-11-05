@@ -71,6 +71,8 @@ type scopePicker struct {
 // ticked and their scopes: project roots first, then the user scope, as --scope both orders them.
 func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]string, []engine.ScopeChoice, error) {
 	step.ProjectRoot, step.Home = untrusted.Text(res.ProjectRoot, untrusted.MaxName), sp.eng.Paths.Home
+	step.ProjectContext = contextFacts(sp.eng.Context(engine.Scope{Kind: target.Project, ProjectDir: res.ProjectRoot}, nil))
+	step.UserContext = contextFacts(sp.eng.Context(engine.Scope{Kind: target.User}, nil))
 	home := engine.Scope{Kind: target.Project, ProjectDir: sp.eng.Paths.Home}.Key()
 	for {
 		entries, err := sp.p.Scope(step)

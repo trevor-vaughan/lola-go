@@ -358,19 +358,19 @@ var _ = Describe("Engine with git and archive sources", func() {
 				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
 				return err
 			}, func() (string, string) { return v1, d1 }, ""),
-			Entry("render replacing its copy", func() error {
+			Entry("sync replacing its copy", func() error {
 				writeTree(proj, map[string]string{".lola/project.yml": pinned()})
 				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks}})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(os.Remove(e.Paths.Consent)).To(Succeed())
 				Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "kit"))).To(Succeed())
-				_, err = e.Render(ctx, sc, engine.Options{})
+				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 				return err
 			}, func() (string, string) { return v1, d1 }, ""),
 			Entry("profile --on of a project profile listing it", func() error {
 				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n",
 					".lola/profiles/review.yml": strings.Replace(pinned(), "targets: [claude-code]\n", "", 1)})
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"review"}},
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "review"},
 					Options: engine.Options{Trust: engine.TrustEntries | engine.TrustProfiles}})
 				return err
 			}, func() (string, string) { return v1, d1 }, ""),
@@ -426,8 +426,8 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.Remove(e.Paths.Consent)).To(Succeed())
 			Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "kit"))).To(Succeed())
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project " + url + " --ref " + v1, "then consent to it: lola render --project --trust=hooks"}))
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(errs.Hints(err)).To(Equal([]string{"review it: lola info --project " + url + " --ref " + v1, "then consent to it: lola sync --project --trust=hooks"}))
 		})
 	})
 
@@ -500,8 +500,6 @@ var _ = Describe("Engine with git and archive sources", func() {
 			if !cached {
 				Expect(e.Store.Remove("example")).To(BeTrue())
 			}
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "render, cached: %v", cached)
 			_, _, err = e.Status(ctx, sc, nil)
 			Expect(err).To(MatchError(ContainSubstring("starts with '-'")), "list, cached: %v", cached)
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
@@ -561,8 +559,6 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(os.WriteFile(manPath, []byte(m), 0o600)).To(Succeed())
 			_, err = e.Manifest(sc)
 			Expect(err).To(MatchError(ContainSubstring(h.want)), "project.yml load: %s", h.source)
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).To(MatchError(ContainSubstring(h.want)), "project.yml render: %s", h.source)
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(ContainSubstring(h.want)), "project.yml sync: %s", h.source)
 			Expect(os.WriteFile(manPath, goodMan, 0o600)).To(Succeed())
@@ -573,18 +569,16 @@ var _ = Describe("Engine with git and archive sources", func() {
 			_, err = e.Ledger(sc)
 			Expect(err).To(MatchError(ContainSubstring(h.want)), "lock.json load: %s", h.source)
 			Expect(e.Store.Remove("example")).To(BeTrue())
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).To(MatchError(ContainSubstring(h.want)), "lock.json render: %s", h.source)
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(ContainSubstring(h.want)), "lock.json sync: %s", h.source)
 			Expect(os.WriteFile(ledPath, goodLed, 0o600)).To(Succeed())
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).NotTo(HaveOccurred(), "restored state renders again")
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).NotTo(HaveOccurred(), "restored state syncs again")
 			Expect(pwned).NotTo(BeAnExistingFile())
 		}
 	})
 
-	Describe("render installs the version the manifest pins, else the one lock.json records", func() {
+	Describe("sync installs the version the manifest pins, else the one lock.json records", func() {
 		var url, work, bare string
 		BeforeEach(func() {
 			url, _ = serveRepo()
@@ -603,9 +597,9 @@ var _ = Describe("Engine with git and archive sources", func() {
 			return string(b)
 		}
 		user := engine.Scope{Kind: target.User}
-		// atUser installs req at user scope, whose user.yml and lock.json are the user's own, then
-		// edits both alike by hand: render acts on what they say, as it never acts on a project's
-		// lock.json against its project.yml.
+		// atUser installs req at user scope, whose default.yml and lock.json are the user's own, then
+		// edits both alike by hand, the version lock.json records written into default.yml as a pin:
+		// sync acts on what they say, as it never acts on a project's lock.json against its project.yml.
 		atUser := func(req engine.InstallRequest, change func(*manifest.Entry, *ledger.Entry)) {
 			GinkgoHelper()
 			_, err := e.Install(ctx, user, tmp, []engine.InstallRequest{req}, claude)
@@ -616,12 +610,13 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			ent := *m.Find("example")
 			in := l.Modules["example"]
+			ent.Commit, ent.Digest = in.Commit, in.Digest
 			change(&ent, in)
 			delete(l.Modules, "example")
 			l.Modules[ent.Name] = in
 			Expect(l.Save(e.Paths.UserLedger)).To(Succeed())
-			Expect(os.WriteFile(e.Paths.UserManifest, []byte(""), 0o600)).To(Succeed())
-			dst, data, err := manifest.Edit(e.Paths.UserManifest, manifest.Change{Set: []manifest.Entry{ent}, Targets: m.Targets})
+			Expect(os.WriteFile(filepath.Join(e.Paths.UserProfiles, "default.yml"), []byte(""), 0o600)).To(Succeed())
+			dst, data, err := manifest.Edit(filepath.Join(e.Paths.UserProfiles, "default.yml"), manifest.Change{Set: []manifest.Entry{ent}, Targets: m.Targets})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.WriteFile(dst, data, 0o600)).To(Succeed())
 		}
@@ -634,13 +629,13 @@ var _ = Describe("Engine with git and archive sources", func() {
 			up, err := e.Update(ctx, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(up.Updates).To(ConsistOf(HaveField("Changed", true)))
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ship()).To(Equal("Ship $ARGUMENTS\n"))
 			Expect(lockFile().Modules["example"].Digest).To(Equal(installed))
 		})
 
-		It("render renders the pin, never the head", func() {
+		It("sync renders the pin, never the head", func() {
 			_, err := e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			push(map[string]string{"commands/ship.md": "Ship v2\n"})
@@ -651,16 +646,16 @@ var _ = Describe("Engine with git and archive sources", func() {
 			push(map[string]string{"commands/ship.md": "Ship v3\n"})
 			_, err = e.Update(ctx, nil)
 			Expect(err).NotTo(HaveOccurred())
-			// The user pins v2 in user.yml by hand: lock.json has v1, the cache head v3.
+			// The user pins v2 in default.yml by hand: lock.json has v1, the cache head v3.
 			m, err := e.Manifest(user)
 			Expect(err).NotTo(HaveOccurred())
 			ent := *m.Find("example")
 			ent.Commit, ent.Digest = v2.Meta.Commit, v2.Meta.Digest
-			dst, data, err := manifest.Edit(e.Paths.UserManifest, manifest.Change{Set: []manifest.Entry{ent}})
+			dst, data, err := manifest.Edit(filepath.Join(e.Paths.UserProfiles, "default.yml"), manifest.Change{Set: []manifest.Entry{ent}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.WriteFile(dst, data, 0o600)).To(Succeed())
 
-			_, err = e.Render(ctx, user, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).NotTo(HaveOccurred())
 			b, err := os.ReadFile(filepath.Join(e.Paths.Home, ".claude/commands/ship.md"))
 			Expect(err).NotTo(HaveOccurred())
@@ -683,7 +678,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(os.RemoveAll(filepath.Join(e.Paths.Store, "example", "versions", id))).To(Succeed())
 			Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
 
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ship()).To(Equal("Ship $ARGUMENTS\n"))
 			Expect(filepath.Join(e.Paths.Store, "example", "versions", id)).To(BeADirectory())
@@ -693,21 +688,21 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(lockFile().Modules["example"]).To(And(HaveField("Digest", installed.Digest), HaveField("Commit", installed.Commit)))
 			entries, err := os.ReadDir(e.Paths.Staging)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(entries).To(BeEmpty(), "render leaves nothing staged")
+			Expect(entries).To(BeEmpty(), "sync leaves nothing staged")
 		})
 
 		It("reports the same findings for a version fetched again as for one the cache holds", func() {
 			push(map[string]string{".claude-plugin/plugin.json": `{"name":"example","x-extra":"kept"}`})
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
-			hit, err := e.Render(ctx, sc, engine.Options{})
+			hit, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(e.Store.Remove("example")).To(BeTrue())
 
-			miss, err := e.Render(ctx, sc, engine.Options{})
+			miss, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(miss.Findings).To(Equal(hit.Findings), "the cache state never changes what render reports")
-			Expect(miss.Findings).NotTo(ContainElement(HaveField("Text", ContainSubstring("x-extra"))), "a format adapter's warning is install's, not render's")
+			Expect(miss.Findings).To(Equal(hit.Findings), "the cache state never changes what sync reports")
+			Expect(miss.Findings).NotTo(ContainElement(HaveField("Text", ContainSubstring("x-extra"))), "a format adapter's warning is install's, not sync's")
 		})
 
 		It("keeps the scratch of a pinned fetch inside the run's staging directory", func() {
@@ -727,7 +722,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 				seen = append(seen, names)
 			})
 
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			servedMu.Lock()
 			defer servedMu.Unlock()
@@ -747,9 +742,10 @@ var _ = Describe("Engine with git and archive sources", func() {
 			})
 			Expect(e.Store.Remove("example")).To(BeTrue())
 
-			_, err := e.Render(ctx, user, engine.Options{})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).To(MatchError("example: commit " + commit + " is not on main at " + url))
-			Expect(errs.Hints(err)).To(ContainElement("re-pin to what main serves: lola sync --user --update example"))
+			Expect(errs.Hints(err)).To(ContainElement("re-pin to what main serves: edit the pin in "+filepath.Join(e.Paths.UserProfiles, "default.yml")),
+				"lola never writes default.yml's pin, written by hand")
 			_, found, err := e.Store.Origin("example")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(found).To(BeFalse(), "nothing was cached")
@@ -762,7 +758,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			})
 			Expect(e.Store.Remove("example")).To(BeTrue())
 
-			_, err := e.Render(ctx, user, engine.Options{})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).NotTo(HaveOccurred())
 			b, err := os.ReadFile(filepath.Join(e.Paths.Home, ".claude/commands/ship.md"))
 			Expect(err).NotTo(HaveOccurred())
@@ -781,7 +777,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(e.Store.Remove("example")).To(BeTrue())
 			Expect(os.WriteFile(archive, tarGz("example", map[string]string{"commands/ship.md": "replaced\n"}), 0o644)).To(Succeed())
 
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(ContainSubstring("the source now serves different content than project.yml pins (pinned " +
 				lockFile().Modules["example"].Digest)))
 			Expect(errs.Hints(err)).To(ContainElement("if you expect the change, re-pin it: lola sync --project --update example"),
@@ -792,41 +788,72 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(found).To(BeFalse())
 		})
 
-		It("coaches a git version with no recorded commit to install what its source serves now", func() {
-			// An unpinned entry renders lock.json's version, which records no commit.
+		It("pins what its ref serves for an unpinned user entry whose lock.json records no commit", func() {
 			atUser(engine.InstallRequest{Arg: url, Ref: "main"}, func(m *manifest.Entry, l *ledger.Entry) {
-				m.Commit, m.Digest, l.Commit = "", "", ""
+				m.Commit, m.Digest, l.Commit, l.Digest = "", "", "", ""
 			})
 			Expect(e.Store.Remove("example")).To(BeTrue())
+			Expect(os.Remove(e.Paths.Pins)).To(Succeed(), "nor does pins.yaml")
 
-			_, err := e.Render(ctx, user, engine.Options{})
-			Expect(err).To(MatchError(ContainSubstring("no commit is recorded")))
-			Expect(errs.Hints(err)).To(ContainElement(And(ContainSubstring("lola install "), ContainSubstring("--ref main"))))
-			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola uninstall example")))
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: user})
+			Expect(err).NotTo(HaveOccurred(), "default.yml is the user's own: sync pins an unpinned entry in lock.json")
+			main := gitIn(work, "rev-parse", "main")
+			Expect(res.Pins).To(BeEmpty(), "default.yml is never pinned")
+			m, err := e.Manifest(user)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.Find("example")).To(HaveField("Commit", ""))
+			l, err := ledger.Load(e.Paths.UserLedger)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(l.Modules["example"]).To(HaveField("Commit", main))
+			Expect(os.ReadFile(e.Paths.Pins)).To(HaveSuffix("  example:\n    - {source: '"+url+"', ref: main, commit: "+main+", digest: '"+
+				l.Modules["example"].Digest+"'}\n"), "and in pins.yaml")
 		})
 
-		It("keeps the uninstall hint when the cache index of a module cannot be read", func() {
+		It("hints removing the cache entry, then the run again, when the cache index of a module cannot be read", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(os.WriteFile(filepath.Join(e.Paths.Store, "example", "index.yml"), []byte(": ["), 0o600)).To(Succeed())
+			lock, err := os.ReadFile(filepath.Join(proj, ".lola", "lock.json"))
+			Expect(err).NotTo(HaveOccurred())
 
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).To(HaveOccurred())
-			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola uninstall example")))
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Display: []string{"--json"}})
+			Expect(err).To(MatchError(ContainSubstring(filepath.Join(e.Paths.Store, "example", "index.yml") + ": yaml: ")))
+			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example --json (add -y off a terminal)",
+				"then: lola sync --project --json"}))
+			Expect(os.ReadFile(filepath.Join(proj, ".lola", "lock.json"))).To(Equal(lock))
+			Expect(ship()).To(Equal("Ship $ARGUMENTS\n"))
+
+			// As hinted: lola cache rm removes the entry whatever its index holds, and the sync
+			// fetches the module's pin again.
+			Expect(e.Store.Remove("example")).To(BeTrue())
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Display: []string{"--json"}})
+			Expect(err).NotTo(HaveOccurred())
+			_, found, err := e.Store.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue(), "the sync cached the module again")
+			Expect(os.ReadFile(filepath.Join(proj, ".lola", "lock.json"))).To(Equal(lock))
+			Expect(ship()).To(Equal("Ship $ARGUMENTS\n"))
 		})
 
-		It("leaves out a folder that now declares another module, caching nothing under that name", func() {
+		It("hints lola update again after removing the cache entry when lola update meets an index it cannot read", func() {
+			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "main"}}, claude)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(filepath.Join(e.Paths.Store, "example", "index.yml"), []byte(": ["), 0o600)).To(Succeed())
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Installed: true, Update: true, Modules: []string{"example"}})
+			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)",
+				"then: lola update --project example"}))
+		})
+
+		It("refuses a folder that now declares another module with its way out, caching nothing under that name", func() {
 			folder := filepath.Join(tmp, "folder", "example")
 			writeTree(folder, exampleModule)
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: folder}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			writeTree(folder, map[string]string{"lola.yml": "name: beta\n"})
 
-			res, err := e.Render(ctx, sc, engine.Options{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElement(And(HaveField("Module", "example"), HaveField("Code", engine.CodeContentChanged),
-				HaveField("Text", `its content no longer loads: its source now declares module "beta"`),
-				HaveField("Hint", "review it: lola sync --project example; or remove it: lola uninstall --project example"))))
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).To(MatchError(`example: its source now declares module "beta"`))
+			Expect(errs.Hints(err)).To(Equal([]string{"remove it: lola uninstall --project example"}))
 			_, found, err := e.Store.Origin("beta")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(found).To(BeFalse(), "nothing is cached under the other name")
@@ -834,15 +861,28 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(ship()).To(Equal("Ship $ARGUMENTS\n"))
 		})
 
+		It("gives no uninstall way out for an entry lola has not installed", func() {
+			writeTree(proj, map[string]string{"mods/example/lola.yml": "name: beta\n", "mods/example/commands/ship.md": "Ship\n",
+				".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: mods/example}\n"})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
+				return engine.TrustAnswer{All: true}, nil
+			}})
+			Expect(err).To(MatchError(`example: its source now declares module "beta"`))
+			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("uninstall")))
+		})
+
 		It("refuses a pinned fetch that declares another module before caching it or moving a head", func() {
 			// A module that names itself: one that does not takes the name its entry gives it.
 			push(map[string]string{"lola.yml": "name: example\n"})
 			atUser(engine.InstallRequest{Arg: url, Ref: "main"}, func(m *manifest.Entry, _ *ledger.Entry) { m.Name = "other" })
 			Expect(e.Store.Remove("example")).To(BeTrue())
+			lock, err := os.ReadFile(e.Paths.UserLedger)
+			Expect(err).NotTo(HaveOccurred())
 
-			_, err := e.Render(ctx, user, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).To(MatchError(`other: its source now declares module "example"`))
-			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola uninstall other")))
+			Expect(errs.Hints(err)).To(Equal([]string{"remove it: lola uninstall --user other"}), "a pinned fetch: no sync to review it with")
+			Expect(os.ReadFile(e.Paths.UserLedger)).To(Equal(lock))
 			for _, name := range []string{"example", "other"} {
 				_, found, err := e.Store.Origin(name)
 				Expect(err).NotTo(HaveOccurred())
@@ -871,10 +911,10 @@ var _ = Describe("Engine with git and archive sources", func() {
 				},
 			} {
 				Expect(os.WriteFile(origin, oldFormat, 0o600)).To(Succeed())
-				_, err = e.Render(ctx, sc, engine.Options{})
+				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 				Expect(err).To(MatchError(ContainSubstring("does not match its digest")))
 				Expect(refetch()).To(Succeed())
-				_, err = e.Render(ctx, sc, engine.Options{})
+				_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 				Expect(err).NotTo(HaveOccurred())
 			}
 		})
@@ -890,12 +930,12 @@ var _ = Describe("Engine with git and archive sources", func() {
 				return string(b)
 			}
 			writeTree(folder, map[string]string{"commands/ship.md": "Ship from the folder\n"})
-			_, err = e.Render(ctx, user, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(userShip()).To(Equal("Ship from the folder\n"), "user.yml is the user's own: no trust question")
+			Expect(userShip()).To(Equal("Ship from the folder\n"), "default.yml is the user's own: no trust question")
 
 			Expect(os.RemoveAll(folder)).To(Succeed())
-			res, err := e.Render(ctx, user, engine.Options{Force: true})
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Options: engine.Options{Force: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(userShip()).To(Equal("Ship from the folder\n"))
 			Expect(res.Notices).To(ContainElement(HaveField("Text", "example: its source folder "+folder+" is gone; rendered the version installed")))
@@ -1213,12 +1253,19 @@ var _ = Describe("Engine with git and archive sources", func() {
 					for _, s := range scopes(order...) {
 						man, err := e.Manifest(s.Scope)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(man.Find("example")).To(And(HaveField("Ref", "v1"), HaveField("Commit", v1)), s.Scope.Key())
+						led, err := e.Ledger(s.Scope)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(led.Modules["example"]).To(HaveField("Commit", v1), s.Scope.Key())
+						pin := v1
+						if s.Scope.Kind == target.User {
+							pin = "" // default.yml is never pinned: lock.json records the version
+						}
+						Expect(man.Find("example")).To(And(HaveField("Ref", "v1"), HaveField("Commit", pin)), s.Scope.Key())
 					}
 					Expect(e.Store.Remove("example")).To(BeTrue())
 					for _, s := range scopes(order...) {
-						_, err = e.Render(ctx, s.Scope, engine.Options{})
-						Expect(err).NotTo(HaveOccurred(), "render from an emptied cache fetches the pin through its ref")
+						_, err = e.Sync(ctx, engine.SyncRequest{Scope: s.Scope})
+						Expect(err).NotTo(HaveOccurred(), "sync from an emptied cache fetches the pin through its ref")
 					}
 				},
 				Entry("user, project", "user", "project"),
@@ -1313,7 +1360,10 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(entry()).To(And(HaveField("Ref", "v2"), HaveField("Commit", later)))
 			uman, err := e.Manifest(usr)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(uman.Find("example")).To(And(HaveField("Ref", "v1"), HaveField("Commit", v1)))
+			Expect(uman.Find("example")).To(And(HaveField("Ref", "v1"), HaveField("Commit", "")), "default.yml is never pinned")
+			led, err := e.Ledger(usr)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(led.Modules["example"]).To(HaveField("Commit", v1))
 		})
 
 		It("pins the version the pickers listed to the commit of the head that holds it", func() {
@@ -1434,13 +1484,13 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(runs()).To(BeEmpty())
 		})
 
-		DescribeTable("each staging command first removes run directories older than a day, never a younger one",
+		DescribeTable("each staging command first removes run directories older than a minute, never a younger one",
 			func(command func() error) {
 				old, live := filepath.Join(e.Paths.Staging, "run-old"), filepath.Join(e.Paths.Staging, "run-live")
 				writeTree(old, map[string]string{"fetch-1/commands/a.md": "a"})
 				writeTree(live, map[string]string{"fetch-2/commands/a.md": "a"})
-				Expect(os.Chtimes(old, time.Now().Add(-25*time.Hour), time.Now().Add(-25*time.Hour))).To(Succeed())
-				Expect(os.Chtimes(live, time.Now().Add(-23*time.Hour), time.Now().Add(-23*time.Hour))).To(Succeed())
+				Expect(os.Chtimes(old, time.Now().Add(-2*time.Minute), time.Now().Add(-2*time.Minute))).To(Succeed())
+				Expect(os.Chtimes(live, time.Now().Add(-5*time.Second), time.Now().Add(-5*time.Second))).To(Succeed())
 
 				_ = command() // the sweep comes first, whether or not the command then succeeds
 
@@ -1453,7 +1503,11 @@ var _ = Describe("Engine with git and archive sources", func() {
 				return err
 			}),
 			Entry("cache update", func() error { _, err := e.Update(ctx, nil); return err }),
-			Entry("render", func() error { _, err := e.Render(ctx, sc, claude); return err }),
+			Entry("sync", func() error {
+				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
+				return err
+			}),
 			Entry("the install pickers", func() error {
 				_, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj})
 				return err
@@ -1500,8 +1554,11 @@ var _ = Describe("Engine with git and archive sources", func() {
 				}
 				return noticeTexts(res.Notices), nil
 			}),
-			Entry("render", func() ([]string, error) {
-				res, err := e.Render(ctx, sc, claude)
+			Entry("sync", func() ([]string, error) {
+				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
+				res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
+					return engine.TrustAnswer{All: true}, nil
+				}})
 				if err != nil {
 					return nil, err
 				}

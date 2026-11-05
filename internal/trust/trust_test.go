@@ -126,6 +126,27 @@ var _ = Describe("trust record", func() {
 		Expect(v.Hash()).NotTo(Equal(h), "a profile's part is hashed")
 	})
 
+	It("a profile's part without targets hashes as before ProfileView held them; its targets are carried through Part and WithPart", func() {
+		v := trust.ViewOf(man)
+		v.Profiles = map[string]trust.ProfileView{"go": {Modules: []trust.Entry{{Name: "gopls", Source: "https://example.com/gopls.git"}}}}
+		b, err := json.Marshal(v)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(b)).To(ContainSubstring(`"go":{"modules":[{"name":"gopls","source":"https://example.com/gopls.git"}]}`),
+			"no targets key: the part hashes as it did")
+		h, err := v.Hash()
+		Expect(err).NotTo(HaveOccurred())
+
+		w := v.WithPart("go", trust.View{Targets: []string{"claude-code"}, Modules: v.Part("go").Modules})
+		Expect(w.Part("go")).To(Equal(trust.View{Targets: []string{"claude-code"}, Modules: v.Part("go").Modules}))
+		Expect(w.Hash()).NotTo(Equal(h), "a profile's targets are hashed")
+		Expect(w.Part("").Targets).To(Equal(man.Targets), "project.yml's targets are its own")
+		only := trust.View{}.WithPart("empty", trust.View{Targets: []string{"claude-code"}})
+		Expect(only.Part("empty").Targets).To(Equal([]string{"claude-code"}), "a part with targets and no entries is kept")
+		Expect(trust.Refresh(only, "empty", trust.View{}, trust.View{Targets: []string{"opencode"}}).Part("empty").Targets).To(
+			Equal([]string{"opencode"}), "a write that changes them records them")
+		Expect(trust.Accept(trust.View{}, "empty", trust.View{Targets: []string{"cursor"}}, nil, true).Part("empty").Targets).To(Equal([]string{"cursor"}))
+	})
+
 	It("saves and loads the profiles' parts, each sorted by name", func() {
 		v := trust.ViewOf(man).WithPart("go", trust.View{Modules: []trust.Entry{{Name: "zz", Source: "https://example.com/zz.git"},
 			{Name: "aa", Source: "mods/aa", Targets: []string{"claude-code"}}}})
@@ -159,6 +180,18 @@ var _ = Describe("trust record", func() {
 		Entry("rules turned on", func(e *manifest.Entry) { yes := true; e.Rules = &yes }),
 		Entry("name", func(e *manifest.Entry) { e.Name = "beta" }),
 	)
+
+	It("trusts an entry's picks like its source, and a view without picks hashes as before", func() {
+		kit := manifest.Entry{Name: "kit", Source: "https://example.com/kit.git"}
+		plain := trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{kit}})
+		Expect(plain).To(Equal(trust.View{Modules: []trust.Entry{{Name: "kit", Source: "https://example.com/kit.git"}}}))
+		picked := kit
+		picked.Only, picked.Skip = []string{"skill/a"}, []string{"command/b"}
+		Expect(plain.Covers(picked)).To(BeFalse(), "a change of picks is a change")
+		rep := trust.Check(&trust.Record{Exists: true, View: plain}, trust.ViewOf(&manifest.Manifest{Modules: []manifest.Entry{picked}}))
+		Expect(rep.Changes).To(HaveExactElements(trust.Change{Module: "kit", Kind: trust.ChangeChanged, Fields: []trust.FieldChange{
+			{Field: "only", From: nil, To: []string{"skill/a"}}, {Field: "skip", From: nil, To: []string{"command/b"}}}}))
+	})
 
 	Describe("Refresh", func() {
 		entry := func(name, digest string) trust.Entry {
@@ -201,6 +234,15 @@ var _ = Describe("trust record", func() {
 			} {
 				Expect(trust.Refresh(loaded, "", loaded, saved)).To(Equal(saved))
 			}
+		})
+
+		It("trusts the picks lola's write changed", func() {
+			rec := view(entry("x", "d1"))
+			saved := view(entry("x", "d1"))
+			saved.Modules[0].Only = []string{"skill/a"}
+			got := trust.Refresh(rec, "", rec, saved)
+			Expect(got.Find("x").Only).To(Equal([]string{"skill/a"}))
+			Expect(got.Covers(manifest.Entry{Name: "x", Source: "https://example.com/x.git", Digest: "d1", Only: []string{"skill/a"}})).To(BeTrue())
 		})
 
 		It("records nothing for a changed entry the record does not hold", func() {
@@ -336,21 +378,21 @@ var _ = Describe("trust record", func() {
 			Expect(string(b)).To(Equal(`[{"field":"targets","from":["opencode"],"to":null},{"field":"rules","from":false,"to":null}]`))
 		})
 
-		It("lists the remote profile an entry comes from as its extends field, and covers only the same one", func() {
-			from := func(digest string) *trust.ExtendsView {
-				return &trust.ExtendsView{Name: "remote:go", Source: "https://example.com/p.git", Commit: strings.Repeat("c", 40), Digest: digest}
+		It("lists the remote profile an entry comes from as its member field, and covers only the same one", func() {
+			from := func(digest string) *trust.MemberView {
+				return &trust.MemberView{Name: "remote:go", Source: "https://example.com/p.git", Commit: strings.Repeat("c", 40), Digest: digest}
 			}
 			was, now := trust.EntryOf(pinned), trust.EntryOf(pinned)
-			was.Extends, now.Extends = from("sha256:1"), from("sha256:2")
+			was.Member, now.Member = from("sha256:1"), from("sha256:2")
 			rec := &trust.Record{View: trust.View{Modules: []trust.Entry{was}}, Exists: true}
 			rep := trust.Check(rec, trust.View{Modules: []trust.Entry{now}})
 			Expect(rep.Changes).To(HaveExactElements(trust.Change{Module: "kit", Kind: trust.ChangeChanged, ContentFixed: true, Fields: []trust.FieldChange{
-				{Field: "extends", From: "remote:go from https://example.com/p.git commit cccccccccccc sha256:1",
+				{Field: "member", From: "remote:go from https://example.com/p.git commit cccccccccccc sha256:1",
 					To: "remote:go from https://example.com/p.git commit cccccccccccc sha256:2"}}}))
 			moved := trust.EntryOf(pinned)
-			moved.Extends = from("sha256:1")
-			moved.Extends.Commit = strings.Repeat("d", 40)
-			Expect(trust.Check(rec, trust.View{Modules: []trust.Entry{moved}}).Changes[0].Fields).To(Equal([]trust.FieldChange{{Field: "extends",
+			moved.Member = from("sha256:1")
+			moved.Member.Commit = strings.Repeat("d", 40)
+			Expect(trust.Check(rec, trust.View{Modules: []trust.Entry{moved}}).Changes[0].Fields).To(Equal([]trust.FieldChange{{Field: "member",
 				From: "remote:go from https://example.com/p.git commit cccccccccccc sha256:1",
 				To:   "remote:go from https://example.com/p.git commit dddddddddddd sha256:1"}}), "a commit-only change shows")
 			Expect(rec.View.CoversEntry(was)).To(BeTrue())
@@ -358,8 +400,24 @@ var _ = Describe("trust record", func() {
 			Expect(rec.View.Covers(pinned)).To(BeFalse(), "an entry of the profile's own is not the remote profile's")
 			accepted := trust.Accept(rec.View, "", trust.View{Modules: []trust.Entry{now}}, []string{"kit"}, false)
 			Expect(accepted.CoversEntry(now)).To(BeTrue())
-			now.Extends.Digest = "sha256:3"
-			Expect(accepted.Modules[0].Extends.Digest).To(Equal("sha256:2"), "the record shares nothing with the view")
+			now.Member.Digest = "sha256:3"
+			Expect(accepted.Modules[0].Member.Digest).To(Equal("sha256:2"), "the record shares nothing with the view")
+		})
+
+		It("records a project bundle's member list in its part, reports a change of it as targets are, and leaves a profile's part as it hashed", func() {
+			rec := &trust.Record{View: trust.View{}.WithPart("team", trust.View{Bundle: []string{"review", "lint"}}), Exists: true}
+			Expect(rec.View.Profiles["team"].Bundle).To(Equal([]string{"review", "lint"}))
+			Expect(rec.View.Part("team").Bundle).To(Equal([]string{"review", "lint"}))
+			rep := trust.Check(&trust.Record{View: rec.View.Part("team"), Exists: true}, trust.View{Bundle: []string{"review"}})
+			Expect(rep.Status).To(Equal(trust.StatusChanged))
+			Expect(rep.Bundle).To(Equal(&trust.FieldChange{Field: "bundle", From: []string{"review", "lint"}, To: []string{"review"}}))
+			Expect(rep.Targets).To(BeNil())
+			accepted := trust.Accept(rec.View, "team", trust.View{Bundle: []string{"review"}}, nil, true)
+			Expect(accepted.Part("team").Bundle).To(Equal([]string{"review"}), "accepted with the answer that covers it")
+			Expect(trust.Accept(rec.View, "team", trust.View{Bundle: []string{"review"}}, nil, false).Part("team").Bundle).To(Equal([]string{"review", "lint"}))
+			b, err := json.Marshal(trust.View{}.WithPart("go", trust.View{Modules: []trust.Entry{trust.EntryOf(pinned)}}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(b)).NotTo(ContainSubstring(`"bundle"`), "a profile's part hashes as it did before bundles")
 		})
 
 		It("lists an entry's market as written, through untrusted.Text, and covers only the same one", func() {
@@ -538,6 +596,42 @@ var _ = Describe("trust record", func() {
 		Entry("a version that is not a number", `{"version":"1","projects":{}}`, "cannot unmarshal string"),
 		Entry("more than 4 MiB", `{"version":1,"projects":{}}`+strings.Repeat(" ", 4<<20), "larger than"),
 	)
+
+	It("refuses a trust file from before bundles by the records that hold extends, and reads the rest once they are removed", func() {
+		Expect(s.Save(root, trust.ViewOf(man))).To(Succeed())
+		b, err := os.ReadFile(p.Trust)
+		Expect(err).NotTo(HaveOccurred())
+		var f map[string]any
+		Expect(json.Unmarshal(b, &f)).To(Succeed())
+		projects := f["projects"].(map[string]any)
+		for _, k := range []string{"/old/b", "/old/a"} {
+			projects[k] = map[string]any{"sha256": "00", "view": map[string]any{"profiles": map[string]any{"team": map[string]any{
+				"modules": []any{map[string]any{"name": "kit", "extends": map[string]any{"name": "remote:go", "source": "https://example.com/p.git"}}}}}}}
+		}
+		old, err := json.Marshal(f)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(p.Trust, old, 0o600)).To(Succeed())
+
+		_, err = s.Load(root)
+		Expect(err).To(MatchError(p.Trust + `: it is in the trust format of a lola before bundles: the records of "/old/a", "/old/b" hold the field extends, which lola now records as member`))
+		Expect(hints(err)).To(Equal([]string{`remove the records "/old/a", "/old/b" from the projects of ` + p.Trust +
+			"; lola then asks about those projects' modules again and keeps every other project's trust"}))
+		Expect(s.Save(root, trust.ViewOf(man))).To(MatchError(ContainSubstring("before bundles")))
+		b, err = os.ReadFile(p.Trust)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(b).To(Equal(old), "never overwritten")
+
+		// As the hint says.
+		delete(projects, "/old/a")
+		delete(projects, "/old/b")
+		fixed, err := json.Marshal(f)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.WriteFile(p.Trust, fixed, 0o600)).To(Succeed())
+		r, err := s.Load(root)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(r.Exists).To(BeTrue())
+		Expect(r.View.Covers(man.Modules[0])).To(BeTrue(), "the other project keeps its trust")
+	})
 
 	It("reads version 0 as consent.json does, as the version this lola writes", func() {
 		Expect(os.MkdirAll(filepath.Dir(p.Trust), 0o700)).To(Succeed())

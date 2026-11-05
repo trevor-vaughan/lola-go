@@ -148,9 +148,9 @@ func (e *Engine) writesClaudeHooks(sc Scope, in plan.Intent) (bool, error) {
 // and each component that carries hooks. The hint is the run with --trust covering runtime hooks
 // too, and unasked (opts.Rerun), or, without one, the flags to add.
 func declinedFindings(module string, gated []plan.Intent, opts Options, unasked TrustKinds) []target.Finding {
-	consent := "rerun with " + (TrustRuntimeHooks | unasked).Arg()
+	consent := "then rerun with " + (TrustRuntimeHooks | unasked).Arg() + " if you want to install them"
 	if opts.Rerun != nil {
-		consent = "consent to them: " + opts.Rerun(opts.Trust|TrustRuntimeHooks|unasked)
+		consent = "then, if you want to install them, consent to them: " + opts.Rerun(opts.Trust|TrustRuntimeHooks|unasked)
 	}
 	var out []target.Finding
 	seen := map[string]bool{}
@@ -165,7 +165,7 @@ func declinedFindings(module string, gated []plan.Intent, opts Options, unasked 
 		}
 		seen[id] = true
 		text := "runtime hooks skipped: they run inside " + in.Target + " with your permissions, and lola installs them only with your consent"
-		hint := "review the hooks listed above, then " + consent
+		hint := "review the hooks listed above, " + consent
 		if name != "" {
 			var what []string
 			if in.Consent.Hooks != nil {
@@ -173,7 +173,7 @@ func declinedFindings(module string, gated []plan.Intent, opts Options, unasked 
 			}
 			if in.Consent.MCPServers != nil {
 				what = append(what, "inline MCP servers")
-				hint = "review the hooks and MCP servers listed above, then " + consent
+				hint = "review the hooks and MCP servers listed above, " + consent
 			}
 			text = "skipped: its " + strings.Join(what, " and ") + " run inside " + in.Target + " with your permissions, and lola installs them only with your consent"
 		}

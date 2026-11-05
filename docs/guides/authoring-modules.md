@@ -79,7 +79,7 @@ in rules. A rule whose remaining text starts with `---` gets an empty `---` bloc
 text is never read as the rule's frontmatter. A module-root `INSTRUCTIONS.md` or `AGENTS.md` is not
 installed; lola warns and suggests moving it to `rules/`. `lola install --no-rules` installs
 everything else and records `rules: false` on the module's entry in the scope's manifest
-(`.lola/project.yml`, or `user.yml` at user scope: which modules and targets you want), so
+(`.lola/project.yml`, or your default profile, `default.yml`, at user scope: which modules and targets you want), so
 later renders keep it off; `--rules` turns them back on.
 
 ## Module formats
@@ -243,7 +243,7 @@ without asking, listed in the run's receipt first, and is recorded as a yes is (
 changes); `-y` and `--force` never consent.
 Without consent a `pre-install` hook stops the install before anything is written, and a
 `post-install` hook is skipped with a warning. A failing `pre-install` hook installs nothing; a
-failing `post-install` hook leaves the installation in place with a warning. `lola render` runs
+failing `post-install` hook leaves the installation in place with a warning. `lola sync` and `lola update` run
 hooks only for modules whose version changed or that gain a target, and `--dry-run` lists hooks without running them
 (`would run`). A `post-install` hook skipped without your consent stays **pending** in
 `lock.json` (`hooks_pending`): `lola sync <module>` replaces the module copy from the version lola
@@ -397,10 +397,10 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
     Frontmatter, above), because Claude Code might read frontmatter there that lola cannot.
   - When lola rewrites the hooks, the component's body stays body text: it is never read as
     frontmatter.
-  - Components with frontmatter hooks that an older lola installed stay until `lola render`,
+  - Components with frontmatter hooks that an older lola installed stay until `lola sync`,
     which asks for consent or removes them.
   - A module whose command directory holds a `.md` file with hooks no longer loads, and
-    `lola render` stops until you fix or remove it (`lola uninstall <name>`).
+    `lola sync` refuses the whole run until you fix or remove it (`lola uninstall <name>`).
   - Consent is yours alone: if your project commits the installed skills, commands or agents
     under `.claude/`, the hooks and `allowed-tools` in their frontmatter reach your teammates,
     whose Claude Code applies its own workspace-trust rules to them.
@@ -422,7 +422,7 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
     checks `mcps.json` (one transport's fields, a `type` that agrees with them, a valid server
     name).
   - A server name may be defined once per agent, and not both defined and named there.
-  - Such agents that an older lola installed stay until `lola render`, which asks for consent
+  - Such agents that an older lola installed stay until `lola sync`, which asks for consent
     or removes them.
   - A skill or command's `mcpServers` (any spelling) is dropped with `frontmatter-key-dropped`:
     Claude Code starts servers only from an agent's frontmatter.
@@ -522,7 +522,7 @@ flowchart TD
   consent are removed: they never keep running under a consent that did not cover them.
 - A hook group is identified by its content, so a group you edit or remove is no longer lola's
   copy.
-  - `lola install` and `lola render` do not write it again, since both copies would run.
+  - `lola install` and `lola sync` do not write it again, since both copies would run.
   - lola keeps it as owned but absent and reports `claude-code/runtime-hook-drift`, with the
     hint `restore it:` and your run with `--force`, which writes it again.
   - The report is info, not a warning: it records your choice, so `--strict` lets it pass.

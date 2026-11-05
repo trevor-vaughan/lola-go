@@ -51,7 +51,7 @@ var _ = Describe("store operations", func() {
 		Expect(up.Updates[0].Changed).To(BeTrue())
 		Expect(up.Updates[0].To).NotTo(Equal(up.Updates[0].From))
 		Expect(up.Notices).To(Equal([]engine.Notice{{Level: engine.LevelInfo,
-			Text: "installed modules keep the versions they were installed at; upgrade one with lola install <module>"}}))
+			Text: "installed modules keep the versions they were installed at; update them with lola update, or one with lola install <module>"}}))
 		_, err = e.Update(ctx, []string{"nope"})
 		Expect(err).To(MatchError("nope is not in your cache"))
 	})

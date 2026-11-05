@@ -33,21 +33,39 @@ func (e *Engine) Detect(sc Scope) []Assistant {
 }
 
 // TargetChoice is what decides the assistants an install plans for at a scope off a terminal,
-// with no -t (Plan 5c §5.3): the scope manifest's targets when it lists any, else the installed
-// assistants set up there. Installed is the assistants found on PATH and SetUp those of them whose
-// project markers the scope has.
+// with no -t (Plan 5c §5.3): the top-level targets of its write target's file when it has any
+// (Manifest, fileTargets: a profile's own, else the base's; From names that file, "" for the base,
+// targetsFile),
+// else the installed assistants set up there. Installed is the assistants found on PATH and SetUp
+// those of them whose project markers the scope has.
 type TargetChoice struct {
 	Manifest, Installed, SetUp []string
+	From                       string
 }
 
-// DefaultTargets is sc's TargetChoice for an install of reqs, reading the scope's manifest as that
-// install would (InstallManifest), whose error it returns as it is.
-func (e *Engine) DefaultTargets(sc Scope, reqs []InstallRequest) (TargetChoice, error) {
+// DefaultTargets is sc's TargetChoice for an install of reqs told req about where it writes,
+// reading the scope's manifest as that install would (InstallManifest), whose error it returns as
+// it is, and its layers and write target (writeTarget, with the first answer of a question, which
+// the install asks or refuses).
+func (e *Engine) DefaultTargets(sc Scope, reqs []InstallRequest, req TargetRequest) (TargetChoice, error) {
 	man, err := e.InstallManifest(sc, reqs)
 	if err != nil {
 		return TargetChoice{}, err
 	}
-	c := TargetChoice{Manifest: man.Targets}
+	led, err := e.Ledger(sc)
+	if err != nil {
+		return TargetChoice{}, err
+	}
+	layers, _, err := e.layers(sc, man, led)
+	if err != nil {
+		return TargetChoice{}, err
+	}
+	first := func(q WhereQuestion) (WhereChoice, error) { return q.Choices[0], nil }
+	t, _, err := e.writeTarget(sc, layers, nil, req, "install", "", first)
+	if err != nil {
+		return TargetChoice{}, err
+	}
+	c := TargetChoice{Manifest: fileTargets(t, man), From: targetsFile(t)}
 	for _, as := range e.Detect(sc) {
 		if as.Binary == "" {
 			continue

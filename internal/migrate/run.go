@@ -36,6 +36,16 @@ type Options struct {
 	KeepPython bool
 	Roots      []RootMap
 	Targets    map[string][]string
+	// Progress is told what a long step is working on, for a caller that shows it; it changes
+	// no result.
+	Progress func(string)
+}
+
+// working tells o.Progress what is being worked on, when there is one.
+func (o Options) working(format string, args ...any) {
+	if o.Progress != nil {
+		o.Progress(fmt.Sprintf(format, args...))
+	}
 }
 
 // keptByKeepPython is the reason a path --keep-python keeps is listed with.
@@ -139,10 +149,11 @@ type Kept struct {
 
 // HomeResult says what happens to the Python lola's home.
 type HomeResult struct {
-	Path   string `json:"path"`
-	Action string `json:"action"`
-	Reason string `json:"reason,omitempty"`
-	Trash  string `json:"trash,omitempty"`
+	Path   string   `json:"path"`
+	Action string   `json:"action"`
+	Reason string   `json:"reason,omitempty"`
+	Trash  string   `json:"trash,omitempty"`
+	Hints  []string `json:"hints"`
 }
 
 // Install statuses.
@@ -197,7 +208,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	st := p.st
 	r := &runner{ctx: ctx, e: e, st: st, opts: opts, holds: map[string][]string{}}
 	rep := &Result{DryRun: true, PythonHome: st.Home, Destinations: []*DestResult{}, Unmappable: p.Unmappable,
-		NotMigrated: p.NotMigrated, Markets: marketReport(p.Markets, opts.Display), Warnings: p.Warnings, Home: HomeResult{Path: st.Home, Action: HomeNone},
+		NotMigrated: p.NotMigrated, Markets: marketReport(p.Markets, opts.Display), Warnings: p.Warnings, Home: HomeResult{Path: st.Home, Action: HomeNone, Hints: []string{}},
 		Trusted: []engine.Consent{}}
 	dry := opts
 	dry.DryRun = true
@@ -205,6 +216,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	leds := make([]*ledger.Ledger, len(p.Destinations))
 	var err error
 	for i, d := range p.Destinations {
+		opts.working("previewing %s (%d of %d)", where(d), i+1, len(p.Destinations))
 		if leds[i], results[i], err = r.previewInstall(d, dry); err != nil {
 			return nil, fmt.Errorf("%s: %w", where(d), r.coachClash(d, leds[i], err))
 		}
@@ -212,10 +224,12 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 			rep.Trusted = addTrusted(rep.Trusted, results[i].Trusted)
 		}
 	}
+	opts.working("checking which MCP servers point into the Python lola's files")
 	if err := r.collectHolds(p, results, leds); err != nil {
 		return nil, err
 	}
 	for i, d := range p.Destinations {
+		opts.working("checking what migrating %s would replace or move (%d of %d)", where(d), i+1, len(p.Destinations))
 		dr, err := r.preview(d, results[i], leds[i])
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", where(d), err)
@@ -253,7 +267,7 @@ func Migrate(ctx context.Context, e *engine.Engine, p *Plan, opts Options) (*Res
 	if rep.Home.Action == HomeMove {
 		to, err := r.move("python-home", filepath.Dir(st.Home), st.Home)
 		if err != nil {
-			rep.Home = HomeResult{Path: st.Home, Action: HomeKeep, Reason: "moving it failed: " + untrusted.CleanErr(err).Error()}
+			rep.Home = HomeResult{Path: st.Home, Action: HomeKeep, Reason: "moving it failed: " + untrusted.CleanErr(err).Error(), Hints: []string{}}
 			if _, ok := errors.AsType[*trash.ChangedError](err); ok {
 				// Part of the home is gone from its place already: say where its copy is.
 				rep.Home.Trash = to
@@ -494,7 +508,8 @@ func installItem(in Install, status string) InstallItem {
 }
 
 // installSpec is d's install: every module on its records' targets, with the recorded paths
-// that may be replaced. A manifest without targets gets the records' targets.
+// that may be replaced, written to the scope's base, never the profile on (spec 2026-10-29
+// §6.1). A manifest without targets gets the records' targets.
 func (r *runner) installSpec(d *Destination, led *ledger.Ledger, opts engine.Options) (engine.InstallSpec, error) {
 	man, err := r.e.Manifest(d.Scope)
 	if err != nil {
@@ -514,6 +529,7 @@ func (r *runner) installSpec(d *Destination, led *ledger.Ledger, opts engine.Opt
 			si.Replace = append(si.Replace, plan.Replaceable{Target: rec.Target, Path: rec.Rel, Key: rec.Key, Dir: rec.Dir})
 		}
 	}
+	opts.Target = engine.TargetRequest{Profile: baseProfile}
 	spec := engine.InstallSpec{Cwd: d.Root, Scopes: []engine.ScopeInstall{si}, Options: opts}
 	for _, in := range d.Installs {
 		spec.Modules = append(spec.Modules, engine.InstallRequest{Arg: in.Source, Ref: in.Ref, Path: in.Path, Targets: in.Targets, Version: in.Version})
@@ -1323,11 +1339,15 @@ func (r *runner) held(p string) string {
 // when every record migrated, every destination did, and it holds nothing but what the Python
 // lola writes there.
 func (r *runner) home(p *Plan, rep *Result) HomeResult {
-	h := HomeResult{Path: r.st.Home, Action: HomeKeep}
-	keep := func(why string) HomeResult {
+	h := HomeResult{Path: r.st.Home, Action: HomeKeep, Hints: []string{}}
+	keep := func(why string, hints ...string) HomeResult {
 		h.Reason = why
+		h.Hints = append(h.Hints, hints...)
 		if filepath.Dir(r.st.Home) == r.e.Paths.Home && filepath.Base(r.st.Home) == ".lola" {
+			aside := r.st.Home + ".python"
 			h.Reason += "; while ~/.lola stays, lola-go sees a project at ~ and refuses to install there"
+			h.Hints = append(h.Hints, "to install below ~ before it is gone, move it aside: "+errs.ShellJoin([]string{"mv", r.st.Home, aside}),
+				"the Python lola and lola migrate then read it with LOLA_HOME="+errs.ShellJoin([]string{aside}))
 		}
 		return h
 	}
@@ -1350,11 +1370,12 @@ func (r *runner) home(p *Plan, rep *Result) HomeResult {
 	fi, err := os.Lstat(r.st.Home)
 	switch {
 	case !r.st.Exists:
-		return HomeResult{Path: r.st.Home, Action: HomeNone}
+		return HomeResult{Path: r.st.Home, Action: HomeNone, Hints: []string{}}
 	case r.opts.KeepPython:
 		return keep("--keep-python")
 	case unmappable > 0:
-		return keep(fmt.Sprintf("%d record(s) lola-go cannot migrate are still in installed.yml", unmappable))
+		return keep(fmt.Sprintf("%d record(s) lola-go cannot migrate are still in installed.yml", unmappable),
+			"the records above are untouched and the Python lola still works; fix each by its hint and rerun lola migrate, or uninstall it with the Python lola")
 	case unregistered == 1:
 		return keep("1 marketplace lola did not register is still in " + filepath.Join(r.st.Home, "market"))
 	case unregistered > 1:

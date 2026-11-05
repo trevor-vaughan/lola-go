@@ -123,7 +123,7 @@ func printCheck(w io.Writer, s style, rep *engine.CheckReport) {
 		fmt.Fprintln(w, checkLine(s, f))
 	}
 	for _, m := range rep.Modules {
-		printExcluded(w, s, m.Name, m.Skipped, false)
+		printExcluded(w, s, m.Name, m.Skipped, m.SkippedIn, false)
 		for _, f := range m.Findings {
 			if f.Target == "" {
 				fmt.Fprintln(w, checkLine(s, f))
@@ -161,7 +161,7 @@ func printInstall(w io.Writer, s style, r *engine.InstallResult) {
 	printScoped(w, s, "installed", r.Result, r.Scopes)
 }
 
-// printResult renders an install/uninstall/render result: steps, MCP transparency, install
+// printResult renders an install or uninstall result: steps, MCP transparency, install
 // hooks, notices, and a summary line.
 func printResult(w io.Writer, s style, verb string, r *engine.Result) {
 	printScoped(w, s, verb, r, nil)
@@ -176,6 +176,7 @@ func scopeLabel(sc engine.ScopeResult) string {
 }
 
 func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
+	printEdits(w, s, r.Edits, r.DryRun)
 	printPlan(w, s, r, scopes, "")
 	printFindings(w, s, r.Findings)
 	for _, n := range r.Notices {
@@ -185,6 +186,55 @@ func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []e
 		return
 	}
 	printDone(w, s, verb, r, scopes)
+}
+
+// printEdits prints a run's write lines (editLine), or under --plain an edit row each: action,
+// module, profile and path.
+func printEdits(w io.Writer, s style, edits []engine.Edit, dry bool) {
+	for _, ed := range edits {
+		if s.plain {
+			fmt.Fprintf(w, "edit\t%s\t%s\t%s\t%s\n", ed.Action, ed.Module, ed.Profile, ed.Path)
+			continue
+		}
+		fmt.Fprintln(w, editLine(s, ed, dry))
+	}
+}
+
+// editLine is a write line (spec 2026-10-29 §3.7): "✓ added kit to profile go  (<path>)", the path
+// for a file of yours (", new" when the run created it), the base or a project profile said shared
+// when git tracks it, then the entry's only: count and the layer an override copied; under -n
+// "→ would add …".
+func editLine(s style, ed engine.Edit, dry bool) string {
+	verb, prep := ed.Action, map[string]string{engine.EditAdded: "to", engine.EditChanged: "in", engine.EditRemoved: "from"}[ed.Action]
+	label := ed.Label
+	if ed.Shared {
+		if l, ok := strings.CutSuffix(label, " (base)"); ok {
+			label = l + " (base, shared: git tracks it)"
+		} else {
+			label += " (shared: git tracks it)"
+		}
+	}
+	if dry {
+		verb = "would " + map[string]string{engine.EditAdded: "add", engine.EditChanged: "change", engine.EditRemoved: "remove"}[ed.Action]
+	}
+	line := verb + " " + ed.Module + " " + prep + " " + label
+	if ed.Kind != "project" && ed.Profile != "project.yml" {
+		where := ed.Path
+		if ed.Created {
+			where += ", new"
+		}
+		line += "  (" + where + ")"
+	}
+	if ed.Only != "" {
+		line += "  only: " + ed.Only
+	}
+	if ed.Overrides != "" {
+		line += " (overrides " + ed.Overrides + "'s)"
+	}
+	if dry {
+		return s.info(line)
+	}
+	return s.ok(line)
 }
 
 // printPlan prints the steps and each module's details: what a run did, or in a dry run would do.
@@ -223,8 +273,27 @@ func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResu
 			fmt.Fprintf(w, "%s… and %d more for %s (%s lists them all)\n", indent, seen[m]-stepsShown, untrusted.Text(m, untrusted.MaxName), more)
 		}
 	}
+	// A line two scopes would print alike (a profile both apply) is said once; a module whose lines
+	// differ between scopes names the scope of each.
+	excluded, lines := map[string]bool{}, map[string]map[string]bool{}
+	skipLine := func(m engine.ModuleResult) string { return m.SkippedIn + "\x00" + strings.Join(m.Skipped, "\x00") }
 	for _, m := range r.Modules {
-		printExcluded(w, s, m.Name, m.Skipped, r.DryRun)
+		if len(m.Skipped) > 0 {
+			if lines[m.Name] == nil {
+				lines[m.Name] = map[string]bool{}
+			}
+			lines[m.Name][skipLine(m)] = true
+		}
+	}
+	for _, m := range r.Modules {
+		if key := m.Name + "\x00" + skipLine(m); !excluded[key] {
+			excluded[key] = true
+			label := m.Name
+			if len(lines[m.Name]) > 1 {
+				label += ", " + scopeLabel(engine.ScopeResult{Scope: m.Scope, Root: m.Root})
+			}
+			printExcluded(w, s, label, m.Skipped, m.SkippedIn, r.DryRun)
+		}
 		if len(m.MCPServers) > 0 && !s.plain {
 			fmt.Fprintf(w, "%s MCP servers:\n", m.Name)
 			for _, srv := range m.MCPServers {
@@ -305,14 +374,33 @@ func printDone(w io.Writer, s style, verb string, r *engine.Result, scopes []eng
 }
 
 // printFindings prints the findings the user can act on: warn and skip findings, and info
-// findings with a hint.
+// findings with a hint. Under --plain every finding is a row; otherwise groupMin or more findings
+// that differ only in their artifact print as one line.
 func printFindings(w io.Writer, s style, findings []target.Finding) {
+	var shown []target.Finding
 	for _, f := range findings {
 		if f.Severity == target.SeverityInfo && f.Hint == "" {
 			continue
 		}
-		if line := findingLine(s, f); line != "" {
-			fmt.Fprintln(w, line)
+		shown = append(shown, f)
+	}
+	groups := make([]findingGroup, 0, len(shown))
+	if s.plain {
+		for _, f := range shown {
+			groups = append(groups, findingGroup{Findings: []target.Finding{f}})
+		}
+	} else {
+		groups = groupFindings(shown)
+	}
+	for _, g := range groups {
+		if len(g.Findings) >= groupMin {
+			fmt.Fprintln(w, groupLine(s, g))
+			continue
+		}
+		for _, f := range g.Findings {
+			if line := findingLine(s, f); line != "" {
+				fmt.Fprintln(w, line)
+			}
 		}
 	}
 }
@@ -342,10 +430,10 @@ func printRuntimeHooks(w io.Writer, s style, m engine.ModuleResult) {
 	}
 }
 
-// printExcluded names a module's components that selections.yaml excludes; a dry run saved
-// no edit, so it says they would be skipped. A --plain row is "skipped", the module and the
-// component (kind/name).
-func printExcluded(w io.Writer, s style, module string, skipped []string, dry bool) {
+// printExcluded names a module's components that the picks in in (selections.yaml, or a profile
+// as the engine labels it, safe to print) exclude; a dry run saved no edit, so it says they would
+// be skipped. A --plain row is "skipped", the module and the component (kind/name).
+func printExcluded(w io.Writer, s style, module string, skipped []string, in string, dry bool) {
 	if len(skipped) == 0 {
 		return
 	}
@@ -363,5 +451,5 @@ func printExcluded(w io.Writer, s style, module string, skipped []string, dry bo
 	if dry {
 		verb = "would be skipped"
 	}
-	fmt.Fprintln(w, s.info(module+": "+verb+" in selections.yaml: "+strings.Join(names, ", ")))
+	fmt.Fprintln(w, s.info(module+": "+verb+" in "+in+": "+strings.Join(names, ", ")))
 }

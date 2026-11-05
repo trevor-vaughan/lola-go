@@ -13,6 +13,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -48,6 +49,15 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(filepath.Join(bare, ".claude/commands/ship.md")).To(BeARegularFile())
 	})
 
+	It("-s is --scope on every command", func() {
+		GinkgoT().Chdir(bare)
+		v := parseInstall(lola("install", mod, "-s", "user", "-t", "claude-code", "--json").out)
+		Expect(v.Scopes).To(HaveLen(1))
+		Expect(v.Scopes[0].Scope).To(Equal("user"))
+		Expect(lola("list", "-s", "user", "--plain").out).To(ContainSubstring("example"))
+		Expect(lola("uninstall", "example", "-y", "-s", "user").code).To(Equal(0))
+	})
+
 	It("every scoped command resolves its scope as install does", func() {
 		home := os.Getenv("HOME")
 		inProj, inHome := filepath.Join(proj, ".claude/commands/ship.md"), filepath.Join(home, ".claude/commands/ship.md")
@@ -61,45 +71,49 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(os.Remove(inProj)).To(Succeed())
 		Expect(os.Remove(inHome)).To(Succeed())
 		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeUser)}}
-		r := lolaP(p, "render")
+		r := lolaP(p, "sync")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps).To(Equal([]cli.ScopeStep{{Question: "Render where?", ProjectRoot: proj, Home: home, One: true}}))
+		Expect(p.scopeSteps).To(Equal([]cli.ScopeStep{{Question: "Sync where?", ProjectRoot: proj, Home: home,
+			ProjectContext: "project.yml", UserContext: "default"}}))
 		Expect(inHome).To(BeARegularFile())
 		Expect(inProj).NotTo(BeAnExistingFile())
 
 		p = &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject, cli.ScopeUser), scopes(cli.ScopeUser)}}
-		r = lolaP(p, "render")
+		r = lolaP(p, "repair", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.scopeSteps).To(HaveLen(2))
+		Expect(p.scopeSteps[0]).To(Equal(cli.ScopeStep{Question: "Repair where?", ProjectRoot: proj, Home: home,
+			ProjectContext: "project.yml", UserContext: "default", One: true}))
 		Expect(p.scopeSteps[1].Problem).To(Equal("pick one scope"))
 
 		p = &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject, cli.ScopeUser)}}
 		r = lolaP(p, "sync")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps).To(Equal([]cli.ScopeStep{{Question: "Sync where?", ProjectRoot: proj, Home: home}}), "sync takes both scopes")
+		Expect(p.scopeSteps).To(Equal([]cli.ScopeStep{{Question: "Sync where?", ProjectRoot: proj, Home: home,
+			ProjectContext: "project.yml", UserContext: "default"}}), "sync takes both scopes")
 		Expect(r.out).To(ContainSubstring("project (" + proj + "):\n"))
 		Expect(r.out).To(ContainSubstring("\nuser:\n"))
 
 		p = &scripted{}
-		r = lolaP(p, "render", "--project")
+		r = lolaP(p, "sync", "--project")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(BeEmpty(), "a scope flag answers the picker")
 		Expect(inProj).To(BeARegularFile())
 
 		By("off a terminal, the project found walking up")
 		Expect(os.Remove(inProj)).To(Succeed())
-		r = lola("render")
+		r = lola("sync")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(inProj).To(BeARegularFile())
 
 		By("off a terminal and outside a project, default_scope")
 		GinkgoT().Chdir(bare)
-		r = lola("render")
+		r = lola("repair", "-n")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: lola render needs a scope: no .lola/ project was found in " + bare + " or above it, and " +
+		Expect(r.err).To(Equal("error: lola repair needs a scope: no .lola/ project was found in " + bare + " or above it, and " +
 			filepath.Join(tmp, "config", "lola", "config.yaml") + " sets no default_scope (default_scope: project or user)\n" +
-			"  hint: lola render --project\n  hint: lola render --user\n"))
-		for _, h := range []string{"lola render --project", "lola render --user"} {
+			"  hint: lola repair --dry-run --project\n  hint: lola repair --dry-run --user\n"))
+		for _, h := range []string{"lola repair --dry-run --project", "lola repair --dry-run --user"} {
 			again := lola(shellWords(h)[1:]...)
 			Expect(again.code).To(Equal(0), h+": "+again.err)
 		}
@@ -113,9 +127,9 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(inProj).To(BeARegularFile())
 
 		Expect(os.WriteFile(cfg, []byte("version: 1\ndefault_scope: both\n"), 0o600)).To(Succeed())
-		r = lola("render")
+		r = lola("repair", "-n")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: lola render acts on one scope at a time, and default_scope: both in " + cfg + " names two\n" +
+		Expect(r.err).To(Equal("error: lola repair acts on one scope at a time, and default_scope: both in " + cfg + " names two\n" +
 			"  hint: name one: --project or --user\n"))
 
 		By("lola profile's actions resolve their scope the same way")
@@ -143,7 +157,8 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		p = &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}}
 		r = lolaP(p, "profile", "go", "--on")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.scopeSteps).To(Equal([]cli.ScopeStep{{Question: "Turn them on where?", ProjectRoot: proj, Home: home, One: true}}))
+		Expect(p.scopeSteps).To(Equal([]cli.ScopeStep{{Question: "Turn it on where?", ProjectRoot: proj, Home: home,
+			ProjectContext: "project.yml", UserContext: "profile go over default", One: true}}))
 		Expect(active(projLedger)).To(ContainSubstring(`"user:go"`), "on a terminal, the picker")
 		r = lola("profile", "go", "--off", "--user")
 		Expect(r.code).To(Equal(0), r.err)
@@ -155,6 +170,23 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(os.Remove(cfg)).To(Succeed())
 		GinkgoT().Chdir(bare)
 		Expect(lola("profile", "go", "--on").err).To(HavePrefix("error: lola profile needs a scope"))
+	})
+
+	It("gives the scope picker each scope's context, and prints the line once picked", func() {
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
+		Expect(lola("profile", "go", "--switch", "--user").code).To(Equal(0))
+		proj := filepath.Join(tmp, "picked")
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		GinkgoT().Chdir(proj)
+		s := &scripted{scope: []func(cli.ScopeStep) ([]string, error){func(cli.ScopeStep) ([]string, error) { return []string{cli.ScopeProject}, nil }}}
+		r := lolaP(s, "repair", "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(s.scopeSteps).To(HaveLen(1))
+		Expect(s.scopeSteps[0].ProjectContext).To(Equal("project.yml"))
+		Expect(s.scopeSteps[0].UserContext).To(Equal("profile go over default"))
+		Expect(r.err).To(HavePrefix(projectContext(proj)), "the line follows the pick")
 	})
 
 	It("no hint turns a flag given as false into one given as true, or carries an answer to another question", func() {
@@ -189,7 +221,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(r.err).To(Equal("error: you have no marketplace acmee\n  hint: lola market\n"), "a false output flag is no output flag")
 	})
 
-	It("uninstall and render take a project at the home directory an older lola installed; install and sync refuse it", func() {
+	It("uninstall takes a project at the home directory an older lola installed; install, sync and update refuse it", func() {
 		home := os.Getenv("HOME")
 		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
 		for _, d := range []string{".lola", ".claude"} {
@@ -197,23 +229,16 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		}
 		inHome := filepath.Join(home, ".claude/commands/ship.md")
 
-		By("render, the home directory picked as Other directory…")
-		GinkgoT().Chdir(bare)
-		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeOther)}, dirs: []func(cli.DirectoryStep) (string, error){dir(home)}}
-		r := lolaP(p, "render")
-		Expect(r.code).To(Equal(0), r.err)
-		Expect(p.dirSteps).To(HaveLen(1))
-
 		By("uninstall, Project picked in the home directory")
 		GinkgoT().Chdir(home)
-		p = &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}}
-		r = lolaP(p, "uninstall", "example", "-y")
+		p := &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject)}}
+		r := lolaP(p, "uninstall", "example", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.scopeSteps).To(HaveLen(1))
 		Expect(inHome).NotTo(BeAnExistingFile())
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 
-		for _, args := range [][]string{{"install", mod}, {"sync"}} {
+		for _, args := range [][]string{{"install", mod}, {"sync"}, {"update"}} {
 			p = &scripted{scope: []func(cli.ScopeStep) ([]string, error){scopes(cli.ScopeProject), func(cli.ScopeStep) ([]string, error) { return nil, cli.ErrAborted }}}
 			lolaP(p, args...)
 			Expect(p.scopeSteps).To(HaveLen(2), args[0])
@@ -249,7 +274,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(os.Remove(inHome)).To(Succeed())
 		r = lola("sync", "--scope", "both", "-C", bare)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(HavePrefix("error: no project.yml in " + bare + "; user scope was not synced\n"))
+		Expect(r.err).To(HavePrefix(projectContext(bare) + userContext + "error: no project.yml in " + bare + "; user scope was not synced\n"))
 		Expect(inHome).NotTo(BeAnExistingFile())
 
 		r = lola("sync", "--scope", "both", "-C", bare, "--json")
@@ -278,7 +303,8 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(os.WriteFile(manPath, was, 0o644)).To(Succeed())
 
 		By("a user scope that fails before the command's one receipt applies neither scope (Plan 9 CR3)")
-		Expect(os.Remove(filepath.Join(tmp, "config", "lola", "user.yml"))).To(Succeed())
+		def := filepath.Join(tmp, "config", "lola", "profiles", "default.yml")
+		Expect(os.WriteFile(def, []byte("modules: [\n"), 0o600)).To(Succeed())
 		r = lola("sync", "--scope", "both", "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
 		var failed struct {
@@ -286,13 +312,13 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 			Scopes []struct{ Scope string } `json:"scopes"`
 		}
 		Expect(json.Unmarshal([]byte(r.err), &failed)).To(Succeed(), r.err)
-		Expect(failed.Error).To(HavePrefix("no user.yml at "))
+		Expect(failed.Error).To(HavePrefix(def + ": "))
 		Expect(failed.Scopes).To(BeEmpty())
 	})
 
 	It("a declined sync names the scope it left unchanged", func() {
 		Expect(lola("install", mod, "--user", "-t", "claude-code").code).To(Equal(0))
-		Expect(os.WriteFile(filepath.Join(tmp, "config", "lola", "user.yml"), []byte("version: 1\nmodules: []\n"), 0o600)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(tmp, "config", "lola", "profiles", "default.yml"), []byte("version: 1\nmodules: []\n"), 0o600)).To(Succeed())
 		c := &confirming{answers: []bool{false}}
 		r := lolaAsking(c, "sync", "--user")
 		Expect(r.code).To(Equal(0), r.err)
@@ -328,7 +354,7 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 		Expect(r.out).To(MatchRegexp(`\nuser\s+example\s+claude-code\s+✓ ok`))
 		p := &scripted{}
 		r = lolaP(p, "list", "--plain")
-		Expect(r.out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\nexample\tclaude-code\tok\ton\t" + mod + "\tuser\tuser.yml\n"))
+		Expect(r.out).To(Equal("example\tclaude-code\tok\ton\t" + mod + "\tproject\tproject.yml\nexample\tclaude-code\tok\ton\t" + mod + "\tuser\tprofile:default\n"))
 		Expect(p.calls).To(BeEmpty(), "list never asks for a scope on a terminal")
 
 		By("the flags decide, --scope both included")
@@ -359,21 +385,21 @@ var _ = Describe("scope for every command (Plan 6b §3.1)", func() {
 			}
 			return out
 		}
-		Expect(profiles(lola("profile", "--json"))).To(Equal([]string{"project:go", "user:go"}))
+		Expect(profiles(lola("profile", "--json"))).To(Equal([]string{"project:go", "user:default", "user:go"}), "the install at user scope wrote default.yml")
 		Expect(profiles(lola("profile", "go", "--json"))).To(Equal([]string{"project:go", "user:go"}))
-		Expect(profiles(lola("profile", "--user", "--json"))).To(Equal([]string{"user:go"}))
+		Expect(profiles(lola("profile", "--user", "--json"))).To(Equal([]string{"user:default", "user:go"}))
 		p = &scripted{}
 		r = lolaP(p, "profile")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(BeEmpty(), "lola profile never asks for a scope on a terminal")
 		GinkgoT().Chdir(bare)
-		Expect(profiles(lola("profile", "--json"))).To(Equal([]string{"user:go"}))
+		Expect(profiles(lola("profile", "--json"))).To(Equal([]string{"user:default", "user:go"}))
 	})
 
 	It("list without a scope flag names the other scope's list when one scope fails", func() {
 		Expect(lola("install", mod, "-C", proj, "-t", "claude-code").code).To(Equal(0))
-		Expect(os.MkdirAll(filepath.Join(tmp, "config", "lola"), 0o700)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(tmp, "config", "lola", "user.yml"), []byte("modules: [\n"), 0o600)).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(tmp, "config", "lola", "profiles"), 0o700)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(tmp, "config", "lola", "profiles", "default.yml"), []byte("modules: [\n"), 0o600)).To(Succeed())
 		GinkgoT().Chdir(proj)
 		r := lola("list")
 		Expect(r.code).To(Equal(1))

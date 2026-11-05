@@ -303,6 +303,19 @@ var _ = Describe("NewPlan", func() {
 		Expect(d.Recorded).To(BeEmpty(), "an unmappable record's files are left exactly as they are")
 	})
 
+	It("does not say to rerun for a source that holds a symbolic link, which stays refused", func() {
+		linked := filepath.Join(tmp, "src", "linked")
+		writeTree(linked, reviewModule)
+		Expect(os.Symlink("/etc/hostname", filepath.Join(linked, "skills", "link.md"))).To(Succeed())
+		h.source("review", map[string]string{"source": linked, "type": "folder"})
+		h.install(rec{"module": "review", "assistant": "claude-code", "project_path": projA})
+		d := plan().Destinations[0]
+		Expect(d.Unmappable).To(HaveLen(1))
+		Expect(d.Unmappable[0].Reason).To(ContainSubstring("skills/link.md: symbolic link refused: it points to /etc/hostname, an absolute path"))
+		Expect(d.Unmappable[0].Hints).To(ConsistOf(ContainSubstring("make the link relative"), ContainSubstring("ask its author to remove it")))
+		Expect(d.Unmappable[0].Hints).NotTo(ContainElement(ContainSubstring("rerun lola migrate")))
+	})
+
 	It("quotes the source for the shell in the install commands it coaches for a record it cannot migrate", func() {
 		hostile := filepath.Join(tmp, "it's src", "review")
 		writeTree(hostile, reviewModule)
@@ -602,7 +615,8 @@ var _ = Describe("NewPlan", func() {
 			h.install(at("/Users/alice", "claude-code"))
 			p := planWith(migrate.Options{Roots: []migrate.RootMap{{Old: "/Users/alice", New: userHome}}})
 			Expect(p.Destinations).To(BeEmpty())
-			Expect(p.Unmappable).To(ConsistOf(HaveField("Reason", "project_path "+userHome+" is your home directory or one of its parents")))
+			Expect(p.Unmappable).To(ConsistOf(And(HaveField("Reason", "project_path "+userHome+" is your home directory or one of its parents"),
+				HaveField("Hints", ConsistOf(ContainSubstring("lola install <source> --scope user"))))))
 		})
 
 		It("warns of a --map-root that matches no missing project path or source, and plans as without it", func() {

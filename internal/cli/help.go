@@ -78,7 +78,7 @@ func (a *app) installHelp(root *cobra.Command) {
 		},
 	}
 	help.Flags().BoolVarP(&long, "long", "l", false, "print the full command tree")
-	help.Flags().BoolVarP(&short, "short", "s", false, "print concise help")
+	help.Flags().BoolVar(&short, "short", false, "print concise help")
 	root.SetHelpCommand(help)
 }
 

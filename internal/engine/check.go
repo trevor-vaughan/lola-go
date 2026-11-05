@@ -12,7 +12,9 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/module"
+	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/templating"
@@ -21,10 +23,11 @@ import (
 
 // CheckedModule is what lola check found for one module.
 type CheckedModule struct {
-	Name     string           `json:"name"`
-	Targets  []string         `json:"targets"`
-	Findings []target.Finding `json:"findings"`
-	Skipped  []string         `json:"skipped"` // components selections.yaml excludes at the scope render uses; not checked
+	Name      string           `json:"name"`
+	Targets   []string         `json:"targets"`
+	Findings  []target.Finding `json:"findings"`
+	Skipped   []string         `json:"skipped"`              // components your picks exclude at the scope sync uses; not checked
+	SkippedIn string           `json:"skipped_in,omitempty"` // where the picks that exclude them live (skippedIn)
 }
 
 // CheckReport is the result of lola check: per-module findings, plus findings about the
@@ -32,13 +35,16 @@ type CheckedModule struct {
 type CheckReport struct {
 	Modules  []CheckedModule  `json:"modules"`
 	Findings []target.Finding `json:"findings"`
+	// Read says check read the scope's module entries, to render a module the scope installs with
+	// its entry's vars (spec 2026-10-29 §6.1): its layers loaded and list one module or more.
+	Read bool `json:"-"`
 }
 
 // Check reports, for each argument (a source, or a module in the cache), everything the
 // targets ids (every registered target when empty) would lose, change or skip. It renders
 // nothing and changes no state: a source is staged in a temporary directory, never added to
 // the cache. Components that selections.yaml excludes at sc are reported as skipped, not
-// checked, since render would not install them. A marketplace address is checked as install
+// checked, since sync would not install them. A marketplace address is checked as install
 // would fetch it (Plan 6c §3.3); display is the run's output flags, which its hints keep.
 func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, display []string) (*CheckReport, error) {
 	if len(ids) == 0 {
@@ -54,6 +60,12 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 		}
 		ts = append(ts, t)
 	}
+	// The profiles lock comes before anything is read (spec 2026-10-29 §16), as a sync's does.
+	unlock, err := e.readProfiles(true)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	sel, err := e.selections()
 	if err != nil {
 		return nil, err
@@ -63,7 +75,7 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 	if err != nil {
 		return nil, err
 	}
-	templates, err := e.newTemplateRun(sc, led.Profiles) // templates render with the scope's active profiles, as render would
+	templates, err := e.newTemplateRun(sc, led.Profile) // templates render with the scope's active profile, as sync would
 	if err != nil {
 		return nil, err
 	}
@@ -82,9 +94,14 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 			Text: untrusted.CleanErr(err).Error() + "; lola check renders every module with its default vars", Hint: strings.Join(errs.Hints(err), "; ")})
 	} else {
 		want, _ = desired(layers)
+		rep.Read = len(want) > 0
+		if sel, err = withPicks(sel, layers); err != nil {
+			return nil, err
+		}
 	}
+	profiles := e.visibleOnce(sc)
 	for _, arg := range args {
-		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, probes, templates, want, display)
+		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, probes, templates, want, profiles, display)
 		if err != nil {
 			return nil, err
 		}
@@ -95,19 +112,31 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 }
 
 func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, probes *probeRun,
-	templates *templateRun, want []Wanted, display []string) (cm CheckedModule, err error) {
+	templates *templateRun, want []Wanted, profiles func() ([]profile.Info, error), display []string) (cm CheckedModule, err error) {
 	full, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg, display)
 	if err != nil {
 		return cm, err
 	}
 	defer func() { err = errors.Join(err, cleanup()) }()
-	x, err := exclusions(sel, sc, full.Name)
+	provider := ""
+	if w := find(want, full.Name); w != nil {
+		provider = w.From
+	}
+	x, err := exclusions(sel, sc, provider, full.Name)
 	if err != nil {
 		return cm, err
 	}
 	r := resolveComponents(full, x, true)
 	m := r.module
 	cm = CheckedModule{Name: m.Name, Targets: []string{}, Findings: warningFindings(m), Skipped: r.skipped}
+	nf, err := nativeFindings(contentDir, m, arg, display)
+	if err != nil {
+		return cm, err
+	}
+	cm.Findings = append(cm.Findings, nf...)
+	if cm.SkippedIn, err = skippedIn(profiles, x, r.skipped, provider); err != nil {
+		return cm, err
+	}
 	var ment *manifest.Entry
 	from := ""
 	if w := find(want, m.Name); w != nil && e.checksEntry(sc, cwd, arg, w.Entry) {
@@ -202,6 +231,9 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string, display []st
 		return nil, "", none, err
 	}
 	m, err := module.Detect(staged.Dir, staged.Name, targets.IDs())
+	if errors.Is(err, module.ErrNoModule) {
+		err = store.NoModuleAt(spec.Location, spec.Path, staged.Dir, err)
+	}
 	if err != nil {
 		return nil, "", none, err
 	}

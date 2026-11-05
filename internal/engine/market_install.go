@@ -163,7 +163,7 @@ func (e *Engine) fetchEntry(ctx context.Context, p *marketPick, spec source.Spec
 				return source.Fetched{}, errs.WithHints(fmt.Errorf("marketplace %s lists %s at %s, which %s does not reach", p.reg.Name,
 					p.entry.Name, commit, where), update)
 			}
-			return source.Fetched{}, err
+			return source.Fetched{}, &fetchFailedError{err}
 		}
 		fetch.Ref = commit
 	}
@@ -173,7 +173,7 @@ func (e *Engine) fetchEntry(ctx context.Context, p *marketPick, spec source.Spec
 			p.entry.Name, shown(mismatch.Want), mismatch.Got), update)
 	}
 	if err != nil {
-		return source.Fetched{}, err
+		return source.Fetched{}, &fetchFailedError{err}
 	}
 	if commit != "" && f.Commit != commit {
 		return source.Fetched{}, errors.Join(&servedCommitError{name: p.entry.Name, location: spec.Location, got: f.Commit, want: commit},
@@ -182,34 +182,34 @@ func (e *Engine) fetchEntry(ctx context.Context, p *marketPick, spec source.Spec
 	return f, nil
 }
 
-// cacheEntry fetches p's entry from spec at commit (fetchEntry) and caches it under the entry's
-// name (Plan 6c §6.3): a module that names itself otherwise is refused before anything is
-// cached, and one that does not takes the entry's name. A pinned fetch never moves a head.
-func (e *Engine) cacheEntry(ctx context.Context, p *marketPick, spec source.Spec, commit, run string) (_ store.Version, err error) {
+// prepareEntry fetches p's entry from spec at commit (fetchEntry) into run and prepares it under
+// the entry's name (Plan 6c §6.3), not cached: a module that names itself otherwise is refused,
+// and one that does not takes the entry's name. Committing it (StagedRun.add) never moves a head
+// for a pinned fetch.
+func (e *Engine) prepareEntry(ctx context.Context, p *marketPick, spec source.Spec, commit, run string) (store.Staged, error) {
 	f, err := e.fetchEntry(ctx, p, spec, commit, run)
 	if err != nil {
-		return store.Version{}, err
+		return store.Staged{}, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(f.Dir)) }()
 	name := p.entry.Name
 	st, err := e.Store.Prepare(store.PutRequest{Staged: f.Dir, FallbackName: name, Name: name, Source: spec.Location, Type: string(spec.Kind),
 		Path: spec.Path, Ref: spec.Ref, Commit: f.Commit, Executables: f.Executables, Now: e.Now(), Components: spec.Components})
 	if other, ok := errors.AsType[*store.OtherNameError](err); ok {
-		return store.Version{}, renamedEntry(p, other.Declared, spec, commit)
+		err = renamedEntry(p, other.Declared, spec, commit)
 	}
 	if err != nil {
-		return store.Version{}, err
+		return store.Staged{}, errors.Join(err, os.RemoveAll(f.Dir))
 	}
-	return e.Store.Commit(st, commit != "")
+	return st, nil
 }
 
 // resolveEntry is resolve for an argument that is a marketplace address (Plan 6c §6.3, §6.4): its
 // entry, recorded with its real source, path and the catalog's ref (or --ref), and with the
 // marketplace's name and source as provenance unless --ref replaced the catalog's ref; the
-// version is have (the version this request already resolved to) or the entry fetched and
-// cached under its name. A version the pickers listed carries the commit it was fetched at,
-// which must be the catalog's pin.
-func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, have store.Version, run string) (manifest.Entry, store.Version, bool, error) {
+// version is have (the version this request already resolved to) or the entry fetched into run
+// under its name (StagedRun.add). A version the pickers listed carries the commit it was fetched
+// at, which must be the catalog's pin.
+func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, have store.Version, run *StagedRun) (manifest.Entry, store.Version, bool, error) {
 	p := r.market
 	spec, commit := p.spec(r.Ref)
 	if err := e.recordable(sc, r.Arg, source.Recorded{Source: spec.Location, Ref: spec.Ref, Path: spec.Path}, false); err != nil {
@@ -222,7 +222,7 @@ func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, h
 	if have.Name != "" {
 		// The version listed must be the one the cache holds from where the catalog lists the
 		// entry now: the catalog may have changed since it was listed.
-		o, found, err := e.Store.Origin(have.Name)
+		o, found, err := e.origin(run, have.Name)
 		if err != nil {
 			return manifest.Entry{}, store.Version{}, false, err
 		}
@@ -239,7 +239,11 @@ func (e *Engine) resolveEntry(ctx context.Context, sc Scope, r InstallRequest, h
 		}
 		return ent, have, false, nil
 	}
-	v, err := e.cacheEntry(ctx, p, spec, commit, run)
+	st, err := e.prepareEntry(ctx, p, spec, commit, run.dir)
+	var v store.Version
+	if err == nil {
+		v, err = run.add(e.Store, st, commit != "")
+	}
 	if renamed, ok := errors.AsType[*RenamedEntryError](err); ok && renamed.Source != nil {
 		args := slices.Clone(renamed.Source)
 		if p.dry {
@@ -330,13 +334,17 @@ func (e *Engine) addEntry(ctx context.Context, arg, ref, path string, display []
 	if p == nil {
 		return store.Version{}, "", "", fmt.Errorf("%s is not a marketplace address, @<marketplace>/<module>", untrusted.Text(arg, untrusted.MaxName))
 	}
-	run, done, err := e.runDir()
+	run, err := e.publishingRun() // lola cache add caches what it fetches
 	if err != nil {
 		return store.Version{}, "", "", err
 	}
-	defer func() { err = errors.Join(err, done()) }()
+	defer func() { err = errors.Join(err, run.Close()) }()
 	spec, commit := p.spec(ref)
-	v, err := e.cacheEntry(ctx, p, spec, commit, run)
+	st, err := e.prepareEntry(ctx, p, spec, commit, run.dir)
+	var v store.Version
+	if err == nil {
+		v, err = run.add(e.Store, st, commit != "")
+	}
 	if renamed, ok := errors.AsType[*RenamedEntryError](err); ok && renamed.Source != nil {
 		cmd := []string{"lola", "cache", "add"}
 		for _, a := range append(slices.Clone(renamed.Source), display...) {
@@ -363,6 +371,9 @@ func (e *Engine) checkEntry(ctx context.Context, arg, parent string, display []s
 		return nil, "", err
 	}
 	m, err := module.Detect(f.Dir, p.entry.Name, targets.IDs())
+	if errors.Is(err, module.ErrNoModule) {
+		err = store.NoModuleAt(spec.Location, spec.Path, f.Dir, err)
+	}
 	if err == nil && m.Name != p.entry.Name {
 		err = renamedEntry(p, m.Name, spec, commit)
 		// lola check takes no --ref and no --path: only a source at its root, at its default

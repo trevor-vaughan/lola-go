@@ -5,11 +5,13 @@ package store
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -34,6 +36,10 @@ type Head struct {
 	Ref    string `yaml:"ref"`
 	Digest string `yaml:"digest"`
 	Commit string `yaml:"commit,omitempty"`
+	// Fetched is when a fetch of Ref last reached the cache (UTC, RFC 3339); lola update fetches
+	// the ref again once it is older than cache_fresh_for. A folder's head has none: a folder is
+	// read on every run.
+	Fetched string `yaml:"fetched,omitempty"`
 }
 
 // Origin is where a stored module comes from (index.yml).
@@ -94,8 +100,10 @@ func checkID(name, id string) error {
 type Version struct {
 	Name, ID, ContentDir string
 	Commit               string
-	Meta                 Meta
-	Module               *module.Module
+	// Fetched is when its head's ref was last fetched, set by Head only; zero when unknown.
+	Fetched time.Time
+	Meta    Meta
+	Module  *module.Module
 }
 
 // PutRequest describes freshly fetched content. Staged must be in the run's staging directory
@@ -123,6 +131,41 @@ func (e *OtherNameError) Error() string {
 	return fmt.Sprintf("%s: its source now declares module %q", e.Want, untrusted.Text(e.Declared, untrusted.MaxName))
 }
 
+// LoadError is Prepare's refusal of content that does not read as a module (module.Detect):
+// the module's own content, never lola's cache. Its message is the load's.
+type LoadError struct {
+	Name string
+	Err  error
+}
+
+func (e *LoadError) Error() string { return e.Err.Error() }
+func (e *LoadError) Unwrap() error { return e.Err }
+
+// IndexError is Origin's refusal of a module's index.yml that the cache holds but that does not
+// decode: that module's own record, not the cache as a whole, which a read failure would be.
+type IndexError struct {
+	Name string
+	Err  error
+}
+
+func (e *IndexError) Error() string { return e.Err.Error() }
+func (e *IndexError) Unwrap() error { return e.Err }
+
+// DigestError is Pinned's refusal of a cached version whose content or recorded digest is not
+// the pin, Digest, or, when Recorded, Load's of one whose record holds Digest, which is not its
+// own: either stays refused until the version is removed from the cache.
+type DigestError struct {
+	Name, ID, Digest string
+	Recorded         bool
+}
+
+func (e *DigestError) Error() string {
+	if e.Recorded {
+		return fmt.Sprintf("cached version %s/%s records digest %q, which is not this version's", e.Name, e.ID, untrusted.Text(e.Digest, untrusted.MaxName))
+	}
+	return fmt.Sprintf("cached version %s/%s does not match its digest %s", e.Name, e.ID, e.Digest)
+}
+
 // Staged is content Prepare checked in the run's staging directory, which is not in the cache
 // until Commit publishes it (Plan 6a §6.3). Version is what the cached version will be, except
 // that its ContentDir is the staged tree, which the run renders from: the bytes that were
@@ -142,6 +185,34 @@ type Staged struct {
 	source, typ, path string
 	ref               string
 	components        *source.Components
+}
+
+// Index is the index.yml Commit writes for st over o, the index the cache holds for the name
+// (found says it holds one), except for last_used, which Commit dates. It records st's source
+// when the cache holds none, and points the head for the fetched ref at st's version (with
+// headIfAbsent, only when that ref has no head). ok is false exactly when Commit refuses st as a
+// second source for the name (NameTakenError). A local source the cache records that no longer
+// exists gives way to st when st may replace it (ReplaceGoneOrigin). Nothing in the cache changes.
+func (st Staged) Index(o Origin, found, headIfAbsent bool) (_ Origin, ok bool) {
+	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path || !o.Components.Equal(st.components)) {
+		if !st.ReplaceGoneOrigin || !o.LocalGone() || !source.IsLocal(source.Kind(st.typ), st.source) {
+			return o, false
+		}
+		found = false // the source recorded is gone: this one takes its place, heads and all
+	}
+	if !found {
+		o = Origin{Source: st.source, Type: st.typ, Path: st.path, Components: st.components}
+	}
+	if !headIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == st.ref }) {
+		h := Head{Ref: st.ref, Digest: st.Version.ID, Commit: st.Version.Commit, Fetched: st.Version.Meta.FetchedAt}
+		// A folder is read every run and never stale (spec 2026-10-29 §4): a stamp nothing reads
+		// would rewrite index.yml on every run that read it again.
+		if st.typ == string(source.KindFolder) {
+			h.Fetched = ""
+		}
+		o.Heads = setHead(o.Heads, h)
+	}
+	return o, true
 }
 
 // Store is the machine-wide module store. targets are the target ids a module's per-entry
@@ -272,14 +343,46 @@ func (s *Store) Put(req PutRequest) (Version, error) {
 	return v, os.RemoveAll(req.Staged)
 }
 
+// NoModuleAt names the source the user gave (and its --path) in an ErrNoModule from loading dir,
+// in place of lola's staging directory, which module.Detect no longer prints, and says what to do
+// when dir holds skills directly: a --path naming a skills/ directory gets the same install with
+// --path at its parent (none for the top), keeping the user's other flags; any other directory
+// of skills is the source's to change.
+func NoModuleAt(source, p, dir string, err error) error {
+	at := untrusted.Text(source, untrusted.MaxName)
+	if p != "" {
+		at += " --path " + untrusted.Text(p, untrusted.MaxName)
+	}
+	err = fmt.Errorf("%s: %w", at, err)
+	if !module.DirOfSkills(dir) {
+		return err
+	}
+	const under = "that directory holds skills; a module root holds them under skills/: "
+	clean := path.Clean(filepath.ToSlash(p))
+	switch {
+	case p == "":
+		return errs.WithHints(err, "the source holds skills directly, not under skills/: move them into a skills/ directory in the source")
+	case path.Base(clean) != "skills":
+		return errs.WithHints(err, under+"move them into a skills/ directory in the source, then point --path at its parent")
+	}
+	cmd := []string{"lola", "install", untrusted.Text(source, untrusted.MaxName)}
+	if parent := path.Dir(clean); parent != "." {
+		cmd = append(cmd, "--path", untrusted.Text(parent, untrusted.MaxName))
+	}
+	return errs.WithHints(err, under+"run "+errs.ShellJoin(cmd)+", keeping your other flags")
+}
+
 // Prepare detects the staged content's format and reads it as a module (module.Detect),
 // normalizes it in place (module.Normalize), checks that the cached copy would read the same and
 // digests it. Nothing in the cache changes and no lock is taken: untrusted content stays in the
 // run's staging until Commit. The version's module carries the warnings detection reported.
 func (s *Store) Prepare(req PutRequest) (Staged, error) {
 	m, err := module.Detect(req.Staged, req.FallbackName, s.targets)
+	if errors.Is(err, module.ErrNoModule) {
+		err = NoModuleAt(req.Source, req.Path, req.Staged, err)
+	}
 	if err != nil {
-		return Staged{}, err
+		return Staged{}, &LoadError{Name: cmp.Or(req.Name, req.FallbackName), Err: err}
 	}
 	if req.Name != "" && m.Name != req.Name {
 		return Staged{}, &OtherNameError{Want: req.Name, Declared: m.Name}
@@ -348,13 +451,11 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 	if err != nil {
 		return Version{}, err
 	}
-	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path || !o.Components.Equal(st.components)) {
-		if !st.ReplaceGoneOrigin || !o.LocalGone() || !source.IsLocal(source.Kind(st.typ), st.source) {
-			taken := &NameTakenError{Name: sv.Name, msg: fmt.Sprintf("a different module named %q is already in your cache (from %s); this one is from %s",
-				sv.Name, describeOrigin(o.Source, o.Path, o.Components), describeOrigin(st.source, st.path, st.components))}
-			return Version{}, errs.WithHints(taken, taken.RemoveHint())
-		}
-		found = false // the source recorded is gone: this one takes its place, heads and all
+	idx, ok := st.Index(o, found, headIfAbsent)
+	if !ok {
+		taken := &NameTakenError{Name: sv.Name, msg: fmt.Sprintf("a different module named %q is already in your cache (from %s); this one is from %s",
+			sv.Name, describeOrigin(o.Source, o.Path, o.Components), describeOrigin(st.source, st.path, st.components))}
+		return Version{}, errs.WithHints(taken, taken.RemoveHint())
 	}
 	vdir := filepath.Join(s.dir, sv.Name, "versions", sv.ID)
 	switch _, err := os.Stat(vdir); {
@@ -379,17 +480,11 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 			}
 		}
 	}
-	if !found {
-		o = Origin{Source: st.source, Type: st.typ, Path: st.path, Components: st.components}
+	if idx.LastUsed == nil {
+		idx.LastUsed = map[string]string{}
 	}
-	if !headIfAbsent || !slices.ContainsFunc(o.Heads, func(h Head) bool { return h.Ref == st.ref }) {
-		o.Heads = setHead(o.Heads, Head{Ref: st.ref, Digest: sv.ID, Commit: sv.Commit})
-	}
-	if o.LastUsed == nil {
-		o.LastUsed = map[string]string{}
-	}
-	o.LastUsed[sv.ID] = s.today()
-	if err := writeYAML(filepath.Join(s.dir, sv.Name, indexFile), o); err != nil {
+	idx.LastUsed[sv.ID] = s.today()
+	if err := writeYAML(filepath.Join(s.dir, sv.Name, indexFile), idx); err != nil {
 		return Version{}, err
 	}
 	v, err := s.Load(sv.Name, sv.ID)
@@ -456,15 +551,25 @@ func (s *Store) Head(name, ref string) (Version, bool, error) {
 	if err != nil || !found {
 		return Version{}, false, err
 	}
+	h, ok := o.Head(ref)
+	if !ok {
+		return Version{}, false, nil
+	}
+	v, err := s.Load(name, h.Digest)
+	v.Commit = h.Commit
+	v.Fetched, _ = time.Parse(time.RFC3339, h.Fetched) // none or unreadable: zero, which is stale
+	return v, err == nil, err
+}
+
+// Head is o's head for ref, matched as Store.Head matches it.
+func (o Origin) Head(ref string) (Head, bool) {
 	commit, isCommit := source.CommitRef(ref)
 	for _, h := range o.Heads {
 		if isCommit && strings.ToLower(h.Ref) == commit && h.Commit == commit || !isCommit && h.Ref == ref {
-			v, err := s.Load(name, h.Digest)
-			v.Commit = h.Commit
-			return v, err == nil, err
+			return h, true
 		}
 	}
-	return Version{}, false, nil
+	return Head{}, false
 }
 
 // AtCommit is the digest of name's version whose recorded commit is commit (the commit a fetch
@@ -545,7 +650,7 @@ func (s *Store) Pinned(name, digest, dir string) (v Version, found bool, err err
 		got, _ = Digest(snap, meta.Executables)
 	}
 	if got != digest || meta.Digest != digest {
-		return Version{}, false, errs.WithHints(fmt.Errorf("cached version %s/%s does not match its digest %s", name, id, digest), removeHint(name))
+		return Version{}, false, errs.WithHints(&DigestError{Name: name, ID: id, Digest: digest}, removeHint(name))
 	}
 	m, err := module.Load(snap, name, s.targets)
 	if err != nil {
@@ -608,8 +713,7 @@ func (s *Store) Load(name, id string) (Version, error) {
 		return Version{}, err
 	}
 	if hexits, ok := strings.CutPrefix(meta.Digest, "sha256:"+id); !ok || len(hexits) != 64-len(id) || strings.Trim(hexits, "0123456789abcdef") != "" {
-		return Version{}, errs.WithHints(fmt.Errorf("cached version %s/%s records digest %q, which is not this version's",
-			name, id, untrusted.Text(meta.Digest, untrusted.MaxName)), removeHint(name))
+		return Version{}, errs.WithHints(&DigestError{Name: name, ID: id, Digest: meta.Digest, Recorded: true}, removeHint(name))
 	}
 	content := filepath.Join(vdir, "content")
 	m, err := module.Load(content, name, s.targets)
@@ -641,6 +745,9 @@ func (s *Store) Origin(name string) (Origin, bool, error) {
 	err := readYAML(filepath.Join(s.dir, name, indexFile), &o)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Origin{}, false, nil
+	}
+	if _, read := errors.AsType[*fs.PathError](err); err != nil && !read {
+		return Origin{}, false, &IndexError{Name: name, Err: err}
 	}
 	if err != nil {
 		return Origin{}, false, err

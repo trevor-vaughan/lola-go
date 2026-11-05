@@ -22,13 +22,18 @@ const (
 const pad = "                  "
 
 // printSync renders a sync result (Plan 6a §11.1): in a dry run the trust diff first; then the
-// plan as render shows it, with the MCP servers of the modules the diff did not show, the pins
+// plan as install shows it, with the MCP servers of the modules the diff did not show, the pins
 // (unless the diff on stdout showed them), the removals, findings and notices, and a line per
 // module the run changed, then how many it left unchanged. A run in sync prints its findings
 // and notices, then says so, naming the modules it was limited to (names), each once. more is the command
-// that lists every file and step of a module whose diff or dry-run plan is capped.
+// that lists every file and step of a module whose diff or dry-run plan is capped. lola update's
+// result (r.Installed) says so: its trust diff names lola update, its pins name each moved module
+// from → to, and its lines say updated and up to date.
 func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []string, more string) {
-	inSync := "already in sync"
+	run, verb, inSync := "lola sync", "synced", "already in sync"
+	if r.Installed {
+		run, verb, inSync = "lola update", "updated", "already up to date"
+	}
 	if len(names) > 0 {
 		var shownNames []string
 		for _, n := range names {
@@ -41,7 +46,7 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 	asked := r.Trust.Status != trust.StatusTrusted && r.Trust.Status != engine.TrustStatusNotApplicable
 	diffShown := r.DryRun && asked // on stdout, with the pins
 	if diffShown {
-		printTrustDiff(w, s, name, r.Trust, more)
+		printTrustDiff(w, s, name, run, r.Trust, more)
 	}
 	if r.InSync && !diffShown && !s.plain {
 		printFindings(w, s, r.Findings)
@@ -69,7 +74,7 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 	}
 	printPlan(w, s, &plan, nil, steps)
 	if !diffShown || s.plain {
-		printPins(w, s, r.Pins)
+		printPins(w, s, r.Pins, r.Installed)
 	}
 	printRemovals(w, s, r.Removals)
 	printFindings(w, s, r.Findings)
@@ -88,7 +93,7 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 	unchanged := 0
 	for _, m := range r.Modules {
 		if slices.Contains(r.Changed, m.Name) {
-			fmt.Fprintln(w, s.ok(fmt.Sprintf("synced %s (%s)", m.Name, strings.Join(m.Targets, ", "))))
+			fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s (%s)", verb, m.Name, strings.Join(m.Targets, ", "))))
 		} else {
 			unchanged++
 		}
@@ -105,8 +110,9 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 
 // printPins lists the pins a sync writes, each once with its new digest in full (the diff and
 // JSON have the commit and the previous digest), naming the project profile a pin is written into
-// (Plan 6b §6.4); --plain rows are pin, module, digest, reason.
-func printPins(w io.Writer, s style, pins []engine.Pin) {
+// (Plan 6b §6.4); --plain rows are pin, module, digest, reason. Under lola update (installed) a
+// re-pin is the move it makes, "<module>: <previous digest> → <digest>".
+func printPins(w io.Writer, s style, pins []engine.Pin, installed bool) {
 	if len(pins) == 0 {
 		return
 	}
@@ -123,7 +129,12 @@ func printPins(w io.Writer, s style, pins []engine.Pin) {
 			module += " (" + p.Profile + ")"
 		}
 		line := module + " pinned " + p.Digest
-		if p.Reason == engine.PinUpdate {
+		switch {
+		case installed && p.Reason == engine.PinUpdate && p.PreviousDigest != "":
+			line = module + ": " + p.PreviousDigest + " → " + p.Digest
+		case installed && p.Reason == engine.PinUpdate:
+			line = module + " re-pinned " + p.Digest
+		case p.Reason == engine.PinUpdate:
 			line = module + " re-pinned " + p.Digest + " (--update)"
 		}
 		fmt.Fprintln(w, "  "+s.info(line))
@@ -175,9 +186,10 @@ func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 // active one comes first, on a line of its own with the modules it changes (§4.4). Every value
 // has been through untrusted.Text. --plain rows are trust, module, change and the profile (""
 // for project.yml), after a replace row (profile, the one it replaces) per replacement. A report
-// with no change prints nothing.
-func printTrustDiff(w io.Writer, s style, name string, rep engine.TrustReport, more string) {
-	if len(rep.Changes) == 0 && rep.Targets == nil && len(rep.Replacements) == 0 {
+// with no change prints nothing. run is the command the header says needs trust (lola sync, or
+// lola update).
+func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustReport, more string) {
+	if len(rep.Changes) == 0 && rep.Targets == nil && len(rep.ProfileTargets) == 0 && len(rep.Replacements) == 0 {
 		return
 	}
 	if s.plain {
@@ -190,6 +202,9 @@ func printTrustDiff(w io.Writer, s style, name string, rep engine.TrustReport, m
 		if rep.Targets != nil {
 			fmt.Fprintf(w, "trust\t\ttargets\t\n")
 		}
+		for _, pt := range rep.ProfileTargets {
+			fmt.Fprintf(w, "trust\t\t%s\t%s\n", pt.Field, pt.Profile) // targets, or a project bundle's members (bundle)
+		}
 		return
 	}
 	// The header names the cause, so a re-pin the user asked for is not framed as someone else's
@@ -201,18 +216,23 @@ func printTrustDiff(w io.Writer, s style, name string, rep engine.TrustReport, m
 				files = append(files, f)
 			}
 		}
+		for _, pt := range rep.ProfileTargets {
+			if f := engine.ProfileFile(pt.Profile); !slices.Contains(files, f) {
+				files = append(files, f)
+			}
+		}
 		slices.Sort(files) // in the order of the sections below
 		name = strings.Join(files, ", ")
 	}
 	switch {
-	case len(rep.Changes) == 0 && rep.Targets == nil: // only a replacement: no file to name
+	case len(rep.Changes) == 0 && rep.Targets == nil && len(rep.ProfileTargets) == 0: // only a replacement: no file to name
 		fmt.Fprintln(w, "an activation would put a project profile in place of one of yours; it needs your trust for:")
 	case rep.Status == trust.StatusNew:
 		fmt.Fprintf(w, "%s has not been trusted on this machine (a fresh clone, or a moved project):\n", name)
 	case rep.ManifestChanged:
 		fmt.Fprintf(w, "%s changed since lola last wrote it or you last trusted it:\n", name)
 	default:
-		fmt.Fprintf(w, "%s is unchanged; lola sync needs your trust for:\n", name)
+		fmt.Fprintf(w, "%s is unchanged; %s needs your trust for:\n", name, run)
 	}
 	for _, r := range rep.Replacements {
 		line := "  ~ " + r.Profile + " now replaces " + r.Replaces
@@ -226,6 +246,11 @@ func printTrustDiff(w io.Writer, s style, name string, rep engine.TrustReport, m
 	for _, c := range rep.Changes {
 		if !slices.Contains(files, c.Profile) {
 			files = append(files, c.Profile)
+		}
+	}
+	for _, pt := range rep.ProfileTargets {
+		if !slices.Contains(files, pt.Profile) {
+			files = append(files, pt.Profile)
 		}
 	}
 	slices.Sort(files)
@@ -246,22 +271,21 @@ func printTrustDiff(w io.Writer, s style, name string, rep engine.TrustReport, m
 		for _, c := range append(first, rest...) {
 			printTrustChange(w, c, more)
 		}
-		if file == "" {
-			printTargetsChange(w, rep.Targets)
-		}
+		printTargetsChange(w, rep.TargetsOf(file))
 	}
 }
 
-// printTargetsChange is the diff's row for a change to the top-level targets, if any.
+// printTargetsChange is the diff's row for a change to the top-level targets, or to a project
+// bundle's member list (Field bundle: "~ bundle        [review, lint] → [review]"), if any.
 func printTargetsChange(w io.Writer, t *trust.FieldChange) {
 	switch {
 	case t == nil:
 	case t.From == nil: // a side that is absent is the + or -, never "(none) →"
-		fmt.Fprintf(w, "  + %-13s %s\n", "targets", shownValue(t.To))
+		fmt.Fprintf(w, "  + %-13s %s\n", t.Field, shownValue(t.To))
 	case t.To == nil:
-		fmt.Fprintf(w, "  - %-13s %s\n", "targets", shownValue(t.From))
+		fmt.Fprintf(w, "  - %-13s %s\n", t.Field, shownValue(t.From))
 	default:
-		fmt.Fprintf(w, "  ~ %-13s %s → %s\n", "targets", shownValue(t.From), shownValue(t.To))
+		fmt.Fprintf(w, "  ~ %-13s %s → %s\n", t.Field, shownValue(t.From), shownValue(t.To))
 	}
 }
 

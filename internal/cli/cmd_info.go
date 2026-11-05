@@ -7,12 +7,14 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
+	"github.com/trevor-vaughan/lola-go/internal/native"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -35,8 +37,9 @@ func (a *app) infoCmd() *cobra.Command {
 			"\n" +
 			"It shows the module's identity and contents; what would run code, and when: each install\n" +
 			"hook with its sha256 and first lines, the runtime hooks and MCP servers as the assistant\n" +
-			"would run them; and what installing it here would do: the plan lola install -n prints, the\n" +
-			"consent each hook needs, whether you gave it already, and the --trust kinds still needed.\n" +
+			"would run them; the native executables its skills ship, with their sha256; and what\n" +
+			"installing it here would do: the plan lola install -n prints, the consent each hook\n" +
+			"needs, whether you gave it already, and the --trust kinds still needed.\n" +
 			"Its last line is the install of exactly the version shown: a git source at the commit\n" +
 			"fetched, anything else by its cached name or its marketplace address.\n" +
 			"\n" +
@@ -117,6 +120,9 @@ func (a *app) showInfo(cmd *cobra.Command, arg string) error {
 	if err != nil {
 		return tagRefHint(words, cmd, args, err)
 	}
+	if len(info.Scopes) > 0 {
+		a.printContext(cmd, eng, info.Scopes, nil)
+	}
 	return a.emit(cmd, func(w io.Writer, s style) { printInfo(w, s, info) }, info)
 }
 
@@ -158,18 +164,30 @@ func recordedText(recorded, scope string) string {
 }
 
 // printInfo prints lola info's five sections: the module, what would run code, what installing
-// it would do at each scope, and the install of the version shown, or the hints that resolve a
-// missing scope or assistant. A --plain row is the module's, then one per install hook
-// ("hook", event, script, sha256), install script ("script", event, source, path, sha256, needs_trust), runtime hook (as lola install's "runtime-hook" row), MCP
-// server ("mcp", name, target, command line, URL), refusal of a plan ("refusal", scope, error)
-// followed by its hints ("hint", command), consent item ("consent", scope, kind, item,
-// recorded), step, next step ("install", command), why no scope or assistant resolved
-// ("no_scope" or "no_assistant", sentence) and hint ("hint", command).
+// it would do at each scope (with, where a layer provides the module, its components as the
+// picks leave them), and the install of the version shown, or the hints
+// that resolve a missing scope or assistant. A --plain row is the module's, then one per mention
+// ("mention", component, mentioned), notice (as lola install's "notice" row), install hook
+// ("hook", event, script, sha256), native executable ("native", path, format, kind, arch joined by
+// commas, os, linkage, sha256), install script ("script", event, source, path, sha256,
+// needs_trust), runtime hook (as lola install's "runtime-hook" row), MCP server ("mcp", name,
+// target, command line, URL), refusal of a plan ("refusal", scope, error) followed by its hints
+// ("hint", command), consent item ("consent", scope, kind, item, recorded), the layer that provides
+// the module ("from", scope, layer), component ("component", scope, kind/name, state, origin,
+// new), re-pick ("change", scope, command), step, next step ("install", command), why no scope or
+// assistant resolved ("no_scope" or "no_assistant", sentence) and hint ("hint", command).
 func printInfo(w io.Writer, s style, info *engine.Info) {
 	printModuleView(w, s, info.ModuleView)
+	printMentions(w, s, info.Mentions)
+	for _, n := range info.Notices {
+		fmt.Fprintln(w, noticeLine(s, n))
+	}
 	if s.plain {
 		for _, h := range info.Runs.InstallHooks {
 			fmt.Fprintf(w, "hook\t%s\t%s\t%s\n", h.Event, h.Script, h.SHA256)
+		}
+		for _, b := range info.NativeExecutables {
+			fmt.Fprintf(w, "native\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", b.Path, b.Format, b.Kind, strings.Join(b.Arch, ","), b.OS, b.Linkage, b.SHA256)
 		}
 		for _, sr := range info.Runs.Scripts {
 			fmt.Fprintf(w, "script\t%s\t%s\t%s\t%s\t%t\n", sr.Event, sr.Source, sr.Path, sr.SHA256, sr.NeedsTrust)
@@ -192,6 +210,15 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 			for _, c := range in.Consent {
 				fmt.Fprintf(w, "consent\t%s\t%s\t%s\t%s\n", in.Scope, c.Kind, c.Item, c.Recorded)
 			}
+			if in.From != "" {
+				fmt.Fprintf(w, "from\t%s\t%s\n", in.Scope, in.From)
+			}
+			for _, c := range in.Components {
+				fmt.Fprintf(w, "component\t%s\t%s/%s\t%s\t%s\t%t\n", in.Scope, c.Kind, c.Name, c.State, c.Origin, c.New)
+			}
+			if in.Change != "" {
+				fmt.Fprintf(w, "change\t%s\t%s\n", in.Scope, in.Change)
+			}
 			for _, st := range in.Steps {
 				fmt.Fprintln(w, stepLine(s, st))
 			}
@@ -212,6 +239,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 	}
 	planned := info.NoAssistant == "" && slices.ContainsFunc(info.Install, func(in engine.InfoInstall) bool { return in.Scope != "" && in.Refusal == nil })
 	printRuns(w, info.Runs, planned)
+	printNative(w, info.NativeExecutables)
 	for _, in := range info.Install {
 		where := "without a scope"
 		if in.Scope != "" {
@@ -248,6 +276,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 		if len(in.TrustNeeded) > 0 {
 			fmt.Fprintf(w, "  needs --trust=%s\n", strings.Join(in.TrustNeeded, ","))
 		}
+		printPicks(w, s, info.Name, in)
 	}
 	switch {
 	case info.NoScope != "":
@@ -259,6 +288,61 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 	}
 	for _, h := range info.Hints {
 		fmt.Fprintln(w, "  hint: "+h)
+	}
+}
+
+// printPicks prints, for the scope of in, what the picks of the layer that provides module do with
+// each component (cherry-pick design §6): which layer provides it, named as the lines name their
+// layers, one aligned line per component
+// with its state, the layer whose picks leave it out and (new) for one the version adds over the
+// one installed, then the run that changes them (none when the profiles could not be listed: a
+// notice said so). Nothing where no layer provides the module.
+func printPicks(w io.Writer, s style, module string, in engine.InfoInstall) {
+	if in.From == "" {
+		return
+	}
+	fmt.Fprintf(w, "  components of %s here, provided by %s:\n", untrusted.Text(module, untrusted.MaxName), in.FromLabel)
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	for _, c := range in.Components {
+		state := c.State // a state this switch does not word shows as --plain and --json name it
+		switch c.State {
+		case engine.ComponentInstalled:
+			state = "installed"
+		case engine.ComponentSkipped:
+			state = "skipped in " + c.Origin
+		case engine.ComponentNotInOnly:
+			state = "not in the only: list of " + c.Origin
+		case engine.ComponentRulesOff:
+			state = "rules off"
+		}
+		if c.New {
+			state += " (new)"
+		}
+		fmt.Fprintf(tw, "    %s/%s\t%s\n", c.Kind, c.Name, state)
+	}
+	_ = tw.Flush()
+	if in.Change != "" {
+		fmt.Fprintln(w, "  "+s.info("change it: "+in.Change))
+	}
+}
+
+// printMentions lists what each component mentions (cherry-pick design §5.2): under a mentions:
+// heading one line per component, or with --plain one mention row per pair.
+func printMentions(w io.Writer, s style, ms []engine.ComponentMentions) {
+	if s.plain {
+		for _, m := range ms {
+			for _, to := range m.Mentions {
+				fmt.Fprintf(w, "mention\t%s\t%s\n", m.Component, to)
+			}
+		}
+		return
+	}
+	if len(ms) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "  mentions:")
+	for _, m := range ms {
+		fmt.Fprintf(w, "    %s → %s\n", m.Component, strings.Join(m.Mentions, ", "))
 	}
 }
 
@@ -331,4 +415,48 @@ func refusalLines(msg string) []string {
 		lines[i] = strings.TrimSpace(lines[i])
 	}
 	return lines
+}
+
+// nativeLibsShown is how many loaded libraries a binary's line names before it elides the rest.
+const nativeLibsShown = 5
+
+// printNative prints the native executables the module installs: each with what it is, the Go
+// build it carries and its sha256, or that there are none.
+func printNative(w io.Writer, bins []engine.InfoNative) {
+	if len(bins) == 0 {
+		fmt.Fprintln(w, "ships native executables: none")
+		return
+	}
+	fmt.Fprintln(w, "ships native executables:")
+	for _, b := range bins {
+		fmt.Fprintf(w, "  %s   %s\n", b.Path, nativeSummary(b))
+		if b.Go != nil {
+			fmt.Fprintf(w, "      %s\n", strings.TrimSpace("Go "+b.Go.GoVersion+", "+b.Go.Module+" "+b.Go.ModuleVersion))
+		}
+		fmt.Fprintf(w, "      sha256 %s   %s\n", b.SHA256, sizeText(b.Size))
+	}
+}
+
+// nativeSummary is what b is: "<format> <kind>, <arch> <os>, <linkage> (<libraries>)", leaving out
+// what is unknown and naming at most nativeLibsShown libraries.
+func nativeSummary(b engine.InfoNative) string {
+	if b.Malformed {
+		return "looks like " + native.Format(b.Format).WithArticle() + " file but is malformed"
+	}
+	s := b.Format + " " + b.Kind
+	if platform := strings.TrimSpace(strings.Join(b.Arch, "/") + " " + b.OS); platform != "" {
+		s += ", " + platform
+	}
+	if b.Linkage != "" {
+		s += ", " + b.Linkage
+	}
+	if len(b.Libraries) > 0 {
+		libs := b.Libraries[:min(nativeLibsShown, len(b.Libraries))]
+		list := strings.Join(libs, ", ")
+		if len(b.Libraries) > nativeLibsShown {
+			list += ", …"
+		}
+		s += " (" + list + ")"
+	}
+	return s
 }

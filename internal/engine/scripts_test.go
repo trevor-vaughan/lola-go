@@ -392,13 +392,13 @@ var _ = Describe("install scripts", func() {
 				_, err := install(engine.Options{Trust: engine.TrustHooks})
 				return err
 			}),
-			Entry("render replacing a copy", func() error {
+			Entry("sync replacing a copy", func() error {
 				if _, err := install(engine.Options{Trust: engine.TrustHooks}); err != nil {
 					return err
 				}
 				Expect(os.Remove(log)).To(Succeed())
 				Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "example"))).To(Succeed())
-				_, err := e.Render(ctx, sc, engine.Options{})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 				return err
 			}),
 			Entry("sync", func() error {
@@ -411,7 +411,7 @@ var _ = Describe("install scripts", func() {
 				Expect(os.CopyFS(filepath.Join(proj, "mods", "example"), os.DirFS(src))).To(Succeed())
 				writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n",
 					".lola/profiles/review.yml": "version: 1\nmodules:\n  - name: example\n    source: ../../mods/example\n"})
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"review"}},
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "review"},
 					Options: engine.Options{Trust: engine.TrustEntries | engine.TrustProfiles | engine.TrustHooks}})
 				return err
 			}),
@@ -542,7 +542,7 @@ var _ = Describe("install scripts", func() {
 				Expect(err).NotTo(HaveOccurred())
 				i := slices.IndexFunc(res.Findings, func(f target.Finding) bool { return f.Code == "claude-code/runtime-hooks-declined" })
 				Expect(i).To(BeNumerically(">=", 0))
-				return strings.TrimPrefix(res.Findings[i].Hint, "review the hooks listed above, then consent to them: ")
+				return strings.TrimPrefix(res.Findings[i].Hint, "review the hooks listed above, then, if you want to install them, consent to them: ")
 			}, engine.TrustScripts|engine.TrustRuntimeHooks),
 		)
 
@@ -761,13 +761,13 @@ var _ = Describe("install scripts", func() {
 			Expect(asked).To(HaveLen(1))
 			Expect(asked[0]).To(MatchRegexp(`^pre-install ci/check.sh [0-9a-f]{64}$`))
 			Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "example"))).To(Succeed())
-			_, err = e.Render(ctx, sc, opts)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: opts})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(asked).To(HaveLen(1), "consent is recorded for the project, event and digest")
 
 			script(filepath.Join(proj, "ci", "check.sh"), logger("project")+"true\n")
 			Expect(os.RemoveAll(filepath.Join(proj, ".lola", "modules", "example"))).To(Succeed())
-			_, err = e.Render(ctx, sc, opts)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: opts})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(asked).To(HaveLen(2), "an edit asks again")
 

@@ -33,6 +33,7 @@ func (a *app) repairCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			a.printContext(cmd, eng, []engine.Scope{scs[0].Scope}, nil)
 			plan, err := eng.PlanRepair(engine.RepairRequest{Scope: scs[0].Scope, Display: outputFlags(cmd)})
 			if err != nil {
 				return err

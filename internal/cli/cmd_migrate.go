@@ -88,15 +88,20 @@ func (a *app) migrateCmd() *cobra.Command {
 					return err
 				}
 			}
+			report, clearProgress := a.progress(cmd)
+			defer clearProgress()
+			opts.Progress = report
 			p, err := migrate.NewPlan(cmd.Context(), eng, st, opts)
 			if err != nil {
 				return err
 			}
 			remap := remapRun(cmd, opts, p)
 			preview, err := migrate.Migrate(cmd.Context(), eng, p, opts)
+			clearProgress()
 			if err != nil {
 				return err
 			}
+			opts.Progress = nil // the run's questions and hooks draw on the same line
 			preview.Remap = remap
 			if dry || preview.Nothing {
 				return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
@@ -357,8 +362,45 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 	if r.Trash != "" {
 		fmt.Fprintln(w, "trash: "+r.Trash)
 	}
+	printNextSteps(w, s, r)
+}
+
+// printNextSteps closes the report with everything the user can act on, each once: the consent a
+// run skipped, the paths it could not map, what keeps the Python home, and why a destination
+// failed. The inline lines say where each came from; a long report buries them, this does not.
+func printNextSteps(w io.Writer, s style, r *migrate.Result) {
+	var steps []string
+	add := func(step string) {
+		if !slices.Contains(steps, step) {
+			steps = append(steps, step)
+		}
+	}
+	for _, d := range r.Destinations {
+		for _, f := range d.Findings {
+			if f.Hint != "" && strings.HasSuffix(f.Code, "-declined") {
+				add(f.Hint)
+			}
+		}
+		if d.Status == migrate.StatusFailed {
+			for _, h := range d.Hints {
+				add(h)
+			}
+		}
+	}
 	if r.Remap != "" {
-		fmt.Fprintln(w, s.info("map what this machine lacks: "+r.Remap))
+		add("map what this machine lacks: " + r.Remap)
+	}
+	if r.Home.Action == migrate.HomeKeep {
+		for _, h := range r.Home.Hints {
+			add(h)
+		}
+	}
+	if len(steps) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "next steps:")
+	for _, step := range steps {
+		fmt.Fprintln(w, s.info(step))
 	}
 }
 

@@ -24,7 +24,7 @@ var githubRepoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 var sha256RE = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 
 // skip is why an entry is skipped: Kind for the fetch's grouped summary, the reason in full.
-type skip struct{ kind, reason string }
+type skip struct{ kind, reason, host string }
 
 func (s *skip) Error() string { return s.reason }
 
@@ -33,19 +33,17 @@ func skipped(kind, format string, args ...any) *skip {
 }
 
 // remoteSource checks loc, a network source a catalog names, from its text alone (Plan 6c §4.3,
-// §10, rulings R-6c-10, R-6c-18): at most maxSource bytes; never ssh:// or git's scp form, which
-// would use your ssh keys on a stranger's host, nor any scheme but https://; and the address rule
-// of source.CheckRemote, which refuses a path, a file:// URL, localhost and addresses inside your
-// network. It is never looked up on disk.
-func remoteSource(field, loc string) *skip {
+// §10, rulings R-6c-10, R-6c-18): at most maxSource bytes; no scheme but https:// and ssh (with
+// git's scp form), and ssh only when its host is in ssh, the hosts the reader allowed, since it
+// would use your ssh keys on that host; and the address rule of source.CheckRemote, which refuses
+// a path, a file:// URL, localhost and addresses inside your network. It is never looked up on disk.
+func remoteSource(field, loc string, ssh []string) *skip {
 	if len(loc) > maxSource {
 		return skipped("oversized entry", "%s is longer than %d bytes", field, maxSource)
 	}
 	host := source.Host(loc)
-	switch scheme, _, _ := strings.Cut(host, "://"); {
-	case scheme == "ssh":
-		return skipped("ssh source", "ssh sources in a catalog are not supported: they connect to a stranger's host with your ssh keys")
-	case host != "" && scheme != "https":
+	scheme, _, _ := strings.Cut(host, "://")
+	if host != "" && scheme != "https" && scheme != "ssh" {
 		return skipped("source that is not https", "%s uses %s://; a catalog entry's sources must use https://",
 			untrusted.Text(loc, untrusted.MaxName), untrusted.Text(scheme, untrusted.MaxName))
 	}
@@ -56,6 +54,18 @@ func remoteSource(field, loc string) *skip {
 			reason = re.Reason
 		}
 		return skipped("local or private source", "%s", reason)
+	}
+	if scheme != "ssh" {
+		return nil
+	}
+	name := SSHHost(loc)
+	if _, err := CheckSSHHost(name); err != nil {
+		return skipped("ssh source", "the catalog names an ssh host lola cannot allow: %s", err.Error())
+	}
+	if !slices.Contains(ssh, name) {
+		s := skipped("ssh source", "the catalog names the ssh host %s, which you have not allowed", name)
+		s.host = name
+		return s
 	}
 	return nil
 }
@@ -92,8 +102,8 @@ func checked(e *Entry, kind source.Kind) *skip {
 }
 
 // mapGit maps a git source at loc with its ref, sha and path, all from the catalog.
-func mapGit(e *Entry, field, loc, ref, sha, sub string) *skip {
-	if s := remoteSource(field, loc); s != nil {
+func mapGit(e *Entry, field, loc, ref, sha, sub string, ssh []string) *skip {
+	if s := remoteSource(field, loc, ssh); s != nil {
 		return s
 	}
 	if !source.IsGitForm(loc) {
@@ -130,7 +140,7 @@ func githubURL(field, repo string) (string, *skip) {
 var sourceKinds = []string{"source", "repo", "url", "ref", "sha", "path", "sha256"}
 
 // mapClaudeSource maps a Claude entry's source object, o (Plan 6c §4.3).
-func mapClaudeSource(e *Entry, o *jval) *skip {
+func mapClaudeSource(e *Entry, o *jval, ssh []string) *skip {
 	if k := ambiguous(o, sourceKinds); k != "" {
 		return skipped("ambiguous entry", "ambiguous key source.%s", untrusted.Text(k, untrusted.MaxName))
 	}
@@ -165,9 +175,9 @@ func mapClaudeSource(e *Entry, o *jval) *skip {
 		if s != nil {
 			return s
 		}
-		return mapGit(e, "source.repo", u, ref, sha, "")
+		return mapGit(e, "source.repo", u, ref, sha, "", ssh)
 	case "url":
-		return mapGit(e, "source.url", loc, ref, sha, "")
+		return mapGit(e, "source.url", loc, ref, sha, "", ssh)
 	case "git-subdir":
 		if !strings.Contains(loc, "://") && !strings.Contains(loc, ":") && strings.Count(loc, "/") == 1 {
 			u, s := githubURL("source.url", loc)
@@ -179,9 +189,9 @@ func mapClaudeSource(e *Entry, o *jval) *skip {
 		if sub == "" {
 			return skipped("malformed entry", "a git-subdir source needs a path")
 		}
-		return mapGit(e, "source.url", loc, ref, sha, sub)
+		return mapGit(e, "source.url", loc, ref, sha, sub, ssh)
 	case "archive":
-		if s := remoteSource("source.url", loc); s != nil {
+		if s := remoteSource("source.url", loc, ssh); s != nil {
 			return s
 		}
 		if sum != "" && !sha256RE.MatchString(sum) {
@@ -228,12 +238,12 @@ func mapRelative(e *Entry, rel, root string) *skip {
 
 // mapPython maps a Python catalog's repository, ref and path (Plan 6c §4.3): a git source, or
 // an https archive when the URL's path ends in an archive suffix.
-func mapPython(e *Entry, repo, ref, sub string) *skip {
-	if s := remoteSource("repository", repo); s != nil {
+func mapPython(e *Entry, repo, ref, sub string, ssh []string) *skip {
+	if s := remoteSource("repository", repo, ssh); s != nil {
 		return s
 	}
 	if source.IsGitForm(repo) {
-		return mapGit(e, "repository", repo, ref, "", sub)
+		return mapGit(e, "repository", repo, ref, "", sub, ssh)
 	}
 	if ref != "" {
 		return skipped("unusable source", "ref %s is given for an archive, which has no branches, tags or commits", untrusted.Text(ref, untrusted.MaxName))

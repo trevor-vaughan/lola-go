@@ -83,14 +83,20 @@ func consentRemote(rps []RemoteProfile, items []Consent, covered bool, ask func(
 	return receipt(slices.Clone(items))
 }
 
+// baseNames says what the reserved name base names (spec 2026-10-29 §3.1), for a refusal of it.
+const baseNames = "base names the scope's base: default.yml at user scope, project.yml in a project"
+
 // remoteName refuses a name no remote profile can have: one that fails the module-name rules,
 // and default, which only your own default.yml is (Plan 6b §4.1).
 func remoteName(name string) error {
 	if err := module.ValidateName("profile", name); err != nil {
 		return err
 	}
-	if name == profile.DefaultName {
+	switch name {
+	case profile.DefaultName:
 		return errs.WithHints(errors.New("a remote profile cannot be named default"), "default is your own default.yml, always on at user scope")
+	case profile.BaseName:
+		return errs.WithHints(errors.New("a remote profile cannot be named base"), baseNames)
 	}
 	return nil
 }
@@ -220,11 +226,11 @@ func (e *Engine) remoteEntry(ctx context.Context, sc Scope, q string, ent manife
 		return nil, err
 	}
 	se := &syncEntry{ent: ent, spec: spec, targets: ent.Targets}
-	return se, e.resolveSync(ctx, sc, se, run)
+	return se, e.resolveSync(ctx, sc, se, run, nil) // display: only a folder's hint takes it, and a remote entry is never one
 }
 
 // readProfiles takes the profiles lock shared, for a run that reads the remote profiles (sync,
-// activation, render, install, uninstall, list, lola profile's listing and state, the install
+// activation, install, uninstall, list, lola profile's listing and state, the install
 // coaching and completion, and --add, --update and --remove until they write), so it reads the
 // set once (Plan 6b §10, §19 S6). It lists the remote profiles under the lock: when
 // a killed --add, --update or --remove left a directory behind (leftover), it takes the lock

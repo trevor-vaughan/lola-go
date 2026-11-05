@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -71,9 +72,11 @@ func (e *Engine) noTargets() error {
 }
 
 // withRetry tells the user that fetched modules stayed in the cache, and how to install them at
-// each scope of spec from where they are (Plan 6a §11.3), one command per scope. A refusal for
-// want of trust, or for conflicts, keeps only its own hints, the way forward: retrying would
-// refuse again.
+// each scope of spec from where they are (Plan 6a §11.3), one command per scope; for lola profile
+// --edit, the run as given (its Rerun, with its --override and --new), whose picks the retry needs.
+// A refusal for want of trust (a project's entry kept out of your files included), for conflicts,
+// or of a cached version that does not match its digest, keeps only its own hints, the way
+// forward: retrying would refuse again.
 func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error {
 	_, targets := errors.AsType[*untrustedTargetsError](err)
 	_, conflicts := errors.AsType[*plan.ConflictError](err)
@@ -81,8 +84,13 @@ func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error 
 	_, hook := errors.AsType[*hookConsentError](err)
 	_, script := errors.AsType[*scriptError](err)
 	_, scriptConsent := errors.AsType[*scriptConsentError](err)
-	if len(fetched) == 0 || targets || conflicts || template || hook || script || scriptConsent || errors.Is(err, ErrNotTrusted) {
+	_, digest := errors.AsType[*store.DigestError](err) // refused until removed from the cache
+	_, kept := errors.AsType[*keptInProjectError](err)
+	if len(fetched) == 0 || targets || conflicts || template || hook || script || scriptConsent || digest || kept || errors.Is(err, ErrNotTrusted) {
 		return err
+	}
+	if t := spec.Options.Target; t.Edit && t.Rerun != nil {
+		return errs.WithHints(err, "fetched modules stay in your cache; retry with: "+t.Rerun(t.ownFlags()...))
 	}
 	// The retry keeps the run's own scripts, the gate the user gave it (RR1).
 	args := slices.Clone(fetched)
@@ -93,7 +101,7 @@ func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error 
 	}
 	cmds := make([]string, len(spec.Scopes))
 	for i, si := range spec.Scopes {
-		cmds[i] = e.Command(si.Scope, "install", args...)
+		cmds[i] = e.installRun(si.Scope, spec.Options.Target, args...)
 	}
 	return errs.WithHints(err, "fetched modules stay in your cache; retry with: "+strings.Join(cmds, "; "))
 }
@@ -127,7 +135,32 @@ type InstallSpec struct {
 	Scopes      []ScopeInstall
 	Modules     []InstallRequest
 	GlobalEdits []SelectionEdit
-	Options     Options
+	// NameMentions names, per module and scope, the components the picked components mention
+	// that the run leaves out, with the install that adds them (cherry-pick design §5.2). lola
+	// install sets it; lola info's plan lists the mentions itself, and lola migrate picks nothing.
+	NameMentions bool
+	// WithMentions adds, at each scope, the components the picked components mention directly and
+	// the selection leaves out, as --unskip edits of the scope's section, saved like any pick
+	// (cherry-pick design §5.3); what those mention in turn is not followed. A --skip flag of the
+	// run keeps out a mention it matches; an untick on the component page does not.
+	WithMentions bool
+	Options      Options
+	// Staged, when set, is the install's staged run (StagedRun): the versions the pickers or this
+	// call fetch are read from it, and the apply commits those it installs to the cache before its
+	// first write (cherry-pick design §7); a dry run, a refusal or a declined question leaves the
+	// cache as it was. Without one, the call fetches into a run of its own and caches what it
+	// fetches at once (lola migrate, lola info's plan).
+	Staged *StagedRun
+	// then, set by InstallAll for lola profile <name> --edit applied in several scopes (ruling P1),
+	// is the scopes after the first, which sync the profile the first writes instead of planning
+	// their own edit of it: no hint names them as scopes the profile is also on in (alsoOn).
+	// profiles, when set, receives each profile file the install writes, as it would write it.
+	then     []Scope
+	profiles *[]fileEdit
+	// ConfirmRemovals, for lola profile <name> --edit applied in several scopes, asks about the
+	// removals a later scope's sync makes, before anything is written (confirmEdited), as a sync's
+	// ConfirmRemovals does; nil cannot ask, and -y gives one that answers yes.
+	ConfirmRemovals func([]Removal) (bool, error)
 	// UserRun is the user's run at user scope, the hint of a refusal of a project at the home
 	// directory; "" gives it no hint.
 	UserRun string
@@ -171,8 +204,23 @@ type scopePlan struct {
 	resolved         []resolvedRequest
 	changes          []plan.ModuleChange
 	copies           []moduleCopy
-	entries          []manifest.Entry
+	writes           []targetWrite // what the install writes, per file
 	replace          []plan.Replaceable
+	target           writeTo                        // the file the install writes (writeTarget)
+	picks            config.Where                   // where its picks are saved: selections.yaml's scope section for project.yml, else the target's entry
+	scopePicks       config.Where                   // selections.yaml's section of the scope (where)
+	planned          []string                       // the modules planned, written or not
+	dropped          []string                       // modules overridden from project.yml, whose selections.yaml change is not saved
+	infos            []profile.Info                 // the profiles the scope can use, once listed
+	profiles         func() ([]profile.Info, error) // infos, else listed once when first asked for (visibleOnce)
+	shared           map[string]bool                // the profile files an earlier scope of the run writes
+	overrides        map[string]string              // module → the name of the layer whose entry the target's override copied
+}
+
+// targetWrite is the entries an install writes into one file, t's, each in its file form.
+type targetWrite struct {
+	t       writeTo
+	entries []manifest.Entry
 }
 
 // resolvedRequest is an install argument resolved at a scope.
@@ -180,6 +228,10 @@ type resolvedRequest struct {
 	req InstallRequest
 	ent manifest.Entry
 	v   store.Version
+	// hashed says this run staged v and hashed it itself (not a publishing run, whose fetch may
+	// return a cached version as the cache records it), so its digest is lola's own, not one a
+	// file names.
+	hashed bool
 }
 
 // InstallAll installs modules at every scope of spec (Plan 5c §7, §14); a destination listed
@@ -188,8 +240,204 @@ type resolvedRequest struct {
 // edits to selections.yaml in memory; plan through the resolver; run every refusal (--strict,
 // conflicts) and consent prompt for every scope; write selections.yaml; then apply each
 // scope. A refusal or a cancelled prompt writes nothing; a failure while applying leaves
-// selections.yaml written, which the next render converges on. A dry run writes neither.
-func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallResult, err error) {
+// selections.yaml written, which the next sync converges on. A dry run writes neither. What an
+// install adds to a file is followed by the move that fixes a wrong target, judged once the
+// install has released its locks, in the state it leaves (installMoveHints).
+//
+// lola profile <name> --edit in several scopes (Options.Target.Edit; ruling P1, cherry-pick design
+// §4.3) plans the edit once, at the first scope, from the profile's file, and writes it there; each
+// other scope then syncs the modules it edited from the file as written (under -n, as it would be
+// written), so the one file is never planned twice.
+func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResult, error) {
+	var then []ScopeInstall
+	var wrote []fileEdit
+	if spec.Options.Target.Edit && len(spec.Scopes) > 1 {
+		spec.Scopes, then = spec.Scopes[:1], spec.Scopes[1:]
+		for _, si := range then {
+			spec.then = append(spec.then, si.Scope)
+		}
+		spec.profiles = &wrote
+	}
+	var confirmed map[string]bool
+	if before := spec.BeforeWrite; len(then) > 0 {
+		spec.BeforeWrite = func(out *InstallResult) error {
+			if before != nil {
+				if err := before(out); err != nil {
+					return err
+				}
+			}
+			var err error
+			confirmed, err = e.confirmEdited(ctx, spec, then, wrote)
+			return err
+		}
+	}
+	var added []installAdded
+	out, err := e.installAll(ctx, spec, &added)
+	if err != nil {
+		return out, err
+	}
+	var scopes []Scope
+	for _, si := range spec.Scopes {
+		scopes = append(scopes, si.Scope)
+	}
+	for _, a := range added {
+		moves := e.installMoveHints(ctx, a, scopes, spec.Options.AskWhere != nil, spec.Options.Display)
+		out.Notices = append(append(out.Notices, e.inProjectNotices(a, scopes, spec.Options, moves)...), moves...)
+	}
+	for _, si := range then {
+		if err := e.syncEdited(ctx, spec, si, wrote, confirmed[si.Scope.Key()], out); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// editedSync is the sync of si's scope that applies what lola profile --edit wrote at the first
+// scope (wrote) into a profile of yours loaded there: the modules it wrote into such a file, nil
+// for none (an edit answered into the first scope's own files, project.yml or its selections,
+// leaves si's scope as it is). pending reads the files as wrote would write them (-n, or the check
+// before the write, confirmEdited).
+func (e *Engine) editedSync(spec InstallSpec, si ScopeInstall, wrote []fileEdit, pending bool) (*SyncRequest, error) {
+	layers, err := e.scopeLayers(si.Scope)
+	if err != nil {
+		return nil, err
+	}
+	var modules []string
+	var mine []fileEdit
+	for _, f := range wrote {
+		if f.layer.Key != "" || !slices.ContainsFunc(layers, func(l Layer) bool { return l.Path == f.layer.Path }) {
+			continue
+		}
+		mine = append(mine, f)
+		for _, ent := range f.change.Set {
+			modules = append(modules, ent.Name)
+		}
+	}
+	if len(modules) == 0 {
+		return nil, nil
+	}
+	slices.Sort(modules)
+	req := &SyncRequest{Scope: si.Scope, Modules: slices.Compact(modules), Options: spec.Options, Display: spec.Options.Display}
+	if pending {
+		req.write = &profileWrites{read: map[string]*profile.Profile{}}
+		for _, f := range mine {
+			_, data, err := f.layer.read.Edit(f.layer.Path, f.change)
+			if err != nil {
+				return nil, err
+			}
+			_, p, err := madeFile(profile.KindUser, f.layer.Path, data)
+			if err != nil {
+				return nil, err
+			}
+			req.write.read[f.layer.Path] = p
+		}
+	}
+	return req, nil
+}
+
+// removalNames are the modules rs removes, each with the assistants it is removed from where known.
+func removalNames(rs []Removal) []string {
+	names := make([]string, 0, len(rs))
+	for _, r := range rs {
+		n := shown(r.Module)
+		if len(r.Targets) > 0 {
+			n += " (" + strings.Join(shownAll(r.Targets), ", ") + ")"
+		}
+		names = append(names, n)
+	}
+	return names
+}
+
+// confirmEdited asks, before the edit writes anything, about the removals each later scope's sync
+// (editedSync) would make, as a sync asks them (spec.ConfirmRemovals; -y answers yes, --force
+// needs no answer); without a way to ask it refuses, nothing written, hinting the run with -y. It
+// returns the scopes whose removals were confirmed.
+func (e *Engine) confirmEdited(ctx context.Context, spec InstallSpec, then []ScopeInstall, wrote []fileEdit) (map[string]bool, error) {
+	confirmed := map[string]bool{}
+	for _, si := range then {
+		req, err := e.editedSync(spec, si, wrote, true)
+		if err != nil || req == nil {
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		req.Options.DryRun, req.held = true, true // the install holds the profiles lock
+		res, err := e.Sync(ctx, *req)
+		if err != nil {
+			return nil, err
+		}
+		if len(res.Removals) == 0 || spec.Options.Force {
+			continue
+		}
+		if spec.ConfirmRemovals == nil {
+			err := fmt.Errorf("lola profile --edit needs your confirmation to remove %s %s, and there is no terminal to ask on; nothing was written",
+				strings.Join(removalNames(res.Removals), ", "), scopeWhere(si.Scope))
+			if t := spec.Options.Target; t.Rerun != nil {
+				return nil, errs.WithHints(err, "see what goes: "+t.Rerun(append(t.ownFlags(), "-n")...),
+					"confirm it: "+t.Rerun(append(t.ownFlags(), "-y")...))
+			}
+			return nil, err
+		}
+		yes, err := spec.ConfirmRemovals(slices.Clone(res.Removals))
+		switch {
+		case err != nil:
+			return nil, err
+		case !yes:
+			return nil, ErrDeclined
+		}
+		confirmed[si.Scope.Key()] = true
+	}
+	return confirmed, nil
+}
+
+// syncEdited applies at si's scope what lola profile --edit wrote at spec's first scope into a
+// profile of yours loaded there too (InstallAll; editedSync, none to apply, no sync), its result
+// added to out. Its removals were asked before the write (confirmEdited: confirmed). A real run
+// that fails here has written the file and applied it at the first scope: the refusal says so and
+// hints the sync that finishes it.
+func (e *Engine) syncEdited(ctx context.Context, spec InstallSpec, si ScopeInstall, wrote []fileEdit, confirmed bool, out *InstallResult) error {
+	req, err := e.editedSync(spec, si, wrote, spec.Options.DryRun)
+	if err != nil || req == nil {
+		return err
+	}
+	req.ConfirmRemovals = spec.ConfirmRemovals
+	if confirmed {
+		req.ConfirmRemovals = func([]Removal) (bool, error) { return true, nil }
+	}
+	res, err := e.Sync(ctx, *req)
+	if err != nil {
+		if spec.Options.DryRun {
+			return err
+		}
+		return errs.WithHints(fmt.Errorf("%w; the edit was saved and applied %s, not %s", err, scopeWhere(spec.Scopes[0].Scope), scopeWhere(si.Scope)),
+			"apply it there: "+e.SyncCommand(si.Scope))
+	}
+	for i := range res.Modules {
+		res.Modules[i].Scope, res.Modules[i].Root = si.Scope.Kind.String(), root(si.Scope)
+	}
+	for i := range res.Steps {
+		res.Steps[i].Scope, res.Steps[i].Root = si.Scope.Kind.String(), root(si.Scope)
+	}
+	out.Modules, out.Steps = append(out.Modules, res.Modules...), append(out.Steps, res.Steps...)
+	out.Findings, out.Notices = append(out.Findings, res.Findings...), append(out.Notices, res.Notices...)
+	out.Scripts, out.Trusted = append(out.Scripts, res.Scripts...), append(out.Trusted, res.Trusted...)
+	out.Scopes = append(out.Scopes, ScopeResult{Scope: si.Scope.Kind.String(), Root: root(si.Scope), ScopeSource: si.Source})
+	return nil
+}
+
+// installAdded is the entries of modules one write of an install added to t at sp's scope
+// (entries, all it wrote there), which the move hint follows.
+type installAdded struct {
+	sp      *scopePlan
+	t       writeTo
+	entries []manifest.Entry
+	modules []string
+}
+
+// installAll is InstallAll but for the move hints: each write that adds entries is appended to
+// added, except in a dry run, which adds nothing a move could find.
+func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]installAdded) (_ *InstallResult, err error) {
 	opts := spec.Options
 	var scopes []Scope
 	for _, si := range spec.Scopes {
@@ -197,11 +445,14 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	}
 	defer func() { err = nameTaken(e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display), opts.Display) }()
 	swept := e.sweepRuns()
-	run, done, err := e.runDir()
-	if err != nil {
-		return nil, err
+	run := spec.Staged
+	if run == nil {
+		if run, err = e.publishingRun(); err != nil {
+			return nil, err
+		}
+		defer func() { err = errors.Join(err, run.Close()) }()
 	}
-	defer func() { err = errors.Join(err, done()) }()
+	opts.staged = run
 	var unlocks []func()
 	defer func() {
 		for i := len(unlocks) - 1; i >= 0; i-- {
@@ -221,14 +472,28 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	}
 	// A project rooted at the home directory renders where the user scope does (~/.claude, …):
 	// its ledger and the user scope's would claim the same files, in this run or across runs,
-	// and uninstalling one would delete the other's. render and uninstall still accept one an
-	// older lola installed.
+	// and uninstalling one would delete the other's. uninstall still accepts one an older
+	// lola installed.
 	if home := (Scope{Kind: target.Project, ProjectDir: e.Paths.Home}); seen[home.Key()] {
 		err := fmt.Errorf("project scope at %s is your home directory, where the user scope installs", untrusted.Text(e.Paths.Home, untrusted.MaxName))
 		if spec.UserRun == "" {
 			return nil, err
 		}
 		return nil, errs.WithHints(err, spec.UserRun)
+	}
+	// A remote profile a scope needs that this machine lacks is restored from pins.yaml first,
+	// under the profiles lock it takes and releases itself (spec 2026-10-29 §3.4).
+	var restored []Notice
+	retry := ""
+	if opts.Rerun != nil {
+		retry = opts.Rerun(opts.Trust)
+	}
+	for _, si := range spec.Scopes {
+		n, err := e.restoreRemotes(ctx, si.Scope, "", retry, opts.DryRun)
+		if err != nil {
+			return nil, err
+		}
+		restored = append(restored, n...)
 	}
 	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
 	unlockProfiles, err := e.readProfiles(opts.DryRun)
@@ -259,10 +524,16 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	res := newResult(opts.DryRun)
 	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
 	res.Notices = append(res.Notices, swept...)
+	res.Notices = append(res.Notices, restored...)
 	out := &InstallResult{Result: res, Scopes: []ScopeResult{}}
 	probes := e.newProbeRun(ctx)
 	var fetched []string
+	// staged: the arguments (arg) whose modules (name) were fetched into a staged run, in the cache
+	// only once the apply commits them.
+	type stagedArg struct{ name, arg string }
+	var staged []stagedArg
 	have := map[int]store.Version{} // a source fetched for one scope is not fetched again for the next
+	hashed := map[int]bool{}        // have[i] is a version this run staged and hashed itself (resolvedRequest.hashed)
 	haveRef := map[int]string{}     // ... unless the next scope's entry records another ref
 	plans := make([]*scopePlan, len(spec.Scopes))
 	replacing := replacingNames(spec.Modules)
@@ -293,11 +564,27 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		}
 		plans[i] = &scopePlan{sc: si.Scope, man: man, loaded: man.Clone(), trust: rec, led: led, layers: layers, targets: si.Targets,
 			given: si.Targets, replace: si.Replace, unresolved: holdsAddress(man)}
-		if plans[i].templates, err = e.newTemplateRun(si.Scope, led.Profiles); err != nil {
+		if plans[i].target, plans[i].infos, err = e.writeTarget(si.Scope, layers, nil, opts.Target, opts.Target.verb(), installTyped(spec.Modules), opts.AskWhere); err != nil {
 			return nil, err
 		}
-		if len(si.Targets) == 0 && rec != nil && len(man.Targets) > 0 && !slices.Equal(rec.View.Targets, man.Targets) {
-			plans[i].untrustedTargets = e.untrustedTargets(si.Scope, rec, spec.Modules, plans[i].unresolved)
+		if plans[i].picks, err = picksAt(si.Scope, plans[i].target.from()); err != nil {
+			return nil, err
+		}
+		if plans[i].scopePicks, err = where(si.Scope); err != nil {
+			return nil, err
+		}
+		plans[i].profiles = e.visibleOnce(si.Scope)
+		if infos := plans[i].infos; infos != nil {
+			plans[i].profiles = func() ([]profile.Info, error) { return infos, nil }
+		}
+		if sel, err = withPicks(sel, append(slices.Clone(layers), plans[i].target.Layer)); err != nil {
+			return nil, err
+		}
+		if plans[i].templates, err = e.newTemplateRun(si.Scope, led.Profile); err != nil {
+			return nil, err
+		}
+		if len(si.Targets) == 0 && rec != nil {
+			plans[i].untrustedTargets = e.uncoveredTargets(si.Scope, plans[i], spec.Modules, opts.Target)
 		}
 	}
 	// A name installs the entry as project.yml has it: refused for an entry someone else
@@ -305,8 +592,8 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	// §10.1).
 	for k, sp := range plans {
 		for _, r := range spec.Modules {
-			if ent := sp.man.Find(r.Arg); ent != nil && !sp.covers(*ent) {
-				return nil, e.notTrusted(spec.Scopes[k].Scope, sp.trust, ent, false, sp.unresolved)
+			if ent := sp.target.layerEntry(r.Arg); ent != nil && !sp.covers(*ent) {
+				return nil, e.refuseUncovered(spec.Scopes[k].Scope, sp, ent)
 			}
 			if sp.untrustedTargets != nil && len(r.Targets) == 0 && !e.hasOwnTargets(sp, spec.Scopes[k].Scope, spec.Cwd, r) {
 				return nil, sp.untrustedTargets
@@ -316,7 +603,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	for k, si := range spec.Scopes {
 		sp := plans[k]
 		if len(sp.targets) == 0 {
-			sp.targets = sp.man.Targets
+			sp.targets = fileTargets(sp.target, sp.man)
 		}
 		if len(sp.targets) == 0 {
 			return nil, e.noTargets()
@@ -333,30 +620,37 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 				}
 			}
 		}
+		// The entries a name installs are the target file's, or the entry another layer gives the
+		// scope for it (inheritedFrom), at its ref (spec 2026-10-29 §3.6).
+		own := &manifest.Manifest{Modules: sp.target.Entries}
 		for i, r := range spec.Modules {
-			ref := entryRef(sp.man, r.Arg)
+			listed := entryRef(own, r.Arg)
+			if w := inheritedFrom(sp.layers, sp.target, r.Arg); own.Find(r.Arg) == nil && w != nil {
+				listed = providerEntry(sp.layers, w).Ref
+			}
+			ref := listed
 			if r.Ref != "" {
 				ref = r.Ref
 			}
 			// A scope with no entry installs the listed version and records the ref of the head
 			// that holds it: its pin must be reachable from the ref its entry records. An entry
 			// without a ref tracks the default branch and keeps doing so.
-			if ref == "" && r.Version != nil && sp.man.Find(r.Arg) == nil && r.market == nil {
-				if r.Ref, err = e.listedRef(*r.Version); err != nil {
+			if ref == "" && r.Version != nil && own.Find(r.Arg) == nil && r.market == nil {
+				if r.Ref, err = e.listedRef(run, *r.Version); err != nil {
 					return nil, e.withRetry(spec, err, fetched)
 				}
 				ref = r.Ref
 			}
-			pre := have[i]
+			pre, preHashed := have[i], hashed[i]
 			if haveRef[i] != ref {
-				pre = store.Version{}
+				pre, preHashed = store.Version{}, false
 			}
 			if pre.Name == "" && r.Version != nil {
-				if pre, err = e.pinnedVersion(r); err != nil {
+				if pre, err = e.pinnedVersion(run, r); err != nil {
 					return nil, e.withRetry(spec, err, fetched)
 				}
 				// The pickers list the head of the entry's ref; any other version is not what was confirmed.
-				if r.Ref == "" && sp.man.Find(r.Arg) != nil {
+				if r.Ref == "" && own.Find(r.Arg) != nil {
 					if head, ok, err := e.Store.Head(r.Arg, ref); err != nil {
 						return nil, e.withRetry(spec, err, fetched)
 					} else if ok && head.ID != pre.ID {
@@ -371,7 +665,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 					}
 				}
 			}
-			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, entryRef(sp.man, r.Arg), run, spec.Options.Display)
+			ent, v, didFetch, err := e.resolve(ctx, si.Scope, spec.Cwd, r, pre, listed, run, spec.Options.Display)
 			if err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}
@@ -380,7 +674,16 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 				if r.market != nil {
 					again = r.Arg // its name would install it without its marketplace
 				}
-				fetched, have[i], haveRef[i] = append(fetched, again), v, ref
+				// A staged fetch reaches the cache only when the apply commits it: until then the
+				// retry hint, which installs it from the cache, would name nothing there.
+				if run.publish {
+					fetched = append(fetched, again)
+				} else {
+					staged = append(staged, stagedArg{name: v.Name, arg: again})
+				}
+				// Only a staged version's digest is lola's own (store.Prepare hashed the staged tree): a
+				// publishing run's commit returns a version already cached as the cache records it.
+				have[i], haveRef[i], hashed[i] = v, ref, !run.publish
 			}
 			// Installing a version is a use of it, however the run found it; a dry run, and so lola
 			// info's plan, is none (Plan 9 §6.3). Recording it is best effort: a cache whose
@@ -388,7 +691,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 			if !opts.DryRun {
 				_ = e.Store.Used(v.Name, v.ID)
 			}
-			sp.resolved = append(sp.resolved, resolvedRequest{req: r, ent: ent, v: v})
+			sp.resolved = append(sp.resolved, resolvedRequest{req: r, ent: ent, v: v, hashed: didFetch && hashed[i] || !didFetch && preHashed && v.Name == pre.Name && v.ID == pre.ID})
 			if r.market != nil {
 				if k == 0 {
 					res.Notices = append(res.Notices, entryNotices(r.market, r.Ref)...)
@@ -416,15 +719,95 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	}
 	for _, sp := range plans {
 		for _, rr := range sp.resolved {
-			if err := e.planInstallModule(sp, rr, sel, opts, probes, res); err != nil {
+			if err := e.planInstallModule(ctx, sp, rr, sel, saves, opts, probes, res); err != nil {
 				return nil, e.withRetry(spec, err, fetched)
 			}
 		}
-		res.Notices = append(res.Notices, overridesProfiles(sp.layers, sp.entries)...)
+		for _, tw := range sp.writes {
+			notes, overridden := e.targetNotices(sp.sc, tw.t, sp.layers, tw.entries, sp.infos, opts)
+			res.Notices = append(res.Notices, notes...)
+			for _, m := range overridden {
+				delete(sp.overrides, m)
+			}
+		}
+	}
+	// A profile two scopes write (on in both, spec 2026-10-29 §3.9) is written once, by the first
+	// scope's apply; scopes that would write it differently are refused before any write.
+	first := map[string][]manifest.Entry{}
+	for _, sp := range plans {
+		sp.shared = map[string]bool{}
+		for _, tw := range sp.writes {
+			if !tw.t.Profile {
+				continue
+			}
+			was, seen := first[tw.t.Path]
+			if !seen {
+				first[tw.t.Path] = tw.entries
+				continue
+			}
+			if !reflect.DeepEqual(was, tw.entries) {
+				var runs []string
+				for _, si := range spec.Scopes {
+					args := requestArgs(spec.Modules, opts.Target)
+					if len(si.Targets) > 0 {
+						args = append(args, "-t", strings.Join(si.Targets, ","))
+					}
+					runs = append(runs, e.installRun(si.Scope, opts.Target, args...))
+				}
+				return nil, errs.WithHints(fmt.Errorf("%s would be written differently for each scope", tw.t.label),
+					"install into one scope at a time: "+strings.Join(runs, ", then "))
+			}
+			sp.shared[tw.t.Path] = true
+		}
+	}
+	// Each file written gets its write lines once: a profile two scopes write, by the first scope.
+	for _, sp := range plans {
+		for _, tw := range sp.writes {
+			if sp.shared[tw.t.Path] {
+				continue
+			}
+			edits := editsOf(ctx, sp.sc, tw.t, tw.entries, nil, sp.overrides)
+			res.Edits = append(res.Edits, edits...)
+			res.Notices = append(res.Notices, e.alsoOn(sp.sc, tw.t, append(slices.Clone(scopes), spec.then...))...)
+			if spec.profiles != nil && tw.t.Profile {
+				*spec.profiles = append(*spec.profiles, fileEdit{layer: tw.t.Layer, change: sp.fileChange(tw)})
+			}
+			var modules []string
+			for _, ed := range edits {
+				if ed.Action == EditAdded {
+					modules = append(modules, ed.Module)
+				}
+			}
+			if len(modules) > 0 && !opts.DryRun {
+				*added = append(*added, installAdded{sp: sp, t: tw.t, entries: tw.entries, modules: modules})
+			}
+		}
+	}
+	// selections.yaml holds no profile entry's picks, nor those of a module overridden from
+	// project.yml, which its profile entry now holds.
+	var onFile []config.Change
+	for _, c := range saves {
+		if c.Section.Kind == config.SectionProfile || slices.ContainsFunc(plans, func(sp *scopePlan) bool {
+			return c.Section == sp.scopePicks && slices.Contains(sp.dropped, c.Module)
+		}) {
+			continue
+		}
+		onFile = append(onFile, c)
 	}
 	for i := range res.Modules {
-		if !opts.DryRun && slices.ContainsFunc(saves, func(c config.Change) bool { return c.Module == res.Modules[i].Name }) {
+		name := res.Modules[i].Name
+		if opts.DryRun || !slices.ContainsFunc(saves, func(c config.Change) bool { return c.Module == name }) {
+			continue
+		}
+		if slices.ContainsFunc(onFile, func(c config.Change) bool { return c.Module == name }) {
 			res.Modules[i].SavedTo = sel.Path
+		}
+		for _, sp := range plans {
+			for _, tw := range sp.writes {
+				if tw.t.Profile && slices.ContainsFunc(tw.entries, func(x manifest.Entry) bool { return x.Name == name }) {
+					res.Modules[i].SavedTo = tw.t.Path
+				}
+			}
 		}
 	}
 	res.Findings = append(res.Findings, probes.findings...)
@@ -440,6 +823,7 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 		if err != nil {
 			return nil, e.withRetry(spec, err, fetched)
 		}
+		pr.resolved = named.named
 		keepUnhooked(sp.copies, pr.jobs, opts)
 		for i := n; i < len(res.Steps); i++ {
 			res.Steps[i].Root = root(sp.sc)
@@ -454,26 +838,51 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	if opts.DryRun {
 		return out, nil
 	}
+	// What a staged run fetched reaches the cache now, after the receipt and before the first
+	// write, and only the versions this install writes (cherry-pick design §7): every refusal,
+	// declined question and dry run above returned with the cache as it was. A different module
+	// of the name cached since is refused here, with nothing of the install written; the retry
+	// names what the commit cached before it.
+	var changes []plan.ModuleChange
+	for _, sp := range plans {
+		changes = append(changes, sp.changes...)
+	}
+	committed, err := run.commit(e.Store, changes)
+	for _, s := range staged {
+		if slices.ContainsFunc(committed, func(v store.Version) bool { return v.Name == s.name }) {
+			fetched = append(fetched, s.arg)
+		}
+	}
+	if err != nil {
+		return nil, e.withRetry(spec, err, fetched)
+	}
 	if spec.BeforeWrite != nil {
 		if err := spec.BeforeWrite(out); err != nil {
 			return nil, e.withRetry(spec, err, fetched)
 		}
 	}
-	if len(saves) > 0 {
-		if err := config.Save(sel.Path, saves); err != nil {
+	if len(onFile) > 0 {
+		if err := config.Save(sel.Path, onFile); err != nil {
 			return nil, e.withRetry(spec, err, fetched)
 		}
 	}
 	for i, sp := range plans {
-		change := manifest.Change{Set: sp.entries}
-		if len(sp.man.Targets) == 0 {
-			change.Targets = sp.targets
+		var change manifest.Change
+		var files []fileEdit
+		for _, tw := range sp.writes {
+			c := sp.fileChange(tw)
+			switch {
+			case !tw.t.Profile:
+				change = c
+			case !sp.shared[tw.t.Path]:
+				files = append(files, fileEdit{layer: tw.t.Layer, change: c})
+			}
 		}
-		updated := "the project's files, lock.json and project.yml were updated"
-		err := e.saveManifest(sp.sc, sp.loaded, change, nil, sp.trust, updated, syncAgain(e.SyncCommand(sp.sc)), func(man []plan.ManifestWrite) error {
+		updated := "the project's files, lock.json and " + e.manifestName(sp.sc) + " were updated"
+		err := e.saveManifest(sp.sc, sp.loaded, change, nil, files, sp.trust, updated, syncAgain(e.SyncCommand(sp.sc)), func(man []plan.ManifestWrite) error {
 			return e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
 		})
-		if err != nil && len(saves) > 0 {
+		if err != nil && len(onFile) > 0 {
 			err = e.errApplied(err, sel.Path, sp.sc)
 		}
 		if err != nil && i < len(plans)-1 {
@@ -494,10 +903,55 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (_ *InstallRe
 	return out, nil
 }
 
-// covers reports whether the scope's trust record covers ent; at user scope every entry is the
-// user's own.
-func (sp *scopePlan) covers(ent manifest.Entry) bool {
-	return sp.trust == nil || sp.trust.View.Covers(ent)
+// covers reports whether the scope's trust record covers ent, an entry of the target (sp.target's
+// file, layerEntry; covered).
+func (sp *scopePlan) covers(ent manifest.Entry) bool { return sp.target.covered(sp.trust, ent) }
+
+// covered reports whether rec, the scope's trust record, covers ent, an entry of t's file
+// (layerEntry): project.yml's part, or a project profile's, which records each entry with the
+// targets it installs to, its own or else the profile's (trust.ProfileView), so ent is compared
+// so too; at user scope (rec nil), and for a profile of yours, every entry is the user's own.
+func (t writeTo) covered(rec *trust.Record, ent manifest.Entry) bool {
+	if rec == nil || t.Profile && t.Key == "" {
+		return true
+	}
+	if t.Key != "" && len(ent.Targets) == 0 && t.read != nil {
+		ent.Targets = slices.Clone(t.read.Targets)
+	}
+	return rec.View.Part(t.Key).Covers(ent)
+}
+
+// refuseUncovered is the refusal to rewrite ent, an entry of sp's target that the trust record does
+// not cover: notTrustedIn for a project profile's, notTrusted for project.yml's.
+func (e *Engine) refuseUncovered(sc Scope, sp *scopePlan, ent *manifest.Entry) error {
+	if sp.target.Key != "" {
+		return e.notTrustedIn(sc, sp.trust, sp.target, ent)
+	}
+	return e.notTrusted(sc, sp.trust, ent, false, sp.unresolved)
+}
+
+// fileTargets is the top-level targets an entry of t's file without targets of its own installs
+// to: t's targets: when t is a profile that has them, else the base's, man's (project.yml's, or
+// default.yml's at user scope).
+func fileTargets(t writeTo, man *manifest.Manifest) []string {
+	if t.ownTargets() {
+		return t.read.Targets
+	}
+	return man.Targets
+}
+
+// targetsCovered reports whether rec, the scope's trust record (nil at user scope), covers the
+// top-level targets an entry of t's file without targets of its own installs to (fileTargets),
+// man being the scope's base: project.yml's are its part's targets, a project profile's its part's
+// (spec 2026-10-29 §3.10), and yours are your own.
+func targetsCovered(rec *trust.Record, t writeTo, man *manifest.Manifest) bool {
+	switch {
+	case rec == nil, t.ownTargets() && t.Key == "":
+		return true
+	case t.ownTargets():
+		return slices.Equal(rec.View.Part(t.Key).Targets, t.read.Targets)
+	}
+	return len(man.Targets) == 0 || slices.Equal(rec.View.Targets, man.Targets)
 }
 
 // notTrusted refuses to rewrite ent, an entry of sc's manifest that rec, the project's trust
@@ -515,8 +969,20 @@ func (e *Engine) notTrusted(sc Scope, rec *trust.Record, ent *manifest.Entry, re
 			hints = append(hints, "or remove it: "+e.Command(sc, "uninstall", ent.Name))
 		}
 	}
-	return errs.WithHints(&notTrustedError{untrusted.Text(ent.Name, untrusted.MaxName) + ": " + filepath.Base(e.files(sc).manifest) + " " + why},
+	return errs.WithHints(&notTrustedError{untrusted.Text(ent.Name, untrusted.MaxName) + ": " + e.manifestName(sc) + " " + why},
 		hints...)
+}
+
+// notTrustedIn is notTrusted for ent, an entry of t, a project profile, that rec does not cover
+// (Plan 6b §8.1): its file is named, and hinted the sync that reviews it, or for a profile that is
+// not on, which a sync does not read, turning it on, which reviews it.
+func (e *Engine) notTrustedIn(sc Scope, rec *trust.Record, t writeTo, ent *manifest.Entry) error {
+	why := untrustedWhy(&trust.Record{View: rec.View.Part(t.Key), Exists: rec.Exists}, ent.Name)
+	hint := "review and apply it: " + e.SyncCommand(sc, ent.Name)
+	if !t.on {
+		hint = "review it by turning the profile on: " + e.switchRun(sc, t)
+	}
+	return errs.WithHints(&notTrustedError{shown(ent.Name) + ": " + projectProfileFile(t.Key) + " " + why}, hint)
 }
 
 // untrustedWhy says why rec does not cover the manifest entry name, after the manifest's name:
@@ -532,17 +998,52 @@ func untrustedWhy(rec *trust.Record, name string) string {
 	return "changed for it since you last trusted it"
 }
 
-// untrustedTargets refuses an install that would take its targets from sc's top-level targets
-// while rec, the project's trust record, does not cover them (Plan 6a §10.1, M2): a pull may
-// have put them there, and installing to them would trust them unseen. While the manifest holds
-// an unresolved entry (Plan 6c §6.7), replaced ones included, the sync that reviews them refuses
-// the file, so only the install naming its assistants is hinted.
-func (e *Engine) untrustedTargets(sc Scope, rec *trust.Record, reqs []InstallRequest, unresolved bool) error {
-	base := filepath.Base(e.files(sc).manifest)
-	why := "changed since you last trusted them"
-	if !rec.Exists {
-		why = "have not been trusted on this machine"
+// uncoveredTargets is the refusal of an install at sc that would take the top-level targets of
+// sp's target file (fileTargets) while sp's trust record does not cover them (targetsCovered;
+// Plan 6a §10.1, M2), nil when it does: a pull may have put them there, and installing to them
+// would trust them unseen. The sync that reviews them is hinted, or for a profile that is not on,
+// which a sync does not read, turning it on; then the install naming its assistants, with the
+// run's --profile (req). While the manifest holds an unresolved entry (Plan 6c §6.7), the sync
+// refuses the file, so only the install is hinted.
+func (e *Engine) uncoveredTargets(sc Scope, sp *scopePlan, reqs []InstallRequest, req TargetRequest) error {
+	t, rec := sp.target, sp.trust
+	if targetsCovered(rec, t, sp.man) {
+		return nil
 	}
+	file, why := e.manifestName(sc), "changed since you last trusted them"
+	switch {
+	case !rec.Exists:
+		why = "have not been trusted on this machine"
+	case t.ownTargets() && len(rec.View.Part(t.Key).Targets) == 0:
+		why = "have not been trusted yet" // the record holds the profile's entries, never its targets
+	}
+	if t.ownTargets() {
+		file = projectProfileFile(t.Key)
+	}
+	err, named := &untrustedTargetsError{file + "'s top-level targets " + why}, e.installRun(sc, req, requestArgs(reqs, req)...)+" -t <id>"
+	switch {
+	case t.ownTargets() && !t.on:
+		return errs.WithHints(err, "review them by turning the profile on: "+e.switchRun(sc, t), "or name the assistants: "+named)
+	case sp.unresolved:
+		return errs.WithHints(err, "name the assistants: "+named)
+	}
+	// project.yml's top-level targets no entry the sync loads installs to are recorded only with
+	// --trust=entries (spec 2026-10-29 §16.1): a plain sync would not ask about them.
+	if !t.ownTargets() {
+		layers, _, _, lerr := e.uses(sc)
+		if lerr != nil {
+			return lerr
+		}
+		if !installsToTargets(layers) {
+			return errs.WithHints(err, "trust them: "+e.SyncCommand(sc, TrustEntries.Arg()), "or name the assistants: "+named)
+		}
+	}
+	return errs.WithHints(err, "review and apply them: "+e.SyncCommand(sc), "or name the assistants: "+named)
+}
+
+// requestArgs is the arguments of an install of reqs as a hint repeats them: each argument with
+// its --ref and --path, then req's --profile and --override.
+func requestArgs(reqs []InstallRequest, req TargetRequest) []string {
 	var args []string
 	for _, r := range reqs {
 		args = append(args, r.Arg)
@@ -553,26 +1054,29 @@ func (e *Engine) untrustedTargets(sc Scope, rec *trust.Record, reqs []InstallReq
 			args = append(args, "--path", r.Path)
 		}
 	}
-	err, named := &untrustedTargetsError{base + "'s top-level targets " + why}, e.Command(sc, "install", args...)+" -t <id>"
-	if unresolved {
-		return errs.WithHints(err, "name the assistants: "+named)
+	if req.Profile != "" {
+		args = append(args, "--profile", req.Profile)
 	}
-	return errs.WithHints(err, "review and apply them: "+e.SyncCommand(sc), "or name the assistants: "+named)
+	if req.Override {
+		args = append(args, "--override")
+	}
+	return args
 }
 
-// hasOwnTargets reports whether r installs an entry of sp's manifest that has targets of its
+// hasOwnTargets reports whether r installs an entry of sp's target file that has targets of its
 // own: the entry r names, or the one whose source is the location r gives. Anything else would
 // install to the top-level targets, so a scope whose record does not cover them refuses it
 // before a source is fetched.
 func (e *Engine) hasOwnTargets(sp *scopePlan, sc Scope, cwd string, r InstallRequest) bool {
-	if ent := sp.man.Find(r.Arg); ent != nil {
+	if ent := sp.target.layerEntry(r.Arg); ent != nil {
 		return len(ent.Targets) > 0
 	}
 	spec, ok, err := source.Parse(r.Arg, cwd)
 	if err != nil || !ok {
 		return false
 	}
-	for _, ent := range sp.man.Modules {
+	for _, l := range sp.target.Entries {
+		ent := sp.target.layerEntry(l.Name)
 		loc := ent.Source
 		if !filepath.IsAbs(loc) && !strings.Contains(loc, "://") && sc.Kind == target.Project {
 			loc = filepath.Join(canonicalRoot(sc.ProjectDir), loc)
@@ -600,7 +1104,7 @@ type notTrustedError struct{ msg string }
 func (e *notTrustedError) Error() string { return e.msg }
 func (e *notTrustedError) Unwrap() error { return ErrNotTrusted }
 
-// trustRecord is the trust record of a project scope, nil at user scope, whose user.yml is the
+// trustRecord is the trust record of a project scope, nil at user scope, whose files are the
 // user's own (Plan 6a §7.1).
 func (e *Engine) trustRecord(sc Scope) (*trust.Record, error) {
 	if sc.Kind != target.Project {
@@ -617,16 +1121,40 @@ type profileEdit struct {
 	pins  []manifest.Entry
 }
 
+// fileEdit is an edit an install or uninstall makes to one profile file (spec 2026-10-29 §8.4):
+// layer, the file as the run read it (read nil for a file of yours that did not exist), and
+// change, the entries it sets, as the file records them, and those it removes.
+type fileEdit struct {
+	layer  Layer
+	change manifest.Change
+	// data, when set, is the file's bytes as lola makes or rewrites it whole (profileWrites):
+	// written as they are once check passes. The trust record holds what the run took as trusted
+	// of it before its check (profileWrites.trusted) and what the user accepted, never more.
+	data  []byte
+	check func() error
+}
+
+// installTyped is what an install names, as typed (its arguments), for a question about where it
+// writes: "kit", or "kit and ./notes".
+func installTyped(reqs []InstallRequest) string {
+	args := make([]string, 0, len(reqs))
+	for _, r := range reqs {
+		args = append(args, r.Arg)
+	}
+	return andJoin(args)
+}
+
 // saveManifest is every manifest write (Plan 6a §7.4). It edits the scope's manifest by c, the
 // change lola makes to loaded (the manifest as read under the scope lock), unless c changes
-// nothing, writes the pins of profiles into those project profiles (Plan 6b §6.4), and hands the
-// edits to apply, which commits them with the ledger. After a successful apply at project scope
-// that wrote a manifest or profile it refreshes rec, the project's trust record, per field
-// (trust.Refresh), in project.yml's part and each profile's: what this write changed becomes
-// trusted, and nothing else does. A record
-// that cannot be written leaves lola's own edits uncovered, which later commands refuse: the
-// error says what was applied (the caller's applied) and how to get them trusted (its hint).
-func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, profiles []profileEdit, rec *trust.Record,
+// nothing, writes the pins of profiles into those project profiles (Plan 6b §6.4), makes the
+// edits of files to those profile files (default.yml at user scope), and hands the edits to
+// apply, which commits them with the ledger. After a successful apply at project scope that wrote
+// a manifest or profile it refreshes rec, the project's trust record, per field (trust.Refresh),
+// in project.yml's part and each profile's: what this write changed becomes trusted, and nothing
+// else does. A record that cannot be written leaves lola's own edits uncovered, which later
+// commands refuse: the error says what was applied (the caller's applied) and how to get them
+// trusted (its hint).
+func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, profiles []profileEdit, files []fileEdit, rec *trust.Record,
 	applied, hint string, apply func([]plan.ManifestWrite) error) error {
 	var writes []plan.ManifestWrite
 	edited := c.Targets != nil || len(c.Set) > 0 || len(c.Remove) > 0
@@ -635,7 +1163,7 @@ func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Ch
 		if err != nil {
 			return err
 		}
-		writes = append(writes, plan.ManifestWrite{Path: dst, Data: data})
+		writes = append(writes, plan.ManifestWrite{Path: dst, Data: data, KeepMode: sc.Kind == target.User})
 	}
 	for _, p := range profiles {
 		data, err := p.layer.read.Pin(p.layer.Path, p.pins)
@@ -644,6 +1172,31 @@ func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Ch
 		}
 		read, path := p.layer.read, p.layer.Path
 		writes = append(writes, plan.ManifestWrite{Path: path, Data: data, Check: func() error { return read.Unchanged(sc.ProjectDir, path) }})
+	}
+	for _, f := range files {
+		if f.data != nil {
+			// A file of yours is written through its link and keeps its mode, as an edit's is
+			// (Profile.Edit); a project's is a file of its own (its check refuses a link).
+			dst := f.layer.Path
+			if f.layer.Key == "" {
+				var err error
+				if dst, err = linkTarget(f.layer.Path); err != nil {
+					return err
+				}
+			}
+			writes = append(writes, plan.ManifestWrite{Path: dst, Data: f.data, Check: f.check, KeepMode: f.layer.Key == ""})
+			continue
+		}
+		dst, data, err := f.layer.read.Edit(f.layer.Path, f.change)
+		if err != nil {
+			return err
+		}
+		read, path := f.layer.read, f.layer.Path
+		check := func() error { return read.Current(path) }
+		if f.layer.Key != "" {
+			check = func() error { return read.Unchanged(sc.ProjectDir, path) }
+		}
+		writes = append(writes, plan.ManifestWrite{Path: dst, Data: data, Check: check, KeepMode: f.layer.Key == ""})
 	}
 	// Nothing written leaves the record nothing new to cover.
 	if err := apply(writes); err != nil || rec == nil || len(writes) == 0 {
@@ -657,17 +1210,61 @@ func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Ch
 		was := &manifest.Manifest{Modules: p.layer.Entries}
 		view = trust.Refresh(view, p.layer.Key, trust.ViewOf(was), trust.ViewOf(was.Applied(manifest.Change{Set: p.pins})))
 	}
+	for _, f := range files {
+		if f.layer.Key == "" {
+			continue
+		}
+		if f.data != nil { // rec holds what of it is trusted already (profileWrites.trusted)
+			continue
+		}
+		was := &manifest.Manifest{Modules: f.layer.Entries}
+		if f.layer.read != nil {
+			was.Targets = f.layer.read.Targets
+		}
+		saved := was.Applied(viewChange(f))
+		for k := range saved.Modules {
+			// Targets lola writes into a profile that had none are the targets of its entries without any.
+			if f.change.Targets != nil && len(saved.Modules[k].Targets) == 0 {
+				saved.Modules[k].Targets = slices.Clone(f.change.Targets)
+			}
+		}
+		view = trust.Refresh(view, f.layer.Key, trust.ViewOf(was), trust.ViewOf(saved))
+	}
 	if err := e.saveTrust(sc, view); err != nil {
-		var files []string
+		var written []string
 		if edited {
-			files = append(files, filepath.Base(e.files(sc).manifest))
+			written = append(written, e.manifestName(sc))
 		}
 		for _, p := range profiles {
-			files = append(files, projectProfileFile(p.layer.Key))
+			written = append(written, projectProfileFile(p.layer.Key))
 		}
-		return errs.WithHints(fmt.Errorf("%s, but lola could not record that you trust what it wrote to %s: %w", applied, andJoin(files), err), hint)
+		for _, f := range files {
+			if f.layer.Key != "" {
+				written = append(written, projectProfileFile(f.layer.Key))
+			}
+		}
+		return errs.WithHints(fmt.Errorf("%s, but lola could not record that you trust what it wrote to %s: %w", applied, andJoin(written), err), hint)
 	}
 	return nil
+}
+
+// viewChange is f's change as the trust record holds a project profile's part: the top-level
+// targets it writes, and each entry's source as the scope reads it (beside .lola/profiles) and,
+// without targets of its own, the profile's, as they are once written.
+func viewChange(f fileEdit) manifest.Change {
+	c := manifest.Change{Targets: f.change.Targets, Remove: f.change.Remove}
+	targets := f.change.Targets
+	if targets == nil && f.layer.read != nil {
+		targets = f.layer.read.Targets
+	}
+	for _, ent := range f.change.Set {
+		ent.Source = besideProfile(ent.Source, profile.ProjectDir)
+		if len(ent.Targets) == 0 {
+			ent.Targets = slices.Clone(targets)
+		}
+		c.Set = append(c.Set, ent)
+	}
+	return c
 }
 
 // saveTrust saves view as the trust record of sc, a project, without the parts of profiles
@@ -732,7 +1329,10 @@ func lockOrder(scopes []ScopeInstall) []int {
 }
 
 // editSelections applies spec's edits to sel in memory: the global edits, then each scope's,
-// over the modules being installed. It returns the changes to save.
+// over the modules being installed. It returns the changes to save. With spec.WithMentions it
+// adds, per scope, what the picks mention and leave out (editScope); with spec.NameMentions it
+// names what they still leave out (mentionNotes). A module whose mentions cannot be read gets a
+// warning instead and installs as picked.
 func (e *Engine) editSelections(sel *config.Selections, spec InstallSpec, plans []*scopePlan, res *Result) ([]config.Change, error) {
 	if len(plans) == 0 {
 		return nil, nil
@@ -742,51 +1342,95 @@ func (e *Engine) editSelections(sel *config.Selections, spec InstallSpec, plans 
 		mods = append(mods, rr.v.Module)
 	}
 	targets := editTargets(mods)
-	var sections []config.Where
+	var sections []func(string) config.Where
+	all := places{path: sel.Path}
 	for _, sp := range plans {
-		w, err := where(sp.sc)
-		if err != nil {
-			return nil, err
-		}
-		sections = append(sections, w)
+		sections, all.layers, all.infos = append(sections, sp.pickSection), append(all.layers, sp.picksLayers()...), append(all.infos, sp.infos...)
 	}
-	changes, notes, err := applyEdits(sel, config.Global(), spec.GlobalEdits, targets, sections)
+	global := func(string) config.Where { return config.Global() }
+	changes, notes, err := applyEdits(sel, global, all, spec.GlobalEdits, targets, sections)
 	if err != nil {
 		return nil, err
 	}
 	res.Notices = append(res.Notices, notes...)
+	scans := spec.Staged.scans()
 	for i, si := range spec.Scopes {
-		c, n, err := applyEdits(sel, sections[i], si.Edits, targets, nil)
+		var mods map[string]mentionModule
+		if spec.WithMentions || spec.NameMentions {
+			mods = resolvedMentions(plans[i], spec, scans)
+		}
+		pl := places{path: sel.Path, layers: plans[i].picksLayers(), infos: plans[i].infos}
+		se, err := editScope(sel, sections[i], pl, si.Edits, spec.GlobalEdits, targets, mods, spec.WithMentions)
 		if err != nil {
 			return nil, err
 		}
-		changes, res.Notices = append(changes, c...), append(res.Notices, n...)
+		changes, res.Notices = append(changes, se.changes...), append(res.Notices, se.notes...)
+		res.Notices = e.mentionNotes(res.Notices, si, se, targets, mods, spec)
 	}
 	return changes, nil
 }
 
-// planInstallModule plans one resolved module at sp's scope. With no targets given for the
-// scope, a module keeps the targets its manifest entry has.
-func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *config.Selections, opts Options, probes *probeRun, res *Result) error {
+// fileChange is the change tw makes to its file at sp's scope: its entries, and the scope's targets
+// as the file's top-level targets when it has none and is not a profile of yours used in other
+// projects too, whose entries name the targets an install names instead (planInstallModule).
+func (sp *scopePlan) fileChange(tw targetWrite) manifest.Change {
+	c := manifest.Change{Set: tw.entries}
+	if len(fileTargets(tw.t, sp.man)) == 0 && !tw.t.portable(sp.sc) {
+		c.Targets = sp.targets
+	}
+	return c
+}
+
+// picksLayers is the layers whose profile entries hold picks at sp's scope: its layers and its
+// write target, which may not be one of them.
+func (sp *scopePlan) picksLayers() []Layer { return append(slices.Clone(sp.layers), sp.target.Layer) }
+
+// pickSection is where module's picks are read and saved at sp's scope (pickSection).
+func (sp *scopePlan) pickSection(module string) config.Where {
+	return pickSection(sp.layers, sp.target, sp.picks, sp.scopePicks, module)
+}
+
+// planInstallModule plans one resolved module at sp's scope; saves are the run's selection edits
+// (editSelections). With no targets given for the scope, a module keeps the targets its manifest
+// entry has. An edit of a module another layer provides goes where placeEdit says; one that asks
+// for what that entry says is a notice and writes nothing.
+func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolvedRequest, sel *config.Selections, saves []config.Change, opts Options, probes *probeRun,
+	res *Result) error {
 	r, ent, v, given := rr.req, rr.ent, rr.v, sp.given
-	if slices.ContainsFunc(sp.entries, func(x manifest.Entry) bool { return x.Name == v.Name }) {
+	if slices.Contains(sp.planned, v.Name) {
 		return fmt.Errorf("module %s is listed more than once", v.Name)
 	}
-	man := sp.man
+	sp.planned = append(sp.planned, v.Name)
+	// man is the target file's top-level targets, for the targets an entry takes.
+	man := &manifest.Manifest{Targets: fileTargets(sp.target, sp.man)}
 	modTargets := sp.targets
-	prev := man.Find(v.Name)
+	prev := sp.target.layerEntry(v.Name)
+	inherited := inheritedFrom(sp.layers, sp.target, v.Name)
+	if inherited != nil {
+		prev = providerEntry(sp.layers, inherited)
+		// An override must never copy a pulled entry you have not trusted into a file you have (spec
+		// 2026-10-29 §3.10): project.yml's entry is checked against its record first.
+		if !sp.layers[0].Profile && inherited.From == sp.layers[0].Name && sp.trust != nil && !sp.trust.View.Covers(*prev) {
+			return e.notTrusted(sp.sc, sp.trust, prev, false, sp.unresolved)
+		}
+	}
 	// An install by source over an entry the trust record does not cover writes the entry as new
 	// (Plan 6a.2 ruling S2): it inherits nothing a pull may have put there, and the trust refresh
 	// records it whole. A request that adds targets (lola migrate's) keeps the entry's other
 	// fields, so it is refused instead. With no targets given, the module stays on the targets
 	// lock.json installed it on, which this checkout's own installs chose, so what is installed
 	// is what the entry records.
-	if prev != nil && !sp.covers(*prev) {
+	if inherited == nil && prev != nil && !sp.covers(*prev) {
 		if len(r.Targets) > 0 {
-			return e.notTrusted(sp.sc, sp.trust, prev, false, sp.unresolved)
+			return e.refuseUncovered(sp.sc, sp, prev)
 		}
 		prev = nil
-		sp.loaded.Modules = slices.DeleteFunc(sp.loaded.Modules, func(x manifest.Entry) bool { return x.Name == v.Name })
+		unread := func(x manifest.Entry) bool { return x.Name == v.Name }
+		if sp.target.Profile {
+			sp.target.Entries = slices.DeleteFunc(slices.Clone(sp.target.Entries), unread)
+		} else {
+			sp.loaded.Modules = slices.DeleteFunc(sp.loaded.Modules, unread)
+		}
 		var onLedger []string
 		if in := sp.led.Modules[v.Name]; in != nil && len(given) == 0 {
 			onLedger = in.InstalledTargets()
@@ -810,7 +1454,7 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 		modTargets, ent.Targets = addedTargets(man, prev, sp.targets, r.Targets)
 	} else if prev != nil && len(given) == 0 && len(prev.Targets) > 0 {
 		modTargets, ent.Targets = prev.Targets, prev.Targets
-	} else if len(given) > 0 && len(man.Targets) > 0 && !slices.Equal(given, man.Targets) {
+	} else if len(given) > 0 && (sp.target.portable(sp.sc) || len(man.Targets) > 0 && !slices.Equal(given, man.Targets)) {
 		ent.Targets = given
 	}
 	if prev != nil && r.Arg == v.Name {
@@ -833,32 +1477,159 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 			ent.Rules = opts.Rules
 		}
 	}
-	var commit string
-	if keepPin {
-		commit, ent.Commit, ent.Digest = installed.Commit, prev.Commit, prev.Digest
-	} else {
+	section := sp.pickSection(v.Name)
+	picksEdited := slices.ContainsFunc(saves, func(c config.Change) bool { return c.Module == v.Name && c.Section == section })
+	wanted := sp.man.Targets // what the entry the request is compared with installs to
+	if inherited == nil {
+		wanted = man.Targets
+	}
+	if prev != nil && len(prev.Targets) > 0 {
+		wanted = prev.Targets
+	}
+	// An inherited entry installs to the assistants its own layer gives it, whatever the write
+	// target's top-level targets are, unless the run names others.
+	if inherited != nil && len(given) == 0 && len(r.Targets) == 0 {
+		modTargets = wanted
+	}
+	same := prev != nil && sameRequest(ent, *prev, modTargets, wanted) && r.Ref == "" && len(r.Targets) == 0
+	dest := &sp.target // the file written; nil for none
+	if opts.Target.Override && !slices.ContainsFunc(sp.layers, func(l Layer) bool {
+		return l.Name != sp.target.Name && slices.ContainsFunc(l.Entries, func(x manifest.Entry) bool { return x.Name == v.Name })
+	}) {
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: shown(v.Name) +
+			": --override has nothing to override; no other layer provides it, and this install writes " + sp.target.label})
+	}
+	if inherited != nil {
 		var err error
-		if commit, err = e.pinCommit(v, ent.Ref); err != nil {
+		if same && !picksEdited {
+			res.Notices = append(res.Notices, inheritedNotice(v.Name, layerLabel(sp.infos, inherited.From), installed != nil))
+			if installed != nil {
+				return nil
+			}
+			dest = nil
+		} else if dest, err = e.placeEdit(sp, inherited, &same, opts); err != nil {
 			return err
 		}
-		if !e.isFolder(v.Name) {
+		if dest != nil && dest.Name == sp.target.Name && section != sp.picks {
+			// Override: the target's entry starts from the inherited one's picks, edited.
+			sel.Set(sp.picks, v.Name, sel.Entry(section, v.Name))
+			if section == sp.scopePicks {
+				sp.dropped = append(sp.dropped, v.Name)
+			}
+			section = sp.picks
+		}
+		// Written into a file whose top-level targets are not those, the entry names them.
+		if dest != nil && len(prev.Targets) == 0 && len(ent.Targets) == 0 && !sameSet(modTargets, fileTargets(*dest, sp.man)) {
+			ent.Targets = modTargets
+		}
+	}
+	// Nothing changes but the edit (spec 2026-10-29 §3.6): an override, and a picks-only edit of an
+	// installed module, install the version installed and keep its pin; a module the scope has not
+	// installed yet installs what the inherited entry pins. A folder is never pinned, and a plain
+	// sync installs the folder as it is: the edit installs the version the run resolved, the one
+	// its component page offers, so the next sync contradicts nothing it did (cherry-pick design §14).
+	overriding := inherited != nil && dest != nil && dest.Name == sp.target.Name
+	if overriding {
+		over := strings.TrimSuffix(strings.TrimPrefix(layerLabel(sp.infos, inherited.From), "profile "), " (base)")
+		if sp.overrides == nil {
+			sp.overrides = map[string]string{}
+		}
+		sp.overrides[v.Name] = over
+		// An override copies a project file's entry into a file of yours, which no trust question
+		// asks about: as a move carries it out (ruling P7).
+		k := slices.IndexFunc(sp.layers, func(l Layer) bool { return l.Name == inherited.From })
+		if from := (writeTo{Layer: sp.layers[k], on: true, label: layerLabel(sp.infos, inherited.From)}); sp.sc.Kind == target.Project &&
+			(!from.Profile || from.Key != "") && dest.Profile && dest.Key == "" {
+			if err := e.carriedOut(ctx, sp.sc, *dest, layerOf(from), []string{v.Name}, opts.Display); err != nil {
+				return err
+			}
+		}
+	}
+	asListed := inherited != nil && ent.Source == prev.Source && ent.Ref == prev.Ref && ent.Path == prev.Path
+	switch {
+	case installed != nil && prev != nil && (overriding && asListed || same && picksEdited) && !e.isFolder(opts.staged, v.Name):
+		var err error
+		if v, err = e.installedVersion(sp.sc, v, prev, installed); err != nil {
+			return err
+		}
+		keepPin = true
+	case installed == nil && asListed && prev.Digest != "":
+		// A version the run fetched and hashed itself is the pin when its digest is: the pin only
+		// selects it. Any other is read as sync reads a pin (listedPin).
+		if !rr.hashed || v.Meta.Digest != prev.Digest {
+			var err error
+			if v, err = e.listedPin(sp.sc, v, prev, layerLabel(sp.infos, inherited.From), opts.staged.dir); err != nil {
+				return err
+			}
+		}
+		keepPin = true
+	}
+	var commit string
+	switch {
+	case keepPin && installed == nil:
+		// The inherited entry's pin is the version installed (listedPin); an override of the module,
+		// which installs it, records that pin as the version installed.
+		commit, ent.Commit, ent.Digest = prev.Commit, prev.Commit, prev.Digest
+	case keepPin && overriding:
+		// The override's entry pins the version installed, never the inherited entry's pin; a
+		// folder's version is never pinned (ledgerPin, manifest's checkPinShape).
+		commit, ent.Commit, ent.Digest = installed.Commit, "", ""
+		if !e.isFolder(opts.staged, v.Name) {
+			ent.Commit, ent.Digest = installed.Commit, installed.Digest
+		}
+	case keepPin:
+		commit, ent.Commit, ent.Digest = installed.Commit, prev.Commit, prev.Digest
+	default:
+		var err error
+		if commit, err = e.pinCommit(opts.staged, v, ent.Ref); err != nil {
+			return err
+		}
+		if !e.isFolder(opts.staged, v.Name) {
 			ent.Commit, ent.Digest = commit, v.Meta.Digest
 		}
 	}
-	x, err := exclusions(sel, sp.sc, v.Name)
+	from := ""
+	switch {
+	case dest != nil:
+		from = dest.from()
+	default:
+		from = ledgerFrom(inherited.From)
+	}
+	// An entry the scope does not load (a --profile that is not on), or one a higher layer's
+	// entry wins over, is written and installs nothing (spec 2026-10-29 §3.5, ambiguity 3).
+	if dest != nil && (!dest.on || winnerAbove(sp.layers, dest.Name, v.Name) != nil) {
+		sp.write(sel, *dest, section, v.Name, ent)
+		return nil
+	}
+	x, err := exclusions(sel, sp.sc, from, v.Name)
 	if err != nil {
 		return err
 	}
-	opts.freshPin, opts.entryFrom = !keepPin, ""
+	ignored, err := e.ignoredSection(sel, sp.sc, sp.layers, sp.profiles, sp.led.Profile != nil, from, v.Name)
+	if err != nil {
+		return err
+	}
+	if ignored != nil {
+		res.Notices = append(res.Notices, *ignored)
+	}
+	opts.freshPin, opts.entryFrom, opts.profiles = !keepPin, from, sp.profiles
 	intents, finds, notes, mr, err := e.planModule(sp.sc, v, modTargets, &ent, x, opts, probes, sp.templates)
 	if err != nil {
 		return err
 	}
 	mr.Scope, mr.Root, mr.Market = sp.sc.Kind.String(), root(sp.sc), shownMarket(ent.Market)
 	res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
+	adds, err := e.newComponentNotices(v, installed, x, ent.RulesOn(), func(origin string, args ...string) (string, string, error) {
+		label, err := originLabel(x, origin, from, sp.profiles)
+		return label, e.installRun(sp.sc, opts.Target, args...), err
+	})
+	if err != nil {
+		return err
+	}
+	res.Notices = append(res.Notices, adds...)
 	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: modTargets, Intents: intents,
 		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
-			Components: ent.Components.Clone(), RenderedWith: mr.renderedWith}})
+			Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, From: from}})
 	// Hooks run only in a copy replaced from the hashed version, after the consent keyed on those
 	// bytes (Plan 6a §9.3 step 10, C1). A copy that needs no new version is replaced only to run
 	// them: Install keeps it when no hook runs, so what earlier hooks built in it stays. A target
@@ -894,7 +1665,7 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 	}
 	if r.Version != nil && r.Ref == "" {
 		// A listed version no ref names: installing the name again reads its current head.
-		o, _, err := e.Store.Origin(r.Version.Name)
+		o, _, err := e.origin(opts.staged, r.Version.Name)
 		if err != nil {
 			return err
 		}
@@ -906,7 +1677,44 @@ func (e *Engine) planInstallModule(sp *scopePlan, rr resolvedRequest, sel *confi
 		hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: true, forced: !replace && !addsTargets(installed, mr.Targets),
 		pending: installed != nil && installed.HooksPending && declaresPostInstall(v.Module.DeclaredHooks), review: review, again: again,
 		shows: shows, reviewTargets: mr.Targets})
-	sp.entries = append(sp.entries, ent)
+	if dest != nil {
+		sp.write(sel, *dest, section, v.Name, ent)
+	}
+	return nil
+}
+
+// write records ent, the entry of module the install writes into t's file, in that file's form
+// (fileEntry), with the picks saved for it in picks when t is a profile.
+func (sp *scopePlan) write(sel *config.Selections, t writeTo, picks config.Where, module string, ent manifest.Entry) {
+	if t.Profile {
+		picked := sel.Entry(picks, module)
+		ent.Only, ent.Skip = patternStrings(picked.Only), patternStrings(picked.Skip)
+	}
+	ent = t.fileEntry(sp.sc, ent)
+	for i := range sp.writes {
+		if sp.writes[i].t.Name == t.Name {
+			// t as it is now: an entry written as new since is not in its entries (planInstallModule),
+			// so the trust refresh records it whole.
+			sp.writes[i].t = t
+			sp.writes[i].entries = append(sp.writes[i].entries, ent)
+			return
+		}
+	}
+	sp.writes = append(sp.writes, targetWrite{t: t, entries: []manifest.Entry{ent}})
+}
+
+// winnerAbove is the layer above the one named at, in layers, whose entry for module wins: the
+// last layer above at that lists it; nil when none does. A target not in layers has none above.
+func winnerAbove(layers []Layer, at, module string) *Layer {
+	k := slices.IndexFunc(layers, func(l Layer) bool { return l.Name == at })
+	if k < 0 {
+		return nil
+	}
+	for i := len(layers) - 1; i > k; i-- {
+		if slices.ContainsFunc(layers[i].Entries, func(ent manifest.Entry) bool { return ent.Name == module }) {
+			return &layers[i]
+		}
+	}
 	return nil
 }
 
@@ -921,8 +1729,9 @@ func entryRef(man *manifest.Manifest, arg string) string {
 // listedRef is the ref of the cache head that holds the listed version v, as the pickers
 // chose it (Current): the default branch's ("") when it holds v, else the first head that
 // does. It is "" when no head holds v (a version fetched without a head, or since moved).
-func (e *Engine) listedRef(v VersionRef) (string, error) {
-	o, _, err := e.Store.Origin(v.Name)
+// A version run staged is read as the cache will hold it (Engine.origin); nil is the cache alone.
+func (e *Engine) listedRef(run *StagedRun, v VersionRef) (string, error) {
+	o, _, err := e.origin(run, v.Name)
 	if err != nil {
 		return "", err
 	}
@@ -941,9 +1750,10 @@ func (e *Engine) listedRef(v VersionRef) (string, error) {
 	return ref, nil
 }
 
-// isFolder reports whether the cache has name from a folder source, which is never pinned.
-func (e *Engine) isFolder(name string) bool {
-	o, found, err := e.Store.Origin(name)
+// isFolder reports whether the cache has name from a folder source, which is never pinned, as
+// run will leave it (Engine.origin).
+func (e *Engine) isFolder(run *StagedRun, name string) bool {
+	o, found, err := e.origin(run, name)
 	return err == nil && found && o.Type == string(source.KindFolder)
 }
 
@@ -951,8 +1761,8 @@ func (e *Engine) isFolder(name string) bool {
 // head that produced v resolved, else that of the cache's head for ref that holds v (a version
 // listed by the pickers carries no commit). It is "" for other sources, and a git version no
 // head for ref records a commit for is refused: its heads predate pins, or another ref's.
-func (e *Engine) pinCommit(v store.Version, ref string) (string, error) {
-	commit, git, err := e.headCommit(v, ref)
+func (e *Engine) pinCommit(run *StagedRun, v store.Version, ref string) (string, error) {
+	commit, git, err := e.headCommit(run, v, ref)
 	if err != nil || !git || commit != "" {
 		return commit, err
 	}
@@ -962,9 +1772,10 @@ func (e *Engine) pinCommit(v store.Version, ref string) (string, error) {
 }
 
 // headCommit is pinCommit's commit without the refusal: git reports whether v is a git
-// version, and commit is "" for one no head for ref records a commit for.
-func (e *Engine) headCommit(v store.Version, ref string) (commit string, git bool, err error) {
-	o, found, err := e.Store.Origin(v.Name)
+// version, and commit is "" for one no head for ref records a commit for. run is read as
+// Engine.origin reads it.
+func (e *Engine) headCommit(run *StagedRun, v store.Version, ref string) (commit string, git bool, err error) {
+	o, found, err := e.origin(run, v.Name)
 	if err != nil || !found || o.Type != string(source.KindGit) {
 		return "", false, err
 	}
@@ -997,12 +1808,30 @@ func (e *Engine) installedVersion(sc Scope, v store.Version, prev *manifest.Entr
 		iv.Commit = installed.Commit
 		return iv, nil
 	}
-	if errors.Is(err, fs.ErrNotExist) {
-		err = fmt.Errorf("the version of %s installed here (%s) is no longer in the cache", untrusted.Text(v.Name, untrusted.MaxName),
-			untrusted.Text(id, untrusted.MaxName))
+	if !errors.Is(err, fs.ErrNotExist) {
+		return store.Version{}, untrusted.CleanErr(err) // a sync would load it the same way
 	}
-	return store.Version{}, errs.WithHints(untrusted.CleanErr(err),
-		e.Command(sc, "render")+" installs the cached version of "+untrusted.Text(v.Name, untrusted.MaxName)+" here again; run it, then add the assistants")
+	return store.Version{}, errs.WithHints(fmt.Errorf("the version of %s installed here (%s) is no longer in the cache", untrusted.Text(v.Name, untrusted.MaxName),
+		untrusted.Text(id, untrusted.MaxName)),
+		e.SyncCommand(sc, v.Name)+" installs the cached version of "+untrusted.Text(v.Name, untrusted.MaxName)+" here again; run it, then add the assistants")
+}
+
+// listedPin is the version ent, the entry the layer labeled from gives the scope, pins: what a
+// first install of it installs, whatever head v, the version resolved at its ref, is. It is read
+// as sync reads a pin (Store.Pinned): from a snapshot in run, the run's directory, hashed there
+// and refused unless both its content and its record match the pin whole, since the pin is a
+// pulled file's. A pin the cache does not hold is refused, hinting the sync that fetches it.
+func (e *Engine) listedPin(sc Scope, v store.Version, ent *manifest.Entry, from, run string) (store.Version, error) {
+	pv, found, err := e.Store.Pinned(v.Name, ent.Digest, run)
+	if err != nil {
+		return store.Version{}, err
+	}
+	if !found {
+		return store.Version{}, errs.WithHints(fmt.Errorf("the version of %s %s pins (%s) is not in your cache", untrusted.Text(v.Name, untrusted.MaxName), from,
+			untrusted.Text(versionID(ent.Digest), untrusted.MaxName)), e.SyncCommand(sc, v.Name)+" fetches it and installs it here")
+	}
+	pv.Commit = ent.Commit
+	return pv, nil
 }
 
 // addedTargets are a module's targets when a request adds some (InstallRequest.Targets): the
@@ -1102,6 +1931,9 @@ func (e *Engine) notInstalled(sc Scope, name string) error {
 // the manifest once nothing remains.
 func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts Options) (_ *Result, err error) {
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, opts.Display) }()
+	if err := e.CheckTargets(opts.Targets); err != nil {
+		return nil, err
+	}
 	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
 	unlockProfiles, err := e.readProfiles(opts.DryRun)
 	if err != nil {
@@ -1127,48 +1959,212 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	if err != nil {
 		return nil, err
 	}
+	t, infos, err := e.uninstallTarget(sc, layers, opts.Target)
+	if err != nil {
+		return nil, err
+	}
+	want, _ := desired(layers)
 	var changes []plan.ModuleChange
-	for _, name := range names {
-		if err := e.refuseProfileModule(sc, layers, name, opts.Display); err != nil {
-			return nil, err
+	removing := map[string]*writeTo{} // module → the layer its entry is removed from
+	narrowed := map[string][]string{} // module → the targets its entry in removing keeps, when the run installs nothing of that edit
+	saved := map[string]bool{}        // the files of profiles that are not on whose edit was said to be saved only
+	noteSaved := func(from *writeTo) {
+		if !from.on && !saved[from.Path] {
+			saved[from.Path] = true
+			text := "saved to " + from.label + "; it is not on " + scopeWhere(sc) + " → " + e.switchRun(sc, *from)
+			if opts.DryRun {
+				text = "would be " + text
+			}
+			res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: text})
 		}
-		entry, ment := led.Modules[name], man.Find(name)
-		if entry == nil && ment == nil {
-			return nil, e.notInstalled(sc, name)
+	}
+	// covered refuses a rewrite of the targets of from's entry for name the trust record does not
+	// cover: removing a module only reduces what is installed, removing it from some targets
+	// rewrites an entry someone else may have changed (Plan 6a §10.4; a project profile's as
+	// project.yml's).
+	covered := func(name string, from *writeTo) error {
+		ent := from.layerEntry(name)
+		switch {
+		case from.covered(rec, *ent):
+			return nil
+		case from.Key != "":
+			return e.notTrustedIn(sc, rec, *from, ent)
+		}
+		return e.notTrusted(sc, rec, ent, true, false)
+	}
+	// narrow keeps, of from's entry for name, its own targets (its targets:, else its file's) but ts.
+	narrow := func(name string, from *writeTo, ts []string) {
+		own := from.layerEntry(name).Targets
+		if len(own) == 0 {
+			own = fileTargets(*from, man)
+		}
+		narrowed[name] = slices.DeleteFunc(slices.Clone(own), func(t string) bool { return slices.Contains(ts, t) })
+	}
+	for _, name := range names {
+		entry, w := led.Modules[name], find(want, name)
+		// --profile naming a profile that is not on: its file is edited, and nothing it lists is installed.
+		if w == nil && opts.Target.Profile != "" && t.layerEntry(name) != nil {
+			removing[name] = &t
+		}
+		if entry == nil && w == nil {
+			if removing[name] == nil {
+				return nil, e.notInstalled(sc, name)
+			}
+			if len(opts.Targets) > 0 {
+				from := removing[name]
+				own := from.layerEntry(name).Targets
+				if len(own) == 0 {
+					own = fileTargets(*from, man)
+				}
+				if !sharesAny(opts.Targets, own) {
+					return nil, e.notOnTargets(sc, name, from.label, notOn{own: own, editOnly: true}, opts)
+				}
+				if err := covered(name, from); err != nil {
+					return nil, err
+				}
+				narrow(name, from, opts.Targets)
+			}
+			noteSaved(removing[name])
+			continue
+		}
+		var ment *manifest.Entry
+		if w != nil {
+			ment = &w.Entry
+		}
+		on := allTargets(entry, ment, man)
+		var installed []string // what lock.json records it installed on
+		if entry != nil {
+			installed = entry.InstalledTargets()
 		}
 		ts := opts.Targets
 		if len(ts) == 0 {
-			ts = allTargets(entry, ment, man)
+			ts = on
 		}
-		// Removing a module only reduces what is installed; removing it from some targets
-		// rewrites the targets of an entry someone else may have changed (Plan 6a §10.4).
-		partial := slices.ContainsFunc(allTargets(entry, ment, man), func(t string) bool { return !slices.Contains(ts, t) })
-		if ment != nil && rec != nil && partial && !rec.View.Covers(*ment) {
-			return nil, e.notTrusted(sc, rec, ment, true, false)
+		partial := slices.ContainsFunc(on, func(t string) bool { return !slices.Contains(ts, t) })
+		if len(opts.Targets) > 0 {
+			// -t is judged by what the run changes: the targets the module is installed on, and those
+			// of the entry --profile names when that is not the one installed, which alone the run
+			// edits while a layer on wants the module.
+			why := notOn{installed: installed}
+			if w != nil {
+				why.listed = allTargets(nil, ment, man)
+			}
+			if opts.Target.Profile != "" && t.layerEntry(name) != nil && (w == nil || t.Name != w.From || !t.on) {
+				if why.own = t.layerEntry(name).Targets; len(why.own) == 0 {
+					why.own = fileTargets(t, man)
+				}
+				why.editOnly = w != nil
+			}
+			if why.editOnly && !sharesAny(opts.Targets, why.own) || !why.editOnly && !sharesAny(opts.Targets, installed) && !sharesAny(opts.Targets, why.own) {
+				return nil, e.notOnTargets(sc, name, t.label, why, opts)
+			}
+		}
+		if w != nil {
+			from, err := e.removeFrom(sc, layers, infos, t, w, partial, opts)
+			if err != nil {
+				return nil, err
+			}
+			removing[name] = from
+			// Another layer that still lists it keeps it installed (spec 2026-10-29 §6.1); -t
+			// keeps the entry, so it still wants it there.
+			if rest := stillWanted(layers, from.Name, name); rest != nil && !partial {
+				noteSaved(from)
+				res.Notices = append(res.Notices, e.staysNotices(sc, layers, infos, rest, entry)...)
+				continue
+			}
+		}
+		from := removing[name]
+		if from != nil && partial {
+			if err := covered(name, from); err != nil {
+				return nil, err
+			}
+			// An entry that is not the winner's (a layer below it, or a profile that is not on)
+			// loses ts from its own targets; what is installed follows the winner (spec 2026-10-29 §3.5).
+			if w == nil || from.Name != w.From || !from.on {
+				narrow(name, from, ts)
+				noteSaved(from)
+				if w != nil {
+					if from.on {
+						res.Notices = append(res.Notices, saveOnlyNotice(name, layerLabel(infos, w.From), from.label))
+					}
+					continue
+				}
+			}
+		}
+		if from != nil {
+			noteSaved(from)
+		}
+		// What is uninstalled is what lock.json records installed, of ts: nothing for a module it
+		// does not record, whose entry alone is edited, nor when -t names only targets of the entry
+		// of a profile that is not on.
+		if entry == nil {
+			continue
+		}
+		if len(opts.Targets) > 0 {
+			if ts = slices.DeleteFunc(slices.Clone(ts), func(t string) bool { return !slices.Contains(installed, t) }); len(ts) == 0 {
+				continue
+			}
 		}
 		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts})
-		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: ts, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}, Skipped: []string{}})
+		res.Modules = append(res.Modules, ModuleResult{Name: name, Targets: slices.DeleteFunc(slices.Clone(ts), func(t string) bool { return !slices.Contains(installed, t) }),
+			MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{}, Skipped: []string{}})
 	}
 	pr, err := e.prepare(sc, led, changes, nil, nil, opts, res)
 	if err != nil {
 		return nil, err
 	}
+	var change manifest.Change
+	var base *writeTo // project.yml, when change edits it
+	files := map[string]*fileEdit{}
+	targets := map[string]*writeTo{}
+	var order []string
+	for _, name := range names {
+		from := removing[name]
+		if from == nil {
+			continue
+		}
+		var c manifest.Change
+		left := pr.plan.Ledger.Modules[name]
+		keep, isNarrowed := narrowed[name]
+		switch {
+		case isNarrowed && len(keep) > 0:
+			kept := from.layerEntry(name)
+			kept.Targets = ownTargets(keep, *from, man)
+			c.Set = []manifest.Entry{from.fileEntry(sc, *kept)}
+		case isNarrowed || left == nil || !slices.ContainsFunc(changes, func(m plan.ModuleChange) bool { return m.Name == name }):
+			c.Remove = []string{name}
+		default:
+			if kept := from.layerEntry(name); kept != nil {
+				kept.Targets = ownTargets(allTargets(left, nil, &manifest.Manifest{}), *from, man)
+				c.Set = []manifest.Entry{from.fileEntry(sc, *kept)}
+			}
+		}
+		if !from.Profile {
+			base = from
+			change.Remove, change.Set = append(change.Remove, c.Remove...), append(change.Set, c.Set...)
+			continue
+		}
+		f := files[from.Path]
+		if f == nil {
+			f = &fileEdit{layer: from.Layer}
+			files[from.Path], targets[from.Path], order = f, from, append(order, from.Path)
+		}
+		f.change.Remove, f.change.Set = append(f.change.Remove, c.Remove...), append(f.change.Set, c.Set...)
+	}
+	if base != nil {
+		res.Edits = append(res.Edits, editsOf(ctx, sc, *base, change.Set, change.Remove, nil)...)
+	}
+	edits := make([]fileEdit, 0, len(order))
+	for _, path := range order {
+		edits = append(edits, *files[path])
+		res.Edits = append(res.Edits, editsOf(ctx, sc, *targets[path], files[path].change.Set, files[path].change.Remove, nil)...)
+		res.Notices = append(res.Notices, e.alsoOn(sc, *targets[path], append([]Scope{sc}, opts.Then...))...)
+	}
 	if opts.DryRun {
 		return res, nil
 	}
-	var change manifest.Change
-	for _, name := range names {
-		left := pr.plan.Ledger.Modules[name]
-		if left == nil {
-			change.Remove = append(change.Remove, name)
-		} else if ment := man.Find(name); ment != nil {
-			kept := *ment
-			kept.Targets = allTargets(left, nil, &manifest.Manifest{})
-			change.Set = append(change.Set, kept)
-		}
-	}
-	removed := "lola removed what you uninstalled from the project's files, lock.json and project.yml"
-	if err := e.saveManifest(sc, man, change, nil, rec, removed, syncAgain(e.SyncCommand(sc)),
+	removed := "lola removed what you uninstalled from the project's files, lock.json and " + e.manifestName(sc)
+	if err := e.saveManifest(sc, man, change, nil, edits, rec, removed, syncAgain(e.SyncCommand(sc)),
 		func(mw []plan.ManifestWrite) error { return e.commit(ctx, pr, opts, res, mw, nil) }); err != nil {
 		return nil, err
 	}
@@ -1183,133 +2179,89 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	}
 	return res, nil
 }
+
+// notOn is what a refusal of -t says of a module: the targets lock.json records it installed
+// on, those the winning entry lists, and own, those of its entry in the layer --profile names
+// when that is not the one installed; editOnly says the run would only edit that entry.
+type notOn struct {
+	installed, listed, own []string
+	editOnly               bool
+}
+
+// notOnTargets refuses an uninstall of name whose -t shares nothing with what it changes (why),
+// saying where it is installed and listed, never that it is installed where it is only listed.
+// label is the layer of why.own. The hint is the run again for name alone, since the run's other
+// modules may not be on those targets, with -t naming what it changes (its installed and own
+// targets), else without -t, which removes the entry: opts.Retarget's, else lola uninstall with
+// --profile and the output flags kept.
+func (e *Engine) notOnTargets(sc Scope, name, label string, why notOn, opts Options) error {
+	module, asked := shown(name), strings.Join(opts.Targets, ", ")
+	list := func(ts []string) string { return strings.Join(shownAll(ts), ", ") }
+	var msg string
+	switch {
+	case why.editOnly:
+		msg = fmt.Sprintf("%s lists %s for %s, not for %s", label, module, list(why.own), asked)
+	default:
+		msg = module + " is not installed on " + asked
+		if why.own != nil {
+			msg += ", nor does " + label + " list it for them"
+		}
+		switch {
+		case len(why.installed) == 0 && len(why.listed) > 0:
+			msg += "; it is listed for " + list(why.listed) + " but not installed there"
+		case len(why.installed) == 0:
+			msg += "; it is not installed on any target"
+		case sharesAny(opts.Targets, why.listed):
+			msg += "; it is listed for " + list(why.listed) + " but installed only on " + list(why.installed)
+		default:
+			msg += "; it is installed on " + list(why.installed)
+		}
+		if why.own != nil {
+			msg += "; " + label + " lists it for " + list(why.own)
+		}
+	}
+	ts := slices.Clone(why.own)
+	if !why.editOnly {
+		ts = append(ts, why.installed...)
+	}
+	slices.Sort(ts)
+	ts = slices.Compact(ts)
+	var run string
+	if opts.Retarget != nil {
+		run = opts.Retarget(name, ts)
+	} else {
+		args := []string{name}
+		if len(ts) > 0 {
+			args = append(args, "-t", strings.Join(ts, ","))
+		}
+		if opts.Target.Profile != "" {
+			args = append(args, "--profile", opts.Target.Profile)
+		}
+		run = e.Command(sc, "uninstall", append(args, opts.Display...)...)
+	}
+	if len(ts) == 0 {
+		return errs.WithHints(errors.New(msg), "remove its entry instead: "+run)
+	}
+	return errs.WithHints(errors.New(msg), "uninstall it there: "+run)
+}
+
+// sharesAny reports whether a and b share a string.
+func sharesAny(a, b []string) bool {
+	return slices.ContainsFunc(a, func(s string) bool { return slices.Contains(b, s) })
+}
+
+// ownTargets is the targets: an entry of t's file that keeps ts writes: none when ts are the
+// file's own (fileTargets), so the entry follows them, else ts.
+func ownTargets(ts []string, t writeTo, man *manifest.Manifest) []string {
+	if sameSet(ts, fileTargets(t, man)) {
+		return nil
+	}
+	return ts
+}
+
 func dirExists(p string) bool {
 	fi, err := os.Stat(p)
 	return err == nil && fi.IsDir()
-}
-
-// Render re-plans every installed module at the version its winning layer's entry pins
-// (lock.json's when it pins none, Plan 6b §6.4), removing orphans and refusing to overwrite hand
-// edits. A git or archive module is rendered from a snapshot of that cached version, fetched by its pin when the cache no
-// longer holds it; a folder module is read from its folder. Render never reads a cache head, so
-// lola cache update never changes what is installed, and it never acts on what the user has not
-// trusted: a module no layer lists any more, asks for another source, does not cover in the
-// trust record, or a folder whose content changed is left as installed, with a warn finding
-// that names the remedy (Plan 6a §10.3, §10.7).
-func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result, err error) {
-	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, opts.Display) }()
-	// The profiles lock comes first (Plan 6b §10): the run reads the remote profiles once.
-	unlockProfiles, err := e.readProfiles(opts.DryRun)
-	if err != nil {
-		return nil, err
-	}
-	defer unlockProfiles()
-	man, led, unlock, err := e.load(sc, opts.DryRun)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-	res := newResult(opts.DryRun)
-	res.Trusted = []Consent{} // a command that takes --trust says what it covered, [] for nothing
-	if err := e.refuseTrackedLedger(ctx, sc, res); err != nil {
-		return nil, err
-	}
-	sel, err := e.selections()
-	if err != nil {
-		return nil, err
-	}
-	layers, notices, err := e.layers(sc, man, led)
-	if err != nil {
-		return nil, err
-	}
-	want, _ := desired(layers)
-	res.Notices = append(append(res.Notices, notices...), e.sweepRuns()...)
-	run, done, err := e.runDir()
-	if err != nil {
-		return nil, err
-	}
-	defer func() { err = errors.Join(err, done()) }()
-	rec, err := e.trustRecord(sc)
-	if err != nil {
-		return nil, err
-	}
-	// Every module is checked, locally, before anything is fetched.
-	staged := map[string]*store.Staged{}
-	var names []string
-	for _, name := range sortedNames(led) {
-		out, st, err := e.renderCheck(ctx, sc, man, find(want, name), rec, name, led.Modules[name], run, opts.Display)
-		if err != nil {
-			return nil, errs.WithHints(err, renderUninstall(name))
-		}
-		if out != nil {
-			res.Findings, res.remedies = append(res.Findings, out.finding), append(res.remedies, out.hints...)
-			continue
-		}
-		staged[name] = st
-		names = append(names, name)
-	}
-	probes := e.newProbeRun(ctx)
-	templates, err := e.newTemplateRun(sc, led.Profiles)
-	if err != nil {
-		return nil, err
-	}
-	var changes []plan.ModuleChange
-	var copies []moduleCopy
-	for _, name := range names {
-		entry, w := led.Modules[name], find(want, name)
-		var ment *manifest.Entry
-		from := entry.From // a module no layer wants keeps the layer it came from
-		if w != nil {
-			ment, from = &w.Entry, ""
-			if w.profile {
-				from = w.From
-			}
-		}
-		var v store.Version
-		if st := staged[name]; st != nil {
-			v, err = e.renderStaged(st, entry)
-		} else {
-			digest, commit, file, repin := e.renderPin(sc, name, entry, w)
-			if v, err = e.installedForRender(ctx, sc, name, entry, digest, commit, run, res); err != nil {
-				err = renderError(name, w, file, repin, err)
-			}
-		}
-		if err != nil {
-			return nil, err
-		}
-		ts := allTargets(entry, ment, man)
-		if len(opts.Targets) > 0 {
-			ts = slices.DeleteFunc(ts, func(t string) bool { return !slices.Contains(opts.Targets, t) })
-		}
-		if len(ts) == 0 {
-			continue
-		}
-		x, err := exclusions(sel, sc, name)
-		if err != nil {
-			return nil, err
-		}
-		opts.entryFrom = from
-		intents, finds, notes, mr, err := e.planModule(sc, v, ts, ment, x, opts, probes, templates)
-		if err != nil {
-			return nil, err
-		}
-		res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
-		changes = append(changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
-			Entry: &ledger.Entry{From: from, Source: entry.Source, Ref: entry.Ref, Path: entry.Path, Commit: v.Commit, Digest: v.Meta.Digest, Targets: mr.Targets,
-				Components: entry.Components.Clone(), RenderedWith: mr.renderedWith}})
-		replace, err := needsCopy(e.files(sc).modules, name, entry, v.Meta.Digest)
-		if err != nil {
-			return nil, err
-		}
-		replace = replace || addsTargets(entry, mr.Targets) // a target its hooks never ran for
-		copies = append(copies, moduleCopy{name: name, src: v.ContentDir, replace: replace,
-			hooks: v.Module.DeclaredHooks, targets: mr.Targets, runHooks: replace, shows: &v, again: []string{"render"}})
-	}
-	res.Findings = append(res.Findings, probes.findings...)
-	if err := e.execute(ctx, sc, led, changes, copies, opts, res, func(*plan.Plan) error { return e.makePluginData(sc, changes) }); err != nil {
-		return nil, err
-	}
-	return res, nil
 }
 
 // Status reports each installed module × target: missing (an owned destination or the
@@ -1320,10 +2272,10 @@ func (e *Engine) Render(ctx context.Context, sc Scope, opts Options) (_ *Result,
 // Each row names the layer its module comes from (From): the layer whose entry wins now, else
 // the one lock.json recorded. A module copy's content is not compared: hooks build in it. It
 // reads no network, never the trust record, and changes nothing (Plan 6a §10.5). It refuses a
-// project whose lock.json git tracks, since a committed one could name active profiles (Plan 6b
-// §5, §19 S5); the notices are the active profiles that no longer exist, git missing, and how
-// many modules are not installed with the sync that installs them, keeping display, the run's
-// output flags.
+// project whose lock.json git tracks, since a committed one could name an active profile (Plan
+// 6b §5, §19 S5); the notices are the active profile when its file no longer exists, git
+// missing, and how many modules are not installed with the sync that installs them, keeping
+// display, the run's output flags.
 func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []StatusRow, _ []Notice, err error) {
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, false, display) }()
 	unlock, err := e.readProfiles(true)
@@ -1351,7 +2303,11 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 	if err != nil {
 		return nil, nil, err
 	}
+	if sel, err = withPicks(sel, layers); err != nil {
+		return nil, nil, err
+	}
 	rows := []StatusRow{}
+	profiles := e.visibleOnce(sc)
 	names := sortedNames(led)
 	want, _ := desired(layers)
 	for _, w := range want {
@@ -1363,15 +2319,28 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 	for _, name := range names {
 		entry, w := led.Modules[name], find(want, name)
 		var ment *manifest.Entry
-		from := filepath.Base(e.files(sc).manifest)
+		from := e.manifestName(sc)
 		if entry != nil && entry.From != "" {
 			from = entry.From
 		}
 		if w != nil {
 			ment, from = &w.Entry, w.From
 		}
+		x, err := exclusions(sel, sc, from, name)
+		if err != nil {
+			return nil, nil, err
+		}
+		only, origin := x.Only()
+		shown := []string{}
+		for _, o := range only {
+			shown = append(shown, untrusted.Text(o.String(), untrusted.MaxName))
+		}
+		onlyFrom, err := originLabel(x, origin, from, profiles)
+		if err != nil {
+			return nil, nil, err
+		}
 		if entry == nil {
-			rows = append(rows, e.notInstalledRows(man, *w)...)
+			rows = append(rows, e.notInstalledRows(man, *w, shown, onlyFrom)...)
 			continue
 		}
 		pin, ref := "", entry.Ref
@@ -1380,12 +2349,12 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		}
 		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest))
 		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
-			UpdateAvailable: update, Skipped: []string{}}
+			UpdateAvailable: update, Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom}
 		if ment != nil {
 			base.Market = shownMarket(ment.Market)
 		}
 		var v store.Version
-		err := fs.ErrNotExist
+		err = fs.ErrNotExist
 		if id := versionID(entry.Digest); id != "" {
 			v, err = e.Store.Load(name, id)
 		}
@@ -1403,10 +2372,6 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		stale := pin != "" && pin != entry.Digest
 		skipped := []string{}
 		if ok {
-			x, err := exclusions(sel, sc, name)
-			if err != nil {
-				return nil, nil, err
-			}
 			skipped = resolveComponents(v.Module, x, true).skipped
 		}
 		copyMissing, err := needsCopy(e.files(sc).modules, name, entry, entry.Digest)
@@ -1462,7 +2427,7 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 
 // notInstalledRows are the list rows of w, an entry a layer wants that lock.json does not
 // record: one per effective target, with no digest installed.
-func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted) []StatusRow {
+func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted, only []string, onlyFrom string) []StatusRow {
 	ment := &w.Entry
 	ts := ment.Targets
 	if len(ts) == 0 {
@@ -1478,7 +2443,7 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted) []StatusRow 
 	var rows []StatusRow
 	for _, t := range ts {
 		rows = append(rows, StatusRow{Name: ment.Name, From: w.From, Target: t, Status: status, Rules: ment.RulesOn(), Source: ment.Source, Ref: ment.Ref,
-			Pin: ment.Digest, UpdateAvailable: update, Skipped: []string{}, Market: shownMarket(ment.Market)})
+			Pin: ment.Digest, UpdateAvailable: update, Skipped: []string{}, Only: only, OnlyFrom: onlyFrom, Market: shownMarket(ment.Market)})
 	}
 	return rows
 }
@@ -1487,9 +2452,9 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted) []StatusRow 
 // §7): when its layers want modules lock.json does not record, the notice a terminal shows
 // before the pickers and the hint the missing-argument error adds off one, both naming the
 // layers that list them and the sync that installs them; "" when there are none. It reads the
-// manifest, the ledger and the active profiles only, and refuses a project whose lock.json git
-// tracks before reading the profiles it names, as every command that reads them does (Plan 6b
-// §5, §19 S5).
+// manifest, the ledger and the scope's profiles (default where read, then the active profile)
+// only, and refuses a project whose lock.json git tracks before reading the profile it names, as
+// every command that reads them does (Plan 6b §5, §19 S5).
 func (e *Engine) InstallCoaching(ctx context.Context, sc Scope) (notice, hint string, err error) {
 	unlock, err := e.readProfiles(true)
 	if err != nil {
@@ -1556,7 +2521,7 @@ func versionID(digest string) string {
 
 // updateAvailable reports whether the cache head for ref of name holds another version than
 // digest. It reads the cache index only, and a folder's head never counts: a folder is read
-// again by every render.
+// again by every sync.
 func (e *Engine) updateAvailable(name, ref, digest string) (bool, error) {
 	o, found, err := e.Store.Origin(name)
 	if err != nil || !found || o.Type == string(source.KindFolder) {

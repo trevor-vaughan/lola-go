@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -24,6 +25,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 	// question it asks, the hint off a terminal (under --json) and what its change looks like.
 	type confirmCase struct {
 		args      []string
+		context   string // the context line the command prints first on stderr, "" for one that prints none
 		plan      string // the plan's first line
 		planLines int    // the plan's lines on stderr
 		question  string
@@ -56,7 +58,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 		case "uninstall":
 			installKit(proj)
 			return confirmCase{
-				args: []string{"uninstall", "kit", "-C", proj}, plan: "plan (dry run; nothing was written):", planLines: 2,
+				args: []string{"uninstall", "kit", "-C", proj}, context: projectContext(proj), plan: "→ would remove kit from project.yml (base)\nplan (dry run; nothing was written):", planLines: 3,
 				question: "Uninstall kit?", hint: "lola uninstall kit --json --root " + proj + " -y", done: "uninstalled",
 				keys: []string{"modules", "steps", "findings", "notices", "dry_run"}, steps: key("steps"), did: key("steps"),
 				written: func() bool {
@@ -99,7 +101,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 				doc["created"] = append(doc["created"].([]any), map[string]any{"target": "claude-code", "path": "../settings.json"})
 			})
 			return confirmCase{
-				args: []string{"repair", "-C", proj}, plan: "will forget 1 entry in " + lp + "; files are not touched:", planLines: 2,
+				args: []string{"repair", "-C", proj}, context: projectContext(proj), plan: "will forget 1 entry in " + lp + "; files are not touched:", planLines: 2,
 				question: "Forget 1 entry lola could not have written? Files are not touched.", hint: "lola repair --json --root " + proj + " -y",
 				done: "forgot 1 entry in " + lp,
 				keys: []string{"dry_run", "file", "forgotten", "forgotten_modules", "notices"}, steps: key("forgotten"), did: key("forgotten"),
@@ -167,10 +169,10 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			r := lola(c.args...)
 			Expect(r.code).To(Equal(1))
 			Expect(r.out).To(BeEmpty())
-			Expect(r.err).To(HavePrefix(c.plan + "\n"))
+			Expect(r.err).To(HavePrefix(c.context + c.plan + "\n"))
 			Expect(r.err).To(HaveSuffix("error: lola " + command + " needs confirmation, and there is no terminal to ask on\n" +
 				"  hint: " + strings.Replace(c.hint, " --json", "", 1) + "\n"))
-			Expect(strings.Count(r.err, "\n")).To(Equal(c.planLines+2), r.err)
+			Expect(strings.Count(r.err, "\n")).To(Equal(c.planLines+2+strings.Count(c.context, "\n")), r.err)
 			Expect(c.written()).To(BeFalse())
 		},
 		Entry("uninstall", "uninstall"), Entry("cache rm", "cache rm"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"),
@@ -201,8 +203,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			r := lolaAsking(p, c.args...)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(p.questions).To(Equal([]string{c.question}))
-			Expect(p.before[0]).To(HavePrefix(c.plan + "\n"))
-			Expect(strings.Count(p.before[0], "\n")).To(Equal(c.planLines), p.before[0])
+			Expect(p.before[0]).To(HavePrefix(c.context + c.plan + "\n"))
+			Expect(strings.Count(p.before[0], "\n")).To(Equal(c.planLines+strings.Count(c.context, "\n")), p.before[0])
 			Expect(r.out).To(ContainSubstring(c.done))
 			Expect(c.written()).To(BeTrue())
 		},
@@ -217,7 +219,11 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 				r := lolaAsking(p, args...)
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(r.out).To(BeEmpty())
-				Expect(p.before[0]).To(HavePrefix(c.plan + "\n"))
+				ctx := c.context
+				if slices.Contains(args, "--json") {
+					ctx = "" // no line under --json
+				}
+				Expect(p.before[0]).To(HavePrefix(ctx + c.plan + "\n"))
 				Expect(r.err).To(Equal(p.before[0]+"aborted; nothing changed.\n"), "the plan, the question, then the abort")
 				Expect(c.written()).To(BeFalse())
 			}
@@ -304,7 +310,8 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 			p, r := onTerminal(c, "2")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).NotTo(ContainSubstring("\x1b[?1049h"))
-			Expect(p.before[0]).To(HavePrefix(c.plan + "\n"))
+			Expect(p.before[0]).To(Or(HavePrefix(c.context+c.plan+"\n"), ContainSubstring("\r\x1b[2K"+c.plan+"\n")),
+				"the plan comes first, or after the progress line lola cleared")
 			Expect(p.questions).To(Equal([]string{c.question}))
 		},
 		Entry("migrate, NO_PAGER set", "migrate", func() { GinkgoT().Setenv("NO_PAGER", "1") }),

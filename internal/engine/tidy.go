@@ -404,12 +404,12 @@ func tidyWhere(sc Scope) string {
 }
 
 // tidyLedgerCheck refuses a project whose lock.json git tracks, or about which git cannot say
-// (§4.3, R-6d-S5): unlike render, tidy treats "cannot check" as tracked.
+// (§4.3, R-6d-S5): unlike sync, tidy treats "cannot check" as tracked.
 func (e *Engine) tidyLedgerCheck(ctx context.Context, sc Scope) error {
 	if sc.Kind != target.Project {
 		return nil
 	}
-	tracked, err := ledgerTracked(ctx, sc.ProjectDir)
+	tracked, err := gitTracked(ctx, sc.ProjectDir, projectLedger)
 	if err != nil {
 		return fmt.Errorf("lola could not check whether git tracks %s: %s; lola tidy needs to know", projectLedger, gitCause(err))
 	}

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/module"
+	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
@@ -26,15 +26,25 @@ import (
 const maxLabel = 200
 
 // ChoicesRequest asks for what the install pickers offer at scopes. Modules are the module
-// arguments: each is resolved, and a source is fetched into the cache, so its components can
-// be picked.
+// arguments: each is resolved, and a source is fetched, so its components can be picked.
 type ChoicesRequest struct {
 	Cwd     string
 	Scopes  []ScopeChoice
 	Modules []InstallRequest
+	// Run, when set, is the install's staged run (StagedRun): what the module arguments fetch
+	// stays in it, out of the cache, and a version an earlier call staged in it is listed from it.
+	// Without one, the call fetches into a run of its own and caches what it fetches at once (lola
+	// migrate's planning relies on that).
+	Run *StagedRun
 	// DryRun is the run's -n and Display its output flags, which every hint keeps (Plan 6c §11.3).
 	DryRun  bool
 	Display []string
+	Target  TargetRequest // where the install writes (--profile, --override)
+	// AskWhere, when set, asks the question about the file the install writes (writeTarget: the
+	// bundle member question, the base under a remote profile), as InstallAll asks it, so an
+	// AskWhere that answers a question once per run answers the install's with it; without it the
+	// choices assume its first answer.
+	AskWhere func(WhereQuestion) (WhereChoice, error)
 }
 
 // Choices is everything the install pickers need (Plan 5c §7), computed by the engine. Every
@@ -43,7 +53,8 @@ type Choices struct {
 	Scopes    []ScopeChoices `json:"scopes"`
 	Modules   []ModuleChoice `json:"modules"`   // every cached module, by source then name
 	Requested []string       `json:"requested"` // the module arguments, resolved to names
-	// Versions are the cached versions the module arguments resolved to, in argument order;
+	// Versions are the versions the module arguments resolved to, cached or staged in the
+	// request's Run, in argument order;
 	// InstallRequest.Version pins an install to them.
 	Versions []VersionRef `json:"versions"`
 	Warnings []string     `json:"warnings"` // cached modules that could not be loaded
@@ -54,18 +65,28 @@ type Choices struct {
 	// module picker shows after the cache (Plan 6c §6.5).
 	Markets []MarketGroup `json:"markets"`
 
-	sel *config.Selections // as read, for Preview
+	sel     *config.Selections        // as read, with the scopes' profile entries' picks (withPicks), for Preview
+	layers  map[string][]Layer        // each destination's layers (Scope.Key), for Preview's save-only modules
+	targets map[string]writeTo        // each destination's write target, for Preview
+	infos   map[string][]profile.Info // the profiles each destination can use, once its target listed them, for Preview's labels
+
+	versions map[string]store.Version // the version listed of each module, cached or staged in the request's Run, for Mentions
+	scans    mentionReads             // what Mentions read, shared with the install of the request's Run (StagedRun.scans)
+	eng      *Engine                  // builds the hints of Preview's notices
 }
 
-// ScopeChoices is what one scope offers: its assistants and the targets its manifest fixes.
-// FixedTargets are the manifest's top-level targets when the trust record covers them; when it
+// ScopeChoices is what one scope offers: its assistants and the targets its write target fixes.
+// FixedTargets are the top-level targets an entry the install writes takes (fileTargets: the
+// write target's, a profile's own or else the base's) when the trust record covers them; when it
 // does not, they are UntrustedTargets instead, which an install may not take unasked (Plan 6a
-// §10.1), so the assistant picker asks and never preselects them.
+// §10.1), so the assistant picker asks and never preselects them. TargetsFrom names the file
+// they come from, "" for the scope's base (targetsFile).
 type ScopeChoices struct {
 	ScopeChoice
 	Name             string      `json:"scope"` // project or user; Scope.Key() tells two project roots apart
 	FixedTargets     []string    `json:"fixed_targets"`
 	UntrustedTargets []string    `json:"untrusted_targets"`
+	TargetsFrom      string      `json:"targets_from"`
 	Assistants       []Assistant `json:"assistants"`
 }
 
@@ -92,13 +113,28 @@ type ComponentChoice struct {
 
 // ModuleScope is a module's state at one destination.
 type ModuleScope struct {
-	Scope     string   `json:"scope"` // the destination: Scope.Key()
-	Installed bool     `json:"installed"`
-	Digest    string   `json:"digest"`  // the installed version, "" when not installed
-	Targets   []string `json:"targets"` // the assistants it is installed for
-	RulesOff  bool     `json:"rules_off"`
-	Excluded  []string `json:"excluded"`           // kind/name that selections.yaml excludes here
-	Current   []string `json:"current_components"` // kind/name installed now
+	Scope     string `json:"scope"` // the destination: Scope.Key()
+	Installed bool   `json:"installed"`
+	Listed    bool   `json:"listed"`    // the scope's write target lists it; an install of one it neither lists nor inherits writes its entry
+	Inherited bool   `json:"inherited"` // the write target inherits its entry from a layer below, which an install asking the same keeps
+	Digest    string `json:"digest"`    // the installed version, "" when not installed
+	Commit    string `json:"commit"`    // the commit lock.json records, "" when not installed
+	// ListedCommit is the commit an install pins where it is Listed: the head of the ref of the
+	// write target's entry (InstallAll's pinCommit), git only.
+	ListedCommit string   `json:"listed_commit"`
+	Targets      []string `json:"targets"` // the assistants it is installed for
+	RulesOff     bool     `json:"rules_off"`
+	Excluded     []string `json:"excluded"`              // kind/name that your picks exclude here
+	NotInOnly    []string `json:"not_in_only"`           // those of Excluded the only: list in force alone leaves out
+	ExcludedIn   string   `json:"excluded_in,omitempty"` // where the skips that exclude the rest live (skippedIn), "" when none
+	OnlyFrom     string   `json:"only_from"`             // the section whose only: list is in force here, "" when none
+	Current      []string `json:"current_components"`    // kind/name installed now
+	// New is kind/name of each component the listed version adds over the version installed here
+	// ([] when nothing is installed or that version is no longer cached), and Provider the layer that
+	// provides the module here when it is a profile, as layerLabel names it ("" otherwise)
+	// (cherry-pick design §4.6, §6).
+	New      []string `json:"new"`
+	Provider string   `json:"provider"`
 }
 
 // Scope returns m's state at the destination whose Scope.Key() is key.
@@ -121,10 +157,50 @@ func (c *Choices) Module(name string) *ModuleChoice {
 	return nil
 }
 
+// Mentions is what each component of the version of module name the choices list mentions
+// (cherry-pick design §5.1), read on the first call from that version's content directory (the
+// cache's, or the staged run's for a module argument the run fetched) and kept in the request's
+// run, whose install reads it from there. A module the choices do not list has none. A read that
+// fails is kept too: later calls return its error without reading again.
+func (c *Choices) Mentions(name string) (Mentions, error) {
+	v, ok := c.versions[name]
+	if !ok {
+		return nil, nil
+	}
+	return c.scans.read(v)
+}
+
+// listedMentions is, for each of targets, what its listed version's components mention
+// (Mentions), whether its rules install at the destination key (not RulesOff there, unless
+// --rules or --no-rules says) and the words a hint installs it with: spec's request for it, by
+// the version it pins, named as given while the run holds it staged, since the user may decline
+// the review. A module whose mentions cannot be read carries scanErr instead.
+func (c *Choices) listedMentions(targets []editTarget, key string, spec InstallSpec) map[string]mentionModule {
+	out := map[string]mentionModule{}
+	for _, t := range targets {
+		ms, err := c.Mentions(t.name)
+		if err != nil {
+			out[t.name] = mentionModule{scanErr: err}
+			continue
+		}
+		on := !c.Module(t.name).Scope(key).RulesOff
+		if spec.Options.Rules != nil {
+			on = *spec.Options.Rules
+		}
+		r := InstallRequest{Arg: t.name}
+		if i := slices.IndexFunc(spec.Modules, func(r InstallRequest) bool { return r.Version != nil && r.Version.Name == t.name }); i >= 0 {
+			r = spec.Modules[i]
+		}
+		out[t.name] = mentionModule{mentions: ms, rulesOn: on, words: mentionArgs(t.name, c.versions[t.name], r, spec.Staged, true)}
+	}
+	return out
+}
+
 // InstallChoices computes what the install pickers offer: the scopes with their assistants and
 // fixed targets, every cached module (and the module arguments, resolved) with its components,
 // and per scope whether it is installed, which components selections.yaml excludes and which
-// are installed now. It writes nothing but a source argument's fetch into the cache.
+// are installed now. It writes nothing to the cache when the request gives a Run; without one,
+// what a module argument fetches is cached at once.
 func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Choices, err error) {
 	var scopes []Scope
 	for _, s := range req.Scopes {
@@ -134,18 +210,26 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 	// An install of an address may replace an unresolved entry of its name (Plan 6c §6.3), so the
 	// pickers read such a manifest as that install does.
 	replacing := replacingNames(req.Modules)
-	swept := e.sweepRuns()
-	run, done, err := e.runDir()
+	// The profiles lock comes first (spec 2026-10-29 §16), as an install's does.
+	unlockProfiles, err := e.readProfiles(true)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, done()) }()
+	defer unlockProfiles()
+	swept := e.sweepRuns()
+	run := req.Run
+	if run == nil {
+		if run, err = e.publishingRun(); err != nil {
+			return nil, err
+		}
+		defer func() { err = errors.Join(err, run.Close()) }()
+	}
 	sel, err := e.selections()
 	if err != nil {
 		return nil, err
 	}
 	ch := &Choices{Scopes: []ScopeChoices{}, Modules: []ModuleChoice{}, Requested: []string{}, Versions: []VersionRef{}, Warnings: []string{},
-		Markets: []MarketGroup{}, sel: sel}
+		Markets: []MarketGroup{}, sel: sel, layers: map[string][]Layer{}, targets: map[string]writeTo{}, infos: map[string][]profile.Info{}, versions: map[string]store.Version{}, scans: run.scans(), eng: e}
 	for _, n := range swept {
 		ch.Warnings = append(ch.Warnings, n.Text)
 	}
@@ -194,7 +278,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		}
 		var pinned store.Version
 		if r.Version != nil {
-			if pinned, err = e.pinnedVersion(r); err != nil {
+			if pinned, err = e.pinnedVersion(run, r); err != nil {
 				return nil, err
 			}
 		}
@@ -224,7 +308,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		// A version listed earlier (a pick kept when Change scope asks again) must be the one
 		// every scope takes; InstallAll would refuse it only after confirmation.
 		if r.Version != nil && r.Ref == "" && r.Arg == pinned.Name {
-			lv, u, err := e.listedVersion(pinned, req.Scopes, replacing)
+			lv, u, err := e.listedVersion(run, pinned, req.Scopes, replacing)
 			if err != nil {
 				return nil, err
 			}
@@ -261,11 +345,11 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		}
 		for _, ref := range refs {
 			if ref == "" {
-				if ref, err = e.listedRef(VersionRef{Name: v.Name, ID: v.ID}); err != nil {
+				if ref, err = e.listedRef(run, VersionRef{Name: v.Name, ID: v.ID}); err != nil {
 					return nil, err
 				}
 			}
-			if _, err := e.pinCommit(store.Version{Name: v.Name, ID: v.ID}, ref); err != nil {
+			if _, err := e.pinCommit(run, store.Version{Name: v.Name, ID: v.ID}, ref); err != nil {
 				return nil, err
 			}
 		}
@@ -282,10 +366,13 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		ch.Versions = append(ch.Versions, listed)
 	}
 	type state struct {
-		sc  ScopeChoice
-		man *manifest.Manifest
-		led *ledger.Ledger
-		rec *trust.Record
+		sc   ScopeChoice
+		man  *manifest.Manifest
+		led  *ledger.Ledger
+		rec  *trust.Record
+		want []Wanted
+		// profiles is the profiles the scope can use, listed once (visibleOnce)
+		profiles func() ([]profile.Info, error)
 	}
 	var states []state
 	for _, s := range req.Scopes {
@@ -297,11 +384,30 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		if err != nil {
 			return nil, err
 		}
-		fixed, untrustedTargets := slices.Clone(man.Targets), []string{}
+		if ch.layers[s.Scope.Key()], _, err = e.layers(s.Scope, man, led); err != nil {
+			return nil, err
+		}
+		// Without AskWhere the preview assumes the first answer of a question about where the
+		// install writes; InstallAll asks it.
+		ask := req.AskWhere
+		if ask == nil {
+			ask = func(q WhereQuestion) (WhereChoice, error) { return q.Choices[0], nil }
+		}
+		t, infos, err := e.writeTarget(s.Scope, ch.layers[s.Scope.Key()], nil, req.Target, req.Target.verb(), installTyped(req.Modules), ask)
+		if err != nil {
+			return nil, err
+		}
+		ch.targets[s.Scope.Key()], ch.infos[s.Scope.Key()] = t, infos
+		if sel, err = withPicks(sel, append(slices.Clone(ch.layers[s.Scope.Key()]), t.Layer)); err != nil {
+			return nil, err
+		}
+		ch.sel = sel
+		want, _ := desired(ch.layers[s.Scope.Key()])
+		fixed, untrustedTargets := slices.Clone(fileTargets(t, man)), []string{}
 		if fixed == nil {
 			fixed = []string{}
 		}
-		if rec != nil && len(fixed) > 0 && !slices.Equal(rec.View.Targets, fixed) {
+		if !targetsCovered(rec, t, man) {
 			fixed, untrustedTargets = []string{}, fixed
 		}
 		detected := e.Detect(s.Scope)
@@ -309,8 +415,8 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 			detected[i].Binary = untrusted.Text(detected[i].Binary, untrusted.MaxName)
 		}
 		ch.Scopes = append(ch.Scopes, ScopeChoices{ScopeChoice: s, Name: s.Scope.Kind.String(), FixedTargets: fixed,
-			UntrustedTargets: untrustedTargets, Assistants: detected})
-		states = append(states, state{sc: s, man: man, led: led, rec: rec})
+			UntrustedTargets: untrustedTargets, TargetsFrom: targetsFile(t), Assistants: detected})
+		states = append(states, state{sc: s, man: man, led: led, rec: rec, want: want, profiles: e.visibleOnce(s.Scope)})
 	}
 	cached, warnings, err := e.CachedModules()
 	if err != nil {
@@ -326,11 +432,11 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 		groups, unread = []MarketGroup{}, []string{"your marketplaces cannot be read, so the pickers offer none: " + shown(untrusted.CleanErr(err).Error())}
 	}
 	ch.Markets, ch.Warnings = groups, append(ch.Warnings, unread...)
-	// A module argument whose default head does not load is not in cached; the version it
-	// resolved to is still offered.
+	// A module argument whose default head does not load, or that only the run holds, is not in
+	// cached; the version it resolved to is still offered.
 	for name, v := range asked {
 		if !slices.ContainsFunc(cached, func(c Cached) bool { return c.Version.Name == name }) {
-			o, _, err := e.Store.Origin(name)
+			o, _, err := e.origin(run, name)
 			if err != nil {
 				return nil, err
 			}
@@ -351,7 +457,7 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 				continue
 			}
 			var u *unlisted
-			if v, u, err = e.listedVersion(v, req.Scopes, replacing); err != nil {
+			if v, u, err = e.listedVersion(nil, v, req.Scopes, replacing); err != nil {
 				return nil, err
 			}
 			if u != nil {
@@ -360,10 +466,33 @@ func (e *Engine) InstallChoices(ctx context.Context, req ChoicesRequest) (_ *Cho
 			}
 		}
 		mc := moduleChoice(v, c.Origin)
+		ch.versions[v.Name] = v
+		// The version InstallAll pins (pinnedVersion): the request's carries the commit it was fetched
+		// at for a marketplace entry, and one this run staged the fetch's; else a head's.
+		pin := store.Version{Name: v.Name, ID: v.ID}
+		if sv, ok := run.version(v.Name, v.ID); ok {
+			pin.Commit = sv.Commit
+		}
+		if k := slices.IndexFunc(ch.Versions, func(r VersionRef) bool { return r.Name == v.Name && r.ID == v.ID }); k >= 0 {
+			pin.Commit = cmp.Or(ch.Versions[k].commit, pin.Commit)
+		}
 		for _, st := range states {
-			ms, err := e.moduleScope(sel, st.sc.Scope, st.man, st.led, st.rec, v)
+			// A module no layer lists yet is written to the scope's write target, whose picks apply to it.
+			key := st.sc.Scope.Key()
+			from := ch.targets[key].from()
+			if w := find(st.want, v.Name); w != nil {
+				from = w.From
+			}
+			ms, err := e.moduleScope(sel, st.sc.Scope, ch.layers[key], ch.targets[key], from, st.man, st.led, st.rec, v, st.profiles)
 			if err != nil {
 				return nil, err
+			}
+			if ms.Listed {
+				commit, _, err := e.headCommit(run, pin, ch.targets[key].layerEntry(v.Name).Ref)
+				if err != nil {
+					return nil, err
+				}
+				ms.ListedCommit = untrusted.Text(commit, untrusted.MaxName)
 			}
 			mc.PerScope = append(mc.PerScope, ms)
 		}
@@ -418,7 +547,7 @@ func (e *Engine) uncoveredEntries(scopes []ScopeChoice, replacing []string) (map
 			continue
 		}
 		slices.Sort(names)
-		base := filepath.Base(e.files(s.Scope).manifest)
+		base := e.manifestName(s.Scope)
 		// An entry the record never held (a pull added it) was never trusted, so it is new.
 		added := slices.ContainsFunc(names, func(n string) bool { return rec.View.Find(n) == nil })
 		what := fmt.Sprintf("%d modules in %s changed since you last trusted them", len(names), base)
@@ -470,7 +599,8 @@ type unlisted struct{ why, fix string }
 // else def for a scope with no entry. When no version can be listed (a ref whose head is not
 // cached, or scopes that resolve to different versions) it says why instead, so nothing the
 // install would refuse after confirmation is offered.
-func (e *Engine) listedVersion(def store.Version, scopes []ScopeChoice, replacing []string) (store.Version, *unlisted, error) {
+// The cache is read as run will leave it (Engine.origin); nil is the cache alone.
+func (e *Engine) listedVersion(run *StagedRun, def store.Version, scopes []ScopeChoice, replacing []string) (store.Version, *unlisted, error) {
 	name := untrusted.Text(def.Name, untrusted.MaxName)
 	v, listed := def, false
 	for _, s := range scopes {
@@ -481,10 +611,11 @@ func (e *Engine) listedVersion(def store.Version, scopes []ScopeChoice, replacin
 		rv := def
 		ent := man.Find(def.Name)
 		if ent != nil {
-			head, ok, err := e.Store.Head(def.Name, ent.Ref)
+			o, _, err := e.origin(run, def.Name)
 			if err != nil {
 				return store.Version{}, nil, err
 			}
+			h, ok := o.Head(ent.Ref)
 			if !ok {
 				which := "ref " + untrusted.Text(ent.Ref, untrusted.MaxName)
 				if ent.Ref == "" {
@@ -493,16 +624,21 @@ func (e *Engine) listedVersion(def store.Version, scopes []ScopeChoice, replacin
 				return store.Version{}, &unlisted{why: "your cache has no version of " + which,
 					fix: "install it by name, which fetches it: " + errs.ShellJoin([]string{"lola", "install", name})}, nil
 			}
-			rv = head
+			if rv, ok = run.version(def.Name, h.Digest); !ok {
+				if rv, err = e.Store.Load(def.Name, h.Digest); err != nil {
+					return store.Version{}, nil, err
+				}
+			}
+			rv.Commit = h.Commit
 		}
 		// InstallAll pins the version at the commit of the head it records as the entry's ref.
 		ref := ""
 		if ent != nil {
 			ref = ent.Ref
-		} else if ref, err = e.listedRef(VersionRef{Name: rv.Name, ID: rv.ID}); err != nil {
+		} else if ref, err = e.listedRef(run, VersionRef{Name: rv.Name, ID: rv.ID}); err != nil {
 			return store.Version{}, nil, err
 		}
-		if commit, git, err := e.headCommit(store.Version{Name: rv.Name, ID: rv.ID}, ref); err != nil {
+		if commit, git, err := e.headCommit(run, store.Version{Name: rv.Name, ID: rv.ID}, ref); err != nil {
 			return store.Version{}, nil, err
 		} else if git && commit == "" {
 			return store.Version{}, &unlisted{why: "your cache does not record which commit its version " + rv.ID + " came from",
@@ -533,10 +669,15 @@ func twoVersions(name string) error {
 		"install it into one scope at a time")
 }
 
-// pinnedVersion loads the cached version r.Version names, with the commit it was fetched at when
-// the reference carries one. A version removed from the cache since the pickers listed it, or an
-// invalid reference, is refused with a way forward.
-func (e *Engine) pinnedVersion(r InstallRequest) (store.Version, error) {
+// pinnedVersion loads the version r.Version names, from run when run staged it, else from the
+// cache, with the commit it was fetched at when the reference carries one. A version removed
+// from the cache since the pickers listed it, or an invalid reference, is refused with a way
+// forward.
+func (e *Engine) pinnedVersion(run *StagedRun, r InstallRequest) (store.Version, error) {
+	if v, ok := run.version(r.Version.Name, r.Version.ID); ok {
+		v.Commit = cmp.Or(r.Version.commit, v.Commit)
+		return v, nil
+	}
 	v, err := e.Store.Load(r.Version.Name, r.Version.ID)
 	if err == nil {
 		v.Commit = cmp.Or(r.Version.commit, v.Commit)
@@ -597,12 +738,18 @@ func moduleChoice(v store.Version, o store.Origin) ModuleChoice {
 	return mc
 }
 
-// moduleScope is v's module at sc: installed or not, its exclusions, and the components
-// installed now (the installed version, or v when that is no longer cached, through the
-// resolver with today's selections). An entry rec, sc's trust record, does not cover is taken
-// as absent: an install from its source writes it as new.
-func (e *Engine) moduleScope(sel *config.Selections, sc Scope, man *manifest.Manifest, led *ledger.Ledger, rec *trust.Record, v store.Version) (ModuleScope, error) {
-	x, err := exclusions(sel, sc, v.Name)
+// moduleScope is v's module at sc: installed or not, its exclusions (those the only: list alone
+// leaves out apart), the components v adds over the installed version, the profile that provides
+// it, and the components installed now (the installed version, or v when that is no longer
+// cached, through the resolver with today's selections). The exclusions and new components are
+// componentStates', as lola info's are. An entry rec, sc's trust record, does not cover is taken
+// as absent: an install from its source writes it as new. v is Listed when t, sc's write target,
+// has an entry for it that rec covers, and Inherited when t has its entry from a layer below of
+// sc's layers (inheritedFrom). from is the layer that provides v at sc (picksAt), and profiles the
+// profiles sc can use, which name it (skippedIn).
+func (e *Engine) moduleScope(sel *config.Selections, sc Scope, layers []Layer, t writeTo, from string, man *manifest.Manifest, led *ledger.Ledger, rec *trust.Record, v store.Version,
+	profiles func() ([]profile.Info, error)) (ModuleScope, error) {
+	x, err := exclusions(sel, sc, from, v.Name)
 	if err != nil {
 		return ModuleScope{}, err
 	}
@@ -610,13 +757,58 @@ func (e *Engine) moduleScope(sel *config.Selections, sc Scope, man *manifest.Man
 	if ment != nil && rec != nil && !rec.View.Covers(*ment) {
 		ment = nil // installed from its source, it is written as new (planInstallModule)
 	}
-	ms := ModuleScope{Scope: sc.Key(), Targets: []string{}, RulesOff: !ment.RulesOn(),
-		Excluded: resolveComponents(v.Module, x, true).skipped, Current: []string{}}
+	had, known, err := e.installedSet(v.Name, led.Modules[v.Name])
+	if err != nil {
+		// A cached installed version lola cannot read leaves nothing to call new; the page still
+		// opens, as it did before New. The run's plan warns of it where an only: list is in force
+		// (newComponentNotices), the one case where a new component goes uninstalled.
+		had, known = nil, false
+	}
+	states, err := componentStates(v, x, ment.RulesOn(), had, known, func(origin string) (string, error) {
+		return originLabel(x, origin, from, profiles)
+	}, nil)
+	if err != nil {
+		return ModuleScope{}, err
+	}
+	excluded, notInOnly, skipped, added := []string{}, []string{}, []string{}, []string{}
+	for _, st := range states {
+		// The lists name a component as ComponentChoice does (moduleChoice), so callers match them
+		// to its components; skippedIn reads the raw names.
+		id := Component{st.Kind, untrusted.Text(st.Component.Name, untrusted.MaxName)}.String()
+		switch st.State {
+		case ComponentNotInOnly:
+			excluded, notInOnly = append(excluded, id), append(notInOnly, id)
+		case ComponentSkipped:
+			excluded, skipped = append(excluded, id), append(skipped, st.Component.String())
+		}
+		if st.New {
+			added = append(added, id)
+		}
+	}
+	in, err := skippedIn(profiles, x, skipped, from)
+	if err != nil {
+		return ModuleScope{}, err
+	}
+	te := t.layerEntry(v.Name)
+	ms := ModuleScope{Scope: sc.Key(), Listed: te != nil && t.covered(rec, *te), Inherited: inheritedFrom(layers, t, v.Name) != nil,
+		Targets: []string{}, RulesOff: !ment.RulesOn(),
+		Excluded: excluded, NotInOnly: notInOnly, ExcludedIn: in, Current: []string{}, New: added}
+	if want, _ := desired(layers); find(want, v.Name) != nil && strings.HasPrefix(from, ledger.FromProfile("")) {
+		// Profiles that do not list leave Provider "": the page opens without its footer line, as
+		// lola info names no run when it cannot list them.
+		if infos, err := profiles(); err == nil {
+			ms.Provider = layerLabel(infos, from)
+		}
+	}
+	_, origin := x.Only()
+	if ms.OnlyFrom, err = originLabel(x, origin, from, profiles); err != nil {
+		return ModuleScope{}, err
+	}
 	entry := led.Modules[v.Name]
 	if entry == nil {
 		return ms, nil
 	}
-	ms.Installed, ms.Digest = true, untrusted.Text(entry.Digest, untrusted.MaxName)
+	ms.Installed, ms.Digest, ms.Commit = true, untrusted.Text(entry.Digest, untrusted.MaxName), untrusted.Text(entry.Commit, untrusted.MaxName)
 	for _, t := range allTargets(entry, ment, man) {
 		ms.Targets = append(ms.Targets, untrusted.Text(t, untrusted.MaxName))
 	}
@@ -688,13 +880,28 @@ func (m ModuleChoice) Diff(key, id string, selected []string) ComponentDiff {
 // Preview is what an install would select, without writing anything.
 type Preview struct {
 	Selected map[string]map[string][]string // destination (Scope.Key) → module → kind/name it installs
-	Changes  []config.Change                // the selections.yaml entries it would write
-	Notices  []Notice
+	// SaveOnly is, per destination, each module the install writes but does not install there,
+	// with the label of the layer whose entry wins ("" when the file written is not on there).
+	SaveOnly map[string]map[string]string
+	// WritesTo is, per destination, the label of the file the install writes there (writeTarget).
+	WritesTo map[string]string
+	Changes  []config.Change // the entries it would write: selections.yaml's, or a profile entry's picks
+	// PicksIn is, for each profile section of Changes (config.Where.Profile), the label of the
+	// profile whose entry holds those picks.
+	PicksIn map[string]string
+	// Inherited is, per destination (Scope.Key) and section, each module whose picks there are another
+	// layer's entry's than the write target's (pickSection), with the label of the file an override
+	// of it writes instead.
+	Inherited map[string]map[config.Where]map[string]string
+	Notices   []Notice
 }
 
 // Preview applies spec's selection edits to a copy of selections.yaml and resolves, per scope,
 // the components each of modules would install: the summary shows exactly what InstallAll
-// will do. Rules are left out where they are off.
+// will do. Rules are left out where they are off. A module whose entry in a layer above the write
+// target wins installs nothing and gets the warning that it wins (saveOnlyNotice), as InstallAll
+// does; one written to a profile that is not on installs nothing. With spec.NameMentions it names
+// what the picks mention and leave out, as InstallAll does.
 func (c *Choices) Preview(spec InstallSpec, modules []string) (*Preview, error) {
 	sel := c.sel.Clone()
 	var targets []editTarget
@@ -707,45 +914,124 @@ func (c *Choices) Preview(spec InstallSpec, modules []string) (*Preview, error) 
 			targets = append(targets, t)
 		}
 	}
-	var sections []config.Where
+	// Each scope's picks go where its install saves them (InstallAll): its write target's, which
+	// provides a module no layer lists yet, or for a module another layer provides that layer's
+	// (pickSection), which an override copies.
+	var sections []func(string) config.Where
+	all := places{path: sel.Path}
+	pv := &Preview{Selected: map[string]map[string][]string{}, SaveOnly: map[string]map[string]string{}, WritesTo: map[string]string{},
+		PicksIn: map[string]string{}, Inherited: map[string]map[config.Where]map[string]string{}}
 	for _, si := range spec.Scopes {
-		w, err := where(si.Scope)
+		key := si.Scope.Key()
+		t := c.targets[key]
+		picks, err := picksAt(si.Scope, t.from())
 		if err != nil {
 			return nil, err
 		}
-		sections = append(sections, w)
+		scope, err := where(si.Scope)
+		if err != nil {
+			return nil, err
+		}
+		on, ls := c.layers[key], append(slices.Clone(c.layers[key]), t.Layer)
+		sections = append(sections, func(m string) config.Where { return pickSection(on, t, picks, scope, m) })
+		all.layers, all.infos, pv.WritesTo[key] = append(all.layers, ls...), append(all.infos, c.infos[key]...), t.label
+		pv.Inherited[key] = map[config.Where]map[string]string{}
+		for _, tn := range targets {
+			if inheritedFrom(on, t, tn.name) == nil {
+				continue
+			}
+			w := pickSection(on, t, picks, scope, tn.name)
+			if pv.Inherited[key][w] == nil {
+				pv.Inherited[key][w] = map[string]string{}
+			}
+			pv.Inherited[key][w][tn.name] = t.label
+		}
+		for _, l := range ls {
+			if l.Profile {
+				pv.PicksIn[l.Name] = layerLabel(c.infos[key], l.Name)
+			}
+		}
 	}
-	pv := &Preview{Selected: map[string]map[string][]string{}}
-	changes, notes, err := applyEdits(sel, config.Global(), spec.GlobalEdits, targets, sections)
+	changes, notes, err := applyEdits(sel, func(string) config.Where { return config.Global() }, all, spec.GlobalEdits, targets, sections)
 	if err != nil {
 		return nil, err
 	}
 	pv.Changes, pv.Notices = changes, notes
 	for i, si := range spec.Scopes {
-		ch, n, err := applyEdits(sel, sections[i], si.Edits, targets, nil)
+		key := si.Scope.Key()
+		var mods map[string]mentionModule
+		if spec.WithMentions || spec.NameMentions {
+			mods = c.listedMentions(targets, key, spec)
+		}
+		se, err := editScope(sel, sections[i], all, si.Edits, spec.GlobalEdits, targets, mods, spec.WithMentions)
 		if err != nil {
 			return nil, err
 		}
-		pv.Changes, pv.Notices = append(pv.Changes, ch...), append(pv.Notices, n...)
-		key := si.Scope.Key()
+		pv.Changes, pv.Notices = append(pv.Changes, se.changes...), append(pv.Notices, se.notes...)
+		pv.Notices = c.eng.mentionNotes(pv.Notices, si, se, targets, mods, spec)
 		pv.Selected[key] = map[string][]string{}
-		for _, t := range targets {
-			m := c.Module(t.name)
+		t := c.targets[key]
+		for _, tn := range targets {
+			if l := winnerAbove(c.layers[key], t.Name, tn.name); l != nil || !t.on {
+				winner := ""
+				if l != nil {
+					winner = layerLabel(c.infos[key], l.Name)
+				}
+				if pv.SaveOnly[key] == nil {
+					pv.SaveOnly[key] = map[string]string{}
+				}
+				pv.SaveOnly[key][tn.name], pv.Selected[key][tn.name] = winner, []string{}
+				if l != nil {
+					pv.Notices = append(pv.Notices, saveOnlyNotice(tn.name, winner, t.label))
+				}
+				continue
+			}
+			m := c.Module(tn.name)
 			rulesOn := !m.Scope(key).RulesOff
 			if spec.Options.Rules != nil {
 				rulesOn = *spec.Options.Rules
 			}
-			x := sel.Exclusions(sections[i], t.name)
+			// The entry the install writes wins: its picks are those of its section, as InstallAll's.
+			x := sel.Exclusions(sections[i](tn.name), tn.name)
 			out := []string{}
-			for _, cc := range t.comps {
+			for _, cc := range tn.comps {
 				if !x.Excludes(cc.Kind, cc.Name) && (rulesOn || cc.Kind != config.KindRule) {
 					out = append(out, cc.String())
 				}
 			}
-			pv.Selected[key][t.name] = out
+			pv.Selected[key][tn.name] = out
 		}
 	}
 	return pv, nil
+}
+
+// Place is the file an edit of module at sc writes, as the context line names it (ContextLayer):
+// the write target the choices were listed for, or, when that inherits module's entry
+// (ModuleScope.Inherited), the answer to the inherited-edit question (spec 2026-10-29 §3.6),
+// asked through opts.AskWhere as the install asks it (placeEdit), so an AskWhere that answers a
+// question once per run answers the install's with it. It is asked before the edit is known, so
+// its answers say where each part of an edit goes; opts.Target.Override answers without asking.
+func (c *Choices) Place(sc Scope, module string, opts Options) (ContextLayer, error) {
+	key := sc.Key()
+	dest := c.targets[key]
+	if w := inheritedFrom(c.layers[key], dest, module); w != nil {
+		sp := &scopePlan{sc: sc, layers: c.layers[key], target: dest, infos: c.infos[key]}
+		t, err := c.eng.placeEdit(sp, w, nil, opts)
+		if err != nil {
+			return ContextLayer{}, err
+		}
+		dest = *t
+	}
+	if dest.Base {
+		name := c.eng.manifestName(sc)
+		if sc.Kind == target.User {
+			name = profile.DefaultName
+		}
+		return ContextLayer{Name: name, Kind: contextBase, Path: shown(dest.Path), Label: name}, nil
+	}
+	q := strings.TrimPrefix(dest.Name, ledger.FromProfile(""))
+	kind, _, _ := strings.Cut(q, ":")
+	return ContextLayer{Name: shown(q), Kind: kind, Path: shown(dest.Path), Label: strings.TrimPrefix(dest.label, "profile ")}, nil
 }
 
 // SelectionsPath is the selections.yaml the choices were read from.

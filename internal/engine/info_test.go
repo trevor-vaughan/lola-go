@@ -10,12 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/trevor-vaughan/lola-go/internal/consent"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
+	"github.com/trevor-vaughan/lola-go/internal/native/nativetest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
@@ -79,6 +82,86 @@ var _ = Describe("lola info", func() {
 		writeTree(kit, infoModule)
 		Expect(os.Chmod(filepath.Join(kit, "setup.sh"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+	})
+
+	Describe("native executables", func() {
+		const skillMD = "---\nname: demo\ndescription: Demo\n---\nbody\n"
+		scriptsOnly := func() {
+			Expect(os.RemoveAll(kit)).To(Succeed())
+			writeTree(kit, map[string]string{"skills/demo/SKILL.md": skillMD, "skills/demo/run.sh": "#!/bin/sh\n"})
+		}
+		withBinary := func(rel string, data []byte) {
+			scriptsOnly()
+			writeTree(kit, map[string]string{rel: string(data)})
+		}
+
+		It("lists a dynamic ELF a skill ships, with its digest, and non-nil lists", func() {
+			withBinary("skills/demo/bin/fmt", nativetest.ELF64Dyn())
+			info, err := e.Info(ctx, claudeHere())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.NativeExecutables).To(HaveLen(1))
+			b := info.NativeExecutables[0]
+			Expect(b).To(SatisfyAll(HaveField("Path", "skills/demo/bin/fmt"), HaveField("Format", "ELF"), HaveField("Kind", "executable"),
+				HaveField("Linkage", "dynamic"), HaveField("Malformed", false), HaveField("Go", BeNil())))
+			Expect(b.SHA256).To(MatchRegexp(`^[0-9a-f]{64}$`))
+			Expect(b.Arch).To(Equal([]string{"x86-64"}))
+			Expect(b.Libraries).NotTo(BeNil())
+			Expect(b.Size).To(BeNumerically(">", 0))
+		})
+
+		It("reports a static ELF with no libraries, and the JSON never has null arrays", func() {
+			withBinary("skills/demo/bin/fmt", nativetest.ELF64())
+			info, err := e.Info(ctx, claudeHere())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.NativeExecutables[0].Linkage).To(Equal("static"))
+			doc, err := json.Marshal(info.NativeExecutables)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(doc)).To(ContainSubstring(`"arch":["x86-64"]`))
+			Expect(string(doc)).To(ContainSubstring(`"libraries":[]`))
+			Expect(string(doc)).To(ContainSubstring(`"go":null`))
+		})
+
+		It("is an empty, non-nil list for a module with only scripts", func() {
+			scriptsOnly()
+			info, err := e.Info(ctx, claudeHere())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.NativeExecutables).NotTo(BeNil())
+			Expect(info.NativeExecutables).To(BeEmpty())
+		})
+
+		It("ignores a binary outside every skill", func() {
+			withBinary("tests/fixtures/fmt", nativetest.ELF64())
+			info, err := e.Info(ctx, claudeHere())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.NativeExecutables).To(BeEmpty())
+		})
+
+		It("still lists them with no scope", func() {
+			withBinary("skills/demo/bin/fmt", nativetest.ELF64())
+			req := claudeHere()
+			req.Scope = engine.ScopeRequest{Cwd: tmp}
+			info, err := e.Info(ctx, req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.NativeExecutables).To(HaveLen(1))
+		})
+
+		It("cleans a path with control characters", func() {
+			withBinary("skills/demo/bin/f\x1b[2Jmt", nativetest.ELF64())
+			info, err := e.Info(ctx, claudeHere())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.NativeExecutables[0].Path).NotTo(ContainSubstring("\x1b"))
+		})
+	})
+
+	It("info reaps what a killed lola left in staging more than a minute ago", func() {
+		dead := filepath.Join(e.Paths.Staging, "run-dead")
+		Expect(os.MkdirAll(dead, 0o700)).To(Succeed())
+		Expect(os.WriteFile(dead+".lock", nil, 0o600)).To(Succeed())
+		old := time.Now().Add(-2 * time.Minute)
+		Expect(os.Chtimes(dead, old, old)).To(Succeed())
+		_, err := e.Info(ctx, claudeHere())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dead).NotTo(BeAnExistingFile())
 	})
 
 	It("info of a source caches it; a later install of the cached name fetches nothing, and a later install of the source fetches again", func() {
@@ -208,7 +291,7 @@ var _ = Describe("lola info", func() {
 			{Kind: "runtime-hooks", Item: "kit in " + settings, Recorded: engine.RecordedNo}}))
 		Expect(info.Install[0].TrustNeeded).To(Equal([]string{"hooks", "runtime-hooks"}))
 		Expect(info.Install[0].Findings).To(ContainElement(HaveField("Hint",
-			"review the hooks listed above, then consent to them: lola install kit --trust=hooks,runtime-hooks")), "the install info names, not --trust alone")
+			"review the hooks listed above, then, if you want to install them, consent to them: lola install kit --trust=hooks,runtime-hooks")), "the install info names, not --trust alone")
 
 		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "kit"}}, engine.Options{Targets: []string{"claude-code"}, Trust: engine.TrustHooks})
@@ -231,7 +314,7 @@ var _ = Describe("lola info", func() {
 
 	It("the off-terminal choice of assistants is the manifest's, else those set up in the scope, else none, naming those installed", func() {
 		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
-		choice, err := e.DefaultTargets(sc, nil)
+		choice, err := e.DefaultTargets(sc, nil, engine.TargetRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(choice).To(Equal(engine.TargetChoice{}))
 		Expect(choice.NoneHere()).To(Equal("no assistant found on your PATH, so lola does not know where to install"))
@@ -239,17 +322,17 @@ var _ = Describe("lola info", func() {
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
 		e = engine.New(p)
-		choice, err = e.DefaultTargets(sc, nil)
+		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(choice).To(Equal(engine.TargetChoice{Installed: []string{"claude-code"}}))
 		Expect(choice.NoneHere()).To(Equal("none of your installed assistants (claude-code) is set up here, so lola does not know where to install"))
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
-		choice, err = e.DefaultTargets(sc, nil)
+		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(choice).To(Equal(engine.TargetChoice{Installed: []string{"claude-code"}, SetUp: []string{"claude-code"}}))
 		Expect(choice.NoneHere()).To(BeEmpty())
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [opencode]\nmodules: []\n"})
-		choice, err = e.DefaultTargets(sc, nil)
+		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(choice).To(Equal(engine.TargetChoice{Manifest: []string{"opencode"}, Installed: []string{"claude-code"}, SetUp: []string{"claude-code"}}))
 		Expect(choice.NoneHere()).To(BeEmpty())
@@ -401,7 +484,7 @@ var _ = Describe("lola info", func() {
 			Expect(info.Install).To(Equal([]engine.InfoInstall{{Scope: "", Targets: []string{}, Steps: []plan.Step{}, Findings: []target.Finding{},
 				Consent: []engine.InfoConsent{{Kind: "hooks", Item: "kit pre-install", Recorded: engine.RecordedNo},
 					{Kind: "runtime-hooks", Item: "kit", Recorded: engine.RecordedUnknown}},
-				TrustNeeded: []string{"hooks", "runtime-hooks"}, Digest: info.Digest, Notices: []engine.Notice{}}}))
+				TrustNeeded: []string{"hooks", "runtime-hooks"}, Digest: info.Digest, Notices: []engine.Notice{}, Components: []engine.InfoComponent{}}}))
 
 			for _, scope := range []engine.ScopeRequest{{Project: true}, {User: true}} {
 				hinted, err := e.Info(ctx, request(scope, "claude-code"))
@@ -448,6 +531,26 @@ var _ = Describe("lola info", func() {
 				Expect(hinted.NoAssistant).To(BeEmpty())
 				Expect(hinted.Install[0].Targets).To(Equal([]string{id}))
 			}
+		})
+
+		It("info with no assistant set up still shows every scope when a later scope's active profile does not load, warning there", func() {
+			Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Dir(e.Paths.Config), 0o755)).To(Succeed())
+			Expect(os.WriteFile(e.Paths.Config, []byte("version: 1\ndefault_scope: both\n"), 0o644)).To(Succeed())
+			Expect(os.MkdirAll(e.Paths.UserProfiles, 0o755)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(e.Paths.UserProfiles, "go.yml"), []byte("version: 1\nbogus: x\n"), 0o644)).To(Succeed())
+			led, err := e.Ledger(engine.Scope{Kind: target.User})
+			Expect(err).NotTo(HaveOccurred())
+			led.Profile = &ledger.Active{Name: "user:go", By: ledger.ByOn}
+			Expect(os.MkdirAll(filepath.Dir(e.Paths.UserLedger), 0o755)).To(Succeed())
+			Expect(led.Save(e.Paths.UserLedger)).To(Succeed())
+			info, err := e.Info(ctx, request(engine.ScopeRequest{}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(info.NoAssistant).NotTo(BeEmpty())
+			Expect(info.Install).To(HaveLen(2))
+			Expect(info.Install[1]).To(And(HaveField("Scope", "user"), HaveField("From", ""), HaveField("Components", []engine.InfoComponent{}), HaveField("Change", "")))
+			Expect(info.Install[1].Notices).To(Equal([]engine.Notice{{Level: engine.LevelWarn, Text: "kit: cannot tell what its picks do at user scope: " +
+				filepath.Join(e.Paths.UserProfiles, "go.yml") + ": yaml: unmarshal errors:\n    line 2: field bogus not found in type profile.file → fix it by hand"}}))
 		})
 
 		It("info with default_scope both returns one install element per scope, and runtime-hooks consent is unknown without a scope", func() {

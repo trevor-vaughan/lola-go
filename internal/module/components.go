@@ -461,7 +461,7 @@ func (l loader) runtimeHooks(es []hooksEntry) error {
 			events, source = doc.Hooks, safeName(rel)
 		case e.Hooks != nil:
 			b, err := json.Marshal(e.Hooks)
-			if err != nil {
+			if err != nil || !stringKeys(e.Hooks) {
 				return entryErr(at, "hooks: every key must be a string", "quote keys that look like numbers or booleans")
 			}
 			events = b

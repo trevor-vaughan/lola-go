@@ -48,8 +48,14 @@ func Lock(lockPath string) (func(), error) {
 // Save writes changes to selections.yaml at path; the caller holds the lock. The file is read
 // again, so only the changed modules' entries are replaced and edits made since the caller's
 // read survive; comments and order are kept. A file that does not load is never overwritten.
-// A symlinked file is written at its target, keeping the link.
+// A symlinked file is written at its target, keeping the link. A change to a section the file
+// does not hold, a profile entry's picks or the user section, is refused before anything is read.
 func Save(path string, changes []Change) error {
+	for _, c := range changes {
+		if c.Section.Kind == SectionProfile || c.Section.Kind == SectionUser {
+			return fmt.Errorf("not saving your selections: selections.yaml has no %s section", c.Section)
+		}
+	}
 	_, d, err := loadSelections(path)
 	if err != nil {
 		return errs.WithHints(fmt.Errorf("not saving your selections: %w", err), "your picks were not written and nothing was installed")
@@ -228,6 +234,7 @@ func setEntry(sec *yaml.Node, module string, e Entry) {
 	m := mappingAt(sec, module)
 	setList(m, "skip", e.Skip)
 	setList(m, "include", e.Include)
+	setList(m, "only", e.Only)
 }
 
 // setList writes a list under key in m, keeping an existing list node's style and comments;

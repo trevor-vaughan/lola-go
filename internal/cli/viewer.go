@@ -9,6 +9,7 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 )
@@ -32,6 +33,12 @@ const (
 // default answer. nav places a confirm-mode viewer in its flow, as keyed places a form: Esc goes
 // back when nav.Back is set and otherwise says q quits, and q asks quitQuestion first with two or
 // more steps answered. s styles the footer, so NO_COLOR and LOLA_COLOR apply to it.
+//
+// / opens a search: type a term, Enter jumps to the first line at or below the top that holds it
+// (all lowercase matches any case) and Esc drops the typing; an empty term clears the search.
+// n and N (Ctrl+N and Ctrl+P in confirm mode, where n cancels) step through the matching lines,
+// the current one in reverse video, wrapping at the ends. A term cut across two wrapped lines is
+// not found.
 type viewerModel struct {
 	vp      viewport.Model
 	content string
@@ -44,6 +51,13 @@ type viewerModel struct {
 	first    bool // Esc with no screen to go back to: the footer says q quits
 	width    int
 	s        style
+	// plain is the wrapped content's lines without styling, which search reads.
+	plain     []string
+	searching bool   // / is open: typed holds the term so far
+	typed     string // the term being typed
+	term      string // the term searched, "" when no search is active
+	matches   []int  // the lines of plain that hold term
+	cur       int    // the index in matches of the line shown in reverse video
 }
 
 // newViewer is a viewer over content sized to a terminal of width columns and height rows, the
@@ -60,8 +74,85 @@ func (m *viewerModel) resize(width, height int) {
 	m.width = max(width, 1)
 	m.vp.SetWidth(m.width)
 	m.vp.SetHeight(max(height-1, 1))
-	m.vp.SetContent(ansi.Wrap(m.content, m.width, ""))
+	wrapped := ansi.Wrap(m.content, m.width, "")
+	m.vp.SetContent(wrapped)
 	m.vp.SetYOffset(m.vp.YOffset())
+	m.plain = strings.Split(ansi.Strip(wrapped), "\n")
+	if m.term != "" {
+		m.find(m.term)
+	}
+}
+
+// find searches the wrapped lines for term and shows the first match at or below the top line,
+// or the first one if none is: a term of all lowercase matches any case. It clears the search for
+// an empty term.
+func (m *viewerModel) find(term string) {
+	m.term, m.matches, m.cur = term, nil, 0
+	m.vp.StyleLineFunc = nil
+	if term == "" {
+		return
+	}
+	fold := term == strings.ToLower(term)
+	for i, line := range m.plain {
+		if fold {
+			line = strings.ToLower(line)
+		}
+		if strings.Contains(line, term) {
+			m.matches = append(m.matches, i)
+		}
+	}
+	for i, line := range m.matches {
+		if line >= m.vp.YOffset() {
+			m.cur = i
+			break
+		}
+	}
+	m.show()
+}
+
+// show scrolls to the current match, a third of the way down the screen so the lines above it
+// show too, and puts it in reverse video.
+func (m *viewerModel) show() {
+	if len(m.matches) == 0 {
+		return
+	}
+	line := m.matches[m.cur]
+	m.vp.SetYOffset(max(line-m.vp.Height()/3, 0))
+	m.vp.StyleLineFunc = func(i int) lipgloss.Style {
+		if i == line {
+			return lipgloss.NewStyle().Reverse(true)
+		}
+		return lipgloss.NewStyle()
+	}
+}
+
+// step moves the current match by delta, wrapping at the ends.
+func (m *viewerModel) step(delta int) {
+	if len(m.matches) == 0 {
+		return
+	}
+	m.cur = (m.cur + delta + len(m.matches)) % len(m.matches)
+	m.show()
+}
+
+// typeSearch handles a key while the term is being typed.
+func (m viewerModel) typeSearch(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "enter":
+		m.searching = false
+		m.find(m.typed)
+	case "esc":
+		m.searching = false
+	case "backspace":
+		if runes := []rune(m.typed); len(runes) > 0 {
+			m.typed = string(runes[:len(runes)-1])
+		}
+	default:
+		m.typed += msg.Text
+	}
+	return m, nil
 }
 
 // Answer is how a confirm-mode viewer was answered; viewCancel in read mode.
@@ -76,6 +167,9 @@ func (m viewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		m.first = false
+		if m.searching {
+			return m.typeSearch(msg)
+		}
 		if m.asking {
 			switch msg.String() {
 			case "y", "Y":
@@ -120,10 +214,17 @@ func (m viewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			return m, nil
-		case "n":
-			if m.confirm {
+		case "/":
+			m.searching, m.typed = true, ""
+			return m, nil
+		case "n", "ctrl+n":
+			if msg.String() == "n" && m.confirm {
 				return m, tea.Quit
 			}
+			m.step(1)
+			return m, nil
+		case "N", "ctrl+p":
+			m.step(-1)
 			return m, nil
 		case "g", "home":
 			m.vp.GotoTop()
@@ -153,22 +254,36 @@ func (m viewerModel) footer() string {
 	first := min(m.vp.YOffset()+1, total)
 	last := min(m.vp.YOffset()+m.vp.Height(), total)
 	pos := fmt.Sprintf("lines %d–%d of %d · %d%%", first, last, total, int(m.vp.ScrollPercent()*100))
-	const scroll = "↑↓/jk line · space/b page · g/G top/end"
+	const scroll = "↑↓/jk line · space/b page · g/G top/end · / search"
+	next := "n/N next/prev"
+	if m.confirm {
+		next = "^n/^p next/prev"
+	}
 	keys := scroll + " · q quit"
+	if m.confirm {
+		answers := "y apply · c change · n cancel"
+		if m.noChange {
+			answers = "y apply · n cancel"
+		}
+		if m.nav.Back {
+			answers += " · esc back"
+		}
+		keys = answers + " · q quit · " + scroll
+	}
+	if m.term != "" {
+		found := "no match"
+		if len(m.matches) > 0 {
+			found = fmt.Sprintf("%d of %d", m.cur+1, len(m.matches))
+		}
+		keys = "/" + m.term + " " + found + "  " + next + " · " + keys
+	}
 	switch {
+	case m.searching:
+		keys = "/" + m.typed + "█  enter search · esc cancel"
 	case m.asking:
 		keys = quitQuestion + " [y/N]"
 	case m.first:
 		keys = "first step — q quits"
-	case m.confirm:
-		keys = "y apply · c change · n cancel"
-		if m.noChange {
-			keys = "y apply · n cancel"
-		}
-		if m.nav.Back {
-			keys += " · esc back"
-		}
-		keys += " · q quit · " + scroll
 	}
 	return ansi.Truncate(m.s.strong(pos)+"  "+m.s.paint("36", keys), m.width, "…")
 }

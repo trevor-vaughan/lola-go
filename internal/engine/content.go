@@ -103,7 +103,7 @@ func (e *Engine) fillContent(sc Scope, rep *TrustReport, entries []*syncEntry, l
 			if in != nil && in.RenderedWith != nil && in.RenderedWith.Profiles != nil {
 				profiles = in.RenderedWith.Profiles
 			} else {
-				recorded, err := e.newTemplateRun(sc, led.Profiles) // the list lock.json has active
+				recorded, err := e.newTemplateRun(sc, led.Profile) // the profile lock.json has on
 				if err != nil {
 					return err
 				}

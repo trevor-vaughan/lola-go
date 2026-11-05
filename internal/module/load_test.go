@@ -183,6 +183,19 @@ var _ = Describe("Load", func() {
 		Expect(err).To(MatchError(ContainSubstring("skills/*/SKILL.md")))
 	})
 
+	It("does not print the directory it loaded", func() {
+		write(root, map[string]string{"README.md": "x"})
+		_, err := module.Load(root, "x", nil)
+		Expect(err).To(MatchError(module.ErrNoModule))
+		Expect(err.Error()).NotTo(ContainSubstring(root))
+	})
+
+	It("recognises a directory of skills", func() {
+		write(root, map[string]string{"a/SKILL.md": "---\nname: a\ndescription: d\n---\nb"})
+		Expect(module.DirOfSkills(root)).To(BeTrue())
+		Expect(module.DirOfSkills(GinkgoT().TempDir())).To(BeFalse())
+	})
+
 	DescribeTable("rejects invalid artifacts",
 		func(files map[string]string, msg string) {
 			write(root, files)
@@ -437,9 +450,17 @@ var _ = Describe("MCP servers in Claude's .mcp.json shape", func() {
 		},
 		Entry("truncated", `{"mcpServers":{`, "mcps.json: unexpected end of JSON input"),
 		Entry("two values", `{} {}`, "mcps.json: invalid character '{' after top-level value"),
-		Entry("servers as an array", `{"mcpServers":[]}`, "mcps.json: mcpServers must be a JSON object"),
-		Entry("args as a string", `{"mcpServers":{"a":{"command":"x","args":"-y"}}}`, "mcps.json: mcpServers.args must be a JSON array"),
-		Entry("env value as a number", `{"mcpServers":{"a":{"command":"x","env":{"K":1}}}}`, "mcps.json: mcpServers.env must be a JSON string"),
+		Entry("servers as an array", `{"mcpServers":[]}`, "mcps.json: /mcpServers must be a JSON object"),
+		Entry("args as a string", `{"mcpServers":{"a":{"command":"x","args":"-y"}}}`, "mcps.json: /mcpServers/a/args must be a JSON array"),
+		Entry("env value as a number", `{"mcpServers":{"a":{"command":"x","env":{"K":1}}}}`, "mcps.json: /mcpServers/a/env/K must be a JSON string"),
+		Entry("an arg as a number, in a server whose name holds '/' and '.'", `{"mcpServers":{"a/b.c":{"command":"x","args":["y",2]}}}`,
+			"mcps.json: /mcpServers/a~1b.c/args/1 must be a JSON string"),
+		Entry("args as a string, in a server whose name holds '~'", `{"mcpServers":{"a~b":{"command":"x","args":"y"}}}`,
+			"mcps.json: /mcpServers/a~0b/args must be a JSON array"),
+		Entry("an arg as a number beyond float64", `{"mcpServers":{"a":{"command":"x","args":[1e400]}}}`,
+			"mcps.json: /mcpServers/a/args/0 must be a JSON string"),
+		Entry("args as a string, after a number beyond float64", `{"x":1e400,"mcpServers":{"a":{"command":"x","args":"y"}}}`,
+			"mcps.json: /mcpServers/a/args must be a JSON array"),
 	)
 
 	It("refuses an mcps.json that is a symbolic link", func() {

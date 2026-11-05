@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -163,7 +164,21 @@ var _ = Describe("per-module targets and the pre-write callback (migrate design 
 		writeTree(src, map[string]string{"commands/ship.md": "Ship something newer\n"})
 		_, err = e.InstallAll(ctx, spec(nil, engine.InstallRequest{Arg: src, Targets: []string{"gemini-cli"}}))
 		Expect(err).To(MatchError(ContainSubstring("the version of example installed here")))
-		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola render")))
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola sync")))
+		Expect(filepath.Join(proj, ".gemini")).NotTo(BeADirectory())
+	})
+
+	It("refuses to add targets to a module whose installed version's record is tampered with, hinting only its removal from the cache", func() {
+		_, err := e.InstallAll(ctx, spec([]string{"claude-code"}, engine.InstallRequest{Arg: src}))
+		Expect(err).NotTo(HaveOccurred())
+		led, err := e.Ledger(sc)
+		Expect(err).NotTo(HaveOccurred())
+		id := strings.TrimPrefix(led.Modules["example"].Digest, "sha256:")[:12]
+		Expect(os.WriteFile(filepath.Join(e.Paths.Store, "example", "versions", id, ".lola-origin"), []byte("digest: sha256:00\n"), 0o644)).To(Succeed())
+		writeTree(src, map[string]string{"commands/ship.md": "Ship something newer\n"})
+		_, err = e.InstallAll(ctx, spec(nil, engine.InstallRequest{Arg: src, Targets: []string{"gemini-cli"}}))
+		Expect(err).To(MatchError(`cached version example/` + id + ` records digest "sha256:00", which is not this version's`))
+		Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache, then install it again from its source: lola cache rm example"}))
 		Expect(filepath.Join(proj, ".gemini")).NotTo(BeADirectory())
 	})
 

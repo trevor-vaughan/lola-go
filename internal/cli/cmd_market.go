@@ -24,9 +24,9 @@ var marketActions = []engine.MarketAction{engine.MarketAdd, engine.MarketUpdate,
 // one an action does not take, or any of them without an action, is refused, since a flag that
 // does nothing must not look accepted.
 var marketFlags = map[engine.MarketAction][]string{
-	engine.MarketAdd:    {"ref", "path", "dry-run"},
-	engine.MarketUpdate: {"all", "dry-run"},
-	engine.MarketRemove: {"yes", "dry-run"},
+	engine.MarketAdd:    {"ref", "path", "ssh-host", "dry-run"},
+	engine.MarketUpdate: {"all", "ssh-host", "dry-run"},
+	engine.MarketRemove: {"yes", "ssh-host", "dry-run"},
 }
 
 // marketAction is the one action flag set on cmd, "" for none, checked on canonical names after
@@ -97,7 +97,11 @@ func marketAction(cmd *cobra.Command, args []string) (engine.MarketAction, error
 				takes = append(takes, "--"+string(a))
 			}
 		}
-		whys = append(whys, fmt.Sprintf("--%s applies to %s only", f, strings.Join(takes, " and ")))
+		list := takes[len(takes)-1]
+		if len(takes) > 1 {
+			list = strings.Join(takes[:len(takes)-1], ", ") + " and " + list
+		}
+		whys = append(whys, fmt.Sprintf("--%s applies to %s only", f, list))
 	}
 	return "", errs.WithHints(errors.New(strings.Join(whys, "; ")), runWithout(cmd, args, bad...))
 }
@@ -122,7 +126,7 @@ func outputFlags(cmd *cobra.Command) []string {
 
 func (a *app) marketCmd() *cobra.Command {
 	var src, ref, path string
-	var targets []string
+	var targets, sshHosts []string
 	var update, remove, all, dry, yes, enable, disable bool
 	cmd := &cobra.Command{
 		Use: "market [<name> [<entry>] | [<name>] --add <source> [--ref <ref>] [--path <file-or-dir>] | <name>... --update | " +
@@ -131,7 +135,7 @@ func (a *app) marketCmd() *cobra.Command {
 		Short:   "List, add and update the marketplaces whose catalogs you browse",
 		Long: "A marketplace is a catalog of modules, each with the source it is fetched from. lola reads\n" +
 			"Claude Code's .claude-plugin/marketplace.json, and lola YAML catalogs\n" +
-			"(<name>.yml, marketplace.yml), into one model. Your marketplaces are yours alone, shared by\n" +
+			"(<name>.yml, marketplace.yml, lola.yml), into one model. Your marketplaces are yours alone, shared by\n" +
 			"every scope: they are listed in $XDG_CONFIG_HOME/lola/markets.yaml, which you may edit, and\n" +
 			"each fetched catalog is cached in $XDG_CACHE_HOME/lola/markets/<name>/; a wiped cache costs\n" +
 			"a lola market --update --all.\n\n" +
@@ -146,9 +150,10 @@ func (a *app) marketCmd() *cobra.Command {
 			"archive, an https:// URL of the catalog file itself (.json, .yml, .yaml), or a folder: a\n" +
 			"folder you are authoring is recorded by its absolute path and cached like any other, so its\n" +
 			"edits reach lola only through --update. lola looks for .claude-plugin/marketplace.json, then\n" +
-			"<name>.yml, <name>.yaml, marketplace.yml and marketplace.yaml, at the root or in the directory\n" +
-			"--path names; --path may name the catalog file itself. Adding asks nothing (a catalog installs\n" +
-			"and runs nothing) but, on a terminal, another name when yours is taken.\n" +
+			"<name>.yml, <name>.yaml, marketplace.yml and marketplace.yaml, and as a last resort lola.yml and\n" +
+			"lola.yaml, at the root or in the directory --path names; --path may name the catalog file\n" +
+			"itself. Adding asks nothing (a catalog installs and runs nothing) but, on a terminal, another\n" +
+			"name when yours is taken.\n" +
 			"--update fetches the named marketplaces, or every one with --all, again from where each was\n" +
 			"added and reports which entries were added, removed or changed; a failure costs only that\n" +
 			"marketplace, whose cached catalog is kept.\n" +
@@ -162,20 +167,24 @@ func (a *app) marketCmd() *cobra.Command {
 			"<name> --add <url>, ls is lola market, rm is --remove, update is --update --all, search is\n" +
 			"lola search), and none of them can name a marketplace.\n\n" +
 			"A catalog is a stranger's input. lola skips, with its reason, an entry it cannot use and keeps\n" +
-			"the rest: npm and command sources, ssh sources (they would use your ssh keys on a stranger's\n" +
-			"host), any source that is not https:// at a host given by name, entries that declare their\n" +
+			"the rest: npm and command sources, ssh sources unless you allowed their host (--ssh-host),\n" +
+			"any source that is not https:// at a host given by name, entries that declare their\n" +
 			"hooks, MCP or LSP servers or other components in the catalog (a relative entry may list the\n" +
 			"skills, commands and agents of the marketplace's own tree that form it; an entry of another\n" +
 			"repository may not), or carry headers or a headersHelper,\n" +
 			"relative entries outside the marketplace or missing from it, malformed pins, and two entries\n" +
 			"of one name. No catalog field ever runs a command, and a YAML catalog's install hooks are\n" +
-			"never run. A catalog over 8 MiB, or with control or invisible characters, is refused whole.\n\n" +
+			"never run. A catalog over 8 MiB, or with control or invisible characters, is refused whole.\n" +
+			"--ssh-host <host> (repeatable, with --add or --update) lets the catalog's ssh sources at that\n" +
+			"host use your ssh keys and agent; on a terminal lola asks about the hosts a catalog names;\n" +
+			"with --remove it stops allowing the host.\n\n" +
 			"Scope flags change nothing but what lola market <name> <entry> plans for: marketplaces belong\n" +
 			"to you, not to a scope.",
 		Example: "  lola market\n  lola market acme\n  lola market acme formatter -t claude-code\n" +
 			"  lola market acme --add https://github.com/acme/plugins\n" +
 			"  lola market --add https://raw.githubusercontent.com/acme/market/main/general.yml\n" +
-			"  lola market acme --update\n  lola market --update --all\n  lola market acme --remove -y",
+			"  lola market acme --update\n  lola market acme --update --ssh-host git.example.com\n" +
+			"  lola market --update --all\n  lola market acme --remove -y",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
 		ValidArgsFunction: a.completeMarket,
@@ -185,7 +194,7 @@ func (a *app) marketCmd() *cobra.Command {
 				return err
 			}
 			if len(args) > 0 && slices.Contains(market.Verbs(), args[0]) {
-				return marketVerb(cmd, eng, args, ref, path, dry, yes, all, enable, disable)
+				return marketVerb(cmd, eng, args, ref, path, sshHosts, dry, yes, all, enable, disable)
 			}
 			act, err := marketAction(cmd, args)
 			if err != nil {
@@ -219,10 +228,13 @@ func (a *app) marketCmd() *cobra.Command {
 			switch act {
 			case engine.MarketAdd:
 				return a.marketAdd(cmd, eng, args, engine.MarketAddRequest{Source: src, Ref: ref, Path: path, DryRun: dry,
-					Display: outputFlags(cmd)})
+					Display: outputFlags(cmd), SSHHosts: sshHosts})
 			case engine.MarketUpdate:
-				return a.marketUpdate(cmd, eng, args, all, dry)
+				return a.marketUpdate(cmd, eng, args, all, dry, sshHosts)
 			case engine.MarketRemove:
+				if len(sshHosts) > 0 {
+					return a.marketRevoke(cmd, eng, args, sshHosts, dry, yes)
+				}
 				return a.marketRemove(cmd, eng, args, dry, yes)
 			}
 			if len(args) == 0 {
@@ -252,6 +264,8 @@ func (a *app) marketCmd() *cobra.Command {
 	cmd.Flags().StringVar(&ref, "ref", "", "with --add: the branch, tag or commit of a git source")
 	cmd.Flags().StringVar(&path, "path", "", "with --add: the catalog file, or the directory to look for it in, inside the source")
 	cmd.Flags().BoolVar(&remove, string(engine.MarketRemove), false, "forget the named marketplace and drop its cached catalog (asks; -y)")
+	cmd.Flags().StringArrayVar(&sshHosts, "ssh-host", nil,
+		"with --add or --update: let the catalog's ssh sources at this host use your ssh keys (repeatable); with --remove: stop allowing it")
 	cmd.Flags().BoolVarP(&dry, "dry-run", "n", false, "report what the action would do, write nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "with --remove: forget it without asking")
 	addTargetFlag(cmd, &targets, "with <name> <entry>: assistants to plan for, as install's -t")
@@ -324,6 +338,7 @@ func (a *app) marketAdd(cmd *cobra.Command, eng *engine.Engine, args []string, r
 		req.Rename = func(st engine.MarketRename) (string, error) {
 			return p.MarketName(MarketNameStep{Why: st.Why, Value: st.Suggest, Problem: st.Problem})
 		}
+		req.PickSSH = sshPicker(p)
 	}
 	res, err := eng.AddMarket(cmd.Context(), req)
 	if errors.Is(err, ErrAborted) {
@@ -338,14 +353,14 @@ func (a *app) marketAdd(cmd *cobra.Command, eng *engine.Engine, args []string, r
 // marketVerb answers lola market <verb>, a word lola market reserves, with the lola command
 // (Plan 6c D8, §3.1; Plan 10 §7): args[0] is the verb and the rest its operands. Beside an action
 // flag the verb would be a marketplace's name, which it cannot be (market.ValidateName).
-func marketVerb(cmd *cobra.Command, eng *engine.Engine, args []string, ref, path string, dry, yes, all, enable, disable bool) error {
+func marketVerb(cmd *cobra.Command, eng *engine.Engine, args []string, ref, path string, sshHosts []string, dry, yes, all, enable, disable bool) error {
 	for _, act := range marketActions {
 		if cmd.Flags().Changed(string(act)) {
 			return market.ValidateName(args[0])
 		}
 	}
 	return eng.CoachMarketVerb(engine.MarketVerb{Verb: args[0], Operands: args[1:], Ref: ref, Path: path, DryRun: dry, Yes: yes, All: all,
-		Enable: enable, Disable: disable, Display: outputFlags(cmd)})
+		Enable: enable, Disable: disable, SSHHosts: sshHosts, Display: outputFlags(cmd)})
 }
 
 // marketRemove runs lola market <name> --remove (Plan 6c §3.1): one name; it asks on a terminal,
@@ -389,10 +404,64 @@ func (a *app) marketRemove(cmd *cobra.Command, eng *engine.Engine, args []string
 	}, res)
 }
 
+// sshPicker asks p which of a catalog's ssh hosts to allow, for an --add's or --update's PickSSH.
+func sshPicker(p Prompter) func(engine.MarketSSHStep) ([]string, error) {
+	return func(st engine.MarketSSHStep) ([]string, error) {
+		hosts := make([]SSHHostChoice, 0, len(st.Hosts))
+		for _, h := range st.Hosts {
+			hosts = append(hosts, SSHHostChoice{Host: h.Host, Entries: h.Entries})
+		}
+		return p.SSHHosts(SSHHostStep{Market: st.Market, Hosts: hosts})
+	}
+}
+
+// marketRevoke runs lola market <name> --ssh-host <host>... --remove (spec 2026-10-28 §4): one
+// name; it asks nothing and takes no -y, since the host can be allowed again.
+func (a *app) marketRevoke(cmd *cobra.Command, eng *engine.Engine, args, hosts []string, dry, yes bool) error {
+	if yes {
+		return errs.WithHints(errors.New("--yes applies to --remove without --ssh-host: stopping allowing an ssh host asks nothing"),
+			runWithout(cmd, args, "yes"))
+	}
+	if len(args) != 1 {
+		// One working run per marketplace named, keeping the run's other flags.
+		var hints []string
+		for _, n := range args {
+			if h := runWithout(cmd, []string{n}); !slices.Contains(hints, h) {
+				hints = append(hints, h)
+			}
+		}
+		return errs.WithHints(errors.New("--ssh-host with --remove stops allowing hosts for one marketplace; name it"), hints...)
+	}
+	res, err := eng.RevokeSSHHosts(engine.MarketSSHRevokeRequest{Name: args[0], Hosts: hosts, DryRun: dry, Display: outputFlags(cmd)})
+	if err != nil {
+		return err
+	}
+	// The engine accepted every host, so each is a host name, lower-cased as it stored it.
+	var named []string
+	for _, h := range hosts {
+		named = append(named, untrusted.Text(strings.ToLower(h), untrusted.MaxName))
+	}
+	named = market.NormalizeHosts(named)
+	what := "ssh host "
+	if len(named) > 1 {
+		what = "ssh hosts "
+	}
+	return a.emit(cmd, func(w io.Writer, s style) {
+		switch {
+		case s.plain:
+		case res.DryRun:
+			fmt.Fprintln(w, s.info("marketplace "+res.Updates[0].Market+" would no longer allow "+what+strings.Join(named, ", ")))
+		default:
+			fmt.Fprintln(w, s.ok("marketplace "+res.Updates[0].Market+" no longer allows "+what+strings.Join(named, ", ")))
+		}
+		printMarketResult(w, s, res)
+	}, res)
+}
+
 // marketUpdate runs lola market <name>... --update, or --update --all (Plan 6c §3.1): names and
 // --all are exclusive, and one of them is needed, each refusal coaching both forms. A marketplace
 // that failed makes the run fail once the others are written.
-func (a *app) marketUpdate(cmd *cobra.Command, eng *engine.Engine, args []string, all, dry bool) error {
+func (a *app) marketUpdate(cmd *cobra.Command, eng *engine.Engine, args []string, all, dry bool, sshHosts []string) error {
 	switch {
 	case all && len(args) > 0:
 		return errs.WithHints(errors.New("--all updates every marketplace; drop the names or --all"),
@@ -400,11 +469,20 @@ func (a *app) marketUpdate(cmd *cobra.Command, eng *engine.Engine, args []string
 	case !all && len(args) == 0:
 		return errs.WithHints(errors.New("name the marketplaces to update, or update every one with --all"), runWithout(cmd, nil)+" --all")
 	}
-	res, err := eng.UpdateMarkets(cmd.Context(), engine.MarketUpdateRequest{Names: args, All: all, DryRun: dry, Display: outputFlags(cmd)})
+	req := engine.MarketUpdateRequest{Names: args, All: all, DryRun: dry, Display: outputFlags(cmd), SSHHosts: sshHosts}
+	if p := a.prompter(cmd); p.Interactive() {
+		req.PickSSH = sshPicker(p)
+	}
+	res, err := eng.UpdateMarkets(cmd.Context(), req)
 	if err != nil {
 		return err
 	}
 	failed := marketFailed(res)
+	// Ctrl+C in the host picker of a run's one marketplace; among several, it costs that one
+	// marketplace, as any failure does.
+	if errors.Is(failed, ErrAborted) {
+		return &abortedError{"aborted; no ssh host was allowed."}
+	}
 	if a.json && failed != nil {
 		return &marketError{err: failed, res: res}
 	}

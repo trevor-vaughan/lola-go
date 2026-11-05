@@ -71,15 +71,16 @@ func printMarkets(w io.Writer, s style, rows []engine.MarketRow, notices []engin
 // description, the entries (name, version, kind, source with its path, ref and commit, and
 // description, cut with an ellipsis to fit width columns; 0 cuts nothing) and the skipped entries
 // grouped by reason, the most common first. --plain rows are "market" with the name, source, ref,
-// path, commit and file; an "entry" row per entry (name, version, kind, source, ref, path, commit,
-// description), a "component" row per path an entry selects (entry, kind, path) and a "skipped"
-// row per skip (name, reason), every text in full; then a "hint" row per hint, as people's output
-// ends with each.
+// path, commit, file and allowed ssh hosts (comma-separated); an "entry" row per entry (name,
+// version, kind, source, ref, path, commit, description, ssh host), a "component" row per path an
+// entry selects (entry, kind, path) and a "skipped" row per skip (name, reason), every text in
+// full; then a "hint" row per hint, as people's output ends with each.
 func printMarket(w io.Writer, s style, v *engine.MarketView, hints []string, width int) {
 	if s.plain {
-		fmt.Fprintf(w, "market\t%s\t%s\t%s\t%s\t%s\t%s\n", v.Name, v.Source, v.Ref, v.Path, v.Commit, v.File)
+		fmt.Fprintf(w, "market\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", v.Name, v.Source, v.Ref, v.Path, v.Commit, v.File, strings.Join(v.SSHHosts, ","))
 		for _, e := range v.Entries {
-			fmt.Fprintf(w, "entry\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.Name, e.Version, e.Kind, e.Source, e.Ref, e.Path, e.Commit, e.Description)
+			fmt.Fprintf(w, "entry\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.Name, e.Version, e.Kind, e.Source, e.Ref, e.Path, e.Commit, e.Description,
+				e.SSHHost)
 		}
 		for _, e := range v.Entries {
 			for _, c := range components(e) {
@@ -114,7 +115,7 @@ func printMarketHuman(w io.Writer, s style, v *engine.MarketView, hints []string
 	fmt.Fprintln(w, title)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, f := range [][2]string{{"source", v.Source}, {"ref", v.Ref}, {"commit", v.Commit}, {"file", v.File}, {"fetched", v.Fetched},
-		{"owner", v.Owner}, {"version", v.Version}, {"description", v.Description}} {
+		{"owner", v.Owner}, {"version", v.Version}, {"description", v.Description}, {"ssh hosts", strings.Join(v.SSHHosts, ", ")}} {
 		if f[1] != "" {
 			fmt.Fprintf(tw, "  %s\t%s\n", f[0], f[1])
 		}
@@ -130,6 +131,9 @@ func printMarketHuman(w io.Writer, s style, v *engine.MarketView, hints []string
 			}
 			if len(picks) > 0 {
 				fmt.Fprintln(w, s.info(e.Name+": the catalog selects "+strings.Join(picks, ", ")))
+			}
+			if e.SSHHost != "" {
+				fmt.Fprintln(w, s.info(e.Name+": via ssh at "+e.SSHHost))
 			}
 			for _, n := range e.Notices {
 				fmt.Fprintln(w, s.info(e.Name+": "+n))
@@ -332,8 +336,9 @@ func components(e engine.MarketEntry) [][2]string {
 // marketGlyphs mark an --update's entry changes.
 var marketGlyphs = map[string]string{"added": "+", "removed": "-", "changed": "~"}
 
-// printMarketResult prints what lola market --add or --update did (Plan 6c §11.1): a line per
-// marketplace by its outcome, with an --update's entry changes under it, then the notices.
+// printMarketResult prints what lola market --add, --update or --ssh-host --remove did (Plan 6c
+// §11.1): a line per marketplace by its outcome (none for a revoke's, which its caller words),
+// with its entry changes under it, then the notices.
 // --plain rows are the outcome and the marketplace, a "change" row per entry change (change,
 // market, entry, fields comma-separated), then the notices as notice rows.
 func printMarketResult(w io.Writer, s style, res *engine.MarketResult) {

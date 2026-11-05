@@ -78,12 +78,14 @@ type MarketRow struct {
 // notices. Every string has been through untrusted.Text.
 type MarketView struct {
 	MarketRow
-	File    string        `json:"file"`
-	Owner   string        `json:"owner"`
-	Version string        `json:"version"`
-	Entries []MarketEntry `json:"entries"`
-	Skipped []MarketSkip  `json:"skipped"`
-	Notices []Notice      `json:"notices"`
+	File    string `json:"file"`
+	Owner   string `json:"owner"`
+	Version string `json:"version"`
+	// SSHHosts are the hosts whose ssh sources you allow the catalog to name, never nil.
+	SSHHosts []string      `json:"ssh_hosts"`
+	Entries  []MarketEntry `json:"entries"`
+	Skipped  []MarketSkip  `json:"skipped"`
+	Notices  []Notice      `json:"notices"`
 }
 
 // MarketEntry is one entry a catalog offers, mapped to the source lola would install it from.
@@ -98,7 +100,9 @@ type MarketEntry struct {
 	Commit      string   `json:"commit"`
 	Kind        string   `json:"kind"`
 	// Install is the address lola install takes for the entry, @<market>/<entry>.
-	Install string   `json:"install"`
+	Install string `json:"install"`
+	// SSHHost is the allowed ssh host the entry's source is on, "" for an entry that is not ssh.
+	SSHHost string   `json:"ssh_host"`
 	Notices []string `json:"notices"`
 	// Components is what the entry's own lists select from its directory, nil when it lists none.
 	Components *market.Components `json:"components,omitempty"`
@@ -164,6 +168,10 @@ type MarketAddRequest struct {
 	// command a hint or notice names keeps.
 	Display []string
 	Rename  func(MarketRename) (string, error)
+	// SSHHosts are the --ssh-host values as typed; PickSSH asks which of the catalog's other ssh
+	// hosts to allow, nil when it cannot ask (not a terminal).
+	SSHHosts []string
+	PickSSH  func(MarketSSHStep) ([]string, error)
 }
 
 // MarketUpdateRequest is one lola market <name>... --update, or --update --all (Plan 6c §3.1).
@@ -173,6 +181,10 @@ type MarketUpdateRequest struct {
 	DryRun bool
 	// Display is the run's output flags, which every command a hint or notice names keeps.
 	Display []string
+	// SSHHosts are the --ssh-host values as typed, for one marketplace; PickSSH asks which of its
+	// catalog's ssh hosts not allowed yet to allow, nil when it cannot ask (not a terminal).
+	SSHHosts []string
+	PickSSH  func(MarketSSHStep) ([]string, error)
 }
 
 // MarketRun is the lola market command with args, each through untrusted.Text, quoted for the
@@ -186,9 +198,10 @@ func MarketRun(args ...string) string {
 }
 
 // addRun is the arguments of an --add, as a hint repeats it with name (none when "") and path
-// (none when ""): the source, the ref, -n of a dry run (Plan 6c §11.3: a slug, collision and
-// two-catalog hint keeps --ref, --path and -n, never -y), and display, the run's output flags.
-func addRun(name, src, ref, p string, dry bool, display []string) []string {
+// (none when ""): the source, the ref, the ssh hosts, -n of a dry run (Plan 6c §11.3: a slug,
+// collision and two-catalog hint keeps --ref, --path, --ssh-host and -n, never -y), and display,
+// the run's output flags.
+func addRun(name, src, ref, p string, hosts []string, dry bool, display []string) []string {
 	var out []string
 	if name != "" {
 		out = append(out, name)
@@ -200,6 +213,7 @@ func addRun(name, src, ref, p string, dry bool, display []string) []string {
 	if p != "" {
 		out = append(out, "--path", p)
 	}
+	out = append(out, sshFlags(hosts)...)
 	if dry {
 		out = append(out, "-n")
 	}
@@ -220,7 +234,7 @@ type marketSource struct {
 // is a git repository, an archive at an https URL, or a folder, made absolute with its links
 // resolved (ruling R-6c-2). A local catalog file or archive is refused, coached to the folder that
 // holds the file. Every recorded-source rule is checked before any network contact.
-func (e *Engine) marketSource(name, src, ref, p string, dry bool, display []string) (marketSource, error) {
+func (e *Engine) marketSource(name, src, ref, p string, hosts []string, dry bool, display []string) (marketSource, error) {
 	shownSrc := untrusted.Text(src, untrusted.MaxName)
 	if market.IsCatalogURL(src) {
 		// One refusal names every flag a catalog file cannot take, so its hint runs.
@@ -234,10 +248,10 @@ func (e *Engine) marketSource(name, src, ref, p string, dry bool, display []stri
 		switch len(flags) {
 		case 1:
 			return marketSource{}, errs.WithHints(fmt.Errorf("%s applies to a git repository, archive or folder, and %s is a catalog file", flags[0], shownSrc),
-				MarketRun(addRun(name, src, "", "", dry, display)...))
+				MarketRun(addRun(name, src, "", "", hosts, dry, display)...))
 		case 2:
 			return marketSource{}, errs.WithHints(fmt.Errorf("--ref and --path apply to a git repository, archive or folder, and %s is a catalog file", shownSrc),
-				MarketRun(addRun(name, src, "", "", dry, display)...))
+				MarketRun(addRun(name, src, "", "", hosts, dry, display)...))
 		}
 		if err := (source.Recorded{Source: src}).Check(); err != nil {
 			return marketSource{}, unhinted(err)
@@ -259,7 +273,7 @@ func (e *Engine) marketSource(name, src, ref, p string, dry bool, display []stri
 				dir, file = filepath.Dir(dir), ".claude-plugin/"+file
 			}
 			return marketSource{}, errs.WithHints(fmt.Errorf("%s is a catalog file on this machine; lola reads a local marketplace from the folder that holds it",
-				shownSrc), MarketRun(addRun(name, dir, "", file, dry, display)...))
+				shownSrc), MarketRun(addRun(name, dir, "", file, hosts, dry, display)...))
 		}
 	}
 	spec, ok, err := source.Parse(src, cwd)
@@ -275,7 +289,7 @@ func (e *Engine) marketSource(name, src, ref, p string, dry bool, display []stri
 		return marketSource{}, fmt.Errorf("%s is an archive on this machine; lola reads a local marketplace from a folder, so extract it and add that folder", shownSrc)
 	case ref != "" && spec.Kind != source.KindGit:
 		return marketSource{}, errs.WithHints(fmt.Errorf("--ref applies to git sources only, not to %s %s", spec.Kind, shownSrc),
-			MarketRun(addRun(name, src, "", p, dry, display)...))
+			MarketRun(addRun(name, src, "", p, hosts, dry, display)...))
 	}
 	spec.Ref = ref
 	if err := (source.Recorded{Source: spec.Location, Ref: ref, Path: p}).Check(); err != nil {
@@ -378,7 +392,7 @@ func (e *Engine) loadMarket(r market.Registration) (*cachedMarket, error) {
 	if profile.Digest(data) != pin.Digest {
 		return nil, fmt.Errorf("%s changed since lola fetched it: its digest is not the one %s records", shown(file), marketPinFile)
 	}
-	cat, err := market.Parse(format, data)
+	cat, err := market.Parse(format, data, r.SSHHosts)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", shown(file), err)
 	}
@@ -514,7 +528,7 @@ func (e *Engine) ShowMarket(name string, display []string) (*MarketView, error) 
 	if err != nil {
 		return nil, errs.WithHints(fmt.Errorf("marketplace %s: %w", shown(name), untrusted.CleanErr(err)), update)
 	}
-	v := &MarketView{MarketRow: e.marketRow(*r, c), Entries: []MarketEntry{}, Skipped: []MarketSkip{}, Notices: []Notice{}}
+	v := &MarketView{MarketRow: e.marketRow(*r, c), SSHHosts: shownAll(r.SSHHosts), Entries: []MarketEntry{}, Skipped: []MarketSkip{}, Notices: []Notice{}}
 	if c == nil {
 		v.Notices = append(v.Notices, Notice{Level: LevelInfo, Text: notFetched + " → " + update})
 		return v, nil
@@ -523,7 +537,7 @@ func (e *Engine) ShowMarket(name string, display []string) (*MarketView, error) 
 	for _, en := range c.cat.Entries {
 		me := MarketEntry{Name: shown(en.Name), Description: shown(en.Description), Version: shown(en.Version), Tags: []string{},
 			Source: shown(en.Source.Source), Ref: shown(en.Source.Ref), Path: shown(en.Source.Path), Commit: shown(en.Source.Commit),
-			Kind: en.Kind, Notices: []string{}}
+			Kind: en.Kind, SSHHost: shown(market.SSHHost(en.Source.Source)), Notices: []string{}}
 		for _, t := range en.Tags {
 			me.Tags = append(me.Tags, shown(t))
 		}
@@ -543,6 +557,11 @@ func (e *Engine) ShowMarket(name string, display []string) (*MarketView, error) 
 	// unique in its catalog, so the order is total; a skip's may repeat, and keeps its order).
 	slices.SortFunc(v.Entries, func(a, b MarketEntry) int { return strings.Compare(a.Name, b.Name) })
 	slices.SortStableFunc(v.Skipped, func(a, b MarketSkip) int { return strings.Compare(a.Name, b.Name) })
+	if n := sshHint(c.cat, func(pending []string) []string {
+		return slices.Concat([]string{r.Name, "--update"}, sshFlags(pending), display)
+	}); n != nil {
+		v.Notices = append(v.Notices, *n)
+	}
 	return v, nil
 }
 
@@ -594,17 +613,30 @@ func catalogIn(tree, name, p string, add func(string) string) (string, error) {
 		dir = clean
 	}
 	var found []string
-	for _, f := range market.CatalogFiles(name) {
+	probe := func(f string) error {
 		rel := path.Join(dir, f)
 		fi, err := realPath(tree, rel)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 		case err != nil:
-			return "", err
+			return err
 		case fi.Mode().IsRegular():
 			found = append(found, rel)
 		default:
-			return "", fmt.Errorf("%s is not a regular file", untrusted.Text(rel, untrusted.MaxName))
+			return fmt.Errorf("%s is not a regular file", untrusted.Text(rel, untrusted.MaxName))
+		}
+		return nil
+	}
+	for _, f := range market.CatalogFiles(name) {
+		if err := probe(f); err != nil {
+			return "", err
+		}
+	}
+	if len(found) == 0 {
+		for _, f := range market.CatalogFallbackFiles() {
+			if err := probe(f); err != nil {
+				return "", err
+			}
 		}
 	}
 	where := "at the source's root"
@@ -616,7 +648,7 @@ func catalogIn(tree, name, p string, add func(string) string) (string, error) {
 	}
 	switch len(found) {
 	case 0:
-		return "", fmt.Errorf("the source has no catalog %s: lola looked for %s", where, strings.Join(market.CatalogFiles(name), ", "))
+		return "", fmt.Errorf("the source has no catalog %s: lola looked for %s", where, strings.Join(append(market.CatalogFiles(name), market.CatalogFallbackFiles()...), ", "))
 	case 1:
 		return found[0], nil
 	}
@@ -699,7 +731,7 @@ func (e *noPythonCatalogError) Unwrap() error { return ErrNoPythonCatalog }
 // read there for the marketplace it named name (pythonCatalog). It writes nothing but the run
 // directory, which it removes (Plan 6c §6.9).
 func (e *Engine) PythonCatalog(ctx context.Context, src, name string) (_ string, err error) {
-	ms, err := e.marketSource("", src, "", "", false, nil)
+	ms, err := e.marketSource("", src, "", "", nil, false, nil)
 	if err != nil {
 		return "", err
 	}
@@ -749,9 +781,9 @@ func realPath(root, rel string) (fs.FileInfo, error) {
 // stranger's input (market.Parse); each relative entry's directory must be a real directory in
 // the tree, else the entry is skipped. name is the marketplace's name ("" before the catalog
 // names it), p the --path, python the Python lola's name of it (lola migrate's; "" otherwise),
-// which without p finds the catalog as the Python lola did (pythonCatalog), and add builds the
-// --add hint of a two-catalog refusal.
-func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, python, run string, add func(string) string) (*fetchedMarket, error) {
+// which without p finds the catalog as the Python lola did (pythonCatalog), hosts the ssh hosts
+// its entries may name, and add builds the --add hint of a two-catalog refusal.
+func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, python, run string, hosts []string, add func(string) string) (*fetchedMarket, error) {
 	pin := market.Pin{Version: market.PinVersion, Source: src.loc, Ref: src.spec.Ref, Path: p, Absent: []string{}, FetchedAt: e.Now().UTC()}
 	var tree, file string
 	var data []byte
@@ -792,7 +824,7 @@ func (e *Engine) fetchMarket(ctx context.Context, src marketSource, name, p, pyt
 		}
 	}
 	pin.File, pin.Digest = file, profile.Digest(data)
-	cat, err := market.Parse(market.FormatOf(file), data)
+	cat, err := market.Parse(market.FormatOf(file), data, hosts)
 	if err != nil {
 		return nil, fmt.Errorf("the catalog %s %w", untrusted.Text(file, untrusted.MaxName), err)
 	}
@@ -883,8 +915,9 @@ func sameSource(r market.Registration, src marketSource, ref string) bool {
 }
 
 // sameMarket reports whether r is the marketplace src at ref, under the --path p as typed ("" for
-// none), looked up by name (Plan 6c §3.1: same source, ref and path): its catalog file is the one p
-// names, or one the lookup in p (the root for none) could read, market.CatalogFiles(name).
+// none), looked up by name (Plan 6c §3.1: same source, ref and path): its catalog file is the one
+// p names, or one the lookup in p (the root for none) could read, market.CatalogFiles(name) or
+// market.CatalogFallbackFiles().
 func sameMarket(r market.Registration, src marketSource, ref, p, name string) bool {
 	if !sameSource(r, src, ref) {
 		return false
@@ -896,7 +929,8 @@ func sameMarket(r market.Registration, src marketSource, ref, p, name string) bo
 	if dir == "." {
 		dir = ""
 	}
-	return slices.ContainsFunc(market.CatalogFiles(name), func(f string) bool { return r.Path == path.Join(dir, f) })
+	return slices.ContainsFunc(append(market.CatalogFiles(name), market.CatalogFallbackFiles()...),
+		func(f string) bool { return r.Path == path.Join(dir, f) })
 }
 
 // takenName refuses to add a marketplace as name, which r already is (Plan 6c §3.1, ruling
@@ -905,7 +939,7 @@ func sameMarket(r market.Registration, src marketSource, ref, p, name string) bo
 // of a marketplace whose source differs from the one typed. It returns the name to add as.
 func takenName(reg market.Registry, r market.Registration, src marketSource, req MarketAddRequest) (string, error) {
 	if sameMarket(r, src, req.Ref, req.Path, r.Name) {
-		return "", alreadyThis(r.Name, req.DryRun, req.Display)
+		return "", alreadyThis(r.Name, req.SSHHosts, req.DryRun, req.Display)
 	}
 	taken := func(n string) bool { return reg.Find(n) != nil }
 	free := market.FreeName(r.Name, 2, taken)
@@ -918,7 +952,7 @@ func takenName(reg market.Registry, r market.Registration, src marketSource, req
 		if free == "" {
 			return "", err
 		}
-		return "", errs.WithHints(err, MarketRun(addRun(free, req.Source, req.Ref, req.Path, req.DryRun, req.Display)...))
+		return "", errs.WithHints(err, MarketRun(addRun(free, req.Source, req.Ref, req.Path, req.SSHHosts, req.DryRun, req.Display)...))
 	}
 	return askName(reg, MarketRename{Why: r.Name + " is already a marketplace, from " + from, Suggest: free}, req.Rename)
 }
@@ -946,9 +980,9 @@ func askName(reg market.Registry, step MarketRename, rename func(MarketRename) (
 }
 
 // alreadyThis refuses to add the marketplace name again, coaching its --update (Plan 6c §3.1),
-// which keeps -n and display, the run's output flags.
-func alreadyThis(name string, dry bool, display []string) error {
-	args := []string{name, "--update"}
+// which keeps the ssh hosts, -n and display, the run's output flags.
+func alreadyThis(name string, hosts []string, dry bool, display []string) error {
+	args := slices.Concat([]string{name, "--update"}, sshFlags(hosts))
 	if dry {
 		args = append(args, "-n")
 	}
@@ -956,7 +990,8 @@ func alreadyThis(name string, dry bool, display []string) error {
 }
 
 // AddMarket fetches a catalog and registers it (Plan 6c §3.1, §6.2): it asks nothing but a name on
-// a collision (D4: a catalog installs and runs nothing, and you typed its source). The name, every
+// a collision and which ssh hosts the catalog names to allow (D4: a catalog installs and runs
+// nothing, and you typed its source; spec 2026-10-28 §3). The name, every --ssh-host, every
 // source rule and a typed name that is already this marketplace are checked before any network
 // contact; the source is fetched into the run's staging, its catalog found (by the name you typed)
 // and read as a stranger's input; a name another marketplace has is then asked again or refused
@@ -964,6 +999,10 @@ func alreadyThis(name string, dry bool, display []string) error {
 // lock, with the name checked again, the cache is written, then the registration, so a failed
 // registration leaves a cache directory that listings ignore and the next --add replaces.
 func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *MarketResult, err error) {
+	// Checked first: every hint from here on repeats them.
+	if req.SSHHosts, err = checkedHosts(req.SSHHosts); err != nil {
+		return nil, err
+	}
 	if req.Name != "" {
 		if err := market.ValidateName(req.Name); err != nil {
 			// Its lowercase form, when that is a name no marketplace has, is the run's likeliest
@@ -975,7 +1014,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 			if reg, _, rerr := e.registry(); rerr != nil || reg.Find(lower) != nil {
 				return nil, err
 			}
-			return nil, errs.WithHints(err, MarketRun(addRun(lower, req.Source, req.Ref, req.Path, req.DryRun, req.Display)...))
+			return nil, errs.WithHints(err, MarketRun(addRun(lower, req.Source, req.Ref, req.Path, req.SSHHosts, req.DryRun, req.Display)...))
 		}
 	}
 	if req.Path != "" {
@@ -983,7 +1022,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 			return nil, fmt.Errorf("--path %w", err)
 		}
 	}
-	src, err := e.marketSource(req.Name, req.Source, req.Ref, req.Path, req.DryRun, req.Display)
+	src, err := e.marketSource(req.Name, req.Source, req.Ref, req.Path, req.SSHHosts, req.DryRun, req.Display)
 	if err != nil {
 		return nil, err
 	}
@@ -997,7 +1036,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 		return nil, err
 	}
 	if r := reg.Find(req.Name); req.Name != "" && r != nil && sameMarket(*r, src, req.Ref, req.Path, req.Name) {
-		return nil, alreadyThis(r.Name, req.DryRun, req.Display)
+		return nil, alreadyThis(r.Name, req.SSHHosts, req.DryRun, req.Display)
 	}
 	run, done, err := e.runDir()
 	if err != nil {
@@ -1006,9 +1045,9 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 	defer func() { err = errors.Join(err, done()) }()
 	// The catalog is looked up by the name you typed (<name>.yml), whatever name it is added as.
 	two := func(file string) string {
-		return MarketRun(addRun(req.Name, req.Source, req.Ref, file, req.DryRun, req.Display)...)
+		return MarketRun(addRun(req.Name, req.Source, req.Ref, file, req.SSHHosts, req.DryRun, req.Display)...)
 	}
-	f, err := e.fetchMarket(ctx, src, req.Name, req.Path, req.PythonName, run, two)
+	f, err := e.fetchMarket(ctx, src, req.Name, req.Path, req.PythonName, run, req.SSHHosts, two)
 	if err != nil {
 		return nil, err
 	}
@@ -1025,7 +1064,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 			why := "the catalog names itself " + shown(f.cat.Name) + ", which cannot name a marketplace"
 			slug := market.Slug(f.cat.Name)
 			if r := reg.Find(slug); r != nil && sameMarket(*r, src, req.Ref, hintPath, slug) {
-				return nil, alreadyThis(slug, req.DryRun, req.Display)
+				return nil, alreadyThis(slug, req.SSHHosts, req.DryRun, req.Display)
 			}
 			free := market.FreeName(slug, 1, func(n string) bool { return reg.Find(n) != nil })
 			switch {
@@ -1036,7 +1075,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 				}
 			case free != "":
 				return nil, errs.WithHints(errors.New(why+"; give a name before --add"),
-					MarketRun(addRun(free, req.Source, req.Ref, hintPath, req.DryRun, req.Display)...))
+					MarketRun(addRun(free, req.Source, req.Ref, hintPath, req.SSHHosts, req.DryRun, req.Display)...))
 			default:
 				return nil, errors.New(why + "; give a name before --add")
 			}
@@ -1051,6 +1090,10 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 		if name, err = takenName(reg, *r, src, again); err != nil {
 			return nil, err
 		}
+	}
+	hosts, err := chooseSSH(name, f, req.SSHHosts, req.DryRun, req.PickSSH)
+	if err != nil {
+		return nil, err
 	}
 	if !src.file {
 		f.pin.Path = f.pin.File // the registration records the file found, so --update reads that one
@@ -1081,7 +1124,7 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 		if err := e.writeMarket(name, f); err != nil {
 			return nil, err
 		}
-		nb, err := market.AddRegistration(b, market.Registration{Name: name, Source: f.pin.Source, Ref: f.pin.Ref, Path: f.pin.Path})
+		nb, err := market.AddRegistration(b, market.Registration{Name: name, Source: f.pin.Source, Ref: f.pin.Ref, Path: f.pin.Path, SSHHosts: hosts})
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", shown(e.Paths.Markets), err)
 		}
@@ -1091,7 +1134,23 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 		outcome.Outcome = MarketAdded
 	}
 	res.Updates = append(res.Updates, outcome)
+	if n := allowedNotice(nil, hosts, req.DryRun); n != nil {
+		res.Notices = append(res.Notices, *n)
+	}
 	if n := skipSummary(name, f.cat, !req.DryRun, req.Display); n != nil {
+		res.Notices = append(res.Notices, *n)
+	}
+	// A dry run's marketplace is not registered, so its hint is the --add itself, with every host.
+	if n := sshHint(f.cat, func(pending []string) []string {
+		if !req.DryRun {
+			return slices.Concat([]string{name, "--update"}, sshFlags(pending), req.Display)
+		}
+		p := req.Path
+		if name != req.Name {
+			p = hintPath
+		}
+		return addRun(name, req.Source, req.Ref, p, market.NormalizeHosts(slices.Concat(hosts, pending)), false, req.Display)
+	}); n != nil {
 		res.Notices = append(res.Notices, *n)
 	}
 	if !req.DryRun && len(f.cat.Entries) > 0 {
@@ -1166,8 +1225,13 @@ func marketChanges(name string, was *market.Catalog, now market.Catalog) []Marke
 // failure costs only that marketplace, whose cached catalog is kept (§9: a catalog that no longer
 // parses keeps the old one); Ctrl+C stops the run, keeping what it wrote. The skipped entries'
 // summary is a notice only when they differ from the cached catalog's, which --add or an earlier
-// --update reported.
+// --update reported. The ssh hosts each allows are the stored ones, plus for one marketplace the
+// --ssh-host values, plus what the picker ticks on a terminal (spec 2026-10-28 §3, §4).
 func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*MarketResult, error) {
+	flagHosts, err := checkedHosts(req.SSHHosts)
+	if err != nil {
+		return nil, err
+	}
 	unlock, err := e.readMarkets(req.DryRun)
 	if err != nil {
 		return nil, err
@@ -1176,6 +1240,30 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 	reg, _, err := e.registry()
 	if err != nil {
 		return nil, err
+	}
+	// rerun is the arguments of this run for names: --update, the --ssh-host values and -n.
+	rerun := func(names ...string) []string {
+		out := slices.Concat(names, []string{"--update"}, sshFlags(flagHosts))
+		if req.DryRun {
+			out = append(out, "-n")
+		}
+		return out
+	}
+	var distinct []string
+	for _, n := range req.Names {
+		if !slices.Contains(distinct, n) {
+			distinct = append(distinct, n)
+		}
+	}
+	if len(flagHosts) > 0 && (req.All || len(distinct) != 1) {
+		// One run for each marketplace named that you have; --all means none in particular.
+		var hints []string
+		for _, n := range distinct {
+			if !req.All && reg.Find(n) != nil {
+				hints = append(hints, MarketRun(append(rerun(n), req.Display...)...))
+			}
+		}
+		return nil, errs.WithHints(errors.New("--ssh-host applies to one marketplace"), hints...)
 	}
 	res := &MarketResult{Markets: []MarketRow{}, Changes: []MarketChange{}, Updates: []MarketOutcome{}, Notices: []Notice{}, DryRun: req.DryRun}
 	var regs []market.Registration
@@ -1196,11 +1284,7 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 						out = append(out, m)
 					}
 				}
-				out = append(out, "--update")
-				if req.DryRun {
-					out = append(out, "-n")
-				}
-				return out
+				return rerun(out...)
 			}
 			return nil, noMarket(reg, n, run, req.Display)
 		}
@@ -1221,7 +1305,7 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 			res.Updates = append(res.Updates, out)
 			continue
 		}
-		f, was, err := e.updateMarket(ctx, r, req.DryRun, &unlock)
+		f, was, hosts, err := e.updateMarket(ctx, r, flagHosts, req.DryRun, req.PickSSH, &unlock)
 		switch {
 		case err != nil && ctx.Err() != nil:
 			stopped, out.Outcome = true, MarketStopped
@@ -1244,10 +1328,23 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 			default:
 				out.Outcome = MarketUpdated
 			}
+			if n := allowedNotice(r.SSHHosts, hosts, req.DryRun); n != nil {
+				res.Notices = append(res.Notices, *n)
+			}
 			// The skipped entries were reported when they were added or last changed: an update
 			// that leaves them as they were says nothing of them again.
 			if n := skipSummary(r.Name, f.cat, !req.DryRun, req.Display); n != nil && (was == nil || !sameSkips(was.cat.Skipped, f.cat.Skipped)) {
 				res.Notices = append(res.Notices, *n)
+				// A dry run has not stored its --ssh-host values, so its hint repeats them.
+				if n := sshHint(f.cat, func(pending []string) []string {
+					hosts := pending
+					if req.DryRun {
+						hosts = market.NormalizeHosts(slices.Concat(flagHosts, pending))
+					}
+					return slices.Concat([]string{r.Name, "--update"}, sshFlags(hosts), req.Display)
+				}); n != nil {
+					res.Notices = append(res.Notices, *n)
+				}
 			}
 		}
 		res.Updates = append(res.Updates, out)
@@ -1257,41 +1354,59 @@ func (e *Engine) UpdateMarkets(ctx context.Context, req MarketUpdateRequest) (*M
 
 // updateMarket fetches r again and, unless dry, replaces its cache under the exclusive markets
 // lock, taken only to check r is still registered as it was and write; unlock is the run's
-// shared lock, which it gives back and takes again. It returns the fetch and the cached catalog it
-// replaces (nil for none, or one that cannot be read).
-func (e *Engine) updateMarket(ctx context.Context, r market.Registration, dry bool, unlock *func()) (_ *fetchedMarket, _ *cachedMarket, err error) {
+// shared lock, which it gives back and takes again. The catalog is read with r's ssh hosts, extra
+// (checked --ssh-host values) and what pick ticks (nil: not asked); r's stored hosts are replaced
+// by those, in the same write, when they differ. It returns the fetch, the cached catalog it
+// replaces (nil for none, or one that cannot be read) and the hosts the run allows.
+func (e *Engine) updateMarket(ctx context.Context, r market.Registration, extra []string, dry bool, pick func(MarketSSHStep) ([]string, error),
+	unlock *func()) (_ *fetchedMarket, _ *cachedMarket, _ []string, err error) {
 	was, _ := e.loadMarket(r) // an unreadable cache is replaced, and every entry reads as added
 	run, done, err := e.runDir()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer func() { err = errors.Join(err, done()) }()
-	f, err := e.fetchMarket(ctx, registrySource(r), r.Name, r.Path, "", run, nil)
+	base := market.NormalizeHosts(slices.Concat(r.SSHHosts, extra))
+	f, err := e.fetchMarket(ctx, registrySource(r), r.Name, r.Path, "", run, base, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	hosts, err := chooseSSH(r.Name, f, base, dry, pick)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	if dry {
-		return f, was, nil
+		return f, was, hosts, nil
 	}
 	(*unlock)()
 	write, err := lockAt(e.Paths.MarketsLock, true)
 	if err != nil {
 		*unlock = func() {}
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	err = func() error {
 		defer write()
 		if err := sweepDir(e.Paths.MarketCache, market.ValidateName); err != nil {
 			return unhinted(err)
 		}
-		reg, _, err := e.registry()
+		reg, b, err := e.registry()
 		if err != nil {
 			return err
 		}
-		if now := reg.Find(r.Name); now == nil || now.Source != r.Source || now.Ref != r.Ref || now.Path != r.Path {
+		if now := reg.Find(r.Name); now == nil || now.Source != r.Source || now.Ref != r.Ref || now.Path != r.Path || !slices.Equal(now.SSHHosts, r.SSHHosts) {
 			return fmt.Errorf("%s changed in markets.yaml while lola fetched it", r.Name)
 		}
-		return e.writeMarket(r.Name, f)
+		if err := e.writeMarket(r.Name, f); err != nil {
+			return err
+		}
+		if slices.Equal(hosts, r.SSHHosts) {
+			return nil
+		}
+		nb, err := market.SetSSHHosts(b, r.Name, hosts)
+		if err != nil {
+			return fmt.Errorf("%s: %w", shown(e.Paths.Markets), err)
+		}
+		return writeRegistry(e.Paths.Markets, nb)
 	}()
 	if again, lerr := e.readMarkets(false); lerr != nil {
 		*unlock = func() {}
@@ -1299,5 +1414,5 @@ func (e *Engine) updateMarket(ctx context.Context, r market.Registration, dry bo
 	} else {
 		*unlock = again
 	}
-	return f, was, err
+	return f, was, hosts, err
 }

@@ -47,31 +47,79 @@ func (e *Engine) Command(sc Scope, sub string, args ...string) string {
 	return errs.ShellJoin(cmd)
 }
 
-// commandOf is the lola command a hint repeating req names, with extra appended: lola sync, or
-// for an activation lola profile with req's names and the action (Plan 6b §12.3); Sync sets
-// those names to the profiles' qualified names once it has resolved them. Both carry the scope's
-// flags (Command) and the flags of the run (rerun).
+// commandOf is the lola command a hint repeating req names, with extra appended: lola sync, lola
+// update for an Installed run (spec 2026-10-29 §3.1), for an activation lola profile with req's
+// names and the action (Plan 6b §12.3), or for a move lola profile with the move's words
+// (moveArgs); Sync sets those names to the profiles' qualified names once it has resolved them.
+// Each carries the scope's flags (Command) and the flags of the run (rerun).
 func (e *Engine) commandOf(req SyncRequest, extra ...string) string {
-	if req.Profiles == nil {
+	switch {
+	case req.move != nil:
+		// A move's own -y answers its "replace it?", and any removals with it.
+		args := slices.Clone(req.move.args)
+		for _, a := range req.rerun(extra...) {
+			if a != "-y" || !slices.Contains(args, "-y") {
+				args = append(args, a)
+			}
+		}
+		sc := req.Scope
+		if req.move.at != nil {
+			sc = *req.move.at
+		}
+		return e.Command(sc, "profile", args...)
+	case req.profileArgs != nil:
+		return e.Command(req.Scope, "profile", append(slices.Clone(req.profileArgs), req.rerun(extra...)...)...)
+	case req.Installed:
+		return e.Command(req.Scope, "update", req.rerun(extra...)...)
+	case req.Profiles == nil:
 		return e.SyncCommand(req.Scope, req.rerun(extra...)...)
 	}
-	args := append(slices.Clone(req.Profiles.Names), "--"+string(req.Profiles.Action))
+	var args []string
+	if req.Profiles.Name != "" {
+		args = append(args, req.Profiles.Name)
+	}
+	args = append(args, "--"+string(req.Profiles.Action))
+	if req.Profiles.New { // a run that would make the profile makes it again (newProfiles)
+		args = append(append(args, "--new"), newModifiers(*req.Profiles)...)
+	}
 	return e.Command(req.Scope, "profile", append(args, req.rerun(extra...)...)...)
 }
 
 // rerun is the names and flags of the user's sync that a hint repeating it carries (Plan 6a
-// §11.3): the names, --update and --force as given, and --trust for the kinds given (Plan 9 §3.5).
+// §11.3): the names, --update (--fetch for lola update, which always updates) and --force as
+// given, and --trust for the kinds given (Plan 9 §3.5).
 func (req SyncRequest) rerun(extra ...string) []string {
 	out := append([]string{}, req.Modules...)
 	for _, f := range []struct {
 		on   bool
 		flag string
-	}{{req.Update, "--update"}, {req.Options.Force, "--force"}, {req.Options.Trust != 0, req.Options.Trust.Arg()}} {
+	}{{req.Update && !req.Installed, "--update"}, {req.Refetch, "--fetch"}, {req.Options.Force, "--force"}, {req.Options.Trust != 0, req.Options.Trust.Arg()}} {
 		if f.on {
 			out = append(out, f.flag)
 		}
 	}
 	return append(out, extra...)
+}
+
+// again is what a hint that repeats req, or runs another command in its stead, keeps beside
+// rerun's flags: -n for a dry run, then the run's output flags (Display).
+func (req SyncRequest) again() []string {
+	if req.Options.DryRun {
+		return append([]string{"-n"}, req.Display...)
+	}
+	return req.Display
+}
+
+// updateFlag is the flag of req that makes it re-pin, which a pin's reason names: --update for
+// lola sync, --fetch for lola update given it, and none for lola update, which always re-pins.
+func (req SyncRequest) updateFlag() string {
+	switch {
+	case !req.Installed:
+		return "--update"
+	case req.Refetch:
+		return "--fetch"
+	}
+	return ""
 }
 
 // trusting is req with --trust granting kinds: the run a hint that answers its trust names.

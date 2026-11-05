@@ -149,7 +149,7 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		}
 	}
 	probes := e.newProbeRun(ctx)
-	templates, err := e.newTemplateRun(sc, led.Profiles) // one budget for every profile the command renders (Plan 7 §6.2)
+	templates, err := e.newTemplateRun(sc, led.Profile) // one budget for every profile the command renders (Plan 7 §6.2)
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +225,12 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 		rp.Written = true
 		written = append(written, rp.Profile)
 	}
+	if err := e.writePinsNow(nil); err != nil {
+		res.Notices = append(res.Notices, e.unrecorded("added "+andJoin(written), written, err))
+	}
+	// The hints' dry runs take the profiles lock shared: what they read is written.
+	unlock()
+	unlock = func() {}
 	// Adding turns nothing on; a local profile of its name keeps it from being turned on.
 	infos, _, err := e.visible(sc)
 	if err != nil {
@@ -234,13 +240,50 @@ func (e *Engine) AddProfile(ctx context.Context, req ProfileAddRequest) (_ *Remo
 	}
 	for _, rp := range res.Profiles {
 		if sh := shadowing(infos, profile.Info{Name: rp.name, Kind: profile.KindRemote}); sh != nil {
+			both := e.bundleRun(sc, freeName(infos, rp.name+"-both"), []string{sh.Qualified(), string(profile.KindRemote) + ":" + rp.name}, nil)
 			res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: rp.Profile + " is shadowed by " + shown(sh.Qualified()) +
-				", which is used instead; to build on it, add extends: [" + shown(rp.name) + "] to " + shown(sh.Path)})
+				", which is used instead; to use both, bundled: " + both})
 			continue
 		}
-		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: "turn it on: " + e.Command(sc, "profile", rp.Profile, "--on")})
+		lead, args := "turn it on", []string{rp.Profile, "--on"}
+		if led.Profile != nil {
+			clause, ok := e.addSwitch(ctx, sc, infos, rp)
+			if !ok {
+				continue
+			}
+			args = []string{rp.Profile, "--switch"}
+			if req.Consent == nil {
+				args = append(args, "-y")
+			}
+			if clause != "" {
+				lead += " (" + clause + ")"
+			}
+		}
+		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: lead + ": " + e.Command(sc, "profile", args...)})
 	}
 	return res, nil
+}
+
+// addSwitch judges the --switch to rp, just added, that the hint after --add names while a profile
+// is on at sc (--on refuses there: spec 2026-10-29 §6.2, Q3), infos being the profiles sc can use:
+// ok when its dry run, planned as the sync plans it, succeeds and needs no trust or hook's consent,
+// which no hint answers, and clause what it turns off (switchesOff), which off a terminal the
+// hint's -y removes unasked.
+func (e *Engine) addSwitch(ctx context.Context, sc Scope, infos []profile.Info, rp RemoteProfile) (clause string, ok bool) {
+	res, err := e.Sync(ctx, SyncRequest{Scope: sc, Profiles: &ProfileChange{Action: ProfileSwitch, Name: rp.Profile}, Options: Options{DryRun: true}})
+	if err != nil || !asPrinted(res) {
+		return "", false
+	}
+	k := slices.IndexFunc(infos, func(i profile.Info) bool { return i.Kind == profile.KindRemote && i.Name == rp.name })
+	st, err := e.moveStack(sc)
+	if k < 0 || err != nil {
+		return "", false
+	}
+	to, err := e.offLayer(infos[k])
+	if err != nil {
+		return "", false
+	}
+	return switchesOff(st.layers, st.infos, to, nil), true
 }
 
 // refuseKept refuses to add the remote profile name when lola already keeps one of that name, or

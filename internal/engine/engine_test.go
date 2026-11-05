@@ -124,6 +124,18 @@ var _ = Describe("Engine", func() {
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
 	})
 
+	It("names the source, never lola's staging directory, when a --path holds skills and no module", func() {
+		kit := filepath.Join(tmp, "kit")
+		writeTree(kit, map[string]string{"skills/a/SKILL.md": "---\nname: a\ndescription: d\n---\nb"})
+		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: kit, Path: "skills"}}, claude)
+		Expect(err).To(MatchError(module.ErrNoModule))
+		Expect(err.Error()).To(HavePrefix(kit + " --path skills: "))
+		Expect(err.Error()).NotTo(ContainSubstring(p.Staging))
+		Expect(err.Error()).NotTo(ContainSubstring(p.Store))
+		Expect(errs.Hints(err)).To(ContainElement("that directory holds skills; a module root holds them under skills/: run " +
+			errs.ShellJoin([]string{"lola", "install", kit}) + ", keeping your other flags"))
+	})
+
 	It("records a local source relative to the canonical project root and caches one canonical location", func() {
 		real := filepath.Join(tmp, "real")
 		writeTree(filepath.Join(real, "mods", "example"), exampleModule)
@@ -161,7 +173,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(removed).To(BeTrue())
 
-		_, err = e.Render(ctx, lsc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: lsc})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = e.Install(ctx, lsc, link, []engine.InstallRequest{{Arg: "example"}}, claude)
 		Expect(err).NotTo(HaveOccurred())
@@ -294,7 +306,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read("opencode.json")).To(ContainSubstring(`"lola-gh"`))
 		writeTree(proj, map[string]string{"opencode.jsonc": "{\n  // mine\n}\n"})
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(filepath.Join(proj, "opencode.json")).NotTo(BeAnExistingFile(), "lola created it and nothing else is left in it")
 		Expect(read("opencode.jsonc")).To(SatisfyAll(ContainSubstring("// mine"), ContainSubstring(`"lola-gh"`)))
@@ -382,7 +394,7 @@ var _ = Describe("Engine", func() {
 
 		link := filepath.Join(tmp, "link")
 		Expect(os.Symlink(proj, link)).To(Succeed())
-		_, err = e.Render(ctx, engine.Scope{Kind: target.Project, ProjectDir: link}, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: engine.Scope{Kind: target.Project, ProjectDir: link}})
 		Expect(err).NotTo(HaveOccurred())
 		locks, err := filepath.Glob(filepath.Join(p.Locks, "*.lock"))
 		Expect(err).NotTo(HaveOccurred())
@@ -390,7 +402,7 @@ var _ = Describe("Engine", func() {
 			"one scope lock, beside the trust record's and the profiles'")
 	})
 
-	It("records rules: false per module, honors it on render and reinstall, and clears it with Rules=true", func() {
+	It("records rules: false per module, honors it on sync and reinstall, and clears it with Rules=true", func() {
 		off, on := false, true
 		rule := filepath.Join(proj, ".claude/rules/lola/example/style.md")
 		_, err := install(engine.Options{Targets: claude.Targets, Rules: &off}, src)
@@ -404,7 +416,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows[0].Rules).To(BeFalse())
 
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rule).NotTo(BeAnExistingFile())
 		_, err = install(engine.Options{}, "example")
@@ -442,13 +454,13 @@ var _ = Describe("Engine", func() {
 		writeTree(copyDir, map[string]string{"build/out.js": "built"})
 		Expect(os.Symlink("out.js", filepath.Join(copyDir, "build/link.js"))).To(Succeed())
 		Expect(status()).To(Equal([]string{"example/claude-code=ok"}), "content added to the copy is not reported")
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".lola/modules/example/build/out.js")).To(Equal("built"), "render keeps the copy of an unchanged version")
 
 		Expect(os.RemoveAll(copyDir)).To(Succeed())
 		Expect(status()).To(Equal([]string{"example/claude-code=missing"}))
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
 		Expect(read(".lola/modules/example/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
@@ -577,7 +589,7 @@ var _ = Describe("Engine", func() {
 		Expect(os.RemoveAll(filepath.Join(src, "agents"))).To(Succeed())
 		_, err = install(engine.Options{}, src)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(filepath.Join(proj, ".claude/agents/critic.md")).NotTo(BeAnExistingFile())
 
@@ -595,7 +607,7 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(proj, ".claude/rules/lola")).NotTo(BeAnExistingFile(), "emptied rule dirs are removed")
 	})
 
-	It("render leaves a changed folder source as installed; list never calls a folder stale, and shows modified and missing", func() {
+	It("sync asks before installing a changed folder source; list never calls a folder stale, and shows modified and missing", func() {
 		_, err := install(claude, src)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(src, map[string]string{"commands/ship.md": "Ship faster\n"})
@@ -604,12 +616,13 @@ var _ = Describe("Engine", func() {
 		rows, _, err := e.Status(ctx, sc, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows).To(ConsistOf(And(HaveField("Status", "ok"), HaveField("Pin", ""), HaveField("UpdateAvailable", false))))
-		res, err := e.Render(ctx, sc, engine.Options{})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Findings).To(ContainElement(HaveField("Code", engine.CodeContentChanged)))
-		Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"), "render never installs content nobody reviewed")
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
+		Expect(ok).To(BeTrue(), "%v", err)
+		Expect(refusal.Report.Changes).To(ConsistOf(And(HaveField("Module", "example"), HaveField("FolderContent", true))))
+		Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"), "sync never installs content nobody reviewed")
 		Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
-		_, err = install(engine.Options{}, src) // the finding's remedy: the content is the user's own
+		_, err = install(engine.Options{}, src) // the refusal's remedy: the content is the user's own
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".claude/commands/ship.md")).To(Equal("Ship faster\n"))
 		Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
@@ -620,14 +633,14 @@ var _ = Describe("Engine", func() {
 		Expect(status()).To(Equal([]string{"example/claude-code=missing"}))
 	})
 
-	It("render refuses hand edits unless forced", func() {
+	It("sync refuses hand edits unless forced", func() {
 		_, err := install(claude, src)
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "my edit"})
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).To(MatchError(ContainSubstring("hand-edited")))
 		Expect(read(".claude/commands/ship.md")).To(Equal("my edit"))
-		_, err = e.Render(ctx, sc, engine.Options{Force: true})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Force: true}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 	})
@@ -812,12 +825,12 @@ var _ = Describe("Engine", func() {
 		Expect(tree(p.Staging)).To(BeEmpty())
 	})
 
-	It("names user.yml when the user scope could not record a source", func() {
+	It("names default.yml when the user scope could not record a source", func() {
 		odd := filepath.Join(tmp, "src", "ab\u200ccd")
 		writeTree(odd, exampleModule)
 		writeTree(odd, map[string]string{"lola.yml": "name: example\n"})
 		_, err := e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: odd}}, claude)
-		Expect(err).To(MatchError(ContainSubstring("in user.yml or lock.json")))
+		Expect(err).To(MatchError(ContainSubstring("in default.yml or lock.json")))
 	})
 
 	It("coaches fixing --path when it is the field project.yml could not load again", func() {
@@ -905,7 +918,7 @@ var _ = Describe("Engine", func() {
 		Expect(filepath.Join(p.Home, "CLAUDE.md")).NotTo(BeAnExistingFile())
 		Expect(p.UserLedger).To(BeARegularFile())
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
-		m, err := manifest.Load(p.UserManifest)
+		m, err := manifest.Load(filepath.Join(p.UserProfiles, "default.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Modules[0].Source).To(Equal(src), "user scope records absolute sources")
 		rows, _, err := e.Status(ctx, user, nil)
@@ -1073,38 +1086,22 @@ var _ = Describe("Engine", func() {
 		Expect(err).To(MatchError(ContainSubstring("not installed")))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 
-		// (c) render on empty manifest succeeds but leaves no .lola/
-		_, err = e.Render(ctx, sc, engine.Options{})
-		Expect(err).NotTo(HaveOccurred())
+		// (c) sync without a manifest is refused and leaves no .lola/
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(err).To(MatchError("no project.yml in " + proj))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 	})
 
-	It("render fetches a module removed from the store", func() {
+	It("sync fetches a module removed from the store", func() {
 		_, err := install(claude, src)
 		Expect(err).NotTo(HaveOccurred())
 		ok, err := e.Store.Remove("example")
 		Expect(ok).To(BeTrue())
 		Expect(err).NotTo(HaveOccurred())
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred())
 		names, _ := e.Store.Names()
 		Expect(names).To(Equal([]string{"example"}))
-	})
-
-	It("coaches fetching a module gone from the cache and its source with the recorded source quoted for the shell", func() {
-		hostile := filepath.Join(tmp, "it's src", "example")
-		writeTree(hostile, exampleModule)
-		_, err := install(claude, "../it's src/example")
-		Expect(err).NotTo(HaveOccurred())
-		ok, err := e.Store.Remove("example")
-		Expect(ok).To(BeTrue())
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.RemoveAll(hostile)).To(Succeed())
-		_, err = e.Render(ctx, sc, engine.Options{})
-		Expect(err).To(MatchError("example is no longer in your cache"))
-		Expect(errs.Hints(err)).To(ConsistOf("fetch it again: "+errs.ShellJoin([]string{"lola", "install", "../it's src/example"}),
-			ContainSubstring("lola uninstall example")))
-		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("install ../it's src")))
 	})
 
 	Describe("coaching a module gone from the cache whose recorded source is not a source", func() {
@@ -1123,38 +1120,12 @@ var _ = Describe("Engine", func() {
 
 		It("refuses a recorded source holding control bytes without printing them", func() {
 			record("gone\x1b[31mRED\x1b]0;pwned\x07", "", "")
-			_, err := e.Render(ctx, sc, engine.Options{})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(ContainSubstring("module example: source holds control or invisible characters")))
 			Expect(err.Error()).NotTo(ContainSubstring("\x1b"))
 			Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("\x1b")))
 		})
 
-		It("names the recorded ref and path, so the command fetches the same module", func() {
-			// At user scope, whose user.yml is the user's own and says the same as lock.json, render
-			// acts on lock.json's record.
-			user := engine.Scope{Kind: target.User}
-			_, err := e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: src}}, claude)
-			Expect(err).NotTo(HaveOccurred())
-			l, err := ledger.Load(p.UserLedger)
-			Expect(err).NotTo(HaveOccurred())
-			l.Modules["example"].Source, l.Modules["example"].Ref, l.Modules["example"].Path = "gone", "v1", "plugins/it's"
-			Expect(l.Save(p.UserLedger)).To(Succeed())
-			m, err := e.Manifest(user)
-			Expect(err).NotTo(HaveOccurred())
-			ent := *m.Find("example")
-			ent.Source, ent.Ref, ent.Path = "gone", "v1", "plugins/it's"
-			dst, data, err := manifest.Edit(p.UserManifest, manifest.Change{Set: []manifest.Entry{ent}})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(os.WriteFile(dst, data, 0o600)).To(Succeed())
-			ok, err := e.Store.Remove("example")
-			Expect(ok).To(BeTrue())
-			Expect(err).NotTo(HaveOccurred())
-			_, err = e.Render(ctx, user, engine.Options{})
-			Expect(err).To(MatchError("example is no longer in your cache"))
-			Expect(errs.Hints(err)).To(ConsistOf("fetch it again: "+
-				errs.ShellJoin([]string{"lola", "install", "gone", "--ref", "v1", "--path", "plugins/it's"}),
-				ContainSubstring("lola uninstall example")))
-		})
 	})
 
 	It("never removes a .lola/ that existed before a failed command", func() {
@@ -1183,7 +1154,7 @@ var _ = Describe("Engine", func() {
 			gitIn(proj, "add", "-f", ".lola/lock.json")
 			before := ledgerBytes()
 			Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
-			_, err := e.Render(ctx, sc, engine.Options{})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"))
 			Expect(errs.Hints(err)).To(Equal([]string{"git rm --cached .lola/lock.json"}))
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).NotTo(BeAnExistingFile(), "nothing rendered")
@@ -1196,7 +1167,7 @@ var _ = Describe("Engine", func() {
 			}
 
 			gitIn(proj, "rm", "-q", "--cached", ".lola/lock.json")
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred(), "an untracked ledger in a work tree renders")
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 		})
@@ -1216,14 +1187,14 @@ var _ = Describe("Engine", func() {
 			writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\nmodules:\n  - {name: a, source: ../a, colour: red}\n"})
 			led, err := e.Ledger(sc)
 			Expect(err).NotTo(HaveOccurred())
-			led.Profiles = []ledger.Active{{Name: "user:go", By: ledger.ByOn}}
+			led.Profile = &ledger.Active{Name: "user:go", By: ledger.ByOn}
 			Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 			gitIn(proj, "add", "-f", ".lola/lock.json")
 			tracked := ".lola/lock.json is tracked by git; lola keeps it private to your checkout, since a committed lock.json lets a pull decide what lola deletes; if you never installed with lola in this checkout, untrack and delete it, then run lola sync --project"
 
 			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(tracked), "sync")
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(tracked), "render")
 			_, _, err = e.Status(ctx, sc, nil)
 			Expect(err).To(MatchError(tracked), "list")
@@ -1278,29 +1249,23 @@ var _ = Describe("Engine", func() {
 			Expect(os.WriteFile(filepath.Join(proj, ".gitignore"), []byte(".lola/lock.json\n"), 0o644)).To(Succeed())
 			gitIn(proj, "add", ".gitignore")
 			Expect(os.Remove(filepath.Join(proj, ".claude/commands/ship.md"))).To(Succeed())
-			_, err := e.Render(ctx, sc, engine.Options{})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 		})
 
 		It("fails closed when git cannot tell, and only warns when git is not installed", func() {
 			Expect(os.WriteFile(filepath.Join(proj, ".git", "HEAD"), []byte("garbage\n"), 0o644)).To(Succeed())
-			_, err := e.Render(ctx, sc, engine.Options{})
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).To(MatchError(ContainSubstring("lola could not check whether git tracks .lola/lock.json")))
 			Expect(errs.Hints(err)).To(Equal([]string{"lola asks git whether it tracks .lola/lock.json: make git status work in this repository, then run lola again"}))
 
 			GinkgoT().Setenv("PATH", filepath.Join(tmp, "bin"))
-			res, err := e.Render(ctx, sc, engine.Options{})
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
 				Text: "git is not on PATH, so lola could not check that git does not track .lola/lock.json"}))
 		})
-	})
-
-	It("render with nothing installed leaves no .lola/", func() {
-		_, err := e.Render(ctx, sc, engine.Options{})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 	})
 
 	Describe("project state behind a symlink", func() {
@@ -1338,7 +1303,7 @@ var _ = Describe("Engine", func() {
 			_, err = e.Uninstall(ctx, sc, []string{"example"}, engine.Options{})
 			expectRefused(err, link)
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			expectRefused(err, link)
 		})
 
@@ -1354,7 +1319,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			link := plant(".lola/modules/example")
 			Expect(status()).To(Equal([]string{"example/claude-code=missing"}))
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			fi, err := os.Lstat(link)
 			Expect(err).NotTo(HaveOccurred())
@@ -1371,7 +1336,7 @@ var _ = Describe("Engine", func() {
 			Expect(os.RemoveAll(copyDir)).To(Succeed())
 			Expect(os.WriteFile(copyDir, []byte("not a copy"), 0o644)).To(Succeed())
 			Expect(status()).To(Equal([]string{"example/claude-code=missing"}))
-			_, err = e.Render(ctx, sc, engine.Options{})
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(copyDir, "commands/ship.md")).To(BeARegularFile())
 		})
@@ -1411,17 +1376,17 @@ var _ = Describe("Engine", func() {
 			Expect(os.ReadFile(real)).To(Equal([]byte("version: 1 # theirs\n")))
 		})
 
-		It("still edits a symlinked user-scope manifest at its target", func() {
-			real := filepath.Join(outside, "user.yml")
+		It("still edits a symlinked default.yml at its target", func() {
+			real := filepath.Join(outside, "default.yml")
 			Expect(os.WriteFile(real, []byte("version: 1 # dotfiles\n"), 0o600)).To(Succeed())
-			Expect(os.MkdirAll(filepath.Dir(p.UserManifest), 0o700)).To(Succeed())
-			Expect(os.Symlink(real, p.UserManifest)).To(Succeed())
+			Expect(os.MkdirAll(p.UserProfiles, 0o700)).To(Succeed())
+			Expect(os.Symlink(real, filepath.Join(p.UserProfiles, "default.yml"))).To(Succeed())
 			_, err := e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: src}}, claude)
 			Expect(err).NotTo(HaveOccurred())
 			b, err := os.ReadFile(real)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(b)).To(And(ContainSubstring("# dotfiles"), ContainSubstring("name: example")))
-			fi, err := os.Lstat(p.UserManifest)
+			fi, err := os.Lstat(filepath.Join(p.UserProfiles, "default.yml"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fi.Mode() & os.ModeSymlink).NotTo(BeZero())
 		})
@@ -1718,22 +1683,22 @@ var _ = Describe("Engine", func() {
 			Expect(pending()).To(BeFalse())
 		})
 
-		It("a same-version render that adds a target declines its post-install hook off a terminal, and leaves it pending", func() {
+		It("a same-version sync that adds a target declines its post-install hook off a terminal, and leaves it pending", func() {
 			hooks("{post-install: hooks/post.sh}", map[string]string{})
 			user := engine.Scope{Kind: target.User}
 			_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: src}}, engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1))
 			Expect(os.Remove(p.Consent)).To(Succeed()) // consent given elsewhere: none is recorded here
-			addTarget(p.UserManifest)
+			addTarget(filepath.Join(p.UserProfiles, "default.yml"))
 			userCopy := filepath.Join(p.DataHome, "lola", "user-modules", "example")
 			writeTree(userCopy, map[string]string{"built.txt": "built by the hook\n"})
 
-			res, err := e.Render(ctx, user, engine.Options{DryRun: true})
+			res, err := e.Sync(ctx, engine.SyncRequest{Scope: user, Options: engine.Options{DryRun: true}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookStatuses(res.Modules)).To(ConsistOf("claude-code="+engine.HookWouldRun, "opencode="+engine.HookWouldRun))
 
-			res, err = e.Render(ctx, user, engine.Options{})
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookStatuses(res.Modules)).To(ConsistOf("claude-code="+engine.HookDeclined, "opencode="+engine.HookDeclined))
 			Expect(res.Notices).To(ContainElement(HaveField("Text", HavePrefix("example: post-install hook skipped without your consent"))))
@@ -1744,10 +1709,12 @@ var _ = Describe("Engine", func() {
 			Expect(l.Modules["example"].HooksPending).To(BeTrue())
 			Expect(l.Modules["example"].Targets).To(Equal([]string{"claude-code", "opencode"}))
 
-			res, err = e.Render(ctx, user, engine.Options{})
+			res, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Modules[0].Hooks).To(BeEmpty(), "a render that adds no target runs no hook")
-			Expect(res.Notices).NotTo(ContainElement(HaveField("Text", ContainSubstring("post-install hook"))))
+			Expect(res.Modules[0].Hooks).To(BeEmpty(), "a sync that adds no target runs no hook")
+			Expect(res.Notices).To(ConsistOf(engine.Notice{Level: engine.LevelWarn,
+				Text: "pending post-install hook for example → lola sync --user example (off a terminal: lola sync --user example --trust=hooks)"}),
+				"the hook stays pending, offered again, never declined again")
 		})
 
 		It("a same-version install that adds a target declines its post-install hook off a terminal, and leaves it pending", func() {
@@ -1926,8 +1893,8 @@ var _ = Describe("Engine", func() {
 			Expect(userInstall()).To(Succeed())
 			shared := filepath.Join(tmp, "shared")
 			Expect(os.MkdirAll(shared, 0o755)).To(Succeed())
-			Expect(os.Rename(p.UserManifest, filepath.Join(shared, "user.yml"))).To(Succeed())
-			Expect(os.Symlink(filepath.Join(shared, "user.yml"), p.UserManifest)).To(Succeed())
+			Expect(os.Rename(filepath.Join(p.UserProfiles, "default.yml"), filepath.Join(shared, "default.yml"))).To(Succeed())
+			Expect(os.Symlink(filepath.Join(shared, "default.yml"), filepath.Join(p.UserProfiles, "default.yml"))).To(Succeed())
 			userRoots := []string{p.Home, p.ConfigHome, p.StateHome, shared, filepath.Join(p.DataHome, "lola", "user-modules")}
 			before = snapshot(userRoots...)
 
@@ -1938,7 +1905,7 @@ var _ = Describe("Engine", func() {
 			Expect(snapshot(userRoots...)).To(Equal(before))
 		})
 
-		It("dry-run lists the hooks and runs none; render runs none for the version installed", func() {
+		It("dry-run lists the hooks and runs none; sync runs none for the version installed", func() {
 			res, err := install(engine.Options{Targets: claude.Targets, DryRun: true, Ask: ask(true)}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Modules[0].Hooks).To(HaveLen(2))
@@ -1950,19 +1917,20 @@ var _ = Describe("Engine", func() {
 			_, err = install(engine.Options{Targets: claude.Targets, Trust: engine.TrustHooks}, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(2))
-			_, err = e.Render(ctx, sc, allow)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: allow})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(2), "the same version runs no hooks")
 			writeTree(src, map[string]string{"commands/ship.md": "v2\n"})
-			_, err = e.Render(ctx, sc, allow)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(hookLog()).To(HaveLen(2), "render leaves a folder's new content out, hooks and all")
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: allow})
+			_, ok := errors.AsType[*engine.TrustRefusalError](err)
+			Expect(ok).To(BeTrue(), "a folder's new content needs trust: %v", err)
+			Expect(hookLog()).To(HaveLen(2), "sync installs none of a folder's unreviewed content, hooks and all")
 			_, err = install(allow, src)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(4), "a new version runs them")
 		})
 
-		It("render reruns the hooks when it restores a missing copy, and keeps what a hook built in the copy", func() {
+		It("sync reruns the hooks when it restores a missing copy, and keeps what a hook built in the copy", func() {
 			hooks("{post-install: hooks/post.sh}", map[string]string{
 				"hooks/post.sh": script + "echo built > \"$LOLA_MODULE_PATH/built.txt\"\n"})
 			allow := engine.Options{Trust: engine.TrustHooks}
@@ -1970,13 +1938,13 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1))
 			Expect(status()).To(Equal([]string{"example/claude-code=ok"}))
-			_, err = e.Render(ctx, sc, allow)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: allow})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(1))
-			Expect(filepath.Join(copyDir, "built.txt")).To(BeARegularFile(), "render keeps the hook's build")
+			Expect(filepath.Join(copyDir, "built.txt")).To(BeARegularFile(), "sync keeps the hook's build")
 
 			Expect(os.RemoveAll(copyDir)).To(Succeed())
-			_, err = e.Render(ctx, sc, allow)
+			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: allow})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hookLog()).To(HaveLen(2), "a restored copy reruns the hooks")
 			Expect(filepath.Join(copyDir, "built.txt")).To(BeARegularFile())

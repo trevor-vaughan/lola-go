@@ -20,5 +20,7 @@ var _ = Describe("activeprofile", func() {
 		Expect(activeprofile.Check("default:go")).To(MatchError(ContainSubstring("is not user:, project: or remote:")))
 		Expect(activeprofile.Check("user:default")).To(MatchError(ContainSubstring("default is always on")))
 		Expect(activeprofile.Check("user:../x")).To(MatchError(ContainSubstring("is invalid")))
+		Expect(activeprofile.Check("user:base")).To(MatchError("base is reserved for the scope's base; it is never listed as active"))
+		Expect(activeprofile.Check("remote:base")).To(MatchError(ContainSubstring("base is reserved")))
 	})
 })

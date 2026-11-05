@@ -69,6 +69,9 @@ type State struct {
 }
 
 // homeHint tells the user how lola finds the Python lola's home.
+// problemAtHome ends the Problem of a project_path that is the home directory or one of its parents.
+const problemAtHome = " is your home directory or one of its parents"
+
 const homeHint = "lola reads the Python lola's state from $LOLA_HOME, else ~/.lola"
 
 // Home is the Python lola's home: $LOLA_HOME when it is set, else ~/.lola. An empty
@@ -463,7 +466,7 @@ func projectProblem(p, userHome string) (string, bool) {
 	}
 	for _, h := range homes {
 		if within(p, h) {
-			return shown + " is your home directory or one of its parents", false
+			return shown + problemAtHome, false
 		}
 	}
 	fi, err := os.Stat(p)

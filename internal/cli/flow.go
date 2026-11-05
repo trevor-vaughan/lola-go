@@ -16,17 +16,39 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
+	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // installFlags are lola install's flags.
 type installFlags struct {
-	targets, skips, onlys, unskips                  []string
-	ref, path                                       string
-	preInstall, postInstall                         string // --pre-install and --post-install, as given
-	dry, force, strict, rules, noRules, global, yes bool
-	trust                                           engine.TrustKinds
+	targets, skips, onlys, unskips                                       []string
+	ref, path                                                            string
+	preInstall, postInstall                                              string // --pre-install and --post-install, as given
+	profile                                                              string // --profile: the write target (engine.TargetRequest)
+	dry, force, strict, rules, noRules, global, yes, exact, withMentions bool
+	override                                                             bool // --override (engine.TargetRequest)
+	trust                                                                engine.TrustKinds
+	// edit, when not nil, says the run is lola profile <edit> --edit <module>... (spec 2026-10-29
+	// §6.2): edit holds the profile's name as typed ([] for the one edits go to), which every hint
+	// repeats before the modules; create is its --new; scopes, where it applies, which the run
+	// resolved without asking (engine.EditScopes); catalog, the names your catalogs list
+	// (engine.CatalogNames).
+	edit    []string
+	create  bool
+	scopes  []engine.ScopeChoice
+	catalog []string
+	// catalogPartial says lola could not read every catalog (engine.TargetRequest.CatalogPartial).
+	catalogPartial bool
+	// keep, when not nil, says the run is lola profile <name> --edit's module page (spec 2026-10-29
+	// §6.2; cherry-pick design §4.3): the profile's modules, preselected, a module unticked there
+	// being removed from it once asked; keepLabel names the profile ("profile go-review").
+	keep      []string
+	keepLabel string
+	// keepAdd is, for each of keep, the lola cache add run of its entry's source
+	// (engine.EditTarget.CacheAdd), which coaches a module the page cannot pick for want of it.
+	keepAdd map[string]string
 }
 
 // addedSource is a source added to the cache during the run (Add a source…).
@@ -53,6 +75,7 @@ type installFlow struct {
 	prevScopes                  []string             // the scope picker's last answer, preselected when Change scope asks again
 	picker                      *scopePicker
 	choices                     *engine.Choices
+	staged                      *engine.StagedRun   // what the run fetched, out of the cache until Apply commits it (cherry-pick design §7)
 	pins                        []engine.VersionRef // the versions the module arguments resolved to, kept when Change scope asks again
 	cachePins                   []engine.VersionRef // the versions of the modules picked from the cache, kept the same way
 	marketPicks                 []string            // the marketplace entries picked, by address, in pick order (Plan 6c §6.5)
@@ -69,13 +92,21 @@ type installFlow struct {
 	picks                       map[string]map[string][]string // destination (Scope.Key) → module → selected kind/name
 	prevPicks                   map[string]map[string][]string // the picks before Change components, preselected
 	added                       []addedSource
-	droppedModule, droppedScope int             // component picks dropped because their module or destination was removed; reset after each summary
-	asked                       map[string]bool // modules whose picks came from a component page
-	pageLog                     []answeredPage  // the component pages answered, in the order asked, for Esc
-	asking                      string          // the module whose component page is asked
-	shown                       map[string]bool // steps whose picker ran
-	warned                      map[string]bool // choice warnings printed, each once per run
+	droppedModule, droppedScope int                                                    // component picks dropped because their module or destination was removed; reset after each summary
+	asked                       map[string]bool                                        // modules whose picks came from a component page
+	pageLog                     []answeredPage                                         // the component pages answered, in the order asked, for Esc
+	asking                      string                                                 // the module whose component page is asked
+	shown                       map[string]bool                                        // steps whose picker ran
+	warned                      map[string]bool                                        // choice warnings printed, each once per run
+	where                       func(engine.WhereQuestion) (engine.WhereChoice, error) // the run's AskWhere (askWhere), nil off a terminal
+	answers                     map[whereKey]engine.WhereChoice                        // the where-questions answered
+	overrides                   map[string]string                                      // module → the file an override of its inherited entry writes, as its page names it (targetOf)
+	dropShown                   bool                                                   // the review showed the removal of what lola profile --edit's page unticked
 }
+
+// whereKey is the destination (Scope.Key) and module ("" for the profile on's) a where-question
+// was about.
+type whereKey struct{ scope, module string }
 
 // answeredPage is a component page the user answered: its module, and the destinations (Scope.Key)
 // it asked.
@@ -85,14 +116,14 @@ type answeredPage struct {
 }
 
 // runInstall runs the install flow.
-func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f installFlags) error {
+func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f installFlags) (err error) {
 	if (f.ref != "" || f.path != "") && len(args) > 1 {
 		return errors.New("--ref and --path apply to a single source")
 	}
 	if f.path != "" && len(args) == 1 {
 		if _, ok, _ := market.ParseAddress(args[0]); ok {
 			return errs.WithHints(fmt.Errorf("--path does not apply to %s: its catalog gives the path", untrusted.Text(args[0], untrusted.MaxName)),
-				runWithout(cmd, args, "path"))
+				runWithout(cmd, append(slices.Clone(f.edit), args...), "path"))
 		}
 	}
 	if (f.ref != "" || f.path != "") && len(args) == 0 {
@@ -118,9 +149,21 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if err != nil {
 		return err
 	}
-	edits, err := selectionEdits(f.skips, f.onlys, f.unskips)
+	edits, err := selectionEdits(f.skips, f.onlys, f.unskips, f.exact)
 	if err != nil {
 		return err
+	}
+	if f.exact && len(f.onlys) == 0 {
+		run := runWithout(cmd, append(slices.Clone(f.edit), args...), "exact")
+		if len(edits) == 0 {
+			// --exact asks for an only: list; with no pick, the run without it takes the whole module,
+			// a no-op where a layer gives it already, so no hint would do what was meant.
+			if f.edit == nil && len(args) == 0 { // the example names the module an install needs
+				run = cmd.CommandPath() + " <module>" + strings.TrimPrefix(run, cmd.CommandPath())
+			}
+			return fmt.Errorf("--exact applies to --only, and none was given: name the components to keep, as in %s --only <kind>/<name> --exact", run)
+		}
+		return errs.WithHints(errors.New("--exact applies to --only"), run)
 	}
 	if f.global && len(edits) == 0 {
 		// The run without --global does all the run asked; without a module, no command does.
@@ -137,10 +180,28 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	if !fl.ask && len(args) == 0 {
 		return fl.missingArgument()
 	}
+	fl.answers, fl.overrides = map[whereKey]engine.WhereChoice{}, map[string]string{}
+	fl.where = a.askWhere(p, fl.answers)
 	if err := fl.expandMarkets(); err != nil {
 		return err
 	}
-	return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, args, fl.run())
+	// What the run fetches stays out of the cache until Apply (cherry-pick design §7). The run is
+	// closed on every path, which drops whatever Apply did not commit.
+	if fl.staged, err = eng.StageInstall(); err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := fl.staged.Close(); cerr != nil {
+			err = errors.Join(err, cerr)
+		}
+	}()
+	return tagRefHint(strings.Fields(cmd.CommandPath()), cmd, fl.hintArgs(args), fl.run())
+}
+
+// hintArgs is args, module arguments of the run, as a hint repeating the run gives them: after the
+// profile's name for lola profile <name> --edit.
+func (fl *installFlow) hintArgs(args []string) []string {
+	return append(slices.Clone(fl.f.edit), args...)
 }
 
 // expandMarkets replaces each argument that means an entry of your marketplaces with that
@@ -190,7 +251,7 @@ func (fl *installFlow) expandMarkets() error {
 		return errors.New("--ref and --path apply to a single source, and you picked more than one entry")
 	}
 	if fl.f.path != "" && slices.ContainsFunc(out, func(a string) bool { return strings.HasPrefix(a, "@") }) {
-		return errs.WithHints(errors.New("--path does not apply to a marketplace entry: its catalog gives the path"), runWithout(fl.cmd, out, "path"))
+		return errs.WithHints(errors.New("--path does not apply to a marketplace entry: its catalog gives the path"), runWithout(fl.cmd, fl.hintArgs(out), "path"))
 	}
 	fl.args = out
 	return nil
@@ -250,7 +311,7 @@ func (fl *installFlow) bareNames(listed map[string][]engine.MarketOffer) error {
 	}
 	var hints []string
 	for _, run := range runs {
-		hints = append(hints, runWithout(fl.cmd, run, "path"))
+		hints = append(hints, runWithout(fl.cmd, fl.hintArgs(run), "path"))
 	}
 	return errs.WithHints(errors.New(msg), hints...)
 }
@@ -359,6 +420,20 @@ func (fl *installFlow) run() error {
 		}
 		var err error
 		if spec, err = fl.spec(); err != nil {
+			switch {
+			case !errors.Is(err, ErrAborted) || fl.f.keep == nil:
+			case fl.f.create: // a new profile, nothing picked for it: made empty
+				return fl.a.makeProfile(fl.cmd, fl.eng, engine.MakeRequest{Scope: fl.scopes[0].Scope, Name: fl.f.profile, Target: fl.target(),
+					Options: engine.Options{DryRun: fl.f.dry, Display: outputFlags(fl.cmd)}})
+			case len(fl.dropped()) > 0: // the page only unticked: nothing to install
+				gone, err := fl.askDrop(fl.dropped())
+				if err != nil {
+					return err
+				}
+				return fl.removeDropped(nil, gone)
+			default: // only modules your cache lacks were kept, or none was picked: nothing changes
+				return fl.unchanged()
+			}
 			return err
 		}
 		if !fl.reviews() {
@@ -372,15 +447,33 @@ func (fl *installFlow) run() error {
 		if err != nil {
 			return err
 		}
+		if !changed && fl.f.keep != nil && len(fl.dropped()) > 0 { // what was kept is as it was: only the removal is left
+			gone, err := fl.askDrop(fl.dropped())
+			if err != nil {
+				return err
+			}
+			return fl.removeDropped(nil, gone)
+		}
 		if !changed {
-			fmt.Fprintln(fl.cmd.OutOrStdout(), fl.a.style(fl.cmd).ok("already up to date"))
+			s := fl.a.style(fl.cmd)
+			said := false
+			for _, name := range fl.modules { // an override answered, which writes nothing without a change, says so
+				if to, ok := fl.overrides[name]; ok {
+					fmt.Fprintln(fl.cmd.OutOrStdout(), s.info("nothing changed: "+untrusted.Text(name, untrusted.MaxName)+"'s picks are as they were, so "+to+
+						" gets no entry of its own (an override is written only with a change)"))
+					said = true
+				}
+			}
+			if !said {
+				fmt.Fprintln(fl.cmd.OutOrStdout(), s.ok("already up to date"))
+			}
 			return nil
 		}
 		// The review shows the findings a dry run of exactly this install reports (Plan 10 §5):
 		// it asks nothing and writes nothing.
 		dry := spec
 		dry.Options.DryRun = true
-		dry.Options.Rerun, dry.Options.Display = trustRun(fl.cmd, fl.args), outputFlags(fl.cmd)
+		dry.Options.Rerun, dry.Options.Display = trustRun(fl.cmd, fl.hintArgs(fl.args)), outputFlags(fl.cmd)
 		planned, err := fl.eng.InstallAll(fl.cmd.Context(), dry)
 		if err != nil {
 			return err
@@ -388,6 +481,14 @@ func (fl *installFlow) run() error {
 		var summary strings.Builder
 		fl.printSummary(&summary, spec, pv, planned.Findings)
 		fl.droppedModule, fl.droppedScope = 0, 0
+		if gone := fl.dropped(); fl.f.keep != nil && len(gone) > 0 { // the review lists the removal it leads to
+			plan, err := fl.dropPlan(gone)
+			if err != nil {
+				return err
+			}
+			summary.WriteString(plan)
+			fl.dropShown = true
+		}
 		// --force confirms the plan, as -y does (user decision, 2026-10-22).
 		if fl.f.yes || fl.f.force {
 			fmt.Fprint(fl.cmd.ErrOrStderr(), summary.String())
@@ -408,9 +509,12 @@ func (fl *installFlow) run() error {
 			break
 		}
 	}
-	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), trustRun(fl.cmd, fl.args)
+	gone, err := fl.askDrop(fl.dropped())
+	if err != nil {
+		return err
+	}
+	spec.Options.Receipt, spec.Options.Rerun = fl.a.receipt(fl.cmd, fl.f.trust, fl.f.yes), trustRun(fl.cmd, fl.hintArgs(fl.args))
 	fl.a.hookOptions(fl.cmd, &spec.Options)
-	spec.Options.Display = outputFlags(fl.cmd)
 	// The review, when there was one, already showed where each address resolved, before Apply.
 	if !fl.a.json && !fl.reviews() {
 		s := fl.a.style(fl.cmd)
@@ -429,14 +533,170 @@ func (fl *installFlow) run() error {
 	if err != nil {
 		return err
 	}
-	if saved := savedTo(res.Result); saved != "" {
+	// A profile the install wrote has its write line; selections.yaml has none.
+	if saved := savedTo(res.Result); saved != "" && !slices.ContainsFunc(res.Edits, func(ed engine.Edit) bool { return ed.Path == untrusted.Text(saved, len(saved)) }) {
 		fmt.Fprintln(fl.cmd.ErrOrStderr(), "→ saved to "+untrusted.Text(saved, untrusted.MaxName))
+	}
+	if fl.f.keep != nil {
+		return fl.removeDropped(res, gone)
 	}
 	eq := []string{}
 	if fl.reviews() {
 		eq = fl.equivalents(spec)
 	}
 	return fl.a.emit(fl.cmd, func(w io.Writer, s style) { printInstall(w, s, res) }, installOutput{InstallResult: res, EquivalentCommands: eq})
+}
+
+// dropped is what lola profile --edit's page unticked: the profile's modules no longer picked.
+func (fl *installFlow) dropped() []string {
+	var out []string
+	for _, m := range fl.f.keep {
+		if !slices.Contains(fl.modules, m) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// askDrop asks once whether to remove gone, the modules unticked, from the profile (cherry-pick
+// design §4.3), after showing what the removal does (dropPlan) unless the review did; -y and
+// --force answer yes, and No keeps them (none is removed).
+func (fl *installFlow) askDrop(gone []string) ([]string, error) {
+	if len(gone) == 0 {
+		return gone, nil
+	}
+	if !fl.dropShown {
+		plan, err := fl.dropPlan(gone)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprint(fl.cmd.ErrOrStderr(), plan)
+	}
+	if fl.f.yes || fl.f.force {
+		return gone, nil
+	}
+	ok, err := fl.p.Confirm("Remove "+untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName)+" from "+fl.f.keepLabel+"?", Nav{})
+	if err != nil || !ok {
+		return nil, err
+	}
+	return gone, nil
+}
+
+// dropPlan is what removing gone, the modules unticked, from the profile does, for the review and
+// the question: lola uninstall --profile's plan at the run's first scope (the entry, and the files
+// it deletes where the profile is on), then each later scope the profile is on, which applies it
+// after, asking what it removes there.
+func (fl *installFlow) dropPlan(gone []string) (string, error) {
+	sc := fl.scopes[0].Scope
+	preview, err := fl.eng.Uninstall(fl.cmd.Context(), sc, gone, engine.Options{DryRun: true, Force: fl.f.force, Display: outputFlags(fl.cmd),
+		ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Target: fl.target(), AskWhere: fl.where, Then: choiceScopes(fl.scopes[1:])})
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintln(&b, "Remove "+untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName)+" from "+fl.f.keepLabel+", as you unticked "+destWhere(sc)+":")
+	printResult(&b, style{}, "", preview)
+	for _, c := range fl.scopes[1:] {
+		fmt.Fprintln(&b, "then apply the removal "+destWhere(c.Scope)+", where "+fl.f.keepLabel+" is on too, asking what it removes there")
+	}
+	return b.String(), nil
+}
+
+// unchanged ends lola profile --edit's page when it changes nothing: what was kept is as it was
+// and nothing was unticked. A module kept that your cache lacks is named, with the lola cache add
+// that puts it there, so its components can be picked on the page.
+func (fl *installFlow) unchanged() error {
+	var uncached, runs []string
+	for _, m := range fl.f.keep {
+		if slices.Contains(fl.modules, m) && fl.choices.Module(m) == nil {
+			uncached = append(uncached, m)
+			if run := fl.f.keepAdd[m]; run != "" {
+				runs = append(runs, run)
+			}
+		}
+	}
+	notes := []string{fl.f.keepLabel + " is unchanged"}
+	if len(uncached) > 0 {
+		notes[0] += ": " + untrusted.Text(strings.Join(uncached, ", "), untrusted.MaxName) + " is not in your cache, so its entry stays as it is"
+		for _, run := range runs {
+			notes = append(notes, "to pick its components, add it to your cache, then edit again: "+run)
+		}
+	}
+	return fl.a.emit(fl.cmd, func(w io.Writer, s style) {
+		for _, n := range notes {
+			fmt.Fprintln(w, s.info(n))
+		}
+	}, map[string]any{"notices": notes})
+}
+
+// destWhere names a scope as a sentence does: "at user scope", or "in project (<root>)".
+func destWhere(sc engine.Scope) string {
+	if sc.ProjectDir == "" {
+		return "at user scope"
+	}
+	return "in " + destLabel(sc)
+}
+
+// removeDropped ends lola profile --edit's page: gone, the modules unticked and confirmed, are
+// removed from the profile at the run's first scope as lola uninstall --profile removes them (the
+// entries, and their files where it is on), after res, the install of what was picked (nil when
+// none was); each later scope the profile is on then applies the file as lola sync does, its
+// removals asked (-y and --force answer yes), and under -n is named as one the run would apply. Everything is
+// printed, a module unticked and kept said kept. A removal that fails after the install says what
+// the install did and hints the removal; a later scope that fails says what was written and hints
+// its sync.
+func (fl *installFlow) removeDropped(res *engine.InstallResult, gone []string) error {
+	var removed *engine.Result
+	also, notes := []engine.ScopeSync{}, []string{}
+	sc, label := fl.scopes[0].Scope, untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName)
+	if kept := fl.dropped(); len(gone) == 0 && len(kept) > 0 {
+		notes = append(notes, "kept "+untrusted.Text(strings.Join(kept, ", "), untrusted.MaxName)+" in "+fl.f.keepLabel)
+	}
+	if len(gone) > 0 {
+		var err error
+		removed, err = fl.eng.Uninstall(fl.cmd.Context(), sc, gone, engine.Options{DryRun: fl.f.dry, Force: fl.f.force, Display: outputFlags(fl.cmd),
+			ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Target: fl.target(), AskWhere: fl.where, Then: choiceScopes(fl.scopes[1:])})
+		if err != nil && res != nil {
+			return errs.WithHints(fmt.Errorf("the edit added what you picked, but did not remove %s: %w", label, err),
+				"remove them: "+fl.eng.Command(sc, "uninstall", append(slices.Clone(gone), "--profile", fl.f.profile)...))
+		}
+		if err != nil {
+			return err
+		}
+		var asked bool
+		_, _, confirm := fl.a.syncQuestions(fl.cmd, syncFlags{yes: fl.f.yes}, false, "Remove these there too? No leaves that scope as it was", nil, &asked)
+		for _, c := range fl.scopes[1:] {
+			if fl.f.dry { // nothing was written for that scope's sync to read
+				notes = append(notes, "would then apply the removal "+destWhere(c.Scope)+", where "+fl.f.keepLabel+" is on too")
+				continue
+			}
+			r, err := fl.eng.Sync(fl.cmd.Context(), engine.SyncRequest{Scope: c.Scope, ConfirmRemovals: confirm, Display: outputFlags(fl.cmd),
+				Options: engine.Options{Force: fl.f.force, ForceRun: forceRun(fl.cmd, fl.hintArgs(nil)), Trust: fl.f.trust, Display: outputFlags(fl.cmd)}})
+			if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
+				err = errors.New("you declined its removals there")
+			}
+			if err != nil {
+				return errs.WithHints(fmt.Errorf("%w; %s was removed from %s and applied %s, not %s", err, label, fl.f.keepLabel, destWhere(sc), destWhere(c.Scope)),
+					"apply it there: "+fl.eng.SyncCommand(c.Scope))
+			}
+			also = append(also, engine.ScopeSync{Scope: c.Scope, SyncResult: r})
+		}
+	}
+	return fl.a.emit(fl.cmd, func(w io.Writer, s style) {
+		if res != nil {
+			printInstall(w, s, res)
+		}
+		if removed != nil {
+			printResult(w, s, "uninstalled", removed)
+		}
+		for _, a := range also {
+			fmt.Fprintln(w, destLabel(a.Scope)+":")
+			printSync(w, s, manifestName(a.Scope), a.SyncResult, nil, "")
+		}
+		for _, n := range notes {
+			fmt.Fprintln(w, s.info(n))
+		}
+	}, map[string]any{"install": res, "uninstall": removed, "also": also, "notices": notes})
 }
 
 // answer fills every answer the pass lacks, in the flow's order, and returns the stage whose
@@ -579,7 +839,7 @@ func (fl *installFlow) bySource(renamed *engine.RenamedEntryError) (string, bool
 	for _, a := range renamed.Source[1:] {
 		tail = append(tail, untrusted.Text(a, untrusted.MaxName))
 	}
-	return strings.TrimSpace(runWithout(fl.cmd, args, "ref", "path") + " " + errs.ShellJoin(tail)), true
+	return strings.TrimSpace(runWithout(fl.cmd, fl.hintArgs(args), "ref", "path") + " " + errs.ShellJoin(tail)), true
 }
 
 // reviews reports whether the run ends with the review (Plan 10 §5): on a terminal, whenever lola
@@ -631,7 +891,7 @@ func (fl *installFlow) componentFields() int {
 		if m := fl.choices.Module(name); m != nil {
 			_, pages := fl.componentPages(m)
 			for _, dests := range pages {
-				n += fl.page(m, dests[0].Scope.Key(), name).lists()
+				n += fl.page(m, dests[0].Scope.Key(), name, nil).lists()
 			}
 		}
 	}
@@ -679,9 +939,16 @@ func destLabel(sc engine.Scope) string {
 	return sc.Kind.String() + " (" + untrusted.Text(sc.ProjectDir, untrusted.MaxName) + ")"
 }
 
-// ensureScopes resolves the scopes (§5.1), asking on a terminal when no flag gives them.
+// ensureScopes resolves the scopes (§5.1), asking on a terminal when no flag gives them, then
+// prints their context lines (spec 2026-10-29 §3.8).
 func (fl *installFlow) ensureScopes() error {
 	if fl.scopes != nil {
+		return nil
+	}
+	if fl.f.scopes != nil { // lola profile --edit asks no scope
+		fl.scopes = fl.f.scopes
+		t := fl.target()
+		fl.a.printContext(fl.cmd, fl.eng, choiceScopes(fl.scopes), &t)
 		return nil
 	}
 	req, err := fl.a.scopeRequest(fl.cwd, fl.ask)
@@ -696,12 +963,9 @@ func (fl *installFlow) ensureScopes() error {
 	fl.resolution = res
 	delete(fl.shown, ReviewScope)
 	if !res.Pick {
-		for _, c := range res.Scopes {
-			if c.Source == engine.SourceDiscovered {
-				fmt.Fprintf(fl.cmd.ErrOrStderr(), "scope: project (found .lola/ at %s)\n", untrusted.Text(c.Scope.ProjectDir, untrusted.MaxName))
-			}
-		}
 		fl.scopes = res.Scopes
+		t := fl.target()
+		fl.a.printContext(fl.cmd, fl.eng, choiceScopes(fl.scopes), &t)
 		return nil
 	}
 	entries, scopes, err := fl.picker.pick(res, ScopeStep{Question: "Install where?", Preselect: fl.prevScopes, Step: fl.steps(ReviewScope),
@@ -710,6 +974,8 @@ func (fl *installFlow) ensureScopes() error {
 		return err
 	}
 	fl.shown[ReviewScope], fl.prevScopes, fl.scopes = true, entries, scopes
+	t := fl.target()
+	fl.a.printContext(fl.cmd, fl.eng, choiceScopes(fl.scopes), &t)
 	fl.done++
 	for key, byMod := range fl.picks {
 		if !slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key }) {
@@ -748,8 +1014,12 @@ func (fl *installFlow) ensureChoices() error {
 	if !fl.ask || fl.choices != nil {
 		return nil
 	}
-	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests(), DryRun: fl.f.dry,
-		Display: outputFlags(fl.cmd)})
+	req := engine.ChoicesRequest{Cwd: fl.cwd, Scopes: fl.scopes, Modules: fl.requests(), DryRun: fl.f.dry,
+		Display: outputFlags(fl.cmd), Run: fl.staged, Target: fl.target()}
+	if fl.f.edit != nil { // lola profile --edit asks which file it writes before any page (spec 2026-10-29 S2)
+		req.AskWhere = fl.where
+	}
+	ch, err := fl.eng.InstallChoices(fl.cmd.Context(), req)
 	fl.choices = ch
 	if err != nil {
 		return err
@@ -805,9 +1075,15 @@ func (fl *installFlow) ensureModules() error {
 	for _, name := range fl.prevMods {
 		keys = append(keys, cmp.Or(fl.marketNames[name], name))
 	}
+	if fl.prevMods == nil && fl.f.keep != nil {
+		keys = fl.f.keep // the profile's own, ticked
+	}
 	step := ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: keys}
 	for {
 		step.Step, step.Nav = fl.steps(ReviewModules), fl.nav(ReviewModules)
+		if fl.f.keep != nil {
+			step.Title, step.None = fl.f.keepLabel+" › modules", true
+		}
 		ans, err := fl.p.Modules(step)
 		if err != nil {
 			return err
@@ -882,7 +1158,7 @@ func (fl *installFlow) ensureModules() error {
 		}
 		fl.shown[ReviewModules] = true
 		fl.done += moduleFields(step)
-		fl.modules = names
+		fl.modules = append([]string{}, names...) // none is an answer on lola profile --edit's page
 		for _, addr := range fl.marketPicks {
 			for name, a := range fl.marketNames {
 				if a == addr {
@@ -983,9 +1259,15 @@ func (fl *installFlow) dropRemovedPicks() {
 }
 
 // moduleOptions labels the cached modules: source · name — description, marked (installed)
-// when installed in a chosen scope.
+// when installed in a chosen scope; on lola profile --edit's page, first the profile's modules
+// your cache does not hold, so unticking one is a choice made in view.
 func (fl *installFlow) moduleOptions() []ModuleOption {
 	var out []ModuleOption
+	for _, name := range fl.f.keep {
+		if fl.choices.Module(name) == nil {
+			out = append(out, ModuleOption{Name: name, Label: untrusted.Text(name, untrusted.MaxName) + " (in " + fl.f.keepLabel + "; not in your cache)"})
+		}
+	}
 	for _, m := range fl.choices.Modules {
 		if _, picked := fl.marketNames[m.Name]; picked {
 			continue // offered in its marketplace's group, as picked
@@ -1024,7 +1306,7 @@ func (fl *installFlow) ensureAssistants() error {
 	withTarget := func(ids []string) []string {
 		var out []string
 		for _, id := range ids {
-			out = append(out, runWithout(fl.cmd, fl.args, consentFlags...)+" -t "+id)
+			out = append(out, runWithout(fl.cmd, fl.hintArgs(fl.args), consentFlags...)+" -t "+id)
 		}
 		return out
 	}
@@ -1034,20 +1316,20 @@ func (fl *installFlow) ensureAssistants() error {
 			answer[name], reasons[name] = fl.f.targets, "from -t"
 			continue
 		}
-		choice, err := fl.eng.DefaultTargets(c.Scope, fl.requests())
+		choice, err := fl.eng.DefaultTargets(c.Scope, fl.requests(), fl.target())
 		if err != nil {
 			return fl.eng.CoachUnresolved(err, []engine.Scope{c.Scope}, fl.f.dry, outputFlags(fl.cmd))
 		}
-		fixed := choice.Manifest
+		fixed, from := choice.Manifest, choice.From
 		if fl.choices != nil {
 			for _, s := range fl.choices.Scopes {
 				if s.Scope.Key() == name {
-					fixed, untrustedTargets = s.FixedTargets, union(untrustedTargets, s.UntrustedTargets)
+					fixed, from, untrustedTargets = s.FixedTargets, s.TargetsFrom, union(untrustedTargets, s.UntrustedTargets)
 				}
 			}
 		}
 		if len(fixed) > 0 {
-			answer[name], reasons[name] = nil, "from "+manifestName(c.Scope)
+			answer[name], reasons[name] = nil, "from "+cmp.Or(from, manifestName(c.Scope))
 			continue
 		}
 		inst, marked := choice.Installed, choice.SetUp
@@ -1152,7 +1434,11 @@ func (fl *installFlow) ensureComponents() error {
 			continue
 		}
 		for _, dests := range pages {
-			title := name
+			prefix, err := fl.targetOf(m, dests)
+			if err != nil {
+				return err
+			}
+			title := prefix + name
 			if len(dests) == 1 && len(fl.scopes) > 1 {
 				title += " — " + destLabel(dests[0].Scope)
 			}
@@ -1192,7 +1478,9 @@ func (fl *installFlow) ensureComponents() error {
 func (fl *installFlow) askPage(m *engine.ModuleChoice, dests []engine.ScopeChoice, title string) (picked []string, ok bool, err error) {
 	key := dests[0].Scope.Key()
 	fl.asking = m.Name
-	pg := fl.page(m, key, title)
+	// A module whose mentions cannot be read gets no labels; the engine's own scan warns about it.
+	mentions, _ := fl.choices.Mentions(m.Name)
+	pg := fl.page(m, key, title, mentions)
 	pg.Step, pg.Nav = fl.steps(ReviewComponents), fl.nav(ReviewComponents)
 	fl.done += pg.lists()
 	for {
@@ -1218,7 +1506,7 @@ func (fl *installFlow) askPage(m *engine.ModuleChoice, dests []engine.ScopeChoic
 // componentPages is what the component step asks about m: the destinations whose picks are still
 // open (missing), and the pages that ask them, nil when no page does: no component can be picked
 // there, or m has one component and no exclusion. One page asks every destination, or one page
-// each when their preselections or rules differ.
+// each when their preselections, rules or only: lists (the page's footer) differ.
 func (fl *installFlow) componentPages(m *engine.ModuleChoice) (missing []engine.ScopeChoice, pages [][]engine.ScopeChoice) {
 	for _, c := range fl.scopes {
 		if _, ok := fl.picks[c.Scope.Key()][m.Name]; !ok {
@@ -1239,7 +1527,8 @@ func (fl *installFlow) componentPages(m *engine.ModuleChoice) (missing []engine.
 	}
 	first := missing[0].Scope.Key()
 	if slices.ContainsFunc(missing[1:], func(d engine.ScopeChoice) bool {
-		return !slices.Equal(fl.preselected(m, first), fl.preselected(m, d.Scope.Key())) || fl.rulesOff(m, first) != fl.rulesOff(m, d.Scope.Key())
+		return !slices.Equal(fl.preselected(m, first), fl.preselected(m, d.Scope.Key())) || fl.rulesOff(m, first) != fl.rulesOff(m, d.Scope.Key()) ||
+			m.Scope(first).OnlyFrom != m.Scope(d.Scope.Key()).OnlyFrom
 	}) {
 		for _, d := range missing {
 			pages = append(pages, []engine.ScopeChoice{d})
@@ -1250,12 +1539,15 @@ func (fl *installFlow) componentPages(m *engine.ModuleChoice) (missing []engine.
 }
 
 // kindTitles name the kinds on a component page.
-var kindTitles = map[string]string{config.KindSkill: "Skills", config.KindCommand: "Commands", config.KindAgent: "Agents",
-	config.KindMCP: "MCP servers", config.KindRule: "Rules"}
+var kindTitles = map[string]string{config.KindSkill: "skills", config.KindCommand: "commands", config.KindAgent: "agents",
+	config.KindMCP: "MCP servers", config.KindRule: "rules"}
 
 // page builds a module's component page for the destination key: one group per kind with a
-// count, current picks (or the preselection) selected, rules disabled when they are off.
-func (fl *installFlow) page(m *engine.ModuleChoice, key, title string) ComponentPage {
+// count, current picks (or the preselection) selected, rules disabled when they are off,
+// "(mentions N)" on a component that mentions N others (mentions; nil labels none), what leaves a
+// component out ("(not in only:)", "(skipped in …)"), "(new)" on one the version adds over the one
+// installed, and in the footer the profile that provides the module and the only: list in force.
+func (fl *installFlow) page(m *engine.ModuleChoice, key, title string, mentions engine.Mentions) ComponentPage {
 	pre := fl.preselected(m, key)
 	if prev, ok := fl.prevPicks[key][m.Name]; ok {
 		pre = prev
@@ -1275,8 +1567,17 @@ func (fl *installFlow) page(m *engine.ModuleChoice, key, title string) Component
 			if c.RunsCommand {
 				label += " (runs a command)"
 			}
-			if slices.Contains(ms.Excluded, c.String()) {
-				label += " (skipped in selections.yaml)"
+			if n := len(mentions[c.Component]); n > 0 {
+				label += fmt.Sprintf(" (mentions %d)", n)
+			}
+			switch {
+			case slices.Contains(ms.NotInOnly, c.String()):
+				label += " (not in only:)" // the footer names the list
+			case slices.Contains(ms.Excluded, c.String()):
+				label += " (skipped in " + ms.ExcludedIn + ")"
+			}
+			if slices.Contains(ms.New, c.String()) {
+				label += " (new)"
 			}
 			g.Options = append(g.Options, ComponentOption{ID: c.String(), Label: label, Selected: slices.Contains(pre, c.String())})
 		}
@@ -1292,9 +1593,17 @@ func (fl *installFlow) page(m *engine.ModuleChoice, key, title string) Component
 		}
 		pg.Groups = append(pg.Groups, g)
 	}
+	var footer []string
 	if m.RuntimeHooks > 0 {
-		pg.Footer = fmt.Sprintf("Runtime hooks: %d (you will be asked before they are installed)", m.RuntimeHooks)
+		footer = append(footer, fmt.Sprintf("Runtime hooks: %d (you will be asked before they are installed)", m.RuntimeHooks))
 	}
+	if ms.Provider != "" {
+		footer = append(footer, m.Name+" comes from "+ms.Provider+" here")
+	}
+	if ms.OnlyFrom != "" {
+		footer = append(footer, "only: in "+ms.OnlyFrom+" — components a new version adds are not installed")
+	}
+	pg.Footer = strings.Join(footer, "\n")
 	return pg
 }
 
@@ -1336,13 +1645,114 @@ func (fl *installFlow) flagScript(given string) engine.FlagScript {
 	return engine.FlagScript{Given: given, Path: filepath.Join(fl.cwd, given)}
 }
 
+// targetOf is the file the install of m writes at dests, as a page title starts with it: "profile
+// go › ", "default (base) › ", "project.yml › " (spec 2026-10-29 S2, §8.9); "" when the
+// destinations' differ. lola profile --edit and lola install --profile decide the file before the
+// page: --edit asked which file it writes with the choices (ensureChoices), --profile names it,
+// and an inherited m asks the inherited-edit question here (§3.6); each override answered is
+// recorded in fl.overrides. A plain lola install names only a file no later question can change:
+// "" while a remote profile or a bundle is on, or for m inherited without --override.
+func (fl *installFlow) targetOf(m *engine.ModuleChoice, dests []engine.ScopeChoice) (string, error) {
+	label := ""
+	for i, d := range dests {
+		key := d.Scope.Key()
+		var w engine.ContextLayer
+		if fl.f.edit != nil || fl.f.profile != "" {
+			var err error
+			if w, err = fl.choices.Place(d.Scope, m.Name, engine.Options{Target: fl.target(), AskWhere: fl.where}); err != nil {
+				return "", err
+			}
+		} else {
+			k := slices.IndexFunc(fl.scopes, func(c engine.ScopeChoice) bool { return c.Scope.Key() == key })
+			if k < 0 || k >= len(fl.a.contexts) || fl.a.contexts[k].WritesTo == nil || m.Scope(key).Inherited && !fl.f.override {
+				return "", nil
+			}
+			w = *fl.a.contexts[k].WritesTo
+		}
+		l := "profile " + w.Label
+		if w.Kind == "base" {
+			l = w.Label
+			if d.Scope.Kind == target.User {
+				l += " (base)"
+			}
+		}
+		if m.Scope(key).Inherited && (fl.f.override || fl.answers[whereKey{key, m.Name}].Override) {
+			fl.overrides[m.Name] = l
+		}
+		if i > 0 && l != label {
+			label = "" // asked on: each destination's question comes before the page
+			continue
+		}
+		label = l
+	}
+	if label == "" {
+		return "", nil
+	}
+	return label + " › ", nil
+}
+
+// askWhere is the run's AskWhere (spec 2026-10-29 §3.6): when p, the run's prompter, is on a
+// terminal, and not under --json, the where-picker, each question asked once per run (the review's
+// dry run and the apply ask alike), each answer recorded by destination and module in byModule
+// when it is not nil; nil otherwise, so the engine refuses with the flag forms.
+func (a *app) askWhere(p Prompter, byModule map[whereKey]engine.WhereChoice) func(engine.WhereQuestion) (engine.WhereChoice, error) {
+	if a.json || !p.Interactive() {
+		return nil
+	}
+	answered := map[string]engine.WhereChoice{}
+	return func(q engine.WhereQuestion) (engine.WhereChoice, error) {
+		key := q.Scope.Key() + "\x00" + q.Module + "\x00" + q.Title
+		if c, ok := answered[key]; ok {
+			return c, nil
+		}
+		labels := make([]string, 0, len(q.Choices))
+		for _, c := range q.Choices {
+			labels = append(labels, c.Label)
+		}
+		i, err := p.Where(WhereStep{Title: q.Title, Options: labels})
+		if err != nil {
+			return engine.WhereChoice{}, err
+		}
+		answered[key] = q.Choices[i]
+		if byModule != nil {
+			byModule[whereKey{q.Scope.Key(), q.Module}] = q.Choices[i]
+		}
+		return q.Choices[i], nil
+	}
+}
+
+// target is the run's TargetRequest (spec 2026-10-29 §3.5): --profile and --override, the run
+// without them as each hint's base, and the run at user scope for --profile default in a project;
+// for lola profile --edit, editTarget's.
+func (fl *installFlow) target() engine.TargetRequest {
+	if fl.f.edit != nil {
+		t := editTarget(fl.cmd, fl.f.edit, fl.args, fl.f.create)
+		t.Profile, t.Override, t.Catalog, t.CatalogPartial = fl.f.profile, fl.f.override, fl.f.catalog, fl.f.catalogPartial
+		return t
+	}
+	without := append([]string{"profile", "override"}, consentFlags...)
+	return engine.TargetRequest{Profile: fl.f.profile, Override: fl.f.override,
+		Rerun: func(extra ...string) string {
+			return strings.Join(append([]string{runWithout(fl.cmd, fl.args, without...)}, extra...), " ")
+		},
+		UserRun: func() string {
+			return runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"
+		}, Again: rerunFlags(fl.cmd, 0)}
+}
+
 // spec builds the install from the answers.
 func (fl *installFlow) spec() (engine.InstallSpec, error) {
-	spec := engine.InstallSpec{Cwd: fl.cwd, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
-		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.args), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
-		PostInstall: fl.flagScript(fl.f.postInstall)}, UserRun: runWithout(fl.cmd, fl.args, slices.Concat(scopeFlags, consentFlags)...) + " --user"}
+	t := fl.target()
+	spec := engine.InstallSpec{Cwd: fl.cwd, Staged: fl.staged, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
+		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.hintArgs(fl.args)), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
+		PostInstall: fl.flagScript(fl.f.postInstall), Display: outputFlags(fl.cmd), Target: t, AskWhere: fl.where},
+		WithMentions: fl.f.withMentions, NameMentions: true, UserRun: t.UserRun()}
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules
+	}
+	if fl.f.edit != nil { // a later scope's sync asks its removals as lola sync does (engine.InstallSpec.ConfirmRemovals)
+		var asked bool
+		_, _, spec.ConfirmRemovals = fl.a.syncQuestions(fl.cmd, syncFlags{yes: fl.f.yes}, false, "Remove these too? No writes nothing", nil, &asked)
 	}
 	for _, c := range fl.scopes {
 		key := c.Scope.Key()
@@ -1364,6 +1774,9 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	}
 	if len(fl.args) == 0 {
 		for _, name := range fl.modules {
+			if slices.Contains(fl.f.keep, name) && fl.choices.Module(name) == nil && fl.marketNames[name] == "" {
+				continue // the profile's, not in your cache: its entry stays as it is
+			}
 			req := engine.InstallRequest{Arg: name}
 			if addr, ok := fl.marketNames[name]; ok {
 				req = engine.InstallRequest{Arg: addr, Version: &fl.marketPins[slices.Index(fl.marketPicks, addr)]}

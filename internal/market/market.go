@@ -58,6 +58,8 @@ type Catalog struct {
 // Kind is the short, countable form of the reason ("npm source") that a fetch's summary groups.
 type Skip struct {
 	Name, Reason, Kind string
+	// Host is the ssh host name an "ssh source" skip would be lifted by allowing; "" otherwise.
+	Host string
 }
 
 // kindPlurals is each Skip.Kind for a count of more than one.
@@ -198,6 +200,11 @@ func FreeName(base string, start int, taken func(string) bool) string {
 	}
 	return ""
 }
+
+// CatalogFallbackFiles are read only when none of CatalogFiles is at the root: the original
+// lola's marketplace file. A root lola.yml is also a module manifest, so it never competes with
+// a real catalog.
+func CatalogFallbackFiles() []string { return []string{"lola.yml", "lola.yaml"} }
 
 // CatalogFiles is where lola looks for a catalog at a marketplace's root, in order (Plan 6c §6.2
 // step 3; the Python lola's lookup minus its single-YAML guess): Claude Code's file, then the

@@ -68,17 +68,17 @@ func localSettingsExposed(ctx context.Context, dir string) string {
 // projectLedger is a project's ledger relative to its root, as git pathspecs name it.
 const projectLedger = ".lola/lock.json"
 
-// ledgerTracked reports whether git tracks the project's ledger (Plan 6a §9.3 step 1): a
-// cloned lock.json could claim committed files, which a render would then remove. It is false
-// outside a git work tree. The check runs through source.GitCommand's hardening; git missing
-// from PATH is an error wrapping exec.ErrNotFound, and any other failure is an error too, so a
-// caller refusing a tracked ledger fails closed.
-func ledgerTracked(ctx context.Context, root string) (bool, error) {
+// gitTracked reports whether git tracks rel, a slash-separated path relative to root, in the
+// project at root: false outside a git work tree. The check runs through source.GitCommand's
+// hardening; git missing from PATH is an error wrapping exec.ErrNotFound, and any other failure is
+// an error too, so a caller refusing a tracked file fails closed. A cloned lock.json
+// (projectLedger) could claim committed files, which a sync would then remove (Plan 6a §9.3 step 1).
+func gitTracked(ctx context.Context, root, rel string) (bool, error) {
 	inTree, err := source.InWorkTree(root)
 	if err != nil || !inTree {
 		return false, err
 	}
-	out, err := source.GitCommand(ctx, root, "ls-files", "--error-unmatch", "--", projectLedger).CombinedOutput()
+	out, err := source.GitCommand(ctx, root, "ls-files", "--error-unmatch", "--", rel).CombinedOutput()
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() == 1 {
 		return false, nil
 	}
@@ -86,8 +86,9 @@ func ledgerTracked(ctx context.Context, root string) (bool, error) {
 		if len(out) > 0 {
 			err = fmt.Errorf("%w: %s", err, untrusted.Text(strings.TrimSpace(string(out)), untrusted.MaxName))
 		}
-		return false, errs.WithHints(fmt.Errorf("lola could not check whether git tracks %s: %w", projectLedger, err),
-			"lola asks git whether it tracks "+projectLedger+": make git status work in this repository, then run lola again")
+		name := untrusted.Text(rel, untrusted.MaxName)
+		return false, errs.WithHints(fmt.Errorf("lola could not check whether git tracks %s: %w", name, err),
+			"lola asks git whether it tracks "+name+": make git status work in this repository, then run lola again")
 	}
 	return true, nil
 }
@@ -98,7 +99,7 @@ func (e *Engine) refuseTrackedLedger(ctx context.Context, sc Scope, res *Result)
 	if sc.Kind != target.Project {
 		return nil
 	}
-	tracked, err := ledgerTracked(ctx, sc.ProjectDir)
+	tracked, err := gitTracked(ctx, sc.ProjectDir, projectLedger)
 	if errors.Is(err, exec.ErrNotFound) {
 		res.Notices = append(res.Notices, Notice{Level: LevelWarn, Text: "git is not on PATH, so lola could not check that git does not track " + projectLedger})
 		return nil

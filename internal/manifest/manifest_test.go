@@ -2,7 +2,6 @@ package manifest_test
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
@@ -27,7 +27,7 @@ var _ = Describe("manifest", func() {
 		Expect(m).To(Equal(&manifest.Manifest{Version: 1}))
 	})
 
-	It("entry vars refuse bad shapes at decode in project.yml, user.yml and profiles, naming the line", func() {
+	It("entry vars refuse bad shapes at decode in project.yml and profiles, naming the line", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		entries := "version: 1\nmodules:\n  - name: a\n    source: ../a\n  - name: kit\n    source: ../kit\n    vars:\n"
 		Expect(os.WriteFile(path, []byte(entries+"      language: rust\n      strict: true\n      tools: [rg]\n"), 0o600)).To(Succeed())
@@ -52,24 +52,6 @@ var _ = Describe("manifest", func() {
 		m := &manifest.Manifest{Version: 1, Modules: []manifest.Entry{{Name: "a", Source: "../a"}}}
 		Expect(m.Find("a")).To(HaveField("Source", "../a"))
 		Expect(m.Find("nope")).To(BeNil())
-	})
-
-	It("user.yml refuses pre_install and post_install, naming the file and line", func() {
-		user := filepath.Join(filepath.Dir(path), "user.yml")
-		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
-		for key, content := range map[string]string{
-			"pre_install":  "version: 1\npre_install: /bin/pre.sh\n",
-			"post_install": "version: 1\nmodules: []\npost_install: /bin/post.sh\n",
-		} {
-			Expect(os.WriteFile(user, []byte(content), 0o600)).To(Succeed())
-			line := strings.Count(content[:strings.Index(content, key)], "\n") + 1
-			_, err := manifest.LoadUser(user)
-			Expect(err).To(MatchError(fmt.Sprintf("%s:%d: %s: user.yml takes no install scripts; your own go in config.yaml", user, line, key)))
-			Expect(errs.Hints(err)).To(Equal([]string{"move it to config.yaml as an absolute path or ~/…"}))
-			m, err := manifest.Load(user) // project.yml's reading takes them
-			Expect(err).NotTo(HaveOccurred())
-			Expect(m.ScriptLine(key)).To(Equal(line))
-		}
 	})
 
 	Describe("Edit", func() {
@@ -235,6 +217,28 @@ modules:
 			}
 		})
 
+		It("writes a profile entry's picks after its targets, and project.yml refuses them as unknown keys", func() {
+			const body = "version: 1\nmodules:\n  - name: kit # mine\n    source: https://example.com/kit.git\n    targets: [claude-code]\n    rules: false\n"
+			off := false
+			kit := manifest.Entry{Name: "kit", Source: "https://example.com/kit.git", Targets: []string{"claude-code"}, Rules: &off}
+			picked := kit
+			picked.Only, picked.Skip = []string{"skill/a", "skill/b"}, []string{"command/slow"}
+			var d yaml.Node
+			Expect(yaml.Unmarshal([]byte(body), &d)).To(Succeed())
+			out, err := manifest.EditDocument(&d, manifest.Change{Set: []manifest.Entry{picked}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(out)).To(Equal("version: 1\nmodules:\n  - name: kit # mine\n    source: https://example.com/kit.git\n    targets: [claude-code]\n" +
+				"    only: [skill/a, skill/b]\n    skip: [command/slow]\n    rules: false\n"))
+			Expect(yaml.Unmarshal(out, &d)).To(Succeed())
+			out, err = manifest.EditDocument(&d, manifest.Change{Set: []manifest.Entry{kit}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(out)).To(Equal(body), "an entry set without picks loses them")
+
+			write("version: 1\nmodules:\n  - name: kit\n    source: https://example.com/kit.git\n    only: [skill/a]\n")
+			_, err = manifest.Load(path)
+			Expect(err).To(MatchError(ContainSubstring("line 5: field only not found")))
+		})
+
 		It("never edits a file that does not load", func() {
 			write("version: 1\nmodules:\n  - name: kit\n    source: https://example.com/kit.git\n    ref: --upload-pack=x\n")
 			_, _, err := manifest.Edit(path, manifest.Change{Set: []manifest.Entry{{Name: "other", Source: "../other"}}})
@@ -270,7 +274,7 @@ modules:
 		dir := filepath.Join(filepath.Dir(filepath.Dir(path)), "evil\x1b[31m\u202eproj", ".lola")
 		shown := strings.NewReplacer("\x1b", "?", "\u202e", "?").Replace(dir)
 		Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
-		project, user := filepath.Join(dir, "project.yml"), filepath.Join(dir, "user.yml")
+		project := filepath.Join(dir, "project.yml")
 		refusals := map[string]string{
 			"version: 9\n":                  "written by a newer lola",
 			"version: 1\nbogus: 1\n":        "field bogus not found",
@@ -291,13 +295,9 @@ modules:
 			_, err := manifest.Load(project)
 			check(err, want, content)
 		}
-		Expect(os.WriteFile(user, []byte("version: 1\npre_install: /bin/pre.sh\n"), 0o600)).To(Succeed())
-		_, err := manifest.LoadUser(user)
-		check(err, "user.yml takes no install scripts", "user.yml")
-
 		Expect(os.Remove(project)).To(Succeed())
 		Expect(os.Mkdir(project, 0o755)).To(Succeed())
-		_, err = manifest.Load(project)
+		_, err := manifest.Load(project)
 		check(err, "is not a regular file", "a directory")
 		Expect(os.Remove(project)).To(Succeed())
 

@@ -65,7 +65,7 @@ func readJSON(dir, rel string, v any) error {
 	}
 	if err := json.Unmarshal(b, v); err != nil {
 		if ute, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
-			return errs.WithHints(typeErr(shown, ute), "fix the JSON in "+shown+" so it matches the layout lola documents")
+			return errs.WithHints(typeErr(shown, b, ute), "fix the JSON in "+shown+" so it matches the layout lola documents")
 		}
 		return errs.WithHints(fmt.Errorf("%s: %s", shown, untrusted.Text(strings.TrimPrefix(err.Error(), "json: "), 2*untrusted.MaxName)),
 			"fix the JSON in "+shown+" so it matches the layout lola documents")
@@ -245,9 +245,11 @@ func plainNumbers(v any) (any, error) {
 	return v, nil
 }
 
-// typeErr words a value of the wrong JSON type without Go type names, which mean nothing to
-// the author of the file.
-func typeErr(shown string, e *json.UnmarshalTypeError) error {
+// typeErr words a value of the wrong JSON type in b without Go type names, which mean nothing to
+// the author of the file. It names the value by its JSON pointer (valuePointer), not by
+// e.Field, whose form depends on the Go release: Go 1.27's encoding/json, built on json/v2,
+// adds map keys and array indices that earlier releases leave out.
+func typeErr(shown string, b []byte, e *json.UnmarshalTypeError) error {
 	kind := "value"
 	switch e.Type.Kind() {
 	case reflect.Map, reflect.Struct:
@@ -262,8 +264,44 @@ func typeErr(shown string, e *json.UnmarshalTypeError) error {
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
 		kind = "number"
 	}
-	if e.Field == "" {
+	at := valuePointer(b, e.Offset)
+	if at == "" {
 		return fmt.Errorf("%s must be a JSON %s", shown, kind)
 	}
-	return fmt.Errorf("%s: %s must be a JSON %s", shown, untrusted.Text(e.Field, 2*untrusted.MaxName), kind)
+	return fmt.Errorf("%s: %s must be a JSON %s", shown, at, kind)
+}
+
+// valuePointer names the value whose first token ends at offset in b, a document checkJSONKeys
+// accepted, as a JSON pointer (jsonPointer), safe to print; "" for the top-level value.
+// UnmarshalTypeError.Offset is that end.
+func valuePointer(b []byte, offset int64) string {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber() // a number beyond float64, such as 1e400, would otherwise end the walk
+	var stack []*jsonLevel
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return ""
+		}
+		if n := len(stack); n > 0 && stack[n-1].wantKey && tok != json.Delim('}') {
+			key, _ := tok.(string) // the decoder returns only a key or '}' here
+			stack[n-1].key, stack[n-1].wantKey = key, false
+			continue
+		}
+		if dec.InputOffset() >= offset {
+			if len(stack) == 0 {
+				return ""
+			}
+			return jsonPointer(stack)
+		}
+		switch tok {
+		case json.Delim('{'), json.Delim('['):
+			object := tok == json.Delim('{')
+			stack = append(stack, &jsonLevel{object: object, wantKey: object})
+		case json.Delim('}'), json.Delim(']'):
+			stack = valueDone(stack[:len(stack)-1])
+		default:
+			stack = valueDone(stack)
+		}
+	}
 }

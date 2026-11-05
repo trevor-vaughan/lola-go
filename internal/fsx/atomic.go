@@ -48,6 +48,21 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	return SyncDir(dir)
 }
 
+// KeptMode is the permission bits of the regular file at path, def when there is no such file or
+// it is no regular file: the mode a rewrite of path keeps (a dotfiles repository may share it).
+func KeptMode(path string, def fs.FileMode) (fs.FileMode, error) {
+	fi, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return def, nil
+	case err != nil:
+		return 0, err
+	case fi.Mode().IsRegular():
+		return fi.Mode().Perm(), nil
+	}
+	return def, nil
+}
+
 // ReadOwn reads the regular file at path, a file lola wrote in its own state, refusing a symbolic
 // link, one swapped in while it is opened, and more than limit bytes.
 func ReadOwn(path string, limit int64) ([]byte, error) {

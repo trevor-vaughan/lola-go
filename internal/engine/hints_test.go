@@ -150,7 +150,7 @@ var _ = Describe("hints", func() {
 			func() error {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})
 				writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"review.yml": "version: 1\nmodules:\n  - name: rev\n    source: ../../mods/rev\n"})
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"review"}},
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "review"},
 					Display: []string{"--json"}})
 				return err
 			},
@@ -181,19 +181,19 @@ var _ = Describe("hints", func() {
 				return err
 			},
 			func() []string { return []string{"remove the cached one first: lola cache rm kit --plain --no-pager"} }),
-		Entry("uninstall of a module an active profile lists",
+		Entry("uninstall --profile naming a profile that does not list the module",
 			func() error {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})
 				writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"review.yml": "version: 1\nmodules:\n  - name: rev\n    source: ../../mods/rev\n"})
 				trustAll := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
-				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"review"}},
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "review"},
 					Trust: trustAll})
 				Expect(err).NotTo(HaveOccurred())
-				_, err = e.Uninstall(ctx, sc, []string{"rev"}, engine.Options{Display: []string{"--json"}})
+				_, err = e.Uninstall(ctx, sc, []string{"kit"}, engine.Options{Target: engine.TargetRequest{Profile: "review"}, Display: []string{"--json"}})
 				return err
 			},
 			func() []string {
-				return []string{"turn the profile off: lola profile --project project:review --off --json"}
+				return []string{"see where it comes from: lola list --project --json"}
 			}),
 		Entry("install's template refusal, whose check repeats the assistants given",
 			func() error {
@@ -206,16 +206,16 @@ var _ = Describe("hints", func() {
 			func() []string {
 				return []string{"lola check --project " + filepath.Join(proj, "mods", "bad") + " --target claude-code --json"}
 			}),
-		Entry("render's refusal of a tracked lock.json, for a user outside the project",
+		Entry("sync's refusal of a tracked lock.json, for a user outside the project",
 			func() error {
 				gitIn(proj, "init", "-q")
 				gitIn(proj, "add", "-f", ".lola/lock.json")
 				e.Getwd = func() (string, error) { return filepath.Dir(proj), nil }
-				_, err := e.Render(ctx, sc, engine.Options{Display: []string{"--json"}})
+				_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Display: []string{"--json"}}, Display: []string{"--json"}})
 				return err
 			},
 			func() []string { return []string{"git -C " + proj + " rm --cached .lola/lock.json"} }),
-		Entry("render's refusal of a tracked lock.json, whose root untrusted.Text would change",
+		Entry("sync's refusal of a tracked lock.json, whose root untrusted.Text would change",
 			func() error {
 				odd := filepath.Join(filepath.Dir(proj), "odd\x1bproj")
 				oddSc := engine.Scope{Kind: target.Project, ProjectDir: odd}
@@ -225,7 +225,7 @@ var _ = Describe("hints", func() {
 				gitIn(odd, "init", "-q")
 				gitIn(odd, "add", "-f", ".lola/lock.json")
 				e.Getwd = func() (string, error) { return filepath.Dir(proj), nil }
-				_, err = e.Render(ctx, oddSc, engine.Options{Display: []string{"--json"}})
+				_, err = e.Sync(ctx, engine.SyncRequest{Scope: oddSc, Options: engine.Options{Display: []string{"--json"}}, Display: []string{"--json"}})
 				Expect(err).To(MatchError(ContainSubstring(".lola/lock.json is tracked by git")))
 				return err
 			},
@@ -264,25 +264,5 @@ var _ = Describe("hints", func() {
 					"e.g. lola check ./my-module; sources are " + source.AcceptedForms
 			},
 			[]string{"cached modules: lola cache list"}),
-		Entry("uninstall of a module default.yml lists",
-			func() error {
-				p, err := paths.Resolve(os.Getenv)
-				Expect(err).NotTo(HaveOccurred())
-				writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
-					"  - {name: kit, source: " + filepath.Join(proj, "mods", "kit") + "}\n"})
-				user := engine.Scope{Kind: target.User}
-				trustAll := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
-				_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Trust: trustAll})
-				Expect(err).NotTo(HaveOccurred())
-				_, err = e.Uninstall(ctx, user, []string{"kit"}, engine.Options{Display: []string{"--json"}})
-				return err
-			},
-			func() string {
-				p, err := paths.Resolve(os.Getenv)
-				Expect(err).NotTo(HaveOccurred())
-				return "kit is wanted by profile default; remove it from " + filepath.Join(p.UserProfiles, "default.yml") +
-					", which is always on at user scope"
-			},
-			nil),
 	)
 })

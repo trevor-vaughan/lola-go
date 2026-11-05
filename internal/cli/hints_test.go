@@ -128,16 +128,16 @@ var _ = Describe("hints", func() {
 				return []string{"see them: lola profile -C " + proj + " project:review --on --json -n",
 					"then accept them: lola profile -C " + proj + " project:review --on --trust=profiles --json"}
 			}),
-		Entry("uninstall of a module an active profile lists, under --json with -y, which it does not carry to another question",
+		Entry("uninstall of a module the base provides while a profile is on, under --json with -y, which answers no where-question",
 			func(proj string) []string {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})
 				writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"review.yml": "version: 1\nmodules:\n  - name: rev\n    source: ../../mods/rev\n"})
 				r := lola("profile", "review", "--on", "-C", proj, "--trust", "-y")
 				Expect(r.code).To(Equal(0), r.err)
-				return []string{"uninstall", "rev", "-C", proj, "-y", "--json"}
+				return []string{"uninstall", "kit", "-C", proj, "-y", "--json"}
 			},
 			func(proj string) []string {
-				return []string{"turn the profile off: lola profile -C " + proj + " project:review --off --json"}
+				return []string{"lola uninstall kit --json --root " + proj + " --profile base"}
 			}),
 		Entry("check's argument that is neither a source nor a module in your cache, under --json",
 			func(proj string) []string { return []string{"check", "nope", "-C", proj, "--json"} },
@@ -168,13 +168,13 @@ var _ = Describe("hints", func() {
 			func(proj string) []string {
 				return []string{"lola check -C " + proj + " " + filepath.Join(proj, "mods", "bad") + " --target claude-code --json"}
 			}),
-		Entry("render's refusal of a tracked lock.json, for a user outside the project",
+		Entry("sync's refusal of a tracked lock.json, for a user outside the project",
 			func(proj string) []string {
 				for _, args := range [][]string{{"init", "-q"}, {"add", "-f", ".lola/lock.json"}} {
 					out, err := exec.Command("git", append([]string{"-C", proj}, args...)...).CombinedOutput()
 					Expect(err).NotTo(HaveOccurred(), string(out))
 				}
-				return []string{"render", "-C", proj, "--json"}
+				return []string{"sync", "-C", proj, "--json"}
 			},
 			func(proj string) []string { return []string{"git -C " + proj + " rm --cached .lola/lock.json"} }),
 		Entry("list's refusal of an unknown lock.json target, whose lola repair keeps -C",

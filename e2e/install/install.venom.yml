@@ -1,4 +1,4 @@
-name: lola install, list, render and uninstall across sources, scopes and assistants
+name: lola install, list, sync and uninstall across sources, scopes and assistants
 # Run by scripts/e2e.sh (task e2e -- install) in the shared e2e container: this checkout's lola-go
 # at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, and a git server on
 # 127.0.0.1:8765 serving /srv/git. Every step is {{.runtime}} exec [<options>] {{.container}}
@@ -24,6 +24,8 @@ vars:
   git_cache: -e XDG_CACHE_HOME=/home/tester/.cache-git
   zip_cache: -e XDG_CACHE_HOME=/home/tester/.cache-zip
   tar_cache: -e XDG_CACHE_HOME=/home/tester/.cache-tar
+  # I3 runs a move hint in a project and homes of its own, which the later cases never read
+  i3_homes: -e XDG_CONFIG_HOME=/home/tester/.config-i3 -e XDG_STATE_HOME=/home/tester/.state-i3 -e XDG_DATA_HOME=/home/tester/.data-i3 -e XDG_CACHE_HOME=/home/tester/.cache-i3
 
 testcases:
   - name: The fixtures are built, and kit.git's commits are the ones recorded
@@ -63,7 +65,7 @@ testcases:
         script: "{{.runtime}} exec -w /work/qs/my-project {{.container}} {{.lola}} install ../my-module"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemerr ShouldContainSubstring \"scope: project (found .lola/ at /work/qs/my-project)\""
+          - "result.systemerr ShouldContainSubstring \"project /work/qs/my-project: project.yml\""
           - result.systemout ShouldContainSubstring "✓ update claude-code .claude/skills/hello/SKILL.md"
       - type: exec
         script: "{{.runtime}} exec {{.container}} tail -n 1 /work/qs/my-project/.claude/skills/hello/SKILL.md"
@@ -174,20 +176,53 @@ testcases:
         script: |
           {{.runtime}} exec {{.container}} python3 -c '
           lines = open("/tmp/i3.out", encoding="utf-8").read().splitlines()
-          assert len(lines) == 20, len(lines)
+          assert len(lines) == 23, len(lines)
+          assert lines[0] == "✓ added kit to project.yml (base)", lines[0]
           assert sum(l.startswith("  ✓ create ") for l in lines) == 17, lines
-          assert lines[17:19] == ["kit MCP servers:", "    kit-tools (stdio) runs: kit-mcp --stdio"], lines[17:19]
-          print("ok the install printed its 17 creates and the MCP server")
+          assert lines[18:20] == ["kit MCP servers:", "    kit-tools (stdio) runs: kit-mcp --stdio"], lines[18:20]
+          assert lines[20:22] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch -y",
+                                  "→ meant for every project? lola profile --user --move kit --to base -y -C /work/proj"], lines[20:22]
+          assert lines[22] == "✓ installed kit (claude-code, gemini-cli, opencode)", lines[22]
+          print("ok the install printed its 17 creates, the MCP server and the moves that fix where it went")
           '
         assertions:
           - result.code ShouldEqual 0
-          - result.systemout ShouldEqual "ok the install printed its 17 creates and the MCP server"
+          - result.systemout ShouldEqual "ok the install printed its 17 creates, the MCP server and the moves that fix where it went"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/proj && ls .claude/commands/deploy.md .gemini/commands/deploy.toml .opencode/commands/deploy.md .mcp.json opencode.json .gemini/settings.json && cat .lola/project.yml'"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"targets: [claude-code, gemini-cli, opencode]\n\""
           - "result.systemout ShouldContainSubstring \"  - name: kit\n    source: /e2e/fixtures/kit\n\""
+      # The same install elsewhere prints the same hints, and the first runs as printed.
+      - type: exec
+        script: "{{.runtime}} exec {{.i3_homes}} {{.container}} sh -c 'mkdir /work/i3-hint && {{.lola}} install /e2e/fixtures/kit -C /work/i3-hint --scope project -t claude-code > /tmp/i3-hint.out'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          hint = [l.split("→ keep it to yourself: ", 1)[1] for l in open("/tmp/i3-hint.out", encoding="utf-8").read().splitlines() if "→ keep it to yourself: " in l]
+          json.dump({"hints": hint}, open("/tmp/i3-hint.json", "w"))
+          print(hint)
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"['lola profile -C /work/i3-hint --move kit --to mine --switch -y']\""
+      - type: exec
+        script: "{{.runtime}} exec {{.i3_homes}} {{.container}} {{.hint}} /tmp/i3-hint.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ new profile mine  (/home/tester/.config-i3/lola/profiles/mine.yml)\n\""
+          - "result.systemout ShouldContainSubstring \"✓ removed kit from project.yml (base)\n\""
+          - "result.systemout ShouldContainSubstring \"✓ added kit to profile mine  (/home/tester/.config-i3/lola/profiles/mine.yml)\n\""
+          - "result.systemout ShouldContainSubstring \"now: project /work/i3-hint: profile mine over project.yml\n\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/i3-hint && test -f .claude/commands/deploy.md && cat .lola/project.yml /home/tester/.config-i3/lola/profiles/mine.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"version: 1\ntargets: [claude-code]\nversion: 1\nmodules:\n  - name: kit\n    source: /e2e/fixtures/kit\""
 
   - name: I4 Off a terminal with no .lola/ and no scope it refuses, coached
     steps:
@@ -257,7 +292,7 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "ok plain rows"
 
-  - name: I6 An edited file is modified, and render refuses to overwrite it, coached
+  - name: I6 An edited file is modified, and sync refuses to overwrite it, coached
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'echo \"My edit.\" >> /work/proj/.claude/commands/deploy.md'"
@@ -270,15 +305,16 @@ testcases:
           - result.systemout ShouldContainSubstring "kit     claude-code  ⚠ modified"
           - result.systemout ShouldContainSubstring "kit     gemini-cli   ✓ ok"
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} render -C /work/proj"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} sync -C /work/proj"
         assertions:
           - result.code ShouldEqual 1
           - result.systemout ShouldBeEmpty
-          - 'result.systemerr ShouldStartWith "error: refusing to change anything: 1 conflict, which --force overrides"'
+          - 'result.systemerr ShouldStartWith "project /work/proj: project.yml"'
+          - 'result.systemerr ShouldContainSubstring "error: refusing to change anything: 1 conflict, which --force overrides"'
           - 'result.systemerr ShouldContainSubstring "  claude-code: .claude/commands/deploy.md: hand-edited since lola wrote it"'
-          - 'result.systemerr ShouldEndWith "  hint: lola render --root /work/proj --force"'
+          - 'result.systemerr ShouldEndWith "  hint: lola sync --root /work/proj --force"'
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} render -C /work/proj --json > /tmp/i6.out 2> /tmp/i6.err; echo exit=$? $(tail -n 1 /work/proj/.claude/commands/deploy.md)'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} sync -C /work/proj --json > /tmp/i6.out 2> /tmp/i6.err; echo exit=$? $(tail -n 1 /work/proj/.claude/commands/deploy.md)'"
         assertions:
           - result.systemout ShouldEqual "exit=1 My edit."
       - type: exec
@@ -287,14 +323,14 @@ testcases:
           import json
           doc = json.load(open(\"/tmp/i6.err\"))
           assert doc[\"error\"] == \"refusing to change anything: 1 conflict, which --force overrides\\n  claude-code: .claude/commands/deploy.md: hand-edited since lola wrote it\", doc
-          assert doc[\"hints\"] == [\"lola render --json --root /work/proj --force\"], doc
+          assert doc[\"hints\"] == [\"lola sync --json --root /work/proj --force\"], doc
           print(\"ok the refusal names the edited file\")
           "'
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "ok the refusal names the edited file"
 
-  - name: I7 The --force render the hint names restores the file
+  - name: I7 The --force sync the hint names restores the file
     steps:
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/i6.err > /tmp/i7.json'"
@@ -535,7 +571,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "kit claude-code ok on http://127.0.0.1:8765/kit.git project project.yml"
-          - result.systemout ShouldContainSubstring "kit claude-code ok on /e2e/fixtures/kit user user.yml"
+          - result.systemout ShouldContainSubstring "kit claude-code ok on /e2e/fixtures/kit user profile:default"
 
   - name: I14 cache rm --json off a terminal refuses in one line
     steps:
@@ -642,3 +678,58 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - result.systemoutjson.modules.modules0.name ShouldEqual kit
+
+  - name: I18 A link inside the source installs as a regular file; one that leaves it is refused with its reason
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/lk/shared /work/lk/mods/ok/commands /work/lk/mods/bad/commands /work/proj18 && printf \"shared body\\n\" > /work/lk/shared/body.md && ln -s ../../../shared/body.md /work/lk/mods/ok/commands/body.md && ln -s ../../../../../../etc/hostname /work/lk/mods/bad/commands/leak.md'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/lk --path mods/ok -C /work/proj18 --scope project -t claude-code -y > /tmp/i18-ok.out 2>&1; echo exit=$?; cat /tmp/i18-ok.out'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "exit=0"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test -f /work/proj18/.claude/commands/body.md && ! test -L /work/proj18/.claude/commands/body.md && cat /work/proj18/.claude/commands/body.md'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "shared body"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/lk --path mods/bad -C /work/proj18 --scope project -t claude-code -y > /tmp/i18-bad.out 2>&1; echo exit=$?; cat /tmp/i18-bad.out'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "exit=1"
+          - result.systemout ShouldContainSubstring "leaves the source"
+
+  - name: I19 A module that ships an ELF is warned about, --strict fails it, lola info lists it; a script-only module is not
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/nat/bin/skills/tool /work/nat/scr/skills/tool /work/proj19 /work/proj19b /work/proj19c && printf \"# tool\\n\" > /work/nat/bin/skills/tool/SKILL.md && cp /bin/true /work/nat/bin/skills/tool/helper && printf \"# tool\\n\" > /work/nat/scr/skills/tool/SKILL.md && printf \"#!/bin/sh\\necho hi\\n\" > /work/nat/scr/skills/tool/run.sh && printf \"name: natbin\\n\" > /work/nat/bin/lola.yml && printf \"name: natscr\\n\" > /work/nat/scr/lola.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/nat/bin -C /work/proj19 --scope project -t claude-code -y > /tmp/i19-bin.out 2>&1; echo exit=$?; cat /tmp/i19-bin.out'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "exit=0"
+          - result.systemout ShouldContainSubstring "ships 1 native executable"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/nat/bin -C /work/proj19b --scope project -t claude-code -y --strict > /tmp/i19-strict.out 2>&1; echo exit=$?; cat /tmp/i19-strict.out'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "exit=1"
+          - result.systemout ShouldContainSubstring "ships 1 native executable"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} info natbin > /tmp/i19-info.out 2>&1; echo exit=$?; cat /tmp/i19-info.out'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "exit=0"
+          - result.systemout ShouldContainSubstring "ships native executables:"
+          - result.systemout ShouldContainSubstring "skills/tool/helper"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /work/nat/scr -C /work/proj19c --scope project -t claude-code -y > /tmp/i19-scr.out 2>&1; echo exit=$?; cat /tmp/i19-scr.out'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "exit=0"
+          - result.systemout ShouldNotContainSubstring "native executable"

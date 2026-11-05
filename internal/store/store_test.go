@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"os/exec"
@@ -126,6 +127,72 @@ var _ = Describe("Store", func() {
 		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
 	})
 
+	Describe("a head's fetch time", func() {
+		const commit = "0123456789abcdef0123456789abcdef01234567"
+		putAt := func(at time.Time, files map[string]string) {
+			GinkgoHelper()
+			_, err := s.Put(store.PutRequest{Staged: stage(files), FallbackName: "example", Source: "https://example.com/example.git", Type: "git",
+				Ref: "main", Commit: commit, Now: at})
+			Expect(err).NotTo(HaveOccurred())
+		}
+		fetched := func() time.Time {
+			GinkgoHelper()
+			v, ok, err := s.Head("example", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ok).To(BeTrue())
+			return v.Fetched
+		}
+
+		It("is recorded when a fetch sets the head", func() {
+			putAt(now, map[string]string{"commands/a.md": "A"})
+			Expect(fetched()).To(Equal(now))
+		})
+
+		It("moves on a fetch that found the same content", func() {
+			putAt(now, map[string]string{"commands/a.md": "A"})
+			later := now.Add(36 * time.Hour)
+			putAt(later, map[string]string{"commands/a.md": "A"})
+			Expect(fetched()).To(Equal(later))
+		})
+
+		It("does not move when a commit keeps an existing head (a fetch by pin)", func() {
+			putAt(now, map[string]string{"commands/a.md": "A"})
+			st, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "B"}), FallbackName: "example",
+				Source: "https://example.com/example.git", Type: "git", Ref: "main", Commit: commit, Now: now.Add(time.Hour)})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = s.Commit(st, true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fetched()).To(Equal(now))
+		})
+
+		It("is zero for a head written without one", func() {
+			putAt(now, map[string]string{"commands/a.md": "A"})
+			index := filepath.Join(p.Store, "example", "index.yml")
+			b, err := os.ReadFile(index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.WriteFile(index, []byte(regexp.MustCompile(`(?m)^\s*fetched: .*\n`).ReplaceAllString(string(b), "")), 0o644)).To(Succeed())
+			Expect(fetched()).To(BeZero())
+		})
+
+		It("is not recorded for a folder, which is never stale: committing it again rewrites nothing", func() {
+			put := func(at time.Time) {
+				GinkgoHelper()
+				_, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "A"}), FallbackName: "example", Source: "/src/example",
+					Type: "folder", Now: at})
+				Expect(err).NotTo(HaveOccurred())
+			}
+			index := filepath.Join(p.Store, "example", "index.yml")
+			put(now)
+			before, err := os.ReadFile(index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(before)).NotTo(ContainSubstring("fetched:"))
+			put(now.Add(time.Second))
+			after, err := os.ReadFile(index)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(after)).To(Equal(string(before)))
+		})
+	})
+
 	It("adapts a plugin once: .lola-origin records its format, the version keeps the plugin files, and a refetch is the same version", func() {
 		plugin := map[string]string{
 			".claude-plugin/plugin.json": `{"name":"deploy","lspServers":{},"mcpServers":"./b.mcpb"}`,
@@ -189,6 +256,28 @@ var _ = Describe("Store", func() {
 			"skills/s/SKILL.md": "---\nname: s\ndescription: S\n---\n",
 		}),
 	)
+
+	It("names the module whose index does not decode, and leaves a read failure of the cache as it is", func() {
+		_, err := put(map[string]string{"commands/a.md": "x"}, "")
+		Expect(err).NotTo(HaveOccurred())
+		index := filepath.Join(p.Store, "example", "index.yml")
+		Expect(os.WriteFile(index, []byte(": ["), 0o600)).To(Succeed())
+		_, _, err = s.Origin("example")
+		ie, ok := errors.AsType[*store.IndexError](err)
+		Expect(ok).To(BeTrue(), "%v", err)
+		Expect(ie.Name).To(Equal("example"))
+		Expect(err).To(MatchError(HavePrefix(index + ": yaml: ")))
+
+		if os.Geteuid() == 0 {
+			Skip("root reads an unreadable file")
+		}
+		Expect(os.Chmod(index, 0o000)).To(Succeed())
+		DeferCleanup(os.Chmod, index, os.FileMode(0o600))
+		_, _, err = s.Origin("example")
+		Expect(err).To(HaveOccurred())
+		_, ok = errors.AsType[*store.IndexError](err)
+		Expect(ok).To(BeFalse(), "a file lola cannot read is not the module's own record")
+	})
 
 	It("refuses a cache index whose head is not a version id, before using it in a path", func() {
 		_, err := put(map[string]string{"commands/a.md": "x"}, "")
@@ -472,7 +561,8 @@ var _ = Describe("Store", func() {
 		Expect(h.Commit).To(Equal(c2))
 		o, _, err := s.Origin("example")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(o.Heads).To(ConsistOf(store.Head{Ref: "main", Digest: v1.ID, Commit: c1}, store.Head{Ref: "v1", Digest: v1.ID, Commit: c2}))
+		Expect(o.Heads).To(ConsistOf(store.Head{Ref: "main", Digest: v1.ID, Commit: c1, Fetched: "2026-10-08T12:00:00Z"},
+			store.Head{Ref: "v1", Digest: v1.ID, Commit: c2, Fetched: "2026-10-08T12:00:00Z"}))
 	})
 
 	It("sets a head only where there is none when a commit asks for that", func() {
@@ -552,6 +642,103 @@ var _ = Describe("Store", func() {
 			_, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"lola.yml": "name: beta\n", "commands/a.md": "A"}),
 				FallbackName: "example", Name: "example", Source: "/src/example", Type: "folder", Now: now})
 			Expect(err).To(MatchError(`example: its source now declares module "beta"`))
+		})
+
+		It("refuses content that does not read as a module as the module's own load error", func() {
+			_, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"lola.yml": "name: example\nbogus: 1\n", "commands/a.md": "A"}),
+				FallbackName: "example", Name: "example", Source: "/src/example", Type: "folder", Now: now})
+			le, ok := errors.AsType[*store.LoadError](err)
+			Expect(ok).To(BeTrue(), "%v", err)
+			Expect(le.Name).To(Equal("example"))
+			Expect(err).To(MatchError(ContainSubstring("field bogus not found")))
+		})
+	})
+
+	Describe("Staged.Index", func() {
+		commit := strings.Repeat("2", 40)
+		prepare := func(src, typ, ref string, replace bool, files map[string]string) store.Staged {
+			GinkgoHelper()
+			st, err := s.Prepare(store.PutRequest{Staged: stage(files), FallbackName: "example", Source: src, Type: typ, Ref: ref,
+				Commit: commit, Now: now, ReplaceGoneOrigin: replace})
+			Expect(err).NotTo(HaveOccurred())
+			return st
+		}
+
+		It("is the index Commit writes, but for last_used, and computing it caches nothing", func() {
+			st := prepare("https://example.invalid/example.git", "git", "main", false, map[string]string{"commands/a.md": "A"})
+			idx, ok := st.Index(store.Origin{}, false, false)
+			Expect(ok).To(BeTrue())
+			Expect(idx).To(Equal(store.Origin{Source: "https://example.invalid/example.git", Type: "git",
+				Heads: []store.Head{{Ref: "main", Digest: st.Version.ID, Commit: commit, Fetched: "2026-10-08T12:00:00Z"}}}))
+			Expect(s.Names()).To(BeEmpty())
+
+			_, err := s.Commit(st, false)
+			Expect(err).NotTo(HaveOccurred())
+			o, _, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(o.LastUsed).To(Equal(map[string]string{st.Version.ID: "2026-10-08"}))
+			o.LastUsed = nil
+			Expect(o).To(Equal(idx))
+		})
+
+		It("moves only its ref's head over the cached index, and with headIfAbsent keeps the head that is there", func() {
+			_, err := put(map[string]string{"commands/a.md": "A"}, "main")
+			Expect(err).NotTo(HaveOccurred())
+			dev, err := put(map[string]string{"commands/a.md": "B"}, "dev")
+			Expect(err).NotTo(HaveOccurred())
+			o, found, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			st := prepare("/src/example", "folder", "main", false, map[string]string{"commands/a.md": "C"})
+
+			idx, ok := st.Index(o, found, false)
+			Expect(ok).To(BeTrue())
+			Expect(idx.Heads).To(Equal([]store.Head{{Ref: "dev", Digest: dev.ID}, {Ref: "main", Digest: st.Version.ID, Commit: commit}}),
+				"a folder's head records no fetch time")
+			Expect(idx.LastUsed).To(Equal(o.LastUsed))
+
+			kept, ok := st.Index(o, found, true)
+			Expect(ok).To(BeTrue())
+			Expect(kept.Heads).To(Equal(o.Heads))
+		})
+
+		It("with headIfAbsent sets the head of a ref the cached index has none for", func() {
+			main, err := put(map[string]string{"commands/a.md": "A"}, "main")
+			Expect(err).NotTo(HaveOccurred())
+			o, found, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			st := prepare("/src/example", "folder", "v2", false, map[string]string{"commands/a.md": "B"})
+
+			idx, ok := st.Index(o, found, true)
+			Expect(ok).To(BeTrue())
+			Expect(idx.Heads).To(Equal([]store.Head{{Ref: "main", Digest: main.ID}, {Ref: "v2", Digest: st.Version.ID, Commit: commit}}))
+		})
+
+		It("refuses a second source for the name, as Commit does, even when asked to replace a remote one", func() {
+			_, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "A"}), FallbackName: "example",
+				Source: "https://example.invalid/example.git", Type: "git", Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			o, found, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			st := prepare("/elsewhere/example", "folder", "", true, map[string]string{"commands/a.md": "B"})
+			idx, ok := st.Index(o, found, false)
+			Expect(ok).To(BeFalse())
+			Expect(idx).To(Equal(o))
+		})
+
+		It("takes the place of a local source that no longer exists only when asked to", func() {
+			_, err := put(map[string]string{"commands/a.md": "A"}, "") // /src/example does not exist on this machine
+			Expect(err).NotTo(HaveOccurred())
+			o, found, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+
+			_, ok := prepare("/elsewhere/example", "folder", "", false, map[string]string{"commands/a.md": "B"}).Index(o, found, false)
+			Expect(ok).To(BeFalse())
+
+			st := prepare("/elsewhere/example", "folder", "", true, map[string]string{"commands/a.md": "B"})
+			idx, ok := st.Index(o, found, false)
+			Expect(ok).To(BeTrue())
+			Expect(idx).To(Equal(store.Origin{Source: "/elsewhere/example", Type: "folder",
+				Heads: []store.Head{{Ref: "", Digest: st.Version.ID, Commit: commit}}}), "heads and all")
 		})
 	})
 
@@ -856,5 +1043,44 @@ var _ = Describe("Digest", func() {
 		Expect(os.Symlink("a", filepath.Join(dir, "l"))).To(Succeed())
 		_, err := store.Digest(dir, nil)
 		Expect(err).To(MatchError(ContainSubstring("symbolic link")))
+	})
+})
+
+var _ = Describe("NoModuleAt", func() {
+	var skills string
+	cause := errors.New("no module found")
+	BeforeEach(func() {
+		skills = filepath.Join(testenv.Isolate(), "staged")
+		Expect(os.MkdirAll(filepath.Join(skills, "a"), 0o755)).To(Succeed())
+		Expect(os.WriteFile(filepath.Join(skills, "a", "SKILL.md"), []byte("x"), 0o644)).To(Succeed())
+	})
+
+	DescribeTable("names the source and, for a directory of skills, what to do",
+		func(path, prefix, hint string) {
+			err := store.NoModuleAt("https://example.com/kit it.git", path, skills, cause)
+			Expect(err).To(MatchError(cause))
+			Expect(err).To(MatchError(prefix + ": no module found"))
+			Expect(errs.Hints(err)).To(Equal([]string{hint}))
+		},
+		Entry("a --path naming skills/ at the top: the same install without --path",
+			"skills/", "https://example.com/kit it.git --path skills/",
+			"that directory holds skills; a module root holds them under skills/: run "+
+				errs.ShellJoin([]string{"lola", "install", "https://example.com/kit it.git"})+", keeping your other flags"),
+		Entry("a deeper --path naming skills/: the same install with --path at its parent",
+			"mods/x/skills", "https://example.com/kit it.git --path mods/x/skills",
+			"that directory holds skills; a module root holds them under skills/: run "+
+				errs.ShellJoin([]string{"lola", "install", "https://example.com/kit it.git", "--path", "mods/x"})+", keeping your other flags"),
+		Entry("a --path naming another directory of skills: no command can help",
+			"mods/x/tools", "https://example.com/kit it.git --path mods/x/tools",
+			"that directory holds skills; a module root holds them under skills/: move them into a skills/ directory in the source, then point --path at its parent"),
+		Entry("no --path: the source's top holds the skills",
+			"", "https://example.com/kit it.git",
+			"the source holds skills directly, not under skills/: move them into a skills/ directory in the source"),
+	)
+
+	It("adds no hint when the directory holds no skills", func() {
+		err := store.NoModuleAt("/src/kit", "docs", GinkgoT().TempDir(), cause)
+		Expect(err).To(MatchError("/src/kit --path docs: no module found"))
+		Expect(errs.Hints(err)).To(BeEmpty())
 	})
 })

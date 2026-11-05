@@ -60,28 +60,35 @@ func (s Selector) String() string {
 	return s.Module + ":" + s.Pattern.String()
 }
 
-// selectorForms is the hint every selector error carries.
-const selectorForms = "a selector is kind/name or module:kind/name; kind is one of skill, command, agent, mcp, rule; name may be a glob (review-*)"
+// SelectorForms is the hint every selector error carries.
+const SelectorForms = "a selector is kind/name or module:kind/name; kind is one of skill, command, agent, mcp, rule; name may be a glob (review-*)"
+
+// PatternForms is SelectorForms where a selector takes no module: a profile entry's picks.
+const PatternForms = "a selector is kind/name; kind is one of skill, command, agent, mcp, rule; name may be a glob (review-*)"
 
 // ParsePattern parses kind/name.
 func ParsePattern(s string) (Pattern, error) {
 	if len(s) > maxPattern {
-		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q is longer than %d characters", untrusted.Text(s, 40), maxPattern), selectorForms)
+		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q is longer than %d characters", untrusted.Text(s, 40), maxPattern), SelectorForms)
 	}
 	if strings.ContainsFunc(s, func(r rune) bool { return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) }) {
 		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q holds a control or format character", untrusted.Text(s, maxPattern)),
-			"retype it with printable characters only", selectorForms)
+			"retype it with printable characters only", SelectorForms)
+	}
+	if strings.Contains(s, ",") {
+		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q holds a comma; a selector names one component, and the flags take comma-separated selectors", untrusted.Text(s, maxPattern)),
+			"list several selectors as separate items in a file, or comma-separated on the command line (--only skill/a,skill/b)", SelectorForms)
 	}
 	kind, name, ok := strings.Cut(s, "/")
 	if !ok || name == "" {
-		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q has no kind/name", untrusted.Text(s, maxPattern)), selectorForms)
+		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q has no kind/name", untrusted.Text(s, maxPattern)), SelectorForms)
 	}
 	if !slices.Contains(Kinds(), kind) {
 		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q has an unknown kind %q", untrusted.Text(s, maxPattern), untrusted.Text(kind, maxPattern)),
 			"kinds: "+strings.Join(Kinds(), ", "))
 	}
 	if strings.Contains(name, "/") {
-		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q: a component name has no /", untrusted.Text(s, maxPattern)), selectorForms)
+		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q: a component name has no /", untrusted.Text(s, maxPattern)), SelectorForms)
 	}
 	if _, err := path.Match(name, ""); errors.Is(err, path.ErrBadPattern) {
 		return Pattern{}, errs.WithHints(fmt.Errorf("selector %q is not a valid glob", untrusted.Text(s, maxPattern)),
@@ -98,7 +105,7 @@ func ParseSelector(s string) (Selector, error) {
 		return Selector{Pattern: p}, err
 	}
 	if err := module.ValidateName("module", mod); err != nil {
-		return Selector{}, errs.WithHints(fmt.Errorf("selector %q: %w", untrusted.Text(s, maxPattern), err), selectorForms)
+		return Selector{}, errs.WithHints(fmt.Errorf("selector %q: %w", untrusted.Text(s, maxPattern), err), SelectorForms)
 	}
 	p, err := ParsePattern(rest)
 	return Selector{Module: mod, Pattern: p}, err

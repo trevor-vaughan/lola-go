@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -84,14 +85,26 @@ func (a *app) color(w any) bool {
 	return a.getenv("NO_COLOR") == "" && isTTY(w)
 }
 
-// emit is the one output path: JSON under --json, otherwise the human renderer, through page,
-// which opens the viewer when the output is taller than the terminal (Plan 10 §2.1).
+// emit is the one output path: JSON under --json, the run's contexts first (withContext),
+// otherwise the human renderer, through page, which opens the viewer when the output is taller
+// than the terminal (Plan 10 §2.1).
 func (a *app) emit(cmd *cobra.Command, human func(io.Writer, style), v any) error {
 	w := cmd.OutOrStdout()
 	if a.json {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(v)
+		doc, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		if doc, err = withContext(doc, a.contexts); err != nil {
+			return err
+		}
+		var out bytes.Buffer
+		if err := json.Indent(&out, doc, "", "  "); err != nil {
+			return err
+		}
+		out.WriteByte('\n')
+		_, err = w.Write(out.Bytes())
+		return err
 	}
 	a.page(cmd, w, a.style(cmd), human)
 	return nil

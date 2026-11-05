@@ -89,7 +89,7 @@ var _ = Describe("help, errors and output contract", func() {
 
 	It("rejects --json with --plain, and --user with -C where a command has a scope", func() {
 		Expect(lola("version", "--json", "--plain").err).To(ContainSubstring("--json and --plain cannot be combined"))
-		Expect(lola("render", "--user", "-C", ".").err).To(ContainSubstring("--user cannot be combined with -C"))
+		Expect(lola("sync", "--user", "-C", ".").err).To(ContainSubstring("--user cannot be combined with -C"))
 		Expect(lola("version", "--user", "-C", ".").code).To(Equal(0), "a command without a scope ignores the scope flags")
 	})
 

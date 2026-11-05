@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"math"
 	"math/bits"
 	"os"
@@ -36,6 +37,9 @@ const (
 	// before archive/zip reads it. A record is 46 bytes plus its name and extra fields,
 	// usually under 200 bytes.
 	maxDirBytesPerEntry = 1 << 10
+
+	// maxLinkTarget bounds the body of a zip link entry, its target.
+	maxLinkTarget = 4096
 )
 
 // limits bound what one fetch may download and unpack.
@@ -89,25 +93,37 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if err := os.Mkdir(tree, 0o700); err != nil {
 		return Fetched{}, err
 	}
-	execs, err := extract(file, archiveSuffix(name), tree, lim)
+	base := "."
+	if spec.Path != "" && filepath.IsLocal(spec.Path) {
+		base = path.Clean(filepath.ToSlash(spec.Path))
+	}
+	execs, refused, err := extract(file, archiveSuffix(name), tree, base, lim)
 	if err != nil {
 		return Fetched{}, err
 	}
-	root, err := archiveRoot(tree, spec.Path)
+	if spec.Path != "" { // before archiveRoot, which would call a refused link on the --path missing
+		if err := refusedOnPath(refused, base); err != nil {
+			return Fetched{}, err
+		}
+	}
+	root, err := archiveRoot(tree, spec.Path, refused)
 	if err != nil {
+		return Fetched{}, err
+	}
+	rel, err := filepath.Rel(tree, root)
+	if err != nil {
+		return Fetched{}, err
+	}
+	if err := refusedOnPath(refused, filepath.ToSlash(rel)); err != nil {
 		return Fetched{}, err
 	}
 	modName := filepath.Base(root)
 	if root == tree {
 		modName = name[:len(name)-len(archiveSuffix(name))]
 	}
-	dir, _, err := copyTree(ctx, root, stagingParent, listWalk)
+	dir, _, _, err := copyTree(ctx, tree, root, stagingParent, listWalk)
 	if err != nil {
 		return Fetched{}, err
-	}
-	rel, err := filepath.Rel(tree, root)
-	if err != nil {
-		return Fetched{}, errors.Join(err, os.RemoveAll(dir))
 	}
 	return Fetched{Dir: dir, Name: modName, Executables: executablesUnder(execs, filepath.ToSlash(rel), dir), Root: fetchedRoot(rel)}, nil
 }
@@ -147,30 +163,53 @@ func checkSHA256(file string, spec Spec) (err error) {
 }
 
 // extractor writes archive entries below root, enforcing the entry rules and limits of §5. It
-// records the entries whose mode is executable in execs.
+// records the entries whose mode is executable in execs, the regular files it wrote in files,
+// and each link entry's target by its path in links: it writes no link. refused holds, by its
+// path, the ErrLinkInSource refusal of each link copyLinks wrote nothing for.
 type extractor struct {
 	root    *os.Root
 	lim     limits
 	entries int
 	written int64
 	execs   []string
+	files   map[string]bool
+	links   map[string]string
+	refused map[string]error
 }
 
 // extract unpacks file, whose format suffix is suffix, into the empty directory dest, and
-// returns the slash paths of the files its entries mark executable.
-func extract(file, suffix, dest string, lim limits) (execs []string, err error) {
+// returns the slash paths of the files its entries mark executable and the refusal of each link
+// it wrote nothing for, by the link's slash path: the caller fails on one only once it knows the
+// module root (refusedOnPath). base is the --path's slash path, "." without one: what is below it
+// is what the copy reads (copyLinks).
+func extract(file, suffix, dest, base string, lim limits) (execs []string, refused map[string]error, err error) {
 	root, err := os.OpenRoot(dest)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
-	x := &extractor{root: root, lim: lim}
+	x := &extractor{root: root, lim: lim, files: map[string]bool{}, links: map[string]string{}, refused: map[string]error{}}
 	if suffix == ".zip" {
 		err = x.zip(file)
 	} else {
 		err = x.tar(file, suffix != ".tar")
 	}
-	return x.execs, err
+	if err == nil {
+		err = x.copyLinks(base)
+	}
+	return x.execs, x.refused, err
+}
+
+// refusedOnPath returns the refusal of the first link in refused (by path) at rel, the module
+// root's slash path in the archive ("." for its top), above it or below it: a link elsewhere
+// never reaches the module, as checkTree allows one outside a git or folder source's module root.
+func refusedOnPath(refused map[string]error, rel string) error {
+	for _, name := range slices.Sorted(maps.Keys(refused)) {
+		if rel == "." || name == rel || strings.HasPrefix(name, rel+"/") || strings.HasPrefix(rel, name+"/") {
+			return refused[name]
+		}
+	}
+	return nil
 }
 
 func (x *extractor) zip(file string) (err error) {
@@ -200,6 +239,8 @@ func (x *extractor) zip(file string) (err error) {
 			err = x.dir(f.Name)
 		case mode.IsRegular():
 			err = x.zipFile(f)
+		case mode&fs.ModeSymlink != 0:
+			err = x.zipLink(f)
 		default:
 			err = refusedType(f.Name, mode.Type().String())
 		}
@@ -306,6 +347,23 @@ func (x *extractor) zipFile(f *zip.File) (err error) {
 	return x.file(f.Name, f.Mode(), int64(f.UncompressedSize64), rc)
 }
 
+// zipLink records the link entry f, whose body is its target.
+func (x *extractor) zipLink(f *zip.File) (err error) {
+	rc, err := f.Open()
+	if err != nil {
+		return fmt.Errorf("%s: %w", untrusted.Text(f.Name, untrusted.MaxName), err)
+	}
+	defer func() { err = errors.Join(err, rc.Close()) }()
+	to, err := io.ReadAll(io.LimitReader(rc, maxLinkTarget+1))
+	if err != nil {
+		return fmt.Errorf("%s: %w", untrusted.Text(f.Name, untrusted.MaxName), err)
+	}
+	if len(to) > maxLinkTarget {
+		return refuse(untrusted.Text(f.Name, untrusted.MaxName), fmt.Sprintf("its target is longer than %d bytes", maxLinkTarget), danglingHint)
+	}
+	return x.link(f.Name, string(to))
+}
+
 func (x *extractor) tar(file string, gz bool) (err error) {
 	f, err := os.Open(file)
 	if err != nil {
@@ -339,6 +397,8 @@ func (x *extractor) tar(file string, gz bool) (err error) {
 			err = x.dir(hdr.Name)
 		case tar.TypeReg:
 			err = x.file(hdr.Name, hdr.FileInfo().Mode(), hdr.Size, tr)
+		case tar.TypeSymlink:
+			err = x.link(hdr.Name, hdr.Linkname)
 		default:
 			err = refusedType(hdr.Name, fmt.Sprintf("type %q", hdr.Typeflag))
 		}
@@ -357,7 +417,7 @@ func (x *extractor) count() error {
 }
 
 func refusedType(name, kind string) error {
-	return fmt.Errorf("%s: only regular files and directories are allowed in an archive, not %s", untrusted.Text(name, untrusted.MaxName), kind)
+	return fmt.Errorf("%s: only regular files, directories and symbolic links are allowed in an archive, not %s", untrusted.Text(name, untrusted.MaxName), kind)
 }
 
 // entryPath returns the root-relative path of an entry, refusing any name that could
@@ -414,11 +474,115 @@ func (x *extractor) file(name string, mode fs.FileMode, size int64, r io.Reader)
 	if fsx.NormalizeMode(mode) == 0o755 {
 		x.execs = append(x.execs, rel)
 	}
+	x.files[rel] = true
 	return nil
 }
 
-// archiveRoot finds the module root of the archive extracted at tree (design §3.1).
-func archiveRoot(tree, subpath string) (string, error) {
+// link records the link entry name to target, writing nothing: copyLinks resolves it once every
+// entry is known.
+func (x *extractor) link(name, target string) error {
+	rel, err := entryPath(name)
+	if err != nil {
+		return err
+	}
+	_, dup := x.links[rel]
+	if dup || x.files[rel] {
+		return fmt.Errorf("%s: the archive holds this path more than once", untrusted.Text(name, untrusted.MaxName))
+	}
+	if target == "" {
+		return refuse(untrusted.Text(name, untrusted.MaxName), "its target is empty", danglingHint)
+	}
+	x.links[rel] = target
+	return nil
+}
+
+// copyLinks writes each recorded link as a regular copy of the file it names, with that file's
+// mode, counted against the byte limit as file counts any entry. Nothing was written for a link,
+// so resolution is lexical, against the entries: a target must be relative and stay inside the
+// archive (linkTarget), may be another link, at most maxLinkHops in all, and must end at a regular
+// file entry, never a directory, a path below a link or a path lola never copies (linkIgnored
+// below base, the --path). A link at a path the copy never reads below base (ignored) is skipped.
+// A link refused by these rules is recorded in refused, not written: whether that fails the
+// fetch depends on the module root, chosen later. Each link's chain is walked from its own
+// target, so a link whose chain passes through a refused one is refused for the same reason.
+func (x *extractor) copyLinks(base string) error {
+	for _, name := range slices.Sorted(maps.Keys(x.links)) {
+		if ignored(belowBase(base, name)) {
+			continue
+		}
+		next, err := x.linkedFile(base, name)
+		if errors.Is(err, ErrLinkInSource) {
+			x.refused[name] = err
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := x.copyOver(next, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// linkedFile is the regular file entry the link entry name resolves to, by copyLinks' rules.
+func (x *extractor) linkedFile(base, name string) (string, error) {
+	shown := untrusted.Text(name, untrusted.MaxName)
+	cur, to := name, x.links[name]
+	for hop := 0; ; hop++ {
+		next, err := linkTarget(shown, cur, to)
+		if err != nil {
+			return "", err
+		}
+		if linkIgnored(base, next) {
+			return "", refuseIgnored(shown, next)
+		}
+		for dir := path.Dir(next); dir != "."; dir = path.Dir(dir) {
+			if _, isLink := x.links[dir]; isLink {
+				return "", refuseLinkedDir(shown, dir)
+			}
+		}
+		if nt, isLink := x.links[next]; isLink {
+			if hop+1 >= maxLinkHops {
+				return "", refuse(shown, cycleWhy, cycleHint)
+			}
+			cur, to = next, nt
+			continue
+		}
+		if !x.files[next] {
+			if fi, err := x.root.Lstat(filepath.FromSlash(next)); err == nil && fi.IsDir() {
+				return "", refuse(shown, dirWhy, dirLinkHint)
+			}
+			return "", refuse(shown, danglingWhy, danglingHint)
+		}
+		return next, nil
+	}
+}
+
+// copyOver writes the extracted regular file src to the new path name, through file, executable
+// when the archive marked src so: the extracted file's own mode has no execute bit on Windows.
+func (x *extractor) copyOver(src, name string) (err error) {
+	in, err := x.root.Open(filepath.FromSlash(src))
+	if err != nil {
+		return fmt.Errorf("%s: %w", untrusted.Text(name, untrusted.MaxName), untrusted.CleanErr(err))
+	}
+	defer func() { err = errors.Join(err, in.Close()) }()
+	fi, err := in.Stat()
+	if err != nil {
+		return fmt.Errorf("%s: %w", untrusted.Text(name, untrusted.MaxName), untrusted.CleanErr(err))
+	}
+	mode := fs.FileMode(0o644)
+	if slices.Contains(x.execs, src) {
+		mode = 0o755
+	}
+	return x.file(name, mode, fi.Size(), in)
+}
+
+// archiveRoot finds the module root of the archive extracted at tree (design §3.1). Each link in
+// refused, by its slash path, was not written; the search counts it as the entry it stands for,
+// so that a refused link where a marker, content directory or second top-level entry would be
+// chooses the same root as if it were there, and refusedOnPath then fails on it.
+func archiveRoot(tree, subpath string, refused map[string]error) (string, error) {
 	if subpath != "" {
 		if !filepath.IsLocal(subpath) {
 			return "", fmt.Errorf("--path %q must be a relative path inside the archive", subpath)
@@ -463,6 +627,23 @@ func archiveRoot(tree, subpath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	topRefused := 0
+	for name := range refused {
+		if ignored(name) {
+			continue
+		}
+		parent := filepath.Join(tree, filepath.FromSlash(path.Dir(name)))
+		depth := strings.Count(strings.TrimPrefix(parent, tree), string(filepath.Separator))
+		switch base := path.Base(name); {
+		case rootMarkers[base], base == ".claude-plugin":
+			markers[parent] = depth
+		case contentDirs[base]:
+			content[parent] = depth
+		}
+		if depth == 0 {
+			topRefused++
+		}
+	}
 	for _, cands := range []map[string]int{markers, content} {
 		if root, err := shallowest(tree, cands); root != "" || err != nil {
 			return root, err
@@ -470,7 +651,7 @@ func archiveRoot(tree, subpath string) (string, error) {
 	}
 	if entries, err := os.ReadDir(tree); err != nil {
 		return "", err
-	} else if len(entries) == 1 && entries[0].IsDir() {
+	} else if topRefused == 0 && len(entries) == 1 && entries[0].IsDir() {
 		return filepath.Join(tree, entries[0].Name()), nil
 	}
 	return tree, nil

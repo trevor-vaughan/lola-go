@@ -63,6 +63,14 @@ var _ = Describe("runtime hooks", func() {
 	install := func(opts engine.Options) (*engine.Result, error) {
 		return e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: plugin}}, opts)
 	}
+	// resync is lola sync of s at its pins, with sync's result as the plain result install returns.
+	resync := func(s engine.Scope, opts engine.Options) (*engine.Result, error) {
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: s, Options: opts})
+		if err != nil {
+			return nil, err
+		}
+		return res.Result, nil
+	}
 	check := func() []target.Finding {
 		rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"claude-code"}, nil)
 		Expect(err).NotTo(HaveOccurred())
@@ -93,8 +101,9 @@ var _ = Describe("runtime hooks", func() {
 			Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 			Expect(filepath.Join(proj, settings)).NotTo(BeAnExistingFile())
 			Expect(res.Findings).To(ContainElement(MatchFields(IgnoreExtras, Fields{"Severity": Equal(target.SeverityWarn), "Module": Equal("deploy"),
-				"Target": Equal("claude-code"), "Kind": Equal("runtime-hook"), "Code": Equal("claude-code/runtime-hooks-declined")})))
-			res, err = e.Render(ctx, sc, opts)
+				"Target": Equal("claude-code"), "Kind": Equal("runtime-hook"), "Code": Equal("claude-code/runtime-hooks-declined"),
+				"Hint": Equal("review the hooks listed above, then rerun with --trust=runtime-hooks if you want to install them")})))
+			res, err = resync(sc, opts)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filepath.Join(proj, settings)).NotTo(BeAnExistingFile())
 			Expect(res.Findings).To(ContainElement(HaveField("Code", "claude-code/runtime-hooks-declined")))
@@ -154,7 +163,7 @@ var _ = Describe("runtime hooks", func() {
 
 			_, err = install(opts(never))
 			Expect(err).NotTo(HaveOccurred())
-			res, err = e.Render(ctx, sc, opts(never))
+			res, err = resync(sc, opts(never))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Steps).To(BeEmpty())
 			Expect(res.Modules[0].RuntimeHooks).To(ConsistOf(HaveField("Status", engine.RuntimeHooksConsented)))
@@ -183,7 +192,7 @@ var _ = Describe("runtime hooks", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hooksIn(settings)["Stop"]).To(HaveLen(1))
 			Expect(consentFile()).To(ContainSubstring(`"deploy/runtime-hooks/`))
-			res, err = e.Render(ctx, sc, claudeOnly)
+			res, err = resync(sc, claudeOnly)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).NotTo(ContainElement(HaveField("Code", "claude-code/runtime-hooks-declined")), "the recorded consent holds off a terminal")
 		})
@@ -268,12 +277,11 @@ var _ = Describe("runtime hooks", func() {
 
 			moved := filepath.Join(tmp, "moved")
 			Expect(os.Rename(proj, moved)).To(Succeed())
-			// A moved project has no trust record, so render leaves its modules out; installing the
-			// module again, as its finding coaches, renders it there.
-			res, err := e.Render(ctx, engine.Scope{Kind: target.Project, ProjectDir: moved}, claudeOnly)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElement(HaveField("Code", engine.CodeNotTrusted)))
-			res, err = e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: moved}, moved, []engine.InstallRequest{{Arg: plugin}}, claudeOnly)
+			// The plugin's recorded source now lies outside the moved project, so sync refuses it;
+			// installing the module again renders it there.
+			_, err = resync(engine.Scope{Kind: target.Project, ProjectDir: moved}, claudeOnly)
+			Expect(err).To(MatchError(ContainSubstring("deploy: local source " + plugin + " resolves outside the project")))
+			res, err := e.Install(ctx, engine.Scope{Kind: target.Project, ProjectDir: moved}, moved, []engine.InstallRequest{{Arg: plugin}}, claudeOnly)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(ContainElement(declined))
 			Expect(filepath.Join(moved, settings)).NotTo(BeAnExistingFile())
@@ -288,7 +296,7 @@ var _ = Describe("runtime hooks", func() {
 
 			linked := filepath.Join(tmp, "linked")
 			Expect(os.Symlink(proj, linked)).To(Succeed())
-			_, err = e.Render(ctx, engine.Scope{Kind: target.Project, ProjectDir: linked}, opts(never))
+			_, err = resync(engine.Scope{Kind: target.Project, ProjectDir: linked}, opts(never))
 			Expect(err).NotTo(HaveOccurred(), "the same settings file through a symlink is the same destination")
 
 			other := filepath.Join(tmp, "other")
@@ -300,7 +308,7 @@ var _ = Describe("runtime hooks", func() {
 			_, err = e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: plugin}}, opts(answer(false)))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(asked).To(HaveLen(3), "user scope is another settings file")
-			_, err = e.Render(ctx, sc, opts(never))
+			_, err = resync(sc, opts(never))
 			Expect(err).NotTo(HaveOccurred(), "declining elsewhere leaves this project's consent alone")
 		})
 
@@ -384,7 +392,7 @@ var _ = Describe("runtime hooks", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(filepath.Join(proj, agentFile)).To(BeARegularFile())
 				Expect(res.Modules[0].RuntimeHooks).To(ContainElement(server(Fields{"MCPServer": Equal("pw"), "Status": Equal(engine.RuntimeHooksConsented)})))
-				_, err = e.Render(ctx, sc, opts(never))
+				_, err = resync(sc, opts(never))
 				Expect(err).NotTo(HaveOccurred())
 			})
 
@@ -490,7 +498,7 @@ var _ = Describe("runtime hooks", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(b)).To(And(ContainSubstring(`a && b > c"`), ContainSubstring(`"x && y"`), ContainSubstring(`"<b>"`)))
 			Expect(string(b)).NotTo(ContainSubstring(`\u00`))
-			res, err := e.Render(ctx, sc, claudeOnly)
+			res, err := resync(sc, claudeOnly)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Steps).To(BeEmpty(), "the unescaped group is the owned group")
 			_, err = e.Uninstall(ctx, sc, []string{"deploy"}, engine.Options{})
@@ -503,15 +511,37 @@ var _ = Describe("runtime hooks", func() {
 			Expect(err).NotTo(HaveOccurred())
 			edited := "{\n  \"hooks\": {\n    \"Stop\": [{\"hooks\": [{\"type\": \"command\", \"command\": \"true\"}]}]\n  }\n}\n"
 			writeTree(proj, map[string]string{settings: edited})
-			res, err := e.Render(ctx, sc, claudeOnly)
+			res, err := resync(sc, claudeOnly)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Steps).To(ConsistOf(MatchFields(IgnoreExtras, Fields{"Action": Equal(plan.ActionAbsent), "Kind": Equal("runtime-hook")})))
 			Expect(res.Findings).To(ContainElement(MatchFields(IgnoreExtras, Fields{"Severity": Equal(target.SeverityInfo), "Module": Equal("deploy"),
-				"Code": Equal("claude-code/runtime-hook-drift"), "Hint": Equal("restore it: " + e.Command(sc, "render", "--force"))})))
-			res, err = e.Render(ctx, sc, engine.Options{Targets: []string{"claude-code"}, ForceRun: "lola render --project --force", Display: []string{"--json"}})
+				"Code": Equal("claude-code/runtime-hook-drift"), "Hint": Equal("restore it: " + e.SyncCommand(sc, "deploy", "--force"))})))
+			res, err = resync(sc, engine.Options{Targets: []string{"claude-code"}, ForceRun: "lola sync --project --force", Display: []string{"--json"}})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElement(HaveField("Hint", "restore it: lola render --project --force")), "the run's own --force run, when it has one")
-			_, err = e.Render(ctx, sc, engine.Options{Targets: []string{"claude-code"}, Strict: true})
+			Expect(res.Findings).To(ContainElement(HaveField("Hint", "restore it: lola sync --project --force")), "the run's own --force run, when it has one")
+			// An --update run's own --force run would upgrade: lola update's and lola sync --update's
+			// restore names the drifted modules to lola sync instead.
+			for _, u := range []struct {
+				installed bool
+				run       string
+			}{{true, "lola update --project --force"}, {false, "lola sync --project --update --force"}} {
+				upd, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Update: true, Installed: u.installed, Display: []string{"--json"},
+					Options: engine.Options{Targets: []string{"claude-code"}, ForceRun: u.run, Display: []string{"--json"}}})
+				Expect(err).NotTo(HaveOccurred(), u.run)
+				Expect(upd.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hook-drift"),
+					HaveField("Hint", "restore it: "+e.SyncCommand(sc, "deploy", "--json", "--force")))), u.run)
+				Expect(upd.Findings).NotTo(ContainElement(HaveField("Hint", Or(ContainSubstring("lola update"), ContainSubstring("--update")))), u.run)
+			}
+			// An activation's own --force run finds its profile as asked and changes nothing: the
+			// restore of a module it moves names lola sync too.
+			writeTree(e.Paths.UserProfiles, map[string]string{"ops.yml": "version: 1\nmodules:\n  - {name: deploy, source: " + plugin + "}\n"})
+			act, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "ops"},
+				Options: engine.Options{Targets: []string{"claude-code"}, ForceRun: "lola profile --project ops --on --force", Trust: engine.TrustAll}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(act.Findings).To(ContainElement(And(HaveField("Code", "claude-code/runtime-hook-drift"),
+				HaveField("Hint", "restore it: "+e.SyncCommand(sc, "deploy", "--force")))))
+			Expect(e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOff}})).Error().NotTo(HaveOccurred())
+			_, err = resync(sc, engine.Options{Targets: []string{"claude-code"}, Strict: true})
 			Expect(err).NotTo(HaveOccurred(), "drift reports the user's choice; --strict does not escalate it")
 			b, err := os.ReadFile(filepath.Join(proj, settings))
 			Expect(err).NotTo(HaveOccurred())
@@ -520,7 +550,7 @@ var _ = Describe("runtime hooks", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(led.Modules["deploy"].Artifacts).To(ContainElement(HaveField("Kind", "runtime-hook")), "still owned while absent")
 
-			_, err = e.Render(ctx, sc, engine.Options{Targets: []string{"claude-code"}, Force: true})
+			_, err = resync(sc, engine.Options{Targets: []string{"claude-code"}, Force: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(hooksIn(settings)["Stop"]).To(HaveLen(2))
 		})
@@ -633,20 +663,20 @@ var _ = Describe("runtime hooks", func() {
 		Entry("another kind", "mcp"),
 	)
 
-	It("leaves out an installed module that no longer loads, such as one with a hooked sidecar from before the refusal, with its coaching", func() {
+	It("refuses to sync an installed module that no longer loads, such as one with a hooked sidecar from before the refusal, with its coaching", func() {
 		native := filepath.Join(tmp, "src", "ship")
 		writeTree(native, map[string]string{"commands/ship.md": "Ship\n"})
 		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: native}}, claudeOnly)
 		Expect(err).NotTo(HaveOccurred())
 		// The folder now holds what an older lola installed and this one refuses.
 		writeTree(native, map[string]string{"commands/ship/notes.md": "---\nhooks: {Stop: [{hooks: [{type: prompt, prompt: p}]}]}\n---\nN\n"})
-		res, err := e.Render(ctx, sc, claudeOnly)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Findings).To(ContainElement(And(HaveField("Module", "ship"), HaveField("Code", engine.CodeContentChanged),
-			HaveField("Text", ContainSubstring("frontmatter hooks")), HaveField("Hint", ContainSubstring("put hooks in the command itself")))))
+		_, err = resync(sc, claudeOnly)
+		Expect(err).To(MatchError("command ship: commands/ship/notes.md: frontmatter hooks: Claude Code reads this file as a command, " +
+			"so lola would install its hooks without asking"))
+		Expect(errs.Hints(err)).To(Equal([]string{"remove it: " + e.Command(sc, "uninstall", "ship"), "put hooks in the command itself"}))
 		_, err = e.Uninstall(ctx, sc, []string{"ship"}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred(), "the hint's way out works")
-		_, err = e.Render(ctx, sc, claudeOnly)
+		_, err = resync(sc, claudeOnly)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

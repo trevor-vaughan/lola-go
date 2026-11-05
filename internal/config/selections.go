@@ -19,33 +19,53 @@ const (
 	SectionGlobal  = "global"
 	SectionUser    = "user"
 	SectionProject = "project"
+	// a profile entry's picks, held for the run: read from and written to the profile, never to selections.yaml (cherry-pick design §4.2)
+	SectionProfile = "profile"
 )
 
 // Where names one section of selections.yaml: global, user, or a project by its
-// paths.ProjectKey.
+// paths.ProjectKey; or, held for the run only, a profile entry's picks (SectionProfile), by the
+// profile layer's name, profile:<qualified> (spec 2026-10-29 §13 item 2).
 type Where struct {
 	Kind    string
 	Project string
+	Profile string
 }
 
-// Global, User and Project name the sections.
+// Global, User, Project and Picks name the sections.
 func Global() Where            { return Where{Kind: SectionGlobal} }
 func User() Where              { return Where{Kind: SectionUser} }
 func Project(key string) Where { return Where{Kind: SectionProject, Project: key} }
+func Picks(layer string) Where { return Where{Kind: SectionProfile, Profile: layer} }
+
 func (w Where) String() string {
-	if w.Kind == SectionProject {
+	switch w.Kind {
+	case SectionProject:
 		return "projects[" + w.Project + "]"
+	case SectionProfile:
+		return "profile " + strings.TrimPrefix(w.Profile, "profile:")
 	}
 	return w.Kind
 }
 
-// Entry is one module's entry in a section.
+// Origin names the section in messages: selections.yaml global, user or projects[<dir>], or
+// profile <name>. The project path and the profile name are the user's; print them through
+// untrusted.Text.
+func (w Where) Origin() string {
+	if w.Kind == SectionProfile {
+		return w.String()
+	}
+	return "selections.yaml " + w.String()
+}
+
+// Entry is one module's entry in a section. Only, when set, is the list of the components the
+// module installs at the section's scope (spec 2026-10-29 cherry-pick §3.1); only: [] is none.
 type Entry struct {
-	Skip, Include []Pattern
+	Skip, Include, Only []Pattern
 }
 
 // Empty reports an entry with nothing in it.
-func (e Entry) Empty() bool { return len(e.Skip) == 0 && len(e.Include) == 0 }
+func (e Entry) Empty() bool { return len(e.Skip) == 0 && len(e.Include) == 0 && len(e.Only) == 0 }
 
 // Section maps module names to their entries.
 type Section map[string]Entry
@@ -61,8 +81,8 @@ type projectSection struct {
 type Selections struct {
 	Path     string
 	global   Section
-	user     Section
 	projects []projectSection
+	profiles map[string]Section // a profile entry's picks, by layer name: the run's, never saved
 }
 
 // LoadSelections reads selections.yaml; a missing or empty file has no selections.
@@ -74,7 +94,7 @@ func LoadSelections(path string) (*Selections, error) {
 // loadSelections also returns the document node, nil when the file is missing or blank. A
 // document that holds only null (with or without comments) comes back with no root mapping.
 func loadSelections(path string) (*Selections, *yaml.Node, error) {
-	s := &Selections{Path: path, global: Section{}, user: Section{}}
+	s := &Selections{Path: path, global: Section{}}
 	d, _, err := yamldoc.Read(path, Version)
 	if err != nil {
 		return nil, nil, err
@@ -91,10 +111,18 @@ func loadSelections(path string) (*Selections, *yaml.Node, error) {
 
 func (s *Selections) decode(root *yaml.Node) error {
 	d := doc{path: s.Path}
+	// The user section went with user.yml (spec 2026-10-29 §7): user-scope modules come from
+	// profiles, whose picks live in their entries. Its key's line names it.
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if k := root.Content[i]; k.Value == SectionUser {
+			return d.fail(k, SectionUser, "is no longer used; picks for user-scope modules live in their profile entries",
+				"delete the user: section from "+untrusted.Text(s.Path, untrusted.MaxName),
+				"then re-apply its picks: lola install <module> --user --skip <kind/name>")
+		}
+	}
 	return d.mapping(root, "", map[string]func(*yaml.Node, string) error{
 		"version": d.version,
 		"global":  func(n *yaml.Node, at string) error { return d.section(n, at, s.global, true) },
-		"user":    func(n *yaml.Node, at string) error { return d.section(n, at, s.user, false) },
 		"projects": func(n *yaml.Node, at string) error {
 			if isNull(n) {
 				return nil
@@ -143,14 +171,14 @@ func (d doc) projectKey(k *yaml.Node, at string) (projectSection, error) {
 	return projectSection{Key: key, Written: k.Value, Section: Section{}}, nil
 }
 
-// section decodes module entries into out. The global section only skips: an include there
-// would have no scope to override.
+// section decodes module entries into out. The global section takes skip: and only:, not
+// include: an include there would have no scope to override.
 func (d doc) section(n *yaml.Node, at string, out Section, global bool) error {
 	if isNull(n) {
 		return nil
 	}
 	if n.Kind != yaml.MappingNode {
-		return d.fail(n, at, "must be a mapping of module names, not "+kindName(n), "write module-name: followed by skip: and include: lists")
+		return d.fail(n, at, "must be a mapping of module names, not "+kindName(n), "write module-name: followed by skip:, include: and only: lists")
 	}
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		k, v := n.Content[i], n.Content[i+1]
@@ -172,11 +200,11 @@ func (d doc) section(n *yaml.Node, at string, out Section, global bool) error {
 				return err
 			}
 		}
-		fields := map[string]func(*yaml.Node, string) error{"skip": list(&e.Skip), "include": list(&e.Include)}
+		fields := map[string]func(*yaml.Node, string) error{"skip": list(&e.Skip), "include": list(&e.Include), "only": list(&e.Only)}
 		if global {
 			fields["include"] = func(n *yaml.Node, at string) error {
-				return d.fail(n, at, "global only skips; an include overrides a skip within a scope",
-					"move it to the user: section or a projects: entry")
+				return d.fail(n, at, "global takes skip: and only:, not include:; an include overrides a skip or an only: list within a scope",
+					"move it to a projects: entry")
 			}
 		}
 		if !isNull(v) {
@@ -189,7 +217,7 @@ func (d doc) section(n *yaml.Node, at string, out Section, global bool) error {
 	return nil
 }
 
-// patterns decodes a skip or include list.
+// patterns decodes a skip, include or only list.
 func (d doc) patterns(n *yaml.Node, at string) ([]Pattern, error) {
 	if isNull(n) {
 		return nil, nil
@@ -209,7 +237,7 @@ func (d doc) patterns(n *yaml.Node, at string) ([]Pattern, error) {
 		}
 		p, err := ParsePattern(s)
 		if err != nil {
-			return nil, d.fail(c, sub, err.Error(), selectorForms)
+			return nil, d.fail(c, sub, err.Error(), SelectorForms)
 		}
 		out = append(out, p)
 	}
@@ -221,8 +249,8 @@ func (s *Selections) section(w Where) Section {
 	switch w.Kind {
 	case SectionGlobal:
 		return s.global
-	case SectionUser:
-		return s.user
+	case SectionProfile:
+		return s.profiles[w.Profile]
 	}
 	for _, p := range s.projects {
 		if paths.SameKey(p.Key, w.Project) {
@@ -248,31 +276,101 @@ func (s *Selections) Set(w Where, module string, e Entry) {
 	}
 	if sec == nil {
 		sec = Section{}
-		s.projects = append(s.projects, projectSection{Key: w.Project, Written: w.Project, Section: sec})
+		if w.Kind == SectionProfile {
+			if s.profiles == nil {
+				s.profiles = map[string]Section{}
+			}
+			s.profiles[w.Profile] = sec
+		} else {
+			s.projects = append(s.projects, projectSection{Key: w.Project, Written: w.Project, Section: sec})
+		}
 	}
 	sec[module] = e
 }
 
-// Exclusions are a module's effective exclusions at a scope: global skip plus the scope's
-// skip, minus the scope's include.
-type Exclusions struct {
-	Skip, Include []Pattern
+// Layer is one place that sets a module's selectors, named in messages by Origin (Where.Origin).
+type Layer struct {
+	Origin string
+	Entry
 }
 
-// Exclusions returns module's effective exclusions at scope (User() or a Project).
+// Exclusions are a module's selectors at a scope, one Layer per place that sets them: Global is
+// selections.yaml's global section, Scope the scope's own section (zero when the global section
+// itself is edited). The zero value excludes nothing. Precedence (cherry-pick design §3.1): the
+// scope's include always installs a match; every layer's skip excludes its matches; the only: list
+// of the most specific layer that has one excludes what it misses, replacing the others.
+type Exclusions struct {
+	Global, Scope Layer
+}
+
+// Exclusions returns module's effective exclusions at scope (User(), a Project, or a profile
+// entry's Picks). A profile entry's picks replace every section's but the global skip, a "never
+// anywhere" choice (cherry-pick design §4.2): the global only: does not apply to them.
 func (s *Selections) Exclusions(scope Where, module string) Exclusions {
-	g, sc := s.Entry(Global(), module), s.Entry(scope, module)
-	return Exclusions{Skip: append(append([]Pattern{}, g.Skip...), sc.Skip...), Include: sc.Include}
+	return Layered(scope, s.Entry(Global(), module), s.Entry(scope, module))
+}
+
+// Layered is the exclusions at scope of a module whose global section entry is global and whose
+// entry at scope is own, by Exclusions' rule: a profile entry's picks take the global skip alone.
+func Layered(scope Where, global, own Entry) Exclusions {
+	if scope.Kind == SectionProfile {
+		global = Entry{Skip: global.Skip}
+	}
+	return Exclusions{Global: Layer{Origin: Global().Origin(), Entry: global}, Scope: Layer{Origin: scope.Origin(), Entry: own}}
+}
+
+// Only returns the only: list in force and the origin of the layer that set it; nil and "" when
+// no layer has one.
+func (x Exclusions) Only() ([]Pattern, string) {
+	for _, l := range []Layer{x.Scope, x.Global} {
+		if len(l.Only) > 0 {
+			return l.Only, l.Origin
+		}
+	}
+	return nil, ""
 }
 
 // Excludes reports whether the component kind/name is excluded.
 func (x Exclusions) Excludes(kind, name string) bool {
-	return matchesAny(x.Skip, kind, name) && !matchesAny(x.Include, kind, name)
+	if matchesAny(x.Scope.Include, kind, name) {
+		return false
+	}
+	if x.skipped(kind, name) {
+		return true
+	}
+	only, _ := x.Only()
+	return only != nil && !matchesAny(only, kind, name)
 }
 
-// Patterns is every pattern behind the exclusions, for warnings about patterns that name
-// nothing.
-func (x Exclusions) Patterns() []Pattern { return append(append([]Pattern{}, x.Skip...), x.Include...) }
+// LeftOutByOnly reports whether kind/name is excluded by the only: list in force alone: no skip
+// names it and no include brings it back.
+func (x Exclusions) LeftOutByOnly(kind, name string) bool {
+	return x.Excludes(kind, name) && !x.skipped(kind, name)
+}
+
+func (x Exclusions) skipped(kind, name string) bool {
+	return matchesAny(x.Global.Skip, kind, name) || matchesAny(x.Scope.Skip, kind, name)
+}
+
+// Sourced is a selector with the origin of the layer that wrote it.
+type Sourced struct {
+	Pattern
+	Origin string
+}
+
+// Patterns is every pattern of every layer, with its origin, for warnings about patterns that
+// name nothing.
+func (x Exclusions) Patterns() []Sourced {
+	var out []Sourced
+	for _, l := range []Layer{x.Global, x.Scope} {
+		for _, ps := range [][]Pattern{l.Skip, l.Include, l.Only} {
+			for _, p := range ps {
+				out = append(out, Sourced{Pattern: p, Origin: l.Origin})
+			}
+		}
+	}
+	return out
+}
 
 func matchesAny(ps []Pattern, kind, name string) bool {
 	for _, p := range ps {
@@ -285,9 +383,15 @@ func matchesAny(ps []Pattern, kind, name string) bool {
 
 // Clone returns a deep copy, for planning edits without touching s.
 func (s *Selections) Clone() *Selections {
-	c := &Selections{Path: s.Path, global: s.global.clone(), user: s.user.clone()}
+	c := &Selections{Path: s.Path, global: s.global.clone()}
 	for _, p := range s.projects {
 		c.projects = append(c.projects, projectSection{Key: p.Key, Written: p.Written, Section: p.Section.clone()})
+	}
+	for layer, sec := range s.profiles {
+		if c.profiles == nil {
+			c.profiles = map[string]Section{}
+		}
+		c.profiles[layer] = sec.clone()
 	}
 	return c
 }
@@ -295,7 +399,7 @@ func (s *Selections) Clone() *Selections {
 func (sec Section) clone() Section {
 	out := Section{}
 	for m, e := range sec {
-		out[m] = Entry{Skip: slices.Clone(e.Skip), Include: slices.Clone(e.Include)}
+		out[m] = Entry{Skip: slices.Clone(e.Skip), Include: slices.Clone(e.Include), Only: slices.Clone(e.Only)}
 	}
 	return out
 }

@@ -142,9 +142,40 @@ func build(dir string, m *Module, known []string) (*Module, error) {
 		return nil, err
 	}
 	if len(m.Skills)+len(m.Commands)+len(m.Agents)+len(m.MCPServers)+len(m.Rules)+len(m.RuntimeHooks) == 0 {
-		return nil, fmt.Errorf("%s: %w: looked for %s", dir, ErrNoModule, lookedFor)
+		return nil, fmt.Errorf("%w: looked for %s", ErrNoModule, lookedFor)
 	}
 	return m, nil
+}
+
+// DirOfSkills reports whether dir holds skills as <name>/SKILL.md, which is the inside of a
+// module's skills/ directory, not a module root.
+func DirOfSkills(dir string) bool {
+	m, err := filepath.Glob(filepath.Join(dir, "*", "SKILL.md"))
+	return err == nil && len(m) > 0
+}
+
+// stringKeys reports whether every mapping in v, a value yaml.v3 decoded, has only string keys.
+// yaml.v3 decodes a mapping with any other key as map[any]any. encoding/json refuses that type
+// before Go 1.27, but from Go 1.27, built on json/v2, encodes it when its keys are integers,
+// turning 1 into "1"; so lola checks the keys itself rather than rely on json.Marshal failing.
+func stringKeys(v any) bool {
+	switch x := v.(type) {
+	case map[any]any:
+		return false
+	case map[string]any:
+		for _, e := range x {
+			if !stringKeys(e) {
+				return false
+			}
+		}
+	case []any:
+		for _, e := range x {
+			if !stringKeys(e) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // frontmatterHooks checks the hooks Claude Code runs from skill, command and agent frontmatter
@@ -158,7 +189,7 @@ func frontmatterHooks(m *Module) error {
 			}
 			at := fmt.Sprintf("%s %s: frontmatter %s", kind, name, safeName(k))
 			b, err := json.Marshal(doc.Frontmatter[k])
-			if err != nil {
+			if err != nil || !stringKeys(doc.Frontmatter[k]) {
 				return entryErr(at, "every key must be a string", "quote keys that look like numbers or booleans")
 			}
 			if _, err := hookEvents(at, b); err != nil {
@@ -201,7 +232,7 @@ func agentServers(m *Module) error {
 			}
 			at := fmt.Sprintf("agent %s: frontmatter %s", a.Name, safeName(k))
 			b, err := json.Marshal(a.Doc.Frontmatter[k])
-			if err != nil {
+			if err != nil || !stringKeys(a.Doc.Frontmatter[k]) {
 				return entryErr(at, "every key must be a string", "quote keys that look like numbers or booleans")
 			}
 			var items []json.RawMessage

@@ -177,7 +177,7 @@ func (a *app) cacheRmCmd() *cobra.Command {
 		Use:               "rm <module>...",
 		Aliases:           []string{"remove", "uninstall", "erase", "delete", "del"},
 		Short:             "Remove modules (every cached version) from your cache",
-		Long:              "Remove every cached version of the modules. Installed modules keep working: each one runs\nfrom its own module copy, and lola render fetches the source again when it needs to.",
+		Long:              "Remove every cached version of the modules. Installed modules keep working: each one runs\nfrom its own module copy, and lola sync fetches the source again when it needs to.",
 		Example:           g.example(),
 		Args:              g.args(1),
 		ValidArgsFunction: a.completeStored,

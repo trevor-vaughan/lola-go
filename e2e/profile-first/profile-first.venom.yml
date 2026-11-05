@@ -1,0 +1,474 @@
+name: lola profile first, the S1-S8 walkthroughs of spec 2026-10-29 §4
+# Run by scripts/e2e.sh (task e2e -- profile-first) in the shared e2e container: this checkout's
+# lola-go at /opt/lola-go/lola-go, the suite at /e2e, e2e/common at /e2e-common, a git server on
+# 127.0.0.1:8765 serving /srv/git, and, once setup.sh has run e2e/common/tls.sh, the same
+# repositories over HTTPS at https://git.lola.test:8443/, whose test CA a step passes to git with
+# {{.tls}}. Every step is {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob, &&,
+# redirection or pipe sits inside a single-quoted sh -c or python3 -c, and no step names a host
+# path. Cases run in order and read the state earlier ones leave; a case whose state is missing
+# fails. No assistant is on PATH, so installs name -t claude-code.
+#
+# The scenarios are the spec's, in an order one home can walk: S1 and S2 at user scope, S4 and
+# S3 in the team project acme, S5 on a teammate's home (b_env), S7 and S8 back in this home, and
+# S6 last, copying this home's ~/.config/lola into a new one (n_env), which must install the
+# versions this home has although the source has moved on since. A terminal is script's
+# pseudo-terminal in accessible mode (LOLA_ACCESSIBLE=1), answered by number.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-profile-first
+  lola: /opt/lola-go/lola-go
+  hint: python3 /e2e-common/hint.py
+  jsoncheck: python3 /e2e-common/jsoncheck.py
+  tls: -e GIT_SSL_CAINFO=/run/e2e-tls/ca.pem
+  b_env: -e HOME=/home/b -e XDG_CONFIG_HOME=/home/b/.config -e XDG_DATA_HOME=/home/b/.local/share -e XDG_CACHE_HOME=/home/b/.cache -e XDG_STATE_HOME=/home/b/.local/state
+  n_env: -e HOME=/home/n -e XDG_CONFIG_HOME=/home/n/.config -e XDG_DATA_HOME=/home/n/.local/share -e XDG_CACHE_HOME=/home/n/.cache -e XDG_STATE_HOME=/home/n/.local/state
+  git: http://127.0.0.1:8765
+  # the fixture repositories' commits (setup.sh asserts them)
+  review_kit: c89e980464851e192e265c1f98a711365f4b8a25
+  skills: 897c0d803c715c7b4dbbbdd3a831a1d493c49ead
+  skills_next: 149b55ff1483a0691528acd76eb13981323ced67
+  gopls_v12: 5587024ea876cd9a32f340aefdb564d6240777f4
+  gopls_v20: 0164087fce4968fe7e6925a8d0666505c1f5f8a4
+  golang_lint: d4308c316a318ecc7af8726dd3b0ae6b42d51c0a
+  team_kit: 435a97b16cbd4632a406946aaa89a0bb1f5a6bb1
+  profiles: 200fc36646c8e6962363f629d7ed309f78247d70
+  acme: 91ecb93e454bf80a20ab7d83916195b55a4f6eb6
+
+testcases:
+  - name: The fixtures are built, every commit is the one recorded, and git.lola.test serves HTTPS
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh {{.review_kit}} {{.skills}} {{.skills_next}} {{.gopls_v12}} {{.gopls_v20}} {{.golang_lint}} {{.team_kit}} {{.profiles}} {{.acme}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "fixture ready"
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} git ls-remote https://git.lola.test:8443/profiles.git refs/heads/main"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldStartWith "{{.profiles}}"
+
+  - name: S1 A first install picks user scope and writes default, never saying profile
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git clone -q {{.git}}/acme.git /work/acme"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && printf \"2\\n0\\n\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} install {{.git}}/review-kit.git --ref v1.4.0 -t claude-code\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"1.   Project (/work/acme) — project.yml\""
+          - "result.systemout ShouldContainSubstring \"2.   User (~) — default\""
+          - "result.systemout ShouldContainSubstring \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"✓ added review-kit to default (base)  (/home/tester/.config/lola/profiles/default.yml, new)\""
+          - "result.systemout ShouldContainSubstring \"✓ installed review-kit (claude-code)\""
+          - result.systemout ShouldNotContainSubstring "profile go"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /home/tester/.claude/commands/review.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Review with review-kit v1.4.0."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list --user"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"review-kit  claude-code  ✓ ok    on     {{.git}}/review-kit.git  default\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list --user --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"review-kit\tclaude-code\tok\ton\t{{.git}}/review-kit.git\tuser\tprofile:default\""
+          - "result.systemerr ShouldEqual \"context\tuser\t\tdefault\t-\t\""
+
+  - name: S2 A baseline of 4 skills, a go-review profile over it, an override and the way back
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install {{.git}}/cc-skills-golang.git --user -t claude-code --only skill/golang-testing --only skill/golang-gopls --only skill/golang-errors --only skill/golang-naming -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"✓ added cc-skills-golang to default (base)  (/home/tester/.config/lola/profiles/default.yml)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go-review --switch --new --user"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"✓ new profile go-review (/home/tester/.config/lola/profiles/go-review.yml, empty)\""
+          - "result.systemout ShouldEndWith \"now: user scope: profile go-review over default\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/review-tools --user -t claude-code -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: profile go-review over default\""
+          - "result.systemout ShouldContainSubstring \"✓ added review-tools to profile go-review  (/home/tester/.config/lola/profiles/go-review.yml)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"2\\n1\\n4\\n6\\n0\\n\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} profile --edit cc-skills-golang --user\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"cc-skills-golang comes from default (base), loaded under every profile at user scope.\""
+          - "result.systemout ShouldContainSubstring \"2. Override it in profile go-review  (go-review gets its own entry, starting from default's)\""
+          - "result.systemout ShouldContainSubstring \"profile go-review › cc-skills-golang › skills (7)\""
+          - "result.systemout ShouldMatchRegex \"(?s)comes from default.*Enter a number between 1 and 3.*Step 1 of 2 — profile go-review › cc-skills-golang › skills\""
+          - "result.systemout ShouldContainSubstring \"✓ added cc-skills-golang to profile go-review  (/home/tester/.config/lola/profiles/go-review.yml)\""
+          - "result.systemout ShouldContainSubstring \"⚠ cc-skills-golang: profile go-review overrides default (base); cc-skills-golang's picks from default (base) are dropped: the entry from profile go-review sets none\""
+          - "result.systemout ShouldContainSubstring \"    cc-skills-golang: every component (no only: or skip:)\""
+          - result.systemout ShouldNotContainSubstring "(removed)"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'ls /home/tester/.claude/skills | paste -sd \" \"'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "golang-docs golang-errors golang-gopls golang-lint golang-naming golang-style golang-testing"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} grep -c skip: /home/tester/.config/lola/profiles/default.yml"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual 1
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile --off --user -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ removed review-tools\""
+          - "result.systemout ShouldContainSubstring \"  ~ cc-skills-golang  897c0d803c71  \""
+          - "result.systemout ShouldNotContainSubstring \"→ {{.git}}/cc-skills-golang.git\""
+          - "result.systemout ShouldEndWith \"now: user scope: default\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'ls /home/tester/.claude/skills | paste -sd \" \"; ls /home/tester/.claude/commands'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"golang-errors golang-gopls golang-naming golang-testing\nreview.md\""
+
+  - name: S4 A module installed into the shared project.yml moves into a new profile of yours in one step
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} sync -C /work/acme --trust=entries"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldStartWith \"project /work/acme: project.yml\""
+          - "result.systemout ShouldContainSubstring \"✓ synced team-kit (claude-code)\""
+          - "result.systemerr ShouldContainSubstring \"trusting, as --trust=entries allows:\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} install /e2e/fixtures/my-notes -t claude-code -y'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"project /work/acme: project.yml\""
+          - "result.systemout ShouldContainSubstring \"✓ added my-notes to project.yml (base, shared: git tracks it)\""
+          - "result.systemout ShouldContainSubstring \"→ meant for another profile? lola profile --project --move my-notes --to go-review --switch -y\""
+          - "result.systemout ShouldContainSubstring \"→ meant for every project? lola profile --user --move my-notes --to base -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git -C /work/acme status --porcelain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \" M .lola/project.yml\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} profile --user --move my-notes --to base -y -n'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\nproject /work/acme: project.yml\""
+          - "result.systemout ShouldContainSubstring \"→ would remove my-notes from project.yml (base, shared: git tracks it)\""
+          - "result.systemout ShouldContainSubstring \"→ would add my-notes to default (base)  (/home/tester/.config/lola/profiles/default.yml)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} profile --move my-notes --to me --json > /tmp/s4.out 2> /tmp/s4.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/s4.out /tmp/s4.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"me is not on in this project; lola needs to know whether to switch to it, and there is no terminal to ask on\""
+          - result.systemoutjson.hints ShouldHaveLength 2
+          - "result.systemoutjson.hints.hints0 ShouldEqual \"lola profile --json --move my-notes --to me --switch\""
+          - "result.systemoutjson.hints.hints1 ShouldEqual \"lola profile --json --move my-notes --to me --keep-off -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /home/tester/.config/lola/profiles/me.yml"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.hint}} /tmp/s4.err > /tmp/s4.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          doc = json.load(open("/tmp/s4.json"))
+          assert [(e["action"], e["module"], e["profile"]) for e in doc["edits"]] == [("removed", "my-notes", "project.yml"), ("added", "my-notes", "user:me")], doc["edits"]
+          assert doc["created"] == "/home/tester/.config/lola/profiles/me.yml", doc.get("created")
+          print("ok my-notes moved into the new profile me")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok my-notes moved into the new profile me"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git -C /work/acme status --porcelain"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldBeEmpty
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C /work/acme --plain"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"context\tproject\t/work/acme\tproject.yml\tuser:me\t\""
+          - "result.systemout ShouldEqual \"my-notes\tclaude-code\tok\ton\t/e2e/fixtures/my-notes\tproject\tprofile:user:me\nteam-kit\tclaude-code\tok\ton\t{{.git}}/team-kit.git\tproject\tproject.yml\""
+
+  - name: S3 An experiment copied from go-review, then back to go-review, keeping the experiment
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile try --switch --new --from go-review -C /work/acme --json > /tmp/s3.out 2> /tmp/s3.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/s3.out /tmp/s3.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"lola profile needs your confirmation to remove my-notes, and there is no terminal to ask on\""
+          - "result.systemoutjson.hints.hints1 ShouldEqual \"then confirm them: lola profile -C /work/acme user:try --switch --new --from go-review --json -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} test ! -e /home/tester/.config/lola/profiles/try.yml"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/s3.err 1 > /tmp/s3.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/s3.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.context.context0.profile.name ShouldEqual "user:me"
+          - result.systemoutjson.created.created0.profile ShouldEqual "user:try"
+          - result.systemoutjson.created.created0.from ShouldEqual "user:go-review"
+          - result.systemoutjson.created.created0.modules ShouldEqual 2
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} install /e2e/fixtures/shiny-new -t claude-code -y'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"project /work/acme: profile try over project.yml\""
+          - "result.systemout ShouldContainSubstring \"✓ added shiny-new to profile try  (/home/tester/.config/lola/profiles/try.yml)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go-review --switch -C /work/acme -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"project /work/acme: profile try over project.yml\""
+          - "result.systemout ShouldContainSubstring \"✓ removed shiny-new\""
+          - result.systemout ShouldNotContainSubstring "→ http"
+          - "result.systemout ShouldEndWith \"now: project /work/acme: profile go-review over project.yml\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test ! -e /work/acme/.claude/commands/shiny.md && grep -c \"name: shiny-new\" /home/tester/.config/lola/profiles/try.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual 1
+
+  - name: S5 A teammate's personal profile in the team project never touches the files git tracks
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} git clone -q {{.git}}/acme.git /work/acme-b"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.b_env}} {{.container}} sh -c 'printf \"1\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} sync -C /work/acme-b\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"project /work/acme-b: project.yml\""
+          - "result.systemout ShouldContainSubstring \".lola/project.yml has not been trusted on this machine (a fresh clone, or a moved project):\""
+          - "result.systemout ShouldContainSubstring \"✓ synced team-kit (claude-code)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.b_env}} {{.container}} {{.lola}} profile me --switch --new -C /work/acme-b"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"project /work/acme-b: project.yml\""
+          - "result.systemout ShouldContainSubstring \"✓ new profile me (/home/b/.config/lola/profiles/me.yml, empty)\""
+          - "result.systemout ShouldEndWith \"now: project /work/acme-b: profile me over project.yml\""
+      - type: exec
+        script: "{{.runtime}} exec {{.b_env}} {{.container}} sh -c 'cd /work/acme-b && {{.lola}} install /e2e/fixtures/my-notes -t claude-code -y'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"project /work/acme-b: profile me over project.yml\""
+          - "result.systemout ShouldContainSubstring \"✓ added my-notes to profile me  (/home/b/.config/lola/profiles/me.yml)\""
+          - result.systemout ShouldNotContainSubstring "shared"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'git -C /work/acme-b status --porcelain; test -f /work/acme-b/.claude/commands/notes.md && echo installed'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "installed"
+
+  - name: S7 A bundle combines go-review and docs, the later member wins, and an install asks which member
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install {{.git}}/gopls.git --ref v1.2 --profile go-review --user -t claude-code -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"✓ added gopls to profile go-review  (/home/tester/.config/lola/profiles/go-review.yml)\""
+          - "result.systemout ShouldContainSubstring \"→ saved to profile go-review; it is not on at user scope → lola profile --user go-review --switch\""
+          - "result.systemout ShouldContainSubstring \"? lola profile --user go-review --move gopls --to \""
+          - "result.systemout ShouldNotContainSubstring \"? lola profile --user --move gopls\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go-review --user --move gopls --to base -n"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"→ would add gopls to default (base)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile docs --edit --new {{.git}}/gopls.git --ref v2.0 --user -t claude-code -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ added gopls to profile docs  (/home/tester/.config/lola/profiles/docs.yml, new)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile docs --edit /e2e/fixtures/docs-lint --user -t claude-code -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ added docs-lint to profile docs  (/home/tester/.config/lola/profiles/docs.yml)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile work --switch --new --bundle go-review,docs --user -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"✓ new bundle work (go-review, docs)\""
+          - "result.systemout ShouldContainSubstring \"⚠ gopls: profile docs overrides profile go-review in bundle work (v2.0 over v1.2)\""
+          - "result.systemout ShouldEndWith \"now: user scope: bundle work (go-review, docs) over default\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /home/tester/.claude/commands/gopls.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "gopls v2.0."
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/spellcheck --user -t claude-code --json > /tmp/s7.out 2> /tmp/s7.err; echo exit=$?'"
+        assertions:
+          - result.systemout ShouldEqual "exit=1"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/s7.out /tmp/s7.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldEqual \"lola install needs to know which profile of bundle work gets /e2e/fixtures/spellcheck, and there is no terminal to ask on\""
+          - "result.systemoutjson.hints.hints0 ShouldEqual \"lola install /e2e/fixtures/spellcheck --json --target claude-code --user --profile docs\""
+          - "result.systemoutjson.hints.hints1 ShouldEqual \"lola install /e2e/fixtures/spellcheck --json --target claude-code --user --profile go-review\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} install /e2e/fixtures/spellcheck --user -t claude-code\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"work is a bundle. Which profile gets /e2e/fixtures/spellcheck?\""
+          - "result.systemout ShouldContainSubstring \"1. docs  (last member: wins overlaps)\""
+          - "result.systemout ShouldContainSubstring \"✓ added spellcheck to profile docs  (/home/tester/.config/lola/profiles/docs.yml)\""
+
+  - name: S8 One glance names each scope's profile and every profile's state
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} profile work --switch -C /work/acme -y > /dev/null && {{.lola}} profile go-review --switch --user -y > /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} profile'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"project /work/acme: bundle work (go-review, docs) over project.yml\nuser scope: profile go-review over default\""
+          - "result.systemout ShouldStartWith \"SCOPE    NAME       KIND     STATE           FILE\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} profile --plain'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"context\tproject\t/work/acme\tproject.yml\tuser:work\tuser:go-review,user:docs\ncontext\tuser\t\tdefault\tuser:go-review\t\""
+          - "result.systemout ShouldEqual \"project\tdocs\tuser\tmember\t\t\t/home/tester/.config/lola/profiles/docs.yml\nproject\tgo-review\tuser\tmember\t\t\t/home/tester/.config/lola/profiles/go-review.yml\nproject\tme\tuser\toff\t\t\t/home/tester/.config/lola/profiles/me.yml\nproject\treview\tproject\toff\t\t\t/work/acme/.lola/profiles/review.yml\nproject\ttry\tuser\toff\t\t\t/home/tester/.config/lola/profiles/try.yml\nproject\twork\tuser\ton\tbundle\tuser:go-review,user:docs\t/home/tester/.config/lola/profiles/work.yml\nuser\tdefault\tdefault\tbase\t\t\t/home/tester/.config/lola/profiles/default.yml\nuser\tdocs\tuser\toff\t\t\t/home/tester/.config/lola/profiles/docs.yml\nuser\tgo-review\tuser\ton\t\t\t/home/tester/.config/lola/profiles/go-review.yml\nuser\tme\tuser\toff\t\t\t/home/tester/.config/lola/profiles/me.yml\nuser\ttry\tuser\toff\t\t\t/home/tester/.config/lola/profiles/try.yml\nuser\twork\tuser\toff\tbundle\tuser:go-review,user:docs\t/home/tester/.config/lola/profiles/work.yml\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} profile --json > /tmp/s8.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json, subprocess
+          doc = json.loads(subprocess.run(["python3", "/e2e-common/jsoncheck.py", "doc", "/tmp/s8.json"], capture_output=True, text=True, check=True).stdout)
+          project, user = doc["context"]
+          assert (project["scope"], project["root"], project["base"]["name"]) == ("project", "/work/acme", "project.yml"), project
+          assert project["profile"]["bundle"] and [m["name"] for m in project["profile"]["members"]] == ["user:go-review", "user:docs"], project["profile"]
+          assert (user["scope"], user["profile"]["name"], user["profile"]["members"]) == ("user", "user:go-review", []), user
+          assert project["writes_to"] is None and user["writes_to"] is None
+          states = {(p["scope"], p["name"]): p["state"] for p in doc["profiles"]}
+          assert states[("project", "work")] == "on" and states[("project", "docs")] == "member" and states[("user", "default")] == "base", states
+          print("ok the listing names both scopes and every state")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the listing names both scopes and every state"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && {{.lola}} list > /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"project /work/acme: bundle work (go-review, docs) over project.yml\nuser scope: profile go-review over default\""
+
+  - name: S6 A new machine given only ~/.config/lola installs the versions this one has, and restores the remote profile
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile go --add https://git.lola.test:8443/profiles.git --trust"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ added remote:go (/home/tester/.local/share/lola/profiles/go/profile.yml)\""
+          - "result.systemout ShouldContainSubstring \"→ turn it on (switches go-review off, removing its modules): lola profile --user remote:go --switch -y\""
+          - result.systemout ShouldNotContainSubstring "--on"
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile --user remote:go --switch -y -n"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} profile go-work --edit --new --bundle go-review,remote:go --user"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ new bundle go-work (go-review, remote:go)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.container}} {{.lola}} profile go-work --switch --user -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ synced golang-lint (claude-code)\""
+          - "result.systemout ShouldEndWith \"now: user scope: bundle go-work (go-review, remote:go) over default\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /home/tester/.config/lola/pins.yaml"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"  cc-skills-golang:\n    - {source: '{{.git}}/cc-skills-golang.git', commit: {{.skills}}, digest: 'sha256:\""
+          - "result.systemout ShouldContainSubstring \"remotes:\n  go: {source: 'https://git.lola.test:8443/profiles.git', commit: {{.profiles}}, digest: 'sha256:\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh advance {{.skills}} {{.skills_next}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "main at next"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /home/n/.config && cp -R /home/tester/.config/lola /home/n/.config/lola && ls /home/n/.config/lola'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"pins.yaml\nprofiles\""
+      - type: exec
+        script: "{{.runtime}} exec {{.n_env}} {{.container}} {{.lola}} sync --user"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"✓ synced cc-skills-golang (claude-code)\""
+          - "result.systemout ShouldContainSubstring \"✓ synced review-kit (claude-code)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} tail -n 1 /home/n/.claude/skills/golang-testing/SKILL.md"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "Go testing advice."
+      - type: exec
+        script: "{{.runtime}} exec {{.tls}} {{.n_env}} {{.container}} {{.lola}} profile go-work --switch --user"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldEqual \"user scope: default\""
+          - "result.systemout ShouldContainSubstring \"→ restored remote profile go from pins.yaml (https://git.lola.test:8443/profiles.git @ 200fc36646c8)\""
+          - "result.systemout ShouldEndWith \"now: user scope: bundle go-work (go-review, remote:go) over default\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} python3 -c '
+          import json
+          def versions(home):
+              led = json.load(open(home + "/.local/state/lola/lock.json"))
+              return {name: (m.get("commit", ""), m["digest"]) for name, m in led["modules"].items()}
+          old, new = versions("/home/tester"), versions("/home/n")
+          assert old == new, (old, new)
+          assert new["cc-skills-golang"][0] == "{{.skills}}", new["cc-skills-golang"]
+          assert sorted(new) == ["cc-skills-golang", "golang-lint", "gopls", "review-kit", "review-tools"], sorted(new)
+          print("ok the new machine has the old one versions")
+          '
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok the new machine has the old one versions"

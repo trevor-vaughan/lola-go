@@ -124,6 +124,14 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("3. ✓ Other directory…\n"))
 	})
 
+	It("shows each scope's context beside it (spec 2026-10-29 §3.8)", func() {
+		_, err := accessible(&out, "1", "0").Scope(ScopeStep{ProjectRoot: "/src/api", ProjectContext: "project.yml",
+			UserContext: "profile go over default"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(ContainSubstring("1.   Project (/src/api) — project.yml\n"))
+		Expect(out.String()).To(ContainSubstring("2.   User (~) — profile go over default\n"))
+	})
+
 	It("asks a command that acts on one scope with nothing preselected (Plan 6b §3.1)", func() {
 		got, err := accessible(&out, "2", "0").Scope(ScopeStep{Question: "Render where?", ProjectRoot: "/src/api", One: true})
 		Expect(err).NotTo(HaveOccurred())
@@ -139,6 +147,16 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(got).To(BeEmpty())
 	})
 
+	It("adds Cancel to a where-question of one choice (spec 2026-10-29 §6.1)", func() {
+		st := WhereStep{Title: "c comes from default (base), loaded under every profile at user scope.", Options: []string{"Remove it from default (base)"}}
+		_, err := accessible(&out, "2").Where(st)
+		Expect(err).To(MatchError(ErrAborted))
+		Expect(out.String()).To(ContainSubstring("1. Remove it from default (base)\n2. Cancel\n"))
+
+		got, err := accessible(&out, "1").Where(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(0))
+	})
 	It("asks sync's trust question with Cancel under the cursor, and Choose… as numbered multi-selects with nothing preselected", func() {
 		st := TrustStep{Changes: 3, Groups: []TrustGroup{
 			{Title: "Changed (1)", Options: []TrustOption{{Module: "kit", Label: "~ kit rules (none) → false"}}},
@@ -203,6 +221,21 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			return h.TidyKeep(TidyKeepStep{Options: []TidyOption{{ID: "0", Label: "skill/old  claude-code"}}, Required: true})
 		}, []string{"0"}),
 	)
+
+	It("asks a bundle's members with its members ticked, and takes ticking none, as lola profile --edit's module page does", func() {
+		got, err := accessible(&out, "1", "0").Members(MembersStep{Title: "bundle work › members", Options: []ModuleOption{{Name: "docs", Label: "docs"}, {Name: "go", Label: "go"}}, Preselect: []string{"go"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{"docs", "go"}))
+		Expect(out.String()).To(ContainSubstring("bundle work › members"))
+		got, err = accessible(&out, "1", "0").Members(MembersStep{Title: "bundle work › members", Options: []ModuleOption{{Name: "go", Label: "go"}}, Preselect: []string{"go"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(BeEmpty(), "a bundle of nothing is an answer")
+		ans, err := accessible(&out, "1", "0").Modules(ModuleStep{Options: []ModuleOption{{Name: "kit", Label: "kit"}}, Preselect: []string{"kit"},
+			Title: "profile go › modules", None: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ans.Names).To(BeEmpty(), "every module unticked is an answer")
+		Expect(out.String()).To(ContainSubstring("profile go › modules"))
+	})
 
 	It("asks a module picker of several lists again when nothing in any of them is picked (Plan 10 §4)", func() {
 		st := ModuleStep{Options: []ModuleOption{{Name: "m", Label: "m"}}, Markets: []ModuleGroup{{Title: "@acme", Options: []ModuleOption{{Name: "@acme/x", Label: "x"}}}}}
@@ -296,29 +329,29 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 	It("draws a component page: a list per kind, rules shown disabled, the runtime hooks line", func() {
 		pg := ComponentPage{Module: "review-kit", Title: "review-kit", Footer: "Runtime hooks: 2 (you will be asked before they are installed)",
 			Groups: []ComponentGroup{
-				{Kind: "skill", Title: "Skills (2)", Options: []ComponentOption{{ID: "skill/a", Label: "a — A", Selected: true}, {ID: "skill/b", Label: "b", Selected: true}}},
-				{Kind: "command", Title: "Commands (1)", Options: []ComponentOption{{ID: "command/c", Label: "c (skipped in selections.yaml)"}}},
-				{Kind: "rule", Title: "Rules (1)", Disabled: true, Note: "(off: --no-rules)", Options: []ComponentOption{{ID: "rule/r", Label: "r"}}},
+				{Kind: "skill", Title: "skills (2)", Options: []ComponentOption{{ID: "skill/a", Label: "a — A", Selected: true}, {ID: "skill/b", Label: "b", Selected: true}}},
+				{Kind: "command", Title: "commands (1)", Options: []ComponentOption{{ID: "command/c", Label: "c (skipped in selections.yaml)"}}},
+				{Kind: "rule", Title: "rules (1)", Disabled: true, Note: "(off: --no-rules)", Options: []ComponentOption{{ID: "rule/r", Label: "r"}}},
 			}}
 		got, err := accessible(&out, "1", "0", "1", "0").Components(pg)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal([]string{"skill/b", "command/c"}))
-		Expect(out.String()).To(ContainSubstring("review-kit: Skills (2)"))
-		Expect(out.String()).To(ContainSubstring("Rules (1) (off: --no-rules)"))
+		Expect(out.String()).To(ContainSubstring("review-kit › skills (2)"))
+		Expect(out.String()).To(ContainSubstring("rules (1) (off: --no-rules)"))
 		Expect(out.String()).To(ContainSubstring("Runtime hooks: 2 (you will be asked before they are installed)"))
 	})
 
 	It("numbers a page's lists across the flow, the disabled ones left out (Plan 10 §5)", func() {
 		pg := ComponentPage{Module: "kit", Title: "kit", Step: Steps{At: 4, Of: 7}, Groups: []ComponentGroup{
-			{Kind: "skill", Title: "Skills (1)", Options: []ComponentOption{{ID: "skill/a", Label: "a", Selected: true}}},
-			{Kind: "rule", Title: "Rules (1)", Disabled: true, Note: "(off: --no-rules)", Options: []ComponentOption{{ID: "rule/r", Label: "r"}}},
-			{Kind: "command", Title: "Commands (1)", Options: []ComponentOption{{ID: "command/c", Label: "c"}}}}}
+			{Kind: "skill", Title: "skills (1)", Options: []ComponentOption{{ID: "skill/a", Label: "a", Selected: true}}},
+			{Kind: "rule", Title: "rules (1)", Disabled: true, Note: "(off: --no-rules)", Options: []ComponentOption{{ID: "rule/r", Label: "r"}}},
+			{Kind: "command", Title: "commands (1)", Options: []ComponentOption{{ID: "command/c", Label: "c"}}}}}
 		got, err := accessible(&out, "0", "1", "0").Components(pg)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal([]string{"skill/a", "command/c"}))
-		Expect(out.String()).To(ContainSubstring("Step 4 of 7 — kit: Skills (1)"))
-		Expect(out.String()).To(ContainSubstring("Step 5 of 7 — Commands (1)"))
-		Expect(out.String()).To(ContainSubstring("Rules (1) (off: --no-rules)"))
+		Expect(out.String()).To(ContainSubstring("Step 4 of 7 — kit › skills (1)"))
+		Expect(out.String()).To(ContainSubstring("Step 5 of 7 — commands (1)"))
+		Expect(out.String()).To(ContainSubstring("rules (1) (off: --no-rules)"))
 	})
 
 	It("numbers the module picker's lists, the cached modules' first, and the review; other commands ask unnumbered", func() {

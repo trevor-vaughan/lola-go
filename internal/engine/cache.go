@@ -133,7 +133,7 @@ type UpdateResult struct {
 }
 
 // Update re-fetches every ref that has a head, for the named modules or all of them (§6.2).
-// Moving a head changes no installation: render installs the version lock.json records (Plan
+// Moving a head changes no installation: sync installs the version an entry pins (Plan
 // 6a §10.7), which a notice says when a head moved. display is the run's output flags, which
 // its hints keep.
 func (e *Engine) Update(ctx context.Context, names []string, display ...string) (_ *UpdateResult, err error) {
@@ -172,7 +172,7 @@ func (e *Engine) Update(ctx context.Context, names []string, display ...string) 
 	res := &UpdateResult{Updates: out, Notices: append([]Notice{}, swept...)}
 	if slices.ContainsFunc(out, func(u HeadUpdate) bool { return u.Changed }) {
 		res.Notices = append(res.Notices, Notice{Level: LevelInfo,
-			Text: "installed modules keep the versions they were installed at; upgrade one with lola install <module>"})
+			Text: "installed modules keep the versions they were installed at; update them with lola update, or one with lola install <module>"})
 	}
 	return res, nil
 }

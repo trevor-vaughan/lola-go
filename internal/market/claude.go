@@ -237,7 +237,7 @@ func join(prefix, key string) string {
 // parseClaude reads a Claude Code marketplace.json (Plan 6c §4.1): the catalog is refused for
 // what makes all of it unreadable or ambiguous, and each entry is skipped, with its reason, for
 // what makes only it unusable.
-func parseClaude(b []byte) (Catalog, error) {
+func parseClaude(b []byte, ssh []string) (Catalog, error) {
 	root, err := decodeJSON(b)
 	if err != nil {
 		return Catalog{}, err
@@ -350,7 +350,7 @@ func parseClaude(b []byte) (Catalog, error) {
 		return Catalog{}, fmt.Errorf("lists more than %d plugins", maxEntries)
 	}
 	for _, item := range plugins.items {
-		e, s := claudeEntry(item, pluginRoot)
+		e, s := claudeEntry(item, pluginRoot, ssh)
 		cat.add(e, s)
 	}
 	cat.dedupe()
@@ -366,7 +366,7 @@ func cmpOr(a, b string) string {
 }
 
 // claudeEntry reads one plugins item, o, whose relative sources resolve under pluginRoot.
-func claudeEntry(o *jval, pluginRoot string) (Entry, *skip) {
+func claudeEntry(o *jval, pluginRoot string, ssh []string) (Entry, *skip) {
 	if o.kind != '{' {
 		return Entry{}, skipped("malformed entry", "the entry is not an object")
 	}
@@ -478,7 +478,7 @@ func claudeEntry(o *jval, pluginRoot string) (Entry, *skip) {
 					"the catalog lists its %s, and it does not own that repository; lola reads such a plugin's components from its own files", k)
 			}
 		}
-		return e, mapClaudeSource(&e, src)
+		return e, mapClaudeSource(&e, src, ssh)
 	}
 	return e, skipped("malformed entry", "source is neither a string nor an object")
 }
@@ -588,7 +588,7 @@ func (c *Catalog) add(e Entry, s *skip) {
 		if validateEntryName(name) != nil {
 			name = ""
 		}
-		c.Skipped = append(c.Skipped, Skip{Name: name, Reason: s.reason, Kind: s.kind})
+		c.Skipped = append(c.Skipped, Skip{Name: name, Reason: s.reason, Kind: s.kind, Host: s.host})
 		return
 	}
 	c.Entries = append(c.Entries, e)

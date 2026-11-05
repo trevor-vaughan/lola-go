@@ -73,6 +73,8 @@ need podman or docker, and neither is on PATH` and exit 0.
 | `market` | Marketplaces, search and `@market/module` installs. |
 | `migrate` | `lola migrate` against the real Python lola. |
 | `tidy` | `lola tidy` with the trash on another file system. |
+| `profile-first` | The spec's S1–S8 walkthroughs: base and profile, edits and overrides, moves, a teammate's home, bundles, the listing, and a new machine given only `~/.config/lola`. |
+| `picks` | A profile's picks: `--edit --only` and `--exact`, `lola profile <name>` and `lola info` showing them, the re-pick hints run as printed, and a new upstream component an `only:` list leaves out. |
 
 ### The runner
 
@@ -165,7 +167,8 @@ this; review does.
 - `jsoncheck.py doc <file>` checks one JSON document, and `jsoncheck.py refusal <stdout>
   <stderr>` a refusal: empty stdout and exactly one stderr line, an object with an `error`
   string and a list of string `hints`. Either way no value may be `null` but the documented
-  trust values. It prints the document on one line, for venom's `result.systemoutjson`.
+  trust values and `profiles[].shadowed_by`. It prints the document on one line, for venom's
+  `result.systemoutjson`.
 - `snapshot.py <out.json> <root>...` records every file and link below the roots, leaving out
   lola's cache (a refused or dry run fetches into it); `snapshot.py --compare <before> <after>
   [<ignored prefix>...]` prints `unchanged` or the changed paths: the "nothing written" check.
@@ -239,7 +242,7 @@ The **team** suite follows a project a teammate clones: the first sync off a
 terminal refuses until trusted, a dry run names the command that applies it, `-y` never trusts,
 and pulled pin changes and removals are asked about again; a terminal answers the trust question
 in accessible mode. A project profile committed to the repository is trusted before it installs,
-`uninstall` refuses a module an active profile lists, a user profile turns on and off, a remote
+`uninstall` removes a module's entry from the project profile on and lola's edit stays trusted, a user profile turns on and off, a remote
 profile is fetched by git over HTTPS from `git.lola.test` with the test CA, loopback and
 plain-http profile sources are refused before any request, and a tracked `lock.json` stops
 `render`. Through `script`'s pseudo-terminal, case T14 answers a bare `--trust` run's one receipt
@@ -257,6 +260,23 @@ and fetches over HTTPS from `git.lola.test`, refuses another module of the entry
 cache with the `cache rm` that clears it, follows a pin changed in the catalog with `sync --update`,
 refuses an `@` address written into `project.yml` before any request, and removes a marketplace
 through its one-line refusal's hint.
+
+The **profile-first** suite walks the scenarios S1 to S8 of the profile-first design spec
+(2026-10-29, §4) in an order one home can: S1 and S2 at user scope (a first install that picks
+user scope and writes `default`; a baseline, a `go-review` profile over it, an override through
+`lola profile --edit` and the way back with `--off`), S4 and S3 in the team project `acme` (a module
+installed into `project.yml` moved into a new profile in one step; an experiment copied from
+`go-review`, then back, keeping the experiment), S5 on a teammate's home (`b_env`: a personal
+profile never touches the files git tracks), then S7 and S8 back in the first home (a bundle whose
+later member wins and an install that asks which member; one glance with `lola profile`, in human,
+`--plain` and `--json`), and S6 last: a new home (`n_env`) is given only a copy of
+`~/.config/lola`. S6 advances `cc-skills-golang`'s `main` (`setup.sh advance`) before the new home
+syncs, then compares both homes' `lock.json`: the same commit and digest for every module, though
+the source has moved on. Its terminals are `script`'s pseudo-terminal in accessible mode
+(`LOLA_ACCESSIBLE=1`), answered by number. `scripts/setup.sh` builds the seven repositories
+(`review-kit`, `cc-skills-golang`, `gopls`, `golang-lint`, `team-kit`, `profiles`, `acme`) and
+refuses unless their commits are the recorded SHAs. Refusals are checked with `jsoncheck.py` and
+their hints are run with `hint.py`, so a hint that does not work fails the case.
 
 ## Adding a suite or a case
 

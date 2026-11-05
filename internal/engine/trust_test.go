@@ -10,7 +10,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/types"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -212,199 +211,34 @@ var _ = Describe("Engine and the trust record", func() {
 		})
 	})
 
-	Describe("render", func() {
-		// rendered says whether each module's command file is rendered in the project.
-		rendered := func(names ...string) map[string]bool {
-			out := map[string]bool{}
-			for _, n := range names {
-				file := map[string]string{"example": "ship", "other": "other", "third": "third", "kit": "kit"}[n]
-				_, err := os.Stat(filepath.Join(proj, ".claude", "commands", file+".md"))
-				out[n] = err == nil
-			}
-			return out
-		}
-		removeRendered := func() {
-			for _, f := range []string{"ship", "other", "third", "kit"} {
+	It("sync refuses a folder module that no longer loads with its way out, writing nothing", func() {
+		kit := filepath.Join(proj, "mods", "kit")
+		writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
+		Expect(install(claude, src, kit)).To(Succeed())
+		lock, err := os.ReadFile(filepath.Join(proj, ".lola", "lock.json"))
+		Expect(err).NotTo(HaveOccurred())
+		// The way out comes first, then the load's own advice.
+		wayOut := []string{"remove it: lola uninstall --project kit"}
+		for _, c := range []struct {
+			yml, why string
+			hints    []string
+		}{
+			{"name: kit\nbogus: 1\n", "field bogus not found", append(wayOut, `remove or fix "bogus"; known keys there are name, format, description, `+
+				"version, author, license, homepage, repository, keywords, targets, formats, hooks, components, vars")},
+			{"name: kit2\n", `kit: its source now declares module "kit2"`, wayOut},
+		} {
+			writeTree(kit, map[string]string{"lola.yml": c.yml})
+			for _, f := range []string{"ship", "kit"} {
 				Expect(os.RemoveAll(filepath.Join(proj, ".claude", "commands", f+".md"))).To(Succeed())
 			}
+			_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
+			Expect(err).To(MatchError(ContainSubstring(c.why)), c.yml)
+			Expect(errs.Hints(err)).To(Equal(c.hints), c.yml)
+			for _, f := range []string{"ship", "kit"} {
+				Expect(filepath.Join(proj, ".claude", "commands", f+".md")).NotTo(BeAnExistingFile(), c.yml)
+			}
+			Expect(os.ReadFile(filepath.Join(proj, ".lola", "lock.json"))).To(Equal(lock), c.yml)
 		}
-		leftOut := func(name, code, text, hint string) types.GomegaMatcher {
-			return And(HaveField("Severity", target.SeverityWarn), HaveField("Module", name), HaveField("Kind", "module"),
-				HaveField("Code", code), HaveField("Text", text), HaveField("Hint", hint))
-		}
-
-		It("render's left-out hints keep the run's output flags", func() {
-			Expect(install(claude, src, other, third)).To(Succeed())
-			off := false
-			pulled := *loadManifest().Find("example")
-			pulled.Rules = &off
-			pull(manifest.Change{Set: []manifest.Entry{pulled}, Remove: []string{"other"}})
-			removeRendered()
-
-			res, err := e.Render(ctx, sc, engine.Options{Display: []string{"--json", "--no-pager"}})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElements(
-				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it",
-					"review and apply it: lola sync --project example --json --no-pager"),
-				leftOut("other", engine.CodeNotInManifest, "project.yml no longer lists it", "review: lola sync --project other --json --no-pager")))
-		})
-
-		It("render refuses untrusted state", func() {
-			Expect(install(claude, src, other, third)).To(Succeed())
-			off := false
-			pulled := *loadManifest().Find("example")
-			pulled.Rules = &off
-			pull(manifest.Change{Set: []manifest.Entry{pulled}, Remove: []string{"other"}})
-			removeRendered()
-
-			res, err := e.Render(ctx, sc, engine.Options{})
-			Expect(err).NotTo(HaveOccurred(), "left out, not refused: the other modules still render")
-			Expect(res.Findings).To(ContainElements(
-				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync --project example"),
-				leftOut("other", engine.CodeNotInManifest, "project.yml no longer lists it", "review: lola sync --project other")))
-			Expect(rendered("example", "other", "third")).To(Equal(map[string]bool{"example": false, "other": false, "third": true}))
-			Expect(res.Modules).To(ConsistOf(HaveField("Name", "third")))
-			led, err := e.Ledger(sc)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(led.Modules).To(HaveKey("other"), "left as installed")
-
-			_, err = e.Render(ctx, sc, engine.Options{Strict: true})
-			Expect(err).To(MatchError(HavePrefix("--strict: 2 finding(s); nothing was changed")))
-
-			// Top-level targets the record does not cover leave out the entries that install to them.
-			Expect(install(engine.Options{}, src)).To(Succeed())
-			pull(manifest.Change{Targets: []string{"claude-code", "opencode"}})
-			removeRendered()
-			res, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElements(
-				leftOut("example", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync --project example"),
-				leftOut("third", engine.CodeNotTrusted, "project.yml changed for it since you last trusted it", "review and apply it: lola sync --project third")))
-			Expect(rendered("example", "third")).To(Equal(map[string]bool{"example": false, "third": false}))
-
-			// A project this machine has no record of leaves out every module.
-			Expect(os.Remove(p.Trust)).To(Succeed())
-			res, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElement(leftOut("example", engine.CodeNotTrusted, "project.yml has not been trusted on this machine",
-				"review and apply it: lola sync --project example")))
-
-			// A tracked lock.json is still refused whole.
-			gitIn(proj, "init", "-q")
-			gitIn(proj, "add", "-f", ".lola/lock.json")
-			_, err = e.Render(ctx, sc, engine.Options{})
-			Expect(err).To(MatchError(HavePrefix(".lola/lock.json is tracked by git")))
-		})
-
-		It("render leaves out a folder module whose content changed since lola installed it", func() {
-			kit := filepath.Join(proj, "mods", "kit")
-			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
-			Expect(install(claude, src, kit)).To(Succeed())
-			writeTree(kit, map[string]string{"mcps.json": `{"mcpServers":{"gh":{"command":"npx","args":["-y","@acme/gh-mcp"]}}}`})
-			removeRendered()
-			cached := func() []string {
-				entries, err := os.ReadDir(filepath.Join(p.Store, "kit", "versions"))
-				Expect(err).NotTo(HaveOccurred())
-				var ids []string
-				for _, d := range entries {
-					ids = append(ids, d.Name())
-				}
-				return ids
-			}
-			before := cached()
-
-			sub := filepath.Join(proj, "sub")
-			Expect(os.MkdirAll(sub, 0o755)).To(Succeed())
-			for _, c := range []struct{ wd, install string }{{proj, "lola install --project ./mods/kit"}, {sub, "lola install --project ../mods/kit"}} {
-				e.Getwd = func() (string, error) { return c.wd, nil }
-				res, err := e.Render(ctx, sc, engine.Options{})
-				Expect(err).NotTo(HaveOccurred())
-				Expect(res.Findings).To(ContainElement(leftOut("kit", engine.CodeContentChanged, "its content changed since lola installed it",
-					"review it: lola sync --project kit; edited it yourself? "+c.install)))
-				Expect(rendered("example", "kit")).To(Equal(map[string]bool{"example": true, "kit": false}))
-				mcp, err := os.ReadFile(filepath.Join(proj, ".mcp.json"))
-				Expect(err).NotTo(HaveOccurred())
-				Expect(string(mcp)).NotTo(ContainSubstring("@acme/gh-mcp"), "the new MCP server is not installed")
-				Expect(cached()).To(Equal(before), "the changed content is not cached")
-			}
-		})
-
-		It("render leaves out a folder module that no longer loads and renders the others", func() {
-			kit := filepath.Join(proj, "mods", "kit")
-			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
-			Expect(install(claude, src, kit)).To(Succeed())
-			for _, yml := range []string{"name: kit\nbogus: 1\n", "name: kit2\n"} {
-				writeTree(kit, map[string]string{"lola.yml": yml})
-				removeRendered()
-				res, err := e.Render(ctx, sc, engine.Options{})
-				Expect(err).NotTo(HaveOccurred(), yml)
-				Expect(res.Findings).To(ContainElement(And(HaveField("Code", engine.CodeContentChanged), HaveField("Module", "kit"),
-					HaveField("Text", HavePrefix("its content no longer loads: ")),
-					HaveField("Hint", HavePrefix("review it: lola sync --project kit")))), yml)
-				Expect(rendered("example", "kit")).To(Equal(map[string]bool{"example": true, "kit": false}), yml)
-			}
-		})
-
-		It("render leaves out a module whose manifest entry asks for another source than is installed", func() {
-			Expect(install(claude, src, other)).To(Succeed())
-			pulled := *loadManifest().Find("other")
-			pulled.Source = third
-			pull(manifest.Change{Set: []manifest.Entry{pulled}})
-			removeRendered()
-			res, err := e.Render(ctx, sc, engine.Options{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElement(leftOut("other", engine.CodeSourceDiffers, "project.yml asks for another source than is installed",
-				"review and apply it: lola sync --project other")))
-			Expect(rendered("example", "other")).To(Equal(map[string]bool{"example": true, "other": false}))
-
-			// At user scope, whose user.yml the user edits by hand.
-			user := engine.Scope{Kind: target.User}
-			_, err = e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: other}}, claude)
-			Expect(err).NotTo(HaveOccurred())
-			m, err := e.Manifest(user)
-			Expect(err).NotTo(HaveOccurred())
-			edited := *m.Find("other")
-			edited.Ref = "v2"
-			dst, data, err := manifest.Edit(p.UserManifest, manifest.Change{Set: []manifest.Entry{edited}})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(os.WriteFile(dst, data, 0o600)).To(Succeed())
-			Expect(os.Remove(filepath.Join(p.Home, ".claude", "commands", "other.md"))).To(Succeed())
-			res, err = e.Render(ctx, user, engine.Options{})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(res.Findings).To(ContainElement(leftOut("other", engine.CodeSourceDiffers, "user.yml asks for another source than is installed",
-				"review and apply it: lola sync --user other")))
-			Expect(filepath.Join(p.Home, ".claude", "commands", "other.md")).NotTo(BeAnExistingFile())
-		})
-
-		It("render --strict names the remedy for each module it leaves out", func() {
-			kit := filepath.Join(proj, "mods", "kit")
-			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
-			Expect(install(claude, src, kit, other)).To(Succeed())
-			off := false
-			pulled := *loadManifest().Find("example")
-			pulled.Rules = &off
-			pull(manifest.Change{Set: []manifest.Entry{pulled}})
-			writeTree(kit, map[string]string{"commands/kit.md": "Kit, edited\n"})
-			removeRendered()
-
-			res, err := e.Render(ctx, sc, engine.Options{})
-			Expect(err).NotTo(HaveOccurred(), "without --strict a left-out module exits 0 with its warning")
-			Expect(res.Findings).To(ContainElements(HaveField("Code", engine.CodeNotTrusted), HaveField("Code", engine.CodeContentChanged)))
-			removeRendered()
-			_, err = e.Render(ctx, sc, engine.Options{Strict: true})
-			Expect(err).To(MatchError(HavePrefix("--strict: 2 finding(s); nothing was changed")))
-			Expect(errs.Hints(err)).To(Equal([]string{"review and apply it: lola sync --project example", "review it: lola sync --project kit",
-				"edited it yourself? lola install --project ./mods/kit"}), "each module's own remedy, and no generic advice")
-			Expect(rendered("other")).To(Equal(map[string]bool{"other": false}), "nothing was changed")
-
-			// Another finding brings the generic advice back, after the remedies.
-			writeTree(other, map[string]string{"agents/bare.md": "Criticize without a description.\n"})
-			Expect(install(engine.Options{}, other)).To(Succeed())
-			_, err = e.Render(ctx, sc, engine.Options{Strict: true})
-			Expect(err).To(MatchError(HavePrefix("--strict: 3 finding(s); nothing was changed")))
-			Expect(errs.Hints(err)).To(HaveExactElements("review and apply it: lola sync --project example", "review it: lola sync --project kit",
-				"edited it yourself? lola install --project ./mods/kit", ContainSubstring("rerun without --strict"), ContainSubstring("--force")))
-		})
 	})
 
 	It("install refuses untrusted top-level targets it would use", func() {
@@ -438,6 +272,34 @@ var _ = Describe("Engine and the trust record", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ch.Scopes[0].FixedTargets).To(BeEmpty(), "the pickers never take them unasked")
 		Expect(ch.Scopes[0].UntrustedTargets).To(Equal([]string{"claude-code", "opencode"}))
+	})
+
+	It("install's sync hint trusts top-level targets nothing installs to, and the install then succeeds", func() {
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(err).NotTo(HaveOccurred(), "nothing installs to them: a sync off a terminal asks nothing")
+		err = install(engine.Options{}, other)
+		Expect(err).To(MatchError("project.yml's top-level targets have not been trusted on this machine"))
+		Expect(errs.Hints(err)).To(Equal([]string{"trust them: lola sync --project --trust=entries",
+			"or name the assistants: lola install --project " + other + " -t <id>"}), "a plain sync would not review them")
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record().Targets).To(Equal([]string{"claude-code"}), "--trust=entries records them")
+		Expect(install(engine.Options{}, other)).To(Succeed())
+		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).To(BeARegularFile())
+	})
+
+	It("top-level targets nothing installs to join a question the sync asks anyway, and a yes records them", func() {
+		writeTree(proj, map[string]string{"mods/other/lola.yml": "name: other\n", "mods/other/commands/other.md": "Other\n",
+			".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: other, source: mods/other, targets: [claude-code]}\n"})
+		var asked engine.TrustReport
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(r engine.TrustReport) (engine.TrustAnswer, error) {
+			asked = r
+			return engine.TrustAnswer{All: true}, nil
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(asked.Targets).NotTo(BeNil(), "shown with the entry the question is about")
+		Expect(record().Targets).To(Equal([]string{"claude-code"}))
 	})
 
 	It("install refuses untrusted top-level targets before it fetches, and carries --ref into the hint", func() {
@@ -586,7 +448,7 @@ var _ = Describe("Engine and the trust record", func() {
 			writeTree(filepath.Join(proj, "mods", "review"), map[string]string{"lola.yml": "name: review\n", "commands/review.md": "Review\n"})
 			writeTree(filepath.Join(proj, "mods", "gone"), map[string]string{"lola.yml": "name: gone\n", "commands/gone.md": "Gone\n"})
 			Expect(os.MkdirAll(filepath.Join(proj, "sub"), 0o755)).To(Succeed())
-			Expect(install(claude, "./mods/review")).To(Succeed())
+			Expect(install(engine.Options{Targets: []string{"claude-code", "opencode"}}, "./mods/review")).To(Succeed()) // so -t opencode keeps an entry
 			off := false
 			pulled := *loadManifest().Find("review")
 			Expect(pulled.Source).To(Equal("mods/review"))

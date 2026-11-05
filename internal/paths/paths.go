@@ -13,12 +13,13 @@ type Paths struct {
 
 	Config         string   // ConfigHome/lola/config.yaml: settings (default_scope)
 	Selections     string   // ConfigHome/lola/selections.yaml: components the user chose not to install
-	UserManifest   string   // ConfigHome/lola/user.yml
+	Pins           string   // ConfigHome/lola/pins.yaml: the versions installed from your profiles at user scope and your remote profiles' records, which lola writes (spec 2026-10-29 §3.4)
 	UserProfiles   string   // ConfigHome/lola/profiles: the user's profiles and default.yml (Plan 6b §4.1)
 	UserLedger     string   // StateHome/lola/lock.json
 	UserLock       string   // StateHome/lola/.lock
 	Locks          string   // StateHome/lola/locks: one lock file per project, outside the project's .lola/
 	SelectionsLock string   // StateHome/lola/locks/selections.lock: taken before any scope lock
+	PinsLock       string   // StateHome/lola/locks/pins.lock: around pins.yaml's read-check-write, taken last
 	Keep           string   // ConfigHome/lola/keep.yaml: what lola tidy never offers (Plan 6d §5)
 	KeepLock       string   // StateHome/lola/locks/keep.lock: around keep.yaml's read-modify-write, after the scope lock (Plan 6d)
 	ProfilesLock   string   // StateHome/lola/locks/profiles.lock: shared to read remote profiles, exclusive to write them; taken first (Plan 6b §10)
@@ -63,13 +64,14 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	}
 	p.Config = filepath.Join(p.ConfigHome, "lola", "config.yaml")
 	p.Selections = filepath.Join(p.ConfigHome, "lola", "selections.yaml")
-	p.UserManifest = filepath.Join(p.ConfigHome, "lola", "user.yml")
+	p.Pins = filepath.Join(p.ConfigHome, "lola", "pins.yaml")
 	p.UserProfiles = filepath.Join(p.ConfigHome, "lola", "profiles")
 	p.UserLedger = filepath.Join(p.StateHome, "lola", "lock.json")
 	p.UserLock = filepath.Join(p.StateHome, "lola", ".lock")
 	p.Locks = filepath.Join(p.StateHome, "lola", "locks")
 	p.SelectionsLock = filepath.Join(p.Locks, "selections.lock")
 	p.Keep = filepath.Join(p.ConfigHome, "lola", "keep.yaml")
+	p.PinsLock = filepath.Join(p.Locks, "pins.lock")
 	p.KeepLock = filepath.Join(p.Locks, "keep.lock")
 	p.ProfilesLock = filepath.Join(p.Locks, "profiles.lock")
 	p.Markets = filepath.Join(p.ConfigHome, "lola", "markets.yaml")

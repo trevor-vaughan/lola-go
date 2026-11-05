@@ -181,10 +181,24 @@ var _ = Describe("Apply", func() {
 		Expect(leftovers()).To(BeEmpty())
 	})
 
+	It("keeps the mode of the manifest it replaces with KeepMode, and creates a missing one 0600", func() {
+		kept, made := filepath.Join(root, "kept.yml"), filepath.Join(root, "made.yml")
+		write("kept.yml", "version: 1\n")
+		p := &plan.Plan{Ledger: ledger.New()}
+		Expect(plan.Apply(p, ledgerPath, []plan.ManifestWrite{{Path: kept, Data: []byte("version: 1\ntargets: [claude-code]\n"), KeepMode: true},
+			{Path: made, Data: []byte("version: 1\n"), KeepMode: true}}, nil)).To(Succeed())
+		for path, mode := range map[string]os.FileMode{kept: 0o644, made: 0o600} {
+			fi, err := os.Stat(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fi.Mode().Perm()).To(Equal(mode), path)
+		}
+		Expect(leftovers()).To(BeEmpty())
+	})
+
 	It("creates a missing manifest directory private to the user, as the manifest's other writes do", func() {
-		manPath := filepath.Join(root, "config", "lola", "user.yml")
+		manPath := filepath.Join(root, "config", "lola", "profiles", "default.yml")
 		Expect(plan.Apply(&plan.Plan{Ledger: ledger.New()}, ledgerPath, []plan.ManifestWrite{{Path: manPath, Data: []byte("version: 1\n")}}, nil)).To(Succeed())
-		for _, dir := range []string{filepath.Join(root, "config"), filepath.Join(root, "config", "lola")} {
+		for _, dir := range []string{filepath.Join(root, "config"), filepath.Join(root, "config", "lola"), filepath.Join(root, "config", "lola", "profiles")} {
 			fi, err := os.Stat(dir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o700)), dir)

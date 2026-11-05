@@ -142,12 +142,14 @@ func (e *Engine) allowed(name string, scripts []HookScript, digest string, opts 
 	return true, nil
 }
 
-// reviewOf is the lola info arguments that show exactly v, the version a run would install, from
-// the cache (Plan 9 R-9-32): a git version without a component selection as its source at its
-// commit, which info finds in the cache without fetching (R-9-21); else its cached name, at the
-// head that holds it; nil when no lola info command shows it.
-func (e *Engine) reviewOf(v store.Version) ([]string, error) {
-	o, found, err := e.Store.Origin(v.Name)
+// reviewOf is the lola info arguments that show exactly v, the version a run would install, as
+// run will leave the cache (Engine.origin; nil is the cache alone) (Plan 9 R-9-32): a git version
+// without a component selection as its source at its commit, which info finds in the cache
+// without fetching (R-9-21), or fetches at that commit when run still holds it; else its cached
+// name, at the head that holds it. It is nil when no lola info command shows it, as for a version
+// run staged and has not committed, whose name the cache does not hold yet.
+func (e *Engine) reviewOf(run *StagedRun, v store.Version) ([]string, error) {
+	o, found, err := e.origin(run, v.Name)
 	if err != nil || !found {
 		return nil, err
 	}
@@ -157,6 +159,9 @@ func (e *Engine) reviewOf(v store.Version) ([]string, error) {
 			args = append(args, "--path", o.Path)
 		}
 		return args, nil
+	}
+	if run.holds(v) {
+		return nil, nil
 	}
 	if currentHead(o) == v.ID {
 		return []string{v.Name}, nil
@@ -178,7 +183,7 @@ func (e *Engine) consentHints(sc Scope, c moduleCopy, opts Options, kinds TrustK
 	review := c.review
 	if c.shows != nil {
 		var err error
-		if review, err = e.reviewOf(*c.shows); err != nil {
+		if review, err = e.reviewOf(opts.staged, *c.shows); err != nil {
 			return nil, err
 		}
 		if review != nil {

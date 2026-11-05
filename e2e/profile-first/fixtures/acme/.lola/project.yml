@@ -1,0 +1,8 @@
+version: 1
+targets: [claude-code]
+modules:
+  - name: team-kit
+    source: http://127.0.0.1:8765/team-kit.git
+    ref: main
+    commit: 435a97b16cbd4632a406946aaa89a0bb1f5a6bb1
+    digest: sha256:d06ba30987f85f197da02dc1d7dc7f75acd9e9133bfd59ad3990a9fe2f041b33

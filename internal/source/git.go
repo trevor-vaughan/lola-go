@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -222,7 +224,50 @@ func accessDenied(args []string, stderr string) error {
 	default:
 		return nil
 	}
+	if len(raw) <= untrusted.MaxName && untrusted.IsPlain(raw) {
+		if webHint, note := githubWebHint(raw); note != "" {
+			denied = &AccessError{msg: denied.msg + "; " + note}
+			if webHint != "" {
+				hints = append([]string{webHint}, hints...)
+			}
+		}
+	}
 	return errs.WithHints(denied, hints...)
+}
+
+// githubWebHint recognises the browser URLs of github.com that are not git repositories and
+// returns the lola command that names the same place, or a note that it is no repository. The
+// segment after tree/ or blob/ is taken as the ref: a ref that contains "/" cannot be told from
+// the path, so the note says so. raw must be plain text (see accessDenied).
+func githubWebHint(raw string) (hint, note string) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host != "github.com" {
+		return "", ""
+	}
+	seg := strings.Split(strings.Trim(u.Path, "/"), "/")
+	// url.Parse percent-decodes the path, so the caller's check of raw does not cover it.
+	if slices.ContainsFunc(seg, func(s string) bool { return !untrusted.IsPlain(s) }) {
+		return "", ""
+	}
+	switch {
+	case len(seg) == 1 && seg[0] != "":
+		return "", "that is an organisation page, not a repository; name one of its repositories: https://github.com/" + untrusted.Text(seg[0], untrusted.MaxName) + "/<repository>"
+	case len(seg) >= 4 && (seg[2] == "tree" || seg[2] == "blob"):
+		note = "that is a github.com web page, not a repository URL; a ref containing \"/\" cannot be told from the path, so check it with git ls-remote --heads"
+		if seg[3] == "" || strings.HasPrefix(seg[3], "-") {
+			return "", note // no ref to name, or one git would read as an option
+		}
+		cmd := []string{"lola", "install", "https://github.com/" + seg[0] + "/" + seg[1], "--ref", seg[3]}
+		sub := seg[4:]
+		if seg[2] == "blob" && len(sub) > 0 {
+			sub = sub[:len(sub)-1] // a file's directory
+		}
+		if len(sub) > 0 {
+			cmd = append(cmd, "--path", strings.Join(sub, "/"))
+		}
+		return errs.ShellJoin(cmd), note
+	}
+	return "", ""
 }
 
 // redirectRE is curl's report, through git, of a redirect it was told not to follow: any 3xx status.
@@ -274,13 +319,19 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 	if err != nil {
 		return Fetched{}, err
 	}
-	dir, _, err := copyTree(ctx, root, stagingParent, listGit)
+	dir, _, links, err := copyTree(ctx, scratch, root, stagingParent, listGit)
 	if err != nil {
 		return Fetched{}, err
 	}
 	rel, err := filepath.Rel(scratch, root)
 	if err != nil {
 		return Fetched{}, errors.Join(err, os.RemoveAll(dir))
+	}
+	// A link copied as its target takes the target's committed execute bit.
+	for link, target := range links {
+		if slices.Contains(execs, target) {
+			execs = append(execs, path.Join(filepath.ToSlash(rel), link))
+		}
 	}
 	return Fetched{Dir: dir, Name: name, Commit: strings.TrimSpace(string(head)), Executables: executablesUnder(execs, filepath.ToSlash(rel), dir),
 		Root: fetchedRoot(rel)}, nil
@@ -416,10 +467,11 @@ func prepareCheckout(ctx context.Context, scratch, rev, sub string) ([]string, e
 	return checkTree(ctx, scratch, rev, sub)
 }
 
-// checkTree lists rev's tree. It refuses a symbolic link (mode 120000) inside the module path
-// sub ("" or "." for the whole tree) or on the way to it, which a checkout on Windows without
-// core.symlinks would write as a plain file the copy cannot tell from one; a link elsewhere in
-// the repository never reaches the module and is allowed (Plan 6a §5.2). It returns
+// checkTree lists rev's tree. It refuses a symbolic link (mode 120000) at or on the way to the
+// module path sub, and on Windows one inside it ("" or "." for the whole tree) too, which a
+// checkout without core.symlinks would write as a plain file the copy cannot tell from one.
+// Elsewhere copyFiles resolves a link inside the module path from the checkout; a link outside
+// it never reaches the module and is allowed (Plan 6a §5.2). It returns
 // the paths whose mode is 100755: the execute bits as committed, whatever the platform checks
 // out. Gitlinks (160000) are skipped, as the copy skips them. A module path that is no
 // directory of the tree, letter case included, is refused too: a case-insensitive file system
@@ -450,10 +502,11 @@ func checkTree(ctx context.Context, repo, rev, sub string) ([]string, error) {
 		}
 		switch {
 		case !ok:
-		case strings.HasPrefix(meta, "120000 ") &&
-			(mod == "." || p == mod || strings.HasPrefix(p, mod+"/") || strings.HasPrefix(mod, p+"/")):
-			return nil, fmt.Errorf("%s: symbolic links are not allowed in module content; lola never follows links in a source",
-				untrusted.Text(p, untrusted.MaxName))
+		case strings.HasPrefix(meta, "120000 ") && (p == mod || strings.HasPrefix(mod, p+"/")):
+			return nil, refuse(untrusted.Text(p, untrusted.MaxName), modulePathLink, modulePathLinkHint)
+		case strings.HasPrefix(meta, "120000 ") && runtime.GOOS == "windows" && (mod == "." || strings.HasPrefix(p, mod+"/")):
+			return nil, refuse(untrusted.Text(p, untrusted.MaxName), "git on Windows checks a link out as a plain file lola cannot tell from one",
+				"install it on Linux or macOS, or replace the link in the source with a copy of the file")
 		case strings.HasPrefix(meta, "100755 "):
 			execs = append(execs, p)
 		}

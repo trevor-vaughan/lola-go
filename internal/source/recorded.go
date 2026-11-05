@@ -21,7 +21,7 @@ const (
 // digestRE is the form of a content digest as the cache computes it.
 var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
-// Recorded is a source as project.yml, user.yml or lock.json records it. Those files may be
+// Recorded is a source as project.yml, a profile or lock.json records it. Those files may be
 // someone else's, so their fields are checked when the file is loaded, before any of them can
 // reach git or a path (Plan 6a §4.3).
 type Recorded struct {

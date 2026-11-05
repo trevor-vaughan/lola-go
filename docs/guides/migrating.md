@@ -27,7 +27,8 @@ a hook's consent; `--trust=<kinds>` does.
    - the source no longer ships it (the hint says what to do with the Python lola's files).
 
    A source lola cannot fetch (offline, say) leaves its records unmigrated the same way, with
-   the hint to rerun `lola migrate` once the source is reachable. The module's other records in
+   the hint to rerun `lola migrate` once the source is reachable. A source that holds a symbolic
+   link stays refused until its author removes it, and its hint says so. The module's other records in
    that place stay with them, and the rest of the plan goes on.
 4. **Installs the same module with lola**, from the same source (with its ref and content
    directory as `--ref` and `--path`; a content directory of `/` is `--path .` for a folder or
@@ -133,7 +134,8 @@ flowchart TD
 - **The Python home** goes to the trash last, only when every record migrated, nothing failed,
   every marketplace but a disabled one is registered, and it holds nothing but what the Python
   lola writes there. While a `~/.lola` stays, lola sees a project at `~` and refuses to install
-  there; the output says why it stayed.
+  there; the output says why it stayed, and its `next steps:` block gives the command that moves
+  `~/.lola` aside (the Python lola and `lola migrate` then read it with `LOLA_HOME`).
 
 ### Not migrated, never changed
 
@@ -312,8 +314,9 @@ which answer questions only you can (`remap` under `--json`):
 A destination where every record stays says so (`⚠ nothing migrated at user scope: 2 record(s)
 left as they are`), and the run counts the Python lola's records: `records: 3 migrated, 2 left as
 they are`, with `already migrated` and `failed` when there are any. A run with records left as
-they are still succeeds. Until a module is installed at user scope, lola has no `user.yml`, and
-`lola sync --user` says so.
+they are still succeeds. `lola migrate` writes each scope's base, whatever profile is on:
+`.lola/project.yml` in a project, `default.yml` at user scope. Until a module is installed at user
+scope, lola has no `default.yml`, user scope's base, and `lola sync --user` says so.
 
 ## Python lola commands
 

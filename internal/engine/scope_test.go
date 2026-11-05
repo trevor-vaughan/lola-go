@@ -139,7 +139,7 @@ var _ = Describe("scope resolution (Plan 5c §5.1, Plan 6b §3.1)", func() {
 			" sets no default_scope (default_scope: project or user)"))
 		Expect(errs.Hints(err)).To(Equal([]string{"lola uninstall mod -y --project", "lola uninstall mod -y --user"}), "uninstall acts on one scope")
 
-		_, err = e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "render"})
+		_, err = e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "uninstall"})
 		Expect(err).To(HaveOccurred())
 		Expect(errs.Hints(err)).To(BeEmpty(), "no run, no hint")
 	})
@@ -160,8 +160,8 @@ var _ = Describe("scope resolution (Plan 5c §5.1, Plan 6b §3.1)", func() {
 
 	It("refuses default_scope: both for a command that acts on one scope", func() {
 		config("version: 1\ndefault_scope: both\n")
-		_, err := e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "render"})
-		Expect(err).To(MatchError("lola render acts on one scope at a time, and default_scope: both in " + p.Config + " names two"))
+		_, err := e.ResolveScope(engine.ScopeRequest{Cwd: bare, Command: "uninstall"})
+		Expect(err).To(MatchError("lola uninstall acts on one scope at a time, and default_scope: both in " + p.Config + " names two"))
 		Expect(errs.Hints(err)).To(Equal([]string{"name one: --project or --user"}))
 	})
 

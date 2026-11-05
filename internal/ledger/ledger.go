@@ -98,8 +98,10 @@ type Entry struct {
 }
 
 // RenderedWith records the inputs of a module's templates that are not its source (Plan 7
-// §6.3): Profiles, the active profiles, when some template reads them (nil otherwise); Vars,
-// the winning entry's var overrides as written, {} for none.
+// §6.3): Profiles, the scope's profiles a template sees (default at user scope when its file
+// exists, then the active profile and a bundle's members, spec 2026-10-29 §8.8), when some
+// template reads them (nil otherwise); Vars, the
+// winning entry's var overrides as written, {} for none.
 type RenderedWith struct {
 	Profiles []string    `json:"profiles,omitzero"`
 	Vars     module.Vars `json:"vars"`
@@ -111,7 +113,7 @@ type RenderedWith struct {
 // valid is read as rendered with nothing known, and re-renders.
 func (r *RenderedWith) valid() bool {
 	vars, ok := module.DecodedVars(r.Vars)
-	if len(r.Profiles) > activeprofile.Max+1 || !ok {
+	if len(r.Profiles) > activeprofile.Max+2 || !ok { // default, the profile on, and a bundle's members
 		return false
 	}
 	r.Vars = vars
@@ -137,8 +139,8 @@ func (e *Entry) InstalledTargets() []string {
 	return slices.Compact(out)
 }
 
-// Active is one item of a scope's active profile list (Plan 6b §5): the qualified name its
-// activation resolved (activeprofile.Check) and the action that put it there.
+// Active is a scope's active profile (spec 2026-10-29 §3.4): the qualified name its activation
+// resolved (activeprofile.Check) and the action that turned it on.
 type Active struct {
 	Name string `json:"name"`
 	By   string `json:"by"`
@@ -153,13 +155,13 @@ const (
 // FromProfile is an Entry's From for a profile's qualified name (profile.Info.Qualified).
 func FromProfile(qualified string) string { return "profile:" + qualified }
 
-// Ledger is the observed state of one scope. Profiles is its active list in order, nil when
-// none is active, which leaves the key out, so a ledger without profiles is written as before.
+// Ledger is the observed state of one scope. Profile is its active profile, nil when only the
+// scope's base is loaded, which leaves the key out (spec 2026-10-29 §3.4).
 type Ledger struct {
-	Version  int               `json:"version"`
-	Profiles []Active          `json:"profiles,omitempty"`
-	Modules  map[string]*Entry `json:"modules"`
-	Created  []FileRef         `json:"created"`
+	Version int               `json:"version"`
+	Profile *Active           `json:"profile,omitempty"`
+	Modules map[string]*Entry `json:"modules"`
+	Created []FileRef         `json:"created"`
 }
 
 // New returns an empty ledger.
@@ -193,6 +195,14 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A lock.json of a pre-release lola lists its active profiles as profiles: refused, never read
+	// (spec 2026-10-29 §7), with the names it held for the engine's hint.
+	var old struct {
+		Profiles json.RawMessage `json:"profiles"`
+	}
+	if json.Unmarshal(b, &old) == nil && old.Profiles != nil {
+		return nil, &ProfilesKeyError{File: path, Names: oldNames(old.Profiles)}
+	}
 	l := New()
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
@@ -202,6 +212,9 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 	}
 	if l.Version > Version {
 		return nil, fmt.Errorf("%s was written by a newer lola (ledger version %d); upgrade lola", path, l.Version)
+	}
+	if q := l.reserved(); q != "" {
+		return nil, &ReservedError{File: path, Name: q, Recorded: l.Profiles()}
 	}
 	if err := l.validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -218,6 +231,76 @@ func LoadKeepingStrays(path string) (*Ledger, error) {
 // restoreHint coaches a lock.json lola could not have written and lola repair cannot fix. lola
 // refuses a lock.json git tracks, so version control is never the way back.
 const restoreHint = "restore lock.json from a backup, or remove the module's entry from it and reinstall the module"
+
+// ProfilesKeyError refuses a lock.json that lists active profiles under profiles, as lola did
+// before one profile was on at a time (spec 2026-10-29 §7). Names is the qualified names it lists
+// that lola could have written, in order, which the engine's hint names.
+type ProfilesKeyError struct {
+	File  string
+	Names []string
+}
+
+func (e *ProfilesKeyError) Error() string {
+	return e.File + ": profiles is not a key lola reads any more; lock.json records the one profile on as profile"
+}
+
+// ReservedError refuses a lock.json that records a profile named base, as the one on or as where
+// a module comes from, which a lola before base was reserved for the scope's base could write
+// (spec 2026-10-29 §3.1). Name is that profile's qualified name, which the engine's hint names, and
+// Recorded every qualified name the file records (Profiles), which the hint's new name avoids.
+type ReservedError struct {
+	File     string
+	Name     string
+	Recorded []string
+}
+
+func (e *ReservedError) Error() string {
+	return e.File + ": it records the profile " + e.Name + ", and base is now reserved for the scope's base, so no profile has that name"
+}
+
+// Profiles is the qualified names of the profiles l records: the one on, then each module's From,
+// in module-name order, each once.
+func (l *Ledger) Profiles() []string {
+	var names []string
+	if l.Profile != nil {
+		names = append(names, l.Profile.Name)
+	}
+	for _, k := range slices.Sorted(maps.Keys(l.Modules)) {
+		if e := l.Modules[k]; e != nil {
+			if q, ok := strings.CutPrefix(e.From, "profile:"); ok && !slices.Contains(names, q) {
+				names = append(names, q)
+			}
+		}
+	}
+	return names
+}
+
+// reserved is the first of l's Profiles that activeprofile.Check refuses as reserved; "" when none
+// is.
+func (l *Ledger) reserved() string {
+	for _, q := range l.Profiles() {
+		if errors.Is(activeprofile.Check(q), activeprofile.ErrReserved) {
+			return q
+		}
+	}
+	return ""
+}
+
+// oldNames is the qualified names a pre-release profiles list holds that activeprofile.Check
+// accepts, in order; nil when it is no list of profiles.
+func oldNames(raw json.RawMessage) []string {
+	var list []Active
+	if json.Unmarshal(raw, &list) != nil {
+		return nil
+	}
+	var out []string
+	for _, a := range list {
+		if activeprofile.Check(a.Name) == nil {
+			out = append(out, a.Name)
+		}
+	}
+	return out
+}
 
 // The kinds of Stray.
 const (
@@ -342,8 +425,8 @@ func (l *Ledger) Forget(drop []Stray) []string {
 // not write (source.Recorded), targets that are not target names or are listed twice, artifacts
 // with no target or on a target the entry does not list, and members lola could not have written. It records each member again as canonical JSON.
 func (l *Ledger) validate() error {
-	if err := l.validateProfiles(); err != nil {
-		return errs.WithHints(err, "restore lock.json from a backup, or remove its profiles list")
+	if err := l.validateProfile(); err != nil {
+		return errs.WithHints(err, "restore lock.json from a backup, or remove its profile key")
 	}
 	for name, e := range l.Modules {
 		if err := module.ValidateName("module", name); err != nil {
@@ -399,22 +482,18 @@ func (l *Ledger) validate() error {
 	return nil
 }
 
-// validateProfiles checks the active list (Plan 6b §5): at most activeprofile.Max items, each a
-// qualified name listed once, with the action lola records.
-func (l *Ledger) validateProfiles() error {
-	if len(l.Profiles) > activeprofile.Max {
-		return fmt.Errorf("profiles lists more than %d profiles", activeprofile.Max)
+// validateProfile checks the active profile (spec 2026-10-29 §3.4): a qualified name, with the
+// action lola records.
+func (l *Ledger) validateProfile() error {
+	a := l.Profile
+	if a == nil {
+		return nil
 	}
-	for i, a := range l.Profiles {
-		if err := activeprofile.Check(a.Name); err != nil {
-			return fmt.Errorf("profiles: %w", err)
-		}
-		if slices.ContainsFunc(l.Profiles[:i], func(o Active) bool { return o.Name == a.Name }) {
-			return fmt.Errorf("profiles: %s is listed twice", a.Name)
-		}
-		if a.By != ByOn && a.By != BySwitch {
-			return fmt.Errorf("profiles: %s has by %q; lola writes on or switch", a.Name, untrusted.Text(a.By, untrusted.MaxName))
-		}
+	if err := activeprofile.Check(a.Name); err != nil {
+		return fmt.Errorf("profile: %w", err)
+	}
+	if a.By != ByOn && a.By != BySwitch {
+		return fmt.Errorf("profile: %s has by %q; lola writes on or switch", a.Name, untrusted.Text(a.By, untrusted.MaxName))
 	}
 	return nil
 }
@@ -469,7 +548,11 @@ func (l *Ledger) Save(path string) error {
 
 // Clone returns a deep copy.
 func (l *Ledger) Clone() *Ledger {
-	c := &Ledger{Version: l.Version, Profiles: slices.Clone(l.Profiles), Modules: make(map[string]*Entry, len(l.Modules)), Created: slices.Clone(l.Created)}
+	c := &Ledger{Version: l.Version, Modules: make(map[string]*Entry, len(l.Modules)), Created: slices.Clone(l.Created)}
+	if l.Profile != nil {
+		p := *l.Profile
+		c.Profile = &p
+	}
 	for k, e := range l.Modules {
 		ec := *e
 		ec.Artifacts, ec.Targets = slices.Clone(e.Artifacts), slices.Clone(e.Targets)

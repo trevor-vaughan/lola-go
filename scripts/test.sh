@@ -5,6 +5,12 @@ set -euo pipefail
 MODE="${MODE:-human}"
 TEST_DIR="${TEST_DIR:-.test-output}"
 mkdir -p "$TEST_DIR"
+# Specs build projects in temp dirs, and lola finds a project by walking up to the nearest .lola/.
+# A TMPDIR below the developer's home would find the Python lola's ~/.lola, so use a private
+# system temp dir.
+TMPDIR="$(mktemp -d /tmp/lola-test.XXXXXX)"
+export TMPDIR
+trap 'rm -rf "$TMPDIR"' EXIT
 args=(./... -count=1 -coverprofile="$TEST_DIR/coverage.out")
 if [[ "$MODE" == "llm" ]]; then
   if go test "${args[@]}" -args -ginkgo.no-color >"$TEST_DIR/unit.log" 2>&1; then

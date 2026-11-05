@@ -107,6 +107,7 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 		return err
 	}
 	req.Scope = scs[0].Scope
+	a.printContext(cmd, eng, []engine.Scope{req.Scope}, nil)
 	stderr := a.style(cmd)
 	p := a.prompter(cmd)
 	req.Interactive = p.Interactive()

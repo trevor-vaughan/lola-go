@@ -62,19 +62,19 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		Expect(res.Modules[0].MCPServers).To(BeEmpty(), "a skipped server is not reported as running")
 	})
 
-	It("render removes a component skipped after installation as an orphan, and a hand-edited one is kept and reported", func() {
+	It("sync removes a component skipped after installation as an orphan, and a hand-edited one is kept and reported", func() {
 		_, err := install(claude)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
 
 		selections("projects:\n  " + proj + ":\n    example:\n      skip: [command/ship, agent/critic]\n")
 		Expect(os.WriteFile(filepath.Join(proj, ".claude/agents/critic.md"), []byte("mine now"), 0o644)).To(Succeed())
-		_, err = e.Render(ctx, sc, engine.Options{})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).To(MatchError(ContainSubstring(".claude/agents/critic.md: hand-edited since lola wrote it; deleting it would lose your edits")))
-		Expect(exists(".claude/commands/ship.md")).To(BeTrue(), "a refused render changes nothing")
+		Expect(exists(".claude/commands/ship.md")).To(BeTrue(), "a refused sync changes nothing")
 
 		Expect(os.Remove(filepath.Join(proj, ".claude/agents/critic.md"))).To(Succeed())
-		res, err := e.Render(ctx, sc, engine.Options{})
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Steps).To(ContainElement(SatisfyAll(HaveField("Action", plan.ActionDelete), HaveField("Path", ".claude/commands/ship.md"))))
 		Expect(exists(".claude/commands/ship.md")).To(BeFalse())
@@ -87,11 +87,13 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 	})
 
 	It("uses the user section at user scope and ignores project sections there", func() {
-		selections("user:\n  example:\n    skip: [rule/style]\nprojects:\n  " + proj + ":\n    example:\n      skip: [command/ship]\n")
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\nmodules:\n  - {name: example, source: " + src + ", skip: [rule/style]}\n"})
+		selections("projects:\n  " + proj + ":\n    example:\n      skip: [command/ship]\n")
 		res, err := e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: src}}, claude)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Modules[0].Skipped).To(Equal([]string{"rule/style"}))
+		Expect(res.Modules[0].Skipped).To(Equal([]string{"rule/style"}), "default's entry picks it")
 		Expect(filepath.Join(p.Home, ".claude/commands/ship.md")).To(BeARegularFile())
+		Expect(os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))).To(ContainSubstring("skip: [rule/style]"), "the install keeps the entry's picks")
 	})
 
 	It("warns about a selector that names no component of the module", func() {
@@ -99,8 +101,53 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		res, err := install(claude)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElements(
-			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml: example has no component skill/gone; remove it from the file"},
-			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml: example has no component agent/x*; remove it from the file"}))
+			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml global: example has no component skill/gone; remove it from the file"},
+			engine.Notice{Level: engine.LevelWarn, Text: "selections.yaml global: example has no component agent/x*; remove it from the file"}))
+	})
+
+	It("installs, syncs, lists and checks through a scope's only: list", func() {
+		selections("projects:\n  " + proj + ":\n    example:\n      only: [command/ship, 'skill/*']\n")
+		res, err := install(claude)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Modules[0].Skipped).To(Equal([]string{"agent/critic", "mcp/lola-gh", "rule/style"}))
+		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
+		Expect(exists(".claude/skills/review/SKILL.md")).To(BeTrue())
+		Expect(exists(".claude/agents/critic.md")).To(BeFalse())
+
+		selections("projects:\n  " + proj + ":\n    example:\n      only: [command/ship]\n")
+		sres, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(exists(".claude/skills/review/SKILL.md")).To(BeFalse(), "a component the narrowed list misses is removed")
+		want := []string{"skill/review", "agent/critic", "mcp/lola-gh", "rule/style"}
+		Expect(sres.Modules[0].Skipped).To(Equal(want))
+		rows, _, err := e.Status(ctx, sc, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rows[0].Skipped).To(Equal(want))
+		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rep.Modules[0].Skipped).To(Equal(want))
+	})
+
+	It("lets a scope's only: replace the global one, under every skip and the scope's include", func() {
+		selections("global:\n  example:\n    only: [skill/review]\n    skip: [agent/critic]\nprojects:\n  " + proj +
+			":\n    example:\n      only: [command/ship, agent/critic]\n      include: [rule/style]\n")
+		res, err := install(claude)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Modules[0].Skipped).To(Equal([]string{"skill/review", "agent/critic", "mcp/lola-gh"}),
+			"the project list replaces global's; the global skip still applies; the include adds rule/style")
+		res, err = e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: src}}, claude)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Modules[0].Skipped).To(Equal([]string{"agent/critic"}),
+			"default's entry, a profile entry, takes the global skip but not global's only: list (cherry-pick design §4.2)")
+	})
+
+	It("an only: list that matches nothing installs nothing of the module and warns, naming its section", func() {
+		selections("projects:\n  " + proj + ":\n    example:\n      only: [skill/gone]\n")
+		res, err := install(claude)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Modules[0].Skipped).To(Equal([]string{"skill/review", "command/ship", "agent/critic", "mcp/lola-gh", "rule/style"}))
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn,
+			Text: "selections.yaml projects[" + proj + "]: example has no component skill/gone; remove it from the file"}))
 	})
 
 	It("--no-rules wins over a rule the selections include", func() {
@@ -113,9 +160,9 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 	})
 
 	It("refuses an invalid selections.yaml before writing anything", func() {
-		selections("user:\n  example:\n    skip: [hook/x]\n")
+		selections("projects:\n  " + proj + ":\n    example:\n      skip: [hook/x]\n")
 		_, err := install(claude)
-		Expect(err).To(MatchError(ContainSubstring(p.Selections + ":4: user.example.skip[0]")))
+		Expect(err).To(MatchError(ContainSubstring(p.Selections + ":5: projects[\"" + proj + "\"].example.skip[0]")))
 		Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 	})
 

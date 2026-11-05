@@ -309,7 +309,7 @@ var _ = Describe("the Claude Code plugin adapter", func() {
 
 		It("reports JSON of the wrong shape without Go type names", func() {
 			_, err := detect(`{"name":"p"}`, map[string]string{".mcp.json": `{"mcpServers":[]}`, "commands/a.md": "a"})
-			Expect(err).To(MatchError(".mcp.json: mcpServers must be a JSON object"))
+			Expect(err).To(MatchError(".mcp.json: /mcpServers must be a JSON object"))
 			noGoTypes(err)
 			Expect(os.RemoveAll(root)).To(Succeed())
 			_, err = detect(`{"name":"p"}`, map[string]string{"hooks/hooks.json": `[]`})

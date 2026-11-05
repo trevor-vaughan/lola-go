@@ -3,10 +3,13 @@ package engine
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -49,7 +52,7 @@ type resolved struct {
 }
 
 // resolveComponents is the one resolver (Plan 5c §7): the cached module minus the effective
-// exclusions, and without rules when they are off. install, render and check all plan what it
+// exclusions, and without rules when they are off. install, sync and check all plan what it
 // returns, so a component excluded after installation is an orphan the planner removes.
 func resolveComponents(m *module.Module, x config.Exclusions, rulesOn bool) resolved {
 	out := *m
@@ -72,8 +75,8 @@ func resolveComponents(m *module.Module, x config.Exclusions, rulesOn bool) reso
 	all := components(m)
 	for _, p := range x.Patterns() {
 		if !slices.ContainsFunc(all, func(c Component) bool { return p.Matches(c.Kind, c.Name) }) {
-			r.notes = append(r.notes, Notice{Level: LevelWarn, Text: fmt.Sprintf("selections.yaml: %s has no component %s; remove it from the file",
-				m.Name, untrusted.Text(p.String(), untrusted.MaxName))})
+			r.notes = append(r.notes, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: %s has no component %s; remove it from the file",
+				untrusted.Text(p.Origin, untrusted.MaxName), m.Name, untrusted.Text(p.String(), untrusted.MaxName))})
 		}
 	}
 	return r
@@ -96,11 +99,149 @@ func where(sc Scope) (config.Where, error) {
 	return config.Project(key), nil
 }
 
-// exclusions returns module's effective exclusions at sc.
-func exclusions(sel *config.Selections, sc Scope, module string) (config.Exclusions, error) {
-	w, err := where(sc)
+// picksAt is the section of selections whose picks apply to a module that from provides at sc
+// (cherry-pick design §4.2): the entry of from when it is a profile layer (profile:<qualified>),
+// else selections.yaml's section of sc. from is a layer's or lock.json's name: "" or project.yml for
+// the scope's manifest.
+func picksAt(sc Scope, from string) (config.Where, error) {
+	if strings.HasPrefix(from, ledger.FromProfile("")) {
+		return config.Picks(from), nil
+	}
+	return where(sc)
+}
+
+// exclusions returns module's effective exclusions at sc, provided by from (picksAt). It is the
+// one place a planner, the choices and the preview get them (install, list, sync, check,
+// moduleScope, Preview), so a layer added to the precedence reaches every caller here.
+func exclusions(sel *config.Selections, sc Scope, from, module string) (config.Exclusions, error) {
+	w, err := picksAt(sc, from)
 	if err != nil {
 		return config.Exclusions{}, err
 	}
 	return sel.Exclusions(w, module), nil
+}
+
+// originLabel names origin, the origin of one of x's layers (x: the exclusions of a module that
+// from provides), as output names it: a profile entry's as layerLabel names the profile among
+// profiles (listed only then), a selections.yaml section's as its origin, through untrusted.Text;
+// "" for "".
+func originLabel(x config.Exclusions, origin, from string, profiles func() ([]profile.Info, error)) (string, error) {
+	if origin == "" {
+		return "", nil
+	}
+	if origin == x.Scope.Origin && strings.HasPrefix(from, ledger.FromProfile("")) {
+		infos, err := profiles()
+		if err != nil {
+			return "", err
+		}
+		return layerLabel(infos, from), nil
+	}
+	return untrusted.Text(origin, untrusted.MaxName), nil
+}
+
+// ignoredSection is the warning that sel's section of sc names module, which from, a profile
+// layer, provides at sc: that profile entry's picks apply instead (cherry-pick design §4.2), so the
+// section is never read for it. It names the profile as layerLabel does among profiles (the
+// profiles sc can use, listed only for a warning), the file to delete the entry from, and, as where
+// module's picks live instead, the edit of the profile's picks (repickRun, with layers and on,
+// whether a profile is on at sc once the run applies). It is nil when from is the scope's manifest
+// or the section has no picks for module.
+func (e *Engine) ignoredSection(sel *config.Selections, sc Scope, layers []Layer, profiles func() ([]profile.Info, error), on bool,
+	from, module string) (*Notice, error) {
+	if !strings.HasPrefix(from, ledger.FromProfile("")) {
+		return nil, nil
+	}
+	w, err := where(sc)
+	if err != nil {
+		return nil, err
+	}
+	if sel.Entry(w, module).Empty() {
+		return nil, nil
+	}
+	infos, err := profiles()
+	if err != nil {
+		return nil, err
+	}
+	label := layerLabel(infos, from)
+	return &Notice{Level: LevelWarn, Text: fmt.Sprintf("%s %s is ignored: %s provides it; delete it from %s, and pick %s's components in %s → %s",
+		untrusted.Text(w.Origin(), untrusted.MaxName), shown(module), label, untrusted.Text(sel.Path, untrusted.MaxName), shown(module), label,
+		e.repickRun(sc, layers, infos, on, from, module))}, nil
+}
+
+// skippedIn names where the picks that leave skipped out (kind/name each, by x) live, as output
+// says it (spec 2026-10-29 S11): "" for none; selections.yaml for a module project.yml provides
+// (from, picksAt's, not a profile's); else the profile whose entry holds them, and selections.yaml
+// too where its global skip leaves one out. A profile is named as layerLabel names it among
+// profiles, the profiles the scope can use (visibleOnce).
+func skippedIn(profiles func() ([]profile.Info, error), x config.Exclusions, skipped []string, from string) (string, error) {
+	if len(skipped) == 0 {
+		return "", nil
+	}
+	if !strings.HasPrefix(from, ledger.FromProfile("")) {
+		return "selections.yaml", nil
+	}
+	infos, err := profiles()
+	if err != nil {
+		return "", err
+	}
+	label := layerLabel(infos, from)
+	entry, global := false, false
+	for _, c := range skipped {
+		kind, name, _ := strings.Cut(c, "/")
+		entry = entry || config.Exclusions{Scope: x.Scope}.Excludes(kind, name)
+		global = global || config.Exclusions{Global: x.Global}.Excludes(kind, name)
+	}
+	switch {
+	case entry && global:
+		return label + " and selections.yaml", nil
+	case global:
+		return "selections.yaml", nil
+	}
+	return label, nil
+}
+
+// visibleOnce is the profiles sc can use (visible), listed when first asked for and then kept, so
+// a run that labels many modules lists them once per scope, and one that labels none never does.
+func (e *Engine) visibleOnce(sc Scope) func() ([]profile.Info, error) {
+	var infos []profile.Info
+	var err error
+	listed := false
+	return func() ([]profile.Info, error) {
+		if !listed {
+			infos, _, err = e.visible(sc)
+			listed = true
+		}
+		return infos, err
+	}
+}
+
+// withPicks is a copy of sel holding the picks of every entry of layers' profiles, each in its
+// layer's section (config.Picks), parsed as the profile's load checked them.
+func withPicks(sel *config.Selections, layers []Layer) (*config.Selections, error) {
+	out := sel.Clone()
+	for _, l := range layers {
+		if !l.Profile {
+			continue
+		}
+		for _, ent := range l.Entries {
+			if len(ent.Only)+len(ent.Skip) == 0 {
+				continue
+			}
+			var picks config.Entry
+			for _, x := range []struct {
+				in  []string
+				out *[]config.Pattern
+			}{{ent.Only, &picks.Only}, {ent.Skip, &picks.Skip}} {
+				for _, s := range x.in {
+					pat, err := config.ParsePattern(s)
+					if err != nil {
+						return nil, fmt.Errorf("%s: module %s: %w", shown(l.Path), shown(ent.Name), err)
+					}
+					*x.out = append(*x.out, pat)
+				}
+			}
+			out.Set(config.Picks(l.Name), ent.Name, picks)
+		}
+	}
+	return out, nil
 }

@@ -30,7 +30,9 @@ type Registration struct {
 	Source string `yaml:"source"`
 	Ref    string `yaml:"ref,omitempty"`
 	Path   string `yaml:"path,omitempty"`
-	Line   int    `yaml:"-"`
+	// SSHHosts are the hosts whose ssh sources the catalog may name (Parse's sshHosts).
+	SSHHosts []string `yaml:"ssh_hosts,omitempty"`
+	Line     int      `yaml:"-"`
 }
 
 // Registry is markets.yaml: your marketplaces, in the file's order.
@@ -111,6 +113,14 @@ func ParseRegistry(file string, b []byte) (Registry, error) {
 			return reg, fmt.Errorf("%s: marketplace %s: source %s is a relative path; record the folder's absolute path", at, m.Name,
 				untrusted.Text(m.Source, untrusted.MaxName))
 		}
+		for j, h := range m.SSHHosts {
+			if m.SSHHosts[j], err = CheckSSHHost(h); err != nil {
+				return reg, fmt.Errorf("%s: marketplace %s: ssh_hosts: %w", at, m.Name, err)
+			}
+		}
+		if len(m.SSHHosts) > 0 {
+			m.SSHHosts = NormalizeHosts(m.SSHHosts)
+		}
 		reg.Markets = append(reg.Markets, m)
 	}
 	return reg, nil
@@ -150,8 +160,52 @@ func AddRegistration(b []byte, r Registration) ([]byte, error) {
 			m.Content = append(m.Content, yamldoc.Str(kv[0]), yamldoc.Str(kv[1]))
 		}
 	}
+	if len(r.SSHHosts) > 0 {
+		m.Content = append(m.Content, yamldoc.Str("ssh_hosts"), hostsNode(r.SSHHosts))
+	}
 	seq.Content = append(seq.Content, m)
 	return encode(d)
+}
+
+// hostsNode is the YAML list of hosts, normalized.
+func hostsNode(hosts []string) *yaml.Node {
+	n := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	for _, h := range NormalizeHosts(hosts) {
+		n.Content = append(n.Content, yamldoc.Str(h))
+	}
+	return n
+}
+
+// SetSSHHosts is b, a markets.yaml ParseRegistry read, with the marketplace name's ssh_hosts
+// replaced by hosts, normalized; none left removes the key. Comments and order are kept.
+func SetSSHHosts(b []byte, name string, hosts []string) ([]byte, error) {
+	d, err := yamldoc.Decode(b)
+	if err != nil {
+		return nil, err
+	}
+	var seq *yaml.Node
+	if root := yamldoc.Root(d); root != nil {
+		seq = yamldoc.Value(root, "markets")
+	}
+	if seq == nil || seq.Kind != yaml.SequenceNode {
+		return nil, fmt.Errorf("marketplace %s is not in markets.yaml", name)
+	}
+	for _, m := range seq.Content {
+		if n := yamldoc.Value(m, "name"); n == nil || n.Value != name {
+			continue
+		}
+		for i := 0; i+1 < len(m.Content); i += 2 {
+			if m.Content[i].Value == "ssh_hosts" {
+				m.Content = append(m.Content[:i], m.Content[i+2:]...)
+				break
+			}
+		}
+		if len(hosts) > 0 {
+			m.Content = append(m.Content, yamldoc.Str("ssh_hosts"), hostsNode(hosts))
+		}
+		return encode(d)
+	}
+	return nil, fmt.Errorf("marketplace %s is not in markets.yaml", name)
 }
 
 // RemoveRegistration is b, a markets.yaml ParseRegistry read, without the marketplace name, its

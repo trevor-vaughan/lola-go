@@ -105,8 +105,8 @@ func Remote(p paths.Paths) ([]Info, int, error) {
 		name := de.Name()
 		switch {
 		case strings.HasPrefix(name, "."), !de.IsDir():
-		case module.ValidateName("profile", name) != nil:
-			invalid++
+		case module.ValidateName("profile", name) != nil, name == BaseName:
+			invalid++ // base names the scope's base, never a remote profile (spec 2026-10-29 §3.1)
 		default:
 			out = append(out, Info{Name: name, Kind: KindRemote, Path: filepath.Join(dir, name, RemoteFile)})
 		}
@@ -147,7 +147,7 @@ func LoadRemote(path string) (*Profile, Origin, error) {
 		return nil, Origin{}, errs.WithHints(fmt.Errorf("%s changed since you added it: its digest is not the one %s records",
 			untrusted.Text(path, untrusted.MaxName), OriginFile), hint)
 	}
-	p, err := parse(path, d, b, hint, true)
+	p, err := parse(path, d, b, hint, KindRemote)
 	return p, o, err
 }
 
@@ -182,6 +182,9 @@ func FetchedNames(dir string) ([]string, int, error) {
 		return nil, 0, err
 	}
 	names, invalid, err := list(dir)
+	if k := slices.Index(names, BaseName); k >= 0 {
+		names, invalid = slices.Delete(names, k, k+1), invalid+1 // lola profile --add refuses the name base
+	}
 	if names == nil {
 		names = []string{}
 	}
@@ -192,7 +195,7 @@ func FetchedNames(dir string) ([]string, int, error) {
 // staging (Plan 6b §4.2), as untrusted input: dir must be a real directory and the file a regular
 // one, neither a symbolic link, before anything is read (§19 S3); the file loads as a remote
 // profile, whose every entry is pinned and names a remote source (§19 S1, D4) and which may not
-// extend another. Messages name it profiles/<name>.yml. It returns the bytes read, whose digest
+// bundle others. Messages name it profiles/<name>.yml. It returns the bytes read, whose digest
 // the pin records.
 func Fetched(dir, name string) (*Profile, []byte, error) {
 	if err := module.ValidateName("profile", name); err != nil {
@@ -224,7 +227,7 @@ func Fetched(dir, name string) (*Profile, []byte, error) {
 	if b == nil {
 		b = []byte{}
 	}
-	p, err := parse(filepath.ToSlash(rel), d, b, hint, true)
+	p, err := parse(filepath.ToSlash(rel), d, b, hint, KindRemote)
 	if err != nil {
 		return nil, nil, err
 	}

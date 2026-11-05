@@ -61,7 +61,11 @@ var _ = Describe("git and archive sources", func() {
 			"install " + url + " -C " + proj: "lola install " + url + " --plain --root " + proj + " --ref " + commit} {
 			r := lola(append(strings.Fields(args), "--ref", tag, "--plain")...)
 			Expect(r.code).To(Equal(1), args)
-			Expect(r.err).To(HavePrefix("error: "+tag+" is the annotated tag v1, not a commit; it points to commit "+commit+"\n"+
+			row := "" // the scope commands print their context row first
+			if strings.HasPrefix(args, "install ") {
+				row = "context\tproject\t" + proj + "\tproject.yml\t-\t\n"
+			}
+			Expect(r.err).To(HavePrefix(row+"error: "+tag+" is the annotated tag v1, not a commit; it points to commit "+commit+"\n"+
 				"  hint: "+hint+"\n"), args)
 			r = lola(shellWords(hint)[1:]...)
 			Expect(r.code).To(Equal(0), r.err)
@@ -92,10 +96,13 @@ var _ = Describe("git and archive sources", func() {
 		missing := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/missing.git"
 		want := "error: " + missing + " was not found, or it is private and the credentials git has, if any, cannot read it\n" +
 			"  hint: git ls-remote -- " + missing + "\n"
-		for _, args := range [][]string{{"install", missing, "-C", proj}, {"market", "--add", missing}} {
-			r := lola(args...)
-			Expect(r.code).To(Equal(1), args[0])
-			Expect(r.err).To(Equal(want), args[0])
+		for _, run := range []struct {
+			args []string
+			ctx  string
+		}{{[]string{"install", missing, "-C", proj}, projectContext(proj)}, {[]string{"market", "--add", missing}, ""}} {
+			r := lola(run.args...)
+			Expect(r.code).To(Equal(1), run.args[0])
+			Expect(r.err).To(Equal(run.ctx+want), run.args[0])
 		}
 	})
 

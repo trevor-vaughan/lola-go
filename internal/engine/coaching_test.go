@@ -59,4 +59,14 @@ var _ = Describe("finding hints", func() {
 		Expect(f.Hint).To(Equal("add description: to the agent's frontmatter"))
 		Expect(critic(engine.Options{}).Hint).To(Equal("add description: to the agent's frontmatter"))
 	})
+
+	It("leaves the hint of an activation as the target gave it: its own --force run would change nothing", func() {
+		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules: []\n"})
+		writeTree(e.Paths.UserProfiles, map[string]string{"kit.yml": "version: 1\nmodules:\n  - {name: kit, source: " + kit + "}\n"})
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "kit"},
+			Options: engine.Options{ForceRun: "lola profile --project kit --on --force", Trust: engine.TrustEntries}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Findings).To(ContainElement(And(HaveField("Code", "required-key-missing"), HaveField("Artifact", "critic"),
+			HaveField("Hint", "add description: to the agent's frontmatter"))))
+	})
 })

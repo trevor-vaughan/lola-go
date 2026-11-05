@@ -16,6 +16,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
+	"github.com/trevor-vaughan/lola-go/internal/native/nativetest"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -100,23 +101,54 @@ var _ = Describe("lola info", func() {
 		r = lola("info", kit, "-C", proj, "-t", "claude-code", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("consent\tproject\thooks\tkit pre-install\tyes\n"))
-		Expect(r.out).To(HaveSuffix("install\tlola install kit --plain --root "+proj+" --target claude-code\n"), "nothing more to trust")
+		Expect(r.out).NotTo(MatchRegexp(`(?m)^install\t`), "the version shown is installed there: installing it again changes nothing")
+		r = lola("info", kit, "-C", proj, "-t", "claude-code", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(readInfo(r.out).Install[0].Command).To(BeEmpty())
+		Expect(lola("info", kit, "-C", proj, "-t", "claude-code").out).NotTo(ContainSubstring("install it:"))
+
+		proj2 := filepath.Join(tmp, "proj2")
+		Expect(os.MkdirAll(filepath.Join(proj2, ".lola"), 0o755)).To(Succeed())
 
 		for _, row := range []struct {
 			flags []string
 			want  string
 		}{
-			{[]string{"-C", proj, "--no-pager"}, "lola install kit --json --no-pager --root " + proj + " --target claude-code"},
-			{[]string{"--user"}, "lola install kit --json --target claude-code --user --trust=runtime-hooks"},
-			{[]string{"--scope", "user"}, "lola install kit --json --scope user --target claude-code"},
+			{[]string{"-C", proj2, "--no-pager"}, "lola install kit --json --no-pager --root " + proj2 + " --target claude-code --trust=runtime-hooks"},
+			{[]string{"--scope", "user"}, "lola install kit --json --scope user --target claude-code --trust=runtime-hooks"},
+			{[]string{"--user"}, ""}, // installed there by the row before
 		} {
 			r = lola(append([]string{"info", kit, "-t", "claude-code", "--json"}, row.flags...)...)
 			Expect(r.code).To(Equal(0), r.err)
 			hint := readInfo(r.out).Install[0].Command
 			Expect(hint).To(Equal(row.want), "%v", row.flags)
+			if hint == "" {
+				continue
+			}
 			r = runHint(hint)
 			Expect(r.code).To(Equal(0), r.err)
 		}
+	})
+
+	It("info offers the install while it would still write the module's entry, as a narrower -t would", func() {
+		simple := filepath.Join(tmp, "src", "simple")
+		writeTree(simple, map[string]string{"skills/a/SKILL.md": "---\nname: a\ndescription: a skill\n---\nhi\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		r := lola("install", simple, "-C", proj, "-t", "claude-code,gemini-cli")
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("info", "simple", "-C", proj, "-t", "claude-code,gemini-cli", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(readInfo(r.out).Install[0].Command).To(BeEmpty())
+
+		r = lola("info", "simple", "-C", proj, "-t", "claude-code", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		hint := readInfo(r.out).Install[0].Command
+		Expect(hint).To(Equal("lola install simple --json --root " + proj + " --target claude-code"))
+		r = runHint(hint)
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("info", "simple", "-C", proj, "-t", "claude-code", "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(readInfo(r.out).Install[0].Command).To(BeEmpty(), "the entry now names claude-code alone")
 	})
 
 	DescribeTable("info's hint installs the digest info showed",
@@ -221,7 +253,7 @@ var _ = Describe("lola info", func() {
 		for _, args := range [][]string{{"info", kit, "-C", proj, "-t", "claude-code", "--json"}, {"info", "kit", "--json"}} {
 			r := lola(args...)
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).NotTo(ContainSubstring("null"))
+			Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 			dec := json.NewDecoder(strings.NewReader(r.out))
 			var doc map[string]any
 			Expect(dec.Decode(&doc)).To(Succeed())
@@ -229,6 +261,67 @@ var _ = Describe("lola info", func() {
 			Expect(doc).To(HaveKey("runs"))
 			Expect(doc).To(HaveKey("install"))
 		}
+	})
+
+	Describe("native executables", func() {
+		shipBinary := func(data []byte) {
+			Expect(os.RemoveAll(kit)).To(Succeed())
+			writeTree(kit, map[string]string{"skills/demo/SKILL.md": "---\nname: demo\ndescription: Demo\n---\nbody\n",
+				"skills/demo/bin/fmt": string(data)})
+		}
+
+		It("lists a dynamic ELF with its path, kind, linkage and digest", func() {
+			shipBinary(nativetest.ELF64Dyn())
+			r := lola("info", kit, "-C", proj, "-t", "claude-code")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(MatchRegexp(`(?m)^ships native executables:\n  skills/demo/bin/fmt   ELF executable, x86-64 Unix-like, dynamic\n      sha256 [0-9a-f]{64}   \d+ B\n`))
+		})
+
+		It("says none for a module that ships only scripts", func() {
+			r := lola("info", kit, "-C", proj, "-t", "claude-code")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("ships native executables: none\n"))
+		})
+
+		It("says none, still, with no scope", func() {
+			r := lola("info", kit, "-t", "claude-code")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("ships native executables: none\n"))
+		})
+
+		It("says a malformed binary is malformed", func() {
+			shipBinary(nativetest.ELF64()[:20])
+			r := lola("info", kit, "-C", proj, "-t", "claude-code")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("skills/demo/bin/fmt   looks like an ELF file but is malformed\n"))
+		})
+
+		It("has native_executables in JSON: [] for a clean module, the binary's fields for a static ELF", func() {
+			read := func() []map[string]any {
+				r := lola("info", kit, "-C", proj, "-t", "claude-code", "--json")
+				Expect(r.code).To(Equal(0), r.err)
+				var doc struct {
+					Native []map[string]any `json:"native_executables"`
+				}
+				Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
+				Expect(doc.Native).NotTo(BeNil(), "an array, never null")
+				return doc.Native
+			}
+			Expect(read()).To(BeEmpty())
+			shipBinary(nativetest.ELF64())
+			bins := read()
+			Expect(bins).To(HaveLen(1))
+			Expect(bins[0]).To(SatisfyAll(HaveKeyWithValue("arch", []any{"x86-64"}), HaveKeyWithValue("libraries", BeEmpty()),
+				HaveKeyWithValue("go", BeNil()), HaveKeyWithValue("linkage", "static")))
+		})
+
+		It("prints one native row per binary under --plain, and no section", func() {
+			shipBinary(nativetest.ELF64())
+			r := lola("info", kit, "-C", proj, "-t", "claude-code", "--plain")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(MatchRegexp(`(?m)^native\tskills/demo/bin/fmt\tELF\texecutable\tx86-64\tUnix-like\tstatic\t[0-9a-f]{64}$`))
+			Expect(r.out).NotTo(ContainSubstring("ships native executables"))
+		})
 	})
 
 	It("info refuses no argument and a non-source with their exact texts", func() {

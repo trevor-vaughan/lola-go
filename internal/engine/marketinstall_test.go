@@ -261,6 +261,46 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(catalogFetches.Load()).To(BeZero(), "and never reads the catalog, which may have moved")
 	})
 
+	It("a picked entry stays out of the cache until the install applies it", func() {
+		run, err := e.StageInstall()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(run.Close)
+		scopes := []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}}
+		ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: scopes, Run: run,
+			Modules: []engine.InstallRequest{{Arg: "@acme/secdevai"}}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ch.Module("secdevai")).NotTo(BeNil())
+		Expect(cached()).To(BeEmpty())
+		spec := engine.InstallSpec{Cwd: proj, Staged: run, Options: claude, Scopes: []engine.ScopeInstall{{ScopeChoice: scopes[0], Targets: claude.Targets}},
+			Modules: []engine.InstallRequest{{Arg: "@acme/secdevai", Version: &ch.Versions[0]}}}
+		dry := spec
+		dry.Options.DryRun = true
+		_, err = e.InstallAll(ctx, dry)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cached()).To(BeEmpty(), "the review's dry run caches nothing")
+		_, err = e.InstallAll(ctx, spec)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cached()).To(Equal([]string{"secdevai"}))
+		Expect(entry("secdevai")).To(And(HaveField("Commit", head), HaveField("Market", &manifest.MarketRef{Name: "acme", Source: market})))
+	})
+
+	It("a staged entry refused for its pre-install hook keeps the review hint by source and commit, and caches nothing", func() {
+		work := filepath.Join(tmp, "work", "kit")
+		writeTree(work, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: setup.sh}\n", "setup.sh": "#!/bin/sh\necho kit\n"})
+		Expect(os.Chmod(filepath.Join(work, "setup.sh"), 0o755)).To(Succeed())
+		commit := bare(filepath.Join(tmp, "mods"), "kit", nil)
+		run, err := e.StageInstall()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(run.Close)
+		_, err = e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Staged: run, Options: engine.Options{Targets: claude.Targets, Display: []string{"--json"}},
+			Scopes:  []engine.ScopeInstall{{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}, Targets: claude.Targets}},
+			Modules: []engine.InstallRequest{{Arg: "@acme/kit"}}})
+		Expect(err).To(MatchError("kit has a pre-install hook, and lola runs hooks only with your consent"))
+		Expect(errs.Hints(err)).To(HaveExactElements("review it: lola info --project "+mods+"/kit.git --ref "+commit+" --target claude-code --json",
+			"then consent to it: lola install --project @acme/kit --target claude-code --json --trust=hooks"))
+		Expect(cached()).To(BeEmpty())
+	})
+
 	It("refuses a version listed for an address that its catalog now lists from elsewhere", func() {
 		ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}},
 			Modules: []engine.InstallRequest{{Arg: "@acme/secdevai"}}})
@@ -417,7 +457,7 @@ var _ = Describe("installing from a marketplace", func() {
 		Expect(offers).To(BeEmpty(), "a name your cache holds is that module")
 	})
 
-	It("market --remove counts market entries in known scopes and installed modules keep rendering", func() {
+	It("market --remove counts market entries in known scopes and installed modules keep syncing", func() {
 		_, err := install(engine.Options{}, engine.InstallRequest{Arg: "@acme/secdevai"}, engine.InstallRequest{Arg: "@acme/formatter"})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: "@acme/formatter"}}, claude)
@@ -438,7 +478,14 @@ var _ = Describe("installing from a marketplace", func() {
 			Text: "2 entries in this project and your user scope name acme as their marketplace; installed from their real sources, they stay " +
 				"installed, and lola sync --update follows acme again once you add it back → lola market acme --add " + market +
 				" --path .claude-plugin/marketplace.json --json"}}))
-		_, err = e.Render(ctx, sc, claude)
+		// The entry edited to name another source is a change sync asks to trust, so the run is
+		// refused; with project.yml restored, sync keeps every module installed.
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: claude})
+		refusal, ok := errors.AsType[*engine.TrustRefusalError](err)
+		Expect(ok).To(BeTrue(), "%v", err)
+		Expect(refusal.Report.Changes).To(ConsistOf(HaveField("Module", "secdevai")))
+		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), b, 0o644)).To(Succeed())
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: claude})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(filepath.Join(proj, ".claude", "skills", "sec", "SKILL.md")).To(BeARegularFile())
 		Expect(filepath.Join(proj, ".claude", "commands", "fmt.md")).To(BeARegularFile())
@@ -555,8 +602,8 @@ var _ = Describe("installing from a marketplace", func() {
 		user := engine.Scope{Kind: target.User}
 		write := func(market string) {
 			GinkgoHelper()
-			Expect(os.MkdirAll(filepath.Dir(p.UserManifest), 0o700)).To(Succeed())
-			Expect(os.WriteFile(p.UserManifest, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: "+away.URL+
+			Expect(os.MkdirAll(p.UserProfiles, 0o700)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(p.UserProfiles, "default.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: "+away.URL+
 				"/kit.git\n"+market), 0o600)).To(Succeed())
 		}
 		write("    market: {name: acme, source: https://example.com/plugins.git}\n")
@@ -610,6 +657,37 @@ var _ = Describe("installing from a marketplace", func() {
 		}
 	})
 
+	It("lola update names lola update as the next run that follows the catalog of an entry it has not trusted", func() {
+		_, err := install(engine.Options{}, engine.InstallRequest{Arg: "@acme/kit"})
+		Expect(err).NotTo(HaveOccurred())
+		pulled := engine.Scope{Kind: target.Project, ProjectDir: filepath.Join(tmp, "pulled")}
+		Expect(os.CopyFS(pulled.ProjectDir, os.DirFS(proj))).To(Succeed())
+		catalogFetches.Store(0)
+		res, err := e.Sync(ctx, engine.SyncRequest{Scope: pulled, Update: true, Installed: true, Trust: trustAll})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(catalogFetches.Load()).To(BeZero(), "a file not trusted before the run makes no catalog request")
+		Expect(res.Notices).To(ContainElement(engine.Notice{Level: engine.LevelInfo,
+			Text: "kit: lola follows a marketplace only for an entry you trusted before the run; it updates from its own source, and the " +
+				"next update follows acme → lola update -C " + pulled.ProjectDir + " kit"}))
+	})
+
+	It("lola update follows the catalog of an entry installed through a marketplace, however fresh its cache head", func() {
+		_, err := install(engine.Options{}, engine.InstallRequest{Arg: "@acme/secdevai"})
+		Expect(err).NotTo(HaveOccurred())
+		line := strings.Replace(secLine, "MODS", mods, 1)
+		work := filepath.Join(tmp, "work", "tools")
+		writeTree(work, map[string]string{"module/skills/sec/SKILL.md": "---\ndescription: Sec 2\n---\nSec 2\n"})
+		gitIn(work, "commit", "-q", "-am", "two")
+		next := gitIn(work, "rev-parse", "HEAD")
+		gitIn(work, "push", "-q", filepath.Join(tmp, "mods", "tools.git"), "main")
+		publish(line+head, line+next)
+		catalogFetches.Store(0)
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Update: true, Installed: true, Trust: trustAll})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(catalogFetches.Load()).To(BeEquivalentTo(1))
+		Expect(entry("secdevai")).To(HaveField("Commit", next), "the catalog's pin, not the head the install cached a moment ago")
+	})
+
 	It("install @m/x --ref records no market and sync --update does not follow the catalog", func() {
 		_, err := install(engine.Options{}, engine.InstallRequest{Arg: "@acme/secdevai", Ref: "main"})
 		Expect(err).NotTo(HaveOccurred())
@@ -642,11 +720,11 @@ var _ = Describe("installing from a marketplace", func() {
 		projectYML := filepath.Join(proj, ".lola", "project.yml")
 		writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + addresses})
 		user := engine.Scope{Kind: target.User}
-		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + addresses})
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" + addresses})
 		requests.Store(0)
 		catalogFetches.Store(0)
 
-		By("project.yml and user.yml: one install per entry it replaces, a marketplace view for one named otherwise, none without the marketplace")
+		By("project.yml and default.yml: one install per entry it replaces, a marketplace view for one named otherwise, none without the marketplace")
 		display := []string{"--json"}
 		runs := func(s engine.Scope, dry bool) map[string]func() error {
 			opts := engine.Options{Targets: claude.Targets, DryRun: dry, Display: display}
@@ -663,7 +741,6 @@ var _ = Describe("installing from a marketplace", func() {
 					_, err := e.Sync(ctx, engine.SyncRequest{Scope: s, Update: true, Options: opts, Display: display})
 					return err
 				},
-				"render":    func() error { _, err := e.Render(ctx, s, opts); return err },
 				"uninstall": func() error { _, err := e.Uninstall(ctx, s, []string{"formatter"}, opts); return err },
 				"list":      func() error { _, _, err := e.Status(ctx, s, display); return err },
 			}
@@ -672,7 +749,7 @@ var _ = Describe("installing from a marketplace", func() {
 			s          engine.Scope
 			file, flag string
 			dry        bool
-		}{{sc, projectYML, "--project", false}, {sc, projectYML, "--project", true}, {user, p.UserManifest, "--user", false}} {
+		}{{sc, projectYML, "--project", false}, {sc, projectYML, "--project", true}, {user, filepath.Join(p.UserProfiles, "default.yml"), "--user", false}} {
 			for name, run := range runs(c.s, c.dry) {
 				err := run()
 				Expect(err).To(MatchError(refusal(c.file)), name)
@@ -698,7 +775,7 @@ var _ = Describe("installing from a marketplace", func() {
 		e.Getwd = func() (string, error) { return proj, nil }
 
 		By("each kind of profile: the marketplace view, which shows what to copy into it")
-		Expect(os.Remove(p.UserManifest)).To(Succeed())
+		Expect(os.Remove(filepath.Join(p.UserProfiles, "default.yml"))).To(Succeed())
 		Expect(os.Remove(projectYML)).To(Succeed())
 		const profileBody = "version: 1\nmodules:\n  - name: formatter\n    source: '@acme/formatter'\n  - {name: lint, source: '@gone/lint'}\n"
 		profileRefusal := func(file string) string {
@@ -711,12 +788,13 @@ var _ = Describe("installing from a marketplace", func() {
 		writeTree(p.UserProfiles, map[string]string{"default.yml": profileBody})
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Display: display})
 		Expect(err).To(MatchError(profileRefusal(def)))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --json"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"lola install --user @acme/formatter --json"}),
+			"default.yml is user scope's base: the install replaces its entry, as project.yml's")
 		Expect(os.Remove(def)).To(Succeed())
 
 		goYML := filepath.Join(p.UserProfiles, "go.yml")
 		writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\n"})
-		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"go"}}})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "go"}})
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(p.UserProfiles, map[string]string{"go.yml": profileBody})
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
@@ -725,7 +803,7 @@ var _ = Describe("installing from a marketplace", func() {
 
 		team := filepath.Join(proj, ".lola", "profiles", "team.yml")
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\n"})
-		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: yes, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Names: []string{"team"}}})
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: yes, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "team"}})
 		Expect(err).NotTo(HaveOccurred())
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": profileBody})
 		trustBefore, err = os.ReadFile(p.Trust)
@@ -758,14 +836,14 @@ var _ = Describe("installing from a marketplace", func() {
 		requests.Store(0)
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user, Update: true, Display: display})
 		Expect(err).To(MatchError(profileRefusal(def)))
-		Expect(errs.Hints(err)).To(Equal([]string{"lola market acme --json"}))
-		Expect(catalogFetches.Load()).To(BeZero(), "user.yml's formatter names acme, whose catalog is not fetched")
+		Expect(errs.Hints(err)).To(Equal([]string{"lola install --user @acme/formatter --json"}))
+		Expect(catalogFetches.Load()).To(BeZero(), "default.yml's formatter names acme, whose catalog is not fetched")
 		Expect(requests.Load()).To(BeZero())
 
 		By("a tracked lock.json is refused before the profiles it names, sync --update included (Plan 6b §19 S5)")
-		userYML, err := os.ReadFile(p.UserManifest)
+		defYML, err := os.ReadFile(filepath.Join(p.UserProfiles, "default.yml"))
 		Expect(err).NotTo(HaveOccurred())
-		writeTree(proj, map[string]string{".lola/project.yml": string(userYML)}) // formatter, installed from @acme
+		writeTree(proj, map[string]string{".lola/project.yml": string(defYML)}) // formatter, installed from @acme
 		gitIn(proj, "init", "-q")
 		gitIn(proj, "add", "-f", ".lola/lock.json")
 		catalogFetches.Store(0)
@@ -799,7 +877,7 @@ var _ = Describe("installing from a marketplace", func() {
 	It("an unresolved @ entry's vars are read by tag: a date, a map or a non-finite number refuses at load, and a list installs", func() {
 		user := engine.Scope{Kind: target.User}
 		write := func(vars string) {
-			writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
 				"  - name: kit\n    source: '@acme/kit'\n    vars: " + vars + "\n"})
 		}
 		for vars, want := range map[string]string{
@@ -809,7 +887,7 @@ var _ = Describe("installing from a marketplace", func() {
 		} {
 			write(vars)
 			_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: "@acme/kit"}}, engine.Options{})
-			Expect(err).To(MatchError(p.UserManifest+want), vars)
+			Expect(err).To(MatchError(filepath.Join(p.UserProfiles, "default.yml")+want), vars)
 		}
 		write("{tools: [rg, jq]}")
 		_, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: "@acme/kit"}}, engine.Options{})
@@ -859,7 +937,7 @@ var _ = Describe("installing from a marketplace", func() {
 
 		By("its own file's entry keeps its targets and rules")
 		user := engine.Scope{Kind: target.User}
-		writeTree(filepath.Dir(p.UserManifest), map[string]string{"user.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
 			"  - {name: kit, source: '@acme/kit', targets: [claude-code], rules: false}\n"})
 		res, err = e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: "@acme/kit"}}, engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
@@ -869,6 +947,31 @@ var _ = Describe("installing from a marketplace", func() {
 		off := false
 		Expect(m.Modules).To(HaveExactElements(And(HaveField("Name", "kit"), HaveField("Source", mods+"/kit.git"), HaveField("Ref", "main"),
 			HaveField("Targets", []string{"claude-code"}), HaveField("Rules", &off), HaveField("Market", &manifest.MarketRef{Name: "acme", Source: market}))))
+	})
+
+	It("install @m/x --user replaces an unresolved @ entry of default.yml, user scope's base, and writes no pin into it", func() {
+		user := engine.Scope{Kind: target.User}
+		def := filepath.Join(p.UserProfiles, "default.yml")
+		const rest = "  - {name: kit, source: '@acme/kit'}\n  - {name: lint, source: '@gone/lint'}\n"
+		writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  # the formatter\n" +
+			"  - name: formatter\n    source: '@acme/formatter'\n" + rest})
+		res, err := e.Install(ctx, user, proj, []engine.InstallRequest{{Arg: "@acme/formatter"}}, engine.Options{Display: []string{"--json"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(os.ReadFile(def)).To(Equal([]byte("version: 1\ntargets: [claude-code]\nmodules:\n  # the formatter\n  - name: formatter\n"+
+			"    source: '"+market+"'\n    path: tools/formatter\n    market:\n      name: acme\n      source: "+market+"\n"+rest)),
+			"the entry resolved in place, with no commit or digest; every other entry as written")
+		Expect(res.Notices).To(ContainElements(
+			engine.Notice{Level: engine.LevelWarn, Text: def + ":7: kit's source is @acme/kit, a marketplace address; a file must record the " +
+				"module's real source → lola install --user @acme/kit --json"},
+			engine.Notice{Level: engine.LevelWarn, Text: def + ":8: lint's source is @gone/lint, a marketplace address; a file must record " +
+				"the module's real source; edit the entry to name the module's source, ref and path"}))
+		led, err := e.Ledger(user)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(led.Modules["formatter"]).To(And(HaveField("From", "profile:default"), HaveField("Commit", Not(BeEmpty()))), "lock.json records the version")
+		Expect(filepath.Join(p.Home, ".claude", "commands", "fmt.md")).To(BeARegularFile())
+
+		_, err = e.Sync(ctx, engine.SyncRequest{Scope: user})
+		Expect(err).To(MatchError(HavePrefix(def+" records 2 marketplace addresses as sources")), "the file is refused while one remains")
 	})
 
 	It("install @m/x over a pulled file's untrusted targets hints only -t while the file holds an @ source, since sync refuses it", func() {

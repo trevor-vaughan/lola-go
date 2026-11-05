@@ -73,9 +73,16 @@ var _ = Describe("install scope (Plan 5c §5.1)", func() {
 		sub := filepath.Join(proj, "src")
 		Expect(os.MkdirAll(sub, 0o755)).To(Succeed())
 		GinkgoT().Chdir(sub)
-		r := lola("install", mod, "--json")
+		r := lola("install", mod)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(Equal("scope: project (found .lola/ at " + proj + ")\n"))
+		Expect(r.err).To(Equal(projectContext(proj)), "the context line, once the scope is found")
+		r = lola("install", mod, "--json")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.err).To(BeEmpty(), "--json says it in the document")
+		var doc map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed())
+		Expect(doc["context"]).To(ConsistOf(HaveKeyWithValue("writes_to",
+			map[string]any{"name": "project.yml", "kind": "base", "path": filepath.Join(proj, ".lola", "project.yml")})))
 		v := parseInstall(r.out)
 		Expect(v.Scopes).To(HaveLen(1))
 		Expect(v.Scopes[0].Scope).To(Equal("project"))
@@ -167,7 +174,7 @@ var _ = Describe("selection flags (Plan 5c §5.2)", func() {
 		Expect(v.Modules[0].Skipped).To(Equal([]string{"command/test"}))
 		Expect(*v.Modules[0].SavedTo).To(Equal(selections))
 		Expect(v.EquivalentCommands).To(Equal([]string{}), "no picker ran")
-		Expect(r.out).NotTo(ContainSubstring("null"))
+		Expect(withoutContext(r.out)).NotTo(ContainSubstring("null"))
 		Expect(filepath.Join(proj, ".claude/commands/test.md")).NotTo(BeAnExistingFile())
 
 		r = lola("install", "example", "-C", proj, "--json")
@@ -215,7 +222,7 @@ var _ = Describe("selection flags (Plan 5c §5.2)", func() {
 		r := lola("install", mod, "-C", proj, "--skip", "command/test", "-n")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).NotTo(ContainSubstring("commands/test.md"))
-		Expect(r.err).To(BeEmpty())
+		Expect(r.err).To(Equal(projectContext(proj)))
 		Expect(selections).NotTo(BeAnExistingFile())
 	})
 

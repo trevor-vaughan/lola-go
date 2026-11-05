@@ -52,6 +52,26 @@ var _ = Describe("archive limits", func() {
 		Expect(fetchWith(archive, lim)).To(MatchError("the archive has more than 2 entries"))
 	})
 
+	It("counts the bytes of a file a link copies against the limit", func() {
+		archive := filepath.Join(tmp, "linked.tar")
+		var buf bytes.Buffer
+		tw := tar.NewWriter(&buf)
+		Expect(tw.WriteHeader(&tar.Header{Name: "a.md", Mode: 0o644, Typeflag: tar.TypeReg, Size: 8})).To(Succeed())
+		_, err := tw.Write([]byte("12345678"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tw.WriteHeader(&tar.Header{Name: "b.md", Typeflag: tar.TypeSymlink, Linkname: "a.md"})).To(Succeed())
+		Expect(tw.Close()).To(Succeed())
+		Expect(os.WriteFile(archive, buf.Bytes(), 0o644)).To(Succeed())
+		lim := roomy
+		lim.bytes = 16
+		Expect(fetchWith(archive, lim)).To(Succeed())
+		lim.bytes = 15
+		Expect(fetchWith(archive, lim)).To(MatchError("the archive unpacks to more than 15 bytes"))
+		lim = roomy
+		lim.entries = 1
+		Expect(fetchWith(archive, lim)).To(MatchError("the archive has more than 1 entries"), "a link is an entry")
+	})
+
 	It("refuses more bytes in total than the limit, counted as written", func() {
 		archive := filepath.Join(tmp, "big.tar")
 		writeTarFiles(archive, map[string]string{"a.md": "123456", "b.md": "123456"})
@@ -179,5 +199,21 @@ var _ = Describe("archive entry counting", func() {
 		Expect(err).NotTo(HaveOccurred())
 		_, err = fetch(context.Background(), spec, filepath.Join(tmp, "s"), limits{entries: 1, bytes: 100, ratio: 200})
 		Expect(err).To(MatchError("the archive has more than 1 entries"))
+	})
+})
+
+var _ = Describe("archive link modes", func() {
+	It("marks a link to an executable entry executable whatever the file system kept of its mode", func() {
+		tmp := testenv.Isolate()
+		root, err := os.OpenRoot(tmp)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(root.Close)
+		x := &extractor{root: root, lim: limits{entries: 10, bytes: 100, ratio: 200}, files: map[string]bool{},
+			links: map[string]string{"bin/run": "../tools/run.sh", "bin/doc": "../tools/a.md"}, refused: map[string]error{}}
+		Expect(x.file("tools/run.sh", 0o755, 3, strings.NewReader("#!x"))).To(Succeed())
+		Expect(x.file("tools/a.md", 0o644, 1, strings.NewReader("A"))).To(Succeed())
+		Expect(os.Chmod(filepath.Join(tmp, "tools/run.sh"), 0o644)).To(Succeed(), "as on Windows, which keeps no execute bit")
+		Expect(x.copyLinks(".")).To(Succeed())
+		Expect(x.execs).To(ConsistOf("tools/run.sh", "bin/run"))
 	})
 })

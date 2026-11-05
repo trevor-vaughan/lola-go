@@ -176,11 +176,22 @@ type InfoRequest struct {
 // when every scope has one (R-9-23). Hints are the runs that resolve either, [] otherwise.
 type Info struct {
 	ModuleView
-	Runs        InfoRuns      `json:"runs"`
-	Install     []InfoInstall `json:"install"`
-	NoScope     string        `json:"no_scope,omitempty"`
-	NoAssistant string        `json:"no_assistant,omitempty"`
-	Hints       []string      `json:"hints"`
+	// Mentions is each component that mentions others, in picker order, with what it mentions
+	// (cherry-pick design §5.2); [] when none, or when the scan failed. Notices holds the warning
+	// of a scan that failed, and is [] when the scan succeeded.
+	Mentions []ComponentMentions `json:"mentions"`
+	Notices  []Notice            `json:"notices"`
+	Runs     InfoRuns            `json:"runs"`
+	// NativeExecutables is each native binary the module's skills and command sidecars would
+	// install; [] when none.
+	NativeExecutables []InfoNative  `json:"native_executables"`
+	Install           []InfoInstall `json:"install"`
+	NoScope           string        `json:"no_scope,omitempty"`
+	NoAssistant       string        `json:"no_assistant,omitempty"`
+	Hints             []string      `json:"hints"`
+	// Scopes is the scopes the plan is for, once one resolved (nil otherwise), for the CLI's
+	// context line (spec 2026-10-29 §3.8).
+	Scopes []Scope `json:"-"`
 }
 
 // InfoRuns is what in the module would run code, and when (§4.3 item 3).
@@ -248,7 +259,8 @@ type InfoMCPServer struct {
 // trust still needed (§4.3 item 4). Scope is "" when none resolved. Command is the install of
 // exactly the version shown (Digest), with --trust= the kinds every scope of the run needs: the
 // run's next step; "" when there is no plan, and in every element whenever any scope's install
-// would be refused. Notices are the plan's, for the human output.
+// would be refused or every scope already holds the version as shown (current). Notices are the
+// plan's, for the human output.
 type InfoInstall struct {
 	Scope       string           `json:"scope"`
 	Targets     []string         `json:"targets"`
@@ -260,11 +272,25 @@ type InfoInstall struct {
 	Command     string           `json:"command"`
 	// NewProject says the install would create .lola/ at the scope's directory (R-9-24).
 	NewProject bool `json:"new_project"`
+	// From is the layer that provides the module at the scope, as lock.json names it ("" for none),
+	// Components what its picks do with each component there ([] where no layer provides it, or
+	// with no scope) and Change the run that changes those picks ("" where none provides it)
+	// (cherry-pick design §6; spec 2026-10-29 §13 item 9).
+	From       string          `json:"from"`
+	Components []InfoComponent `json:"components"`
+	Change     string          `json:"change"`
+	// FromLabel names From as the components' origins name their layers (layerLabel), for the
+	// human output.
+	FromLabel string `json:"-"`
 	// Refusal is install -n's refusal at the scope, which info reports instead of failing:
 	// installing there would refuse the same way. Absent when it plans.
 	Refusal *InfoRefusal `json:"refusal,omitempty"`
 	Notices []Notice     `json:"-"`
 	root    string
+	// current says the scope's layers want the module, lock.json holds it there at Digest from the
+	// layer that provides it, and the plan writes no file and no entry: installing it there again
+	// changes nothing.
+	current bool
 	// runtimeHooks and mcpServers are the plan's, as consent shows them and as each assistant
 	// would run them, which Runs gathers.
 	runtimeHooks []RuntimeHook
@@ -312,6 +338,11 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	info := &Info{ModuleView: NewModuleView(v, o), Runs: InfoRuns{InstallHooks: []InfoHook{}, RuntimeHooks: []RuntimeHook{}, MCPServers: []InfoMCPServer{},
 		Scripts: []InfoScript{}},
 		Install: []InfoInstall{}, Hints: []string{}}
+	if info.NativeExecutables, err = infoNative(v.ContentDir, v.Module); err != nil {
+		return nil, err
+	}
+	ms, mentions, notices := infoMentions(v)
+	info.Mentions, info.Notices = mentions, append(notices, e.sweepRuns()...)
 	hooks, hookConsent, err := e.infoHooks(v)
 	if err != nil {
 		return nil, err
@@ -345,6 +376,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	for _, c := range res.Scopes {
 		scopes = append(scopes, c.Scope)
 	}
+	info.Scopes = scopes
 	if info.Runs.Scripts, err = e.infoScripts(scopes, true); err != nil {
 		return nil, err
 	}
@@ -373,6 +405,14 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 				}
 				in := unplanned(c.Scope.Kind.String(), v, append(slices.Clone(hookConsent), scripts...), declared)
 				in.root = root(c.Scope)
+				// Without a plan nothing else reads the scope: a failure to is the scope's warning, not info's.
+				if err := e.infoComponents(&in, c.Scope, v, ms); err != nil {
+					text := fmt.Sprintf("%s: cannot tell what its picks do at %s scope: %s", v.Name, c.Scope.Kind, untrusted.CleanErr(err).Error())
+					if hints := errs.Hints(err); len(hints) > 0 {
+						text += " → " + strings.Join(hints, "; ")
+					}
+					in.Notices = append(in.Notices, Notice{Level: LevelWarn, Text: text})
+				}
 				info.Install = append(info.Install, in)
 			}
 			info.Runs.MCPServers, info.Runs.RuntimeHooks = mcpServers(v.Module, e.targetIDs()), declared
@@ -390,6 +430,10 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 			in.root, in.Targets = root(c.Scope), append([]string{}, shownTargets[i]...)
 			in.Refusal = &InfoRefusal{Error: err.Error(), Hints: append([]string{}, errs.Hints(err)...)}
 		} else if err != nil {
+			return nil, err
+		}
+		// A refused scope keeps its refusal: what stops its plan stops this too, and is said there.
+		if err := e.infoComponents(&in, c.Scope, v, ms); err != nil && in.Refusal == nil {
 			return nil, err
 		}
 		info.Install = append(info.Install, in)
@@ -416,6 +460,9 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 			return info, nil // no install of it works here as it is
 		}
 		needs |= trustNeeded(in.Consent)
+	}
+	if !slices.ContainsFunc(info.Install, func(in InfoInstall) bool { return !in.current }) {
+		return info, nil // installing it again changes nothing anywhere
 	}
 	for i := range info.Install {
 		info.Install[i].Command = req.Install(by.arg, by.ref, by.path, needs)
@@ -542,7 +589,7 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run string) (
 		if v, _, err = e.Current(req.Arg, req.Display...); err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
 		}
-		ref, err := e.listedRef(VersionRef{Name: v.Name, ID: v.ID})
+		ref, err := e.listedRef(nil, VersionRef{Name: v.Name, ID: v.ID})
 		if err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
 		}
@@ -604,7 +651,7 @@ func (e *Engine) pinEntryRef(by installBy, v store.Version, o store.Origin, scop
 			continue // the plan of this scope reports it
 		}
 		if ent := man.Find(v.Name); ent != nil && ent.Ref != by.ref {
-			commit, _, err := e.headCommit(v, by.ref)
+			commit, _, err := e.headCommit(nil, v, by.ref)
 			if err != nil || commit == "" {
 				return by, "", err
 			}
@@ -796,7 +843,7 @@ func unplanned(scope string, v store.Version, hookConsent []InfoConsent, declare
 		consent = append(consent, InfoConsent{Kind: TrustRuntimeHooks.String(), Item: shown(v.Name), Recorded: RecordedUnknown})
 	}
 	return InfoInstall{Scope: scope, Targets: []string{}, Steps: []plan.Step{}, Findings: []target.Finding{}, Consent: consent,
-		TrustNeeded: kindNames(trustNeeded(consent)), Digest: v.Meta.Digest, Notices: []Notice{}}
+		TrustNeeded: kindNames(trustNeeded(consent)), Digest: v.Meta.Digest, Notices: []Notice{}, Components: []InfoComponent{}}
 }
 
 // trustNeeded is the kinds of consent's items not recorded: what --trust= must name for an
@@ -828,7 +875,7 @@ func kindNames(k TrustKinds) []string {
 // and each installed assistant (none when no assistant is installed), as install's refusal hints
 // (§4.4).
 func (e *Engine) infoTargets(sc Scope, r InstallRequest, req InfoRequest) (targets, shown []string, why string, hints []string, err error) {
-	choice, err := e.DefaultTargets(sc, []InstallRequest{r})
+	choice, err := e.DefaultTargets(sc, []InstallRequest{r}, TargetRequest{})
 	if err != nil {
 		return nil, nil, "", nil, e.CoachUnresolved(err, []Scope{sc}, true, req.Display)
 	}
@@ -851,13 +898,15 @@ func (e *Engine) infoTargets(sc Scope, r InstallRequest, req InfoRequest) (targe
 func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, c ScopeChoice, targets, shownTargets []string, r InstallRequest, v store.Version,
 	hookConsent []InfoConsent, rerun func(TrustKinds) string) (InfoInstall, error) {
 	res, err := e.InstallAll(ctx, InstallSpec{Cwd: req.Cwd, Scopes: []ScopeInstall{{ScopeChoice: c, Targets: targets}}, Modules: []InstallRequest{r},
-		Options: Options{Targets: req.Targets, DryRun: true, Display: req.Display, Rerun: rerun, ForceRun: rerun(0) + " --force"},
+		Options: Options{Targets: req.Targets, DryRun: true, Display: req.Display, Rerun: rerun, ForceRun: rerun(0) + " --force",
+			Target: TargetRequest{Rerun: func(extra ...string) string { return rerun(0) + " " + errs.ShellJoin(extra) }}},
 		UserRun: req.UserRun})
 	if err != nil {
 		return InfoInstall{}, err
 	}
 	in := InfoInstall{Scope: c.Scope.Kind.String(), Targets: append([]string{}, shownTargets...), Steps: res.Steps, Findings: res.Findings,
-		Consent: []InfoConsent{}, Digest: v.Meta.Digest, Notices: res.Notices, root: root(c.Scope)}
+		Consent: []InfoConsent{}, Digest: v.Meta.Digest, Notices: res.Notices, root: root(c.Scope), Components: []InfoComponent{},
+		current: len(res.Steps) == 0 && len(res.Edits) == 0}
 	for _, m := range res.Modules {
 		// A copy an install keeps runs no hook without consent, so it meets none it lacks.
 		if m.Name == v.Name && len(m.Hooks) > 0 {
@@ -941,4 +990,15 @@ func (e *Engine) targetIDs() []string {
 		out = append(out, t.ID())
 	}
 	return out
+}
+
+// infoMentions is what v's components mention, keyed by full name, and its list as lola info
+// shows it (componentMentions). A scan that fails never fails lola info: the mentions are nil, the
+// list is [] and a warn notice names the error (mentionErr cleans it).
+func infoMentions(v store.Version) (Mentions, []ComponentMentions, []Notice) {
+	ms, err := scanMentions(v)
+	if err != nil {
+		return nil, []ComponentMentions{}, []Notice{{Level: LevelWarn, Text: err.Error()}}
+	}
+	return ms, componentMentions(v, ms), []Notice{}
 }
