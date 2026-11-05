@@ -15,11 +15,12 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
-// Verdicts of the executed-key table: the target gates the key under consent, or drops it with
-// frontmatter-key-dropped.
+// Verdicts of the executed-key table: the target gates the key under consent, drops it with
+// frontmatter-key-dropped, or has no place for the component's kind and writes none of it.
 const (
-	gated   = "gated"
-	dropped = "dropped"
+	gated     = "gated"
+	dropped   = "dropped"
+	unwritten = "unwritten"
 )
 
 // executed is Plan 7.5 task 1's table: for each target, component kind and frontmatter key
@@ -54,6 +55,15 @@ var executed = map[string]map[string]map[string]string{
 		"command": {"hooks": dropped, "Hooks": dropped, "mcpServers": dropped, "MCPSERVERS": dropped},
 		"agent":   {"hooks": dropped, "Hooks": dropped, "mcpServers": dropped, "MCPSERVERS": dropped},
 	},
+	"agents": {
+		// The agentskills format (agentskills.io/specification) has no hooks or MCP key, and lola
+		// drops Claude's in case a tool reading .agents/skills starts them; .agents holds skills
+		// only, so no command or agent is written.
+		"skill": {"hooks": dropped, "Hooks": dropped, "mcpServers": dropped, "MCPSERVERS": dropped,
+			"mcp_servers": dropped, "MCP_SERVERS": dropped},
+		"command": {"hooks": unwritten, "mcpServers": unwritten},
+		"agent":   {"hooks": unwritten, "mcpServers": unwritten},
+	},
 }
 
 // executedValue is a valid value for key: Claude Code's hooks event map, a list of inline MCP
@@ -85,8 +95,12 @@ func withKey(kind, key string) *module.Module {
 
 // verdict is what a target's plan did with key: gated when an intent carries a consent for the
 // key's hooks or servers, dropped when a frontmatter-key-dropped finding names the key and no
-// intent's written frontmatter holds it, else "written".
+// intent's written frontmatter holds it, unwritten when nothing is planned because the kind is
+// unsupported, else "written".
 func verdict(ins []plan.Intent, fs []target.Finding, key string) string {
+	if len(ins) == 0 && slices.ContainsFunc(fs, func(f target.Finding) bool { return f.Code == "kind-unsupported" }) {
+		return unwritten
+	}
 	for _, in := range ins {
 		if c := in.Consent; c != nil && (strings.EqualFold(key, "hooks") && c.Hooks != nil || !strings.EqualFold(key, "hooks") && c.MCPServers != nil) {
 			return gated
@@ -125,7 +139,7 @@ var _ = Describe("frontmatter keys an assistant executes", func() {
 					ins, fs, err := t.Plan(withKey(kind, key), ctx())
 					Expect(err).NotTo(HaveOccurred())
 					got := verdict(ins, fs, key)
-					Expect(got).To(BeElementOf(gated, dropped), "%s %s %s is written ungated", t.ID(), kind, key)
+					Expect(got).To(BeElementOf(gated, dropped, unwritten), "%s %s %s is written ungated", t.ID(), kind, key)
 					if want, ok := spellings[key]; ok {
 						Expect(got).To(Equal(want), "%s %s %s", t.ID(), kind, key)
 					}

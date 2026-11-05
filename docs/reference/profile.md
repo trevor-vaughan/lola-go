@@ -104,7 +104,7 @@ Refusals:
   load; the warning prints, for each such bundle, the run that takes the member out.
 - `--split` with `--switch`: `--switch and --split cannot be combined; pick one`; `--to` without
   `--move` or `--split`: `--to applies to --move and --split only`. A file without both keys:
-  `<file> has not both bundle: and modules:; there is nothing to split`. A remote profile:
+  `<file> does not have both bundle: and modules:; there is nothing to split`. A remote profile:
   `read-only; lola does not edit remote profiles, and none has a bundle: key`, hinting a copy of
   yours. A split that would trust a project bundle's member list refuses off a terminal (`lola
   profile needs your trust …`), hinting `--split -n` to see it and `--split --trust=profiles -y`.

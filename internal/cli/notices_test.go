@@ -290,3 +290,24 @@ var _ = Describe("M-2: a safety finding with an author's fix points to the modul
 		Expect(r.out).To(ContainSubstring(skipped + "    hint: the module's own fix: " + check))
 	})
 })
+
+var _ = Describe("install -t gemini-cli,agents says why gemini-cli has no copy of a skill", func() {
+	It("counts skill-via-agents in the one-line summary and prints it in full with -v", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj, mod := filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
+		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "skills/review/SKILL.md": "---\ndescription: Review code\n---\nReview it.\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		r := lola("install", mod, "-C", proj, "-t", "gemini-cli,agents")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("→ m: 1 notice (gemini-cli 1) — lola check -C " + proj + " m -t gemini-cli\n"))
+		Expect(r.out+r.err).NotTo(ContainSubstring("delivered through"), "detail: counted, not printed")
+
+		Expect(os.RemoveAll(filepath.Join(proj, ".agents"))).To(Succeed())
+		Expect(os.RemoveAll(filepath.Join(proj, ".lola"))).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
+		r = lola("install", mod, "-C", proj, "-t", "gemini-cli,agents", "-v")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).To(ContainSubstring("→ m: gemini-cli skill review: delivered through .agents/skills, which gemini-cli reads\n"))
+	})
+})

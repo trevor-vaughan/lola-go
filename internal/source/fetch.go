@@ -13,8 +13,8 @@ import (
 )
 
 // ErrLinkInSource is why a source with a symbolic link in a module's content is refused: one that
-// is absolute, leaves the source, dangles, loops, names a directory or a path lola never copies
-// (resolveLink). It stays refused until the source's author changes the link.
+// is absolute, leaves the source, dangles, loops, or names a path lola never copies (resolveLink),
+// unless the link is outside every component of a selection (Components). It stays refused until the source's author changes the link.
 var ErrLinkInSource = errors.New("symbolic link refused")
 
 // Fetch validates spec, then stages its module content in a new directory under

@@ -14,7 +14,14 @@ type Probe struct {
 	Binaries    []string       // names looked up on PATH; empty for assistants without a CLI
 	VersionArgs []string       // e.g. {"--version"}
 	VersionRE   *regexp.Regexp // its first submatch is the version
+	// Readers is, for a target with no binary, what reads the files it writes, as -t completion
+	// describes the target where it is not set up.
+	Readers string
 }
+
+// NoBinary reports whether t has no binary to find (agents): it is never an installed assistant,
+// and is set up where its markers are.
+func NoBinary(t Target) bool { return len(t.Probe().Binaries) == 0 }
 
 // Bounds limits a capability to the assistant versions in [Since, Until); empty is unbounded.
 // On a ContentRule it limits the problem the rule describes. Rendering always assumes the

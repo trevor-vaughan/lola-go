@@ -153,7 +153,7 @@ var _ = Describe("project profiles", func() {
 		}
 	})
 
-	It("names the profile whose entry asks for another source than the cache holds", func() {
+	It("syncs a profile entry whose source differs from the one the cache holds, as an origin of its own", func() {
 		other := filepath.Join(tmp, "other", "a")
 		writeTree(other, map[string]string{"lola.yml": "name: a\n", "commands/a.md": "other A\n"})
 		_, err := e.Install(ctx, engine.Scope{Kind: target.User}, proj, []engine.InstallRequest{{Arg: other}}, engine.Options{Targets: []string{"claude-code"}})
@@ -161,7 +161,10 @@ var _ = Describe("project profiles", func() {
 		profile("go", "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: a, source: ../../mods/a}\n")
 		activate("project:go")
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: trustAll})
-		Expect(err).To(MatchError(ContainSubstring("a in your cache comes from " + other + ", and " + filepath.Join(".lola", "profiles", "go.yml") + " asks for ")))
+		Expect(err).NotTo(HaveOccurred())
+		origins, err := e.Store.Origins("a")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(origins).To(HaveLen(2))
 	})
 
 	It("refuses a .lola/profiles/ that leads out of the project before reading a profile", func() {

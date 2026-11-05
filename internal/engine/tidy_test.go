@@ -627,3 +627,46 @@ var _ = Describe("lola tidy: links lola writes through and scope roots", func() 
 		Expect(listed(res.Candidates)).To(Equal([]string{"claude-code skill/old"}))
 	})
 })
+
+var _ = Describe("lola tidy: the .agents/skills directory other tools share", func() {
+	var t *tidyEnv
+	BeforeEach(func() {
+		t = newTidyEnv()
+		t.files(t.proj, map[string]string{".agents/skills/theirs/SKILL.md": "theirs\n", ".claude/skills/old/SKILL.md": "old\n"})
+	})
+	const theirs = "skills another tool installed"
+
+	It("is not tidied when the scope's targets leave agents out", func() {
+		t.install(t.sc)
+		res := t.dry(t.sc)
+		Expect(res.Targets).To(Equal([]string{"claude-code"}))
+		Expect(listed(res.Candidates)).To(Equal([]string{"claude-code skill/old"}))
+		Expect(res.Candidates[0].Reason).To(BeEmpty())
+		Expect(res.Protected).To(BeEmpty())
+		Expect(res.Skipped).To(BeEmpty())
+	})
+
+	It("with -t agents offers only what no lock records, as skills another tool installed", func() {
+		_, err := t.e.Install(tidyCtx, t.sc, t.proj, []engine.InstallRequest{{Arg: filepath.Join(t.tmp, "src", "example")}},
+			engine.Options{Targets: []string{"claude-code", "agents"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(t.proj, ".agents", "skills", "review", "SKILL.md")).To(BeAnExistingFile())
+		for _, targets := range [][]string{{"agents"}, nil} {
+			res := t.dry(t.sc, targets...)
+			var agents []engine.TidyUnit
+			for _, u := range res.Candidates {
+				if u.Target == "agents" {
+					agents = append(agents, u)
+				} else {
+					Expect(u.Reason).To(BeEmpty(), "%v", targets)
+				}
+			}
+			Expect(listed(agents)).To(Equal([]string{"agents skill/theirs"}), "%v", targets)
+			Expect(agents[0].Reason).To(Equal(theirs))
+		}
+		res, err := t.tidy(engine.TidyRequest{Targets: []string{"agents"}, Keep: pats("skill/theirs"), Dry: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Protected).To(ConsistOf(And(HaveField("Code", "kept"), HaveField("Reason", "on your keep-list (skill/theirs)"))),
+			"a lock says why it is locked")
+	})
+})

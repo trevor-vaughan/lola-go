@@ -109,7 +109,7 @@ func (a *app) migrateCmd() *cobra.Command {
 			}
 			// --force answers the question, as -y does; never the hooks' consent (ruling R-6c3-4).
 			if !yes && !force {
-				show := func(w io.Writer) { printMigration(w, style{}, preview) }
+				show := func(w io.Writer, s style) { printMigration(w, s, preview) }
 				if err := a.confirm(cmd, nil, "Migrate?", Nav{Answered: answered}, preview, show); err != nil {
 					return err
 				}
@@ -272,6 +272,15 @@ func destColumn(d *migrate.DestResult) string {
 	return d.Root
 }
 
+// leavesRecords reports whether r, a run with nothing to install, still has records or files to
+// report as left as they are.
+func leavesRecords(r *migrate.Result) bool {
+	return r.Summary.Left > 0 || len(r.Unmappable) > 0 || len(r.NotMigrated) > 0 ||
+		slices.ContainsFunc(r.Destinations, func(d *migrate.DestResult) bool {
+			return len(d.Unmappable) > 0 || len(d.NotMigrated) > 0
+		})
+}
+
 // printMigration renders a migration: per destination what is installed, replaced, moved,
 // kept, reported and, after a run, whether it migrated or failed; then the Python home and the trash.
 // Every string from the Python lola's state was made safe to print by migrate.
@@ -281,13 +290,15 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		return
 	}
 	switch {
+	case r.Nothing && leavesRecords(r):
+		fmt.Fprintln(w, "nothing more to migrate; what lola leaves as it is, and what to do about it, follows")
 	case r.Nothing:
 		fmt.Fprintln(w, "nothing to migrate")
 	case r.DryRun:
-		fmt.Fprintln(w, "plan (dry run; nothing was written):")
+		fmt.Fprintln(w, planHeader(s))
 	}
 	for _, d := range r.Destinations {
-		fmt.Fprintln(w, migrationLabel(d)+":")
+		printHeading(w, s, migrationLabel(d)+":")
 		for _, in := range d.Installs {
 			line := in.Module
 			if line == "" || !slices.Equal(in.PythonModules, []string{in.Module}) {
@@ -348,12 +359,15 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		}
 	}
 	printReported(w, "", r.NotMigrated, r.Unmappable)
-	printSummary(w, r)
+	printSummary(w, s, r)
 	printMigratedMarkets(w, s, r.Markets)
 	for _, warn := range r.Warnings {
 		fmt.Fprintln(w, s.warn(warn))
 	}
 	home := "the Python lola's home " + r.Home.Path
+	if r.Home.Action != migrate.HomeNone {
+		printHeading(w, s, "python home:")
+	}
 	switch {
 	case r.Home.Action == migrate.HomeMove && r.Home.Trash != "":
 		fmt.Fprintln(w, s.ok(home+" moved to "+r.Home.Trash))
@@ -366,6 +380,12 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		fmt.Fprintln(w, "trash: "+r.Trash)
 	}
 	printNextSteps(w, s, r)
+}
+
+// printHeading starts a section of the report: a blank line, then title, bold when color is on.
+func printHeading(w io.Writer, s style, title string) {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, s.paint("1", title))
 }
 
 // printNextSteps closes the report with everything the user can act on, each once: the consent a
@@ -401,7 +421,7 @@ func printNextSteps(w io.Writer, s style, r *migrate.Result) {
 	if len(steps) == 0 {
 		return
 	}
-	fmt.Fprintln(w, "next steps:")
+	printHeading(w, s, "next steps:")
 	for _, step := range steps {
 		fmt.Fprintln(w, s.info(step))
 	}
@@ -410,7 +430,7 @@ func printNextSteps(w io.Writer, s style, r *migrate.Result) {
 // printSummary counts the Python lola's records by outcome (Plan 10 §3.3), when it has any: on a
 // dry run what would migrate, after a run what did and what failed; and those already migrated
 // and those left as they are.
-func printSummary(w io.Writer, r *migrate.Result) {
+func printSummary(w io.Writer, s style, r *migrate.Result) {
 	n := r.Summary
 	if n.Migrated+n.Already+n.Left+n.Failed == 0 {
 		return
@@ -426,6 +446,7 @@ func printSummary(w io.Writer, r *migrate.Result) {
 	if n.Failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d failed", n.Failed))
 	}
+	printHeading(w, s, "summary:")
 	fmt.Fprintln(w, "records: "+strings.Join(parts, ", "))
 }
 
@@ -435,7 +456,7 @@ func printMigratedMarkets(w io.Writer, s style, ms []migrate.Market) {
 	if len(ms) == 0 {
 		return
 	}
-	fmt.Fprintln(w, "marketplaces:")
+	printHeading(w, s, "marketplaces:")
 	for _, m := range ms {
 		from := m.Source
 		if m.Path != "" {

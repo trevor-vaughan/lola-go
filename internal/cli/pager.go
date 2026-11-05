@@ -74,13 +74,19 @@ func (a *app) paging(cmd *cobra.Command) paging {
 // that cannot start, is a warning, and the text is then printed capped: consent is never given
 // unseen.
 func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Writer, style)) {
+	a.pageThen(cmd, w, s, "", print)
+}
+
+// pageThen is page for output that a question follows: then names it ("Migrate?"), and the
+// viewer's footer says q continues to it rather than quits.
+func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, print func(io.Writer, style)) {
 	mode := a.paging(cmd)
 	if !mode.viewer && mode.argv == nil {
 		print(w, s)
 		return
 	}
 	out := cmd.OutOrStdout()
-	full := style{color: a.color(out), paged: true, verbose: s.verbose}
+	full := style{color: a.color(out), paged: true, verbose: s.verbose, asking: s.asking}
 	var buf bytes.Buffer
 	print(&buf, full)
 	warn := func(problem string) {
@@ -98,7 +104,7 @@ func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Write
 		fmt.Fprint(w, buf.String())
 		return
 	}
-	if _, err := a.view(cmd, buf.String(), false, false, Nav{}); err != nil {
+	if _, err := a.view(cmd, buf.String(), false, false, Nav{}, then); err != nil {
 		warn("the viewer failed: " + untrusted.CleanErr(err).Error())
 	}
 }

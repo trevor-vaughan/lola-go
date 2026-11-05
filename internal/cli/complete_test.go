@@ -33,6 +33,9 @@ const (
 	dirOrdered    = ":36" // in the order given, no file names
 )
 
+// agentsReaders is how -t describes agents where .agents/skills is not set up.
+const agentsReaders = "skills for Codex, Gemini, OpenCode, Copilot, Cursor, Amp"
+
 var _ = Describe("shell completion", func() {
 	var tmp, proj, kitDir string
 	BeforeEach(func() {
@@ -76,6 +79,31 @@ var _ = Describe("shell completion", func() {
 		Expect(got).To(BeEmpty(), "no module named, nothing to offer")
 		got, _ = completions("profile", "go", "--edit", "kit", "--only", "")
 		Expect(got).To(Equal([]string{"skill/a", "command/b"}))
+		got, _ = completions("install", kitDir, "--skip", "")
+		Expect(got).To(Equal([]string{"skill/a", "command/b"}), "a local folder is read in place")
+		got, _ = completions("install", filepath.Join(tmp, "nowhere"), "--skip", "")
+		Expect(got).To(BeEmpty())
+	})
+
+	It("profile --edit offers the profiles first, then the modules to edit", func() {
+		got, _ := completions("profile", "--edit", "")
+		Expect(got).To(ContainElements("go", "kit", "other"))
+		got, _ = completions("profile", "go", "--edit", "")
+		Expect(got).To(ConsistOf("kit", "other"))
+		got, _ = completions("profile", "go", "--edit", "k")
+		Expect(got).To(Equal([]string{"kit"}))
+	})
+
+	It("tidy offers the kinds a selector starts with, and --unkeep the keep-list", func() {
+		for _, args := range [][]string{{"tidy", "-C", proj, "s"}, {"tidy", "-C", proj, "--keep", "s"}} {
+			got, d := completions(args...)
+			Expect(got).To(Equal([]string{"skill/"}), "%v", args)
+			Expect(d).To(Equal(dirNoSpace), "%v", args)
+		}
+		Expect(lola("tidy", "-C", proj, "--keep", "skill/notes", "-y").code).To(Equal(0))
+		got, d := completions("tidy", "-C", proj, "--unkeep", "")
+		Expect(got).To(Equal([]string{"skill/notes"}))
+		Expect(d).To(Equal(dirNoFile))
 	})
 
 	It("every flag that takes a profile offers the profiles, and base where the scope's base is one", func() {
@@ -131,9 +159,19 @@ var _ = Describe("shell completion", func() {
 		Expect(got).To(BeEmpty())
 	})
 
+	It("--trust offers the kinds the command takes, completing the last of a list, and no file names", func() {
+		got, d := completions("sync", "--trust=")
+		Expect(got).To(Equal([]string{"entries", "profiles", "scripts", "hooks", "runtime-hooks", "all"}))
+		Expect(d).To(Equal(dirNoFile))
+		got, _ = completions("sync", "--trust=entries,")
+		Expect(got).To(Equal([]string{"entries,profiles", "entries,scripts", "entries,hooks", "entries,runtime-hooks"}))
+		got, _ = completions("install", "--trust=")
+		Expect(got).To(Equal([]string{"scripts", "hooks", "runtime-hooks", "all"}))
+	})
+
 	It("value flags offer no file names, but for a path", func() {
 		for _, args := range [][]string{{"install", "--ref"}, {"info", "kit", "--ref"}, {"cache", "add", "--ref"}, {"market", "--ssh-host"},
-			{"tidy", "--keep"}, {"migrate", "--map-root"}, {"list", "x"}, {"cache", "search"}} {
+			{"migrate", "--map-root"}, {"list", "x"}, {"cache", "search"}} {
 			_, d := completions(append(args, "")...)
 			Expect(d).To(Equal(dirNoFile), strings.Join(args, " "))
 		}
@@ -151,14 +189,34 @@ var _ = Describe("shell completion", func() {
 	It("-t offers the assistants found here first, saying where, and the rest as not found", func() {
 		got, d := completions("install", "x", "-t", "")
 		Expect(got).To(Equal([]string{"claude-code\tnot found on this machine", "gemini-cli\tnot found on this machine",
-			"opencode\tnot found on this machine"}))
+			"opencode\tnot found on this machine", "agents\t" + agentsReaders}))
 		Expect(d).To(Equal(dirOrdered))
 		fakeAssistant(tmp, "opencode", "1.0")
 		got, _ = completions("install", "x", "-t", "")
 		Expect(got).To(Equal([]string{"opencode\tfound at " + filepath.Join(tmp, "bin", "opencode"),
-			"claude-code\tnot found on this machine", "gemini-cli\tnot found on this machine"}))
+			"claude-code\tnot found on this machine", "gemini-cli\tnot found on this machine", "agents\t" + agentsReaders}))
 		got, _ = completions("list", "-t", "opencode,")
-		Expect(got).To(Equal([]string{"opencode,claude-code\tnot found on this machine", "opencode,gemini-cli\tnot found on this machine"}))
+		Expect(got).To(Equal([]string{"opencode,claude-code\tnot found on this machine", "opencode,gemini-cli\tnot found on this machine",
+			"opencode,agents\t" + agentsReaders}))
+	})
+
+	It("-t offers agents last, as set up where the command's scope has .agents/skills", func() {
+		Expect(os.MkdirAll(filepath.Join(proj, ".agents", "skills"), 0o755)).To(Succeed())
+		got, _ := completions("install", "x", "-C", proj, "-t", "")
+		Expect(got).To(HaveLen(4))
+		Expect(got[3]).To(Equal("agents\tset up here"))
+		got, _ = completions("install", "x", "--user", "-t", "")
+		Expect(got[3]).To(Equal("agents\t"+agentsReaders), "the user scope has no .agents/skills")
+		got, _ = completions("install", "x", "-C", proj, "--scope", "both", "-t", "")
+		Expect(got[3]).To(Equal("agents\tset up here"), "set up in one of the run's scopes")
+		Expect(os.RemoveAll(filepath.Join(proj, ".agents"))).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(os.Getenv("HOME"), ".agents", "skills"), 0o755)).To(Succeed())
+		got, _ = completions("install", "x", "--user", "-t", "")
+		Expect(got[3]).To(Equal("agents\tset up here"))
+		got, _ = completions("install", "x", "-C", proj, "--scope", "both", "-t", "")
+		Expect(got[3]).To(Equal("agents\tset up here"), "set up in the other of the run's scopes")
+		got, _ = completions("install", "x", "-C", proj, "--scope", "project", "-t", "")
+		Expect(got[3]).To(Equal("agents\t" + agentsReaders))
 	})
 
 	It("writes nothing", func() {

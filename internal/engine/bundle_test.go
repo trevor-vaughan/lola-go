@@ -1056,7 +1056,7 @@ var _ = Describe("bundles", func() {
 				Expect(err).To(MatchError("the base lists modules and bundles nothing; --split splits a profile that does both"), n)
 			}
 			_, err := e.Split(ctx, engine.SplitRequest{Scope: user, Name: "go", Yes: true})
-			Expect(err).To(MatchError(filepath.Join(p.UserProfiles, "go.yml") + " has not both bundle: and modules:; there is nothing to split"))
+			Expect(err).To(MatchError(filepath.Join(p.UserProfiles, "go.yml") + " does not have both bundle: and modules:; there is nothing to split"))
 			content := "version: 1\n"
 			o, err := json.Marshal(profile.Origin{Version: profile.OriginVersion, Source: "https://example.com/profiles.git", Commit: strings.Repeat("a", 40),
 				Digest: profile.Digest([]byte(content))})

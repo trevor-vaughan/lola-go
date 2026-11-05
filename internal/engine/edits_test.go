@@ -139,6 +139,8 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		res, err := install(engine.Options{}, []engine.SelectionEdit{edit("unskip", "command/ship")}, nil, src)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(Equal([]engine.Notice{
+			{Level: engine.LevelWarn, Text: "example comes from " + src + ", outside the project: a teammate's sync will refuse it; " +
+				"share a module through a git repository or an https:// archive"},
 			{Level: engine.LevelInfo, Text: "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch"},
 			{Level: engine.LevelInfo, Text: "meant for every project? lola profile --user --move example --to base -C " + proj}}), "the move hint alone")
 		Expect(exists(".claude/commands/ship.md")).To(BeTrue())
@@ -169,7 +171,7 @@ var _ = Describe("selection edits (Plan 5c §5.2, §7)", func() {
 		Expect(os.WriteFile(p.Selections, []byte("version: 1\nglobal:\n  example:\n    skip: [command/ship]\nprojects:\n  \""+strings.ReplaceAll(proj, "\x1b", `\x1b`)+"\":\n    example:\n      skip: [command/ship]\n"), 0o600)).To(Succeed())
 		res, err := install(engine.Options{}, []engine.SelectionEdit{edit("unskip", "command/ship")}, nil, src)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.Notices).To(HaveLen(3), "the warning, then the move hint")
+		Expect(res.Notices).To(HaveLen(4), "the warning, the outside source, then the move hint")
 		for _, n := range res.Notices {
 			Expect(n.Text).NotTo(ContainSubstring("\x1b"))
 		}

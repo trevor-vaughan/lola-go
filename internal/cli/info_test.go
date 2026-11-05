@@ -351,7 +351,8 @@ var _ = Describe("lola info", func() {
 			"hint\tlola info " + kit + " --plain --target claude-code --project\nhint\tlola info " + kit + " --plain --target claude-code --user\n"))
 		r = lola("info", kit, "--project", "--plain")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(HaveSuffix("no_assistant\tno assistant found on your PATH, so lola does not know where to install\n"))
+		Expect(r.out).To(HaveSuffix("no_assistant\tno assistant found on your PATH, so lola does not know where to install\n" +
+			"hint\tlola info " + kit + " --plain --project -t agents\n"))
 	})
 
 	It("info --json is one document whose arrays are never null", func() {
@@ -523,10 +524,11 @@ var _ = Describe("lola info", func() {
 			Expect(out.String()).To(ContainSubstring("no scope: no .lola/ was found in " + dir))
 		})
 
-		It("info with a scope but no assistant set up hints one -t run per installed assistant, and none when no assistant is installed", func() {
+		It("info with a scope but no assistant set up hints one -t run per installed assistant, then -t agents", func() {
 			r := lola("info", kit, "--project")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(HaveSuffix("no assistant found on your PATH, so lola does not know where to install\n"))
+			Expect(r.out).To(ContainSubstring("no assistant found on your PATH, so lola does not know where to install\n"))
+			Expect(r.out).To(ContainSubstring("lola info " + kit + " --project -t agents"))
 			Expect(r.out).To(ContainSubstring("  consent: runtime-hooks kit: unknown until lola can plan here\n"), "a scope resolved")
 
 			fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
@@ -535,7 +537,8 @@ var _ = Describe("lola info", func() {
 			Expect(r.code).To(Equal(0), r.err)
 			doc := readInfo(r.out)
 			Expect(doc.NoAssistant).To(Equal("none of your installed assistants (claude-code, opencode) is set up here, so lola does not know where to install"))
-			Expect(doc.Hints).To(Equal([]string{"lola info " + kit + " --json --project -t claude-code", "lola info " + kit + " --json --project -t opencode"}))
+			Expect(doc.Hints).To(Equal([]string{"lola info " + kit + " --json --project -t claude-code", "lola info " + kit + " --json --project -t opencode",
+				"lola info " + kit + " --json --project -t agents"}))
 			for i, id := range []string{"claude-code", "opencode"} {
 				r := runHint(doc.Hints[i])
 				Expect(r.code).To(Equal(0), r.err)

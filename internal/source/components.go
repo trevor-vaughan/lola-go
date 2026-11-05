@@ -185,3 +185,20 @@ func realFile(root, rel string) (fs.FileInfo, error) {
 	}
 	return fi, nil
 }
+
+// reaches reports whether the module path rel, a slash path from the module's directory, is on
+// the way to or inside a path c selects, so the install needs it. A nil c is a module installed
+// whole, which needs every path.
+func (c *Components) reaches(rel string) bool {
+	if c == nil {
+		return true
+	}
+	for _, l := range c.lists() {
+		for _, p := range l {
+			if rel == p || strings.HasPrefix(rel, p+"/") || strings.HasPrefix(p, rel+"/") {
+				return true
+			}
+		}
+	}
+	return false
+}

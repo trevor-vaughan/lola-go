@@ -135,7 +135,7 @@ flowchart TD
   every marketplace but a disabled one is registered, and it holds nothing but what the Python
   lola writes there. While a `~/.lola` stays, lola sees a project at `~` and refuses to install
   there; the output says why it stayed, and its `next steps:` block gives the command that moves
-  `~/.lola` aside (the Python lola and `lola migrate` then read it with `LOLA_HOME`).
+  `~/.lola` aside (then point the Python lola and `lola migrate` at it with `LOLA_HOME`).
 
 ### Not migrated, never changed
 

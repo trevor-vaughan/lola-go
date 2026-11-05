@@ -137,7 +137,7 @@ func (e *Engine) listedNotInstalled(sc Scope, want []Wanted, led *ledger.Ledger,
 // again: se.staged stays nil.
 func (e *Engine) resolveHead(se *syncEntry, run string) (done bool, _ error) {
 	name, ent := se.ent.Name, se.ent
-	head, ok, err := e.Store.Head(name, ent.Ref)
+	head, ok, err := e.Store.HeadFor(name, ent.Ref, sourceKey(se.spec))
 	if err != nil || !ok || se.spec.Kind == source.KindGit && head.Commit == "" {
 		return false, err
 	}

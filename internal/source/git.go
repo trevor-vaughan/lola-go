@@ -340,7 +340,7 @@ func fetchGit(ctx context.Context, spec Spec, scratch, stagingParent string) (Fe
 	if err != nil {
 		return Fetched{}, err
 	}
-	dir, _, links, err := copyTree(ctx, scratch, root, stagingParent, listGit)
+	dir, _, links, err := copyTree(ctx, scratch, root, stagingParent, listGit, spec.Components)
 	if err != nil {
 		return Fetched{}, err
 	}

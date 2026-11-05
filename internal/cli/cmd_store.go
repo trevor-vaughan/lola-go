@@ -209,7 +209,9 @@ func (a *app) cacheRmCmd() *cobra.Command {
 				}
 			}
 			if !yes {
-				show := func(w io.Writer) { fmt.Fprintf(w, "will remove from your cache: %s\n", strings.Join(args, ", ")) }
+				show := func(w io.Writer, _ style) {
+					fmt.Fprintf(w, "will remove from your cache: %s\n", strings.Join(args, ", "))
+				}
 				plan := map[string]any{"would_remove": args}
 				if err := a.confirm(cmd, args, "Remove "+strings.Join(args, ", ")+" from your cache?", Nav{}, plan, show); err != nil {
 					return err
@@ -269,7 +271,7 @@ func (a *app) cacheCleanCmd() *cobra.Command {
 				return a.emit(cmd, func(w io.Writer, s style) { printClean(w, s, plan, false) }, plan)
 			}
 			if len(plan.Removed) > 0 && !yes {
-				show := func(w io.Writer) { printClean(w, style{}, plan, false) }
+				show := func(w io.Writer, s style) { printClean(w, s, plan, false) }
 				if err := a.confirm(cmd, nil, "Remove these from your cache?", Nav{}, plan, show); err != nil {
 					return err
 				}
@@ -545,7 +547,7 @@ func (a *app) initCmd() *cobra.Command {
 				}
 				// The name is validated; the directories above it may come from a clone or an archive.
 				path := untrusted.Text(plan.Path, untrusted.MaxName)
-				show := func(w io.Writer) {
+				show := func(w io.Writer, _ style) {
 					fmt.Fprintf(w, "will create module %s in %s (%s):\n", plan.Name, path, plan.Format)
 					for _, f := range plan.Files {
 						fmt.Fprintln(w, "    "+f)

@@ -527,6 +527,88 @@ unless it carries a comment, in which case it stays as an empty mapping. A symli
 written at its target. A file that does not parse is never overwritten. Entries for projects you
 moved are left alone.
 
+## Skills for every tool: the agents target
+
+`agents` is a fourth target. It installs a module's skills, and only skills, into
+`.agents/skills/<skill>/` (at user scope, `~/.agents/skills/<skill>/`). It is not an assistant:
+it has no command on your `PATH`.
+
+As of 2026-11, these tools read `.agents/skills`: Codex (its own directory), Gemini CLI, OpenCode,
+GitHub Copilot (CLI and VS Code), Cursor, Amp and Antigravity (project directory only). One
+install reaches all of them. Claude Code does not read it, so `claude-code` stays a separate
+target. Commands, agents, MCP servers, rules and hooks are not written there; lola reports each
+as `kind-unsupported`.
+
+Choose it with `-t agents`, or `targets:` in `project.yml` or a module's entry. That always
+works, set up or not. lola creates the directory.
+
+Without `-t` and without `targets:`, lola decides like this:
+
+- `agents` is set up in a scope when `.agents/skills/` exists there. A bare `.agents/` does not
+  count: other tools keep other things in it.
+- Off a terminal, lola picks `agents` only when it is set up and no assistant is set up there.
+  It is never added beside an assistant that is.
+- On a terminal, the picker lists `agents` (after the assistants) only when it is set up. It is
+  preselected only when nothing else is set up.
+- When `agents` is the only choice, lola uses it without asking. It does not count as the "only
+  assistant installed" that lola picks without a picker.
+- A refusal that says no assistant is set up ends its hints with `-t agents`.
+- `-t` completion lists `agents` last: "set up here", or the tools that read it.
+
+A skill must meet the agentskills.io rules to be written there: a name of lowercase words
+joined by single hyphens, at most 64 characters, equal to the directory name; a description of at
+most 1024 characters. A name or description that breaks these is a forceable finding
+(`name-rejected`, `description-too-long`). A skill with no description is never written, even with
+`--force`: the tools that read `.agents` drop it. Claude-only keys `hooks`, `mcpServers` and
+`mcp_servers` are dropped with a warning.
+
+### One copy of a skill, not two
+
+Gemini CLI and OpenCode read `.agents/skills` as well as their own skill directories. Two copies
+make Gemini print "Skill conflict detected" at every start, and OpenCode keep one silently.
+
+So when a module's targets include `agents`, `gemini-cli` and `opencode` do not write their own
+copy of a skill that `agents` writes. Each is reported as `skill-via-agents` ("delivered through
+.agents/skills, which gemini-cli reads"). The install summary counts these in its one-line notice
+summary; `-v` prints each. `lola check` always prints them.
+
+A skill that `agents` refuses, or writes only with `--force` (`--force` names the skill), stays
+native in gemini and opencode. Other kinds are not affected. The rule uses the module's own
+targets, after per-entry `targets:` overrides. An entry that lists `gemini-cli` but not `agents`
+keeps its native copy.
+
+Adding `agents` to a module's targets deletes the native gemini and opencode copies. On an
+install, lola lists them and asks (`-y` off a terminal). A `lola sync` after you edit `targets:`
+by hand to add `agents` removes them without asking, like the other deletions your own manifest
+edits cause. Dropping `agents` writes the native copies back.
+
+### Known limits
+
+Checked 2026-11 against each tool's docs and source (sources are in the maintainer research
+notes):
+
+- Gemini CLI loads workspace skills only in trusted folders, so skipping its copy loses nothing.
+- Gemini CLI is being replaced by Antigravity CLI for unpaid users. The Antigravity CLI is
+  reported (secondary sources) not to read `~/.agents/skills`.
+- A copy in two scopes is not merged: a project `.gemini/skills/x` plus a user
+  `~/.agents/skills/x` still makes Gemini warn.
+- Cursor, Copilot and OpenCode also read `.claude/skills`, and Amp reads `~/.claude/skills` (user
+  scope only). With `claude-code` and `agents` (or `claude-code` and `opencode`), they see more
+  than one copy.
+- Amp ranks user scope above project scope, so a user-scope `agents` install can hide a project
+  skill of the same name. Amp's own user directory, `~/.config/agents/skills`, is not used.
+- Cursor, VS Code and Copilot accept some Claude skill keys (`disable-model-invocation`, `paths`,
+  `argument-hint`, `context`); Codex and Amp ignore keys they do not know. None runs Claude's
+  shell injection or fills `$ARGUMENTS` in skills. lola warns (`skill-shell-dropped`,
+  `skill-arguments-dropped`).
+- A `.claude/skills/<skill>` symlinked to `.agents/skills/<skill>` makes `claude-code` and
+  `agents` write one real file. lola refuses. The hint says which target to drop: an install gives
+  both `-t` commands, and a sync or profile run names the `targets:` line to edit.
+- `lola tidy` looks in `.agents/skills` only when the scope's targets include `agents`, and then
+  only at entries no lock records. It labels them "skills another tool installed", since Codex's
+  skill installer and `npx skills` write there. A skill another tool wrote at the same name as yours
+  is the usual unowned-file conflict; `--force` overwrites it.
+
 ## Off a terminal
 
 Every answer has a flag, so scripts and CI never need a terminal. Off one (or with `--json`)

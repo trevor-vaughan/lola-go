@@ -500,6 +500,82 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(filepath.Join(proj, ".claude/commands/deploy.md")).To(BeARegularFile())
 	})
 
+	It("off a terminal, chooses agents only where .agents/skills is set up and no installed assistant is", func() {
+		Expect(os.MkdirAll(filepath.Join(proj, ".agents", "skills"), 0o755)).To(Succeed())
+		r := lola("install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✓ installed review-kit (claude-code)"))
+		Expect(filepath.Join(proj, ".claude/skills/review/SKILL.md")).To(BeARegularFile())
+		Expect(filepath.Join(proj, ".agents/skills/review")).NotTo(BeAnExistingFile(), "never added beside a set-up assistant")
+
+		other := filepath.Join(tmp, "other")
+		Expect(os.MkdirAll(filepath.Join(other, ".agents", "skills"), 0o755)).To(Succeed())
+		r = lola("install", "review-kit", "-C", other)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("✓ installed review-kit (agents)"))
+		Expect(filepath.Join(other, ".agents/skills/review/SKILL.md")).To(BeARegularFile())
+		Expect(filepath.Join(other, ".claude")).NotTo(BeAnExistingFile(), "claude-code is installed but not set up there")
+
+		bare := filepath.Join(tmp, "bare")
+		Expect(os.MkdirAll(filepath.Join(bare, ".agents"), 0o755)).To(Succeed())
+		r = lola("install", "review-kit", "-C", bare)
+		Expect(r.code).To(Equal(1))
+		Expect(r.err).To(HaveSuffix("error: none of your installed assistants (claude-code) is set up here, so lola does not know where to install\n" +
+			"  hint: lola install review-kit --root " + bare + " -t claude-code\n" +
+			"  hint: lola install review-kit --root " + bare + " -t agents\n"))
+	})
+
+	It("on a terminal, offers agents after the assistants only where it is set up, and never counts it as one", func() {
+		Expect(os.MkdirAll(filepath.Join(proj, ".agents", "skills"), 0o755)).To(Succeed())
+		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
+		r := lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit", "review"}), "claude-code, the only assistant installed, needs no picker")
+		Expect(p.reviewSteps[0].Summary).To(ContainSubstring("→ for claude-code (the only assistant found)\n"))
+
+		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())
+		p = &scripted{assistants: []func(cli.AssistantStep) ([]string, error){func(cli.AssistantStep) ([]string, error) { return []string{"agents"}, nil }},
+			components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.assistantSteps).To(HaveLen(1), "the one assistant installed is not set up here, and agents is: the picker asks")
+		Expect(p.assistantSteps[0].Options).To(Equal([]string{"claude-code", "agents"}))
+		Expect(p.assistantSteps[0].Preselect).To(Equal([]string{"agents"}))
+
+		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
+		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit", "review"}), "agents, the only choice, needs no picker")
+		Expect(p.reviewSteps[0].Summary).To(ContainSubstring("→ for agents (set up here)\n"))
+
+		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
+		fakeAssistant(tmp, "claude", "2.1.287 (Claude Code)")
+		fakeAssistant(tmp, "gemini", "0.63.0")
+		answer := func(cli.AssistantStep) ([]string, error) { return []string{"claude-code"}, nil }
+		p = &scripted{assistants: []func(cli.AssistantStep) ([]string, error){answer}, components: []func(cli.ComponentPage) ([]string, error){keep()},
+			review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.assistantSteps[0].Options).To(Equal([]string{"claude-code", "gemini-cli", "agents"}))
+		Expect(p.assistantSteps[0].Preselect).To(Equal([]string{"claude-code"}), "agents is preselected only when nothing else is set up")
+
+		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())
+		p = &scripted{assistants: []func(cli.AssistantStep) ([]string, error){answer}, components: []func(cli.ComponentPage) ([]string, error){keep()},
+			review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.assistantSteps[0].Options).To(Equal([]string{"claude-code", "gemini-cli", "agents"}))
+		Expect(p.assistantSteps[0].Preselect).To(Equal([]string{"agents"}))
+
+		Expect(os.RemoveAll(filepath.Join(proj, ".agents", "skills"))).To(Succeed())
+		p = &scripted{assistants: []func(cli.AssistantStep) ([]string, error){answer}, components: []func(cli.ComponentPage) ([]string, error){keep()},
+			review: []string{cli.ReviewQuit}}
+		r = lolaP(p, "install", "review-kit", "--scope", "project")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.assistantSteps[0].Options).To(Equal([]string{"claude-code", "gemini-cli"}), "agents is offered only where it is set up")
+	})
+
 	It("asks nothing of a run the flags fully specify, and reviews an assistant lola chose (Plan 10 §5)", func() {
 		p := &scripted{}
 		r := lolaP(p, "install", "deploy", "--scope", "project", "-t", "claude-code")
@@ -756,7 +832,7 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 		Expect(os.MkdirAll(other, 0o755)).To(Succeed())
 		p := &scripted{
 			scope:   []func(cli.ScopeStep) ([]string, error){scopes("project", "other")},
-			dirs:    []func(cli.DirectoryStep) (string, error){dir(""), dir("~/elsewhere"), dir("missing"), dir("notes.txt"), dir("."), dir(proj + "/"), dir("../other")},
+			dirs:    []func(cli.DirectoryStep) (string, error){dir(""), dir("~/elsewhere"), dir("~nobody/x"), dir("missing"), dir("notes.txt"), dir("."), dir(proj + "/"), dir("../other")},
 			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")},
 			review:  []string{cli.ReviewApply},
 		}
@@ -767,11 +843,12 @@ var _ = Describe("the install flow (Plan 5c §3, §4)", func() {
 			problems = append(problems, st.Problem)
 		}
 		Expect(problems).To(Equal([]string{"", "enter the path of a directory",
-			filepath.Join(proj, "~/elsewhere") + " does not exist (~ is not expanded)",
+			filepath.Join(home, "elsewhere") + " does not exist",
+			filepath.Join(proj, "~nobody/x") + " does not exist (only ~ and ~/ are expanded)",
 			filepath.Join(proj, "missing") + " does not exist",
 			filepath.Join(proj, "notes.txt") + " is not a directory",
 			"that is the project above", "that is the project above"}))
-		Expect(p.dirSteps[3].Value).To(Equal("missing"), "the answer is offered again to edit")
+		Expect(p.dirSteps[4].Value).To(Equal("missing"), "the answer is offered again to edit")
 		Expect(filepath.Join(proj, ".claude/commands/deploy.md")).To(BeARegularFile())
 		Expect(filepath.Join(other, ".claude/commands/deploy.md")).To(BeARegularFile())
 		Expect(r.err).To(ContainSubstring("  project (" + other + "), picked:\n"))

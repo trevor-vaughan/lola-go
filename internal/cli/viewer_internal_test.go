@@ -114,13 +114,21 @@ var _ = Describe("the viewer (Plan 10 §2)", func() {
 		Entry("Home after End", "lines 1–9 of 30 · 0%", keyEnd, keyHome),
 	)
 
+	It("in read mode before a question, the footer says q continues to that question and what asks next", func() {
+		m := newViewer(numbered(30), false, 120, 10)
+		m.then = "Migrate?"
+		Expect(ansiStrip(m.footer())).To(ContainSubstring("q continue: Migrate? is asked next · ↑↓/jk line"))
+		Expect(ansiStrip(m.footer())).NotTo(ContainSubstring("q quit"))
+		Expect(ansiStrip(newViewer(numbered(30), false, 120, 10).footer())).To(ContainSubstring("q quit"))
+	})
+
 	It("shows the lines its footer names, and the keys", func() {
 		m := press(newViewer(numbered(30), false, 100, 10), keySpace)
 		lines := strings.Split(ansiStrip(m.View().Content), "\n")
 		Expect(lines).To(HaveLen(10))
 		Expect(strings.TrimSpace(lines[0])).To(Equal("line 10"))
 		Expect(strings.TrimSpace(lines[8])).To(Equal("line 18"))
-		Expect(lines[9]).To(Equal("lines 10–18 of 30 · 42%  ↑↓/jk line · space/b page · g/G top/end · / search · q quit"))
+		Expect(lines[9]).To(Equal("lines 10–18 of 30 · 42%  q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
 		Expect(m.View().AltScreen).To(BeTrue())
 	})
 
@@ -231,6 +239,10 @@ var _ = Describe("the viewer (Plan 10 §2)", func() {
 		Expect(f).To(Equal("lines 1–9 of 30 · 0%  y apply…"))
 	})
 
+	It("keeps q quit in a read footer at 40 columns", func() {
+		Expect(ansiStrip(newViewer(numbered(30), false, 40, 10).footer())).To(Equal("lines 1–9 of 30 · 0%  q quit · ↑↓/jk li…"))
+	})
+
 	It("without color, styles its footer with bold alone (NO_COLOR, LOLA_COLOR=0)", func() {
 		m := newViewer(numbered(30), true, 100, 10)
 		Expect(sgr.FindAllString(m.View().Content, -1)).To(HaveExactElements("\x1b[1m", "\x1b[22m"))
@@ -273,7 +285,7 @@ var _ = Describe("a.view, the viewer on the terminal (Plan 10 §2.1)", func() {
 
 	It("in read mode shows the text on stdout, then prints it there whole", func() {
 		cmd.SetIn(keys("jjq"))
-		ans, err := a().view(cmd, numbered(30), false, false, Nav{})
+		ans, err := a().view(cmd, numbered(30), false, false, Nav{}, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal(viewCancel))
 		Expect(out.String()).To(ContainSubstring(altScreen))
@@ -284,7 +296,7 @@ var _ = Describe("a.view, the viewer on the terminal (Plan 10 §2.1)", func() {
 	DescribeTable("in confirm mode asks on stderr, then prints the text there whole, and returns the answer",
 		func(typed string, answer viewAnswer) {
 			cmd.SetIn(keys(typed))
-			ans, err := a().view(cmd, numbered(30), true, true, Nav{Back: true})
+			ans, err := a().view(cmd, numbered(30), true, true, Nav{Back: true}, "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ans).To(Equal(answer))
 			Expect(errb.String()).To(ContainSubstring(altScreen))
@@ -457,7 +469,7 @@ var _ = Describe("which output opens in the viewer (Plan 10 §2.1)", func() {
 			m, quit := quits(m, keyQ)
 			Expect(quit).To(BeFalse())
 			m = press(m, keyEsc)
-			Expect(ansiStrip(m.footer())).To(HaveSuffix("g/G top/end · / search · q quit"))
+			Expect(ansiStrip(m.footer())).To(HaveSuffix("q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
 			Expect(m.term).To(BeEmpty())
 		})
 

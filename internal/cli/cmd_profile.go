@@ -731,6 +731,20 @@ func turnedLine(act *engine.Activation) string {
 func (a *app) completeProfile(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	update := cmd.Flags().Changed(string(engine.ProfileUpdate))
 	eng, err := a.engine()
+	// lola profile [<name>] --edit <module>...: the profile first, then modules, as install takes them.
+	if edit := cmd.Flags().Changed(string(engine.ProfileEdit)); err == nil && edit {
+		out, d := a.completeSource(cmd, args, toComplete)
+		if len(args) == 0 {
+			if names, err := eng.ProfileNames(); err == nil {
+				for _, n := range names {
+					if strings.HasPrefix(n, toComplete) {
+						out = append(out, n)
+					}
+				}
+			}
+		}
+		return out, d
+	}
 	if err != nil || cmd.Flags().Changed("all") || len(args) > 0 && !update {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

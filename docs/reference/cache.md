@@ -22,8 +22,13 @@ ref (`--path` is refused: the catalog gives it).
 | `--ref <ref>` | The git branch, tag or full commit SHA to fetch. |
 | `--path <dir>` | The module root inside the source (monorepos). |
 
-Refusals: no source: `lola cache add needs a source`; another module of that name in your cache,
-as `lola install`'s.
+Refusals: no source: `lola cache add needs a source`.
+
+The cache keeps a module by its name and the source it came from: adding a source of a name the
+cache holds from another source keeps both. A command that names a module and no source (`lola
+install <name>`, `lola info <name>`, `lola cache list`) uses the source cached most recently; an
+entry in `project.yml` or a profile always uses its own. `lola cache rm <name>` removes every
+source's copy.
 
 JSON: the module's identity and contents, as [`lola info`](info.md#lola-info) starts its document, with
 `path` when `--path` gave one.

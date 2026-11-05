@@ -296,7 +296,7 @@ var _ = Describe("an install's staged run (cherry-pick design §7)", func() {
 		Expect(cached()).To(Equal([]string{"example"}))
 	})
 
-	It("refuses the apply, before writing anything, when another run cached a different module of the name meanwhile", func() {
+	It("applies, and keeps another source of the name another run cached meanwhile as an origin of its own", func() {
 		hooked()
 		imposter := filepath.Join(tmp, "elsewhere", "example")
 		writeTree(imposter, map[string]string{"lola.yml": "name: example\n", "commands/x.md": "X\n"})
@@ -305,25 +305,10 @@ var _ = Describe("an install's staged run (cherry-pick design §7)", func() {
 			return true, err
 		}
 		_, err := install(stage(), engine.Options{Ask: ask}, engine.InstallRequest{Arg: src})
-		Expect(err).To(MatchError(ContainSubstring(`a different module named "example" is already in your cache`)))
-		Expect(errs.Hints(err)).To(ContainElement("remove the cached one first: lola cache rm example"))
-		Expect(filepath.Join(proj, ".lola", "project.yml")).NotTo(BeAnExistingFile())
-		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).NotTo(BeAnExistingFile())
-	})
-
-	It("a refusal after the apply cached one of its modules says that one stays in your cache, with the retry", func() {
-		hooked()
-		imposter := filepath.Join(tmp, "elsewhere", "zeta")
-		writeTree(imposter, map[string]string{"lola.yml": "name: zeta\n", "commands/x.md": "X\n"})
-		ask := func(string, []engine.HookScript) (bool, error) {
-			_, err := e.Fetch(ctx, sourceSpec(imposter)) // another lola, while this one waits at its question
-			return true, err
-		}
-		_, err := install(stage(), engine.Options{Ask: ask}, engine.InstallRequest{Arg: src}, engine.InstallRequest{Arg: other})
-		Expect(err).To(MatchError(ContainSubstring(`a different module named "zeta" is already in your cache`)))
-		Expect(errs.Hints(err)).To(ConsistOf("remove the cached one first: lola cache rm zeta",
-			"fetched modules stay in your cache; retry with: lola install --project example"))
-		Expect(cached()).To(ConsistOf("example", "zeta"))
-		Expect(filepath.Join(proj, ".lola", "project.yml")).NotTo(BeAnExistingFile())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(proj, ".claude", "commands", "ship.md")).To(BeARegularFile())
+		origins, err := e.Store.Origins("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(origins).To(HaveLen(2))
 	})
 })

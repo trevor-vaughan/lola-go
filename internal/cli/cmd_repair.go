@@ -43,7 +43,7 @@ func (a *app) repairCmd() *cobra.Command {
 				return a.emit(cmd, func(w io.Writer, s style) { printRepair(w, s, plan) }, plan)
 			}
 			if n := len(plan.Forgotten); n > 0 && !yes {
-				show := func(w io.Writer) { printRepair(w, style{}, plan) }
+				show := func(w io.Writer, s style) { printRepair(w, s, plan) }
 				question := "Forget " + countEntries(n) + " lola could not have written? Files are not touched."
 				if err := a.confirm(cmd, nil, question, Nav{}, plan, show); err != nil {
 					return err

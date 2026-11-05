@@ -177,14 +177,13 @@ var _ = Describe("Fetch of a folder", func() {
 			expectNoLinks(f.Dir)
 		})
 
-		It("refuses a link that leaves the folder, a link into .git, and a link to a directory, leaving nothing staged", func() {
+		It("refuses a link that leaves the folder, and a link into .git, leaving nothing staged", func() {
 			outside := filepath.Join(tmp, "outside.md")
 			Expect(os.WriteFile(outside, []byte("secret"), 0o644)).To(Succeed())
 			for to, reason := range map[string]string{
 				"../../outside.md":   "commands/b.md: symbolic link refused: its target ../../outside.md leaves the source",
 				"../.git/config":     "commands/b.md: symbolic link refused: its target is in .git/config, which lola never copies",
 				"../.lola/lock.json": "commands/b.md: symbolic link refused: its target is in .lola/lock.json, which lola never copies",
-				"../skills":          "commands/b.md: symbolic link refused: its target is a directory",
 			} {
 				Expect(os.RemoveAll(src)).To(Succeed())
 				writeTree(src, map[string]string{"commands/a.md": "A", "skills/s/SKILL.md": "S", ".git/config": "secret", ".lola/lock.json": "{}"})
@@ -341,5 +340,95 @@ var _ = Describe("Components as lock.json and trust.json record them", func() {
 		b, err := json.Marshal(source.Components{Skills: []string{"skills/a"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(Equal(`{"skills":["skills/a"]}`))
+	})
+})
+
+var _ = Describe("Fetch of a folder holding links to directories", func() {
+	var src, staging string
+	ctx := context.Background()
+	fetch := func(c *source.Components) (source.Fetched, error) {
+		return source.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src, Components: c}, staging)
+	}
+	link := func(at, to string) {
+		GinkgoHelper()
+		Expect(os.MkdirAll(filepath.Dir(filepath.Join(src, at)), 0o755)).To(Succeed())
+		Expect(os.Symlink(to, filepath.Join(src, at))).To(Succeed())
+	}
+	BeforeEach(func() {
+		tmp := testenv.Isolate()
+		if runtime.GOOS == "windows" {
+			Skip("symbolic links need privileges on Windows")
+		}
+		src, staging = filepath.Join(tmp, "src"), filepath.Join(tmp, "staging")
+		writeTree(src, map[string]string{"shared/ref/a.md": "A", "shared/ref/deep/b.md": "B", "skills/s/SKILL.md": "S", "skills/t/SKILL.md": "T"})
+	})
+
+	It("copies a link to a directory inside the source as that directory, nested links included", func() {
+		link("skills/s/ref", "../../shared/ref")
+		link("shared/ref/again.md", "a.md")
+		f, err := fetch(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listTree(f.Dir)).To(ContainElements("skills/s/ref/a.md", "skills/s/ref/deep/b.md", "skills/s/ref/again.md"))
+		expectNoLinks(f.Dir)
+		Expect(os.ReadFile(filepath.Join(f.Dir, "skills/s/ref/again.md"))).To(Equal([]byte("A")))
+	})
+
+	DescribeTable("refuses, for a module that is installed whole,",
+		func(at, to, reason string) {
+			link(at, to)
+			_, err := fetch(nil)
+			Expect(err).To(MatchError(source.ErrLinkInSource))
+			Expect(err).To(MatchError(ContainSubstring(reason)))
+		},
+		Entry("a link to a directory outside the source", "skills/out", "../../../elsewhere", "leaves the source"),
+		Entry("a broken link", "skills/gone", "nope", "its target does not exist"),
+		Entry("a link to a directory that holds the link", "skills/s/self", "..", "loop"),
+		Entry("a link to the source itself", "skills/root", "../", "loop"),
+	)
+
+	It("refuses two directory links that expand each other", func() {
+		link("shared/ref/to-s", "../../skills/s")
+		link("skills/s/to-ref", "../../shared/ref")
+		_, err := fetch(nil)
+		Expect(err).To(MatchError(source.ErrLinkInSource))
+		Expect(err).To(MatchError(ContainSubstring("loop")))
+	})
+
+	Context("when a selection of components is installed", func() {
+		sel := &source.Components{Skills: []string{"skills/s"}}
+		BeforeEach(func() {
+			link("fixtures/skills", "/nonexistent/escape")
+			link("fixtures/loop", "loop")
+			link("docs/out", "../../../elsewhere")
+		})
+
+		It("ignores a link that escapes, loops or dangles outside every component", func() {
+			f, err := fetch(sel)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listTree(f.Dir)).To(ConsistOf("skills/s/SKILL.md"))
+		})
+
+		It("refuses such a link inside a selected skill", func() {
+			link("skills/s/ref", "../../../elsewhere")
+			_, err := fetch(sel)
+			Expect(err).To(MatchError(source.ErrLinkInSource))
+			Expect(err).To(MatchError(ContainSubstring("skills/s/ref: symbolic link refused: its target ../../../elsewhere leaves the source")))
+		})
+
+		It("refuses such a link that is a directory above a selected skill", func() {
+			Expect(os.RemoveAll(filepath.Join(src, "skills"))).To(Succeed())
+			writeTree(src, map[string]string{"real/s/SKILL.md": "S"})
+			link("skills", "/nonexistent/escape")
+			_, err := fetch(sel)
+			Expect(err).To(MatchError(source.ErrLinkInSource))
+		})
+
+		It("ignores a broken link inside an unselected skill but copies a good one inside the selected one", func() {
+			link("skills/t/gone", "nope")
+			link("skills/s/ref", "../../shared/ref")
+			f, err := fetch(sel)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listTree(f.Dir)).To(ConsistOf("skills/s/SKILL.md", "skills/s/ref/a.md", "skills/s/ref/deep/b.md"))
+		})
 	})
 })

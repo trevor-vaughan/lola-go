@@ -455,7 +455,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		scopes = append(scopes, si.Scope)
 	}
 	defer func() {
-		err = e.freeNameHints(nameTaken(e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display), opts.Display), scopes, opts.Display)
+		err = e.CoachUnresolved(err, scopes, opts.DryRun, opts.Display)
 	}()
 	swept := e.sweepRuns()
 	run := spec.Staged
@@ -901,6 +901,13 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		return nil, err
 	}
 	defer func() { err = res.afterGrants(err) }() // a failure from here on carries the grants written
+	for _, sp := range plans {
+		for _, tw := range sp.writes {
+			if !tw.t.Profile {
+				res.Notices = append(res.Notices, outsideNotices(sp.sc, tw.entries)...)
+			}
+		}
+	}
 	if opts.DryRun {
 		return out, nil
 	}
@@ -967,6 +974,25 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		}
 	}
 	return out, nil
+}
+
+// outsideNotices warns of each entry written to a project's manifest whose local source resolves
+// outside the project: the manifest is committed, and a teammate's sync refuses such a source
+// (checkLocalSources). A source that cannot be resolved here adds none; the sync names the problem.
+func outsideNotices(sc Scope, entries []manifest.Entry) []Notice {
+	var out []Notice
+	for _, ent := range entries {
+		spec, ok, err := source.Parse(ent.Source, sc.ProjectDir)
+		if err != nil || !ok || !source.IsLocal(spec.Kind, spec.Location) {
+			continue
+		}
+		if in, err := source.IsWithin(canonicalRoot(sc.ProjectDir), spec.Location); err != nil || in {
+			continue
+		}
+		out = append(out, Notice{Level: LevelWarn, Text: fmt.Sprintf("%s comes from %s, outside the project: a teammate's sync will refuse it; "+
+			"share a module through a git repository or an https:// archive", shown(ent.Name), untrusted.Text(ent.Source, untrusted.MaxName))})
+	}
+	return out
 }
 
 // covers reports whether the scope's trust record covers ent, an entry of the target (sp.target's
@@ -1688,6 +1714,11 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 	if err != nil {
 		return err
 	}
+	left, err := e.leftToAgents(sp.sc, v.Name, finds)
+	if err != nil {
+		return err
+	}
+	res.viaAgents = append(res.viaAgents, left...)
 	mr.Scope, mr.Root, mr.Market = sp.sc.Kind.String(), root(sp.sc), shownMarket(ent.Market)
 	res.Modules, res.Findings, res.Notices = append(res.Modules, mr), append(res.Findings, finds...), append(res.Notices, notes...)
 	stale, err := e.staleNotices(sp.sc, v.Module, x, func(args ...string) (string, error) { return e.installRun(sp.sc, opts.Target, args...), nil })
@@ -2557,7 +2588,7 @@ func (e *Engine) Status(ctx context.Context, sc Scope, display []string) (_ []St
 		if ment != nil {
 			pin, ref = ment.Digest, ment.Ref
 		}
-		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest))
+		update, uerr := e.updateAvailable(name, ref, cmp.Or(pin, entry.Digest), entry.Source)
 		base := StatusRow{Name: name, From: from, Rules: ment.RulesOn(), Source: entry.Source, Ref: entry.Ref, Digest: entry.Digest, Pin: pin,
 			UpdateAvailable: update, SourceGone: sourceGone(entry.Source, sourceRoot(sc)), Skipped: []string{}, Only: shown, OnlyFrom: onlyFrom}
 		if ment != nil {
@@ -2660,7 +2691,7 @@ func (e *Engine) notInstalledRows(man *manifest.Manifest, w Wanted, only []strin
 	status, update := "not_installed", false
 	if ment.Digest != "" {
 		var err error
-		if update, err = e.updateAvailable(ment.Name, ment.Ref, ment.Digest); err != nil {
+		if update, err = e.updateAvailable(ment.Name, ment.Ref, ment.Digest, ment.Source); err != nil {
 			status = "unreadable" // the cache's record of the module cannot be loaded
 		}
 	}
@@ -2744,12 +2775,19 @@ func versionID(digest string) string {
 }
 
 // updateAvailable reports whether the cache head for ref of name holds another version than
-// digest. It reads the cache index only, and a folder's head never counts: a folder is read
-// again by every sync.
-func (e *Engine) updateAvailable(name, ref, digest string) (bool, error) {
-	o, found, err := e.Store.Origin(name)
-	if err != nil || !found || o.Type == string(source.KindFolder) {
+// digest, in the origin recorded for src as the entry writes it, else the newest. It reads the
+// cache index only, and a folder's head never counts: a folder is read again by every sync.
+func (e *Engine) updateAvailable(name, ref, digest, src string) (bool, error) {
+	origins, err := e.Store.Origins(name)
+	if err != nil || len(origins) == 0 {
 		return false, err
+	}
+	o := origins[0]
+	if i := slices.IndexFunc(origins, func(c store.Origin) bool { return c.Source == src }); i >= 0 {
+		o = origins[i]
+	}
+	if o.Type == string(source.KindFolder) {
+		return false, nil
 	}
 	for _, h := range o.Heads {
 		if h.Ref == ref {

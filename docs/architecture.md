@@ -232,8 +232,14 @@ included. A dry run (`-n`) is the one exception: it caches what you trust at its
   `<module>/runtime-hooks/<settings-file hash>`), each recording a digest.
 - `target`: The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`,
   `Probe`, and helpers renderers share. No implementations.
-- `target/claude`, `target/gemini`, `target/opencode`: The `claude-code`, `gemini-cli` and
-  `opencode` renderers, each with its capability table and probe. One package per target.
+- `target/claude`, `target/gemini`, `target/opencode`, `target/agents`: The `claude-code`,
+  `gemini-cli`, `opencode` and `agents` renderers, each with its capability table and probe. One
+  package per target. `agents` writes skills only (capability table: `skill`, `Open`, a
+  `description` required, the agentskills.io name pattern), has no binary, and is set up where
+  `.agents/skills/` exists. `PlanContext.SharedSkills` carries the skills `agents` delivers, so
+  `gemini` and `opencode` skip their own copy (`skill-via-agents`); the engine fills it by planning
+  `agents` first, and `check` does the same. `engine.TargetChoice.SetUpOnly` holds targets with no
+  binary whose marker exists; `Installed` and `SetUp` stay binaries on `PATH`.
 - `target/conformance`: Specs every registered target must pass.
 - `targets`: The registry: the one list of every target.
 - `plan`: Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and
@@ -1284,8 +1290,9 @@ ancestor is refused. It is skipped when the ref is the commit itself.
 
 ```
 $XDG_CACHE_HOME/lola/modules/<name>/
-  index.yml                # source, type, path, components, heads: [{ref, digest, commit}],
-                           #   last_used: {<digest12>: YYYY-MM-DD}
+  index.yml                # origins: [{source, type, path, components, heads: [{ref, digest, commit}]}],
+                           #   newest first, one per source the module was fetched from;
+                           #   last_used: {<digest12>: YYYY-MM-DD}, shared (versions are by content)
   versions/<digest12>/
     content/               # the normalized module: native layout + one generated lola.yml
     .lola-origin           # format, manifest, others_present, ref, commit, fetched_at,
@@ -2208,10 +2215,10 @@ git and archive entries. The steps, in order, under the scope lock (none in a dr
    - `source.Parse` against `sourceRoot` and `source.Validate` with the entry's ref and path
      (git's `check-ref-format`);
    - the pin's shape against the source's kind;
-   - the cache holding the name from another source or path (`refuseOtherSource`, through
-     `Store.Origin` and `source.SameLocation`), coached with `lola cache rm`, except a local
-     source the cache records that no longer exists (`Origin.LocalGone`), which the run's publish
-     replaces (`syncEntry.goneFrom`, a warn notice);
+   - a local source the cache records for the name that no longer exists (`Origin.LocalGone`,
+     through `goneOrigin`), which the run's publish drops when the entry's source is local too
+     (`syncEntry.goneFrom`, a warn notice); any other source of the name is an origin of its own
+     (`Store.OriginFor`, `source.SameLocation`);
    - the effective targets.
    - An entry a profile won keeps that profile in `syncEntry.from` (written to `lock.json`'s
      `from`) and its file, which errors name.

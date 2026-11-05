@@ -159,12 +159,6 @@ var _ = Describe("hints", func() {
 		Entry("cache update of a module not in your cache, under --json",
 			func(string) []string { return []string{"cache", "update", "nope", "--json"} },
 			func(string) []string { return []string{"cached modules: lola cache list --json"} }),
-		Entry("cache add of a module whose name your cache holds from another source, under --json",
-			func(proj string) []string {
-				writeTree(filepath.Join(proj, "mods", "kit2"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Another kit\n"})
-				return []string{"cache", "add", filepath.Join(proj, "mods", "kit2"), "--json"}
-			},
-			func(string) []string { return []string{"remove the cached one first: lola cache rm kit --json"} }),
 		Entry("install's template refusal under --json, whose check repeats the assistants given",
 			func(proj string) []string {
 				writeTree(filepath.Join(proj, "mods", "bad"), map[string]string{"lola.yml": "name: bad\nvars:\n  x: \"a\\nb\"\n",

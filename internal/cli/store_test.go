@@ -423,10 +423,10 @@ var _ = Describe("store, search and init commands", func() {
 				Expect(entry).NotTo(BeAnExistingFile())
 			},
 			Entry("whose head records a commit that is not a full SHA", func(id string) string {
-				return "source: /src/example\ntype: folder\nheads:\n  - {ref: \"\", digest: " + id + ", commit: nope}\n"
+				return "origins:\n  - source: /src/example\n    type: folder\n    heads:\n      - {ref: \"\", digest: " + id + ", commit: nope}\n"
 			}),
 			Entry("whose head digest is not a version id", func(string) string {
-				return "source: /src/example\ntype: folder\nheads:\n  - {ref: \"\", digest: ../../../outside}\n"
+				return "origins:\n  - source: /src/example\n    type: folder\n    heads:\n      - {ref: \"\", digest: ../../../outside}\n"
 			}),
 			Entry("that is not valid YAML", func(string) string { return "heads: [\n" }),
 		)
@@ -440,7 +440,7 @@ var _ = Describe("store, search and init commands", func() {
 		})
 
 		It("follows the refusal's hint: cache rm, then install again", func() {
-			Expect(os.WriteFile(index, []byte("source: "+mod+"\ntype: folder\nheads:\n  - {ref: \"\", digest: "+id+", commit: nope}\n"), 0o600)).To(Succeed())
+			Expect(os.WriteFile(index, []byte("origins:\n  - source: "+mod+"\n    type: folder\n    heads:\n      - {ref: \"\", digest: "+id+", commit: nope}\n"), 0o600)).To(Succeed())
 			r := lola("install", "example", "-t", "claude-code", "-C", proj, "--trust=hooks")
 			Expect(r.code).To(Equal(1))
 			Expect(r.err).To(ContainSubstring(`records commit "nope"`))
@@ -567,6 +567,26 @@ var _ = Describe("published alias table", func() {
 		Expect(lola("--version").out).To(HavePrefix("lola dev ("))
 		Expect(lola("-h").out).To(MatchRegexp(`--version\s+print lola's version: lola version\n`))
 		Expect(lola("install", "--version").err).To(HavePrefix("error: unknown flag: --version"))
+	})
+
+	It("coaches a completion call without a shell, with an unknown one, and with two", func() {
+		for args, want := range map[string]string{
+			"":         "error: lola completion needs a shell: bash, zsh, fish, powershell\n",
+			"tcsh":     "error: tcsh is not a shell lola completes: bash, zsh, fish, powershell\n",
+			"bash zsh": "error: lola completion takes one shell, and 2 were given\n",
+		} {
+			r := lola(append([]string{"completion"}, strings.Fields(args)...)...)
+			Expect(r.code).To(Equal(1))
+			Expect(r.err).To(HavePrefix(want), args)
+			Expect(r.err).To(ContainSubstring("  hint: source <(lola completion bash)\n"))
+		}
+	})
+
+	It("refuses an unknown flag with a hint, as one JSON line under --json", func() {
+		Expect(lola("install", "--bogus").err).To(Equal("error: unknown flag: --bogus\n  hint: see: lola install --help\n"))
+		Expect(lola("market", "--add").err).To(Equal("error: flag needs an argument: --add\n" +
+			"  hint: --add takes a value: fetch the catalog at this source and register it\n  hint: see: lola market --help\n"))
+		Expect(lola("install", "--json", "--bogus").err).To(Equal(`{"error":"unknown flag: --bogus","hints":["see: lola install --help"]}` + "\n"))
 	})
 
 	It("aliases appear in help", func() {

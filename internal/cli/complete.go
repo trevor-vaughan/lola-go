@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"os"
 	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
@@ -36,15 +38,27 @@ func offerList(toComplete string, cands []cobra.Completion) []cobra.Completion {
 }
 
 // completeTargets offers the assistants for -t, a comma-separated list: those found on this
-// machine first, saying where, then the others, as not found.
-func (a *app) completeTargets(_ *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+// machine first, saying where, then the others, as not found, then the targets with no binary
+// (agents), as set up where one of the command's scopes has their markers, else with what reads
+// them.
+func (a *app) completeTargets(cmd *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	eng, err := a.engine()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	var found, missing []cobra.Completion
-	for _, as := range eng.Detect(engine.Scope{Kind: target.User}) { // where it is set up does not matter here
-		switch {
+	marked := map[string]bool{} // set up in any of the run's scopes
+	for _, sc := range a.markerScopes(cmd, eng) {
+		for _, as := range eng.Detect(sc) {
+			marked[as.Target] = marked[as.Target] || as.Marked
+		}
+	}
+	var found, missing, binaryless []cobra.Completion
+	for i, as := range eng.Detect(engine.Scope{Kind: target.User}) {
+		switch t := eng.Targets[i]; {
+		case target.NoBinary(t) && marked[as.Target]:
+			binaryless = append(binaryless, cobra.CompletionWithDesc(as.Target, "set up here"))
+		case target.NoBinary(t):
+			binaryless = append(binaryless, cobra.CompletionWithDesc(as.Target, t.Probe().Readers))
 		case as.Binary == "":
 			missing = append(missing, cobra.CompletionWithDesc(as.Target, "not found on this machine"))
 		case untrusted.IsPlain(as.Binary):
@@ -53,7 +67,33 @@ func (a *app) completeTargets(_ *cobra.Command, _ []string, toComplete string) (
 			found = append(found, cobra.CompletionWithDesc(as.Target, "found on this machine"))
 		}
 	}
-	return offerList(toComplete, append(found, missing...)), cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveKeepOrder
+	return offerList(toComplete, append(append(found, missing...), binaryless...)), cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveKeepOrder
+}
+
+// markerScopes is the scopes a run of cmd acts on, as completion reads them without asking: the one
+// its flags or its directory name, or both under --scope both; none where its scope flags disagree.
+func (a *app) markerScopes(cmd *cobra.Command, eng *engine.Engine) []engine.Scope {
+	if sc, err := a.scope(cmd, eng); err == nil {
+		return []engine.Scope{sc}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil
+	}
+	req, err := a.scopeRequest(cwd, false)
+	if err != nil {
+		return nil
+	}
+	req.Command, req.Both = cmd.Name(), true // a.scope refuses --scope both
+	res, err := eng.ResolveScope(req)
+	if err != nil {
+		return nil
+	}
+	var out []engine.Scope
+	for _, c := range res.Scopes {
+		out = append(out, c.Scope)
+	}
+	return out
 }
 
 // completeSource offers what install and check take: @ completes to a marketplace address
@@ -200,6 +240,38 @@ func (a *app) completeTrash(cmd *cobra.Command, args []string, toComplete string
 		}
 	}
 	return out, cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveKeepOrder
+}
+
+// completeKinds offers the kind/ a tidy selector starts with, leaving the cursor after the slash:
+// what can move is found by a scan that runs git, which completion never does, so the names are
+// typed.
+func completeKinds(_ *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	var out []cobra.Completion
+	for _, k := range config.Kinds() {
+		if strings.HasPrefix(k+"/", toComplete) {
+			out = append(out, k+"/")
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveNoSpace
+}
+
+// completeKept offers the selectors on the scope's keep-list, for lola tidy --unkeep.
+func (a *app) completeKept(cmd *cobra.Command, _ []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	eng, sc, err := a.session(cmd)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	names, err := eng.KeepNames(sc)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var out []cobra.Completion
+	for _, n := range names {
+		if strings.HasPrefix(n, toComplete) && untrusted.IsPlain(n) {
+			out = append(out, n)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 // completeDirs completes a flag or argument that takes a directory.

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,8 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -94,6 +97,25 @@ func (e *eofReader) catch(run func() error) error {
 	return run()
 }
 
+// errInputEnded is a full-terminal form that stdin's end of input cut short. bubbletea treats
+// end of input as nothing more to read and goes on waiting, so lola ends the form itself.
+var errInputEnded = errors.New("input ended before the question was answered")
+
+// eofFile is stdin for a full-terminal form: the file itself, so bubbletea still puts a terminal
+// in raw mode, whose Read calls ended when it reports end of input.
+type eofFile struct {
+	*os.File
+	ended func()
+}
+
+func (f *eofFile) Read(p []byte) (int, error) {
+	n, err := f.File.Read(p)
+	if errors.Is(err, io.EOF) {
+		f.ended()
+	}
+	return n, err
+}
+
 // huhForms is the Prompter that draws the install flow's steps as inline huh forms on stderr
 // (Plan 5c §3): no alternate screen, and in accessible mode huh's line prompts. Only accessible
 // mode reads through in, the eofReader: the full forms need stdin itself, which bubbletea puts
@@ -106,6 +128,8 @@ type huhForms struct {
 	accessible    bool
 	color         bool
 	width, height int // of the terminal stderr is on; 0 when unknown
+	// home and cwd are where path prompts read ~ and relative answers from.
+	home, cwd string
 	// dark resolves the background lolaTheme draws for (app.darkBackground); theme calls it once,
 	// before the first form in color, and keeps the answer in isDark.
 	dark   func() (bool, error)
@@ -114,6 +138,10 @@ type huhForms struct {
 	// viewer reports whether the review may open the viewer (app.paging), asked only when it
 	// would: it reads config.yaml.
 	viewer func() bool
+	// cancelRun stops the full-terminal form running; stdinEnded says stdin's end of input did.
+	// Both are set from the form's input goroutine and read after the form returns.
+	cancelRun  context.CancelFunc
+	stdinEnded bool
 }
 
 // accessible reports whether forms use huh's line prompts: LOLA_ACCESSIBLE=1 or TERM=dumb, read
@@ -127,9 +155,13 @@ func (a *app) huhPrompter(cmd *cobra.Command) Prompter {
 	h := &huhForms{stdin: cmd.InOrStdin(), in: &eofReader{r: cmd.InOrStdin()}, out: cmd.ErrOrStderr(), tty: interactive(cmd),
 		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), dark: func() (bool, error) { return a.darkBackground(cmd) },
 		view: func(content string, change bool, nav Nav) (viewAnswer, error) {
-			return a.view(cmd, content, true, change, nav)
+			return a.view(cmd, content, true, change, nav, "")
 		},
 		viewer: func() bool { return a.paging(cmd).viewer }}
+	if p, err := paths.Resolve(a.getenv); err == nil {
+		h.home = p.Home
+	}
+	h.cwd, _ = os.Getwd() // unknown: path completion then offers nothing relative
 	if f, ok := cmd.ErrOrStderr().(*os.File); ok {
 		if w, ht, err := term.GetSize(int(f.Fd())); err == nil {
 			h.width, h.height = w, ht
@@ -187,7 +219,10 @@ func (h *huhForms) runIn(t huh.Theme, nav Nav, fields ...huh.Field) (err error) 
 	if h.accessible {
 		err = h.in.catch(f.Run)
 	} else {
-		err = f.Run()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		h.cancelRun = cancel
+		err = f.RunWithContext(ctx)
 	}
 	// A recorded exit wins even over a form that completed: the keys ended it first.
 	switch {
@@ -195,10 +230,19 @@ func (h *huhForms) runIn(t huh.Theme, nav Nav, fields ...huh.Field) (err error) 
 		return h.quit()
 	case *exit == exitBack:
 		return ErrBack
+	case h.stdinEnded && err != nil:
+		return errs.WithHints(errInputEnded, "run lola in a terminal that can answer its questions",
+			"or pass -y/--yes, where the command takes it, to skip them")
 	case errors.Is(err, huh.ErrUserAborted) || h.in.eof:
 		return ErrAborted
 	}
 	return err
+}
+
+// endStdin is what eofFile calls when stdin ends: it stops the form running.
+func (h *huhForms) endStdin() {
+	h.stdinEnded = true
+	h.cancelRun()
 }
 
 // quit is the error a quit with q answers: printed as cancelled, in color when the forms are.
@@ -212,6 +256,9 @@ func (h *huhForms) form(t huh.Theme, nav Nav, fields ...huh.Field) (*huh.Form, *
 	var in io.Reader = h.in
 	if !h.accessible {
 		in = h.stdin
+		if f, ok := h.stdin.(*os.File); ok {
+			in = &eofFile{File: f, ended: h.endStdin}
+		}
 		fields = slices.Clone(fields)
 		n := 0
 		for i, f := range fields {
@@ -344,10 +391,16 @@ func (h *huhForms) OtherDirectory(st DirectoryStep) (string, error) {
 		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
 	}
 	dir := st.Value
-	fields = append(fields, huh.NewInput().Title("Other directory").
-		Description("a project directory, relative to the current directory; ~ is not expanded").Value(&dir))
+	fields = append(fields, h.pathInput(huh.NewInput().Title("Other directory").
+		Description("a project directory, relative to the current directory; ~ is your home").Value(&dir), &dir))
 	err := h.run(st.Nav, fields...)
 	return dir, err
+}
+
+// pathInput makes in complete directories as the user types into *typed, with tab accepting the
+// suggestion.
+func (h *huhForms) pathInput(in *huh.Input, typed *string) *huh.Input {
+	return in.SuggestionsFunc(func() []string { return dirSuggestions(*typed, h.home, h.cwd) }, typed)
 }
 
 func contains(xs []string, x string) bool {
@@ -871,13 +924,13 @@ func (h *huhForms) MigrateRoot(st MigrateRootStep) (string, error) {
 		title, to = st.Old+" not found on this machine — new root, such as "+st.Suggest+" (empty skips):", ""
 	}
 	desc := fmt.Sprintf("%d project path(s) of the Python lola start with it", st.Records)
-	err := h.run(st.Nav, huh.NewInput().Title(h.cut(title)).Description(desc).Value(&to).Validate(func(s string) error {
-		if s = strings.TrimSpace(s); s != "" && !filepath.IsAbs(s) {
+	err := h.run(st.Nav, h.pathInput(huh.NewInput().Title(h.cut(title)).Description(desc).Value(&to), &to).Validate(func(s string) error {
+		if s = expandHome(strings.TrimSpace(s), h.home); s != "" && !filepath.IsAbs(s) {
 			return fmt.Errorf("write an absolute path, such as %s, or leave it empty to skip", st.Suggest)
 		}
 		return nil
 	}))
-	return strings.TrimSpace(to), err
+	return expandHome(strings.TrimSpace(to), h.home), err
 }
 
 // MigrateTargets offers the assistants on your PATH for the records of one this machine lacks,

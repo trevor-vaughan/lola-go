@@ -4,6 +4,7 @@ package targets
 
 import (
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/target/agents"
 	"github.com/trevor-vaughan/lola-go/internal/target/claude"
 	"github.com/trevor-vaughan/lola-go/internal/target/gemini"
 	"github.com/trevor-vaughan/lola-go/internal/target/opencode"
@@ -11,7 +12,7 @@ import (
 
 // All returns every target in registration order, which is also help and completion order.
 func All() []target.Target {
-	return []target.Target{claude.Target{}, gemini.Target{}, opencode.Target{}}
+	return []target.Target{claude.Target{}, gemini.Target{}, opencode.Target{}, agents.Target{}}
 }
 
 // IDs returns the ids of All.

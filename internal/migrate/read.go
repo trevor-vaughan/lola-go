@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -460,14 +461,8 @@ func projectProblem(p, userHome string) (string, bool) {
 	case filepath.Clean(p) != p:
 		return shown + " is not in its clean form", false
 	}
-	homes := []string{userHome}
-	if real, err := filepath.EvalSymlinks(userHome); err == nil {
-		homes = append(homes, real)
-	}
-	for _, h := range homes {
-		if within(p, h) {
-			return shown + problemAtHome, false
-		}
+	if atHome(p, userHome) {
+		return shown + problemAtHome, false
 	}
 	fi, err := os.Stat(p)
 	switch {
@@ -482,6 +477,16 @@ func projectProblem(p, userHome string) (string, bool) {
 		return shown + " is a symbolic link or has one on its way", false
 	}
 	return "", false
+}
+
+// atHome reports whether p is the home directory or one of its parents, as written or with the
+// home's symbolic links resolved: a project there is refused.
+func atHome(p, userHome string) bool {
+	homes := []string{userHome}
+	if real, err := filepath.EvalSymlinks(userHome); err == nil {
+		homes = append(homes, real)
+	}
+	return slices.ContainsFunc(homes, func(h string) bool { return within(p, h) })
 }
 
 // within reports whether child is parent or below it, lexically.

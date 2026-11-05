@@ -162,7 +162,8 @@ var _ = Describe("the move hint", func() {
 
 	It("never hints a switch into a profile whose plan asks for consent, as one listing an installed module at another digest", func() {
 		hooked := func(dir, body string) {
-			writeTree(dir, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: setup.sh}\n", "setup.sh": "#!/bin/sh\ntrue\n", "commands/kit.md": body})
+			// The hook differs with the body: a hook the user consented to at another digest asks again.
+			writeTree(dir, map[string]string{"lola.yml": "name: kit\nhooks: {pre-install: setup.sh}\n", "setup.sh": "#!/bin/sh\necho " + strings.TrimSpace(body) + "\n", "commands/kit.md": body})
 			Expect(os.Chmod(filepath.Join(dir, "setup.sh"), 0o755)).To(Succeed())
 		}
 		kit, kit2, ghost := filepath.Join(tmp, "kit"), filepath.Join(tmp, "kit2"), filepath.Join(tmp, "ghost")

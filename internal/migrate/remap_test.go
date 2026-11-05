@@ -52,10 +52,10 @@ var _ = Describe("ParseTargetMaps", func() {
 		},
 		Entry("no =", []string{"claude-code"}, `--map-target "claude-code" is not OLD=NEW[,NEW]: write the Python lola's assistant, =, and the assistants to install its modules for, such as --map-target claude-code=opencode`),
 		Entry("no target", []string{"claude-code="}, `--map-target "claude-code=" is not OLD=NEW[,NEW]: write the Python lola's assistant, =, and the assistants to install its modules for, such as --map-target claude-code=opencode`),
-		Entry("a target lola does not have", []string{"claude-code=vim"}, `--map-target "claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli, opencode`),
-		Entry("an empty name in the list", []string{"claude-code=opencode,"}, `--map-target "claude-code=opencode,": "" is not an assistant lola installs for; write claude-code, gemini-cli, opencode`),
-		Entry("a bad target after a good one for the same assistant", []string{"claude-code=opencode", "claude-code=vim"}, `--map-target "claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli, opencode`),
-		Entry("a bad target before a good one for the same assistant", []string{"claude-code=vim", "claude-code=opencode"}, `--map-target "claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli, opencode`),
+		Entry("a target lola does not have", []string{"claude-code=vim"}, `--map-target "claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli, opencode, agents`),
+		Entry("an empty name in the list", []string{"claude-code=opencode,"}, `--map-target "claude-code=opencode,": "" is not an assistant lola installs for; write claude-code, gemini-cli, opencode, agents`),
+		Entry("a bad target after a good one for the same assistant", []string{"claude-code=opencode", "claude-code=vim"}, `--map-target "claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli, opencode, agents`),
+		Entry("a bad target before a good one for the same assistant", []string{"claude-code=vim", "claude-code=opencode"}, `--map-target "claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli, opencode, agents`),
 		Entry("an assistant given twice", []string{"claude-code=opencode", "claude-code=gemini-cli"}, `--map-target names claude-code twice: give it once, with every assistant after =, such as --map-target claude-code=opencode,gemini-cli`),
 	)
 })

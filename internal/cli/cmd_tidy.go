@@ -45,7 +45,7 @@ func (a *app) tidyCmd() *cobra.Command {
 			"  lola tidy --keep skill/notes",
 		GroupID:           groupCore,
 		Args:              cobra.ArbitraryArgs,
-		ValidArgsFunction: cobra.NoFileCompletions,
+		ValidArgsFunction: completeKinds,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.runTidy(cmd, args, f)
 		},
@@ -58,8 +58,8 @@ func (a *app) tidyCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&f.keep, "keep", nil, "add a kind/name selector to this scope's keep-list (repeatable)")
 	cmd.Flags().StringArrayVar(&f.unkeep, "unkeep", nil, "remove a selector from this scope's keep-list, as written there (repeatable)")
 	a.addTargetFlag(cmd, &f.targets, "only tidy these assistants' directories")
-	_ = cmd.RegisterFlagCompletionFunc("keep", cobra.NoFileCompletions)
-	_ = cmd.RegisterFlagCompletionFunc("unkeep", cobra.NoFileCompletions)
+	_ = cmd.RegisterFlagCompletionFunc("keep", completeKinds)
+	_ = cmd.RegisterFlagCompletionFunc("unkeep", a.completeKept)
 	// Aliases for muscle memory (Plan 6d §3.2); lola tidy itself has none. Additive and stable;
 	// the published table is pinned in store_test.go.
 	aliasFlags(cmd, map[string][]string{"keep": {"protect"}, "unkeep": {"unprotect"}})
@@ -271,7 +271,8 @@ func (a *app) bothScopes(eng *engine.Engine) (*engine.Scope, error) {
 }
 
 // tidyLabel is how human output shows an item: target, kind/name with an MCP server's label,
-// and where it is (a directory ending in /), with a link's target.
+// and where it is (a directory ending in /), with a link's target; a candidate's Reason (skills
+// another tool installed) follows. A lock's Reason is printed by the caller.
 func tidyLabel(u engine.TidyUnit) string {
 	name := u.Kind + "/" + u.Name
 	if u.Name == "" {
@@ -289,6 +290,9 @@ func tidyLabel(u engine.TidyUnit) string {
 	}
 	if u.Link != "" {
 		where += " → " + u.Link
+	}
+	if u.Code == "" && u.Reason != "" {
+		where += "  " + u.Reason
 	}
 	return u.Target + "  " + name + "  " + where
 }

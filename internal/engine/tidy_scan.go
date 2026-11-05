@@ -54,6 +54,10 @@ const (
 	whyAtRoot          = "leads to the root or above it"
 )
 
+// whyShared labels a candidate in a destination other tools share (target.DestDir.Shared): what
+// no lock records there another installer put there (spec 2026-11-03 §5).
+const whyShared = "skills another tool installed"
+
 // instructionFiles are the names tidy never moves, nor anything holding one (U2, R-6d-3).
 var instructionFiles = []string{"claude.md", "agents.md", "gemini.md"}
 
@@ -66,6 +70,7 @@ type tidyDest struct {
 	root, realRoot  string // the target's root, as given and resolved
 	abs             string // resolved
 	outside, exists bool
+	shared          bool   // other tools install here too (target.DestDir.Shared)
 	code, reason    string // a destination-level lock
 	links           []string
 	data            []byte      // an MCP file's bytes as read
@@ -181,7 +186,7 @@ func (e *Engine) tidyDests(sc Scope, targets []string) ([]*tidyDest, error) {
 		realRoot := canonicalRoot(root)
 		var ds []*tidyDest
 		for _, d := range decl.Dirs {
-			ds = append(ds, &tidyDest{target: id, kind: d.Kind, logical: d.Path, ext: d.Ext, root: root, realRoot: realRoot})
+			ds = append(ds, &tidyDest{target: id, kind: d.Kind, logical: d.Path, ext: d.Ext, shared: d.Shared, root: root, realRoot: realRoot})
 		}
 		for _, m := range decl.Servers {
 			ds = append(ds, &tidyDest{target: id, kind: config.KindMCP, logical: m.File, pointer: m.Pointer, root: root, realRoot: realRoot})
@@ -444,6 +449,9 @@ func (s *tidyScanner) readDir(d *tidyDest) {
 		}
 		it.Dir = fi.IsDir()
 		it.rawName = name
+		if d.shared {
+			it.Reason = whyShared // a lock replaces it with its own
+		}
 		d.items = append(d.items, it)
 	}
 }

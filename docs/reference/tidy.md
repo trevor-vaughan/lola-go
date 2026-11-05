@@ -36,5 +36,10 @@ Refusals:
   <config.yaml> sets no default_scope (default_scope: project or user)`, hinting `lola tidy
   --project` and `lola tidy --user`, each with the run's other flags.
 
+`.agents/skills` is shared with other installers (Codex's skill installer, `npx skills`): tidy
+looks there only when the scope's targets include `agents` (`-t agents`, or `agents` in the
+manifest or the lock), and labels what lola did not install there `skills another tool installed`
+(the candidate's `reason` in `--plain` and JSON).
+
 JSON: `scope`, `root`, `dry_run`, `targets`, `trash`, `size_bytes`, `candidates`, `moved`,
 `protected`, `skipped`, `keep_added`, `keep_removed`, `trash_credentials`, `notices` and `hints`.

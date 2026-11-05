@@ -21,14 +21,14 @@ func interactive(cmd *cobra.Command) bool {
 	return isTTY(cmd.InOrStdin()) && isTTY(cmd.ErrOrStderr())
 }
 
-// confirm asks question, at nav in its command's flow, before a destructive action, after show prints the plan on stderr, or, on a
+// confirm asks question, at nav in its command's flow, before a destructive action, after show prints the plan on stderr in the style it is given, or, on a
 // terminal, in the viewer when it is taller than the terminal (or the user's pager; see page); the
 // injected Prompter or the huh adapter asks, under --json too, since the result goes to stdout.
 // Off a terminal it refuses, hinting the run (args are its names) with -y. Under --json that
 // refusal is all lola prints: one JSON line carrying plan, the plan it would have asked about
 // (what -n --json prints, where the command has -n; Plan 8 §9.1), so a script reads the plan
 // without a second run.
-func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Nav, plan any, show func(io.Writer)) error {
+func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Nav, plan any, show func(io.Writer, style)) error {
 	var p Prompter
 	if a.newPrompter != nil {
 		p = a.newPrompter(cmd)
@@ -37,7 +37,7 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Na
 	}
 	if p.Interactive() {
 		// page returns once the viewer or pager exits, so the question is never asked inside it.
-		a.page(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, func(w io.Writer, _ style) { show(w) })
+		a.pageThen(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), asking: true}, question, show)
 		ok, err := p.Confirm(question, nav)
 		if err == nil && !ok {
 			return ErrAborted
@@ -48,7 +48,7 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Na
 	err := errs.WithHints(fmt.Errorf("%s needs confirmation, and there is no terminal to ask on", cmd.CommandPath()),
 		runWithout(cmd, args, "yes")+" -y")
 	if !a.json {
-		show(cmd.ErrOrStderr())
+		show(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), asking: true})
 		return err
 	}
 	fields, ferr := planFields(plan)

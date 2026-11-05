@@ -169,6 +169,11 @@ linters:
       - path: _test\.go$
         linters: [gosec]
         text: G703
+      # lola migrate's plan only stats the paths the Python lola's records name, to list what
+      # it left behind; it writes nothing (internal/migrate/plan.go isDir, isFile).
+      - path: internal/migrate/plan\.go$
+        linters: [gosec]
+        text: G703
 formatters:
   enable: [gofmt]
   exclusions:

@@ -49,8 +49,11 @@ type viewerModel struct {
 	nav      Nav
 	asking   bool // q asked quitQuestion
 	first    bool // Esc with no screen to go back to: the footer says q quits
-	width    int
-	s        style
+	// then is the question asked once the viewer closes; a read-mode footer then says q continues
+	// to it instead of quitting.
+	then  string
+	width int
+	s     style
 	// plain is the wrapped content's lines without styling, which search reads.
 	plain     []string
 	searching bool   // / is open: typed holds the term so far
@@ -259,7 +262,10 @@ func (m viewerModel) footer() string {
 	if m.confirm {
 		next = "^n/^p next/prev"
 	}
-	keys := scroll + " · q quit"
+	keys := "q quit · " + scroll
+	if m.then != "" {
+		keys = "q continue: " + m.then + " is asked next · " + scroll
+	}
 	if m.confirm {
 		answers := "y apply · c change · n cancel"
 		if m.noChange {
@@ -292,15 +298,15 @@ func (m viewerModel) footer() string {
 // user quits: in read mode on stdout, in confirm mode on stderr, where lola asks its questions,
 // at nav in its flow, with the answer (viewCancel in read mode). It then prints content where it showed it, so it stays in the terminal's
 // scrollback. The keys come from stdin, or from the terminal when stdin is not one. Ctrl+C
-// arriving as a signal is a quit.
-func (a *app) view(cmd *cobra.Command, content string, confirm, change bool, nav Nav) (viewAnswer, error) {
+// arriving as a signal is a quit. then names the question asked next, for the footer of a read-mode viewer.
+func (a *app) view(cmd *cobra.Command, content string, confirm, change bool, nav Nav, then string) (viewAnswer, error) {
 	out := cmd.OutOrStdout()
 	if confirm {
 		out = cmd.ErrOrStderr()
 	}
 	width, height := a.width(out), a.height(out)
 	m := newViewer(content, confirm, width, height)
-	m.s, m.noChange, m.nav = style{color: a.color(out)}, !change, nav
+	m.s, m.noChange, m.nav, m.then = style{color: a.color(out)}, !change, nav, then
 	opts := []tea.ProgramOption{tea.WithOutput(out), tea.WithWindowSize(width, height)}
 	if in := cmd.InOrStdin(); in != os.Stdin {
 		opts = append(opts, tea.WithInput(in))

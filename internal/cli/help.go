@@ -9,6 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 )
 
 // cobraNameCell is the cell cobra's usage template renders for each subcommand name.
@@ -67,7 +69,7 @@ func (a *app) installHelp(root *cobra.Command) {
 			}
 			c, rest, err := cmd.Root().Find(args)
 			if err != nil || len(rest) > 0 {
-				return fmt.Errorf("no help topic %q; see: lola help", strings.Join(args, " "))
+				return errs.WithHints(fmt.Errorf("no help topic %q", strings.Join(args, " ")), "see: lola help")
 			}
 			mode := !isTTY(cmd.OutOrStdout())
 			if long || short {

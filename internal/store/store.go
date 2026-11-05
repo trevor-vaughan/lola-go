@@ -42,7 +42,9 @@ type Head struct {
 	Fetched string `yaml:"fetched,omitempty"`
 }
 
-// Origin is where a stored module comes from (index.yml).
+// Origin is one source a stored module was fetched from, with the heads of its refs (index.yml
+// holds one per source: the cache keys a module by its name and its source). Store.Origin returns
+// the newest one as a view: see index.view.
 type Origin struct {
 	Source string `yaml:"source"`
 	Type   string `yaml:"type"`
@@ -52,8 +54,53 @@ type Origin struct {
 	Components *source.Components `yaml:"components,omitempty"`
 	Heads      []Head             `yaml:"heads"`
 	// LastUsed is the UTC day (YYYY-MM-DD) a run last used each version, by id (Plan 9 §6.3):
-	// lola cache clean --unused-for removes the versions unused that long.
+	// lola cache clean --unused-for removes the versions unused that long. It is the module's,
+	// not the origin's, since versions are shared by content: the index holds it once.
+	LastUsed map[string]string `yaml:"-"`
+	// all is every origin of the name as the index holds them, newest first, when this is
+	// Store.Origin's view, which Store.Restore puts heads back into.
+	all []Origin
+}
+
+// SourceKey names one source a module is fetched from: what tells the origins of a name apart.
+type SourceKey struct {
+	Type, Location, Path string
+	Components           *source.Components
+}
+
+// From reports whether o is the origin of k's source.
+func (o Origin) From(k SourceKey) bool {
+	return o.Type == k.Type && source.SameLocation(source.Kind(o.Type), o.Source, k.Location) && o.Path == k.Path && o.Components.Equal(k.Components)
+}
+
+// index is a module's index.yml: the origins it was fetched from, newest first, and the day each
+// of its versions was last used.
+type index struct {
+	Origins  []Origin          `yaml:"origins"`
 	LastUsed map[string]string `yaml:"last_used,omitempty"`
+}
+
+// view is the Origin of x.Origins[i] a reader sees: its heads, then, when merged, the heads of
+// the other origins after them, so a version any origin heads counts as headed (Head finds the
+// newest origin's first); and the days of use.
+func (x index) view(i int, merged bool) Origin {
+	o := x.Origins[i]
+	o.Heads = slices.Clone(o.Heads)
+	if merged {
+		for j, other := range x.Origins {
+			if j != i {
+				o.Heads = append(o.Heads, other.Heads...)
+			}
+		}
+		o.all = slices.Clone(x.Origins)
+	}
+	o.LastUsed = maps.Clone(x.LastUsed)
+	return o
+}
+
+// find is the position of the origin of k's source, or -1.
+func (x index) find(k SourceKey) int {
+	return slices.IndexFunc(x.Origins, func(o Origin) bool { return o.From(k) })
 }
 
 // Meta describes one stored version (.lola-origin); its values are those of the first fetch.
@@ -173,11 +220,10 @@ func (e *DigestError) Error() string {
 // detection reported, which install shows; LoadWarnings are what a load of the cached copy
 // reports, which is all a cache hit reports, so a run that renders the staged tree uses them.
 //
-// ReplaceGoneOrigin lets Commit record this version's source for the name when the cache
-// records another that is a local folder or archive whose location no longer exists, as a moved
-// project's in-repo modules do (Plan 6a §6.5): Commit checks again, under the cache lock, that
-// the old location is still missing and that this source is local too; any other source the
-// cache records for the name is still refused.
+// ReplaceGoneOrigin lets Commit drop the origins the cache records for the name that are local
+// folders or archives whose location no longer exists, as a moved project's in-repo modules
+// leave (Plan 6a §6.5), when this version's source is local too: Commit checks again, under the
+// cache lock, that each old location is still missing. Any other origin stays.
 type Staged struct {
 	Version           Version
 	LoadWarnings      []string
@@ -187,19 +233,15 @@ type Staged struct {
 	components        *source.Components
 }
 
-// Index is the index.yml Commit writes for st over o, the index the cache holds for the name
-// (found says it holds one), except for last_used, which Commit dates. It records st's source
-// when the cache holds none, and points the head for the fetched ref at st's version (with
-// headIfAbsent, only when that ref has no head). ok is false exactly when Commit refuses st as a
-// second source for the name (NameTakenError). A local source the cache records that no longer
-// exists gives way to st when st may replace it (ReplaceGoneOrigin). Nothing in the cache changes.
-func (st Staged) Index(o Origin, found, headIfAbsent bool) (_ Origin, ok bool) {
-	if found && (!source.SameLocation(source.Kind(o.Type), o.Source, st.source) || o.Path != st.path || !o.Components.Equal(st.components)) {
-		if !st.ReplaceGoneOrigin || !o.LocalGone() || !source.IsLocal(source.Kind(st.typ), st.source) {
-			return o, false
-		}
-		found = false // the source recorded is gone: this one takes its place, heads and all
-	}
+// Key is the source st was fetched from.
+func (st Staged) Key() SourceKey {
+	return SourceKey{Type: st.typ, Location: st.source, Path: st.path, Components: st.components}
+}
+
+// Index is the origin of st's source once Commit publishes st: o, the cache's origin of that
+// source (found says it holds one), else a new one; with the head for the fetched ref pointed at
+// st's version (with headIfAbsent, only when that ref has no head). Nothing in the cache changes.
+func (st Staged) Index(o Origin, found, headIfAbsent bool) Origin {
 	if !found {
 		o = Origin{Source: st.source, Type: st.typ, Path: st.path, Components: st.components}
 	}
@@ -212,7 +254,7 @@ func (st Staged) Index(o Origin, found, headIfAbsent bool) (_ Origin, ok bool) {
 		}
 		o.Heads = setHead(o.Heads, h)
 	}
-	return o, true
+	return o
 }
 
 // Store is the machine-wide module store. targets are the target ids a module's per-entry
@@ -243,27 +285,34 @@ func (s *Store) Lock() (func(), error) { return s.lockStore() }
 func ValidID(id string) bool { return idRE.MatchString(id) }
 
 // Restore puts back in name's index.yml, for lola cache clean holding the cache lock (Lock), the
-// heads and last_used that before recorded for the versions ids: Cleaned dropped them, and the
-// clean failed before it removed those versions (Plan 9 A28).
+// heads and last_used that before (Store.Origin's view) recorded for the versions ids: Cleaned
+// dropped them, and the clean failed before it removed those versions (Plan 9 A28). Each head
+// goes back to the origin it came from.
 func (s *Store) Restore(name string, before Origin, ids []string) error {
-	o, found, err := s.Origin(name)
+	idx, found, err := s.readIndex(name)
 	if err != nil || !found {
 		return err
 	}
-	for _, h := range before.Heads {
-		if slices.Contains(ids, h.Digest) && !slices.ContainsFunc(o.Heads, func(c Head) bool { return c.Ref == h.Ref }) {
-			o.Heads = setHead(o.Heads, h)
+	for _, b := range before.all {
+		i := idx.find(SourceKey{Type: b.Type, Location: b.Source, Path: b.Path, Components: b.Components})
+		if i < 0 {
+			continue
+		}
+		for _, h := range b.Heads {
+			if slices.Contains(ids, h.Digest) && !slices.ContainsFunc(idx.Origins[i].Heads, func(c Head) bool { return c.Ref == h.Ref }) {
+				idx.Origins[i].Heads = setHead(idx.Origins[i].Heads, h)
+			}
 		}
 	}
 	for _, id := range ids {
 		if day, ok := before.LastUsed[id]; ok {
-			if o.LastUsed == nil {
-				o.LastUsed = map[string]string{}
+			if idx.LastUsed == nil {
+				idx.LastUsed = map[string]string{}
 			}
-			o.LastUsed[id] = day
+			idx.LastUsed[id] = day
 		}
 	}
-	return writeYAML(filepath.Join(s.dir, name, indexFile), o)
+	return writeYAML(filepath.Join(s.dir, name, indexFile), idx)
 }
 
 // Cleaned records in name's index.yml what lola cache clean, holding the cache lock (Lock), did:
@@ -271,18 +320,20 @@ func (s *Store) Restore(name string, before Origin, ids []string) error {
 // saw every version still cached, so each one without a last_used is dated today (Plan 9 §6.3).
 // It writes index.yml only when that changes it, and never for a module the cache no longer holds.
 func (s *Store) Cleaned(name string, ids []string) error {
-	o, found, err := s.Origin(name)
+	idx, found, err := s.readIndex(name)
 	if err != nil || !found {
 		return err
 	}
 	changed := false
-	heads := slices.DeleteFunc(slices.Clone(o.Heads), func(h Head) bool { return slices.Contains(ids, h.Digest) })
-	if len(heads) != len(o.Heads) {
-		o.Heads, changed = heads, true
+	for i := range idx.Origins {
+		heads := slices.DeleteFunc(slices.Clone(idx.Origins[i].Heads), func(h Head) bool { return slices.Contains(ids, h.Digest) })
+		if len(heads) != len(idx.Origins[i].Heads) {
+			idx.Origins[i].Heads, changed = heads, true
+		}
 	}
 	for _, id := range ids {
-		if _, ok := o.LastUsed[id]; ok {
-			delete(o.LastUsed, id)
+		if _, ok := idx.LastUsed[id]; ok {
+			delete(idx.LastUsed, id)
 			changed = true
 		}
 	}
@@ -291,18 +342,18 @@ func (s *Store) Cleaned(name string, ids []string) error {
 		return err
 	}
 	for _, v := range vs {
-		if !ValidID(v.Name()) || slices.Contains(ids, v.Name()) || o.LastUsed[v.Name()] != "" {
+		if !ValidID(v.Name()) || slices.Contains(ids, v.Name()) || idx.LastUsed[v.Name()] != "" {
 			continue
 		}
-		if o.LastUsed == nil {
-			o.LastUsed = map[string]string{}
+		if idx.LastUsed == nil {
+			idx.LastUsed = map[string]string{}
 		}
-		o.LastUsed[v.Name()], changed = s.today(), true
+		idx.LastUsed[v.Name()], changed = s.today(), true
 	}
 	if !changed {
 		return nil
 	}
-	return writeYAML(filepath.Join(s.dir, name, indexFile), o)
+	return writeYAML(filepath.Join(s.dir, name, indexFile), idx)
 }
 
 func (s *Store) lockStore() (func(), error) {
@@ -314,19 +365,6 @@ func (s *Store) lockStore() (func(), error) {
 		return nil, fmt.Errorf("locking the cache: %w", err)
 	}
 	return func() { _ = fl.Unlock() }, nil
-}
-
-// describeOrigin names a module's origin for an error; source and path come from the cache
-// index or a recorded source, so both are untrusted.
-func describeOrigin(src, path string, comps *source.Components) string {
-	out := untrusted.Text(src, untrusted.MaxName)
-	if path != "" {
-		out += " (path " + untrusted.Text(path, untrusted.MaxName) + ")"
-	}
-	if comps != nil {
-		out += " selecting " + comps.String()
-	}
-	return out
 }
 
 // Put caches freshly fetched content and points the head for req.Ref at it: Prepare, then
@@ -431,24 +469,10 @@ func (s *Store) Prepare(req PutRequest) (Staged, error) {
 		ref: ref, components: req.Components.Clone()}, nil
 }
 
-// NameTakenError refuses a module whose name the cache holds from another source or path: the
-// cache keeps one source per name.
-type NameTakenError struct {
-	Name string
-	msg  string
-}
-
-func (e *NameTakenError) Error() string { return e.msg }
-
-// RemoveHint is the hint that clears the way for e's module: removing the cached one, with the
-// run's output flags (display).
-func (e *NameTakenError) RemoveHint(display ...string) string {
-	return "remove the cached one first: " + errs.ShellJoin(append([]string{"lola", "cache", "rm", e.Name}, display...))
-}
-
-// Commit publishes a prepared version under the cache lock: it refuses a module whose name the
-// cache already holds from another source or path (checked again here, since another process may
-// have cached the name since the caller checked), copies the staged tree into a new version
+// Commit publishes a prepared version under the cache lock: it records its source as an origin of
+// the name, or updates the one the cache holds for that source (checked again here, since another
+// process may have cached the name since the caller checked), and makes it the newest, which a
+// reader that names the module and no source gets. It copies the staged tree into a new version
 // (reusing an identical one) and sets the head for the fetched ref. With headIfAbsent the head
 // is set only when that ref has none, so a pinned fetch never moves one. The staged tree is
 // left in place for the run, which keeps rendering from it; the returned version is the
@@ -461,16 +485,20 @@ func (s *Store) Commit(st Staged, headIfAbsent bool) (Version, error) {
 	}
 	defer unlock()
 
-	o, found, err := s.Origin(sv.Name)
+	idx, _, err := s.readIndex(sv.Name)
 	if err != nil {
 		return Version{}, err
 	}
-	idx, ok := st.Index(o, found, headIfAbsent)
-	if !ok {
-		taken := &NameTakenError{Name: sv.Name, msg: fmt.Sprintf("a different module named %q is already in your cache (from %s); this one is from %s",
-			sv.Name, describeOrigin(o.Source, o.Path, o.Components), describeOrigin(st.source, st.path, st.components))}
-		return Version{}, errs.WithHints(taken, taken.RemoveHint())
+	i := idx.find(st.Key())
+	var o Origin
+	if i >= 0 {
+		o = idx.Origins[i]
+		idx.Origins = slices.Delete(idx.Origins, i, i+1)
 	}
+	if st.ReplaceGoneOrigin && source.IsLocal(source.Kind(st.typ), st.source) {
+		idx.Origins = slices.DeleteFunc(idx.Origins, Origin.LocalGone)
+	}
+	idx.Origins = slices.Insert(idx.Origins, 0, st.Index(o, i >= 0, headIfAbsent))
 	vdir := filepath.Join(s.dir, sv.Name, "versions", sv.ID)
 	switch _, err := os.Stat(vdir); {
 	case errors.Is(err, fs.ErrNotExist):
@@ -558,10 +586,22 @@ func setHead(heads []Head, head Head) []Head {
 	return out
 }
 
-// Head returns the newest version fetched for ref. A ref that is a full commit SHA, in any case,
-// is served only by a head that records that commit as the one its fetch resolved (R-9-27).
+// Head returns the newest version fetched for ref from the newest origin of name, else from
+// another. A ref that is a full commit SHA, in any case, is served only by a head that records
+// that commit as the one its fetch resolved (R-9-27). A caller that knows the source it means
+// asks HeadFor.
 func (s *Store) Head(name, ref string) (Version, bool, error) {
 	o, found, err := s.Origin(name)
+	return s.headOf(name, o, found, ref, err)
+}
+
+// HeadFor is Head for the origin of the source k names alone.
+func (s *Store) HeadFor(name, ref string, k SourceKey) (Version, bool, error) {
+	o, found, err := s.OriginFor(name, k)
+	return s.headOf(name, o, found, ref, err)
+}
+
+func (s *Store) headOf(name string, o Origin, found bool, ref string, err error) (Version, bool, error) {
 	if err != nil || !found {
 		return Version{}, false, err
 	}
@@ -684,7 +724,7 @@ func (s *Store) Used(name, id string) error {
 		return err
 	}
 	today := s.today()
-	if o, found, err := s.Origin(name); err != nil || !found || o.LastUsed[id] == today {
+	if idx, found, err := s.readIndex(name); err != nil || !found || idx.LastUsed[id] == today {
 		return err
 	}
 	unlock, err := s.lockStore()
@@ -692,8 +732,8 @@ func (s *Store) Used(name, id string) error {
 		return err
 	}
 	defer unlock()
-	o, found, err := s.Origin(name)
-	if err != nil || !found || o.LastUsed[id] == today {
+	idx, found, err := s.readIndex(name)
+	if err != nil || !found || idx.LastUsed[id] == today {
 		return err
 	}
 	if _, err := os.Lstat(filepath.Join(s.dir, name, "versions", id)); errors.Is(err, fs.ErrNotExist) {
@@ -701,11 +741,11 @@ func (s *Store) Used(name, id string) error {
 	} else if err != nil {
 		return err
 	}
-	if o.LastUsed == nil {
-		o.LastUsed = map[string]string{}
+	if idx.LastUsed == nil {
+		idx.LastUsed = map[string]string{}
 	}
-	o.LastUsed[id] = today
-	return writeYAML(filepath.Join(s.dir, name, indexFile), o)
+	idx.LastUsed[id] = today
+	return writeYAML(filepath.Join(s.dir, name, indexFile), idx)
 }
 
 // removeHint coaches removing a cached module whose bytes or records lola refuses.
@@ -750,43 +790,86 @@ func (o Origin) LocalGone() bool {
 	return errors.Is(err, fs.ErrNotExist)
 }
 
-// Origin reads index.yml; found is false when the module is not stored.
+// Origin is the newest origin of name (the source last committed to the cache), as a view whose
+// Heads hold the other origins' after its own (index.view); found is false when the module is
+// not stored. Where the source a run asks for is known, OriginFor is the origin of that source.
 func (s *Store) Origin(name string) (Origin, bool, error) {
-	if err := module.ValidateName("module", name); err != nil {
+	idx, found, err := s.readIndex(name)
+	if err != nil || !found {
 		return Origin{}, false, err
 	}
-	var o Origin
-	err := readYAML(filepath.Join(s.dir, name, indexFile), &o)
-	if errors.Is(err, fs.ErrNotExist) {
+	return idx.view(0, true), true, nil
+}
+
+// OriginFor is the origin of name for the source k names, with its own heads only; found is false
+// when the module is not stored from that source.
+func (s *Store) OriginFor(name string, k SourceKey) (Origin, bool, error) {
+	idx, found, err := s.readIndex(name)
+	if err != nil || !found {
+		return Origin{}, false, err
+	}
+	i := idx.find(k)
+	if i < 0 {
 		return Origin{}, false, nil
 	}
+	return idx.view(i, false), true, nil
+}
+
+// Origins are every origin of name, the newest first, each with its own heads only; none when the
+// module is not stored.
+func (s *Store) Origins(name string) ([]Origin, error) {
+	idx, found, err := s.readIndex(name)
+	if err != nil || !found {
+		return nil, err
+	}
+	out := make([]Origin, len(idx.Origins))
+	for i := range idx.Origins {
+		out[i] = idx.view(i, false)
+	}
+	return out, nil
+}
+
+// readIndex reads and checks index.yml; found is false when the module is not stored.
+func (s *Store) readIndex(name string) (idx index, found bool, err error) {
+	if err := module.ValidateName("module", name); err != nil {
+		return index{}, false, err
+	}
+	err = readYAML(filepath.Join(s.dir, name, indexFile), &idx)
+	if errors.Is(err, fs.ErrNotExist) {
+		return index{}, false, nil
+	}
 	if _, read := errors.AsType[*fs.PathError](err); err != nil && !read {
-		return Origin{}, false, &IndexError{Name: name, Err: err}
+		return index{}, false, &IndexError{Name: name, Err: err}
 	}
 	if err != nil {
-		return Origin{}, false, err
+		return index{}, false, err
 	}
-	if o.Components != nil {
-		if err := o.Components.Check(); err != nil {
-			return Origin{}, false, errs.WithHints(fmt.Errorf("cache entry %s: components: %w", name, err), removeHint(name))
-		}
+	if len(idx.Origins) == 0 {
+		return index{}, false, errs.WithHints(&IndexError{Name: name, Err: errors.New("it records no origin")}, removeHint(name))
 	}
-	for _, h := range o.Heads {
-		if err := checkID(name, h.Digest); err != nil {
-			return Origin{}, false, err
+	for _, o := range idx.Origins {
+		if o.Components != nil {
+			if err := o.Components.Check(); err != nil {
+				return index{}, false, errs.WithHints(fmt.Errorf("cache entry %s: components: %w", name, err), removeHint(name))
+			}
 		}
-		if h.Commit != "" && !source.IsFullCommit(h.Commit) {
-			return Origin{}, false, errs.WithHints(fmt.Errorf("cache entry %s: the head for ref %q records commit %q, which is not a full commit SHA",
-				name, untrusted.Text(h.Ref, untrusted.MaxName), untrusted.Text(h.Commit, untrusted.MaxName)), removeHint(name))
+		for _, h := range o.Heads {
+			if err := checkID(name, h.Digest); err != nil {
+				return index{}, false, err
+			}
+			if h.Commit != "" && !source.IsFullCommit(h.Commit) {
+				return index{}, false, errs.WithHints(fmt.Errorf("cache entry %s: the head for ref %q records commit %q, which is not a full commit SHA",
+					name, untrusted.Text(h.Ref, untrusted.MaxName), untrusted.Text(h.Commit, untrusted.MaxName)), removeHint(name))
+			}
 		}
 	}
 	// A last_used entry lola did not write is dropped, never refused: its key reaches no path, and
 	// its version counts as first seen on the next clean's day (Plan 9 §6.3, R-9-44).
-	maps.DeleteFunc(o.LastUsed, func(id, day string) bool {
+	maps.DeleteFunc(idx.LastUsed, func(id, day string) bool {
 		_, err := time.Parse(dayLayout, day)
 		return !ValidID(id) || err != nil
 	})
-	return o, true, nil
+	return idx, true, nil
 }
 
 // Names lists stored module names, sorted.

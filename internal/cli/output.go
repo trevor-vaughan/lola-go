@@ -56,7 +56,8 @@ func (a *app) height(w any) int {
 // under --plain. paged is set when the output goes to the viewer or a pager, which shows all of
 // it, so printers drop their caps (more). verbose is -v: a run's detail notices are printed, not
 // counted (printNotices); a command without -v prints them all, as it did before -v.
-type style struct{ color, plain, paged, verbose bool }
+// asking marks a plan shown just before the question that applies it, so it is no dry run.
+type style struct{ color, plain, paged, verbose, asking bool }
 
 // more is the command a capped listing names to list everything, or "" when the output is paged
 // and shows everything.

@@ -141,7 +141,7 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} migrate -y"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemout ShouldContainSubstring "nothing to migrate"
+          - result.systemout ShouldContainSubstring "nothing more to migrate"
           - result.systemout ShouldContainSubstring "owned by lola-go module review"
           - result.systemout ShouldContainSubstring "2 record(s) lola-go cannot migrate are still in installed.yml"
           - 'result.systemout ShouldContainSubstring "already registered: general from http://127.0.0.1:8765/market.git"'

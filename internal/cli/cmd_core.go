@@ -319,7 +319,7 @@ func (a *app) uninstallCmd() *cobra.Command {
 				}
 				// A plan that removes no files (it only edits a profile) has nothing to confirm.
 				if len(preview.Modules) > 0 {
-					show := func(w io.Writer) { printResult(w, style{}, "", preview) }
+					show := func(w io.Writer, s style) { printResult(w, s, "", preview) }
 					if err := a.confirm(cmd, args, "Uninstall "+strings.Join(args, ", ")+"?", Nav{}, preview, show); err != nil {
 						return err
 					}

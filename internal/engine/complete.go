@@ -5,9 +5,12 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/trevor-vaughan/lola-go/internal/config"
+	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/trash"
@@ -16,23 +19,60 @@ import (
 // The candidates shell completion offers. Like SyncNames and ProfileNames, each reads local files
 // only, and no more than it needs: it writes nothing, runs no git and touches no network.
 
-// ComponentNames is the kind/name of every component of the cached modules named, for --skip,
-// --only and --unskip: each module's current version's, in picker order, each once. A name the
-// cache does not hold, or cannot load, adds none.
+// ComponentNames is the kind/name of every component of the modules named, for --skip,
+// --only and --unskip: each cached module's current version's, or a local folder's as it reads
+// without a format adapter, in picker order, each once. A name the cache does not hold that is no
+// such folder, or that cannot be loaded, adds none.
 func (e *Engine) ComponentNames(modules []string) []string {
 	var out []string
 	for _, name := range modules {
-		v, _, err := e.Current(name)
-		if err != nil {
+		var m *module.Module
+		if v, _, err := e.Current(name); err == nil {
+			m = v.Module
+		} else if m = e.loadFolder(name); m == nil {
 			continue
 		}
-		for _, c := range components(v.Module) {
+		for _, c := range components(m) {
 			if id := c.String(); !slices.Contains(out, id) {
 				out = append(out, id)
 			}
 		}
 	}
 	return out
+}
+
+// KeepNames is the selectors on sc's keep-list (lola tidy --unkeep takes them as written there).
+func (e *Engine) KeepNames(sc Scope) ([]string, error) {
+	w, err := where(sc)
+	if err != nil {
+		return nil, err
+	}
+	k, err := config.LoadKeep(e.Paths.Keep)
+	if err != nil {
+		return nil, err
+	}
+	return tidyNames(k.Entries(w)), nil
+}
+
+// loadFolder is the module in the local folder dir, or nil when dir is no folder or holds no module
+// lola reads without a format adapter (the cache loads its versions the same way).
+func (e *Engine) loadFolder(dir string) *module.Module {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil
+	}
+	if fi, err := os.Stat(abs); err != nil || !fi.IsDir() {
+		return nil
+	}
+	ids := make([]string, 0, len(e.Targets))
+	for _, t := range e.Targets {
+		ids = append(ids, t.ID())
+	}
+	m, err := module.Load(abs, filepath.Base(abs), ids)
+	if err != nil {
+		return nil
+	}
+	return m
 }
 
 // InstalledVersions is the version of each module lock.json records as installed in sc, as --at

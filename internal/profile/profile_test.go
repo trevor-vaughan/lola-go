@@ -918,10 +918,10 @@ modules:
 
 		It("refuses a file that has not both keys, one whose bundle: is no list, and a project's that is a link", func() {
 			_, err := profile.ReadMixed(write("go.yml", "version: 1\nmodules: []\n"), false)
-			Expect(err).To(MatchError(filepath.Join(p.UserProfiles, "go.yml") + " has not both bundle: and modules:; there is nothing to split"))
+			Expect(err).To(MatchError(filepath.Join(p.UserProfiles, "go.yml") + " does not have both bundle: and modules:; there is nothing to split"))
 			path := write("empty.yml", "version: 1\nbundle: [x]\nmodules: []\n")
 			_, err = profile.ReadMixed(path, false)
-			Expect(err).To(MatchError(path+" has not both bundle: and modules:; there is nothing to split"), "a bundle beside no modules is a bundle")
+			Expect(err).To(MatchError(path+" does not have both bundle: and modules:; there is nothing to split"), "a bundle beside no modules is a bundle")
 			path = write("work.yml", "version: 1\nbundle: go\nmodules:\n  - {name: a, source: ../a}\n")
 			_, err = profile.ReadMixed(path, false)
 			Expect(err).To(MatchError(path+":2: bundle: is not a list of profile names; write it as bundle: [go, docs]"), "the split would drop go")

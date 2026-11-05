@@ -48,7 +48,7 @@ func ReadMixed(path string, project bool) (*Mixed, error) {
 	}
 	root := yamldoc.Root(d)
 	if root == nil || yamldoc.Value(root, "bundle") == nil || yamldoc.Value(root, "modules") == nil {
-		return nil, fmt.Errorf("%s has not both bundle: and modules:; there is nothing to split", untrusted.Text(path, untrusted.MaxName))
+		return nil, fmt.Errorf("%s does not have both bundle: and modules:; there is nothing to split", untrusted.Text(path, untrusted.MaxName))
 	}
 	parse := Parse
 	if project {
@@ -57,7 +57,7 @@ func ReadMixed(path string, project bool) (*Mixed, error) {
 	_, err = parse(path, b)
 	if _, mixed := errors.AsType[*MixedError](err); !mixed {
 		if err == nil {
-			return nil, fmt.Errorf("%s has not both bundle: and modules:; there is nothing to split", untrusted.Text(path, untrusted.MaxName))
+			return nil, fmt.Errorf("%s does not have both bundle: and modules:; there is nothing to split", untrusted.Text(path, untrusted.MaxName))
 		}
 		return nil, err
 	}

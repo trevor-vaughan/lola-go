@@ -218,8 +218,8 @@ var _ = Describe("Engine with git and archive sources", func() {
 			Expect(err).NotTo(HaveOccurred())
 			before := requests.Load()
 			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: commit}}, engine.Options{Targets: claude.Targets, DryRun: true})
-			Expect(err).To(MatchError(HavePrefix(`a different module named "example" is already in your cache`)), "fetched, then refused: the cache keeps one source per name")
-			Expect(requests.Load()).To(BeNumerically(">", before))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(requests.Load()).To(BeNumerically(">", before), "the cache holds the commit for another source: this one is fetched")
 		},
 		Entry("another location of the same repository", func(_, commit string) source.Spec {
 			other := testenv.ServeGit(filepath.Join(tmp, "srv")) + "/example.git"

@@ -850,7 +850,7 @@ var _ = Describe("Templates (Plan 7.2)", func() {
 		Expect(rendersRust("kit")).To(BeTrue(), "the cache's kit came from the entry's source")
 
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\nmodules: [\n"})
-		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred(), "an unreadable project.yml never stops lola check")
 		Expect(rep.Findings).To(ContainElement(And(HaveField("Severity", target.SeverityInfo), HaveField("Code", "vars-defaults"),
 			HaveField("Text", HaveSuffix("; lola check renders every module with its default vars")),

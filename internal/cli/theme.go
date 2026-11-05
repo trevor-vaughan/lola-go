@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -168,6 +170,9 @@ func (a *app) darkBackground(cmd *cobra.Command) (bool, error) {
 		return false, nil
 	}
 	dark, err := p.Background()
+	if errors.Is(err, errInputEnded) {
+		return false, errs.WithHints(err, "to skip the question, set theme: dark or theme: light in "+untrusted.Text(eng.Paths.Config, untrusted.MaxName))
+	}
 	if err != nil {
 		return false, err
 	}

@@ -17,13 +17,11 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/consent"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
-	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/native/nativetest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
-	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -195,15 +193,9 @@ var _ = Describe("lola info", func() {
 		Expect(requests.Load()).To(BeNumerically(">", before), "the source is fetched again")
 	})
 
-	Describe("a module whose name the cache holds from another source (Pick-P2-c)", func() {
+	Describe("a module whose name the cache holds from another source", func() {
 		var fork string
 		var sc engine.Scope
-		cacheState := func() store.Origin {
-			o, found, err := e.Store.Origin("kit")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(found).To(BeTrue())
-			return o
-		}
 		BeforeEach(func() {
 			Expect(os.RemoveAll(kit)).To(Succeed())
 			writeTree(kit, map[string]string{"lola.yml": "name: kit\n", "commands/up.md": "Upstream\n"})
@@ -214,8 +206,7 @@ var _ = Describe("lola info", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("Pick-P2-c: info of the fork reads it, shows the fork, and leaves the cache as it was", func() {
-			before := cacheState()
+		It("info of the other source shows it, installs nothing, and the cache keeps both sources", func() {
 			req := claudeHere()
 			req.Arg = fork
 			info, err := e.Info(ctx, req)
@@ -225,51 +216,26 @@ var _ = Describe("lola info", func() {
 			Expect(info.Commands).To(ConsistOf("fk"))
 			Expect(info.Install).NotTo(BeEmpty())
 			Expect(info.Install[0].Refusal).To(BeNil())
-			Expect(info.Install[0].Steps).NotTo(BeEmpty())
 			for _, st := range info.Install[0].Steps {
-				Expect(st.Path).NotTo(ContainSubstring("up"), "the plan is the fork's, not upstream's")
+				Expect(st.Path).NotTo(ContainSubstring("up"), "the plan is the other source's, not upstream's")
 			}
 			Expect(info.Install[0].Steps).To(ContainElement(HaveField("Path", ContainSubstring("fk"))))
-			Expect(info.Install[0].Command).To(BeEmpty(), "lola install kit would install the cached module")
-			Expect(info.Hints).To(Equal([]string{"then remove the cached one: lola cache rm kit",
-				"then install this source: lola install " + fork}), "nothing uses the cached module")
-			Expect(cacheState()).To(Equal(before), "the fork was not cached")
+			Expect(info.Install[0].Command).To(Equal("lola install " + fork))
+			Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
+			origins, err := e.Store.Origins("kit")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(origins).To(HaveLen(2))
 		})
 
-		It("Pick-P2-c: install of the fork refuses, and with no user of the cached module hints cache rm alone", func() {
+		It("install of the other source installs it, and the cache keeps both sources", func() {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: fork}}, engine.Options{Targets: []string{"claude-code"}})
-			Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
-			Expect(errs.Hints(err)).To(Equal([]string{"remove the cached one first: lola cache rm kit"}))
-		})
-
-		It("Pick-P2-c: the uninstall hinted for a module a profile placed works as hinted, off a terminal", func() {
-			_, err := e.Store.Remove("kit")
 			Expect(err).NotTo(HaveOccurred())
-			inProj := filepath.Join(proj, "mods", "kit")
-			writeTree(inProj, map[string]string{"lola.yml": "name: kit\n", "commands/up.md": "Upstream\n"})
-			_, err = e.Fetch(ctx, sourceSpec(inProj))
+			Expect(filepath.Join(proj, ".claude", "commands", "fk.md")).To(BeARegularFile())
+			Expect(filepath.Join(proj, ".claude", "commands", "up.md")).NotTo(BeAnExistingFile())
+			origins, err := e.Store.Origins("kit")
 			Expect(err).NotTo(HaveOccurred())
-			writeTree(filepath.Join(proj, ".lola", "profiles"), map[string]string{"review.yml": "version: 1\nmodules:\n  - name: kit\n    source: ../../mods/kit\n    targets: [claude-code]\n"})
-			trustAll := func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil }
-			_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Profiles: &engine.ProfileChange{Action: engine.ProfileOn, Name: "review"}, Trust: trustAll})
-			Expect(err).NotTo(HaveOccurred())
-			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: fork}}, engine.Options{Targets: []string{"claude-code"}})
-			Expect(errs.Hints(err)).To(HaveLen(2))
-			Expect(errs.Hints(err)[0]).To(HaveSuffix(": " + e.Command(sc, "uninstall", "kit")))
-			_, err = e.Uninstall(ctx, sc, []string{"kit"}, engine.Options{Targets: []string{"claude-code"}})
-			Expect(err).NotTo(HaveOccurred())
-		})
-
-		It("Pick-P2-c: install of the fork names each scope using the cached module, with its uninstall, before cache rm", func() {
-			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: "kit"}}, engine.Options{Targets: []string{"claude-code"}})
-			Expect(err).NotTo(HaveOccurred())
-			_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: fork}}, engine.Options{Targets: []string{"claude-code"}, Display: []string{"--plain"}})
-			Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
-			hints := errs.Hints(err)
-			Expect(hints).To(HaveLen(2))
-			Expect(hints[0]).To(HaveSuffix(": " + e.Command(sc, "uninstall", "kit", "--plain")))
-			Expect(hints[0]).To(ContainSubstring("kit is installed in this project"))
-			Expect(hints[1]).To(Equal("then remove the cached one: lola cache rm kit --plain"))
+			Expect(origins).To(HaveLen(2))
+			Expect(origins[0].Source).To(Equal(fork), "the newest")
 		})
 	})
 
@@ -320,6 +286,19 @@ var _ = Describe("lola info", func() {
 			HaveField("Status", engine.RecordedUnknown))))
 		Expect(info.Install[0].Consent).To(ContainElement(engine.InfoConsent{Kind: "runtime-hooks", Item: "kit", Recorded: engine.RecordedUnknown}))
 		Expect(info.Install[0].TrustNeeded).To(ContainElement("runtime-hooks"))
+	})
+
+	It("info with no plan lists an MCP server only under the assistants that can run one, as lola check does", func() {
+		proj = filepath.Join(tmp, "work", "x")
+		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
+		info, err := e.Info(ctx, request(engine.ScopeRequest{}, "claude-code"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.NoScope).NotTo(BeEmpty())
+		var ids []string
+		for _, s := range info.Runs.MCPServers {
+			ids = append(ids, s.Target)
+		}
+		Expect(ids).To(Equal([]string{"claude-code", "gemini-cli", "opencode"}), "agents installs skills only")
 	})
 
 	It("info's error about a component's frontmatter shows the author's key cleaned", func() {
@@ -416,6 +395,45 @@ var _ = Describe("lola info", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(choice).To(Equal(engine.TargetChoice{Manifest: []string{"opencode"}, Installed: []string{"claude-code"}, SetUp: []string{"claude-code"}}))
 		Expect(choice.NoneHere()).To(BeEmpty())
+	})
+
+	It("counts .agents/skills as set up only, never as an installed assistant, and chooses it only where no installed one is set up", func() {
+		sc := engine.Scope{Kind: target.Project, ProjectDir: proj}
+		Expect(os.MkdirAll(filepath.Join(proj, ".agents"), 0o755)).To(Succeed())
+		choice, err := e.DefaultTargets(sc, nil, engine.TargetRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(choice).To(Equal(engine.TargetChoice{}), "a bare .agents/ is not set up")
+
+		Expect(os.MkdirAll(filepath.Join(proj, ".agents", "skills"), 0o755)).To(Succeed())
+		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(choice).To(Equal(engine.TargetChoice{SetUpOnly: []string{"agents"}}))
+		Expect(choice.NoneHere()).To(BeEmpty())
+		Expect(choice.Here()).To(Equal([]string{"agents"}))
+
+		Expect(os.WriteFile(filepath.Join(tmp, "bin", "claude"), []byte("#!/bin/sh\necho 1.0.0\n"), 0o755)).To(Succeed())
+		p, err := paths.Resolve(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		e = engine.New(p)
+		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(choice).To(Equal(engine.TargetChoice{Installed: []string{"claude-code"}, SetUpOnly: []string{"agents"}}))
+		Expect(choice.NoneHere()).To(BeEmpty())
+		Expect(choice.Here()).To(Equal([]string{"agents"}), "no installed assistant is set up here")
+
+		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
+		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(choice).To(Equal(engine.TargetChoice{Installed: []string{"claude-code"}, SetUp: []string{"claude-code"}, SetUpOnly: []string{"agents"}}))
+		Expect(choice.Here()).To(Equal([]string{"claude-code"}), "agents is never added beside a set-up assistant")
+
+		Expect(os.RemoveAll(filepath.Join(proj, ".claude"))).To(Succeed())
+		Expect(os.RemoveAll(filepath.Join(proj, ".agents", "skills"))).To(Succeed())
+		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(choice.Here()).To(BeEmpty())
+		Expect(choice.NoneHere()).To(Equal("none of your installed assistants (claude-code) is set up here, so lola does not know where to install"))
+		Expect(e.RerunTargets(choice)).To(Equal([]string{"claude-code", "agents"}), "the installed assistants, then the targets that need none")
 	})
 
 	It("info echoes a full-SHA --ref typed in capitals lower-cased", func() {
@@ -603,7 +621,7 @@ var _ = Describe("lola info", func() {
 			Expect(entries).To(BeEmpty())
 		})
 
-		It("info with a scope but no assistant set up hints one -t run per installed assistant, and none when no assistant is installed", func() {
+		It("info with a scope but no assistant set up hints one -t run per installed assistant, then -t agents", func() {
 			Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 			info, err := e.Info(ctx, request(engine.ScopeRequest{Project: true}))
 			Expect(err).NotTo(HaveOccurred())
@@ -611,7 +629,7 @@ var _ = Describe("lola info", func() {
 			doc, err := json.Marshal(info)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(doc)).To(ContainSubstring(`"no_assistant":"no assistant found on your PATH`))
-			Expect(info.Hints).To(Equal([]string{}))
+			Expect(info.Hints).To(Equal([]string{rerun("-t", "agents")}), "agents needs no assistant installed")
 			Expect(info.Install).To(HaveLen(1))
 			Expect(info.Install[0].Scope).To(Equal("project"))
 			Expect(info.Install[0].Steps).To(Equal([]plan.Step{}))
@@ -625,7 +643,7 @@ var _ = Describe("lola info", func() {
 			info, err = e.Info(ctx, request(engine.ScopeRequest{Project: true}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info.NoAssistant).To(Equal("none of your installed assistants (claude-code, opencode) is set up here, so lola does not know where to install"))
-			Expect(info.Hints).To(Equal([]string{rerun("-t", "claude-code"), rerun("-t", "opencode")}))
+			Expect(info.Hints).To(Equal([]string{rerun("-t", "claude-code"), rerun("-t", "opencode"), rerun("-t", "agents")}))
 			for _, id := range []string{"claude-code", "opencode"} {
 				hinted, err := e.Info(ctx, request(engine.ScopeRequest{Project: true}, id))
 				Expect(err).NotTo(HaveOccurred())

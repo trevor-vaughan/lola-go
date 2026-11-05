@@ -87,41 +87,21 @@ testcases:
           - result.code ShouldEqual 0
           - result.systemout ShouldEqual "Deploy with kit from the mine marketplace."
 
-  - name: M5 A different cached module of one name refuses, coached
+  - name: M5 A different module of one name is cached beside the first
     steps:
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} cache add /work/other-kit --json > /tmp/m5.out 2> /tmp/m5.err; echo exit=$?'"
-        assertions:
-          - result.systemout ShouldEqual "exit=1"
-      - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m5.out /tmp/m5.err"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} cache add /work/other-kit"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemoutjson.hints ShouldHaveLength 1
-          - "result.systemoutjson.hints.hints0 ShouldEqual \"remove the cached one first: lola cache rm kit --json\""
       - type: exec
-        script: |
-          {{.runtime}} exec {{.container}} python3 -c '
-          import json
-          error = json.load(open("/tmp/m5.err"))["error"]
-          assert error == "a different module named \"kit\" is already in your cache (from /work/mk (path kit)); this one is from /work/other-kit", error
-          print("ok the refusal names both sources")
-          '
+        script: "{{.runtime}} exec {{.container}} {{.lola}} cache list --plain"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemout ShouldEqual "ok the refusal names both sources"
+          - "result.systemout ShouldEqual \"kit\t\tfolder\t/work/other-kit\""
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.hint}} /tmp/m5.err < /dev/null > /tmp/m5-hint.out 2> /tmp/m5-hint.err; echo exit=$?'"
-        assertions:
-          - result.systemout ShouldEqual "exit=1"
-      - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/m5-hint.out /tmp/m5-hint.err"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} cache add @mine/kit"
         assertions:
           - result.code ShouldEqual 0
-          - result.systemoutjson.error ShouldEqual "lola cache rm needs confirmation, and there is no terminal to ask on"
-          - result.systemoutjson.hints.hints0 ShouldEqual "lola cache rm kit --json -y"
-          - result.systemoutjson.would_remove ShouldHaveLength 1
-          - result.systemoutjson.would_remove.would_remove0 ShouldEqual kit
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} cache list --plain"
         assertions:

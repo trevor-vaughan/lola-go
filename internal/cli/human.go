@@ -246,12 +246,20 @@ func editLine(s style, ed engine.Edit, dry bool) string {
 	return s.ok(line)
 }
 
+// planHeader heads a plan that writes nothing: a dry run, or the plan the next question applies.
+func planHeader(s style) string {
+	if s.asking {
+		return "plan (nothing written yet; the question below applies it):"
+	}
+	return "plan (dry run; nothing was written):"
+}
+
 // printPlan prints the steps and each module's details: what a run did, or in a dry run would do.
 // Given more, the command that lists every step, the human steps of one scope stop at stepsShown
 // per module, then say how many more.
 func printPlan(w io.Writer, s style, r *engine.Result, scopes []engine.ScopeResult, more string) {
 	if r.DryRun && !s.plain {
-		fmt.Fprintln(w, "plan (dry run; nothing was written):")
+		fmt.Fprintln(w, planHeader(s))
 	}
 	if len(scopes) > 1 && !s.plain {
 		for _, sc := range scopes {
@@ -384,13 +392,19 @@ func printDone(w io.Writer, s style, verb string, r *engine.Result, scopes []eng
 	}
 }
 
-// printFindings prints the findings the user can act on: warn and skip findings, and info
-// findings with a hint. Under --plain every finding is a row; otherwise groupMin or more findings
-// that differ only in their artifact print as one line.
+// worthShowing reports whether a run prints f (printFindings): a warn or skip finding, an info
+// finding with a hint, or one saying a target wrote no copy of a skill because the agents target
+// delivers it, without which the run would name a target that got no file and say nothing why.
+func worthShowing(f target.Finding) bool {
+	return f.Severity != target.SeverityInfo || f.Hint != "" || f.Code == target.CodeSkillViaAgents
+}
+
+// printFindings prints the findings worth showing (worthShowing). Under --plain every finding is
+// a row; otherwise groupMin or more findings that differ only in their artifact print as one line.
 func printFindings(w io.Writer, s style, findings []target.Finding) {
 	var shown []target.Finding
 	for _, f := range findings {
-		if f.Severity == target.SeverityInfo && f.Hint == "" {
+		if !worthShowing(f) {
 			continue
 		}
 		shown = append(shown, f)
@@ -465,7 +479,7 @@ func printNotices(w io.Writer, s style, r *engine.Result) {
 		switch {
 		case f.Class != target.ClassDetail || f.Module == "" || f.Check == "":
 			shown = append(shown, f)
-		case f.Severity != target.SeverityInfo || f.Hint != "": // the ones printFindings would print
+		case worthShowing(f): // the ones printFindings would print
 			add(key{f.Module, f.Check}, f.Target)
 		}
 	}

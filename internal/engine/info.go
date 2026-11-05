@@ -334,9 +334,6 @@ type installBy struct {
 	arg, ref, path string
 	// shownRef is the ref of the head the version shown came from, before ref is pinned to a commit.
 	shownRef string
-	// fork says the version is staged only: the cache holds another module of its name, so no
-	// install of it works until that one is removed (Pick-P2-c).
-	fork bool
 }
 
 // Info resolves req's argument as install does, fetching a source or a marketplace entry into
@@ -389,7 +386,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 			return nil, err
 		}
 		info.Install = append(info.Install, unplanned("", v, hookConsent, declared))
-		info.Runs.MCPServers, info.Runs.RuntimeHooks = mcpServers(v.Module, e.targetIDs()), declared
+		info.Runs.MCPServers, info.Runs.RuntimeHooks = e.mcpServers(v.Module, e.targetIDs()), declared
 		return info, nil
 	}
 	if err != nil {
@@ -449,7 +446,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 				in.Notices = append(in.Notices, e.keyNotices(c.Scope)...)
 				info.Install = append(info.Install, in)
 			}
-			info.Runs.MCPServers, info.Runs.RuntimeHooks = mcpServers(v.Module, e.targetIDs()), declared
+			info.Runs.MCPServers, info.Runs.RuntimeHooks = e.mcpServers(v.Module, e.targetIDs()), declared
 			return info, nil
 		}
 	}
@@ -490,7 +487,7 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 		if len(refusedIDs) == 0 {
 			refusedIDs = e.targetIDs()
 		}
-		info.Runs.add(declared, mcpServers(v.Module, slices.Compact(slices.Sorted(slices.Values(refusedIDs)))))
+		info.Runs.add(declared, e.mcpServers(v.Module, slices.Compact(slices.Sorted(slices.Values(refusedIDs)))))
 	}
 	var needs TrustKinds
 	for _, in := range info.Install {
@@ -501,17 +498,6 @@ func (e *Engine) Info(ctx context.Context, req InfoRequest) (_ *Info, err error)
 	}
 	if !slices.ContainsFunc(info.Install, func(in InfoInstall) bool { return !in.current }) {
 		return info, nil // installing it again changes nothing anywhere
-	}
-	if by.fork {
-		// "lola install <name>" would install the cached module of that name, and the source is
-		// refused until it goes: say what frees the name, then the install of the source.
-		users, err := e.nameUsers(v.Name, scopes, req.Display)
-		if err != nil {
-			return nil, err
-		}
-		info.Hints = slices.Concat(info.Hints, users, []string{"then remove the cached one: " + errs.ShellJoin(append([]string{"lola", "cache", "rm", v.Name}, req.Display...)),
-			"then install this source: " + req.Install(req.Arg, req.Ref, req.Path, needs)})
-		return info, nil
 	}
 	for i := range info.Install {
 		info.Install[i].Command = req.Install(by.arg, by.ref, by.path, needs)
@@ -621,7 +607,7 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRu
 	if err != nil {
 		return store.Version{}, store.Origin{}, installBy{}, err
 	}
-	cached, fork := false, false
+	cached := false
 	if module.ValidateName("module", req.Arg) == nil {
 		if o, cached, err = e.Store.Origin(req.Arg); err != nil {
 			return store.Version{}, store.Origin{}, installBy{}, err
@@ -669,31 +655,31 @@ func (e *Engine) infoVersion(ctx context.Context, req InfoRequest, run *StagedRu
 		}
 		if v.Name == "" {
 			v, err = e.AddSource(ctx, req.Cwd, req.Arg, req.Ref, req.Path, req.Display)
-			if _, taken := errors.AsType[*store.NameTakenError](err); taken {
-				// The cache keeps one source per name: read this one from the run's staging, which
-				// the cache never sees, so info shows a fork beside the module it forks (Pick-P2-c).
-				v, err = e.stageSource(ctx, run, spec, "", "")
-				fork = err == nil
-			}
 			if err != nil {
 				return store.Version{}, store.Origin{}, installBy{}, err
 			}
 		}
 		by = installBy{arg: v.Name, ref: req.Ref}
 	}
-	if fork {
-		o, _ = run.alone(v.Name, v.ID)
-	} else if o, _, err = e.Store.Origin(v.Name); err != nil {
+	if o, _, err = e.Store.Origin(v.Name); err != nil {
 		return store.Version{}, store.Origin{}, installBy{}, err
 	}
 	shownRef := by.ref
+	// The cache keeps an origin per source, and a name alone installs the newest: a source typed
+	// beside another source of its name is installed as typed.
+	origins, err := e.Store.Origins(v.Name)
+	if err != nil {
+		return store.Version{}, store.Origin{}, installBy{}, err
+	}
 	switch {
 	case !isAddr && !cached && o.Type == string(source.KindGit):
 		by = installBy{arg: req.Arg, ref: v.Commit, path: req.Path}
+	case !isAddr && !cached && len(origins) > 1:
+		by = installBy{arg: req.Arg, ref: req.Ref, path: req.Path}
 	case isAddr && o.Type == string(source.KindGit) && v.Commit != "" && o.Components == nil:
 		by = installBy{arg: o.Source, ref: v.Commit, path: o.Path}
 	}
-	by.fork, by.shownRef = fork, shownRef
+	by.shownRef = shownRef
 	return v, o, by, nil
 }
 
@@ -952,9 +938,8 @@ func kindNames(k TrustKinds) []string {
 
 // infoTargets is the assistants install would plan for at sc off a terminal, with no -t
 // (DefaultTargets): none when the scope's manifest gives them (the plan uses those, shown), else
-// the assistants set up there. With none set up, why says so, and hints are the info run with -t
-// and each installed assistant (none when no assistant is installed), as install's refusal hints
-// (§4.4).
+// those set up there (TargetChoice.Here). With none set up, why says so, and hints are the info run
+// with -t and each of RerunTargets, as install's refusal hints (§4.4).
 func (e *Engine) infoTargets(sc Scope, r InstallRequest, req InfoRequest) (targets, shown []string, why string, hints []string, err error) {
 	choice, err := e.DefaultTargets(sc, []InstallRequest{r}, TargetRequest{})
 	if err != nil {
@@ -965,12 +950,12 @@ func (e *Engine) infoTargets(sc Scope, r InstallRequest, req InfoRequest) (targe
 	}
 	if why = choice.NoneHere(); why != "" {
 		hints = []string{}
-		for _, id := range choice.Installed {
+		for _, id := range e.RerunTargets(choice) {
 			hints = append(hints, req.Rerun("-t", id))
 		}
 		return nil, nil, why, hints, nil
 	}
-	return choice.SetUp, choice.SetUp, "", nil, nil
+	return choice.Here(), choice.Here(), "", nil, nil
 }
 
 // infoPlan is install -n of the version info showed (r pins it) at c for targets (none: the
@@ -1045,13 +1030,19 @@ func (e *Engine) infoPlan(ctx context.Context, req InfoRequest, run *StagedRun, 
 }
 
 // mcpServers is m's MCP servers as it declares them, for each of ids (with no plan, every
-// assistant lola knows) that the server applies to: ${PLUGIN_ROOT} and its kin unexpanded, since
-// they name a scope's module copy.
-func mcpServers(m *module.Module, ids []string) []InfoMCPServer {
+// assistant lola knows) that the server applies to and that can run one (lola check gives the
+// others' finding): ${PLUGIN_ROOT} and its kin unexpanded, since they name a scope's module copy.
+func (e *Engine) mcpServers(m *module.Module, ids []string) []InfoMCPServer {
 	out := []InfoMCPServer{}
 	for _, s := range m.MCPServers {
 		for _, id := range ids {
 			if !module.Supports(m.Targets, id) || !module.Supports(s.Targets, id) {
+				continue
+			}
+			if !slices.ContainsFunc(e.Targets, func(t target.Target) bool {
+				_, ok := t.Capabilities().Kinds["mcp"]
+				return t.ID() == id && ok
+			}) {
 				continue
 			}
 			args := []string{}

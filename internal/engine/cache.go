@@ -10,7 +10,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
-	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -55,68 +54,7 @@ func (e *Engine) AddSource(ctx context.Context, cwd, arg, ref, path string, disp
 	}
 	spec.Ref, spec.Path = ref, path
 	v, err := e.Fetch(ctx, spec)
-	return v, nameTaken(err, display)
-}
-
-// nameTaken replaces the hint of the cache's refusal of a second source for a name with one that
-// keeps the run's output flags (display). It does so only for the refusal as the cache made it,
-// its words and its one hint: one a caller wrapped with more words or more hints keeps its
-// hints, which belong to that caller. Any other error is returned as it is.
-func nameTaken(err error, display []string) error {
-	taken, ok := errors.AsType[*store.NameTakenError](err)
-	if !ok || err.Error() != taken.Error() || !slices.Equal(errs.Hints(err), []string{taken.RemoveHint()}) {
-		return err
-	}
-	return errs.WithHints(taken, taken.RemoveHint(display...))
-}
-
-// freeNameHints rewrites the hint of the cache's refusal of a second source for a name (nameTaken
-// has set it to cache rm with the run's flags, display) for a name the cache holds for a module
-// that scopes (and user scope) still install: lola cannot see projects it was not run from, so it
-// names the uninstall that frees the name at each of those, then the cache rm. An error that is
-// not that refusal as the cache made it, or whose hint a caller replaced, is returned as it is.
-func (e *Engine) freeNameHints(err error, scopes []Scope, display []string) error {
-	taken, ok := errors.AsType[*store.NameTakenError](err)
-	if !ok || err.Error() != taken.Error() {
-		return err
-	}
-	remove := taken.RemoveHint(display...)
-	hints := errs.Hints(err)
-	k := slices.Index(hints, remove)
-	if k < 0 {
-		return err
-	}
-	users, uerr := e.nameUsers(taken.Name, scopes, display)
-	if uerr != nil {
-		return errors.Join(err, uerr)
-	}
-	if len(users) == 0 {
-		return err
-	}
-	then := "then remove the cached one: " + strings.TrimPrefix(remove, "remove the cached one first: ")
-	return errs.WithHints(taken, slices.Concat(hints[:k], users, []string{then}, hints[k+1:])...)
-}
-
-// nameUsers is, for each of scopes (and user scope) that installs the cached module name, the hint
-// naming the uninstall that frees it there.
-func (e *Engine) nameUsers(name string, scopes []Scope, display []string) ([]string, error) {
-	var users []string
-	seen := map[string]bool{}
-	for _, sc := range append(slices.Clone(scopes), Scope{Kind: target.User}) {
-		if seen[sc.Key()] {
-			continue
-		}
-		seen[sc.Key()] = true
-		led, err := e.Ledger(sc)
-		if err != nil {
-			return nil, err
-		}
-		if led.Modules[name] != nil {
-			users = append(users, fmt.Sprintf("%s is installed %s; uninstall it there first: %s", untrusted.Text(name, untrusted.MaxName), scopeWhere(sc),
-				e.Command(sc, "uninstall", append([]string{name}, display...)...)))
-		}
-	}
-	return users, nil
+	return v, err
 }
 
 // Current returns a stored module's origin and the version used for its metadata: the

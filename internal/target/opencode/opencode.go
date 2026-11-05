@@ -154,6 +154,10 @@ func (o Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		if !module.Supports(s.Targets, id) {
 			continue
 		}
+		if ctx.SharedSkills[s.Name] { // OpenCode reads .agents/skills too: one copy, or it keeps one silently
+			finds = append(finds, target.SkillViaAgents(id, s.Name))
+			continue
+		}
 		doc, f, ok := target.Admit(id, caps, ctx, "skill", s.Name, s.Doc)
 		finds = append(finds, f...)
 		if name, set := doc.Frontmatter["name"]; set && name != s.Name {

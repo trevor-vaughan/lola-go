@@ -373,7 +373,7 @@ var _ = Describe("Migrate", func() {
 		Expect(res.Home).To(HaveField("Action", migrate.HomeKeep))
 		Expect(res.Home.Reason).To(HavePrefix("--keep-python"))
 		Expect(res.Home.Reason).To(ContainSubstring("lola-go sees a project at ~"))
-		Expect(res.Home.Hints).To(ContainElement(HavePrefix("to install below ~ before it is gone, move it aside: mv ")))
+		Expect(res.Home.Hints).To(ContainElement(HavePrefix("to install below ~ meanwhile, move the Python home aside: mv ")))
 		Expect(h.dir).To(BeADirectory())
 	})
 

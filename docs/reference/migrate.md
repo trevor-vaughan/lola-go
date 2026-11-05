@@ -30,7 +30,7 @@ Refusals: off a terminal without `-y`: `lola migrate needs confirmation, and the
 terminal to ask on`, hinting `lola migrate -y`. A map it cannot read says what is wrong:
 `--map-root "alice=/home/alice": "alice" is not an absolute path`, `--map-target
 "claude-code=vim": "vim" is not an assistant lola installs for; write claude-code, gemini-cli,
-opencode`.
+opencode, agents`.
 
 JSON: `dry_run`, `nothing_to_migrate`, `python_home`, `trash`, `destinations`, `unmappable`,
 `not_migrated`, `markets`, `home`, `warnings`, `summary` and `remap` ([Output

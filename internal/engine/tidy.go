@@ -22,7 +22,8 @@ type UnitID struct{ Target, Kind, Path, Key string }
 
 // TidyUnit is one item a tidy run lists: a unit (candidate, moved or protected), or in Skipped
 // a whole destination. Path and Trash are raw, but for JSON's escaping (R-6d-9); Name, Key,
-// Reason and every json:"-" string have been through untrusted.Text.
+// Reason and every json:"-" string have been through untrusted.Text. Code is a lock's; a
+// candidate has none, and a Reason only when it lies where other tools install too (whyShared).
 type TidyUnit struct {
 	Target string `json:"target"`
 	Kind   string `json:"kind"`

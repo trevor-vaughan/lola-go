@@ -65,7 +65,6 @@ var _ = Describe("resolveLink", func() {
 		Entry("an absolute link, naming its target", "m/abs", "/etc/passwd", "m/abs: symbolic link refused: it points to /etc/passwd, an absolute path"),
 		Entry("a link that leaves the source, naming its target", "m/up", "../../outside", "m/up: symbolic link refused: its target ../../outside leaves the source"),
 		Entry("a dangling link", "m/gone", "nope.md", "its target does not exist"),
-		Entry("a link to a directory", "m/dir", "../d", "its target is a directory"),
 		Entry("a link into .git", "m/git", "../.git/config", "its target is in .git/config, which lola never copies"),
 		Entry("a link into .git in another letter case, as a case-insensitive file system resolves it", "m/git", "../.GIT/config",
 			"its target is in .GIT/config, which lola never copies"),
@@ -73,13 +72,26 @@ var _ = Describe("resolveLink", func() {
 		Entry("a link through a Windows short name", "m/short", "../GIT~1/config", "its target is in GIT~1/config, which lola never copies"),
 	)
 
-	It("refuses a link through a linked directory even when the directory link stays inside", func() {
+	It("resolves a link to a directory, and a link through one", func() {
+		link("m/dir", "../d")
+		Expect(source.ResolveLinkForTest(b, "m/dir")).To(Equal("d"))
 		link("ld", "d")
 		link("m/via", "../ld/keep")
-		refused("m/via", "linked directory ld")
+		Expect(source.ResolveLinkForTest(b, "m/via")).To(Equal("d/keep"))
+		link("m/top", "..")
+		Expect(source.ResolveLinkForTest(b, "m/top")).To(Equal("."))
+	})
+
+	It("refuses a link through a linked directory to a name lola never copies", func() {
 		link("gl", ".git")
 		link("m/conf", "../gl/config")
-		refused("m/conf", "linked directory gl")
+		refused("m/conf", "its target is in .git/config, which lola never copies")
+	})
+
+	It("refuses a link that leaves the source through a directory link that stays inside", func() {
+		link("ld", "d")
+		link("m/up", "../ld/../../outside")
+		refused("m/up", "leaves the source")
 	})
 
 	It("refuses a chain that passes through an ignored name", func() {

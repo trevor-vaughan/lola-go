@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,11 +38,12 @@ func (e *Engine) Detect(sc Scope) []Assistant {
 // with no -t (Plan 5c §5.3): the top-level targets of its write target's file when it has any
 // (Manifest, fileTargets: a profile's own, else the base's; From names that file, "" for the base,
 // targetsFile),
-// else the installed assistants set up there. Installed is the assistants found on PATH and SetUp
-// those of them whose project markers the scope has.
+// else the installed assistants set up there (Here). Installed is the assistants found on PATH and
+// SetUp those of them whose project markers the scope has. SetUpOnly is the targets with no binary
+// (agents) whose markers the scope has: never installed assistants.
 type TargetChoice struct {
-	Manifest, Installed, SetUp []string
-	From                       string
+	Manifest, Installed, SetUp, SetUpOnly []string
+	From                                  string
 }
 
 // DefaultTargets is sc's TargetChoice for an install of reqs told req about where it writes,
@@ -67,23 +69,50 @@ func (e *Engine) DefaultTargets(sc Scope, reqs []InstallRequest, req TargetReque
 		return TargetChoice{}, err
 	}
 	c := TargetChoice{Manifest: fileTargets(t, man), From: targetsFile(t)}
-	for _, as := range e.Detect(sc) {
-		if as.Binary == "" {
-			continue
-		}
-		c.Installed = append(c.Installed, as.Target)
-		if as.Marked {
-			c.SetUp = append(c.SetUp, as.Target)
+	for i, as := range e.Detect(sc) {
+		switch {
+		case target.NoBinary(e.Targets[i]):
+			if as.Marked {
+				c.SetUpOnly = append(c.SetUpOnly, as.Target)
+			}
+		case as.Binary != "":
+			c.Installed = append(c.Installed, as.Target)
+			if as.Marked {
+				c.SetUp = append(c.SetUp, as.Target)
+			}
 		}
 	}
 	return c, nil
 }
 
+// Here is the targets set up in the scope that an install off a terminal plans for when the
+// manifest gives none: the installed assistants set up there, else the targets with no binary set
+// up there, which are never added beside a set-up assistant.
+func (c TargetChoice) Here() []string {
+	if len(c.SetUp) > 0 {
+		return c.SetUp
+	}
+	return c.SetUpOnly
+}
+
+// RerunTargets is the targets a refusal for c's "no assistant here" hints a run with -t of, as
+// install's and info's do: the installed assistants, then the targets with no binary (agents),
+// which need none installed.
+func (e *Engine) RerunTargets(c TargetChoice) []string {
+	ids := slices.Clone(c.Installed)
+	for _, t := range e.Targets {
+		if target.NoBinary(t) {
+			ids = append(ids, t.ID())
+		}
+	}
+	return ids
+}
+
 // NoneHere is why c gives no assistant ("" when it gives some): none is installed, or none of
-// those installed is set up in the scope.
+// those installed is set up in the scope, and no target without a binary is set up there either.
 func (c TargetChoice) NoneHere() string {
 	switch {
-	case len(c.Manifest) > 0 || len(c.SetUp) > 0:
+	case len(c.Manifest) > 0 || len(c.Here()) > 0:
 		return ""
 	case len(c.Installed) == 0:
 		return "no assistant found on your PATH, so lola does not know where to install"

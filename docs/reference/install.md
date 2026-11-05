@@ -20,7 +20,7 @@ project with `.lola/` at or above the current directory, then `default_scope` in
 
 | Flag | What it does |
 |---|---|
-| `-t`, `--target <assistant>` | Install for these assistants (repeatable or comma-separated: `claude-code`, `gemini-cli`, `opencode`). Naming fewer than a module is installed on removes the others' files in the same run, after asking as a pick change does (`✗ my-module: gemini-cli (target dropped by -t)`). |
+| `-t`, `--target <assistant>` | Install for these assistants (repeatable or comma-separated: `claude-code`, `gemini-cli`, `opencode`, and `agents`, which writes skills only into `.agents/skills`: see [Skills for every tool](../guides/choosing-what-to-install.md#skills-for-every-tool-the-agents-target)). Naming fewer than a module is installed on removes the others' files in the same run, after asking as a pick change does (`✗ my-module: gemini-cli (target dropped by -t)`). |
 | `--ref <ref>` | The git branch, tag or full commit SHA to fetch. Running install again with another `--ref` switches an installed git module to it in place, keeping its picks and targets. |
 | `--path <dir>` | The module root inside the source (monorepos). |
 | `--at <module>=<version>` | Install the module only at this version: a git module's commit (any case), or a folder's or archive's `sha256:<digest>` (the digest lola prints). Repeatable; given twice alike it counts once; a module the install does not include is refused. If its source now serves another version, the install is refused, writing nothing, hinting `see what it serves now:` with `-n`. A refusal for a module's pre-install hook or the project's install script adds `--at` for the version it showed to its `then consent to it:` hint, so consent covers that version alone: a folder edited after you reviewed it is refused, its hook not run. |
@@ -119,7 +119,7 @@ Refusals:
   are …`, hinting `cached modules: lola cache list`.
 - No `-t` and no assistant set up in the project: `none of your installed assistants
   (claude-code, opencode) is set up here, so lola does not know where to install`, with one hint
-  per assistant (`lola install ./my-module --project -t claude-code`). An unknown one: `unknown
+  per assistant (`lola install ./my-module --project -t claude-code`), the last being `-t agents`. An unknown one: `unknown
   target "nosuch"`.
 - A module another layer provides, off a terminal (or with `-y`/`--force`): `mod1 comes from
   default (base); lola install needs to know whether to change it there or override it in profile
@@ -136,12 +136,6 @@ Refusals:
 - A cached version whose content does not match the digest an entry pins: `cached version
   my-module/1a2b3c4d does not match its digest sha256:…`, hinting `remove it from your cache, then
   install it again from its source: lola cache rm my-module`.
-- Another module of that name in your cache: `a different module named "my-module" is already in
-  your cache (from <its source>); this one is from <the new source>`, hinting `remove the cached
-  one first: lola cache rm my-module`. When `install` finds the cached module installed at user
-  scope or in the project it ran for, the hints name `lola uninstall my-module` for each of
-  those first, then `then remove the cached one: lola cache rm my-module`; lola cannot see other
-  projects.
 - A conflict ([Safety rules](../usage.md#safety-rules)), `--strict` with a finding (`--strict: 1
   finding(s); nothing was changed`), and a project whose `.lola/lock.json` git tracks.
 - An install script that is missing, not a regular file or not executable, and a project's that

@@ -260,6 +260,18 @@ var _ = Describe("Fetch of a git source", func() {
 		}
 	})
 
+	It("copies a committed link to a directory as that directory, with its committed modes", func() {
+		r := newRemote(tmp, map[string]string{"module/skills/s/SKILL.md": "S", "shared/ref/x.md": "X", "shared/ref/run.sh": "#!/bin/sh\n"})
+		Expect(os.Chmod(filepath.Join(r.work, "shared", "ref", "run.sh"), 0o755)).To(Succeed())
+		Expect(os.Symlink("../../../shared/ref", filepath.Join(r.work, "module", "skills", "s", "ref"))).To(Succeed())
+		r.commit(nil)
+		f, err := fetch(r.url, "", "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listTree(f.Dir)).To(ConsistOf("skills/s/SKILL.md", "skills/s/ref/x.md", "skills/s/ref/run.sh"))
+		Expect(f.Executables).To(Equal([]string{"skills/s/ref/run.sh"}))
+		expectNoLinks(f.Dir)
+	})
+
 	It("refuses a committed link that leaves the repository or names its .git", func() {
 		for i, c := range []struct{ to, reason string }{
 			{"../../../../outside.md", "module/commands/b.md: symbolic link refused: its target ../../../../outside.md leaves the source"},

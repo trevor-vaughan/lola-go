@@ -213,6 +213,9 @@ After the MVP:
   [#128](https://github.com/LobsterTrap/lola/issues/128)).
 - Targets: Copilot, Cursor, OpenClaw, Codex, Antigravity, Windsurf, Kiro and pi (the range of
   APM, [microsoft/apm](https://github.com/microsoft/apm));
-  editor-only assistants need a probe that does not rely on `PATH`.
+  editor-only assistants need a probe that does not rely on `PATH`. Done for skills only: the
+  `agents` target reaches Codex, Cursor, Copilot, Amp and Antigravity through `.agents/skills`, and
+  is set up by its directory, not by `PATH`. Their commands, agents, MCP servers and rules still
+  need targets of their own.
 - `install --pre-install` / `--post-install` flags.
 - Release automation (goreleaser and CI) and Windows.

@@ -120,8 +120,8 @@ var _ = Describe("Store", func() {
 		o, found, err := s.Origin("example")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found).To(BeTrue())
-		Expect(o).To(Equal(store.Origin{Source: "/src/example", Type: "folder", Heads: []store.Head{{Ref: "", Digest: v.ID}},
-			LastUsed: map[string]string{v.ID: "2026-10-08"}}))
+		Expect([]any{o.Source, o.Type, o.Heads, o.LastUsed}).To(Equal([]any{"/src/example", "folder", []store.Head{{Ref: "", Digest: v.ID}},
+			map[string]string{v.ID: "2026-10-08"}}))
 		fi, err := os.Stat(filepath.Join(p.Store, "example", "index.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(fi.Mode().Perm()).To(Equal(os.FileMode(0o600)))
@@ -283,7 +283,7 @@ var _ = Describe("Store", func() {
 		_, err := put(map[string]string{"commands/a.md": "x"}, "")
 		Expect(err).NotTo(HaveOccurred())
 		index := filepath.Join(p.Store, "example", "index.yml")
-		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: folder\nheads:\n  - {ref: \"\", digest: ../../../outside}\n"), 0o600)).To(Succeed())
+		Expect(os.WriteFile(index, []byte("origins:\n  - source: /src/example\n    type: folder\n    heads:\n      - {ref: \"\", digest: ../../../outside}\n"), 0o600)).To(Succeed())
 		_, _, err = s.Origin("example")
 		Expect(err).To(MatchError(ContainSubstring(`version id "../../../outside" is invalid`)))
 		_, _, err = s.Head("example", "")
@@ -294,7 +294,7 @@ var _ = Describe("Store", func() {
 		v, err := put(map[string]string{"commands/a.md": "x"}, "")
 		Expect(err).NotTo(HaveOccurred())
 		index := filepath.Join(p.Store, "example", "index.yml")
-		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: git\nheads:\n  - {ref: \"\", digest: "+v.ID+", commit: nope}\n"), 0o600)).To(Succeed())
+		Expect(os.WriteFile(index, []byte("origins:\n  - source: /src/example\n    type: git\n    heads:\n      - {ref: \"\", digest: "+v.ID+", commit: nope}\n"), 0o600)).To(Succeed())
 		_, _, err = s.Origin("example")
 		Expect(err).To(MatchError(ContainSubstring(`records commit "nope"`)))
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola cache rm example")))
@@ -302,7 +302,7 @@ var _ = Describe("Store", func() {
 		Expect(err).To(HaveOccurred())
 
 		full := strings.Repeat("a", 40)
-		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: git\nheads:\n  - {ref: \"\", digest: "+v.ID+", commit: "+full+"}\n"), 0o600)).To(Succeed())
+		Expect(os.WriteFile(index, []byte("origins:\n  - source: /src/example\n    type: git\n    heads:\n      - {ref: \"\", digest: "+v.ID+", commit: "+full+"}\n"), 0o600)).To(Succeed())
 		got, ok, err := s.Head("example", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())
@@ -314,11 +314,11 @@ var _ = Describe("Store", func() {
 		Expect(err).NotTo(HaveOccurred())
 		sha, other := strings.Repeat("a", 40), strings.Repeat("b", 40)
 		index := filepath.Join(p.Store, "example", "index.yml")
-		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: git\nheads:\n  - {ref: "+sha+", digest: "+v.ID+", commit: "+other+"}\n"), 0o600)).To(Succeed())
+		Expect(os.WriteFile(index, []byte("origins:\n  - source: /src/example\n    type: git\n    heads:\n      - {ref: "+sha+", digest: "+v.ID+", commit: "+other+"}\n"), 0o600)).To(Succeed())
 		_, ok, err := s.Head("example", sha)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeFalse(), "a head written before refs were commits, holding another commit")
-		Expect(os.WriteFile(index, []byte("source: /src/example\ntype: git\nheads:\n  - {ref: "+sha+", digest: "+v.ID+", commit: "+sha+"}\n"), 0o600)).To(Succeed())
+		Expect(os.WriteFile(index, []byte("origins:\n  - source: /src/example\n    type: git\n    heads:\n      - {ref: "+sha+", digest: "+v.ID+", commit: "+sha+"}\n"), 0o600)).To(Succeed())
 		_, ok, err = s.Head("example", strings.ToUpper(sha))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue(), "a commit in capitals is that commit")
@@ -618,24 +618,34 @@ var _ = Describe("Store", func() {
 			Expect(got.Meta.Executables).To(Equal([]string{"bin/x.sh"}))
 		})
 
-		It("checks the same-name rule again when it commits", func() {
+		It("keeps the origin of another source another process cached between prepare and commit", func() {
 			st, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "A"}), FallbackName: "example",
 				Source: "/src/example", Type: "folder", Now: now})
 			Expect(err).NotTo(HaveOccurred())
-			// Another process caches the name from another source between prepare and commit.
-			_, err = s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "B"}), FallbackName: "example",
+			other, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "B"}), FallbackName: "example",
 				Source: "/elsewhere/example", Type: "folder", Now: now})
 			Expect(err).NotTo(HaveOccurred())
-			before, _, err := s.Origin("example")
-			Expect(err).NotTo(HaveOccurred())
 
-			_, err = s.Commit(st, false)
-			Expect(err).To(MatchError(ContainSubstring(`a different module named "example" is already in your cache (from /elsewhere/example)`)))
-			Expect(errs.Hints(err)).To(ContainElement("remove the cached one first: lola cache rm example"))
-			after, _, err := s.Origin("example")
+			committed, err := s.Commit(st, false)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(after).To(Equal(before))
-			Expect(filepath.Join(p.Store, "example", "versions", st.Version.ID)).NotTo(BeAnExistingFile())
+			origins, err := s.Origins("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(origins).To(HaveLen(2))
+			Expect(origins[0].Source).To(Equal("/src/example"), "the source committed last is the newest")
+			Expect(origins[1].Source).To(Equal("/elsewhere/example"))
+			Expect(origins[1].Heads).To(Equal([]store.Head{{Ref: "", Digest: other.ID}}), "its own heads")
+			Expect(origins[0].Heads).To(Equal([]store.Head{{Ref: "", Digest: committed.ID}}))
+			newest, _, err := s.Origin("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(newest.Source).To(Equal("/src/example"))
+			Expect(newest.Heads).To(ConsistOf(store.Head{Ref: "", Digest: committed.ID}, store.Head{Ref: "", Digest: other.ID}),
+				"a version any origin heads counts as headed")
+			head, _, err := s.Head("example", "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(head.ID).To(Equal(committed.ID))
+			head, _, err = s.HeadFor("example", "", store.SourceKey{Type: "folder", Location: "/elsewhere/example"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(head.ID).To(Equal(other.ID))
 		})
 
 		It("refuses content that declares another module than the one asked for", func() {
@@ -666,8 +676,7 @@ var _ = Describe("Store", func() {
 
 		It("is the index Commit writes, but for last_used, and computing it caches nothing", func() {
 			st := prepare("https://example.invalid/example.git", "git", "main", false, map[string]string{"commands/a.md": "A"})
-			idx, ok := st.Index(store.Origin{}, false, false)
-			Expect(ok).To(BeTrue())
+			idx := st.Index(store.Origin{}, false, false)
 			Expect(idx).To(Equal(store.Origin{Source: "https://example.invalid/example.git", Type: "git",
 				Heads: []store.Head{{Ref: "main", Digest: st.Version.ID, Commit: commit, Fetched: "2026-10-08T12:00:00Z"}}}))
 			Expect(s.Names()).To(BeEmpty())
@@ -677,8 +686,7 @@ var _ = Describe("Store", func() {
 			o, _, err := s.Origin("example")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(o.LastUsed).To(Equal(map[string]string{st.Version.ID: "2026-10-08"}))
-			o.LastUsed = nil
-			Expect(o).To(Equal(idx))
+			Expect([]any{o.Source, o.Type, o.Heads}).To(Equal([]any{idx.Source, idx.Type, idx.Heads}))
 		})
 
 		It("moves only its ref's head over the cached index, and with headIfAbsent keeps the head that is there", func() {
@@ -690,14 +698,12 @@ var _ = Describe("Store", func() {
 			Expect(err).NotTo(HaveOccurred())
 			st := prepare("/src/example", "folder", "main", false, map[string]string{"commands/a.md": "C"})
 
-			idx, ok := st.Index(o, found, false)
-			Expect(ok).To(BeTrue())
+			idx := st.Index(o, found, false)
 			Expect(idx.Heads).To(Equal([]store.Head{{Ref: "dev", Digest: dev.ID}, {Ref: "main", Digest: st.Version.ID, Commit: commit}}),
 				"a folder's head records no fetch time")
 			Expect(idx.LastUsed).To(Equal(o.LastUsed))
 
-			kept, ok := st.Index(o, found, true)
-			Expect(ok).To(BeTrue())
+			kept := st.Index(o, found, true)
 			Expect(kept.Heads).To(Equal(o.Heads))
 		})
 
@@ -708,37 +714,18 @@ var _ = Describe("Store", func() {
 			Expect(err).NotTo(HaveOccurred())
 			st := prepare("/src/example", "folder", "v2", false, map[string]string{"commands/a.md": "B"})
 
-			idx, ok := st.Index(o, found, true)
-			Expect(ok).To(BeTrue())
+			idx := st.Index(o, found, true)
 			Expect(idx.Heads).To(Equal([]store.Head{{Ref: "main", Digest: main.ID}, {Ref: "v2", Digest: st.Version.ID, Commit: commit}}))
 		})
 
-		It("refuses a second source for the name, as Commit does, even when asked to replace a remote one", func() {
+		It("is a new origin when the cache holds none of the source, whatever it holds of the name", func() {
 			_, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "A"}), FallbackName: "example",
 				Source: "https://example.invalid/example.git", Type: "git", Now: now})
 			Expect(err).NotTo(HaveOccurred())
-			o, found, err := s.Origin("example")
-			Expect(err).NotTo(HaveOccurred())
 			st := prepare("/elsewhere/example", "folder", "", true, map[string]string{"commands/a.md": "B"})
-			idx, ok := st.Index(o, found, false)
-			Expect(ok).To(BeFalse())
-			Expect(idx).To(Equal(o))
-		})
-
-		It("takes the place of a local source that no longer exists only when asked to", func() {
-			_, err := put(map[string]string{"commands/a.md": "A"}, "") // /src/example does not exist on this machine
-			Expect(err).NotTo(HaveOccurred())
-			o, found, err := s.Origin("example")
-			Expect(err).NotTo(HaveOccurred())
-
-			_, ok := prepare("/elsewhere/example", "folder", "", false, map[string]string{"commands/a.md": "B"}).Index(o, found, false)
-			Expect(ok).To(BeFalse())
-
-			st := prepare("/elsewhere/example", "folder", "", true, map[string]string{"commands/a.md": "B"})
-			idx, ok := st.Index(o, found, false)
-			Expect(ok).To(BeTrue())
+			idx := st.Index(store.Origin{}, false, false)
 			Expect(idx).To(Equal(store.Origin{Source: "/elsewhere/example", Type: "folder",
-				Heads: []store.Head{{Ref: "", Digest: st.Version.ID, Commit: commit}}}), "heads and all")
+				Heads: []store.Head{{Ref: "", Digest: st.Version.ID, Commit: commit}}}))
 		})
 	})
 
@@ -774,13 +761,33 @@ var _ = Describe("Store", func() {
 			Expect(os.WriteFile(file, nil, 0o600)).To(Succeed())
 			Expect(origin(filepath.Join(file, "below"), "folder").LocalGone()).To(BeFalse(), "ENOTDIR")
 		})
-		It("Commit refuses to replace a remote origin even when asked to", func() {
+		It("Commit keeps a remote origin when asked to replace a gone one, and drops a gone local one", func() {
 			origin("https://example.invalid/example.git", "git")
 			st, err := s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/b.md": "B"}), FallbackName: "example",
 				Source: "/src/example", Type: "folder", Now: now, ReplaceGoneOrigin: true})
 			Expect(err).NotTo(HaveOccurred())
 			_, err = s.Commit(st, false)
-			Expect(err).To(MatchError(ContainSubstring(`a different module named "example" is already in your cache`)))
+			Expect(err).NotTo(HaveOccurred())
+			origins, err := s.Origins("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(origins).To(HaveLen(2))
+
+			gone := filepath.Join(p.Staging, "nowhere")
+			_, err = s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/c.md": "C"}), FallbackName: "example", Source: gone, Type: "folder", Now: now})
+			Expect(err).NotTo(HaveOccurred())
+			st, err = s.Prepare(store.PutRequest{Staged: stage(map[string]string{"commands/d.md": "D"}), FallbackName: "example",
+				Source: "/elsewhere/example", Type: "folder", Now: now, ReplaceGoneOrigin: true})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = s.Commit(st, false)
+			Expect(err).NotTo(HaveOccurred())
+			origins, err = s.Origins("example")
+			Expect(err).NotTo(HaveOccurred())
+			var sources []string
+			for _, o := range origins {
+				sources = append(sources, o.Source)
+			}
+			Expect(sources).To(Equal([]string{"/elsewhere/example", "https://example.invalid/example.git"}),
+				"the gone local origins give way, the remote one stays")
 		})
 	})
 
@@ -863,22 +870,39 @@ var _ = Describe("Store", func() {
 		Expect(staging).To(BeEmpty())
 	})
 
-	It("refuses a same-named module from a different origin", func() {
-		_, err := put(map[string]string{"commands/a.md": "x"}, "")
+	It("Cleaned drops a removed version's head from the origin that held it, and Restore puts it back there", func() {
+		x, err := put(map[string]string{"commands/a.md": "x"}, "main")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "y"}), FallbackName: "example", Source: "/elsewhere/example", Type: "folder", Now: now})
-		Expect(err).To(MatchError(ContainSubstring("different module named \"example\"")))
-		Expect(errs.Hints(err)).To(ContainElement("remove the cached one first: lola cache rm example"))
+		y, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "y"}), FallbackName: "example", Source: "/elsewhere/example", Type: "folder", Now: now})
+		Expect(err).NotTo(HaveOccurred())
+		before, _, err := s.Origin("example")
+		Expect(err).NotTo(HaveOccurred())
+		originsBefore, err := s.Origins("example")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(s.Cleaned("example", []string{x.ID})).To(Succeed())
+		after, err := s.Origins("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(after[0].Heads).To(Equal([]store.Head{{Ref: "", Digest: y.ID}}))
+		Expect(after[1].Heads).To(BeEmpty(), "the head of the removed version goes from the origin that held it")
+
+		Expect(s.Restore("example", before, []string{x.ID})).To(Succeed())
+		restored, err := s.Origins("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(restored[0].Heads).To(Equal(originsBefore[0].Heads))
+		Expect(restored[1].Heads).To(Equal(originsBefore[1].Heads))
 	})
 
-	It("never prints a control byte of either origin raw when refusing a same-named module", func() {
-		_, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "x"}), FallbackName: "example",
-			Source: "/src\x1b]0;pwned\x07/example", Path: "sub\x1b[31m", Type: "folder", Now: now})
+	It("keeps a same-named module from a different source as another origin", func() {
+		x, err := put(map[string]string{"commands/a.md": "x"}, "")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "y"}), FallbackName: "example",
-			Source: "/elsewhere\x1b[2J/example", Type: "folder", Now: now})
-		Expect(err).To(MatchError(`a different module named "example" is already in your cache (from /src?]0;pwned?/example (path sub?[31m)); ` +
-			"this one is from /elsewhere?[2J/example"))
+		y, err := s.Put(store.PutRequest{Staged: stage(map[string]string{"commands/a.md": "y"}), FallbackName: "example", Source: "/elsewhere/example", Type: "folder", Now: now})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(y.ID).NotTo(Equal(x.ID))
+		for _, id := range []string{x.ID, y.ID} {
+			_, err := s.Load("example", id)
+			Expect(err).NotTo(HaveOccurred(), "both versions stay cached")
+		}
 	})
 
 	It("stores nothing when the staged dir is not a module", func() {

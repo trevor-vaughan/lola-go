@@ -59,7 +59,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 		case "uninstall":
 			installKit(proj)
 			return confirmCase{
-				args: []string{"uninstall", "kit", "-C", proj}, context: projectContext(proj), plan: "→ would remove kit from project.yml (base)\nplan (dry run; nothing was written):", planLines: 4,
+				args: []string{"uninstall", "kit", "-C", proj}, context: projectContext(proj), plan: "→ would remove kit from project.yml (base)\nplan (nothing written yet; the question below applies it):", planLines: 4,
 				question: "Uninstall kit?", hint: "lola uninstall kit --json --root " + proj + " -y", done: "uninstalled",
 				keys: []string{"modules", "steps", "findings", "notices", "dry_run"}, steps: key("steps"), did: key("steps"),
 				written: func() bool {
@@ -139,7 +139,7 @@ var _ = Describe("a confirmation's JSON refusal (Plan 8 §9.1)", func() {
 				return out
 			}
 			return confirmCase{
-				args: []string{"migrate"}, plan: "plan (dry run; nothing was written):", planLines: 7,
+				args: []string{"migrate"}, plan: "plan (nothing written yet; the question below applies it):", planLines: 13,
 				question: "Migrate?", hint: "lola migrate --json -y", done: "✓ migrated project " + proj,
 				keys:  []string{"dry_run", "nothing_to_migrate", "python_home", "trash", "destinations", "unmappable", "not_migrated", "markets", "home", "warnings", "summary", "remap"},
 				steps: steps, did: steps,

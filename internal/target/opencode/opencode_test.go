@@ -67,6 +67,21 @@ var _ = Describe("opencode", func() {
 		Expect(string(p[".opencode/skills/lint/SKILL.md"].Data)).To(Equal("---\nname: lint\ndescription: l\nlicense: MIT\n---\nLint.\n"))
 	})
 
+	It("leaves a skill the .agents copy delivers to it, with an info finding, and still writes the others and other kinds", func() {
+		ctx.SharedSkills = map[string]bool{"review": true}
+		ins, fs := plan1(&module.Module{Name: "example", Skills: []module.Skill{
+			{Name: "review", Dir: "skills/review", Doc: doc("---\ndescription: r\n---\nReview.\n")},
+			{Name: "lint", Dir: "skills/lint", Doc: doc("---\ndescription: l\n---\nLint.\n")}},
+			Commands: []module.Command{{Name: "hi", Doc: doc("---\ndescription: h\n---\nHi.\n")}}})
+		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "opencode", Kind: "skill", Artifact: "review",
+			Code: "skill-via-agents", Text: "delivered through .agents/skills, which opencode reads", Class: target.ClassDetail}}))
+		p := byPath(ins)
+		Expect(p).NotTo(HaveKey(".opencode/skills/review"))
+		Expect(p).NotTo(HaveKey(".opencode/skills/review/SKILL.md"))
+		Expect(p).To(HaveKey(".opencode/skills/lint/SKILL.md"))
+		Expect(p).To(HaveKey(".opencode/commands/hi.md"))
+	})
+
 	It("warns that skills reach the model with Claude's shell and argument placeholders as written", func() {
 		bodies := map[string]string{
 			"inline":  "Diff:\n!`git diff`\n",

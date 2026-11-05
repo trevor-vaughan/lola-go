@@ -222,9 +222,11 @@ included), and any control or invisible character.
 
 A git checkout holds the bytes as committed on every machine: lola turns off line-ending
 conversion and every `.gitattributes` conversion and filter for its checkouts, and refuses a
-symbolic link inside the module's `--path` (anywhere in the repository when there is no
-`--path`) or on the way to it, before checking anything out; a link elsewhere in the repository
-is allowed. A git `--path` must name a directory of the repository in its exact letter case, so
+symbolic link on the way to the module's `--path` before checking anything out. A link inside the
+module (anywhere in the repository when there is no `--path`) is copied as the file or directory
+it names, and refused when it leaves the source, dangles, loops, is absolute or names `.git`; a
+link elsewhere in the repository is allowed, and so is a refused link outside every component a
+marketplace entry selects. A git `--path` must name a directory of the repository in its exact letter case, so
 a case-insensitive file system never checks out another one in its place. Execute bits come from
 the source itself (git's file modes, an archive's entry modes, a folder's files), never from the
 file system lola copied to, so the same module has the same digest on Linux, macOS and Windows.
@@ -361,8 +363,11 @@ archive's https:// URL or its absolute path`.
   profile `profiles/default.yml`, the base) and `$XDG_STATE_HOME/lola/` (ledger `lock.json`). Rules installed at user scope
   apply in every project.
 
-The targets are `claude-code` (Claude Code), `gemini-cli` (Gemini CLI) and `opencode`
-(OpenCode).
+The targets are `claude-code` (Claude Code), `gemini-cli` (Gemini CLI), `opencode`
+(OpenCode) and `agents` (skills only, into `.agents/skills`, which Codex, Cursor, Copilot, Amp,
+Gemini CLI and OpenCode read; see [the agents target](guides/choosing-what-to-install.md#skills-for-every-tool-the-agents-target)).
+`agents` has no command to look for: it is set up where `.agents/skills/` exists, lola offers it
+only there, and never beside an assistant that is set up.
 
 When you do not pass `-t`, lola uses the manifest's targets. Otherwise it offers the assistants
 installed on your machine (their command, `claude`, `gemini` or `opencode`, is on your
@@ -410,6 +415,16 @@ For `opencode` (user scope: the same paths under `$XDG_CONFIG_HOME/opencode/`, w
 | Agents | `.opencode/agents/<agent>.md` with `mode: subagent` unless the agent sets a mode; `name` is dropped and `model` is kept only as `provider/model`. OpenCode cannot express a tool list and gives an agent without one every tool, so an agent with a non-empty `tools` is skipped (`--force` installs it without the list). OpenCode refuses to start on an invalid agent value, so lola drops a `color` other than `#rrggbb` (OpenCode 1.18 also takes theme names such as `accent`, but later versions reject them), a `mode` other than `subagent`, `primary` or `all`, a non-numeric `temperature` or `top_p`, a `steps` or `maxSteps` that is not a positive integer, a non-boolean `hidden` or `disable`, a non-string `variant` and a non-map `options`. `permission` is passed through unchecked |
 | MCP servers | `opencode.jsonc` if it exists, else `opencode.json` → `mcp.<name>`: `{"type": "local", "command": [...], "environment"}` or `{"type": "remote", "url", "headers"}`; `${VAR}` becomes `{env:VAR}`. OpenCode merges both files and `opencode.jsonc` wins, so a server of the same name in `opencode.json` is overridden by lola's |
 | Rules | `.opencode/lola/<module>/<rule>.md`, listed as `.opencode/lola/<module>/*.md` in the same file's `instructions` (at user scope by absolute path) |
+
+For `agents` (user scope: the same paths under `~`):
+
+| Artifact | Project scope |
+|---|---|
+| Skills | `.agents/skills/<skill>/`; agentskills.io rules: a name of lowercase words joined by single hyphens, at most 64 characters and equal to the directory (added from the directory when missing), and a description of at most 1024 characters (a skill without one is never written); `hooks`, `mcpServers` and `mcp_servers` are dropped; no shell or argument placeholders in skills, so lola warns |
+| Commands, agents, MCP servers, rules, runtime hooks | Not written: `kind-unsupported` (`.agents` holds skills only) |
+
+When a module targets `agents`, `gemini-cli` and `opencode` leave the skills `agents` writes to it
+(`skill-via-agents`), so each tool loads a skill once.
 
 ## Choosing what to install
 
@@ -479,7 +494,7 @@ the run, `lola check` included: they are never skip findings.
 
 | Code | Severity | Forceable | Meaning |
 |---|---|---|---|
-| `kind-unsupported` | skip | no | The target has no place for this kind of artifact (in this build, `gemini-cli` and `opencode` for a module's runtime hooks). |
+| `kind-unsupported` | skip | no | The target has no place for this kind of artifact (in this build, `gemini-cli` and `opencode` for a module's runtime hooks, and `agents` for commands, agents, MCP servers, rules and runtime hooks). |
 | `name-rejected` | skip | yes | The target rejects the artifact's name (for `opencode`, also a skill whose `name` differs from its directory). |
 | `required-key-missing` | skip | yes | A frontmatter key the target needs is absent, empty, or was dropped for having the wrong type. |
 | `agent-tools-unenforceable` | skip | yes | The agent restricts its tools in a way the target cannot enforce (`gemini-cli`: names that are not Gemini's; `opencode`: any non-blank `tools` value, list or string). The assistant would give the agent every tool, so it is left out unless `--force`, which installs it without the list. |
@@ -503,8 +518,9 @@ the run, `lola check` included: they are never skip findings.
 | `opencode/arguments-renumbered` | warn | no | Claude's 0-based `$N`, `$ARGUMENTS[N]` and declared names became OpenCode's 1-based `$1`, `$2`, …; check the command with a few arguments, as OpenCode may split them differently. |
 | `opencode/shell-unchecked` | warn | no | A command has ``!`…` ``, which OpenCode runs wherever it appears, without Claude's permission checks (`allowed-tools` is dropped); its hint wraps the shell in a template branch that keeps it from OpenCode. |
 | `opencode/shell-fence` | skip | yes | A command runs shell in a ```` ```! ```` fenced block, which OpenCode does not run and would send to the model as text; use inline ``!`…` ``. |
-| `skill-shell-dropped` | warn | no | A skill runs shell with ``!`…` `` or a ```` ```! ```` block; `gemini-cli` and `opencode` do not run shell in skills, so it reaches the model as text. |
-| `skill-arguments-dropped` | warn | no | A skill uses `$ARGUMENTS`, `$ARGUMENTS[N]` or `$N`; `gemini-cli` and `opencode` do not fill argument placeholders in skills, so they reach the model as written. |
+| `skill-via-agents` | info (detail) | no | `gemini-cli` or `opencode` did not write its own copy of a skill, because the `agents` target writes it to `.agents/skills`, which they read. Shown with `-v` and always by `lola check`. |
+| `skill-shell-dropped` | warn | no | A skill runs shell with ``!`…` `` or a ```` ```! ```` block; `gemini-cli`, `opencode` and `agents` do not run shell in skills, so it reaches the model as text. |
+| `skill-arguments-dropped` | warn | no | A skill uses `$ARGUMENTS`, `$ARGUMENTS[N]` or `$N`; `gemini-cli`, `opencode` and `agents` do not fill argument placeholders in skills, so they reach the model as written. |
 | `opencode/escaped-arguments` | warn | no | A command has a Claude-escaped `\$N` or `\$ARGUMENTS`; OpenCode has no escape and still replaces it with arguments, so reword the text. |
 | `opencode/env-reference` | info | no | `${VAR}` in an MCP server becomes OpenCode's `{env:VAR}`. |
 | `opencode/env-default-dropped` | warn | no | OpenCode has no defaults for environment references: `${VAR:-default}` becomes `{env:VAR}`. |
@@ -932,6 +948,7 @@ binary. Each step below was run against a throwaway `HOME`.
 | Variable | Used for |
 |---|---|
 | `HOME` | User-scope root; base of the XDG defaults |
+| `USERPROFILE` | Used in place of `HOME` when `HOME` is unset, as on stock Windows; must be absolute |
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, `markets.yaml`, `keep.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
 | `LOLA_HOME` | The directory `lola migrate` reads (default `~/.lola`; must be absolute) |

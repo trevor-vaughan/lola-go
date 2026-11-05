@@ -112,6 +112,7 @@ var _ = Describe("lola migrate", func() {
 		r = lola("migrate", "-y")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring("nothing to migrate"))
+		Expect(r.out).NotTo(ContainSubstring("python home:"), "no heading over an empty section")
 	})
 
 	It("--force answers the Migrate? question off a terminal, and never the hooks' consent", func() {
@@ -163,6 +164,25 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.out).To(ContainSubstring("records: 0 to migrate, 1 already migrated, 1 left as they are\n"))
 	})
 
+	It("breaks the report into headed sections, bold when color is on", func() {
+		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- module: review\n  assistant: claude-code\n  scope: project\n  project_path: " + proj +
+			"\n  skills: [review, review_review]\n  commands: [ship]\n- module: review\n  assistant: cursor\n  scope: user\n"})
+		r := lola("migrate", "--dry-run")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(MatchRegexp(`\n\nproject \S+:\n`), "a blank line before each destination")
+		Expect(r.out).To(ContainSubstring("\n\nsummary:\nrecords: 1 to migrate, 1 left as they are\n"))
+		Expect(r.out).To(MatchRegexp(`\n\npython home:\n.*the Python lola's home `))
+		Expect(r.out).NotTo(ContainSubstring("\x1b["), "NO_COLOR is set")
+
+		GinkgoT().Setenv("LOLA_COLOR", "1")
+		r = lola("migrate", "--dry-run")
+		Expect(r.out).To(ContainSubstring("\x1b[1msummary:\x1b[0m\n"))
+		Expect(r.out).To(ContainSubstring("\x1b[1mpython home:\x1b[0m\n"))
+
+		r = lola("migrate", "--dry-run", "--plain")
+		Expect(r.out).NotTo(ContainSubstring("summary:"))
+	})
+
 	Context("from another machine (Plan 10 §3.1, §3.2)", func() {
 		var moved string
 		BeforeEach(func() {
@@ -195,6 +215,16 @@ var _ = Describe("lola migrate", func() {
 			Expect(lola("list", "--user").out).To(MatchRegexp(`kit\s+opencode\s+✓ ok`))
 		})
 
+		It("colors the plan shown before Migrate? as the run's report is, and not under NO_COLOR", func() {
+			ask := func() string {
+				p := &scripted{roots: []string{filepath.Join(tmp, "home")}, mapTargets: [][]string{{"opencode"}}, confirm: []bool{false}}
+				return lolaP(p, "migrate").err
+			}
+			Expect(ask()).NotTo(ContainSubstring("\x1b["), "NO_COLOR is set")
+			GinkgoT().Setenv("LOLA_COLOR", "1")
+			Expect(ask()).To(ContainSubstring("\x1b["))
+		})
+
 		It("goes back from an assistant question to the root question on Esc, the root answered pre-filled", func() {
 			p := &scripted{roots: []string{"", filepath.Join(tmp, "home")}, mapTargets: [][]string{{goBack}, {"opencode"}}, confirm: []bool{false}}
 			r := lolaP(p, "migrate")
@@ -215,8 +245,8 @@ var _ = Describe("lola migrate", func() {
 			Expect(r.out).To(ContainSubstring("next steps:\n→ map what this machine lacks: lola migrate --dry-run --map-root /Users/alice=" + filepath.Join(tmp, "home") +
 				" --map-target claude-code=opencode\n"))
 			aside := filepath.Join(tmp, "home", ".lola.python")
-			Expect(r.out).To(HaveSuffix("→ to install below ~ before it is gone, move it aside: mv " + filepath.Join(tmp, "home", ".lola") + " " + aside + "\n" +
-				"→ the Python lola and lola migrate then read it with LOLA_HOME=" + aside + "\n"))
+			Expect(r.out).To(HaveSuffix("→ to install below ~ meanwhile, move the Python home aside: mv " + filepath.Join(tmp, "home", ".lola") + " " + aside + "\n" +
+				"→ then point the Python lola and lola migrate at it with LOLA_HOME=" + aside + "\n"))
 
 			r = lola("migrate", "-y", "--json", "--map-target", "claude-code=opencode")
 			Expect(r.code).To(Equal(0), r.err)
@@ -277,7 +307,7 @@ var _ = Describe("lola migrate", func() {
 		Expect(r.err).To(Equal("error: --map-root \"Users/alice=/home/alice\": \"Users/alice\" is not an absolute path\n"))
 		r = lola("migrate", "--map-target", "claude-code=vim")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal("error: --map-target \"claude-code=vim\": \"vim\" is not an assistant lola installs for; write claude-code, gemini-cli, opencode\n"))
+		Expect(r.err).To(Equal("error: --map-target \"claude-code=vim\": \"vim\" is not an assistant lola installs for; write claude-code, gemini-cli, opencode, agents\n"))
 	})
 
 	It("ends with the consent a run skipped, under next steps", func() {
@@ -300,7 +330,8 @@ var _ = Describe("lola migrate", func() {
 		writeTree(home, map[string]string{"installed.yml": "version: '1.0'\ninstallations:\n- module: review\n  assistant: cursor\n  project_path: " + proj + "\n"})
 		r := lola("migrate")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.out).To(ContainSubstring("nothing to migrate"))
+		Expect(r.out).To(HavePrefix("nothing more to migrate; what lola leaves as it is, and what to do about it, follows\n"))
+		Expect(r.out).NotTo(ContainSubstring("nothing to migrate\n"), "the header may not say nothing and then list records")
 		Expect(r.out).To(ContainSubstring("unmappable review (cursor): lola-go has no target for cursor"))
 		Expect(r.out).To(ContainSubstring("the Python lola's home " + home + " stays: 1 record(s) lola-go cannot migrate are still in installed.yml"))
 	})

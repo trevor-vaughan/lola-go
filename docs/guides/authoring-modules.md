@@ -33,7 +33,7 @@ license: MIT
 homepage: https://example.com
 repository: https://example.com/repo.git
 keywords: [review, git]
-targets: [claude-code]          # restrict which assistants it supports: claude-code, gemini-cli, opencode
+targets: [claude-code]          # restrict which assistants it supports: claude-code, gemini-cli, opencode, agents (skills only)
 hooks: {pre-install: setup.sh}  # executable, path relative to the module root; run only with your consent (below)
 vars:                           # what templates read as vars, with defaults (templating.md, Vars)
   language: go
@@ -161,7 +161,7 @@ not stored, so later installs from your cache do not repeat them.
   treats it as literal text, but your assistants expand it.
 - Client namespaces reach only their own assistant: `com.anthropic.claude` and
   `com.anthropic.claude-code` reach `claude-code`, `ai.opencode` reaches `opencode`,
-  `com.google.gemini-cli` reaches `gemini-cli`, and `dev.getlola` reaches all of them. Each
+  `com.google.gemini-cli` reaches `gemini-cli`, and `dev.getlola` reaches all of them (`agents` takes only the skills). Each
   namespace's commands and agents are the `*.md` files in `extensions."<ns>".commands` and
   `.agents` (`./` directories, by default `<ns>/commands/` and `<ns>/agents/`).
   `extensions."<ns>".instructions` names a file delivered as the module's rule; a namespace that
@@ -340,7 +340,7 @@ sequenceDiagram
 
 A module's runtime hooks (a Claude plugin's `hooks/hooks.json`, or `components.runtime_hooks`)
 are Claude Code hooks: Claude Code runs them on its own events, inside the session, with your
-permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` report them as
+permissions. Only `claude-code` installs them; `gemini-cli`, `opencode` and `agents` report them as
 `kind-unsupported`, which `--force` does not override.
 
 - **Where.** At project scope, `.claude/settings.local.json`; at user scope,
@@ -471,7 +471,7 @@ permissions. Only `claude-code` installs them; `gemini-cli` and `opencode` repor
 }, 'themeCSS': '.node .nodeLabel{color:#ffffff!important;fill:#ffffff!important;}'}}%%
 flowchart TD
   Key["runtime hooks, frontmatter hooks or inline agent MCP servers"] --> Which{"which assistant?"}
-  Which -->|"gemini-cli or opencode"| Drop["not installed: kind-unsupported or frontmatter-key-dropped"]
+  Which -->|"gemini-cli, opencode or agents"| Drop["not installed: kind-unsupported or frontmatter-key-dropped"]
   Which -->|claude-code| Recorded{"recorded consent or --trust=runtime-hooks?"}
   Recorded -->|yes| Install[installed]
   Recorded -->|no| Terminal{"on a terminal and not --dry-run?"}

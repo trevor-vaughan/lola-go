@@ -183,10 +183,6 @@ var _ = Describe("Engine and the trust record", func() {
 			pulled := *loadManifest().Find("example")
 			pulled.Rules = &off
 			pull(manifest.Change{Set: []manifest.Entry{pulled}})
-			err := install(engine.Options{}, evil)
-			Expect(err).To(MatchError(ContainSubstring("a different module named \"example\" is already in your cache")))
-			_, err = e.Store.Remove("example") // as that refusal coaches
-			Expect(err).NotTo(HaveOccurred())
 			ch, err := e.InstallChoices(ctx, engine.ChoicesRequest{Cwd: proj, Scopes: []engine.ScopeChoice{{Scope: sc, Source: engine.SourceFlag}},
 				Modules: []engine.InstallRequest{{Arg: evil}}})
 			Expect(err).NotTo(HaveOccurred())

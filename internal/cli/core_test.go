@@ -577,14 +577,15 @@ var _ = Describe("core commands", func() {
 		r := lola("install", mod, "-C", proj, "--strict")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(projectContext(proj) + "error: none of your installed assistants (claude-code) is set up here, so lola does not know where to install\n" +
-			"  hint: lola install " + mod + " --root " + proj + " --strict -t claude-code\n"))
+			"  hint: lola install " + mod + " --root " + proj + " --strict -t claude-code\n" +
+			"  hint: lola install " + mod + " --root " + proj + " --strict -t agents\n"))
 
 		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
 		r = lola("install", mod, "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
 		run := "lola install " + mod + " --json --root " + proj
 		Expect(r.err).To(MatchJSON(`{`+projectWriteContextJSON(proj)+`"error": "no assistant found on your PATH, so lola does not know where to install", "hints": ["`+
-			run+` -t claude-code", "`+run+` -t gemini-cli", "`+run+` -t opencode"]}`), "the typed source and every flag")
+			run+` -t claude-code", "`+run+` -t gemini-cli", "`+run+` -t opencode", "`+run+` -t agents"]}`), "the typed source and every flag")
 		for _, h := range []string{run + " -t gemini-cli", run + " -t claude-code"} {
 			again := runConfirmed(h) // the second drops gemini-cli, whose files it asks about
 			Expect(again.code).To(Equal(0), h+": "+again.err)
@@ -606,7 +607,7 @@ var _ = Describe("core commands", func() {
 		Expect(lola("install", mod, "-C", proj).code).To(Equal(0))
 		r := lola("uninstall", "example", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("plan (dry run; nothing was written):"))
+		Expect(r.err).To(ContainSubstring("plan (nothing written yet; the question below applies it):"))
 		Expect(r.err).To(HaveSuffix("hint: lola uninstall example --root "+proj+" -y\n"), "the run with -y, which answers this question")
 		Expect(filepath.Join(proj, ".claude/commands/ship.md")).To(BeARegularFile())
 		Expect(lola("uninstall", "example", "--root", proj, "-y").code).To(Equal(0))
@@ -797,6 +798,16 @@ var _ = Describe("core commands", func() {
 		Expect(string(b)).To(Equal("{\n  \"mcpServers\": {,\n}\n"))
 	})
 
+	It("warns when a project's manifest gets a local source outside the project, and not for one inside", func() {
+		r := lola("install", mod, "-C", proj, "-n")
+		Expect(r.out).To(ContainSubstring("example comes from " + mod + ", outside the project: a teammate's sync will refuse it"))
+		inside := filepath.Join(proj, "mods", "inside")
+		writeTree(inside, map[string]string{"lola.yml": "name: inside\ndescription: In\n", "commands/in.md": "In\n"})
+		r = lola("install", inside, "-C", proj, "-n")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out + r.err).NotTo(ContainSubstring("outside the project"))
+	})
+
 	It("emits the install result as JSON with [] arrays", func() {
 		r := lola("install", mod, "-C", proj, "--json")
 		Expect(r.code).To(Equal(0), r.err)
@@ -804,6 +815,8 @@ var _ = Describe("core commands", func() {
 		Expect(json.Unmarshal([]byte(r.out), &v)).To(Succeed())
 		Expect(v["dry_run"]).To(BeFalse())
 		Expect(v["notices"]).To(Equal([]any{
+			map[string]any{"level": "warn", "class": "safety", "text": "example comes from " + mod + ", outside the project: a teammate's sync will refuse it; " +
+				"share a module through a git repository or an https:// archive"},
 			map[string]any{"level": "info", "class": "safety", "text": "keep it to yourself: lola profile -C " + proj + " --move example --to mine --switch --json"},
 			map[string]any{"level": "info", "class": "safety", "text": "meant for every project? lola profile --user --move example --to base -C " + proj + " --json"}}))
 		Expect(v["modules"]).To(HaveLen(1))
@@ -856,10 +869,10 @@ var _ = Describe("core commands", func() {
 		r := lola("list", "-C", proj, "-t", "claude-code,nosuch")
 		Expect(r.code).To(Equal(1))
 		Expect(r.out).To(BeEmpty())
-		Expect(r.err).To(Equal("error: unknown target \"nosuch\"\n  hint: valid targets: claude-code, gemini-cli, opencode\n"))
+		Expect(r.err).To(Equal("error: unknown target \"nosuch\"\n  hint: valid targets: claude-code, gemini-cli, opencode, agents\n"))
 		r = lola("list", "-C", proj, "-t", "nosuch", "--json")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(`{"error":"unknown target \"nosuch\"","hints":["valid targets: claude-code, gemini-cli, opencode"]}` + "\n"))
+		Expect(r.err).To(Equal(`{"error":"unknown target \"nosuch\"","hints":["valid targets: claude-code, gemini-cli, opencode, agents"]}` + "\n"))
 	})
 
 	It("lists an entry project.yml lists but lock.json does not record as not installed, per target", func() {
@@ -900,5 +913,30 @@ var _ = Describe("core commands", func() {
 		GinkgoT().Setenv("LOLA_COLOR", "1")
 		Expect(lola("list", "-C", proj).out).To(ContainSubstring("\x1b[32m✓ ok\x1b[0m"))
 		Expect(lola("list", "-C", proj, "--plain").out).NotTo(ContainSubstring("\x1b["))
+	})
+})
+
+var _ = Describe("lola install into a .claude/skills/<n> linked to .agents/skills/<n>", func() {
+	It("refuses claude-code with agents, hinting the run with each target alone, keeping the run's flags but -y", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj, mod := filepath.Join(tmp, "proj"), filepath.Join(tmp, "example")
+		writeTree(mod, map[string]string{"skills/review/SKILL.md": "---\ndescription: Review code\n---\nReview it.\n"})
+		Expect(os.MkdirAll(filepath.Join(proj, ".agents", "skills", "review"), 0o755)).To(Succeed())
+		Expect(os.MkdirAll(filepath.Join(proj, ".claude", "skills"), 0o755)).To(Succeed())
+		Expect(os.Symlink(filepath.Join("..", "..", ".agents", "skills", "review"), filepath.Join(proj, ".claude", "skills", "review"))).To(Succeed())
+		r := lola("install", mod, "-C", proj, "-t", "claude-code,agents", "-y", "--strict")
+		Expect(r.code).To(Equal(1))
+		run := "lola install " + mod + " --root " + proj + " --strict -t "
+		Expect(r.err).To(HaveSuffix("error: refusing to change anything: 1 conflict\n" +
+			"  agents: .agents/skills/review/SKILL.md: resolves to the same file as claude-code .claude/skills/review/SKILL.md (via symlink); refusing to write it twice\n" +
+			"  hint: " + run + "claude-code\n  hint: " + run + "agents\n"))
+		Expect(filepath.Join(proj, ".agents", "skills", "review", "SKILL.md")).NotTo(BeAnExistingFile())
+		for _, id := range []string{"claude-code", "agents"} {
+			again := lola(shellWords(run + id)[1:]...)
+			Expect(again.code).To(Equal(0), again.err)
+			Expect(filepath.Join(proj, ".agents", "skills", "review", "SKILL.md")).To(BeAnExistingFile(), id)
+			Expect(lola("rm", "example", "-y", "-C", proj).code).To(Equal(0))
+		}
 	})
 })

@@ -54,11 +54,6 @@ type CheckReport struct {
 // would fetch it (Plan 6c §3.3); display is the run's output flags, which its hints keep.
 func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, display []string) (*CheckReport, error) {
 	given := ids
-	if len(ids) == 0 {
-		for _, t := range e.Targets {
-			ids = append(ids, t.ID())
-		}
-	}
 	var ts []target.Target
 	for _, id := range ids {
 		t, err := e.target(id)
@@ -106,9 +101,12 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 			return nil, err
 		}
 	}
+	if len(given) == 0 {
+		ts = e.checkedTargets(sc, man, layers, want)
+	}
 	profiles := e.visibleOnce(sc)
 	for _, arg := range args {
-		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, given, probes, templates, want, profiles, display)
+		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, given, scopeNames(man, layers, agentsTarget), probes, templates, want, profiles, display)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +120,31 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 	return rep, nil
 }
 
-func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, given []string, probes *probeRun,
+// checkedTargets is what lola check covers with no -t: every target with a binary, and a target
+// without one (agents) only where it is set up at sc or the scope's targets name it: its manifest's
+// (man, nil when it could not be read), a profile layer's own, as fileTargets reads them, or an
+// entry's (want).
+func (e *Engine) checkedTargets(sc Scope, man *manifest.Manifest, layers []Layer, want []Wanted) []target.Target {
+	named := func(id string) bool {
+		return scopeNames(man, layers, id) || slices.ContainsFunc(want, func(w Wanted) bool { return slices.Contains(w.Targets, id) })
+	}
+	var ts []target.Target
+	for _, t := range e.Targets {
+		if !target.NoBinary(t) || named(t.ID()) || t.Detect(sc.Kind, t.Root(sc.Kind, sc.ProjectDir, e.Paths)) {
+			ts = append(ts, t)
+		}
+	}
+	return ts
+}
+
+// scopeNames reports whether the scope's own targets name id: its manifest's (man, nil when it
+// could not be read) or a profile layer's, as fileTargets reads them.
+func scopeNames(man *manifest.Manifest, layers []Layer, id string) bool {
+	return man != nil && slices.Contains(man.Targets, id) ||
+		slices.ContainsFunc(layers, func(l Layer) bool { return l.read != nil && slices.Contains(l.read.Targets, id) })
+}
+
+func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, given []string, scopeAgents bool, probes *probeRun,
 	templates *templateRun, want []Wanted, profiles func() ([]profile.Info, error), display []string) (cm CheckedModule, err error) {
 	full, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg, display)
 	if err != nil {
@@ -149,10 +171,10 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 		return cm, err
 	}
 	cm.Summary = resolvedSummary(x, full, true, r.skipped)
-	var ment *manifest.Entry
+	var ment, entry *manifest.Entry // entry is the one checked, kept when its vars are refused
 	from := ""
 	if w := find(want, m.Name); w != nil && e.checksEntry(sc, cwd, arg, w.Entry) {
-		ment, from = &w.Entry, w.From
+		ment, entry, from = &w.Entry, &w.Entry, w.From
 	}
 	// A bad override is the module's skip finding, as a template error is, and it renders with
 	// its defaults; a staged source is no cached version, so the refusal carries no hint.
@@ -174,28 +196,66 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 		cm.Notices = append(cm.Notices, e.mentionNotice(sc, m.Name, []string{arg}, nil, gaps, arg, Options{Targets: given, Display: display})...)
 	}
 	vars := resolvedVars(m, ment)
-	for _, t := range ts {
-		if !module.Supports(m.Targets, t.ID()) {
-			continue
-		}
+	var shared map[string]bool
+	// checkTarget is t's findings of the module: its template refusals, then its plan's.
+	checkTarget := func(t target.Target) ([]target.Finding, targetPlan, error) {
 		pctx := target.PlanContext{Scope: sc.Kind, Root: t.Root(sc.Kind, sc.ProjectDir, e.Paths), ContentDir: contentDir,
-			PluginRoot: contentDir, PluginData: contentDir, Version: probes.version(t)}
+			PluginRoot: contentDir, PluginData: contentDir, Version: probes.version(t), SharedSkills: shared}
 		if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
 			pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
 		}
 		rendered, refused, err := e.checkTemplates(ctx, m, templates.data(t.ID(), sc, vars), templates)
 		if err != nil {
-			return cm, err
+			return nil, targetPlan{}, err
 		}
+		var out []target.Finding
 		for _, te := range refused {
-			cm.Findings = append(cm.Findings, te.finding())
+			out = append(out, te.finding())
 		}
 		_, finds, err := t.Plan(rendered, pctx)
 		if err != nil {
-			return cm, fmt.Errorf("%s for %s: %w", m.Name, t.ID(), err)
+			return nil, targetPlan{}, fmt.Errorf("%s for %s: %w", m.Name, t.ID(), err)
 		}
 		for i := range finds {
 			finds[i].Module = m.Name
+		}
+		return append(out, finds...), targetPlan{rendered: rendered, finds: finds}, nil
+	}
+	// As install plans it (planModule): the agents target first, where the module's targets
+	// include it: the checked entry's own targets:, else -t, else the scope's (scopeAgents), never
+	// agents only set up here. Its error is returned at its place in ts, so a check refused is
+	// refused for the target it names first.
+	var (
+		viaAgents []target.Finding
+		agentsErr error
+		agentsRan bool
+	)
+	shares := slices.Contains(given, agentsTarget) || len(given) == 0 && scopeAgents
+	if entry != nil && len(entry.Targets) > 0 {
+		shares = slices.Contains(entry.Targets, agentsTarget) && (len(given) == 0 || slices.Contains(given, agentsTarget))
+	}
+	i := slices.IndexFunc(ts, func(t target.Target) bool { return t.ID() == agentsTarget })
+	if i >= 0 && shares && module.Supports(m.Targets, agentsTarget) {
+		var tp targetPlan
+		viaAgents, tp, agentsErr = checkTarget(ts[i])
+		if agentsErr == nil {
+			shared = sharedSkills(tp)
+		}
+		agentsRan = true
+	}
+	for _, t := range ts {
+		if !module.Supports(m.Targets, t.ID()) {
+			continue
+		}
+		finds := viaAgents
+		switch {
+		case t.ID() == agentsTarget && agentsRan && agentsErr != nil:
+			return cm, agentsErr
+		case t.ID() != agentsTarget || !agentsRan:
+			var err error
+			if finds, _, err = checkTarget(t); err != nil {
+				return cm, err
+			}
 		}
 		cm.Targets, cm.Findings = append(cm.Targets, t.ID()), append(cm.Findings, finds...)
 	}
@@ -274,8 +334,8 @@ func (e *Engine) checksEntry(sc Scope, cwd, arg string, ent manifest.Entry) bool
 	if got, isSrc, err := source.Parse(arg, cwd); err == nil && isSrc {
 		return got.Location == want.Location && got.Path == ent.Path
 	}
-	o, found, err := e.Store.Origin(arg)
-	return err == nil && found && o.Source == want.Location && o.Path == ent.Path
+	origins, err := e.Store.Origins(arg)
+	return err == nil && slices.ContainsFunc(origins, func(o store.Origin) bool { return o.Source == want.Location && o.Path == ent.Path })
 }
 
 // attrsUndefined warns on each literal attrs path that m's templates and partials read and no

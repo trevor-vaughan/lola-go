@@ -144,17 +144,6 @@ var _ = Describe("hints", func() {
 			func() []string {
 				return []string{"edited it yourself? lola install --project ./mods/kit --plain --no-pager"}
 			}),
-		Entry("cache add of a marketplace entry whose name your cache holds from another source",
-			func() error {
-				writeTree(filepath.Join(proj, "market"), map[string]string{
-					".claude-plugin/marketplace.json": `{"name": "acme", "owner": {"name": "Acme"}, "plugins": [{"name": "kit", "source": "./kit"}]}`,
-					"kit/commands/kit.md":             "Another kit\n"})
-				_, err := e.AddMarket(ctx, engine.MarketAddRequest{Source: filepath.Join(proj, "market")})
-				Expect(err).NotTo(HaveOccurred())
-				_, err = e.AddEntry(ctx, "@acme/kit", "", "", []string{"--json"})
-				return err
-			},
-			func() []string { return []string{"remove the cached one first: lola cache rm kit --json"} }),
 		Entry("a profile's trust refusal as it turns on",
 			func() error {
 				writeTree(filepath.Join(proj, "mods", "rev"), map[string]string{"lola.yml": "name: rev\n", "commands/rev.md": "Rev\n"})
@@ -174,24 +163,6 @@ var _ = Describe("hints", func() {
 			},
 			func() []string {
 				return []string{"cached modules: lola cache list --plain"}
-			}),
-		Entry("cache add of a module whose name your cache holds from another source",
-			func() error {
-				writeTree(filepath.Join(proj, "mods", "kit2"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Another kit\n"})
-				_, err := e.AddSource(ctx, proj, filepath.Join(proj, "mods", "kit2"), "", "", []string{"--json"})
-				return err
-			},
-			func() []string { return []string{"remove the cached one first: lola cache rm kit --json"} }),
-		Entry("install of a module whose name your cache holds from another source",
-			func() error {
-				writeTree(filepath.Join(proj, "mods", "kit2"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Another kit\n"})
-				_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: filepath.Join(proj, "mods", "kit2")}},
-					engine.Options{Targets: []string{"claude-code"}, Display: []string{"--plain", "--no-pager"}})
-				return err
-			},
-			func() []string {
-				return []string{"kit is installed in this project; uninstall it there first: lola uninstall --project kit --plain --no-pager",
-					"then remove the cached one: lola cache rm kit --plain --no-pager"}
 			}),
 		Entry("uninstall --profile naming a profile that does not list the module",
 			func() error {

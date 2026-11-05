@@ -37,51 +37,71 @@ const (
 )
 
 // resolveLink follows the link at linkRel, a slash path below root's directory (the source's
-// boundary), to the regular file it names, and returns that file's slash path below root and its
-// FileInfo. Every hop is read through root, which never leaves the boundary, and its parent
-// directories must be real directories, so the path returned is the file's real path. An absolute
-// link, a target outside the boundary, a dangling link, a loop or a chain of more than maxLinkHops
-// links, a target that is a directory or no regular file, a parent directory that is a link, and
-// a target lola never copies (linkIgnored, below base, the module root's slash path from the
-// boundary) are all refused with ErrLinkInSource; a path on the chain lola cannot read is a plain
-// error (unreadable).
+// boundary), to the regular file or directory it names, and returns its slash path below root
+// ("." for the boundary itself) and its FileInfo. Every hop is read through root, which never
+// leaves the boundary, and a link anywhere on the way (a linked parent directory included) is
+// followed, so the path returned holds no link. An absolute link, a target outside the boundary,
+// a dangling link, a loop or more than maxLinkHops links on the way, a target that is neither a
+// regular file nor a directory, and a path below base, the module root's slash path from the
+// boundary, that lola never copies (linkIgnored) are all refused with ErrLinkInSource; a path
+// lola cannot read is a plain error (unreadable).
 func resolveLink(root *os.Root, base, linkRel string) (string, fs.FileInfo, error) {
 	shown := untrusted.Text(linkRel, untrusted.MaxName)
-	cur := linkRel
-	for hop := 0; ; hop++ {
-		if hop > 0 && linkIgnored(base, cur) {
-			return "", nil, refuseIgnored(shown, cur)
+	queue := strings.Split(linkRel, "/") // the segments still to walk
+	cur, hops, lastTo := "", 0, ""       // the real path walked so far ("" is the boundary)
+	for len(queue) > 0 {
+		seg := queue[0]
+		queue = queue[1:]
+		switch seg {
+		case "", ".":
+			continue
+		case "..":
+			if cur == "" {
+				return "", nil, refuse(shown, "its target "+untrusted.Text(lastTo, untrusted.MaxName)+" leaves the source", outsideHint)
+			}
+			if cur = path.Dir(cur); cur == "." {
+				cur = ""
+			}
+			continue
 		}
-		if err := realParents(root, shown, cur); err != nil {
-			return "", nil, err
+		next := path.Join(cur, seg)
+		if hops > 0 && linkIgnored(base, next) {
+			return "", nil, refuseIgnored(shown, path.Join(next, path.Join(queue...)))
 		}
-		fi, err := root.Lstat(filepath.FromSlash(cur))
+		fi, err := root.Lstat(filepath.FromSlash(next))
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 			return "", nil, refuse(shown, danglingWhy, danglingHint)
 		case err != nil:
 			return "", nil, unreadable(shown, err)
 		case fi.Mode()&fs.ModeSymlink != 0:
-		case fi.IsDir():
-			return "", nil, refuse(shown, dirWhy, dirLinkHint)
-		case !fi.Mode().IsRegular():
-			return "", nil, refuse(shown, "its target is not a regular file", "point the link at a regular file")
-		default:
-			return cur, fi, nil
-		}
-		if hop >= maxLinkHops {
-			return "", nil, refuse(shown, cycleWhy, cycleHint)
-		}
-		to, err := root.Readlink(filepath.FromSlash(cur))
-		if err != nil {
-			return "", nil, unreadable(shown, err)
-		}
-		next, err := linkTarget(shown, cur, to)
-		if err != nil {
-			return "", nil, err
+			if hops++; hops > maxLinkHops {
+				return "", nil, refuse(shown, cycleWhy, cycleHint)
+			}
+			if lastTo, err = root.Readlink(filepath.FromSlash(next)); err != nil {
+				return "", nil, unreadable(shown, err)
+			}
+			if path.IsAbs(filepath.ToSlash(lastTo)) || filepath.IsAbs(lastTo) || filepath.VolumeName(lastTo) != "" {
+				return "", nil, refuse(shown, "it points to "+untrusted.Text(lastTo, untrusted.MaxName)+", an absolute path", outsideHint)
+			}
+			queue = append(strings.Split(filepath.ToSlash(lastTo), "/"), queue...)
+			continue
+		case len(queue) > 0 && !fi.IsDir():
+			return "", nil, refuse(shown, danglingWhy, danglingHint)
 		}
 		cur = next
 	}
+	if cur == "" {
+		cur = "."
+	}
+	fi, err := root.Lstat(filepath.FromSlash(cur))
+	switch {
+	case err != nil:
+		return "", nil, unreadable(shown, err)
+	case !fi.IsDir() && !fi.Mode().IsRegular():
+		return "", nil, refuse(shown, "its target is not a regular file or a directory", "point the link at a regular file or a directory")
+	}
+	return cur, fi, nil
 }
 
 // linkTarget is where the link at cur, a slash path from the boundary, whose target is to,
@@ -96,30 +116,6 @@ func linkTarget(shown, cur, to string) (string, error) {
 		return "", refuse(shown, "its target "+untrusted.Text(to, untrusted.MaxName)+" leaves the source", outsideHint)
 	}
 	return next, nil
-}
-
-// realParents refuses rel, a slash path below root, unless each of its parent directories is a
-// real directory: a linked one is refused, and a missing one, or a file, makes the link dangle.
-func realParents(root *os.Root, shown, rel string) error {
-	dir := ""
-	for _, seg := range strings.Split(path.Dir(rel), "/") {
-		if seg == "." {
-			break
-		}
-		dir = path.Join(dir, seg)
-		fi, err := root.Lstat(filepath.FromSlash(dir))
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			return refuse(shown, danglingWhy, danglingHint)
-		case err != nil:
-			return unreadable(shown, err)
-		case fi.Mode()&fs.ModeSymlink != 0:
-			return refuseLinkedDir(shown, dir)
-		case !fi.IsDir():
-			return refuse(shown, danglingWhy, danglingHint)
-		}
-	}
-	return nil
 }
 
 // shortNameRE matches a Windows 8.3 short name (GIT~1, NODE_M~1.TXT), which NTFS resolves to a long

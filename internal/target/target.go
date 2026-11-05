@@ -40,6 +40,11 @@ type PlanContext struct {
 	// .claude/settings.local.json: tracked, not ignored, or not checkable. "" when git ignores
 	// it or the project is not in a git work tree. The engine runs git; targets stay pure.
 	LocalSettingsExposed string
+	// SharedSkills are the module's skills the agents target delivers at this scope: ones it
+	// admits with no skip and no forced finding, on a module whose targets include it. A target
+	// whose assistant reads .agents/skills writes no copy of its own of these, so the assistant
+	// loads each once; nil when agents is not among the module's targets.
+	SharedSkills map[string]bool
 }
 
 // Target is one assistant lola renders into.
@@ -71,8 +76,12 @@ type Destinations struct {
 }
 
 // DestDir is one destination directory. Path is root-relative, slash-separated; Ext is stripped
-// from a file entry's name to name the unit.
-type DestDir struct{ Kind, Path, Ext string }
+// from a file entry's name to name the unit. Shared says other tools install into it too, so
+// lola tidy names what lola does not own there as theirs.
+type DestDir struct {
+	Kind, Path, Ext string
+	Shared          bool
+}
 
 // ServerMap is a root-relative JSON file and the JSON Pointer of its object of MCP servers.
 type ServerMap struct{ File, Pointer string }

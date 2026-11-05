@@ -454,7 +454,7 @@ var _ = Describe("lola.yml components", func() {
 	It("refuses an unknown or empty per-entry targets list", func() {
 		_, err := load("components:\n  commands: [{path: extra/cmd.md, targets: [vim]}]\n", clone(native))
 		Expect(err).To(MatchError(`components.commands[0]: unknown target "vim"`))
-		Expect(errs.Hints(err)).To(ConsistOf("valid targets: claude-code, gemini-cli, opencode"))
+		Expect(errs.Hints(err)).To(ConsistOf("valid targets: claude-code, gemini-cli, opencode, agents"))
 		_, err = load("components:\n  rules: [{path: extra/rule.md, targets: []}]\n", clone(native))
 		Expect(err).To(MatchError("components.rules[0]: targets: lists no target"))
 	})

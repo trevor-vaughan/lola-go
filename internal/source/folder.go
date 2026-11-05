@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -36,7 +38,7 @@ type Fetched struct {
 
 // fetchFolder copies the module root of a folder source into a new directory under
 // stagingParent. In a git work tree only `git ls-files --cached --others --exclude-standard`
-// content is copied. A symbolic link is copied as the file it names inside the folder
+// content is copied. A symbolic link is copied as the file or directory it names inside the folder
 // (resolveLink).
 func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched, error) {
 	root, name, err := folderRoot(spec.Location, spec.Path, filepath.Base(spec.Location))
@@ -57,7 +59,7 @@ func fetchFolder(ctx context.Context, spec Spec, stagingParent string) (Fetched,
 	if err != nil {
 		return Fetched{}, err
 	}
-	dst, execs, _, err := copyTree(ctx, spec.Location, root, stagingParent, listDetect)
+	dst, execs, _, err := copyTree(ctx, spec.Location, root, stagingParent, listDetect, spec.Components)
 	if err != nil {
 		return Fetched{}, err
 	}
@@ -77,7 +79,7 @@ const (
 // stagingParent and returns it with the sorted slash paths of the copied files the file
 // system marks executable, and copyFiles' links. Ignored names are skipped; a symbolic link is
 // copied as the file it names inside boundary, the source tree root is in.
-func copyTree(ctx context.Context, boundary, root, stagingParent string, mode listing) (string, []string, map[string]string, error) {
+func copyTree(ctx context.Context, boundary, root, stagingParent string, mode listing, components *Components) (string, []string, map[string]string, error) {
 	if err := os.MkdirAll(stagingParent, 0o700); err != nil {
 		return "", nil, nil, err
 	}
@@ -89,7 +91,8 @@ func copyTree(ctx context.Context, boundary, root, stagingParent string, mode li
 	if err != nil {
 		return "", nil, nil, err
 	}
-	execs, links, err := copyFiles(ctx, boundary, root, dst, files, byGit && mode == listDetect)
+	c := &copier{boundary: boundary, mode: mode, components: components, left: maxEntries}
+	execs, links, err := c.copyFiles(ctx, root, dst, files, byGit && mode == listDetect, "", nil)
 	if err != nil {
 		return "", nil, nil, errors.Join(err, os.RemoveAll(dst))
 	}
@@ -274,17 +277,31 @@ func gitFiles(ctx context.Context, root string, which ...string) ([]string, erro
 	return slices.Compact(files), nil
 }
 
+// copier copies the files of one source tree: boundary is the directory every link must stay
+// inside, mode how a tree is listed, components the selection installed from the module ("nil" when
+// it is installed whole), and left how many more files the directory links may expand to.
+type copier struct {
+	boundary   string
+	mode       listing
+	components *Components
+	left       int
+}
+
 // copyFiles copies files, paths relative to root, from root to dst and returns the slash paths
 // of those the file system marks executable. A symbolic link is copied, at its own path, as the
-// regular file it names inside boundary, a directory root is in (resolveLink), read through an
-// os.Root of boundary; askGit also refuses a target git ignores (gitIgnored). links maps each
-// such link, a slash path relative to root, to its target, a slash path relative to boundary.
-func copyFiles(ctx context.Context, boundary, root, dst string, files []string, askGit bool) (execs []string, links map[string]string, err error) {
-	base, err := filepath.Rel(boundary, root)
+// file or directory it names inside the boundary, a directory root is in (resolveLink), read
+// through an os.Root of the boundary; askGit also refuses a file link's target that git ignores
+// (gitIgnored). links maps each file copied from a link, and in a linked directory every file
+// copied, to its source path, a slash path relative to the boundary. A link lola refuses is an
+// error, unless it is outside every installed component (Components.reaches): then it is left out.
+// at is where root's tree is in the module root, "" for the module root itself, and active the
+// real directories being expanded, outermost first.
+func (c *copier) copyFiles(ctx context.Context, root, dst string, files []string, askGit bool, at string, active []string) (execs []string, links map[string]string, err error) {
+	base, err := filepath.Rel(c.boundary, root)
 	if err != nil {
 		return nil, nil, err
 	}
-	broot, err := os.OpenRoot(boundary)
+	broot, err := os.OpenRoot(c.boundary)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -301,25 +318,16 @@ func copyFiles(ctx context.Context, boundary, root, dst string, files []string, 
 			return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
 		case fi.Mode()&fs.ModeSymlink != 0:
 			linkRel := filepath.ToSlash(filepath.Join(base, rel))
-			target, tfi, err := resolveLink(broot, filepath.ToSlash(base), linkRel)
+			subExecs, subLinks, err := c.copyLink(ctx, broot, root, dst, rel, linkRel, askGit, path.Join(at, filepath.ToSlash(rel)), active)
+			if errors.Is(err, ErrLinkInSource) && !c.components.reaches(path.Join(at, filepath.ToSlash(rel))) {
+				continue
+			}
 			if err != nil {
 				return nil, nil, err
 			}
-			if askGit {
-				err := gitIgnored(ctx, root, untrusted.Text(linkRel, untrusted.MaxName), target, filepath.Join(boundary, filepath.FromSlash(target)))
-				if err != nil {
-					return nil, nil, err
-				}
-			}
-			in, err := broot.Open(filepath.FromSlash(target))
-			if err == nil {
-				err = copyOpened(in, filepath.Join(dst, rel), tfi)
-			}
-			if err != nil {
-				return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
-			}
-			links[filepath.ToSlash(rel)] = target
-			fi = tfi
+			execs = append(execs, subExecs...)
+			maps.Copy(links, subLinks)
+			continue
 		case fi.IsDir():
 			continue // a git submodule entry
 		case !fi.Mode().IsRegular():
@@ -328,12 +336,80 @@ func copyFiles(ctx context.Context, boundary, root, dst string, files []string, 
 			if err := copyFile(src, filepath.Join(dst, rel), fi); err != nil {
 				return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
 			}
+			if at != "" {
+				links[filepath.ToSlash(rel)] = path.Join(filepath.ToSlash(base), filepath.ToSlash(rel))
+			}
 		}
 		if fsx.NormalizeMode(fi.Mode()) == 0o755 {
 			execs = append(execs, filepath.ToSlash(rel))
 		}
 	}
 	return execs, links, nil
+}
+
+// copyLink copies the link at rel (linkRel from the boundary, at in the module root) as the file
+// or directory it names, and returns what copyFiles returns for it, with paths relative to root.
+func (c *copier) copyLink(ctx context.Context, broot *os.Root, root, dst, rel, linkRel string, askGit bool, at string, active []string) ([]string, map[string]string, error) {
+	shown := untrusted.Text(linkRel, untrusted.MaxName)
+	base, err := filepath.Rel(c.boundary, root)
+	if err != nil {
+		return nil, nil, err
+	}
+	target, tfi, err := resolveLink(broot, filepath.ToSlash(base), linkRel)
+	if err != nil {
+		return nil, nil, err
+	}
+	if tfi.IsDir() {
+		execs, links, err := c.copyLinkedDir(ctx, shown, linkRel, target, filepath.Join(dst, rel), at, active)
+		if err != nil {
+			return nil, nil, err
+		}
+		in := filepath.ToSlash(rel) + "/"
+		for i, e := range execs {
+			execs[i] = in + e
+		}
+		prefixed := make(map[string]string, len(links))
+		for p, from := range links {
+			prefixed[in+p] = from
+		}
+		return execs, prefixed, nil
+	}
+	if askGit {
+		if err := gitIgnored(ctx, root, shown, target, filepath.Join(c.boundary, filepath.FromSlash(target))); err != nil {
+			return nil, nil, err
+		}
+	}
+	in, err := broot.Open(filepath.FromSlash(target))
+	if err == nil {
+		err = copyOpened(in, filepath.Join(dst, rel), tfi)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
+	}
+	var execs []string
+	if fsx.NormalizeMode(tfi.Mode()) == 0o755 {
+		execs = []string{filepath.ToSlash(rel)}
+	}
+	return execs, map[string]string{filepath.ToSlash(rel): target}, nil
+}
+
+// copyLinkedDir copies the directory target (a slash path from the boundary) that the link at
+// linkRel names into out, as the files the source lists in it. A link whose directory holds the
+// link, or is one already being expanded, or is nested more than maxLinkHops deep, is a loop; one
+// that expands to more files than c.left allows is refused too, so nested links cannot multiply.
+func (c *copier) copyLinkedDir(ctx context.Context, shown, linkRel, target, out, at string, active []string) ([]string, map[string]string, error) {
+	if target == "." || strings.HasPrefix(linkRel, target+"/") || slices.Contains(active, target) || len(active) >= maxLinkHops {
+		return nil, nil, refuse(shown, cycleWhy, cycleHint)
+	}
+	abs := filepath.Join(c.boundary, filepath.FromSlash(target))
+	files, byGit, err := listFiles(ctx, abs, c.mode)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", shown, untrusted.CleanErr(err))
+	}
+	if c.left -= len(files); c.left < 0 {
+		return nil, nil, refuse(shown, fmt.Sprintf("the directories it names hold more than %d files in all", maxEntries), "link fewer or smaller directories")
+	}
+	return c.copyFiles(ctx, abs, out, files, byGit && c.mode == listDetect, at, append(slices.Clone(active), target))
 }
 
 // copyFile copies src, which the caller found (with Lstat) to be the regular file fi. The

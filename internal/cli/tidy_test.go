@@ -469,3 +469,35 @@ var _ = Describe("lola tidy", func() {
 			"R-8: the -y given for both scopes answers neither alone")
 	})
 })
+
+var _ = Describe("lola tidy in the .agents/skills directory other tools share", func() {
+	It("names what no lock records there as skills another tool installed, in human, --plain and JSON output, and only with agents", func() {
+		tmp, err := filepath.EvalSymlinks(testenv.Isolate())
+		Expect(err).NotTo(HaveOccurred())
+		proj, mod := filepath.Join(tmp, "proj"), filepath.Join(tmp, "example")
+		writeTree(mod, map[string]string{"skills/review/SKILL.md": "---\ndescription: Review code\n---\nReview it.\n"})
+		writeTree(proj, map[string]string{".agents/skills/theirs/SKILL.md": "theirs\n", ".claude/skills/old/SKILL.md": "old\n"})
+		r := lola("install", mod, "-C", proj, "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("tidy", "-n", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).NotTo(ContainSubstring(".agents"), "the scope's targets leave agents out")
+
+		r = lola("tidy", "-n", "-t", "agents", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(r.out).To(ContainSubstring("would move 1 item:\n  → agents  skill/theirs  .agents/skills/theirs/  skills another tool installed\n"))
+		r = lola("tidy", "-n", "-t", "agents", "-C", proj, "--plain")
+		Expect(r.out).To(ContainSubstring("candidate\tagents\tskill\ttheirs\t.agents/skills/theirs\t\t\tskills another tool installed\t\n"))
+		r = lola("tidy", "-n", "-t", "agents", "-C", proj, "--json")
+		var doc map[string]any
+		Expect(json.Unmarshal([]byte(r.out), &doc)).To(Succeed(), r.out)
+		Expect(doc["candidates"]).To(ConsistOf(SatisfyAll(HaveKeyWithValue("target", "agents"), HaveKeyWithValue("name", "theirs"),
+			HaveKeyWithValue("reason", "skills another tool installed"), Not(HaveKey("code")))))
+
+		r = lola("install", mod, "-C", proj, "-t", "claude-code,agents")
+		Expect(r.code).To(Equal(0), r.err)
+		r = lola("tidy", "-n", "-C", proj)
+		Expect(r.out).To(ContainSubstring("would move 2 items:\n  → agents  skill/theirs  .agents/skills/theirs/  skills another tool installed\n"+
+			"  → claude-code  skill/old  .claude/skills/old/\n"), "agents is the scope's now; what lola installed there is not offered")
+	})
+})

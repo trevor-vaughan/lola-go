@@ -120,6 +120,10 @@ func (g Target) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, [
 		if !module.Supports(s.Targets, id) {
 			continue
 		}
+		if ctx.SharedSkills[s.Name] { // Gemini CLI reads .agents/skills too: one copy, or it warns of a conflict
+			finds = append(finds, target.SkillViaAgents(id, s.Name))
+			continue
+		}
 		doc, f, ok := target.Admit(id, caps, ctx, "skill", s.Name, s.Doc)
 		if finds = append(finds, f...); !ok {
 			continue

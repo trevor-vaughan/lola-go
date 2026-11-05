@@ -113,7 +113,7 @@ func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]strin
 // existing directory that is not the project picked above, nor, when sp.refuseHome, the home
 // directory (the user scope's root, which install and sync refuse as a project), and returns it
 // absolute. A relative answer is
-// taken from the current directory; ~ is not expanded. An answer is offered again to edit only
+// taken from the current directory; a leading ~ or ~/ is your home directory. An answer is offered again to edit only
 // when it is safe to show.
 func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (string, error) {
 	home := engine.Scope{Kind: target.Project, ProjectDir: sp.eng.Paths.Home}.Key()
@@ -129,7 +129,8 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (str
 		if err != nil {
 			return "", err
 		}
-		dir := in
+		expanded := expandHome(in, sp.eng.Paths.Home)
+		dir := expanded
 		if !filepath.IsAbs(dir) {
 			dir = filepath.Join(sp.cwd, dir)
 		}
@@ -144,8 +145,8 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (str
 			problem = "enter the path of a directory"
 		case errors.Is(err, fs.ErrNotExist):
 			problem = safe + " does not exist"
-			if strings.HasPrefix(in, "~") {
-				problem += " (~ is not expanded)"
+			if strings.HasPrefix(in, "~") && expanded == in {
+				problem += " (only ~ and ~/ are expanded)"
 			}
 		case errors.As(err, &pathErr):
 			problem = safe + ": " + pathErr.Err.Error()

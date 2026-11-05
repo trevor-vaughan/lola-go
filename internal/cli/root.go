@@ -9,6 +9,8 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/spf13/cobra"
@@ -29,6 +31,12 @@ var ErrAborted = errors.New("aborted")
 
 // abortedError is a cancelled prompt whose command says what the cancel left as it was: exit 0,
 // with its message printed in place of "aborted; nothing changed.".
+// flagError is cobra's refusal of a command line's flags. They fail while the flags are parsed, so
+// a --json after the bad flag was never read: Execute looks for it in the command line itself.
+type flagError struct{ error }
+
+func (e *flagError) Unwrap() error { return e.error }
+
 type abortedError struct{ msg string }
 
 func (e *abortedError) Error() string        { return e.msg }
@@ -153,6 +161,16 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 		&cobra.Group{ID: groupStore, Title: "Cache:"},
 		&cobra.Group{ID: groupAdditional, Title: "Additional:"},
 	)
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		hints := []string{"see: " + cmd.CommandPath() + " --help"}
+		// pflag: "flag needs an argument: --add" (or "'a' in -a" for a shorthand).
+		if name, ok := strings.CutPrefix(err.Error(), "flag needs an argument: --"); ok {
+			if f := cmd.Flags().Lookup(name); f != nil {
+				hints = append([]string{"--" + name + " takes a value: " + f.Usage}, hints...)
+			}
+		}
+		return errs.WithHints(&flagError{err}, hints...)
+	})
 	a.addCoreCommands(root)
 	a.addStoreCommands(root)
 	a.addMiscCommands(root)
@@ -227,6 +245,11 @@ func Execute(root *cobra.Command) int {
 	asJSON, flagErr := root.PersistentFlags().GetBool("json")
 	if flagErr != nil {
 		asJSON = false
+	}
+	if errors.As(err, new(*flagError)) && slices.ContainsFunc(os.Args[1:], func(arg string) bool {
+		return arg == "--json" || arg == "--json=true"
+	}) {
+		asJSON = true
 	}
 	var quit *quitError
 	var sig Interrupted

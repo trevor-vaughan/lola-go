@@ -618,16 +618,12 @@ var _ = Describe("marketplaces", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Find("sel").Components).To(Equal(&source.Components{Skills: []string{"skills/a"}}), "an install by cached name keeps the selection")
 
-		// A pulled change of the selection: refused while the cache holds the other one, naming
-		// both, then a trust question of its own.
+		// A pulled change of the selection: the cache keeps an origin for each selection, so it is
+		// a trust question of its own.
 		b, err := os.ReadFile(filepath.Join(proj, ".lola", "project.yml"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte(strings.Replace(string(b), "skills: [skills/a]", "skills: [skills/b]", 1)),
 			0o644)).To(Succeed())
-		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc})
-		Expect(err).To(MatchError("sel in your cache comes from " + mine + " selecting skills skills/a, and project.yml asks for " + mine +
-			" selecting skills skills/b; the cache is shared by every project on this machine"))
-		Expect(e.Store.Remove("sel")).To(BeTrue())
 		var asked []engine.TrustReport
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Trust: func(r engine.TrustReport) (engine.TrustAnswer, error) {
 			asked = append(asked, r)

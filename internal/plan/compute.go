@@ -158,7 +158,7 @@ func Compute(req Request) (*Plan, error) {
 				other := p.files[firstKey]
 				p.conflicts = append(p.conflicts, Conflict{Target: f.target, Path: f.logical,
 					Reason:    fmt.Sprintf("resolves to the same file as %s %s (via symlink); refusing to write it twice", other.target, other.logical),
-					Forceable: false})
+					Forceable: false, SameAs: other.target, Claimant: p.claimed[ledger.Artifact{Target: f.target, Path: f.logical}.ID()]})
 			} else {
 				absToFirstKey[f.res.Abs] = key
 			}

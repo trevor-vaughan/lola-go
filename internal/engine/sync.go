@@ -345,6 +345,7 @@ type syncEntry struct {
 	atFresh       string      // the dry run without --at that a refusal for another version than at hints
 	sourceGone    bool        // its source folder is gone: the version installed was rendered
 	installed     string      // the digest lock.json records for the module, "" when none is installed
+	targetsIn     targetsIn   // the file whose targets: the entry installs to
 	notices       []Notice    // what resolving the entry has to say (a gone folder rendered from the cache)
 }
 
@@ -1123,6 +1124,11 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			names = append(names, r.Module+" ("+what+")")
 		}
 		err = fmt.Errorf("%w\n  with --force it also removes, without asking: %s", err, strings.Join(names, ", "))
+	}
+	if ce, ok := errors.AsType[*plan.ConflictError](err); ok {
+		if hs := e.sameFileHints(ce, entries); len(hs) > 0 {
+			err = errs.WithHints(err, hs...)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -2523,7 +2529,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 		if err := checkPinShape(name, base, spec.Kind, ent, repin); err != nil {
 			return nil, nil, err
 		}
-		gone, err := e.refuseOtherSource(name, base, spec, e.commandOf(req))
+		gone, err := e.goneOrigin(name, spec)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2538,16 +2544,16 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			return nil, nil, errs.WithHints(fmt.Errorf("%s: %s gives it no targets", name, base),
 				"list the assistants in "+base+", for example targets: [claude-code]")
 		}
+		// The ids are the entry's (or its profile's targets:, which it inherits) when it has any,
+		// else the base's.
+		tsIn := targetsIn{shown: filepath.Base(e.basePath(sc)), path: e.basePath(sc)}
+		if len(ent.Targets) > 0 {
+			tsIn = targetsIn{shown: base, path: w.path, name: name}
+		}
 		for _, id := range ts {
 			if _, err := e.target(id); err != nil {
-				// The ids are the entry's (or its profile's targets:, which it inherits) when it has
-				// any, else the base's; where the file does not write them, no line is named.
-				var at string
-				if len(ent.Targets) > 0 {
-					at, _ = targetsOrigin(base, w.path, name)
-				} else {
-					at, _ = targetsOrigin(filepath.Base(e.basePath(sc)), e.basePath(sc), "")
-				}
+				// Where the file does not write them, no line is named.
+				at, _ := targetsOrigin(tsIn.shown, tsIn.path, tsIn.name)
 				return nil, nil, fmt.Errorf("%s%s: %w", at, name, err)
 			}
 		}
@@ -2572,7 +2578,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			}
 		}
 		se := &syncEntry{ent: ent, from: from, file: file, key: w.key, inherits: w.inherits, bundles: w.bundles, member: w.member, ledgerPin: w.own() && w.Digest == "" && ent.Digest != "" && !fromPins, pinsFile: fromPins, seeded: seeded, goneFrom: gone,
-			spec: spec, targets: ts, update: update, follow: follow}
+			spec: spec, targets: ts, targetsIn: tsIn, update: update, follow: follow}
 		if in != nil {
 			se.installed = in.Digest
 		}
@@ -2588,7 +2594,7 @@ func (e *Engine) validateSync(sc Scope, man *manifest.Manifest, want []Wanted, l
 			// and one whose cached local source is gone fetches the new one, which replaces it. A
 			// git head from before commits were recorded is fetched again (resolveHead).
 			if update && follow == nil && gone == "" && spec.Kind != source.KindFolder {
-				head, ok, err := e.Store.Head(name, ent.Ref)
+				head, ok, err := e.Store.HeadFor(name, ent.Ref, sourceKey(spec))
 				if err != nil {
 					return nil, nil, err
 				}
@@ -2633,6 +2639,43 @@ func targetsOrigin(base, path, name string) (prefix string, ok bool) {
 	return "", false
 }
 
+// targetsIn is the file an entry's targets are written in, as targetsOrigin takes it: how a
+// message shows the file, its path, and the module whose entry may write them (name "" for the
+// file's top-level targets: alone).
+type targetsIn struct{ shown, path, name string }
+
+// where is "<file>:<line>" of the targets: key, or the file alone when it no longer writes them.
+func (t targetsIn) where() string {
+	if at, ok := targetsOrigin(t.shown, t.path, t.name); ok {
+		return strings.TrimSuffix(at, ": ")
+	}
+	return t.shown
+}
+
+// sameFileHints say, for each conflict of two targets whose destinations are one real file (a
+// .claude/skills/<n> linked to .agents/skills/<n>), which file's targets: to remove one of them
+// from: a sync has no -t to hint a run with.
+func (e *Engine) sameFileHints(ce *plan.ConflictError, entries []*syncEntry) []string {
+	var out []string
+	for _, c := range ce.Conflicts {
+		k := slices.IndexFunc(entries, func(se *syncEntry) bool { return se.ent.Name == c.Claimant })
+		if c.SameAs == "" || c.SameAs == c.Target || k < 0 {
+			continue
+		}
+		var pair []string
+		for _, t := range e.Targets {
+			if t.ID() == c.SameAs || t.ID() == c.Target {
+				pair = append(pair, t.ID())
+			}
+		}
+		h := "remove " + pair[0] + " or " + pair[1] + " from targets: in " + entries[k].targetsIn.where()
+		if !slices.Contains(out, h) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
 // checkPinShape refuses a ref or a pin the entry's kind of source cannot have (Plan 6a §4.1): a
 // ref on a folder or archive, a pin on a folder, a commit on an archive, a git digest without
 // its commit. update is the sync command that re-pins the entry.
@@ -2653,26 +2696,27 @@ func checkPinShape(name, base string, kind source.Kind, ent manifest.Entry, upda
 	return nil
 }
 
-// refuseOtherSource refuses an entry whose name the cache holds from another source or path
-// (Plan 6a §6.5): the cache keeps one source per name, for every project on the machine. again
-// is the user's sync, which the hint repeats once the name is out of the cache; base names the
-// file the entry is in (the scope manifest, or a profile). A local source
-// the cache records that no longer exists, for a local entry, is not refused: its description
-// (describeSource) is returned, and the version the run publishes replaces it.
-func (e *Engine) refuseOtherSource(name, base string, spec source.Spec, again string) (string, error) {
-	o, found, err := e.Store.Origin(name)
-	if err != nil || !found {
+// goneOrigin describes a local source the cache records for name that no longer exists, when spec
+// is a local source the cache does not hold for the name yet (Plan 6a §6.5): the version the run
+// publishes drops it (store.Staged.ReplaceGoneOrigin). It is "" when there is none. The cache
+// keeps an origin per source, so any other source of the name is no obstacle.
+func (e *Engine) goneOrigin(name string, spec source.Spec) (string, error) {
+	origins, err := e.Store.Origins(name) // an index lola cannot read is refused here, before any fetch
+	if err != nil || !source.IsLocal(spec.Kind, spec.Location) {
 		return "", err
 	}
-	if o.Type == string(spec.Kind) && source.SameLocation(spec.Kind, o.Source, spec.Location) && o.Path == spec.Path && o.Components.Equal(spec.Components) {
+	if slices.ContainsFunc(origins, func(o store.Origin) bool { return o.From(sourceKey(spec)) }) {
 		return "", nil
 	}
-	if o.LocalGone() && source.IsLocal(spec.Kind, spec.Location) {
-		return describeSource(o.Source, o.Path, o.Components), nil
+	if i := slices.IndexFunc(origins, store.Origin.LocalGone); i >= 0 {
+		return describeSource(origins[i].Source, origins[i].Path, origins[i].Components), nil
 	}
-	return "", errs.WithHints(fmt.Errorf("%s in your cache comes from %s, and %s asks for %s; the cache is shared by every project on this machine",
-		name, describeSource(o.Source, o.Path, o.Components), base, describeSource(spec.Location, spec.Path, spec.Components)),
-		"remove it from your cache: "+errs.ShellJoin([]string{"lola", "cache", "rm", name})+" (add -y off a terminal)", "then: "+again)
+	return "", nil
+}
+
+// sourceKey is the source spec names, as the cache keys its origins.
+func sourceKey(spec source.Spec) store.SourceKey {
+	return store.SourceKey{Type: string(spec.Kind), Location: spec.Location, Path: spec.Path, Components: spec.Components}
 }
 
 // installedWayOut gives a refusal that is one installed module's own state a way out, keeping
@@ -2822,7 +2866,7 @@ func (e *Engine) resolveVersion(ctx context.Context, sc Scope, se *syncEntry, ru
 		}
 		return nil
 	case ent.Digest == "":
-		head, ok, err := e.Store.Head(name, ent.Ref)
+		head, ok, err := e.Store.HeadFor(name, ent.Ref, sourceKey(se.spec))
 		if err != nil {
 			return err
 		}
@@ -3086,7 +3130,7 @@ func (e *Engine) droppedFiles(sc Scope, led *ledger.Ledger, changes []plan.Modul
 		return !moved[st.Module] || st.Key != "" ||
 			slices.ContainsFunc(removals, func(r Removal) bool { return r.Module == shown(st.Module) && slices.Contains(r.Targets, st.Target) })
 	})
-	return deletedBy(steps, nil, whyDropped, e.Paths.Home)
+	return deletedBy(steps, nil, nil, whyDropped, e.Paths.Home)
 }
 
 // removal is what a sync removes of the module name that lock.json records as installed: the

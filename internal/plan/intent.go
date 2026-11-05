@@ -141,11 +141,14 @@ func (r Replaceable) covers(target, path, key string) bool {
 
 // Conflict is a destination lola refuses to touch. Value is the array element, a string or,
 // for other members, its canonical JSON. Owner is the installed module that owns it, when that
-// is why, and Claimant the module of the run that wants it ("" otherwise).
+// is why, and Claimant the module of the run that wants it ("" otherwise). SameAs is the target
+// of another destination that resolves to the same real file through a symbolic link, when that
+// is why.
 type Conflict struct {
 	Target, Path, Key, Value, Reason string
 	Forceable                        bool
 	Owner, Claimant                  string
+	SameAs                           string
 }
 
 // ConflictError lists every conflict of a refused plan. Overridable is set when --force

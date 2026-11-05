@@ -24,6 +24,7 @@ var _ = Describe("NewPlan", func() {
 	)
 	BeforeEach(func() {
 		var err error
+		testenv.OutsideHome() // the specs below need a root that is not home-shaped
 		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 		userHome = filepath.Join(tmp, "home")
@@ -441,6 +442,13 @@ var _ = Describe("NewPlan", func() {
 		Expect(os.MkdirAll(filepath.Join(projA, ".lola", "plugin-data", "review"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Join(h.dir, "market"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Join(h.dir, "plugin-data", "review"), 0o755)).To(Succeed())
+		block := "<!-- lola:module:review:start -->"
+		marked := "# notes\n" + block + "\nreview\n<!-- lola:module:review:end -->\n"
+		writeFile(filepath.Join(projA, "CLAUDE.md"), marked)
+		writeFile(filepath.Join(projA, "GEMINI.md"), marked+"<!-- lola:skills:start -->\n### review\n<!-- lola:skills:end -->\n")
+		writeFile(filepath.Join(userHome, ".claude", "CLAUDE.md"), marked)
+		writeFile(filepath.Join(userHome, "GEMINI.md"), marked)
+		writeFile(filepath.Join(tmp, "config", "opencode", "AGENTS.md"), marked)
 		h.install(rec{"module": "review", "assistant": "claude-code", "project_path": projA, "has_instructions": true},
 			rec{"module": "review", "assistant": "gemini-cli", "project_path": projA, "skills": []string{"review"}, "append_context": "AGENTS.md"},
 			rec{"module": "review", "assistant": "claude-code", "scope": "user", "has_instructions": true},
@@ -458,7 +466,6 @@ var _ = Describe("NewPlan", func() {
 			}
 			return out
 		}
-		block := "<!-- lola:module:review:start -->"
 		Expect(items(p.Destinations[0])).To(ConsistOf(
 			shown{migrate.ItemInstructions, filepath.Join(projA, "CLAUDE.md"), block},
 			shown{migrate.ItemInstructions, filepath.Join(projA, "GEMINI.md"), block},
@@ -472,6 +479,20 @@ var _ = Describe("NewPlan", func() {
 			shown{migrate.ItemInstructions, filepath.Join(tmp, "config", "opencode", "AGENTS.md"), block},
 			shown{migrate.ItemPluginData, filepath.Join(h.dir, "plugin-data", "review"), ""},
 		))
+	})
+
+	It("does not report a block or skill section the file no longer holds, or a file that is gone", func() {
+		writeFile(filepath.Join(projA, "CLAUDE.md"), "# notes\n<!-- lola:module:other:start -->\nx\n<!-- lola:module:other:end -->\n")
+		writeFile(filepath.Join(projA, "GEMINI.md"), "<!-- lola:skills:start -->\n### other\n<!-- lola:skills:end -->\n### review\n")
+		writeFile(filepath.Join(userHome, ".claude", "CLAUDE.md"), "the user removed the block\n")
+		h.install(rec{"module": "review", "assistant": "claude-code", "project_path": projA, "has_instructions": true},
+			rec{"module": "review", "assistant": "gemini-cli", "project_path": projA, "skills": []string{"review"}, "has_instructions": true},
+			rec{"module": "review", "assistant": "opencode", "project_path": projA, "has_instructions": true},
+			rec{"module": "review", "assistant": "claude-code", "scope": "user", "has_instructions": true},
+			rec{"module": "review", "assistant": "opencode", "scope": "user", "has_instructions": true})
+		for _, d := range plan().Destinations {
+			Expect(d.NotMigrated).To(BeEmpty(), d.Root)
+		}
 	})
 
 	Context("project paths another machine had (Plan 10 §3.1)", func() {
@@ -578,6 +599,18 @@ var _ = Describe("NewPlan", func() {
 			Expect(p.Destinations).To(BeEmpty())
 			Expect(p.Unmappable).To(ConsistOf(HaveField("Reason", "project_path /Users/alice/../../etc/kit is not in its clean form")))
 			Expect(p.RootSuggestions).To(BeEmpty())
+		})
+
+		It("suggests no root that moves a project to your home directory, which the next run refuses", func() {
+			gone := filepath.Join(tmp, "gone-project")
+			h.install(at(gone, "claude-code"), at(`D:\work`, "claude-code"))
+			p := plan()
+			Expect(p.RootSuggestions).To(BeEmpty(), "a suggestion must be a command that works")
+			Expect(p.Unmappable).To(HaveLen(2))
+			for _, u := range p.Unmappable {
+				Expect(u.Hints).To(Equal([]string{"rerun lola migrate with " + "--map-root <old root>=<where it is on this machine>; " +
+					"until then it leaves this record and its files as they are"}))
+			}
 		})
 
 		It("suggests no root that --map-root would refuse for moving every path, such as a project at a drive root", func() {

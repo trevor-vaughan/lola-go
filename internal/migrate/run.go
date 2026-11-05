@@ -1352,8 +1352,8 @@ func (r *runner) home(p *Plan, rep *Result) HomeResult {
 		if filepath.Dir(r.st.Home) == r.e.Paths.Home && filepath.Base(r.st.Home) == ".lola" {
 			aside := r.st.Home + ".python"
 			h.Reason += "; while ~/.lola stays, lola-go sees a project at ~ and refuses to install there"
-			h.Hints = append(h.Hints, "to install below ~ before it is gone, move it aside: "+errs.ShellJoin([]string{"mv", r.st.Home, aside}),
-				"the Python lola and lola migrate then read it with LOLA_HOME="+errs.ShellJoin([]string{aside}))
+			h.Hints = append(h.Hints, "to install below ~ meanwhile, move the Python home aside: "+errs.ShellJoin([]string{"mv", r.st.Home, aside}),
+				"then point the Python lola and lola migrate at it with LOLA_HOME="+errs.ShellJoin([]string{aside}))
 		}
 		return h
 	}
@@ -1381,7 +1381,7 @@ func (r *runner) home(p *Plan, rep *Result) HomeResult {
 		return keep("--keep-python")
 	case unmappable > 0:
 		return keep(fmt.Sprintf("%d record(s) lola-go cannot migrate are still in installed.yml", unmappable),
-			"the records above are untouched and the Python lola still works; fix each by its hint and rerun lola migrate, or uninstall it with the Python lola")
+			"the records above are untouched and the Python lola still works; fix each by its hint and rerun lola migrate, or uninstall those records with the Python lola")
 	case unregistered == 1:
 		return keep("1 marketplace lola did not register is still in " + filepath.Join(r.st.Home, "market"))
 	case unregistered > 1:

@@ -1206,21 +1206,11 @@ var _ = Describe("Sync", func() {
 		folder := filepath.Join(tmp, "elsewhere", "example")
 		writeTree(folder, exampleModule)
 		install(sc, engine.InstallRequest{Arg: folder})
-		Expect(e.Store.Remove("example")).To(BeTrue())
-		install(engine.Scope{Kind: target.User}, engine.InstallRequest{Arg: url})
-		sub := filepath.Join(proj, "sub")
-		Expect(os.MkdirAll(sub, 0o755)).To(Succeed())
-		for _, c := range []struct{ wd, flags string }{{sub, "--project "}, {tmp, "-C " + proj + " "}} {
-			e.Getwd = func() (string, error) { return c.wd, nil }
-			_, err := sync(engine.SyncRequest{Modules: []string{"example"}, Update: true, Options: engine.Options{Force: true}})
-			Expect(err).To(MatchError(ContainSubstring("example in your cache comes from")))
-			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)",
-				"then: lola sync " + c.flags + "example --update --force"}), "from %s", c.wd)
-		}
-
 		manPath := filepath.Join(proj, ".lola", "project.yml")
 		writeTree(filepath.Join(proj, "mods", "kit"), map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: mods/kit\n"), 0o600)).To(Succeed())
+		install(engine.Scope{Kind: target.User}, engine.InstallRequest{Arg: url}) // makes the user scope's default.yml
+		e.Getwd = func() (string, error) { return tmp, nil }
 		_, err := sync(engine.SyncRequest{})
 		Expect(errs.Hints(err)).To(ConsistOf("see them: lola sync -C "+proj+" -n",
 			MatchRegexp(`^then accept them: lola sync -C `+regexp.QuoteMeta(proj)+` --trust=entries --at kit=sha256:[0-9a-f]{64} -y$`)),
@@ -1245,71 +1235,60 @@ var _ = Describe("Sync", func() {
 		osc := engine.Scope{Kind: target.Project, ProjectDir: old}
 		_, err := e.Install(ctx, osc, old, []engine.InstallRequest{{Arg: "./mods/kit"}}, claude)
 		Expect(err).NotTo(HaveOccurred())
-		user := engine.Scope{Kind: target.User}
-		_, err = e.Install(ctx, user, tmp, []engine.InstallRequest{{Arg: filepath.Join(old, "mods", "kit")}}, claude)
-		Expect(err).NotTo(HaveOccurred())
 		Expect(os.RemoveAll(proj)).To(Succeed())
 		Expect(os.Rename(old, proj)).To(Succeed()) // the project moves
 		oldKit, newKit := filepath.Join(old, "mods", "kit"), filepath.Join(proj, "mods", "kit")
-		origin := func() string {
+		origins := func() []string {
 			GinkgoHelper()
-			o, found, err := e.Store.Origin("kit")
+			all, err := e.Store.Origins("kit")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(found).To(BeTrue())
-			return o.Source
+			var sources []string
+			for _, o := range all {
+				sources = append(sources, o.Source)
+			}
+			return sources
 		}
 		notice := engine.Notice{Level: engine.LevelWarn, Text: "kit: your cache has it from " + oldKit + ", which no longer exists; caching it from " + newKit}
 
 		res, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: true}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Notices).To(ContainElement(notice))
-		Expect(origin()).To(Equal(oldKit), "a dry run replaces nothing")
-
-		// The old location reappears while the user answers: the commit, under the cache lock,
-		// refuses it and replaces nothing.
-		_, err = sync(engine.SyncRequest{Trust: func(engine.TrustReport) (engine.TrustAnswer, error) {
-			writeTree(oldKit, map[string]string{"lola.yml": "name: kit\n"})
-			return engine.TrustAnswer{All: true}, nil
-		}})
-		Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
-		Expect(origin()).To(Equal(oldKit))
-		Expect(os.RemoveAll(old)).To(Succeed())
+		Expect(origins()).To(Equal([]string{oldKit}), "a dry run replaces nothing")
 
 		res, err = sync(engine.SyncRequest{Trust: yes})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(asked).To(HaveLen(1), "the content still goes through trust: a moved project has no record")
 		Expect(res.Notices).To(ContainElement(notice))
-		Expect(origin()).To(Equal(newKit), "replaced after trust")
+		Expect(origins()).To(Equal([]string{newKit}), "replaced after trust")
 		Expect(read(".claude/commands/kit.md")).To(Equal("Kit\n"))
 
-		// The replaced source is not rendered into the user scope, which installed the old folder.
-		_, err = sync(engine.SyncRequest{Scope: user, Trust: yes})
-		Expect(err).To(MatchError(ContainSubstring("kit in your cache comes from " + newKit + ", and " + filepath.Join(p.UserProfiles, "default.yml") + " asks for " + oldKit)))
-
-		// A recorded source that still exists keeps the refusal.
-		copyKit := filepath.Join(tmp, "copy", "mods", "kit")
+		// A source that still exists is an origin of its own, beside the new one.
+		copyKit := filepath.Join(proj, "copy", "mods", "kit")
 		writeTree(copyKit, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		manPath := filepath.Join(proj, ".lola", "project.yml")
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: "+copyKit+"\n"), 0o600)).To(Succeed())
 		_, err = sync(engine.SyncRequest{Trust: yes})
-		Expect(err).To(MatchError(ContainSubstring("kit in your cache comes from " + newKit)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(origins()).To(ConsistOf(newKit, copyKit))
 	})
 
-	It("a cached remote source is never replaced by a local folder", func() {
+	It("a cached remote source stays when a local folder of the name is synced beside it", func() {
 		install(sc, engine.InstallRequest{Arg: url})
 		folder := filepath.Join(proj, "mods", "example")
 		writeTree(folder, map[string]string{"lola.yml": "name: example\n", "commands/example.md": "Example\n"})
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
 			"  - name: example\n    source: "+folder+"\n"), 0o600)).To(Succeed())
-		before := state()
-		_, err := sync(engine.SyncRequest{Trust: yes})
-		Expect(err).To(MatchError(ContainSubstring("example in your cache comes from " + url)))
-		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola cache rm example")))
-		Expect(state()).To(Equal(before))
+		_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
+		Expect(err).NotTo(HaveOccurred())
+		origins, err := e.Store.Origins("example")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(origins).To(HaveLen(2))
+		Expect(origins[0].Source).To(Equal(folder))
+		Expect(origins[1].Source).To(Equal(url))
 	})
 
-	It("a cached local source that cannot be examined keeps the coached refusal without echoing the system error", func() {
+	It("a cached local source that cannot be examined is left alone, and the project's source is cached beside it", func() {
 		parent := filepath.Join(tmp, "par")
 		odd := filepath.Join(parent, "kit\x01")
 		// Install refuses such a path, so the cache is seeded as a hand-edited one would be.
@@ -1325,11 +1304,14 @@ var _ = Describe("Sync", func() {
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(proj, ".lola", "project.yml"), []byte("version: 1\ntargets: [claude-code]\nmodules:\n"+
 			"  - name: kit\n    source: "+folder+"\n"), 0o600)).To(Succeed())
-		_, err = sync(engine.SyncRequest{Trust: yes})
-		Expect(err).To(MatchError(ContainSubstring("kit in your cache comes from")))
-		Expect(err.Error()).NotTo(ContainSubstring("\x01"))
-		Expect(err.Error()).NotTo(ContainSubstring("not a directory"))
-		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("lola cache rm kit")))
+		res, err := sync(engine.SyncRequest{Trust: yes})
+		Expect(err).NotTo(HaveOccurred())
+		for _, n := range res.Notices {
+			Expect(n.Text).NotTo(ContainSubstring("no longer exists"), "an origin that cannot be examined is not reported gone")
+		}
+		origins, err := e.Store.Origins("kit")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(origins).To(HaveLen(2))
 	})
 
 	It("install takes the place of a cached local source that no longer exists, and of no other", func() {
@@ -1340,14 +1322,18 @@ var _ = Describe("Sync", func() {
 		Expect(os.MkdirAll(filepath.Dir(moved), 0o755)).To(Succeed())
 		Expect(os.Rename(old, moved)).To(Succeed())
 		install(sc, engine.InstallRequest{Arg: moved})
-		o, _, err := e.Store.Origin("kit")
+		origins, err := e.Store.Origins("kit")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(o.Source).To(Equal(moved))
+		Expect(origins).To(HaveLen(1))
+		Expect(origins[0].Source).To(Equal(moved))
 
 		other := filepath.Join(tmp, "other", "kit")
 		writeTree(other, map[string]string{"lola.yml": "name: kit\n", "commands/kit.md": "Kit\n"})
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: other}}, claude)
-		Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)), "the moved one still exists")
+		Expect(err).NotTo(HaveOccurred())
+		origins, err = e.Store.Origins("kit")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(origins).To(HaveLen(2), "the moved one still exists")
 	})
 
 	Describe("limited runs", func() {
@@ -2016,11 +2002,11 @@ var _ = Describe("Sync", func() {
 				_, err = e.Fetch(ctx, spec)
 				return engine.TrustAnswer{All: true}, err
 			}})
-			Expect(err).To(MatchError(ContainSubstring(`a different module named "kit" is already in your cache`)))
-			Expect(project()).To(Equal(before))
-			r, err := e.Trust.Load(proj)
+			Expect(err).NotTo(HaveOccurred(), "the cache keeps an origin for each source of the name")
+			Expect(project()).NotTo(Equal(before))
+			origins, err := e.Store.Origins("kit")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(r.View.Find("kit")).To(BeNil(), "nothing was recorded")
+			Expect(origins).To(HaveLen(2))
 		})
 
 		It("-y and --trust never grant hook consent", func() {
@@ -2130,27 +2116,24 @@ var _ = Describe("Sync", func() {
 			Expect(filepath.Join(p.UserProfiles, "default.yml")).NotTo(BeAnExistingFile(), "no default.yml is created")
 		})
 
-		It("the cache's other source for a name is refused before any fetch", func() {
+		It("a project's source of a name is cached beside the cache's other source, which stays", func() {
 			folder := filepath.Join(tmp, "elsewhere", "example")
 			writeTree(folder, exampleModule)
 			install(sc, engine.InstallRequest{Arg: folder})
 			Expect(e.Store.Remove("example")).To(BeTrue())
 			install(engine.Scope{Kind: target.User}, engine.InstallRequest{Arg: url})
-			requests.Store(0)
-			before := state()
 
-			for _, dry := range []bool{false, true} {
-				_, err := sync(engine.SyncRequest{Options: engine.Options{DryRun: dry}})
-				Expect(err).To(MatchError("example in your cache comes from " + url + ", and project.yml asks for " + folder +
-					"; the cache is shared by every project on this machine"))
-				Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync --project"}))
-			}
-			Expect(requests.Load()).To(BeZero())
-			Expect(state()).To(Equal(before))
+			_, err := sync(engine.SyncRequest{})
+			Expect(err).NotTo(HaveOccurred())
+			origins, err := e.Store.Origins("example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(origins).To(HaveLen(2))
+			Expect(origins[0].Source).To(Equal(folder))
+			Expect(origins[1].Source).To(Equal(url))
 		})
 
 		It("a pulled folder source moved to another folder", func() {
-			a, b := filepath.Join(tmp, "a", "example"), filepath.Join(tmp, "b", "example")
+			a, b := filepath.Join(proj, "mods", "a", "example"), filepath.Join(proj, "mods", "b", "example")
 			writeTree(a, exampleModule)
 			writeTree(b, exampleModule)
 			install(sc, engine.InstallRequest{Arg: a})
@@ -2162,11 +2145,16 @@ var _ = Describe("Sync", func() {
 			Expect(os.WriteFile(manPath, []byte(moved), 0o600)).To(Succeed())
 			before := state()
 
-			_, err = sync(engine.SyncRequest{})
-			Expect(err).To(MatchError("example in your cache comes from " + a + ", and project.yml asks for " + b +
-				"; the cache is shared by every project on this machine"))
-			Expect(errs.Hints(err)).To(Equal([]string{"remove it from your cache: lola cache rm example (add -y off a terminal)", "then: lola sync --project"}))
-			Expect(state()).To(Equal(before))
+			_, err = sync(engine.SyncRequest{Trust: yes})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(state()).NotTo(Equal(before))
+			origins, err := e.Store.Origins("example")
+			Expect(err).NotTo(HaveOccurred())
+			var sources []string
+			for _, o := range origins {
+				sources = append(sources, o.Source)
+			}
+			Expect(sources).To(Equal([]string{b, a}), "the moved folder is an origin of its own, the old one stays")
 		})
 
 		It("Prof-P2-d: an unknown target names the file and the line of the entry", func() {

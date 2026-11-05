@@ -49,6 +49,14 @@ func pickerView(t *huh.Styles) string {
 	return ms.View()
 }
 
+// endedInput is a terminal whose input ends at the first question.
+type endedInput struct{ Prompter }
+
+func (endedInput) Interactive() bool { return true }
+func (endedInput) Background() (bool, error) {
+	return false, errs.WithHints(errInputEnded, "run lola in a terminal that can answer its questions")
+}
+
 var _ = Describe("the pickers' theme (Plan 10 §4)", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
@@ -215,6 +223,13 @@ var _ = Describe("the pickers' background (Plan 10 §4)", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dark).To(BeTrue(), "the theme in config.yaml")
 		Expect(errb.String()).To(BeEmpty())
+	})
+
+	It("tells how to skip the question when input ends before it is answered, and saves nothing", func() {
+		_, err := background(noAnswer, endedInput{})
+		Expect(err).To(MatchError(errInputEnded))
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("set theme: dark or theme: light in " + cfg)))
+		Expect(cfg).NotTo(BeAnExistingFile())
 	})
 
 	It("asks once on a terminal that does not say, and saves the answer in config.yaml", func() {

@@ -105,6 +105,20 @@ var _ = Describe("Resolve", func() {
 		Expect(err).To(MatchError(ContainSubstring("HOME")))
 	})
 
+	It("takes the home from USERPROFILE when HOME is unset, as on Windows", func() {
+		p, err := paths.Resolve(env(map[string]string{"USERPROFILE": "/users/me/"}))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(p.Home).To(Equal("/users/me"))
+		Expect(p.ConfigHome).To(Equal("/users/me/.config"))
+		p, err = paths.Resolve(env(map[string]string{"HOME": "/h", "USERPROFILE": "/users/me"}))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(p.Home).To(Equal("/h"), "HOME wins when set")
+		_, err = paths.Resolve(env(map[string]string{"USERPROFILE": "me"}))
+		Expect(err).To(MatchError(`HOME, or USERPROFILE on Windows, must be set to an absolute path (got "me")`))
+		_, err = paths.Resolve(env(map[string]string{"HOME": "home", "USERPROFILE": "/users/me"}))
+		Expect(err).To(MatchError(ContainSubstring(`(got "home")`)), "a relative HOME is refused, not passed over")
+	})
+
 	It("rejects a relative HOME", func() {
 		_, err := paths.Resolve(env(map[string]string{"HOME": "home"}))
 		Expect(err).To(MatchError(ContainSubstring("absolute")))

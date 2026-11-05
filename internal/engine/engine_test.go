@@ -753,7 +753,7 @@ var _ = Describe("Engine", func() {
 			Expect(rep.Modules).To(HaveLen(1))
 			m := rep.Modules[0]
 			Expect(m.Name).To(Equal("example"))
-			Expect(m.Targets).To(Equal([]string{"claude-code", "gemini-cli", "opencode"}))
+			Expect(m.Targets).To(Equal([]string{"claude-code", "gemini-cli", "opencode"}), "agents is neither set up here nor in the scope's targets")
 			Expect(m.Findings).To(ContainElement(SatisfyAll(HaveField("Kind", "module"), HaveField("Code", "module-warning"))))
 			Expect(m.Findings).To(ContainElement(SatisfyAll(HaveField("Severity", target.SeveritySkip), HaveField("Artifact", "bare"),
 				HaveField("Module", "example"))))
@@ -764,6 +764,38 @@ var _ = Describe("Engine", func() {
 			Expect(names).To(BeEmpty(), "nothing was added to the cache")
 			Expect(filepath.Join(proj, ".lola")).NotTo(BeAnExistingFile())
 			Expect(tree(p.Tmp)).To(BeEmpty(), "the staged copy is removed")
+		})
+
+		It("covers agents without -t only where .agents/skills is set up or the scope's targets name it", func() {
+			check := func() []string {
+				rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil)
+				Expect(err).NotTo(HaveOccurred())
+				return rep.Modules[0].Targets
+			}
+			Expect(os.MkdirAll(filepath.Join(proj, ".agents"), 0o755)).To(Succeed())
+			Expect(check()).To(Equal([]string{"claude-code", "gemini-cli", "opencode"}), "a bare .agents/ is not set up")
+			Expect(os.MkdirAll(filepath.Join(proj, ".agents", "skills"), 0o755)).To(Succeed())
+			Expect(check()).To(Equal([]string{"claude-code", "gemini-cli", "opencode", "agents"}))
+			Expect(os.RemoveAll(filepath.Join(proj, ".agents"))).To(Succeed())
+			writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [agents]\nmodules: []\n"})
+			Expect(check()).To(Equal([]string{"claude-code", "gemini-cli", "opencode", "agents"}), "the scope's targets name it")
+			writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n" +
+				"  - name: other\n    source: ../src/example\n    targets: [agents]\n"})
+			Expect(check()).To(Equal([]string{"claude-code", "gemini-cli", "opencode", "agents"}), "an entry's targets name it")
+
+			user := engine.Scope{Kind: target.User}
+			checkUser := func() []string {
+				rep, err := e.Check(ctx, user, proj, []string{"../src/example"}, nil, nil)
+				Expect(err).NotTo(HaveOccurred())
+				return rep.Modules[0].Targets
+			}
+			writeTree(p.UserProfiles, map[string]string{"go.yml": "version: 1\ntargets: [agents]\nmodules: []\n"})
+			Expect(checkUser()).To(Equal([]string{"claude-code", "gemini-cli", "opencode"}), "go is not on")
+			led, err := e.Ledger(user)
+			Expect(err).NotTo(HaveOccurred())
+			led.Profile = &ledger.Active{Name: "user:go", By: ledger.ByOn}
+			Expect(led.Save(p.UserLedger)).To(Succeed())
+			Expect(checkUser()).To(Equal([]string{"claude-code", "gemini-cli", "opencode", "agents"}), "the active profile's own targets name it")
 		})
 
 		It("detects a plugin format in a source it checks", func() {
@@ -801,7 +833,7 @@ var _ = Describe("Engine", func() {
 		Expect(e.CheckTargets([]string{"claude-code", "opencode"})).To(Succeed())
 		err := e.CheckTargets([]string{"claude-code", "vim"})
 		Expect(err).To(MatchError(`unknown target "vim"`))
-		Expect(errs.Hints(err)).To(Equal([]string{"valid targets: claude-code, gemini-cli, opencode"}))
+		Expect(errs.Hints(err)).To(Equal([]string{"valid targets: claude-code, gemini-cli, opencode, agents"}))
 	})
 
 	It("requires targets and validates them", func() {
@@ -809,7 +841,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).To(MatchError("no targets selected"))
 		_, err = install(engine.Options{Targets: []string{"vim"}}, src)
 		Expect(err).To(MatchError(`unknown target "vim"`))
-		Expect(errs.Hints(err)).To(ContainElement("valid targets: claude-code, gemini-cli, opencode"))
+		Expect(errs.Hints(err)).To(ContainElement("valid targets: claude-code, gemini-cli, opencode, agents"))
 	})
 
 	It("refuses --ref for a folder source", func() {
@@ -991,10 +1023,10 @@ var _ = Describe("Engine", func() {
 		}
 
 		It("Detect reports installed binaries and project markers without running anything", func() {
-			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code"}, {Target: "gemini-cli"}, {Target: "opencode"}}))
+			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code"}, {Target: "gemini-cli"}, {Target: "opencode"}, {Target: "agents"}}))
 			bin := assistant("claude", "touch \""+filepath.Join(tmp, "ran")+"\"\n")
 			Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
-			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code", Binary: bin, Marked: true}, {Target: "gemini-cli"}, {Target: "opencode"}}))
+			Expect(e.Detect(sc)).To(Equal([]engine.Assistant{{Target: "claude-code", Binary: bin, Marked: true}, {Target: "gemini-cli"}, {Target: "opencode"}, {Target: "agents"}}))
 			Expect(filepath.Join(tmp, "ran")).NotTo(BeAnExistingFile())
 		})
 

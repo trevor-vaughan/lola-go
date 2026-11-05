@@ -188,22 +188,19 @@ flowchart TD
     without your consent, and `scripts` for a project's pre-install script without it. A run
     that removes something asks first; off a terminal it is refused with the same command and
     `-y`.
-- **One source per name.** Your cache keeps one source per module name for every project on the
-  machine.
-  - An entry whose name your cache holds from another source or path (a pulled `project.yml` that
-    moved a folder, say) is refused before anything is fetched: `lola cache rm <module>` (add
-    `-y` off a terminal), then `lola sync` again.
-  - A **moved project** is the exception: when the source your cache records for the name is a
-    local folder or archive that no longer exists, and the entry's source is local too, sync says
-    `<module>: your cache has it from <old>, which no longer exists; caching it from <new>` and
-    caches the module from the new place once you trust it (lola checks again, under the cache's
-    lock, that the old place is still gone; a dry run replaces nothing). `lola install` of a
-    local source does the same.
-  - **Known limitation:** two checkouts or worktrees of one repository whose `project.yml` lists
-    folder modules inside the repository name the same modules from different folders, so each
-    one's sync refuses what the other cached and coaches `lola cache rm` again.
-  - A folder that is only missing for a while (an unmounted drive) is replaced too; you see the
-    notice and the trust diff, and can `lola cache rm` and sync again.
+- **One origin per source.** Your cache keeps a module by its name and the source it came from, so
+  two checkouts or worktrees of one repository, or the same module name from two sources, each
+  sync without touching the other's cache.
+  - `lola install <name>`, `lola info <name>` and the other commands that name a module and no
+    source use the source cached most recently; an entry in `project.yml` always uses its own.
+  - A **moved project:** when a source your cache records for the name is a local folder or
+    archive that no longer exists, and the entry's source is local too, sync says `<module>: your
+    cache has it from <old>, which no longer exists; caching it from <new>` and drops the old
+    record when you trust the new one (lola checks again, under the cache's lock, that the old
+    place is still gone; a dry run replaces nothing). `lola install` of a local source does the
+    same. A folder that is only missing for a while (an unmounted drive) is replaced too; you
+    see the notice and the trust diff.
+  - `lola cache rm <name>` removes every source's copy of the module.
 
 **The trust diff.** At project scope, sync compares `project.yml`, with the pins it would write,
 to what you last trusted (`$XDG_STATE_HOME/lola/trust.json`): what lola wrote there, or what you
@@ -477,8 +474,11 @@ have not trusted must resolve, after symbolic links, inside the project root, an
 installed from inside the project, so that a pulled symbolic link cannot lead it out. One that
 leaves it is refused before the diff, and neither `--trust` nor `-y` overrides it:
 `<module>: local source ../x resolves outside the project (/home/me/x)`, with the hint to install
-it yourself if you trust it (`lola install /home/me/x`), which records the entry as trusted. A
-source you installed or trusted outside the project is not checked while its `source` and
+it yourself if you trust it (`lola install /home/me/x`), which records the entry as trusted.
+`lola install` warns when it writes such a source into `project.yml` (`<module> comes from
+/home/me/x, outside the project: a teammate's sync will refuse it`), and records a `file://`
+URL as the path it names. A source you installed or trusted outside the project is not checked
+while its `source` and
 `path` stay as you trusted them: a vars or targets edit of it is asked about, not refused. A
 relative source is judged after joining it to the project, so `../<project>/x` counts as
 inside and is checked. A project reached through a symbolic link is checked against its real

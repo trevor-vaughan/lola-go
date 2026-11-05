@@ -80,7 +80,7 @@ var _ = Describe("help, errors and output contract", func() {
 	})
 
 	It("rejects an unknown help topic and both modes at once", func() {
-		Expect(lola("help", "nope").err).To(ContainSubstring(`no help topic "nope"`))
+		Expect(lola("help", "nope").err).To(ContainSubstring("no help topic \"nope\"\n  hint: see: lola help\n"))
 		Expect(lola("help", "--long", "--short").code).To(Equal(1))
 	})
 

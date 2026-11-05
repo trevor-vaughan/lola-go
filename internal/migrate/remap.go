@@ -202,7 +202,7 @@ func suggestRoots(e *engine.Engine, recs []Record, moved []bool, srcs map[string
 		}
 	}
 	for i, rec := range recs {
-		if rec.Missing && !moved[i] {
+		if rec.Missing && !moved[i] && !rootLandsAtHome(rec.ProjectPath, e.Paths.Home) {
 			add(oldRoot(rec.ProjectPath, e.Paths.Home), i, rec)
 		}
 		if src, ok := srcs[rec.Module]; ok && !srcMoved[rec.Module] && sourceMissing(src) {
@@ -211,6 +211,14 @@ func suggestRoots(e *engine.Engine, recs []Record, moved []bool, srcs map[string
 	}
 	slices.SortFunc(out, func(a, b RootSuggestion) int { return strings.Compare(a.Old, b.Old) })
 	return out
+}
+
+// rootLandsAtHome reports whether the root suggested for the missing project path p would move
+// p to your home directory or a parent of it, which the next run refuses (projectProblem): p is
+// its own old root, as a project at /home/alice when yours is /home/bob.
+func rootLandsAtHome(p, home string) bool {
+	to, ok := rebase(p, oldRoot(p, home), home)
+	return ok && atHome(to, home)
 }
 
 // Suggest is what NewPlan leaves unmapped for want of this machine's paths or assistants under

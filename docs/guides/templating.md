@@ -131,7 +131,7 @@ flowchart TD
 ```
 
 - **What a template sees.**
-  - `target` (`claude-code`, `gemini-cli` or `opencode`).
+  - `target` (`claude-code`, `gemini-cli`, `opencode` or `agents`).
   - `scope` (`project` or `user`).
   - `profiles`: `default` first at user scope (when `default.yml` exists), then the profile on, by
     qualified name; `[]` when none.
@@ -251,7 +251,7 @@ flowchart TD
 - **Names.**
   - `_partials/<name>.liquid` or `_partials/<name>.<assistant>.liquid`: `<name>` is a lowercase
     letter or digit followed by up to 63 lowercase letters, digits, `_` and `-`, and
-    `<assistant>` is `claude-code`, `gemini-cli` or `opencode`.
+    `<assistant>` is `claude-code`, `gemini-cli`, `opencode` or `agents`.
   - For each assistant, `header` is `header.<assistant>.liquid` if it exists, else
     `header.liquid`; with neither, an include that renders is refused at its line:
     `skills/review/SKILL.md.liquid:4: no partial header for claude-code (looked for
@@ -350,9 +350,9 @@ flowchart TD
     (`agents/guard.targets.yaml (merged for claude-code): agent guard: frontmatter hooks: …`).
   - Templates and their partials read the map as `attrs`.
 - **Values.**
-  - The top level maps assistant ids (`claude-code`, `gemini-cli`, `opencode`) to maps of keys;
+  - The top level maps assistant ids (`claude-code`, `gemini-cli`, `opencode`, `agents`) to maps of keys;
     any other id refuses on its line (`agents/reviewer.targets.yaml:2: nope: unknown target; the
-    targets are claude-code, gemini-cli, opencode`).
+    targets are claude-code, gemini-cli, opencode, agents`).
   - A file of only comments sets nothing.
   - Values are strings, `true`/`false`, whole numbers (at most 64 bits), decimals
     (`temperature: 0.2`, `1e-3`, written to the assistant as YAML numbers), `null`, lists and

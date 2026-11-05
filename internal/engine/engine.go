@@ -127,6 +127,9 @@ type Options struct {
 	// ForceRun is the user's run with --force, which a refusal of conflicts --force overrides
 	// hints; "" for no hint.
 	ForceRun string
+	// TargetRun is the user's run with -t naming only the target given, which a refusal of two
+	// targets' destinations that are one real file hints once per target; nil for no hint.
+	TargetRun func(target string) string
 	// RenderRun is the user's run as a real run with --force: what renders a forceable skip, which
 	// a dry run does not. "" means ForceRun is that run.
 	RenderRun string
@@ -321,6 +324,9 @@ type Result struct {
 	// dropped is each target an install's -t leaves out of a module installed on it, whose files
 	// the plan deletes (planInstallModule, PickDeletes).
 	dropped []droppedTarget
+	// viaAgents is each native skill copy a target leaves to the agents target (leftToAgents),
+	// which the plan deletes where the module had it (PickDeletes).
+	viaAgents []leftCopy
 	// home is the directory user scope writes under, which a removal's Where names (deletedBy).
 	home string
 }
@@ -909,9 +915,7 @@ func (e *Engine) cachedCommit(spec source.Spec, run string) (store.Version, erro
 		return store.Version{}, err
 	}
 	for _, name := range names {
-		o, found, err := e.Store.Origin(name)
-		if err != nil || !found || o.Type != string(source.KindGit) || o.Source != spec.Location || o.Path != spec.Path ||
-			!o.Components.Equal(spec.Components) {
+		if _, found, err := e.Store.OriginFor(name, sourceKey(spec)); err != nil || !found {
 			continue // an index lola cannot read is no version of this source
 		}
 		digest, err := e.Store.AtCommit(name, commit)
@@ -971,6 +975,32 @@ func pinMismatch(r InstallRequest) error {
 		"run lola install again to list the current versions")
 }
 
+// agentsTarget is the target whose .agents/skills other assistants read too: planned first, the
+// skills it delivers are each target's PlanContext.SharedSkills.
+const agentsTarget = "agents"
+
+// targetPlan is one target's plan of a module: the copy of it rendered for the target, and the
+// intents and findings the target gave.
+type targetPlan struct {
+	rendered *module.Module
+	intents  []plan.Intent
+	finds    []target.Finding
+}
+
+// sharedSkills is what tp, the agents target's plan, delivers: each skill of its module it admits
+// with no skip and no forced finding (PlanContext.SharedSkills).
+func sharedSkills(tp targetPlan) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range tp.rendered.Skills {
+		if module.Supports(s.Targets, agentsTarget) && !slices.ContainsFunc(tp.finds, func(f target.Finding) bool {
+			return f.Kind == "skill" && f.Artifact == s.Name && (f.Severity == target.SeveritySkip || f.Forced)
+		}) {
+			out[s.Name] = true
+		}
+	}
+	return out
+}
+
 // planModule asks every effective target for the intents and findings of the module's
 // components that x does not exclude; ment is its manifest entry (nil when it has none).
 func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *manifest.Entry, x config.Exclusions, opts Options, probes *probeRun,
@@ -1007,30 +1037,25 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	if len(v.Module.RuntimeHooks) > 0 && narrows(x, v.Module) {
 		notes = append(notes, Notice{Level: LevelInfo, Text: m.Name + ": runtime hooks are installed for the whole module; picks do not narrow them"})
 	}
-	var intents []plan.Intent
-	for i, id := range targets {
-		if slices.Contains(targets[:i], id) {
-			continue // a target named twice is planned once
-		}
-		if !module.Supports(m.Targets, id) {
-			notes = append(notes, Notice{Level: LevelInfo, Text: fmt.Sprintf("%s does not support %s; skipped there", m.Name, id)})
-			continue
-		}
+	// planOne is target id's plan of the module, with the copy of it rendered for id; pctx with
+	// id's root and version.
+	planOne := func(id string) (targetPlan, error) {
 		t, err := e.target(id)
 		if err != nil {
-			return nil, nil, nil, mr, err
+			return targetPlan{}, err
 		}
+		pctx := pctx
 		pctx.Root, pctx.Version = t.Root(sc.Kind, sc.ProjectDir, e.Paths), probes.version(t)
 		rendered, err := e.renderTemplates(probes.ctx, m, run.data(id, sc, resolvedVars(m, ment)), run)
 		if err != nil {
 			if h := e.checkHint(sc, err, ment, opts.Targets, opts.Display, opts.freshPin); h != "" {
 				err = errs.WithHints(err, h)
 			}
-			return nil, nil, nil, mr, err
+			return targetPlan{}, err
 		}
 		ins, fs, err := t.Plan(rendered, pctx)
 		if err != nil {
-			return nil, nil, nil, mr, fmt.Errorf("%s for %s: %w", m.Name, id, err)
+			return targetPlan{}, fmt.Errorf("%s for %s: %w", m.Name, id, err)
 		}
 		for i := range fs {
 			fs[i].Module = m.Name
@@ -1044,7 +1069,44 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 				fs[i].Hint = anyway
 			}
 		}
-		intents, finds = append(intents, ins...), append(finds, fs...)
+		return targetPlan{rendered, ins, fs}, nil
+	}
+	// The agents target is planned first: what it delivers, the others leave to it (spec
+	// 2026-11-03 §4); install asks before deleting the copies they no longer write
+	// (leftToAgents). Its error is returned at its place in targets, so a run refused is refused
+	// for the target it names first, and agents is never rendered twice.
+	var (
+		viaAgents targetPlan
+		agentsErr error
+		agentsRan bool
+	)
+	if slices.Contains(targets, agentsTarget) && module.Supports(m.Targets, agentsTarget) {
+		if viaAgents, agentsErr = planOne(agentsTarget); agentsErr == nil {
+			pctx.SharedSkills = sharedSkills(viaAgents)
+		}
+		agentsRan = true
+	}
+	var intents []plan.Intent
+	for i, id := range targets {
+		if slices.Contains(targets[:i], id) {
+			continue // a target named twice is planned once
+		}
+		if !module.Supports(m.Targets, id) {
+			notes = append(notes, Notice{Level: LevelInfo, Text: fmt.Sprintf("%s does not support %s; skipped there", m.Name, id)})
+			continue
+		}
+		tp := viaAgents
+		switch {
+		case id == agentsTarget && agentsRan && agentsErr != nil:
+			return nil, nil, nil, mr, agentsErr
+		case id != agentsTarget || !agentsRan:
+			p, err := planOne(id)
+			if err != nil {
+				return nil, nil, nil, mr, err
+			}
+			tp = p
+		}
+		intents, finds = append(intents, tp.intents...), append(finds, tp.finds...)
 		mr.Targets = append(mr.Targets, id)
 	}
 	for _, s := range m.MCPServers {
@@ -1105,14 +1167,14 @@ func (e *Engine) syncCheckArg(sc Scope, se *syncEntry, ent *manifest.Entry, dry 
 		}
 	}
 	return e.checkName(name, se.v, func() (store.Origin, bool, error) {
-		o, found, err := e.Store.Origin(name)
-		if err != nil || dry || se.staged == nil {
+		if dry || se.staged == nil {
+			return e.Store.Origin(name)
+		}
+		o, found, err := e.Store.OriginFor(name, se.staged.Key())
+		if err != nil {
 			return o, found, err
 		}
-		if idx, ok := se.staged.Index(o, found, se.headIfAbsent); ok { // as publish will commit it
-			return idx, true, nil
-		}
-		return o, found, nil
+		return se.staged.Index(o, found, se.headIfAbsent), true, nil // as publish will commit it
 	})
 }
 
@@ -1205,10 +1267,14 @@ type prepared struct {
 // module owns (ruling R-6cux-7): uninstalling the owner, hinted, when the run's own command line
 // named the module that wants it (opts.named); else removing that module from the file that
 // lists it, a project.yml or a profile, which must never steer you into removing a module you
-// installed.
+// installed. Two targets whose destinations are one real file (a .claude/skills/<n> linked to
+// .agents/skills/<n>) hint the run with each of them alone (opts.TargetRun).
 func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, changes []plan.ModuleChange, opts Options) error {
-	var owners []string
+	var owners, alone []string
 	for i, c := range ce.Conflicts {
+		if c.SameAs != "" && c.SameAs != c.Target {
+			alone = append(alone, c.SameAs, c.Target)
+		}
 		switch {
 		case c.Owner == "":
 		case slices.Contains(opts.named, c.Claimant):
@@ -1225,10 +1291,21 @@ func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, cha
 			ce.Conflicts[i].Reason += ": remove " + c.Claimant + " from " + shown(from)
 		}
 	}
-	if len(owners) == 0 {
+	var hints []string
+	if len(owners) > 0 {
+		hints = append(hints, e.Command(sc, "uninstall", append(owners, opts.Display...)...))
+	}
+	if opts.TargetRun != nil {
+		for _, t := range e.Targets {
+			if slices.Contains(alone, t.ID()) {
+				hints = append(hints, opts.TargetRun(t.ID()))
+			}
+		}
+	}
+	if len(hints) == 0 {
 		return err
 	}
-	return errs.WithHints(err, e.Command(sc, "uninstall", append(owners, opts.Display...)...))
+	return errs.WithHints(err, hints...)
 }
 
 // prepare runs everything that may refuse or ask before a scope is written: runtime hook

@@ -61,3 +61,40 @@ Guidance for coding agents working on lola (Go).
 - **No meta tests**: never test test files, source text, docs or repository layout, and never
   test test helpers. Convention specs that walk the live cobra tree are fine.
 - Regression specs carry the names listed in the design spec §11; keep them.
+
+## Driving the TUIs
+
+A plain `bash` tool has no TTY, so interactive commands take the static path (`lola install` with no
+args just errors `needs a module or source`). That proves parsing, not the UI. Launch in `tmux`,
+poll for a marker, send keys, read the pane. Assertions belong in specs and `--plain`/`--json` runs.
+
+- **Gates.** Forms and questions: `interactive()` (`internal/cli/prompt.go:20`) needs stdin and stderr
+  on a TTY; `LOLA_ACCESSIBLE=1` or `TERM=dumb` swaps them for numbered line prompts. Viewer/pager:
+  `app.paging` (`internal/cli/pager.go:37`) needs stdout and stderr on a TTY and none of `--json`,
+  `--plain`, `--no-pager`, `NO_PAGER`, `pager: false`, `LOLA_PAGER=cat`; it opens only when the output
+  is at least as tall as the terminal, so use `-y 6` to force it.
+- **Surfaces** (ready marker): `lola help <cmd>` / bare `lola` viewer (`lines N–M of T`); `lola install`
+  form (`Step 1 of 5`, review `y apply · c change · n cancel`); scope pickers on `tidy`, `update`,
+  `sync`, `repair`, `profile … --on/--switch/--move` (`<Verb> where?`); `trash` (`Restore or empty
+  which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile <n> --edit
+  <mod>` (`Step 1 of 3`); trust diff on `sync`/`update` (`Trust these changes?`); `uninstall --project`
+  viewer before its question (`q continue:` footer). `uninstall`, `cache rm`, `info`, `cache add` and
+  `market --add` with no args never go interactive; they error with hints.
+- **Keys.** Pickers: `x` toggle, `ctrl+a` all/none, `/` filter, `Enter`, `esc` back, `q` quit.
+  Confirms: `y`/`n`. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`, `q`. `ctrl+c` exits 0 with
+  `nothing changed`. After `q` the viewer reprints its content to scrollback.
+
+```bash
+sudo dnf install -y tmux; task build
+tmux new-session -d -s holder -x 80 -y 10 'sleep 3000'   # a dying TUI as last session kills the server
+tmux new-session -d -s v -x 120 -y 30 -c "$PROJ" "bash -c 'env HOME=… XDG_…=… lola help install; echo EXIT=\$?; sleep 60'"
+timeout 15 bash -c 'until tmux capture-pane -t v -p | grep -q "lines [0-9]"; do sleep 0.2; done'
+tmux send-keys -t v / ; tmux send-keys -t v hook; tmux send-keys -t v Enter
+tmux capture-pane -t v -p | grep -v '^$' | tail -6
+tmux kill-session -t v; tmux kill-session -t holder
+```
+
+- **Gotchas.** Use `-x 120` or wider (at 80 the viewer footer drops `q quit`). Pass the isolated
+  `HOME`/`XDG_*` inside the pane's `bash -c`; a running tmux server does not inherit your env.
+  Kill by session name, never `pkill -f` (it matches your own shell). `lola trash --plain` rows start
+  with a literal `run` column. `bin/lola` can be stale; `task build` refreshes it.

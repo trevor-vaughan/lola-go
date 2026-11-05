@@ -256,6 +256,21 @@ var _ = Describe("Fetch of an archive", func() {
 		expectNothingStaged()
 	})
 
+	It("leaves out a refused link outside every selected component, and refuses one inside", func() {
+		archive := filepath.Join(tmp, "sel.tar")
+		sel := &source.Components{Skills: []string{"skills/s"}}
+		fetchSel := func(links ...entry) (source.Fetched, error) {
+			writeTar(archive, false, append([]entry{file("skills/s/SKILL.md", "S"), file("skills/t/SKILL.md", "T")}, links...)...)
+			return source.Fetch(ctx, source.Spec{Kind: source.KindArchive, Location: archive, Components: sel}, staging)
+		}
+		f, err := fetchSel(symlink("fixtures/skills", "/etc/passwd"), symlink("skills/t/gone", "nope"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listTree(f.Dir)).To(ConsistOf("skills/s/SKILL.md"))
+		_, err = fetchSel(symlink("skills/s/gone", "nope"))
+		Expect(err).To(MatchError(source.ErrLinkInSource))
+		Expect(err).To(MatchError(ContainSubstring("skills/s/gone: symbolic link refused: its target does not exist")))
+	})
+
 	Context("with a link lola refuses outside the module root", func() {
 		write := func(name string, entries ...entry) string {
 			archive := filepath.Join(tmp, name)

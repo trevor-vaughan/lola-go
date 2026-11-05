@@ -86,6 +86,14 @@ func alone(m *module.Module) []*module.Module {
 	return out
 }
 
+// skillsOnly reports a target whose capability table declares skills and no other kind, such
+// as agents; only such a target may leave the clean module's other kinds kind-unsupported.
+func skillsOnly(t target.Target) bool {
+	kinds := t.Capabilities().Kinds
+	_, skills := kinds["skill"]
+	return skills && len(kinds) == 1
+}
+
 // restrict sets the per-entry targets of every artifact in m.
 func restrict(m *module.Module, ids []string) {
 	for i := range m.Skills {
@@ -230,10 +238,10 @@ var _ = Describe("every registered target", func() {
 					Expect(written).NotTo(BeZero())
 				})
 
-				It("renders the clean module without skipping anything", func() {
+				It("renders the clean module without skipping anything, but the other kinds of a skills-only target", func() {
 					_, fs := run(clean(), ctx)
 					for _, f := range fs {
-						Expect(f.Severity).NotTo(Equal(target.SeveritySkip), f.Describe())
+						Expect(f.Severity != target.SeveritySkip || skillsOnly(t) && f.Kind != "skill" && f.Code == "kind-unsupported").To(BeTrue(), f.Describe())
 					}
 				})
 
@@ -297,7 +305,12 @@ var _ = Describe("every registered target", func() {
 						Expect(ins).To(BeEmpty())
 						Expect(fs).To(BeEmpty())
 						restrict(here, []string{"some-other-target", t.ID()})
-						ins, _ = run(here, ctx)
+						ins, fs = run(here, ctx)
+						if skillsOnly(t) && len(m.Skills) == 0 {
+							Expect(ins).To(BeEmpty())
+							Expect(fs).To(ConsistOf(HaveField("Code", "kind-unsupported")))
+							continue
+						}
 						Expect(ins).NotTo(BeEmpty())
 					}
 				})

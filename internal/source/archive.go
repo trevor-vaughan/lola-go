@@ -101,6 +101,7 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if err != nil {
 		return Fetched{}, err
 	}
+	leaveOut(refused, spec.Components, base)
 	if spec.Path != "" { // before archiveRoot, which would call a refused link on the --path missing
 		if err := refusedOnPath(refused, base); err != nil {
 			return Fetched{}, err
@@ -114,6 +115,7 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if err != nil {
 		return Fetched{}, err
 	}
+	leaveOut(refused, spec.Components, filepath.ToSlash(rel))
 	if err := refusedOnPath(refused, filepath.ToSlash(rel)); err != nil {
 		return Fetched{}, err
 	}
@@ -121,7 +123,7 @@ func fetchArchive(ctx context.Context, spec Spec, scratch, stagingParent string,
 	if root == tree {
 		modName = name[:len(name)-len(archiveSuffix(name))]
 	}
-	dir, _, _, err := copyTree(ctx, tree, root, stagingParent, listWalk)
+	dir, _, _, err := copyTree(ctx, tree, root, stagingParent, listWalk, spec.Components)
 	if err != nil {
 		return Fetched{}, err
 	}
@@ -683,4 +685,19 @@ func shallowest(tree string, cands map[string]int) (string, error) {
 	slices.Sort(names)
 	return "", errs.WithHints(fmt.Errorf("the archive holds several module roots at the same depth: %s", strings.Join(names, ", ")),
 		"choose one with --path, e.g. "+errs.ShellJoin([]string{"--path", names[0]}))
+}
+
+// leaveOut deletes from refused, links by their slash paths in the archive, the ones below the
+// module root rel ("." for the archive's top) that a selection does not reach: it installs only
+// its components, so a refused link elsewhere in the module never reaches the install.
+func leaveOut(refused map[string]error, components *Components, rel string) {
+	prefix := ""
+	if rel != "." {
+		prefix = rel + "/"
+	}
+	for name := range refused {
+		if inside, ok := strings.CutPrefix(name, prefix); ok && !components.reaches(inside) {
+			delete(refused, name)
+		}
+	}
 }

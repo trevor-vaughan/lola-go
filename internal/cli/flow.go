@@ -1305,8 +1305,10 @@ func (fl *installFlow) moduleOptions() []ModuleOption {
 }
 
 // ensureAssistants decides each scope's assistants (§4.3): -t, else the targets the scope's
-// manifest fixes; off a terminal, those installed and set up here; on one, the only
-// assistant installed, else the picker (once, for every scope whose targets are open). On a
+// manifest fixes; off a terminal, those set up here (TargetChoice.Here); on one, the targets with
+// no binary (agents) set up here when no assistant is installed, the only assistant installed
+// unless it is not set up here and agents is, else the picker (once, for every scope whose targets
+// are open), which offers agents after the assistants, only where it is set up. On a
 // terminal, top-level targets the trust record does not cover fix nothing: the scope is open,
 // and the picker never preselects them (Plan 6a §10.1). It keeps why each scope's assistants were
 // chosen, which the review says (Plan 10 §5).
@@ -1317,7 +1319,7 @@ func (fl *installFlow) ensureAssistants() error {
 	delete(fl.shown, ReviewAssistants)
 	answer, reasons, auto := map[string][]string{}, map[string]string{}, false
 	var open, openLabels []string
-	var installed, here, untrustedTargets []string
+	var installed, here, setUpOnly, untrustedTargets []string
 	// The run with -t naming one assistant, for each of ids.
 	withTarget := func(ids []string) []string {
 		var out []string
@@ -1348,20 +1350,22 @@ func (fl *installFlow) ensureAssistants() error {
 			answer[name], reasons[name] = nil, "from "+cmp.Or(from, manifestName(c.Scope))
 			continue
 		}
-		inst, marked := choice.Installed, choice.SetUp
+		inst, marked, only := choice.Installed, choice.SetUp, choice.SetUpOnly
 		choice.Manifest = nil // the pickers' fixed targets decided above
 		switch why := choice.NoneHere(); {
-		case len(inst) == 0:
+		case len(inst) == 0 && len(only) == 0:
 			return errs.WithHints(errors.New(why), withTarget(targets.IDs())...)
-		case !fl.ask && len(marked) == 0:
-			return errs.WithHints(errors.New(why), withTarget(inst)...)
+		case !fl.ask && why != "":
+			return errs.WithHints(errors.New(why), withTarget(fl.eng.RerunTargets(choice))...)
 		case !fl.ask:
-			answer[name], reasons[name] = marked, "set up here"
-		case len(inst) == 1:
+			answer[name], reasons[name] = choice.Here(), "set up here"
+		case len(inst) == 0:
+			answer[name], reasons[name], auto = only, "set up here", true
+		case len(inst) == 1 && (len(marked) == 1 || len(only) == 0):
 			answer[name], reasons[name], auto = inst, "the only assistant found", true
 		default:
 			open, openLabels = append(open, name), append(openLabels, destLabel(c.Scope))
-			installed, here = union(installed, inst), union(here, marked)
+			installed, here, setUpOnly = union(installed, inst), union(here, marked), union(setUpOnly, only)
 		}
 	}
 	if len(open) > 0 {
@@ -1370,10 +1374,13 @@ func (fl *installFlow) ensureAssistants() error {
 			pre = here
 		}
 		if len(pre) == 0 {
+			pre = setUpOnly
+		}
+		if len(pre) == 0 {
 			pre = installed
 		}
 		pre = slices.DeleteFunc(slices.Clone(pre), func(id string) bool { return slices.Contains(untrustedTargets, id) })
-		picked, err := fl.p.Assistants(AssistantStep{Options: installed, Preselect: pre, Scopes: openLabels, Step: fl.steps(ReviewAssistants),
+		picked, err := fl.p.Assistants(AssistantStep{Options: union(slices.Clone(installed), setUpOnly), Preselect: pre, Scopes: openLabels, Step: fl.steps(ReviewAssistants),
 			Nav: fl.nav(ReviewAssistants)})
 		if err != nil {
 			return err
@@ -1761,7 +1768,10 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	t := fl.target()
 	spec := engine.InstallSpec{Cwd: fl.cwd, Staged: fl.staged, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
 		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.hintArgs(fl.args)), RenderRun: renderRun(fl.cmd, fl.hintArgs(fl.args)), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
-		PostInstall: fl.flagScript(fl.f.postInstall), Display: outputFlags(fl.cmd), Target: t, AskWhere: fl.where},
+		PostInstall: fl.flagScript(fl.f.postInstall), Display: outputFlags(fl.cmd), Target: t, AskWhere: fl.where,
+		TargetRun: func(id string) string {
+			return runWithout(fl.cmd, fl.hintArgs(fl.args), slices.Concat([]string{"target"}, consentFlags)...) + " -t " + id
+		}},
 		WithMentions: fl.f.withMentions, NameMentions: true, UserRun: t.UserRun()}
 	if fl.f.rules || fl.f.noRules {
 		spec.Options.Rules = &fl.f.rules

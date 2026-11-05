@@ -14,6 +14,7 @@ var _ = Describe("Another machine's roots (Plan 10 §3.1)", func() {
 	var tmp string
 	BeforeEach(func() {
 		var err error
+		testenv.OutsideHome() // the specs below need a root that is not home-shaped
 		tmp, err = filepath.EvalSymlinks(testenv.Isolate())
 		Expect(err).NotTo(HaveOccurred())
 	})

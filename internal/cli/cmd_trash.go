@@ -190,7 +190,7 @@ func (a *app) emptyTrash(cmd *cobra.Command, eng *engine.Engine, args []string, 
 		return a.emit(cmd, func(w io.Writer, s style) { printTrashEmpty(w, s, plan) }, plan)
 	}
 	if len(plan.Removed) > 0 && !yes {
-		show := func(w io.Writer) { printTrashEmpty(w, style{}, plan) }
+		show := func(w io.Writer, s style) { printTrashEmpty(w, s, plan) }
 		q := "Delete " + trashRuns(len(plan.Removed)) + "? This cannot be undone."
 		if err := a.confirm(cmd, args, q, nav, plan, show); err != nil {
 			return err
@@ -359,7 +359,7 @@ func (a *app) restorePicked(cmd *cobra.Command, eng *engine.Engine, p Prompter, 
 		}
 		restored, existing = trashCounts(plans)
 		q := "Move " + engine.CountItems(existing) + " in the way into a new trash run, then restore " + engine.CountItems(restored) + "?"
-		if err := a.confirm(cmd, nil, q, Nav{Answered: 2}, plans, func(w io.Writer) { show(w, style{}) }); err != nil {
+		if err := a.confirm(cmd, nil, q, Nav{Answered: 2}, plans, show); err != nil {
 			return "", err
 		}
 	}

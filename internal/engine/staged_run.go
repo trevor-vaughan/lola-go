@@ -93,17 +93,6 @@ func (r *StagedRun) version(name, id string) (store.Version, bool) {
 	return store.Version{}, false
 }
 
-// alone is the cache index the run's staged version id of name would have in a cache that held
-// nothing of name: the source it was fetched from. ok is false when the run staged no such version.
-func (r *StagedRun) alone(name, id string) (_ store.Origin, ok bool) {
-	for _, f := range r.fetches {
-		if f.st.Version.Name == name && f.st.Version.ID == id {
-			return f.st.Index(store.Origin{}, false, f.headIfAbsent)
-		}
-	}
-	return store.Origin{}, false
-}
-
 // origin is name's cache index as it will be once run commits what it staged of name
 // (store.Staged.Index): the cache's own for a nil run, or for one that staged nothing of name.
 // found is false when neither the cache nor the run holds the name.
@@ -116,9 +105,11 @@ func (e *Engine) origin(run *StagedRun, name string) (store.Origin, bool, error)
 		if f.committed || f.st.Version.Name != name {
 			continue
 		}
-		if idx, ok := f.st.Index(o, found, f.headIfAbsent); ok {
-			o, found = idx, true
+		own, ownFound, err := e.Store.OriginFor(name, f.st.Key())
+		if err != nil {
+			return o, found, err
 		}
+		o, found = f.st.Index(own, ownFound, f.headIfAbsent), true
 	}
 	return o, found, nil
 }

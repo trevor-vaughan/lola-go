@@ -148,7 +148,7 @@ Run these in the `lola-go` checkout after `task build`. They make `my-project` a
    ```
 
 3. Install the module into the project. `-t` names the target assistant: `claude-code`,
-   `gemini-cli` or `opencode`:
+   `gemini-cli`, `opencode` or `agents` (skills only, for Codex, Cursor, Copilot and others):
 
    ```sh
    cd my-project
@@ -226,6 +226,18 @@ yet, so off a terminal the first sync shows what it would install and refuses wi
 
 A teammate's sync refuses a local source outside the project, such as `../my-module` above:
 share a module through a git repository or an `https://` archive.
+
+## Shell completion
+
+lola completes commands, flags, module and profile names for bash, zsh, fish and PowerShell.
+For bash, add this to `~/.bashrc`:
+
+```sh
+source <(lola completion bash)
+```
+
+zsh needs the script on your `fpath` before `compinit` runs, and the other shells have their
+own place for it: [docs/reference/completion.md](docs/reference/completion.md#setting-it-up).
 
 ## Learn more
 

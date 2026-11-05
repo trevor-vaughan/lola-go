@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -85,6 +86,25 @@ func Isolate() string {
 		}
 	}
 	return root
+}
+
+// homeLike matches a path below a home directory as Unix systems lay them out.
+var homeLike = regexp.MustCompile(`^(/home/|/Users/|/root(/|$))`)
+
+// OutsideHome points TMPDIR at /tmp for the current spec when it lies below a home directory,
+// so a later Isolate (or TempDir) yields a path no home-directory rule matches. For specs that
+// need a root that is not home-shaped, whatever the developer's TMPDIR. It skips the spec where
+// there is no /tmp to use. Values are restored after the spec.
+func OutsideHome() {
+	t := ginkgo.GinkgoT()
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil || !homeLike.MatchString(tmp) {
+		return
+	}
+	if fi, err := os.Stat("/tmp"); err != nil || !fi.IsDir() {
+		ginkgo.Skip("TMPDIR is below a home directory and there is no /tmp to use instead")
+	}
+	t.Setenv("TMPDIR", "/tmp")
 }
 
 // ServeGit serves the bare repositories below root over loopback HTTP, with git's own

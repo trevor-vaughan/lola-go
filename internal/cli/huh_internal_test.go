@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -285,6 +286,14 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 
 		_, err = accessible(&out).OtherDirectory(DirectoryStep{})
 		Expect(err).To(MatchError(ErrAborted))
+	})
+
+	It("reads a leading ~ of a new migrate root as the home directory", func() {
+		h := accessible(&out, "~/old", "")
+		h.home = "/home/u"
+		got, err := h.MigrateRoot(MigrateRootStep{Old: "/o", Suggest: "/home/u/o"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal("/home/u/old"))
 	})
 
 	It("treats end of input as cancel, not as the default answer", func() {
@@ -927,5 +936,22 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		code, got = run(nil)
 		Expect(code).To(Equal(1), "the refusal's listing")
 		Expect(got).To(ContainSubstring("  → claude-code  mcp/remote (mcp.example.com)  .mcp.json /mcpServers/remote\n"))
+	})
+
+	It("ends a full-terminal form with a coaching error when input ends, instead of waiting for keys that never come", func() {
+		r, w, err := os.Pipe()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(r.Close)
+		Expect(w.Close()).To(Succeed())
+		h := &huhForms{stdin: r, in: &eofReader{r: strings.NewReader("")}, out: &bytes.Buffer{}, tty: true}
+		done := make(chan error, 1)
+		go func() {
+			_, err := h.Background()
+			done <- err
+		}()
+		var got error
+		Eventually(done, 5*time.Second).Should(Receive(&got), "the question must not hang at end of input")
+		Expect(got).To(MatchError(errInputEnded))
+		Expect(errs.Hints(got)).NotTo(BeEmpty(), "the error coaches")
 	})
 })

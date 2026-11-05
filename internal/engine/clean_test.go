@@ -16,11 +16,24 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
-	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
 // Plan 9 §6: lola cache clean.
+// addHead adds a head for ref pointing at version id to the first origin of the index at path.
+func addHead(index, ref, id string) {
+	GinkgoHelper()
+	var doc map[string]any
+	b, err := os.ReadFile(index)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(yaml.Unmarshal(b, &doc)).To(Succeed())
+	first := doc["origins"].([]any)[0].(map[string]any)
+	first["heads"] = append(first["heads"].([]any), map[string]any{"ref": ref, "digest": id})
+	b, err = yaml.Marshal(doc)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(os.WriteFile(index, b, 0o600)).To(Succeed())
+}
+
 var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 	var (
 		e   *engine.Engine
@@ -183,19 +196,11 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 		old := fetch("kit", "v1\n")
 		day = day.AddDate(0, 0, 10)
 		head := fetch("kit", "v2\n")
-		index := filepath.Join(e.Paths.Store, "kit", "index.yml")
-		var o store.Origin
-		b, err := os.ReadFile(index)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(yaml.Unmarshal(b, &o)).To(Succeed())
-		o.Heads = append(o.Heads, store.Head{Ref: "v1", Digest: old})
-		b, err = yaml.Marshal(o)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(index, b, 0o600)).To(Succeed())
+		addHead(filepath.Join(e.Paths.Store, "kit", "index.yml"), "v1", old)
 		res := apply(plan(engine.CleanRequest{UnusedFor: "1w"}))
 		Expect(removed(res)).To(Equal(map[string]string{rel(version("kit", old)): "unused"}))
 		Expect(heads("kit")).To(Equal([]string{head}))
-		o, _, err = e.Store.Origin("kit")
+		o, _, err := e.Store.Origin("kit")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(o.LastUsed).To(Equal(map[string]string{head: "2026-10-11"}), "the removed version's last_used goes with it")
 	})
@@ -330,15 +335,7 @@ var _ = Describe("lola cache clean (Plan 9 §6)", func() {
 	// another ref of the same content would.
 	writeHead := func(name, ref, id string) {
 		GinkgoHelper()
-		index := filepath.Join(e.Paths.Store, name, "index.yml")
-		var o store.Origin
-		b, err := os.ReadFile(index)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(yaml.Unmarshal(b, &o)).To(Succeed())
-		o.Heads = append(o.Heads, store.Head{Ref: ref, Digest: id})
-		b, err = yaml.Marshal(o)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.WriteFile(index, b, 0o600)).To(Succeed())
+		addHead(filepath.Join(e.Paths.Store, name, "index.yml"), ref, id)
 	}
 	// unwritable makes dir read-only for the spec, as a file system that refuses a rename out of
 	// it does; root ignores the mode, so the spec cannot run as root.

@@ -84,9 +84,9 @@ var _ = Describe("Attribute files at load", func() {
 			return `{"claude-code": {"a": ` + strings.Repeat("[", n-2) + strings.Repeat("]", n-2) + "}}"
 		}
 		for _, c := range []struct{ ext, body, want string }{
-			{"yaml", "claude-code: {}\nnope: {}\n", "agents/reviewer.targets.yaml:2: nope: unknown target; the targets are claude-code, gemini-cli, opencode"},
-			{"jsonc", "{\n  \"claude-code\": {},\n  \"nope\": {}\n}", "agents/reviewer.targets.jsonc:3: /nope: unknown target; the targets are claude-code, gemini-cli, opencode"},
-			{"jsonc", `{"nope": {"a": ` + strings.Repeat("[", 20) + strings.Repeat("]", 20) + `}}`, "agents/reviewer.targets.jsonc:1: /nope: unknown target; the targets are claude-code, gemini-cli, opencode"},
+			{"yaml", "claude-code: {}\nnope: {}\n", "agents/reviewer.targets.yaml:2: nope: unknown target; the targets are claude-code, gemini-cli, opencode, agents"},
+			{"jsonc", "{\n  \"claude-code\": {},\n  \"nope\": {}\n}", "agents/reviewer.targets.jsonc:3: /nope: unknown target; the targets are claude-code, gemini-cli, opencode, agents"},
+			{"jsonc", `{"nope": {"a": ` + strings.Repeat("[", 20) + strings.Repeat("]", 20) + `}}`, "agents/reviewer.targets.jsonc:1: /nope: unknown target; the targets are claude-code, gemini-cli, opencode, agents"},
 			{"yaml", "claude-code:\n  name: other\n", "agents/reviewer.targets.yaml:2: claude-code.name: the name comes from the path"},
 			{"jsonc", `{"claude-code": {"name": "other"}}`, "agents/reviewer.targets.jsonc:1: /claude-code/name: the name comes from the path"},
 			{"yaml", "base: &b {model: x}\nclaude-code: *b\n", "agents/reviewer.targets.yaml:1: anchors, aliases and merge keys (<<) are not supported"},

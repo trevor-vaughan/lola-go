@@ -77,6 +77,26 @@ func addTrustFlag(cmd *cobra.Command, t *trustFlag, command, usage string) {
 		shown = "[=" + engine.TrustBare.String() + "]"
 	}
 	_ = cmd.Flags().SetAnnotation("trust", trustShownKey, []string{shown}) // the flag was just added
+	_ = cmd.RegisterFlagCompletionFunc("trust", completeTrust(command))
+}
+
+// completeTrust completes --trust=<kinds>: the kinds command takes that the value does not name yet,
+// after its last comma, and all alone.
+func completeTrust(command string) cobra.CompletionFunc {
+	return func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		head := toComplete[:strings.LastIndex(toComplete, ",")+1]
+		given := strings.Split(head, ",")
+		var out []string
+		for _, k := range engine.CommandTrust(command).List() {
+			if !slices.Contains(given, k.String()) {
+				out = append(out, head+k.String())
+			}
+		}
+		if head == "" {
+			out = append(out, "all")
+		}
+		return out, cobra.ShellCompDirectiveNoFileComp
+	}
 }
 
 // parse is the kinds of trust --trust grants command (engine.CommandTrust's name), checked before

@@ -195,8 +195,8 @@ func NewPlan(ctx context.Context, e *engine.Engine, st *State, opts Options) (*P
 		if rec.Problem != "" {
 			hint := "lola migrate leaves this record and its files as they are"
 			if rec.Missing {
-				flag := mapRootPlaceholder // a map moved it, and it is still missing: no root to offer
-				if !moved[i] {
+				flag := mapRootPlaceholder // a map moved it and it is still missing, or its root is your home: no root to offer
+				if !moved[i] && !rootLandsAtHome(rec.ProjectPath, e.Paths.Home) {
 					flag = mapRootFlag(rec.ProjectPath, e.Paths.Home)
 				}
 				hint = "rerun lola migrate with " + flag + "; until then it leaves this record and its files as they are"
@@ -748,11 +748,16 @@ func notMigrated(e *engine.Engine, sc engine.Scope, home string, rec Record, id 
 	if user && id == "claude-code" {
 		instructions = ".claude/CLAUDE.md"
 	}
-	if instructions != "" && (rec.HasInstructions || len(rec.AppendContext) > 0) {
+	if instructions != "" && (rec.HasInstructions || len(rec.AppendContext) > 0) &&
+		holds(filepath.Join(r, filepath.FromSlash(instructions)), func(s string) bool { return strings.Contains(s, block) }) {
 		out = append(out, Item{What: ItemInstructions, Module: rec.Module, Path: filepath.Join(r, filepath.FromSlash(instructions)), Marker: block,
 			Hints: []string{"it keeps working; delete the block from " + block + " to <!-- lola:module:" + rec.Module + ":end --> when you no longer want it"}})
 	}
-	if id == "gemini-cli" && len(rec.Skills) > 0 {
+	if id == "gemini-cli" && len(rec.Skills) > 0 && holds(filepath.Join(r, "GEMINI.md"), func(s string) bool {
+		_, rest, ok := strings.Cut(s, "<!-- lola:skills:start -->")
+		section, _, _ := strings.Cut(rest, "<!-- lola:skills:end -->")
+		return ok && slices.ContainsFunc(strings.Split(section, "\n"), func(l string) bool { return strings.TrimSpace(l) == "### "+rec.Module })
+	}) {
 		out = append(out, Item{What: ItemGeminiSkills, Module: rec.Module, Path: filepath.Join(r, "GEMINI.md"),
 			Marker: "<!-- lola:skills:start --> ### " + rec.Module,
 			Hints:  []string{"delete the ### " + rec.Module + " section between <!-- lola:skills:start --> and <!-- lola:skills:end --> when you no longer want it"}})
@@ -783,6 +788,17 @@ func (d *Destination) finishItems() {
 	d.NotMigrated = slices.CompactFunc(d.NotMigrated, func(a, b Item) bool {
 		return a.What == b.What && a.Module == b.Module && a.Path == b.Path && a.Marker == b.Marker && slices.Equal(a.Hints, b.Hints)
 	})
+}
+
+// holds reports whether the file at p still has what the Python lola wrote, as found tells: a
+// record outlives a user's edit. A file that is gone holds nothing; one lola cannot read is
+// assumed to, so its item stays listed.
+func holds(p string, found func(string) bool) bool {
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return !errors.Is(err, os.ErrNotExist)
+	}
+	return found(string(b))
 }
 
 func isDir(p string) bool {

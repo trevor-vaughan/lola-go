@@ -35,6 +35,17 @@ const (
 // §7). The engine's consent gate keys on it, so every target and the engine use this constant.
 const KindRuntimeHook = "runtime-hook"
 
+// CodeSkillViaAgents is the finding of a target that leaves a skill to the agents target
+// (PlanContext.SharedSkills); the engine keys on it to name the native copy such a run deletes.
+const CodeSkillViaAgents = "skill-via-agents"
+
+// SkillViaAgents is target id's finding for the skill name it writes no copy of because its
+// assistant reads the one in .agents/skills.
+func SkillViaAgents(id, name string) Finding {
+	return Finding{Severity: SeverityInfo, Target: id, Kind: "skill", Artifact: name, Code: CodeSkillViaAgents,
+		Text: "delivered through .agents/skills, which " + id + " reads", Class: ClassDetail}
+}
+
 // Finding is something a target loses, adapts or cannot express when it renders a module.
 // Content problems are always findings, never Plan errors.
 type Finding struct {

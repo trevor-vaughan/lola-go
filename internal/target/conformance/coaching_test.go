@@ -35,6 +35,9 @@ var nothingToDo = map[string]map[string]string{
 		"warn command-sidecar-dropped": "opencode would read the sidecar files as commands; the command installs, and no module change gives opencode the directory",
 		"info opencode/env-reference":  "a lossless adaptation: ${VAR} becomes {env:VAR}",
 	},
+	"agents": {
+		"skip kind-unsupported": ".agents holds skills only; no change to the module or the run gives the kind a place there",
+	},
 }
 
 // ruleBodies is, for each content rule code a registered target declares, a body the rule
@@ -201,6 +204,15 @@ func own(id string) []producer {
 			{"info opencode/env-reference", server(module.MCPServer{Env: map[string]string{"A": "${X}"}}), nil},
 			{"warn opencode/env-default-dropped", server(module.MCPServer{Env: map[string]string{"A": "${X:-d}"}}), nil},
 			{"warn mcp-cwd-dropped", server(module.MCPServer{Cwd: "/srv"}), nil},
+		}
+	case "agents":
+		return []producer{
+			{"skip name-rejected", artifact("skill", "s", "description: d\nname: other\n", "x\n"), nil},
+			{"skip name-rejected", artifact("skill", strings.Repeat("s", 65), "description: d\n", "x\n"), nil},
+			{"skip name-rejected", artifact("skill", "Not.A Name", "description: d\n", "x\n"), nil},
+			{"skip description-too-long", artifact("skill", "s", "description: "+strings.Repeat("d", 1025)+"\n", "x\n"), nil},
+			{"warn agents/metadata-not-string", artifact("skill", "s", "description: d\nmetadata: {version: 1}\n", "x\n"), nil},
+			{"warn agents/metadata-not-string", artifact("skill", "s", "description: d\nmetadata: v1\n", "x\n"), nil},
 		}
 	}
 	Fail("own lists no producers for " + id + ": add a case, empty if its Plan adds no finding of its own")

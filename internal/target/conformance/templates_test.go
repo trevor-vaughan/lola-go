@@ -83,6 +83,6 @@ var _ = Describe("templates and the registry", func() {
 		_, err = e.Install(context.Background(), engine.Scope{Kind: target.Project, ProjectDir: proj}, proj,
 			[]engine.InstallRequest{{Arg: src}}, engine.Options{Targets: targets.IDs()})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(seen).To(ConsistOf("claude-code planned", "gemini-cli planned", "opencode planned"))
+		Expect(seen).To(ConsistOf("claude-code planned", "gemini-cli planned", "opencode planned", "agents planned"))
 	})
 })

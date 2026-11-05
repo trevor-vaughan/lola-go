@@ -43,10 +43,14 @@ type Paths struct {
 
 // Resolve computes Paths. An XDG variable that is unset, empty or relative falls back to
 // its $HOME-based default on every OS (the XDG spec says relative values must be ignored).
+// An unset HOME falls back to USERPROFILE, the home directory stock Windows sets.
 func Resolve(getenv func(string) string) (Paths, error) {
 	home := getenv("HOME")
+	if home == "" {
+		home = getenv("USERPROFILE")
+	}
 	if home == "" || !filepath.IsAbs(home) {
-		return Paths{}, fmt.Errorf("HOME must be set to an absolute path (got %q)", home)
+		return Paths{}, fmt.Errorf("HOME, or USERPROFILE on Windows, must be set to an absolute path (got %q)", home)
 	}
 	home = filepath.Clean(home)
 	xdg := func(key, def string) string {

@@ -16,7 +16,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/native"
 	"github.com/trevor-vaughan/lola-go/internal/source"
-	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -271,7 +270,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 			fmt.Fprintln(w, "  "+stepLine(s, st))
 		}
 		for _, f := range in.Findings {
-			if line := findingLine(s, f); line != "" && (f.Severity != target.SeverityInfo || f.Hint != "") {
+			if line := findingLine(s, f); line != "" && worthShowing(f) {
 				fmt.Fprintln(w, "  "+strings.ReplaceAll(line, "\n", "\n  "))
 			}
 		}
