@@ -1,0 +1,19 @@
+docs/reference/install.md
+  s_63149906d5c471::t_da4d085ef0f7a2 10-12,16-18,62-64,69-71,74-76,106-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7ad8c76ea1c14cb7c9300c073b0da55809ad75ac",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
