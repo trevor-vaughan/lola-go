@@ -1,0 +1,24 @@
+docs/guides/bundles.md
+  s_63149906d5c471::t_27d232efc520e6 1-77
+docs/guides/profile-walkthroughs.md
+  s_63149906d5c471::t_e43bbc9d423988 1-32
+docs/guides/profiles.md
+  s_63149906d5c471::t_27d232efc520e6 444
+  s_63149906d5c471::t_e43bbc9d423988 527
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fd1a4edf769d3957ed42d28dfbd0fceaae648173",
+  "prompts": {},
+  "sessions": {
+    "s_63149906d5c471": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56a8a0b6-cbfb-4419-9d51-1be470597aae",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
