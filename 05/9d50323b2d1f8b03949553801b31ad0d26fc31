@@ -1,0 +1,42 @@
+internal/engine/probe_internal_test.go
+  s_a7fa0a2062bbb1::t_2d77c51e2452bf 111-117
+internal/engine/deletes.go
+  s_a7fa0a2062bbb1::t_549ab284660f9f 43-44,49-56,60
+internal/engine/tidy_test.go
+  s_a7fa0a2062bbb1::t_a61f2700500ab1 685-690
+  s_a7fa0a2062bbb1::t_37e60e27149f40 16,674-684,691-713
+  s_a7fa0a2062bbb1::t_641dea4d2b947c 714
+internal/engine/eras_test.go
+  s_a7fa0a2062bbb1::t_20e7ee68ab282e 194-214
+  s_a7fa0a2062bbb1::t_d62f43ba96018a 148-157
+internal/targetspec/parse.go
+  s_a7fa0a2062bbb1::t_8919bf85618c91 98-99
+docs/usage.md
+  s_a7fa0a2062bbb1::t_e28c6e1ba8d778 159-163
+internal/engine/engine.go
+  s_a7fa0a2062bbb1::t_d8eaf8536cc69d 533
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_d8eaf8536cc69d 337,367-370,372-378
+  s_a7fa0a2062bbb1::t_8874aaf4bb504a 16
+internal/engine/check.go
+  s_a7fa0a2062bbb1::t_76ebb72c831f14 106-107,109-117
+internal/targetspec/parse_test.go
+  s_a7fa0a2062bbb1::t_87e01e66947e0b 198
+  s_a7fa0a2062bbb1::t_8919bf85618c91 199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "059d50323b2d1f8b03949553801b31ad0d26fc31",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
