@@ -1,21 +1,33 @@
 .golangci.yml
   s_a7fa0a2062bbb1::t_f0399e7f5957a6 25-27,39-40,46-55
+  s_a7fa0a2062bbb1::t_4a6196f58c4e78 25-27,46-55
 AGENTS.md
   s_a7fa0a2062bbb1::t_c6f986229c897d 24-30
+  s_a7fa0a2062bbb1::t_4a6196f58c4e78 24-27
+  s_a7fa0a2062bbb1::t_7e59f942947b1b 28
+  s_a7fa0a2062bbb1::t_4a737204371484 29-30
 docs/architecture.md
   s_a7fa0a2062bbb1::t_c595c8a70e297b 73-80,224,251
+  s_a7fa0a2062bbb1::t_4a6196f58c4e78 73-80,224,251
 docs/architecture/packages.md
   s_a7fa0a2062bbb1::t_84eff04b92ccd9 168-176,179,185
+  s_a7fa0a2062bbb1::t_9804acde3628cc 168-176,179,185
 docs/decisions.md
   s_a7fa0a2062bbb1::t_e349204bd6ab05 216-217
+  s_a7fa0a2062bbb1::t_7e59f942947b1b 216-217
 internal/cli/notices_test.go
   s_a7fa0a2062bbb1::t_f06cfb4bcc0d46 273
 internal/engine/engine_test.go
   s_a7fa0a2062bbb1::t_78c7661c3e5fa7 26,49,63-68,70,996,1081
+  s_a7fa0a2062bbb1::t_d488d56b233030 49,63-68,70,996,1081
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 26
 internal/engine/templates_test.go
   s_a7fa0a2062bbb1::t_0c7b1f608b730a 422
+  s_a7fa0a2062bbb1::t_d0b2f0789bea19 422
 internal/module/claude_test.go
   s_a7fa0a2062bbb1::t_0754d54b734fc7 164-166
+  s_a7fa0a2062bbb1::t_869db5b1542677 164-165
+  s_a7fa0a2062bbb1::t_d0b2f0789bea19 166
 internal/target/mech/agentmcp.go
   s_a7fa0a2062bbb1::t_9606014c105cd1 1
 internal/target/mech/agentskills.go
@@ -36,6 +48,7 @@ internal/target/mech/rules.go
   s_a7fa0a2062bbb1::t_cb690b231ae745 1-78
 internal/target/mech/servers.go
   s_a7fa0a2062bbb1::t_b0a3021e24cf48 1,15-19,22,24,27,31-45,50-53,55,60-78,80-83,85,91,93-94,103,105-107,132
+  s_a7fa0a2062bbb1::t_e518ed28d10566 16-18
 internal/target/mech/skilldir.go
   s_a7fa0a2062bbb1::t_9ca7a814820909 1-55
 internal/target/mech/toml.go
@@ -50,26 +63,34 @@ internal/targets/agents_test.go
   s_a7fa0a2062bbb1::t_d4f2606f544f60 1,19
 internal/targets/claude_agentmcp_test.go
   s_a7fa0a2062bbb1::t_c41aecc6aaace5 1,14
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 1-79
 internal/targets/claude_hooks_test.go
   s_a7fa0a2062bbb1::t_fd8076d4694812 1,22,321,452
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 1-502
 internal/targets/claude_test.go
   s_a7fa0a2062bbb1::t_a7679a143e7aa1 1,18
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 1-147
 internal/targets/gemini_test.go
   s_a7fa0a2062bbb1::t_5e8fccc12afde4 1,27,198-199,245
+  s_a7fa0a2062bbb1::t_0d40a859013dfe 18
 internal/targets/helpers_test.go
   s_a7fa0a2062bbb1::t_f449818fc7aed0 1,5-9,12-40
 internal/targets/opencode_test.go
   s_a7fa0a2062bbb1::t_2577d82076eb3b 1,18,134,137,162-163,182,235-236
 internal/targets/targets.go
   s_a7fa0a2062bbb1::t_41f7e8d3065c16 1-2,6-7,9-10,13-30,32-37
+  s_a7fa0a2062bbb1::t_d488d56b233030 1-2,27-30,33-37
 internal/targets/targets_test.go
   s_a7fa0a2062bbb1::t_630ab6eab4138f 8,25-39
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 30-39
 internal/targetspec/builtin.go
   s_a7fa0a2062bbb1::t_b23f934bca9e7e 1-9
 internal/targetspec/parse_test.go
   s_a7fa0a2062bbb1::t_df46442fddae98 92-97,142-155
+  s_a7fa0a2062bbb1::t_0d40a859013dfe 92-97
 internal/targetspec/spec.go
   s_a7fa0a2062bbb1::t_3cb6773b5efb63 197-199
+  s_a7fa0a2062bbb1::t_0d40a859013dfe 197-199
 internal/targetspec/specs/agents.yaml
   s_a7fa0a2062bbb1::t_398e9d397a30fe 1-24
 internal/targetspec/specs/claude-code.yaml
@@ -80,6 +101,10 @@ internal/targetspec/specs/opencode.yaml
   s_a7fa0a2062bbb1::t_a8b1fcb0eb49f3 1-68
 internal/targetspec/validate.go
   s_a7fa0a2062bbb1::t_6c6b360802d3cc 186-188,217-222
+  s_a7fa0a2062bbb1::t_0d40a859013dfe 186-188,217-220
+  s_a7fa0a2062bbb1::t_fd5318b2dbd794 221-222
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_f91f9158eea6a4 160
 ---
 {
   "schema_version": "authorship/3.0.0",
