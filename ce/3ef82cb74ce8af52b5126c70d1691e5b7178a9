@@ -1,43 +1,79 @@
 docs/architecture.md
   s_a7fa0a2062bbb1::t_41b3a3afe4ee7c 243-244
+  s_a7fa0a2062bbb1::t_f91f9158eea6a4 243-244
 internal/engine/check.go
   s_a7fa0a2062bbb1::t_016b306d815977 205
+  s_a7fa0a2062bbb1::t_f91f9158eea6a4 205
 internal/engine/engine.go
   s_a7fa0a2062bbb1::t_0ec01944cbf8bf 1003
+  s_a7fa0a2062bbb1::t_f91f9158eea6a4 1003
 internal/engine/gitignore.go
   s_a7fa0a2062bbb1::t_4e61c058763c26 16-18,22,24,46,50,54,58
+  s_a7fa0a2062bbb1::t_ed184764a31db4 17-18,24
+  s_a7fa0a2062bbb1::t_e777769316dbe0 16,22,46,50,54,58
 internal/engine/probe.go
   s_a7fa0a2062bbb1::t_39bcc559c768f9 146,152,155-162,164-170,174
+  s_a7fa0a2062bbb1::t_e777769316dbe0 146,152,166,174
+  s_a7fa0a2062bbb1::t_f91f9158eea6a4 155-165,167-168,170
 internal/engine/runtimehooks_test.go
   s_a7fa0a2062bbb1::t_bed2ae23b10e15 29-30,34-46,666-704
+  s_a7fa0a2062bbb1::t_61357601a24870 29-30,34-46,666-690,699-702
+  s_a7fa0a2062bbb1::t_a775ba7a4636fa 703-704
+  s_a7fa0a2062bbb1::t_c78731bfc7fccd 691-698
 internal/target/conformance/coaching_test.go
   s_a7fa0a2062bbb1::t_69ad371690db69 176-178
+  s_a7fa0a2062bbb1::t_2cc7e5e2eb61f9 176-178
 internal/target/mech/agentskills.go
   s_a7fa0a2062bbb1::t_b847783554d5ed 97
+  s_a7fa0a2062bbb1::t_9076060ed17663 97
 internal/target/mech/claude.go
   s_a7fa0a2062bbb1::t_9836e5a2c421da 78,121,137
+  s_a7fa0a2062bbb1::t_5cf16bc265e586 78,121,137
 internal/target/mech/hooks.go
   s_a7fa0a2062bbb1::t_fb84548b832d25 7,19,21-24,27-30,96-99,150,172,175,191
+  s_a7fa0a2062bbb1::t_9f13c1b66fa86c 19,21-24,150,172,175,191
+  s_a7fa0a2062bbb1::t_673b3a76012ab9 27-30,96,99
+  s_a7fa0a2062bbb1::t_c1558c0332de28 7,97-98
 internal/target/policy/policy.go
   s_a7fa0a2062bbb1::t_a870ca95383ccf 8,18-20,34-40,51-70,115-116
+  s_a7fa0a2062bbb1::t_8a0e50a1c2c909 116
+  s_a7fa0a2062bbb1::t_6e8a7c8328fd17 115
 internal/target/policy/policy_test.go
   s_a7fa0a2062bbb1::t_c926a7b9de41c6 4,6,11,95-108,115,138-230
+  s_a7fa0a2062bbb1::t_ae546691755d93 95-105,107-108
+  s_a7fa0a2062bbb1::t_81940475013139 106,115
 internal/target/target.go
   s_a7fa0a2062bbb1::t_f2a448a0b7bb97 39-44
+  s_a7fa0a2062bbb1::t_d132963b300ee6 40
+  s_a7fa0a2062bbb1::t_bbfc8558657a67 39,41-44
 internal/targets/claude_hooks_test.go
   s_a7fa0a2062bbb1::t_f512e9a1845db0 277-278,283
+  s_a7fa0a2062bbb1::t_e4d69663166d5c 277,283
+  s_a7fa0a2062bbb1::t_f91f9158eea6a4 278
 internal/targets/consent_test.go
   s_a7fa0a2062bbb1::t_90ba5ebf73f940 1-58
 internal/targets/gemini_test.go
   s_a7fa0a2062bbb1::t_d64139d9ba901e 198
+  s_a7fa0a2062bbb1::t_b7853ae0c2d148 198
 internal/targets/renamed_test.go
   s_a7fa0a2062bbb1::t_b9c58663504b8e 1-66
+  s_a7fa0a2062bbb1::t_c3844ca8aa175a 1-33,35-66
+  s_a7fa0a2062bbb1::t_f91f9158eea6a4 34
 internal/targetspec/parse_test.go
   s_a7fa0a2062bbb1::t_89e054fc010118 48-57,121-160
+  s_a7fa0a2062bbb1::t_e8857e663ad9ad 48-57,121-138,140-159
+  s_a7fa0a2062bbb1::t_a8cd171d4eac98 139
+  s_a7fa0a2062bbb1::t_48327ca1b8e50a 160
 internal/targetspec/spec.go
   s_a7fa0a2062bbb1::t_a29b8de84f91f6 114-116,122-124,128-134
+  s_a7fa0a2062bbb1::t_54b9eac3d5df93 114-116,122-124,128-134
+  s_a7fa0a2062bbb1::t_4c28788f093597 18
 internal/targetspec/validate.go
   s_a7fa0a2062bbb1::t_7b0d0c57877078 283-285,316-323,352-354,368-431,493-503
+  s_a7fa0a2062bbb1::t_54b9eac3d5df93 283-285,316-323,352-354,368-431,493-503
+internal/targets/targets.go
+  s_a7fa0a2062bbb1::t_828f23baaf574e 36
+  s_a7fa0a2062bbb1::t_4c28788f093597 36,38-39
 ---
 {
   "schema_version": "authorship/3.0.0",
