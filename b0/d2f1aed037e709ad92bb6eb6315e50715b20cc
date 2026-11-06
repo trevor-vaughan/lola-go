@@ -1,0 +1,26 @@
+docs/guides/target-specs.md
+  s_a7fa0a2062bbb1::t_5edcb277a28475 277-281
+internal/targetspec/parse.go
+  s_a7fa0a2062bbb1::t_2b275e9a2d41f5 13,45-51,59-96,106-124
+  s_a7fa0a2062bbb1::t_f41c43892c6a92 97-105
+  s_a7fa0a2062bbb1::t_3406f8597dac6b 125
+internal/targetspec/parse_test.go
+  s_a7fa0a2062bbb1::t_52eb02b60c3a3d 154,162
+  s_a7fa0a2062bbb1::t_3cc3c29a457ed0 143-153,155-161,163-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b0d2f1aed037e709ad92bb6eb6315e50715b20cc",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
