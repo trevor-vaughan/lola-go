@@ -1,0 +1,21 @@
+internal/targetspec/specs/opencode.yaml
+  s_a7fa0a2062bbb1::t_53c5876976af47 5-7
+internal/targets/opencode_test.go
+  s_a7fa0a2062bbb1::t_7a8a8fb406984b 395-396
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aaf64d137577ae5ed077106840b2b392c0ec47ba",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
