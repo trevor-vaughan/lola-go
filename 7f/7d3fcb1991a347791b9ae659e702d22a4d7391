@@ -1,0 +1,39 @@
+internal/engine/runtimehooks_test.go
+  s_a7fa0a2062bbb1::t_61357601a24870 29-30,34-46,666-694
+  s_a7fa0a2062bbb1::t_a775ba7a4636fa 695-696
+internal/engine/gitignore.go
+  s_a7fa0a2062bbb1::t_ed184764a31db4 17-18,24
+  s_a7fa0a2062bbb1::t_e777769316dbe0 16,22,46,50,54,58
+internal/engine/engine.go
+  s_a7fa0a2062bbb1::t_e777769316dbe0 1003
+internal/engine/check.go
+  s_a7fa0a2062bbb1::t_e777769316dbe0 205
+internal/targets/claude_hooks_test.go
+  s_a7fa0a2062bbb1::t_e4d69663166d5c 277-278,283
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_e777769316dbe0 146,152,155-160,162,166
+internal/targets/renamed_test.go
+  s_a7fa0a2062bbb1::t_e4d69663166d5c 34
+internal/target/conformance/coaching_test.go
+  s_a7fa0a2062bbb1::t_a64c704b602fc5 176
+internal/target/mech/hooks.go
+  s_a7fa0a2062bbb1::t_673b3a76012ab9 26-29,95-98
+internal/target/target.go
+  s_a7fa0a2062bbb1::t_d132963b300ee6 39-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f7d3fcb1991a347791b9ae659e702d22a4d7391",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
