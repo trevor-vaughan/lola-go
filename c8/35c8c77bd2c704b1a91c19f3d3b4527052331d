@@ -1,0 +1,43 @@
+e2e/install/install.venom.yml
+  s_a7fa0a2062bbb1::t_ec6acc11f77455 135-137
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 332-335
+  s_a7fa0a2062bbb1::t_0a233a0fea29a8 312,329
+  s_a7fa0a2062bbb1::t_bd370085618810 6,8-9,14,20,36,128-131,201-203,206,212-244,246,250,254,258,265,267,271,273-279,283-311,313-328,330-331,336-366,368
+internal/target/spec/spec.go
+  s_a7fa0a2062bbb1::t_e72d600885d9b2 71-72,74-81
+internal/engine/engine_test.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 73,1054
+docs/usage.md
+  s_a7fa0a2062bbb1::t_9c97dec3192dbd 247-248
+internal/targets/gemini_test.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 331-333
+internal/targets/agents_test.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 36
+internal/engine/probe_internal_test.go
+  s_a7fa0a2062bbb1::t_e4879b5e21edd1 1-8,10-80,82-127,129-180,182,185-187
+  s_a7fa0a2062bbb1::t_8f0d3ae02ecde9 9,81,128
+  s_a7fa0a2062bbb1::t_8e1b13e3604a39 181,183-184
+internal/targets/opencode_test.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 353-355
+internal/target/probe.go
+  s_a7fa0a2062bbb1::t_a476482af92e08 3-7,10-11,13,19-37,40
+internal/target/spec/spec_test.go
+  s_a7fa0a2062bbb1::t_87c62e92fa0b34 97-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c835c8c77bd2c704b1a91c19f3d3b4527052331d",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
