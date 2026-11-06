@@ -1,0 +1,149 @@
+internal/targetspec/parse.go
+  s_a7fa0a2062bbb1::t_fe1f634627dde9 63
+  s_a7fa0a2062bbb1::t_8919bf85618c91 98-99
+  s_a7fa0a2062bbb1::t_7a64fbe982c467 71-72,97,100
+e2e/install/install.venom.yml
+  s_a7fa0a2062bbb1::t_ec6acc11f77455 135-137
+e2e/user-target/scripts/setup.sh
+  s_a7fa0a2062bbb1::t_9a9524377cc56d 3-5,13-14,21,24-27
+internal/target/spec/spec_test.go
+  s_a7fa0a2062bbb1::t_87c62e92fa0b34 97-133
+internal/targetspec/select_test.go
+  s_a7fa0a2062bbb1::t_76a03f24059310 1-61
+internal/manifest/manifest_test.go
+  s_a7fa0a2062bbb1::t_4e4be6b62f27cb 116-128,377-415
+  s_a7fa0a2062bbb1::t_cf099770c703ce 416-417
+  s_a7fa0a2062bbb1::t_cf59a4258abce8 432
+internal/engine/tidy_test.go
+  s_a7fa0a2062bbb1::t_a61f2700500ab1 685-690
+  s_a7fa0a2062bbb1::t_37e60e27149f40 16,674-684,691-713
+  s_a7fa0a2062bbb1::t_641dea4d2b947c 714
+docs/decisions.md
+  s_a7fa0a2062bbb1::t_d114f373b04f73 28-29
+internal/config/config.go
+  s_a7fa0a2062bbb1::t_47a357b17bfb5e 17
+  s_a7fa0a2062bbb1::t_d287091a5781c2 144
+  s_a7fa0a2062bbb1::t_9b417a2537320e 58-60,179-211
+  s_a7fa0a2062bbb1::t_b1d93c45bd087b 212-214
+internal/engine/engine_test.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 73,1054
+internal/targets/targets.go
+  s_a7fa0a2062bbb1::t_ee2c59aed0c895 27-29,55-77,199,208,216,220-228
+internal/engine/check.go
+  s_a7fa0a2062bbb1::t_60c466c724046e 108,118-121,217
+  s_a7fa0a2062bbb1::t_76ebb72c831f14 106-107,109-117
+  s_a7fa0a2062bbb1::t_0770fef3b157b8 219
+internal/engine/engine.go
+  s_a7fa0a2062bbb1::t_0770fef3b157b8 1099
+  s_a7fa0a2062bbb1::t_3a1979a83c0f3d 505-509,511-517,520,524-528,530-532,534-551
+  s_a7fa0a2062bbb1::t_7dbd131090bacf 510,529
+  s_a7fa0a2062bbb1::t_22665b801afc8d 17
+  s_a7fa0a2062bbb1::t_d8eaf8536cc69d 533
+  s_a7fa0a2062bbb1::t_733df55899d82d 518-519,521-523
+  s_a7fa0a2062bbb1::t_5e24f06a83c5ca 1086-1091,1097,1100
+docs/architecture.md
+  s_a7fa0a2062bbb1::t_6bcd3b80c5bb5f 146-147
+  s_a7fa0a2062bbb1::t_d114f373b04f73 142-145,148-157
+internal/targets/renamed_test.go
+  s_a7fa0a2062bbb1::t_7a64fbe982c467 60-75
+internal/engine/eras_test.go
+  s_a7fa0a2062bbb1::t_20e7ee68ab282e 194-214
+  s_a7fa0a2062bbb1::t_d62f43ba96018a 148-157
+  s_a7fa0a2062bbb1::t_37a06e3bef4bb9 1-6,8-29,31-32,34-76,78-141,144-147,158-183,215-230
+  s_a7fa0a2062bbb1::t_8974b0f3b5a9bc 7,77
+  s_a7fa0a2062bbb1::t_f0993b253415e9 142-143
+  s_a7fa0a2062bbb1::t_dace84f264c74d 184-193
+  s_a7fa0a2062bbb1::t_3715a5b7d9d21e 30,33
+internal/targets/targets_test.go
+  s_a7fa0a2062bbb1::t_5f73521fa8807b 128-170
+internal/targets/gemini_test.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 331-333
+docs/usage.md
+  s_a7fa0a2062bbb1::t_57e1f8ab4cf0ef 139-150,153-158,164-167,276,279-281,313,318
+  s_a7fa0a2062bbb1::t_9c97dec3192dbd 277
+  s_a7fa0a2062bbb1::t_0ca99c9c5573db 125
+  s_a7fa0a2062bbb1::t_d6a729039d5e14 151-152
+  s_a7fa0a2062bbb1::t_e28c6e1ba8d778 159-163
+docs/guides/target-specs.md
+  s_a7fa0a2062bbb1::t_57e1f8ab4cf0ef 62,64,79-99,118-127
+internal/engine/tidy_scan.go
+  s_a7fa0a2062bbb1::t_acf78a4b918823 173,175-178,185
+internal/target/probe.go
+  s_a7fa0a2062bbb1::t_a476482af92e08 6,10-11,13,19-26,29-33,35,37-40
+internal/manifest/manifest.go
+  s_a7fa0a2062bbb1::t_e4db3b8ea49461 385-387
+  s_a7fa0a2062bbb1::t_9b417a2537320e 10,20,76-79,161-163,373-384
+internal/target/spec/spec.go
+  s_a7fa0a2062bbb1::t_e72d600885d9b2 74-84
+  s_a7fa0a2062bbb1::t_712c3f403d52e3 28-32
+  s_a7fa0a2062bbb1::t_15b9e864d6c34f 72-73
+internal/target/capability.go
+  s_a7fa0a2062bbb1::t_1f3af03b68fdf2 56,91
+internal/config/config_test.go
+  s_a7fa0a2062bbb1::t_4e4be6b62f27cb 179-219
+  s_a7fa0a2062bbb1::t_d287091a5781c2 229
+internal/targets/agents_test.go
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 36
+internal/targetspec/parse_test.go
+  s_a7fa0a2062bbb1::t_7a64fbe982c467 162,179-197,200-201
+  s_a7fa0a2062bbb1::t_8919bf85618c91 199
+  s_a7fa0a2062bbb1::t_ad2a8409b9c043 202
+  s_a7fa0a2062bbb1::t_76a03f24059310 207-221
+  s_a7fa0a2062bbb1::t_fe1f634627dde9 58-60,103-120
+  s_a7fa0a2062bbb1::t_87e01e66947e0b 198
+internal/targetspec/specs/opencode.yaml
+  s_a7fa0a2062bbb1::t_f434f43ae941aa 52-54,70-77
+  s_a7fa0a2062bbb1::t_53c5876976af47 5-7
+internal/engine/deletes.go
+  s_a7fa0a2062bbb1::t_acf78a4b918823 38
+  s_a7fa0a2062bbb1::t_687939b0bac3ae 39-40
+  s_a7fa0a2062bbb1::t_549ab284660f9f 43-44,49-55,60
+e2e/user-target/user-target.venom.yml
+  s_a7fa0a2062bbb1::t_9a9524377cc56d 165-243
+docs/architecture/packages.md
+  s_a7fa0a2062bbb1::t_d114f373b04f73 174-175,188-189
+internal/engine/probe_internal_test.go
+  s_a7fa0a2062bbb1::t_8f0d3ae02ecde9 9,81,135
+  s_a7fa0a2062bbb1::t_e4879b5e21edd1 1-8,10-80,82-110,118-134,136-187,189,192-194
+  s_a7fa0a2062bbb1::t_8e1b13e3604a39 188,190-191
+  s_a7fa0a2062bbb1::t_2d77c51e2452bf 111-117
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_0a233a0fea29a8 402
+  s_a7fa0a2062bbb1::t_32efb16266adc0 270
+  s_a7fa0a2062bbb1::t_bd370085618810 6,8-9,14,21,37,129-132,271-273,276,282-314,316,320,324,328,335,341-345,347-349,353-366,371,379-401,403-404,409-439,441
+  s_a7fa0a2062bbb1::t_fa94bc4056a619 152-153,159-168,190-201,205-207,209-210,222-226,231-269
+  s_a7fa0a2062bbb1::t_d8eaf8536cc69d 337,367-370,372-378
+  s_a7fa0a2062bbb1::t_ca0a1a9887643a 211-220
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 405-408
+  s_a7fa0a2062bbb1::t_8874aaf4bb504a 16
+internal/engine/content.go
+  s_a7fa0a2062bbb1::t_60c466c724046e 303-304
+internal/targetspec/spec.go
+  s_a7fa0a2062bbb1::t_c9881f7bff75cd 259
+  s_a7fa0a2062bbb1::t_fe1f634627dde9 14,44,46-62,241-258
+internal/targetspec/validate.go
+  s_a7fa0a2062bbb1::t_fe1f634627dde9 103,114,132-149,151-155,157-160,162,166-186,188,190-197,199,202-203,208-230,671-672
+internal/manifest/edit.go
+  s_a7fa0a2062bbb1::t_9b417a2537320e 33
+internal/targets/opencode_test.go
+  s_a7fa0a2062bbb1::t_ce66f762621d12 14,266-301
+  s_a7fa0a2062bbb1::t_d78cac24b76b1b 302-303
+  s_a7fa0a2062bbb1::t_7a8a8fb406984b 395-396
+  s_a7fa0a2062bbb1::t_f52ca475dd950c 392-394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e19961b8ce9f85be546a1168869de7e6564e5f3",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
