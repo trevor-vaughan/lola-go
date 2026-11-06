@@ -1,0 +1,294 @@
+internal/engine/scope_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 36
+  s_a7fa0a2062bbb1::t_217a2d335b0854 14
+internal/engine/mentions_internal_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 51,106
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+internal/engine/marketinstall_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 23
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 76
+internal/engine/profileedit_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 22
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 41
+internal/engine/runtimehooks_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 102
+  s_a7fa0a2062bbb1::t_217a2d335b0854 30
+internal/engine/templates_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 132
+  s_a7fa0a2062bbb1::t_217a2d335b0854 26
+internal/cli/sync_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 61-62
+internal/engine/engine.go
+  s_a7fa0a2062bbb1::t_8ffd1107d1f5ee 73,110,112-113,116
+internal/engine/picks_cleared_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 15
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 61
+internal/engine/engine_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 64,125,1046
+internal/engine/edits_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 71
+internal/engine/picks_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 36,310
+internal/cli/hints_internal_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 73-74
+  s_a7fa0a2062bbb1::t_33005568a0e60b 62-64,66-68
+internal/engine/remoteprofile_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 28
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 50,67,785,816,1919,1950
+internal/engine/trash_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 16
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 34
+internal/engine/trust_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 39
+internal/engine/lastused_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 39
+  s_a7fa0a2062bbb1::t_217a2d335b0854 16
+internal/engine/update_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 23
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 61,792
+internal/engine/hints_move_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 16
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 35
+internal/engine/base_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 38
+  s_a7fa0a2062bbb1::t_217a2d335b0854 17
+internal/cli/flow_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 239-240
+internal/engine/native_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 16
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 53
+internal/module/partials_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 23,66,72,79,122
+internal/migrate/helpers_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 86
+  s_a7fa0a2062bbb1::t_217a2d335b0854 14
+internal/cli/huh_internal_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 444-445,462-463,486-487,737-738,745-746,771-772,791-792,803-804,827-828,919-920
+internal/engine/tidy_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 38,83
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+internal/engine/mentions_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 95,259,310,454
+  s_a7fa0a2062bbb1::t_217a2d335b0854 17
+internal/engine/uninstall_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 20
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 38,464
+internal/engine/inproject_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 39
+internal/targets/helpers_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 38
+internal/module/agentplugins_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 32,366,388
+internal/cli/migrate_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 43-44
+cmd/lola/main.go
+  s_a7fa0a2062bbb1::t_8ffd1107d1f5ee 14-18
+internal/engine/repair_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 37
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+internal/engine/staged_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 17
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 37
+internal/store/store_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 104
+internal/cli/flow.go
+  s_a7fa0a2062bbb1::t_8ffd1107d1f5ee 1354
+internal/engine/trustkinds_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 110,515,566
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+internal/engine/cancel_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 14
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 23
+internal/engine/coaching_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 30
+  s_a7fa0a2062bbb1::t_217a2d335b0854 14
+internal/engine/vars_internal_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 14
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 23,41
+internal/engine/market_internal_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 23
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 43
+internal/engine/context_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 17
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 34
+internal/cli/root.go
+  s_a7fa0a2062bbb1::t_453fc4a346c7fe 23
+  s_a7fa0a2062bbb1::t_b215bb00ad2ddc 10
+  s_a7fa0a2062bbb1::t_8ffd1107d1f5ee 66,113,115-125,194,204,250-262,275
+internal/engine/market_install.go
+  s_a7fa0a2062bbb1::t_8ffd1107d1f5ee 379
+internal/engine/repokey_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 17
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 76
+internal/engine/scripts_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 25
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 64
+internal/engine/replace_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 36,96
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+internal/module/load_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 48,76,91,103,110,117,123,130,137,147,155,166,174,181,202,217,228,246,251,266,282,300,315,348,387,411,418,425,433,439,447,469,477,487,496
+internal/module/vars_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 24,33
+internal/engine/init_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 33,48
+internal/engine/complete_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 34
+  s_a7fa0a2062bbb1::t_217a2d335b0854 15
+internal/module/formats_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 26,49,56,73
+internal/cli/info_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 517-518
+internal/cli/profile_edit_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 299
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+internal/engine/target_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 38
+internal/cli/conventions_test.go
+  s_a7fa0a2062bbb1::t_33005568a0e60b 29-31
+internal/engine/staging_internal_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 31,213
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+internal/engine/sync_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 48
+  s_a7fa0a2062bbb1::t_217a2d335b0854 27
+internal/engine/selections_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 46
+  s_a7fa0a2062bbb1::t_217a2d335b0854 15
+internal/engine/projectprofile_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 37,573
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+internal/engine/edit_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 35
+  s_a7fa0a2062bbb1::t_217a2d335b0854 16
+internal/module/components_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 26,148,554,557
+internal/engine/agents_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 37,197
+  s_a7fa0a2062bbb1::t_217a2d335b0854 21
+internal/engine/templates_budget_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 26,43
+  s_a7fa0a2062bbb1::t_217a2d335b0854 16
+internal/module/fifo_unix_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 28,39,48,61,68,76
+internal/cli/targets_test.go
+  s_a7fa0a2062bbb1::t_546361c4da8be9 1-50,52-60,62-63,65-67,69,71-77,79-115
+  s_a7fa0a2062bbb1::t_77cdd44a8c43b7 51,64
+  s_a7fa0a2062bbb1::t_4521a66b9defec 78
+  s_a7fa0a2062bbb1::t_cfc185d4e9d332 61,68,70
+internal/engine/cache_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 14
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 26
+internal/engine/info_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 26
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 81,384,418,643
+internal/engine/templates_profiles_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 25
+  s_a7fa0a2062bbb1::t_217a2d335b0854 15
+internal/module/claude_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 25,164,450,461,475,485,499
+internal/cli/interrupt_internal_test.go
+  s_a7fa0a2062bbb1::t_33005568a0e60b 27-28,109
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 90-91,103
+  s_a7fa0a2062bbb1::t_05251b5cf67af9 92-94
+  s_a7fa0a2062bbb1::t_c23fd976ac835a 104-106
+internal/module/template_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 24,104,126,173,180,192,282,287,294,299,324,371,379,389,410
+internal/cli/move_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 271
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+internal/cli/profile_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 854-855
+internal/cli/keys_internal_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 345-346
+internal/cli/viewer_internal_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 324-325
+internal/engine/inherited_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 21
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 40
+internal/engine/hints_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 39
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+internal/cli/pager_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 63-64,112-113
+internal/engine/market_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 54,1191
+  s_a7fa0a2062bbb1::t_217a2d335b0854 22
+internal/engine/templates_internal_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 37
+internal/engine/bundle_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 24
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 43
+internal/engine/move_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 21
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 41
+internal/engine/choices_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 48
+  s_a7fa0a2062bbb1::t_217a2d335b0854 21
+internal/engine/sources_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 86
+  s_a7fa0a2062bbb1::t_217a2d335b0854 34
+internal/cli/remoteprofile_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 241,338,1007
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 405-406,508-509,868-869
+  s_a7fa0a2062bbb1::t_217a2d335b0854 25
+internal/engine/clean_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 51
+  s_a7fa0a2062bbb1::t_217a2d335b0854 19
+internal/engine/profile_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 39
+  s_a7fa0a2062bbb1::t_217a2d335b0854 20
+internal/module/attrs_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 25
+internal/engine/clean_internal_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 17
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 53
+internal/engine/pins_test.go
+  s_a7fa0a2062bbb1::t_217a2d335b0854 18
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 36
+internal/engine/repokey_internal_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 26
+  s_a7fa0a2062bbb1::t_217a2d335b0854 14
+internal/cli/cli_suite_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 30-31
+internal/cli/confirm_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 296-297
+internal/cli/market_test.go
+  s_a7fa0a2062bbb1::t_06e1210c9add8f 338-339
+internal/cli/cmd_core.go
+  s_a7fa0a2062bbb1::t_8ffd1107d1f5ee 35
+internal/engine/exact_test.go
+  s_a7fa0a2062bbb1::t_d2dfb20c0cf5db 85,341
+  s_a7fa0a2062bbb1::t_217a2d335b0854 17
+internal/engine/check.go
+  s_a7fa0a2062bbb1::t_8ffd1107d1f5ee 312
+internal/target/conformance/coaching_test.go
+  s_a7fa0a2062bbb1::t_54a32badbe4c7c 225
+internal/target/conformance/conformance_test.go
+  s_a7fa0a2062bbb1::t_ea322dec59603a 120
+internal/target/conformance/consent_test.go
+  s_a7fa0a2062bbb1::t_264e73226fad22 131-132
+internal/target/conformance/templates_test.go
+  s_a7fa0a2062bbb1::t_06ac921e89753a 63,66,84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74d2a988a5cd471401d6bd6a4140e2ecce172cba",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
