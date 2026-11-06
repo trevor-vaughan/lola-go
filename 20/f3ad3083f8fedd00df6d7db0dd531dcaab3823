@@ -1,0 +1,25 @@
+.golangci.yml
+  s_a7fa0a2062bbb1::t_3714428df5278f 38
+internal/target/policy/policy.go
+  s_a7fa0a2062bbb1::t_4d34c4351ad123 1-96
+internal/target/policy/policy_suite_test.go
+  s_a7fa0a2062bbb1::t_6aca388977501e 1-13
+internal/target/policy/policy_test.go
+  s_a7fa0a2062bbb1::t_2fe4867334ea06 1-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "20f3ad3083f8fedd00df6d7db0dd531dcaab3823",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
