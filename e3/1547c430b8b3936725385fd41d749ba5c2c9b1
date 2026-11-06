@@ -1,0 +1,21 @@
+internal/config/write.go
+  s_a7fa0a2062bbb1::t_1e879653515925 64-66,87-115,120,137-138,140,145-146,149-150
+internal/config/config_test.go
+  s_a7fa0a2062bbb1::t_0c050a1eb08f1d 127-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e31547c430b8b3936725385fd41d749ba5c2c9b1",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
