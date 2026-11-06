@@ -1,0 +1,28 @@
+internal/config/config_test.go
+  s_a7fa0a2062bbb1::t_5c1433fe3943a5 111-134
+internal/manifest/manifest_test.go
+  s_a7fa0a2062bbb1::t_5c1433fe3943a5 129-157
+internal/config/write.go
+  s_a7fa0a2062bbb1::t_e6ac2222b78ae4 128-162
+internal/yamldoc/yamldoc.go
+  s_a7fa0a2062bbb1::t_e6ac2222b78ae4 12,16,230-244
+  s_a7fa0a2062bbb1::t_ae1c220111a952 245
+internal/manifest/edit.go
+  s_a7fa0a2062bbb1::t_e6ac2222b78ae4 29-30,66-71,86,150-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f33485ff243ed695b7999d3743be05c8754a5520",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
