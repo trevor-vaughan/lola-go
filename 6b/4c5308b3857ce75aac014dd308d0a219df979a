@@ -1,0 +1,24 @@
+internal/targetspec/spec.go
+  s_a7fa0a2062bbb1::t_4c28788f093597 18-19
+internal/targets/targets.go
+  s_a7fa0a2062bbb1::t_4c28788f093597 21,92,98,102-103,107,119-120,133,141-161,166
+internal/targets/targets_test.go
+  s_a7fa0a2062bbb1::t_f9376c64da0dab 137-138,147-149,174-186
+  s_a7fa0a2062bbb1::t_a0aab792bcc1b9 187-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b4c5308b3857ce75aac014dd308d0a219df979a",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
