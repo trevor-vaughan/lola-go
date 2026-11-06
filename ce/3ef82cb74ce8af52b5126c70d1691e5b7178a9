@@ -1,0 +1,57 @@
+docs/architecture.md
+  s_a7fa0a2062bbb1::t_41b3a3afe4ee7c 243-244
+internal/engine/check.go
+  s_a7fa0a2062bbb1::t_016b306d815977 205
+internal/engine/engine.go
+  s_a7fa0a2062bbb1::t_0ec01944cbf8bf 1003
+internal/engine/gitignore.go
+  s_a7fa0a2062bbb1::t_4e61c058763c26 16-18,22,24,46,50,54,58
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_39bcc559c768f9 146,152,155-162,164-170,174
+internal/engine/runtimehooks_test.go
+  s_a7fa0a2062bbb1::t_bed2ae23b10e15 29-30,34-46,666-704
+internal/target/conformance/coaching_test.go
+  s_a7fa0a2062bbb1::t_69ad371690db69 176-178
+internal/target/mech/agentskills.go
+  s_a7fa0a2062bbb1::t_b847783554d5ed 97
+internal/target/mech/claude.go
+  s_a7fa0a2062bbb1::t_9836e5a2c421da 78,121,137
+internal/target/mech/hooks.go
+  s_a7fa0a2062bbb1::t_fb84548b832d25 7,19,21-24,27-30,96-99,150,172,175,191
+internal/target/policy/policy.go
+  s_a7fa0a2062bbb1::t_a870ca95383ccf 8,18-20,34-40,51-70,115-116
+internal/target/policy/policy_test.go
+  s_a7fa0a2062bbb1::t_c926a7b9de41c6 4,6,11,95-108,115,138-230
+internal/target/target.go
+  s_a7fa0a2062bbb1::t_f2a448a0b7bb97 39-44
+internal/targets/claude_hooks_test.go
+  s_a7fa0a2062bbb1::t_f512e9a1845db0 277-278,283
+internal/targets/consent_test.go
+  s_a7fa0a2062bbb1::t_90ba5ebf73f940 1-58
+internal/targets/gemini_test.go
+  s_a7fa0a2062bbb1::t_d64139d9ba901e 198
+internal/targets/renamed_test.go
+  s_a7fa0a2062bbb1::t_b9c58663504b8e 1-66
+internal/targetspec/parse_test.go
+  s_a7fa0a2062bbb1::t_89e054fc010118 48-57,121-160
+internal/targetspec/spec.go
+  s_a7fa0a2062bbb1::t_a29b8de84f91f6 114-116,122-124,128-134
+internal/targetspec/validate.go
+  s_a7fa0a2062bbb1::t_7b0d0c57877078 283-285,316-323,352-354,368-431,493-503
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ce3ef82cb74ce8af52b5126c70d1691e5b7178a9",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
