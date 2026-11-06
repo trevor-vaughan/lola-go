@@ -1,0 +1,35 @@
+internal/engine/engine_test.go
+  s_a7fa0a2062bbb1::t_d488d56b233030 49,63-68,70,996,1081
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 26
+internal/module/claude_test.go
+  s_a7fa0a2062bbb1::t_869db5b1542677 164-165
+  s_a7fa0a2062bbb1::t_d0b2f0789bea19 166
+internal/targets/claude_agentmcp_test.go
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 1-79
+internal/targets/targets_test.go
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 30-39
+internal/targets/targets.go
+  s_a7fa0a2062bbb1::t_d488d56b233030 1-2,27-30,33-37
+internal/targets/claude_hooks_test.go
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 1-502
+internal/targets/claude_test.go
+  s_a7fa0a2062bbb1::t_483d79a3f3ca18 1-147
+internal/engine/templates_test.go
+  s_a7fa0a2062bbb1::t_d0b2f0789bea19 422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "baa4d61e12cae2036e5c37e8fef71c76e338adeb",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
