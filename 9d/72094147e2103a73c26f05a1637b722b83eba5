@@ -1,0 +1,20 @@
+e2e/user-target/user-target.venom.yml
+  s_a7fa0a2062bbb1::t_9a8688ec4bf04f 107
+  s_a7fa0a2062bbb1::t_89b6adb3fa19c3 41-49,52,116-119,147-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9d72094147e2103a73c26f05a1637b722b83eba5",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
