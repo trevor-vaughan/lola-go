@@ -1,0 +1,31 @@
+internal/targets/gemini_test.go
+  s_a7fa0a2062bbb1::t_ae284e54504c5f 198
+internal/targets/renamed_test.go
+  s_a7fa0a2062bbb1::t_c3844ca8aa175a 1-66
+internal/target/mech/agentskills.go
+  s_a7fa0a2062bbb1::t_9076060ed17663 97
+internal/target/mech/claude.go
+  s_a7fa0a2062bbb1::t_5cf16bc265e586 78,121,137
+internal/target/mech/hooks.go
+  s_a7fa0a2062bbb1::t_9f13c1b66fa86c 18,20-23,94,145,167,170,186
+internal/target/policy/policy.go
+  s_a7fa0a2062bbb1::t_8a0e50a1c2c909 115-116
+internal/target/policy/policy_test.go
+  s_a7fa0a2062bbb1::t_ae546691755d93 95-108,115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83461a30e0789ed49676a1fbc6e73994c717b093",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
