@@ -1,0 +1,56 @@
+docs/architecture/plans-and-the-ledger.md
+  s_a7fa0a2062bbb1::t_62244ec0890247 94-95
+e2e/user-target/user-target.venom.yml
+  s_a7fa0a2062bbb1::t_97b6cacdccdfca 284,316
+internal/engine/sync.go
+  s_a7fa0a2062bbb1::t_a2c7265567ba94 1495
+internal/engine/versions.go
+  s_a7fa0a2062bbb1::t_3e9be1f8614791 84-95
+  s_a7fa0a2062bbb1::t_f4cd9319c89ffd 122-137
+internal/engine/eras_test.go
+  s_a7fa0a2062bbb1::t_3360bc33f012bf 240,246,250,281-284
+  s_a7fa0a2062bbb1::t_60142e0f6ebc73 119,185,254,256,288
+internal/engine/ops.go
+  s_a7fa0a2062bbb1::t_c7a39e5442eaf4 18-19,30
+  s_a7fa0a2062bbb1::t_f34c7249167165 238,621-623,937,999,1520-1528,1530,1532-1533,1536-1573
+  s_a7fa0a2062bbb1::t_d77239fb99edcf 1529,1531
+internal/cli/summary.go
+  s_a7fa0a2062bbb1::t_f4cd9319c89ffd 160
+e2e/install/install.venom.yml
+  s_a7fa0a2062bbb1::t_97b6cacdccdfca 193
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_63fafd4fe37104 243-245
+  s_a7fa0a2062bbb1::t_3e9be1f8614791 275-277,281-282
+internal/engine/versions_test.go
+  s_a7fa0a2062bbb1::t_9195122509586f 75-76,78,201,209,218-219,235-236,246-268,294,341-376,420-429
+  s_a7fa0a2062bbb1::t_40ce852997b466 430
+docs/architecture.md
+  s_a7fa0a2062bbb1::t_62244ec0890247 166-169,172-174,180-181
+internal/engine/templates.go
+  s_a7fa0a2062bbb1::t_a2c7265567ba94 514,543-544,546,558-563
+internal/cli/flow.go
+  s_a7fa0a2062bbb1::t_f4cd9319c89ffd 227-245,539-541
+docs/usage.md
+  s_a7fa0a2062bbb1::t_67513a7281d11b 191-192,294
+  s_a7fa0a2062bbb1::t_62244ec0890247 173-174,177-178,196-198,207-213,329
+internal/cli/flow_test.go
+  s_a7fa0a2062bbb1::t_859f45021b3507 2283
+  s_a7fa0a2062bbb1::t_fc6d5087494260 2079,2113,2248,2253,2281-2282,2284-2286
+  s_a7fa0a2062bbb1::t_70572a03f1f5c6 2287-2288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "37b9635fcfc257e5ced9eb4e914a456542c58d0f",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
