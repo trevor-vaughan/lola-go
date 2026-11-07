@@ -1,0 +1,53 @@
+internal/plan/compute.go
+  s_a7fa0a2062bbb1::t_279e13e3ff9178 768-769,776,785-792,805-808,811
+internal/ledger/ledger_test.go
+  s_a7fa0a2062bbb1::t_dae775de898c10 377
+  s_a7fa0a2062bbb1::t_19da78bb6ec01a 353-376,378-379
+  s_a7fa0a2062bbb1::t_02528577729cd9 453,466
+internal/engine/sync.go
+  s_a7fa0a2062bbb1::t_307e874898bc5f 1494-1496,1532
+docs/architecture/plans-and-the-ledger.md
+  s_a7fa0a2062bbb1::t_765896b53fcf80 89-97
+internal/engine/eras_test.go
+  s_a7fa0a2062bbb1::t_7a502d55646ddc 7,15,221-305
+  s_a7fa0a2062bbb1::t_84df7803609949 306-307
+internal/engine/templates_cache_internal_test.go
+  s_a7fa0a2062bbb1::t_e1f514bc99337a 7-8,14,17,40-56
+  s_a7fa0a2062bbb1::t_856bedb9c1d90e 57
+internal/ledger/ledger.go
+  s_a7fa0a2062bbb1::t_279e13e3ff9178 394,411
+  s_a7fa0a2062bbb1::t_dae775de898c10 469
+  s_a7fa0a2062bbb1::t_79a1a0a0bccb70 395-397
+  s_a7fa0a2062bbb1::t_2fc798eef8bee3 98-100,428-429,463-468,470-471,571
+internal/engine/repair_test.go
+  s_a7fa0a2062bbb1::t_6204a939124fed 116
+internal/engine/templates.go
+  s_a7fa0a2062bbb1::t_307e874898bc5f 494-495,501-504,508-517,542-560
+  s_a7fa0a2062bbb1::t_7f8ddf876a812e 561-562
+internal/plan/compute_test.go
+  s_a7fa0a2062bbb1::t_d33276e658aded 414-427
+internal/engine/versions_test.go
+  s_a7fa0a2062bbb1::t_e1f514bc99337a 232-238
+docs/usage.md
+  s_a7fa0a2062bbb1::t_765896b53fcf80 168-170,318
+internal/engine/engine.go
+  s_a7fa0a2062bbb1::t_307e874898bc5f 263,1164-1169
+internal/engine/ops.go
+  s_a7fa0a2062bbb1::t_307e874898bc5f 1822
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b170eaf0c32bd3326c16f5a61f5979adf4ee8a36",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
