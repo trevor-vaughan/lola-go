@@ -1,0 +1,23 @@
+e2e/user-target/user-target.venom.yml
+  s_a7fa0a2062bbb1::t_a4bb4360f8eac6 265-276,278-279,282
+internal/cli/flow_test.go
+  s_a7fa0a2062bbb1::t_8bcc1c6d3d239c 2294-2302
+internal/cli/flow.go
+  s_a7fa0a2062bbb1::t_832e6f634f1093 213,269-270,279-281,335-337,378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "71360223a2904b7ae197f028e319361c0eedd040",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
