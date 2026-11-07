@@ -1,0 +1,40 @@
+internal/ledger/ledger_test.go
+  s_a7fa0a2062bbb1::t_bd4a6cf29a87ae 377
+  s_a7fa0a2062bbb1::t_e3da5419735f3f 378
+docs/usage.md
+  s_a7fa0a2062bbb1::t_0814f0816c3771 189-191
+internal/cli/flow.go
+  s_a7fa0a2062bbb1::t_5c35021f135097 17,24,309-314,316
+  s_a7fa0a2062bbb1::t_6d6f98a86729a1 204-206,306-307,320
+  s_a7fa0a2062bbb1::t_008a03754ded04 308
+internal/engine/versions.go
+  s_a7fa0a2062bbb1::t_6d6f98a86729a1 179-183,188-190,193-202
+  s_a7fa0a2062bbb1::t_d003e10205652b 203
+internal/cli/flow_test.go
+  s_a7fa0a2062bbb1::t_bd4a6cf29a87ae 2219-2222,2225-2231
+  s_a7fa0a2062bbb1::t_4991540914425a 2210,2223-2224
+internal/ledger/ledger.go
+  s_a7fa0a2062bbb1::t_c68721d911929e 23,430,469-471
+docs/architecture/plans-and-the-ledger.md
+  s_a7fa0a2062bbb1::t_0814f0816c3771 92-93
+internal/engine/ops.go
+  s_a7fa0a2062bbb1::t_6d6f98a86729a1 508
+internal/engine/versions_test.go
+  s_a7fa0a2062bbb1::t_021c26e9f9e0f0 338-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b8c41a12779067fcaaea41b04f9cdce140f1e7f",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
