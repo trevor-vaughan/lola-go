@@ -1,0 +1,24 @@
+docs/usage.md
+  s_a7fa0a2062bbb1::t_3358138fd41b89 181-183,206
+  s_a7fa0a2062bbb1::t_b2bd9a0160d6f5 195-196
+e2e/user-target/user-target.venom.yml
+  s_a7fa0a2062bbb1::t_b2bd9a0160d6f5 222-225,270
+docs/architecture.md
+  s_a7fa0a2062bbb1::t_3358138fd41b89 164-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7c13fe2b076129be70e5de3c1409bc856beab7ac",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
