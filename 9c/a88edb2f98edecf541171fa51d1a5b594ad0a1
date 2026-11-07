@@ -1,0 +1,57 @@
+internal/engine/check.go
+  s_a7fa0a2062bbb1::t_fc1e71e445a73c 130
+internal/cli/flow.go
+  s_a7fa0a2062bbb1::t_7cfdf68259d84f 14,128,1125,1135-1137,1141,1148-1155,1670-1673,1688,1703,1708-1714,1742-1744,1764-1766,1801-1815
+  s_a7fa0a2062bbb1::t_786e93274636a7 266-267,273-277,644
+  s_a7fa0a2062bbb1::t_f5f1c8d94a4c15 301-303,305,307,311-314,642-643
+internal/engine/versions_test.go
+  s_a7fa0a2062bbb1::t_d7599ebafb8911 113,116,122,131,139-140,142,144-169,174
+  s_a7fa0a2062bbb1::t_7968f41c268167 496
+  s_a7fa0a2062bbb1::t_6b7cc1ed001068 484,488-492
+  s_a7fa0a2062bbb1::t_8eb7795016468f 7,281-284,289-290,292-307
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_b7d25965643d24 164-166,169-171,199,240-244,291-292
+docs/architecture.md
+  s_a7fa0a2062bbb1::t_026470e396d2e4 159-164,172-173,178-179
+internal/engine/versions.go
+  s_a7fa0a2062bbb1::t_d7e5f40ce9d9d9 12,18,24-29,33-39,48,55,58,66-68,74-121,152-154,156-161,190,198,244-245
+  s_a7fa0a2062bbb1::t_05c445bb3f5c44 200,231,237-240,243
+internal/engine/sync.go
+  s_a7fa0a2062bbb1::t_fc1e71e445a73c 1140-1142
+internal/engine/eras_test.go
+  s_a7fa0a2062bbb1::t_3b1fda1b775c0c 8,272-287
+  s_a7fa0a2062bbb1::t_7968f41c268167 120
+  s_a7fa0a2062bbb1::t_207a92aaadd4f1 187
+  s_a7fa0a2062bbb1::t_b00ae94bf0690c 182
+  s_a7fa0a2062bbb1::t_244049893d171c 288-289
+internal/cli/flow_test.go
+  s_a7fa0a2062bbb1::t_ccbbfce39a49d7 2374
+  s_a7fa0a2062bbb1::t_6e1c055bacb1ca 2100,2105-2110
+  s_a7fa0a2062bbb1::t_450b6d47db856b 2375
+  s_a7fa0a2062bbb1::t_786e93274636a7 2095,2137,2274,2318-2319,2323-2324,2352-2373,2376-2382,2387-2388
+internal/engine/ops.go
+  s_a7fa0a2062bbb1::t_f7d2f33f9dfee0 922-926,1530-1533,1551-1552,1556-1557,1588-1603,1606-1615
+  s_a7fa0a2062bbb1::t_fc1e71e445a73c 917-919
+  s_a7fa0a2062bbb1::t_2692fc78c1146c 1604-1605
+  s_a7fa0a2062bbb1::t_0f894623c9e8eb 1616-1618
+docs/usage.md
+  s_a7fa0a2062bbb1::t_67f4595e9d2f0a 173-174,222-242,356-357
+internal/cli/summary.go
+  s_a7fa0a2062bbb1::t_3dced2fcdf659b 4,124,153-158,230-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ca88edb2f98edecf541171fa51d1a5b594ad0a1",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
