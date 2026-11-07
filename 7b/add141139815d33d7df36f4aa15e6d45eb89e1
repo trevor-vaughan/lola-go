@@ -1,0 +1,74 @@
+docs/architecture.md
+  s_a7fa0a2062bbb1::t_5f42406fdfa4d3 173-177,179-181
+internal/cli/scope.go
+  s_a7fa0a2062bbb1::t_06969df44e3013 11,264-265,272
+internal/engine/engine.go
+  s_a7fa0a2062bbb1::t_06d20a24dfa92c 21
+  s_a7fa0a2062bbb1::t_38d00baf43f82e 183-186,1118-1119,1216-1220,1223,1226,1230-1256,1258-1286,1288
+internal/cli/cmd_core.go
+  s_a7fa0a2062bbb1::t_dfe6ae7e8212ef 192
+internal/cli/flow.go
+  s_a7fa0a2062bbb1::t_06969df44e3013 241-242,257-259,289,626-628,1672,2142,2156,2159
+  s_a7fa0a2062bbb1::t_f7bb41a871343a 213,264-268,270,284-288,290,2166
+internal/engine/ops.go
+  s_a7fa0a2062bbb1::t_6def4478cfed20 1542
+  s_a7fa0a2062bbb1::t_30fa70994558cd 1545
+internal/engine/templates.go
+  s_a7fa0a2062bbb1::t_30fa70994558cd 563
+internal/cli/human.go
+  s_a7fa0a2062bbb1::t_7a3fcf7925ecc5 438-439,481
+internal/targets/opencode_test.go
+  s_a7fa0a2062bbb1::t_9fa17a5a5333c7 213,216,218
+internal/engine/versions.go
+  s_a7fa0a2062bbb1::t_2eb0bc38191cfe 140,170
+  s_a7fa0a2062bbb1::t_9c9e456fd74492 151,182,187-200
+  s_a7fa0a2062bbb1::t_30fa70994558cd 82-84,88,91
+  s_a7fa0a2062bbb1::t_c0c92cac2f1e7c 201
+docs/usage.md
+  s_a7fa0a2062bbb1::t_0aa9c6baf5419c 215-219
+  s_a7fa0a2062bbb1::t_dfe6ae7e8212ef 194-195
+  s_a7fa0a2062bbb1::t_5f42406fdfa4d3 208,212
+internal/cli/flow_test.go
+  s_a7fa0a2062bbb1::t_b26e9bfaa68b8b 2149
+  s_a7fa0a2062bbb1::t_1d2a0f798b3cba 2339,2341-2345
+  s_a7fa0a2062bbb1::t_dfe6ae7e8212ef 2057,2361
+  s_a7fa0a2062bbb1::t_566f931e3ce637 2187-2188
+  s_a7fa0a2062bbb1::t_06969df44e3013 906,921
+  s_a7fa0a2062bbb1::t_3de06b25094a0f 2181,2186
+internal/engine/probe.go
+  s_a7fa0a2062bbb1::t_30fa70994558cd 282
+internal/engine/versions_test.go
+  s_a7fa0a2062bbb1::t_43933f89fdad6e 270-274
+  s_a7fa0a2062bbb1::t_55044d9a3dd41b 403-404,409,419-420,422-423,427-430,432-435
+  s_a7fa0a2062bbb1::t_7760e57cfcb1a1 173
+  s_a7fa0a2062bbb1::t_2092419cfcf981 168,178
+internal/targetspec/specs/opencode.yaml
+  s_a7fa0a2062bbb1::t_dfe6ae7e8212ef 15,74
+e2e/user-target/user-target.venom.yml
+  s_a7fa0a2062bbb1::t_b26e9bfaa68b8b 266
+  s_a7fa0a2062bbb1::t_803e4eb1046d31 286
+internal/target/capability.go
+  s_a7fa0a2062bbb1::t_711a4db89ac949 112
+internal/target/capability_test.go
+  s_a7fa0a2062bbb1::t_004b6d045f58c0 88,98,217
+internal/target/finding.go
+  s_a7fa0a2062bbb1::t_0fd84e5094b3c9 72-77
+internal/target/policy/policy_test.go
+  s_a7fa0a2062bbb1::t_53ae4ab4fa5773 170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7badd141139815d33d7df36f4aa15e6d45eb89e1",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
