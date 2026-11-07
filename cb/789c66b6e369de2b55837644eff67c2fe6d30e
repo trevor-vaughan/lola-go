@@ -1,0 +1,67 @@
+internal/cli/core_test.go
+  s_a7fa0a2062bbb1::t_268615c1fee3c8 588-589
+  s_a7fa0a2062bbb1::t_ad5b914eddcccc 580-581,586
+internal/cli/summary.go
+  s_a7fa0a2062bbb1::t_aab6f4d7db97c8 420-422
+internal/cli/flow.go
+  s_a7fa0a2062bbb1::t_f6ec763578893e 210-214,265-288,294,296,302,328-330,333-353,357-372,374,376-379,391-397
+  s_a7fa0a2062bbb1::t_56c76805c81a21 1650-1653,1656-1664,1666,1694-1698,1700-1704,2274-2282
+  s_a7fa0a2062bbb1::t_8662bc967bb9d4 1264-1266
+  s_a7fa0a2062bbb1::t_aab6f4d7db97c8 1291-1299,1303-1312,1322
+  s_a7fa0a2062bbb1::t_3093186b533cb6 398-399
+internal/engine/trust_test.go
+  s_a7fa0a2062bbb1::t_f5488393880621 248,259-261,283,333,335
+docs/usage.md
+  s_a7fa0a2062bbb1::t_edba78970d4a1b 220-226
+  s_a7fa0a2062bbb1::t_6a77ed49558c11 154
+  s_a7fa0a2062bbb1::t_b8c1fa2c128877 183-189,193-200
+internal/engine/versions_test.go
+  s_a7fa0a2062bbb1::t_65bcb8daaa3085 382-384
+  s_a7fa0a2062bbb1::t_1f5b5ebbf019e3 371,375-381,385-387
+  s_a7fa0a2062bbb1::t_d84e509e167b38 388-389
+docs/architecture.md
+  s_a7fa0a2062bbb1::t_edba78970d4a1b 185-190
+internal/engine/target_test.go
+  s_a7fa0a2062bbb1::t_8aa6095b5dcc34 238,258,284
+docs/guides/sync-and-trust.md
+  s_a7fa0a2062bbb1::t_edba78970d4a1b 337-338
+internal/trust/trust.go
+  s_a7fa0a2062bbb1::t_5a51ffc6ca45a3 89-90,434-436
+  s_a7fa0a2062bbb1::t_047cb8e3341ded 83-88,137,146,153,198,274,283-295,326,328,457-458,596-611
+  s_a7fa0a2062bbb1::t_a1d167750f3ed1 612-613
+internal/engine/marketinstall_test.go
+  s_a7fa0a2062bbb1::t_f5488393880621 993
+internal/cli/flow_test.go
+  s_a7fa0a2062bbb1::t_8aa6095b5dcc34 388
+  s_a7fa0a2062bbb1::t_8662bc967bb9d4 971,982,2149,2151-2153,2157-2169
+  s_a7fa0a2062bbb1::t_6cca4e8c7235c5 2154-2156
+  s_a7fa0a2062bbb1::t_3a64e535042706 2239-2251,2270-2286
+  s_a7fa0a2062bbb1::t_f5fe91f42e7257 2256-2269
+  s_a7fa0a2062bbb1::t_ad5b914eddcccc 534-535
+  s_a7fa0a2062bbb1::t_d2e63d162c4575 2287
+internal/engine/ops.go
+  s_a7fa0a2062bbb1::t_eaacc1223ccc98 1584-1585,1612-1615
+  s_a7fa0a2062bbb1::t_cc1501151635d6 239,626-630,1593-1595
+  s_a7fa0a2062bbb1::t_38581469840693 1171-1183,1186,1188,1198-1203,1208-1221,1223-1229,1231
+  s_a7fa0a2062bbb1::t_8aa6095b5dcc34 1204-1207
+internal/engine/versions.go
+  s_a7fa0a2062bbb1::t_cc1501151635d6 168-170,178,219-220,229,231,240-241,243-250,252
+internal/trust/trust_test.go
+  s_a7fa0a2062bbb1::t_9e2e6271c70621 360-385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb789c66b6e369de2b55837644eff67c2fe6d30e",
+  "prompts": {},
+  "sessions": {
+    "s_a7fa0a2062bbb1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1acc690-859c-4f07-bdbc-2a91d493c98a",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
