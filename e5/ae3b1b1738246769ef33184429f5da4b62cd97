@@ -1,0 +1,34 @@
+internal/cli/cmd_market.go
+  s_91245712ca9b1b::t_e36b7e4675bab5 416-420
+internal/engine/market_test.go
+  s_91245712ca9b1b::t_27458c61dce8a0 954-955,969
+  s_91245712ca9b1b::t_1917c24093edb9 945-953,956-968,970-978
+internal/engine/market_ssh.go
+  s_91245712ca9b1b::t_e36b7e4675bab5 28-29,33
+internal/cli/prompter.go
+  s_91245712ca9b1b::t_3096095a7bdcc7 162-163,168
+docs/guides/marketplaces.md
+  s_91245712ca9b1b::t_1a31cc83148e8b 107-108
+internal/cli/misc2_paths_test.go
+  s_91245712ca9b1b::t_e837309699885c 58-83
+internal/cli/huh.go
+  s_91245712ca9b1b::t_3096095a7bdcc7 868
+internal/engine/market.go
+  s_91245712ca9b1b::t_e36b7e4675bab5 1068-1075,1109-1123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e5ae3b1b1738246769ef33184429f5da4b62cd97",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
