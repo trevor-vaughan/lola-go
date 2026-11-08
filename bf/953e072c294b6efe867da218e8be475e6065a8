@@ -1,0 +1,75 @@
+internal/cli/flow_paths_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 151,446
+internal/cli/interrupt_internal_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 66
+internal/cli/tidy_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 210,403
+internal/cli/scope_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 289
+internal/cli/cmd_sync.go
+  s_91245712ca9b1b::t_2561c1ce31c39a 27
+internal/cli/root.go
+  s_91245712ca9b1b::t_efad338ea6dd5f 31-32,36,49-51,304,307
+internal/cli/profile_move.go
+  s_91245712ca9b1b::t_1c9ef6df2ca5ba 89,91,93
+internal/cli/cmd_market.go
+  s_91245712ca9b1b::t_2561c1ce31c39a 347,385,490
+docs/architecture/tui-flows.md
+  s_91245712ca9b1b::t_235b224f97488c 69-71
+  s_91245712ca9b1b::t_93612bd3ad2484 295,777-778,900,1021,1104,1207,1299,1436,1561
+e2e/team/team.venom.yml
+  s_91245712ca9b1b::t_ccc8cc0912e014 545
+internal/cli/sync_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 718
+docs/guides/sync-and-trust.md
+  s_91245712ca9b1b::t_dc71aa7060b94b 360,365
+internal/cli/huh_internal_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 534-536,847,981
+internal/cli/misc_paths_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 207,274,380
+internal/cli/profile_remove.go
+  s_91245712ca9b1b::t_2561c1ce31c39a 44
+docs/guides/remote-profiles.md
+  s_91245712ca9b1b::t_3ba360e6a80900 151
+  s_91245712ca9b1b::t_dc71aa7060b94b 162,168-169
+internal/cli/confirm_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 254,442
+internal/cli/profile_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 262,703
+internal/cli/flow_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 695,906,1057,1420
+internal/cli/trash_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 277,320
+docs/guides/choosing-what-to-install.md
+  s_91245712ca9b1b::t_3ba360e6a80900 165,184
+internal/cli/trust_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 234,269,286
+internal/cli/market_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 485,985,992
+internal/cli/profile_edit_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 1048,1156,1174
+internal/cli/profile_add.go
+  s_91245712ca9b1b::t_2561c1ce31c39a 79
+internal/cli/profile_update.go
+  s_91245712ca9b1b::t_1c9ef6df2ca5ba 92,114,126,145,351,355
+internal/cli/remoteprofile_test.go
+  s_91245712ca9b1b::t_ccc8cc0912e014 297,433,538,762,815,819,823
+docs/architecture/install-flow.md
+  s_91245712ca9b1b::t_3ba360e6a80900 279-281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "bf953e072c294b6efe867da218e8be475e6065a8",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
