@@ -1,0 +1,21 @@
+internal/cli/misc2_paths_test.go
+  s_91245712ca9b1b::t_69d99a78b83742 523
+  s_91245712ca9b1b::t_5fc7b8048c511b 984
+  s_91245712ca9b1b::t_c04d1928019126 287-302,581,599
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "ddc3a459bb75a95041a306ed6b27d60706022847",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
