@@ -1,0 +1,25 @@
+docs/architecture.md
+  s_91245712ca9b1b::t_65c079044be488 63-66
+docs/architecture/tui-flows.md
+  s_91245712ca9b1b::t_dcb6274ad70ce5 1-27,30-89,91-137,139-147,150-181,187-207,209-215,217-231,233-234,236-240,242-259,261-271,273-279
+  s_91245712ca9b1b::t_d11c2ba73b9cd3 28-29,138,148-149,182-186,232,235
+  s_91245712ca9b1b::t_4dab353ce7af62 208
+  s_91245712ca9b1b::t_71ffaf4cfbc50b 216,241,260
+  s_91245712ca9b1b::t_ad3c1cceeff9f9 90,272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7f836ec4518d374acfdef376482953b4eb0c4ef4",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
