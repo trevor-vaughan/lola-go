@@ -1,0 +1,34 @@
+internal/cli/flow_test.go
+  s_91245712ca9b1b::t_9f02507a864df3 2911-2919,2929-2936,2938,2944-2947,2950-2953
+  s_91245712ca9b1b::t_c7b5a5505c3500 2956,2966-2971,2973,2975-2977
+  s_91245712ca9b1b::t_33d70373b21fbe 2924
+  s_91245712ca9b1b::t_f3641f6ccaf1c1 2980-2992
+  s_91245712ca9b1b::t_a64bc5261181ec 2978-2979
+docs/usage.md
+  s_91245712ca9b1b::t_46e614719e96c4 284-294
+internal/engine/ops.go
+  s_91245712ca9b1b::t_bba54049c8dbf5 1167-1172,1175,1187-1190,1192-1196,1200
+  s_91245712ca9b1b::t_076575d9530d8c 212-228,361-363,371-374,975,1003,1007-1018,1023-1027
+  s_91245712ca9b1b::t_85b36941607cec 364-369,1028
+  s_91245712ca9b1b::t_ef3d3b3f66e90a 1019-1022
+  s_91245712ca9b1b::t_98a01b45315533 1204,1207-1208,1210-1215
+  s_91245712ca9b1b::t_ffd62cae195163 370
+internal/engine/sync.go
+  s_91245712ca9b1b::t_591d3399d52967 95-98,434-440,904,937,963,1041
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "096b43904bb1d8e29ad20a863fe8a9f6feecb7d0",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
