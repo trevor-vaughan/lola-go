@@ -1,0 +1,38 @@
+internal/engine/sync_test.go
+  s_91245712ca9b1b::t_71dec03d9ad755 1680-1685
+  s_91245712ca9b1b::t_40de92ee8a503f 1642-1679,1686-1688
+internal/cli/cmd_sync.go
+  s_91245712ca9b1b::t_879a27208ba299 510-511
+  s_91245712ca9b1b::t_c365f602944111 509,520-522,530-532,537,548-553
+internal/cli/prompter.go
+  s_91245712ca9b1b::t_a6495cc2903d0c 175-177,181
+  s_91245712ca9b1b::t_09a43b818a5757 82
+internal/cli/scope_paths_test.go
+  s_91245712ca9b1b::t_22cfcfa9c46d1e 60
+  s_91245712ca9b1b::t_8b5787c2bcc70a 1-59,61-70
+internal/cli/keys_internal_test.go
+  s_91245712ca9b1b::t_a86975a611c09e 340-352
+internal/engine/sync.go
+  s_91245712ca9b1b::t_e3e44b40e8935a 1121-1145,1147-1160,1162-1167,1169,1172-1195,1199-1206,1208-1214,1216-1240,1242
+  s_91245712ca9b1b::t_09a43b818a5757 57-58,172-175
+  s_91245712ca9b1b::t_12ac490b89e7a9 176
+internal/cli/huh.go
+  s_91245712ca9b1b::t_a86975a611c09e 691-692
+  s_91245712ca9b1b::t_57d518d19004dc 702-714
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "355180a841581f83368b594d621d3d341a4cd6a4",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
