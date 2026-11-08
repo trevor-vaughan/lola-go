@@ -1,0 +1,34 @@
+internal/cli/flow.go
+  s_91245712ca9b1b::t_27af1882d30b0c 1121
+  s_91245712ca9b1b::t_cbc7e47c9336b7 1117-1120,1122-1123
+internal/cli/profile_edit_paths_test.go
+  s_91245712ca9b1b::t_9ba97c69af3223 97-99,111-114
+  s_91245712ca9b1b::t_0ee72fd2d7428c 212-217,219-227
+  s_91245712ca9b1b::t_f3d2db397cb135 218
+docs/architecture/tui-flows.md
+  s_dccaf832e5cd96::t_c578309ea1df82 480-481
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "8d2ce805a8a6212a6b0c9c9614b8b69255dc4003",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_dccaf832e5cd96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a055f9fb33d521054",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
