@@ -1,0 +1,26 @@
+internal/cli/huh_internal_test.go
+  s_91245712ca9b1b::t_1e4293b56d16de 428-430
+internal/cli/keys_paths_internal_test.go
+  s_91245712ca9b1b::t_e7813f81529704 19-22
+  s_91245712ca9b1b::t_91114fe7050453 1-18,23-31,40-46
+  s_91245712ca9b1b::t_a89a76868d86d7 32-39
+internal/cli/huh.go
+  s_91245712ca9b1b::t_7a03f9cc816c59 387-391,393-395,397-428,430-448
+  s_91245712ca9b1b::t_088084a79ebab6 392,396,429,506,599-600
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "674e9680aae6593ddccef9638f5043ae0f23bcad",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
