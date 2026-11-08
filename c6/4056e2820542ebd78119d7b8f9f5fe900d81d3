@@ -1,0 +1,43 @@
+docs/guides/choosing-what-to-install.md
+  s_91245712ca9b1b::t_04309043a2122a 210-212
+  s_91245712ca9b1b::t_ea2f54c5586abc 183-190
+internal/cli/misc_paths_test.go
+  s_91245712ca9b1b::t_edbceea5391209 29
+internal/cli/misc2_paths_test.go
+  s_91245712ca9b1b::t_edbceea5391209 9,24
+internal/cli/confirm_test.go
+  s_91245712ca9b1b::t_edbceea5391209 350
+docs/usage.md
+  s_91245712ca9b1b::t_ea2f54c5586abc 620
+docs/architecture/install-flow.md
+  s_91245712ca9b1b::t_112e0f291a2071 232-234
+internal/cli/keys_paths_internal_test.go
+  s_91245712ca9b1b::t_a2ff86e254325d 111
+  s_91245712ca9b1b::t_f3f150d37e0817 3-49,52-53,62-105,114-134,138,141-164,205,208-220,229-257
+  s_91245712ca9b1b::t_fc496f1b6d6375 190
+  s_91245712ca9b1b::t_edbceea5391209 222
+  s_91245712ca9b1b::t_b147c6895aeaf5 106-110,112-113
+  s_91245712ca9b1b::t_d235ae1594e945 221
+docs/architecture/tui-flows.md
+  s_91245712ca9b1b::t_3cdd2c5b725570 1583-1788,1817-1831,1833-1838,1840-1842,1844-1904,1906-1961
+  s_91245712ca9b1b::t_9c178f2b369059 28-32,53,98-99,108-110,112,1832,1843,1905
+  s_91245712ca9b1b::t_edbceea5391209 54
+  s_91245712ca9b1b::t_f6680b20b383cf 1789-1816
+  s_91245712ca9b1b::t_fc496f1b6d6375 1839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c64056e2820542ebd78119d7b8f9f5fe900d81d3",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
