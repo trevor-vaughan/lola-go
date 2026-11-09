@@ -1,0 +1,33 @@
+docs/testing.md
+  s_631303c0ee2c96::t_48b3f59ff75bdc 11-12
+docs/release.md
+  s_631303c0ee2c96::t_48b3f59ff75bdc 7
+AGENTS.md
+  s_631303c0ee2c96::t_bdd92e4cd38be5 8-9
+.taskfiles/go.yml
+  s_631303c0ee2c96::t_63c626240ef180 83-87
+Taskfile.yml
+  s_631303c0ee2c96::t_63c626240ef180 56-60,62-63
+scripts/tuiflows/main.go
+  s_631303c0ee2c96::t_5f97e9b58bfb5d 1-43,48-77,83-97,99-104,107-110,113-128,130-135,141,144-145,147-149,151-153,155-230
+  s_631303c0ee2c96::t_6f40bd98ee5429 78-82
+  s_631303c0ee2c96::t_16d830e1515d22 98,105-106,129,136-140,142-143,146,150
+  s_631303c0ee2c96::t_4879007aa18a84 44-47,154
+  s_631303c0ee2c96::t_b79878084c06cb 111-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9ced456222d0472c32d1a724ca5e99233ea367e6",
+  "prompts": {},
+  "sessions": {
+    "s_631303c0ee2c96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebdce0ba-ba97-4bb2-b529-6668d2dd3a16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
