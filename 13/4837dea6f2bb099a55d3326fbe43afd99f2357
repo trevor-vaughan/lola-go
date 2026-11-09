@@ -1,0 +1,19 @@
+docs/architecture/tui-flows.md
+  s_dccaf832e5cd96::t_9e36ec45a63d09 1956-1957
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "134837dea6f2bb099a55d3326fbe43afd99f2357",
+  "prompts": {},
+  "sessions": {
+    "s_dccaf832e5cd96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a055f9fb33d521054",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
