@@ -1,0 +1,50 @@
+internal/cli/summary.go
+  s_631303c0ee2c96::t_dca71d4e1b7d72 311-312
+  s_631303c0ee2c96::t_73fff6353b2fd2 271,310
+  s_631303c0ee2c96::t_6ddae518fe70d2 270
+internal/engine/versions_test.go
+  s_631303c0ee2c96::t_f8fe5d8deef8aa 15
+  s_631303c0ee2c96::t_65833b74eda3f8 539-620
+internal/cli/flow.go
+  s_631303c0ee2c96::t_73fff6353b2fd2 106,816,1431,1436,2059-2060,2062,2066
+  s_631303c0ee2c96::t_d2455ec0d2b2d1 813-815,817-820,1434-1435,1437-1438,2051-2058,2061,2063,2067-2068,2076
+internal/cli/flow_paths_test.go
+  s_631303c0ee2c96::t_acfa6ed4472515 7
+docs/usage.md
+  s_631303c0ee2c96::t_37660133b7e337 195-198,285-302
+docs/architecture.md
+  s_631303c0ee2c96::t_915970d1dae6c9 167-172
+internal/engine/versions.go
+  s_631303c0ee2c96::t_a1ee03d13a8739 156-187
+  s_631303c0ee2c96::t_7db745afa65421 4
+internal/cli/flow_test.go
+  s_631303c0ee2c96::t_d18e1ba6f5d9f8 3053
+  s_631303c0ee2c96::t_0a740aa2b3b8e3 2691,2693,2697,3010,3014-3015,3018-3034,3036-3038,3043-3046,3051-3052,3054-3059,3061-3063,3065-3066,3068,3072,3077,3085,3091,3106,3117-3118
+  s_631303c0ee2c96::t_f5cdbda244a8bb 3047-3050
+  s_631303c0ee2c96::t_2b25dd597acf53 3119
+docs/reference/output-contract.md
+  s_631303c0ee2c96::t_915970d1dae6c9 152-153
+internal/engine/ops.go
+  s_631303c0ee2c96::t_4b71444bdb5cfd 1058-1060,1062-1068,1078,1224,1227-1231,1233-1248,1260-1261
+  s_631303c0ee2c96::t_ea31038e58d527 1249,1251-1257,1264,1284-1289
+  s_631303c0ee2c96::t_f87e928d2440f0 1225-1226,1232
+  s_631303c0ee2c96::t_45ab8c040fdea6 1250
+docs/architecture/tui-flows.md
+  s_631303c0ee2c96::t_acfa6ed4472515 213,228,323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2c538539f7d31e92b91916e60f8d4f5a4cb07d77",
+  "prompts": {},
+  "sessions": {
+    "s_631303c0ee2c96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebdce0ba-ba97-4bb2-b529-6668d2dd3a16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
