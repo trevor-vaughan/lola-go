@@ -1,0 +1,32 @@
+docs/guides/choosing-what-to-install.md
+  s_91245712ca9b1b::t_0594d12545a3fa 213-214
+internal/cli/keys.go
+  s_91245712ca9b1b::t_f76ccb75cf7284 145-147
+  s_91245712ca9b1b::t_691b91ae45eeb9 123-124
+internal/cli/keys_internal_test.go
+  s_dccaf832e5cd96::t_3de53054c43fa6 412,427
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "fb64fdbac00b516d47acff39f24af308590dd59c",
+  "prompts": {},
+  "sessions": {
+    "s_91245712ca9b1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aa86f2d-597d-46b5-9a82-831f56d4cdf7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_dccaf832e5cd96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a055f9fb33d521054",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
