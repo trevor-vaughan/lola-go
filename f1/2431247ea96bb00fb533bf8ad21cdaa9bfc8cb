@@ -1,0 +1,19 @@
+internal/cli/summary.go
+  s_dccaf832e5cd96::t_a377301833aa2f 29,31-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f12431247ea96bb00fb533bf8ad21cdaa9bfc8cb",
+  "prompts": {},
+  "sessions": {
+    "s_dccaf832e5cd96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a055f9fb33d521054",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
