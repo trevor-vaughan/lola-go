@@ -1,0 +1,22 @@
+internal/cli/flow_paths_test.go
+  s_631303c0ee2c96::t_92aee4f2a38c68 39
+docs/architecture/tui-flows.md
+  s_631303c0ee2c96::t_48b3f59ff75bdc 56-59
+  s_631303c0ee2c96::t_92aee4f2a38c68 256-257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7c73600f0d9948d4523bf7422b819103fb2ee26a",
+  "prompts": {},
+  "sessions": {
+    "s_631303c0ee2c96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebdce0ba-ba97-4bb2-b529-6668d2dd3a16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
