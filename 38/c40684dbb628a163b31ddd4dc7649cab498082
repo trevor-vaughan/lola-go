@@ -1,0 +1,19 @@
+AGENTS.md
+  s_dccaf832e5cd96::t_69ae6e46657bb6 102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "38c40684dbb628a163b31ddd4dc7649cab498082",
+  "prompts": {},
+  "sessions": {
+    "s_dccaf832e5cd96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a055f9fb33d521054",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
