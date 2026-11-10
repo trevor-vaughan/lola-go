@@ -13,12 +13,13 @@ ones you keep mention, with the `lola install … --with-mentions` that adds the
 
 | Flag | What it does |
 |---|---|
-| `-t`, `--target <assistant>` | Only check these assistants. |
+| `-t`, `--target <assistant>` | Only check these assistants. `<id>@<version>` (`opencode@1.0`) checks for that version in place of the one the scope declares, read as `lola install` reads it. |
 | `--strict` | Exit with an error if any target would drop, change or skip part of a module. |
 
 Refusals: an argument that is neither (`"nope" is neither a source nor a module in your cache;
 pass a module folder or another source, e.g. lola check ./my-module; sources are …`, hinting
-`cached modules: lola cache list`), an unknown target, and `--strict` with a finding.
+`cached modules: lola cache list`), an unknown target, a `-t` version that is not one (with the run for each version), and `--strict` with a
+finding.
 
 JSON: `modules` (each `name`, `targets`, `findings`, `skipped`, and `notices`: each `level`,
 `text`, `class`, `[]` when none) and `findings`.

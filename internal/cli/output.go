@@ -9,7 +9,9 @@ import (
 	"maps"
 	"os"
 	"strconv"
+	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
@@ -57,7 +59,12 @@ func (a *app) height(w any) int {
 // it, so printers drop their caps (more). verbose is -v: a run's detail notices are printed, not
 // counted (printNotices); a command without -v prints them all, as it did before -v.
 // asking marks a plan shown just before the question that applies it, so it is no dry run.
-type style struct{ color, plain, paged, verbose, asking bool }
+// width is the columns a hint wraps to (hintLine): the terminal's when stdout and stderr both are
+// one, else 0, so a pipe or a file gets each hint on one line.
+type style struct {
+	color, plain, paged, verbose, asking bool
+	width                                int
+}
 
 // more is the command a capped listing names to list everything, or "" when the output is paged
 // and shows everything.
@@ -72,7 +79,11 @@ func (a *app) style(cmd *cobra.Command) style {
 	if a.plain {
 		return style{plain: true}
 	}
-	return style{color: a.color(cmd.OutOrStdout()), verbose: cmd.Flags().Lookup("verbose") == nil || given(cmd, "verbose")}
+	s := style{color: a.color(cmd.OutOrStdout()), verbose: cmd.Flags().Lookup("verbose") == nil || given(cmd, "verbose")}
+	if (a.termOut || isTTY(cmd.OutOrStdout())) && (a.termErr || isTTY(cmd.ErrOrStderr())) {
+		s.width = a.width(cmd.OutOrStdout())
+	}
+	return s
 }
 
 // color decides ANSI color for output to w: LOLA_COLOR, then NO_COLOR, then whether w is a
@@ -119,8 +130,8 @@ type jsonFielder interface {
 	JSONFields() map[string]any
 }
 
-// writeError prints err per the output contract.
-func writeError(w io.Writer, err error, asJSON bool) {
+// writeError prints err per the output contract, its hints wrapped to width (hintLine).
+func writeError(w io.Writer, err error, asJSON bool, width int) {
 	hints := errs.Hints(err)
 	if hints == nil {
 		hints = []string{}
@@ -138,6 +149,67 @@ func writeError(w io.Writer, err error, asJSON bool) {
 	}
 	fmt.Fprintf(w, "error: %s\n", err)
 	for _, h := range hints {
-		fmt.Fprintf(w, "  hint: %s\n", h)
+		fmt.Fprintln(w, hintLine("  ", h, width))
 	}
+}
+
+// minHintText is how many columns a wrapped hint keeps for its text after "hint: ": on a narrower
+// terminal the hint prints as one line, which the terminal wraps.
+const minHintText = 20
+
+// hintLine is the "hint:" line for h after indent, wrapped at spaces to width columns (0 for no
+// limit), each continuation under the hint's first word. A command in h, from a word "lola" to a
+// word ending in ";" outside single quotes or to the end, is never broken, so it runs as copied;
+// one wider than the line gets a line of its own, wider than width.
+func hintLine(indent, h string, width int) string {
+	lead := indent + "hint: "
+	if width == 0 || ansi.StringWidth(lead+h) <= width || width < len(lead)+minHintText {
+		return lead + h
+	}
+	var units []string
+	cmd, quoted := "", false
+	for word := range strings.SplitSeq(h, " ") { // a command keeps each space; prose needs none twice
+		switch {
+		case cmd == "" && word == "":
+			continue
+		case cmd == "" && word != "lola":
+			units = append(units, word)
+			continue
+		case cmd == "":
+			cmd = word
+		default:
+			cmd += " " + word
+		}
+		for i := 0; i < len(word); i++ {
+			switch {
+			case quoted:
+				quoted = word[i] != '\''
+			case word[i] == '\\':
+				i++
+			case word[i] == '\'':
+				quoted = true
+			}
+		}
+		if !quoted && strings.HasSuffix(word, ";") {
+			units, cmd = append(units, cmd), ""
+		}
+	}
+	if cmd != "" {
+		units = append(units, cmd)
+	}
+	pad := strings.Repeat(" ", len(lead))
+	var lines []string
+	cur, empty := lead, true
+	for _, u := range units {
+		switch {
+		case empty:
+			cur += u
+		case ansi.StringWidth(cur)+1+ansi.StringWidth(u) <= width:
+			cur += " " + u
+		default:
+			lines, cur = append(lines, cur), pad+u
+		}
+		empty = false
+	}
+	return strings.Join(append(lines, cur), "\n")
 }

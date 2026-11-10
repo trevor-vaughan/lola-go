@@ -136,7 +136,7 @@ var _ = Describe("a project's base picks are keyed by its repository", func() {
 		a := filepath.Join(tmp, "a", "r")
 		writeTree(a, map[string]string{".git": "gitdir: nowhere\n"})
 		writeTree(filepath.Dir(p.Selections), map[string]string{"selections.yaml": "version: 1\nprojects:\n  " + a + ":\n    example:\n      only: [command/ship]\n"})
-		rep, err := e.Check(ctx, engine.Scope{Kind: target.Project, ProjectDir: a}, a, []string{src}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, engine.Scope{Kind: target.Project, ProjectDir: a}, a, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(rep.Modules[0].Skipped).To(ContainElement("skill/review"))

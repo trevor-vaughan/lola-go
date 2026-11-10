@@ -108,6 +108,51 @@ var _ = Describe("config.yaml", func() {
 		Expect(os.ReadFile(path)).To(Equal([]byte("# mine\nversion: 1\ndefault_scope: user # where I work\ntheme: dark\n")))
 	})
 
+	It("saves target_versions, creating config.yaml or keeping its comments, keys and other ids", func() {
+		Expect(config.SaveTargetVersions(path, "", map[string]string{"opencode": "2.10"})).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("# lola settings. Safe to edit by hand.\nversion: 1\ntarget_versions:\n  opencode: \"2.10\"\n")))
+
+		write("# mine\nversion: 1\ntheme: dark # dim\n")
+		Expect(config.SaveTargetVersions(path, "", map[string]string{"opencode": "2.10"})).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("# mine\nversion: 1\ntheme: dark # dim\ntarget_versions:\n  opencode: \"2.10\"\n")))
+
+		write("version: 1\ntarget_versions:\n  gemini-cli: v1 # mine\n  opencode: \"1.0\"\ntheme: dark\n")
+		Expect(config.SaveTargetVersions(path, "", map[string]string{"claude-code": "3", "opencode": "2.10"})).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("version: 1\ntarget_versions:\n  gemini-cli: v1 # mine\n  opencode: \"2.10\"\n  claude-code: \"3\"\ntheme: dark\n")))
+		c, err := config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.TargetVersions).To(Equal(map[string]string{"gemini-cli": "v1", "opencode": "2.10", "claude-code": "3"}))
+	})
+
+	It("writes nothing when there are no versions to save", func() {
+		Expect(config.SaveTargetVersions(path, "", nil)).To(Succeed())
+		Expect(path).NotTo(BeAnExistingFile())
+		write("version: 1\n")
+		Expect(config.SaveTargetVersions(path, "", map[string]string{})).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("version: 1\n")))
+	})
+
+	It("fills an empty target_versions key in place, keeping its comment and position", func() {
+		write("version: 1\ntarget_versions: # mine\ntheme: dark\n")
+		Expect(config.SaveTargetVersions(path, "", map[string]string{"opencode": "2.10"})).To(Succeed())
+		Expect(os.ReadFile(path)).To(Equal([]byte("version: 1\ntarget_versions: # mine\n  opencode: \"2.10\"\ntheme: dark\n")))
+	})
+
+	It("never overwrites a config.yaml whose target_versions is a list", func() {
+		write("version: 1\ntarget_versions: [a, b]\n")
+		err := config.SaveTargetVersions(path, "", map[string]string{"opencode": "2.10"})
+		Expect(err).To(MatchError(ContainSubstring("not saving your assistant versions: ")))
+		Expect(os.ReadFile(path)).To(Equal([]byte("version: 1\ntarget_versions: [a, b]\n")))
+	})
+
+	It("never overwrites a config.yaml whose target_versions does not load", func() {
+		write("version: 1\ntheme: blue\n")
+		err := config.SaveTargetVersions(path, "", map[string]string{"opencode": "2.10"})
+		Expect(err).To(MatchError(ContainSubstring("not saving your assistant versions: " + path + `:2: theme: "blue" is not a theme`)))
+		Expect(errs.Hints(err)).To(ContainElement("fix config.yaml by hand, then rerun; nothing was written to it"))
+		Expect(os.ReadFile(path)).To(Equal([]byte("version: 1\ntheme: blue\n")))
+	})
+
 	It("never overwrites a config.yaml that does not load", func() {
 		write("version: 1\ntheme: blue\n")
 		err := config.SaveTheme(path, "", config.ThemeDark)
@@ -208,10 +253,10 @@ var _ = Describe("config.yaml", func() {
 			Expect(err).To(MatchError(ContainSubstring(path + msg)))
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring(hint)))
 		},
-		Entry("a word", "version: 1\ntarget_versions:\n  opencode: banana\n", `:3: target_versions.opencode: "banana" is not a version`, "write a version such as 2.1 or 0.9.3"),
-		Entry("an empty string", "version: 1\ntarget_versions:\n  opencode: \"\"\n", `:3: target_versions.opencode: "" is not a version`, "write a version such as 2.1 or 0.9.3"),
-		Entry("an empty value", "version: 1\ntarget_versions:\n  opencode:\n", `:3: target_versions.opencode: "" is not a version`, "write a version such as 2.1 or 0.9.3"),
-		Entry("a list value", "version: 1\ntarget_versions:\n  opencode: [2]\n", ":3: target_versions.opencode: must be a version, not a list", "write a version such as 2.1 or 0.9.3"),
+		Entry("a word", "version: 1\ntarget_versions:\n  opencode: banana\n", `:3: target_versions.opencode: "banana" is not a version`, "write a version such as 2.1 or 1.19.5"),
+		Entry("an empty string", "version: 1\ntarget_versions:\n  opencode: \"\"\n", `:3: target_versions.opencode: "" is not a version`, "write a version such as 2.1 or 1.19.5"),
+		Entry("an empty value", "version: 1\ntarget_versions:\n  opencode:\n", `:3: target_versions.opencode: "" is not a version`, "write a version such as 2.1 or 1.19.5"),
+		Entry("a list value", "version: 1\ntarget_versions:\n  opencode: [2]\n", ":3: target_versions.opencode: must be a version, not a list", "write a version such as 2.1 or 1.19.5"),
 		Entry("a list for the section", "version: 1\ntarget_versions: [a]\n", ":2: target_versions: must be a mapping, not a list", "key: value"),
 		Entry("an id written twice", "version: 1\ntarget_versions:\n  opencode: 2\n  opencode: 3\n", ":4: target_versions.opencode: is written twice", "keep one"),
 		Entry("an id with control characters", "version: 1\ntarget_versions:\n  \"open\\ncode\": 2\n", ":3: target_versions: an id must be plain text", "write the target's id"),

@@ -85,7 +85,7 @@ var _ = Describe("Admit", func() {
 		Expect(fs[2].Text).To(Equal("model dropped: t needs a string matching ^gemini-"))
 		Expect(fs[2].Hint).To(Equal("in rev.targets.yaml beside the agent, set t's model to a string matching ^gemini-, or to null to leave it out"))
 		Expect(fs[0]).To(Equal(target.Finding{Severity: target.SeverityWarn, Target: "t", Kind: "agent", Artifact: "rev",
-			Code: "frontmatter-key-dropped", Text: "color dropped: t does not support it",
+			Code: "frontmatter-key-dropped", Key: "color", Text: "color dropped: t does not support it",
 			Hint: "leave color out for t: in rev.targets.yaml beside the agent, add t: {color: null}", Class: target.ClassDetail, AuthorHint: true}))
 	})
 
@@ -95,7 +95,7 @@ var _ = Describe("Admit", func() {
 		Expect(fs).To(Equal([]target.Finding{
 			{Severity: target.SeveritySkip, Target: "t", Kind: "agent", Artifact: "Rev", Code: "name-rejected",
 				Text: "t needs agent names matching ^[a-z]+$", Hint: "rename the agent so its name matches ^[a-z]+$", Forceable: true, Class: target.ClassDetail, AuthorHint: true},
-			{Severity: target.SeverityWarn, Target: "t", Kind: "agent", Artifact: "Rev", Code: "frontmatter-value-dropped",
+			{Severity: target.SeverityWarn, Target: "t", Kind: "agent", Artifact: "Rev", Code: "frontmatter-value-dropped", Key: "hidden",
 				Text: "hidden dropped: t needs a bool", Hint: "in Rev.targets.yaml beside the agent, set t's hidden to a bool, or to null to leave it out",
 				Class: target.ClassDetail, AuthorHint: true},
 		}))
@@ -214,7 +214,7 @@ var _ = Describe("Admit", func() {
 		Expect(ok).To(BeTrue())
 		Expect(d.Render()).To(Equal("---\ndescription: d\n---\nx\n"))
 		Expect(fs).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "t", Kind: "agent", Artifact: "rev",
-			Code: "frontmatter-key-dropped", Text: "name dropped: the file name names the agent", Class: target.ClassDetail}}))
+			Code: "frontmatter-key-dropped", Key: "name", Text: "name dropped: the file name names the agent", Class: target.ClassDetail}}))
 	})
 
 	DescribeTable("skips an artifact missing a required key, forceably",

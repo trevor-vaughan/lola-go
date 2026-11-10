@@ -112,7 +112,7 @@ func hookSet(id string, h module.RuntimeHookSet, ctx target.PlanContext, path st
 			if err != nil {
 				return nil, nil, err
 			}
-			out = append(out, plan.Intent{Target: id, Kind: target.KindRuntimeHook, Op: plan.OpAddJSONMember, Path: path, Pointer: "/hooks/" + name, Member: member,
+			out = append(out, plan.Intent{Target: id, Kind: target.KindRuntimeHook, Name: h.Name(), Op: plan.OpAddJSONMember, Path: path, Pointer: "/hooks/" + name, Member: member,
 				Consent: &plan.HookConsent{Settings: path}})
 		}
 	}

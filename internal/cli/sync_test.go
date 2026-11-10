@@ -861,6 +861,14 @@ var _ = Describe("lola sync", func() {
 		lolaAsking(c, "sync", "-C", proj)
 		Expect(c.steps[0].Changes).To(Equal(1))
 		Expect(c.steps[0].Groups).To(BeEmpty(), "the top-level targets alone: Trust all or Cancel")
+
+		// A target_versions edit is a row of its own, accepted with an entry that installs to the top-level targets.
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\ntarget_versions:\n  opencode: \"1.0\"\nmodules:\n"+kitOnly+"    rules: false\n"), 0o644)).To(Succeed())
+		c = &confirming{trusts: []engine.TrustAnswer{{}}}
+		lolaAsking(c, "sync", "-C", proj)
+		Expect(c.steps[0].Changes).To(Equal(3), "kit, the targets and opencode's version")
+		Expect(c.steps[0].Groups).To(Equal([]cli.TrustGroup{{Title: "Changed (1)", Options: []cli.TrustOption{{Module: "kit",
+			Label: "~ kit rules (none) → false; accepts the top-level targets [claude-code, opencode] → [claude-code]; accepts project.yml's target_versions"}}}}))
 	})
 
 	It("shows a trusted folder lola never installed as not installed yet", func() {

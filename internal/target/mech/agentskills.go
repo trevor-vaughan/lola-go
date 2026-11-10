@@ -81,7 +81,7 @@ func agentSkills(env Env, m *module.Module) ([]plan.Intent, []target.Finding, er
 			doc = doc.Prepend("name", s.Name)
 		}
 		dst := env.Entry.Path + "/" + s.Name
-		out = append(out, target.SkillTree(env.ID, s, env.Ctx, dst), target.WriteText(env.ID, "skill", dst+"/SKILL.md", doc.Render(), env.Ctx))
+		out = append(out, target.SkillTree(env.ID, s, env.Ctx, dst), target.WriteText(env.ID, "skill", s.Name, dst+"/SKILL.md", doc.Render(), env.Ctx))
 	}
 	return out, finds, nil
 }

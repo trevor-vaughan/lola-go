@@ -21,7 +21,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/tpl -C /work/proj --scope project -t claude-code -t opencode"
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/tpl -C /work/proj --scope project -t claude-code -t opencode@2.0"
         assertions:
           - result.code ShouldEqual 0
           - result.systemout ShouldContainSubstring "✓ installed tpl (claude-code, opencode)"

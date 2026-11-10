@@ -41,7 +41,7 @@ var _ = Describe("gemini-cli", func() {
 		ins, fs := plan1(&module.Module{Name: "example", Skills: []module.Skill{
 			{Name: "review", Dir: "skills/review", Doc: doc("---\ndescription: r\nlicense: MIT\n---\nRun ${PLUGIN_ROOT}/x\n")}}})
 		Expect(fs).To(BeEmpty())
-		Expect(ins[0]).To(Equal(plan.Intent{Target: "gemini-cli", Kind: "skill", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
+		Expect(ins[0]).To(Equal(plan.Intent{Target: "gemini-cli", Kind: "skill", Name: "review", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
 			Path: ".gemini/skills/review", Exclude: []string{"SKILL.md"}}))
 		Expect(ins[1].Path).To(Equal(".gemini/skills/review/SKILL.md"))
 		Expect(string(ins[1].Data)).To(Equal("---\nname: review\ndescription: r\nlicense: MIT\n---\nRun /proj/.lola/modules/example/x\n"))
@@ -111,7 +111,7 @@ var _ = Describe("gemini-cli", func() {
 		Expect(p[".gemini/commands/ship.toml"].Mode).To(Equal(os.FileMode(0o644)))
 		Expect(decode(p[".gemini/commands/ship.toml"].Data)).To(Equal(map[string]any{
 			"description": "Ship it", "prompt": "Ship {{args}} from /proj/.lola/modules/example\n"}))
-		Expect(p[".gemini/commands/ship"]).To(Equal(plan.Intent{Target: "gemini-cli", Kind: "command", Op: plan.OpCopyTree,
+		Expect(p[".gemini/commands/ship"]).To(Equal(plan.Intent{Target: "gemini-cli", Kind: "command", Name: "ship", Op: plan.OpCopyTree,
 			Src: ctx.ContentDir + "/commands/ship", Path: ".gemini/commands/ship"}))
 		Expect(decode(p[".gemini/commands/bare.toml"].Data)).To(Equal(map[string]any{"prompt": "Just do it\n"}))
 	})

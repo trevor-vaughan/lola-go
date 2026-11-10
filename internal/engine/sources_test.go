@@ -481,7 +481,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 	It("checks an archive without adding it to the cache", func() {
 		archive := filepath.Join(tmp, "example.tgz")
 		Expect(os.WriteFile(archive, tarGz("example", exampleModule), 0o644)).To(Succeed())
-		rep, err := e.Check(ctx, sc, proj, []string{archive}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{archive}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(ConsistOf(HaveField("Name", "example")))
 		names, err := e.Store.Names()

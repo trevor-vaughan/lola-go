@@ -26,6 +26,8 @@ type Change struct {
 	Targets []string
 	Set     []Entry
 	Remove  []string
+	// TargetVersions sets these ids' declared versions, keeping every other id the file declares.
+	TargetVersions map[string]string
 }
 
 // Clone returns a copy of m that shares no slice or pointer with it.
@@ -61,6 +63,12 @@ func (m *Manifest) Applied(c Change) *Manifest {
 	if c.Targets != nil {
 		out.Targets = slices.Clone(c.Targets)
 	}
+	if len(c.TargetVersions) > 0 {
+		if out.TargetVersions == nil {
+			out.TargetVersions = map[string]string{}
+		}
+		maps.Copy(out.TargetVersions, c.TargetVersions)
+	}
 	out.Modules = slices.DeleteFunc(out.Modules, func(e Entry) bool { return slices.Contains(c.Remove, e.Name) })
 	for _, e := range c.Set {
 		if cur := out.Find(e.Name); cur != nil {
@@ -75,7 +83,7 @@ func (m *Manifest) Applied(c Change) *Manifest {
 // topKeys and entryKeys are the order lola writes keys in; a key lola adds goes after the
 // keys that come before it in this order.
 var (
-	topKeys   = []string{"version", "targets", "modules"}
+	topKeys   = []string{"version", "targets", "target_versions", "modules"}
 	entryKeys = []string{"name", "source", "ref", "path", "components", "commit", "digest", "targets", "only", "skip", "rules", "vars", "market"}
 )
 
@@ -138,6 +146,14 @@ func EditDocument(d *yaml.Node, c Change) ([]byte, error) {
 	}
 	if c.Targets != nil {
 		setKey(root, topKeys, "targets", flowList(c.Targets))
+	}
+	if len(c.TargetVersions) > 0 {
+		tv := yamldoc.Value(root, "target_versions")
+		if tv == nil || tv.Kind != yaml.MappingNode {
+			tv = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		}
+		yamldoc.SetQuoted(tv, c.TargetVersions)
+		setKey(root, topKeys, "target_versions", tv)
 	}
 	mods := yamldoc.Value(root, "modules")
 	if mods == nil || mods.Kind != yaml.SequenceNode {

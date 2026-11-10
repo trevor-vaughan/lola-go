@@ -120,7 +120,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
           - "result.systemerr ShouldEqual \"user scope: profile go over default\""
-          - "result.systemout ShouldEqual \"→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n→ kit: 1 notice (module 1) — lola check --user kit\n✓ installed kit (claude-code)\""
+          - "result.systemout ShouldEqual \"→ kit: skipped in profile go: skill/charlie\n→ kit: not in only: (profile go): skill/bravo\n→ kit: 1 notice (module 1) — lola check --user kit\n✓ kit already up to date (claude-code)\""
       # The line's lola check names the mention, with the install that adds it.
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.lola}} check --user kit"

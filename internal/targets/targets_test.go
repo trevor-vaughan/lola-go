@@ -168,6 +168,29 @@ eras:
 		Expect(dirOf(newest)).To(Equal("new/agents"))
 	})
 
+	It("lists the eras a spec declares and their summaries, oldest first, and none for an unknown id", func() {
+		write("quill.yaml", `id: quill
+readers: "the quill editor"
+roots: {project: "{project}", user: "{home}"}
+detect: {project: {any: [.quill/]}, user: {any: [.quill/]}}
+eras:
+  - since: "1.0"
+    summary: agents in old/
+    layout:
+      agent: {mech: markdown-file, path: old/agents, ext: .md}
+  - since: "2.0"
+    layout:
+      agent: {mech: markdown-file, path: new/agents, ext: .md}
+`)
+		r, err := targets.Load(p)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(r.Eras("quill")).To(Equal([]string{"1.0", "2.0"}))
+		Expect(r.Eras("claude-code")).To(HaveLen(1))
+		Expect(r.Eras("nope")).To(BeNil())
+		Expect(r.Summaries("quill")).To(Equal([]string{"agents in old/", ""}))
+		Expect(r.Summaries("nope")).To(BeNil())
+	})
+
 	It("refuses a broken spec, names its file and offers the fix, and falls back to nothing", func() {
 		write("quill.yaml", "id: quill\nroots: {project: \"{project}\", user: \"{home}\"}\n")
 		r, err := targets.Load(p)

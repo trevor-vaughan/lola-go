@@ -438,7 +438,8 @@ func resolvedMentions(sp *scopePlan, spec InstallSpec, scans mentionReads) map[s
 // per module of targets, a warn notice when its mentions could not be read (mods' scanErr), else,
 // with spec.NameMentions, the notice of what its picks mention and leave out (mentionNotice), its
 // hint repeating the selection flags of si and spec (selectionFlags). Two scopes that say the
-// same thing say it once.
+// same thing say it once, for neither scope; in an install into more than one, each other notice
+// says its scope (inScope).
 func (e *Engine) mentionNotes(dst []Notice, si ScopeInstall, se scopeEdits, targets []editTarget, mods map[string]mentionModule, spec InstallSpec) []Notice {
 	notes := slices.Clone(se.added)
 	for _, t := range targets {
@@ -452,9 +453,13 @@ func (e *Engine) mentionNotes(dst []Notice, si ScopeInstall, se scopeEdits, targ
 			notes = append(notes, e.mentionNotice(si.Scope, t.name, mm.words, flags, se.gaps[t.name], check, spec.Options)...)
 		}
 	}
-	for _, n := range notes {
-		if !slices.Contains(dst, n) {
+	for _, n := range inScope(notes, si.Scope, spec.many()) {
+		i := slices.IndexFunc(dst, func(o Notice) bool { o.Scope = n.Scope; return n.Same(o) })
+		switch {
+		case i < 0:
 			dst = append(dst, n)
+		case dst[i].Scope != n.Scope:
+			dst[i].Scope = "" // another scope's alike: it is for both
 		}
 	}
 	return dst

@@ -228,7 +228,7 @@ var _ = Describe("profile entry picks", func() {
 		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 		sync(sc)
 
-		rep, err := e.Check(ctx, sc, proj, []string{dir}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{dir}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveExactElements(And(HaveField("Skipped", []string{"skill/b", "skill/c"}), HaveField("SkippedIn", "profile go and selections.yaml"))))
 

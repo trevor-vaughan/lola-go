@@ -52,7 +52,7 @@ func servers(env Env, m *module.Module) ([]plan.Intent, []target.Finding, error)
 				return nil, nil, err
 			}
 		}
-		out = append(out, plan.Intent{Target: env.ID, Kind: "mcp", Op: plan.OpSetJSON, Path: file, Pointer: env.Entry.Pointer + "/" + s.Name, Value: value})
+		out = append(out, plan.Intent{Target: env.ID, Kind: "mcp", Name: s.Name, Op: plan.OpSetJSON, Path: file, Pointer: env.Entry.Pointer + "/" + s.Name, Value: value})
 	}
 	return out, finds, nil
 }

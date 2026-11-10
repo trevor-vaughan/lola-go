@@ -233,14 +233,14 @@ var _ = Describe("the write target", func() {
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\n"})
 		activate(sc, "project:team")
 		_, err := e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: kit}}, engine.Options{})
-		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets have not been trusted on this machine"))
+		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets [claude-code] have not been trusted on this machine"))
 		Expect(errs.Hints(err)).To(Equal([]string{"review and apply them: lola sync --project",
-			"or name the assistants: lola install --project " + kit + " -t <id>"}))
+			"or name the assistants: lola install --project " + kit + " -t claude-code"}))
 
 		// The record holds the profile's entries, as a sync before its targets were pulled left it.
 		Expect(e.Trust.Save(proj, trust.View{}.WithPart("team", trust.View{Modules: []trust.Entry{{Name: "old", Source: "https://example.com/old.git"}}}))).To(Succeed())
 		_, err = e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: kit}}, engine.Options{})
-		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets have not been trusted yet"),
+		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets [claude-code] have not been trusted yet"),
 			"the record never held them: nothing changed since they were trusted")
 
 		Expect(e.Trust.Save(proj, trust.View{}.WithPart("team", trust.View{Targets: []string{"claude-code"}}))).To(Succeed())
@@ -253,9 +253,9 @@ var _ = Describe("the write target", func() {
 		// A pull changes the profile's targets.
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": strings.Replace(read(team), "targets: [claude-code]", "targets: [cursor]", 1)})
 		_, err = e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: other}}, engine.Options{})
-		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets changed since you last trusted them"))
+		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets [cursor] changed since you last trusted them"))
 		Expect(errs.Hints(err)).To(Equal([]string{"review and apply them: lola sync --project",
-			"or name the assistants: lola install --project " + other + " -t <id>"}))
+			"or name the assistants: lola install --project " + other + " -t cursor"}))
 
 		// Targets lola writes into a profile without them are recorded.
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\n"})
@@ -279,9 +279,9 @@ var _ = Describe("the write target", func() {
 		kit := mod("kit")
 		writeTree(proj, map[string]string{".lola/profiles/team.yml": "version: 1\ntargets: [claude-code]\n"})
 		_, err := e.Install(ctx, sc, tmp, []engine.InstallRequest{{Arg: kit}}, engine.Options{Target: engine.TargetRequest{Profile: "team"}})
-		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets have not been trusted on this machine"))
+		Expect(err).To(MatchError(".lola/profiles/team.yml's top-level targets [claude-code] have not been trusted on this machine"))
 		Expect(errs.Hints(err)).To(Equal([]string{"review them by turning the profile on: lola profile --project team --switch",
-			"or name the assistants: lola install --project " + kit + " --profile team -t <id>"}))
+			"or name the assistants: lola install --project " + kit + " --profile team -t claude-code"}))
 	})
 
 	It("refuses a profile two scopes would write differently, hinting each scope's run with the run's own arguments", func() {

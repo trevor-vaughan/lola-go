@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"maps"
 	"path/filepath"
 	"slices"
@@ -36,6 +37,15 @@ func (e *Engine) RootArgs(sc Scope) []string {
 // SyncCommand is every lola sync command a hint, notice or closing line names,
 // built by Command.
 func (e *Engine) SyncCommand(sc Scope, args ...string) string { return e.Command(sc, "sync", args...) }
+
+// versionsEdit is the hint that has sc write target id's files for version: set it in file, sc's
+// target_versions as findings name it, then the lola sync that applies the edit. It carries no
+// --trust: project.yml's target_versions is trusted content, and that sync shows the edit before
+// it is consented to, asking on a terminal and, off one, refusing with the diff and the
+// --trust=entries run, where a hint printed beside no diff would accept every pending entry unseen.
+func (e *Engine) versionsEdit(sc Scope, file, id, version string) string {
+	return fmt.Sprintf("set target_versions.%s to %q in %s, then: %s", id, untrusted.Text(version, untrusted.MaxName), untrusted.Text(file, untrusted.MaxName), e.SyncCommand(sc))
+}
 
 // Command is a lola command a hint names for sc: lola, the subcommand, the scope's flags
 // (RootArgs), then args, each through untrusted.Text and quoted for the user's shell, so the

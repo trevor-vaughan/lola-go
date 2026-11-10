@@ -375,7 +375,7 @@ var _ = Describe("typed --trust", func() {
 
 		r := lola("install", plain, "-C", proj, "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: .lola/profiles/go.yml's top-level targets have not been trusted on this machine\n" +
+		Expect(r.err).To(ContainSubstring("error: .lola/profiles/go.yml's top-level targets [claude-code] have not been trusted on this machine\n" +
 			"  hint: review and apply them: lola sync -C " + proj + "\n"))
 
 		r = lola("sync", "-C", proj)

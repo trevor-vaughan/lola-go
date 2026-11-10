@@ -75,6 +75,33 @@ func (r Registry) Era(id, version string) (since string, before, ok bool) {
 	return s.Eras[i].Since, before, true
 }
 
+// Eras are the since of each of id's eras, oldest first; nil when id is not registered.
+func (r Registry) Eras(id string) []string {
+	s, ok := r.specs[id]
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(s.Eras))
+	for i, e := range s.Eras {
+		out[i] = e.Since
+	}
+	return out
+}
+
+// Summaries are the summary of each of id's eras, aligned with Eras ("" for an era without one);
+// nil when id is not registered.
+func (r Registry) Summaries(id string) []string {
+	s, ok := r.specs[id]
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(s.Eras))
+	for i, e := range s.Eras {
+		out[i] = e.Summary
+	}
+	return out
+}
+
 // Replaced is the file of the user spec that replaces built-in id, "" when none does.
 func (r Registry) Replaced(id string) string { return r.replaced[id] }
 

@@ -391,7 +391,7 @@ func (c TrustChange) kind() TrustKinds {
 // top-level targets, profiles for a project profile's entries and targets and a replacement.
 func (rep TrustReport) kinds() TrustKinds {
 	var k TrustKinds
-	if rep.Targets != nil {
+	if rep.topChanged() {
 		k |= TrustEntries
 	}
 	if len(rep.ProfileTargets) > 0 || len(rep.Replacements) > 0 {
@@ -417,9 +417,9 @@ func (rep TrustReport) split(k TrustKinds) (covered, asked TrustReport) {
 		}
 	}
 	if k.Covers(TrustEntries) {
-		asked.Targets = nil
+		asked.Targets, asked.TargetVersions = nil, nil
 	} else {
-		covered.Targets = nil
+		covered.Targets, covered.TargetVersions = nil, nil
 	}
 	if k.Covers(TrustProfiles) {
 		covered.Replacements, asked.ProfileTargets = rep.Replacements, nil
@@ -430,7 +430,8 @@ func (rep TrustReport) split(k TrustKinds) (covered, asked TrustReport) {
 }
 
 // consents is rep's changes as the receipt shows them: an entry by its module, a project
-// profile's as "<module> in <profile>", the top-level targets as "targets", a project profile's
+// profile's as "<module> in <profile>", the top-level targets as "targets", target_versions as
+// "target_versions", a project profile's
 // as "targets in <profile>", and a replacement as
 // "<profile> replacing <profile>"; new when the record holds nothing for it.
 func (rep TrustReport) consents() []Consent {
@@ -443,6 +444,9 @@ func (rep TrustReport) consents() []Consent {
 	var out []Consent
 	if rep.Targets != nil {
 		out = append(out, Consent{Kind: TrustEntries.String(), Item: "targets", Change: change(false)})
+	}
+	if rep.TargetVersions != nil {
+		out = append(out, Consent{Kind: TrustEntries.String(), Item: "target_versions", Change: change(false)})
 	}
 	for _, pt := range rep.ProfileTargets {
 		out = append(out, Consent{Kind: TrustProfiles.String(), Item: pt.Field + " in " + pt.Profile, Change: change(pt.From == nil)}) // targets, or a bundle's members
@@ -466,7 +470,7 @@ func (rep TrustReport) consents() []Consent {
 // (profiles).
 func neededTrust(early trust.Report, repl *replacing, entries []*syncEntry) TrustKinds {
 	var k TrustKinds
-	if early.Targets != nil {
+	if early.Targets != nil || early.TargetVersions != nil {
 		k |= TrustEntries
 	}
 	if len(early.ProfileTargets) > 0 {

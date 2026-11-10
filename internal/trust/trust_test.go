@@ -357,6 +357,35 @@ var _ = Describe("trust record", func() {
 			Expect(trust.Check(&trust.Record{Exists: true}, m(nil)).Status).To(Equal(trust.StatusTrusted), "a record of an empty manifest")
 		})
 
+		It("reports a change of target_versions on its own, leaving the top-level targets unchanged", func() {
+			versioned := func(targets []string, tv map[string]string) trust.View {
+				return trust.ViewOf(&manifest.Manifest{Targets: targets, TargetVersions: tv, Modules: []manifest.Entry{folder}})
+			}
+			was := versioned([]string{"opencode", "claude-code"}, map[string]string{"opencode": "2.0"})
+			rec := &trust.Record{View: was, Exists: true}
+			Expect(trust.Check(rec, was).Status).To(Equal(trust.StatusTrusted))
+			rep := trust.Check(rec, versioned([]string{"opencode", "claude-code"}, map[string]string{"opencode": "1.0"}))
+			Expect(rep.Status).To(Equal(trust.StatusChanged))
+			Expect(rep.Targets).To(BeNil())
+			Expect(rep.TargetVersions).To(Equal(&trust.FieldChange{Field: "target_versions", From: map[string]string{"opencode": "2.0"},
+				To: map[string]string{"opencode": "1.0"}}))
+			rep = trust.Check(rec, versioned([]string{"opencode"}, nil))
+			Expect(rep.Targets).To(Equal(&trust.FieldChange{Field: "targets", From: []string{"opencode", "claude-code"}, To: []string{"opencode"}}))
+			Expect(rep.TargetVersions).To(Equal(&trust.FieldChange{Field: "target_versions", From: map[string]string{"opencode": "2.0"}}),
+				"none left: nil, as an absent value")
+
+			lola := versioned([]string{"opencode", "claude-code"}, map[string]string{"opencode": "1.0"})
+			got := trust.Refresh(was, "", was, lola)
+			Expect(trust.Check(&trust.Record{View: got, Exists: true}, lola).Status).To(Equal(trust.StatusTrusted), "lola's own write of a version is trusted")
+			got = trust.Accept(was, "", lola, nil, true)
+			Expect(trust.Check(&trust.Record{View: got, Exists: true}, lola).Status).To(Equal(trust.StatusTrusted), "accepting the targets accepts target_versions")
+			hash, err := trust.ViewOf(&manifest.Manifest{Targets: claude}).Hash()
+			Expect(err).NotTo(HaveOccurred())
+			plain, err := trust.View{Targets: claude}.Hash()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(hash).To(Equal(plain), "a view without versions hashes as before")
+		})
+
 		It("lists each changed field with typed values, removed entries and changed targets", func() {
 			moved := pinned
 			moved.Source, moved.Commit, moved.Digest = "https://git.example.net/acme/kit.git", "", ""

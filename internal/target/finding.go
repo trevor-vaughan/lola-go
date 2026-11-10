@@ -69,6 +69,15 @@ type Finding struct {
 	// Check is the lola check, set by the engine, that lists the finding with the rest of its
 	// module's at its scope; "" when no lola check can name the version planned.
 	Check string `json:"-"`
+	// Key is the frontmatter key a frontmatter-key-dropped or frontmatter-value-dropped finding
+	// drops, "" on any other finding.
+	Key string `json:"-"`
+	// KeptSince is, set by the engine, the since of another era of the target that keeps the
+	// value Key drops: the version an install could write for instead; "" for none.
+	KeptSince string `json:"-"`
+	// Scope is, set by the engine in a run of more than one scope, the scope the finding is for
+	// (project or user), which Describe names after the module; "" otherwise.
+	Scope string `json:"-"`
 }
 
 // MarshalJSON writes f with its class, ClassSafety when it was made without one.
@@ -105,11 +114,15 @@ func (f Finding) Describe() string {
 		text += " (rendered anyway: --force)"
 	}
 	loc := strings.Join(where, " ")
+	module := f.Module
+	if module != "" && f.Scope != "" {
+		module += " (" + f.Scope + ")"
+	}
 	switch {
-	case f.Module != "" && loc != "":
-		return f.Module + ": " + loc + ": " + text
-	case f.Module != "":
-		return f.Module + ": " + text
+	case module != "" && loc != "":
+		return module + ": " + loc + ": " + text
+	case module != "":
+		return module + ": " + text
 	case loc != "":
 		return loc + ": " + text
 	}

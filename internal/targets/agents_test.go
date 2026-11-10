@@ -65,10 +65,10 @@ var _ = Describe("agents", func() {
 		ins, fs := plan1(m)
 		Expect(fs).To(BeEmpty())
 		Expect(ins).To(HaveLen(2))
-		Expect(ins[0]).To(Equal(plan.Intent{Target: "agents", Kind: "skill", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
+		Expect(ins[0]).To(Equal(plan.Intent{Target: "agents", Kind: "skill", Name: "review", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
 			Path: ".agents/skills/review", Exclude: []string{"notes.txt", "SKILL.md", "ref.md.liquid"},
 			Overlay: []plan.File{{Path: "ref.md", Data: []byte("rendered\n")}}}))
-		Expect(ins[1]).To(Equal(plan.Intent{Target: "agents", Kind: "skill", Op: plan.OpWriteFile, Path: ".agents/skills/review/SKILL.md",
+		Expect(ins[1]).To(Equal(plan.Intent{Target: "agents", Kind: "skill", Name: "review", Op: plan.OpWriteFile, Path: ".agents/skills/review/SKILL.md",
 			Data: []byte("---\nname: review\ndescription: r\nlicense: MIT\n---\nRun /proj/.lola/modules/example/x\n"), Mode: 0o644}))
 	})
 

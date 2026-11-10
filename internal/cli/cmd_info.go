@@ -260,7 +260,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 				fmt.Fprintln(w, "    "+l)
 			}
 			for _, h := range in.Refusal.Hints {
-				fmt.Fprintln(w, "    hint: "+h)
+				fmt.Fprintln(w, hintLine("    ", h, s.width))
 			}
 		}
 		for _, n := range in.Notices {
@@ -269,8 +269,10 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 		for _, st := range in.Steps {
 			fmt.Fprintln(w, "  "+stepLine(s, st))
 		}
+		inner := s // each line is indented two more: so is the width its hints wrap to
+		inner.width = max(s.width-2, 0)
 		for _, f := range in.Findings {
-			if line := findingLine(s, f); line != "" && worthShowing(f) {
+			if line := findingLine(inner, f); line != "" && worthShowing(f) {
 				fmt.Fprintln(w, "  "+strings.ReplaceAll(line, "\n", "\n  "))
 			}
 		}
@@ -291,7 +293,7 @@ func printInfo(w io.Writer, s style, info *engine.Info) {
 		fmt.Fprintln(w, s.info("install it: "+info.Install[0].Command))
 	}
 	for _, h := range info.Hints {
-		fmt.Fprintln(w, "  hint: "+h)
+		fmt.Fprintln(w, hintLine("  ", h, s.width))
 	}
 }
 

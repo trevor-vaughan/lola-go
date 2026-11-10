@@ -379,7 +379,7 @@ func checkTargetVersions(tv map[string]string) error {
 		}
 		if v := tv[id]; targetspec.Canonical(v) == "" {
 			return errs.WithHints(fmt.Errorf("target_versions.%s: %q is not a version", id, untrusted.Text(v, untrusted.MaxName)),
-				"write a version such as 2.1 or 0.9.3")
+				"write a version such as 2.1 or 1.19.5")
 		}
 	}
 	return nil

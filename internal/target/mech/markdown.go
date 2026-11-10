@@ -37,7 +37,7 @@ func markdownFiles(kind string, env Env, m *module.Module) ([]plan.Intent, []tar
 				if !ok {
 					continue
 				}
-				out = append(out, claudeFile(env.ID, kind, env.Entry.Path+"/"+cmd.Name+env.Entry.Ext, text, consent))
+				out = append(out, claudeFile(env.ID, kind, cmd.Name, env.Entry.Path+"/"+cmd.Name+env.Entry.Ext, text, consent))
 				for _, sc := range cmd.Sidecars {
 					finds = append(finds, allowedTools(env.ID, kind, untrusted.Text(sc.File, untrusted.MaxName), sc.Doc)...)
 				}
@@ -55,7 +55,7 @@ func markdownFiles(kind string, env Env, m *module.Module) ([]plan.Intent, []tar
 				doc.Body, af = oneBased(env.ID, cmd)
 				finds = append(finds, af...)
 			}
-			out = append(out, target.WriteText(env.ID, kind, env.Entry.Path+"/"+cmd.Name+env.Entry.Ext, withName(doc, cmd.Name, env).Render(), env.Ctx))
+			out = append(out, target.WriteText(env.ID, kind, cmd.Name, env.Entry.Path+"/"+cmd.Name+env.Entry.Ext, withName(doc, cmd.Name, env).Render(), env.Ctx))
 			if cmd.SidecarDir == "" {
 				continue
 			}
@@ -79,7 +79,7 @@ func markdownFiles(kind string, env Env, m *module.Module) ([]plan.Intent, []tar
 				return nil, nil, err
 			}
 			if ok {
-				out = append(out, claudeFile(env.ID, kind, env.Entry.Path+"/"+a.Name+env.Entry.Ext, text, consent))
+				out = append(out, claudeFile(env.ID, kind, a.Name, env.Entry.Path+"/"+a.Name+env.Entry.Ext, text, consent))
 			}
 			continue
 		}
@@ -93,7 +93,7 @@ func markdownFiles(kind string, env Env, m *module.Module) ([]plan.Intent, []tar
 				doc = doc.Prepend(k, env.Entry.Defaults[k])
 			}
 		}
-		out = append(out, target.WriteText(env.ID, kind, env.Entry.Path+"/"+a.Name+env.Entry.Ext, doc.Render(), env.Ctx))
+		out = append(out, target.WriteText(env.ID, kind, a.Name, env.Entry.Path+"/"+a.Name+env.Entry.Ext, doc.Render(), env.Ctx))
 	}
 	return out, finds, nil
 }

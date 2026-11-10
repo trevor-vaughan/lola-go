@@ -643,9 +643,9 @@ var _ = Describe("marketplaces", func() {
 		_, err := add(engine.MarketAddRequest{Source: folder})
 		Expect(err).NotTo(HaveOccurred())
 		sc := engine.Scope{Kind: target.User}
-		_, err = e.Check(ctx, sc, tmp, []string{"@ren/root"}, nil, []string{"--json"})
+		_, err = e.Check(ctx, sc, tmp, []string{"@ren/root"}, nil, nil, []string{"--json"})
 		Expect(errs.Hints(err)).To(Equal([]string{"lola check " + folder + " --json"}))
-		_, err = e.Check(ctx, sc, tmp, []string{"@ren/sub"}, nil, nil)
+		_, err = e.Check(ctx, sc, tmp, []string{"@ren/sub"}, nil, nil, nil)
 		Expect(err).To(MatchError(ContainSubstring("names itself subby")))
 		Expect(errs.Hints(err)).To(BeEmpty(), "lola check takes no --path")
 		_, err = e.AddEntry(ctx, "@ren/sub", "", "", nil)

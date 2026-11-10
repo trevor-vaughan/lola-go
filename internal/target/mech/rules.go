@@ -48,7 +48,7 @@ func rulesDir(env Env, m *module.Module) ([]plan.Intent, []target.Finding, error
 		if env.Entry.Concat != "" {
 			bodies = append(bodies, strings.TrimRight(r.Body, "\n")+"\n")
 		} else {
-			each = append(each, plan.Intent{Target: env.ID, Kind: "rule", Op: plan.OpWriteFile, Path: dir + "/" + r.Name + ".md",
+			each = append(each, plan.Intent{Target: env.ID, Kind: "rule", Name: r.Name, Op: plan.OpWriteFile, Path: dir + "/" + r.Name + ".md",
 				Data: []byte(module.Doc{Body: r.Body}.Render()), Mode: 0o644})
 		}
 	}

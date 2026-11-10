@@ -375,6 +375,11 @@ func (a *app) syncRun(f *syncFlags, trust *trustFlag, command, question string) 
 			}
 			fi.alone = len(scs) == 1
 			res, more, err := a.syncScope(cmd, eng, c.Scope, args, nil, fi)
+			if len(scs) > 1 && res != nil { // alike in each scope, a notice says which it is for
+				for i := range res.Notices {
+					res.Notices[i].Scope = c.Scope.Kind.String()
+				}
+			}
 			name := manifestName(c.Scope)
 			human := func(w io.Writer, s style, more string) {
 				if len(scs) > 1 && !s.plain {
@@ -579,7 +584,8 @@ func trustStep(rep engine.TrustReport) TrustStep {
 	if rep.Targets != nil {
 		st.Changes++ // the diff's targets row
 	}
-	st.Changes += len(rep.ProfileTargets) // each project profile's targets row
+	st.Changes += len(versionRows(rep.TargetVersions)) // the diff's target_versions rows
+	st.Changes += len(rep.ProfileTargets)              // each project profile's targets row
 	for _, g := range []struct {
 		title, glyph string
 		of           func(engine.TrustChange) bool
@@ -608,7 +614,7 @@ func trustStep(rep engine.TrustReport) TrustStep {
 			if len(files) > 1 || c.Profile != "" {
 				module += " (" + strings.Join(files, ", ") + ")"
 			}
-			opts = append(opts, TrustOption{Module: c.Module, Label: g.glyph + " " + module + " " + trustSummary(c, rep.TargetsOf(c.Profile))})
+			opts = append(opts, TrustOption{Module: c.Module, Label: g.glyph + " " + module + " " + trustSummary(c, rep.TargetsOf(c.Profile), rep.TargetVersions)})
 		}
 		if len(opts) > 0 {
 			st.Groups = append(st.Groups, TrustGroup{Title: fmt.Sprintf("%s (%d)", g.title, len(opts)), Options: opts})
@@ -619,7 +625,7 @@ func trustStep(rep engine.TrustReport) TrustStep {
 
 // trustSummary is one change on one line for the picker: what moves, why lola asks, and what
 // the content changes; every value has been through untrusted.Text.
-func trustSummary(c engine.TrustChange, targets *trust.FieldChange) string {
+func trustSummary(c engine.TrustChange, targets, versions *trust.FieldChange) string {
 	if c.Kind == trust.ChangeRemoved {
 		return "stop managing it and remove its files"
 	}
@@ -659,6 +665,9 @@ func trustSummary(c engine.TrustChange, targets *trust.FieldChange) string {
 		parts = append(parts, "accepts the top-level targets "+shownValue(targets.To))
 	default:
 		parts = append(parts, "accepts the top-level targets "+shownValue(targets.From)+" → "+shownValue(targets.To))
+	}
+	if c.InstallsToTargets && c.Profile == "" && versions != nil {
+		parts = append(parts, "accepts project.yml's target_versions")
 	}
 	return strings.Join(parts, "; ")
 }

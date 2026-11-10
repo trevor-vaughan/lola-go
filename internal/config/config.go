@@ -179,7 +179,7 @@ func (d doc) script(n *yaml.Node, at, home string, s *Script) error {
 // targetVersions reads target_versions into dst: a mapping of target id to version, kept as written
 // (2.10 stays 2.10). The ids are checked against the registry where the engine knows it.
 func (d doc) targetVersions(n *yaml.Node, at string, dst *map[string]string) error {
-	const hint = "write a version such as 2.1 or 0.9.3"
+	const hint = "write a version such as 2.1 or 1.19.5"
 	if isNull(n) {
 		return nil
 	}

@@ -331,5 +331,21 @@ var _ = Describe("eras", func() {
 		Entry("a malformed remove", "layout.mcp,", "mcp,", "eras[1].remove[0]", "is not layout."),
 		Entry("remove without extends", "    extends: previous\n", "", "eras[1].remove", "extends: previous"),
 		Entry("an unknown extends", "extends: previous", "extends: first", "eras[1].extends", "not previous"),
+		Entry("a summary over 80 characters", "    extends: previous\n", "    extends: previous\n    summary: "+strings.Repeat("x", 81)+"\n",
+			"eras[1].summary", "longer than 80 characters"),
+		Entry("a control character in a summary", "    extends: previous\n", "    extends: previous\n    summary: \"x\\ay\"\n",
+			"eras[1].summary", "control or format character"),
 	)
+
+	It("keeps each era's summary, an extending era's replacing the previous one's only when given", func() {
+		src := strings.Replace(twoEras, `  - since: "1.0"`, "  - since: \"1.0\"\n    summary: old colours", 1)
+		s, err := targetspec.Parse("my.yaml", []byte(src))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Eras[0].Summary).To(Equal("old colours"))
+		Expect(s.Eras[1].Summary).To(Equal("old colours"), "not given: the previous era's")
+		s, err = targetspec.Parse("my.yaml", []byte(strings.Replace(src, "    extends: previous\n", "    extends: previous\n    summary: hex colours only\n", 1)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Eras[0].Summary).To(Equal("old colours"))
+		Expect(s.Eras[1].Summary).To(Equal("hex colours only"))
+	})
 })

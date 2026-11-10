@@ -92,6 +92,10 @@ type SyncRequest struct {
 	write       *profileWrites
 	writeOnly   bool
 	profileArgs []string
+	// versions, when set, is the versions an install writes the scope's files for, which the run
+	// reads in place of those the scope declares (probeRun.chosen): an install that changes them
+	// plans the rewrite of the scope's other modules before it records them (installAll).
+	versions map[string]string
 }
 
 // TrustAnswer is the user's answer to the trust question: All accepts every change of the run;
@@ -143,10 +147,35 @@ type TrustReport struct {
 	Status          string             `json:"status"`
 	Recorded        bool               `json:"recorded"`
 	Targets         *trust.FieldChange `json:"targets,omitzero"`
+	TargetVersions  *trust.FieldChange `json:"target_versions,omitzero"`
 	ProfileTargets  []ProfileTargets   `json:"profile_targets,omitzero"`
 	Changes         []TrustChange      `json:"changes"`
 	Replacements    []Replacement      `json:"replacements"`
 	ManifestChanged bool               `json:"-"`
+	// Drops are, for a question or refusal about TargetVersions, the findings of the values the
+	// new versions drop that another era keeps (target.Finding.KeptSince), for the modules the run
+	// installs; DropsRun is the dry run that lists them all.
+	Drops    []target.Finding `json:"-"`
+	DropsRun string           `json:"-"`
+}
+
+// versionDrops are the findings of fs that drop a value another era of their target keeps, for a
+// target whose version rep's target_versions change changes.
+func versionDrops(rep TrustReport, fs []target.Finding) []target.Finding {
+	if rep.TargetVersions == nil {
+		return nil
+	}
+	from, _ := rep.TargetVersions.From.(map[string]string)
+	to, _ := rep.TargetVersions.To.(map[string]string)
+	var out []target.Finding
+	for _, f := range fs {
+		was, had := from[f.Target]
+		now, has := to[f.Target]
+		if f.KeptSince != "" && (had != has || was != now) {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // ProfileTargets is a project profile's top-level targets' change in a TrustReport, which the
@@ -156,6 +185,10 @@ type ProfileTargets struct {
 	Profile string `json:"profile"`
 	trust.FieldChange
 }
+
+// topChanged reports whether project.yml's top-level targets or its target_versions changed: what
+// an entry installing to the top-level targets is trusted with.
+func (rep TrustReport) topChanged() bool { return rep.Targets != nil || rep.TargetVersions != nil }
 
 // TargetsOf is the change of the top-level targets of the file of part, a TrustChange.Profile:
 // project.yml's for "", else that project profile's; nil when the record covers them.
@@ -280,13 +313,16 @@ type SyncResult struct {
 	Removals           []Removal   `json:"removals"`
 	InSync             bool        `json:"in_sync"`
 	EquivalentCommands []string    `json:"equivalent_commands"`
-	Failed             []string    `json:"-"` // lola update's modules left as installed because their fetch failed; findings in JSON
-	Gone               []string    `json:"-"` // lola update's modules whose source folder is gone, so not checked; findings in JSON
-	Installed          bool        `json:"-"` // the run was lola update (SyncRequest.Installed), whose human output says so
-	Changed            []string    `json:"-"`
-	Equivalent         string      `json:"-"`
-	ToApply            string      `json:"-"`
-	OffTerminal        string      `json:"-"`
+	// Rewrites are the modules' files the sync rewrites for another era of their target, after
+	// the version the scope declares changed.
+	Rewrites    []Rewrite `json:"rewrites"`
+	Failed      []string  `json:"-"` // lola update's modules left as installed because their fetch failed; findings in JSON
+	Gone        []string  `json:"-"` // lola update's modules whose source folder is gone, so not checked; findings in JSON
+	Installed   bool      `json:"-"` // the run was lola update (SyncRequest.Installed), whose human output says so
+	Changed     []string  `json:"-"`
+	Equivalent  string    `json:"-"`
+	ToApply     string    `json:"-"`
+	OffTerminal string    `json:"-"`
 	// Created is the profile files a --new makes, in the order made: the members it makes first,
 	// then the profile it switches to. Under -n they are what it would make.
 	Created []Created `json:"created,omitempty"`
@@ -395,6 +431,13 @@ func (se *syncEntry) pinned() manifest.Entry {
 func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err error) {
 	sc, opts := req.Scope, req.Options
 	defer func() { err = e.CoachUnresolved(err, []Scope{sc}, opts.DryRun, req.Display) }()
+	newProbes := func() *probeRun {
+		probes := e.newProbeRun(ctx)
+		if req.versions != nil {
+			probes.chosen[sc.Key()] = req.versions
+		}
+		return probes
+	}
 	if req.write != nil {
 		e.creating = req.write
 		defer func() { e.creating = nil }()
@@ -440,7 +483,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		}
 	}
 	defer unlockProfiles()
-	res := &SyncResult{Result: newResult(opts.DryRun), Installed: req.Installed, Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{},
+	res := &SyncResult{Result: newResult(opts.DryRun), Installed: req.Installed, Scope: sc.Kind.String(), Root: root(sc), Pins: []Pin{}, Removals: []Removal{}, Rewrites: []Rewrite{},
 		Trust: TrustReport{Status: TrustStatusNotApplicable, Changes: []TrustChange{}, Replacements: []Replacement{}}, EquivalentCommands: []string{},
 		Failed: []string{}}
 	res.Trusted = []Consent{}
@@ -542,7 +585,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		if req.move != nil && req.move.creating != "" {
 			// The profile a dry run's move would create reads as gone, which it is not.
 			gone := e.goneProfile(sc, req.move.creating)
-			layerNotices = slices.DeleteFunc(slices.Clone(layerNotices), func(n Notice) bool { return n == gone })
+			layerNotices = slices.DeleteFunc(slices.Clone(layerNotices), gone.Same)
 		}
 		if req.move != nil {
 			moveBefore = man
@@ -858,8 +901,44 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 			notFixed(&report, entries)
 			pinReasons(&report, entries, req.updateFlag())
-			if err := e.fillContent(sc, &report, entries, led, templates, e.newProbeRun(ctx), opts.Display); err != nil {
+			if err := e.fillContent(sc, &report, entries, led, templates, newProbes(), opts.Display); err != nil {
 				return nil, err
+			}
+			// What new target_versions drop is listed with the diff: each entry is planned as read
+			// so far, else as the version installed, from your cache (one not there is left out).
+			if report.TargetVersions != nil {
+				var planned []*syncEntry
+				for _, se := range entries {
+					in := led.Modules[se.ent.Name]
+					if se.v.ContentDir == "" && in != nil {
+						v, err := e.Store.Load(se.ent.Name, versionID(in.Digest))
+						if errors.Is(err, os.ErrNotExist) {
+							continue
+						}
+						if err != nil {
+							return nil, err
+						}
+						c := *se
+						c.v = v
+						se = &c
+					}
+					if se.v.ContentDir != "" {
+						planned = append(planned, se)
+					}
+				}
+				sel, err := selections()
+				if err != nil {
+					return nil, err
+				}
+				fresh, err := e.newTemplateRun(sc, active)
+				if err != nil {
+					return nil, err
+				}
+				sp, err := e.planSync(sc, planned, layers, active != nil, led, fresh, sel, opts, newProbes(), req.Modules, man.PostInstall != "")
+				if err != nil {
+					return nil, err
+				}
+				report.Drops, report.DropsRun = versionDrops(report, sp.findings), e.commandOf(req, "-n")
 			}
 		}
 		missing |= (hooks | scripts) &^ opts.Trust
@@ -881,7 +960,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				if err != nil {
 					return nil, err
 				}
-				sp, err := e.planSync(sc, read, layers, active != nil, led, templates, sel, opts, e.newProbeRun(ctx), req.Modules, man.PostInstall != "")
+				sp, err := e.planSync(sc, read, layers, active != nil, led, templates, sel, opts, newProbes(), req.Modules, man.PostInstall != "")
 				if err != nil {
 					return nil, err
 				}
@@ -959,7 +1038,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	}
 	// The pins the sync writes are trust changes too: the question is about the manifest as it will
 	// be saved.
-	probes := e.newProbeRun(ctx)
+	probes := newProbes()
 	var savedRep trust.Report
 	if sc.Kind == target.Project {
 		savedRep = runReport(checkParts(rec, trustParts(man, layers, entries)), limit, entries)
@@ -983,7 +1062,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			c := &res.Trust.Changes[i]
 			se := entryOf(entries, *c)
 			c.InstallsToTargets = c.Kind != trust.ChangeRemoved && se != nil &&
-				(res.Trust.Targets != nil && len(se.ent.Targets) == 0 || se.inherits && res.Trust.TargetsOf(c.Profile) != nil)
+				(res.Trust.topChanged() && len(se.ent.Targets) == 0 || se.inherits && res.Trust.TargetsOf(c.Profile) != nil)
 		}
 	}
 	// Plan every module now, from the bytes that were hashed, before the trust question: a module
@@ -1014,6 +1093,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 			}
 			ans := TrustAnswer{All: true, Kinds: opts.Trust & TrustBare}
 			if asked.kinds() != 0 {
+				asked.Drops, asked.DropsRun = versionDrops(asked, sp.findings), e.commandOf(req, "-n")
 				given, err := req.Trust(asked)
 				if err != nil {
 					return nil, err
@@ -1044,7 +1124,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 				res.Removals = slices.DeleteFunc(slices.Clone(res.Removals), func(r Removal) bool { return slices.Contains(acc.leave, r.Module) })
 				res.Trust.Changes = slices.DeleteFunc(slices.Clone(res.Trust.Changes), func(c TrustChange) bool { return slices.Contains(acc.leave, c.Module) })
 				if !acc.targets {
-					res.Trust.Targets = nil
+					res.Trust.Targets, res.Trust.TargetVersions = nil, nil
 				}
 				res.Trust.ProfileTargets = slices.DeleteFunc(slices.Clone(res.Trust.ProfileTargets), func(pt ProfileTargets) bool {
 					return !acc.profileTargets[partKey(pt.Profile)]
@@ -1063,6 +1143,7 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		}
 	}
 	res.Modules, res.Findings, res.Notices = sp.modules, append(res.Findings, sp.findings...), append(res.Notices, sp.notices...)
+	res.Rewrites = append(res.Rewrites, sp.rewrites...)
 	for _, se := range entries {
 		if se.pin != nil && (se.from == "" || se.key != "") {
 			pin := *se.pin
@@ -1133,10 +1214,22 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 		pr.plan.Ledger.Profile = act.next // written in the apply's commit
 	}
 	keepUnhooked(copies, pr.jobs, opts)
+	// A rewrite whose files come out the same byte for byte writes nothing: its notice says so.
+	for _, r := range res.Rewrites {
+		if slices.ContainsFunc(res.Steps, func(st plan.Step) bool { return st.Module == r.Module && st.Target == r.Target }) {
+			continue
+		}
+		if i := slices.IndexFunc(res.Notices, e.rewriteNotice(r, opts.DryRun).Same); i >= 0 {
+			res.Notices[i].Text += " — no file changes"
+		}
+	}
 	// A changed active profile is a change the apply writes, even when it moves no module. So is a
 	// pending project post-install script that runs alone.
 	res.InSync = len(res.Steps) == 0 && len(res.Pins) == 0 && len(res.Removals) == 0 && len(pr.scripts.alone) == 0 &&
 		!slices.ContainsFunc(copies, func(c moduleCopy) bool { return c.replace }) && (act == nil || !act.changed) && req.move == nil
+	if len(res.Steps) > 0 { // the installed assistant's era matters to a sync that writes files
+		res.Findings = append(res.Findings, probes.mismatched(sc)...)
+	}
 	for _, st := range res.Steps {
 		res.Changed = append(res.Changed, st.Module)
 	}
@@ -1425,7 +1518,7 @@ func checkParts(rec *trust.Record, parts []trustPart) trust.Report {
 		top := cmp.Or(rep.Targets, rep.Bundle)
 		switch {
 		case p.key == "":
-			out.Targets = rep.Targets
+			out.Targets, out.TargetVersions = rep.Targets, rep.TargetVersions
 		case top != nil:
 			if out.ProfileTargets == nil {
 				out.ProfileTargets = map[string]*trust.FieldChange{}
@@ -1452,6 +1545,7 @@ type syncPlan struct {
 	modules  []ModuleResult
 	findings []target.Finding
 	notices  []Notice
+	rewrites []Rewrite
 }
 
 // planSync plans each entry from the bytes that were hashed, its snapshot or staged tree: its
@@ -1491,6 +1585,11 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on boo
 		}
 		sp.modules, sp.findings, sp.notices = append(sp.modules, mr), append(sp.findings, finds...), append(sp.notices, notes...)
 		installed := led.Modules[name]
+		if installed != nil {
+			for _, r := range e.eraRewrites(name, installed, mr.eras) {
+				sp.rewrites, sp.notices = append(sp.rewrites, r), append(sp.notices, e.rewriteNotice(r, opts.DryRun))
+			}
+		}
 		stale, err := e.staleNotices(sc, se.v.Module, x, func(args ...string) (string, error) {
 			infos, err := opts.profiles()
 			if err != nil {
@@ -1526,7 +1625,7 @@ func (e *Engine) planSync(sc Scope, entries []*syncEntry, layers []Layer, on boo
 		}
 		sp.changes = append(sp.changes, plan.ModuleChange{Name: name, Targets: ts, Intents: intents,
 			Entry: &ledger.Entry{From: se.from, Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Components: ent.Components.Clone(), Commit: se.v.Commit, Digest: se.v.Meta.Digest,
-				Targets: mr.Targets, RenderedWith: mr.renderedWith}})
+				Targets: mr.Targets, RenderedWith: mr.renderedWith, Eras: mr.eras}})
 		replace, err := needsCopy(e.files(sc).modules, name, installed, se.v.Meta.Digest)
 		if err != nil {
 			return syncPlan{}, err
@@ -1643,7 +1742,7 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 	for _, se := range entries {
 		names[shown(se.ent.Name)] = se.ent.Name
 	}
-	acc := &acceptance{all: ans.All, modules: map[string][]string{}, targets: rep.Targets != nil && (ans.All || ans.Kinds.Covers(TrustEntries)),
+	acc := &acceptance{all: ans.All, modules: map[string][]string{}, targets: rep.topChanged() && (ans.All || ans.Kinds.Covers(TrustEntries)),
 		profileTargets: map[string]bool{}}
 	// A project profile's top-level targets are accepted as project.yml's are: with the answer
 	// that covers its kind, or with an accepted entry that installs to them.
@@ -1660,7 +1759,7 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 		key := partKey(c.Profile)
 		acc.modules[key] = append(acc.modules[key], names[c.Module])
 		se := entryOf(entries, c)
-		if rep.Targets != nil && c.Kind != trust.ChangeRemoved && se != nil && len(se.ent.Targets) == 0 {
+		if rep.topChanged() && c.Kind != trust.ChangeRemoved && se != nil && len(se.ent.Targets) == 0 {
 			acc.targets = true
 		}
 		if _, changed := acc.profileTargets[key]; changed && c.Kind != trust.ChangeRemoved && se != nil && se.inherits {
@@ -1678,7 +1777,7 @@ func accept(raw trust.Report, rep TrustReport, ans TrustAnswer, entries []*syncE
 		}
 	}
 	for _, se := range entries {
-		if rep.Targets != nil && !acc.targets && len(se.ent.Targets) == 0 {
+		if rep.topChanged() && !acc.targets && len(se.ent.Targets) == 0 {
 			leave(se)
 		}
 		if accepted, changed := acc.profileTargets[se.key]; changed && !accepted && se.inherits {
@@ -1764,6 +1863,9 @@ func trustReport(rep trust.Report) TrustReport {
 	out := TrustReport{Status: rep.Status, Changes: []TrustChange{}, Replacements: []Replacement{}}
 	if rep.Targets != nil {
 		out.Targets = &trust.FieldChange{Field: rep.Targets.Field, From: shownValue(rep.Targets.From), To: shownValue(rep.Targets.To)}
+	}
+	if rep.TargetVersions != nil {
+		out.TargetVersions = &trust.FieldChange{Field: rep.TargetVersions.Field, From: shownValue(rep.TargetVersions.From), To: shownValue(rep.TargetVersions.To)}
 	}
 	for _, name := range slices.Sorted(maps.Keys(rep.ProfileTargets)) {
 		t := rep.ProfileTargets[name]
@@ -1872,6 +1974,12 @@ func shownValue(v any) any {
 			out[i] = shown(s)
 		}
 		return out
+	case map[string]string:
+		out := make(map[string]string, len(v))
+		for k, s := range v {
+			out[shown(k)] = shown(s)
+		}
+		return out
 	}
 	return v
 }
@@ -1908,7 +2016,7 @@ func (e *Engine) syncRefusal(sc Scope, req SyncRequest, rep TrustReport, removal
 				files = append(files, file)
 			}
 		}
-		if rep.Targets != nil && !slices.Contains(files, name) {
+		if (rep.Targets != nil || rep.TargetVersions != nil) && !slices.Contains(files, name) {
 			files = append([]string{name}, files...)
 		}
 		var causes, pins, folders []string
@@ -2328,7 +2436,7 @@ func runReport(rep trust.Report, limit syncLimit, entries []*syncEntry) trust.Re
 		}
 	}
 	if slices.ContainsFunc(entries, func(se *syncEntry) bool { return len(se.ent.Targets) == 0 }) {
-		out.Targets = rep.Targets
+		out.Targets, out.TargetVersions = rep.Targets, rep.TargetVersions
 	}
 	for name, t := range rep.ProfileTargets {
 		// A project bundle's member list (Field bundle) decides which profiles the scope loads: it
@@ -2341,15 +2449,16 @@ func runReport(rep trust.Report, limit syncLimit, entries []*syncEntry) trust.Re
 			out.ProfileTargets[name] = t
 		}
 	}
-	if out.Targets == nil && len(out.ProfileTargets) == 0 && len(out.Changes) == 0 {
+	if out.Targets == nil && out.TargetVersions == nil && len(out.ProfileTargets) == 0 && len(out.Changes) == 0 {
 		out.Status = trust.StatusTrusted
 	}
 	return out
 }
 
-// withoutTargets is rep without its top-level targets' change, trusted when nothing else changed.
+// withoutTargets is rep without its top-level targets' and target_versions' changes, trusted when
+// nothing else changed.
 func withoutTargets(rep trust.Report) trust.Report {
-	rep.Targets = nil
+	rep.Targets, rep.TargetVersions = nil, nil
 	if len(rep.ProfileTargets) == 0 && len(rep.Changes) == 0 {
 		rep.Status = trust.StatusTrusted
 	}

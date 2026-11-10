@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/module"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
@@ -122,12 +123,15 @@ type ModuleScope struct {
 	// write target's entry (InstallAll's pinCommit), git only.
 	ListedCommit string   `json:"listed_commit"`
 	Targets      []string `json:"targets"` // the assistants it is installed for
-	RulesOff     bool     `json:"rules_off"`
-	Excluded     []string `json:"excluded"`              // kind/name that your picks exclude here
-	NotInOnly    []string `json:"not_in_only"`           // those of Excluded the only: list in force alone leaves out
-	ExcludedIn   string   `json:"excluded_in,omitempty"` // where the skips that exclude the rest live (skippedIn), "" when none
-	OnlyFrom     string   `json:"only_from"`             // the section whose only: list is in force here, "" when none
-	Current      []string `json:"current_components"`    // kind/name installed now
+	// Eras is, for each of Targets, the since of the era its files are written for, as lock.json
+	// records it (its newest era when lock.json names none).
+	Eras       map[string]string `json:"-"`
+	RulesOff   bool              `json:"rules_off"`
+	Excluded   []string          `json:"excluded"`              // kind/name that your picks exclude here
+	NotInOnly  []string          `json:"not_in_only"`           // those of Excluded the only: list in force alone leaves out
+	ExcludedIn string            `json:"excluded_in,omitempty"` // where the skips that exclude the rest live (skippedIn), "" when none
+	OnlyFrom   string            `json:"only_from"`             // the section whose only: list is in force here, "" when none
+	Current    []string          `json:"current_components"`    // kind/name installed now
 	// New is kind/name of each component the listed version adds over the version installed here
 	// ([] when nothing is installed or that version is no longer cached), and Provider the layer that
 	// provides the module here when it is a profile, as layerLabel names it ("" otherwise).
@@ -806,8 +810,14 @@ func (e *Engine) moduleScope(sel *config.Selections, sc Scope, layers []Layer, t
 		return ms, nil
 	}
 	ms.Installed, ms.Digest, ms.Commit = true, untrusted.Text(entry.Digest, untrusted.MaxName), untrusted.Text(entry.Commit, untrusted.MaxName)
+	ms.Eras = map[string]string{}
 	for _, t := range allTargets(entry, ment, man) {
 		ms.Targets = append(ms.Targets, untrusted.Text(t, untrusted.MaxName))
+		if since := entry.Eras[t]; since != "" {
+			ms.Eras[t] = since
+		} else if eras := e.eras(t); len(eras) > 0 {
+			ms.Eras[t] = eras[0].since
+		}
 	}
 	installed := v
 	if entry.Digest != v.Meta.Digest {
@@ -844,12 +854,17 @@ type ComponentDiff struct {
 	Updated   []string `json:"updated"`
 	Removed   []string `json:"removed"`
 	Unchanged int      `json:"unchanged"`
+	Rewritten int      `json:"rewritten"` // in both, the same version, written for another era of id
 }
 
 // Diff compares the components a run selects (kind/name) for assistant id at the destination
 // key with those installed for it there now. A component in both is updated when the cached
-// version differs from the installed one.
-func (m ModuleChoice) Diff(key, id string, selected []string) ComponentDiff {
+// version differs from the installed one, else rewritten when its files are written for another
+// era of id than since, the era the run writes for ("" compares no era), and a step of steps, a
+// dry run's at the destination, writes it: one of its kind and name, or for a rule one that every
+// rule of the module shares (a removal, which names none, is not one); nil steps, before any dry
+// run, count each such component rewritten.
+func (m ModuleChoice) Diff(key, id, since string, selected []string, steps []plan.Step) ComponentDiff {
 	ms := m.Scope(key)
 	var current []string
 	if slices.Contains(ms.Targets, id) {
@@ -857,11 +872,16 @@ func (m ModuleChoice) Diff(key, id string, selected []string) ComponentDiff {
 	}
 	d := ComponentDiff{Added: []string{}, Updated: []string{}, Removed: []string{}}
 	for _, c := range selected {
+		kind, name, _ := strings.Cut(c, "/")
 		switch {
 		case !slices.Contains(current, c):
 			d.Added = append(d.Added, c)
 		case ms.Digest != m.Digest:
 			d.Updated = append(d.Updated, c)
+		case since != "" && ms.Eras[id] != "" && ms.Eras[id] != since && (steps == nil || slices.ContainsFunc(steps, func(st plan.Step) bool {
+			return st.Module == m.Name && st.Target == id && st.Kind == kind && (st.Name == name || st.Name == "" && kind == config.KindRule && st.Action != plan.ActionDelete && st.Action != plan.ActionForget)
+		})):
+			d.Rewritten++
 		default:
 			d.Unchanged++
 		}

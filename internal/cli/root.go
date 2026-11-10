@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
@@ -264,7 +265,7 @@ func jsonRequested(args []string) bool {
 // StartupError prints err, which stopped lola before any command could run, per the output
 // contract (JSON when args ask for it) and returns the exit code.
 func StartupError(w io.Writer, err error, args []string) int {
-	writeError(w, err, jsonRequested(args))
+	writeError(w, err, jsonRequested(args), 0)
 	return 1
 }
 
@@ -283,6 +284,13 @@ func Execute(root *cobra.Command) int {
 	if errors.As(err, new(*flagError)) && jsonRequested(os.Args[1:]) {
 		asJSON = true
 	}
+	// An error's hints wrap to the terminal, as a command's do (style.width), unless --plain.
+	width := 0
+	if plain, err := root.PersistentFlags().GetBool("plain"); err == nil && !plain && isTTY(root.OutOrStdout()) && isTTY(root.ErrOrStderr()) {
+		if cols, _, err := term.GetSize(int(root.ErrOrStderr().(*os.File).Fd())); err == nil {
+			width = cols
+		}
+	}
 	var quit *quitError
 	var sig Interrupted
 	switch {
@@ -299,11 +307,11 @@ func Execute(root *cobra.Command) int {
 		return 0
 	case root.Context() != nil && errors.As(context.Cause(root.Context()), &sig):
 		if u, ok := errors.AsType[*updateError](err); ok && u.doc.UpdatedText() != "" {
-			writeError(root.ErrOrStderr(), err, asJSON)
+			writeError(root.ErrOrStderr(), err, asJSON, width)
 		}
 		return 128 + int(sig.Signal)
 	}
-	writeError(root.ErrOrStderr(), err, asJSON)
+	writeError(root.ErrOrStderr(), err, asJSON, width)
 	return 1
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
@@ -26,6 +29,7 @@ roots: {project: "{project}", user: "{home}"}
 detect: {project: {any: [.quill/]}, user: {any: [.quill/]}}
 eras:
   - since: "1.0"
+    summary: commands in old/
     layout:
       command: {mech: markdown-file, path: old/commands, ext: .md, sidecar: drop}
   - since: "2.0"
@@ -60,7 +64,7 @@ var _ = Describe("the era each scope declares", func() {
 	declare := func(versions string) {
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntarget_versions: {" + versions + "}\n"})
 	}
-	install := func(scs ...engine.Scope) (*engine.InstallResult, error) {
+	installWith := func(opts engine.Options, scs ...engine.Scope) (*engine.InstallResult, error) {
 		GinkgoHelper()
 		reg, err := targets.Load(p)
 		Expect(err).NotTo(HaveOccurred())
@@ -68,8 +72,14 @@ var _ = Describe("the era each scope declares", func() {
 		for _, sc := range scs {
 			in = append(in, engine.ScopeInstall{ScopeChoice: engine.ScopeChoice{Scope: sc, Source: engine.SourceFlag}, Targets: []string{"quill"}})
 		}
-		return engine.New(p, reg).InstallAll(ctx, engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: mod}},
-			Options: engine.Options{Targets: []string{"quill"}}, Scopes: in})
+		e := engine.New(p, reg)
+		e.Getwd = func() (string, error) { return proj, nil } // the project lola runs in, whose version findings it raises
+		return e.InstallAll(ctx, engine.InstallSpec{Cwd: proj, Modules: []engine.InstallRequest{{Arg: mod}},
+			Options: opts, Scopes: in})
+	}
+	install := func(scs ...engine.Scope) (*engine.InstallResult, error) {
+		GinkgoHelper()
+		return installWith(engine.Options{Targets: []string{"quill"}}, scs...)
 	}
 	eraFindings := func(res *engine.InstallResult) []target.Finding {
 		var out []target.Finding
@@ -111,7 +121,28 @@ var _ = Describe("the era each scope declares", func() {
 		Expect(filepath.Join(proj, "old", "commands", "c.md")).To(BeAnExistingFile())
 		Expect(eraFindings(res)).To(ConsistOf(warn("version/era-mismatch",
 			".lola/project.yml declares quill 1.2, but quill 2.1 is installed; lola writes for 1.2",
-			`set target_versions.quill to "2.1" in .lola/project.yml, or install quill 1.2`)))
+			`set target_versions.quill to "2.1" in .lola/project.yml, then: lola sync --project; or install a release of quill >=1.0 <2.0`)))
+	})
+
+	It("--strict refuses an installed version of another era than the one declared, writing nothing, when the install writes files", func() {
+		declare(`quill: "1.2"`)
+		installed("2.1")
+		strict := engine.Options{Targets: []string{"quill"}, Strict: true}
+		_, err := installWith(strict, project())
+		Expect(err).To(MatchError(ContainSubstring("--strict: 1 finding(s); nothing was changed")))
+		Expect(err).To(MatchError(ContainSubstring("declares quill 1.2, but quill 2.1 is installed")))
+		Expect(errs.Hints(err)).To(Equal([]string{"fetched modules stay in your cache; retry with: lola install --project m",
+			`set target_versions.quill to "2.1" in .lola/project.yml, then: lola sync --project; ` +
+				"or install a release of quill >=1.0 <2.0", "or rerun without --strict to write for the declared version"}))
+		Expect(filepath.Join(proj, "old")).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(proj, ".lola", "lock.json")).NotTo(BeAnExistingFile())
+
+		installed("1.9")
+		_, err = install(project())
+		Expect(err).NotTo(HaveOccurred())
+		installed("2.1")
+		_, err = installWith(strict, project())
+		Expect(err).NotTo(HaveOccurred(), "a re-run that writes nothing")
 	})
 
 	It("warns when nothing is declared and the installed version is of an older era than lola writes for", func() {
@@ -151,7 +182,7 @@ var _ = Describe("the era each scope declares", func() {
 		Expect(err).NotTo(HaveOccurred())
 		q := p
 		q.Targets = p.Targets + "\u202e"
-		_, err = engine.New(q, reg).Check(ctx, project(), proj, []string{mod}, []string{"quill"}, nil)
+		_, err = engine.New(q, reg).Check(ctx, project(), proj, []string{mod}, []string{"quill"}, nil, nil)
 		Expect(errs.Hints(err)).NotTo(ContainElement(ContainSubstring("\u202e")))
 	})
 
@@ -173,11 +204,12 @@ var _ = Describe("the era each scope declares", func() {
 				`add quill: "1.5" under target_versions: in .lola/project.yml`)))
 
 			installed("2.1")
+			writeTree(mod, map[string]string{"commands/d.md": "Do.\n"}) // the mismatch matters to an install that writes files
 			res, err = install(user, project())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(eraFindings(res)).To(ConsistOf(warn("version/era-mismatch",
 				p.Config+" declares quill 1.2, but quill 2.1 is installed; lola writes for 1.2",
-				`set target_versions.quill to "2.1" in `+p.Config+", or install quill 1.2")))
+				`set target_versions.quill to "2.1" in `+p.Config+", then: lola sync --user; or install a release of quill >=1.0 <2.0")))
 		})
 	})
 
@@ -186,7 +218,9 @@ var _ = Describe("the era each scope declares", func() {
 		installed("2.1")
 		reg, err := targets.Load(p)
 		Expect(err).NotTo(HaveOccurred())
-		rep, err := engine.New(p, reg).Check(ctx, project(), proj, []string{mod}, []string{"quill"}, nil)
+		e := engine.New(p, reg)
+		e.Getwd = func() (string, error) { return proj, nil }
+		rep, err := e.Check(ctx, project(), proj, []string{mod}, []string{"quill"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Findings).To(ContainElement(HaveField("Code", "version/era-mismatch")))
 	})
@@ -195,7 +229,7 @@ var _ = Describe("the era each scope declares", func() {
 		check := func() (*engine.CheckReport, error) {
 			reg, err := targets.Load(p)
 			Expect(err).NotTo(HaveOccurred())
-			return engine.New(p, reg).Check(ctx, user, proj, []string{mod}, []string{"quill"}, nil)
+			return engine.New(p, reg).Check(ctx, user, proj, []string{mod}, []string{"quill"}, nil, nil)
 		}
 
 		It("checks the newest era when config.yaml cannot be read, as it does when project.yml cannot", func() {
@@ -209,6 +243,119 @@ var _ = Describe("the era each scope declares", func() {
 			writeTree(filepath.Dir(p.Config), map[string]string{filepath.Base(p.Config): "version: 1\ntarget_versions:\n  nope: \"1.0\"\n"})
 			_, err := check()
 			Expect(err).To(MatchError(p.Config + ": target_versions.nope: lola has no target nope"))
+		})
+	})
+
+	Describe("lock.json", func() {
+		lockPath := func() string { return filepath.Join(proj, ".lola", "lock.json") }
+		eras := func() map[string]string {
+			GinkgoHelper()
+			led, err := ledger.Load(lockPath())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(led.Modules).To(HaveKey("m"))
+			return led.Modules["m"].Eras
+		}
+		// redeclare sets project.yml's target_versions, keeping the entries the install wrote.
+		redeclare := func(versions string) {
+			GinkgoHelper()
+			f := filepath.Join(proj, ".lola", "project.yml")
+			b, err := os.ReadFile(f)
+			Expect(err).NotTo(HaveOccurred())
+			kept := regexp.MustCompile(`(?m)^target_versions:.*\n`).ReplaceAllString(string(b), "")
+			Expect(os.WriteFile(f, []byte(kept+"target_versions: {"+versions+"}\n"), 0o600)).To(Succeed())
+		}
+		syncAs := func(dry bool) (*engine.SyncResult, error) {
+			GinkgoHelper()
+			reg, err := targets.Load(p)
+			Expect(err).NotTo(HaveOccurred())
+			e := engine.New(p, reg)
+			e.Getwd = func() (string, error) { return proj, nil }
+			return e.Sync(ctx, engine.SyncRequest{Scope: project(), Options: engine.Options{DryRun: dry},
+				Trust:           func(engine.TrustReport) (engine.TrustAnswer, error) { return engine.TrustAnswer{All: true}, nil },
+				ConfirmRemovals: func([]engine.Removal) (bool, error) { return true, nil }})
+		}
+		sync := func() (*engine.SyncResult, error) { return syncAs(false) }
+		eraNotices := func(res *engine.SyncResult) []string {
+			var out []string
+			for _, n := range res.Notices {
+				if strings.Contains(n.Text, " rewrote ") || strings.Contains(n.Text, " would rewrite ") {
+					Expect(n.Level).To(Equal(engine.LevelInfo))
+					Expect(n.Class).To(Equal(target.ClassDetail))
+					out = append(out, n.Text)
+				}
+			}
+			return out
+		}
+
+		It("records the era each target's files were written for", func() {
+			declare(`quill: "1.2"`)
+			_, err := install(project())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(eras()).To(Equal(map[string]string{"quill": "1.0"}))
+		})
+
+		It("sync warns of an installed version of another era only when it writes files", func() {
+			declare(`quill: "1.2"`)
+			_, err := install(project())
+			Expect(err).NotTo(HaveOccurred())
+			installed("2.1")
+			mismatch := func(res *engine.SyncResult) []target.Finding {
+				return slices.DeleteFunc(slices.Clone(res.Findings), func(f target.Finding) bool { return f.Code != "version/era-mismatch" })
+			}
+			res, err := sync()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.InSync).To(BeTrue())
+			Expect(mismatch(res)).To(BeEmpty(), "already in sync")
+			Expect(os.Remove(filepath.Join(proj, "old", "commands", "c.md"))).To(Succeed())
+			res, err = sync()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(mismatch(res)).To(HaveLen(1), "it restores a file")
+		})
+
+		It("records the newest era when nothing is declared", func() {
+			_, err := install(project())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(eras()).To(Equal(map[string]string{"quill": "2.0"}))
+		})
+
+		It("sync rewrites a module's files for the era project.yml now declares, removes the old ones and says why", func() {
+			_, err := install(project())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filepath.Join(proj, "new", "commands", "c.md")).To(BeAnExistingFile())
+			redeclare(`quill: "1.2"`)
+			res, err := syncAs(true)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(eraNotices(res)).To(ConsistOf("m: would rewrite quill files from >=2.0 to >=1.0 <2.0"))
+			Expect(res.Rewrites).To(Equal([]engine.Rewrite{{Module: "m", Target: "quill", From: "2.0", To: "1.0"}}))
+			res, err = sync()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filepath.Join(proj, "old", "commands", "c.md")).To(BeAnExistingFile())
+			Expect(filepath.Join(proj, "new", "commands", "c.md")).NotTo(BeAnExistingFile())
+			Expect(eraNotices(res)).To(ConsistOf("m: rewrote quill files from >=2.0 to >=1.0 <2.0"))
+			Expect(eras()).To(Equal(map[string]string{"quill": "1.0"}))
+
+			res, err = sync()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.InSync).To(BeTrue())
+			Expect(eraNotices(res)).To(BeEmpty())
+			Expect(res.Rewrites).To(BeEmpty())
+			Expect(res.Rewrites).NotTo(BeNil())
+		})
+
+		It("reads an entry without eras as written for the newest era, so sync leaves it as it is", func() {
+			_, err := install(project())
+			Expect(err).NotTo(HaveOccurred())
+			b, err := os.ReadFile(lockPath())
+			Expect(err).NotTo(HaveOccurred())
+			bare := regexp.MustCompile(`(?s),\s*"eras": \{[^}]*\}`).ReplaceAll(b, nil)
+			Expect(string(bare)).NotTo(ContainSubstring(`"eras"`))
+			Expect(os.WriteFile(lockPath(), bare, 0o600)).To(Succeed())
+			redeclare(`quill: "2.4"`)
+			res, err := sync()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(eraNotices(res)).To(BeEmpty())
+			Expect(res.InSync).To(BeTrue())
+			Expect(filepath.Join(proj, "new", "commands", "c.md")).To(BeAnExistingFile())
 		})
 	})
 

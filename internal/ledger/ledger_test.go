@@ -350,6 +350,34 @@ var _ = Describe("ledger", func() {
 		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json")))
 	})
 
+	It("records the era each target was written for, and Clone copies it", func() {
+		l := ledger.New()
+		l.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: dg, Targets: []string{"claude-code", "opencode"},
+			Eras: map[string]string{"claude-code": "1.0", "opencode": "2.0"}, Artifacts: []ledger.Artifact{}}
+		Expect(l.Save(path)).To(Succeed())
+		back, err := ledger.Load(path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(back.Modules["a"].Eras).To(Equal(map[string]string{"claude-code": "1.0", "opencode": "2.0"}))
+		c := back.Clone()
+		c.Modules["a"].Eras["opencode"] = "1.0"
+		Expect(back.Modules["a"].Eras["opencode"]).To(Equal("2.0"))
+	})
+
+	DescribeTable("refuses recorded eras lola never writes",
+		func(eras, want string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			body := `{"version":1,"modules":{"kit":{"source":"s","digest":"` + dg + `","targets":["claude-code"],"eras":` + eras + `,"artifacts":[]}},"created":[]}`
+			Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
+			_, err := ledger.Load(path)
+			Expect(err).To(MatchError(path + ": module kit: " + want))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("restore lock.json")))
+		},
+		Entry("an era for a target the entry does not list", `{"claude-code":"1.0","opencode":"2.0"}`,
+			`eras names target "opencode", which targets does not list`),
+		Entry("an empty era", `{"claude-code":""}`, `eras: target "claude-code" has "", which is not a version`),
+		Entry("an era that is not a version", `{"claude-code":"new\u001b[31m"}`, `eras: target "claude-code" has "new?[31m", which is not a version`),
+	)
+
 	DescribeTable("refuses a recorded path outside its target's root, naming lock.json, the module and the path",
 		func(artifacts, created, want string) {
 			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
@@ -423,7 +451,7 @@ var _ = Describe("ledger", func() {
 		body := `{"version":1,"modules":{` +
 			`"a":` + mod(``, `{"target":"claude-code","kind":"command","path":".claude/commands/a.md"},{"target":"claude-code","kind":"file","path":"../a.md"}`) + `,` +
 			`"b":` + mod(`"targets":["bogus"],`, `{"target":"bogus","kind":"file","path":"x.md"}`) + `,` +
-			`"c":` + mod(`"targets":["bogus","claude-code"],`, `{"target":"claude-code","kind":"command","path":".claude/commands/c.md"}`) + `,` +
+			`"c":` + mod(`"targets":["bogus","claude-code"],"eras":{"bogus":"1.0","claude-code":"1.0"},`, `{"target":"claude-code","kind":"command","path":".claude/commands/c.md"}`) + `,` +
 			`"d":` + mod(``, ``) + `},` +
 			`"created":[{"target":"claude-code","path":"../c.json"},{"target":"claude-code","path":".mcp.json"}]}`
 		Expect(os.WriteFile(path, []byte(body), 0o600)).To(Succeed())
@@ -436,6 +464,7 @@ var _ = Describe("ledger", func() {
 			"an entry from before targets were recorded keeps the target its forgotten path was on")
 		Expect(l.Modules["a"].Artifacts).To(HaveExactElements(HaveField("Path", ".claude/commands/a.md")))
 		Expect(l.Modules["c"].Targets).To(Equal([]string{"claude-code"}))
+		Expect(l.Modules["c"].Eras).To(Equal(map[string]string{"claude-code": "1.0"}), "a forgotten target's era goes with it")
 		Expect(l.Modules["c"].Artifacts).To(HaveExactElements(HaveField("Path", ".claude/commands/c.md")))
 		Expect(l.Modules["d"].Targets).To(BeNil(), "an entry it forgets nothing of is left as it is")
 		Expect(l.Created).To(Equal([]ledger.FileRef{{Target: "claude-code", Path: ".mcp.json"}}))

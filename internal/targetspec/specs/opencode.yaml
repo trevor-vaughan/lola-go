@@ -12,6 +12,7 @@ detect:
   user: {dir: .}
 eras:
   - since: "1.0"
+    summary: "agent colors may also be theme names such as accent"
     vars: {dir: {project: .opencode/, user: ""}}
     layout:
       skill: {mech: skill-dir, path: "{dir}skills", reads_shared_skills: true, name_matches_dir: true, prepend_name: true}
@@ -49,7 +50,7 @@ eras:
           model: {accepts: {shape: string, pattern: '^[^/]+/.+$'}}
           variant: {accepts: {shape: string}}
           mode: {accepts: {shape: string, pattern: '^(subagent|primary|all)$'}}
-          # 1.x takes a hex colour or a theme name (packages/core/src/v1/config/agent.ts at v1.19.5)
+          # 1.x takes a hex color or a theme name (packages/core/src/v1/config/agent.ts at v1.19.5)
           # and fails the config load on anything else.
           color: {accepts: {shape: string, pattern: '^(#[0-9a-fA-F]{6}|primary|secondary|accent|success|warning|error|info)$'}}
           temperature: {accepts: {shape: number}}
@@ -67,9 +68,10 @@ eras:
       - {id: shell-unchecked, kind: command, detect: "!`[^`]+`", effect: runs-without-permission-check, what: "!`…`"}
       - {id: shell-fence, kind: command, detect: "(?m)^[ \\t]*`{3,}!", effect: sent-as-text, what: fenced shell, alternative: "inline !`…`"}
     shared: [skill-rules]
-  # OpenCode 2 takes hex colours only: 2.0.0 to 2.1.2 drop an agent whose color is a theme name
+  # OpenCode 2 takes hex colors only: 2.0.0 to 2.1.2 drop an agent whose color is a theme name
   # (anomalyco/opencode #54057, #38796), and later versions ignore the name.
   - since: "2.0"
+    summary: "agent colors must be hex (#rrggbb)"
     extends: previous
     kinds:
       agent:

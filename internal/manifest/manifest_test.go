@@ -126,6 +126,35 @@ modules:
 			Expect(m.Applied(manifest.Change{Remove: []string{"alpha"}}).TargetVersions).To(Equal(m.TargetVersions))
 		})
 
+		It("writes target_versions after targets, quoting each version", func() {
+			write("# the team's modules\nversion: 1\ntargets: [claude-code] # ours\nmodules:\n  - name: alpha\n    source: tools/alpha\n")
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			change := manifest.Change{TargetVersions: map[string]string{"opencode": "2.10"}}
+			Expect(edit(change)).To(Equal("# the team's modules\nversion: 1\ntargets: [claude-code] # ours\ntarget_versions:\n  opencode: \"2.10\"\n" +
+				"modules:\n  - name: alpha\n    source: tools/alpha\n"))
+			Expect(m.Applied(change).TargetVersions).To(Equal(map[string]string{"opencode": "2.10"}))
+			Expect(m.TargetVersions).To(BeEmpty(), "Applied leaves the manifest it applies to alone")
+		})
+
+		It("adds a second id to target_versions keeping the first as written, and replaces a value in place", func() {
+			write("version: 1\ntarget_versions:\n  gemini-cli: v1 # pinned by the team\n  opencode: \"1.0\"\n")
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			added := manifest.Change{TargetVersions: map[string]string{"claude-code": "3", "opencode": "2.10"}}
+			Expect(edit(added)).To(Equal("version: 1\ntarget_versions:\n  gemini-cli: v1 # pinned by the team\n  opencode: \"2.10\"\n  claude-code: \"3\"\n"))
+			Expect(m.Applied(added).TargetVersions).To(Equal(map[string]string{"gemini-cli": "v1", "opencode": "2.10", "claude-code": "3"}))
+			Expect(edit(manifest.Change{TargetVersions: map[string]string{"opencode": "1.0"}})).To(Equal(
+				"version: 1\ntarget_versions:\n  gemini-cli: v1 # pinned by the team\n  opencode: \"1.0\"\n"))
+		})
+
+		It("writes target_versions into a file with an empty target_versions key and creates a file that is missing", func() {
+			write("version: 1\ntarget_versions:\n")
+			Expect(edit(manifest.Change{TargetVersions: map[string]string{"opencode": "2.10"}})).To(Equal("version: 1\ntarget_versions:\n  opencode: \"2.10\"\n"))
+			Expect(os.Remove(path)).To(Succeed())
+			Expect(edit(manifest.Change{TargetVersions: map[string]string{"opencode": "2.10"}})).To(Equal("version: 1\ntarget_versions:\n  opencode: \"2.10\"\n"))
+		})
+
 		It("appends a new entry and deletes a removed one with its comment", func() {
 			write(commented)
 			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "beta", Source: "../beta", Targets: []string{"gemini-cli"}}},
@@ -396,7 +425,7 @@ modules:
 			Expect(os.WriteFile(path, []byte("version: 1\ntarget_versions:\n  opencode: "+value+"\n"), 0o600)).To(Succeed())
 			_, err := manifest.Load(path)
 			Expect(err).To(MatchError(ContainSubstring(path + `: target_versions.opencode: "` + shown + `" is not a version`)))
-			Expect(errs.Hints(err)).To(ContainElements("write a version such as 2.1 or 0.9.3", "fix it by hand, or restore it from version control"))
+			Expect(errs.Hints(err)).To(ContainElements("write a version such as 2.1 or 1.19.5", "fix it by hand, or restore it from version control"))
 		},
 		Entry("a word", "banana", "banana"),
 		Entry("an empty string", `""`, ""),

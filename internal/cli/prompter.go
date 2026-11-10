@@ -25,6 +25,9 @@ type Prompter interface {
 	OtherDirectory(DirectoryStep) (string, error)
 	Modules(ModuleStep) (ModuleAnswer, error)
 	Assistants(AssistantStep) ([]string, error)
+	// Version asks which version of an assistant a scope's files are written for, answering
+	// the index of the option picked.
+	Version(VersionStep) (int, error)
 	Components(ComponentPage) ([]string, error)
 	// ConfirmEmpty asks "Install <module> with no components?", default No.
 	ConfirmEmpty(module string, nav Nav) (bool, error)
@@ -307,6 +310,26 @@ type AssistantStep struct {
 	Nav       Nav
 }
 
+// VersionStep asks which version of Target a scope's files are written for: Options are its eras'
+// answers, newest first, each its label (Labels) and what it changes, and Preselect the index of the
+// one under the cursor, -1 for none: with Last the last answer, else the one Why says ("matches
+// installed 2.2.5", "as declared"). Note says which version is installed, and Scope names the scope
+// when the install has more than one ("" otherwise). Again says the review's Change versions asks
+// it, alone: it is titled so and not numbered.
+type VersionStep struct {
+	Target    string
+	Options   []string
+	Labels    []string
+	Preselect int
+	Last      bool
+	Why       string
+	Note      string
+	Scope     string
+	Again     bool
+	Step      Steps
+	Nav       Nav
+}
+
 // ComponentOption is one component of a page. Label is "name — first line of description",
 // with "(runs a command)" or "(skipped in <where the picks that skip it live>)" as they apply.
 type ComponentOption struct {
@@ -354,6 +377,7 @@ const (
 	ReviewScope      = "scope"
 	ReviewModules    = "modules"
 	ReviewAssistants = "assistants"
+	ReviewVersions   = "versions"
 	ReviewComponents = "components"
 	ReviewQuit       = "quit"
 )
@@ -409,6 +433,7 @@ func (noPrompter) Scope(ScopeStep) ([]string, error)            { return nil, er
 func (noPrompter) OtherDirectory(DirectoryStep) (string, error) { return "", errNoTerminal }
 func (noPrompter) Modules(ModuleStep) (ModuleAnswer, error)     { return ModuleAnswer{}, errNoTerminal }
 func (noPrompter) Assistants(AssistantStep) ([]string, error)   { return nil, errNoTerminal }
+func (noPrompter) Version(VersionStep) (int, error)             { return 0, errNoTerminal }
 func (noPrompter) Components(ComponentPage) ([]string, error)   { return nil, errNoTerminal }
 func (noPrompter) ConfirmEmpty(string, Nav) (bool, error)       { return false, errNoTerminal }
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }

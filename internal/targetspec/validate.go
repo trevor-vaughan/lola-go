@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/mod/semver"
 )
@@ -18,6 +19,10 @@ type validator struct{ file string }
 func (v validator) fail(field, problem, fix string) error {
 	return &Error{File: v.file, Field: field, Problem: problem, Fix: fix}
 }
+
+// maxSummary is the longest an era's summary may be: lola shows it beside the era's label on one
+// line of the version question.
+const maxSummary = 80
 
 var (
 	idRE    = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -102,6 +107,9 @@ func (v validator) spec(s *Spec) error {
 		field, e := fmt.Sprintf("eras[%d]", i), s.Eras[i]
 		if Canonical(e.Since) == "" {
 			return v.fail(field+".since", fmt.Sprintf("%q is not a version", e.Since), "write a version such as 1.0 or 2.1.3")
+		}
+		if utf8.RuneCountInString(e.Summary) > maxSummary {
+			return v.fail(field+".summary", fmt.Sprintf("is longer than %d characters", maxSummary), "say in a few words what this era reads differently")
 		}
 		if len(e.Remove) > 0 && e.Extends == "" {
 			return v.fail(field+".remove", "deletes from the previous era, so it needs extends: previous", "add extends: previous, or remove remove:")

@@ -47,7 +47,7 @@ func tomlCommands(env Env, m *module.Module) ([]plan.Intent, []target.Finding, e
 			return nil, nil, err
 		}
 		dst := env.Entry.Path + "/" + cmd.Name
-		out = append(out, plan.Intent{Target: env.ID, Kind: "command", Op: plan.OpWriteFile, Path: dst + env.Entry.Ext, Data: data, Mode: 0o644})
+		out = append(out, plan.Intent{Target: env.ID, Kind: "command", Name: cmd.Name, Op: plan.OpWriteFile, Path: dst + env.Entry.Ext, Data: data, Mode: 0o644})
 		if cmd.SidecarDir != "" && env.Entry.Sidecar == "copy" {
 			out = append(out, target.SidecarTree(env.ID, cmd, env.Ctx, dst, nil))
 		}

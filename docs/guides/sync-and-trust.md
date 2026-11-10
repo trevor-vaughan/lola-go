@@ -334,12 +334,17 @@ you trusted again from what it already fetched, so what it applies is what it sh
   no pin, its hooks are neither asked about nor run, and its record in `trust.json` stays as it
   was, so the next sync asks about it again (lola remembers no answer). The result says
   `left as installed until you trust them: docs-kit → lola sync --project`;
-- the top-level `targets` have no option of their own: *Trust all* accepts them, and so does an
+- the top-level `targets` and `target_versions` (one row per assistant, `~ target_versions
+  opencode "1.0" → "2.0"`) have no option of their own: *Trust all* accepts them, and so does an
   accepted added or changed entry that has no `targets` of its own (its option says
   `accepts the top-level targets [claude-code] → [claude-code, opencode]`, or
-  `accepts the top-level targets [claude-code]` when there were none), since it installs to them;
+  `accepts the top-level targets [claude-code]` when there were none, and `accepts project.yml's
+  target_versions`), since it installs to them;
   a removed entry never does. When they are not accepted, every entry that installs to them stays as installed too. When
-  they are the only change, the question offers only Trust all and Cancel;
+  they are the only change, the question offers only Trust all and Cancel. Under a
+  `target_versions` change, before the question (and in the refusal off a terminal), lola prints
+  in full what of the modules it installs the new versions drop that another version keeps, two
+  at most, then `→ and 2 more — lola sync --project -n`;
 - once the removals, if any, are answered, lola prints the command that does the same off a
   terminal: after *Trust all*, your own run with `--trust=` the kinds of the changes; after
   *Choose…*, one naming every entry you trusted (even one whose change only the record holds,

@@ -92,9 +92,11 @@ you name with `-t`, or that the manifest lists, is always rendered, installed or
 example in a container that only prepares files.
 
 lola runs an installed assistant once, with `--version`, to learn which version you have, and
-caches the answer in `$XDG_CACHE_HOME/lola/probes.json` until the binary changes. The version
-never changes what lola writes (teammates on other versions get the same files); lola only
-warns when your version lacks something the module uses.
+caches the answer in `$XDG_CACHE_HOME/lola/probes.json` until the binary changes. What lola writes
+follows the version a scope declares, not this one (teammates on other versions get the same
+files); `lola install` can record the installed version as that declaration
+([Declaring assistant versions](#declaring-assistant-versions)), and otherwise lola only warns
+when your version lacks something the module uses.
 
 What lands where for `claude-code`:
 
@@ -149,12 +151,13 @@ target_versions:
   opencode: "2.0"
 ```
 
-- A value is one version (`2.1`, `0.9.3`, a leading `v` allowed), not a range. lola keeps it as written, so
+- A value is one version (`2.1`, `1.19.5`, a leading `v` allowed), not a range. lola keeps it as written, so
   `2.10` stays `2.10`.
 - lola uses the era of the target's spec that starts at or below the version: the last one whose
-  `since` is not above it. `opencode` has eras `1.0` and `2.0`; `1.x` accepts theme colour names
-  for an agent's `color`, `2.x` only hex colours.
-- A target with nothing declared renders for its newest era.
+  `since` is not above it. `opencode` has eras `1.0` and `2.0`; `1.x` accepts theme color names
+  for an agent's `color`, `2.x` only hex colors.
+- A target with nothing declared renders for its newest era, unless `lola install` records a
+  version for it (below).
 - A version below the first era renders the first era and warns (`version/before-first-era`).
 - A target id lola does not know, or a value that is not a version, is an error naming the file
   and key. The hint lists the valid targets for an unknown id. `lola tidy` stops on the same
@@ -164,7 +167,143 @@ target_versions:
   `.lola/project.yml` cannot be.
 - lola probes the installed version (`probe/*`) and warns when its era differs from the declared
   one (`version/era-mismatch`) or when nothing is declared for an assistant not on the newest era
-  (`version/undeclared`). The probe never changes what lola writes.
+  (`version/undeclared`). The probe never changes what lola writes. These two warnings are raised
+  only for the user scope and for the project lola runs in (the nearest parent with `.lola/`, else
+  the working directory); this machine's assistant says nothing of the one that reads a project in
+  another directory. The install that records a version you chose raises no `version/era-mismatch`
+  (it warns of the choice once, `version/chosen-era`), and a run that writes no files raises none.
+- `lock.json` records the era each module's files were written for. After you change a declared
+  version, `lola sync` rewrites the modules written for another era into the new era's paths,
+  removes the old files and says so: `<module>: rewrote opencode files from >=2.0 to >=1.0
+  <2.0` (`would rewrite` under `-n`), ending `— no file changes` when the
+  module's files are the same byte for byte for both (JSON `rewrites` still lists it). A value the
+  new version drops that another keeps is printed in full, as install prints it (below), its first
+  hint the edit that keeps it: `keep it by writing for opencode >=1.0 <2.0: set
+  target_versions.opencode to "1.0" in .lola/project.yml, then: lola sync --project`. The hint
+  carries no `--trust`: that sync shows the edit before it applies it, asking on a terminal and,
+  off one, refusing with the diff and its own `--trust=entries` run. `lola check` prints the same
+  for a module the scope installs; for any other, which a sync would not touch, the hint is the
+  install for that version (`lola install ./mod --project -t opencode@1.0`). A sync with nothing
+  to write counts such values once per module instead (`mod: 1 value dropped — lola check
+  --project mod`), and so does an install of a module already up to date, which says `✓ mod already
+  up to date (opencode)`; `-v` prints them in full.
+
+#### Picking a version at install
+
+Only an assistant whose spec has more than one era (`opencode` today) is asked about, and only
+in a scope that declares no version for it. A version already declared is never asked about again
+(but for the review's "Change versions"). Once modules are installed in a scope, they hold its
+version: no question asks it and "Change versions" is not offered for it, and an install for
+another version is refused (below). To change it, edit `target_versions` and run `lola sync`, or
+give `-t <id>@<version>` with `--force`. In a project, `target_versions` is trusted with the top-level
+`targets`: lola trusts the versions it records, and the next `lola sync` shows a hand edit on rows
+of its own, one per assistant, `~ target_versions opencode "1.0" → "2.0"` (`+`/`-` for one added
+or removed), trusted as `entries: target_versions`; `targets` is untouched by a version edit.
+`lola install` settles it before it writes:
+
+- `-t <id>@<version>` names it: `lola install ./kit -t opencode@1.19`, or for a project in another
+  directory `lola install ./kit -C /srv/app -t opencode@1.19`. It must be a version for a target
+  lola knows, no older than its first era: `-t opencode@next`, `-t opencode@0.5`, `-t opencode@`
+  and two versions for one target are refused with your command for each version as hints (and,
+  for `opencode@`, without one). A second version after a comma (`-t opencode@2.0,1.0`) reads as
+  an assistant and is refused with `one version per assistant: lola install ./kit -t opencode@2.0`. A value with no id (`-t @1.0`, `-t @`) is refused with your
+  command for each target it may mean, without another version given for it. One version given twice, written two ways (`-t opencode@1.0 -t
+  opencode@1.0.0`), is one. A version above the newest era's major is taken, saying `opencode 99 is
+  newer than any opencode lola knows; files are written for opencode >=2.0`. A target with
+  one era (`-t claude-code@1.0`) takes any version and records nothing: `claude-code's files are
+  the same for every version lola knows; nothing recorded`.
+- With `-n`, a `-C` directory that does not exist yet is refused as the run it previews would be
+  (below), with the same hints, `-n` kept; otherwise lola says `would create <dir>` and plans for
+  it as an empty directory. A dry run that would change something ends with the run that applies
+  it, as `lola sync -n` does: `→ to apply: lola install ./kit --project -t opencode@2.0` (`-y`
+  added for a directory it would create); under `--json` it is `equivalent_commands`.
+- On a terminal, lola asks "Write `<id>` files for which version?" with one answer per era, newest
+  first, each saying what it changes: `>=2.0 — agent colors must be hex (#rrggbb)`,
+  `>=1.0 <2.0 — agent colors may also be theme names such as accent`. In the user scope and
+  the project lola runs in, the era of the installed assistant is preselected (`installed here:
+  2.2.5`, `installed: 2.2.5` at user scope). For another directory nothing is preselected:
+  `installed on this machine: 2.2.5 — not assumed for /srv/app; pick the version used there`; with
+  the assistant not installed, nothing is either: `opencode is not installed here; pick the version
+  you will use`. The
+  review's "Change versions" asks these questions again, unnumbered; Esc there returns to the review
+  with the answers you had. In accessible mode (`LOLA_ACCESSIBLE=1`) the number prompt says what
+  Enter takes (`Type a number (Enter = 1, matches installed 2.2.5)`) and the answer, typed or taken
+  by Enter, is echoed (`→ >=2.0`).
+- Off a terminal, and under `-y` or `--force` (which count as not asking), the user scope and the
+  project lola runs in record the installed version; with the assistant not installed, nothing is
+  recorded, lola writes for the newest era and says so:
+  `opencode is not installed here, so lola wrote for opencode >=2.0 and recorded nothing`,
+  with your command for each version as hints: `to choose, for opencode >=1.0 <2.0: lola
+  install ./kit --project -t opencode@1.0`.
+- A project in another directory (`-C`, or "Other directory..." in the scope question) is not
+  guessed for: off a terminal the install stops, writing nothing (a `-C` directory it had just
+  created is removed again, and it says `removed <dir> (lola created it; nothing was installed there)`), with
+  `which opencode version will read /srv/app? lola assumes the installed opencode only for the project you run it in, and /srv/app declares none`
+  and one hint per version, your command with every assistant it installs for:
+  `for opencode >=2.0: lola install ./kit -C /srv/app -t opencode@2.0`,
+  `for opencode >=1.0 <2.0: lola install ./kit -C /srv/app -t opencode@1.0`. A `-C`
+  directory that does not exist yet is refused before it is created, each hint the run that
+  creates it: `create it, for opencode >=2.0: lola install ./kit -C /srv/app -t opencode@2.0
+  -y`. A `-C` directory that does not exist with no `-t` (and no assistant the manifest fixes) is
+  refused before it is created too, since no assistant is set up there, each hint the run that
+  creates it for one: `create it, for opencode >=2.0: … -t opencode@2.0 -y`, `create it,
+  for agents: … -t agents -y`. Every hint that names an assistant for such a directory names its
+  version, one hint per version, so none leads to this refusal. An Other directory you created and then left (Esc,
+  another pick) is removed when the install applies elsewhere; the equivalent command of an
+  install that created its directory ends with `-y`; the hints printed after a run that created
+  its `-C` directory leave out the `-y` that created it.
+- A frontmatter value the version written for drops and another version keeps is printed in full,
+  never counted in the module's notices:
+  `⚠ kit: opencode agent reviewer: color "accent" dropped — opencode >=2.0: agent colors must be hex (#rrggbb)`,
+  hinting first `keep it by writing for opencode >=1.0 <2.0:` and your command with
+  `-t opencode@1.0` (`choose "Change versions"` in the review), then the module's own fix. Every
+  such hint runs at the scope the finding is for (`--user`, `--project`, or `-C` as you typed it).
+  When the install warns that the version you chose is not the one the installed assistant reads
+  (`version/chosen-era`, below), or that the assistant is not installed (above), the finding has no
+  keep-it hint: the warning's or the notice's gives that run. In a run of more than one scope
+  (`--scope both`), each module finding names its scope: `⚠ kit (project): …`, `⚠ kit (user): …`.
+
+The answer is saved in `target_versions` of `.lola/project.yml` (`config.yaml` at user scope) and
+reported as `recorded <id> <version> in <file> (target_versions): files are written for <id> <era>`.
+In the user scope and the project lola runs in it adds `(the installed version)` after the version
+when it is, and `(matches the installed <version>)` at the end when the version is another of the
+installed assistant's era (never for one newer than any lola knows). A version of another era there gets one warning (`version/chosen-era`):
+`this machine's opencode 2.2.5 reads files written for >=2.0; these are written for >=1.0
+<2.0 (agent colors may also be theme names such as accent)`, hinting your command that
+records the installed version: `to write for what this machine's opencode 2.2.5 reads (2.0 or
+later): lola install ./kit --project -t opencode@2.2.5`. Replacing a declared version says `changed <id> <old> → <new> in <file>
+...`; `-n` says `would record ...` or `would change ...` instead. The value is the installed
+version when you pick the installed assistant's era in the user scope or the project lola runs in,
+otherwise the `since` of the era you pick. A version the file already declares is not written again.
+
+The review says, for each destination and assistant with eras, which version its files are written
+for and why: `→ opencode >=2.0 (installed 2.2.5; will be recorded in .lola/project.yml)`,
+`→ opencode >=2.0 (from .lola/project.yml)` when declared, or `→ opencode >=2.0
+(nothing recorded; opencode is not installed here)`; a version that replaces the declared one says
+`(was 2.0 in .lola/project.yml; installed 2.2.5)`, and each installed module counts the files
+rewritten for it, those that come out the same byte for byte as unchanged: `kit: 1 rewritten for
+opencode >=1.0 <2.0, 1 unchanged`. The modules installed in a scope are always written for one
+version of each assistant. The review says when they hold it: `→ opencode >=2.0 (from
+.lola/project.yml; this scope's modules are written for it)`. An install that writes for another
+version than the modules already there (other than those it installs again) is refused, under
+`-n` too, nothing written: `this install writes opencode files for >=1.0 <2.0, but notes in this
+project is written for >=2.0; lola keeps one opencode version in a scope`, hinting your command for
+their version (`install for >=2.0, the version notes is written for: lola install ./kit --project
+-t opencode@2.0`) and the same run with `--force`. Under `--force` the install rewrites them, in the
+same run and at the versions they have, listed after it: `notes: rewrote opencode files from >=2.0
+to >=1.0 <2.0` (`would rewrite` under `-n`). When the version it writes for comes from a hand edit
+of `target_versions` you have not trusted, it says so: `→ .lola/project.yml's target_versions
+changed since you last trusted it; lola sync --project shows the change` (`are not trusted yet;
+lola sync --project shows them` when this machine never trusted the file, as in a fresh clone); if
+that edit would also rewrite other modules, the install refuses even under `--force`, nothing
+written: `rewriting notes for the version this install writes for needs your trust first`, hinting
+`lola sync --project`, which shows the edit and asks. It offers "Change versions" whenever the
+install has such an assistant that the scope's modules do not hold, a declared or `-t` version
+too: the version you pick then is recorded. Each version's answer also names what of the modules installed it drops that another
+version keeps: `>=2.0 — agent colors must be hex (#rrggbb); drops reviewer's color
+"accent"` (two by name, then `and N more`). An interactive install with nothing to do prints the
+same line, with your command for each other version as hints: `hint: to write for opencode >=1.0
+<2.0: lola install ./kit --project -t opencode@1.0`.
 
 ## Choosing what to install
 
@@ -184,7 +323,8 @@ module. Each **finding** has a severity:
 
 `--force` also renders skipped artifacts that can be rendered (it never invents a place for
 something the assistant has no place for). `--strict` turns every remaining warn or skip into an
-error before anything is written; use it in CI. A `--force` render is not remembered: a later
+error before anything is written; use it in CI. One warn is exempt: a version you choose that
+differs from the installed one is warned of, not refused (`version/chosen-era`). A `--force` render is not remembered: a later
 `lola sync` or `lola update` without `--force` skips (and removes) those artifacts again.
 
 Each finding has a stable code, shown by `--plain` and `--json`. A forceable skip is one that
@@ -243,7 +383,7 @@ the run, `lola check` included: they are never skip findings.
 | `agent-tools-unenforceable` | skip | yes | The agent restricts its tools in a way the target cannot enforce (`gemini-cli`: names that are not Gemini's; `opencode`: any non-blank `tools` value, list or string). The assistant would give the agent every tool, so it is left out unless `--force`, which installs it without the list. |
 | `frontmatter-invalid` | skip | no | The frontmatter parses but lola cannot re-encode it. |
 | `frontmatter-key-dropped` | warn or info | no | The target does not support a frontmatter key, so it is left out. |
-| `frontmatter-value-dropped` | warn | no | A frontmatter key has a value of the wrong type or form for the target (for example an OpenCode agent `color: red`, or a Gemini agent `max_turns: 1.5`), so it is left out. |
+| `frontmatter-value-dropped` | warn | no | A frontmatter key has a value of the wrong type or form for the target (for example an OpenCode agent `color: red`, or a Gemini agent `max_turns: 1.5`), so it is left out. When another version of the assistant keeps the value, the finding names the value and the version written for, and its first hint keeps it: `lola install`'s command with `-t <id>@<version>` (`choose "Change versions"` in its review); `lola sync`'s and `lola check`'s, the edit of `target_versions` and the sync that applies it. |
 | `frontmatter/yaml-ambiguous` | warn | no | An unquoted frontmatter value that YAML parsers read differently; quote it. |
 | `vars-override` | skip | no | `lola check`: the scope's entry for the module checked sets a var the module does not declare, or one of another type; the module is checked with its defaults. |
 | `vars-defaults` | info | no | `lola check` could not read the scope's manifest or a profile, so every module is checked with its default vars. |
@@ -278,7 +418,8 @@ the run, `lola check` included: they are never skip findings.
 | `probe/unknown-version` | info | no | The assistant's version could not be read: its binary failed or printed no version, or its version file is not a regular file of at most 1 MiB holding one. |
 | `probe/cache` | info | no | The version was read but could not be cached. |
 | `version/undeclared` | warn | no | The installed assistant is of another era than the newest one lola writes for, and the scope declares no version for it. Hint: the `target_versions` line to add ([Declaring assistant versions](#declaring-assistant-versions)). |
-| `version/era-mismatch` | warn | no | The scope declares a version, but the installed assistant is of another era; lola writes for the declared one. Hint: set `target_versions` to the installed version, or install the declared one. |
+| `version/era-mismatch` | warn | no | The scope declares a version, but the installed assistant is of another era; lola writes for the declared one. Raised only by a run that writes files there, and not in the install that records the version. Hint: set `target_versions` to the installed version, then `lola sync` (it shows a change to `project.yml`'s `target_versions`, which is trusted content, before applying it; `lola sync --user` for `config.yaml`); or install a release of the declared era. `--strict` fails it. |
+| `version/chosen-era` | warn | no | The install records a version of another era than the installed assistant's, in the user scope or the project lola runs in. Hint: your command that records the installed version. `--strict` does not fail on it: the choice is yours. |
 | `version/before-first-era` | warn | no | The declared version is older than any era lola knows, so lola writes for the oldest one. Hint: upgrade the assistant, then set `target_versions` to match. |
 
 lola only reports what its own rendering loses. For general advice on writing skills, commands
@@ -312,7 +453,7 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 | File | Purpose | Commit it? |
 |---|---|---|
 | `.lola/project.yml` | The manifest: which modules and targets you want, the assistant versions it renders for (`target_versions`), and for git and archive modules the version (pin) installed. lola edits only the entries it changes and keeps your comments and order, but it writes the whole file again, so blank lines between entries are dropped and indentation becomes two spaces. | Yes |
-| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, (`scripts_pending`) the project's post-install script you have not let run on the module yet, the active [profile](guides/profiles.md#profiles) (`profile`; a `lock.json` with a pre-release `profiles` list is refused, naming the way out), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: `default` and the active profile when a template reads them, and `vars`). Every command that plans from it refuses a path in it outside a target's root, or a target lola does not know, hinting [`lola repair`](reference/repair.md#lola-repair), which forgets such entries. | No (gitignored for you) |
+| `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, (`scripts_pending`) the project's post-install script you have not let run on the module yet, the active [profile](guides/profiles.md#profiles) (`profile`; a `lock.json` with a pre-release `profiles` list is refused, naming the way out), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: `default` and the active profile when a template reads them, and `vars`), and the era of each target's assistant its files were written for (`eras`, target to the era's `since`; a target it does not name was written for its newest era). Every command that plans from it refuses a path in it outside a target's root, or a target lola does not know, hinting [`lola repair`](reference/repair.md#lola-repair), which forgets such entries. | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
@@ -469,6 +610,9 @@ binary. Each step below was run against a throwaway `HOME`.
 ## Output contract
 
 The output formats lola's commands share. It has its own page: [Output contract](reference/output-contract.md).
+`install --json` lists the versions it records in `target_versions` (`{scope, target, version,
+previous, source, file, era}`, `source` `installed`, `chosen` or `flag`); `sync --json` lists the
+modules it rewrites for another era in `rewrites` (`{module, target, from, to}`).
 
 ## Environment
 

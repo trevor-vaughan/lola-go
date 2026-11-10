@@ -375,7 +375,7 @@ func (e *Engine) forceRestore(req TrashRestoreRequest) string {
 func (e *Engine) RestoreTrash(plan *TrashRestoreResult) (*TrashRestoreResult, error) {
 	req, r := plan.req, plan.run
 	res := &TrashRestoreResult{Run: plan.Run, Restored: []TrashEntry{}, Existing: []string{},
-		Notices: slices.DeleteFunc(slices.Clone(plan.Notices), func(n Notice) bool { return slices.Contains(plan.replacing, n) })}
+		Notices: slices.DeleteFunc(slices.Clone(plan.Notices), func(n Notice) bool { return slices.ContainsFunc(plan.replacing, n.Same) })}
 	var existing []trash.Entry
 	for _, en := range plan.picked {
 		if _, err := os.Lstat(en.Original); err == nil {

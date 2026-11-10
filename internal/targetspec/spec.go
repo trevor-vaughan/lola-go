@@ -85,6 +85,7 @@ type Detect struct {
 // Era is what the assistant reads from version Since on.
 type Era struct {
 	Since     string            `yaml:"since"`
+	Summary   string            `yaml:"summary"` // what this era reads differently, shown beside its label when lola asks
 	Extends   string            `yaml:"extends"` // "previous": start from the era before
 	Remove    []string          `yaml:"remove"`  // layout.<kind>, kinds.<kind>.keys.<key>, behaviors.<id>
 	Vars      map[string]Scoped `yaml:"vars"`

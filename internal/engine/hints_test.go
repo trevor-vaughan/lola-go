@@ -159,7 +159,7 @@ var _ = Describe("hints", func() {
 			}),
 		Entry("check's argument that is neither a source nor a module in your cache",
 			func() error {
-				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, []string{"--plain"})
+				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, nil, []string{"--plain"})
 				return err
 			},
 			func() []string {
@@ -240,7 +240,7 @@ var _ = Describe("hints", func() {
 			func() string { return `"nope" is not a source; sources are ` + source.AcceptedForms }, nil),
 		Entry("check's argument that is neither a source nor a module in your cache",
 			func() error {
-				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, nil)
+				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, nil, nil)
 				return err
 			},
 			func() string {

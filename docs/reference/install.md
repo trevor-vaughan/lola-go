@@ -35,7 +35,7 @@ project with `.lola/` at or above the current directory, then `default_scope` in
 | `--exact` | With `--only`: save the selectors as an `only:` list, so components a later version adds are not installed; lola names them ([Component flags](../guides/choosing-what-to-install.md#component-flags)). |
 | `--with-mentions` | Also install the components your picks mention by name, one hop, saved where the picks are ([Mentions](../guides/choosing-what-to-install.md#mentions)). |
 | `--no-rules`, `--rules` | Leave the module's always-on rules out, remembered in the manifest; `--rules` puts them back. |
-| `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module. |
+| `--strict` | Fail, writing nothing, if any target would drop, change or skip part of a module, or an installed assistant is of another era than the version declared (`version/era-mismatch`). A version you choose that differs from the installed one is warned of, not refused (`version/chosen-era`). |
 | `-v`, `--verbose` | Print every notice in full, grouped, instead of one line per module for those that are not about safety ([Output contract](../usage.md#output-contract)). |
 | `--pre-install <path>`, `--post-install <path>` | Your own script for this run, which wraps every module copy the install writes, once per assistant, around the module's own hooks; a relative path is taken from the directory you run lola in, and the script runs from that absolute path, never a file of its name in the module copy ([Install scripts](../guides/choosing-what-to-install.md#install-scripts)). No trust is asked. |
 | `--trust=<kinds>` | Answer yes, without asking, to lola's questions before it runs code you did not write, of the kinds named, recorded as a yes at the prompt is: `scripts` (the project's install scripts), `hooks` (a module's install hooks), `runtime-hooks` (a module's Claude Code runtime hooks and agent MCP servers), or `all` for the three ([Trust kinds](../guides/choosing-what-to-install.md#trust-kinds)). |
@@ -155,5 +155,5 @@ Refusals:
   ([Install scripts](../guides/choosing-what-to-install.md#install-scripts)); the project's pre-install script without your trust off a
   terminal.
 
-JSON: `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `dry_run`, `scopes` and
-`equivalent_commands` ([Output contract](../usage.md#output-contract)).
+JSON: `modules`, `steps`, `findings`, `notices`, `edits`, `scripts`, `dry_run`, `scopes`,
+`target_versions` and `equivalent_commands` ([Output contract](../usage.md#output-contract)).

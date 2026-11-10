@@ -159,7 +159,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/kit -C /work/proj --scope project -t claude-code -t gemini-cli -t opencode > /tmp/i3.out && cat /tmp/i3.out'"
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/kit -C /work/proj --scope project -t claude-code -t gemini-cli -t opencode@2.0 > /tmp/i3.out && cat /tmp/i3.out'"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"✓ create claude-code .claude/agents/critic.md\""
@@ -185,19 +185,20 @@ testcases:
         script: |
           {{.runtime}} exec {{.container}} python3 -c '
           lines = open("/tmp/i3.out", encoding="utf-8").read().splitlines()
-          assert len(lines) == 24, len(lines)
+          assert len(lines) == 25, len(lines)
           assert lines[0] == "✓ added kit to project.yml (base)", lines[0]
           assert sum(l.startswith("  ✓ create ") for l in lines) == 17, lines
           assert lines[18:20] == ["kit MCP servers:", "    kit-tools (stdio) runs: kit-mcp --stdio"], lines[18:20]
           assert lines[20] == "⚠ kit comes from /e2e/fixtures/kit, outside the project: a teammate\x27s sync will refuse it; share a module through a git repository or an https:// archive", lines[20]
-          assert lines[21:23] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch",
-                                  "→ meant for every project? lola profile --user --move kit --to base -C /work/proj"], lines[21:23]
-          assert lines[23] == "✓ installed kit (claude-code, gemini-cli, opencode)", lines[23]
-          print("ok the install printed its 17 creates, the MCP server, the outside-source warning and the moves that fix where it went")
+          assert lines[21] == "→ recorded opencode 2.0 in .lola/project.yml (target_versions): files are written for opencode >=2.0", lines[21]
+          assert lines[22:24] == ["→ keep it to yourself: lola profile -C /work/proj --move kit --to mine --switch",
+                                  "→ meant for every project? lola profile --user --move kit --to base -C /work/proj"], lines[22:24]
+          assert lines[24] == "✓ installed kit (claude-code, gemini-cli, opencode)", lines[24]
+          print("ok the install printed its 17 creates, the MCP server, the outside-source warning, the recorded version and the moves that fix where it went")
           '
         assertions:
           - result.code ShouldEqual 0
-          - result.systemout ShouldEqual "ok the install printed its 17 creates, the MCP server, the outside-source warning and the moves that fix where it went"
+          - result.systemout ShouldEqual "ok the install printed its 17 creates, the MCP server, the outside-source warning, the recorded version and the moves that fix where it went"
       - type: exec
         script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/proj && ls .claude/commands/deploy.md .gemini/commands/deploy.toml .opencode/commands/deploy.md .mcp.json opencode.json .gemini/settings.json && cat .lola/project.yml'"
         assertions:

@@ -80,10 +80,14 @@ type MemberView struct {
 // views of the project's profiles that the user trusted or lola wrote, by profile name. Profiles is omitted when empty, so a view without profiles hashes as before. Bundle is
 // set only in a project bundle's part (Part): its member list.
 type View struct {
-	Targets  []string               `json:"targets,omitempty"`
-	Bundle   []string               `json:"bundle,omitempty"`
-	Modules  []Entry                `json:"modules,omitempty"`
-	Profiles map[string]ProfileView `json:"profiles,omitempty"`
+	Targets []string `json:"targets,omitempty"`
+	// TargetVersions is project.yml's target_versions: the version each target's files are
+	// written for, trusted with the top-level targets (accepted with them; Check reports each
+	// change on its own). Omitted when empty, so a view without it hashes as before.
+	TargetVersions map[string]string      `json:"target_versions,omitempty"`
+	Bundle         []string               `json:"bundle,omitempty"`
+	Modules        []Entry                `json:"modules,omitempty"`
+	Profiles       map[string]ProfileView `json:"profiles,omitempty"`
 }
 
 // ProfileView is a project profile's part of a view: its top-level targets
@@ -130,7 +134,7 @@ func (v View) decodedNumbers() bool {
 // name. It shares nothing with v.
 func (v View) Part(key string) View {
 	if key == "" {
-		return View{Targets: slices.Clone(v.Targets), Modules: cloneEntries(v.Modules)}
+		return View{Targets: slices.Clone(v.Targets), TargetVersions: maps.Clone(v.TargetVersions), Modules: cloneEntries(v.Modules)}
 	}
 	pv := v.Profiles[key]
 	return View{Targets: slices.Clone(pv.Targets), Bundle: slices.Clone(pv.Bundle), Modules: cloneEntries(pv.Modules)}
@@ -139,14 +143,14 @@ func (v View) Part(key string) View {
 // WithPart is v with the part key gives replaced by part, Part's inverse: every other part is
 // kept as it is. A profile's part with no targets, members or entries leaves the profile out.
 func (v View) WithPart(key string, part View) View {
-	out := View{Targets: slices.Clone(v.Targets), Modules: cloneEntries(v.Modules)}
+	out := View{Targets: slices.Clone(v.Targets), TargetVersions: maps.Clone(v.TargetVersions), Modules: cloneEntries(v.Modules)}
 	for k, pv := range v.Profiles {
 		if k != key {
 			out.setProfile(k, ProfileView{Targets: pv.Targets, Bundle: pv.Bundle, Modules: pv.Modules})
 		}
 	}
 	if key == "" {
-		out.Targets, out.Modules = slices.Clone(part.Targets), cloneEntries(part.Modules)
+		out.Targets, out.TargetVersions, out.Modules = slices.Clone(part.Targets), maps.Clone(part.TargetVersions), cloneEntries(part.Modules)
 	} else {
 		out.setProfile(key, ProfileView{Targets: part.Targets, Bundle: part.Bundle, Modules: part.Modules})
 	}
@@ -191,7 +195,7 @@ func EntryOf(e manifest.Entry) Entry {
 
 // ViewOf is the view of a manifest.
 func ViewOf(m *manifest.Manifest) View {
-	v := View{Targets: slices.Clone(m.Targets)}
+	v := View{Targets: slices.Clone(m.Targets), TargetVersions: maps.Clone(m.TargetVersions)}
 	for _, e := range m.Modules {
 		v.Modules = append(v.Modules, EntryOf(e))
 	}
@@ -267,7 +271,7 @@ func Refresh(r View, key string, loaded, saved View) View {
 }
 
 func refresh(r, loaded, saved View) View {
-	out := View{Targets: slices.Clone(r.Targets), Bundle: slices.Clone(r.Bundle)}
+	out := View{Targets: slices.Clone(r.Targets), TargetVersions: maps.Clone(r.TargetVersions), Bundle: slices.Clone(r.Bundle)}
 	for _, e := range r.Modules {
 		if saved.Find(e.Name) != nil || loaded.Find(e.Name) == nil {
 			out.Modules = append(out.Modules, e.clone())
@@ -275,6 +279,19 @@ func refresh(r, loaded, saved View) View {
 	}
 	if !slices.Equal(loaded.Targets, saved.Targets) {
 		out.Targets = slices.Clone(saved.Targets)
+	}
+	for id, v := range saved.TargetVersions {
+		if loaded.TargetVersions[id] != v {
+			if out.TargetVersions == nil {
+				out.TargetVersions = map[string]string{}
+			}
+			out.TargetVersions[id] = v
+		}
+	}
+	for id := range loaded.TargetVersions {
+		if _, kept := saved.TargetVersions[id]; !kept {
+			delete(out.TargetVersions, id)
+		}
 	}
 	if !slices.Equal(loaded.Bundle, saved.Bundle) {
 		out.Bundle = slices.Clone(saved.Bundle)
@@ -306,9 +323,9 @@ func Accept(r View, key string, v View, modules []string, targets bool) View {
 }
 
 func accept(r, v View, modules []string, targets bool) View {
-	out := View{Targets: slices.Clone(r.Targets), Bundle: slices.Clone(r.Bundle)}
+	out := View{Targets: slices.Clone(r.Targets), TargetVersions: maps.Clone(r.TargetVersions), Bundle: slices.Clone(r.Bundle)}
 	if targets {
-		out.Targets, out.Bundle = slices.Clone(v.Targets), slices.Clone(v.Bundle)
+		out.Targets, out.TargetVersions, out.Bundle = slices.Clone(v.Targets), maps.Clone(v.TargetVersions), slices.Clone(v.Bundle)
 	}
 	for _, e := range r.Modules {
 		if !slices.Contains(modules, e.Name) {
@@ -392,8 +409,8 @@ const (
 )
 
 // FieldChange is one view field whose value differs from the record's. From and To keep the
-// field's JSON type: a string, a list of target ids for targets, a boolean for rules; nil for
-// an absent value.
+// field's JSON type: a string, a list of target ids for targets, a map of target id to version
+// for target_versions, a boolean for rules; nil for an absent value.
 type FieldChange struct {
 	Field string `json:"field"`
 	From  any    `json:"from"`
@@ -415,12 +432,14 @@ type Change struct {
 }
 
 // Report is the result of Check: the status, the top-level targets when the record does not
-// cover them (nil when it does), a project bundle's member list likewise (Bundle), and each module's change in name order. ProfileTargets is, in a
+// cover them (nil when it does), target_versions likewise (TargetVersions), a project bundle's
+// member list likewise (Bundle), and each module's change in name order. ProfileTargets is, in a
 // report of several parts (the engine's), each project profile's top-level targets the record
 // does not cover, by the profile's qualified name (Change.Profile); Check leaves it nil.
 type Report struct {
 	Status         string
 	Targets        *FieldChange
+	TargetVersions *FieldChange
 	Bundle         *FieldChange
 	Changes        []Change
 	ProfileTargets map[string]*FieldChange
@@ -438,6 +457,9 @@ func Check(r *Record, v View) Report {
 	rep := Report{Status: StatusTrusted, Changes: []Change{}}
 	if !slices.Equal(rv.Targets, v.Targets) {
 		rep.Targets = &FieldChange{Field: "targets", From: listValue(rv.Targets), To: listValue(v.Targets)}
+	}
+	if !maps.Equal(rv.TargetVersions, v.TargetVersions) {
+		rep.TargetVersions = &FieldChange{Field: "target_versions", From: mapValue(rv.TargetVersions), To: mapValue(v.TargetVersions)}
 	}
 	if !slices.Equal(rv.Bundle, v.Bundle) {
 		rep.Bundle = &FieldChange{Field: "bundle", From: listValue(rv.Bundle), To: listValue(v.Bundle)}
@@ -461,7 +483,7 @@ func Check(r *Record, v View) Report {
 	// Without a record every entry and the targets are changes; a manifest with neither has
 	// nothing to trust.
 	switch {
-	case rep.Targets == nil && rep.Bundle == nil && len(rep.Changes) == 0:
+	case rep.Targets == nil && rep.TargetVersions == nil && rep.Bundle == nil && len(rep.Changes) == 0:
 	case !r.Exists:
 		rep.Status = StatusNew
 	default:
@@ -580,6 +602,13 @@ func listValue(ss []string) any {
 		return nil
 	}
 	return slices.Clone(ss)
+}
+
+func mapValue(m map[string]string) any {
+	if len(m) == 0 {
+		return nil
+	}
+	return maps.Clone(m)
 }
 
 func boolValue(b *bool) any {

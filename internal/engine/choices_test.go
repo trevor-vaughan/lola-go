@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
@@ -194,15 +195,15 @@ var _ = Describe("InstallChoices", func() {
 		Expect(us.Installed).To(BeFalse())
 		Expect(us.Excluded).To(Equal([]string{"command/ship"}))
 
-		d := m.Diff(scopes[0].Scope.Key(), "claude-code", []string{"skill/review", "command/new"})
+		d := m.Diff(scopes[0].Scope.Key(), "claude-code", "", []string{"skill/review", "command/new"}, nil)
 		Expect(d.Added).To(Equal([]string{"command/new"}))
 		Expect(d.Unchanged).To(Equal(1))
 		Expect(d.Removed).To(ContainElements("command/ship", "rule/style"))
-		Expect(m.Diff(scopes[0].Scope.Key(), "gemini-cli", []string{"skill/review"}).Added).To(Equal([]string{"skill/review"}), "a new assistant gets everything")
+		Expect(m.Diff(scopes[0].Scope.Key(), "gemini-cli", "", []string{"skill/review"}, nil).Added).To(Equal([]string{"skill/review"}), "a new assistant gets everything")
 
 		writeTree(src, map[string]string{"skills/review/SKILL.md": "---\ndescription: Review code better\n---\nReview it.\n"})
 		m = choices(src).Module("example")
-		Expect(m.Diff(scopes[0].Scope.Key(), "claude-code", []string{"skill/review"}).Updated).To(Equal([]string{"skill/review"}), "a new cached version updates")
+		Expect(m.Diff(scopes[0].Scope.Key(), "claude-code", "", []string{"skill/review"}, nil).Updated).To(Equal([]string{"skill/review"}), "a new cached version updates")
 	})
 
 	It("pins the install to the version the choices listed, though the source changed in between", func() {
@@ -354,5 +355,20 @@ var _ = Describe("InstallChoices", func() {
 		Expect(string(out)).NotTo(ContainSubstring("\\u001b"))
 		Expect(ch.Module("example").Type).To(ContainSubstring("folder"))
 		Expect(ch.Module("example").Scope(scopes[0].Scope.Key()).Digest).To(ContainSubstring("sha256:"))
+	})
+})
+
+var _ = Describe("ModuleChoice.Diff", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("counts every rule rewritten for a step all of them share, never for a removal", func() {
+		m := engine.ModuleChoice{Name: "a", Digest: "d", PerScope: []engine.ModuleScope{{Scope: "k", Installed: true, Digest: "d",
+			Targets: []string{"opencode"}, Eras: map[string]string{"opencode": "2.0"}, Current: []string{"rule/x", "rule/y"}}}}
+		gone := plan.Step{Action: plan.ActionDelete, Module: "a", Target: "opencode", Kind: "rule", Path: ".opencode/lola/a/x.md"}
+		d := m.Diff("k", "opencode", "1.0", []string{"rule/x", "rule/y"}, []plan.Step{gone})
+		Expect(d.Rewritten).To(Equal(0))
+		Expect(d.Unchanged).To(Equal(2))
+		shared := plan.Step{Action: plan.ActionUpdate, Module: "a", Target: "opencode", Kind: "rule", Path: "opencode.json", Key: "/instructions"}
+		Expect(m.Diff("k", "opencode", "1.0", []string{"rule/x", "rule/y"}, []plan.Step{shared}).Rewritten).To(Equal(2))
 	})
 })

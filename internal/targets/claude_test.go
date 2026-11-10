@@ -28,7 +28,7 @@ var _ = Describe("claude-code", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notes).To(BeEmpty())
 		Expect(ins).To(HaveLen(4))
-		Expect(ins[0]).To(Equal(plan.Intent{Target: "claude-code", Kind: "skill", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
+		Expect(ins[0]).To(Equal(plan.Intent{Target: "claude-code", Kind: "skill", Name: "review", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
 			Path: ".claude/skills/review", Exclude: []string{"SKILL.md"}}))
 		Expect(string(ins[1].Data)).To(Equal("---\ndescription: r\n---\nRun /proj/.lola/modules/example/bin/x\n"))
 		Expect(ins[1].Path).To(Equal(".claude/skills/review/SKILL.md"))
@@ -105,7 +105,7 @@ var _ = Describe("claude-code", func() {
 
 	It("delivers rules verbatim to .claude/rules/lola/<module>/, at project and user scope", func() {
 		m := &module.Module{Name: "example", Rules: []module.Rule{{Name: "style", Body: "Keep ${PLUGIN_ROOT} as written.\n"}}}
-		want := []plan.Intent{{Target: "claude-code", Kind: "rule", Op: plan.OpWriteFile, Path: ".claude/rules/lola/example/style.md",
+		want := []plan.Intent{{Target: "claude-code", Kind: "rule", Name: "style", Op: plan.OpWriteFile, Path: ".claude/rules/lola/example/style.md",
 			Data: []byte("Keep ${PLUGIN_ROOT} as written.\n"), Mode: 0o644}}
 		ins, notes, err := c.Plan(m, ctx)
 		Expect(err).NotTo(HaveOccurred())

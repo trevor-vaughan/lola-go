@@ -574,6 +574,57 @@ func (h *huhForms) Assistants(st AssistantStep) ([]string, error) {
 	return chosen, err
 }
 
+// Version asks which version to write for, a single select whose cursor starts on the preselected
+// option. With none preselected it starts on the first, and accessible mode takes no default.
+// Accessible mode prints the title, then the scope and note, then what Enter takes, above the
+// numbered options, and after the answer the label it took ("→ >=2.0"), as huh's line
+// prompts do not.
+func (h *huhForms) Version(st VersionStep) (int, error) {
+	opts := make([]huh.Option[int], 0, len(st.Options))
+	for i, o := range st.Options {
+		opts = append(opts, huh.NewOption(h.cut(o), i))
+	}
+	var about []string
+	if st.Scope != "" {
+		about = append(about, "for "+st.Scope)
+	}
+	if st.Note != "" {
+		about = append(about, st.Note)
+	}
+	desc := strings.Join(about, "; ")
+	title := "Write " + st.Target + " files for which version?"
+	if st.Again {
+		title = "Change versions — " + title
+	}
+	title = st.Step.title(0, title)
+	sel := huh.NewSelect[int]().Title(title).Description(desc).Options(opts...)
+	chosen := st.Preselect
+	if chosen >= 0 {
+		sel = sel.Value(&chosen)
+	}
+	fields := []huh.Field{sel}
+	if h.accessible {
+		enter := "no default"
+		switch {
+		case chosen >= 0 && st.Last:
+			enter = fmt.Sprintf("Enter = %d, your last answer", chosen+1)
+		case chosen >= 0:
+			enter = fmt.Sprintf("Enter = %d, %s", chosen+1, st.Why)
+		}
+		fields = []huh.Field{huh.NewNote().Title(h.cut(title)).Description(h.cut(desc)), sel.Title("Type a number (" + enter + ")")}
+	}
+	if err := h.run(st.Nav, fields...); err != nil {
+		return 0, err
+	}
+	if chosen < 0 {
+		chosen = sel.GetValue().(int)
+	}
+	if h.accessible && chosen < len(st.Labels) {
+		fmt.Fprintln(h.out, "→ "+h.cut(st.Labels[chosen]))
+	}
+	return chosen, nil
+}
+
 func (h *huhForms) Components(pg ComponentPage) ([]string, error) {
 	values := make([][]string, len(pg.Groups))
 	if err := h.run(pg.Nav, h.pageFields(pg, values)...); err != nil {
@@ -959,7 +1010,7 @@ const reviewBack = "back"
 
 // reviewLabels name the review menu's entries.
 var reviewLabels = map[string]string{ReviewApply: "Apply", ReviewScope: "Change scope", ReviewModules: "Change modules",
-	ReviewAssistants: "Change assistants", ReviewComponents: "Change components", ReviewQuit: "Quit", reviewBack: "Back to the review"}
+	ReviewAssistants: "Change assistants", ReviewVersions: "Change versions", ReviewComponents: "Change components", ReviewQuit: "Quit", reviewBack: "Back to the review"}
 
 // Review shows the summary and asks what to do with it. On a full terminal it is the
 // viewer's confirm mode: y applies, n cancels, q quits, Esc goes back to the last step, and c opens

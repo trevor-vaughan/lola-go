@@ -82,7 +82,7 @@ var _ = Describe("module/native-executable finding", func() {
 
 	It("hints at lola info of the path lola check was given, with its display flags", func() {
 		put("skills/demo/scripts/fmt", nativetest.ELF64())
-		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, []string{"--plain"})
+		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, nil, []string{"--plain"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(native(rep.Modules[0].Findings)).To(ConsistOf(
@@ -164,7 +164,7 @@ var _ = Describe("module/native-executable finding", func() {
 
 	It("is listed by Check under the module's findings", func() {
 		put("skills/demo/scripts/fmt", nativetest.ELF64())
-		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(native(rep.Modules[0].Findings)).To(HaveLen(1))

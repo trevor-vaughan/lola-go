@@ -124,7 +124,7 @@ var _ = Describe("last_used", func() {
 				_, _, err := e.CachedModules()
 				Expect(err).NotTo(HaveOccurred())
 			}),
-			step(func() { ok(e.Check(ctx, sc, tmp, []string{"kit"}, nil, nil)) }),
+			step(func() { ok(e.Check(ctx, sc, tmp, []string{"kit"}, nil, nil, nil)) }),
 			step(func() {
 				_, _, err := e.Status(ctx, sc, nil)
 				Expect(err).NotTo(HaveOccurred())

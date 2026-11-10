@@ -167,7 +167,7 @@ eras:
 	}
 	drop := func(key string) target.Finding {
 		return target.Finding{Severity: target.SeverityWarn, Target: "quill", Kind: "agent", Artifact: "a", Class: target.ClassDetail,
-			Code: "frontmatter-key-dropped", AuthorHint: true,
+			Code: "frontmatter-key-dropped", Key: key, AuthorHint: true,
 			Text: key + " dropped: lola writes hooks and MCP servers into a component only under consent, which quill's spec does not set up"}
 	}
 	texts := func(fs []target.Finding) []string {

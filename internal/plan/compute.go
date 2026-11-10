@@ -208,12 +208,12 @@ func expand(in Intent) (out []Intent, err error) {
 		if err != nil {
 			return err
 		}
-		out = append(out, Intent{Target: in.Target, Kind: in.Kind, Op: OpWriteFile, Path: path.Join(in.Path, p),
+		out = append(out, Intent{Target: in.Target, Kind: in.Kind, Name: in.Name, Op: OpWriteFile, Path: path.Join(in.Path, p),
 			Data: data, Mode: fsx.NormalizeMode(fi.Mode())})
 		return nil
 	})
 	for _, f := range in.Overlay {
-		out = append(out, Intent{Target: in.Target, Kind: in.Kind, Op: OpWriteFile, Path: path.Join(in.Path, f.Path), Data: f.Data, Mode: 0o644})
+		out = append(out, Intent{Target: in.Target, Kind: in.Kind, Name: in.Name, Op: OpWriteFile, Path: path.Join(in.Path, f.Path), Data: f.Data, Mode: 0o644})
 	}
 	return out, err
 }
@@ -412,6 +412,7 @@ func (p *planner) want(owner string, in Intent) error {
 	if err != nil {
 		return err
 	}
+	step.Name = in.Name
 
 	// Detect mode-only changes
 	desiredMode := fsx.NormalizeMode(in.Mode)
@@ -765,14 +766,15 @@ func (p *planner) arrayRemains(ref ledger.FileRef) (bool, error) {
 	return found, nil
 }
 
-// updateLedger records each change: the module keeps its artifacts and installed targets outside
-// the change's targets, and takes the change's entry, artifacts and targets on them (every
+// updateLedger records each change: the module keeps its artifacts, installed targets and their
+// eras outside the change's targets, and takes the change's entry, artifacts and targets on them (every
 // target it writes an artifact on among them, so the ledger loads again). A module
 // left installed on no target leaves the ledger.
 func (p *planner) updateLedger(l *ledger.Ledger, created map[ledger.FileRef]bool) {
 	for _, c := range p.req.Changes {
 		var kept []ledger.Artifact
 		var keptTargets []string
+		var keptEras map[string]string
 		old := l.Modules[c.Name]
 		if old != nil {
 			for _, a := range old.Artifacts {
@@ -781,6 +783,14 @@ func (p *planner) updateLedger(l *ledger.Ledger, created map[ledger.FileRef]bool
 				}
 			}
 			keptTargets = slices.DeleteFunc(old.InstalledTargets(), func(t string) bool { return slices.Contains(c.Targets, t) })
+			for _, t := range keptTargets {
+				if since, ok := old.Eras[t]; ok {
+					if keptEras == nil {
+						keptEras = map[string]string{}
+					}
+					keptEras[t] = since
+				}
+			}
 		}
 		all := append(kept, p.desired[c.Name]...)
 		switch {
@@ -793,9 +803,13 @@ func (p *planner) updateLedger(l *ledger.Ledger, created map[ledger.FileRef]bool
 			}
 			slices.Sort(e.Targets)
 			e.Targets = slices.Compact(e.Targets)
+			if len(keptEras) > 0 {
+				maps.Copy(keptEras, c.Entry.Eras)
+				e.Eras = keptEras
+			}
 			l.Modules[c.Name] = &e
 		case len(kept) > 0 || len(keptTargets) > 0:
-			old.Artifacts, old.Targets = kept, keptTargets
+			old.Artifacts, old.Targets, old.Eras = kept, keptTargets, keptEras
 		default:
 			delete(l.Modules, c.Name)
 		}

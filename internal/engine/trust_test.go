@@ -244,8 +244,8 @@ var _ = Describe("Engine and the trust record", func() {
 		before := loadManifest()
 		refused := func(err error, args, why string) {
 			GinkgoHelper()
-			Expect(err).To(MatchError("project.yml's top-level targets " + why))
-			Expect(errs.Hints(err)).To(Equal([]string{"review and apply them: lola sync --project", "or name the assistants: lola install --project " + args + " -t <id>"}),
+			Expect(err).To(MatchError("project.yml's top-level targets [claude-code, opencode] " + why))
+			Expect(errs.Hints(err)).To(Equal([]string{"review and apply them: lola sync --project", "or name the assistants: lola install --project " + args + " -t claude-code,opencode"}),
 				"never a retry that refuses again")
 			Expect(loadManifest()).To(Equal(before))
 			Expect(filepath.Join(proj, ".opencode")).NotTo(BeAnExistingFile())
@@ -256,7 +256,9 @@ var _ = Describe("Engine and the trust record", func() {
 		e.Getwd = func() (string, error) { return tmp, nil }
 		err := install(engine.Options{}, other)
 		Expect(errs.Hints(err)).To(Equal([]string{"review and apply them: lola sync -C " + proj,
-			"or name the assistants: lola install -C " + proj + " " + other + " -t <id>"}))
+			"or name the assistants, for opencode >=2.0: lola install -C " + proj + " " + other + " -t claude-code,opencode@2.0",
+			"or name the assistants, for opencode >=1.0 <2.0: lola install -C " + proj + " " + other + " -t claude-code,opencode@1.0"}),
+			"another directory declaring no opencode version: naming the assistants alone would be refused for it")
 		e.Getwd = func() (string, error) { return proj, nil }
 		Expect(install(engine.Options{Targets: []string{"claude-code"}}, other)).To(Succeed(), "-t names the assistants")
 		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).To(BeARegularFile())
@@ -276,9 +278,9 @@ var _ = Describe("Engine and the trust record", func() {
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).NotTo(HaveOccurred(), "nothing installs to them: a sync off a terminal asks nothing")
 		err = install(engine.Options{}, other)
-		Expect(err).To(MatchError("project.yml's top-level targets have not been trusted on this machine"))
+		Expect(err).To(MatchError("project.yml's top-level targets [claude-code] have not been trusted on this machine"))
 		Expect(errs.Hints(err)).To(Equal([]string{"trust them: lola sync --project --trust=entries",
-			"or name the assistants: lola install --project " + other + " -t <id>"}), "a plain sync would not review them")
+			"or name the assistants: lola install --project " + other + " -t claude-code"}), "a plain sync would not review them")
 		_, err = e.Sync(ctx, engine.SyncRequest{Scope: sc, Options: engine.Options{Trust: engine.TrustEntries}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(record().Targets).To(Equal([]string{"claude-code"}), "--trust=entries records them")
@@ -327,10 +329,10 @@ var _ = Describe("Engine and the trust record", func() {
 		before, inCache := loadManifest(), cached()
 
 		_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Ref: "v2"}}, engine.Options{})
-		Expect(err).To(MatchError("project.yml's top-level targets changed since you last trusted them"))
-		Expect(errs.Hints(err)[1]).To(Equal("or name the assistants: lola install --project " + url + " --ref v2 -t <id>"))
+		Expect(err).To(MatchError("project.yml's top-level targets [claude-code, opencode] changed since you last trusted them"))
+		Expect(errs.Hints(err)[1]).To(Equal("or name the assistants: lola install --project " + url + " --ref v2 -t claude-code,opencode"))
 		_, err = e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: url, Path: "sub"}}, engine.Options{})
-		Expect(errs.Hints(err)[1]).To(ContainSubstring(url + " --path sub -t <id>"))
+		Expect(errs.Hints(err)[1]).To(ContainSubstring(url + " --path sub -t claude-code,opencode"))
 		Expect(requests.Load()).To(BeZero(), "the git server saw no request")
 		Expect(cached()).To(Equal(inCache), "the cache is unchanged")
 		Expect(loadManifest()).To(Equal(before))

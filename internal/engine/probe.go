@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -156,10 +157,17 @@ type probeRun struct {
 	ctx      context.Context
 	versions map[string]string
 	findings []target.Finding
-	exposed  map[string]string      // settingsExposed by project-relative file, once known
-	declares map[string]declaration // Engine.declared by Scope.Key, once read
-	eras     map[string]bool        // scope key and target id whose era findings are recorded
+	exposed  map[string]string            // settingsExposed by project-relative file, once known
+	declares map[string]declaration       // Engine.declared by Scope.Key, once read
+	eras     map[string]bool              // scope key and target id whose era findings are recorded
+	chosen   map[string]map[string]string // by Scope.Key, the versions an install is given, which declared reads in place of the scope's
+	// mismatches are the version/era-mismatch findings, by Scope.Key, apart from findings: a run
+	// reports a scope's only when it writes files there (mismatched).
+	mismatches map[string][]target.Finding
 }
+
+// mismatched is the version/era-mismatch findings recorded for sc.
+func (r *probeRun) mismatched(sc Scope) []target.Finding { return r.mismatches[sc.Key()] }
 
 // declaration is what Engine.declared returned for a scope.
 type declaration struct {
@@ -188,14 +196,22 @@ func (r *probeRun) settings(dir, abs string) (why, rel string) {
 
 func (e *Engine) newProbeRun(ctx context.Context) *probeRun {
 	return &probeRun{e: e, ctx: ctx, versions: map[string]string{}, exposed: map[string]string{}, declares: map[string]declaration{},
-		eras: map[string]bool{}}
+		eras: map[string]bool{}, chosen: map[string]map[string]string{}, mismatches: map[string][]target.Finding{}}
 }
 
-// declared is Engine.declared for sc, read once per run.
+// declared is Engine.declared for sc, read once per run, with the versions the run is given for
+// sc (chosen) in place of those it declares.
 func (r *probeRun) declared(sc Scope) (map[string]string, string, error) {
 	d, ok := r.declares[sc.Key()]
 	if !ok {
 		d.versions, d.file, d.err = r.e.declared(sc)
+		if chosen := r.chosen[sc.Key()]; d.err == nil && len(chosen) > 0 {
+			d.versions = maps.Clone(d.versions)
+			if d.versions == nil {
+				d.versions = map[string]string{}
+			}
+			maps.Copy(d.versions, chosen)
+		}
 		r.declares[sc.Key()] = d
 	}
 	return d.versions, d.file, d.err
@@ -221,7 +237,11 @@ func (r *probeRun) version(sc Scope, t target.Target) string {
 	}
 	if key := sc.Key() + "\x00" + id; !r.eras[key] {
 		r.eras[key] = true
-		if f := r.eraFinding(sc, id, v); f != nil {
+		switch f := r.eraFinding(sc, id, v); {
+		case f == nil:
+		case f.Code == "version/era-mismatch":
+			r.mismatches[sc.Key()] = append(r.mismatches[sc.Key()], *f)
+		default:
 			r.findings = append(r.findings, *f)
 		}
 	}
@@ -230,8 +250,9 @@ func (r *probeRun) version(sc Scope, t target.Target) string {
 
 // eraFinding is the warning for id at sc when the version sc declares lies below every era lola
 // knows, or when the installed version probed is of another era than the one lola writes for:
-// the declared one's, or the newest when sc declares none. nil when they agree, or when sc's
-// declaration cannot be read (whoever resolves the target refuses that).
+// the declared one's, or the newest when sc declares none. nil when they agree, when the run
+// records a version it is given for id (chosen), or when sc's declaration cannot be read (whoever
+// resolves the target refuses that).
 func (r *probeRun) eraFinding(sc Scope, id, probed string) *target.Finding {
 	tv, file, err := r.declared(sc)
 	if err != nil {
@@ -258,10 +279,16 @@ func (r *probeRun) eraFinding(sc Scope, id, probed string) *target.Finding {
 			fmt.Sprintf("upgrade %s to %s or later, then set target_versions.%s to match in %s", id, since, id, file))
 	case installed == "" || installed == since:
 		return nil
+	case sc.Kind == target.Project && !r.e.FoundHere(sc):
+		// This machine's assistant says nothing of the one reading a project in another directory.
+		return nil
+	case r.chosen[sc.Key()][id] != "":
+		// The run records the version it was given; its notice says which one is installed here.
+		return nil
 	case has:
 		return warn("version/era-mismatch",
 			fmt.Sprintf("%s declares %s %s, but %s %s is installed; lola writes for %s", file, id, shownDecl, id, shownProbed, shownDecl),
-			fmt.Sprintf("set target_versions.%s to %q in %s, or install %s %s", id, shownProbed, file, id, shownDecl))
+			fmt.Sprintf("%s; or install a release of %s %s", r.e.versionsEdit(sc, file, id, probed), id, r.e.eraOf(id, decl).label))
 	}
 	return warn("version/undeclared",
 		fmt.Sprintf("%s %s is installed, but %s declares no version for it, so lola writes for %s %s", id, shownProbed, file, id, since),

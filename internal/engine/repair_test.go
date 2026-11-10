@@ -113,7 +113,7 @@ var _ = Describe("Repair", func() {
 	It("forgets a module left on no target lola knows, and keeps the targets of an entry from before lock.json recorded them", func() {
 		edit(func(l *ledger.Ledger) {
 			ghost := *l.Modules["kit"]
-			ghost.Targets, ghost.Artifacts = []string{"bogus"}, []ledger.Artifact{{Target: "bogus", Kind: "file", Path: "x.md"}}
+			ghost.Targets, ghost.Artifacts, ghost.Eras = []string{"bogus"}, []ledger.Artifact{{Target: "bogus", Kind: "file", Path: "x.md"}}, map[string]string{"bogus": "1.0"}
 			l.Modules["ghost"] = &ghost
 			k := l.Modules["kit"]
 			k.Targets = nil

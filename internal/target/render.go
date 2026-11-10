@@ -42,16 +42,16 @@ func ExpandMap(in map[string]string, ctx PlanContext) map[string]string {
 	return out
 }
 
-// WriteText is the WriteFile intent of a text artifact, with ${…} expanded.
-func WriteText(id, kind, path, body string, ctx PlanContext) plan.Intent {
-	return plan.Intent{Target: id, Kind: kind, Op: plan.OpWriteFile, Path: path, Data: []byte(Expand(body, ctx)), Mode: 0o644}
+// WriteText is the WriteFile intent of a text artifact of component name, with ${…} expanded.
+func WriteText(id, kind, name, path, body string, ctx PlanContext) plan.Intent {
+	return plan.Intent{Target: id, Kind: kind, Name: name, Op: plan.OpWriteFile, Path: path, Data: []byte(Expand(body, ctx)), Mode: 0o644}
 }
 
 // SkillTree copies a skill's directory to dst, except SKILL.md, which each target writes
 // itself (possibly rewritten), and the sources of its templated support files, which it writes
 // rendered in their place.
 func SkillTree(id string, s module.Skill, ctx PlanContext, dst string) plan.Intent {
-	in := plan.Intent{Target: id, Kind: "skill", Op: plan.OpCopyTree, Src: filepath.Join(ctx.ContentDir, s.Dir), Path: dst,
+	in := plan.Intent{Target: id, Kind: "skill", Name: s.Name, Op: plan.OpCopyTree, Src: filepath.Join(ctx.ContentDir, s.Dir), Path: dst,
 		Exclude: append(slices.Clone(s.Exclude), "SKILL.md")}
 	for _, f := range s.Files {
 		in.Exclude = append(in.Exclude, f.Source)
@@ -63,7 +63,7 @@ func SkillTree(id string, s module.Skill, ctx PlanContext, dst string) plan.Inte
 // SidecarTree copies a command's sidecar directory to dst under consent, writing each templated
 // sidecar rendered in place of its source.
 func SidecarTree(id string, cmd module.Command, ctx PlanContext, dst string, consent *plan.HookConsent) plan.Intent {
-	in := plan.Intent{Target: id, Kind: "command", Op: plan.OpCopyTree, Src: filepath.Join(ctx.ContentDir, cmd.SidecarDir), Path: dst, Consent: consent}
+	in := plan.Intent{Target: id, Kind: "command", Name: cmd.Name, Op: plan.OpCopyTree, Src: filepath.Join(ctx.ContentDir, cmd.SidecarDir), Path: dst, Consent: consent}
 	for _, sc := range cmd.Sidecars {
 		if sc.Source == "" {
 			continue

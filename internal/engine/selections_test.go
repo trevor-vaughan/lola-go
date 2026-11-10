@@ -124,7 +124,7 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		rows, _, err := e.Status(ctx, sc, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rows[0].Skipped).To(Equal(want))
-		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Skipped).To(Equal(want))
 	})
@@ -169,17 +169,17 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 
 	It("check reports nothing lost for a skipped component", func() {
 		writeTree(src, map[string]string{"agents/bare.md": "No description.\n"})
-		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).To(ContainElement(HaveField("Artifact", "bare")))
 
 		selections("projects:\n  " + proj + ":\n    example:\n      skip: [agent/bare]\n")
-		rep, err = e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
+		rep, err = e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).NotTo(ContainElement(HaveField("Artifact", "bare")))
 		Expect(rep.Modules[0].Skipped).To(Equal([]string{"agent/bare"}))
 
-		rep, err = e.Check(ctx, engine.Scope{Kind: target.User}, proj, []string{src}, []string{"claude-code"}, nil)
+		rep, err = e.Check(ctx, engine.Scope{Kind: target.User}, proj, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Skipped).To(BeEmpty(), "the project's section does not apply at user scope")
 	})

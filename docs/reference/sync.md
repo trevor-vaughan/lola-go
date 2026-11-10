@@ -68,7 +68,7 @@ Refusals:
 - No manifest: `no project.yml in <dir>`. No scope found: as `lola install`'s, with hints for
   `--project`, `--user` and `--scope both`.
 
-JSON: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `equivalent_commands`
+JSON: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `rewrites`, `equivalent_commands`
 and the plan's `modules`, `steps`, `findings`, `notices` and `scripts`; with `--scope both`, `{"scopes":
 [...]}` ([Output contract](../usage.md#output-contract)). When sync refuses because it needs your trust or
 your yes to removals, its error line adds `trust`, `removals` and `notices` (`[]` unless an entry

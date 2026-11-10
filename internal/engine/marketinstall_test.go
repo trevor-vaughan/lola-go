@@ -368,7 +368,7 @@ var _ = Describe("installing from a marketplace", func() {
 		_, err = e.AddEntry(ctx, "@acme/renamed", "", "", []string{"--plain"})
 		Expect(err).To(MatchError(why))
 		Expect(errs.Hints(err)).To(BeEmpty())
-		_, err = e.Check(ctx, sc, proj, []string{"@acme/renamed"}, nil, nil)
+		_, err = e.Check(ctx, sc, proj, []string{"@acme/renamed"}, nil, nil, nil)
 		Expect(errs.Hints(err)).To(BeEmpty())
 		Expect(cached()).To(BeEmpty())
 	})
@@ -989,8 +989,8 @@ var _ = Describe("installing from a marketplace", func() {
 			"  - name: formatter\n    source: '@acme/formatter'\n  - name: kit\n    source: '@acme/kit'\n"})
 		for _, arg := range []string{"@acme/formatter", "@acme/kit"} {
 			_, err := e.Install(ctx, sc, proj, []engine.InstallRequest{{Arg: arg}}, engine.Options{Display: []string{"--json"}})
-			Expect(err).To(MatchError("project.yml's top-level targets have not been trusted on this machine"), arg)
-			Expect(errs.Hints(err)).To(HaveExactElements(HaveSuffix("-t <id>")), arg)
+			Expect(err).To(MatchError("project.yml's top-level targets [claude-code] have not been trusted on this machine"), arg)
+			Expect(errs.Hints(err)).To(HaveExactElements(HaveSuffix(" -t claude-code")), arg)
 		}
 		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc})
 		Expect(err).To(MatchError(ContainSubstring("records 2 marketplace addresses as sources")), "the sync the hint would name refuses")
@@ -1023,14 +1023,14 @@ var _ = Describe("installing from a marketplace", func() {
 	})
 
 	It("checks and caches an address as install fetches it", func() {
-		rep, err := e.Check(ctx, sc, proj, []string{"@acme/secdevai"}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{"@acme/secdevai"}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(rep.Modules[0].Name).To(Equal("secdevai"))
 		Expect(cached()).To(BeEmpty(), "check caches nothing")
-		_, err = e.Check(ctx, sc, proj, []string{"@acme/forked"}, nil, nil)
+		_, err = e.Check(ctx, sc, proj, []string{"@acme/forked"}, nil, nil, nil)
 		Expect(err).To(MatchError(ContainSubstring("which main does not reach")))
-		_, err = e.Check(ctx, sc, proj, []string{"@acme/renamed"}, nil, nil)
+		_, err = e.Check(ctx, sc, proj, []string{"@acme/renamed"}, nil, nil, nil)
 		Expect(err).To(MatchError(ContainSubstring("the module at its source names itself other")), "check refuses what install refuses")
 
 		v, err := e.AddEntry(ctx, "@acme/secdevai", "", "", nil)

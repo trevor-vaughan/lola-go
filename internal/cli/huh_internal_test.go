@@ -158,6 +158,43 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(0))
 	})
+	It("asks which version to write for as a numbered list, the title, then the scope and note, Enter taking the preselected one", func() {
+		st := VersionStep{Target: "opencode", Options: []string{">=2.0 — hex", ">=1.0 <2.0 — names"}, Labels: []string{">=2.0", ">=1.0 <2.0"},
+			Preselect: 1, Why: "matches installed 1.4.0", Note: "installed here: 1.4.0", Scope: "project (/p)", Step: Steps{At: 2, Of: 3}}
+		got, err := accessible(&out, "").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(1))
+		Expect(out.String()).To(ContainSubstring("Step 2 of 3 — Write opencode files for which version?\nfor project (/p); installed here: 1.4.0\n"))
+		Expect(out.String()).To(ContainSubstring("\nType a number (Enter = 2, matches installed 1.4.0) \n1. >=2.0 — hex\n2. >=1.0 <2.0 — names\n"))
+		Expect(out.String()).To(HaveSuffix("\n→ >=1.0 <2.0\n"), "Enter took the preselected answer, echoed as a typed one is")
+
+		out.Reset()
+		got, err = accessible(&out, "1").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(0))
+		Expect(out.String()).To(HaveSuffix("\n→ >=2.0\n"))
+
+		out.Reset()
+		st.Last = true
+		_, err = accessible(&out, "").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(ContainSubstring("Type a number (Enter = 2, your last answer) \n"))
+
+		out.Reset()
+		st.Preselect, st.Scope, st.Note = -1, "", ""
+		_, err = accessible(&out, "").Version(st)
+		Expect(err).To(MatchError(ErrAborted), "nothing preselected: Enter answers nothing, and end of input cancels")
+		Expect(out.String()).NotTo(ContainSubstring("for project"))
+		Expect(out.String()).To(ContainSubstring("Type a number (no default) \n"))
+	})
+
+	It("titles a version question asked again from the review as Change versions", func() {
+		st := VersionStep{Target: "opencode", Options: []string{">=2.0", ">=1.0 <2.0"}, Preselect: 0, Again: true, Last: true}
+		_, err := accessible(&out, "").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(HavePrefix("Change versions — Write opencode files for which version?\n"))
+	})
+
 	It("asks sync's trust question with Cancel under the cursor, and Choose… as numbered multi-selects with nothing preselected", func() {
 		st := TrustStep{Changes: 3, Groups: []TrustGroup{
 			{Title: "Changed (1)", Options: []TrustOption{{Module: "kit", Label: "~ kit rules (none) → false"}}},

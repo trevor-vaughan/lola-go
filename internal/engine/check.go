@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -50,8 +51,10 @@ type CheckReport struct {
 // nothing and changes no state: a source is staged in a temporary directory, never added to
 // the cache. Components that selections.yaml excludes at sc are reported as skipped, not
 // checked, since sync would not install them. A marketplace address is checked as install
-// would fetch it; display is the run's output flags, which its hints keep.
-func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, display []string) (*CheckReport, error) {
+// would fetch it; versions are the versions -t gives targets (id to version, as
+// Options.Versions), which each is checked for in place of the one sc declares; display is the
+// run's output flags, which its hints keep.
+func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids []string, versions map[string]string, display []string) (*CheckReport, error) {
 	given := ids
 	var ts []target.Target
 	for _, id := range ids {
@@ -103,8 +106,8 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 	if len(given) == 0 {
 		ts = e.checkedTargets(sc, man, layers, want)
 	}
-	// Each target is checked for the era sc declares. A project.yml or config.yaml that cannot be
-	// read declares nothing; at project scope the finding above says so.
+	// Each target is checked for the era -t gives it, else the one sc declares. A project.yml or
+	// config.yaml that cannot be read declares nothing; at project scope the finding above says so.
 	tv, _, err := probes.declared(sc)
 	if err != nil {
 		unreadable := man == nil
@@ -116,18 +119,23 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 			return nil, err
 		}
 	}
+	tv = maps.Clone(tv)
+	if tv == nil {
+		tv = map[string]string{}
+	}
+	maps.Copy(tv, versions)
 	for i, t := range ts {
 		ts[i] = e.atEra(tv, t)
 	}
 	profiles := e.visibleOnce(sc)
 	for _, arg := range args {
-		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, given, scopeNames(man, layers, agentsTarget), probes, templates, want, profiles, display)
+		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, given, tv, scopeNames(man, layers, agentsTarget), probes, templates, want, profiles, display)
 		if err != nil {
 			return nil, err
 		}
 		rep.Modules = append(rep.Modules, cm)
 	}
-	rep.Findings = append(rep.Findings, probes.findings...)
+	rep.Findings = append(append(rep.Findings, probes.findings...), probes.mismatched(sc)...)
 	if failed := e.keyFailure(sc); failed != nil {
 		rep.Findings = append(rep.Findings, target.Finding{Severity: target.SeverityWarn, Kind: "module", Code: "picks-keyed-by-path",
 			Text: keyedByPath(failed), Hint: strings.Join(errs.Hints(failed), "; ")})
@@ -159,7 +167,7 @@ func scopeNames(man *manifest.Manifest, layers []Layer, id string) bool {
 		slices.ContainsFunc(layers, func(l Layer) bool { return l.read != nil && slices.Contains(l.read.Targets, id) })
 }
 
-func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, given []string, scopeAgents bool, probes *probeRun,
+func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *config.Selections, ts []target.Target, given []string, tv map[string]string, scopeAgents bool, probes *probeRun,
 	templates *templateRun, want []Wanted, profiles func() ([]profile.Info, error), display []string) (cm CheckedModule, err error) {
 	full, contentDir, cleanup, err := e.loadForCheck(ctx, cwd, arg, display)
 	if err != nil {
@@ -211,6 +219,19 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 		cm.Notices = append(cm.Notices, e.mentionNotice(sc, m.Name, []string{arg}, nil, gaps, arg, Options{Targets: given, Display: display})...)
 	}
 	vars := resolvedVars(m, ment)
+	// keep is the run that writes the checked module for target id's version since at sc: for a
+	// module sc installs from arg, the edit of sc's target_versions and the sync that applies it;
+	// for any other, which a sync would not touch, the install of arg for that version ("" when
+	// arg cannot be printed as it is).
+	keep := func(id, since string) string {
+		if _, file, err := probes.declared(sc); err == nil && entry != nil {
+			return e.versionsEdit(sc, file, id, since)
+		}
+		if entry != nil || untrusted.Text(arg, untrusted.MaxName) != arg {
+			return ""
+		}
+		return errs.ShellJoin(slices.Concat([]string{"lola", "install", arg}, e.RootArgs(sc), []string{"-t", id + "@" + since}, display))
+	}
 	var shared map[string]bool
 	// checkTarget is t's findings of the module: its template refusals, then its plan's.
 	checkTarget := func(t target.Target) ([]target.Finding, targetPlan, error) {
@@ -232,6 +253,8 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 		if err != nil {
 			return nil, targetPlan{}, fmt.Errorf("%s for %s: %w", m.Name, t.ID(), err)
 		}
+		// A value another era keeps is worded as install words it, its hint what keeps it.
+		e.keptByEra(tv[t.ID()], rendered, pctx, finds, keep)
 		for i := range finds {
 			finds[i].Module = m.Name
 		}

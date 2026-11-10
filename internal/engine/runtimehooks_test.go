@@ -88,7 +88,7 @@ var _ = Describe("runtime hooks", func() {
 		return res.Result, nil
 	}
 	check := func() []target.Finding {
-		rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		return rep.Modules[0].Findings
 	}
@@ -667,7 +667,7 @@ var _ = Describe("runtime hooks", func() {
 	Describe("the git-ignore check of a target with its own settings file", func() {
 		const own = ".quill/settings.json"
 		quillCodes := func() []string {
-			rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"quill"}, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"quill"}, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			var codes []string
 			for _, f := range rep.Modules[0].Findings {

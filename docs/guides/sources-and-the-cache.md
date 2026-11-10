@@ -245,9 +245,15 @@ lola refuses to act on an untrusted entry as written:
   `or remove it: lola uninstall --project <name>`;
 - an install, by name or by source, that would take its assistants from top-level `targets` you
   have not trusted (no `-t`, and no entry with `targets` of its own) refuses before fetching
-  anything with `project.yml's top-level targets changed since you last trusted them`, hinting
-  `lola sync` or your own install with `-t <id>` added (your `--ref` and `--path` kept); the
-  install pickers ask for the assistants instead and never preselect those targets;
+  anything with `project.yml's top-level targets [claude-code, opencode] changed since you last trusted them` (`are not
+  trusted yet` when the record never held them, as after installs that named their assistants with
+  `-t` into a `project.yml` written by hand), hinting
+  `lola sync` or your own install with `-t <id>` added (your `--ref` and `--path` kept). When no
+  entry installs to them and nothing else in the file needs your trust, a plain sync does not ask
+  about them, so the hint is
+  `lola sync --project --trust=entries`, and the refusal first shows what that trusts, as the sync's
+  trust diff does (`+ targets       [opencode]`, `+ target_versions opencode "1.0"`; `--json` adds
+  `trust`); the install pickers ask for the assistants instead and never preselect those targets;
 - the install pickers leave such modules out, with one notice per project:
   `2 modules in project.yml changed since you last trusted them: a, b → lola sync --project` (`are new or
   changed since you last trusted the file` when a pull added one). Add a

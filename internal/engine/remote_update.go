@@ -250,7 +250,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			u.led = led
 		}
 		for _, n := range notes {
-			if !slices.Contains(res.Notices, n) {
+			if !slices.ContainsFunc(res.Notices, n.Same) {
 				res.Notices = append(res.Notices, n)
 			}
 		}
@@ -703,6 +703,9 @@ func (e *Engine) untrustedModules(sc Scope) ([]string, TrustKinds, error) {
 	}
 	if rep.Targets != nil {
 		out = append(out, "project.yml's targets")
+	}
+	if rep.TargetVersions != nil {
+		out = append(out, "project.yml's target_versions")
 	}
 	for _, name := range slices.Sorted(maps.Keys(rep.ProfileTargets)) {
 		out = append(out, projectProfileFile(partKey(name))+"'s "+rep.ProfileTargets[name].Field) // targets, or a bundle's members (bundle)

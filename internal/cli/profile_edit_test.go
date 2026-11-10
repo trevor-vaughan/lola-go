@@ -1132,7 +1132,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(os.ReadFile(projectYml)).To(Equal(before), "the shared file is untouched")
 
 				sp = &scripted{where: []int{0}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r = lolaP(sp, "profile", "--edit", "kit", "-C", proj, "-t", "claude-code,opencode")
+				r = lolaP(sp, "profile", "--edit", "kit", "-C", proj, "-t", "claude-code,opencode@2.0")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:project.yml › kit", "review"}))
 				Expect(sp.whereSteps[0].Options).To(Equal(options))

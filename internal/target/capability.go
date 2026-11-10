@@ -109,7 +109,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	var drop []string
 	for _, k := range slices.Sorted(maps.Keys(doc.Frontmatter)) {
 		f := at
-		f.Severity, f.Code = SeverityWarn, "frontmatter-key-dropped"
+		f.Severity, f.Code, f.Key = SeverityWarn, "frontmatter-key-dropped", k
 		v, known := spec.key(k)
 		switch {
 		case known && v.Guard != nil && (v.Drop != "" || !v.accepts(doc.Frontmatter[k])):

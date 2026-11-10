@@ -33,9 +33,9 @@ func claudeComponent(env Env, kind, name string, d module.Doc, prepare func(modu
 	return text, consent, append(finds, f...), ok, err
 }
 
-// claudeFile is the intent that writes a component's rendered text, under its consent.
-func claudeFile(id, kind, path, text string, consent *plan.HookConsent) plan.Intent {
-	return plan.Intent{Target: id, Kind: kind, Op: plan.OpWriteFile, Path: path, Data: []byte(text), Mode: 0o644, Consent: consent}
+// claudeFile is the intent that writes component name's rendered text, under its consent.
+func claudeFile(id, kind, name, path, text string, consent *plan.HookConsent) plan.Intent {
+	return plan.Intent{Target: id, Kind: kind, Name: name, Op: plan.OpWriteFile, Path: path, Data: []byte(text), Mode: 0o644, Consent: consent}
 }
 
 // claudeHooks renders m's runtime hook sets into the settings file at env.Entry.File.

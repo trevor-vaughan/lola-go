@@ -49,7 +49,7 @@ func (a *app) paging(cmd *cobra.Command) paging {
 		w := cmd.ErrOrStderr()
 		fmt.Fprintln(w, style{color: a.color(w)}.warn(untrusted.CleanErr(err).Error()+"; printing without the viewer"))
 		for _, h := range errs.Hints(err) {
-			fmt.Fprintf(w, "  hint: %s\n", h)
+			fmt.Fprintln(w, hintLine("  ", h, a.style(cmd).width))
 		}
 		return paging{}
 	}
@@ -86,7 +86,7 @@ func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, pr
 		return
 	}
 	out := cmd.OutOrStdout()
-	full := style{color: a.color(out), paged: true, verbose: s.verbose, asking: s.asking}
+	full := style{color: a.color(out), paged: true, verbose: s.verbose, asking: s.asking, width: s.width}
 	var buf bytes.Buffer
 	print(&buf, full)
 	warn := func(problem string) {

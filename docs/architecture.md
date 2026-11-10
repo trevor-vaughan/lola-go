@@ -155,6 +155,58 @@ Maintainer notes on Templates. It has its own page: [Templates](architecture/tem
   project scope, `config.yaml`'s at user scope; `Manifest.TargetVersions`, `Config.TargetVersions`)
   and refuses an id the registry lacks. Each plan binds the declared era per scope
   (`Engine.atEra`), so the `target.Target` interface and `PlanContext` carry no version.
+- **Version recording.** `engine/versions.go` decides what an install records. `VersionChoices`
+  lists the questions: targets with more than one era, with era labels newest first, the probed
+  version, the version the scope declares (asked about only by the review's "Change versions"),
+  and per era the values of the modules installed it drops that another era keeps
+  (`eraDrops`); the declared era, else the installed one at a standard scope (the user scope, or
+  the project `FoundHere` reports), is preselected. `WrittenFor` is the era the modules installed
+  in a scope (but the run's) are written for, per target: the install flow asks no question and
+  offers no "Change versions" for it (`installFlow.heldEras`). `InstallAll` refuses an install
+  whose era differs from theirs (`staleEras`, `Engine.eraConflict`), hinting the run for their era
+  and the run with `--force`, under which it rewrites them in the same run (`eraSynced`). The
+  review's `versionLines` say per destination which era is written for and why. `DefaultVersions` is the
+  no-terminal answer (installed version at a standard scope, nothing when not installed) and the
+  coached refusal at any other directory. `Records` keeps the versions a scope does not declare
+  already, and the plan writes them to the manifest (with the files, in the install's
+  transaction) or to `config.yaml` (after the files, `scopePlan.saveVersions`), reporting
+  `recorded ...` or `changed ...` notices (`would record ...` under `-n`), class detail, which
+  name the era written for and the installed version (`Engine.versionNotices`); the same function
+  says when an assistant with eras is not installed at a standard scope, so nothing is recorded.
+  `Engine.eraChoices` warns (`version/chosen-era`) of a version recorded at a standard scope for
+  another era than the installed assistant's, after `--strict` judged the plan's findings;
+  `--strict` refuses a scope's `version/era-mismatch` when the install writes files there.
+  `InstallResult.TargetVersions` lists the recordings (their source from
+  `ScopeInstall.Sources`), and `SyncResult.Rewrites` the era rewrites (`Engine.eraRewrites`).
+  The CLI (`flow.go`) takes
+  `-t <id>@<version>`, else asks, else calls `DefaultVersions`; `-y` and `--force` skip the
+  question. The probe's `version/era-mismatch` and `version/undeclared` are suppressed outside a
+  standard scope, and `version/era-mismatch` in the run that records a version it is given
+  (`probeRun.chosen`); the probe keeps that one per scope (`probeRun.mismatched`), which install
+  and sync report only for a scope they write files in, and lola check always. A frontmatter value the era written for drops and another era keeps
+  (`target.Finding.Key`, admitted again through that era's capabilities by `Engine.keptBy`) gets
+  `KeptSince`, a text naming the value and the era written for, and a first hint from
+  `Options.EraRun(scope, id, since)`: the install's run at that scope with that era's `-t`, or the
+  review's "Change versions"; without one (sync, update, lola check), the edit of
+  `target_versions` and the sync that applies it (`Engine.versionsEdit`). `Engine.keptByEra` is
+  the one formatter, for every command that plans; such a finding prints in full, never in a
+  module's notice count, and has no keep-it hint where `version/chosen-era` warns of its target
+  (`Engine.warnsOfEra`). A `-C` or Other directory the run created is removed again, saying so
+  (`installFlow.removeAbandoned`; `removeCreated` removes only empty directories, never a file or
+  symlink in one's place: it rmdirs), unless the install applied there. A missing `-C` directory
+  is refused before it is made when the run would not ask a version it needs
+  (`installFlow.ensureRoot`). A hint naming an assistant with eras for a directory that declares
+  none names each era's version (`ensureAssistants`'s, `Engine.targetRuns`). `trust.View` holds
+  project.yml's `target_versions`, accepted with the top-level targets but reported on its own
+  (`trust.Report.TargetVersions`, `TrustReport.topChanged` for what installs to them). The refusal's hints, one
+  per era (`Engine.EraHints`), rebuild the run (`installFlow.versionRun`) with every assistant it
+  installs for in one `-t`.
+- **Ledger eras.** `ledger.Entry.Eras` maps each target a module renders for to the `since` of the
+  era it was written for (`"eras": {"opencode": "1.0"}` in `lock.json`); an entry without a
+  target's era means its newest era. The sync plan (`templates.go`) compares it with the era the
+  scope now declares and, when they differ, re-renders the module and says
+  `<module>: rewrote <id> files from <old label> to <new label>`, or `would rewrite` in a dry
+  run.
 - **`lola check`** (`engine.Check`) stages a source like `cache add` into a temporary directory
   and detects its format (or reads a cached module), runs every target's `Plan` and keeps only
   the findings.

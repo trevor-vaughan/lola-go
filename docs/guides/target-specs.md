@@ -121,7 +121,13 @@ The era lola renders for comes from the version the project or you declare for t
 `target_versions` (`.lola/project.yml` at project scope, `config.yaml` at user scope; see
 [Declaring assistant versions](../usage.md#declaring-assistant-versions)): the last era whose
 `since` is at or below it. With nothing declared, lola renders for the newest era. The installed
-version is never used to choose; it only adds findings when it falls in another era. A declared
+version is never used to choose by itself; it only adds findings when it falls in another era.
+`lola install` is the one command that can turn it into a declaration: for a target with more than
+one era and no declared version it asks which era to write for (preselecting the installed one),
+or takes `-t <id>@<version>`, and records the answer in `target_versions` ([Picking a version at
+install](../usage.md#picking-a-version-at-install)). Era labels in that question come from the
+spec's `since` values: `>=2.0` for the newest and `>=1.0 <2.0` (its since, then the next era's)
+for the others, each followed by ` — <summary>` when the era has one. A declared
 version below the first era selects the first, with a warning. To add support for a newer
 version, add an era with `extends: previous`; projects that declare an older version keep the
 earlier output.
@@ -129,6 +135,7 @@ earlier output.
 | Field | Meaning |
 |---|---|
 | `since` | The first version this era applies to. |
+| `summary` | Optional. What this era reads differently, in plain text of at most 80 characters, shown beside the era's label when `lola install` asks which version to write for. An era with `extends` keeps the previous era's summary unless it gives its own. |
 | `extends: previous` | Start from the era before and change only what differs. Not allowed on the first era. |
 | `remove` | With `extends`, delete from the previous era: `layout.<kind>`, `kinds.<kind>.keys.<key>` or `behaviors.<id>`. |
 | `vars` | Your own path variables, `{project: ..., user: ...}` each, for use in `layout`. |

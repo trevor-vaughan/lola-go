@@ -797,7 +797,7 @@ func withPending(rep, pending TrustReport) TrustReport {
 // accepted.
 func shownCovers(shown, rep TrustReport) bool {
 	in := func(have, want any) bool { return reflect.DeepEqual(have, want) }
-	if rep.Targets != nil && !in(shown.Targets, rep.Targets) {
+	if rep.Targets != nil && !in(shown.Targets, rep.Targets) || rep.TargetVersions != nil && !in(shown.TargetVersions, rep.TargetVersions) {
 		return false
 	}
 	for _, pt := range rep.ProfileTargets {
@@ -827,6 +827,9 @@ func trustItems(rep TrustReport) string {
 	}
 	if rep.Targets != nil {
 		items = append(items, "changes to the targets of project.yml")
+	}
+	if rep.TargetVersions != nil {
+		items = append(items, "changes to the target_versions of project.yml")
 	}
 	for _, pt := range rep.ProfileTargets {
 		what := "targets"

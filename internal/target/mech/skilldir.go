@@ -33,7 +33,7 @@ func skillDir(env Env, m *module.Module) ([]plan.Intent, []target.Finding, error
 			dst := env.Entry.Path + "/" + s.Name
 			tree := target.SkillTree(env.ID, s, env.Ctx, dst)
 			tree.Consent = consent
-			out = append(out, tree, claudeFile(env.ID, "skill", dst+"/SKILL.md", text, consent))
+			out = append(out, tree, claudeFile(env.ID, "skill", s.Name, dst+"/SKILL.md", text, consent))
 			continue
 		}
 		doc, f, ok := target.Admit(env.ID, env.Caps, env.Ctx, "skill", s.Name, s.Doc)
@@ -49,7 +49,7 @@ func skillDir(env Env, m *module.Module) ([]plan.Intent, []target.Finding, error
 		}
 		doc = withName(doc, s.Name, env)
 		dst := env.Entry.Path + "/" + s.Name
-		out = append(out, target.SkillTree(env.ID, s, env.Ctx, dst), target.WriteText(env.ID, "skill", dst+"/SKILL.md", doc.Render(), env.Ctx))
+		out = append(out, target.SkillTree(env.ID, s, env.Ctx, dst), target.WriteText(env.ID, "skill", s.Name, dst+"/SKILL.md", doc.Render(), env.Ctx))
 	}
 	return out, finds, nil
 }

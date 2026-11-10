@@ -6,19 +6,23 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/semver"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targetspec"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -71,6 +75,8 @@ type installFlow struct {
 	args  []string
 	guide argGuide
 	edits []engine.SelectionEdit // from --skip, --only and --unskip
+	// flagVersions are the versions -t's <id>@<version> values give, by target id.
+	flagVersions map[string]string
 
 	resolution                  engine.ScopeResolution
 	scopes                      []engine.ScopeChoice // nil until answered
@@ -89,6 +95,17 @@ type installFlow struct {
 	targets                     map[string][]string            // destination (Scope.Key) → assistants (nil: the manifest's); nil until answered
 	prevTarget                  []string                       // the last picker answer
 	why                         map[string]string              // destination (Scope.Key) → why its assistants were chosen, which the review says
+	fixed                       map[string][]string            // destination (Scope.Key) → the assistants the manifest fixes, where the answer is the manifest's
+	versions                    map[string]map[string]string   // destination (Scope.Key) → target → the version its files are written for and recorded; nil until answered
+	sources                     map[string]map[string]string   // destination (Scope.Key) → target → where its version came from (engine.ScopeInstall.Sources)
+	pickedEras                  map[string]map[string]string   // destination (Scope.Key) → target → the era the version question was last answered with, preselected when it asks again
+	heldEras                    map[string]map[string]string   // destination (Scope.Key) → target → the era the modules installed there, but the run's, are written for (WrittenFor): no question asks it
+	recorded                    map[string]recording           // destination (Scope.Key) → what the versions record there, which the review says
+	lines                       map[string][]versionLine       // destination (Scope.Key) → its versionLines, read once per pass of the review
+	kept                        *keptVersions                  // the answers Change versions asks again, nil otherwise
+	created                     []string                       // directories -C's creation made in this run, outermost first
+	wouldCreate                 string                         // -C's directory a dry run would create, planned as an empty one
+	applied                     bool                           // the install's Apply committed, so the directories stay
 	done                        int                            // fields the pickers asked in this pass, for the next step's number
 	auto                        bool                           // lola chose an assistant the user did not name: the only one installed
 	picks                       map[string]map[string][]string // destination (Scope.Key) → module → selected kind/name
@@ -104,6 +121,22 @@ type installFlow struct {
 	answers                     map[whereKey]engine.WhereChoice                        // the where-questions answered
 	overrides                   map[string]string                                      // module → the file an override of its inherited entry writes, as its page names it (targetOf)
 	dropShown                   bool                                                   // the review showed the removal of what lola profile --edit's page unticked
+}
+
+// keptVersions are the answers the review's Change versions asks again, which Esc on its first
+// question goes back to the review with: the versions, what they record, and the eras last picked.
+type keptVersions struct {
+	versions map[string]map[string]string
+	recorded map[string]recording
+	picked   map[string]map[string]string
+	shown    bool // the questions were asked before
+}
+
+// recording is what an install records in a destination's target_versions: the versions, by
+// target, the destination does not declare yet, and the file (engine.Engine.Records).
+type recording struct {
+	versions map[string]string
+	in       string
 }
 
 // whereKey is the destination (Scope.Key) and module ("" for the profile on's) a where-question
@@ -179,6 +212,12 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	p := a.prompter(cmd)
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
 		edits: edits, picker: &scopePicker{p: p, eng: eng, cwd: cwd, refuseHome: true, create: true}, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
+	if fl.f.targets, fl.flagVersions, err = splitTargets(eng, f.targets, a.root != "", func(ts []string) string { return fl.typedRun(nil, ts, false) }); err != nil {
+		return err
+	}
+	if err := eng.CheckVersions(fl.flagVersions, fl.versionRun(nil, fl.f.targets, false)); err != nil {
+		return err
+	}
 	if !fl.ask && len(args) == 0 {
 		return fl.missingArgument()
 	}
@@ -197,7 +236,256 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 			err = errors.Join(err, cerr)
 		}
 	}()
-	return coachSource(strings.Fields(cmd.CommandPath()), cmd, fl.hintArgs(args), fl.run())
+	err = fl.run()
+	if ut, ok := errors.AsType[*engine.UntrustedTargetsError](err); ok && ut.Report != nil && !a.json { // human under --plain too, as a sync's refusal
+		printTrustDiff(cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, ut.File, "lola sync", *ut.Report, "")
+	}
+	fl.removeAbandoned()
+	return coachSource(strings.Fields(cmd.CommandPath()), cmd, fl.hintArgs(args), err)
+}
+
+// removeAbandoned removes the directories this run created (-C's, and the Other directory
+// question's) that it did not install into: every one unless the install applied, else those no
+// destination of it is in. It names, on human output, each directory removed that the run was
+// asked to create, the innermost of those it made, not the parents it made for it.
+func (fl *installFlow) removeAbandoned() {
+	dirs := slices.Concat(fl.created, fl.picker.created)
+	if fl.applied {
+		dirs = slices.DeleteFunc(dirs, func(d string) bool {
+			return slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool {
+				p := c.Scope.ProjectDir
+				return p != "" && (p == d || strings.HasPrefix(p, d+string(filepath.Separator)))
+			})
+		})
+	}
+	removed := removeCreated(dirs)
+	if fl.a.json {
+		return
+	}
+	for _, d := range slices.Backward(removed) {
+		if !slices.ContainsFunc(dirs, func(x string) bool { return filepath.Dir(x) == d }) {
+			fmt.Fprintln(fl.cmd.ErrOrStderr(), "removed "+untrusted.Text(d, untrusted.MaxName)+" (lola created it; nothing was installed there)")
+		}
+	}
+}
+
+// typedRun is the run as typed, its modules the ones picked when it names none: its flags but -C,
+// -t and -y, then -C as given, one -t naming ts (none when empty), and -y when given outside a dry
+// run, but for a -C directory the run created, which now exists, or, yes, to answer the question
+// the hint leads to, which a -C directory that does not exist asks outside one; short flags, as the
+// user types them. A hint for one scope of the run (sc) has
+// that scope's flags in place of the run's (scopeArgs), so it acts there alone. The flags named in
+// drop are left out too.
+func (fl *installFlow) typedRun(sc *engine.Scope, ts []string, yes bool, drop ...string) string {
+	args := fl.args
+	if len(args) == 0 { // the modules picked
+		args = fl.modules
+	}
+	scope := []string{"root"}
+	if sc != nil {
+		scope = scopeFlags
+	}
+	run := completeRun(fl.cmd, fl.hintArgs(args), slices.Concat(scope, drop, []string{"target", "yes"})...)
+	var typed, where []string // -C as given, and the scope flags the hint gives
+	create := false           // the hint runs where -C names a directory that does not exist
+	made := false             // this run created -C's directory, which -y may have been given for alone
+	if root := fl.cmd.Flags().Lookup("root"); root != nil && root.Changed {
+		typed = []string{"-C", untrusted.Text(root.Value.String(), untrusted.MaxName)}
+		_, err := os.Stat(root.Value.String())
+		create = errors.Is(err, fs.ErrNotExist) && !fl.f.dry
+		abs, aerr := filepath.Abs(root.Value.String())
+		made = aerr == nil && slices.Contains(fl.created, abs)
+	}
+	where = typed
+	if sc != nil {
+		where = fl.scopeArgs(*sc)
+		create = create && slices.Equal(where, typed)
+	}
+	if len(where) > 0 {
+		run += " " + errs.ShellJoin(where)
+	}
+	if len(ts) > 0 {
+		run += " -t " + errs.ShellJoin([]string{untrusted.Text(strings.Join(ts, ","), untrusted.MaxName)})
+	}
+	if yes || create || given(fl.cmd, "yes") && !fl.f.dry && !made {
+		run += " -y"
+	}
+	return run
+}
+
+// scopeArgs are the flags that point a hint at sc alone: -C as typed when it names sc, else the
+// engine's (--user, --project for the project lola runs in, or -C <root>), each safe to print.
+func (fl *installFlow) scopeArgs(sc engine.Scope) []string {
+	if root := fl.cmd.Flags().Lookup("root"); root != nil && root.Changed && sc.Kind == target.Project {
+		if abs, err := filepath.Abs(root.Value.String()); err == nil && (engine.Scope{Kind: target.Project, ProjectDir: abs}).Key() == sc.Key() {
+			return []string{"-C", untrusted.Text(root.Value.String(), untrusted.MaxName)}
+		}
+	}
+	return fl.eng.RootArgs(sc)
+}
+
+// versionRun is typedRun for a hint that gives an assistant's version, at sc when given: -t names
+// ids, every assistant the run installs for, each with the version the run writes its files for
+// at sc (else the version -t gave it), and id with since (id alone for since "", none when id is
+// "").
+func (fl *installFlow) versionRun(sc *engine.Scope, ids []string, yes bool) func(id, since string) string {
+	return func(id, since string) string {
+		versions := map[string]string{}
+		maps.Copy(versions, fl.flagVersions)
+		if sc != nil {
+			for t, v := range fl.versions[sc.Key()] {
+				if v != "" {
+					versions[t] = v
+				}
+			}
+		}
+		return fl.typedRun(sc, withVersions(ids, versions, id, since), yes)
+	}
+}
+
+// withVersions is -t's values for ids: each id with the version versions gives it, except id,
+// which gets since (or no version, for since ""); id "" is none of them.
+func withVersions(ids []string, versions map[string]string, id, since string) []string {
+	ts := make([]string, 0, len(ids))
+	for _, t := range ids {
+		v, ok := versions[t]
+		switch {
+		case t == id && since != "":
+			t += "@" + since
+		case t == id:
+		case ok:
+			t += "@" + v
+		}
+		ts = append(ts, t)
+	}
+	return ts
+}
+
+// printDeclared says, for a run with nothing to do, the era each destination's files are written
+// for, for each assistant with more than one era it installs for (versionLines), and how to write
+// for each other era: the run with its -t.
+func (fl *installFlow) printDeclared(s style) error {
+	w := fl.cmd.OutOrStdout()
+	for _, c := range fl.scopes {
+		lines, err := fl.versionLines(c.Scope)
+		if err != nil {
+			return err
+		}
+		for _, l := range lines {
+			fmt.Fprintln(w, s.info(l.text))
+			for _, h := range fl.eng.EraHints(l.id, "to write ", l.since, fl.versionRun(&c.Scope, fl.assistants(c.Scope.Key()), false)) {
+				fmt.Fprintln(w, hintLine("    ", h, s.width))
+			}
+		}
+	}
+	return nil
+}
+
+// splitTargets reads -t's values: an assistant's id, or <id>@<version>, split on the first @, which
+// also names the version its files are written for. It answers the ids, each once in the order
+// given, and the versions by id. A value it cannot read is refused with the runs that mean it, -t
+// as given with that value replaced (rerun): one per era of its target, and, unless the run is for
+// another directory (-C), whose version lola does not assume, the id alone. A value with no id
+// gets one run per target it may mean, each with no other version for that target.
+func splitTargets(eng *engine.Engine, values []string, another bool, rerun func(ts []string) string) ([]string, map[string]string, error) {
+	var ids []string
+	versions := map[string]string{}
+	// with is base with every value for id replaced by value, at the first one's place, or value
+	// added after them when base has none for id.
+	with := func(base []string, id, value string) []string {
+		var out []string
+		for _, v := range base {
+			switch vid, _, _ := strings.Cut(v, "@"); {
+			case vid != id:
+				out = append(out, v)
+			case !slices.Contains(out, value):
+				out = append(out, value)
+			}
+		}
+		if !slices.Contains(out, value) {
+			out = append(out, value)
+		}
+		return out
+	}
+	eraRuns := func(base []string, id string) []string {
+		return eng.EraHints(id, "", "", func(id, since string) string {
+			if since == "" {
+				return rerun(with(base, id, id))
+			}
+			return rerun(with(base, id, id+"@"+since))
+		})
+	}
+	// bare is a value that is a version alone, not an assistant's id.
+	bare := func(v string) bool {
+		return !strings.Contains(v, "@") && targetspec.Canonical(v) != "" && !slices.Contains(eng.Registry.IDs(), v)
+	}
+	for _, value := range values {
+		id, version, versioned := strings.Cut(value, "@")
+		shown := untrusted.Text(value, untrusted.MaxName)
+		err := fmt.Errorf("-t %s: write <id>@<version>, e.g. opencode@2.0", shown)
+		switch {
+		case versioned && id == "":
+			// For each target it may mean, the run with it in its place: with this version, for a
+			// target with eras the other values give no other version (else one run per era); a
+			// value with no version means each target alone, per era for another directory.
+			rest := slices.DeleteFunc(slices.Clone(values), func(v string) bool { return v == value })
+			var hints []string
+			for _, t := range eng.Registry.IDs() {
+				multi := len(eng.Registry.Eras(t)) > 1
+				other := slices.ContainsFunc(rest, func(v string) bool {
+					vid, vv, ok := strings.Cut(v, "@")
+					return vid == t && ok && !sameVersion(vv, version)
+				})
+				switch {
+				case version != "" && !multi:
+				case version != "" && other, version == "" && multi && another:
+					hints = append(hints, eraRuns(rest, t)...)
+				case version != "":
+					hints = append(hints, "for "+t+": "+rerun(with(rest, t, t+"@"+version)))
+				default:
+					hints = append(hints, "for "+t+": "+rerun(with(rest, t, t)))
+				}
+			}
+			return nil, nil, errs.WithHints(err, hints...)
+		case bare(value):
+			// A version after a comma (-t opencode@2.0,1.0) reads as an assistant: -t gives each one
+			// version, the one beside its id. The run hinted drops every such version.
+			for _, prev := range slices.Backward(values[:slices.Index(values, value)]) {
+				if pid, _, ok := strings.Cut(prev, "@"); ok && pid != "" {
+					rest := slices.DeleteFunc(slices.Clone(values), bare)
+					return nil, nil, errs.WithHints(fmt.Errorf("-t %s: %s is a version, not an assistant; -t gives %s one version, as in %s",
+						shown, shown, untrusted.Text(pid, untrusted.MaxName), untrusted.Text(prev, untrusted.MaxName)), "one version per assistant: "+rerun(rest))
+				}
+			}
+		case versioned && version == "":
+			hints := eraRuns(values, id)
+			if len(eng.Registry.Eras(id)) > 1 && !another { // another directory needs the version
+				hints = append(hints, "or with no version: "+rerun(with(values, id, id)))
+			}
+			return nil, nil, errs.WithHints(err, hints...)
+		}
+		// Two that are one version written two ways (1.0, 1.0.0) are one answer, the first kept.
+		if prev, ok := versions[id]; versioned && ok && !sameVersion(prev, version) {
+			return nil, nil, errs.WithHints(fmt.Errorf("-t %s: -t gives %s version %s too; give one version", shown, untrusted.Text(id, untrusted.MaxName),
+				untrusted.Text(prev, untrusted.MaxName)), eraRuns(values, id)...)
+		}
+		if _, ok := versions[id]; versioned && !ok {
+			versions[id] = version
+		}
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids, versions, nil
+}
+
+// sameVersion reports whether a and b are one version, compared as versions when both are, else
+// as written.
+func sameVersion(a, b string) bool {
+	if ca, cb := targetspec.Canonical(a), targetspec.Canonical(b); ca != "" && cb != "" {
+		return semver.Compare(ca, cb) == 0
+	}
+	return a == b
 }
 
 // hintArgs is args, module arguments of the run, as a hint repeating the run gives them: after the
@@ -413,7 +701,8 @@ func (a *app) prompter(cmd *cobra.Command) Prompter {
 func (fl *installFlow) run() error {
 	var spec engine.InstallSpec
 	for {
-		fl.done = 0 // each pass numbers the steps it asks
+		fl.done = 0    // each pass numbers the steps it asks
+		fl.lines = nil // and reads the versions its answers give again
 		if stage, err := fl.answer(); err != nil {
 			if errors.Is(err, ErrBack) && fl.back(stage) {
 				continue
@@ -467,6 +756,9 @@ func (fl *installFlow) run() error {
 				}
 			}
 			if !said {
+				if err := fl.printDeclared(s); err != nil {
+					return err
+				}
 				fmt.Fprintln(fl.cmd.OutOrStdout(), s.ok("already up to date"))
 			}
 			return nil
@@ -476,12 +768,23 @@ func (fl *installFlow) run() error {
 		dry := spec
 		dry.Options.DryRun = true
 		dry.Options.Rerun, dry.Options.Display = consentRun(fl.cmd, fl.hintArgs(fl.args)), outputFlags(fl.cmd)
+		if slices.Contains(fl.reviewOptions(), ReviewVersions) { // the review's own way to write for another era, but a held one's
+			era := dry.Options.EraRun
+			dry.Options.EraRun = func(sc engine.Scope, id, since string) string {
+				if _, held := fl.heldEras[sc.Key()][id]; held {
+					return era(sc, id, since)
+				}
+				return `choose "Change versions"`
+			}
+		}
 		planned, err := fl.eng.InstallAll(fl.cmd.Context(), dry)
 		if err != nil {
 			return err
 		}
 		var summary strings.Builder
-		fl.printSummary(&summary, spec, pv, planned.Findings)
+		if err := fl.printSummary(&summary, spec, pv, planned); err != nil {
+			return err
+		}
 		printRemovals(&summary, style{}, engine.PickDeletes(spec, planned)) // what Apply would delete is shown
 		fl.droppedModule, fl.droppedScope = 0, 0
 		if gone := fl.dropped(); fl.f.keep != nil && len(gone) > 0 { // the review lists the removal it leads to
@@ -532,6 +835,7 @@ func (fl *installFlow) run() error {
 		}
 	}
 	res, err := fl.eng.InstallAll(fl.cmd.Context(), spec)
+	fl.applied = err == nil
 	if err != nil {
 		err = fl.a.deletesRefusal(fl.cmd, err)
 	}
@@ -557,7 +861,21 @@ func (fl *installFlow) run() error {
 	if fl.reviews() {
 		eq = fl.equivalents(spec)
 	}
-	return fl.a.emit(fl.cmd, func(w io.Writer, s style) { printInstall(w, s, res) }, installOutput{InstallResult: res, EquivalentCommands: eq})
+	// A dry run that would change something ends with the run that applies it, as lola sync -n
+	// does, and JSON's equivalent commands carry it, without the output flags, as sync's do; a review
+	// lists its equivalent commands instead. A directory the dry run would create needs -y off a
+	// terminal.
+	apply := ""
+	if res.DryRun && !fl.reviews() && len(res.Steps)+len(res.Edits)+len(res.TargetVersions) > 0 {
+		apply = fl.typedRun(nil, withVersions(fl.f.targets, fl.flagVersions, "", ""), fl.wouldCreate != "" || given(fl.cmd, "yes"), "dry-run", "json", "plain", "no-pager")
+		eq = []string{apply}
+	}
+	return fl.a.emit(fl.cmd, func(w io.Writer, s style) {
+		printInstall(w, s, res)
+		if apply != "" && !s.plain {
+			fmt.Fprintln(w, s.info("to apply: "+apply))
+		}
+	}, installOutput{InstallResult: res, EquivalentCommands: eq})
 }
 
 // dropped is what lola profile --edit's page unticked: the profile's modules no longer picked.
@@ -733,6 +1051,9 @@ func (fl *installFlow) answer() (string, error) {
 	if err := fl.ensureAssistants(); err != nil {
 		return ReviewAssistants, err
 	}
+	if err := fl.ensureVersions(); err != nil {
+		return ReviewVersions, err
+	}
 	return ReviewComponents, fl.ensureComponents()
 }
 
@@ -745,10 +1066,10 @@ func (fl *installFlow) nav(stage string) Nav {
 }
 
 // held counts the answers the run holds from screens the user answered: the scope, module and
-// assistant pickers' and each component page's.
+// assistant pickers', the version questions' and each component page's.
 func (fl *installFlow) held() int {
 	n := 0
-	for _, s := range []string{ReviewScope, ReviewModules, ReviewAssistants} {
+	for _, s := range []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewVersions} {
 		if fl.shown[s] {
 			n++
 		}
@@ -795,7 +1116,7 @@ func (fl *installFlow) before(stage string) (string, int) {
 			return ReviewComponents, last
 		}
 	}
-	order := []string{ReviewScope, ReviewModules, ReviewAssistants}
+	order := []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewVersions}
 	end := len(order)
 	if i := slices.Index(order, stage); i >= 0 {
 		end = i
@@ -831,6 +1152,7 @@ func (fl *installFlow) back(stage string) bool {
 		}
 	default:
 		_, err := fl.review(step) // a picker's step, which review always takes
+		fl.kept = nil             // going back asks it as a step of the flow, not Change versions
 		return err == nil
 	}
 	return true
@@ -871,14 +1193,14 @@ func (fl *installFlow) steps(stage string) Steps {
 
 // remaining forecasts how many fields the pass asks from stage on, the review included: the scope
 // picker's one; the module picker's lists when no argument names the modules and they are not
-// answered; the assistant picker's one when neither -t nor an answer gives them; the component
-// pages still open, unless --skip, --only or --unskip answers them. A step is counted exactly
-// once what decides it is known, and as one field (a component page per module argument) before:
-// an assistant taken as the only one installed, or a module with one component, drops out of the
-// count at the next step.
+// answered; the assistant picker's one when neither -t nor an answer gives them; the version
+// questions (versionFields); the component pages still open, unless --skip, --only or --unskip
+// answers them. A step is counted exactly once what decides it is known, and as one field (a
+// component page per module argument) before: an assistant taken as the only one installed, or a
+// module with one component, drops out of the count at the next step.
 func (fl *installFlow) remaining(stage string) int {
 	n := 1 // the review
-	stages := []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewComponents}
+	stages := []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewVersions, ReviewComponents}
 	for _, s := range stages[slices.Index(stages, stage):] {
 		switch {
 		case s == ReviewScope:
@@ -889,8 +1211,33 @@ func (fl *installFlow) remaining(stage string) int {
 			n++
 		case s == ReviewAssistants && fl.targets == nil && len(fl.f.targets) == 0:
 			n++
+		case s == ReviewVersions && fl.versions == nil:
+			n += fl.versionFields()
 		case s == ReviewComponents && len(fl.edits) == 0:
 			n += fl.componentFields()
+		}
+	}
+	return n
+}
+
+// versionFields forecasts the version questions: one per assistant with more than one era that -t
+// gives no version for, at each destination, once -t or an answer gives the assistants; one a
+// destination declares drops out at the next step. Off a terminal, under -y or --force, and
+// before the assistants are known, it forecasts none.
+func (fl *installFlow) versionFields() int {
+	if !fl.ask || fl.f.yes || fl.f.force {
+		return 0
+	}
+	n := 0
+	for _, c := range fl.scopes {
+		ids := fl.f.targets
+		if fl.targets != nil {
+			ids = fl.assistants(c.Scope.Key())
+		}
+		for _, id := range ids {
+			if _, ok := fl.flagVersions[id]; !ok && len(fl.eng.Registry.Eras(id)) > 1 {
+				n++
+			}
 		}
 	}
 	return n
@@ -922,11 +1269,18 @@ func (fl *installFlow) review(choice string) (bool, error) {
 		return true, nil
 	case ReviewScope:
 		fl.pins = fl.choices.Versions
-		fl.scopes, fl.choices, fl.targets = nil, nil, nil
+		fl.scopes, fl.choices, fl.targets, fl.versions = nil, nil, nil, nil
 	case ReviewModules:
 		fl.prevMods, fl.modules = fl.modules, nil
 	case ReviewAssistants:
-		fl.targets = nil
+		fl.targets, fl.versions = nil, nil
+	case ReviewVersions:
+		picked := map[string]map[string]string{}
+		for key, eras := range fl.pickedEras {
+			picked[key] = maps.Clone(eras)
+		}
+		fl.kept = &keptVersions{versions: fl.versions, recorded: fl.recorded, picked: picked, shown: fl.shown[ReviewVersions]}
+		fl.versions = nil
 	case ReviewComponents:
 		fl.prevPicks, fl.picks, fl.asked, fl.pageLog = fl.picks, nil, map[string]bool{}, nil
 	default:
@@ -935,15 +1289,29 @@ func (fl *installFlow) review(choice string) (bool, error) {
 	return false, nil
 }
 
-// reviewOptions offers Apply, a Change entry for every step whose picker was shown, and Quit.
+// reviewOptions offers Apply, a Change entry for every step whose picker was shown, and Quit;
+// Change versions whenever the run installs for an assistant with more than one era, its version
+// asked, declared or given.
 func (fl *installFlow) reviewOptions() []string {
 	out := []string{ReviewApply}
-	for _, step := range []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewComponents} {
-		if fl.shown[step] {
+	for _, step := range []string{ReviewScope, ReviewModules, ReviewAssistants, ReviewVersions, ReviewComponents} {
+		if fl.shown[step] || step == ReviewVersions && fl.multiEra() {
 			out = append(out, step)
 		}
 	}
 	return append(out, ReviewQuit)
+}
+
+// multiEra reports whether a destination of the run installs for an assistant with more than one
+// era that the modules installed there do not hold (installFlow.heldEras).
+func (fl *installFlow) multiEra() bool {
+	return slices.ContainsFunc(fl.scopes, func(c engine.ScopeChoice) bool {
+		key := c.Scope.Key()
+		return slices.ContainsFunc(fl.assistants(key), func(id string) bool {
+			_, held := fl.heldEras[key][id]
+			return len(fl.eng.Registry.Eras(id)) > 1 && !held
+		})
+	})
 }
 
 // destLabel names a destination in the flow's text: "user", or "project (<root>)" with the root
@@ -971,6 +1339,9 @@ func (fl *installFlow) ensureScopes() error {
 		return err
 	}
 	req, err := fl.a.scopeRequest(fl.cwd, fl.ask)
+	if fl.wouldCreate != "" { // a dry run plans for -C's directory as the empty one it would create
+		req.ProjectDir, err = fl.wouldCreate, nil // scopeRequest refuses the missing directory, its request otherwise as built
+	}
 	if err != nil {
 		return err
 	}
@@ -1008,10 +1379,15 @@ func (fl *installFlow) ensureScopes() error {
 }
 
 // ensureRoot creates -C's directory when it does not exist yet: under -y or --force, or on your
-// yes on a terminal. A dry run refuses with the mkdir that creates it; a run with no terminal to
-// ask on, also with the run with -y. Scope flags that conflict with -C are refused first, and a
-// path that cannot be shown as it is is never created; that and any other problem with -C is
-// scopeRequest's to refuse.
+// yes on a terminal. A dry run says it would and plans for it as an empty directory (wouldCreate);
+// a run with no terminal to ask on is refused with the run with -y and the mkdir. A run that will
+// not ask, a dry run as the run it previews, is refused before creating it when it would be refused
+// after: when no assistant would be
+// set up there (no -t, nothing the manifest fixes), with the run for each assistant it could name,
+// and when it would not ask the version of an assistant with more than one era it installs for
+// (-t's, else the manifest's), with the run for each version. Scope flags that conflict with -C
+// are refused first, and a path that cannot be shown as it is is never created; that and any other
+// problem with -C is scopeRequest's to refuse.
 func (fl *installFlow) ensureRoot() error {
 	if fl.a.root == "" {
 		return nil
@@ -1034,11 +1410,62 @@ func (fl *installFlow) ensureRoot() error {
 		words = []string{"mkdir", safe}
 	}
 	mkdir := "create it first: " + errs.ShellJoin(words)
+	asks := fl.ask && !fl.f.yes && !fl.f.force
+	// The assistants the run installs for there: -t's, else what the manifest fixes. With none, a
+	// new directory has none set up: none is then the targets a run could name, hinted as
+	// ensureAssistants hints them (per era for one with more than one).
+	ids, none := fl.f.targets, []string(nil)
+	if len(ids) == 0 && !asks {
+		choice, err := fl.eng.DefaultTargets(engine.Scope{Kind: target.Project, ProjectDir: dir}, fl.requests(), fl.target())
+		if err != nil {
+			return err
+		}
+		ids = choice.Manifest
+		switch {
+		case len(ids) > 0:
+		case len(choice.Installed) == 0:
+			none = fl.eng.Registry.IDs()
+		default:
+			none = fl.eng.RerunTargets(choice)
+		}
+	}
+	// A run that will not ask which version reads the new directory is refused for it before the
+	// directory is made, with the run that creates it for each version. Each hint gives one
+	// target's version: with two such targets, following one can still be refused for the other
+	// (only opencode has more than one era today).
+	var versions []string
+	for _, id := range ids {
+		if _, ok := fl.flagVersions[id]; !ok && !asks && len(fl.eng.Registry.Eras(id)) > 1 {
+			versions = append(versions, id)
+		}
+	}
 	switch {
+	case len(none) > 0:
+		var hints []string
+		for _, id := range none {
+			if len(fl.eng.Registry.Eras(id)) > 1 {
+				hints = append(hints, fl.eng.EraHints(id, "create it, ", "", fl.versionRun(nil, []string{id}, true))...)
+				continue
+			}
+			hints = append(hints, "create it, for "+id+": "+fl.versionRun(nil, []string{id}, true)("", ""))
+		}
+		return errs.WithHints(fmt.Errorf("-C %s does not exist, so no assistant is set up there; name the ones it is for with -t", safe), hints...)
+	case len(versions) > 0:
+		var hints []string
+		for _, id := range versions {
+			hints = append(hints, fl.eng.EraHints(id, "create it, ", "", fl.versionRun(nil, ids, true))...)
+		}
+		which := strings.Join(versions, " and ")
+		return errs.WithHints(fmt.Errorf("-C %s does not exist; which %s version will read it? lola assumes the installed %s only for the project you run it in",
+			safe, which, which), hints...)
 	case fl.f.dry:
-		return errs.WithHints(fmt.Errorf("-C %s does not exist", safe), mkdir)
-	case fl.f.yes || fl.f.force:
-	case fl.ask:
+		if !fl.a.json {
+			fmt.Fprintln(fl.cmd.ErrOrStderr(), "would create "+safe)
+		}
+		fl.wouldCreate = dir
+		return nil
+	case !asks && (fl.f.yes || fl.f.force):
+	case asks:
 		ok, err := fl.p.Confirm("Create "+safe+"? It does not exist yet", Nav{})
 		if err != nil {
 			return err
@@ -1048,9 +1475,11 @@ func (fl *installFlow) ensureRoot() error {
 		}
 	default:
 		return errs.WithHints(fmt.Errorf("-C %s does not exist", safe),
-			"rerun with -y to create it: "+runWithout(fl.cmd, fl.hintArgs(fl.args), "yes")+" -y", "or "+mkdir)
+			"rerun with -y to create it: "+fl.versionRun(nil, fl.f.targets, true)("", ""), "or "+mkdir)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	made, err := mkdirAll(dir)
+	fl.created = append(fl.created, made...)
+	if err != nil {
 		return errs.WithHints(err, mkdir)
 	}
 	if !fl.a.json {
@@ -1174,7 +1603,7 @@ func (fl *installFlow) ensureModules() error {
 		if ans.AddSource {
 			v, err := fl.eng.AddSource(fl.cmd.Context(), fl.cwd, ans.Source, ans.Ref, "", outputFlags(fl.cmd))
 			if err != nil {
-				writeError(fl.cmd.ErrOrStderr(), err, false)
+				writeError(fl.cmd.ErrOrStderr(), err, false, fl.a.style(fl.cmd).width)
 				step.Problem = "could not add " + untrusted.Text(ans.Source, untrusted.MaxName) + "; try another source"
 				continue
 			}
@@ -1221,7 +1650,7 @@ func (fl *installFlow) ensureModules() error {
 			if fl.choices == nil {
 				return err // what was listed before cannot be listed again either
 			}
-			writeError(fl.cmd.ErrOrStderr(), err, false)
+			writeError(fl.cmd.ErrOrStderr(), err, false, fl.a.style(fl.cmd).width)
 			step = ModuleStep{Options: fl.moduleOptions(), Markets: fl.marketGroups(), Preselect: ans.Names,
 				Problem: "could not fetch what you picked from your marketplaces; pick again"}
 			continue
@@ -1371,16 +1800,26 @@ func (fl *installFlow) ensureAssistants() error {
 		return nil
 	}
 	delete(fl.shown, ReviewAssistants)
-	answer, reasons, auto := map[string][]string{}, map[string]string{}, false
+	answer, reasons, auto, fixedBy := map[string][]string{}, map[string]string{}, false, map[string][]string{}
 	var open, openLabels []string
 	var installed, here, setUpOnly, untrustedTargets []string
-	// The run with -t naming one assistant, for each of ids.
-	withTarget := func(ids []string) []string {
+	// The run with -t naming one assistant, for each of ids; for one with more than one era that sc,
+	// another directory, declares no version for, the run for each era, which the version rule
+	// would otherwise refuse.
+	withTarget := func(sc engine.Scope, ids []string) ([]string, error) {
 		var out []string
 		for _, id := range ids {
-			out = append(out, completeRun(fl.cmd, fl.hintArgs(fl.args))+" -t "+id)
+			qs, err := fl.eng.VersionChoices(fl.cmd.Context(), sc, []string{id}, nil, nil)
+			if err != nil {
+				return nil, err
+			}
+			if len(qs) == 1 && !qs[0].Standard && qs[0].Declared == "" {
+				out = append(out, fl.eng.EraHints(id, "", "", fl.versionRun(&sc, []string{id}, false))...)
+				continue
+			}
+			out = append(out, fl.versionRun(&sc, []string{id}, false)("", ""))
 		}
-		return out
+		return out, nil
 	}
 	for _, c := range fl.scopes {
 		name := c.Scope.Key()
@@ -1401,16 +1840,24 @@ func (fl *installFlow) ensureAssistants() error {
 			}
 		}
 		if len(fixed) > 0 {
-			answer[name], reasons[name] = nil, "from "+cmp.Or(from, manifestName(c.Scope))
+			answer[name], reasons[name], fixedBy[name] = nil, "from "+cmp.Or(from, manifestName(c.Scope)), fixed
 			continue
 		}
 		inst, marked, only := choice.Installed, choice.SetUp, choice.SetUpOnly
 		choice.Manifest = nil // the pickers' fixed targets decided above
 		switch why := choice.NoneHere(); {
 		case len(inst) == 0 && len(only) == 0:
-			return errs.WithHints(errors.New(why), withTarget(fl.eng.Registry.IDs())...)
+			hints, err := withTarget(c.Scope, fl.eng.Registry.IDs())
+			if err != nil {
+				return err
+			}
+			return errs.WithHints(errors.New(why), hints...)
 		case !fl.ask && why != "":
-			return errs.WithHints(errors.New(why), withTarget(fl.eng.RerunTargets(choice))...)
+			hints, err := withTarget(c.Scope, fl.eng.RerunTargets(choice))
+			if err != nil {
+				return err
+			}
+			return errs.WithHints(errors.New(why), hints...)
 		case !fl.ask:
 			answer[name], reasons[name] = choice.Here(), "set up here"
 		case len(inst) == 0:
@@ -1445,8 +1892,205 @@ func (fl *installFlow) ensureAssistants() error {
 			answer[s], reasons[s] = picked, "picked"
 		}
 	}
-	fl.targets, fl.why, fl.auto = answer, reasons, auto
+	fl.targets, fl.why, fl.auto, fl.fixed = answer, reasons, auto, fixedBy
 	return nil
+}
+
+// ensureVersions answers, at each destination, the version each assistant it installs for that has
+// more than one era is written for, when the destination declares none: -t <id>@<version> gives
+// it; on a terminal, unless -y or --force, a question per assistant and destination asks it, and
+// records its era (VersionQuestion.Recorded); otherwise DefaultVersions takes the installed
+// version in the project lola runs in or at user scope, and refuses another directory.
+func (fl *installFlow) ensureVersions() error {
+	if fl.versions != nil {
+		return nil
+	}
+	// Change versions (fl.kept) asks about every assistant with more than one era, one declared or
+	// given a version by -t too, that one preselected: changing it records the new version.
+	again := fl.kept
+	fl.kept = nil
+	delete(fl.shown, ReviewVersions)
+	ctx := fl.cmd.Context()
+	answer, sources := map[string]map[string]string{}, map[string]map[string]string{}
+	type question struct {
+		sc engine.Scope
+		q  engine.VersionQuestion
+	}
+	var open []question
+	for _, c := range fl.scopes {
+		key := c.Scope.Key()
+		answer[key], sources[key] = map[string]string{}, map[string]string{}
+		maps.Copy(answer[key], fl.flagVersions)
+		asks := fl.ask && !fl.f.yes && !fl.f.force
+		if asks {
+			// A scope's modules are written for one version: an assistant they hold is not asked
+			// about; the scope's version stands, and an install given another is refused.
+			held, err := fl.eng.WrittenFor(c.Scope, fl.modules)
+			if err != nil {
+				return err
+			}
+			if fl.heldEras == nil {
+				fl.heldEras = map[string]map[string]string{}
+			}
+			fl.heldEras[key] = held
+		}
+		var ids []string
+		for _, id := range fl.assistants(key) {
+			if _, held := fl.heldEras[key][id]; held && asks {
+				continue
+			}
+			if _, ok := fl.flagVersions[id]; !ok || again != nil {
+				ids = append(ids, id)
+			}
+		}
+		switch {
+		case len(ids) == 0:
+			continue
+		case !asks:
+			got, err := fl.eng.DefaultVersions(ctx, c.Scope, ids, fl.versionRun(&c.Scope, fl.assistants(key), false))
+			if err != nil {
+				return err
+			}
+			maps.Copy(answer[key], got)
+			for id := range got {
+				sources[key][id] = engine.VersionInstalled
+			}
+			continue
+		}
+		qs, err := fl.eng.VersionChoices(ctx, c.Scope, ids, fl.choices, fl.modules)
+		if err != nil {
+			return err
+		}
+		for _, q := range qs {
+			if v, ok := fl.flagVersions[q.Target]; ok { // -t's version stands for the scope's
+				q.Declared = v
+				q.Preselect, _, _ = fl.eng.Registry.Era(q.Target, v)
+			}
+			if q.Declared == "" || again != nil {
+				open = append(open, question{c.Scope, q})
+			}
+		}
+	}
+	// Esc on a later question goes back to the one before, its answer preselected; on the first, to
+	// the screen before the questions, or, asked again by Change versions, to the review with the
+	// answers it had. Those are asked alone: not numbered, and not counted for the review's number.
+	for k := 0; k < len(open); {
+		key, q := open[k].sc.Key(), open[k].q
+		note := ""
+		last := fl.pickedEras[key][q.Target]
+		// With nothing installed, nothing is preselected but an answer: the note says to pick.
+		switch installed, user := untrusted.Text(q.Installed, untrusted.MaxName), open[k].sc.Kind == target.User; {
+		case installed == "" && cmp.Or(last, q.Preselect) != "":
+		case installed == "" && !q.Standard:
+			note = q.Target + " is not installed on this machine; pick the version you will use"
+		case installed == "" && user:
+			note = q.Target + " is not installed; pick the version you will use"
+		case installed == "":
+			note = q.Target + " is not installed here; pick the version you will use"
+		case !q.Standard:
+			note = "installed on this machine: " + installed + " — not assumed for " + untrusted.Text(open[k].sc.ProjectDir, untrusted.MaxName) +
+				"; pick the version used there"
+		case user:
+			note = "installed: " + installed
+		default:
+			note = "installed here: " + installed
+		}
+		scope := ""
+		if len(fl.scopes) > 1 {
+			scope = destLabel(open[k].sc)
+		}
+		options := slices.Clone(q.Labels)
+		for i, summary := range q.Summaries {
+			if summary != "" {
+				options[i] += " — " + summary
+			}
+			if drops := q.Drops[i]; len(drops) > 0 {
+				options[i] += "; drops " + dropsText(drops)
+			}
+		}
+		nav := fl.nav(ReviewVersions)
+		nav.Back = nav.Back || k > 0 || again != nil
+		step := Steps{At: fl.done + 1, Of: fl.done + len(open) - k + fl.remaining(ReviewComponents)}
+		if again != nil {
+			step = Steps{}
+		}
+		why := "matches installed " + untrusted.Text(q.Installed, untrusted.MaxName) // what Enter takes
+		switch {
+		case fl.flagVersions[q.Target] != "":
+			why = "as -t gives"
+		case q.Declared != "":
+			why = "as declared"
+		}
+		i, err := fl.p.Version(VersionStep{Target: q.Target, Options: options, Labels: q.Labels, Preselect: slices.Index(q.Eras, cmp.Or(last, q.Preselect)), Last: last != "", Why: why,
+			Note: note, Scope: scope, Again: again != nil, Step: step, Nav: nav})
+		switch {
+		case errors.Is(err, ErrBack) && k > 0:
+			k--
+			if again == nil {
+				fl.done--
+			}
+			continue
+		case errors.Is(err, ErrBack) && again != nil:
+			fl.versions, fl.recorded, fl.pickedEras = again.versions, again.recorded, again.picked
+			if again.shown {
+				fl.shown[ReviewVersions] = true
+			}
+			return nil
+		case err != nil:
+			return err
+		}
+		fl.shown[ReviewVersions] = true
+		if again == nil {
+			fl.done++
+		}
+		if fl.pickedEras == nil {
+			fl.pickedEras = map[string]map[string]string{}
+		}
+		if fl.pickedEras[key] == nil {
+			fl.pickedEras[key] = map[string]string{}
+		}
+		fl.pickedEras[key][q.Target] = q.Eras[i]
+		answer[key][q.Target] = q.Recorded(q.Eras[i])
+		switch v := answer[key][q.Target]; {
+		case v == fl.flagVersions[q.Target]:
+			delete(sources[key], q.Target) // -t's
+		case v == q.Installed && q.Declared == "":
+			sources[key][q.Target] = engine.VersionInstalled
+		default:
+			sources[key][q.Target] = engine.VersionChosen
+		}
+		k++
+	}
+	fl.recorded = map[string]recording{}
+	for _, c := range fl.scopes {
+		key := c.Scope.Key()
+		if len(answer[key]) == 0 {
+			continue
+		}
+		var rec recording
+		var err error
+		if rec.versions, rec.in, err = fl.eng.Records(c.Scope, answer[key]); err != nil {
+			return err
+		}
+		fl.recorded[key] = rec
+	}
+	fl.versions, fl.sources = answer, sources
+	return nil
+}
+
+// maxDrops is how many dropped values a version's answer names before "and N more".
+const maxDrops = 2
+
+// dropsText names drops, the values a version drops, as its answer does: up to maxDrops, then how
+// many more.
+func dropsText(drops []string) string {
+	switch {
+	case len(drops) == 1:
+		return drops[0]
+	case len(drops) <= maxDrops:
+		return strings.Join(drops[:len(drops)-1], ", ") + " and " + drops[len(drops)-1]
+	}
+	return strings.Join(drops[:maxDrops], ", ") + " and " + strconv.Itoa(len(drops)-maxDrops) + " more"
 }
 
 func union(a, b []string) []string {
@@ -1823,8 +2467,13 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	spec := engine.InstallSpec{Cwd: fl.cwd, Staged: fl.staged, Options: engine.Options{Targets: fl.f.targets, DryRun: fl.f.dry, Force: fl.f.force,
 		Strict: fl.f.strict, ForceRun: forceRun(fl.cmd, fl.hintArgs(fl.args)), RenderRun: renderRun(fl.cmd, fl.hintArgs(fl.args)), Trust: fl.f.trust, PreInstall: fl.flagScript(fl.f.preInstall),
 		PostInstall: fl.flagScript(fl.f.postInstall), Display: outputFlags(fl.cmd), Target: t, AskWhere: fl.where,
-		TargetRun: func(id string) string {
-			return runWithout(fl.cmd, fl.hintArgs(fl.args), slices.Concat([]string{"target"}, consentFlags)...) + " -t " + id
+		TargetRun: func(sc engine.Scope, id string) string {
+			// At sc, with the version the run writes id's files for there, which a directory not declaring one needs.
+			if v := fl.versions[sc.Key()][id]; v != "" {
+				id += "@" + v
+			}
+			return runWithout(fl.cmd, fl.hintArgs(fl.args), slices.Concat([]string{"target"}, scopeFlags, consentFlags)...) + " " +
+				errs.ShellJoin(append(fl.scopeArgs(sc), "-t", untrusted.Text(id, untrusted.MaxName)))
 		}},
 		WithMentions: fl.f.withMentions, NameMentions: true, UserRun: t.UserRun()}
 	if fl.f.rules || fl.f.noRules {
@@ -1838,11 +2487,14 @@ func (fl *installFlow) spec() (engine.InstallSpec, error) {
 	spec.DeletesConfirmed = fl.reviews()
 	for _, c := range fl.scopes {
 		key := c.Scope.Key()
-		si := engine.ScopeInstall{ScopeChoice: c, Targets: fl.targets[key]}
+		si := engine.ScopeInstall{ScopeChoice: c, Targets: fl.targets[key], Versions: fl.versions[key], Sources: fl.sources[key]}
 		if fl.picks != nil {
 			si.Edits = fl.pickEdits(key)
 		}
 		spec.Scopes = append(spec.Scopes, si)
+	}
+	spec.Options.EraRun = func(sc engine.Scope, id, since string) string {
+		return fl.versionRun(&sc, fl.assistants(sc.Key()), false)(id, since)
 	}
 	for i, arg := range fl.args {
 		req := engine.InstallRequest{Arg: arg, Ref: fl.f.ref, Path: fl.f.path}

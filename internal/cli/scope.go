@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -60,9 +61,10 @@ type scopePicker struct {
 	p          Prompter
 	eng        *engine.Engine
 	cwd        string
-	other      string // the last Other directory as typed, offered again
-	refuseHome bool   // the command refuses a project at the home directory: install and sync
-	create     bool   // offer to create an Other directory that does not exist yet: install
+	other      string   // the last Other directory as typed, offered again
+	refuseHome bool     // the command refuses a project at the home directory: install and sync
+	create     bool     // offer to create an Other directory that does not exist yet: install
+	created    []string // the directories this picker created, outermost first, for removeCreated
 }
 
 // pick asks the picker for res, with step's question and preselection, until the answer, never
@@ -157,7 +159,9 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (str
 				return "", cerr
 			}
 			if cerr == nil && ok {
-				if merr := os.MkdirAll(dir, 0o755); merr != nil {
+				made, merr := mkdirAll(dir)
+				sp.created = append(sp.created, made...)
+				if merr != nil {
 					problem = untrusted.Text(merr.Error(), untrusted.MaxName)
 				} else {
 					problem = ""
@@ -230,4 +234,44 @@ func (a *app) flagScope(cmd *cobra.Command, eng *engine.Engine, args []string, w
 		out = append(out, c.Scope)
 	}
 	return out, nil
+}
+
+// mkdirAll creates dir and any missing parents, and returns the directories it created, outermost
+// first, including those made before an error.
+func mkdirAll(dir string) ([]string, error) {
+	var missing []string
+	for d := dir; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(d); err == nil || filepath.Dir(d) == d {
+			break
+		}
+		missing = append([]string{d}, missing...)
+	}
+	var made []string
+	for _, d := range missing {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				continue
+			}
+			return made, err
+		}
+		made = append(made, d)
+	}
+	return made, nil
+}
+
+// removeCreated undoes mkdirAll for dirs, innermost first, and answers those it removed, in that
+// order. It removes a directory only while it is one (never a file or symlink that took its place)
+// and is empty, so whatever else landed in one stays: rmdir fails on anything else, and Lstat
+// passes over a Windows directory symlink, which rmdir would remove.
+func removeCreated(dirs []string) []string {
+	var removed []string
+	for _, d := range slices.Backward(dirs) {
+		if fi, err := os.Lstat(d); err != nil || !fi.IsDir() {
+			continue
+		}
+		if syscall.Rmdir(d) == nil {
+			removed = append(removed, d)
+		}
+	}
+	return removed
 }

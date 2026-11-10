@@ -754,7 +754,7 @@ var _ = Describe("Engine", func() {
 	Describe("Check", func() {
 		It("reports every target's findings for a folder without touching any state", func() {
 			writeTree(src, map[string]string{"agents/bare.md": "No description.\n", "AGENTS.md": "legacy\n"})
-			rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rep.Modules).To(HaveLen(1))
 			m := rep.Modules[0]
@@ -774,7 +774,7 @@ var _ = Describe("Engine", func() {
 
 		It("covers agents without -t only where .agents/skills is set up or the scope's targets name it", func() {
 			check := func() []string {
-				rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil)
+				rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil, nil)
 				Expect(err).NotTo(HaveOccurred())
 				return rep.Modules[0].Targets
 			}
@@ -791,7 +791,7 @@ var _ = Describe("Engine", func() {
 
 			user := engine.Scope{Kind: target.User}
 			checkUser := func() []string {
-				rep, err := e.Check(ctx, user, proj, []string{"../src/example"}, nil, nil)
+				rep, err := e.Check(ctx, user, proj, []string{"../src/example"}, nil, nil, nil)
 				Expect(err).NotTo(HaveOccurred())
 				return rep.Modules[0].Targets
 			}
@@ -811,7 +811,7 @@ var _ = Describe("Engine", func() {
 				"ai.opencode/commands/oc.md":  "OpenCode.\n",
 				"dev.getlola/commands/all.md": "All.\n",
 			})
-			rep, err := e.Check(ctx, sc, proj, []string{pkg}, []string{"claude-code", "opencode"}, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{pkg}, []string{"claude-code", "opencode"}, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rep.Modules[0].Name).To(Equal("tools"))
 			Expect(rep.Modules[0].Findings).To(ContainElement(SatisfyAll(HaveField("Code", "module-warning"),
@@ -821,15 +821,15 @@ var _ = Describe("Engine", func() {
 		It("checks a cached module by name, and explains an argument that is neither", func() {
 			_, err := e.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src})
 			Expect(err).NotTo(HaveOccurred())
-			rep, err := e.Check(ctx, sc, proj, []string{"example"}, []string{"claude-code"}, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{"example"}, []string{"claude-code"}, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rep.Modules[0].Name).To(Equal("example"))
 
-			_, err = e.Check(ctx, sc, proj, []string{"nothing-here"}, nil, nil)
+			_, err = e.Check(ctx, sc, proj, []string{"nothing-here"}, nil, nil, nil)
 			Expect(err).To(MatchError(`"nothing-here" is neither a source nor a module in your cache; pass a module folder or another source, ` +
 				"e.g. lola check ./my-module; sources are " + source.AcceptedForms))
 			Expect(errs.Hints(err)).To(ContainElement("cached modules: lola cache list"))
-			_, err = e.Check(ctx, sc, proj, []string{"../src/example"}, []string{"vim"}, nil)
+			_, err = e.Check(ctx, sc, proj, []string{"../src/example"}, []string{"vim"}, nil, nil)
 			Expect(err).To(MatchError(`unknown target "vim"`))
 		})
 	})
@@ -999,7 +999,7 @@ var _ = Describe("Engine", func() {
 		e.Detect(user)
 		_, err := install(claude, src)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = e.Check(ctx, user, proj, []string{src}, nil, nil)
+		_, err = e.Check(ctx, user, proj, []string{src}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(seen).To(Equal([]string{"detect project " + proj, "detect user " + p.Home, "plan project " + proj, "plan user " + p.Home}))
 	})

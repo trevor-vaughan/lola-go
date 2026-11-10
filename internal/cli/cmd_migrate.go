@@ -332,7 +332,7 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		for _, k := range d.Kept {
 			fmt.Fprintf(w, "  %-7s %s: %s\n", "keep", k.Path, k.Reason)
 		}
-		printReported(w, "  ", d.NotMigrated, d.Unmappable)
+		printReported(w, "  ", d.NotMigrated, d.Unmappable, s.width)
 		for _, f := range d.Findings {
 			if f.Severity == target.SeverityInfo && f.Hint == "" {
 				continue
@@ -355,10 +355,10 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 			fmt.Fprintln(w, s.warn(fmt.Sprintf("%s%s: %d record(s) left as they are", what, migrationLabel(d), len(d.Unmappable))))
 		case migrate.StatusFailed:
 			fmt.Fprintln(w, s.bad("failed "+migrationLabel(d)+": "+d.Error))
-			printHints(w, "    ", d.Hints)
+			printHints(w, "    ", d.Hints, s.width)
 		}
 	}
-	printReported(w, "", r.NotMigrated, r.Unmappable)
+	printReported(w, "", r.NotMigrated, r.Unmappable, s.width)
 	printSummary(w, s, r)
 	printMigratedMarkets(w, s, r.Markets)
 	for _, warn := range r.Warnings {
@@ -474,7 +474,7 @@ func printMigratedMarkets(w io.Writer, s style, ms []migrate.Market) {
 		case migrate.MarketFailed:
 			fmt.Fprintln(w, "  "+s.bad("failed "+m.Name+" ("+m.URL+"): "+m.Reason))
 		}
-		printHints(w, "      ", m.Hints)
+		printHints(w, "      ", m.Hints, s.width)
 	}
 }
 
@@ -488,14 +488,14 @@ func shownPath(m migrate.Moved) string {
 
 // printReported lists what is never migrated and the records lola cannot migrate, each with
 // its hint.
-func printReported(w io.Writer, indent string, items []migrate.Item, unmapped []migrate.Unmapped) {
+func printReported(w io.Writer, indent string, items []migrate.Item, unmapped []migrate.Unmapped, width int) {
 	for _, it := range items {
 		line := "not migrated: " + it.What + " " + it.Path
 		if it.Marker != "" {
 			line += " " + it.Marker
 		}
 		fmt.Fprintf(w, "%s%s\n", indent, line)
-		printHints(w, indent+"    ", it.Hints)
+		printHints(w, indent+"    ", it.Hints, width)
 	}
 	for _, u := range unmapped {
 		line := "unmappable " + u.Module + " (" + u.Assistant
@@ -503,14 +503,14 @@ func printReported(w io.Writer, indent string, items []migrate.Item, unmapped []
 			line += " at " + u.ProjectPath
 		}
 		fmt.Fprintf(w, "%s%s): %s\n", indent, line, u.Reason)
-		printHints(w, indent+"    ", u.Hints)
+		printHints(w, indent+"    ", u.Hints, width)
 	}
 }
 
-// printHints prints each hint on a line of its own.
-func printHints(w io.Writer, indent string, hints []string) {
+// printHints prints each hint on a line of its own, wrapped to width (hintLine).
+func printHints(w io.Writer, indent string, hints []string, width int) {
 	for _, h := range hints {
-		fmt.Fprintf(w, "%shint: %s\n", indent, h)
+		fmt.Fprintln(w, hintLine(indent, h, width))
 	}
 }
 

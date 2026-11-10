@@ -411,7 +411,7 @@ func (a *app) profileCmd() *cobra.Command {
 				rows = append(rows, got...)
 				// Both scopes read one profiles directory: its warnings are said once.
 				for _, n := range notes {
-					if !slices.Contains(notices, n) {
+					if !slices.ContainsFunc(notices, n.Same) {
 						notices = append(notices, n)
 					}
 				}
@@ -434,7 +434,7 @@ func (a *app) profileCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&ef.exact, "exact", false, "with --edit --only: save the selectors as the entry's only: list instead, so components a later version adds are not installed")
 	cmd.Flags().BoolVar(&ef.withMentions, "with-mentions", false, "with --edit: also take the components your picks mention by name (one hop)")
 	cmd.Flags().BoolVar(&ef.override, "override", false, "with --edit: when the module comes from another layer, give the profile its own entry, starting from that one")
-	a.addTargetFlag(cmd, &ef.targets, "with --edit: the assistants a module it adds installs for")
+	a.addTargetFlag(cmd, &ef.targets, "with --edit: the assistants a module it adds installs for; <id>@<version> also records which version to write for")
 	cmd.Flags().BoolVar(&create, "new", false, "with --switch or --edit: make the profile first (yours; project:<name> the project's), empty unless --from or --bundle")
 	cmd.Flags().StringVar(&from, "from", "", "with --new: copy this profile's entries and targets (never a pin)")
 	cmd.Flags().StringSliceVar(&members, "bundle", nil, "with --new: make a bundle of these profiles (comma-separated, in order); with --edit: set a bundle's members; a bare one that does not exist is made empty")

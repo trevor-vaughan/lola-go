@@ -2,6 +2,7 @@ package targetspec
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -159,10 +160,10 @@ func ParseFS(fsys fs.FS, dir, source string) ([]Spec, error) {
 }
 
 // extend resolves e on prev: a copy of prev with e's remove entries deleted, then e's layout
-// kinds, keys per kind, other kind fields given, vars, behaviors by id and shared replacing
-// prev's. field is e's path, for errors.
+// kinds, keys per kind, other kind fields given, vars, behaviors by id, and summary and shared
+// when given replacing prev's. field is e's path, for errors.
 func (v validator) extend(field string, prev, e Era) (Era, error) {
-	out := Era{Since: e.Since, Vars: map[string]Scoped{}, Entries: maps.Clone(prev.Entries), Kinds: map[string]Kind{},
+	out := Era{Since: e.Since, Summary: cmp.Or(e.Summary, prev.Summary), Vars: map[string]Scoped{}, Entries: maps.Clone(prev.Entries), Kinds: map[string]Kind{},
 		Behaviors: slices.Clone(prev.Behaviors), Shared: prev.Shared}
 	maps.Copy(out.Vars, prev.Vars)
 	for k, kind := range prev.Kinds {

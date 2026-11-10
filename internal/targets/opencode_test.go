@@ -37,7 +37,7 @@ var _ = Describe("opencode", func() {
 		))
 		Expect(fs).To(BeEmpty())
 		p := byPath(ins)
-		Expect(p[".opencode/skills/review"]).To(Equal(plan.Intent{Target: "opencode", Kind: "skill", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
+		Expect(p[".opencode/skills/review"]).To(Equal(plan.Intent{Target: "opencode", Kind: "skill", Name: "review", Op: plan.OpCopyTree, Src: ctx.ContentDir + "/skills/review",
 			Path: ".opencode/skills/review", Exclude: []string{"SKILL.md"}}))
 		Expect(string(p[".opencode/skills/review/SKILL.md"].Data)).To(Equal("---\nname: review\ndescription: r\n---\nRun /proj/.lola/modules/example/x\n"))
 		Expect(string(p[".opencode/skills/lint/SKILL.md"].Data)).To(Equal("---\nname: lint\ndescription: l\nlicense: MIT\n---\nLint.\n"))
@@ -210,12 +210,12 @@ var _ = Describe("opencode", func() {
 		Expect(string(p[".opencode/agents/rev.md"].Data)).To(Equal("---\nmode: subagent\ndescription: reviews\n---\nYou review.\n"))
 		Expect(string(p[".opencode/agents/lead.md"].Data)).To(Equal("---\ndescription: leads\nmode: primary\nmodel: anthropic/claude-opus-5-5\n---\nLead.\n"))
 		Expect(fs).To(Equal([]target.Finding{
-			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped",
+			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped", Key: "color",
 				Text: "color dropped: opencode needs a string matching ^#[0-9a-fA-F]{6}$",
 				Hint: "in rev.targets.yaml beside the agent, set opencode's color to a string matching ^#[0-9a-fA-F]{6}$, or to null to leave it out", Class: target.ClassDetail, AuthorHint: true},
-			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped", Text: "model dropped: opencode needs a string matching ^[^/]+/.+$",
+			{Severity: target.SeverityWarn, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-value-dropped", Key: "model", Text: "model dropped: opencode needs a string matching ^[^/]+/.+$",
 				Hint: "in rev.targets.yaml beside the agent, set opencode's model to a string matching ^[^/]+/.+$, or to null to leave it out", Class: target.ClassDetail, AuthorHint: true},
-			{Severity: target.SeverityInfo, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-key-dropped", Text: "name dropped: the file name names the agent", Class: target.ClassDetail},
+			{Severity: target.SeverityInfo, Target: "opencode", Kind: "agent", Artifact: "rev", Code: "frontmatter-key-dropped", Key: "name", Text: "name dropped: the file name names the agent", Class: target.ClassDetail},
 		}))
 	})
 
@@ -344,8 +344,8 @@ var _ = Describe("opencode", func() {
 		ins, fs := plan1(m)
 		Expect(fs).To(BeEmpty())
 		Expect(ins).To(Equal([]plan.Intent{
-			{Target: "opencode", Kind: "rule", Op: plan.OpWriteFile, Path: ".opencode/lola/example/a.md", Data: []byte("Keep ${PLUGIN_ROOT}.\n"), Mode: 0o644},
-			{Target: "opencode", Kind: "rule", Op: plan.OpWriteFile, Path: ".opencode/lola/example/b.md", Data: []byte("Be brief.\n"), Mode: 0o644},
+			{Target: "opencode", Kind: "rule", Name: "a", Op: plan.OpWriteFile, Path: ".opencode/lola/example/a.md", Data: []byte("Keep ${PLUGIN_ROOT}.\n"), Mode: 0o644},
+			{Target: "opencode", Kind: "rule", Name: "b", Op: plan.OpWriteFile, Path: ".opencode/lola/example/b.md", Data: []byte("Be brief.\n"), Mode: 0o644},
 			{Target: "opencode", Kind: "rule", Op: plan.OpAddJSONMember, Path: "opencode.json", Pointer: "/instructions", Member: plan.StringMember(".opencode/lola/example/*.md")},
 		}))
 

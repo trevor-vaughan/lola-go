@@ -30,7 +30,7 @@ var _ = Describe("the run budget", func() {
 		clock := time.Unix(0, 0)
 		e.Now = func() time.Time { clock = clock.Add(time.Second); return clock } // every render takes 1 s
 		e.TemplateBudget.RunTime = 2500 * time.Millisecond
-		_, err = e.Check(context.Background(), engine.Scope{Kind: target.Project, ProjectDir: proj}, proj, []string{src}, []string{"claude-code"}, nil)
+		_, err = e.Check(context.Background(), engine.Scope{Kind: target.Project, ProjectDir: proj}, proj, []string{src}, []string{"claude-code"}, nil, nil)
 		te, ok := errors.AsType[*engine.TemplateError](err)
 		Expect(ok).To(BeTrue(), "the third failed render passes 2.5 s: %v", err)
 		Expect(te.Code).To(Equal("template-run-budget"))
