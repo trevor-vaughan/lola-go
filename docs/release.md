@@ -4,7 +4,7 @@ The checklist a maintainer works through before tagging a release. Every item ha
 condition; any item that fails blocks the tag until it passes. Run the items on the commit you
 mean to tag, with a clean work tree.
 
-1. **The gates.** `task check` is green (lint, test, cross, vuln; cross builds and vets for Windows
+1. **The gates.** `task check` is green (lint, test, cross, vuln, flows; cross builds and vets for Windows
    and macOS).
 
 2. **The end-to-end suites.** `task e2e MODE=llm` is green on Linux with podman or docker, and

@@ -53,9 +53,14 @@ tasks:
     cmds:
       - task: go:vuln
 
+  flows:
+    desc: "Alias for go:flows"
+    cmds:
+      - task: go:flows
+
   check:
-    desc: Run all quality gates (lint, test, cross, vuln)
-    deps: [lint, test, cross, vuln]
+    desc: Run all quality gates (lint, test, cross, vuln, flows)
+    deps: [lint, test, cross, vuln, flows]
 
   clean:
     desc: Remove build artifacts and test output
