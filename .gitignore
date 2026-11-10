@@ -3,3 +3,5 @@
 /.test-output/
 .headroom/
 .claude/handoff/
+megalinter-reports/
+mega-linter.log

@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  # AGENTS.md: dependencies are vetted and need the maintainer's approval; Dependabot only
+  # opens PRs for review, never merges.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
