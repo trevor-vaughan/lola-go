@@ -246,8 +246,8 @@ own place for it: [docs/reference/completion.md](docs/reference/completion.md#se
   full reference, including every alias.
 - [docs/usage.md](docs/usage.md): every command, scopes, files and the output contract.
 - [docs/guides/](docs/guides/): choosing what to install, authoring modules, templating, sync
-  and trust, profiles, remote profiles, marketplaces, migrating from LobsterTrap/lola, and
-  tidying.
+  and trust, profiles, remote profiles, marketplaces, migrating from LobsterTrap/lola, tidying,
+  and [adding or replacing an assistant with a target spec](docs/guides/target-specs.md).
 - [Removing lola](docs/usage.md#removing-lola): uninstall your modules, then delete what lola
   keeps and the binary.
 - [docs/architecture.md](docs/architecture.md): how lola works, for contributors.

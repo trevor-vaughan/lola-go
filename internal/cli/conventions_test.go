@@ -26,7 +26,9 @@ func commands() []*cobra.Command {
 			}
 		}
 	}
-	walk(cli.NewRootCmd(os.Getenv))
+	root, err := cli.NewRootCmd(os.Getenv)
+	Expect(err).NotTo(HaveOccurred())
+	walk(root)
 	return out
 }
 

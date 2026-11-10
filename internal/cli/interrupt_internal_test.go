@@ -24,7 +24,8 @@ var _ = Describe("Execute after a signal", func() {
 		testenv.Isolate()
 		ctx, cancel := context.WithCancelCause(context.Background())
 		cancel(Interrupted{Signal: sig})
-		root := NewRootCmd(os.Getenv)
+		root, rerr := NewRootCmd(os.Getenv)
+		Expect(rerr).NotTo(HaveOccurred())
 		root.AddCommand(&cobra.Command{Use: "stopped", RunE: func(*cobra.Command, []string) error { return err }})
 		var errb bytes.Buffer
 		root.SetOut(&bytes.Buffer{})
@@ -86,7 +87,11 @@ func TestInterruptChild(t *testing.T) {
 	var root *cobra.Command
 	switch child {
 	case "sync":
-		root = NewRootCmd(os.Getenv, WithPrompter(h))
+		var err error
+		root, err = NewRootCmd(os.Getenv, WithPrompter(h))
+		if err != nil {
+			t.Fatal(err)
+		}
 		root.SetArgs([]string{"sync", "-C", os.Getenv("LOLA_SPEC_PROJECT")})
 	case "modules":
 		root = ask(func() error {
@@ -95,10 +100,13 @@ func TestInterruptChild(t *testing.T) {
 		})
 	case "hooks":
 		root = ask(func() error {
-			cmd := NewRootCmd(os.Getenv)
+			cmd, err := NewRootCmd(os.Getenv)
+			if err != nil {
+				return err
+			}
 			cmd.SetIn(os.Stdin)
 			cmd.SetErr(os.Stderr)
-			_, err := (&app{getenv: os.Getenv}).ask(cmd, "Run m's install hooks?")
+			_, err = (&app{getenv: os.Getenv}).ask(cmd, "Run m's install hooks?")
 			return err
 		})
 	default:

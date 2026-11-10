@@ -60,7 +60,8 @@ var _ = Describe("the consent-diff pager", func() {
 	// terminals as outTTY and errTTY say.
 	askingOn := func(outTTY, errTTY bool, args ...string) (*pagedFirst, result) {
 		p := &pagedFirst{confirming: &confirming{trusts: []engine.TrustAnswer{{}}}, paged: paged}
-		root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(outTTY, errTTY))
+		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(outTTY, errTTY))
+		Expect(err).NotTo(HaveOccurred())
 		var out bytes.Buffer
 		p.stderr = &bytes.Buffer{}
 		root.SetOut(&out)
@@ -108,7 +109,8 @@ var _ = Describe("the consent-diff pager", func() {
 		_, err = typed.WriteString("q")
 		Expect(err).NotTo(HaveOccurred())
 		p := &pagedFirst{confirming: &confirming{trusts: []engine.TrustAnswer{{}}}, paged: paged}
-		root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
+		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
+		Expect(err).NotTo(HaveOccurred())
 		var out bytes.Buffer
 		p.stderr = &bytes.Buffer{}
 		root.SetOut(&out)

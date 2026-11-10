@@ -851,7 +851,8 @@ var _ = Describe("profiles", func() {
 		Expect(os.WriteFile(filepath.Join(tmp, "bin", "fakepager"), []byte("#!/bin/sh\ncat > \"$PAGED\"\n"), 0o755)).To(Succeed())
 		GinkgoT().Setenv("PAGED", paged)
 		GinkgoT().Setenv("LOLA_PAGER", "fakepager")
-		root := cli.NewRootCmd(os.Getenv, cli.WithTerminals(true, true))
+		root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(true, true))
+		Expect(err).NotTo(HaveOccurred())
 		var out, errb bytes.Buffer
 		root.SetOut(&out)
 		root.SetErr(&errb)

@@ -14,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -72,7 +73,7 @@ var _ = Describe("a project's base picks are keyed by its repository", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		src = filepath.Join(tmp, "src", "example")
 		writeTree(src, exampleModule)
 	})

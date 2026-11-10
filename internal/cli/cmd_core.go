@@ -18,7 +18,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -33,7 +32,7 @@ func (a *app) session(cmd *cobra.Command) (*engine.Engine, engine.Scope, error) 
 }
 
 func (a *app) addTargetFlag(cmd *cobra.Command, dst *[]string, usage string) {
-	cmd.Flags().StringSliceVarP(dst, "target", "t", nil, usage+" (repeatable or comma-separated: "+strings.Join(targets.IDs(), ", ")+")")
+	cmd.Flags().StringSliceVarP(dst, "target", "t", nil, usage+" (repeatable or comma-separated: "+strings.Join(a.reg.IDs(), ", ")+")")
 	_ = cmd.RegisterFlagCompletionFunc("target", a.completeTargets)
 }
 

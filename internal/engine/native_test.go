@@ -13,6 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/native/nativetest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -49,7 +50,7 @@ var _ = Describe("module/native-executable finding", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		kit = filepath.Join(tmp, "src", "kit")

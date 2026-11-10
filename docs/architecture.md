@@ -70,11 +70,21 @@ Maintainer notes on Templates. It has its own page: [Templates](architecture/tem
 
 ## Targets
 
-- **One package per target** (`internal/target/claude`, …) implements the contract in
-  `internal/target`; `internal/targets` lists them explicitly (no `init()` registration). A
-  `depguard` rule in `.golangci.yml` lets target packages import only the contract (exactly, not
-  a sibling target), `module`, `paths`, `plan`, `untrusted`, the standard library and their vetted
-  third-party packages (`yaml`, `toml`, `semver`), never the engine, the CLI or lola's state.
+- **A target is a YAML spec** (`internal/targetspec/specs`) that the generic target in
+  `internal/target/spec` renders through `internal/target/mech` mechanisms, one per artifact
+  kind, with `internal/target/policy` supplying lola's severities, guards and hints. It implements
+  the contract in `internal/target`; `internal/targets` registers the built-in specs in a fixed
+  order (no `init()` registration). `targets.Load(paths.Paths)` also reads the user's specs from
+  `paths.Paths.Targets` (`*.yaml`; `.yml` refused) and returns the `Registry` (built-ins in
+  their order, a user spec of a built-in's id in its place, then user-only ids sorted); the CLI
+  calls it once before it builds the command tree and passes the `Registry` down. A load error is
+  fatal for every command and never falls back to a built-in. The CLI prints `note: <id> uses
+  your target spec …` once per replaced built-in (human output), and the engine adds the info
+  finding `target/user-spec`. User-writing guide: [Target specs](guides/target-specs.md). A
+  `depguard` rule in `.golangci.yml` lets these packages import only the contract (exactly),
+  `module`, `paths`, `plan`, `targetspec`, `untrusted`, the standard library and their vetted
+  third-party packages (`yaml`, `toml`, `semver`), never the engine, the CLI or lola's state; a
+  second rule keeps `mech` from importing `spec` or `policy`.
 - **Scope and root.** `Detect(scope, root)` gets the target's root for the scope, and
   `PlanContext.Root` carries it into `Plan`. OpenCode needs both: its user-scope root is its own
   config directory, whose existence marks it as set up, and it writes to `opencode.jsonc` when
@@ -218,9 +228,9 @@ Maintainer notes on Install hooks. It has its own page: [Install hooks](architec
 
 ## Runtime hooks
 
-`target/claude` renders each matcher group of a module's runtime hooks as one `AddJSONMember` intent
-(kind `target.KindRuntimeHook`) under `/hooks/<Event>` of `.claude/settings.local.json`, or
-`~/.claude/settings.json` at user scope. Command handlers get `CLAUDE_PLUGIN_ROOT` and
+The `claude-code` target renders each matcher group of a module's runtime hooks as one
+`AddJSONMember` intent (kind `target.KindRuntimeHook`) under `/hooks/<Event>` of
+`.claude/settings.local.json`, or `~/.claude/settings.json` at user scope. Command handlers get `CLAUDE_PLUGIN_ROOT` and
 `CLAUDE_PLUGIN_DATA` (`PlanContext.PluginRoot` and `PluginData`, the same values `target.Expand`
 uses): textual forms are replaced in one pass, shell form gains an `export` prefix, and exec form
 becomes `env -- NAME=value NAME=value <command> <args>`. `--` must come before the assignments: GNU
@@ -237,7 +247,8 @@ only exec form fits: every `C:\` path holds `\`, so shell-form hooks are never f
 skip's hint names exec form alone.
 
 **Git-ignore check.** Targets stay pure, so the engine computes
-`PlanContext.LocalSettingsExposed` once per command (`probeRun.localSettings`), at project scope
+`PlanContext.SettingsExposed` once per settings file and command (`probeRun.settings`), for the
+settings file the target writes, at project scope
 and only for modules with runtime hooks: if the project or a parent holds `.git`, it runs
 `git ls-files --error-unmatch` (status 1 means untracked) and `git check-ignore -q --no-index`
 (status 0 means ignored) through `source.GitCommand`, whose `-c` overrides keep a cloned
@@ -245,8 +256,8 @@ repository's config from running programs (fsmonitor, hooks). Any other status, 
 the reason, and the target skips the hooks (fail closed).
 
 **Frontmatter hooks.** Claude Code also runs a `hooks:` key in skill, command and agent frontmatter.
-`module` checks every key equal to `hooks` ignoring case like `runtime_hooks`; `target/claude`
-(`componentHooks`) gives their command handlers the same rewrite and renders the rest of the
+`module` checks every key equal to `hooks` ignoring case like `runtime_hooks`; the `claude-code`
+target (`componentHooks`) gives their command handlers the same rewrite and renders the rest of the
 document through `target.Expand` separately, so `Expand`'s raw substitution never reaches hook shell
 text.
 

@@ -18,6 +18,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -33,7 +34,7 @@ var _ = Describe("Skills the agents target delivers to gemini-cli and opencode",
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, mod = filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
 		writeTree(mod, map[string]string{"lola.yml": "name: m\n",
 			"skills/review/SKILL.md":   "---\ndescription: Review code\n---\nReview it.\n",
@@ -193,7 +194,7 @@ var _ = Describe("The shared .agents/skills directory", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, mod = filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
 		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "skills/review/SKILL.md": "---\ndescription: Review code\n---\nReview it.\n"})
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())

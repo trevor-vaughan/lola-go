@@ -23,7 +23,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/target/claude"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
@@ -129,7 +129,7 @@ var _ = Describe("Templates", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		src = filepath.Join(tmp, "src", "kit")
@@ -420,7 +420,7 @@ var _ = Describe("Templates", func() {
 
 	It("after a timeout no later template renders and the run refuses", func() {
 		var seen []string
-		e.Targets = []target.Target{spy{Target: claude.Target{}, seen: &seen}}
+		e.Targets = []target.Target{spy{Target: claudeCode(), seen: &seen}}
 		e.TemplateLimits.Timeout = 100 * time.Millisecond
 		loop := "{% assign l = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' | split: '' %}" +
 			"{% for a in l %}{% for b in l %}{% for c in l %}{% for d in l %}{% assign s = a | append: b %}{% endfor %}{% endfor %}{% endfor %}{% endfor %}"

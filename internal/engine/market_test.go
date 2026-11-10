@@ -19,6 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -50,7 +51,7 @@ var _ = Describe("marketplaces", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return tmp, nil }
 		srv = filepath.Join(tmp, "srv")
 		Expect(os.MkdirAll(srv, 0o755)).To(Succeed())
@@ -1187,7 +1188,7 @@ var _ = Describe("removing marketplaces and the Python verbs", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return tmp, nil }
 		url = filepath.Join(tmp, "acme")
 		writeTree(url, map[string]string{".claude-plugin/marketplace.json": acmeCatalog, "tools/formatter/x.md": "x"})

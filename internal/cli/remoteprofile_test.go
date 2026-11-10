@@ -22,6 +22,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -237,7 +238,7 @@ var _ = Describe("remote profiles", func() {
 			url, src = base+"/example.git", base+"/profiles.git"
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-			v, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
+			v, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
 			Expect(err).NotTo(HaveOccurred())
 			mdigest = v.Meta.Digest
 			entry := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url + ", commit: " + mcommit + ", digest: " + mdigest + "}\n"
@@ -334,7 +335,7 @@ var _ = Describe("remote profiles", func() {
 			hurl := url[:len(url)-len("example.git")] + "hooked.git"
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin2"), filepath.Join(tmp, "pin2.lock"), filepath.Join(tmp, "pin2-staging")
-			hv, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: hurl})
+			hv, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: hurl})
 			Expect(err).NotTo(HaveOccurred())
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url +
@@ -401,7 +402,8 @@ var _ = Describe("remote profiles", func() {
 				Expect(in.Close()).To(Succeed())
 			})
 			c := &confirming{scripted: scripted{}, answers: []bool{true}}
-			root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
 			var out bytes.Buffer
 			c.stderr = &bytes.Buffer{}
 			root.SetOut(&out)
@@ -503,7 +505,8 @@ var _ = Describe("remote profiles", func() {
 				Expect(err).NotTo(HaveOccurred())
 				ctx, cancel := context.WithCancelCause(context.Background())
 				cancel(cli.Interrupted{Signal: sig}) // as cli.NotifyContext does on the signal
-				root := cli.NewRootCmd(os.Getenv)
+				root, err := cli.NewRootCmd(os.Getenv)
+				Expect(err).NotTo(HaveOccurred())
 				var out, errb bytes.Buffer
 				root.SetOut(&out)
 				root.SetErr(&errb)
@@ -862,7 +865,8 @@ var _ = Describe("remote profiles", func() {
 						cancel(cli.Interrupted{Signal: sig}) // as cli.NotifyContext does on the signal
 					}
 				}}
-				root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(sp))
+				root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(sp))
+				Expect(err).NotTo(HaveOccurred())
 				var out, errb bytes.Buffer
 				root.SetOut(&out)
 				root.SetErr(&errb)
@@ -1000,7 +1004,7 @@ var _ = Describe("remote profiles", func() {
 			bcommit := repo("big", files)
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin2"), filepath.Join(tmp, "pin2.lock"), filepath.Join(tmp, "pin2-staging")
-			v, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: strings.TrimSuffix(url, "example.git") + "big.git"})
+			v, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: strings.TrimSuffix(url, "example.git") + "big.git"})
 			Expect(err).NotTo(HaveOccurred())
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/big.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: big, source: " +

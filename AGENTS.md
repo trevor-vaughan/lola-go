@@ -21,9 +21,14 @@ Guidance for coding agents working on lola (Go).
 
 - **Behavior lives in `internal/engine`**; `internal/cli` only adapts it. New flows get engine
   specs first.
-- **Targets** are one package each under `internal/target/<name>`, listed in `internal/targets`.
-  They render through `target.Admit` and their capability table; anything they cannot express
-  is a `target.Finding`, never an error. Import boundaries are enforced by `depguard`.
+- **Targets** are YAML specs in `internal/targetspec/specs` (facts: layout, detection, probe,
+  frontmatter, behaviors), read through `internal/target/policy` (lola's severities, guards and
+  hints) and rendered by `internal/target/mech` mechanisms in the generic
+  `internal/target/spec` target; `internal/targets` registers them. A tool whose mechanisms
+  exist needs only a spec in `internal/targetspec/specs`, or a user's in
+  `$XDG_CONFIG_HOME/lola/targets`; `targets.Load` builds the `Registry` the CLI passes down.
+  They render through `target.Admit`; anything they cannot express is a `target.Finding`, never
+  an error. Import boundaries are enforced by `depguard`.
 - **Templates** render only through `internal/templating`; it alone imports liquid and reads no
   files.
 - **No package-level mutable state.** Paths come from `paths.Resolve(getenv)` in `main`; cobra

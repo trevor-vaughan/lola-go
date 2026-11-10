@@ -14,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -81,7 +82,7 @@ var _ = Describe("exact selections", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		src, other = filepath.Join(tmp, "src", "example"), filepath.Join(tmp, "src", "zeta")
@@ -337,7 +338,7 @@ var _ = Describe("new components an only: list leaves out", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		src = filepath.Join(tmp, "src", "example")

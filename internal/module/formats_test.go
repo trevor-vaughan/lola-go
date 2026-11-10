@@ -23,7 +23,7 @@ type rendered struct {
 
 func renderAll(m *module.Module, contentDir string) map[string]rendered {
 	out := map[string]rendered{}
-	for _, t := range targets.All() {
+	for _, t := range targets.Builtin().All() {
 		ctx := target.PlanContext{Scope: target.Project, Root: filepath.Join(contentDir, "..", "project"), ContentDir: contentDir,
 			PluginRoot: "/copies/" + m.Name, PluginData: "/data/" + m.Name}
 		ins, fs, err := t.Plan(m, ctx)
@@ -46,14 +46,14 @@ func sameJSON(a, b any) {
 // cachedLoadsLikeFresh checks the fixture in root: detected and normalized as cache add does,
 // then loaded the way the cache loads it, which runs no format adapter.
 func cachedLoadsLikeFresh(root string, format string) {
-	fresh, err := module.Detect(root, "fallback", targets.IDs())
+	fresh, err := module.Detect(root, "fallback", targets.Builtin().IDs())
 	Expect(err).NotTo(HaveOccurred())
 	Expect(fresh.Format).To(Equal(format))
 	Expect(module.Normalize(root, fresh)).To(Succeed())
 	first, err := os.ReadFile(filepath.Join(root, "lola.yml"))
 	Expect(err).NotTo(HaveOccurred())
 
-	cached, err := module.Load(root, "fallback", targets.IDs())
+	cached, err := module.Load(root, "fallback", targets.Builtin().IDs())
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cached.Manifest).To(Equal("lola.yml"))
 	Expect(cached.Shadowed).To(BeEmpty())
@@ -70,7 +70,7 @@ func cachedLoadsLikeFresh(root string, format string) {
 	Expect(cached.DeclaredHooks).To(Equal(fresh.DeclaredHooks))
 	Expect(renderAll(cached, root)).To(Equal(renderAll(fresh, root)))
 
-	again, err := module.Detect(root, "fallback", targets.IDs())
+	again, err := module.Detect(root, "fallback", targets.Builtin().IDs())
 	Expect(err).NotTo(HaveOccurred())
 	Expect(module.Normalize(root, again)).To(Succeed())
 	second, err := os.ReadFile(filepath.Join(root, "lola.yml"))

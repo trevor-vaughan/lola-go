@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -19,7 +20,7 @@ var _ = Describe("a run whose context is cancelled after its fetch (Ctrl+C or SI
 		tmp := testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := engine.New(p)
+		e := engine.New(p, targets.Builtin())
 		src, proj := filepath.Join(tmp, "kit"), filepath.Join(tmp, "proj")
 		writeTree(src, map[string]string{".claude-plugin/plugin.json": `{"name":"kit"}`, "commands/hi.md": "Hi\n",
 			"hooks/hooks.json": `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"${CLAUDE_PLUGIN_ROOT}/stop.sh"}]}]}}`})

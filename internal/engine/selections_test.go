@@ -12,6 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -42,7 +43,7 @@ var _ = Describe("the component resolver and selections.yaml", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		src = filepath.Join(tmp, "src", "example")
 		writeTree(src, exampleModule)

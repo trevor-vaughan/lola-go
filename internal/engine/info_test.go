@@ -23,6 +23,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -77,7 +78,7 @@ var _ = Describe("lola info", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, kit = filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "kit")
 		writeTree(kit, infoModule)
 		Expect(os.Chmod(filepath.Join(kit, "setup.sh"), 0o755)).To(Succeed())
@@ -380,7 +381,7 @@ var _ = Describe("lola info", func() {
 		Expect(os.WriteFile(filepath.Join(tmp, "bin", "claude"), []byte("#!/bin/sh\necho 1.0.0\n"), 0o755)).To(Succeed())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(choice).To(Equal(engine.TargetChoice{Installed: []string{"claude-code"}}))
@@ -414,7 +415,7 @@ var _ = Describe("lola info", func() {
 		Expect(os.WriteFile(filepath.Join(tmp, "bin", "claude"), []byte("#!/bin/sh\necho 1.0.0\n"), 0o755)).To(Succeed())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		choice, err = e.DefaultTargets(sc, nil, engine.TargetRequest{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(choice).To(Equal(engine.TargetChoice{Installed: []string{"claude-code"}, SetUpOnly: []string{"agents"}}))
@@ -639,7 +640,7 @@ var _ = Describe("lola info", func() {
 			}
 			p, err := paths.Resolve(os.Getenv)
 			Expect(err).NotTo(HaveOccurred())
-			e = engine.New(p)
+			e = engine.New(p, targets.Builtin())
 			info, err = e.Info(ctx, request(engine.ScopeRequest{Project: true}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(info.NoAssistant).To(Equal("none of your installed assistants (claude-code, opencode) is set up here, so lola does not know where to install"))

@@ -11,7 +11,11 @@ import (
 
 func main() {
 	ctx, stop := cli.NotifyContext(context.Background())
-	root := cli.NewRootCmd(os.Getenv)
+	root, err := cli.NewRootCmd(os.Getenv)
+	if err != nil {
+		stop()
+		os.Exit(cli.StartupError(os.Stderr, err, os.Args[1:]))
+	}
 	root.SetContext(ctx)
 	code := cli.Execute(root)
 	stop()

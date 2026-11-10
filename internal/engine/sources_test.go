@@ -31,6 +31,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
@@ -82,7 +83,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		tmp = testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		proj = filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())

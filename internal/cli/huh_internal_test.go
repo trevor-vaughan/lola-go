@@ -441,7 +441,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			}
 			return ""
 		}}
-		cmd := NewRootCmd(os.Getenv)
+		cmd, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
 		cmd.SetIn(&lineReader{lines: []string{"y"}})
 		cmd.SetErr(&out)
 		ok, err := a.ask(cmd, "Install m's Claude Code hooks?")
@@ -458,7 +459,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 				}
 				return ""
 			}}
-			cmd := NewRootCmd(os.Getenv)
+			cmd, err := NewRootCmd(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
 			cmd.SetIn(&lineReader{lines: []string{"y"}})
 			cmd.SetErr(&out)
 			ok, err := a.askScript(cmd, engine.ScriptQuestion{Event: engine.PreInstall, Path: "ci/check.sh", Root: "/work/proj", SHA256: "ab12", Later: later})
@@ -481,7 +483,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(os.MkdirAll(filepath.Dir(kit), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(proj, "mods", "kit", "lola.yml"), []byte("name: kit\n"), 0o644)).To(Succeed())
 		Expect(os.WriteFile(kit, []byte("Kit\n"), 0o644)).To(Succeed())
-		root := NewRootCmd(os.Getenv)
+		root, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
 		root.SetArgs([]string{"install", filepath.Join(proj, "mods", "kit"), "-C", proj, "-t", "claude-code"})
 		root.SetOut(io.Discard)
 		root.SetErr(io.Discard)
@@ -731,14 +734,16 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			in   []string
 			want bool
 		}{{[]string{"y"}, true}, {[]string{"n"}, false}} {
-			cmd := NewRootCmd(os.Getenv)
+			cmd, err := NewRootCmd(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
 			cmd.SetIn(&lineReader{lines: tc.in})
 			cmd.SetErr(&out)
 			ok, err := a.ask(cmd, "Run m's install hooks?")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ok).To(Equal(tc.want))
 		}
-		cmd := NewRootCmd(os.Getenv)
+		cmd, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
 		cmd.SetIn(&lineReader{})
 		cmd.SetErr(&out)
 		ok, err := a.ask(cmd, "Run m's install hooks?")
@@ -763,7 +768,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 				}
 				return ""
 			}}
-			cmd := NewRootCmd(os.Getenv)
+			cmd, err := NewRootCmd(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(a.huhPrompter(cmd).(*huhForms).accessible).To(Equal(want), env)
 			Expect(a.huhPrompter(cmd).Interactive()).To(BeFalse(), "test streams are not terminals")
 		}
@@ -782,7 +788,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		// ref; modules: confirm the new module; components: drop undo, confirm; review: Apply.
 		var errb bytes.Buffer
 		h := accessible(&errb, "1", "0", "1", mod, "", "0", "2", "0", "")
-		root := NewRootCmd(os.Getenv, WithPrompter(h))
+		root, err := NewRootCmd(os.Getenv, WithPrompter(h))
+		Expect(err).NotTo(HaveOccurred())
 		var stdout bytes.Buffer
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
@@ -793,7 +800,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(filepath.Join(proj, ".claude/commands/undo.md")).NotTo(BeAnExistingFile())
 
 		errb.Reset()
-		root = NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "0")))
+		root, err = NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "0")))
+		Expect(err).NotTo(HaveOccurred())
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
 		root.SetArgs([]string{"install", "-t", "claude-code", "--scope", "user"})
@@ -816,7 +824,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		// a directory, then the other project; components (one page, both roots alike): drop
 		// undo, confirm; review: Apply.
 		var errb bytes.Buffer
-		root := NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "3", "0", "nowhere", "../other", "2", "0", "")))
+		root, err := NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "3", "0", "nowhere", "../other", "2", "0", "")))
+		Expect(err).NotTo(HaveOccurred())
 		var stdout bytes.Buffer
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
@@ -907,7 +916,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			if p != nil {
 				opts = append(opts, WithPrompter(p))
 			}
-			root := NewRootCmd(os.Getenv, opts...)
+			root, err := NewRootCmd(os.Getenv, opts...)
+			Expect(err).NotTo(HaveOccurred())
 			var stdout, stderr bytes.Buffer
 			root.SetOut(&stdout)
 			root.SetErr(&stderr)

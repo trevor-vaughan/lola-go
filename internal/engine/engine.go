@@ -70,6 +70,7 @@ type Engine struct {
 	Consent      *consent.Store
 	Trust        *trust.Store
 	Targets      []target.Target
+	Registry     targets.Registry // the targets Targets began as; specs may replace Targets
 	Now          func() time.Time
 	Environ      func() []string
 	Getwd        func() (string, error)
@@ -106,13 +107,13 @@ type recovery struct {
 	judged map[string]bool
 }
 
-// New returns an Engine over the real store and every registered target. The store dates last_used
+// New returns an Engine over the real store and every target of reg. The store dates last_used
 // by e.Now, read at each use, so a spec that replaces Now fakes the day.
-func New(p paths.Paths) *Engine {
-	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
+func New(p paths.Paths, reg targets.Registry) *Engine {
+	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: reg.All(), Registry: reg, Now: time.Now,
 		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
 		TemplateBudget: TemplateBudget{RunOutput: 32 << 20, RunTime: 20 * time.Second}}
-	e.Store = store.New(p, targets.IDs(), func() time.Time { return e.Now() })
+	e.Store = store.New(p, reg.IDs(), func() time.Time { return e.Now() })
 	return e
 }
 
@@ -561,6 +562,8 @@ func (e *Engine) manifestName(sc Scope) string {
 // have written the same way, before planning or asking anything: what ledger.LoadKeepingStrays
 // refuses keeps its own hints, and the first ledger.Stray (a path that leaves its target's root,
 // a target lola does not know) hints lola repair for the scope, keeping the run's output flags.
+// An unknown target is most likely a user spec since removed, so restoring it comes first: repair
+// only forgets what lola wrote there.
 func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
 	path := e.files(sc).ledger
 	led, err := ledger.LoadKeepingStrays(path)
@@ -568,7 +571,13 @@ func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
 		return nil, e.coachLedger(sc, err)
 	}
 	if strays := led.Strays(e.knows); len(strays) > 0 {
-		return nil, errs.WithHints(&ledger.StrayError{File: path, Stray: strays[0]}, e.Command(sc, "repair", e.Display...))
+		var hints []string
+		if s := strays[0]; s.Unknown && !s.Outside && e.Paths.Targets != "" {
+			hints = append(hints, "restore your target spec for "+untrusted.Text(s.Target, untrusted.MaxName)+" in "+
+				untrusted.Text(e.Paths.Targets, untrusted.MaxName)+", then run this again to remove what lola wrote for it; lola repair forgets those files and leaves them")
+		}
+		hints = append(hints, e.Command(sc, "repair", e.Display...))
+		return nil, errs.WithHints(&ledger.StrayError{File: path, Stray: strays[0]}, hints...)
 	}
 	return led, nil
 }
@@ -1000,7 +1009,7 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	pctx := target.PlanContext{Scope: sc.Kind, ContentDir: v.ContentDir, PluginRoot: filepath.Join(f.modules, m.Name),
 		PluginData: filepath.Join(f.pluginData, m.Name), SkipRules: !ment.RulesOn(), Force: opts.Force}
 	if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
-		pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
+		pctx.SettingsExposed = func(abs string) (string, string) { return probes.settings(sc.ProjectDir, abs) }
 	}
 	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{},
 		Skipped: r.skipped, NotInOnly: []string{}}

@@ -335,7 +335,8 @@ var _ = Describe("lola market", func() {
 		GinkgoT().Setenv("PAGED", paged)
 		GinkgoT().Setenv("LOLA_PAGER", "fakepager")
 		onTerminal := func(args ...string) result {
-			root := cli.NewRootCmd(os.Getenv, cli.WithTerminals(true, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
 			var out, errb bytes.Buffer
 			root.SetOut(&out)
 			root.SetErr(&errb)

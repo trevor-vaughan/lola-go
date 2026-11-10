@@ -14,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -91,7 +92,7 @@ var _ = Describe("the mention scan", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
 		e.Getwd = func() (string, error) { return proj, nil }
@@ -255,7 +256,7 @@ var _ = Describe("lola info lists what each component mentions", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return tmp, nil }
 	})
 	// info shows arg without a scope: the mentions come before anything a scope decides.
@@ -306,7 +307,7 @@ var _ = Describe("naming what the picks mention and leave out", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
 		e.Getwd = func() (string, error) { return proj, nil }
@@ -450,7 +451,7 @@ var _ = Describe("lola install --with-mentions", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
 		e.Getwd = func() (string, error) { return proj, nil }

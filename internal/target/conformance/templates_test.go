@@ -60,10 +60,10 @@ var _ = Describe("templates and the registry", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := engine.New(p)
+		e := engine.New(p, targets.Builtin())
 		var seen []string
 		e.Targets = nil
-		for _, t := range targets.All() {
+		for _, t := range targets.Builtin().All() {
 			e.Targets = append(e.Targets, watched{Target: t, templates: &seen})
 		}
 		proj, src := filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "kit")
@@ -81,7 +81,7 @@ var _ = Describe("templates and the registry", func() {
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		e.Getwd = func() (string, error) { return proj, nil }
 		_, err = e.Install(context.Background(), engine.Scope{Kind: target.Project, ProjectDir: proj}, proj,
-			[]engine.InstallRequest{{Arg: src}}, engine.Options{Targets: targets.IDs()})
+			[]engine.InstallRequest{{Arg: src}}, engine.Options{Targets: targets.Builtin().IDs()})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(seen).To(ConsistOf("claude-code planned", "gemini-cli planned", "opencode planned", "agents planned"))
 	})

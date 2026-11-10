@@ -13,6 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -22,7 +23,7 @@ var _ = Describe("the run budget", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := engine.New(p)
+		e := engine.New(p, targets.Builtin())
 		proj, src := filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "kit")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		writeTree(src, map[string]string{"commands/a.md.liquid": "{{ nope }}", "commands/b.md.liquid": "{{ nope }}", "commands/c.md.liquid": "{{ nope }}"})
@@ -39,7 +40,7 @@ var _ = Describe("the run budget", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := engine.New(p)
+		e := engine.New(p, targets.Builtin())
 		proj := filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		writeTree(filepath.Join(proj, "mods", "a"), map[string]string{"lola.yml": "name: a\ntargets: [claude-code]\n", "commands/a.md.liquid": "aaaa"})

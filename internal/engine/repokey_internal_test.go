@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -22,7 +23,7 @@ var _ = Describe("a clone git cannot read", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = New(p)
+		e = New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "r")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 	})

@@ -10,7 +10,7 @@ command with its aliases and own flags). This page describes this
 build.
 
 The guides walk through one workflow each:
-[choosing what to install](guides/choosing-what-to-install.md),
+[choosing what to install](guides/choosing-what-to-install.md), [target specs](guides/target-specs.md),
 [authoring modules](guides/authoring-modules.md), [templating](guides/templating.md),
 [sync and trust](guides/sync-and-trust.md), [profiles](guides/profiles.md),
 [remote profiles](guides/remote-profiles.md), [marketplaces](guides/marketplaces.md),
@@ -245,6 +245,7 @@ the run, `lola check` included: they are never skip findings.
 | `claude-code/settings-local-not-ignored` | skip | yes | Git could commit `.claude/settings.local.json` (tracked, not ignored, or git missing or failing); add it to `.gitignore`. |
 | `claude-code/runtime-hook-event-invalid` | skip | no | A hooks event name is not an identifier, so it is no event Claude Code fires. |
 | `claude-code/runtime-hook-drift` | info | no | A hook group lola installed was edited or removed. On install, sync and update lola leaves it out until `--force` writes it again, and prints the finding with the hint `restore it:` and your run with `--force`; for `lola profile` (whose own `--force` run would find the profile as asked and change nothing) and for `lola update` and `lola sync --update` (whose own `--force` run would also upgrade) the hint is `lola sync <modules> --force`, naming the drifted modules; on uninstall lola leaves your edited group alone. `--strict` does not fail on it. |
+| `target/user-spec` | info | no | The assistant's spec is yours, in `$XDG_CONFIG_HOME/lola/targets`, in place of lola's built-in; the text names the file ([Target specs](guides/target-specs.md)). |
 | `probe/not-found` | info | no | The assistant is not on `PATH`; lola checked against the newest version it knows. |
 | `probe/unknown-version` | info | no | The assistant's version could not be read. |
 | `probe/cache` | info | no | The version was read but could not be cached. |
@@ -286,6 +287,7 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
 | `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, `cache_unused_for`, `cache_fresh_for`, and `theme`. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally and per project (no `user:` section: a file with one is refused, and a user-scope module's picks live in its profile entry). A project in a git clone whose `origin` is on another host is keyed by its repository (`git:<host>/<path>#<dir>`, no credential), so a re-clone keeps its picks (a project in a subdirectory of an unrelated clone, such as a home directory kept in git, is keyed by that clone and its subdirectory); any other by its absolute path ([`config.yaml` and `selections.yaml`](guides/choosing-what-to-install.md#configyaml-and-selectionsyaml)). Your teammates do not get these picks; a project profile shares picks. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/targets/*.yaml` | Your target specs: assistants lola has no built-in for, or built-ins you replace ([Target specs](guides/target-specs.md)). | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](guides/profiles.md#profiles). lola writes one only on `lola install` or `lola uninstall`, never with a pin; comments and order stay. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/default.yml` | User scope's base, always on: written by `lola install` and `lola uninstall` at user scope (no pins). | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/pins.yaml` | The versions installed from your profiles at user scope (`modules:`: source, ref, path, commit, digest) and a record of each remote profile you have (`remotes:`). Written by lola in every user-scope apply and by `lola profile --add`, `--update` and `--remove`, only when its bytes change; a header comment is kept and a link followed. [Synced with your config](guides/sync-and-trust.md#syncing-lola-between-machines); a run that needs a recorded remote profile this machine lacks restores it. | Yes, with your config |
@@ -327,7 +329,7 @@ binary. Each step below was run against a throwaway `HOME`.
    | Where (default) | What stays |
    |---|---|
    | `.lola/` in each project | `project.yml`, `lock.json` (empty of modules), `.gitignore`, an empty `modules/`, and `plugin-data/` with each module's data if a module used `${PLUGIN_DATA}` (uninstall keeps it and says where). `project.yml` is yours and may be committed; remove `.lola/` if you no longer want it. |
-   | `$XDG_CONFIG_HOME/lola/` (`~/.config/lola/`) | Your settings (`config.yaml`), keep-list, marketplaces and profiles, including `profiles/default.yml` (no modules left in it), `selections.yaml` with your component picks, and `pins.yaml` with its record of your remote profiles. |
+   | `$XDG_CONFIG_HOME/lola/` (`~/.config/lola/`) | Your settings (`config.yaml`), keep-list, marketplaces, target specs (`targets/`) and profiles, including `profiles/default.yml` (no modules left in it), `selections.yaml` with your component picks, and `pins.yaml` with its record of your remote profiles. |
    | `$XDG_DATA_HOME/lola/` (`~/.local/share/lola/`) | An empty `user-modules/`; remote profiles (`profiles/`), if you added any; `plugin-data/` with each user-scope module's data, if one used `${PLUGIN_DATA}`. |
    | `$XDG_STATE_HOME/lola/` (`~/.local/state/lola/`) | `lock.json` (the user-scope ledger), `trust.json`, `consent.json` once you have consented to a hook, `locks/`, and `trash/` with every run of `lola tidy` and `lola migrate`. Look in `trash/` (`lola trash`) before deleting it: it is the only copy of what those commands moved. |
    | `$XDG_CACHE_HOME/lola/` (`~/.cache/lola/`) | Empty `modules/` and `.staging/`, a `.lock` file, and any marketplace catalogs and probe results. |

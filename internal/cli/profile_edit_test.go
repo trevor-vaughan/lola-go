@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -295,7 +296,7 @@ var _ = Describe("lola profile --edit", func() {
 		url := testenv.ServeGitTLS(filepath.Join(tmp, "srv"), nil) + "/notes.git"
 		other := p
 		other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-		v, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
+		v, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
 		Expect(err).NotTo(HaveOccurred())
 		body := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: notes, source: " + url + ", commit: " + gitIn(work, "rev-parse", "HEAD") +
 			", digest: '" + v.Meta.Digest + "'}\n"

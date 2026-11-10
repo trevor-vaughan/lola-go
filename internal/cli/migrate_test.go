@@ -40,7 +40,8 @@ var _ = Describe("lola migrate", func() {
 	Describe("progress", func() {
 		// onTerminal runs lola migrate -n with stderr a terminal, as it is when a person waits.
 		onTerminal := func() result {
-			root := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true))
+			Expect(err).NotTo(HaveOccurred())
 			var out, errb bytes.Buffer
 			root.SetOut(&out)
 			root.SetErr(&errb)

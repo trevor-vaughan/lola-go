@@ -514,7 +514,8 @@ var _ = Describe("lola info", func() {
 		})
 
 		It("info never asks for a scope on a terminal", func() {
-			root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(&scripted{}), cli.WithTerminals(true, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(&scripted{}), cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
 			var out, errb bytes.Buffer
 			root.SetOut(&out)
 			root.SetErr(&errb)

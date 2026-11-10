@@ -58,7 +58,8 @@ func (c *confirming) Confirm(question string, _ cli.Nav) (bool, error) {
 
 // lolaAsking runs lola with c as its Prompter.
 func lolaAsking(c *confirming, args ...string) result {
-	root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c))
+	root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c))
+	Expect(err).NotTo(HaveOccurred())
 	var out bytes.Buffer
 	c.stderr = &bytes.Buffer{}
 	root.SetOut(&out)

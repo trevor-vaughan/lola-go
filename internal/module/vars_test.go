@@ -21,7 +21,7 @@ var _ = Describe("lola.yml vars", func() {
 	load := func(lola string) (*module.Module, error) {
 		GinkgoHelper()
 		write(root, map[string]string{"lola.yml": lola, "commands/c.md": "c\n"})
-		return module.Load(root, "kit", targets.IDs())
+		return module.Load(root, "kit", targets.Builtin().IDs())
 	}
 
 	It("reads vars as strings, booleans and lists of strings, and keeps them through Normalize", func() {
@@ -30,7 +30,7 @@ var _ = Describe("lola.yml vars", func() {
 		Expect(m.Vars).To(Equal(map[string]any{"language": "go", "strict": false, "tools": []string{"rg", "jq"}, "empty": []string{},
 			"quoted": "5", "text": "a\tb\nc"}))
 		Expect(module.Normalize(root, m)).To(Succeed())
-		again, err := module.Load(root, "kit", targets.IDs())
+		again, err := module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(again.Vars).To(Equal(m.Vars))
 		Expect(module.SameMeaning(m, again)).To(BeTrue())

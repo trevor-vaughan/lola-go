@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,6 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -61,6 +63,7 @@ const (
 // the install flow asks.
 type app struct {
 	getenv      func(string) string
+	reg         targets.Registry // built-in and user targets, loaded once by NewRootCmd
 	json        bool
 	plain       bool
 	scopeFlag   string   // --scope
@@ -105,11 +108,22 @@ func setupCobra() {
 	})
 }
 
-// NewRootCmd builds the full command tree. getenv is injected so tests control the
+// NewRootCmd builds the full command tree. It loads the target registry first and returns
+// targets.Load's error when a user spec cannot be loaded. getenv is injected so tests control the
 // environment; nothing reads os.Getenv directly.
-func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
+func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, error) {
 	setupCobra()
-	a := &app{getenv: getenv}
+	// The registry is loaded before the tree, whose flag help lists its ids. Paths that cannot be
+	// resolved hold no user specs; a.engine reports why when a command needs them.
+	p, perr := paths.Resolve(getenv)
+	if perr != nil {
+		p = paths.Paths{}
+	}
+	reg, err := targets.Load(p)
+	if err != nil {
+		return nil, err
+	}
+	a := &app{getenv: getenv, reg: reg}
 	for _, o := range opts {
 		o(a)
 	}
@@ -140,6 +154,13 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 				return errs.WithHints(errors.New("--json and --plain cannot be combined"), "pick one output format")
 			}
 			a.display = outputFlags(cmd)
+			if !a.json && !a.plain {
+				for _, id := range a.reg.IDs() {
+					if f := a.reg.Replaced(id); f != "" {
+						fmt.Fprintf(cmd.ErrOrStderr(), "note: %s uses your target spec %s in place of lola's built-in\n", id, untrusted.Text(f, untrusted.MaxName))
+					}
+				}
+			}
 			return nil
 		},
 	}
@@ -178,7 +199,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	a.offerSplits(root)
 	a.carryContext(root)
 	checkFlagAliases(root)
-	return root
+	return root, nil
 }
 
 // engine returns the engine, resolving XDG paths on first use.
@@ -188,7 +209,7 @@ func (a *app) engine() (*engine.Engine, error) {
 		if err != nil {
 			return nil, err
 		}
-		a.eng = engine.New(p)
+		a.eng = engine.New(p, a.reg)
 		a.eng.Display = a.display
 	}
 	return a.eng, nil
@@ -234,6 +255,19 @@ func (a *app) scope(cmd *cobra.Command, eng *engine.Engine) (engine.Scope, error
 	return res.Scopes[0].Scope, nil
 }
 
+// jsonRequested reports whether args ask for JSON output, for failures that come before flags are
+// parsed.
+func jsonRequested(args []string) bool {
+	return slices.ContainsFunc(args, func(arg string) bool { return arg == "--json" || arg == "--json=true" })
+}
+
+// StartupError prints err, which stopped lola before any command could run, per the output
+// contract (JSON when args ask for it) and returns the exit code.
+func StartupError(w io.Writer, err error, args []string) int {
+	writeError(w, err, jsonRequested(args))
+	return 1
+}
+
 // Execute runs root and maps the outcome to an exit code: 0 on success or a cancelled
 // prompt, 1 on any error (printed per the output contract), and 128 plus the signal's number on
 // an error after a signal cancelled root's context (NotifyContext), printing nothing but the
@@ -246,9 +280,7 @@ func Execute(root *cobra.Command) int {
 	if flagErr != nil {
 		asJSON = false
 	}
-	if errors.As(err, new(*flagError)) && slices.ContainsFunc(os.Args[1:], func(arg string) bool {
-		return arg == "--json" || arg == "--json=true"
-	}) {
+	if errors.As(err, new(*flagError)) && jsonRequested(os.Args[1:]) {
 		asJSON = true
 	}
 	var quit *quitError

@@ -24,6 +24,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
@@ -44,7 +45,7 @@ var _ = Describe("Sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
@@ -1490,22 +1491,26 @@ var _ = Describe("Sync", func() {
 		}
 		lockPath := func() string { return filepath.Join(proj, ".lola", "lock.json") }
 		DescribeTable("refuses a planted ledger entry before asking anything, naming lock.json, the module and lola repair",
-			func(a ledger.Artifact, want string) {
+			func(a ledger.Artifact, want string, restore bool) {
 				drop()
 				plant(a)
 				before := state()
 				_, err := sync(engine.SyncRequest{ConfirmRemovals: confirm})
 				Expect(err).To(MatchError(lockPath() + ": module other: " + want))
-				Expect(errs.Hints(err)).To(Equal([]string{"lola repair --project"}))
+				hints := []string{"lola repair --project"}
+				if restore {
+					hints = append([]string{restoreHint(p, "bogus")}, hints...)
+				}
+				Expect(errs.Hints(err)).To(Equal(hints))
 				Expect(removals).To(BeEmpty(), "nothing was asked")
 				Expect(state()).To(Equal(before))
 			},
 			Entry("a path outside the project", ledger.Artifact{Target: "claude-code", Kind: "file", Path: "../outside.md"},
-				`artifact "../outside.md" on target "claude-code" leaves the target's root`),
+				`artifact "../outside.md" on target "claude-code" leaves the target's root`, false),
 			Entry("an absolute path", ledger.Artifact{Target: "claude-code", Kind: "file", Path: "/tmp/outside.md"},
-				`artifact "/tmp/outside.md" on target "claude-code" leaves the target's root`),
+				`artifact "/tmp/outside.md" on target "claude-code" leaves the target's root`, false),
 			Entry("an unknown target", ledger.Artifact{Target: "bogus", Kind: "file", Path: "x.md"},
-				`target "bogus" is not a target lola knows`),
+				`target "bogus" is not a target lola knows`, true),
 		)
 
 		DescribeTable("every command that reads lock.json refuses a planted entry the same way",
@@ -1514,7 +1519,7 @@ var _ = Describe("Sync", func() {
 				before := state()
 				err := run()
 				Expect(err).To(MatchError(lockPath() + `: module other: target "bogus" is not a target lola knows`))
-				Expect(errs.Hints(err)).To(Equal([]string{"lola repair --project"}))
+				Expect(errs.Hints(err)).To(Equal([]string{restoreHint(p, "bogus"), "lola repair --project"}))
 				Expect(state()).To(Equal(before), "nothing was written or moved")
 			},
 			Entry("lola list", func() error { _, _, err := e.Status(ctx, sc, nil); return err }),

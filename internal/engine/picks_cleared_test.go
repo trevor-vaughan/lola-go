@@ -12,6 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -57,7 +58,7 @@ var _ = Describe("uninstall clears the module's picks at that scope", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, src = filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "example")
 		e.Getwd = func() (string, error) { return proj, nil }
 		writeTree(src, exampleModule)

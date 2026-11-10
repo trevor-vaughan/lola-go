@@ -270,7 +270,7 @@ var _ = Describe("M-2: a safety finding with an author's fix points to the modul
 		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "agents/a.md": "---\ndescription: a\ntools: [Read]\n---\nBody\n"})
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		check := "lola check -C " + proj + " m -t gemini-cli"
-		skipped := "✗ skipped m: gemini-cli agent a: gemini-cli cannot enforce this agent's tool list; without it the agent can use every tool\n"
+		skipped := "✗ skipped m: gemini-cli agent a: gemini-cli cannot enforce this agent's tools; without it the agent is unrestricted\n"
 		r := lola("install", mod, "-C", proj, "-t", "gemini-cli")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(skipped + "    hint: the module's own fix: " + check + "; or render it anyway: lola install " + mod + " --root " + proj + " --target gemini-cli --force\n"))

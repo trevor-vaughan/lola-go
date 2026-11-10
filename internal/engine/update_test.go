@@ -20,6 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -57,7 +58,7 @@ var _ = Describe("Sync of what is installed (lola update)", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		clock = time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 		e.Now = func() time.Time { return clock }
 		proj = filepath.Join(tmp, "proj")
@@ -788,7 +789,7 @@ var _ = Describe("Update-removals: a plain sync of a folder a component left", f
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := engine.New(p)
+		e := engine.New(p, targets.Builtin())
 		ctx := context.Background()
 		proj, mod := filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
 		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "commands/a.md": "A\n", "commands/b.md": "B\n"})

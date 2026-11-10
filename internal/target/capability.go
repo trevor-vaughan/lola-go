@@ -231,16 +231,6 @@ func invalid(at Finding, err error) Finding {
 	return at
 }
 
-// ToolsGuard is the Guard of an agent's tools key. Gemini CLI and OpenCode give an agent without
-// a tool list every tool, so a list the target cannot enforce must not be dropped quietly (user
-// decision 2026-10-09). fix is the target's own remedy; the engine adds the run with --force
-// that installs the agent unrestricted.
-func ToolsGuard(id, fix string) *Finding {
-	return &Finding{Code: "agent-tools-unenforceable",
-		Text: id + " cannot enforce this agent's tool list; without it the agent can use every tool",
-		Hint: fix}
-}
-
 // blank reports a frontmatter value that sets nothing: null, "", or an empty list or map.
 func blank(x any) bool {
 	switch v := x.(type) {

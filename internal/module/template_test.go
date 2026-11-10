@@ -21,7 +21,7 @@ var _ = Describe("Templates at load", func() {
 	BeforeEach(func() { root = filepath.Join(testenv.Isolate(), "mod") })
 	load := func(files map[string]string) (*module.Module, error) {
 		write(root, files)
-		return module.Load(root, "kit", targets.IDs())
+		return module.Load(root, "kit", targets.Builtin().IDs())
 	}
 
 	It("reads every .md.liquid component as a template with no frontmatter, its source in Body", func() {
@@ -101,7 +101,7 @@ var _ = Describe("Templates at load", func() {
 					"commands/ship.md.liquid":       "Ship.\n",
 					"agents/critic.md.liquid":       "Criticize.\n",
 				})
-				return module.Detect(root, "fallback", targets.IDs())
+				return module.Detect(root, "fallback", targets.Builtin().IDs())
 			}()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(m.Format).To(Equal("claude-plugin"))
@@ -123,7 +123,7 @@ var _ = Describe("Templates at load", func() {
 				"dev.getlola/commands/ship.md.liquid": "Ship.\n",
 				"dev.getlola/agents/critic.md.liquid": "Criticize.\n",
 			})
-			m, err := module.Detect(root, "fallback", targets.IDs())
+			m, err := module.Detect(root, "fallback", targets.Builtin().IDs())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(m.Format).To(Equal("agent-plugins"))
 			Expect(m.Warnings).To(BeEmpty())
@@ -170,14 +170,14 @@ var _ = Describe("Templates at load", func() {
 					manifest = `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"dev.kit"}`
 				}
 				write(root, map[string]string{f.manifest: manifest, f.cmds + "/ok.md": "ok\n", f.cmds + "/x.MD.liquid": "x\n"})
-				m, err := module.Detect(root, "fallback", targets.IDs())
+				m, err := module.Detect(root, "fallback", targets.Builtin().IDs())
 				Expect(err).NotTo(HaveOccurred(), f.manifest)
 				Expect(m.Commands).To(HaveLen(1), f.manifest)
 				Expect(m.Warnings).To(ConsistOf(f.cmds+"/x.MD.liquid is not a template: the suffix is .md.liquid"), f.manifest)
 
 				Expect(os.MkdirAll(filepath.Join(root, f.cmds, "d.md.liquid"), 0o755)).To(Succeed())
 				write(root, map[string]string{f.cmds + "/d.md.liquid/inner.md": "inner\n"})
-				_, err = module.Detect(root, "fallback", targets.IDs())
+				_, err = module.Detect(root, "fallback", targets.Builtin().IDs())
 				Expect(err).To(MatchError(f.cmds+"/d.md.liquid: a template must be a regular file"), f.manifest)
 			}
 		})
@@ -189,7 +189,7 @@ var _ = Describe("Templates at load", func() {
 				"dev.getlola/commands/ship.md": "Ship.\n",
 			})
 			Expect(os.MkdirAll(filepath.Join(root, "skills", "review", "SKILL.md.liquid"), 0o755)).To(Succeed())
-			m, err := module.Detect(root, "fallback", targets.IDs())
+			m, err := module.Detect(root, "fallback", targets.Builtin().IDs())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(m.Warnings).To(ConsistOf("skills/review/SKILL.md.liquid is not a regular file; skipped"))
 		})
@@ -279,24 +279,24 @@ var _ = Describe("Templates at load", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Commands).To(HaveLen(256))
 		write(root, map[string]string{"agents/one.md.liquid": "x\n"})
-		_, err = module.Load(root, "kit", targets.IDs())
+		_, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).To(MatchError("257 template files; a module has at most 256"))
 
 		Expect(os.RemoveAll(root)).To(Succeed())
 		write(root, map[string]string{"agents/big.md.liquid": strings.Repeat("a", 256<<10)})
-		_, err = module.Load(root, "kit", targets.IDs())
+		_, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred(), "exactly 256 KiB loads")
 		huge := filepath.Join(root, "agents", "huge.md.liquid")
 		f, err := os.Create(huge)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(f.Truncate(1<<40)).To(Succeed(), "a sparse file of 1 TiB: reading it whole would never finish")
 		Expect(f.Close()).To(Succeed())
-		_, err = module.Load(root, "kit", targets.IDs())
+		_, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).To(MatchError("agents/huge.md.liquid: is 1099511627776 bytes; a template file is at most 256 KiB"))
 
 		Expect(os.Remove(huge)).To(Succeed())
 		write(root, map[string]string{"agents/bad.md.liquid": "ok\nok\n\xff\n"})
-		_, err = module.Load(root, "kit", targets.IDs())
+		_, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).To(MatchError("agents/bad.md.liquid:3: is not UTF-8; a template file must be UTF-8 text"))
 	})
 
@@ -321,7 +321,7 @@ var _ = Describe("Templates at load", func() {
 	It("a directory named SKILL.md.liquid beside SKILL.md refuses with both names", func() {
 		write(root, map[string]string{"skills/review/SKILL.md": "Review.\n"})
 		Expect(os.MkdirAll(filepath.Join(root, "skills", "review", "SKILL.md.liquid"), 0o755)).To(Succeed())
-		_, err := module.Load(root, "kit", targets.IDs())
+		_, err := module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).To(MatchError("skills/review: both SKILL.md and SKILL.md.liquid exist; keep one"))
 	})
 
@@ -368,7 +368,7 @@ var _ = Describe("Templates at load", func() {
 
 		Expect(os.RemoveAll(root)).To(Succeed())
 		write(root, map[string]string{".claude-plugin/plugin.json": `{"name":"kit"}`, "skills/review/skill.md": "Review.\n", "commands/c.md": "c\n"})
-		m, err = module.Detect(root, "fallback", targets.IDs())
+		m, err = module.Detect(root, "fallback", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Skills).To(BeEmpty(), "claude-plugin")
 		Expect(m.Warnings).To(ConsistOf("skills/review/skill.md is not read; name it SKILL.md", "skills/review has no SKILL.md; skipped"))
@@ -376,7 +376,7 @@ var _ = Describe("Templates at load", func() {
 		Expect(os.RemoveAll(root)).To(Succeed())
 		write(root, map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"dev.kit"}`,
 			"skills/review/skill.md": "---\nname: review\ndescription: d\n---\n", "dev.getlola/commands/c.md": "c\n"})
-		m, err = module.Detect(root, "fallback", targets.IDs())
+		m, err = module.Detect(root, "fallback", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Skills).To(BeEmpty(), "agent-plugins")
 		Expect(m.Warnings).To(ConsistOf("skills/review/skill.md is not read; name it SKILL.md", "skills/review has no SKILL.md; skipped"))
@@ -386,7 +386,7 @@ var _ = Describe("Templates at load", func() {
 		if es, err := os.ReadDir(filepath.Join(root, "skills", "both")); err != nil || len(es) != 2 {
 			Skip("the file system folds case: SKILL.md and skill.MD are one file")
 		}
-		m, err = module.Load(root, "kit", targets.IDs())
+		m, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Skills).To(HaveLen(1))
 		Expect(m.Skills[0].Name).To(Equal("both"))
@@ -407,7 +407,7 @@ var _ = Describe("Templates at load", func() {
 			full := filepath.Join(root, dir)
 			Expect(os.MkdirAll(full, 0o755)).To(Succeed())
 			Expect(os.Chmod(full, 0)).To(Succeed())
-			_, err := module.Load(root, "kit", targets.IDs())
+			_, err := module.Load(root, "kit", targets.Builtin().IDs())
 			Expect(os.Chmod(full, 0o755)).To(Succeed())
 			Expect(err).To(HaveOccurred(), dir)
 			Expect(err.Error()).NotTo(ContainSubstring("\x1b"), dir)

@@ -29,7 +29,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 			files["plugin.json"] = manifest
 		}
 		write(root, files)
-		return module.Detect(root, "fallback", targets.IDs())
+		return module.Detect(root, "fallback", targets.Builtin().IDs())
 	}
 	// refused asserts err is a coached refusal that leaks neither Go type names nor the staging path.
 	refused := func(err error, msg any) {
@@ -363,7 +363,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 		Expect(os.Symlink("../other.md", filepath.Join(root, "skills", "linkedfile", "SKILL.md"))).To(Succeed())
 		Expect(os.Symlink("../elsewhere/commands", filepath.Join(root, "dev.getlola", "commands"))).To(Succeed())
 		Expect(os.MkdirAll(filepath.Join(root, "skills", "dirskill", "SKILL.md"), 0o755)).To(Succeed())
-		m, err := module.Detect(root, "fallback", targets.IDs())
+		m, err := module.Detect(root, "fallback", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Warnings).To(ConsistOf(
 			"skills/linkeddir is a symbolic link; skipped",
@@ -385,7 +385,7 @@ var _ = Describe("the Agent Plugins adapter", func() {
 		func(setup func(), msg string) {
 			write(root, map[string]string{"commands/a.md": "a"})
 			setup()
-			m, err := module.Detect(root, "fallback", targets.IDs())
+			m, err := module.Detect(root, "fallback", targets.Builtin().IDs())
 			Expect(m).To(BeNil())
 			refused(err, ContainSubstring(msg))
 		},

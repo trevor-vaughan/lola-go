@@ -25,6 +25,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trash"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
@@ -46,7 +47,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
@@ -63,7 +64,7 @@ var _ = Describe("remote profiles", func() {
 		// The pin is computed with a cache of its own, so the specs start with an empty one.
 		other := p
 		other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-		v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url})
+		v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url})
 		Expect(err).NotTo(HaveOccurred())
 		digest = v.Meta.Digest
 		requests.Store(0)
@@ -781,7 +782,7 @@ var _ = Describe("remote profiles", func() {
 				u := url[:len(url)-len("example.git")] + name + ".git"
 				other := p
 				other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin-"+name), filepath.Join(tmp, "pin-"+name+".lock"), filepath.Join(tmp, "pin-"+name+"-staging")
-				v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
+				v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
 				Expect(err).NotTo(HaveOccurred())
 				entries += "  - name: " + name + "\n    source: " + u + "\n    commit: " + gitIn(w, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n"
 			}
@@ -812,7 +813,7 @@ var _ = Describe("remote profiles", func() {
 				u := url[:len(url)-len("example.git")] + name + ".git"
 				other := p
 				other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin-"+name), filepath.Join(tmp, "pin-"+name+".lock"), filepath.Join(tmp, "pin-"+name+"-staging")
-				v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
+				v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
 				Expect(err).NotTo(HaveOccurred())
 				entries[name] = "  - name: " + name + "\n    source: " + u + "\n    commit: " + gitIn(w, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n"
 			}
@@ -1915,7 +1916,7 @@ var _ = Describe("remote profiles", func() {
 			kitURL, kitCommit := url[:len(url)-len("example.git")]+"kit.git", gitIn(kitWork, "rev-parse", "HEAD")
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-			v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
+			v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
 			Expect(err).NotTo(HaveOccurred())
 			entry := "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + kitURL + "\n    commit: " + kitCommit +
 				"\n    digest: " + v.Meta.Digest + "\n"
@@ -1946,7 +1947,7 @@ var _ = Describe("remote profiles", func() {
 			kitURL := url[:len(url)-len("example.git")] + "kit.git"
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-			v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
+			v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
 			Expect(err).NotTo(HaveOccurred())
 			publish(map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + kitURL +
 				"\n    commit: " + gitIn(kitWork, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n    vars: {lang: rust}\n"})

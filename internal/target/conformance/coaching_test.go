@@ -173,7 +173,9 @@ func own(id string) []producer {
 	case "claude-code":
 		stop := `{"Stop":[{"hooks":[{"type":"command","command":"x"}]}]}`
 		exposed := func(c *target.PlanContext) {
-			c.LocalSettingsExposed = ".claude/settings.local.json is not ignored by git"
+			c.SettingsExposed = func(string) (string, string) {
+				return ".claude/settings.local.json is not ignored by git", ".claude/settings.local.json"
+			}
 		}
 		spaced := func(c *target.PlanContext) { c.PluginRoot = "/copies/my kit" }
 		breaking := func(c *target.PlanContext) { c.PluginRoot = "a: b" } // "description: a: b" no longer parses
@@ -220,7 +222,7 @@ func own(id string) []producer {
 }
 
 var _ = Describe("finding coaching", func() {
-	for _, t := range targets.All() {
+	for _, t := range targets.Builtin().All() {
 		It(t.ID()+" gives every finding it produces a hint, or lists it as nothing to do", func() {
 			ctx := target.PlanContext{Scope: target.Project, Root: testenv.Isolate(), ContentDir: "/cache/example/content",
 				PluginRoot: "/copies/example", PluginData: "/data/example"}

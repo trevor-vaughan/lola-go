@@ -293,7 +293,8 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 			_, err := typed.WriteString("q")
 			Expect(err).NotTo(HaveOccurred())
 		}}
-		root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
+		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
+		Expect(err).NotTo(HaveOccurred())
 		var out bytes.Buffer
 		p.stderr = &bytes.Buffer{}
 		root.SetOut(&out)

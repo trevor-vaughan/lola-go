@@ -17,7 +17,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -1352,7 +1351,7 @@ func (fl *installFlow) ensureAssistants() error {
 		choice.Manifest = nil // the pickers' fixed targets decided above
 		switch why := choice.NoneHere(); {
 		case len(inst) == 0 && len(only) == 0:
-			return errs.WithHints(errors.New(why), withTarget(targets.IDs())...)
+			return errs.WithHints(errors.New(why), withTarget(fl.eng.Registry.IDs())...)
 		case !fl.ask && why != "":
 			return errs.WithHints(errors.New(why), withTarget(fl.eng.RerunTargets(choice))...)
 		case !fl.ask:

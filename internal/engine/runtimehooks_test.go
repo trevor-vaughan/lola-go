@@ -26,8 +26,24 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/target/spec"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
+	"github.com/trevor-vaughan/lola-go/internal/targetspec"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
+
+// quill is a target whose runtime hooks go to .quill/settings.json, not Claude Code's file.
+const quill = `id: quill
+readers: hooks for Quill
+roots: {project: "{project}", user: "{home}"}
+detect:
+  project: {any: [.quill/]}
+  user: {any: [.quill/]}
+eras:
+  - since: "1.0"
+    layout:
+      runtime-hook: {mech: claude-hooks, file: .quill/settings.json}
+`
 
 // rogue is a target that plans like claude-code but drops the consent marks from what it plans
 // and, when kind is set, renames its runtime hook intents: the engine must refuse it either way.
@@ -83,7 +99,7 @@ var _ = Describe("runtime hooks", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, plugin = filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "deploy")
 		writeTree(plugin, map[string]string{
 			".claude-plugin/plugin.json": `{"name":"deploy"}`,
@@ -645,6 +661,45 @@ var _ = Describe("runtime hooks", func() {
 			res, err := install(claudeOnly)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.Findings).To(notIgnored("is not ignored by git"))
+		})
+	})
+
+	Describe("the git-ignore check of a target with its own settings file", func() {
+		const own = ".quill/settings.json"
+		quillCodes := func() []string {
+			rep, err := e.Check(ctx, sc, proj, []string{plugin}, []string{"quill"}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			var codes []string
+			for _, f := range rep.Modules[0].Findings {
+				if f.Code == "quill/settings-local-not-ignored" {
+					codes = append(codes, f.Text+" | "+f.Hint)
+				}
+			}
+			return codes
+		}
+		BeforeEach(func() {
+			s, err := targetspec.Parse("quill.yaml", []byte(quill))
+			Expect(err).NotTo(HaveOccurred())
+			e.Targets = []target.Target{spec.New(s)}
+			git("init", "-q")
+		})
+
+		It("names the file the target writes when git would commit it", func() {
+			writeTree(proj, map[string]string{".gitignore": ".claude/settings.local.json\n"})
+			Expect(quillCodes()).To(ConsistOf(And(ContainSubstring(own+" is not ignored by git"), ContainSubstring("add "+own+" to .gitignore"))))
+		})
+
+		It("checks the file under the target's own root, not the project's", func() {
+			s, err := targetspec.Parse("quill.yaml", []byte(strings.Replace(quill, `project: "{project}"`, `project: "{project}/sub"`, 1)))
+			Expect(err).NotTo(HaveOccurred())
+			e.Targets = []target.Target{spec.New(s)}
+			writeTree(proj, map[string]string{".gitignore": "/" + own + "\n"})
+			Expect(quillCodes()).To(ConsistOf(And(ContainSubstring("sub/"+own+" is not ignored by git"), ContainSubstring("add sub/"+own+" to .gitignore"))))
+		})
+
+		It("passes once git ignores that file, whatever it does with Claude Code's", func() {
+			writeTree(proj, map[string]string{".gitignore": own + "\n"})
+			Expect(quillCodes()).To(BeEmpty())
 		})
 	})
 

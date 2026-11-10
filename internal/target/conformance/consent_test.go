@@ -128,8 +128,8 @@ var _ = Describe("frontmatter keys an assistant executes", func() {
 	}
 
 	It("every frontmatter key a target's assistant executes is gated by consent or dropped with a finding, under every accepted spelling", func() {
-		Expect(executed).To(HaveLen(len(targets.All())), "every registered target has its row of the table")
-		for _, t := range targets.All() {
+		Expect(executed).To(HaveLen(len(targets.Builtin().All())), "every registered target has its row of the table")
+		for _, t := range targets.Builtin().All() {
 			rows, ok := executed[t.ID()]
 			Expect(ok).To(BeTrue(), t.ID()+" has no row in the executed-key table")
 			for _, kind := range []string{"skill", "command", "agent"} {

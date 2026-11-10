@@ -236,7 +236,8 @@ func keep(drop ...string) func(cli.ComponentPage) ([]string, error) {
 
 // lolaP runs lola with p as its Prompter.
 func lolaP(p cli.Prompter, args ...string) result {
-	root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p))
+	root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p))
+	Expect(err).NotTo(HaveOccurred())
 	var out, errb bytes.Buffer
 	if s, ok := p.(*scripted); ok {
 		s.summaryTo = &errb

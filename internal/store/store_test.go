@@ -101,7 +101,7 @@ var _ = Describe("Store", func() {
 		var err error
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		s = store.New(p, targets.IDs(), func() time.Time { return now })
+		s = store.New(p, targets.Builtin().IDs(), func() time.Time { return now })
 	})
 
 	It("stores a version, moves the staged dir, and records the index and the version's .lola-origin", func() {

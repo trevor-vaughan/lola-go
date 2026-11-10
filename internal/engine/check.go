@@ -16,7 +16,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/templating"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -202,7 +201,7 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 		pctx := target.PlanContext{Scope: sc.Kind, Root: t.Root(sc.Kind, sc.ProjectDir, e.Paths), ContentDir: contentDir,
 			PluginRoot: contentDir, PluginData: contentDir, Version: probes.version(t), SharedSkills: shared}
 		if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
-			pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
+			pctx.SettingsExposed = func(abs string) (string, string) { return probes.settings(sc.ProjectDir, abs) }
 		}
 		rendered, refused, err := e.checkTemplates(ctx, m, templates.data(t.ID(), sc, vars), templates)
 		if err != nil {
@@ -310,7 +309,7 @@ func (e *Engine) loadForCheck(ctx context.Context, cwd, arg string, display []st
 	if err != nil {
 		return nil, "", none, err
 	}
-	m, err := module.Detect(staged.Dir, staged.Name, targets.IDs())
+	m, err := module.Detect(staged.Dir, staged.Name, e.targetIDs())
 	if errors.Is(err, module.ErrNoModule) {
 		err = store.NoModuleAt(spec.Location, spec.Path, staged.Dir, err)
 	}

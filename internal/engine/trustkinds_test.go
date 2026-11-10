@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -106,7 +107,7 @@ var _ = Describe("typed trust", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, log = filepath.Join(tmp, "proj"), filepath.Join(tmp, "hooks.log")
 		e.Getwd = func() (string, error) { return proj, nil }
 		e.Environ = func() []string { return append(os.Environ(), "HOOK_LOG="+log) }
@@ -511,7 +512,7 @@ var _ = Describe("typed trust after the receipt", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
@@ -562,7 +563,7 @@ var _ = Describe("a batch applied after its one receipt", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		sc, user = engine.Scope{Kind: target.Project, ProjectDir: proj}, engine.Scope{Kind: target.User}

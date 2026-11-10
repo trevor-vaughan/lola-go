@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -34,7 +35,7 @@ func newTidyEnv() *tidyEnv {
 	Expect(err).NotTo(HaveOccurred())
 	p, err := paths.Resolve(os.Getenv)
 	Expect(err).NotTo(HaveOccurred())
-	t := &tidyEnv{tmp: tmp, proj: filepath.Join(tmp, "proj"), home: p.Home, p: p, e: engine.New(p)}
+	t := &tidyEnv{tmp: tmp, proj: filepath.Join(tmp, "proj"), home: p.Home, p: p, e: engine.New(p, targets.Builtin())}
 	Expect(os.MkdirAll(t.proj, 0o755)).To(Succeed())
 	t.e.Getwd = func() (string, error) { return t.proj, nil }
 	t.sc = engine.Scope{Kind: target.Project, ProjectDir: t.proj}
@@ -79,7 +80,7 @@ func (t *tidyEnv) reroot(key, dir string) {
 	GinkgoT().Setenv(key, dir)
 	p, err := paths.Resolve(os.Getenv)
 	Expect(err).NotTo(HaveOccurred())
-	t.p, t.e = p, engine.New(p)
+	t.p, t.e = p, engine.New(p, targets.Builtin())
 	t.e.Getwd = func() (string, error) { return t.proj, nil }
 }
 

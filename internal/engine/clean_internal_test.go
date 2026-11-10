@@ -14,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -49,7 +50,7 @@ var _ = Describe("restore", func() {
 		tmp := testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := New(p)
+		e := New(p, targets.Builtin())
 		src := filepath.Join(tmp, "kit")
 		Expect(os.MkdirAll(filepath.Join(src, "commands"), 0o700)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(src, "lola.yml"), []byte("name: kit\n"), 0o600)).To(Succeed())

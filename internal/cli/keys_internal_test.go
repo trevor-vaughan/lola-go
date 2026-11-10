@@ -342,7 +342,8 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		tmp := testenv.Isolate()
 		GinkgoT().Chdir(tmp)
 		h := onTerminal("q")
-		root := NewRootCmd(os.Getenv, WithPrompter(h))
+		root, err := NewRootCmd(os.Getenv, WithPrompter(h))
+		Expect(err).NotTo(HaveOccurred())
 		var stdout, stderr bytes.Buffer
 		root.SetOut(&stdout)
 		root.SetErr(&stderr)

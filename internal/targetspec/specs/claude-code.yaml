@@ -1,0 +1,44 @@
+# Claude Code. It takes every artifact kind and keeps frontmatter as authored, except that an
+# agent's description must be a string and a skill or command drops mcpServers. It is the only
+# target with runtime hooks.
+id: claude-code
+probe:
+  # `claude --version` prints e.g. "2.1.287 (Claude Code)".
+  - exec: {binaries: [claude], args: [--version], match: '^(\d+\.\d+\.\d+[0-9A-Za-z.+-]*)'}
+roots: {project: "{project}", user: "{home}"}
+detect:
+  project: {any: [.claude/, CLAUDE.md]}
+  user: {any: [.claude/, CLAUDE.md]}
+eras:
+  - since: "1.0"
+    vars:
+      mcp_file: {project: .mcp.json, user: .claude.json}
+      # Runtime hooks go to the per-user settings file; its consent also covers the hooks in a
+      # component's frontmatter.
+      settings: {project: .claude/settings.local.json, user: .claude/settings.json}
+    layout:
+      skill: {mech: skill-dir, path: .claude/skills, hook_settings: "{settings}"}
+      command: {mech: markdown-file, path: .claude/commands, ext: .md, sidecar: copy, hook_settings: "{settings}"}
+      agent: {mech: markdown-file, path: .claude/agents, ext: .md, prepend_name: true, hook_settings: "{settings}"}
+      mcp: {mech: json-servers, file: "{mcp_file}", pointer: /mcpServers, shape: claude}
+      # Claude Code loads every .claude/rules/**/*.md without paths: frontmatter in every
+      # session, so rules never touch CLAUDE.md, and lola keeps its own directory.
+      rule: {mech: rules-dir, path: .claude/rules/lola}
+      runtime-hook: {mech: claude-hooks, file: "{settings}"}
+    kinds:
+      # Claude Code starts the MCP servers of an agent's frontmatter only
+      # (code.claude.com/docs/en/sub-agents), so lola never writes the key where consent does
+      # not gate it.
+      skill:
+        unknown_keys: keep
+        keys:
+          mcpServers: {unsupported: claude-code starts MCP servers only from an agent's frontmatter, case_insensitive: true}
+      command:
+        unknown_keys: keep
+        keys:
+          mcpServers: {unsupported: claude-code starts MCP servers only from an agent's frontmatter, case_insensitive: true}
+      agent:
+        unknown_keys: keep
+        required: [description]
+        keys:
+          description: {accepts: {shape: string}}

@@ -59,14 +59,19 @@ var _ = Describe("the hint builder", func() {
 			Expect(again).NotTo(ContainSubstring("--trust"), c.CommandPath())
 			checked++
 		}
-		walk(NewRootCmd(os.Getenv))
+		root, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		walk(root)
 		dry = true
-		walk(NewRootCmd(os.Getenv))
+		root, err = NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
+		walk(root)
 		Expect(checked).To(BeNumerically(">", 5))
 	})
 
 	It("a hint naming another command keeps the flags it takes, never -y and none it does not take", func() {
-		root := NewRootCmd(os.Getenv)
+		root, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
 		install, _, err := root.Find([]string{"install"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(install.ParseFlags([]string{"-n", "-y", "-t", "claude-code", "--json"})).To(Succeed())

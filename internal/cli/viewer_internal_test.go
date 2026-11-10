@@ -321,7 +321,8 @@ var _ = Describe("which output opens in the viewer", func() {
 	})
 	// run runs lola with stdout and stderr terminals as outTTY and errTTY say, the keys typed.
 	run := func(outTTY, errTTY bool, typed string, args ...string) (string, string, int) {
-		root := NewRootCmd(os.Getenv, WithTerminals(outTTY, errTTY))
+		root, err := NewRootCmd(os.Getenv, WithTerminals(outTTY, errTTY))
+		Expect(err).NotTo(HaveOccurred())
 		var out, errb bytes.Buffer
 		root.SetOut(&out)
 		root.SetErr(&errb)

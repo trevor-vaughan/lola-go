@@ -23,7 +23,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/target/claude"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -46,7 +46,7 @@ var exampleModule = map[string]string{
 
 // spy is claude-code recording the scope and root the engine gives Detect and Plan.
 type spy struct {
-	claude.Target
+	target.Target
 	seen *[]string
 }
 
@@ -60,8 +60,14 @@ func (s spy) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, []ta
 	return s.Target.Plan(m, ctx)
 }
 
+func claudeCode() target.Target {
+	t, ok := targets.Builtin().Lookup("claude-code")
+	Expect(ok).To(BeTrue())
+	return t
+}
+
 // loose is claude-code with a version pattern that matches anywhere in the output.
-type loose struct{ claude.Target }
+type loose struct{ target.Target }
 
 func (loose) Probe() target.Probe {
 	return target.Probe{Binaries: []string{"claude"}, VersionArgs: []string{"--version"}, VersionRE: regexp.MustCompile(`(\d+\.\d+\.\d+)`)}
@@ -116,7 +122,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		src = filepath.Join(tmp, "src", "example")
@@ -987,7 +993,7 @@ var _ = Describe("Engine", func() {
 
 	It("gives each target its scope and that scope's root, to detect, install and check", func() {
 		var seen []string
-		e.Targets = []target.Target{spy{seen: &seen}}
+		e.Targets = []target.Target{spy{Target: claudeCode(), seen: &seen}}
 		user := engine.Scope{Kind: target.User}
 		e.Detect(sc)
 		e.Detect(user)
@@ -1037,7 +1043,7 @@ var _ = Describe("Engine", func() {
 			GinkgoT().Setenv("PATH", "bin:"+os.Getenv("PATH"))
 			p, err := paths.Resolve(os.Getenv)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(engine.New(p).Detect(sc)[0].Binary).To(BeEmpty())
+			Expect(engine.New(p, targets.Builtin()).Detect(sc)[0].Binary).To(BeEmpty())
 		})
 
 		It("still renders an explicitly chosen target whose assistant is missing, and says so", func() {
@@ -1072,7 +1078,7 @@ var _ = Describe("Engine", func() {
 		})
 
 		It("reads at most a few KiB of an assistant's version output", func() {
-			e.Targets = []target.Target{loose{}}
+			e.Targets = []target.Target{loose{claudeCode()}}
 			noise := filepath.Join(tmp, "noise")
 			Expect(os.WriteFile(noise, []byte(strings.Repeat("x", 64<<10)), 0o644)).To(Succeed())
 			assistant("claude", "cat \""+noise+"\"\necho 9.9.9\n")

@@ -143,26 +143,35 @@ type probeEntry struct {
 
 // probeRun reads the installed versions of the assistants one command renders for. Each
 // target is probed once; a binary is executed only when the cache has no entry for its build.
-// It also asks git, once, whether the project could commit .claude/settings.local.json.
+// It also asks git, once per file, whether the project could commit a settings file.
 type probeRun struct {
 	e        *Engine
 	ctx      context.Context
 	versions map[string]string
 	findings []target.Finding
-	exposed  *string // localSettingsExposed, once known
+	exposed  map[string]string // settingsExposed by project-relative file, once known
 }
 
-// localSettings is localSettingsExposed for the project at dir, checked once per command.
-func (r *probeRun) localSettings(dir string) string {
-	if r.exposed == nil {
-		s := localSettingsExposed(r.ctx, dir)
-		r.exposed = &s
+// settings is settingsExposed for abs, the absolute path of a settings file a target writes in
+// the project at dir, checked once per command. It also returns abs relative to dir, in slash
+// form, which is how git and the coaching name it. A file outside dir cannot be checked against
+// the project's repository, so it is exposed (fail closed).
+func (r *probeRun) settings(dir, abs string) (why, rel string) {
+	rel, err := filepath.Rel(dir, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Sprintf("lola could not check that git ignores %s (it is outside the project)", abs), abs
 	}
-	return *r.exposed
+	rel = filepath.ToSlash(rel)
+	why, ok := r.exposed[rel]
+	if !ok {
+		why = settingsExposed(r.ctx, dir, rel)
+		r.exposed[rel] = why
+	}
+	return why, rel
 }
 
 func (e *Engine) newProbeRun(ctx context.Context) *probeRun {
-	return &probeRun{e: e, ctx: ctx, versions: map[string]string{}}
+	return &probeRun{e: e, ctx: ctx, versions: map[string]string{}, exposed: map[string]string{}}
 }
 
 // version returns the installed version of t's assistant, or "" when it is not installed or
@@ -171,6 +180,10 @@ func (r *probeRun) version(t target.Target) string {
 	id := t.ID()
 	if v, ok := r.versions[id]; ok {
 		return v
+	}
+	if f := r.e.Registry.Replaced(id); f != "" {
+		r.findings = append(r.findings, target.Finding{Severity: target.SeverityInfo, Target: id, Kind: "assistant",
+			Code: "target/user-spec", Text: "uses your target spec " + untrusted.Text(f, untrusted.MaxName) + " in place of lola's built-in"})
 	}
 	v, f := r.read(t)
 	r.versions[id] = v
