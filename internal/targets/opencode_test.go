@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -262,6 +263,44 @@ var _ = Describe("opencode", func() {
 		Expect(fs[6].Text).To(Equal("steps dropped: opencode needs a positive-integer"))
 	})
 
+	It("accepts theme colour names only in the 1.x era, and treats every other agent key alike in both", func() {
+		agents := &module.Module{Name: "example", Agents: []module.Agent{
+			{Name: "theme", Doc: doc("---\ndescription: d\ncolor: accent\nmode: all\nsteps: 0\n---\nT.\n")},
+			{Name: "hex", Doc: doc("---\ndescription: d\ncolor: \"#FF5733\"\nmode: all\nsteps: 0\n---\nH.\n")},
+			{Name: "junk", Doc: doc("---\ndescription: d\ncolor: chartreuse\n---\nJ.\n")},
+		}}
+		plan := func(version string) (map[string]plan.Intent, []target.Finding) {
+			t, ok := targets.Builtin().For("opencode", version)
+			Expect(ok).To(BeTrue())
+			ins, fs, err := t.Plan(agents, ctx)
+			Expect(err).NotTo(HaveOccurred())
+			return byPath(ins), fs
+		}
+		themeKept := "---\ndescription: d\ncolor: accent\nmode: all\n---\nT.\n"
+		themeDropped := "---\ndescription: d\nmode: all\n---\nT.\n"
+		hex := "---\ndescription: d\ncolor: \"#FF5733\"\nmode: all\n---\nH.\n"
+		junk := "---\nmode: subagent\ndescription: d\n---\nJ.\n"
+
+		p, fs := plan("1.19.5")
+		Expect(string(p[".opencode/agents/theme.md"].Data)).To(Equal(themeKept))
+		Expect(string(p[".opencode/agents/hex.md"].Data)).To(Equal(hex))
+		Expect(string(p[".opencode/agents/junk.md"].Data)).To(Equal(junk))
+		Expect(codes(fs)).To(Equal([]string{"warn frontmatter-value-dropped theme", "warn frontmatter-value-dropped hex", "warn frontmatter-value-dropped junk"}),
+			"steps: 0 is dropped in 1.x, and so is a colour that is neither hex nor a theme name")
+		Expect(fs[0].Text).To(Equal("steps dropped: opencode needs a positive-integer"))
+		Expect(fs[2].Text).To(Equal("color dropped: opencode needs a string matching ^(#[0-9a-fA-F]{6}|primary|secondary|accent|success|warning|error|info)$"))
+
+		for _, version := range []string{"", "2.1.3"} {
+			p, fs = plan(version)
+			Expect(string(p[".opencode/agents/theme.md"].Data)).To(Equal(themeDropped), version)
+			Expect(string(p[".opencode/agents/hex.md"].Data)).To(Equal(hex), version)
+			Expect(string(p[".opencode/agents/junk.md"].Data)).To(Equal(junk), version)
+			Expect(codes(fs)).To(Equal([]string{"warn frontmatter-value-dropped theme", "warn frontmatter-value-dropped theme", "warn frontmatter-value-dropped hex", "warn frontmatter-value-dropped junk"}), version)
+			Expect(fs[0].Text).To(Equal("color dropped: opencode needs a string matching ^#[0-9a-fA-F]{6}$"), version)
+			Expect(fs[1].Text).To(Equal("steps dropped: opencode needs a positive-integer"), version)
+		}
+	})
+
 	It("skips an agent without a description", func() {
 		ins, fs := plan1(&module.Module{Name: "example", Agents: []module.Agent{{Name: "rev", Doc: doc("x\n")}}})
 		Expect(ins).To(BeEmpty())
@@ -350,7 +389,10 @@ var _ = Describe("opencode", func() {
 		Expect(os.Mkdir(root, 0o700)).To(Succeed())
 		Expect(o.Detect(target.User, root)).To(BeTrue(), "no opencode.json needed")
 		p := o.Probe()
-		Expect(p.Binaries).To(Equal([]string{"opencode"}))
-		Expect(p.VersionRE.FindStringSubmatch("1.0.12\n")).To(Equal([]string{"1.0.12", "1.0.12"}))
+		Expect(p.Methods).To(HaveLen(1))
+		Expect(p.Methods[0].Binaries).To(Equal([]string{"opencode"}))
+		Expect(p.Methods[0].Match.FindStringSubmatch("1.0.12\n")).To(Equal([]string{"1.0.12", "1.0.12"}))
+		Expect(p.Methods[0].Match.FindStringSubmatch("opencode v2.2.5\n")).To(Equal([]string{"opencode v2.2.5", "2.2.5"}))
+		Expect(p.Methods[0].Match.FindStringSubmatch("opencoder 2.2.5\n")).To(BeNil())
 	})
 })

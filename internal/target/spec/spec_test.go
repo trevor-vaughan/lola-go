@@ -94,4 +94,41 @@ eras:
 		Expect(ins[1].Path).To(Equal(".ruled/lola/example/tone.md"))
 		Expect(string(ins[1].Data)).To(Equal(module.Doc{Body: "Be brief.\n"}.Render()))
 	})
+
+	It("maps every probe, in order, to a method", func() {
+		const probed = `id: probed
+probe:
+  - file: {path: "{config_home}/probed/state.json", pointer: /version}
+  - exec: {binaries: [probed, probed-cli], args: [--version], match: 'v(\d+\.\d+\.\d+)'}
+roots: {project: "{project}", user: "{home}"}
+detect:
+  project: {any: [.probed/]}
+  user: {any: [.probed/]}
+eras:
+  - since: "1.0"
+    layout:
+      skill: {mech: agentskills-dir, path: skills}
+`
+		s, err := targetspec.Parse("probed.yaml", []byte(probed))
+		Expect(err).NotTo(HaveOccurred())
+		p := spec.New(s).Probe()
+		Expect(p.Methods).To(HaveLen(2))
+		file, run := p.Methods[0], p.Methods[1]
+		Expect(file.File(paths.Paths{Home: "/h", ConfigHome: "/c", DataHome: "/d"})).To(Equal(filepath.Join("/c", "probed", "state.json")))
+		Expect(file.Pointer).To(Equal("/version"))
+		Expect(file.Match).To(BeNil())
+		Expect(file.Binaries).To(BeEmpty())
+		Expect(run.File).To(BeNil())
+		Expect(run.Binaries).To(Equal([]string{"probed", "probed-cli"}))
+		Expect(run.Args).To(Equal([]string{"--version"}))
+		Expect(run.Match.FindStringSubmatch("probed v1.2.3")).To(Equal([]string{"v1.2.3", "1.2.3"}))
+		Expect(p.Binaries()).To(Equal([]string{"probed", "probed-cli"}))
+		Expect(p.Readers).To(BeEmpty())
+	})
+
+	It("has no binaries when it probes no binary", func() {
+		Expect(t.Probe().Methods).To(BeEmpty())
+		Expect(t.Probe().Binaries()).To(BeEmpty())
+		Expect(target.NoBinary(t)).To(BeTrue())
+	})
 })

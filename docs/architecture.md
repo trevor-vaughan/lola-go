@@ -139,9 +139,22 @@ Maintainer notes on Templates. It has its own page: [Templates](architecture/tem
   with the target's project markers, and executes nothing. Install, sync and check run each
   participating assistant once with its version arguments (`Engine.ProbeTimeout`, no shell),
   reading at most 4 KiB of its output, cached per binary build in
-  `$XDG_CACHE_HOME/lola/probes.json`. The version only feeds
-  `PlanContext.Version`, which `Admit` compares with capability `Bounds` to add findings;
-  rendering always follows the newest version, so output is the same on every machine.
+  `$XDG_CACHE_HOME/lola/probes.json`. A spec lists its probe methods and `read` (`internal/engine/probe.go`)
+  tries them in order: an `exec` method as above, a `file` method by reading a regular file of at
+  most 1 MiB under the home, config or data directory (its `match` group, or the string at its JSON
+  `pointer`). A method whose binary or file is missing is passed over; the first one that fails
+  is the `probe/unknown-version` finding when none yields a version, else it is `probe/not-found`, naming the first missing exec binary when the
+  spec has an exec method, otherwise the first missing file. The declared version selects the era a scope renders for; the probed one only
+  adds findings (`version/era-mismatch`, `version/undeclared`, `version/before-first-era`), so
+  output is the same on every machine.
+- **Eras.** `targets.Registry` builds one target per era of each spec (`spec.At`), oldest first;
+  `Registry.All` and `Lookup` return the newest. `Registry.For(id, version)` returns the target
+  for the era a version selects (`targetspec.Spec.Select`: the last era whose `since` is at or
+  below it; a version below the first selects the first, and `Registry.Era` reports that), and
+  `""` selects the newest. `Engine.declared` reads a scope's `target_versions` (the manifest's at
+  project scope, `config.yaml`'s at user scope; `Manifest.TargetVersions`, `Config.TargetVersions`)
+  and refuses an id the registry lacks. Each plan binds the declared era per scope
+  (`Engine.atEra`), so the `target.Target` interface and `PlanContext` carry no version.
 - **`lola check`** (`engine.Check`) stages a source like `cache add` into a temporary directory
   and detects its format (or reads a cached module), runs every target's `Plan` and keeps only
   the findings.

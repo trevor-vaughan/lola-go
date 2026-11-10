@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -499,6 +500,53 @@ func (e *Engine) target(id string) (target.Target, error) {
 		ids = append(ids, t.ID())
 	}
 	return nil, errs.WithHints(fmt.Errorf("unknown target %q", id), "valid targets: "+strings.Join(ids, ", "))
+}
+
+// declared is what sc declares in target_versions, and the file it is declared in, as findings
+// name it: .lola/project.yml at project scope, config.yaml's path at user scope. An id lola has
+// no target for is an error naming the file and key.
+func (e *Engine) declared(sc Scope) (map[string]string, string, error) {
+	var tv map[string]string
+	file := ".lola/project.yml"
+	if sc.Kind == target.User {
+		c, err := config.LoadConfig(e.Paths.Config, e.Paths.Home)
+		if err != nil {
+			return nil, "", err
+		}
+		tv, file = c.TargetVersions, e.Paths.Config
+	} else {
+		// A file whose only fault is entries with a marketplace address declares as it is read:
+		// those who read its entries refuse or resolve them.
+		m, err := manifest.Load(e.files(sc).manifest)
+		if ue, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
+			m, err = ue.Manifest, nil
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		tv = m.TargetVersions
+	}
+	for _, id := range slices.Sorted(maps.Keys(tv)) {
+		if _, ok := e.Registry.Lookup(id); !ok {
+			shown := untrusted.Text(id, untrusted.MaxName)
+			return nil, "", errs.WithHints(fmt.Errorf("%s: target_versions.%s: lola has no target %s", untrusted.Text(file, untrusted.MaxName), shown, shown),
+				"valid targets: "+strings.Join(e.Registry.IDs(), ", "), "remove it, or add a target spec for it to "+untrusted.Text(e.Paths.Targets, untrusted.MaxName))
+		}
+	}
+	return tv, file, nil
+}
+
+// atEra is t for the era tv, a scope's declared versions, selects: t itself when tv declares no
+// version for it.
+func (e *Engine) atEra(tv map[string]string, t target.Target) target.Target {
+	v, ok := tv[t.ID()]
+	if !ok {
+		return t
+	}
+	if at, ok := e.Registry.For(t.ID(), v); ok {
+		return at
+	}
+	return t
 }
 
 // Manifest loads the scope's manifest: project.yml at project scope. User scope has none: its base
@@ -1035,15 +1083,21 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	if len(v.Module.RuntimeHooks) > 0 && narrows(x, v.Module) {
 		notes = append(notes, Notice{Level: LevelInfo, Text: m.Name + ": runtime hooks are installed for the whole module; picks do not narrow them"})
 	}
-	// planOne is target id's plan of the module, with the copy of it rendered for id; pctx with
-	// id's root and version.
+	tv, _, err := probes.declared(sc)
+	if err != nil {
+		return nil, nil, nil, mr, err
+	}
+	// planOne is target id's plan of the module by its target for the era sc declares, with the
+	// copy of it rendered for id; pctx with id's root.
 	planOne := func(id string) (targetPlan, error) {
 		t, err := e.target(id)
 		if err != nil {
 			return targetPlan{}, err
 		}
+		t = e.atEra(tv, t)
 		pctx := pctx
-		pctx.Root, pctx.Version = t.Root(sc.Kind, sc.ProjectDir, e.Paths), probes.version(t)
+		pctx.Root = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
+		probes.version(sc, t)
 		rendered, err := e.renderTemplates(probes.ctx, m, run.data(id, sc, resolvedVars(m, ment)), run)
 		if err != nil {
 			if h := e.checkHint(sc, err, ment, opts.Targets, opts.Display, opts.freshPin); h != "" {

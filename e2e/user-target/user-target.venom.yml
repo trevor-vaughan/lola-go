@@ -162,3 +162,82 @@ testcases:
         script: "{{.runtime}} exec {{.container}} rm {{.specs}}/quill2.yml"
         assertions:
           - result.code ShouldEqual 0
+
+  - name: U9 A probed old version with nothing declared renders the newest era and says so
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p9/.quill /home/tester/.quill && echo \"{\\\"version\\\": \\\"1.2.0\\\"}\" > /home/tester/.quill/version.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill -C /work/p9 -y --json > /tmp/u9.json 2> /tmp/u9.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u9.json > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/u9.json\"))
+          want = [f for f in doc[\"findings\"] if f[\"text\"].startswith(\"quill 1.2.0 is installed, but .lola/project.yml declares no version for it\")
+                  and f[\"severity\"] == \"warn\" and f[\"kind\"] == \"assistant\"]
+          assert len(want) == 1, doc[\"findings\"]
+          print(\"ok version/undeclared\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok version/undeclared"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p9/.quill && find . -type f | sort'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"./commands/ink.md\""
+          - "result.systemout ShouldNotContainSubstring \"./slash/\""
+
+  - name: U10 A declared old version renders the old era with no version finding
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p10/.quill /work/p10/.lola && printf \"target_versions:\\n  quill: \\\"1.2\\\"\\n\" > /work/p10/.lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill -C /work/p10 -y --json > /tmp/u10.json 2> /tmp/u10.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u10.json > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/u10.json\"))
+          assert any(f[\"kind\"] == \"agent\" and f[\"target\"] == \"quill\" for f in doc[\"findings\"]), doc[\"findings\"]
+          bad = [f for f in doc[\"findings\"] if f[\"code\"].startswith(\"version/\")]
+          assert not bad, bad
+          print(\"ok no version finding\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok no version finding"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p10/.quill && find . -type f | sort'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"./slash/ink.md\""
+          - "result.systemout ShouldNotContainSubstring \"./commands/\""
+
+  - name: U11 A target_versions id lola has no target for is refused and nothing is written
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p11/.quill /work/p11/.lola && printf \"target_versions:\\n  nib: \\\"1.0\\\"\\n\" > /work/p11/.lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/pen -t quill -C /work/p11 -y"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \".lola/project.yml: target_versions.nib: lola has no target nib\""
+          - "result.systemerr ShouldContainSubstring \"hint: valid targets: \""
+          - "result.systemerr ShouldContainSubstring \"hint: remove it, or add a target spec for it to {{.specs}}\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'find /work/p11/.quill -type f | wc -l'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "0"

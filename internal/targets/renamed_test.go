@@ -57,6 +57,22 @@ var _ = Describe("a mechanism's findings", func() {
 			HaveField("Hint", "add settings.local.json to .gitignore"))), "only Claude Code is known to ignore the file it creates")
 	})
 
+	It("name the claude-code spec's own id on a PowerShell hook and a shell-form hook on an unsafe path", func() {
+		t := renamed("claude-code", "claude-alt")
+		ctx := target.PlanContext{Scope: target.Project, ContentDir: "/cache/example/content", PluginRoot: "/proj/my modules/example", PluginData: "/proj/.lola/plugin-data/example"}
+		m := &module.Module{Name: "example", RuntimeHooks: []module.RuntimeHookSet{
+			{Source: "hooks/a.json", Hooks: []byte(`{"Stop":[{"hooks":[{"type":"command","command":"echo a"}]}]}`)},
+			{Source: "hooks/b.json", Hooks: []byte(`{"Stop":[{"hooks":[{"type":"command","command":"echo b","shell":"powershell"}]}]}`)},
+		}}
+		_, fs, err := t.Plan(m, ctx)
+		Expect(err).NotTo(HaveOccurred())
+		var got []string
+		for _, f := range fs {
+			got = append(got, f.Code)
+		}
+		Expect(got).To(ContainElements("claude-alt/runtime-hook-shell-unsupported", "claude-alt/runtime-hook-path-unsafe"))
+	})
+
 	It("name the agentskills spec's own id, not agents", func() {
 		t := renamed("agents", "skills-alt")
 		ctx := target.PlanContext{Scope: target.Project, ContentDir: "/cache/example/content", PluginRoot: "/p", PluginData: "/d"}

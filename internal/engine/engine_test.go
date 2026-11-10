@@ -70,7 +70,7 @@ func claudeCode() target.Target {
 type loose struct{ target.Target }
 
 func (loose) Probe() target.Probe {
-	return target.Probe{Binaries: []string{"claude"}, VersionArgs: []string{"--version"}, VersionRE: regexp.MustCompile(`(\d+\.\d+\.\d+)`)}
+	return target.Probe{Methods: []target.ProbeMethod{{Binaries: []string{"claude"}, Args: []string{"--version"}, Match: regexp.MustCompile(`(\d+\.\d+\.\d+)`)}}}
 }
 
 var _ = Describe("Engine", func() {
@@ -1051,7 +1051,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 			Expect(probeFindings(res)).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "claude-code", Kind: "assistant",
-				Code: "probe/not-found", Text: "claude is not on PATH; checked against the newest version lola knows"}}))
+				Code: "probe/not-found", Text: "claude is not on PATH"}}))
 		})
 
 		It("reads the installed version once per binary build and caches it", func() {

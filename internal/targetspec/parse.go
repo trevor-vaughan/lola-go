@@ -60,6 +60,7 @@ func Parse(file string, data []byte) (Spec, error) {
 // any key.
 var patterns = [][]string{
 	{"probe", "[]", "exec", "match"},
+	{"probe", "[]", "file", "match"},
 	{"eras", "[]", "behaviors", "[]", "detect"},
 	{"eras", "[]", "kinds", "*", "name"},
 	{"eras", "[]", "kinds", "*", "keys", "*", "accepts", "pattern"},
@@ -67,7 +68,8 @@ var patterns = [][]string{
 
 // plain rejects a control or format character in any key or string of n, the spec's YAML at
 // path: lola puts a spec's text into findings and hints, which reach the terminal. A pattern may
-// hold a tab or a newline, for its expression to match.
+// hold a tab or a newline, for its expression to match. An alias is checked at the path it lands
+// at, so text anchored at a pattern field cannot reach a free-text field.
 func (v validator) plain(n *yaml.Node, path []string) error {
 	switch n.Kind {
 	case yaml.DocumentNode:
@@ -92,6 +94,10 @@ func (v validator) plain(n *yaml.Node, path []string) error {
 				return err
 			}
 		}
+	case yaml.AliasNode:
+		// Cycle-safe: Parse decodes into its typed struct before this walk, and no field's type
+		// can hold itself, so the decode rejects a self-containing anchor as a type mismatch.
+		return v.plain(n.Alias, path)
 	case yaml.ScalarNode:
 		pattern := slices.ContainsFunc(patterns, func(want []string) bool {
 			if len(want) != len(path) {

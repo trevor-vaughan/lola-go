@@ -33,7 +33,7 @@ var _ = Describe("agents", func() {
 
 	It("is the agents target, with no binary to look for", func() {
 		Expect(a.ID()).To(Equal("agents"))
-		Expect(a.Probe().Binaries).To(BeEmpty())
+		Expect(a.Probe().Methods).To(BeEmpty())
 	})
 
 	It("roots the project scope at the project and the user scope at the home lola resolved", func() {

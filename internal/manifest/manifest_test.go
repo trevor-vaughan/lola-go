@@ -113,6 +113,19 @@ modules:
 			Expect(applied.ScriptLine("post_install")).To(Equal(6))
 		})
 
+		It("lola's edits of project.yml keep target_versions as written", func() {
+			write("version: 1\ntarget_versions:\n  opencode: 2.10 # pinned by the team\n  gemini-cli: \"v1\"\nmodules:\n  - name: alpha\n    source: tools/alpha\n")
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.TargetVersions).To(Equal(map[string]string{"opencode": "2.10", "gemini-cli": "v1"}))
+			added := edit(manifest.Change{Set: []manifest.Entry{{Name: "zeta", Source: "tools/zeta"}}})
+			Expect(added).To(ContainSubstring("target_versions:\n  opencode: 2.10 # pinned by the team\n  gemini-cli: \"v1\"\n"))
+			Expect(manifest.Load(path)).To(HaveField("TargetVersions", m.TargetVersions))
+			removed := edit(manifest.Change{Remove: []string{"alpha"}})
+			Expect(removed).To(ContainSubstring("target_versions:\n  opencode: 2.10 # pinned by the team\n  gemini-cli: \"v1\"\n"))
+			Expect(m.Applied(manifest.Change{Remove: []string{"alpha"}}).TargetVersions).To(Equal(m.TargetVersions))
+		})
+
 		It("appends a new entry and deletes a removed one with its comment", func() {
 			write(commented)
 			out := edit(manifest.Change{Set: []manifest.Entry{{Name: "beta", Source: "../beta", Targets: []string{"gemini-cli"}}},
@@ -361,6 +374,47 @@ modules:
 		})
 	})
 
+	DescribeTable("reads target_versions as the text written",
+		func(value, want string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.WriteFile(path, []byte("version: 1\ntarget_versions:\n  opencode: "+value+"\n"), 0o600)).To(Succeed())
+			m, err := manifest.Load(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(m.TargetVersions).To(Equal(map[string]string{"opencode": want}))
+		},
+		Entry("a quoted version", `"2.1"`, "2.1"),
+		Entry("a float", "2.1", "2.1"),
+		Entry("a float keeping its trailing zero", "2.10", "2.10"),
+		Entry("a v prefix", "v2", "v2"),
+		Entry("a whole number", "2", "2"),
+		Entry("three parts", "1.2.3", "1.2.3"),
+	)
+
+	DescribeTable("refuses a target_versions entry that is not a version, naming the file and key",
+		func(value, shown string) {
+			Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+			Expect(os.WriteFile(path, []byte("version: 1\ntarget_versions:\n  opencode: "+value+"\n"), 0o600)).To(Succeed())
+			_, err := manifest.Load(path)
+			Expect(err).To(MatchError(ContainSubstring(path + `: target_versions.opencode: "` + shown + `" is not a version`)))
+			Expect(errs.Hints(err)).To(ContainElements("write a version such as 2.1 or 0.9.3", "fix it by hand, or restore it from version control"))
+		},
+		Entry("a word", "banana", "banana"),
+		Entry("an empty string", `""`, ""),
+		Entry("an empty value", "", ""),
+		Entry("a range", `">=2"`, ">=2"),
+	)
+
+	It("refuses a target_versions id with control characters and a value that is not a scalar", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("version: 1\ntarget_versions:\n  \"open\\ncode\": 2\n"), 0o600)).To(Succeed())
+		_, err := manifest.Load(path)
+		Expect(err).To(MatchError(ContainSubstring("target_versions holds control or invisible characters")))
+		Expect(os.WriteFile(path, []byte("version: 1\ntarget_versions:\n  opencode: [2]\n"), 0o600)).To(Succeed())
+		_, err = manifest.Load(path)
+		Expect(err).To(HaveOccurred())
+		Expect(errs.Hints(err)).To(ContainElement(ContainSubstring("fix it by hand")))
+	})
+
 	It("rejects unknown keys and newer versions", func() {
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		Expect(os.WriteFile(path, []byte("version: 1\nmodule: []\n"), 0o600)).To(Succeed())
@@ -375,7 +429,7 @@ modules:
 		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
 		Expect(os.WriteFile(path, []byte("version: 1\nfoo: x\n"), 0o600)).To(Succeed())
 		_, err := manifest.Load(path)
-		Expect(err).To(MatchError(path + `:2: unknown key "foo" (project.yml has: version, targets, modules, pre_install, post_install)`))
+		Expect(err).To(MatchError(path + `:2: unknown key "foo" (project.yml has: version, targets, target_versions, modules, pre_install, post_install)`))
 		Expect(os.WriteFile(path, []byte("version: 1\nmodules:\n  - name: a\n    source: ../a\n    only: [skill/a]\n"), 0o600)).To(Succeed())
 		_, err = manifest.Load(path)
 		Expect(err).To(MatchError(ContainSubstring(path + `:5: unknown key "only" (a project.yml entry has: name, source, ref, path, commit, digest, targets, rules, market, components, vars)`)))

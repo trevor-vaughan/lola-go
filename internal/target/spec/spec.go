@@ -25,8 +25,11 @@ type Target struct {
 }
 
 // New is s's target for its newest era.
-func New(s targetspec.Spec) Target {
-	era := s.Newest()
+func New(s targetspec.Spec) Target { return At(s, len(s.Eras)-1) }
+
+// At is s's target for its era i (0 is the oldest).
+func At(s targetspec.Spec, i int) Target {
+	era := s.Eras[i]
 	return Target{s: s, era: era, caps: policy.Capabilities(s.ID, era, mech.Rules(s.ID, era.Layout(false)))}
 }
 
@@ -66,9 +69,19 @@ func (t Target) Capabilities() target.Capabilities { return t.caps }
 // Probe implements target.Target.
 func (t Target) Probe() target.Probe {
 	p := target.Probe{Readers: t.s.Readers}
-	if len(t.s.Probe) > 0 {
-		x := t.s.Probe[0].Exec
-		p.Binaries, p.VersionArgs, p.VersionRE = x.Binaries, x.Args, x.Match.RE()
+	for _, q := range t.s.Probe {
+		if x := q.Exec; x != nil {
+			p.Methods = append(p.Methods, target.ProbeMethod{Binaries: x.Binaries, Args: x.Args, Match: x.Match.RE()})
+			continue
+		}
+		f := *q.File
+		m := target.ProbeMethod{Pointer: f.Pointer, File: func(p paths.Paths) string {
+			return f.Expand(targetspec.RootVars{Home: p.Home, ConfigHome: p.ConfigHome, DataHome: p.DataHome})
+		}}
+		if f.Match != nil {
+			m.Match = f.Match.RE()
+		}
+		p.Methods = append(p.Methods, m)
 	}
 	return p
 }

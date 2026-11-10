@@ -59,9 +59,9 @@ take (a `kind-unsupported` finding) and the rest installs. `lola uninstall pen` 
 | Field | Meaning |
 |---|---|
 | `id` | The target's name: lowercase letters, digits and single inner hyphens (`my-tool`). |
-| `readers` | For a target with no `probe`: what reads the files it writes. Required then, and refused when there is a probe. |
+| `readers` | For a target with no `exec` probe: what reads the files it writes. Required then, and refused when there is an `exec` probe. |
 | `kind_unsupported_note` | Optional text added to the finding for an artifact of a kind the target does not place. |
-| `probe` | How lola reads the installed assistant's version. At most one method, `exec`. Omit it for a tool with no binary. |
+| `probe` | How lola reads the installed assistant's version: a list of methods, `exec` and `file`, tried in order. Omit it for a tool with no binary and no version file. |
 | `roots` | The directory lola writes into: `project:` and `user:`, each a root variable alone or followed by a clean relative path (`{config_home}/mytool`). |
 | `detect` | How lola decides the assistant is set up, per scope (`project:` and `user:`). |
 | `eras` | What the assistant reads from a version on. At least one. |
@@ -75,6 +75,27 @@ probe:
 
 lola runs the first of `binaries` found on `PATH` (a command name, never a path) with `args`.
 `match` is a Go (RE2) regular expression whose first group is the version.
+
+A tool that keeps its version in a file takes a `file` method, alone or after an `exec`:
+
+```yaml
+probe:
+  - exec: {binaries: [mytool], args: [--version], match: '^v?(\d+\.\d+\.\d+)'}
+  - file: {path: '{config_home}/mytool/state.json', pointer: /version}
+```
+
+- `path` starts with `{home}/`, `{config_home}/` or `{data_home}/`, then a clean relative path.
+- Set exactly one of `match` (a regular expression whose first group is the version, run over
+  the file's text) and `pointer` (an RFC 6901 JSON pointer, such as `/app/version`, to a string
+  in the file's JSON).
+- lola reads only a regular file of at most 1 MiB. A larger file, a non-file, text with no
+  version or a JSON file without a string at the pointer gives a `probe/unknown-version` note.
+
+lola tries the methods in order and uses the first version one yields. A method whose binary is
+not on `PATH`, or whose file does not exist, is passed over to the next; if none yields a
+version, the note is `probe/unknown-version` for the first method that failed, else
+`probe/not-found`. A target with no `exec` method needs `readers`, so a file probe alone still does.
+The version read only adds findings; it never changes what lola writes (see `eras`).
 
 ### `roots`
 
@@ -94,7 +115,16 @@ Markers and `dir` are clean relative paths that stay inside the root.
 ### `eras`
 
 An era is what the assistant reads from version `since` on. Eras go in order of increasing `since`
-(`"1.0"`, `"2.1.3"`). lola renders for the newest era.
+(`"1.0"`, `"2.1.3"`).
+
+The era lola renders for comes from the version the project or you declare for the target in
+`target_versions` (`.lola/project.yml` at project scope, `config.yaml` at user scope; see
+[Declaring assistant versions](../usage.md#declaring-assistant-versions)): the last era whose
+`since` is at or below it. With nothing declared, lola renders for the newest era. The installed
+version is never used to choose; it only adds findings when it falls in another era. A declared
+version below the first era selects the first, with a warning. To add support for a newer
+version, add an era with `extends: previous`; projects that declare an older version keep the
+earlier output.
 
 | Field | Meaning |
 |---|---|

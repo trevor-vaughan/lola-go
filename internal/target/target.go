@@ -35,7 +35,6 @@ type PlanContext struct {
 	PluginData string // absolute ${PLUGIN_DATA} dir for this module and scope
 	SkipRules  bool   // the manifest entry says rules: false
 	Force      bool   // render forceable skips (Skipped)
-	Version    string // the installed assistant's version, "" when unknown; adds findings only (Bounds)
 	// SettingsExposed says, at project scope, why git could commit abs, the absolute path of a
 	// settings file the target writes runtime hooks to: tracked, not ignored, or not checkable.
 	// why is "" when git ignores the file or the project is not in a git work tree; rel is the

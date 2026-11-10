@@ -275,61 +275,6 @@ var _ = Describe("Admit", func() {
 			Hint: "quote it, e.g. \"yes\" or \"0755\"", Class: target.ClassDetail, AuthorHint: true}}))
 	})
 
-	Describe("version bounds: output follows the newest version; the installed one only adds findings", func() {
-		bounded := target.Capabilities{
-			Kinds: map[string]target.KindSpec{
-				"agent":   {Bounds: target.Bounds{Since: "1.0.0"}, Keys: map[string]target.Value{"description": {Shape: target.ShapeString}, "kind": {Shape: target.ShapeString, Bounds: target.Bounds{Since: "1.2.0"}}, "legacy": {Shape: target.ShapeString, Bounds: target.Bounds{Until: "1.1.0"}}}},
-				"command": {Open: true},
-				"hook":    {Bounds: target.Bounds{Until: "2.0.0"}},
-			},
-			Rules: []target.ContentRule{{Kind: "command", Pattern: regexp.MustCompile(`\$1`), Severity: target.SeveritySkip,
-				Code: "x/positional", Text: "positional arguments are ignored", Bounds: target.Bounds{Until: "2.0.0"}}},
-		}
-		admitAt := func(version, kind, src string) ([]target.Finding, bool) {
-			ctx.Version = version
-			_, fs, ok := target.Admit("t", bounded, ctx, kind, "a", doc(src))
-			return fs, ok
-		}
-		at := func(version, kind, src string) []string {
-			fs, _ := admitAt(version, kind, src)
-			return codes(fs)
-		}
-
-		It("warns when the installed version predates a kind or key, and renders anyway", func() {
-			Expect(at("0.9.0", "agent", "---\ndescription: d\n---\nx\n")).To(Equal([]string{"warn version/unsupported"}))
-			Expect(at("1.1.0", "agent", "---\ndescription: d\nkind: local\n---\nx\n")).To(Equal([]string{"warn version/unsupported"}))
-			Expect(at("1.2.0", "agent", "---\ndescription: d\nkind: local\n---\nx\n")).To(BeEmpty())
-			Expect(at("", "agent", "---\nkind: local\n---\nx\n")).To(BeEmpty(), "an unknown version adds nothing")
-			Expect(at("nightly", "agent", "---\nkind: local\n---\nx\n")).To(BeEmpty(), "neither does a malformed one")
-		})
-
-		It("treats what the newest version removed as unsupported, whatever is installed", func() {
-			fs, ok := admitAt("1.0.0", "agent", "---\nlegacy: x\n---\nx\n")
-			Expect(ok).To(BeTrue())
-			Expect(codes(fs)).To(Equal([]string{"warn frontmatter-key-dropped"}))
-			fs, ok = admitAt("1.0.0", "hook", "x\n")
-			Expect(ok).To(BeFalse())
-			Expect(codes(fs)).To(Equal([]string{"skip kind-unsupported"}))
-		})
-
-		It("applies a problem the newest version fixed only as a warning for an older installed version", func() {
-			Expect(at("1.5.0", "command", "Use $1\n")).To(Equal([]string{"warn version/limited"}))
-			Expect(at("2.1.0", "command", "Use $1\n")).To(BeEmpty())
-			Expect(at("", "command", "Use $1\n")).To(BeEmpty())
-			Expect(at("nightly", "command", "Use $1\n")).To(BeEmpty(), "a malformed version adds nothing")
-			Expect(at("2.1.287.1", "command", "Use $1\n")).To(BeEmpty())
-		})
-
-		It("names the version to upgrade to", func() {
-			fs, _ := admitAt("0.9.0", "agent", "---\ndescription: d\n---\nx\n")
-			Expect(fs).To(ConsistOf(HaveField("Hint", "upgrade t to 1.0.0 or later")))
-			fs, _ = admitAt("1.1.0", "agent", "---\ndescription: d\nkind: local\n---\nx\n")
-			Expect(fs).To(ConsistOf(HaveField("Hint", "upgrade t to 1.2.0 or later")))
-			fs, _ = admitAt("1.5.0", "command", "Use $1\n")
-			Expect(fs).To(ConsistOf(HaveField("Hint", "upgrade t to 2.0.0 or later")))
-		})
-	})
-
 	It("Describe puts a finding on one line", func() {
 		f := target.Finding{Module: "m", Target: "t", Kind: "agent", Artifact: "rev", Text: "gone", Forced: true}
 		Expect(f.Describe()).To(Equal("m: t agent rev: gone (rendered anyway: --force)"))

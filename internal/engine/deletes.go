@@ -35,18 +35,29 @@ type droppedTarget struct{ root, module, target string }
 type leftCopy struct{ root, module, target, dir string }
 
 // leftToAgents reads module's findings at sc for skill-via-agents (planModule's agents pre-pass):
-// for each, the skill's directory in each skill destination of the target that gave it. A plan
-// that deletes files there deletes the copy that target wrote before agents delivered the skill.
+// for each, the skill's directory in each skill destination of the target that gave it, for the
+// era sc declares. A plan that deletes files there deletes the copy that target wrote before
+// agents delivered the skill.
 func (e *Engine) leftToAgents(sc Scope, module string, finds []target.Finding) ([]leftCopy, error) {
 	var out []leftCopy
+	var tv map[string]string
+	read := false // tv is read once, at the first such finding
 	for _, f := range finds {
 		if f.Code != target.CodeSkillViaAgents {
 			continue
+		}
+		if !read {
+			var err error
+			if tv, _, err = e.declared(sc); err != nil {
+				return nil, err
+			}
+			read = true
 		}
 		t, err := e.target(f.Target)
 		if err != nil {
 			return nil, err
 		}
+		t = e.atEra(tv, t)
 		d, err := t.Destinations(sc.Kind, t.Root(sc.Kind, sc.ProjectDir, e.Paths))
 		if err != nil {
 			return nil, err

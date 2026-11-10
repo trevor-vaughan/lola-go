@@ -171,8 +171,8 @@ Maintainer notes on Packages. It is split out of [architecture](../architecture.
   hints.
 - `target/mech`: The mechanisms, each rendering one artifact kind (skills, commands, agents, MCP
   servers, rules, runtime hooks) for the specs that name it. Cannot import `spec` or `policy`.
-- `target/spec`: The generic `target.Target` built from a spec: detection, probe, capability
-  table and the mechanisms it names. Builds the `claude-code`, `gemini-cli`, `opencode` and
+- `target/spec`: The generic `target.Target` built from a spec's era (`New` the newest, `At` any):
+  detection, probe, capability table and the mechanisms it names. Builds the `claude-code`, `gemini-cli`, `opencode` and
   `agents` targets.
   - `agents` writes skills only (capability table: `skill`, `Open`, a `description` required, the
     agentskills.io name pattern), has no binary, and is set up where `.agents/skills/` exists.
@@ -185,7 +185,8 @@ Maintainer notes on Packages. It is split out of [architecture](../architecture.
 - `targets`: The `Registry`: every target built from the embedded specs in a fixed order, each
   replaced by a user spec of its id, then user-only ids sorted. `Load(paths.Paths)` reads the
   user's specs and is called by the CLI before the command tree is built; `Builtin()` is the
-  embedded specs alone; `Replaced(id)` names the file that replaced a built-in.
+  embedded specs alone; `Replaced(id)` names the file that replaced a built-in. `For(id, version)`
+  is the target for the era a version selects and `Era(id, version)` that era's `since`.
 - `plan`: Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and
   manifest).
 - `engine`:

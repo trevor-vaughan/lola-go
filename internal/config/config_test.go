@@ -176,6 +176,47 @@ var _ = Describe("config.yaml", func() {
 		Entry("empty", "", "must be an age, not empty"),
 	)
 
+	DescribeTable("reads target_versions as the text written",
+		func(value, want string) {
+			write("version: 1\ntarget_versions:\n  opencode: " + value + "\n  gemini-cli: 1.2.3\n")
+			c, err := config.LoadConfig(path, "")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(c.TargetVersions).To(Equal(map[string]string{"opencode": want, "gemini-cli": "1.2.3"}))
+		},
+		Entry("a quoted version", `"2.1"`, "2.1"),
+		Entry("a float", "2.1", "2.1"),
+		Entry("a float keeping its trailing zero", "2.10", "2.10"),
+		Entry("a v prefix", "v2", "v2"),
+		Entry("a whole number", "2", "2"),
+	)
+
+	It("leaves target_versions nil when the file does not say", func() {
+		write("version: 1\ntarget_versions:\n")
+		c, err := config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.TargetVersions).To(BeNil())
+		write("version: 1\n")
+		c, err = config.LoadConfig(path, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.TargetVersions).To(BeNil())
+	})
+
+	DescribeTable("refuses a bad target_versions, naming the file, line and key with a hint",
+		func(content, msg, hint string) {
+			write(content)
+			_, err := config.LoadConfig(path, "")
+			Expect(err).To(MatchError(ContainSubstring(path + msg)))
+			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring(hint)))
+		},
+		Entry("a word", "version: 1\ntarget_versions:\n  opencode: banana\n", `:3: target_versions.opencode: "banana" is not a version`, "write a version such as 2.1 or 0.9.3"),
+		Entry("an empty string", "version: 1\ntarget_versions:\n  opencode: \"\"\n", `:3: target_versions.opencode: "" is not a version`, "write a version such as 2.1 or 0.9.3"),
+		Entry("an empty value", "version: 1\ntarget_versions:\n  opencode:\n", `:3: target_versions.opencode: "" is not a version`, "write a version such as 2.1 or 0.9.3"),
+		Entry("a list value", "version: 1\ntarget_versions:\n  opencode: [2]\n", ":3: target_versions.opencode: must be a version, not a list", "write a version such as 2.1 or 0.9.3"),
+		Entry("a list for the section", "version: 1\ntarget_versions: [a]\n", ":2: target_versions: must be a mapping, not a list", "key: value"),
+		Entry("an id written twice", "version: 1\ntarget_versions:\n  opencode: 2\n  opencode: 3\n", ":4: target_versions.opencode: is written twice", "keep one"),
+		Entry("an id with control characters", "version: 1\ntarget_versions:\n  \"open\\ncode\": 2\n", ":3: target_versions: an id must be plain text", "write the target's id"),
+	)
+
 	DescribeTable("refuses invalid files, naming the file, line and key with a hint",
 		func(content, msg, hint string) {
 			write(content)
@@ -185,7 +226,7 @@ var _ = Describe("config.yaml", func() {
 			Expect(errs.Hints(err)).To(ContainElement(ContainSubstring(hint)))
 		},
 		Entry("an unknown scope", "version: 1\ndefault_scope: everywhere\n", `:2: default_scope: "everywhere" is not a scope`, "project, user or both"),
-		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "pre_install, theme, version"),
+		Entry("an unknown key", "version: 1\ndefault_scop: user\n", `:2: unknown key "default_scop"`, "pre_install, target_versions, theme, version"),
 		Entry("an unknown theme", "version: 1\ntheme: blue\n", `:2: theme: "blue" is not a theme`, "write theme: dark or theme: light, for your terminal's background"),
 		Entry("an empty theme", "version: 1\ntheme:\n", ":2: theme: must be a non-empty value, not empty", "write theme: dark or theme: light"),
 		Entry("a list for a theme", "version: 1\ntheme: [dark]\n", ":2: theme: must be a non-empty value, not a list", "write theme: dark or theme: light"),

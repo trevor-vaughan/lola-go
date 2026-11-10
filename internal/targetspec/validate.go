@@ -100,7 +100,7 @@ func (v validator) spec(s *Spec) error {
 	}
 	for i := range s.Eras {
 		field, e := fmt.Sprintf("eras[%d]", i), s.Eras[i]
-		if canonical(e.Since) == "" {
+		if Canonical(e.Since) == "" {
 			return v.fail(field+".since", fmt.Sprintf("%q is not a version", e.Since), "write a version such as 1.0 or 2.1.3")
 		}
 		if len(e.Remove) > 0 && e.Extends == "" {
@@ -111,7 +111,7 @@ func (v validator) spec(s *Spec) error {
 			return v.fail(field+".extends", fmt.Sprintf("%q is not previous", e.Extends), "write extends: previous, or remove it")
 		case i == 0 && e.Extends != "":
 			return v.fail(field+".extends", "the first era has no previous era", "remove extends: from the first era")
-		case i > 0 && semver.Compare(canonical(e.Since), canonical(s.Eras[i-1].Since)) <= 0:
+		case i > 0 && semver.Compare(Canonical(e.Since), Canonical(s.Eras[i-1].Since)) <= 0:
 			return v.fail(field+".since", "since not after previous era", "order eras by increasing since:")
 		case e.Extends != "":
 			r, err := v.extend(field, s.Eras[i-1], e)
@@ -129,38 +129,103 @@ func (v validator) spec(s *Spec) error {
 }
 
 func (v validator) probes(s *Spec) error {
+	hasExec := false
+	for i, p := range s.Probe {
+		field := fmt.Sprintf("probe[%d]", i)
+		var err error
+		switch {
+		case p.Exec == nil && p.File == nil:
+			err = v.fail(field, "has no method", "give it exec: or file:")
+		case p.Exec != nil && p.File != nil:
+			err = v.fail(field, "has two methods", "split it into two probe entries")
+		case p.Exec != nil:
+			hasExec = true
+			err = v.execProbe(field+".exec", p.Exec)
+		default:
+			err = v.fileProbe(field+".file", p.File)
+		}
+		if err != nil {
+			return err
+		}
+	}
 	switch {
-	case len(s.Probe) > 1:
-		return v.fail("probe", "lists more than one method", "keep one exec probe")
-	case len(s.Probe) == 0 && s.Readers == "":
-		return v.fail("readers", "is empty for a target with no probe", "say what reads the files it writes, e.g. skills for Codex and Amp")
-	case len(s.Probe) == 0:
-		return nil
-	case s.Readers != "":
-		return v.fail("readers", "is only for a target with no probe", "remove readers:")
+	case hasExec && s.Readers != "":
+		return v.fail("readers", "is only for a target with no exec probe", "remove readers:")
+	case !hasExec && s.Readers == "":
+		return v.fail("readers", "is empty for a target with no exec probe", "say what reads the files it writes, e.g. skills for Codex and Amp")
 	}
-	x := s.Probe[0].Exec
-	if x == nil {
-		return v.fail("probe[0]", "has no method", "add exec: {binaries: [mytool], args: [--version], match: '(\\d+\\.\\d+\\.\\d+)'}")
-	}
+	return nil
+}
+
+func (v validator) execProbe(field string, x *Exec) error {
 	if len(x.Binaries) == 0 {
-		return v.fail("probe[0].exec.binaries", "is empty", "name the command looked up on PATH")
+		return v.fail(field+".binaries", "is empty", "name the command looked up on PATH")
 	}
 	for i, b := range x.Binaries {
 		if b == "" || strings.ContainsAny(b, `/\`) {
-			return v.fail(fmt.Sprintf("probe[0].exec.binaries[%d]", i), fmt.Sprintf("%q is not a command name", b), "give the name looked up on PATH, e.g. mytool")
+			return v.fail(fmt.Sprintf("%s.binaries[%d]", field, i), fmt.Sprintf("%q is not a command name", b), "give the name looked up on PATH, e.g. mytool")
 		}
 	}
-	if x.Match == nil {
-		return v.fail("probe[0].exec.match", "is missing", "match the version, e.g. '(\\d+\\.\\d+\\.\\d+)'")
+	return v.versionMatch(field+".match", x.Match, "match the version, e.g. '(\\d+\\.\\d+\\.\\d+)'")
+}
+
+func (v validator) fileProbe(field string, f *FileProbe) error {
+	if f.Path == "" {
+		return v.fail(field+".path", "is empty", "name the file, e.g. {home}/.mytool/version.json")
 	}
-	if err := v.compile("probe[0].exec.match", x.Match); err != nil {
+	if !probePath(f.Path) {
+		return v.fail(field+".path", fmt.Sprintf("%q does not start with {home}/, {config_home}/ or {data_home}/ and a clean relative path", f.Path), "start it with one of those variables")
+	}
+	switch {
+	case f.Match != nil && f.Pointer != "":
+		return v.fail(field, "sets both match and pointer", "keep one")
+	case f.Match == nil && f.Pointer == "":
+		return v.fail(field, "has neither match nor pointer", "add match: '(\\d+\\.\\d+\\.\\d+)' or pointer: /version")
+	case f.Pointer != "":
+		if !jsonPointer(f.Pointer) {
+			return v.fail(field+".pointer", fmt.Sprintf("%q is not a JSON pointer", f.Pointer), "write it as /key/sub, escaping ~ as ~0 and / as ~1")
+		}
+		return nil
+	}
+	return v.versionMatch(field+".match", f.Match, "")
+}
+
+// versionMatch compiles m and requires a group for the version; missing is the fix for a nil m,
+// or "" when the caller has already checked it is set.
+func (v validator) versionMatch(field string, m *Pattern, missing string) error {
+	if m == nil {
+		return v.fail(field, "is missing", missing)
+	}
+	if err := v.compile(field, m); err != nil {
 		return err
 	}
-	if x.Match.re.NumSubexp() < 1 {
-		return v.fail("probe[0].exec.match", "has no group for the version", "capture the version, e.g. '(\\d+\\.\\d+\\.\\d+)'")
+	if m.re.NumSubexp() < 1 {
+		return v.fail(field, "has no group for the version", "capture the version, e.g. '(\\d+\\.\\d+\\.\\d+)'")
 	}
 	return nil
+}
+
+// probePath reports a probe file's path: a root variable, a slash and a clean relative path.
+func probePath(p string) bool {
+	for _, root := range []string{"{home}/", "{config_home}/", "{data_home}/"} {
+		if rest, ok := strings.CutPrefix(p, root); ok {
+			return relPath(rest) && !strings.ContainsAny(rest, "{}")
+		}
+	}
+	return false
+}
+
+// jsonPointer reports an RFC 6901 pointer: it starts with / and every ~ is ~0 or ~1.
+func jsonPointer(p string) bool {
+	if !strings.HasPrefix(p, "/") {
+		return false
+	}
+	for i := 0; i < len(p); i++ {
+		if p[i] == '~' && (i+1 == len(p) || (p[i+1] != '0' && p[i+1] != '1')) {
+			return false
+		}
+	}
+	return true
 }
 
 func (v validator) compile(field string, p *Pattern) error {
@@ -603,8 +668,8 @@ func (v validator) behaviors(field string, e *Era) error {
 	return nil
 }
 
-// canonical turns "1.2" into the "v1.2" form semver compares, or "" when it is not a version.
-func canonical(s string) string {
+// Canonical turns "1.2" into the "v1.2" form semver compares (a leading v is kept), or "" when it is not a version.
+func Canonical(s string) string {
 	if s == "" {
 		return ""
 	}

@@ -103,6 +103,22 @@ func (e *Engine) Check(ctx context.Context, sc Scope, cwd string, args, ids, dis
 	if len(given) == 0 {
 		ts = e.checkedTargets(sc, man, layers, want)
 	}
+	// Each target is checked for the era sc declares. A project.yml or config.yaml that cannot be
+	// read declares nothing; at project scope the finding above says so.
+	tv, _, err := probes.declared(sc)
+	if err != nil {
+		unreadable := man == nil
+		if sc.Kind == target.User {
+			_, cerr := config.LoadConfig(e.Paths.Config, e.Paths.Home)
+			unreadable = cerr != nil
+		}
+		if !unreadable {
+			return nil, err
+		}
+	}
+	for i, t := range ts {
+		ts[i] = e.atEra(tv, t)
+	}
 	profiles := e.visibleOnce(sc)
 	for _, arg := range args {
 		cm, err := e.checkOne(ctx, sc, cwd, arg, sel, ts, given, scopeNames(man, layers, agentsTarget), probes, templates, want, profiles, display)
@@ -198,8 +214,9 @@ func (e *Engine) checkOne(ctx context.Context, sc Scope, cwd, arg string, sel *c
 	var shared map[string]bool
 	// checkTarget is t's findings of the module: its template refusals, then its plan's.
 	checkTarget := func(t target.Target) ([]target.Finding, targetPlan, error) {
+		probes.version(sc, t)
 		pctx := target.PlanContext{Scope: sc.Kind, Root: t.Root(sc.Kind, sc.ProjectDir, e.Paths), ContentDir: contentDir,
-			PluginRoot: contentDir, PluginData: contentDir, Version: probes.version(t), SharedSkills: shared}
+			PluginRoot: contentDir, PluginData: contentDir, SharedSkills: shared}
 		if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
 			pctx.SettingsExposed = func(abs string) (string, string) { return probes.settings(sc.ProjectDir, abs) }
 		}

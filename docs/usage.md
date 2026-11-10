@@ -122,7 +122,7 @@ For `opencode` (user scope: the same paths under `$XDG_CONFIG_HOME/opencode/`, w
 |---|---|
 | Skills | `.opencode/skills/<skill>/`; names are lowercase words joined by single hyphens, and a `name` in the frontmatter must equal the directory; OpenCode neither runs shell nor fills argument placeholders in skills, so lola warns when a skill has them |
 | Commands | `.opencode/commands/<command>.md`, keeping only `description`, `agent`, `model` (`provider/model`) and `subtask`; Claude counts arguments from 0 and OpenCode from 1, so `$0`, `$ARGUMENTS[0]` and the first name listed in `arguments:` become `$1`, and so on (`$ARGUMENTS` stays); OpenCode has no escape, so a Claude-escaped `\$1` or `\$ARGUMENTS` is kept but OpenCode still fills it in; OpenCode runs ``!`…` `` anywhere in a command without Claude's permission checks and never runs a ```` ```! ```` fence; a `commands/<command>/` directory is not copied, as OpenCode would read its files as commands |
-| Agents | `.opencode/agents/<agent>.md` with `mode: subagent` unless the agent sets a mode; `name` is dropped and `model` is kept only as `provider/model`. OpenCode cannot express a tool list and gives an agent without one every tool, so an agent with a non-empty `tools` is skipped (`--force` installs it without the list). OpenCode refuses to start on an invalid agent value, so lola drops a `color` other than `#rrggbb` (OpenCode 1.18 also takes theme names such as `accent`, but later versions reject them), a `mode` other than `subagent`, `primary` or `all`, a non-numeric `temperature` or `top_p`, a `steps` or `maxSteps` that is not a positive integer, a non-boolean `hidden` or `disable`, a non-string `variant` and a non-map `options`. `permission` is passed through unchecked |
+| Agents | `.opencode/agents/<agent>.md` with `mode: subagent` unless the agent sets a mode; `name` is dropped and `model` is kept only as `provider/model`. OpenCode cannot express a tool list and gives an agent without one every tool, so an agent with a non-empty `tools` is skipped (`--force` installs it without the list). OpenCode refuses to start on an invalid agent value, so lola drops a `color` other than `#rrggbb` (the 2.x era, which is the newest and is used when nothing is declared; with `target_versions` declaring `opencode` 1.x, the theme names `primary`, `secondary`, `accent`, `success`, `warning`, `error` and `info` are kept too), a `mode` other than `subagent`, `primary` or `all`, a non-numeric `temperature` or `top_p`, a `steps` or `maxSteps` that is not a positive integer, a non-boolean `hidden` or `disable`, a non-string `variant` and a non-map `options`. `permission` is passed through unchecked |
 | MCP servers | `opencode.jsonc` if it exists, else `opencode.json` → `mcp.<name>`: `{"type": "local", "command": [...], "environment"}` or `{"type": "remote", "url", "headers"}`; `${VAR}` becomes `{env:VAR}`. OpenCode merges both files and `opencode.jsonc` wins, so a server of the same name in `opencode.json` is overridden by lola's |
 | Rules | `.opencode/lola/<module>/<rule>.md`, listed as `.opencode/lola/<module>/*.md` in the same file's `instructions` (at user scope by absolute path) |
 
@@ -135,6 +135,35 @@ For `agents` (user scope: the same paths under `~`):
 
 When a module targets `agents`, `gemini-cli` and `opencode` leave the skills `agents` writes to it
 (`skill-via-agents`), so each tool loads a skill once.
+
+### Declaring assistant versions
+
+Assistants read different files in different versions, so lola renders for the version you
+declare, never the one installed: teammates on different versions get the same files. Declare it
+under `target_versions`, a mapping of target id to version, in `.lola/project.yml` (project
+scope) or `$XDG_CONFIG_HOME/lola/config.yaml` (user scope):
+
+```yaml
+target_versions:
+  opencode: "2.0"
+```
+
+- A value is one version (`2.1`, `0.9.3`, a leading `v` allowed), not a range. lola keeps it as written, so
+  `2.10` stays `2.10`.
+- lola uses the era of the target's spec that starts at or below the version: the last one whose
+  `since` is not above it. `opencode` has eras `1.0` and `2.0`; `1.x` accepts theme colour names
+  for an agent's `color`, `2.x` only hex colours.
+- A target with nothing declared renders for its newest era.
+- A version below the first era renders the first era and warns (`version/before-first-era`).
+- A target id lola does not know, or a value that is not a version, is an error naming the file
+  and key. The hint lists the valid targets for an unknown id. `lola tidy` stops on the same
+  error, and on a `.lola/project.yml` or `config.yaml` it cannot read, rather than tidy for the
+  newest era and take files of the declared one for strays. `lola check` at user scope renders
+  the newest era when `config.yaml` cannot be read, as it does at project scope when
+  `.lola/project.yml` cannot be.
+- lola probes the installed version (`probe/*`) and warns when its era differs from the declared
+  one (`version/era-mismatch`) or when nothing is declared for an assistant not on the newest era
+  (`version/undeclared`). The probe never changes what lola writes.
 
 ## Choosing what to install
 
@@ -215,8 +244,6 @@ the run, `lola check` included: they are never skip findings.
 | `frontmatter-key-dropped` | warn or info | no | The target does not support a frontmatter key, so it is left out. |
 | `frontmatter-value-dropped` | warn | no | A frontmatter key has a value of the wrong type or form for the target (for example an OpenCode agent `color: red`, or a Gemini agent `max_turns: 1.5`), so it is left out. |
 | `frontmatter/yaml-ambiguous` | warn | no | An unquoted frontmatter value that YAML parsers read differently; quote it. |
-| `version/unsupported` | warn | no | Your installed assistant is older than the version lola renders for and ignores something the module uses. |
-| `version/limited` | warn | no | Your installed assistant has a known limitation that affects this module. |
 | `vars-override` | skip | no | `lola check`: the scope's entry for the module checked sets a var the module does not declare, or one of another type; the module is checked with its defaults. |
 | `vars-defaults` | info | no | `lola check` could not read the scope's manifest or a profile, so every module is checked with its default vars. |
 | `picks-keyed-by-path` | warn | no | `lola check`: git could not read the project's clone, so its picks in `selections.yaml` are read under its path, not its repository; the hint is the `git config --global --add safe.directory` that trusts a repository git refuses as someone else's. |
@@ -246,9 +273,12 @@ the run, `lola check` included: they are never skip findings.
 | `claude-code/runtime-hook-event-invalid` | skip | no | A hooks event name is not an identifier, so it is no event Claude Code fires. |
 | `claude-code/runtime-hook-drift` | info | no | A hook group lola installed was edited or removed. On install, sync and update lola leaves it out until `--force` writes it again, and prints the finding with the hint `restore it:` and your run with `--force`; for `lola profile` (whose own `--force` run would find the profile as asked and change nothing) and for `lola update` and `lola sync --update` (whose own `--force` run would also upgrade) the hint is `lola sync <modules> --force`, naming the drifted modules; on uninstall lola leaves your edited group alone. `--strict` does not fail on it. |
 | `target/user-spec` | info | no | The assistant's spec is yours, in `$XDG_CONFIG_HOME/lola/targets`, in place of lola's built-in; the text names the file ([Target specs](guides/target-specs.md)). |
-| `probe/not-found` | info | no | The assistant is not on `PATH`; lola checked against the newest version it knows. |
-| `probe/unknown-version` | info | no | The assistant's version could not be read. |
+| `probe/not-found` | info | no | No probe found the assistant: the text is `<binary> is not on PATH` or `<path> does not exist`. |
+| `probe/unknown-version` | info | no | The assistant's version could not be read: its binary failed or printed no version, or its version file is not a regular file of at most 1 MiB holding one. |
 | `probe/cache` | info | no | The version was read but could not be cached. |
+| `version/undeclared` | warn | no | The installed assistant is of another era than the newest one lola writes for, and the scope declares no version for it. Hint: the `target_versions` line to add ([Declaring assistant versions](#declaring-assistant-versions)). |
+| `version/era-mismatch` | warn | no | The scope declares a version, but the installed assistant is of another era; lola writes for the declared one. Hint: set `target_versions` to the installed version, or install the declared one. |
+| `version/before-first-era` | warn | no | The declared version is older than any era lola knows, so lola writes for the oldest one. Hint: upgrade the assistant, then set `target_versions` to match. |
 
 lola only reports what its own rendering loses. For general advice on writing skills, commands
 and agents, use a dedicated linter such as [skillsaw](https://github.com/stbenjam/skillsaw).
@@ -280,12 +310,12 @@ fails it. `lola info <module>` lists each executable with the libraries it loads
 
 | File | Purpose | Commit it? |
 |---|---|---|
-| `.lola/project.yml` | The manifest: which modules and targets you want, and for git and archive modules the version (pin) installed. lola edits only the entries it changes and keeps your comments and order, but it writes the whole file again, so blank lines between entries are dropped and indentation becomes two spaces. | Yes |
+| `.lola/project.yml` | The manifest: which modules and targets you want, the assistant versions it renders for (`target_versions`), and for git and archive modules the version (pin) installed. lola edits only the entries it changes and keeps your comments and order, but it writes the whole file again, so blank lines between entries are dropped and indentation becomes two spaces. | Yes |
 | `.lola/lock.json` | The ledger: every file and JSON key lola wrote, with hashes, the targets each module is installed on (`targets`, including one that rendered none of its files), (`hooks_pending`) a post-install hook you have not let run yet, (`scripts_pending`) the project's post-install script you have not let run on the module yet, the active [profile](guides/profiles.md#profiles) (`profile`; a `lock.json` with a pre-release `profiles` list is refused, naming the way out), the profile each module came from (`from`) and, for a module with [templates](guides/templating.md#templates), what they rendered with (`rendered_with`: `default` and the active profile when a template reads them, and `vars`). Every command that plans from it refuses a path in it outside a target's root, or a target lola does not know, hinting [`lola repair`](reference/repair.md#lola-repair), which forgets such entries. | No (gitignored for you) |
 | `.lola/modules/` | Module copies that `${PLUGIN_ROOT}` points into. | No (gitignored) |
 | `.lola/plugin-data/` | `${PLUGIN_DATA}` directories. | No (gitignored) |
 | `.claude/settings.local.json` | Claude Code's per-user settings, where lola puts runtime hooks you consented to. | No: add it to `.gitignore` |
-| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, `cache_unused_for`, `cache_fresh_for`, and `theme`. | Yours to keep |
+| `$XDG_CONFIG_HOME/lola/config.yaml` | Your settings: `default_scope`, `pager`, your install scripts `pre_install` and `post_install`, `cache_unused_for`, `cache_fresh_for`, `theme`, and `target_versions` ([Declaring assistant versions](#declaring-assistant-versions)). | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/selections.yaml` | Components you chose not to install, globally and per project (no `user:` section: a file with one is refused, and a user-scope module's picks live in its profile entry). A project in a git clone whose `origin` is on another host is keyed by its repository (`git:<host>/<path>#<dir>`, no credential), so a re-clone keeps its picks (a project in a subdirectory of an unrelated clone, such as a home directory kept in git, is keyed by that clone and its subdirectory); any other by its absolute path ([`config.yaml` and `selections.yaml`](guides/choosing-what-to-install.md#configyaml-and-selectionsyaml)). Your teammates do not get these picks; a project profile shares picks. | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/targets/*.yaml` | Your target specs: assistants lola has no built-in for, or built-ins you replace ([Target specs](guides/target-specs.md)). | Yours to keep |
 | `$XDG_CONFIG_HOME/lola/profiles/` | Your [profiles](guides/profiles.md#profiles). lola writes one only on `lola install` or `lola uninstall`, never with a pin; comments and order stay. | Yours to keep |

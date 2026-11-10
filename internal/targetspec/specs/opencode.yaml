@@ -2,8 +2,9 @@
 # sit directly under it.
 id: opencode
 probe:
-  # `opencode --version` prints a bare version, e.g. "1.0.12".
-  - exec: {binaries: [opencode], args: [--version], match: '^v?(\d+\.\d+\.\d+[0-9A-Za-z.+-]*)'}
+  # `opencode --version` prints a bare version in 1.x ("1.0.12") and a named one in 2.x
+  # ("opencode v2.2.5").
+  - exec: {binaries: [opencode], args: [--version], match: '^(?:opencode )?v?(\d+\.\d+\.\d+[0-9A-Za-z.+-]*)'}
 roots: {project: "{project}", user: "{config_home}/opencode"}
 detect:
   project: {any: [.opencode/, opencode.json, opencode.jsonc]}
@@ -48,9 +49,9 @@ eras:
           model: {accepts: {shape: string, pattern: '^[^/]+/.+$'}}
           variant: {accepts: {shape: string}}
           mode: {accepts: {shape: string, pattern: '^(subagent|primary|all)$'}}
-          # Hex only: 1.x also takes theme names, but OpenCode V2 rejects them and drops the
-          # agent (anomalyco/opencode #54057, #38796).
-          color: {accepts: {shape: string, pattern: '^#[0-9a-fA-F]{6}$'}}
+          # 1.x takes a hex colour or a theme name (packages/core/src/v1/config/agent.ts at v1.19.5)
+          # and fails the config load on anything else.
+          color: {accepts: {shape: string, pattern: '^(#[0-9a-fA-F]{6}|primary|secondary|accent|success|warning|error|info)$'}}
           temperature: {accepts: {shape: number}}
           top_p: {accepts: {shape: number}}
           steps: {accepts: {shape: positive-integer}}
@@ -66,3 +67,11 @@ eras:
       - {id: shell-unchecked, kind: command, detect: "!`[^`]+`", effect: runs-without-permission-check, what: "!`…`"}
       - {id: shell-fence, kind: command, detect: "(?m)^[ \\t]*`{3,}!", effect: sent-as-text, what: fenced shell, alternative: "inline !`…`"}
     shared: [skill-rules]
+  # OpenCode 2 takes hex colours only: 2.0.0 to 2.1.2 drop an agent whose color is a theme name
+  # (anomalyco/opencode #54057, #38796), and later versions ignore the name.
+  - since: "2.0"
+    extends: previous
+    kinds:
+      agent:
+        keys:
+          color: {accepts: {shape: string, pattern: '^#[0-9a-fA-F]{6}$'}}

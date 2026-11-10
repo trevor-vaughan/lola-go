@@ -24,7 +24,9 @@ import (
 // Registry is the assistant targets lola renders into: its built-in specs, each replaced by a
 // user spec of the same id, then the targets only user specs define, sorted by id.
 type Registry struct {
-	targets  []target.Target
+	targets  []target.Target            // each spec's newest era
+	eras     map[string][]target.Target // id → a target per era, oldest first
+	specs    map[string]targetspec.Spec
 	replaced map[string]string // built-in id → the user spec file that replaces it
 }
 
@@ -48,6 +50,29 @@ func (r Registry) Lookup(id string) (target.Target, bool) {
 		}
 	}
 	return nil, false
+}
+
+// For is id's target for the era version selects: "" or a version at or above the newest era's
+// since gives the newest (the target All and Lookup return). version must be "" or a valid
+// version; callers validate it.
+func (r Registry) For(id, version string) (target.Target, bool) {
+	s, ok := r.specs[id]
+	if !ok {
+		return nil, false
+	}
+	i, _ := s.Select(version)
+	return r.eras[id][i], true
+}
+
+// Era is the since of the era version selects for id, whether version lies below the first era,
+// and whether id is registered. Era(id, "") is the newest era's since.
+func (r Registry) Era(id, version string) (since string, before, ok bool) {
+	s, ok := r.specs[id]
+	if !ok {
+		return "", false, false
+	}
+	i, before := s.Select(version)
+	return s.Eras[i].Since, before, true
 }
 
 // Replaced is the file of the user spec that replaces built-in id, "" when none does.
@@ -171,7 +196,7 @@ func build(user []targetspec.Spec) Registry {
 	for _, s := range user {
 		byID[s.ID] = s
 	}
-	r := Registry{replaced: map[string]string{}}
+	r := Registry{eras: map[string][]target.Target{}, specs: map[string]targetspec.Spec{}, replaced: map[string]string{}}
 	builtins := builtinSpecs()
 	for _, id := range order() {
 		s := builtins[id]
@@ -180,7 +205,7 @@ func build(user []targetspec.Spec) Registry {
 			r.replaced[id] = u.File
 			delete(byID, id)
 		}
-		r.targets = append(r.targets, spec.New(s))
+		r.register(s)
 	}
 	rest := make([]targetspec.Spec, 0, len(byID))
 	for _, s := range byID {
@@ -188,7 +213,16 @@ func build(user []targetspec.Spec) Registry {
 	}
 	slices.SortFunc(rest, func(a, b targetspec.Spec) int { return strings.Compare(a.ID, b.ID) })
 	for _, s := range rest {
-		r.targets = append(r.targets, spec.New(s))
+		r.register(s)
 	}
 	return r
+}
+
+// register adds s: a target per era, the newest being the one All and Lookup return.
+func (r *Registry) register(s targetspec.Spec) {
+	for i := range s.Eras {
+		r.eras[s.ID] = append(r.eras[s.ID], spec.At(s, i))
+	}
+	r.specs[s.ID] = s
+	r.targets = append(r.targets, r.eras[s.ID][len(s.Eras)-1])
 }

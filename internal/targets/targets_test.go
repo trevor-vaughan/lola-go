@@ -125,6 +125,49 @@ var _ = Describe("registry", func() {
 		Expect(dest.Dirs[0].Path).To(Equal(".mine/agents"))
 	})
 
+	It("builds a target for every era of a spec and hands out the era a version selects", func() {
+		write("quill.yaml", `id: quill
+readers: "the quill editor"
+roots: {project: "{project}", user: "{home}"}
+detect: {project: {any: [.quill/]}, user: {any: [.quill/]}}
+eras:
+  - since: "1.0"
+    layout:
+      agent: {mech: markdown-file, path: old/agents, ext: .md}
+  - since: "2.0"
+    layout:
+      agent: {mech: markdown-file, path: new/agents, ext: .md}
+`)
+		r, err := targets.Load(p)
+		Expect(err).NotTo(HaveOccurred())
+		dirOf := func(t target.Target) string {
+			dest, err := t.Destinations(target.Project, "/proj")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dest.Dirs).To(HaveLen(1))
+			return dest.Dirs[0].Path
+		}
+		for version, dir := range map[string]string{"1.5": "old/agents", "0.1": "old/agents", "": "new/agents", "2.0": "new/agents", "3": "new/agents"} {
+			t, ok := r.For("quill", version)
+			Expect(ok).To(BeTrue(), version)
+			Expect(dirOf(t)).To(Equal(dir), version)
+		}
+		_, ok := r.For("nope", "")
+		Expect(ok).To(BeFalse())
+		_, _, ok = r.Era("nope", "")
+		Expect(ok).To(BeFalse())
+
+		since, before, ok := r.Era("quill", "0.1")
+		Expect([]any{since, before, ok}).To(Equal([]any{"1.0", true, true}))
+		since, before, ok = r.Era("quill", "")
+		Expect([]any{since, before, ok}).To(Equal([]any{"2.0", false, true}))
+		since, before, ok = r.Era("quill", "1.5")
+		Expect([]any{since, before, ok}).To(Equal([]any{"1.0", false, true}))
+
+		newest, ok := r.Lookup("quill")
+		Expect(ok).To(BeTrue())
+		Expect(dirOf(newest)).To(Equal("new/agents"))
+	})
+
 	It("refuses a broken spec, names its file and offers the fix, and falls back to nothing", func() {
 		write("quill.yaml", "id: quill\nroots: {project: \"{project}\", user: \"{home}\"}\n")
 		r, err := targets.Load(p)

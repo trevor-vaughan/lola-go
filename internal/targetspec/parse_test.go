@@ -55,6 +55,9 @@ func withLayout(entry string, pairs ...string) string {
 	return src
 }
 
+// fileProbe is base with a second probe entry, file: f.
+func fileProbe(f string) string { return edit("\nroots:", "\n  - file: "+f+"\nroots:") }
+
 func edit(old, new string) string {
 	ExpectWithOffset(1, base).To(ContainSubstring(old))
 	return strings.Replace(base, old, new, 1)
@@ -97,7 +100,24 @@ var _ = Describe("Parse", func() {
 		Entry("an invalid regex", edit(`match: '(\d+\.\d+\.\d+)'`, `match: '(\d+'`), "probe[0].exec.match", "not a valid regular expression"),
 		Entry("a probe regex without a group", edit(`match: '(\d+\.\d+\.\d+)'`, `match: '\d+'`), "probe[0].exec.match", "no group"),
 		Entry("a binary with a path", edit("binaries: [mytool]", "binaries: [/bin/mytool]"), "probe[0].exec.binaries[0]", "not a command name"),
-		Entry("readers beside a probe", edit("id: my-tool", "id: my-tool\nreaders: x"), "readers", "no probe"),
+		Entry("a probe with no method", edit("  - exec: {binaries: [mytool], args: [--version], match: '(\\d+\\.\\d+\\.\\d+)'}\n", "  - {}\n"), "probe[0]", "has no method"),
+		Entry("a probe with two methods", edit("  - exec:", "  - file: {path: \"{home}/.t/v\", pointer: /v}\n    exec:"), "probe[0]", "has two methods"),
+		Entry("an empty exec binaries list", edit("binaries: [mytool]", "binaries: []"), "probe[0].exec.binaries", "is empty"),
+		Entry("a second probe's bad exec", edit("\nroots:", "\n  - exec: {binaries: [x], match: '\\d+'}\nroots:"), "probe[1].exec.match", "no group"),
+		Entry("a file probe with no path", fileProbe(`{pointer: /v}`), "probe[1].file.path", "is empty"),
+		Entry("a file probe path without a variable", fileProbe(`{path: .t/v.json, pointer: /v}`), "probe[1].file.path", "does not start with"),
+		Entry("a file probe path under the project variable", fileProbe(`{path: "{project}/v.json", pointer: /v}`), "probe[1].file.path", "does not start with"),
+		Entry("a file probe path with ..", fileProbe(`{path: "{home}/../v.json", pointer: /v}`), "probe[1].file.path", "does not start with"),
+		Entry("a file probe path that is only the variable", fileProbe(`{path: "{home}", pointer: /v}`), "probe[1].file.path", "does not start with"),
+		Entry("a file probe with match and pointer", fileProbe(`{path: "{home}/v", pointer: /v, match: '(\d+)'}`), "probe[1].file", "sets both match and pointer"),
+		Entry("a file probe with neither", fileProbe(`{path: "{home}/v"}`), "probe[1].file", "has neither match nor pointer"),
+		Entry("a pointer without a leading slash", fileProbe(`{path: "{home}/v", pointer: version}`), "probe[1].file.pointer", "is not a JSON pointer"),
+		Entry("a pointer with a bare tilde", fileProbe(`{path: "{home}/v", pointer: /a~2}`), "probe[1].file.pointer", "is not a JSON pointer"),
+		Entry("a pointer ending in a tilde", fileProbe(`{path: "{home}/v", pointer: /a~}`), "probe[1].file.pointer", "is not a JSON pointer"),
+		Entry("an invalid file match", fileProbe(`{path: "{home}/v", match: '(\d+'}`), "probe[1].file.match", "not a valid regular expression"),
+		Entry("a file match without a group", fileProbe(`{path: "{home}/v", match: '\d+'}`), "probe[1].file.match", "no group"),
+		Entry("no exec probe and no readers", edit("probe:\n  - exec: {binaries: [mytool], args: [--version], match: '(\\d+\\.\\d+\\.\\d+)'}\n", "probe:\n  - file: {path: \"{home}/v\", pointer: /v}\n"), "readers", "is empty for a target with no exec probe"),
+		Entry("readers beside a probe", edit("id: my-tool", "id: my-tool\nreaders: x"), "readers", "no exec probe"),
 		Entry("a root not under a variable", edit(`user: "{config_home}/mytool"`, `user: /etc/mytool`), "roots.user", "under a root variable"),
 		Entry("a variable glued to .. in the user root", edit(`user: "{config_home}/mytool"`, `user: "{home}.."`), "roots.user", "under a root variable"),
 		Entry("a variable followed by a parent path", edit(`user: "{config_home}/mytool"`, `user: "{home}../x"`), "roots.user", "under a root variable"),
@@ -139,6 +159,7 @@ var _ = Describe("Parse", func() {
 		Entry("an empty candidate list", edit("{first: [mytool.jsonc, mytool.json]}", "{first: []}"), "eras[0].layout.mcp.file", "empty"),
 		Entry("an empty required key", edit("    kinds:\n      command:\n", "    kinds:\n      command:\n        required: [\"\"]\n"), "eras[0].kinds.command.required[0]", "empty"),
 		Entry("a required key that is unsupported", edit("    kinds:\n      command:\n", "    kinds:\n      command:\n        required: [hooks]\n"), "eras[0].kinds.command.required[0]", "also unsupported"),
+		Entry("a required key that is unsupported, differing in case", edit("    kinds:\n      command:\n", "    kinds:\n      command:\n        required: [Hooks]\n"), "eras[0].kinds.command.required[0]", "also unsupported"),
 	)
 
 	DescribeTable("rejects a control or format character, naming the field",
@@ -155,8 +176,47 @@ var _ = Describe("Parse", func() {
 		Entry("an escape in a pattern", edit("detect: '(?m)^```!'", `detect: "\e(?m)^`+"```"+`!"`), "eras[0].behaviors[0].detect"),
 	)
 
+	Describe("with a YAML alias", func() {
+		anchored := func(tail string) string {
+			return edit("probe:\n  - exec: {binaries: [mytool], args: [--version], match: '(\\d+\\.\\d+\\.\\d+)'}\n",
+				"probe:\n  - file: {path: \"{home}/v\", match: &m \"v\\t(\\\\d+)\"}\n") + tail
+		}
+
+		It("refuses a tab anchored at a pattern field and aliased into readers", func() {
+			e := loadErr(anchored("readers: *m\n"))
+			Expect(e.Field).To(Equal("readers"))
+			Expect(e.Problem).To(Equal("holds a control or format character"))
+		})
+
+		It("accepts the same alias in another pattern field", func() {
+			s, err := targetspec.Parse("my.yaml", []byte(strings.Replace(anchored("readers: x\n"), "detect: '(?m)^```!'", "detect: *m", 1)))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Newest().Behaviors[0].Detect.RE().MatchString("v\t7")).To(BeTrue())
+		})
+
+		It("refuses a self-referencing alias before walking it", func() {
+			_, err := targetspec.Parse("my.yaml", []byte(edit("binaries: [mytool]", "binaries: &a [*a]")))
+			Expect(err).To(MatchError(ContainSubstring("cannot unmarshal !!seq into string")))
+		})
+	})
+
 	It("coaches a control or format character with plain text", func() {
 		Expect(loadErr(edit("what: fenced shell,", `what: "x\u202Ey",`)).Fix).To(Equal("remove it; specs hold plain text"))
+	})
+
+	It("loads an exec probe followed by a file probe", func() {
+		s, err := targetspec.Parse("my.yaml", []byte(fileProbe(`{path: "{home}/.mytool/v.json", pointer: /version}`)))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Probe).To(HaveLen(2))
+		Expect(s.Probe[1].File.Pointer).To(Equal("/version"))
+	})
+
+	It("loads a file-only probe with readers, and a file match that holds a tab", func() {
+		src := edit("probe:\n  - exec: {binaries: [mytool], args: [--version], match: '(\\d+\\.\\d+\\.\\d+)'}\n",
+			"readers: x\nprobe:\n  - file: {path: \"{home}/v\", match: \"v\\t(\\\\d+)\"}\n")
+		s, err := targetspec.Parse("my.yaml", []byte(src))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Probe[0].File.Match.RE().FindStringSubmatch("v\t7")[1]).To(Equal("7"))
 	})
 
 	It("loads a pattern that matches a tab or a newline", func() {

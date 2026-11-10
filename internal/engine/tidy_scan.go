@@ -170,14 +170,19 @@ func (s *tidyScanner) protect(p string) {
 	}
 }
 
-// tidyDests resolves the declared destinations of targets at sc.
+// tidyDests resolves the declared destinations of targets at sc, for the era sc declares.
 func (e *Engine) tidyDests(sc Scope, targets []string) ([]*tidyDest, error) {
+	tv, _, err := e.declared(sc)
+	if err != nil {
+		return nil, err
+	}
 	var out []*tidyDest
 	for _, id := range targets {
 		t, err := e.target(id)
 		if err != nil {
 			return nil, err
 		}
+		t = e.atEra(tv, t)
 		root := t.Root(sc.Kind, sc.ProjectDir, e.Paths)
 		decl, err := t.Destinations(sc.Kind, root)
 		if err != nil {

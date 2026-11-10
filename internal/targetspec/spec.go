@@ -11,6 +11,7 @@ import (
 	"regexp"
 
 	"go.yaml.in/yaml/v3"
+	"golang.org/x/mod/semver"
 )
 
 // Spec is one target: an assistant, or a directory several assistants read.
@@ -40,9 +41,25 @@ func (s Scoped) at(user bool) string {
 	return s.Project
 }
 
-// Probe is one way to read the installed assistant's version.
+// Probe is one way to read the installed assistant's version: exactly one of Exec and File.
 type Probe struct {
-	Exec *Exec `yaml:"exec"`
+	Exec *Exec      `yaml:"exec"`
+	File *FileProbe `yaml:"file"`
+}
+
+// FileProbe reads the version from a file of at most 1 MiB: Match's first group, or the JSON
+// string at Pointer (RFC 6901); exactly one of the two.
+type FileProbe struct {
+	Path    string   `yaml:"path"` // {home}/, {config_home}/ or {data_home}/ then a clean relative path
+	Match   *Pattern `yaml:"match"`
+	Pointer string   `yaml:"pointer"`
+}
+
+// Expand is f's path for v, in the OS's form.
+func (f FileProbe) Expand(v RootVars) string {
+	vars := map[string]string{"home": v.Home, "config_home": v.ConfigHome, "data_home": v.DataHome}
+	loc := varRef.FindStringSubmatchIndex(f.Path)
+	return filepath.Join(vars[f.Path[loc[2]:loc[3]]], filepath.FromSlash(f.Path[loc[1]:]))
 }
 
 // Exec runs the first of Binaries found on PATH with Args; Match's first group is the version.
@@ -219,6 +236,25 @@ func (s Spec) Root(user bool, v RootVars) string {
 		return head
 	}
 	return filepath.Join(head, filepath.FromSlash(rest))
+}
+
+// Select is the index of the era version selects: the last whose since is at or below it, the
+// newest for "", and the first, with before set, for a version below the first era. version
+// must be "" or valid (Canonical(version) != "").
+func (s Spec) Select(version string) (era int, before bool) {
+	if version == "" {
+		return len(s.Eras) - 1, false
+	}
+	v, era := Canonical(version), -1
+	for i, e := range s.Eras {
+		if semver.Compare(Canonical(e.Since), v) <= 0 {
+			era = i
+		}
+	}
+	if era < 0 {
+		return 0, true
+	}
+	return era, false
 }
 
 // Newest is s's last era, the one lola renders for.

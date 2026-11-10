@@ -132,9 +132,9 @@ testcases:
         script: "{{.runtime}} exec {{.container}} {{.lola}} check /work/authored"
         assertions:
           - result.code ShouldEqual 0
-          - "result.systemout ShouldContainSubstring \"→ claude-code: claude is not on PATH; checked against the newest version lola knows\""
-          - "result.systemout ShouldContainSubstring \"→ gemini-cli: gemini is not on PATH; checked against the newest version lola knows\""
-          - "result.systemout ShouldContainSubstring \"→ opencode: opencode is not on PATH; checked against the newest version lola knows\""
+          - "result.systemout ShouldContainSubstring \"→ claude-code: claude is not on PATH\""
+          - "result.systemout ShouldContainSubstring \"→ gemini-cli: gemini is not on PATH\""
+          - "result.systemout ShouldContainSubstring \"→ opencode: opencode is not on PATH\""
           - "result.systemout ShouldContainSubstring \"✓ authored: claude-code renders everything\""
           - "result.systemout ShouldContainSubstring \"→ authored: gemini-cli command hello: $ARGUMENTS becomes {{args}}\""
           - "result.systemout ShouldContainSubstring \"✓ authored: opencode renders everything\""
