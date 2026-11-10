@@ -132,7 +132,11 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     - A term split across a wrapped line is not found.
   - On quit the full text is printed, so it stays in your scrollback.
   - The plan a confirmation question follows (`uninstall`, `cache rm`, `cache clean`,
-    `migrate`, a bare `init`) opens the same way, and the question comes after you quit it.
+    `migrate`, a bare `init`), the trust diff and removals `sync` asks about, the trash's restore
+    plan, the profiles `profile --add` and `--update` ask about, and what `--trust` accepted when
+    `Proceed?` follows open the same way, and the
+    question comes after you quit it with `q` or Esc; Ctrl+C there ends the command instead (`✗ cancelled — nothing was changed`, or the command's own wording, exit
+    0), without asking.
   - In order, `--json` or `--plain`, a stream that is not a terminal, accessible mode
     (`LOLA_ACCESSIBLE=1` or `TERM=dumb`), `--no-pager`, `NO_PAGER` set to a non-empty value, and
     `pager: false` in your `config.yaml` print without it.

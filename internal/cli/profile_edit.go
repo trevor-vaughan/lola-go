@@ -86,7 +86,7 @@ func (a *app) profileEdit(cmd *cobra.Command, args []string, ef editFlags, f syn
 	}
 	if len(modules) == 0 { // no install flow, which prints the context once it has the scope
 		if bundle && !ef.create {
-			return a.editBundle(cmd, eng, read, name, ef.members, req, f, forceRun(cmd, []string{name}), renderRun(cmd, []string{name}), false)
+			return a.editBundle(cmd, eng, read, name, ef.members, req, f, forceRun(cmd, []string{name}), renderRun(cmd, []string{name}), false, false)
 		}
 		a.printContext(cmd, eng, []engine.Scope{sc}, nil)
 		if ef.create {
@@ -198,31 +198,44 @@ func (a *app) editPage(cmd *cobra.Command, eng *engine.Engine, g argGuide, read 
 	case engine.IsUnknownProfile(err):
 		a.printContext(cmd, eng, []engine.Scope{sc}, nil)
 		shown := untrusted.Text(name, untrusted.MaxName)
-		i, err := p.Where(WhereStep{Title: "New profile " + shown + ":", Options: []string{"Lists modules", "Bundles profiles"}})
-		if err != nil {
-			return err
-		}
 		req.New = true
-		if i == 1 {
-			members, err := a.membersPage(cmd, eng, sc, "new bundle "+shown, name)
-			if err != nil {
+		install.profile, install.edit, install.create, install.scopes = name, []string{name}, true, []engine.ScopeChoice{read}
+		install.keep, install.keepLabel, install.said, install.back = []string{}, "new profile "+shown, true, true
+		for i := 0; ; { // Esc on the page an answer opens asks the question again, that answer under the cursor
+			if i, err = p.Where(WhereStep{Title: "New profile " + shown + ":", Options: []string{"Lists modules", "Bundles profiles"}, Preselect: i}); err != nil {
 				return err
 			}
-			return a.makeProfile(cmd, eng, engine.MakeRequest{Scope: sc, Name: name, Bundle: members, Target: req,
-				Options: engine.Options{DryRun: f.dry, Display: outputFlags(cmd)}})
+			if i == 1 {
+				members, err := a.membersPage(cmd, eng, sc, "new bundle "+shown, name, nil, Nav{Back: true})
+				if errors.Is(err, ErrBack) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				return a.makeProfile(cmd, eng, engine.MakeRequest{Scope: sc, Name: name, Bundle: members, Target: req,
+					Options: engine.Options{DryRun: f.dry, Display: outputFlags(cmd)}})
+			}
+			if err := a.runInstall(cmd, g, nil, install); !errors.Is(err, ErrBack) {
+				return err
+			}
 		}
-		install.profile, install.edit, install.create, install.scopes = name, []string{name}, true, []engine.ScopeChoice{read}
-		install.keep, install.keepLabel = []string{}, "new profile "+shown
-		return a.runInstall(cmd, g, nil, install)
 	case err != nil:
 		a.printContext(cmd, eng, []engine.Scope{sc}, nil)
 		return err
 	case t.Bundle:
-		members, err := a.membersPage(cmd, eng, sc, t.Label, t.Name)
-		if err != nil {
-			return err
+		var picked []string // the members page's last answer, which Esc on the question after it keeps
+		for {
+			members, err := a.membersPage(cmd, eng, sc, t.Label, t.Name, picked, Nav{})
+			if err != nil {
+				return err
+			}
+			err = a.editBundle(cmd, eng, read, t.Name, members, req, f, forceRun(cmd, []string{t.Name}), renderRun(cmd, []string{t.Name}), picked != nil, true)
+			if !errors.Is(err, ErrBack) {
+				return err
+			}
+			picked = members
 		}
-		return a.editBundle(cmd, eng, read, t.Name, members, req, f, forceRun(cmd, []string{t.Name}), renderRun(cmd, []string{t.Name}), false)
 	}
 	scopes, err := eng.EditScopes(read, t.Name)
 	if err != nil {
@@ -235,9 +248,10 @@ func (a *app) editPage(cmd *cobra.Command, eng *engine.Engine, g argGuide, read 
 }
 
 // membersPage asks the members of the bundle name, labeled label, at sc (engine.MemberChoices): the
-// profiles it can name, its members now ticked, one that names no profile labeled so; the answer
-// keeps the members ticked in their order, the ones newly ticked after them.
-func (a *app) membersPage(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, label, name string) ([]string, error) {
+// profiles it can name, its members now ticked (or picked, the page's last answer, when not nil),
+// one that names no profile labeled so, placed by nav for Esc; the answer keeps the members ticked
+// in their order, the ones newly ticked after them.
+func (a *app) membersPage(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope, label, name string, picked []string, nav Nav) ([]string, error) {
 	bm, err := eng.MemberChoices(sc, name)
 	if err != nil {
 		return nil, err
@@ -251,17 +265,21 @@ func (a *app) membersPage(cmd *cobra.Command, eng *engine.Engine, sc engine.Scop
 		}
 		options = append(options, o)
 	}
-	picked, err := a.prompter(cmd).Members(MembersStep{Title: label + " › members", Options: options, Preselect: current})
+	preselect := current
+	if picked != nil {
+		preselect = picked
+	}
+	answer, err := a.prompter(cmd).Members(MembersStep{Title: label + " › members", Options: options, Preselect: preselect, Nav: nav})
 	if err != nil {
 		return nil, err
 	}
 	out := []string{}
 	for _, m := range current {
-		if slices.Contains(picked, m) {
+		if slices.Contains(answer, m) {
 			out = append(out, m)
 		}
 	}
-	for _, m := range picked {
+	for _, m := range answer {
 		if !slices.Contains(out, m) {
 			out = append(out, m)
 		}
@@ -325,9 +343,10 @@ func (a *app) makeProfile(cmd *cobra.Command, eng *engine.Engine, req engine.Mak
 // printed first, with sync's questions: removals asked (-y, --force), trust asked or refused off a
 // terminal (--trust). force is the edit with --force, which a refusal --force
 // overrides hints; render is the same as a real run (no -n), which renders a forceable skip; said says read's context line is printed already (--on's question), so only
-// the other scopes' lines are printed.
+// the other scopes' lines are printed; back says the members page came before, so Esc on the
+// removals question goes back to it (ErrBack, before anything is written).
 func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.ScopeChoice, name string, members []string, req engine.TargetRequest, f syncFlags,
-	force, render string, said bool) error {
+	force, render string, said, back bool) error {
 	sc := read.Scope
 	choices, err := eng.EditScopes(read, name)
 	if err != nil {
@@ -357,7 +376,10 @@ func (a *app) editBundle(cmd *cobra.Command, eng *engine.Engine, read engine.Sco
 	}
 	var asked bool
 	breq := engine.BundleEditRequest{Scope: sc, Also: scopes[1:], Name: name, Members: members, Target: req, Options: opts}
-	breq.Show, breq.Trust, breq.ConfirmRemovals = a.syncQuestions(cmd, f, true, "Remove these and apply? No applies nothing", diff, &asked)
+	breq.Show, breq.Trust, breq.ConfirmRemovals, _ = a.syncQuestions(cmd, f, true, "Remove these and apply? No applies nothing", Nav{Back: back}, diff, &asked)
+	if back { // a later scope's question once the bundle is written has no page to go back to
+		_, _, breq.ConfirmAfter, _ = a.syncQuestions(cmd, f, true, "Remove these and apply? No applies nothing", Nav{}, diff, &asked)
+	}
 	res, err := eng.EditBundle(cmd.Context(), breq)
 	if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
 		return syncAborted(sc)

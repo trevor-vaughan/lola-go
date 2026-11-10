@@ -24,7 +24,7 @@ import (
 // syncAborted is a sync the user cancelled at a question: exit 0. The cache may already hold
 // content of entries the user trusted, so "nothing changed" would be untrue.
 func syncAborted(sc engine.Scope) error {
-	return &abortedError{"aborted; " + unchanged(sc) + " was not changed."}
+	return &abortedError{"cancelled — " + unchanged(sc) + " was not changed"}
 }
 
 // unchanged names the scope a refused or declined sync left as it was.
@@ -475,7 +475,7 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 	// asked is a trust answer given at the picker, whose equivalent command is printed once
 	// the removals, if any, are answered.
 	var asked bool
-	req.Show, req.Trust, req.ConfirmRemovals = a.syncQuestions(cmd, f, prof != nil, question, diff, &asked)
+	req.Show, req.Trust, req.ConfirmRemovals, req.ConfirmBack = a.syncQuestions(cmd, f, prof != nil, question, Nav{}, diff, &asked)
 	if pp := f.pass; pp != nil {
 		replay(pp, &req, &asked)
 	}
@@ -505,39 +505,50 @@ func (a *app) syncScope(cmd *cobra.Command, eng *engine.Engine, sc engine.Scope,
 // question's page shown through diff, the trust diff of a report: show, the record of what --trust
 // accepted (shown, as a record, unless under --json); trust, the trust question (all or nothing
 // when activation: an activation, or a move, applies all it planned or nothing), setting *asked
-// once answered at the picker; and confirm, the removals question, or yes for -y. trust and
-// confirm are nil when they cannot ask (the prompter never asks under --json).
-func (a *app) syncQuestions(cmd *cobra.Command, f syncFlags, activation bool, question string, diff func(engine.TrustReport) func(io.Writer, style),
-	asked *bool) (show func(engine.TrustReport), trust func(engine.TrustReport) (engine.TrustAnswer, error), confirm func([]engine.Removal) (bool, error)) {
+// once answered at the picker; confirm, the removals question, placed by nav (Esc goes back
+// when nav.Back: its error is ErrBack), or yes for -y; and back, the removals question with Esc
+// back to the trust question just answered (engine.SyncRequest.ConfirmBack), which is then asked
+// again with that answer under the cursor. trust, confirm and back are nil when they cannot ask
+// (the prompter never asks under --json); back is nil under -y too.
+func (a *app) syncQuestions(cmd *cobra.Command, f syncFlags, activation bool, question string, nav Nav, diff func(engine.TrustReport) func(io.Writer, style),
+	asked *bool) (show func(engine.TrustReport) error, trust func(engine.TrustReport) (engine.TrustAnswer, error), confirm, back func([]engine.Removal) (bool, error)) {
 	p, stderr := a.prompter(cmd), style{color: a.color(cmd.ErrOrStderr())}
-	show = func(rep engine.TrustReport) {
-		if !a.json {
-			a.page(cmd, cmd.ErrOrStderr(), stderr, diff(rep))
+	show = func(rep engine.TrustReport) error {
+		if a.json {
+			return nil
 		}
+		return a.pageThen(cmd, cmd.ErrOrStderr(), stderr, receiptNext(p, f.yes), diff(rep))
 	}
+	// answered is the trust question's last answer; last, the one back went back from, which the
+	// trust question, asked again, keeps.
+	var answered, last *engine.TrustAnswer
 	if p.Interactive() {
 		trust = func(rep engine.TrustReport) (engine.TrustAnswer, error) {
-			a.page(cmd, cmd.ErrOrStderr(), stderr, diff(rep))
+			if err := a.pageThen(cmd, cmd.ErrOrStderr(), stderr, "Trust these changes?", diff(rep)); err != nil {
+				return engine.TrustAnswer{}, err // Ctrl+C in the diff's viewer: the question is not asked
+			}
 			step := trustStep(rep)
 			if activation {
 				step.Groups = nil // all it planned or nothing: no Choose…
+			}
+			if last != nil {
+				step.Answer, last = *last, nil
 			}
 			ans, err := p.Trust(step)
 			if err != nil {
 				return engine.TrustAnswer{}, err
 			}
-			*asked = true
+			*asked, answered = true, &ans
 			fmt.Fprintln(cmd.ErrOrStderr(), stderr.info(trustEcho(step, rep, ans)))
 			return ans, nil
 		}
 	}
-	switch {
-	case f.yes:
-		confirm = func([]engine.Removal) (bool, error) { return true, nil }
-	case p.Interactive():
-		confirm = func(rs []engine.Removal) (bool, error) {
-			a.page(cmd, cmd.ErrOrStderr(), stderr, func(w io.Writer, s style) { printRemovals(w, s, rs) })
-			ok, err := p.Confirm(question, Nav{})
+	ask := func(nav Nav) func([]engine.Removal) (bool, error) {
+		return func(rs []engine.Removal) (bool, error) {
+			if err := a.pageThen(cmd, cmd.ErrOrStderr(), stderr, question, func(w io.Writer, s style) { printRemovals(w, s, rs) }); err != nil {
+				return false, err
+			}
+			ok, err := p.Confirm(question, nav)
 			if err == nil && ok {
 				names := make([]string, len(rs))
 				for i, r := range rs {
@@ -548,7 +559,22 @@ func (a *app) syncQuestions(cmd *cobra.Command, f syncFlags, activation bool, qu
 			return ok, err
 		}
 	}
-	return show, trust, confirm
+	switch {
+	case f.yes:
+		confirm = func([]engine.Removal) (bool, error) { return true, nil }
+	case p.Interactive():
+		confirm, back = ask(nav), ask(Nav{Back: true, Answered: nav.Answered})
+		removals := back
+		back = func(rs []engine.Removal) (bool, error) {
+			ok, err := removals(rs)
+			if errors.Is(err, ErrBack) {
+				last = answered
+				fmt.Fprintln(cmd.ErrOrStderr(), stderr.info("back to the trust question: the answer above no longer stands"))
+			}
+			return ok, err
+		}
+	}
+	return show, trust, confirm, back
 }
 
 // completeSync offers the names a sync takes: what the engine says the current scope's layers
@@ -719,8 +745,11 @@ func replay(pp *syncPass, req *engine.SyncRequest, asked *bool) {
 				return ans, err
 			}
 		}
-		if confirm := req.ConfirmRemovals; confirm != nil {
-			req.ConfirmRemovals = func(rs []engine.Removal) (bool, error) {
+		keep := func(confirm func([]engine.Removal) (bool, error)) func([]engine.Removal) (bool, error) {
+			if confirm == nil {
+				return nil
+			}
+			return func(rs []engine.Removal) (bool, error) {
 				ok, err := confirm(rs)
 				if err == nil {
 					pp.removals = &ok
@@ -728,9 +757,11 @@ func replay(pp *syncPass, req *engine.SyncRequest, asked *bool) {
 				return ok, err
 			}
 		}
+		req.ConfirmRemovals, req.ConfirmBack = keep(req.ConfirmRemovals), keep(req.ConfirmBack)
 		return
 	}
 	req.Options.Ask, req.Options.AskRuntimeHooks, req.Options.Receipt, req.Options.Expect, req.Show, req.Trust = nil, nil, nil, pp.batch, nil, nil
+	req.ConfirmBack = nil
 	if pp.trust != nil {
 		ans := *pp.trust
 		*asked = true

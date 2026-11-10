@@ -280,3 +280,25 @@ var _ = Describe("the pickers' background", func() {
 		Expect(cfg).NotTo(BeAnExistingFile())
 	})
 })
+
+var _ = Describe("the background question before a command's first form", func() {
+	It("is asked before the form, and its answer stays saved when the form's question is declined", func() {
+		cfg := filepath.Join(testenv.Isolate(), "config", "lola", "config.yaml")
+		var h *huhForms
+		a := &app{getenv: os.Getenv, queryBackground: func(*cobra.Command) (color.Color, error) { return nil, errNoTerminal },
+			newPrompter: func(*cobra.Command) Prompter { return h }}
+		var errb bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetErr(&errb)
+		h = onInput(paced("\r", "n"))
+		h.color = true
+		h.dark = func() (bool, error) { return a.darkBackground(cmd) }
+		ok, err := h.Confirm("Create module fresh in /work/fresh?", Nav{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeFalse(), "declined")
+		Expect(errb.String()).To(Equal("→ saved theme: dark in "+cfg+"\n"), "Enter took Dark, the first option, before the question's n")
+		c, err := config.LoadConfig(cfg, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(c.Theme).To(Equal(config.ThemeDark), "saved before the question, and kept after its No")
+	})
+})

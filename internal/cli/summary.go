@@ -15,15 +15,21 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// scopeSourceLabel says where a scope came from, in the summary.
-func scopeSourceLabel(c engine.ScopeChoice) string {
-	switch c.Source {
-	case engine.SourceConfig:
+// scopeSourceLabel says where a scope came from, in the summary. User scope is found, not named,
+// when no project is found from where lola runs, or when lola profile --edit adds it as a scope the
+// profile is on too (engine.EditScopes), after the project.
+func (fl *installFlow) scopeSourceLabel(c engine.ScopeChoice) string {
+	switch {
+	case c.Source == engine.SourceConfig:
 		return "config.yaml"
-	case engine.SourceDiscovered:
+	case c.Source != engine.SourceDiscovered:
+		return c.Source
+	case c.Scope.ProjectDir != "":
 		return "found .lola/ at " + untrusted.Text(c.Scope.ProjectDir, untrusted.MaxName)
+	case len(fl.scopes) > 1 && fl.f.profile != "":
+		return "where profile " + untrusted.Text(fl.f.profile, untrusted.MaxName) + " is on too"
 	}
-	return c.Source
+	return "no .lola/ project in " + untrusted.Text(fl.cwd, untrusted.MaxName) + " or above it"
 }
 
 // assistants are the targets the destination key installs for: the answer, else the
@@ -142,7 +148,7 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 		if c.Scope.ProjectDir == "" {
 			dest += " (" + untrusted.Text(fl.eng.Paths.Home, untrusted.MaxName) + ")"
 		}
-		fmt.Fprintf(w, "  %s, %s:\n", dest, scopeSourceLabel(c))
+		fmt.Fprintf(w, "  %s, %s:\n", dest, fl.scopeSourceLabel(c))
 		lines, err := fl.versionLines(c.Scope)
 		if err != nil {
 			return err

@@ -88,6 +88,8 @@ flowchart TD
   Keep -->|Esc| Move
   Keep -->|Enter with nothing ticked when nothing moves| Keep
   Keep --> Ask
+  Ask -->|Esc| Keep
+  Ask -->|Esc, when the keep picker was skipped| Move
   Ask -->|yes| Run[move and update the keep-list]
   Ask -->|no| Nothing[nothing changes]
   classDef sysA fill:#2f6dab,color:#ffffff,stroke:#7c8ba1
@@ -122,7 +124,8 @@ flowchart TD
    command that does the same (`Equivalent command:` and the command, the keep entries as
    `--keep`), and asks one question naming what the run does: "Move N items to the trash?",
    "Keep M?" or "Stop keeping K?", or two or three of them joined, such as "Move 2 items to the
-   trash and keep 1?". Answering no changes nothing.
+   trash and keep 1?". Answering no changes nothing. Esc goes back to the last picker shown,
+   your ticks kept.
    - When no command selects the set (a name two items share, say), lola prints "no single
      command selects this set" instead.
    - When the command holds characters lola does not print or a word too long to print (in the
@@ -130,8 +133,8 @@ flowchart TD
      characters lola does not print or a word too long to print".
 
 With names or `--all`, lola lists what moves and what the keep-list gains or loses and asks the
-same question. `-y` answers the question; on a terminal without names or `--all` the pickers still
-run.
+same question; with no picker before it, Esc there stays. `-y` answers the question; on a
+terminal without names or `--all` the pickers still run.
 
 In accessible mode (`LOLA_ACCESSIBLE=1` or `TERM=dumb`) the pickers are numbered lists and every
 locked item is printed above them. There a keep picker that needs a pick refuses `0` with nothing

@@ -148,7 +148,7 @@ flowchart TD
       profile it covers and what each scope's sync covers.
     - It keeps the profiles in memory, runs each scope's sync up to its receipt against them,
       then, on a yes, writes them and applies each scope.
-    - A No, or Ctrl+C at any question, updates nothing (`aborted; nothing was updated.`).
+    - A No, or Ctrl+C at any question, updates nothing (`✗ cancelled — nothing was changed`).
     - A scope's sync refused before the receipt still keeps the update, after a receipt of the
       profiles, as below.
   - **One profile at a time.** Each profile is fetched, shown and asked about on its own, in the
@@ -159,14 +159,14 @@ flowchart TD
       (`✗ remote:go was not updated (the error says why)`). The run goes on, applies the others,
       and then fails, saying why each failed, with their hints (`1 of 2 remote profiles was not
       updated: remote:go: <why>`; a run of one profile fails with that profile's own error).
-    - When every profile is declined, nothing was updated (`aborted; nothing was updated.`, after
+    - When every profile is declined, nothing was updated (`✗ cancelled — nothing was changed`, after
       the run's notices).
     - A profile that changed while you were asked is kept as it was too (`remote:go changed while
       you were asked; it was not updated`).
   - **Ctrl+C.**
     - Ctrl+C at a question stops the run: the profiles already updated are kept and not applied,
-      and the message names the `lola sync` that applies them (`aborted; remote:docs is updated,
-      but not applied (lola sync --user example); nothing else was updated.`).
+      and the message names the `lola sync` that applies them (`✗ cancelled — remote:docs is
+      updated, but not applied (lola sync --user example); nothing else was updated`).
     - It is an error instead when a profile failed before, or a scope could not be read once the
       profiles were written (`… is updated, but not applied; the run stopped at Ctrl+C, and: …`,
       with that error's hints). The error counts and names each profile the stop left with the

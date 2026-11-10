@@ -49,13 +49,20 @@ type SyncRequest struct {
 	// answer names. nil means it cannot ask: a sync that needs the question is refused before any
 	// network contact. The CLI passes a Trust that answers All for --trust; -y never sets it. It is
 	// asked only about the changes of the kinds Options.Trust does not cover; Show, when set, is
-	// shown the changes it covers, as a record, before they reach the receipt.
+	// shown the changes it covers, as a record, before they reach the receipt, and an error it
+	// returns (a Ctrl+C while the record is shown) ends the sync before anything is recorded.
 	Trust func(TrustReport) (TrustAnswer, error)
-	Show  func(TrustReport)
+	Show  func(TrustReport) error
 	// ConfirmRemovals asks the user to confirm the removals the sync would make. nil means it
 	// cannot ask: a sync with removals is refused. The CLI passes an always-yes ConfirmRemovals
 	// for -y.
 	ConfirmRemovals func([]Removal) (bool, error)
+	// ConfirmBack, when set, asks the removals question in ConfirmRemovals' place right after Trust
+	// asked the trust question in this run, with a way back: its ErrBack asks Trust again, the run
+	// planned again from the report as first asked. Set it only where Trust shows the question; an
+	// answer given without one has no screen to go back to. nil: ConfirmRemovals asks, and its
+	// ErrBack is returned.
+	ConfirmBack func([]Removal) (bool, error)
 	// Yes is the run's -y, which a hint repeating the run keeps.
 	Yes bool
 	// At is --at: per module of the run, the version a refusal showed, a git commit or a folder's
@@ -132,8 +139,46 @@ type RemovedPath struct {
 	Path   string `json:"path"`
 }
 
+// RemovalsShown reports whether shown, removals the user confirmed, covers rs: every path rs
+// deletes, by module and target, was among shown's, and a removal that lists no paths was shown
+// for its module on each of its targets. A plan made again later can find more, which a caller
+// that only takes what was confirmed must ask about.
+func RemovalsShown(shown, rs []Removal) bool {
+	seen := map[string]bool{}
+	keys := func(r Removal) []string {
+		var out []string
+		for _, p := range r.Paths {
+			out = append(out, r.Module+"\x00"+p.Target+"\x00"+p.Path)
+		}
+		if len(r.Paths) == 0 {
+			for _, t := range r.Targets {
+				out = append(out, r.Module+"\x00"+t)
+			}
+		}
+		return out
+	}
+	for _, r := range shown {
+		for _, k := range keys(r) {
+			seen[k] = true
+		}
+	}
+	for _, r := range rs {
+		for _, k := range keys(r) {
+			if !seen[k] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // ErrDeclined is a sync the user answered No to: nothing more was done.
 var ErrDeclined = errors.New("declined")
+
+// ErrBack is a question's answer when the user goes back a screen (Esc). Sync takes it from
+// ConfirmBack as going back to the trust question; anywhere else it returns it, for the caller's
+// screen before.
+var ErrBack = errors.New("back")
 
 // TrustStatusNotApplicable is the trust status of the user scope, whose files are your own.
 const TrustStatusNotApplicable = "not_applicable"
@@ -1079,104 +1124,134 @@ func (e *Engine) Sync(ctx context.Context, req SyncRequest) (_ *SyncResult, err 
 	// answered is what the terminal's answer alone accepted: a No to the removals records it, never
 	// what --trust covered, whose grant waits for the receipt.
 	var answered *acceptance
-	if sc.Kind == target.Project && res.Trust.Status != trust.StatusTrusted {
-		// The changes --trust covers go to the receipt; the user is asked about the rest.
-		covered, asked := res.Trust.split(opts.Trust)
-		res.Trusted = append(res.Trusted, covered.consents()...)
-		switch {
-		case opts.DryRun:
-		case asked.kinds() != 0 && req.Trust == nil: // refused at step 4 already; kept so no path applies untrusted content
-			return nil, e.syncRefusal(sc, req, res.Trust, []Removal{}, asked.kinds(), entries)
-		default:
-			if covered.kinds() != 0 && req.Show != nil {
-				req.Show(covered)
-			}
-			ans := TrustAnswer{All: true, Kinds: opts.Trust & TrustBare}
-			if asked.kinds() != 0 {
-				asked.Drops, asked.DropsRun = versionDrops(asked, sp.findings), e.commandOf(req, "-n")
-				given, err := req.Trust(asked)
-				if err != nil {
+	var changes []plan.ModuleChange
+	var copies []moduleCopy
+	// before is the run as the trust question finds it, which going back to that question from the
+	// removals question (ErrBack) restores; again says the question is being asked again.
+	before := struct {
+		entries                                    []*syncEntry
+		removals                                   []Removal
+		trust                                      TrustReport
+		sp                                         syncPlan
+		trusted, notices, findings, rewrites, pins int
+	}{slices.Clone(entries), res.Removals, res.Trust, sp, len(res.Trusted), len(res.Notices), len(res.Findings), len(res.Rewrites), len(res.Pins)}
+	again := false
+	for {
+		trustAsked := false
+		if sc.Kind == target.Project && res.Trust.Status != trust.StatusTrusted {
+			// The changes --trust covers go to the receipt; the user is asked about the rest.
+			covered, asked := res.Trust.split(opts.Trust)
+			res.Trusted = append(res.Trusted, covered.consents()...)
+			switch {
+			case opts.DryRun:
+			case asked.kinds() != 0 && req.Trust == nil: // refused at step 4 already; kept so no path applies untrusted content
+				return nil, e.syncRefusal(sc, req, res.Trust, []Removal{}, asked.kinds(), entries)
+			default:
+				if covered.kinds() != 0 && req.Show != nil && !again {
+					if err := req.Show(covered); err != nil {
+						return nil, err
+					}
+				}
+				ans := TrustAnswer{All: true, Kinds: opts.Trust & TrustBare}
+				if asked.kinds() != 0 {
+					asked.Drops, asked.DropsRun = versionDrops(asked, sp.findings), e.commandOf(req, "-n")
+					given, err := req.Trust(asked)
+					if err != nil {
+						return nil, err
+					}
+					trustAsked = true
+					ans.All, ans.Modules = given.All, given.Modules
+					if answered, err = accept(savedRep, asked, given, entries); errors.Is(err, ErrDeclined) {
+						answered = nil
+					} else if err != nil {
+						return nil, err
+					}
+				}
+				// An activation commits its new list with the apply, so it applies all it planned or
+				// nothing: an answer leaving some entries as installed is refused.
+				// So does a move, which writes its files whatever the answer.
+				if (act != nil || req.move != nil) && !ans.All && len(ans.Modules) > 0 {
+					return nil, errs.WithHints(errors.New("lola profile applies all of its changes or none; trust them all, or cancel"),
+						"see them: "+e.commandOf(req, "-n"))
+				}
+				if acc, err = accept(savedRep, res.Trust, ans, entries); err != nil {
 					return nil, err
 				}
-				ans.All, ans.Modules = given.All, given.Modules
-				if answered, err = accept(savedRep, asked, given, entries); errors.Is(err, ErrDeclined) {
-					answered = nil
-				} else if err != nil {
-					return nil, err
+				// A partial answer takes the entries the user did not accept out of the run, as
+				// installed, and plans the rest again from the same staged trees: the summary is the
+				// apply.
+				if len(acc.leave) > 0 {
+					entries = slices.DeleteFunc(entries, func(se *syncEntry) bool { return slices.Contains(acc.leave, shown(se.ent.Name)) })
+					// Clones: the report the user answered keeps every change it showed.
+					res.Removals = slices.DeleteFunc(slices.Clone(res.Removals), func(r Removal) bool { return slices.Contains(acc.leave, r.Module) })
+					res.Trust.Changes = slices.DeleteFunc(slices.Clone(res.Trust.Changes), func(c TrustChange) bool { return slices.Contains(acc.leave, c.Module) })
+					if !acc.targets {
+						res.Trust.Targets, res.Trust.TargetVersions = nil, nil
+					}
+					res.Trust.ProfileTargets = slices.DeleteFunc(slices.Clone(res.Trust.ProfileTargets), func(pt ProfileTargets) bool {
+						return !acc.profileTargets[partKey(pt.Profile)]
+					})
+					res.Notices = append(res.Notices, Notice{Level: LevelWarn,
+						Text: "left as installed until you trust them: " + nameList(acc.leave) + " → " + e.SyncCommand(sc)})
+					// the pass after the answer renders again under a budget of its own
+					fresh, err := e.newTemplateRun(sc, active)
+					if err != nil {
+						return nil, err
+					}
+					if sp, err = e.planSync(sc, entries, layers, active != nil, led, fresh, sel, opts, probes, req.Modules, man.PostInstall != ""); err != nil {
+						return nil, err
+					}
 				}
 			}
-			// An activation commits its new list with the apply, so it applies all it planned or
-			// nothing: an answer leaving some entries as installed is refused.
-			// So does a move, which writes its files whatever the answer.
-			if (act != nil || req.move != nil) && !ans.All && len(ans.Modules) > 0 {
-				return nil, errs.WithHints(errors.New("lola profile applies all of its changes or none; trust them all, or cancel"),
-					"see them: "+e.commandOf(req, "-n"))
+		}
+		res.Modules, res.Findings, res.Notices = sp.modules, append(res.Findings, sp.findings...), append(res.Notices, sp.notices...)
+		res.Rewrites = append(res.Rewrites, sp.rewrites...)
+		for _, se := range entries {
+			if se.pin != nil && (se.from == "" || se.key != "") {
+				pin := *se.pin
+				pin.Profile = se.part()
+				res.Pins = append(res.Pins, pin)
 			}
-			if acc, err = accept(savedRep, res.Trust, ans, entries); err != nil {
+		}
+		// Removals are confirmed before anything is published and before any hook consent is asked or
+		// recorded: a refusal or a No leaves the cache as -n does.
+		changes, copies = sp.changes, sp.copies
+		for _, r := range res.Removals {
+			if r.WholeModule {
+				changes = append(changes, plan.ModuleChange{Name: r.Module, Targets: allTargets(led.Modules[r.Module], nil, &manifest.Manifest{})})
+			}
+		}
+		// The files a version the run installs no longer ships (a component dropped or renamed, at
+		// update, --update or a folder read again) are removals too, asked with the rest (one rule for
+		// every deletion).
+		res.Removals = append(res.Removals, e.droppedFiles(sc, led, changes, res.Removals, opts)...)
+		if len(res.Removals) > 0 && !opts.DryRun && !opts.Force {
+			// The manifest's removals were refused at; the files a version drops are known only now
+			// that it is planned, so they are refused here, before the publish.
+			if req.ConfirmRemovals == nil {
+				return nil, e.syncRefusal(sc, req, TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}},
+					res.Removals, 0, entries)
+			}
+			confirm, back := req.ConfirmRemovals, trustAsked && req.ConfirmBack != nil
+			if back {
+				confirm = req.ConfirmBack
+			}
+			yes, err := confirm(slices.Clone(res.Removals))
+			if errors.Is(err, ErrBack) && back {
+				// Back to the trust question: the run as it stood before its answer.
+				entries, res.Removals, res.Trust, sp, acc, answered = slices.Clone(before.entries), before.removals, before.trust, before.sp, nil, nil
+				res.Trusted, res.Notices, res.Findings = res.Trusted[:before.trusted], res.Notices[:before.notices], res.Findings[:before.findings]
+				res.Rewrites, res.Pins, again = res.Rewrites[:before.rewrites], res.Pins[:before.pins], true
+				continue
+			}
+			if err != nil {
 				return nil, err
 			}
-			// A partial answer takes the entries the user did not accept out of the run, as
-			// installed, and plans the rest again from the same staged trees: the summary is the
-			// apply.
-			if len(acc.leave) > 0 {
-				entries = slices.DeleteFunc(entries, func(se *syncEntry) bool { return slices.Contains(acc.leave, shown(se.ent.Name)) })
-				// Clones: the report the user answered keeps every change it showed.
-				res.Removals = slices.DeleteFunc(slices.Clone(res.Removals), func(r Removal) bool { return slices.Contains(acc.leave, r.Module) })
-				res.Trust.Changes = slices.DeleteFunc(slices.Clone(res.Trust.Changes), func(c TrustChange) bool { return slices.Contains(acc.leave, c.Module) })
-				if !acc.targets {
-					res.Trust.Targets, res.Trust.TargetVersions = nil, nil
-				}
-				res.Trust.ProfileTargets = slices.DeleteFunc(slices.Clone(res.Trust.ProfileTargets), func(pt ProfileTargets) bool {
-					return !acc.profileTargets[partKey(pt.Profile)]
-				})
-				res.Notices = append(res.Notices, Notice{Level: LevelWarn,
-					Text: "left as installed until you trust them: " + nameList(acc.leave) + " → " + e.SyncCommand(sc)})
-				// the pass after the answer renders again under a budget of its own
-				fresh, err := e.newTemplateRun(sc, active)
-				if err != nil {
-					return nil, err
-				}
-				if sp, err = e.planSync(sc, entries, layers, active != nil, led, fresh, sel, opts, probes, req.Modules, man.PostInstall != ""); err != nil {
-					return nil, err
-				}
+			if !yes {
+				return nil, e.declineRemovals(req, man, layers, led, rec, answered, entries)
 			}
 		}
-	}
-	res.Modules, res.Findings, res.Notices = sp.modules, append(res.Findings, sp.findings...), append(res.Notices, sp.notices...)
-	res.Rewrites = append(res.Rewrites, sp.rewrites...)
-	for _, se := range entries {
-		if se.pin != nil && (se.from == "" || se.key != "") {
-			pin := *se.pin
-			pin.Profile = se.part()
-			res.Pins = append(res.Pins, pin)
-		}
-	}
-	// Removals are confirmed before anything is published and before any hook consent is asked or
-	// recorded: a refusal or a No leaves the cache as -n does.
-	changes, copies := sp.changes, sp.copies
-	for _, r := range res.Removals {
-		if r.WholeModule {
-			changes = append(changes, plan.ModuleChange{Name: r.Module, Targets: allTargets(led.Modules[r.Module], nil, &manifest.Manifest{})})
-		}
-	}
-	// The files a version the run installs no longer ships (a component dropped or renamed, at
-	// update, --update or a folder read again) are removals too, asked with the rest (one rule for
-	// every deletion).
-	res.Removals = append(res.Removals, e.droppedFiles(sc, led, changes, res.Removals, opts)...)
-	if len(res.Removals) > 0 && !opts.DryRun && !opts.Force {
-		// The manifest's removals were refused at; the files a version drops are known only now
-		// that it is planned, so they are refused here, before the publish.
-		if req.ConfirmRemovals == nil {
-			return nil, e.syncRefusal(sc, req, TrustReport{Status: res.Trust.Status, Changes: []TrustChange{}, Replacements: []Replacement{}},
-				res.Removals, 0, entries)
-		}
-		yes, err := req.ConfirmRemovals(slices.Clone(res.Removals))
-		if err != nil {
-			return nil, err
-		}
-		if !yes {
-			return nil, e.declineRemovals(req, man, layers, led, rec, answered, entries)
-		}
+		break
 	}
 	res.Findings = append(res.Findings, probes.findings...)
 

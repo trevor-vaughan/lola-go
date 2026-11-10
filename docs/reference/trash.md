@@ -43,12 +43,14 @@ the picker says what each key does. Nothing is written before lola shows the pla
   prints (a run ticked whole names no original), then offers `Restore`.
   - When an original exists, the only choice offered is `Restore with --force: first move what is
     there into a new trash run`, and lola asks once more before moving anything.
-  - Cancel goes back to the picker, the ticks kept.
+  - Cancel goes back to the picker, the ticks kept, as Esc does at either question; Ctrl+C ends
+    the run, changing nothing.
   - Two ticked runs that would restore the same path (or one inside the other) send you back to
     the picker, naming the path and both runs, before any plan is shown.
   - When nothing ticked is left in the trash, lola says `nothing to restore, so nothing changed`.
 - `Empty ticked runs` deletes the runs whose `[whole run]` row is ticked, as `lola trash <run>...
-  --empty` does: it shows the plan and asks. Ticking only files asks the picker again.
+  --empty` does: it shows the plan and asks; Esc there goes back to the picker, the ticks kept.
+  Ticking only files asks the picker again, the ticks and `Empty ticked runs` kept.
 
 Off a terminal, bare `lola trash` lists the runs as above.
 

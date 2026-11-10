@@ -140,6 +140,10 @@ type Options struct {
 	// --edit's module page): its notice that a profile it wrote is also on elsewhere names none of
 	// them.
 	Then []Scope
+	// ConfirmThen, when set, asks about the removals each scope of Then would make once the
+	// uninstall's profile edits are written, before anything is (a dry run asks too, so a caller
+	// can ask before an earlier write); a No is ErrDeclined. --force asks nothing.
+	ConfirmThen func(Scope, []Removal) (bool, error)
 	// named is the modules the run's command line named (an install's), whose conflicts with
 	// another installed module's destinations hint that module's uninstall.
 	named []string

@@ -162,7 +162,7 @@ arguments (`''`) and mangles embedded `"` when it runs a program.
 When the `-C` path contains control or format characters, the line is shown with them
 replaced by `?`, followed by a note that it is not copyable as shown.
 
-Ctrl+C at any step cancels: "aborted; nothing changed"; `q` quits, and Esc goes back a step
+Ctrl+C at any step cancels: `✗ cancelled — nothing was changed`; `q` quits, and Esc goes back a step
 ([Keys](#keys-q-quits-esc-goes-back)). Nothing is written before Apply, your cache included.
 
 A source you name as an argument, or a marketplace entry you pick, is fetched into a private
@@ -180,11 +180,14 @@ recorded and nothing else is written.
 `--dry-run` runs the steps and the summary and writes nothing, not even `selections.yaml`.
 
 `LOLA_ACCESSIBLE=1` (or `TERM=dumb`) asks the same questions as numbered line prompts, for
-screen readers; there, end of input at any prompt, runtime hook consent included, cancels the
-run ("aborted; nothing changed"), and Ctrl+C interrupts.
+screen readers; each prompt's description (why it asks again, what the hosts you tick get) is
+printed before it, and the review's "Apply these changes?" has no default: type Apply's number. There,
+end of input at any prompt, runtime hook consent included, cancels the run (`✗ cancelled — nothing
+was changed`), and Ctrl+C cancels (exit 0).
 
-In a picker, space ticks the option under the cursor (`[x]`; the rest show `[ ]`), enter
-confirms, and Ctrl+C quits; the keys are listed under it. A picker that needs a pick (scope,
+In a picker, space ticks the option under the cursor (`[x]`; the rest show `[ ]`), Ctrl+A ticks
+every option shown and, when each is ticked, unticks them (in the module picker it ticks the
+modules and never Add a source…), enter confirms, and Ctrl+C quits; the keys are listed under it. A picker that needs a pick (scope,
 modules, assistants, and `lola tidy`'s keep-list when you chose nothing to move) refuses an empty
 one when you press Enter with nothing ticked: `nothing selected — space selects, enter confirms, ctrl+c quits`, or in
 accessible mode `nothing selected — type an option's number to select it, 0 confirms, ctrl+c
@@ -204,10 +207,11 @@ keys, named first in its key help: `esc back · q quit`.
   - That includes the yes or no question that closes a run, such as `lola tidy`'s "Move…?" after the
     move and keep pickers or `lola migrate`'s "Migrate?" after two mapping questions; a yes or no
     question with no steps before it quits at once.
-  - A command that words its own cancel (`lola sync`, `lola profile` `--add`, `--remove` and
-    `--update`, `lola market --remove`) prints that instead, since it says what was left as it
-    was.
-  - In a text input, and while you type a filter after `/`, `q` is typed as text; Esc first sets,
+  - A command that names what its cancel left (`lola sync`'s `✗ cancelled — the project was not
+    changed`, a `lola profile --update` that updated some profiles before it stopped) prints that
+    instead, in the same form.
+  - In a text input, and while you type a filter after `/`, `q` is typed as text (a text input's
+    key help says `ctrl+c quits` in its place); Esc first sets,
     then clears, the filter, as before, and then `q` quits.
 - Esc goes back one screen: the step before asks again with your answer preselected, and the run
   carries on from there.
@@ -216,8 +220,9 @@ keys, named first in its key help: `esc back · q quit`.
     its page, and from the review to the last step you answered; Other directory… and Add a
     source… go back to their picker.
   - `lola tidy`'s keep-list goes back to the move picker; `lola migrate`'s questions about a
-    missing root or assistant go back to the one before; Choose… goes back to `lola sync`'s trust
-    question.
+    missing root or assistant go back to the one before, and its "Migrate?" to the last of them,
+    your answers kept; `lola market --add`'s "Allow ssh to which hosts?" goes back to the name
+    question it asked; Choose… goes back to `lola sync`'s trust question.
   - On a page of several lists (a component page, the module picker with marketplace groups), Esc
     first moves to the list before, as Shift+Tab does.
   - On the first question of a run, or one that stands alone, Esc goes nowhere and the key help

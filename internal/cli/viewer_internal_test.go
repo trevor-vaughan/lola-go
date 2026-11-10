@@ -117,7 +117,7 @@ var _ = Describe("the viewer", func() {
 	It("in read mode before a question, the footer says q continues to that question and what asks next", func() {
 		m := newViewer(numbered(30), false, 120, 10)
 		m.then = "Migrate?"
-		Expect(ansiStrip(m.footer())).To(ContainSubstring("q continue: Migrate? is asked next · ↑↓/jk line"))
+		Expect(ansiStrip(m.footer())).To(ContainSubstring("q continue: Migrate? is asked next · / search"))
 		Expect(ansiStrip(m.footer())).NotTo(ContainSubstring("q quit"))
 		Expect(ansiStrip(newViewer(numbered(30), false, 120, 10).footer())).To(ContainSubstring("q quit"))
 	})
@@ -128,7 +128,7 @@ var _ = Describe("the viewer", func() {
 		Expect(lines).To(HaveLen(10))
 		Expect(strings.TrimSpace(lines[0])).To(Equal("line 10"))
 		Expect(strings.TrimSpace(lines[8])).To(Equal("line 18"))
-		Expect(lines[9]).To(Equal("lines 10–18 of 30 · 42%  q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
+		Expect(lines[9]).To(Equal("lines 10–18 of 30 · 42%  q quit · / search · space/b page · g/G top/end"))
 		Expect(m.View().AltScreen).To(BeTrue())
 	})
 
@@ -148,18 +148,18 @@ var _ = Describe("the viewer", func() {
 		Expect(ansiStrip(next.(viewerModel).footer())).To(HavePrefix("lines 1–1 of 1"))
 	})
 
-	DescribeTable("in read mode, q, Esc and Ctrl+C quit, and y, c and n do nothing",
-		func(k tea.KeyPressMsg, quit bool) {
+	DescribeTable("in read mode, q and Esc close it, Ctrl+C cancels, and y, c and n do nothing",
+		func(k tea.KeyPressMsg, quit bool, answer viewAnswer) {
 			m, q := quits(newViewer(numbered(30), false, 40, 10), k)
 			Expect(q).To(Equal(quit))
-			Expect(m.Answer()).To(Equal(viewCancel))
+			Expect(m.Answer()).To(Equal(answer))
 		},
-		Entry("q", keyQ, true),
-		Entry("Esc", keyEsc, true),
-		Entry("Ctrl+C", keyCtrlC, true),
-		Entry("y", keyY, false),
-		Entry("c", keyC, false),
-		Entry("n", keyN, false),
+		Entry("q", keyQ, true, viewClose),
+		Entry("Esc", keyEsc, true, viewClose),
+		Entry("Ctrl+C", keyCtrlC, true, viewCancel),
+		Entry("y", keyY, false, viewCancel),
+		Entry("c", keyC, false, viewCancel),
+		Entry("n", keyN, false, viewCancel),
 	)
 
 	DescribeTable("in confirm mode, y applies, c asks to change, n and Ctrl+C cancel, q quits and Esc goes back; other keys answer nothing",
@@ -217,21 +217,29 @@ var _ = Describe("the viewer", func() {
 		m := newViewer(numbered(3), true, 200, 10)
 		m.nav = Nav{Back: true}
 		Expect(ansiStrip(m.footer())).To(Equal(
-			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · esc back · q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
+			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · esc back · q quit · / search · space/b page · g/G top/end"))
 		Expect(ansiStrip(newViewer(numbered(3), true, 200, 10).footer())).To(Equal(
-			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · q quit · ↑↓/jk line · space/b page · g/G top/end · / search"),
+			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · q quit · / search · space/b page · g/G top/end"),
 			"with no screen to go back to, no esc back")
 	})
 
 	It("without a step to change, offers no c and ignores it", func() {
 		m := newViewer(numbered(3), true, 120, 10)
 		m.noChange = true
-		Expect(ansiStrip(m.footer())).To(Equal("lines 1–3 of 3 · 100%  y apply · n cancel · q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
+		Expect(ansiStrip(m.footer())).To(Equal("lines 1–3 of 3 · 100%  y apply · n cancel · q quit · / search · space/b page · g/G top/end"))
 		_, q := quits(m, keyC)
 		Expect(q).To(BeFalse(), "c does nothing")
 		m, q = quits(m, keyY)
 		Expect(q).To(BeTrue())
 		Expect(m.Answer()).To(Equal(viewApply))
+	})
+
+	It("fits a review's whole footer in 120 columns, and at 80 keeps the answers, esc back and q quit", func() {
+		m := press(newViewer(numbered(1000), true, 120, 40), keySpace, keySpace, keySpace)
+		m.nav = Nav{Back: true}
+		Expect(ansiStrip(m.footer())).To(And(HaveSuffix("/ search · space/b page · g/G top/end"), Not(ContainSubstring("…"))))
+		m.resize(80, 40)
+		Expect(ansiStrip(m.footer())).To(ContainSubstring("y apply · c change · n cancel · esc back · q quit"))
 	})
 
 	It("cuts its footer to the width", func() {
@@ -240,7 +248,7 @@ var _ = Describe("the viewer", func() {
 	})
 
 	It("keeps q quit in a read footer at 40 columns", func() {
-		Expect(ansiStrip(newViewer(numbered(30), false, 40, 10).footer())).To(Equal("lines 1–9 of 30 · 0%  q quit · ↑↓/jk li…"))
+		Expect(ansiStrip(newViewer(numbered(30), false, 40, 10).footer())).To(Equal("lines 1–9 of 30 · 0%  q quit · / search…"))
 	})
 
 	It("without color, styles its footer with bold alone (NO_COLOR, LOLA_COLOR=0)", func() {
@@ -287,7 +295,7 @@ var _ = Describe("a.view, the viewer on the terminal", func() {
 		cmd.SetIn(keys("jjq"))
 		ans, err := a().view(cmd, numbered(30), false, false, Nav{}, "")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(ans).To(Equal(viewCancel))
+		Expect(ans).To(Equal(viewClose))
 		Expect(out.String()).To(ContainSubstring(altScreen))
 		Expect(out.String()).To(HaveSuffix(numbered(30)))
 		Expect(errb.String()).To(BeEmpty())
@@ -470,7 +478,7 @@ var _ = Describe("which output opens in the viewer", func() {
 			m, quit := quits(m, keyQ)
 			Expect(quit).To(BeFalse())
 			m = press(m, keyEsc)
-			Expect(ansiStrip(m.footer())).To(HaveSuffix("q quit · ↑↓/jk line · space/b page · g/G top/end · / search"))
+			Expect(ansiStrip(m.footer())).To(HaveSuffix("q quit · / search · space/b page · g/G top/end"))
 			Expect(m.term).To(BeEmpty())
 		})
 

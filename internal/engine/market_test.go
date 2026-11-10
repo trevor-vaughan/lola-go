@@ -285,7 +285,9 @@ var _ = Describe("marketplaces", func() {
 		Expect(steps).To(HaveLen(3))
 		Expect(steps[0]).To(Equal(engine.MarketRename{Why: "acme is already a marketplace, from " + url, Suggest: "acme-2"}))
 		Expect(steps[1].Problem).To(Equal("acme is already a marketplace, from " + url))
+		Expect(steps[1].Suggest).To(Equal("acme"), "a refused answer is offered again as typed")
 		Expect(steps[2].Problem).To(ContainSubstring(`marketplace name "Bad Name" is invalid`))
+		Expect(steps[2].Suggest).To(Equal("Bad Name"))
 
 		// The catalog is found by the name typed; a free name's hint names the file found.
 		general, _ := repo("general", map[string]string{"acme.yml": "name: general\nmodules: []\n"})
@@ -938,6 +940,40 @@ var _ = Describe("marketplaces", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(allowed("none")).To(BeEmpty())
 			Expect(show("none").Entries).To(BeEmpty())
+		})
+
+		It("going back from the picker asks the name question again, pre-filled with the name given; without one the picker has nothing before it", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
+				Expect(s.Back).To(BeFalse(), "a typed name asks no question")
+				return nil, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			var names []engine.MarketRename
+			var steps []engine.MarketSSHStep
+			answers := []string{"mine", "theirs"}
+			other, _ := repo("other", map[string]string{".claude-plugin/marketplace.json": sshCatalog})
+			_, err = add(engine.MarketAddRequest{Source: other, Rename: func(st engine.MarketRename) (string, error) {
+				names = append(names, st)
+				a := answers[0]
+				answers = answers[1:]
+				return a, nil
+			}, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
+				steps = append(steps, s)
+				if len(steps) == 1 {
+					return nil, engine.ErrBack
+				}
+				return []string{"other.test"}, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(HaveLen(2))
+			Expect(names[0].Why).To(Equal("priv is already a marketplace, from " + url))
+			Expect(names[1]).To(Equal(engine.MarketRename{Why: names[0].Why, Suggest: "mine"}))
+			Expect(steps).To(HaveLen(2))
+			Expect(steps[0]).To(And(HaveField("Market", "mine"), HaveField("Back", true)))
+			Expect(steps[1]).To(And(HaveField("Market", "theirs"), HaveField("Back", true)))
+			Expect(allowed("theirs")).To(Equal([]string{"other.test"}))
+			_, err = e.ShowMarket("mine", nil)
+			Expect(err).To(HaveOccurred(), "the name given first is not registered")
 		})
 
 		It("the picker offers only the hosts --ssh-host did not cover", func() {

@@ -38,11 +38,11 @@ type ProfileAddRequest struct {
 	Pick func(names []string, invalid int) ([]string, error)
 	// Consent shows the profiles and asks whether to add them. nil means it cannot
 	// ask: unless Trust covers profiles, the run is refused before any network contact. When it
-	// does, Show, when set, shows them as a record, and Receipt, when set, is shown them once,
-	// before anything is written.
+	// does, Show, when set, shows them as a record (an error it returns ends the add), and
+	// Receipt, when set, is shown them once, before anything is written.
 	Consent func([]RemoteProfile) (bool, error)
 	Trust   TrustKinds
-	Show    func([]RemoteProfile)
+	Show    func([]RemoteProfile) error
 	Receipt func([]Consent) (bool, error)
 }
 

@@ -127,6 +127,69 @@ var _ = Describe("the consent-diff pager", func() {
 		Expect(paged).NotTo(BeAnExistingFile())
 	})
 
+	It("ends the sync on Ctrl+C in the trust diff's viewer, before the question", func() {
+		GinkgoT().Setenv("LOLA_PAGER", "")
+		GinkgoT().Setenv("COLUMNS", "120")
+		GinkgoT().Setenv("LINES", "10")
+		in, typed, err := os.Pipe()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(typed.Close()).To(Succeed())
+			Expect(in.Close()).To(Succeed())
+		})
+		_, err = typed.WriteString("\x03")
+		Expect(err).NotTo(HaveOccurred())
+		p := &pagedFirst{confirming: &confirming{}, paged: paged}
+		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
+		Expect(err).NotTo(HaveOccurred())
+		var out bytes.Buffer
+		p.stderr = &bytes.Buffer{}
+		root.SetOut(&out)
+		root.SetErr(p.stderr)
+		root.SetIn(in)
+		root.SetArgs([]string{"sync", "--project"})
+		Expect(cli.Execute(root)).To(Equal(0), p.stderr.String())
+		Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
+		Expect(out.String()).To(ContainSubstring("q continue: Trust these changes? is asked next"))
+		Expect(p.questions).To(BeEmpty(), "Ctrl+C ended the sync: the trust question is not asked")
+		Expect(p.stderr.String()).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
+		Expect(filepath.Join(proj, ".claude", "commands", "c00.md")).NotTo(BeAnExistingFile())
+	})
+
+	It("ends a sync --trust on Ctrl+C in its record's viewer, before the receipt", func() {
+		GinkgoT().Setenv("LOLA_PAGER", "")
+		GinkgoT().Setenv("COLUMNS", "120")
+		GinkgoT().Setenv("LINES", "10")
+		in, typed, err := os.Pipe()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(typed.Close()).To(Succeed())
+			Expect(in.Close()).To(Succeed())
+		})
+		_, err = typed.WriteString("\x03")
+		Expect(err).NotTo(HaveOccurred())
+		consent := filepath.Join(tmp, "state", "lola", "consent.json")
+		trustFile := filepath.Join(tmp, "state", "lola", "trust.json")
+		before, err := os.ReadFile(trustFile)
+		Expect(err).NotTo(HaveOccurred())
+		c := &confirming{}
+		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+		Expect(err).NotTo(HaveOccurred())
+		var out bytes.Buffer
+		c.stderr = &bytes.Buffer{}
+		root.SetOut(&out)
+		root.SetErr(c.stderr)
+		root.SetIn(in)
+		root.SetArgs([]string{"sync", "--project", "--trust"})
+		Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
+		Expect(out.String()).To(ContainSubstring("q continue: Proceed? is asked next"))
+		Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the sync: the receipt is not asked")
+		Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
+		Expect(filepath.Join(proj, ".claude", "commands", "c00.md")).NotTo(BeAnExistingFile())
+		Expect(os.ReadFile(trustFile)).To(Equal(before), "nothing is recorded")
+		Expect(consent).NotTo(BeAnExistingFile())
+	})
+
 	It("pages a dry run's diff and plan, uncapped", func() {
 		_, r := asking(true, "sync", "--project", "-n")
 		Expect(r.code).To(Equal(0), r.err)

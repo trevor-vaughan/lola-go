@@ -1708,6 +1708,22 @@ var _ = Describe("remote profiles", func() {
 			Expect(res2.Changed).To(Equal([]string{"example"}))
 		})
 
+		It("stops an update when showing the --trust record fails: no receipt, nothing kept or recorded", func() {
+			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
+			receipts := 0
+			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Trust: engine.TrustProfiles,
+				Show:    func([]engine.RemoteProfile) error { return context.Canceled },
+				Receipt: func([]engine.Consent) (bool, error) { receipts++; return true, nil }})
+			stopped, ok := errors.AsType[*engine.UpdateStoppedError](err)
+			Expect(ok).To(BeTrue(), "%v", err)
+			Expect(stopped.Err).To(MatchError(context.Canceled))
+			Expect(stopped.Result.Updates).To(ConsistOf(And(HaveField("Profile", "remote:go"), HaveField("Outcome", engine.UpdateSkipped))))
+			Expect(stopped.Result.Updated()).To(BeEmpty())
+			Expect(receipts).To(BeZero())
+			Expect(file()).To(Equal(pinned()), "the profile is kept as it was")
+			Expect(p.Consent).NotTo(BeAnExistingFile(), "nothing is recorded")
+		})
+
 		It("commits the staged profiles with the run's hints, and names what it wrote when a later one changed", func() {
 			publish(map[string]string{"profiles/go.yml": pinned(), "profiles/docs.yml": "version: 1\ndescription: docs\n"})
 			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Scope: &user, Name: "docs", Source: src, Consent: yes})

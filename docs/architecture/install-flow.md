@@ -229,7 +229,9 @@ Change menu (`menu`), whose last entry, `reviewBack`, returns to the review, as 
 viewer is offered `change` only when the review has a Change entry).
 
 In accessible mode, and whenever `paging` would not open the viewer (`huhForms.viewer`, asked only
-at the review since it reads `config.yaml`), it prints the summary before the full menu.
+at the review since it reads `config.yaml`), it prints the summary before the full menu, whose
+cursor starts on Apply; in accessible mode the menu has no default (`menu` with no choice), so a
+blank line asks again.
 
 `Prompter` implementations: the huh adapter (inline forms on stderr; accessible line prompts under
 `LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that turns end of input into a cancel), the
@@ -276,8 +278,9 @@ steps answered so far; with `Answered` plus the fields before it at two or more,
 
 `KeyBinds` puts `esc back` and `q quit` before huh's own help, which alone fills 80 columns.
 `quitError` is `ErrAborted` to `errors.Is`; `Execute` prints it as `style.bad("cancelled — nothing
-was changed")`, in the forms' color; a command that turns `ErrAborted` into its own `abortedError`
-keeps its wording.
+was changed")`, in the forms' color, as it prints every other `ErrAborted` (without color); a command
+that turns `ErrAborted` into its own `abortedError` keeps its wording, printed through `style.bad`
+too (`✗ cancelled — the project was not changed`).
 
 A Prompter method whose `Nav.Back` is set answers `ErrBack` for Esc, and its caller asks the screen
 before again. The install flow's `answer` runs one pass's `ensure*` steps and names the stage that

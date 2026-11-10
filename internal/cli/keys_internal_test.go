@@ -60,6 +60,19 @@ func isQuit(err error) bool {
 	return errors.As(err, &q)
 }
 
+// interrupter is a field that z interrupts as a SIGINT from outside does: the program gets an
+// interrupt while the form is live, not aborted by huh.
+type interrupter struct{ huh.Field }
+
+func (i *interrupter) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
+	if k, ok := msg.(tea.KeyPressMsg); ok && k.String() == "z" {
+		return i, tea.Interrupt
+	}
+	m, cmd := i.Field.Update(msg)
+	i.Field = m.(huh.Field)
+	return i, cmd
+}
+
 // shown is what a form draws after it gets each key, without styling.
 func shown(f *huh.Form, ks ...tea.KeyPressMsg) string {
 	for _, k := range ks {
@@ -129,6 +142,9 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		_, err := onTerminal("x\x03").Assistants(st)
 		Expect(err).To(MatchError(ErrAborted))
 		Expect(isQuit(err)).To(BeFalse())
+		_, err = onTerminal("\x03").Where(WhereStep{Title: "Restore 1 item from the trash?", Options: []string{"Restore"}, Nav: Nav{Back: true}})
+		Expect(err).To(MatchError(ErrAborted))
+		Expect(errors.Is(err, ErrCancelled)).To(BeFalse(), "Ctrl+C is not the question's Cancel")
 	})
 
 	It("with two or more steps answered, q asks first: y quits; n, Enter and Esc go back to the screen as it was", func() {
@@ -225,6 +241,11 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		got, err = onInput(paced("\r", "\r")).TrashPick(again)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got.Picked).To(Equal([]string{"0/0"}), "the last answer stays ticked")
+		again.Action = TrashEmpty
+		got, err = onInput(paced("\r", "\r")).TrashPick(again)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.Action).To(Equal(TrashEmpty), "and the last action stays under the cursor")
+		again.Action = ""
 		_, err = onTerminal("\x03").TrashPick(st)
 		Expect(err).To(MatchError(ErrAborted))
 
@@ -252,6 +273,28 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(list).To(And(ContainSubstring("Do what with the ticked?"), ContainSubstring("> Restore ticked"), ContainSubstring("Empty ticked runs")))
 	})
 
+	It("tidy: move --esc--> move", func() {
+		st := TidyPickStep{Options: []TidyOption{{ID: "0", Label: "claude-code  skill/old  .claude/skills/old/"}}}
+		got, err := onInput(paced(escKey, "x\r")).TidyPick(st)
+		Expect(err).NotTo(HaveOccurred(), "a first screen, after the scope picker too: Esc stays")
+		Expect(got).To(Equal([]string{"0"}))
+	})
+
+	It("trash: pick --esc--> pick", func() {
+		st := TrashPickStep{Options: []TidyOption{{ID: "0", Label: "2026-11-03 12:00:00 UTC  lola tidy  project /p  1 file, 5 B"}}}
+		got, err := onInput(paced(escKey, "x\r", "\r")).TrashPick(st)
+		Expect(err).NotTo(HaveOccurred(), "a first screen: Esc stays")
+		Expect(got).To(Equal(TrashAnswer{Picked: []string{"0"}, Action: TrashRestore}))
+	})
+
+	It("asks the keep picker again with its last answer ticked", func() {
+		st := TidyKeepStep{Options: []TidyOption{{ID: "skill/a", Label: "skill/a  claude-code"}, {ID: "skill/b", Label: "skill/b  claude-code"}},
+			Preselect: []string{"skill/b"}}
+		got, err := onInput(paced("\r")).TidyKeep(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal([]string{"skill/b"}))
+	})
+
 	It("goes back a screen on Esc, from a picker, a menu and a text input alike", func() {
 		st := two
 		st.Nav = Nav{Back: true}
@@ -260,6 +303,8 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		_, err = onTerminal(escKey).OtherDirectory(DirectoryStep{Nav: Nav{Back: true}})
 		Expect(err).To(MatchError(ErrBack))
 		_, err = onTerminal(escKey).MigrateRoot(MigrateRootStep{Old: "/old", Suggest: "/new", Value: "/new", Nav: Nav{Back: true}})
+		Expect(err).To(MatchError(ErrBack))
+		_, err = onTerminal(escKey).Where(WhereStep{Title: "Restore 1 item from the trash?", Options: []string{"Restore"}, Nav: Nav{Back: true}})
 		Expect(err).To(MatchError(ErrBack))
 	})
 
@@ -272,6 +317,11 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(shown(f, keyEsc)).To(ContainSubstring("first step — q quits"))
 		Expect(shown(f, keyDown)).NotTo(ContainSubstring("first step"), "the next key brings the key help back")
 		Expect(shown(f)).To(ContainSubstring("q quit"))
+
+		f = form(two)
+		Expect(shown(f, keyEnter)).To(ContainSubstring("nothing selected"))
+		Expect(shown(f, keyEsc)).To(And(ContainSubstring("first step — q quits"), Not(ContainSubstring("nothing selected"))),
+			"Esc's note replaces the empty submit's")
 
 		in := onTerminal(escKey + "here\r")
 		dir, err := in.OtherDirectory(DirectoryStep{})
@@ -302,15 +352,77 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(got).To(Equal(ModuleAnswer{Names: []string{"kit"}, AddSource: true}), "the picker runs again with kit selected")
 	})
 
-	It("goes back from Choose… to the trust question", func() {
-		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}}}}}
-		// kkkj puts the cursor on Choose… and kkk on Trust all, wherever it starts.
-		got, err := onInput(paced("kkkj\r", escKey, "kkk\r")).Trust(st)
+	It("profile edit: which --esc--> which", func() {
+		got, err := onTerminal(escKey + "\r").Where(WhereStep{Title: "kit names profile kit and a module.", Options: []string{"Edit profile kit", "Edit module kit"}})
+		Expect(err).NotTo(HaveOccurred(), "a first screen: Esc stays")
+		Expect(got).To(Equal(0), "and Enter then answers it")
+
+		got, err = onTerminal("\r").Where(WhereStep{Title: "New profile try:", Options: []string{"Lists modules", "Bundles profiles"}, Preselect: 1})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(got).To(Equal(engine.TrustAnswer{All: true}))
+		Expect(got).To(Equal(1), "asked again, the last answer is under the cursor")
 	})
 
-	It("names esc back and q quit in the key help; the first screen leaves out esc back, a text input q quit", func() {
+	It("profile edit: members --esc (first screen)--> members", func() {
+		got, err := onTerminal(escKey + "\r").Members(MembersStep{Title: "bundle work › members",
+			Options: []ModuleOption{{Name: "docs", Label: "docs"}, {Name: "go", Label: "go"}}, Preselect: []string{"go"}})
+		Expect(err).NotTo(HaveOccurred(), "a first screen: Esc stays")
+		Expect(got).To(Equal([]string{"go"}), "and Enter then answers it as ticked")
+
+		_, err = onTerminal(escKey).Members(MembersStep{Title: "new bundle try › members", Options: []ModuleOption{{Name: "go", Label: "go"}}, Nav: Nav{Back: true}})
+		Expect(err).To(MatchError(ErrBack), "a new bundle's page goes back to the question before it")
+	})
+
+	It("trust: choose --esc (first list)--> trust", func() {
+		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}, {Module: "n", Label: "n"}}}}}
+		got, err := onInput(paced("k\r", "x", escKey, "\r", "\r")).Trust(st) // k from Cancel is Choose…
+		Expect(err).NotTo(HaveOccurred(), "Enter on the question opens Choose… again: the cursor stayed on it")
+		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"m"}}), "and m is still ticked")
+	})
+
+	It("asks the trust question again with its last answer under the cursor, the entries Choose… ticked still ticked", func() {
+		st := TrustStep{Changes: 2, Answer: engine.TrustAnswer{All: true}, Groups: []TrustGroup{{Title: "Scripts (2)",
+			Options: []TrustOption{{Module: "m", Label: "m"}, {Module: "n", Label: "n"}}}}}
+		got, err := onInput(paced("\r")).Trust(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(engine.TrustAnswer{All: true}))
+
+		st.Answer = engine.TrustAnswer{Modules: []string{"n"}}
+		got, err = onInput(paced("\r", "\r")).Trust(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"n"}}))
+	})
+
+	It("trust: trust --esc--> trust", func() {
+		st := TrustStep{Changes: 1}
+		_, err := onInput(paced(escKey, "\r")).Trust(st)
+		Expect(err).To(MatchError(ErrAborted), "a first screen: Esc stays, the cursor still on Cancel, which Enter answers")
+		Expect(errors.Is(err, ErrBack)).To(BeFalse())
+	})
+
+	It("trust: choose --esc (a later list)--> choose", func() {
+		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Added (1)", Options: []TrustOption{{Module: "a", Label: "a"}}},
+			{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}}}}}
+		got, err := onInput(paced("k\r", "\r", escKey, "x\r", "\r")).Trust(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"a"}}), "Esc on Scripts went back to Added, where x ticked a")
+	})
+
+	It("trust: choose --ctrl+c--> cancelled", func() {
+		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}}}}}
+		_, err := onInput(paced("k\r", "x", "\x03")).Trust(st)
+		Expect(err).To(MatchError(ErrAborted))
+	})
+
+	It("trust: choose --empty submit--> choose", func() {
+		st := TrustStep{Changes: 2, Groups: []TrustGroup{{Title: "Added (1)", Options: []TrustOption{{Module: "a", Label: "a"}}},
+			{Title: "Scripts (1)", Options: []TrustOption{{Module: "m", Label: "m"}}}}}
+		// Enter on the first list moves on, empty; on the last, with nothing ticked in any, it is refused.
+		got, err := onInput(paced("k\r", "\r", "\r", "x\r")).Trust(st)
+		Expect(err).NotTo(HaveOccurred(), "nothing ticked is refused and the lists stay; Cancel is the way out")
+		Expect(got).To(Equal(engine.TrustAnswer{Modules: []string{"m"}}))
+	})
+
+	It("names esc back and q quit in the key help; the first screen leaves out esc back, a text input says ctrl+c quits for q quit", func() {
 		st := two
 		st.Nav = Nav{Back: true}
 		Expect(shown(form(st))).To(ContainSubstring("esc back • q quit"))
@@ -325,7 +437,7 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		v := ""
 		f, _ := h.form(huh.ThemeFunc(func(bool) *huh.Styles { return plainTheme() }), Nav{Back: true}, huh.NewInput().Title("Other directory").Value(&v))
 		f.Init()
-		Expect(shown(f)).To(ContainSubstring("esc back"))
+		Expect(shown(f)).To(ContainSubstring("esc back • ctrl+c quits • enter submit"), "q is text there")
 		Expect(shown(f)).NotTo(ContainSubstring("q quit"))
 		Expect(shown(f, keyEsc)).NotTo(ContainSubstring("first step"))
 	})
@@ -336,6 +448,33 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		got, err := accessible(&out, "q", "1", "0").Assistants(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal([]string{"a"}))
+	})
+
+	DescribeTable("erases a form left by Esc, q or Ctrl+C as a submit erases it, so no ended form stays above the next screen",
+		func(typed string, want error) {
+			// The last render of an ended form draws it as nothing: the cursor up over it, then clear to the end.
+			const erased = "\x1b[A\x1b[J"
+			h := onTerminal(typed)
+			_, err := h.Assistants(AssistantStep{Options: []string{"a", "b"}, Nav: Nav{Back: true}})
+			if want == nil {
+				Expect(err).NotTo(HaveOccurred())
+			} else {
+				Expect(err).To(MatchError(want))
+			}
+			Expect(h.out.(*bytes.Buffer).String()).To(ContainSubstring(erased))
+		},
+		Entry("a submit", "x\r", nil),
+		Entry("Esc", escKey, ErrBack),
+		Entry("q", "q", ErrAborted),
+		Entry("Ctrl+C", "\x03", ErrAborted),
+	)
+
+	It("keeps an interrupt the form did not take (a SIGINT from outside) a cancel, never a submit", func() {
+		h := onTerminal("xz")
+		var v []string
+		err := h.run(Nav{}, &interrupter{Field: h.multi("Install for which assistants?", "", []huh.Option[string]{huh.NewOption("a", "a")}, &v)})
+		Expect(err).To(MatchError(ErrAborted))
+		Expect(errors.Is(err, ErrBack)).To(BeFalse())
 	})
 
 	It("prints a quit as cancelled, nothing changed, and exits 0 as Ctrl+C does", func() {
@@ -358,4 +497,33 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(Execute(cmd)).To(Equal(0))
 		Expect(stderr.String()).To(Equal("\x1b[31m✗ cancelled — nothing was changed\x1b[0m\n"), "in color, as style paints it")
 	})
+})
+
+var _ = Describe("the questions of lola init, lola market --add and hook and script consent", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("Esc on the background question stays: it is a first screen", func() {
+		dark, err := onTerminal(escKey + "\r").Background()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dark).To(BeTrue(), "Dark, the first option, answered after Esc")
+	})
+
+	It("Esc on the marketplace name question stays: it is a first screen", func() {
+		h := onTerminal(escKey + "\r")
+		name, err := h.MarketName(MarketNameStep{Why: "acme is already a marketplace, from /src", Value: "acme-2"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(name).To(Equal("acme-2"), "the pre-filled name answered after Esc")
+	})
+
+	DescribeTable("Esc and q answer no consent question: it waits for y, n or Enter",
+		func(question string) {
+			ok, err := onTerminal(escKey + "q" + "y").Consent(question)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ok).To(BeTrue(), "only the y answered")
+		},
+		Entry("hooks", "Run kit's install hooks?"),
+		Entry("runtime", "Install rt's Claude Code hooks?"),
+		Entry("script", "Run this project's pre-install script?"),
+		Entry("later", "Trust this project's pre-install script for later runs?"),
+	)
 })

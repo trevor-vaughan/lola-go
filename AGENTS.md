@@ -99,7 +99,7 @@ tmux capture-pane -t v -p | grep -v '^$' | tail -6
 tmux kill-session -t v; tmux kill-session -t holder
 ```
 
-- **Gotchas.** Use `-x 120` or wider (at 80 the viewer footer drops `q quit`). Pass the isolated
+- **Gotchas.** Use `-x 120` or wider (at 80 the viewer footer cuts `/ search` and the paging keys). Pass the isolated
   `HOME`/`XDG_*` inside the pane's `bash -c`; a running tmux server does not inherit your env.
   Kill by session name, never `pkill -f` (it matches your own shell). `lola trash --plain` rows start
   with a literal `run` column. `bin/lola` can be stale; `task build` refreshes it.

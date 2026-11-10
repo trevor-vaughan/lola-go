@@ -52,6 +52,13 @@ type scripted struct {
 	members    []func(cli.MembersStep) ([]string, error)
 	trashPick  []func(cli.TrashPickStep) (cli.TrashAnswer, error)
 	versions   []func(cli.VersionStep) (int, error)
+	consent    []bool
+
+	// the first emptyCancels ConfirmEmpty questions (after emptyBacks) and confirmCancels Confirm
+	// questions are cancelled, as Ctrl+C does; the first confirmBacks Confirm questions, before
+	// those, go back a screen, as Esc does; the first consentCancels Consent questions are
+	// cancelled, as Ctrl+C does
+	emptyCancels, confirmCancels, confirmBacks, consentCancels int
 
 	scopeSteps     []cli.ScopeStep
 	dirSteps       []cli.DirectoryStep
@@ -82,10 +89,20 @@ type scripted struct {
 // Esc does.
 const goBack = "\x00back"
 
+// cancelRun is a scripted answer to the market name or a migrate question that cancels the run, as
+// Ctrl+C does.
+const cancelRun = "\x00ctrl+c"
+
 // goneBack answers a step by going back a screen, as Esc does.
 func goneBack[S, T any](S) (T, error) {
 	var none T
 	return none, cli.ErrBack
+}
+
+// aborted answers a step by cancelling the run, as Ctrl+C does.
+func aborted[S, T any](S) (T, error) {
+	var none T
+	return none, cli.ErrAborted
 }
 
 func pop[T any](q *[]T, step string) T {
@@ -99,13 +116,27 @@ func pop[T any](q *[]T, step string) T {
 
 func (s *scripted) Interactive() bool { return true }
 
-// Where answers the option scripted, or, for a negative one, Cancel.
+// Scripted Where answers that go back a screen, as Esc does, and that cancel the run, as Ctrl+C
+// does.
+const (
+	whereBack  = -2
+	whereCtrlC = -3
+)
+
+// Where answers the option scripted; whereBack goes back, whereCtrlC cancels the run, and any
+// other negative one picks Cancel.
 func (s *scripted) Where(st cli.WhereStep) (int, error) {
 	s.calls, s.whereSteps = append(s.calls, "where"), append(s.whereSteps, st)
-	if i := pop(&s.where, "where"); i >= 0 {
+	switch i := pop(&s.where, "where"); {
+	case i >= 0:
 		return i, nil
+	case i == whereBack:
+		return 0, cli.ErrBack
+	case i == whereCtrlC:
+		return 0, cli.ErrAborted
+	default:
+		return 0, cli.ErrCancelled
 	}
-	return 0, cli.ErrAborted
 }
 func (s *scripted) Scope(st cli.ScopeStep) ([]string, error) {
 	s.calls, s.scopeSteps = append(s.calls, "scope"), append(s.scopeSteps, st)
@@ -137,11 +168,31 @@ func (s *scripted) ConfirmEmpty(module string, nav cli.Nav) (bool, error) {
 		s.emptyBacks--
 		return false, cli.ErrBack
 	}
+	if s.emptyCancels > 0 {
+		s.emptyCancels--
+		return false, cli.ErrAborted
+	}
 	return pop(&s.empty, "confirm-empty"), nil
 }
 func (s *scripted) Confirm(question string, nav cli.Nav) (bool, error) {
 	s.calls, s.confirmNavs = append(s.calls, "confirm:"+question), append(s.confirmNavs, nav)
+	if s.confirmBacks > 0 {
+		s.confirmBacks--
+		return false, cli.ErrBack
+	}
+	if s.confirmCancels > 0 {
+		s.confirmCancels--
+		return false, cli.ErrAborted
+	}
 	return pop(&s.confirm, "confirm"), nil
+}
+func (s *scripted) Consent(question string) (bool, error) {
+	s.calls = append(s.calls, "consent:"+question)
+	if s.consentCancels > 0 {
+		s.consentCancels--
+		return false, cli.ErrAborted
+	}
+	return pop(&s.consent, "consent"), nil
 }
 func (s *scripted) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 	s.calls, s.trustSteps = append(s.calls, "trust"), append(s.trustSteps, st)
@@ -161,7 +212,10 @@ func (s *scripted) SSHHosts(st cli.SSHHostStep) ([]string, error) {
 }
 func (s *scripted) MarketName(st cli.MarketNameStep) (string, error) {
 	s.calls, s.nameSteps = append(s.calls, "market-name"), append(s.nameSteps, st)
-	return pop(&s.names, "market-name"), nil
+	if name := pop(&s.names, "market-name"); name != cancelRun {
+		return name, nil
+	}
+	return "", cli.ErrAborted
 }
 func (s *scripted) MarketEntry(st cli.MarketEntryStep) (string, error) {
 	s.calls, s.entrySteps = append(s.calls, "market-entry"), append(s.entrySteps, st)
@@ -185,17 +239,25 @@ func (s *scripted) Background() (bool, error) {
 }
 func (s *scripted) MigrateRoot(st cli.MigrateRootStep) (string, error) {
 	s.calls, s.rootSteps = append(s.calls, "migrate-root:"+st.Old), append(s.rootSteps, st)
-	if to := pop(&s.roots, "migrate-root"); to != goBack {
+	switch to := pop(&s.roots, "migrate-root"); to {
+	case goBack:
+		return "", cli.ErrBack
+	case cancelRun:
+		return "", cli.ErrAborted
+	default:
 		return to, nil
 	}
-	return "", cli.ErrBack
 }
 func (s *scripted) MigrateTargets(st cli.MigrateTargetStep) ([]string, error) {
 	s.calls, s.mapTargetSteps = append(s.calls, "migrate-targets:"+st.Old), append(s.mapTargetSteps, st)
-	if ids := pop(&s.mapTargets, "migrate-targets"); !slices.Equal(ids, []string{goBack}) {
+	switch ids := pop(&s.mapTargets, "migrate-targets"); {
+	case slices.Equal(ids, []string{goBack}):
+		return nil, cli.ErrBack
+	case slices.Equal(ids, []string{cancelRun}):
+		return nil, cli.ErrAborted
+	default:
 		return ids, nil
 	}
-	return nil, cli.ErrBack
 }
 func (s *scripted) Review(st cli.ReviewStep) (string, error) {
 	s.calls, s.reviewSteps = append(s.calls, "review"), append(s.reviewSteps, st)
@@ -242,6 +304,34 @@ func keep(drop ...string) func(cli.ComponentPage) ([]string, error) {
 		}
 		return out, nil
 	}
+}
+
+// ticked is what a component page had selected when it was asked.
+func ticked(pg cli.ComponentPage) []string {
+	var out []string
+	for _, g := range pg.Groups {
+		for _, o := range g.Options {
+			if o.Selected {
+				out = append(out, o.ID)
+			}
+		}
+	}
+	return out
+}
+
+// cacheTwice caches module a twice from one folder, so its first version is superseded, and
+// returns that version's path in the cache.
+func cacheTwice(p paths.Paths) string {
+	GinkgoHelper()
+	src := filepath.Join(filepath.Dir(p.Config), "src", "a")
+	writeTree(src, map[string]string{"lola.yml": "name: a\n", "commands/hi.md": "v1\n"})
+	Expect(lola("cache", "add", src).code).To(Equal(0))
+	ids, err := os.ReadDir(filepath.Join(p.Store, "a", "versions"))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(ids).To(HaveLen(1))
+	writeTree(src, map[string]string{"commands/hi.md": "v2\n"})
+	Expect(lola("cache", "add", src).code).To(Equal(0))
+	return filepath.Join(p.Store, "a", "versions", ids[0].Name())
 }
 
 // lolaP runs lola with p as its Prompter.
@@ -602,7 +692,7 @@ var _ = Describe("the install flow", func() {
 		Expect(p.reviewSteps[0].Step).To(Equal(cli.Steps{At: 1, Of: 1}), "the review alone is not numbered")
 		Expect(p.reviewSteps[0].Summary).To(HavePrefix("Summary:\n  user (" + home + "), flag:\n    → for claude-code (the only assistant found)\n" +
 			"      deploy: + command/deploy\n"))
-		Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"), "Quit cancels")
+		Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "Quit cancels")
 		Expect(filepath.Join(home, ".claude/commands/deploy.md")).NotTo(BeAnExistingFile())
 
 		p = &scripted{}
@@ -813,7 +903,7 @@ var _ = Describe("the install flow", func() {
 		func(p *scripted) {
 			r := lolaP(p, "install")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(selections).NotTo(BeAnExistingFile())
 			Expect(filepath.Join(proj, ".lola")).NotTo(BeADirectory())
 			Expect(filepath.Join(proj, ".claude/commands")).NotTo(BeADirectory())
@@ -964,7 +1054,7 @@ var _ = Describe("the install flow", func() {
 			p := &scripted{confirm: []bool{false}}
 			r := lolaP(p, "install", "deploy", "-C", fresh, "-t", "claude-code")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(p.calls).To(Equal([]string{"confirm:Create " + fresh + "? It does not exist yet"}))
 			Expect(filepath.Join(tmp, "fresh")).NotTo(BeAnExistingFile())
 		})
@@ -1327,7 +1417,7 @@ var _ = Describe("the install flow", func() {
 		r := lolaP(p, "install", "review-kit", "--scope", "project")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"components:project.yml › review-kit", "empty:review-kit"}))
-		Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"), "nothing is left to install")
+		Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "nothing is left to install")
 		Expect(selections).NotTo(BeAnExistingFile())
 
 		p = &scripted{components: []func(cli.ComponentPage) ([]string, error){pick()}, empty: []bool{true}, review: []string{cli.ReviewApply}}
@@ -2552,7 +2642,7 @@ var _ = Describe("the version question", func() {
 		Expect(p.versionSteps[2].Again).To(BeTrue(), "asked again from the review")
 		Expect(p.versionSteps[2].Step).To(Equal(cli.Steps{}), "one question, not a numbered flow")
 		Expect(p.versionSteps[2].Last).To(BeTrue(), "the preselection is the last answer")
-		Expect(p.reviewSteps[1].Step).To(Equal(cli.Steps{At: 1, Of: 1}))
+		Expect(p.reviewSteps[1].Step).To(Equal(p.reviewSteps[0].Step), "the review keeps its number, so its title, as it was")
 		Expect(p.assistantSteps[1].Preselect).To(Equal([]string{"opencode"}))
 		Expect(declared(proj)).To(Equal(map[string]string{"opencode": "2.2.5"}))
 	})

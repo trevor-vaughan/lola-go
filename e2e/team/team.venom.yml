@@ -542,7 +542,7 @@ testcases:
           - "result.systemout ShouldContainSubstring \"  → entries: targets (new), kit (new)\""
           - result.systemout ShouldContainSubstring "Proceed? [y/N]"
           - result.systemout ShouldNotContainSubstring "Trust all"
-          - result.systemout ShouldContainSubstring "aborted; the project was not changed."
+          - result.systemout ShouldContainSubstring "✗ cancelled — the project was not changed"
       - type: exec
         script: "{{.runtime}} exec {{.container}} {{.snapshot}} /tmp/t14-after.json /work /home/tester"
         assertions:

@@ -600,7 +600,7 @@ func (a *app) profileApply(cmd *cobra.Command, eng *engine.Engine, ch engine.Pro
 			}
 			real := slices.DeleteFunc(slices.Clone(again), func(f string) bool { return f == "-n" })
 			return a.editBundle(cmd, eng, scs[0], other.Into, other.Joined, engine.TargetRequest{Edit: true, Again: again}, f,
-				edit(again), edit(real), true)
+				edit(again), edit(real), true, false)
 		}
 		ch = engine.ProfileChange{Action: engine.ProfileSwitch, Name: other.Name}
 		if i == 1 {

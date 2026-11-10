@@ -268,7 +268,19 @@ func (h *huhForms) form(t huh.Theme, nav Nav, fields ...huh.Field) (*huh.Form, *
 			}
 		}
 	}
-	return huh.NewForm(huh.NewGroup(fields...)).WithInput(in).WithOutput(h.out).WithAccessible(h.accessible).WithTheme(t), exit
+	form := huh.NewForm(huh.NewGroup(fields...))
+	// A form left by Ctrl+C, and so by lola's Esc and q (keyed.end), ends with huh's interrupt,
+	// which bubbletea treats as a kill: it skips the last render, which a submit gets and which
+	// draws the ended form as nothing, so the form stayed on screen above the next one. Once huh has
+	// aborted the form the interrupt is a plain quit, rendered as a submit is; huh still reports the
+	// abort. An interrupt the form did not take (a SIGINT from outside) stays one.
+	// WithProgramOptions replaces huh's options, so WithInput and WithOutput come after it.
+	return form.WithProgramOptions(tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
+		if _, ok := msg.(tea.InterruptMsg); ok && form.State == huh.StateAborted {
+			return tea.QuitMsg{}
+		}
+		return msg
+	})).WithInput(in).WithOutput(h.out).WithAccessible(h.accessible).WithTheme(t), exit
 }
 
 // cut puts a label on one line (a newline becomes a space) and fits it to the terminal width,
@@ -324,15 +336,16 @@ func (h *huhForms) Scope(st ScopeStep) ([]string, error) {
 		desc = "pick one"
 	}
 	var chosen []string
-	err := h.run(st.Nav, h.withProblem(st.Problem, h.required(h.multi(st.Step.title(0, st.Question), desc, opts, &chosen)))...)
+	err := h.run(st.Nav, h.described(desc, h.required(h.multi(st.Step.title(0, st.Question), desc, opts, &chosen)))...)
 	return chosen, err
 }
 
-// withProblem puts a note saying why a picker asks again above it in accessible mode, where huh
-// does not print a field's description; full forms show the reason as the description.
-func (h *huhForms) withProblem(problem string, f huh.Field) []huh.Field {
-	if h.accessible && problem != "" {
-		return []huh.Field{huh.NewNote().Title(h.cut(problem)), f}
+// described puts desc, what f's description says, in a note above f in accessible mode, where
+// huh v2.0.3's Select, MultiSelect and Input print their title alone; full forms show it as the
+// description. The note is not cut to the terminal's width: a screen reader reads all of it.
+func (h *huhForms) described(desc string, f huh.Field) []huh.Field {
+	if h.accessible && desc != "" {
+		return []huh.Field{huh.NewNote().Title(desc), f}
 	}
 	return []huh.Field{f}
 }
@@ -367,20 +380,83 @@ func (r *requiredPick) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	return r, cmd
 }
 
-// required makes ms a picker that needs a pick. In accessible mode, which has no
+// required makes ms a picker that needs a pick, which a tick in one of also, the lists before it
+// in its form, gives as well. In accessible mode, which has no
 // keys, huh validates only when the user confirms, so the refusal applies at once. Once input has
 // ended (Ctrl+C included) the validator accepts: huh's accessible MultiSelect asks again for as
 // long as it refuses, and at end of input every ask answers 0, so refusing would never end; run
 // then cancels.
-func (h *huhForms) required(ms *huh.MultiSelect[string]) huh.Field {
+func (h *huhForms) required(ms *huh.MultiSelect[string], also ...*[]string) huh.Field {
 	r := &requiredPick{MultiSelect: ms}
 	ms.Validate(func(picked []string) error {
-		if len(picked) > 0 || h.in.eof || !h.accessible && !r.entered {
+		if len(picked) > 0 || slices.ContainsFunc(also, func(v *[]string) bool { return len(*v) > 0 }) || h.in.eof || !h.accessible && !r.entered {
 			return nil
 		}
 		return errors.New(h.nothingSelected())
 	})
 	return r
+}
+
+// sourcePick is a module picker whose ctrl+a never ticks Add a source…: it ticks every module
+// shown, or, when each is ticked already, unticks them all. huh's ctrl+a ticks every option
+// shown, the sentinel too, and offers no way to set one option, so sourcePick takes the tick off
+// the sentinel with huh's own keys: the end of the list, where the sentinel always is, a toggle
+// (with the filter's typing paused, as huh toggles nothing while it is typed), then back to the
+// option the cursor was on. ms is the picker inside Field, and n its number of options.
+type sourcePick struct {
+	huh.Field
+	ms *huh.MultiSelect[string]
+	n  int
+}
+
+// GetFiltering reports whether the picker's filter is being typed, for keyed.typing.
+func (s *sourcePick) GetFiltering() bool { return s.ms.GetFiltering() }
+
+func (s *sourcePick) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
+	k, ok := msg.(tea.KeyPressMsg)
+	if !ok || k.String() != "ctrl+a" {
+		return s.pass(msg)
+	}
+	picked := func() []string { v, _ := s.ms.GetValue().([]string); return v }
+	before := picked()
+	_, cmd := s.pass(msg)
+	after := picked()
+	if contains(before, addSource) || !contains(after, addSource) {
+		return s, cmd
+	}
+	if len(after) == len(before)+1 {
+		// Every module shown was ticked, so huh ticked only the sentinel: a second ctrl+a, every
+		// option shown now ticked, unticks them all.
+		_, more := s.pass(msg)
+		return s, tea.Batch(cmd, more)
+	}
+	hovered, _ := s.ms.Hovered()
+	typing := s.ms.GetFiltering()
+	if typing {
+		s.ms.Filtering(false)
+	}
+	_, end := s.pass(tea.KeyPressMsg{Code: tea.KeyEnd})
+	_, toggle := s.pass(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	_, top := s.pass(tea.KeyPressMsg{Code: tea.KeyHome})
+	cmds := []tea.Cmd{cmd, end, toggle, top}
+	for range s.n {
+		if at, _ := s.ms.Hovered(); at == hovered {
+			break
+		}
+		_, down := s.pass(tea.KeyPressMsg{Code: tea.KeyDown})
+		cmds = append(cmds, down)
+	}
+	if typing {
+		s.ms.Filtering(true)
+	}
+	return s, tea.Batch(cmds...)
+}
+
+// pass hands msg to the field.
+func (s *sourcePick) pass(msg tea.Msg) (huh.Model, tea.Cmd) {
+	m, cmd := s.Field.Update(msg)
+	s.Field = m.(huh.Field)
+	return s, cmd
 }
 
 // OtherDirectory asks for the path of Other directory…. The reason it asks again is a note
@@ -391,8 +467,8 @@ func (h *huhForms) OtherDirectory(st DirectoryStep) (string, error) {
 		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
 	}
 	dir := st.Value
-	fields = append(fields, h.pathInput(huh.NewInput().Title("Other directory").
-		Description("a project directory, relative to the current directory; ~ is your home").Value(&dir), &dir))
+	const desc = "a project directory, relative to the current directory; ~ is your home"
+	fields = append(fields, h.described(desc, h.pathInput(huh.NewInput().Title("Other directory").Description(desc).Value(&dir), &dir))...)
 	err := h.run(st.Nav, fields...)
 	return dir, err
 }
@@ -418,9 +494,9 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 	}
 	if len(st.Options) == 0 {
 		choice := "add"
-		err := h.run(st.Nav, huh.NewNote().Title("no modules in your cache"),
-			huh.NewSelect[string]().Title(st.Step.title(0, "What next?")).Description(st.Problem).
-				Options(huh.NewOption("Add a source…", "add"), huh.NewOption("Quit", "quit")).Value(&choice))
+		err := h.run(st.Nav, append([]huh.Field{huh.NewNote().Title("no modules in your cache")},
+			h.described(st.Problem, huh.NewSelect[string]().Title(st.Step.title(0, "What next?")).Description(st.Problem).
+				Options(huh.NewOption("Add a source…", "add"), huh.NewOption("Quit", "quit")).Value(&choice))...)...)
 		if err != nil {
 			return ModuleAnswer{}, err
 		}
@@ -440,7 +516,8 @@ func (h *huhForms) Modules(st ModuleStep) (ModuleAnswer, error) {
 	if !st.None {
 		f = h.required(ms)
 	}
-	if err := h.run(st.Nav, h.withProblem(st.Problem, f)...); err != nil {
+	f = &sourcePick{Field: f, ms: ms, n: len(opts)}
+	if err := h.run(st.Nav, h.described(st.Problem, f)...); err != nil {
 		return ModuleAnswer{}, err
 	}
 	if contains(chosen, addSource) {
@@ -504,8 +581,9 @@ func (h *huhForms) MarketEntry(st MarketEntryStep) (string, error) {
 // picker with names selected; so does going back from the source (Esc).
 func (h *huhForms) addSource(names []string, nav Nav) (ModuleAnswer, error) {
 	var src, ref string
-	err := h.run(nav, huh.NewInput().Title("Source").Description("a module directory, archive, URL or git repository").Value(&src),
-		huh.NewInput().Title("Ref (optional)").Description("a git branch, tag or full commit SHA").Value(&ref))
+	const srcDesc, refDesc = "a module directory, archive, URL or git repository", "a git branch, tag or full commit SHA"
+	err := h.run(nav, slices.Concat(h.described(srcDesc, huh.NewInput().Title("Source").Description(srcDesc).Value(&src)),
+		h.described(refDesc, huh.NewInput().Title("Ref (optional)").Description(refDesc).Value(&ref)))...)
 	if errors.Is(err, ErrBack) {
 		return ModuleAnswer{Names: names, AddSource: true}, nil
 	}
@@ -532,7 +610,8 @@ func (h *huhForms) marketFields(st ModuleStep, cached *[]string, picked [][]stri
 			opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
 		}
 		opts = append(opts, huh.NewOption("Add a source…", addSource))
-		fields = append(fields, h.withProblem(st.Problem, h.multi(st.Step.title(n, cmp.Or(st.Title, "Install which modules?")), desc, opts, cached).Filterable(true))...)
+		ms := h.multi(st.Step.title(n, cmp.Or(st.Title, "Install which modules?")), desc, opts, cached).Filterable(true)
+		fields = append(fields, h.described(st.Problem, &sourcePick{Field: ms, ms: ms, n: len(opts)})...)
 		n++
 	} else if h.accessible && st.Problem != "" {
 		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
@@ -570,7 +649,7 @@ func (h *huhForms) Assistants(st AssistantStep) ([]string, error) {
 		desc = "for " + strings.Join(st.Scopes, " and ")
 	}
 	var chosen []string
-	err := h.run(st.Nav, h.required(h.multi(st.Step.title(0, "Install for which assistants?"), desc, opts, &chosen)))
+	err := h.run(st.Nav, h.described(desc, h.required(h.multi(st.Step.title(0, "Install for which assistants?"), desc, opts, &chosen)))...)
 	return chosen, err
 }
 
@@ -687,7 +766,9 @@ func (h *huhForms) ConfirmEmpty(module string, nav Nav) (bool, error) {
 // Trust offers Trust all, Choose… (when there is anything to choose) and Cancel, with Cancel
 // under the cursor, so Enter alone changes nothing; Choose… opens one form of filterable
 // multi-selects, one per kind of change, with nothing preselected, since trust is security
-// consent; Esc there goes back to the question. Choosing nothing cancels.
+// consent. Asked again, st.Answer is under the cursor, the entries it chose ticked. Esc on the
+// lists goes back to the question, the cursor on Choose… and the ticks kept. Enter on the last list with nothing ticked in any is refused, as an empty pick is on every
+// picker; Cancel is the way out. Input that ends there cancels.
 func (h *huhForms) Trust(st TrustStep) (engine.TrustAnswer, error) {
 	const all, choose, cancel = "all", "choose", "cancel"
 	opts := []huh.Option[string]{huh.NewOption(trustAllLabel(st.Changes), all)}
@@ -695,11 +776,32 @@ func (h *huhForms) Trust(st TrustStep) (engine.TrustAnswer, error) {
 		opts = append(opts, huh.NewOption("Choose…", choose))
 	}
 	opts = append(opts, huh.NewOption("Cancel (the project is not changed)", cancel))
-	var values [][]string
+	values, choice := make([][]string, len(st.Groups)), cancel
+	switch {
+	case st.Answer.All:
+		choice = all
+	case len(st.Answer.Modules) > 0 && len(st.Groups) > 0:
+		choice = choose
+		for i, g := range st.Groups {
+			for _, o := range g.Options {
+				if slices.Contains(st.Answer.Modules, o.Module) {
+					values[i] = append(values[i], o.Module)
+				}
+			}
+		}
+	}
 	for {
-		choice := cancel
-		if err := h.run(Nav{}, huh.NewSelect[string]().Title("Trust these changes?").Options(opts...).Value(&choice)); err != nil {
+		// A line prompt takes a select bound to a variable as its default; trust is consent, so
+		// there a blank line answers nothing and asks again, whatever is under the cursor.
+		sel := huh.NewSelect[string]().Title("Trust these changes?").Options(opts...)
+		if !h.accessible {
+			sel.Value(&choice)
+		}
+		if err := h.run(Nav{}, sel); err != nil {
 			return engine.TrustAnswer{}, err
+		}
+		if h.accessible {
+			choice, _ = sel.GetValue().(string)
 		}
 		switch choice {
 		case all:
@@ -707,14 +809,21 @@ func (h *huhForms) Trust(st TrustStep) (engine.TrustAnswer, error) {
 		case cancel:
 			return engine.TrustAnswer{}, ErrAborted
 		}
-		values = make([][]string, len(st.Groups))
 		fields := make([]huh.Field, len(st.Groups))
 		for i, g := range st.Groups {
 			o := make([]huh.Option[string], len(g.Options))
 			for k, opt := range g.Options {
 				o[k] = huh.NewOption(h.cut(opt.Label), opt.Module)
 			}
-			fields[i] = h.multi(g.Title, "", o, &values[i]).Filterable(true)
+			ms := h.multi(g.Title, "", o, &values[i]).Filterable(true)
+			fields[i] = ms
+			if i == len(st.Groups)-1 {
+				before := make([]*[]string, i)
+				for k := range before {
+					before[k] = &values[k]
+				}
+				fields[i] = h.required(ms, before...)
+			}
 		}
 		err := h.run(Nav{Back: true}, fields...)
 		if errors.Is(err, ErrBack) {
@@ -748,9 +857,9 @@ func trustAllLabel(n int) string {
 func (h *huhForms) Background() (bool, error) {
 	var choice string
 	plain := huh.ThemeFunc(func(bool) *huh.Styles { return plainTheme() })
-	if err := h.runIn(plain, Nav{}, huh.NewSelect[string]().Title("Is your terminal background dark or light?").
-		Description("lola picks its colors for it and saves your answer in config.yaml").
-		Options(huh.NewOption("Dark", config.ThemeDark), huh.NewOption("Light", config.ThemeLight)).Value(&choice)); err != nil {
+	const desc = "lola picks its colors for it and saves your answer in config.yaml"
+	if err := h.runIn(plain, Nav{}, h.described(desc, huh.NewSelect[string]().Title("Is your terminal background dark or light?").Description(desc).
+		Options(huh.NewOption("Dark", config.ThemeDark), huh.NewOption("Light", config.ThemeLight)).Value(&choice))...); err != nil {
 		return false, err
 	}
 	return choice == config.ThemeDark, nil
@@ -762,19 +871,39 @@ func (h *huhForms) Confirm(question string, nav Nav) (bool, error) {
 	return ok, err
 }
 
-// Where asks where a change goes, its options then Cancel, the first under the cursor.
+// Consent asks question with huh's own keys and theme. In accessible mode end of input and Ctrl+C
+// are a cancel, not the default: huh would otherwise answer No and the install would go on, or
+// lola would die of the signal.
+func (h *huhForms) Consent(question string) (bool, error) {
+	ok := false
+	form := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(question).Value(&ok))).
+		WithOutput(h.out).WithAccessible(h.accessible)
+	var err error
+	if h.accessible {
+		err = h.in.catch(form.WithInput(h.in).Run)
+	} else {
+		err = form.WithInput(h.stdin).Run()
+	}
+	if errors.Is(err, huh.ErrUserAborted) || h.in.eof {
+		return false, ErrAborted
+	}
+	return ok, err
+}
+
+// Where asks where a change goes, its options then Cancel, st.Preselect under the cursor, at
+// st.Nav in its flow.
 func (h *huhForms) Where(st WhereStep) (int, error) {
 	opts := make([]huh.Option[int], 0, len(st.Options)+1)
 	for i, o := range st.Options {
 		opts = append(opts, huh.NewOption(h.cut(o), i))
 	}
 	opts = append(opts, huh.NewOption("Cancel", -1))
-	chosen := 0
-	if err := h.run(Nav{}, huh.NewSelect[int]().Title(h.cut(st.Title)).Options(opts...).Value(&chosen)); err != nil {
+	chosen := st.Preselect
+	if err := h.run(st.Nav, huh.NewSelect[int]().Title(h.cut(st.Title)).Options(opts...).Value(&chosen)); err != nil {
 		return 0, err
 	}
 	if chosen < 0 {
-		return 0, ErrAborted
+		return 0, ErrCancelled
 	}
 	return chosen, nil
 }
@@ -794,7 +923,7 @@ func (h *huhForms) Profiles(st ProfileStep) ([]string, error) {
 		desc += fmt.Sprintf("; %d files with invalid names are not offered", st.Invalid)
 	}
 	var chosen []string
-	err := h.run(Nav{}, h.multi("Add which profiles?", h.cut(desc), opts, &chosen).Filterable(true))
+	err := h.run(Nav{}, h.described(desc, h.multi("Add which profiles?", h.cut(desc), opts, &chosen).Filterable(true))...)
 	return chosen, err
 }
 
@@ -806,7 +935,8 @@ func (h *huhForms) Members(st MembersStep) ([]string, error) {
 		opts = append(opts, huh.NewOption(h.cut(o.Label), o.Name).Selected(contains(st.Preselect, o.Name)))
 	}
 	var chosen []string
-	err := h.run(Nav{}, h.multi(h.cut(st.Title), "the members ticked keep their order, and those you tick follow them; a later member wins where two overlap", opts, &chosen).Filterable(true))
+	const desc = "the members ticked keep their order, and those you tick follow them; a later member wins where two overlap"
+	err := h.run(st.Nav, h.described(desc, h.multi(h.cut(st.Title), desc, opts, &chosen).Filterable(true))...)
 	return chosen, err
 }
 
@@ -823,7 +953,7 @@ func (h *huhForms) SSHHosts(st SSHHostStep) ([]string, error) {
 	}
 	desc := "for " + untrusted.Text(st.Market, untrusted.MaxName) + ": the catalog's ssh sources use your ssh keys and agent at the host you tick"
 	var chosen []string
-	err := h.run(Nav{}, h.multi("Allow ssh to which hosts?", h.cut(desc), opts, &chosen).Filterable(true))
+	err := h.run(st.Nav, h.described(desc, h.multi("Allow ssh to which hosts?", h.cut(desc), opts, &chosen).Filterable(true))...)
 	return chosen, err
 }
 
@@ -835,8 +965,8 @@ func (h *huhForms) MarketName(st MarketNameStep) (string, error) {
 		fields = append(fields, huh.NewNote().Title(h.cut(st.Problem)))
 	}
 	name := st.Value
-	fields = append(fields, huh.NewInput().Title("Name the marketplace").
-		Description(h.cut(st.Why)).Value(&name))
+	fields = append(fields, h.described(st.Why, huh.NewInput().Title("Name the marketplace").
+		Description(h.cut(st.Why)).Value(&name))...)
 	err := h.run(Nav{}, fields...)
 	return name, err
 }
@@ -885,17 +1015,21 @@ func (h *huhForms) tidyPick(st TidyPickStep, value *[]string) []huh.Field {
 	return []huh.Field{h.multi("Move which to the trash?", desc, opts, value).Filterable(true)}
 }
 
-// TidyKeep offers the candidates TidyPick left for the keep-list, filterable, nothing
-// preselected; when st.Required, it refuses an empty answer.
+// TidyKeep offers the candidates TidyPick left for the keep-list, filterable, preselecting
+// st.Preselect; when st.Required, it refuses an empty answer.
 func (h *huhForms) TidyKeep(st TidyKeepStep) ([]string, error) {
 	var chosen []string
-	ms := h.multi("Add any of the rest to your keep-list?", "what your keep-list names stays, and lola tidy stops offering it",
-		h.tidyOptions(st.Options), &chosen).Filterable(true)
+	opts := h.tidyOptions(st.Options)
+	for i, o := range st.Options {
+		opts[i] = opts[i].Selected(contains(st.Preselect, o.ID))
+	}
+	const desc = "what your keep-list names stays, and lola tidy stops offering it"
+	ms := h.multi("Add any of the rest to your keep-list?", desc, opts, &chosen).Filterable(true)
 	var f huh.Field = ms
 	if st.Required {
 		f = h.required(ms)
 	}
-	err := h.run(st.Nav, f)
+	err := h.run(st.Nav, h.described(desc, f)...)
 	return chosen, err
 }
 
@@ -942,10 +1076,10 @@ func (h *huhForms) tidyOptions(in []TidyOption) []huh.Option[string] {
 }
 
 // TrashPick offers lola trash's runs and their files, filterable, preselecting st.Preselect, then
-// asks what to do with those ticked, Restore ticked under the cursor: neither writes anything
-// before lola shows the plan. The list's description says what a [whole run] row means and that
-// Enter moves on; in accessible mode, where huh prints no description, a note above the list says
-// why it asks again.
+// asks what to do with those ticked, st.Action (at first Restore ticked) under the cursor: neither
+// writes anything before lola shows the plan. The list's description says what a [whole run] row
+// means and that Enter moves on; in accessible mode, where huh prints no description, a note above
+// the list says why it asks again.
 func (h *huhForms) TrashPick(st TrashPickStep) (TrashAnswer, error) {
 	var ans TrashAnswer
 	err := h.run(Nav{}, h.trashFields(st, &ans.Picked, &ans.Action)...)
@@ -959,9 +1093,12 @@ func (h *huhForms) trashFields(st TrashPickStep, picked *[]string, action *strin
 	for i, o := range st.Options {
 		opts[i] = opts[i].Selected(contains(st.Preselect, o.ID))
 	}
-	desc := strings.TrimPrefix(st.Problem+"\na [whole run] row takes the whole run, whatever of its files is ticked\nenter: next", "\n")
-	fields := h.withProblem(st.Problem, h.multi("Restore or empty which?", desc, opts, picked).Filterable(true))
+	whole := strings.TrimPrefix(st.Problem+"\na [whole run] row takes the whole run, whatever of its files is ticked", "\n")
+	fields := h.described(whole, h.multi("Restore or empty which?", whole+"\nenter: next", opts, picked).Filterable(true))
 	*action = TrashRestore
+	if st.Action != "" {
+		*action = st.Action
+	}
 	return append(fields, huh.NewSelect[string]().Title("Do what with the ticked?").
 		Options(huh.NewOption("Restore ticked", TrashRestore), huh.NewOption("Empty ticked runs", TrashEmpty)).Value(action))
 }
@@ -975,12 +1112,12 @@ func (h *huhForms) MigrateRoot(st MigrateRootStep) (string, error) {
 		title, to = st.Old+" not found on this machine — new root, such as "+st.Suggest+" (empty skips):", ""
 	}
 	desc := fmt.Sprintf("%d project path(s) of the Python lola start with it", st.Records)
-	err := h.run(st.Nav, h.pathInput(huh.NewInput().Title(h.cut(title)).Description(desc).Value(&to), &to).Validate(func(s string) error {
+	err := h.run(st.Nav, h.described(desc, h.pathInput(huh.NewInput().Title(h.cut(title)).Description(desc).Value(&to), &to).Validate(func(s string) error {
 		if s = expandHome(strings.TrimSpace(s), h.home); s != "" && !filepath.IsAbs(s) {
 			return fmt.Errorf("write an absolute path, such as %s, or leave it empty to skip", st.Suggest)
 		}
 		return nil
-	}))
+	}))...)
 	return expandHome(strings.TrimSpace(to), h.home), err
 }
 
@@ -1000,8 +1137,8 @@ func (h *huhForms) MigrateTargets(st MigrateTargetStep) ([]string, error) {
 		opts = append(opts, huh.NewOption(id, id).Selected(!st.Again || contains(st.Preselect, id)))
 	}
 	var chosen []string
-	err := h.run(st.Nav, h.multi(h.cut(st.Old+why+" — install "+which+" for:"),
-		"choosing none leaves them as they are", opts, &chosen))
+	const desc = "choosing none leaves them as they are"
+	err := h.run(st.Nav, h.described(desc, h.multi(h.cut(st.Old+why+" — install "+which+" for:"), desc, opts, &chosen))...)
 	return chosen, err
 }
 
@@ -1050,7 +1187,11 @@ func (h *huhForms) Review(st ReviewStep) (string, error) {
 		}
 	}
 	fmt.Fprint(h.out, st.Summary)
-	choice, err := h.menu("Apply these changes?", st.Options, ReviewApply, st.Nav)
+	def := ReviewApply
+	if h.accessible {
+		def = "" // a line prompt takes no default: Apply needs its number, and a blank line asks again
+	}
+	choice, err := h.menu("Apply these changes?", st.Options, def, st.Nav)
 	if err == nil && choice == ReviewQuit {
 		return "", ErrAborted
 	}
@@ -1058,15 +1199,21 @@ func (h *huhForms) Review(st ReviewStep) (string, error) {
 }
 
 // menu asks title over the review menu's entries opts, labelled, with choice under the cursor, at
-// nav in the flow.
+// nav in the flow. A choice of "" is no default: huh's accessible Select then refuses a blank line,
+// as it takes the value of a select bound to a variable (Value) as its default.
 func (h *huhForms) menu(title string, opts []string, choice string, nav Nav) (string, error) {
 	options := make([]huh.Option[string], 0, len(opts))
 	for _, o := range opts {
 		options = append(options, huh.NewOption(reviewLabels[o], o))
 	}
-	if err := h.run(nav, huh.NewSelect[string]().Title(title).Description("Ctrl+C cancels; nothing is written").
-		Options(options...).Value(&choice)); err != nil {
+	const desc = "Ctrl+C cancels; nothing is written"
+	sel := huh.NewSelect[string]().Title(title).Description(desc).Options(options...)
+	if choice != "" {
+		sel.Value(&choice)
+	}
+	if err := h.run(nav, h.described(desc, sel)...); err != nil {
 		return "", err
 	}
-	return choice, nil
+	got, _ := sel.GetValue().(string)
+	return got, nil
 }

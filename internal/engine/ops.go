@@ -402,20 +402,70 @@ func (e *Engine) editedSync(spec InstallSpec, si ScopeInstall, wrote []fileEdit,
 	slices.Sort(modules)
 	req := &SyncRequest{Scope: si.Scope, Modules: slices.Compact(modules), Options: spec.Options, Display: spec.Options.Display}
 	if pending {
-		req.write = &profileWrites{read: map[string]*profile.Profile{}}
-		for _, f := range mine {
-			_, data, err := f.layer.read.Edit(f.layer.Path, f.change)
-			if err != nil {
-				return nil, err
-			}
-			_, p, err := madeFile(profile.KindUser, f.layer.Path, data)
-			if err != nil {
-				return nil, err
-			}
-			req.write.read[f.layer.Path] = p
+		if req.write, err = pendingWrites(mine); err != nil {
+			return nil, err
 		}
 	}
 	return req, nil
+}
+
+// pendingWrites reads the profile files of yours fs edit as the edits would write them, for a sync
+// of another scope planned before they are written.
+func pendingWrites(fs []fileEdit) (*profileWrites, error) {
+	w := &profileWrites{read: map[string]*profile.Profile{}}
+	for _, f := range fs {
+		_, data, err := f.layer.read.Edit(f.layer.Path, f.change)
+		if err != nil {
+			return nil, err
+		}
+		_, p, err := madeFile(profile.KindUser, f.layer.Path, data)
+		if err != nil {
+			return nil, err
+		}
+		w.read[f.layer.Path] = p
+	}
+	return w, nil
+}
+
+// confirmThen asks, before Uninstall at sc writes edits, about the removals the sync of each scope
+// in opts.Then would make once they are written (opts.ConfirmThen); a No is ErrDeclined, nothing
+// written. A scope that loads none of the files edits changes is not asked about.
+func (e *Engine) confirmThen(ctx context.Context, opts Options, edits []fileEdit) error {
+	for _, o := range opts.Then {
+		layers, err := e.scopeLayers(o)
+		if err != nil {
+			return err
+		}
+		var mine []fileEdit
+		for _, f := range edits {
+			if f.layer.Key == "" && slices.ContainsFunc(layers, func(l Layer) bool { return l.Path == f.layer.Path }) {
+				mine = append(mine, f)
+			}
+		}
+		if len(mine) == 0 {
+			continue
+		}
+		w, err := pendingWrites(mine)
+		if err != nil {
+			return err
+		}
+		res, err := e.Sync(ctx, SyncRequest{Scope: o, Options: Options{DryRun: true, Trust: opts.Trust, Display: opts.Display}, Display: opts.Display,
+			write: w, held: true}) // the uninstall holds the profiles lock
+		if err != nil {
+			return err
+		}
+		if len(res.Removals) == 0 {
+			continue
+		}
+		yes, err := opts.ConfirmThen(o, slices.Clone(res.Removals))
+		switch {
+		case err != nil:
+			return err
+		case !yes:
+			return ErrDeclined
+		}
+	}
+	return nil
 }
 
 // removalNames are the modules rs removes, each with the assistants it is removed from where known.
@@ -2825,6 +2875,11 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	clearing, err := e.picksToClear(sc, names, changes, pr.plan.Ledger, opts, res)
 	if err != nil {
 		return nil, err
+	}
+	if opts.ConfirmThen != nil && !opts.Force {
+		if err := e.confirmThen(ctx, opts, edits); err != nil {
+			return nil, err
+		}
 	}
 	if opts.DryRun {
 		return res, nil

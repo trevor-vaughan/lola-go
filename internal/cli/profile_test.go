@@ -259,7 +259,7 @@ var _ = Describe("profiles", func() {
 		no := &confirming{answers: []bool{false}}
 		r = lolaAsking(no, "profile", "user:try", "--remove", "--user")
 		Expect(r.code).To(Equal(0), "a No is a cancel")
-		Expect(r.err).To(ContainSubstring("aborted; nothing was removed."))
+		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(no.questions).To(Equal([]string{"Remove profile user:try (" + try + ")? It goes to the trash"}))
 		Expect(try).To(BeARegularFile())
 
@@ -700,7 +700,7 @@ var _ = Describe("profiles", func() {
 			r := lolaAsking(no, "profile", "docs", "--on", "--user", extra)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(no.whereSteps).To(Equal([]cli.WhereStep{question}), "%s never answers it", extra)
-			Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			led, err := ledger.Load(p.UserLedger)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(led.Profile).To(Equal(&ledger.Active{Name: "user:go", By: ledger.ByOn}))

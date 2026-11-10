@@ -42,7 +42,7 @@ func (a *app) profileSplit(cmd *cobra.Command, eng *engine.Engine, args []string
 		return func(w io.Writer, s style) { printTrustDiff(w, s, name, "lola profile", rep, "") }
 	}
 	var asked bool
-	req.Show, req.Trust, req.ConfirmRemovals = a.syncQuestions(cmd, f, false, "Remove these and split? No applies nothing", diff, &asked)
+	req.Show, req.Trust, req.ConfirmRemovals, _ = a.syncQuestions(cmd, f, false, "Remove these and split? No applies nothing", Nav{}, diff, &asked)
 	res, err := eng.Split(cmd.Context(), req)
 	if errors.Is(err, engine.ErrDeclined) {
 		return ErrAborted
@@ -120,7 +120,7 @@ func (a *app) offerSplit(run func(*cobra.Command, []string) error) func(*cobra.C
 			return func(w io.Writer, s style) { printTrustDiff(w, s, name, "lola profile", rep, "") }
 		}
 		var trusted bool
-		req.Show, req.Trust, req.ConfirmRemovals = a.syncQuestions(cmd, syncFlags{}, false, "Remove these and split? No applies nothing", diff, &trusted)
+		req.Show, req.Trust, req.ConfirmRemovals, _ = a.syncQuestions(cmd, syncFlags{}, false, "Remove these and split? No applies nothing", Nav{}, diff, &trusted)
 		if _, serr := eng.Split(cmd.Context(), req); serr != nil {
 			switch {
 			case asking != nil: // the question itself failed (an interrupt, say)

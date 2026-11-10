@@ -145,6 +145,18 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 				steps: steps, did: steps,
 				written: func() bool { return read(filepath.Join(proj, ".claude/commands/ship.md")) != "python ship\n" },
 			}
+		case "init":
+			dir := filepath.Join(tmp, "fresh")
+			Expect(os.MkdirAll(dir, 0o755)).To(Succeed())
+			GinkgoT().Chdir(dir)
+			return confirmCase{
+				args: []string{"init"}, plan: "will create module fresh in " + dir + " (agent-plugins):", planLines: 4,
+				question: "Create module fresh in " + dir + "?", hint: "lola init --json -y", done: "✓ created module fresh in . (agent-plugins)",
+				written: func() bool {
+					_, err := os.Stat(filepath.Join(dir, "plugin.json"))
+					return err == nil
+				},
+			}
 		}
 		Fail("no fixture for " + command)
 		return confirmCase{}
@@ -239,7 +251,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 					ctx = "" // no line under --json
 				}
 				Expect(p.before[0]).To(HavePrefix(ctx + c.plan + "\n"))
-				Expect(r.err).To(Equal(p.before[0]+"aborted; nothing changed.\n"), "the plan, the question, then the abort")
+				Expect(r.err).To(Equal(p.before[0]+"✗ cancelled — nothing was changed\n"), "the plan, the question, then the abort")
 				Expect(c.written()).To(BeFalse())
 			}
 		},
@@ -273,8 +285,9 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		},
 		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"))
 
-	// onTerminal runs c on a terminal lines rows tall whose keys quit each viewer, answering yes.
-	onTerminal := func(c confirmCase, lines string) (*confirming, result) {
+	// onTerminal runs c on a terminal lines rows tall whose first key is key and whose later keys
+	// quit each viewer, answering yes.
+	onTerminal := func(c confirmCase, lines, key string) (*confirming, result) {
 		GinkgoHelper()
 		GinkgoT().Setenv("LOLA_PAGER", "")
 		GinkgoT().Setenv("COLUMNS", "80")
@@ -285,7 +298,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 			Expect(typed.Close()).To(Succeed())
 			Expect(in.Close()).To(Succeed())
 		})
-		_, err = typed.WriteString("q")
+		_, err = typed.WriteString(key)
 		Expect(err).NotTo(HaveOccurred())
 		// The result is taller than the terminal too: its viewer gets its own q, typed once the
 		// plan's viewer has exited.
@@ -308,7 +321,7 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 	DescribeTable("c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question",
 		func(command string) {
 			c := fixture(command)
-			p, r := onTerminal(c, "2")
+			p, r := onTerminal(c, "2", "q")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
 			Expect(r.out).To(ContainSubstring(c.plan + "\n"))
@@ -316,14 +329,14 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 			Expect(p.before[0]).NotTo(ContainSubstring(c.plan), "the plan went to the viewer, not stderr")
 			Expect(c.written()).To(BeTrue())
 		},
-		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"))
+		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"), Entry("init", "init"))
 
 	DescribeTable("c9: on a terminal, <cmd>'s plan prints plainly before the question when the viewer is bypassed",
 		func(command string, bypass func(), more ...string) {
 			c := fixture(command)
 			bypass()
 			c.args = with(c.args, more...)
-			p, r := onTerminal(c, "2")
+			p, r := onTerminal(c, "2", "q")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).NotTo(ContainSubstring("\x1b[?1049h"))
 			Expect(p.before[0]).To(Or(HavePrefix(c.context+c.plan+"\n"), ContainSubstring("\r\x1b[2K"+c.plan+"\n")),
@@ -333,6 +346,18 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		Entry("migrate, NO_PAGER set", "migrate", func() { GinkgoT().Setenv("NO_PAGER", "1") }),
 		Entry("migrate, --no-pager", "migrate", func() {}, "--no-pager"),
 		Entry("uninstall, NO_PAGER set", "uninstall", func() { GinkgoT().Setenv("NO_PAGER", "1") }))
+
+	DescribeTable("viewer: viewer --ctrl+c (a question follows)--> cancelled",
+		func(command string) {
+			c := fixture(command)
+			p, r := onTerminal(c, "2", "\x03")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.out).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
+			Expect(p.questions).To(BeEmpty(), "Ctrl+C in the plan's viewer ends the command: its question is not asked")
+			Expect(c.written()).To(BeFalse())
+		},
+		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"), Entry("init", "init"))
 
 	DescribeTable("the refusal's plan keys equal those -n --json prints for the same run",
 		func(command string) {
@@ -427,7 +452,7 @@ var _ = Describe("lola init asks before scaffolding the current directory", func
 			r := lolaAsking(p, args...)
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.out).To(BeEmpty())
-			Expect(r.err).To(Equal(fmt.Sprintf(plan, dir) + "aborted; nothing changed.\n"))
+			Expect(r.err).To(Equal(fmt.Sprintf(plan, dir) + "✗ cancelled — nothing was changed\n"))
 			empty(dir)
 		}
 	})

@@ -63,7 +63,7 @@ var _ = Describe("Execute after a signal", func() {
 	It("still exits 0 for a cancelled prompt: Ctrl+C at an accessible prompt is a SIGINT too", func() {
 		code, out := run(syscall.SIGINT, ErrAborted)
 		Expect(code).To(Equal(0))
-		Expect(out).To(Equal("aborted; nothing changed.\n"))
+		Expect(out).To(Equal("✗ cancelled — nothing was changed\n"))
 	})
 })
 
@@ -100,13 +100,7 @@ func TestInterruptChild(t *testing.T) {
 		})
 	case "hooks":
 		root = ask(func() error {
-			cmd, err := NewRootCmd(os.Getenv)
-			if err != nil {
-				return err
-			}
-			cmd.SetIn(os.Stdin)
-			cmd.SetErr(os.Stderr)
-			_, err = (&app{getenv: os.Getenv}).ask(cmd, "Run m's install hooks?")
+			_, err := h.Consent("Run m's install hooks?")
 			return err
 		})
 	default:

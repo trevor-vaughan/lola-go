@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 
-	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
@@ -37,7 +36,9 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Na
 	}
 	if p.Interactive() {
 		// page returns once the viewer or pager exits, so the question is never asked inside it.
-		a.pageThen(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), asking: true}, question, show)
+		if err := a.pageThen(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), asking: true}, question, show); err != nil {
+			return err
+		}
 		ok, err := p.Confirm(question, nav)
 		if err == nil && !ok {
 			return ErrAborted
@@ -105,17 +106,17 @@ func planFields(plan any) (map[string]any, error) {
 	return fields, nil
 }
 
-// askScript shows the project's install script q, beside the project's root, and asks whether to
+// askScript shows the project's install script q, beside the project's root, and asks p whether to
 // run it, or, with no copy for it to wrap now (q.Later), to trust it for later runs.
-func (a *app) askScript(cmd *cobra.Command, q engine.ScriptQuestion) (bool, error) {
+func askScript(cmd *cobra.Command, p Prompter, q engine.ScriptQuestion) (bool, error) {
 	w := cmd.ErrOrStderr()
 	fmt.Fprintf(w, "The project at %s has a %s script. It runs as you, unconfined, for every module lola installs there:\n", q.Root, q.Event)
 	fmt.Fprintf(w, "    %s (sha256 %s)\n", q.Path, q.SHA256)
 	fmt.Fprintln(w, "  Consent covers only the script listed, not other files it runs; review those too.")
 	if q.Later {
-		return a.ask(cmd, "Trust this project's "+q.Event+" script for later runs?")
+		return p.Consent("Trust this project's " + q.Event + " script for later runs?")
 	}
-	return a.ask(cmd, "Run this project's "+q.Event+" script?")
+	return p.Consent("Run this project's " + q.Event + " script?")
 }
 
 // hookOptions sets the hook options of a command: install hooks' and scripts' output goes to
@@ -125,10 +126,11 @@ func (a *app) askScript(cmd *cobra.Command, q engine.ScriptQuestion) (bool, erro
 // the engine asks only about those.
 func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
 	opts.HookOutput, opts.Run = cmd.ErrOrStderr(), cmd.CommandPath()
-	if !interactive(cmd) || a.json {
+	p := a.prompter(cmd) // never asks under --json
+	if !p.Interactive() {
 		return
 	}
-	opts.AskScript = func(q engine.ScriptQuestion) (bool, error) { return a.askScript(cmd, q) }
+	opts.AskScript = func(q engine.ScriptQuestion) (bool, error) { return askScript(cmd, p, q) }
 	opts.Ask = func(module string, hooks []engine.HookScript) (bool, error) {
 		w := cmd.ErrOrStderr()
 		fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
@@ -136,7 +138,7 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
 			fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256)
 		}
 		fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
-		return a.ask(cmd, "Run "+module+"'s install hooks?")
+		return p.Consent("Run " + module + "'s install hooks?")
 	}
 	opts.AskRuntimeHooks = func(module string, hooks []engine.RuntimeHook) (bool, error) {
 		w := cmd.ErrOrStderr()
@@ -151,29 +153,8 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
 			}
 		}
 		fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
-		return a.ask(cmd, "Install "+module+"'s "+what+"?")
+		return p.Consent("Install " + module + "'s " + what + "?")
 	}
-}
-
-// ask asks a yes/no question on stderr, defaulting to No. In accessible mode end of input and
-// Ctrl+C are a cancel, not the default: huh would otherwise answer No and the install would go
-// on, or lola would die of the signal.
-func (a *app) ask(cmd *cobra.Command, question string) (bool, error) {
-	ok := false
-	accessible := a.accessible()
-	in := &eofReader{r: cmd.InOrStdin()}
-	form := huh.NewForm(huh.NewGroup(huh.NewConfirm().Title(question).Value(&ok))).
-		WithOutput(cmd.ErrOrStderr()).WithAccessible(accessible)
-	var err error
-	if accessible {
-		err = in.catch(form.WithInput(in).Run)
-	} else {
-		err = form.WithInput(cmd.InOrStdin()).Run()
-	}
-	if errors.Is(err, huh.ErrUserAborted) || in.eof {
-		return false, ErrAborted
-	}
-	return ok, err
 }
 
 // runtimeHookLines describes one runtime hook for consent and the summary: its event, matcher

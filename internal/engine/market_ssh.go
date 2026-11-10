@@ -25,10 +25,12 @@ type MarketSSHHost struct {
 	Entries int
 }
 
-// MarketSSHStep asks which of a marketplace's ssh hosts to allow.
+// MarketSSHStep asks which of a marketplace's ssh hosts to allow. Back says the run asked the
+// marketplace's name before it: the picker may answer ErrBack to ask the name again.
 type MarketSSHStep struct {
 	Market string
 	Hosts  []MarketSSHHost // by host name
+	Back   bool
 }
 
 // MarketSSHRevokeRequest is lola market <name> --ssh-host <host>... --remove.

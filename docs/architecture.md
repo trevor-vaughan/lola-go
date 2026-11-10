@@ -60,6 +60,10 @@ Maintainer notes on Packages. It has its own page: [Packages](architecture/packa
 
 How selections work and how the install flow runs. It has its own page: [Selections and the install flow](architecture/install-flow.md).
 
+## TUI flows
+
+Each interactive surface as a state machine: its screens, transitions and exits. It has its own page: [TUI flows](architecture/tui-flows.md).
+
 ## Plans and the ledger
 
 Maintainer notes on Plans and the ledger. It has its own page: [Plans and the ledger](architecture/plans-and-the-ledger.md).

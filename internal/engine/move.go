@@ -45,7 +45,7 @@ type MoveRequest struct {
 	Options         Options
 	ConfirmRemovals func([]Removal) (bool, error)
 	Trust           func(TrustReport) (TrustAnswer, error)
-	Show            func(TrustReport)
+	Show            func(TrustReport) error
 	Replace         func(module, label string) (bool, error)
 	// Source, when set, is told the other scope once the move knows it takes the entries from there,
 	// before it asks or writes anything: the CLI prints that scope's context.

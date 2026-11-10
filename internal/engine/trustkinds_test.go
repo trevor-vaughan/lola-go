@@ -447,6 +447,20 @@ var _ = Describe("typed trust", func() {
 			Receipt: answer(true, nil)}, "kit2 has a pre-install hook, and lola runs hooks only with your consent"),
 	)
 
+	It("an error showing the --trust record ends the sync before the receipt, recording nothing", func() {
+		kit("{pre-install: hooks/pre.sh}")
+		pull("kit")
+		receipts := 0
+		_, err := e.Sync(ctx, engine.SyncRequest{Scope: sc, Show: func(engine.TrustReport) error { return context.Canceled },
+			Options: engine.Options{Trust: engine.TrustEntries | engine.TrustHooks, Receipt: func([]engine.Consent) (bool, error) { receipts++; return true, nil }}})
+		Expect(err).To(MatchError(context.Canceled))
+		Expect(receipts).To(BeZero())
+		Expect(consented()).To(BeEmpty())
+		Expect(trusts("kit")).To(BeFalse())
+		Expect(ran()).To(BeNil())
+		Expect(filepath.Join(proj, ".claude")).NotTo(BeADirectory())
+	})
+
 	It("covered items reach the receipt once, grouped in canonical order, before anything is written", func() {
 		kit("{pre-install: hooks/pre.sh}")
 		pull("kit")

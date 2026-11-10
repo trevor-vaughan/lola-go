@@ -40,7 +40,7 @@ type Prompter interface {
 	Confirm(question string, nav Nav) (bool, error)
 	// Where asks where a change goes, or which restore lola trash's review
 	// runs: Title, one row per option and Cancel last, default the first; it answers the index of
-	// the option chosen, ErrAborted for Cancel.
+	// the option chosen, ErrCancelled for Cancel.
 	Where(WhereStep) (int, error)
 	// Profiles asks which of a source's profiles lola profile --add adds: a filterable
 	// multi-select, nothing preselected.
@@ -75,11 +75,19 @@ type Prompter interface {
 	// Background asks whether the terminal's background is dark, for the pickers' colors.
 	// lola asks once, when neither config.yaml nor the terminal says, and saves the answer.
 	Background() (bool, error)
+	// Consent asks a hook or project-script consent question ("Run <m>'s install hooks?"), default
+	// No: a plain yes/no on stderr, outside the forms' theme and keys, so neither q nor Esc answers
+	// it. Ctrl+C, and end of input in accessible mode, are ErrAborted.
+	Consent(question string) (bool, error)
 }
 
 // ErrBack is a Prompter's answer when the user goes back a screen (Esc): the flow asks the screen
 // before again, its last answer preselected. Only a step whose Nav sets Back returns it.
-var ErrBack = errors.New("back")
+var ErrBack = engine.ErrBack
+
+// ErrCancelled is a question's Cancel option picked (Where's), as against Ctrl+C: it is
+// ErrAborted to a caller that does not tell them apart.
+var ErrCancelled = fmt.Errorf("%w", ErrAborted)
 
 // Nav is where a question stands in its flow, for the keys of the full-screen forms: Back says
 // there is a screen to go back to, which Esc does (on the first screen Esc says so instead), and
@@ -133,26 +141,31 @@ type TidyPickStep struct {
 // TidyKeepStep offers the keep-list entries for the candidates TidyPick did not choose: each
 // option's ID is an escaped literal selector, and its Label the selector and the assistants whose
 // items it keeps, already made safe to print. Required is set when nothing was chosen to move:
-// an empty answer would then do nothing, so the picker refuses it.
+// an empty answer would then do nothing, so the picker refuses it. Preselect is the last answer
+// when the closing question goes back to the picker (nothing at first).
 type TidyKeepStep struct {
-	Options  []TidyOption
-	Required bool
-	Nav      Nav
+	Options   []TidyOption
+	Required  bool
+	Preselect []string
+	Nav       Nav
 }
 
 // MarketNameStep asks for the name of a marketplace: Why the name it has will not do, Value the
-// first free name, pre-filled, and Problem why the last answer was refused ("" on the first ask).
+// answer pre-filled (the first free name, or the last answer as typed when it was refused), and
+// Problem why the last answer was refused ("" on the first ask).
 // Every string is safe to print.
 type MarketNameStep struct {
 	Why, Value, Problem string
 }
 
 // SSHHostStep offers the ssh hosts a catalog names that you have not allowed, each with the entries
-// it would admit; nothing is preselected. Strings are raw: the adapter prints them through
+// it would admit; nothing is preselected. Nav places it for Esc: it goes back to the name question
+// when lola market --add asked one. Strings are raw: the adapter prints them through
 // untrusted.Text.
 type SSHHostStep struct {
 	Market string
 	Hosts  []SSHHostChoice
+	Nav    Nav
 }
 
 // SSHHostChoice is one host SSHHostStep offers, with the number of entries it would admit.
@@ -172,10 +185,13 @@ type ProfileStep struct {
 // TrustStep is sync's trust question. Changes is the number of changes "Trust
 // all" accepts, one per row of the diff, the top-level targets' included. Groups are the entries Choose… offers, one group per kind of change in the
 // diff's order, nothing preselected; with none (the top-level targets are the only change) the
-// question offers only Trust all and Cancel.
+// question offers only Trust all and Cancel. Answer is the answer given before, when the question is
+// asked again (Esc from the removals question after it): Trust all, or the entries Choose… ticked,
+// under the cursor; the zero value puts the cursor on Cancel.
 type TrustStep struct {
 	Changes int
 	Groups  []TrustGroup
+	Answer  engine.TrustAnswer
 }
 
 // TrustGroup is one kind of change in the picker, titled with its count.
@@ -268,11 +284,13 @@ type ModuleStep struct {
 // MembersStep asks which profiles a bundle combines: Title
 // names the bundle, Options are the profiles it can name, each Name as its file would write it and
 // Label as the page shows it (a member that names no profile says so), and Preselect its members
-// now; a filterable multi-select, where ticking none is an answer (a bundle of nothing).
+// now; a filterable multi-select, where ticking none is an answer (a bundle of nothing). Nav places
+// it for Esc (a new bundle's page goes back to the question before it).
 type MembersStep struct {
 	Title     string
 	Options   []ModuleOption
 	Preselect []string
+	Nav       Nav
 }
 
 // ModuleGroup is one marketplace in the module picker: Title is "@acme — <description>", and
@@ -392,11 +410,14 @@ type ReviewStep struct {
 	Nav     Nav
 }
 
-// WhereStep is a question about where a change goes, or which restore lola trash runs: its title
-// and its answers' labels.
+// WhereStep is a question about where a change goes, or which restore lola trash runs: its title,
+// its answers' labels, Preselect, the answer under the cursor (the last one, when asked again),
+// and Nav, where it is in its command's flow.
 type WhereStep struct {
-	Title   string
-	Options []string
+	Title     string
+	Options   []string
+	Preselect int
+	Nav       Nav
 }
 
 // lola trash's picker actions (TrashAnswer.Action).
@@ -407,11 +428,13 @@ const (
 
 // TrashPickStep offers lola trash's runs, newest first, each one's [whole run] row followed by its
 // files' rows, indented: a run's row ticked takes the whole run, whatever of its files is ticked
-// (huh shows its files unticked). Labels are already made safe to print. Preselect is the last
-// answer when the picker asks again, and Problem why it does ("" at first).
+// (huh shows its files unticked). Labels are already made safe to print. Preselect and Action
+// are the last answer when the picker asks again (nothing and "" at first, which is Restore), and
+// Problem why it does ("" at first).
 type TrashPickStep struct {
 	Options   []TidyOption
 	Preselect []string
+	Action    string
 	Problem   string
 }
 
@@ -454,4 +477,5 @@ func (noPrompter) MigrateRoot(MigrateRootStep) (string, error) { return "", errN
 func (noPrompter) MigrateTargets(MigrateTargetStep) ([]string, error) {
 	return nil, errNoTerminal
 }
-func (noPrompter) Background() (bool, error) { return false, errNoTerminal }
+func (noPrompter) Background() (bool, error)    { return false, errNoTerminal }
+func (noPrompter) Consent(string) (bool, error) { return false, errNoTerminal }

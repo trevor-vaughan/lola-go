@@ -66,16 +66,19 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 			})
 		}
 	}
-	show := func(rps []engine.RemoteProfile) { a.page(cmd, cmd.ErrOrStderr(), stderr, printer(rps)) }
-	req.Show = func(rps []engine.RemoteProfile) {
-		if !a.json {
-			show(rps)
+	req.Show = func(rps []engine.RemoteProfile) error {
+		if a.json {
+			return nil
 		}
+		return a.pageThen(cmd, cmd.ErrOrStderr(), stderr, receiptNext(p, f.yes), printer(rps))
 	}
 	if p.Interactive() {
 		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
-			show(rps)
-			return p.Confirm("Update "+rps[0].Profile+"?", Nav{})
+			question := "Update " + rps[0].Profile + "?"
+			if err := a.pageThen(cmd, cmd.ErrOrStderr(), stderr, question, printer(rps)); err != nil {
+				return false, err
+			}
+			return p.Confirm(question, Nav{})
 		}
 	}
 	// With --trust the command shows one receipt: the update stages the
@@ -89,7 +92,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	res, err := eng.UpdateProfile(cmd.Context(), req)
 	if stopped, ok := errors.AsType[*engine.UpdateStoppedError](err); ok && batch {
 		if errors.Is(stopped.Err, ErrAborted) || cancelled(cmd.Context(), stopped.Err) {
-			return &abortedError{"aborted; nothing was updated."}
+			return ErrAborted
 		}
 		return stopped.Err // nothing was written
 	} else if ok {
@@ -111,7 +114,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 		passes, failed, err = a.collectSyncs(cmd, eng, scopes, applies, nil, scoped, f.trust, req.Batch.Items, runWithout(cmd, args))
 		aborted := errors.Is(err, ErrAborted) || cancelled(cmd.Context(), err)
 		if failed >= 0 && aborted {
-			return &abortedError{"aborted; nothing was updated."} // a Cancel, Ctrl+C or a No to the removals
+			return ErrAborted // a Cancel, Ctrl+C or a No to the removals
 		}
 		if failed >= 0 {
 			// A scope's sync refused before the receipt: the update is kept, after the
@@ -123,7 +126,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 			}
 		}
 		if errors.Is(err, ErrAborted) {
-			return &abortedError{"aborted; nothing was updated."}
+			return ErrAborted
 		}
 		if err != nil {
 			return err
@@ -142,7 +145,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 				fmt.Fprintln(cmd.ErrOrStderr(), noticeLine(stderr, n))
 			}
 		}
-		return &abortedError{"aborted; nothing was updated."}
+		return ErrAborted
 	}
 	doc := profileUpdateDoc{ProfileUpdateResult: res, Scopes: []updateScopeDoc{}}
 	if !a.json {
@@ -348,11 +351,11 @@ func (a *app) updateStopped(cmd *cobra.Command, eng *engine.Engine, stopped *eng
 	if ctrlC && others == nil && failed == nil {
 		switch {
 		case done == "":
-			return &abortedError{"aborted; nothing was updated."}
+			return ErrAborted
 		case len(syncs) > 0:
 			done += ", but not applied (" + strings.Join(syncs, ", then ") + ")"
 		}
-		return &abortedError{"aborted; " + done + "; nothing else was updated."}
+		return &abortedError{"cancelled — " + done + "; nothing else was updated"}
 	}
 	msg := "the run stopped: " + untrusted.CleanErr(stopped.Err).Error()
 	// A signal's stop is said as such, with what else stopped the run, and Execute prints it before

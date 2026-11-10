@@ -66,15 +66,17 @@ type RemoteResult struct {
 }
 
 // consentRemote is the answer to keeping rps, remote profiles an --add or an --update fetched:
-// when --trust covers profiles, show shows them as a record and receipt is shown what is
-// trusted, items, once; otherwise ask asks.
+// when --trust covers profiles, show shows them as a record (an error it returns is the answer's)
+// and receipt is shown what is trusted, items, once; otherwise ask asks.
 func consentRemote(rps []RemoteProfile, items []Consent, covered bool, ask func([]RemoteProfile) (bool, error),
-	show func([]RemoteProfile), receipt func([]Consent) (bool, error)) (bool, error) {
+	show func([]RemoteProfile) error, receipt func([]Consent) (bool, error)) (bool, error) {
 	if !covered {
 		return ask(rps)
 	}
 	if show != nil {
-		show(rps)
+		if err := show(rps); err != nil {
+			return false, err
+		}
 	}
 	if receipt == nil {
 		return true, nil

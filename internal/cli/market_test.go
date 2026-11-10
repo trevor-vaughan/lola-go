@@ -205,7 +205,7 @@ var _ = Describe("lola market", func() {
 		r = lolaP(sp, "market", "--add", other)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(sp.nameSteps).To(Equal([]cli.MarketNameStep{{Why: "acme is already a marketplace, from " + url, Value: "acme-2"},
-			{Why: "acme is already a marketplace, from " + url, Value: "acme-2", Problem: "acme is already a marketplace, from " + url}}))
+			{Why: "acme is already a marketplace, from " + url, Value: "acme", Problem: "acme is already a marketplace, from " + url}}))
 		Expect(r.out).To(HavePrefix("✓ marketplace mine: 2 entries (Claude marketplace.json) from " + other + "\n"))
 		Expect(r.out).To(ContainSubstring("→ the catalog calls itself acme; it is your marketplace mine\n"))
 		r = lola("market", "acme", "--add", url)
@@ -482,7 +482,7 @@ var _ = Describe("lola market --remove, the Python verbs and every hint", func()
 		sp := &scripted{confirm: []bool{false}}
 		r = lolaP(sp, "market", "acme", "--del")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(Equal("aborted; nothing was removed.\n"))
+		Expect(r.err).To(Equal("✗ cancelled — nothing was changed\n"))
 		Expect(sp.calls).To(Equal([]string{"confirm:Forget marketplace acme (" + url + ") and drop its cached catalog?"}))
 		r = lola("market", "acme", "--erase", "-n")
 		Expect(r.out).To(Equal("→ would forget marketplace acme and drop its cached catalog\n"))
@@ -982,14 +982,14 @@ var _ = Describe("lola market --ssh-host", func() {
 		sp := &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){abort}}
 		r := lolaP(sp, "market", "priv", "--add", dir)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(Equal("aborted; no marketplace was added.\n"))
+		Expect(r.err).To(Equal("✗ cancelled — nothing was changed\n"))
 		Expect(p.Markets).NotTo(BeAnExistingFile())
 
 		Expect(lola("market", "priv", "--add", dir).code).To(Equal(0))
 		sp = &scripted{sshHosts: []func(cli.SSHHostStep) ([]string, error){abort}}
 		r = lolaP(sp, "market", "priv", "--update")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(Equal("aborted; no ssh host was allowed.\n"))
+		Expect(r.err).To(Equal("✗ cancelled — no ssh host was allowed\n"))
 		Expect(stored()).NotTo(ContainSubstring("ssh_hosts"))
 	})
 

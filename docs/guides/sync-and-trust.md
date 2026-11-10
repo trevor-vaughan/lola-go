@@ -322,7 +322,8 @@ flowchart TD
 
 It counts the diff's rows, the top-level `targets` row included; for a single change the first
 answer reads `Trust this change`. Cancel is under the cursor, so
-Enter alone changes nothing. *Choose…* opens filterable
+Enter alone changes nothing; in accessible mode (`LOLA_ACCESSIBLE=1`) a blank line answers nothing
+and asks again: type the number of the answer you want. *Choose…* opens filterable
 multi-selects, one per kind of change, in the diff's order, with nothing preselected, since trust
 is your consent: each option reads like `~ docs-kit ref v1 → v2; MCP server search changed`, and
 `- old-mod stop managing it and remove its files`. Choosing nothing cancels. lola prints your
@@ -357,12 +358,12 @@ accepts every change of the run. A module named like a kind of trust (`hooks`, s
 right after a bare `--trust`: write the module name before `--trust`, or after `--`.
 
 - The record is written once the sync has applied, so a failure asks again next time. Cancel or
-  Ctrl+C prints `aborted; the project was not changed.` (your cache may already hold versions you
+  Ctrl+C prints `✗ cancelled — the project was not changed` (your cache may already hold versions you
   trusted before). In accessible mode (`LOLA_ACCESSIBLE=1`), Ctrl+C at any question cancels the
   same way, with exit 0.
 - **A No to the removals** applies nothing.
   - It records the trust you just gave (only when it changed what the record holds), without the
-    pins lola did not write, and says what the next sync asks again: `removals declined; the
+    pins lola did not write, and says what the next sync asks again: `✗ removals declined; the
     project was not changed. The changes you trusted are recorded; the next lola sync asks only
     about the removals.`
   - lola records a pin it would write, or a folder's content, only once it writes it, so for

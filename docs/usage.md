@@ -623,7 +623,7 @@ modules it rewrites for another era in `rewrites` (`{module, target, from, to}`)
 | `PATH` | Where lola looks for installed assistants; relative entries are ignored |
 | `XDG_CONFIG_HOME` | User-scope manifest, `config.yaml`, `selections.yaml`, `markets.yaml`, `keep.yaml`, and OpenCode's user-scope directory (default `~/.config`) |
 | `LOLA_HOME` | The directory `lola migrate` reads (default `~/.lola`; must be absolute) |
-| `LOLA_ACCESSIBLE` | `1` draws the install flow and sync's questions as numbered line prompts (screen readers), and prints output without the viewer; Ctrl+C cancels them as it does a full-screen form |
+| `LOLA_ACCESSIBLE` | `1` asks every question as numbered line prompts (screen readers), each prompt's description printed before it, and prints output without the viewer; a menu with no default (the review's "Apply these changes?") asks again on a blank line; end of input and Ctrl+C cancel (`✗ cancelled — nothing was changed`, exit 0) |
 | `TERM` | `dumb` does the same as `LOLA_ACCESSIBLE=1` |
 | `LOLA_COLOR`, `NO_COLOR` | Color of output and of the install flow's forms (see the output contract) |
 | `LOLA_PAGER` | A pager to use instead of lola's viewer, for all human output and help, split on whitespace and run without a shell; `cat` prints ([Output contract](#output-contract)) |

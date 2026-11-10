@@ -74,16 +74,17 @@ func (a *app) paging(cmd *cobra.Command) paging {
 // that cannot start, is a warning, and the text is then printed capped: consent is never given
 // unseen.
 func (a *app) page(cmd *cobra.Command, w io.Writer, s style, print func(io.Writer, style)) {
-	a.pageThen(cmd, w, s, "", print)
+	_ = a.pageThen(cmd, w, s, "", print) // with no question to follow, Ctrl+C only closes the viewer: always nil
 }
 
 // pageThen is page for output that a question follows: then names it ("Migrate?"), and the
-// viewer's footer says q continues to it rather than quits.
-func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, print func(io.Writer, style)) {
+// viewer's footer says q continues to it rather than quits. Ctrl+C in the viewer ends the command
+// instead: pageThen returns ErrAborted, and the question is not asked.
+func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, print func(io.Writer, style)) error {
 	mode := a.paging(cmd)
 	if !mode.viewer && mode.argv == nil {
 		print(w, s)
-		return
+		return nil
 	}
 	out := cmd.OutOrStdout()
 	full := style{color: a.color(out), paged: true, verbose: s.verbose, asking: s.asking, width: s.width}
@@ -97,16 +98,21 @@ func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, pr
 		if problem := a.runPager(cmd, mode, &buf); problem != "" {
 			warn(problem)
 		}
-		return
+		return nil
 	}
 	width, height := a.width(out), a.height(out)
 	if width == 0 || height == 0 || newViewer(buf.String(), false, width, height).vp.TotalLineCount() < height {
 		fmt.Fprint(w, buf.String())
-		return
+		return nil
 	}
-	if _, err := a.view(cmd, buf.String(), false, false, Nav{}, then); err != nil {
+	ans, err := a.view(cmd, buf.String(), false, false, Nav{}, then)
+	switch {
+	case err != nil:
 		warn("the viewer failed: " + untrusted.CleanErr(err).Error())
+	case ans == viewCancel && then != "":
+		return ErrAborted
 	}
+	return nil
 }
 
 // runPager runs mode's pager with text on its stdin, writing to the terminal on stdout, and returns

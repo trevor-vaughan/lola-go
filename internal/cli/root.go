@@ -28,12 +28,12 @@ import (
 // version is stamped at build time with -ldflags "-X .../internal/cli.version=<v>".
 var version = "dev"
 
-// ErrAborted means the user declined or cancelled a prompt: exit 0, "aborted; nothing
-// changed." A Prompter returns it for Ctrl+C, end of input in accessible mode, and Quit.
+// ErrAborted means the user declined or cancelled a prompt: exit 0, "✗ cancelled — nothing was
+// changed". A Prompter returns it for Ctrl+C, end of input in accessible mode, and Quit.
 var ErrAborted = errors.New("aborted")
 
 // abortedError is a cancelled prompt whose command says what the cancel left as it was: exit 0,
-// with its message printed in place of "aborted; nothing changed.".
+// with its message printed after "✗ " in place of "cancelled — nothing was changed".
 // flagError is cobra's refusal of a command line's flags. They fail while the flags are parsed, so
 // a --json after the bad flag was never read: Execute looks for it in the command line itself.
 type flagError struct{ error }
@@ -46,8 +46,9 @@ func (e *abortedError) Error() string        { return e.msg }
 func (e *abortedError) Is(target error) bool { return target == ErrAborted }
 
 // quitError is a quit the user asked for with q, as against Ctrl+C or a No: exit 0, "✗ cancelled —
-// nothing was changed", in color when the forms that took the q are. A command that words its own
-// cancel (abortedError) keeps its wording for a quit too, as it says what the cancel left as it was.
+// nothing was changed", as every cancel prints, but in color when the forms that took the q are. A
+// command that words its own cancel (abortedError) keeps its wording for a quit too, as it says what
+// the cancel left as it was.
 type quitError struct{ color bool }
 
 func (e *quitError) Error() string        { return "cancelled — nothing was changed" }
@@ -300,10 +301,10 @@ func Execute(root *cobra.Command) int {
 		fmt.Fprintln(root.ErrOrStderr(), style{color: quit.color}.bad(quit.Error()))
 		return 0
 	case errors.As(err, new(*abortedError)):
-		fmt.Fprintln(root.ErrOrStderr(), err.Error())
+		fmt.Fprintln(root.ErrOrStderr(), style{}.bad(err.Error()))
 		return 0
 	case errors.Is(err, ErrAborted):
-		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing changed.")
+		fmt.Fprintln(root.ErrOrStderr(), style{}.bad((&quitError{}).Error()))
 		return 0
 	case root.Context() != nil && errors.As(context.Cause(root.Context()), &sig):
 		if u, ok := errors.AsType[*updateError](err); ok && u.doc.UpdatedText() != "" {

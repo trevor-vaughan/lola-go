@@ -104,7 +104,8 @@ lola market acme --remove                                    # forget it; asks (
       without writing.
     - On a terminal, `--add` asks `Allow ssh to which hosts?`: a picker of the hosts the catalog
       names that you have not allowed, with how many entries each admits, all unticked. No flag
-      ticks it for you.
+      ticks it for you. When the run asked the marketplace's name first, Esc there asks the name
+      again, the name you gave filled in.
     - Off a terminal, with `-n` or under `--json`, nothing is asked. The skips are grouped
       (`3 ssh sources`), `lola market acme` names each host, and a notice gives the complete command (`⚠ to allow ssh
       hosts → lola market acme --update --ssh-host git.example.com --ssh-host other.example.org`).
