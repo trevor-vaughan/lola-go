@@ -1,0 +1,29 @@
+.github/dependabot.yml
+  s_ff534527375c9d::t_4161fdc454dc35 1-15
+.mega-linter.yml
+  s_ff534527375c9d::t_81482d6dd7cefb 1-3
+.gitignore
+  s_ff534527375c9d::t_3c12729e6796cd 6-7
+.github/workflows/check.yml
+  s_ff534527375c9d::t_4161fdc454dc35 1-33
+.github/workflows/megalinter.yml
+  s_ff534527375c9d::t_81482d6dd7cefb 1-65
+.github/workflows/e2e.yml
+  s_ff534527375c9d::t_4161fdc454dc35 1-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9809535a5d6c9a80cdfbe3a57df28891b93a126b",
+  "prompts": {},
+  "sessions": {
+    "s_ff534527375c9d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b941e74-4436-4cdb-8fdc-72de5aacc69e",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
