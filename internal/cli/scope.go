@@ -62,6 +62,7 @@ type scopePicker struct {
 	cwd        string
 	other      string // the last Other directory as typed, offered again
 	refuseHome bool   // the command refuses a project at the home directory: install and sync
+	create     bool   // offer to create an Other directory that does not exist yet: install
 }
 
 // pick asks the picker for res, with step's question and preselection, until the answer, never
@@ -114,7 +115,8 @@ func (sp *scopePicker) pick(res engine.ScopeResolution, step ScopeStep) ([]strin
 // directory (the user scope's root, which install and sync refuse as a project), and returns it
 // absolute. A relative answer is
 // taken from the current directory; a leading ~ or ~/ is your home directory. An answer is offered again to edit only
-// when it is safe to show.
+// when it is safe to show. When sp.create, an answer that does not exist yet, and is shown as it
+// is, is created on your yes; a no, or Esc, asks again.
 func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (string, error) {
 	home := engine.Scope{Kind: target.Project, ProjectDir: sp.eng.Paths.Home}.Key()
 	offer := func(in string) string {
@@ -143,10 +145,23 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (str
 		switch {
 		case in == "":
 			problem = "enter the path of a directory"
+		case errors.Is(err, fs.ErrNotExist) && strings.HasPrefix(in, "~") && expanded == in:
+			problem = safe + " does not exist (only ~ and ~/ are expanded)"
 		case errors.Is(err, fs.ErrNotExist):
 			problem = safe + " does not exist"
-			if strings.HasPrefix(in, "~") && expanded == in {
-				problem += " (only ~ and ~/ are expanded)"
+			if !sp.create || safe != dir { // never create a path other than the one shown
+				break
+			}
+			ok, cerr := sp.p.Confirm("Create "+safe+"? It does not exist yet", nav)
+			if cerr != nil && !errors.Is(cerr, ErrBack) {
+				return "", cerr
+			}
+			if cerr == nil && ok {
+				if merr := os.MkdirAll(dir, 0o755); merr != nil {
+					problem = untrusted.Text(merr.Error(), untrusted.MaxName)
+				} else {
+					problem = ""
+				}
 			}
 		case errors.As(err, &pathErr):
 			problem = safe + ": " + pathErr.Err.Error()

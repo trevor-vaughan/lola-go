@@ -167,6 +167,8 @@ func (a *app) installCmd() *cobra.Command {
 			"directory…; nothing preselected, pick any of them); else a project with .lola/ at or\n" +
 			"above the current directory; else default_scope in $XDG_CONFIG_HOME/lola/config.yaml\n" +
 			"(version: 1, default_scope: project|user|both); otherwise install refuses to guess.\n" +
+			"A -C or Other directory that does not exist yet is created: on your yes on a terminal, or\n" +
+			"under -y or --force; a dry run never creates it.\n" +
 			"\n" +
 			"Components: $XDG_CONFIG_HOME/lola/selections.yaml lists the components you skip, globally\n" +
 			"and per project; a module from a profile takes its entry's only: and skip: instead (plus the\n" +

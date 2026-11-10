@@ -820,18 +820,20 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		Expect(os.MkdirAll(other, 0o755)).To(Succeed())
 		GinkgoT().Chdir(proj)
-		// scope: toggle Project and Other directory…, confirm; the path: first one that is not
-		// a directory, then the other project; components (one page, both roots alike): drop
-		// undo, confirm; review: Apply.
+		// scope: toggle Project and Other directory…, confirm; the path: first one that does not
+		// exist, declined to create, then the other project; components (one page, both roots
+		// alike): drop undo, confirm; review: Apply.
 		var errb bytes.Buffer
-		root, err := NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "3", "0", "nowhere", "../other", "2", "0", "")))
+		root, err := NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "3", "0", "nowhere", "n", "../other", "2", "0", "")))
 		Expect(err).NotTo(HaveOccurred())
 		var stdout bytes.Buffer
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
 		root.SetArgs([]string{"install", mod, "-t", "claude-code"})
 		Expect(Execute(root)).To(Equal(0), errb.String())
+		Expect(errb.String()).To(ContainSubstring("Create " + filepath.Join(proj, "nowhere") + "? It does not exist yet"))
 		Expect(errb.String()).To(ContainSubstring(filepath.Join(proj, "nowhere") + " does not exist"))
+		Expect(filepath.Join(proj, "nowhere")).NotTo(BeAnExistingFile())
 		Expect(errb.String()).To(ContainSubstring("Equivalent commands:\n" +
 			"  lola install " + mod + " --scope project -C " + proj + " -t claude-code --skip deploy:command/undo\n" +
 			"  lola install " + mod + " --scope project -C " + other + " -t claude-code --skip deploy:command/undo\n"))

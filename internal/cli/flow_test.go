@@ -834,11 +834,22 @@ var _ = Describe("the install flow", func() {
 		p := &scripted{
 			scope:   []func(cli.ScopeStep) ([]string, error){scopes("project", "other")},
 			dirs:    []func(cli.DirectoryStep) (string, error){dir(""), dir("~/elsewhere"), dir("~nobody/x"), dir("missing"), dir("notes.txt"), dir("."), dir(proj + "/"), dir("../other")},
+			confirm: []bool{false, false},
 			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")},
 			review:  []string{cli.ReviewApply},
 		}
 		r := lolaP(p, "install", "-t", "claude-code")
 		Expect(r.code).To(Equal(0), r.err)
+		var confirms []string
+		for _, c := range p.calls {
+			if strings.HasPrefix(c, "confirm:") {
+				confirms = append(confirms, c)
+			}
+		}
+		Expect(confirms).To(Equal([]string{"confirm:Create " + filepath.Join(home, "elsewhere") + "? It does not exist yet",
+			"confirm:Create " + filepath.Join(proj, "missing") + "? It does not exist yet"}), "never offered for a literal ~nobody/x")
+		Expect(filepath.Join(home, "elsewhere")).NotTo(BeAnExistingFile())
+		Expect(filepath.Join(proj, "missing")).NotTo(BeAnExistingFile())
 		var problems []string
 		for _, st := range p.dirSteps {
 			problems = append(problems, st.Problem)
@@ -853,6 +864,140 @@ var _ = Describe("the install flow", func() {
 		Expect(filepath.Join(proj, ".claude/commands/deploy.md")).To(BeARegularFile())
 		Expect(filepath.Join(other, ".claude/commands/deploy.md")).To(BeARegularFile())
 		Expect(r.err).To(ContainSubstring("  project (" + other + "), picked:\n"))
+	})
+
+	It("creates an Other directory that does not exist yet on your yes, and installs there", func() {
+		fresh := filepath.Join(proj, "new", "app")
+		p := &scripted{
+			scope:   []func(cli.ScopeStep) ([]string, error){scopes("other")},
+			dirs:    []func(cli.DirectoryStep) (string, error){dir("new/app")},
+			confirm: []bool{true},
+			modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("deploy")},
+			review:  []string{cli.ReviewApply},
+		}
+		r := lolaP(p, "install", "-t", "claude-code")
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(p.calls).To(ContainElement("confirm:Create " + fresh + "? It does not exist yet"))
+		Expect(p.dirSteps).To(HaveLen(1), "accepted without asking again")
+		Expect(filepath.Join(fresh, ".claude/commands/deploy.md")).To(BeARegularFile())
+	})
+
+	Describe("-C names a directory that does not exist yet", func() {
+		var fresh string
+		BeforeEach(func() { fresh = filepath.Join(tmp, "fresh", "app") })
+
+		It("refuses a dry run with the mkdir that creates it, and creates nothing", func() {
+			for _, yes := range [][]string{nil, {"-y"}} {
+				r := lola(slices.Concat([]string{"install", "deploy", "-C", fresh, "-t", "claude-code", "-n"}, yes)...)
+				Expect(r.code).To(Equal(1), r.err)
+				Expect(r.err).To(HaveSuffix("error: -C " + fresh + " does not exist\n  hint: create it first: mkdir -p " + fresh + "\n"))
+				Expect(filepath.Join(tmp, "fresh")).NotTo(BeAnExistingFile(), "%v", yes)
+			}
+		})
+
+		It("creates it under -y or --force, says so, and installs there", func() {
+			for _, flag := range []string{"-y", "--force"} {
+				Expect(os.RemoveAll(filepath.Join(tmp, "fresh"))).To(Succeed())
+				r := lola("install", "deploy", "-C", fresh, "-t", "claude-code", flag)
+				Expect(r.code).To(Equal(0), r.err)
+				Expect(r.err).To(HavePrefix("created " + fresh + "\n"))
+				Expect(filepath.Join(fresh, ".claude/commands/deploy.md")).To(BeARegularFile(), flag)
+			}
+		})
+
+		It("on a terminal, asks before creating it and installs on your yes", func() {
+			p := &scripted{confirm: []bool{true}, review: []string{cli.ReviewApply}}
+			r := lolaP(p, "install", "deploy", "-C", fresh, "-t", "claude-code")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(p.calls[0]).To(Equal("confirm:Create " + fresh + "? It does not exist yet"))
+			Expect(p.confirmNavs[0]).To(Equal(cli.Nav{}))
+			Expect(r.err).To(HavePrefix("created " + fresh + "\n"))
+			Expect(filepath.Join(fresh, ".claude/commands/deploy.md")).To(BeARegularFile())
+		})
+
+		It("on a terminal, your no creates nothing and exits 0", func() {
+			p := &scripted{confirm: []bool{false}}
+			r := lolaP(p, "install", "deploy", "-C", fresh, "-t", "claude-code")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+			Expect(p.calls).To(Equal([]string{"confirm:Create " + fresh + "? It does not exist yet"}))
+			Expect(filepath.Join(tmp, "fresh")).NotTo(BeAnExistingFile())
+		})
+
+		It("off a terminal, refuses with the -y run and the mkdir, quoted for the shell, as text and JSON", func() {
+			spaced := filepath.Join(tmp, "fresh", "my app")
+			r := lola("install", "deploy", "-C", spaced, "-t", "claude-code")
+			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.err).To(HaveSuffix("error: -C " + spaced + " does not exist\n" +
+				"  hint: rerun with -y to create it: lola install deploy --root '" + spaced + "' --target claude-code -y\n" +
+				"  hint: or create it first: mkdir -p '" + spaced + "'\n"))
+
+			r = lola("install", "deploy", "-C", fresh, "-t", "claude-code", "--json")
+			Expect(r.code).To(Equal(1), r.err)
+			var refusal struct {
+				Error string   `json:"error"`
+				Hints []string `json:"hints"`
+			}
+			Expect(json.Unmarshal([]byte(r.err), &refusal)).To(Succeed(), r.err)
+			Expect(refusal.Error).To(Equal("-C " + fresh + " does not exist"))
+			Expect(refusal.Hints).To(Equal([]string{"rerun with -y to create it: lola install deploy --json --root " + fresh + " --target claude-code -y",
+				"or create it first: mkdir -p " + fresh}))
+			Expect(filepath.Join(tmp, "fresh")).NotTo(BeAnExistingFile())
+		})
+
+		It("refuses a scope flag that conflicts with -C before asking or creating anything", func() {
+			for _, extra := range [][]string{{"--user", "-y"}, {"--user", "-n"}, {"--user"}} {
+				p := &scripted{}
+				r := lolaP(p, slices.Concat([]string{"install", "deploy", "-C", fresh, "-t", "claude-code"}, extra)...)
+				Expect(r.code).To(Equal(1), r.err)
+				Expect(r.err).To(HaveSuffix("error: --user cannot be combined with -C/--root\n  hint: user scope has no project directory\n"), "%v", extra)
+				Expect(p.calls).To(BeEmpty(), "%v", extra)
+				Expect(filepath.Join(tmp, "fresh")).NotTo(BeAnExistingFile(), "%v", extra)
+			}
+			r := lola("install", "deploy", "-C", fresh, "--scope", "user", "-y")
+			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.err).To(ContainSubstring("error: --scope user cannot take -C"))
+			Expect(filepath.Join(tmp, "fresh")).NotTo(BeAnExistingFile())
+		})
+
+		It("refuses as before a path that cannot be shown as it is, creating nothing", func() {
+			evil := filepath.Join(tmp, "evil\x1b[2J")
+			p := &scripted{}
+			r := lolaP(p, "install", "deploy", "-C", evil, "-t", "claude-code", "-y")
+			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.err).To(HaveSuffix("error: -C " + filepath.Join(tmp, "evil?[2J") + ": not a directory\n"))
+			Expect(p.calls).To(BeEmpty())
+			Expect(evil).NotTo(BeAnExistingFile())
+		})
+
+		It("coaches a directory it cannot create, and creates nothing", func() {
+			if os.Geteuid() == 0 {
+				Skip("root writes into a read-only directory")
+			}
+			locked := filepath.Join(tmp, "locked")
+			Expect(os.Mkdir(locked, 0o555)).To(Succeed())
+			DeferCleanup(os.Chmod, locked, os.FileMode(0o755))
+			want := filepath.Join(locked, "app")
+			r := lola("install", "deploy", "-C", want, "-t", "claude-code", "-y")
+			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.err).To(HaveSuffix("error: mkdir " + want + ": permission denied\n  hint: create it first: mkdir -p " + want + "\n"))
+			Expect(want).NotTo(BeAnExistingFile())
+		})
+
+		It("keeps refusing a path under a regular file, creating nothing", func() {
+			writeTree(proj, map[string]string{"notes.txt": "x"})
+			r := lola("install", "deploy", "-C", "notes.txt/sub", "-t", "claude-code", "-y")
+			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.err).To(HaveSuffix("error: -C notes.txt/sub: not a directory\n"))
+			Expect(filepath.Join(proj, "notes.txt")).To(BeARegularFile())
+		})
+
+		It("is install's alone: another command refuses it as before", func() {
+			r := lola("tidy", "-C", fresh, "-y")
+			Expect(r.code).To(Equal(1), r.err)
+			Expect(r.err).To(ContainSubstring("-C " + fresh + ": not a directory"))
+			Expect(filepath.Join(tmp, "fresh")).NotTo(BeAnExistingFile())
+		})
 	})
 
 	It("asks again when Other directory or Project is the home directory, User ticked or not", func() {
@@ -907,6 +1052,8 @@ var _ = Describe("the install flow", func() {
 			dirs:  []func(cli.DirectoryStep) (string, error){dir(evil), func(cli.DirectoryStep) (string, error) { return "", cli.ErrAborted }},
 		}
 		lolaP(p, "install")
+		Expect(p.confirmNavs).To(BeEmpty(), "never offered to create a path that is not shown as it is")
+		Expect(evil).NotTo(BeAnExistingFile())
 		Expect(p.dirSteps[1].Problem).To(Equal(filepath.Join(tmp, "evil?[2J") + " does not exist"))
 		Expect(p.dirSteps[1].Value).To(BeEmpty(), "an unsafe answer is not offered again")
 	})

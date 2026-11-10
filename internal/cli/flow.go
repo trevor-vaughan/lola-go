@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -176,7 +178,7 @@ func (a *app) runInstall(cmd *cobra.Command, g argGuide, args []string, f instal
 	}
 	p := a.prompter(cmd)
 	fl := &installFlow{a: a, cmd: cmd, eng: eng, p: p, ask: !a.json && p.Interactive(), cwd: cwd, f: f, args: args, guide: g,
-		edits: edits, picker: &scopePicker{p: p, eng: eng, cwd: cwd, refuseHome: true}, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
+		edits: edits, picker: &scopePicker{p: p, eng: eng, cwd: cwd, refuseHome: true, create: true}, shown: map[string]bool{}, asked: map[string]bool{}, warned: map[string]bool{}}
 	if !fl.ask && len(args) == 0 {
 		return fl.missingArgument()
 	}
@@ -965,6 +967,9 @@ func (fl *installFlow) ensureScopes() error {
 		fl.a.printContext(fl.cmd, fl.eng, choiceScopes(fl.scopes), &t)
 		return nil
 	}
+	if err := fl.ensureRoot(); err != nil {
+		return err
+	}
 	req, err := fl.a.scopeRequest(fl.cwd, fl.ask)
 	if err != nil {
 		return err
@@ -998,6 +1003,58 @@ func (fl *installFlow) ensureScopes() error {
 			}
 			delete(fl.picks, key)
 		}
+	}
+	return nil
+}
+
+// ensureRoot creates -C's directory when it does not exist yet: under -y or --force, or on your
+// yes on a terminal. A dry run refuses with the mkdir that creates it; a run with no terminal to
+// ask on, also with the run with -y. Scope flags that conflict with -C are refused first, and a
+// path that cannot be shown as it is is never created; that and any other problem with -C is
+// scopeRequest's to refuse.
+func (fl *installFlow) ensureRoot() error {
+	if fl.a.root == "" {
+		return nil
+	}
+	dir, err := filepath.Abs(fl.a.root)
+	if err != nil {
+		return err
+	}
+	safe := untrusted.Text(dir, untrusted.MaxName)
+	if _, err := os.Stat(dir); !errors.Is(err, fs.ErrNotExist) || safe != dir {
+		return nil
+	}
+	req := engine.ScopeRequest{Scope: fl.a.scopeFlag, User: fl.a.user, Project: fl.a.project, Cwd: fl.cwd, ProjectDir: dir,
+		Command: "install", Both: true, Run: completeRun(fl.cmd, fl.args, scopeFlags...)}
+	if _, err := fl.eng.ResolveScope(req); err != nil {
+		return err
+	}
+	words := []string{"mkdir", "-p", safe}
+	if runtime.GOOS == "windows" { // PowerShell's mkdir creates the parents and has no -p
+		words = []string{"mkdir", safe}
+	}
+	mkdir := "create it first: " + errs.ShellJoin(words)
+	switch {
+	case fl.f.dry:
+		return errs.WithHints(fmt.Errorf("-C %s does not exist", safe), mkdir)
+	case fl.f.yes || fl.f.force:
+	case fl.ask:
+		ok, err := fl.p.Confirm("Create "+safe+"? It does not exist yet", Nav{})
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrAborted
+		}
+	default:
+		return errs.WithHints(fmt.Errorf("-C %s does not exist", safe),
+			"rerun with -y to create it: "+runWithout(fl.cmd, fl.hintArgs(fl.args), "yes")+" -y", "or "+mkdir)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return errs.WithHints(err, mkdir)
+	}
+	if !fl.a.json {
+		fmt.Fprintln(fl.cmd.ErrOrStderr(), "created "+safe)
 	}
 	return nil
 }

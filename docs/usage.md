@@ -64,7 +64,8 @@ How lola reads sources and keeps them in its cache. It has its own page: [Source
 ## Scopes and targets
 
 - **Project scope** (`--project`, or `-C <dir>` for another directory): files go into the
-  project; state lives in `.lola/`. Which scope a command acts on without a flag is in
+  project; state lives in `.lola/`. `lola install` creates a `-C` or Other directory that does
+  not exist yet, after asking on a terminal or under `-y`/`--force`, never in a dry run. Which scope a command acts on without a flag is in
   [Choosing a scope](guides/choosing-what-to-install.md#choosing-a-scope).
 - **User scope** (`--user`): files go into your home directory (OpenCode's into
   `$XDG_CONFIG_HOME/opencode/`); state lives under `$XDG_CONFIG_HOME/lola/` (your default
