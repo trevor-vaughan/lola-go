@@ -1,0 +1,185 @@
+internal/cli/flow_paths_test.go
+  s_631303c0ee2c96::t_efb8732774e824 7
+  s_631303c0ee2c96::t_bbc436b4c818fd 1-6,8-563
+docs/architecture/tui-flows.md
+  s_631303c0ee2c96::t_efb8732774e824 213-323
+  s_631303c0ee2c96::t_720cb2032425b1 1-212,324-1970
+AGENTS.md
+  s_631303c0ee2c96::t_168e3b56889901 102
+docs/architecture.md
+  s_631303c0ee2c96::t_d04541710d926c 63-66
+docs/architecture/install-flow.md
+  s_631303c0ee2c96::t_90f74a7f564733 232-234,281-283
+docs/architecture/marketplaces.md
+  s_631303c0ee2c96::t_93ec2d2d6ceb93 37
+docs/guides/choosing-what-to-install.md
+  s_631303c0ee2c96::t_6b15ee2f48f20c 165,183-190,210-214,223-225
+docs/guides/marketplaces.md
+  s_631303c0ee2c96::t_d0797efebf6f71 107-108
+docs/guides/profiles.md
+  s_631303c0ee2c96::t_3c9fcaf2b6f291 306-309,326-329
+docs/guides/remote-profiles.md
+  s_631303c0ee2c96::t_32b83a471af6b8 151,162,168-169
+docs/guides/sync-and-trust.md
+  s_631303c0ee2c96::t_6568d78b2fcd47 325-326,361,366
+docs/guides/tidying.md
+  s_631303c0ee2c96::t_eac355ac11fec1 91-92,127-128,136-137
+docs/reference/output-contract.md
+  s_631303c0ee2c96::t_2540a84857f1ca 135-139
+docs/reference/trash.md
+  s_631303c0ee2c96::t_38884a56d64377 46-47,52-53
+docs/usage.md
+  s_631303c0ee2c96::t_afd42641d4e7a3 626
+e2e/profile-first/profile-first.venom.yml
+  s_631303c0ee2c96::t_8f8434956c859a 59,108,348
+e2e/team/team.venom.yml
+  s_631303c0ee2c96::t_e91f6e8360b380 545
+internal/cli/clean_test.go
+  s_631303c0ee2c96::t_7f3c410e22fc9d 108,171
+internal/cli/cmd_market.go
+  s_631303c0ee2c96::t_b3e0ea0fc7b038 347,385,416-420,490
+internal/cli/cmd_migrate.go
+  s_631303c0ee2c96::t_0b175f6ac0fbce 88-119,121-125,128,157-164,167,172,174-182,184,186-188,212-221,229,231,239-243
+internal/cli/cmd_profile.go
+  s_631303c0ee2c96::t_f6da39cf7c4314 603
+internal/cli/cmd_sync.go
+  s_631303c0ee2c96::t_941c5b8cf724aa 27,478,508-514,516-518,520,522-524,527-529,534-536,541,546-551,562-577,748-752,760,764
+internal/cli/cmd_tidy.go
+  s_631303c0ee2c96::t_b3b1fbc1a33d79 119,123,159,176-183,186-187,192,202-207,209-210,217-220,225,247,249,252
+internal/cli/cmd_trash.go
+  s_631303c0ee2c96::t_5b91d22bd0aa4d 212-215,249,266-269,310-311,338-344,353-355,373
+internal/cli/confirm_test.go
+  s_631303c0ee2c96::t_7ccc609f86caa5 148-159,254,288-290,301,324,332,339,350-361,455
+internal/cli/flow.go
+  s_631303c0ee2c96::t_5e651ba09ea780 50-53,110,115,130,142-155,725-727,738-754,757-759,782-784,840,842,850-852,924-926,928,931-933,935,939,966-995,1046-1050,1063,1069-1078,1125-1131,1146,1214-1217,1220-1228,1246-1247,1356-1377,1381-1391,1459-1462,2613
+internal/cli/flow_test.go
+  s_631303c0ee2c96::t_61922b135e71ea 55-61,92-95,102-107,119-127,130-131,133-138,171-174,179-186,189-196,215-218,242-247,253-258,309-336,695,906,1057,1420,2645
+internal/cli/huh.go
+  s_631303c0ee2c96::t_72565e1b13242f 271-283,339,343-348,383-384,389,392,400-461,470-471,497-499,519-520,584-586,613-614,652,769-771,779-792,794-800,803-805,818-826,860-862,874-894,901-902,906,926,938-939,956,968-969,1018-1019,1022-1027,1032,1079-1082,1096-1097,1099-1101,1115,1120,1140-1141,1190-1194,1202-1203,1209-1214,1217-1218
+internal/cli/huh_internal_test.go
+  s_631303c0ee2c96::t_37ca89c0df2048 111-184,228-229,488,502-504,563,581,611-613,684-685,856,864,905,924,942,1058
+internal/cli/interrupt_internal_test.go
+  s_631303c0ee2c96::t_ae180511dff9ad 66,103
+internal/cli/keys.go
+  s_631303c0ee2c96::t_65d569e59bc86e 123-124,145-147,153-155,157
+internal/cli/keys_internal_test.go
+  s_631303c0ee2c96::t_498e12ada7fd82 63-75,145-147,244-248,276-297,307-308,321-325,355-385,388-413,416-425,440,453-479,501-529
+internal/cli/keys_paths_internal_test.go
+  s_631303c0ee2c96::t_45144718306377 1-277
+internal/cli/market_test.go
+  s_631303c0ee2c96::t_755699518ac148 208,485,985,992
+internal/cli/migrate_test.go
+  s_631303c0ee2c96::t_18767133e6272d 206
+internal/cli/misc2_paths_test.go
+  s_631303c0ee2c96::t_9d1002ac8eb6b8 1-996
+internal/cli/misc_paths_test.go
+  s_631303c0ee2c96::t_cdd7a2c01a792c 1-638
+internal/cli/pager.go
+  s_631303c0ee2c96::t_33317a1686abe5 77,81-83,87,101,106,108-110,112-113,115
+internal/cli/pager_test.go
+  s_631303c0ee2c96::t_e496284e05535a 130-192
+internal/cli/profile_add.go
+  s_631303c0ee2c96::t_2138a215f4e628 56-58,60,68-72,82
+internal/cli/profile_edit.go
+  s_631303c0ee2c96::t_52e33f5d45e248 89,202-219,227-237,251-254,268-272,278,282,346-347,349,379-382
+internal/cli/profile_edit_paths_test.go
+  s_631303c0ee2c96::t_87a2a8dc3c7ef2 1-710
+internal/cli/profile_edit_test.go
+  s_631303c0ee2c96::t_8d76925310e5ec 768,773-774,804-805,909-935,963-964,1075,1183,1201
+internal/cli/profile_move.go
+  s_631303c0ee2c96::t_61d4d04913fb68 66,89,91,93
+internal/cli/profile_remove.go
+  s_631303c0ee2c96::t_e8e959bb6a4dd2 44
+internal/cli/profile_split.go
+  s_631303c0ee2c96::t_617f6fbfc20235 45,123
+internal/cli/profile_test.go
+  s_631303c0ee2c96::t_f947cc688375d9 262,703
+internal/cli/profile_update.go
+  s_631303c0ee2c96::t_43c6fd609c2e0b 69-71,73,77-81,95,117,129,148,354,358
+internal/cli/prompt.go
+  s_631303c0ee2c96::t_60bc41467d4adb 39-41,109,111,117,119,129-130,133,141,156
+internal/cli/prompter.go
+  s_631303c0ee2c96::t_4d3bec54efbeae 43,78-81,86-90,144-145,147-150,154-155,162-163,168,188-190,194,287-288,293,413-415,417-420,431-433,437,480-481
+internal/cli/remoteprofile_test.go
+  s_631303c0ee2c96::t_833c271c19cb47 297,419-509,524,629,853,906,910,914
+internal/cli/root.go
+  s_631303c0ee2c96::t_bb1625a649819b 31-32,36,49-51,304,307
+internal/cli/scope_paths_test.go
+  s_631303c0ee2c96::t_69dc5552728c6d 1-406
+internal/cli/scope_test.go
+  s_631303c0ee2c96::t_81c548dba2a413 289
+internal/cli/summary.go
+  s_631303c0ee2c96::t_fccdbf3198d685 18-23,25-27,29-30,32,151
+internal/cli/sync_test.go
+  s_631303c0ee2c96::t_c15d294671dd04 59-72,732,743-772
+internal/cli/theme_internal_test.go
+  s_631303c0ee2c96::t_96c16b9db41ff0 283-304
+internal/cli/tidy_test.go
+  s_631303c0ee2c96::t_f3d3d64b488472 210,233,239,403
+internal/cli/trash_test.go
+  s_631303c0ee2c96::t_923cc1682f20bf 277,317,320,360,382
+internal/cli/trust.go
+  s_631303c0ee2c96::t_64ed4ec4354010 169-177
+internal/cli/trust_test.go
+  s_631303c0ee2c96::t_772a4f57da41b5 234,269,286
+internal/cli/viewer.go
+  s_631303c0ee2c96::t_ee0333fa26f963 18-20,29,163,194,205,257-260,266,305
+internal/cli/viewer_internal_test.go
+  s_631303c0ee2c96::t_96629761417b77 120,131,151-152,155,157-162,220,222,229,237-244,251,298,481
+internal/engine/confirmthen_test.go
+  s_631303c0ee2c96::t_2309b607ac3687 1-109
+internal/engine/engine.go
+  s_631303c0ee2c96::t_579fefdef6cdfd 143-146
+internal/engine/market.go
+  s_631303c0ee2c96::t_74fc51bb333faa 149-151,962,965,969,980,1068-1075,1109-1123
+internal/engine/market_ssh.go
+  s_631303c0ee2c96::t_368e1826b1fe31 28-29,33
+internal/engine/market_test.go
+  s_631303c0ee2c96::t_4911886fca9d2e 288,290,945-978
+internal/engine/move.go
+  s_631303c0ee2c96::t_6f86c853661994 48
+internal/engine/ops.go
+  s_631303c0ee2c96::t_bb51fe2f520a0e 405-406,412-470,2879-2883
+internal/engine/profile_edit.go
+  s_631303c0ee2c96::t_ba50f79ebc0af5 449-451,460,462,672-675,677
+internal/engine/remote.go
+  s_631303c0ee2c96::t_3547219f0dc6f7 69-70,72,77-79
+internal/engine/remote_add.go
+  s_631303c0ee2c96::t_47c4fd8678bf0d 41-42,45
+internal/engine/remote_update.go
+  s_631303c0ee2c96::t_749a91350908e7 58,369-373
+internal/engine/remoteprofile_test.go
+  s_631303c0ee2c96::t_8dfed6383e5cff 1711-1726
+internal/engine/removals_shown_test.go
+  s_631303c0ee2c96::t_eae3b823b3a0fb 1-41
+internal/engine/split.go
+  s_631303c0ee2c96::t_29ebd899ff45dd 38
+internal/engine/sync.go
+  s_631303c0ee2c96::t_5d06c31acbfc62 52-53,55,60-65,142-174,178-182,1127-1153,1155-1168,1170-1175,1177,1180-1203,1207-1214,1216-1222,1224-1252,1254
+internal/engine/sync_test.go
+  s_631303c0ee2c96::t_85fde45e860936 1642-1703
+internal/engine/tidy.go
+  s_631303c0ee2c96::t_bef444a7fa55cb 89-90
+internal/engine/tidy_apply_test.go
+  s_631303c0ee2c96::t_18c9a63869de07 165-197
+internal/engine/tidy_select.go
+  s_631303c0ee2c96::t_8c52dc99030990 15-18,26,62,122-124
+internal/engine/trustkinds_test.go
+  s_631303c0ee2c96::t_c17c1a9e6bd440 450-463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "953024d755ae2d31c71fb724f78c879e409a413d",
+  "prompts": {},
+  "sessions": {
+    "s_631303c0ee2c96": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebdce0ba-ba97-4bb2-b529-6668d2dd3a16",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
