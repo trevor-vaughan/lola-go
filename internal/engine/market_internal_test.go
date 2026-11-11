@@ -20,6 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/market"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -39,7 +40,7 @@ var _ = Describe("fetchEntry", func() {
 		DeferCleanup(srv.Close)
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := New(p)
+		e := New(p, targets.Builtin())
 		listed := strings.Repeat("AB", 32)
 		pick := &marketPick{reg: market.Registration{Name: "acme", Source: "https://example.com/plugins.git"}, display: []string{"--json"},
 			entry: market.Entry{Name: "bundle", Kind: "archive", Source: manifest.Entry{Name: "bundle", Source: srv.URL + "/bundle.zip"},

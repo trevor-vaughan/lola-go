@@ -29,7 +29,7 @@ var _ = Describe("lola repair", func() {
 		plantTarget(proj)
 		r := lola("list", "-C", proj)
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(Equal(projectContext(proj) + "error: " + lp + `: module kit: target "bogus" is not a target lola knows` + "\n  hint: lola repair -C " + proj + "\n"))
+		Expect(r.err).To(Equal(projectContext(proj) + "error: " + lp + `: module kit: target "bogus" is not a target lola knows` + "\n  hint: " + restoreHint("bogus") + "\n  hint: lola repair -C " + proj + "\n"))
 		r = lola(shellWords("lola repair -C " + proj)[1:]...)
 		Expect(r.code).To(Equal(1))
 		Expect(r.out).To(BeEmpty())

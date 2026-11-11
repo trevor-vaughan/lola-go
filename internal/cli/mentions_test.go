@@ -121,6 +121,15 @@ var _ = Describe("mentions in lola install", func() {
 			" → add them: lola install --project " + mod + " --with-mentions\n"))
 	})
 
+	It("ends each mention notice row of an install into two scopes with the scope whose command it gives", func() {
+		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){pick("skill/golang-testing"), pick("skill/golang-testing")}, review: []string{cli.ReviewApply}}
+		r := lolaP(p, "install", mod, "--scope", "both", "-t", "claude-code", "--plain")
+		Expect(r.code).To(Equal(0), r.err)
+		for _, sc := range []string{"project", "user"} {
+			Expect(r.out).To(MatchRegexp(`(?m)^notice\t\w+\tpack: skill/golang-testing mentions 2 components you did not pick: .* lola install --` + sc + ` .*\t` + sc + `$`))
+		}
+	})
+
 	It("adds what the page's picks mention after the page with --with-mentions, and keeps the flag in the equivalent command", func() {
 		p := &scripted{components: []func(cli.ComponentPage) ([]string, error){pick("skill/golang-race")}, review: []string{cli.ReviewApply}}
 		r := lolaP(p, "install", mod, "--scope", "project", "-t", "claude-code", "--with-mentions")

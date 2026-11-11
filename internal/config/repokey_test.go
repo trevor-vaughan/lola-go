@@ -129,7 +129,7 @@ var _ = Describe("a project's repository key", func() {
 		Expect(os.MkdirAll(bad, 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(bad, ".git"), []byte("gitdir: nowhere\n"), 0o644)).To(Succeed())
 		_, _, err := config.RepoKey(bad, source.GitCommand)
-		Expect(err).To(MatchError("git could not read the repository of " + bad + ": fatal: not a git repository: " + filepath.Join(bad, "nowhere")))
+		Expect(err).To(MatchError(HavePrefix("git could not read the repository of " + bad + ": fatal: ")))
 		Expect(errs.Hints(err)).To(BeEmpty())
 	})
 

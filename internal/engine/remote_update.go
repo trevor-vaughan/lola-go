@@ -55,7 +55,7 @@ type ProfileUpdateRequest struct {
 	// written.
 	Consent func([]RemoteProfile) (bool, error)
 	Trust   TrustKinds
-	Show    func([]RemoteProfile)
+	Show    func([]RemoteProfile) error
 	Receipt func([]Consent) (bool, error)
 	// Batch, when set, makes the update one of a command's runs (TrustBatch): what --trust covers
 	// goes to it instead of Receipt, and every profile kept is staged, not written: each scope's
@@ -250,7 +250,7 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 			u.led = led
 		}
 		for _, n := range notes {
-			if !slices.Contains(res.Notices, n) {
+			if !slices.ContainsFunc(res.Notices, n.Same) {
 				res.Notices = append(res.Notices, n)
 			}
 		}
@@ -366,7 +366,11 @@ func (e *Engine) UpdateProfile(ctx context.Context, req ProfileUpdateRequest) (_
 		case covered:
 			res.Profiles = append(res.Profiles, *rp)
 			if req.Show != nil {
-				req.Show([]RemoteProfile{*rp})
+				if err := req.Show([]RemoteProfile{*rp}); err != nil {
+					stop, out.Outcome = err, UpdateSkipped
+					res.Updates = append(res.Updates, out)
+					continue
+				}
 			}
 			res.Trusted = append(res.Trusted, Consent{Kind: TrustProfiles.String(), Item: rp.Profile, Change: ConsentChanged})
 			trusted = append(trusted, trustedUpdate{out: len(res.Updates), profile: len(res.Profiles) - 1, q: q, was: was})
@@ -703,6 +707,9 @@ func (e *Engine) untrustedModules(sc Scope) ([]string, TrustKinds, error) {
 	}
 	if rep.Targets != nil {
 		out = append(out, "project.yml's targets")
+	}
+	if rep.TargetVersions != nil {
+		out = append(out, "project.yml's target_versions")
 	}
 	for _, name := range slices.Sorted(maps.Keys(rep.ProfileTargets)) {
 		out = append(out, projectProfileFile(partKey(name))+"'s "+rep.ProfileTargets[name].Field) // targets, or a bundle's members (bundle)

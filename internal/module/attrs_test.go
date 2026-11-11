@@ -22,7 +22,7 @@ var _ = Describe("Attribute files at load", func() {
 		GinkgoHelper()
 		Expect(os.RemoveAll(root)).To(Succeed())
 		write(root, files)
-		return module.Load(root, "kit", targets.IDs())
+		return module.Load(root, "kit", targets.Builtin().IDs())
 	}
 	// refusal loads an agent whose attribute file, in syntax ext, holds body, and returns the
 	// refusal's message.

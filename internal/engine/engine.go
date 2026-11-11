@@ -14,9 +14,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,6 +72,7 @@ type Engine struct {
 	Consent      *consent.Store
 	Trust        *trust.Store
 	Targets      []target.Target
+	Registry     targets.Registry // the targets Targets began as; specs may replace Targets
 	Now          func() time.Time
 	Environ      func() []string
 	Getwd        func() (string, error)
@@ -106,13 +109,13 @@ type recovery struct {
 	judged map[string]bool
 }
 
-// New returns an Engine over the real store and every registered target. The store dates last_used
+// New returns an Engine over the real store and every target of reg. The store dates last_used
 // by e.Now, read at each use, so a spec that replaces Now fakes the day.
-func New(p paths.Paths) *Engine {
-	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: targets.All(), Now: time.Now,
+func New(p paths.Paths, reg targets.Registry) *Engine {
+	e := &Engine{Paths: p, Consent: consent.New(p.Consent), Trust: trust.New(p), Targets: reg.All(), Registry: reg, Now: time.Now,
 		Environ: os.Environ, Getwd: os.Getwd, HookTimeout: 10 * time.Minute, ProbeTimeout: 5 * time.Second, TemplateLimits: templating.DefaultLimits(),
 		TemplateBudget: TemplateBudget{RunOutput: 32 << 20, RunTime: 20 * time.Second}}
-	e.Store = store.New(p, targets.IDs(), func() time.Time { return e.Now() })
+	e.Store = store.New(p, reg.IDs(), func() time.Time { return e.Now() })
 	return e
 }
 
@@ -126,9 +129,10 @@ type Options struct {
 	// ForceRun is the user's run with --force, which a refusal of conflicts --force overrides
 	// hints; "" for no hint.
 	ForceRun string
-	// TargetRun is the user's run with -t naming only the target given, which a refusal of two
-	// targets' destinations that are one real file hints once per target; nil for no hint.
-	TargetRun func(target string) string
+	// TargetRun is the user's run at scope sc with -t naming only the target given, which a
+	// refusal of two targets' destinations that are one real file hints once per target; nil for
+	// no hint.
+	TargetRun func(sc Scope, target string) string
 	// RenderRun is the user's run as a real run with --force: what renders a forceable skip, which
 	// a dry run does not. "" means ForceRun is that run.
 	RenderRun string
@@ -136,6 +140,10 @@ type Options struct {
 	// --edit's module page): its notice that a profile it wrote is also on elsewhere names none of
 	// them.
 	Then []Scope
+	// ConfirmThen, when set, asks about the removals each scope of Then would make once the
+	// uninstall's profile edits are written, before anything is (a dry run asks too, so a caller
+	// can ask before an earlier write); a No is ErrDeclined. --force asks nothing.
+	ConfirmThen func(Scope, []Removal) (bool, error)
 	// named is the modules the run's command line named (an install's), whose conflicts with
 	// another installed module's destinations hint that module's uninstall.
 	named []string
@@ -177,6 +185,17 @@ type Options struct {
 	// module's hook or script pins the version the refusal showed, so a source changed since is
 	// refused rather than consented to. lola sync and lola update pin theirs in Rerun itself.
 	PinConsent bool
+	// EraRun is what writes for target id's version since at scope sc instead (lola install's run
+	// at that scope with -t id@since, or the review's way to change the version): the hint of a
+	// frontmatter value the era written for drops and another era of the target keeps, and of a
+	// version chosen for another era than the installed one's. nil hints the edit of
+	// target_versions and the lola sync that applies it.
+	EraRun func(sc Scope, id, since string) string
+	// eraWarned reports whether the install warns at the scope planned that the version it records
+	// for target id is of another era than the installed one's (Engine.warnsOfEra), or says that id
+	// is not installed there (Engine.notInstalledEra), whose hints already write for each era: a
+	// dropped value's finding then has no keep-it hint. nil for none.
+	eraWarned func(id string) bool
 	// Batch, when set, takes the run's covered items and grants at its receipt instead, which then
 	// stops the run with ErrBatched: the caller asks one receipt for several runs (TrustBatch).
 	Batch *TrustBatch
@@ -256,8 +275,16 @@ type ModuleResult struct {
 	// Market is the marketplace an install through @<market>/<entry> records, through
 	// untrusted.Text; absent otherwise.
 	Market *manifest.MarketRef `json:"market,omitempty"`
+	// Kept says an install, not under --force, leaves the module's lock.json entry as it was: the
+	// same version, pin, targets, picks, render inputs and eras, and no hook or script pending.
+	// With no step of it, the module is already up to date.
+	Kept bool `json:"-"`
+	// Rewritten says an install did not install the module but rewrote it for the version it writes
+	// for (InstallResult.eraSynced): its rewrite notice reports it, and JSON marks it; absent otherwise.
+	Rewritten bool `json:"rewritten,omitempty"`
 
 	renderedWith *ledger.RenderedWith // what its templates rendered with, which lock.json records
+	eras         map[string]string    // by target, the since of the era its files are written for, which lock.json records
 	// hooksKept says an install without consent keeps the module's copy and runs none of its
 	// hooks: the copy holds the version already and no post-install hook is pending.
 	hooksKept bool
@@ -279,6 +306,18 @@ type Notice struct {
 	// switches count it under, with Check, the lola check that lists it (target.Finding.Check).
 	Module string `json:"-"`
 	Check  string `json:"-"`
+	// Hints are the commands that act on what the notice says, each printed under it as a hint:
+	// line. Omitted in JSON when none, so a notice without them reads as before.
+	Hints []string `json:"hints,omitempty"`
+	// Scope is, in a run of more than one scope, the scope the notice is for, which a --plain
+	// notice row ends with; "" otherwise.
+	Scope string `json:"-"`
+}
+
+// Same reports whether n and o are one notice, every field alike: what keeps a notice from being
+// said twice.
+func (n Notice) Same(o Notice) bool {
+	return n.Level == o.Level && n.Text == o.Text && n.Class == o.Class && n.Module == o.Module && n.Check == o.Check && slices.Equal(n.Hints, o.Hints)
 }
 
 // MarshalJSON writes n with its class, target.ClassSafety when it was made without one.
@@ -500,6 +539,53 @@ func (e *Engine) target(id string) (target.Target, error) {
 	return nil, errs.WithHints(fmt.Errorf("unknown target %q", id), "valid targets: "+strings.Join(ids, ", "))
 }
 
+// declared is what sc declares in target_versions, and the file it is declared in, as findings
+// name it: .lola/project.yml at project scope, config.yaml's path at user scope. An id lola has
+// no target for is an error naming the file and key.
+func (e *Engine) declared(sc Scope) (map[string]string, string, error) {
+	var tv map[string]string
+	file := ".lola/project.yml"
+	if sc.Kind == target.User {
+		c, err := config.LoadConfig(e.Paths.Config, e.Paths.Home)
+		if err != nil {
+			return nil, "", err
+		}
+		tv, file = c.TargetVersions, e.Paths.Config
+	} else {
+		// A file whose only fault is entries with a marketplace address declares as it is read:
+		// those who read its entries refuse or resolve them.
+		m, err := manifest.Load(e.files(sc).manifest)
+		if ue, ok := errors.AsType[*manifest.UnresolvedError](err); ok {
+			m, err = ue.Manifest, nil
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		tv = m.TargetVersions
+	}
+	for _, id := range slices.Sorted(maps.Keys(tv)) {
+		if _, ok := e.Registry.Lookup(id); !ok {
+			shown := untrusted.Text(id, untrusted.MaxName)
+			return nil, "", errs.WithHints(fmt.Errorf("%s: target_versions.%s: lola has no target %s", untrusted.Text(file, untrusted.MaxName), shown, shown),
+				"valid targets: "+strings.Join(e.Registry.IDs(), ", "), "remove it, or add a target spec for it to "+untrusted.Text(e.Paths.Targets, untrusted.MaxName))
+		}
+	}
+	return tv, file, nil
+}
+
+// atEra is t for the era tv, a scope's declared versions, selects: t itself when tv declares no
+// version for it.
+func (e *Engine) atEra(tv map[string]string, t target.Target) target.Target {
+	v, ok := tv[t.ID()]
+	if !ok {
+		return t
+	}
+	if at, ok := e.Registry.For(t.ID(), v); ok {
+		return at
+	}
+	return t
+}
+
 // Manifest loads the scope's manifest: project.yml at project scope. User scope has none: its base
 // is your default profile, so this is default.yml's top-level targets and its entries, local
 // sources made absolute as its layer reads them, and an empty manifest when it does not exist. A
@@ -561,6 +647,8 @@ func (e *Engine) manifestName(sc Scope) string {
 // have written the same way, before planning or asking anything: what ledger.LoadKeepingStrays
 // refuses keeps its own hints, and the first ledger.Stray (a path that leaves its target's root,
 // a target lola does not know) hints lola repair for the scope, keeping the run's output flags.
+// An unknown target is most likely a user spec since removed, so restoring it comes first: repair
+// only forgets what lola wrote there.
 func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
 	path := e.files(sc).ledger
 	led, err := ledger.LoadKeepingStrays(path)
@@ -568,7 +656,13 @@ func (e *Engine) Ledger(sc Scope) (*ledger.Ledger, error) {
 		return nil, e.coachLedger(sc, err)
 	}
 	if strays := led.Strays(e.knows); len(strays) > 0 {
-		return nil, errs.WithHints(&ledger.StrayError{File: path, Stray: strays[0]}, e.Command(sc, "repair", e.Display...))
+		var hints []string
+		if s := strays[0]; s.Unknown && !s.Outside && e.Paths.Targets != "" {
+			hints = append(hints, "restore your target spec for "+untrusted.Text(s.Target, untrusted.MaxName)+" in "+
+				untrusted.Text(e.Paths.Targets, untrusted.MaxName)+", then run this again to remove what lola wrote for it; lola repair forgets those files and leaves them")
+		}
+		hints = append(hints, e.Command(sc, "repair", e.Display...))
+		return nil, errs.WithHints(&ledger.StrayError{File: path, Stray: strays[0]}, hints...)
 	}
 	return led, nil
 }
@@ -1000,7 +1094,7 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	pctx := target.PlanContext{Scope: sc.Kind, ContentDir: v.ContentDir, PluginRoot: filepath.Join(f.modules, m.Name),
 		PluginData: filepath.Join(f.pluginData, m.Name), SkipRules: !ment.RulesOn(), Force: opts.Force}
 	if sc.Kind == target.Project && len(m.RuntimeHooks) > 0 {
-		pctx.LocalSettingsExposed = probes.localSettings(sc.ProjectDir)
+		pctx.SettingsExposed = func(abs string) (string, string) { return probes.settings(sc.ProjectDir, abs) }
 	}
 	mr := ModuleResult{Name: m.Name, Digest: v.Meta.Digest, Targets: []string{}, MCPServers: []MCPRun{}, Hooks: []HookRun{}, RuntimeHooks: []RuntimeHook{},
 		Skipped: r.skipped, NotInOnly: []string{}}
@@ -1026,15 +1120,32 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 	if len(v.Module.RuntimeHooks) > 0 && narrows(x, v.Module) {
 		notes = append(notes, Notice{Level: LevelInfo, Text: m.Name + ": runtime hooks are installed for the whole module; picks do not narrow them"})
 	}
-	// planOne is target id's plan of the module, with the copy of it rendered for id; pctx with
-	// id's root and version.
+	tv, tvFile, err := probes.declared(sc)
+	if err != nil {
+		return nil, nil, nil, mr, err
+	}
+	// keep is the run a dropped value's keep-it hint gives for id's version since ("" for none):
+	// opts.EraRun's, else the edit of target_versions and the sync that applies it.
+	keep := func(id, since string) string {
+		switch {
+		case opts.eraWarned != nil && opts.eraWarned(id):
+			return ""
+		case opts.EraRun != nil:
+			return opts.EraRun(sc, id, since)
+		}
+		return e.versionsEdit(sc, tvFile, id, since)
+	}
+	// planOne is target id's plan of the module by its target for the era sc declares, with the
+	// copy of it rendered for id; pctx with id's root.
 	planOne := func(id string) (targetPlan, error) {
 		t, err := e.target(id)
 		if err != nil {
 			return targetPlan{}, err
 		}
+		t = e.atEra(tv, t)
 		pctx := pctx
-		pctx.Root, pctx.Version = t.Root(sc.Kind, sc.ProjectDir, e.Paths), probes.version(t)
+		pctx.Root = t.Root(sc.Kind, sc.ProjectDir, e.Paths)
+		probes.version(sc, t)
 		rendered, err := e.renderTemplates(probes.ctx, m, run.data(id, sc, resolvedVars(m, ment)), run)
 		if err != nil {
 			if h := e.checkHint(sc, err, ment, opts.Targets, opts.Display, opts.freshPin); h != "" {
@@ -1046,6 +1157,7 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		if err != nil {
 			return targetPlan{}, fmt.Errorf("%s for %s: %w", m.Name, id, err)
 		}
+		e.keptByEra(tv[id], rendered, pctx, fs, keep)
 		for i := range fs {
 			fs[i].Module = m.Name
 			// A skip --force can render gets the user's run with --force, after the target's own fix.
@@ -1097,6 +1209,12 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		}
 		intents, finds = append(intents, tp.intents...), append(finds, tp.finds...)
 		mr.Targets = append(mr.Targets, id)
+		if since, _, ok := e.Registry.Era(id, tv[id]); ok {
+			if mr.eras == nil {
+				mr.eras = map[string]string{}
+			}
+			mr.eras[id] = since
+		}
 	}
 	for _, s := range m.MCPServers {
 		url := target.Expand(s.URL, pctx)
@@ -1133,6 +1251,85 @@ func (e *Engine) planModule(sc Scope, v store.Version, targets []string, ment *m
 		}
 	}
 	return intents, finds, notes, mr, nil
+}
+
+// keptByEra marks each of fs, target findings for m, that drops a frontmatter value of one of
+// m's skills, commands or agents the newest other era of the target keeps (keptBy): its KeptSince
+// is that era's since, its text names the value and what the era written for (version's) reads,
+// and its hint, first, writes for that era (keep's run, none when keep gives ""), before the
+// target's own. It is the one place such a finding is worded, for every command that plans.
+func (e *Engine) keptByEra(version string, m *module.Module, pctx target.PlanContext, fs []target.Finding, keep func(id, since string) string) {
+	for i := range fs {
+		f := &fs[i]
+		if f.Key == "" || f.Severity != target.SeverityWarn {
+			continue
+		}
+		doc := artifactDoc(m, f.Kind, f.Artifact)
+		if doc == nil {
+			continue
+		}
+		x, ok := e.keptBy(f.Target, version, pctx, f.Kind, f.Artifact, *doc, f.Key)
+		if !ok {
+			continue
+		}
+		written := e.eraOf(f.Target, version)
+		f.KeptSince = x.since
+		f.Text = fmt.Sprintf("%s %s dropped — %s %s", untrusted.Text(f.Key, untrusted.MaxName), frontmatterValue(doc.Frontmatter[f.Key]), f.Target, written.label)
+		if written.summary != "" {
+			f.Text += ": " + written.summary
+		}
+		var alt string
+		if run := keep(f.Target, x.since); run != "" {
+			alt = fmt.Sprintf("keep it by writing for %s %s: %s", f.Target, x.label, run)
+		}
+		f.Hint = strings.Join(slices.DeleteFunc([]string{alt, f.Hint}, func(h string) bool { return h == "" }), "; or ")
+		f.UserHint = f.Hint
+	}
+}
+
+// artifactDoc is the document of m's skill, command or agent name, nil for any other kind or a
+// name m has none of.
+func artifactDoc(m *module.Module, kind, name string) *module.Doc {
+	switch kind {
+	case "skill":
+		if j := slices.IndexFunc(m.Skills, func(s module.Skill) bool { return s.Name == name }); j >= 0 {
+			return &m.Skills[j].Doc
+		}
+	case "command":
+		if j := slices.IndexFunc(m.Commands, func(c module.Command) bool { return c.Name == name }); j >= 0 {
+			return &m.Commands[j].Doc
+		}
+	case "agent":
+		if j := slices.IndexFunc(m.Agents, func(a module.Agent) bool { return a.Name == name }); j >= 0 {
+			return &m.Agents[j].Doc
+		}
+	}
+	return nil
+}
+
+// keptBy is the newest era of target id, other than the one version is written for, that keeps
+// frontmatter key of doc, the kind artifact name's document, admitting it through that era's
+// capabilities; false when none does.
+func (e *Engine) keptBy(id, version string, pctx target.PlanContext, kind, name string, doc module.Doc, key string) (era, bool) {
+	written, _, _ := e.Registry.Era(id, version)
+	for _, x := range e.eras(id) {
+		other, ok := e.Registry.For(id, x.since)
+		if x.since == written || !ok {
+			continue
+		}
+		if kept, _, _ := target.Admit(id, other.Capabilities(), pctx, kind, name, doc); kept.Frontmatter[key] != nil {
+			return x, true
+		}
+	}
+	return era{}, false
+}
+
+// frontmatterValue is a frontmatter value as a finding names it, safe to print: a string quoted.
+func frontmatterValue(v any) string {
+	if s, ok := v.(string); ok {
+		return strconv.Quote(untrusted.Text(s, untrusted.MaxName))
+	}
+	return untrusted.Text(fmt.Sprint(v), untrusted.MaxName)
 }
 
 // checkRun is the lola check at sc, with the run's output flags (display), that names a module by
@@ -1287,7 +1484,7 @@ func (e *Engine) ownedConflicts(sc Scope, ce *plan.ConflictError, err error, cha
 	if opts.TargetRun != nil {
 		for _, t := range e.Targets {
 			if slices.Contains(alone, t.ID()) {
-				hints = append(hints, opts.TargetRun(t.ID()))
+				hints = append(hints, opts.TargetRun(sc, t.ID()))
 			}
 		}
 	}

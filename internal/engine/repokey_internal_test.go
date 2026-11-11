@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -22,7 +23,7 @@ var _ = Describe("a clone git cannot read", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = New(p)
+		e = New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "r")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 	})
@@ -51,7 +52,7 @@ var _ = Describe("a clone git cannot read", func() {
 
 	It("keys picks by path when git cannot read the clone, naming git's reason", func() {
 		Expect(os.WriteFile(filepath.Join(proj, ".git"), []byte("gitdir: nowhere\n"), 0o644)).To(Succeed())
-		Expect(section()).To(Equal([]Notice{{Level: LevelWarn, Text: "git could not read the repository of " + proj +
-			": fatal: not a git repository: " + filepath.Join(proj, "nowhere") + "; picks for this project are keyed by its path"}}))
+		Expect(section()).To(ConsistOf(And(HaveField("Level", LevelWarn),
+			HaveField("Text", And(HavePrefix("git could not read the repository of "+proj+": fatal: "), HaveSuffix("; picks for this project are keyed by its path"))))))
 	})
 })

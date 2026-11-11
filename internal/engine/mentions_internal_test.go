@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -47,7 +48,7 @@ var _ = Describe("the review's preview when the mention scan fails", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := New(p)
+		e := New(p, targets.Builtin())
 		proj, src := filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "pack")
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(filepath.Join(src, "skills", "alpha-one"), 0o755)).To(Succeed())
@@ -102,7 +103,7 @@ var _ = Describe("an interactive install's mention scans", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := New(p)
+		e := New(p, targets.Builtin())
 		proj, src := filepath.Join(tmp, "proj"), filepath.Join(tmp, "src", "pack")
 		Expect(os.MkdirAll(filepath.Join(proj, ".claude"), 0o755)).To(Succeed())
 		for _, d := range []string{"alpha-one", "alpha-two"} {

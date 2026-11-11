@@ -83,36 +83,49 @@ func (a *app) migrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var answered int // the mapping questions answered, which q at Migrate? asks before dropping
-			if pr := a.prompter(cmd); pr.Interactive() && !yes {
-				if answered, err = askMappings(pr, eng, st, &opts); err != nil {
-					return err
-				}
-			}
 			report, clearProgress := a.progress(cmd)
 			defer clearProgress()
-			opts.Progress = report
-			p, err := migrate.NewPlan(cmd.Context(), eng, st, opts)
-			if err != nil {
-				return err
-			}
-			remap := remapRun(cmd, opts, p)
-			preview, err := migrate.Migrate(cmd.Context(), eng, p, opts)
-			clearProgress()
-			if err != nil {
-				return err
-			}
-			opts.Progress = nil // the run's questions and hooks draw on the same line
-			preview.Remap = remap
-			if dry || preview.Nothing {
-				return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
-			}
-			// --force answers the question, as -y does; never the hooks' consent.
-			if !yes && !force {
-				show := func(w io.Writer, s style) { printMigration(w, s, preview) }
-				if err := a.confirm(cmd, nil, "Migrate?", Nav{Answered: answered}, preview, show); err != nil {
+			pr := a.prompter(cmd)
+			flags := opts // as the flags map, before any answer
+			var mapped mapAnswers
+			var p *migrate.Plan
+			var remap string
+			for back := false; ; back = true {
+				opts = flags
+				var answered int // the mapping questions answered, which q at Migrate? asks before dropping
+				if pr.Interactive() && !yes {
+					if answered, err = askMappings(pr, eng, st, &opts, &mapped, back); err != nil {
+						return err
+					}
+				}
+				opts.Progress = report
+				if p, err = migrate.NewPlan(cmd.Context(), eng, st, opts); err != nil {
 					return err
 				}
+				remap = remapRun(cmd, opts, p)
+				preview, err := migrate.Migrate(cmd.Context(), eng, p, opts)
+				clearProgress()
+				if err != nil {
+					return err
+				}
+				opts.Progress = nil // the run's questions and hooks draw on the same line
+				preview.Remap = remap
+				if dry || preview.Nothing {
+					return a.emit(cmd, func(w io.Writer, s style) { printMigration(w, s, preview) }, preview)
+				}
+				// --force answers the question, as -y does; never the hooks' consent.
+				if yes || force {
+					break
+				}
+				show := func(w io.Writer, s style) { printMigration(w, s, preview) }
+				err = a.confirm(cmd, nil, "Migrate?", Nav{Back: answered > 0, Answered: answered}, preview, show)
+				if errors.Is(err, ErrBack) {
+					continue // the last mapping question again, every answer kept
+				}
+				if err != nil {
+					return err
+				}
+				break
 			}
 			opts.DryRun = false
 			opts.Receipt, opts.Rerun = a.receipt(cmd, kinds, yes), trustRun(cmd, nil) // --force never answers consent
@@ -141,23 +154,38 @@ func (a *app) migrateCmd() *cobra.Command {
 	return cmd
 }
 
+// mapAnswers are askMappings' answers, kept from one run of it to the next: the roots it asks
+// about, each one's answer ("" skips it), and the assistants answered for each missing one.
+type mapAnswers struct {
+	roots   []migrate.RootSuggestion
+	answers []string
+	picked  map[string][]string
+}
+
 // askMappings asks, on a terminal, where each root that missing project paths of the Python lola
 // share is on this machine, then which assistants install the records of each assistant this
-// machine lacks, adding each answer to opts. What the flags map is not
+// machine lacks, adding each answer to opts and keeping it in m. What the flags map is not
 // asked; an empty root or no assistant skips that group, and an assistant is asked only when one
 // is on your PATH. The assistants are asked after the roots: a project found again may have its
 // assistant set up. Going back from a question (Esc) asks the one before again, as answered; from
 // the first assistant question, the last root's, after which the assistants are worked out again.
+// With last (Migrate? gone back from) it starts at the last question, every answer in m kept.
 // It returns how many questions were answered.
-func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migrate.Options) (int, error) {
-	flagRoots := opts.Roots
-	roots, _ := migrate.Suggest(eng, st, *opts)
-	answers := make([]string, len(roots))
-	for i := range roots {
-		answers[i] = roots[i].New
+func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migrate.Options, m *mapAnswers, last bool) (int, error) {
+	flagRoots, flagTargets := opts.Roots, opts.Targets
+	if m.picked == nil {
+		m.roots, _ = migrate.Suggest(eng, st, *opts)
+		m.answers = make([]string, len(m.roots))
+		for i := range m.roots {
+			m.answers[i] = m.roots[i].New
+		}
+		m.picked = map[string][]string{}
 	}
-	picked := map[string][]string{} // the assistants answered for each missing one, preselected when asked again
+	roots, answers := m.roots, m.answers
 	i := 0
+	if last {
+		i = len(roots) // the roots stand as answered; the last assistant question, else the last root's
+	}
 	for {
 		for i < len(roots) {
 			s := roots[i]
@@ -181,7 +209,16 @@ func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migra
 		}
 		_, missing := migrate.Suggest(eng, st, *opts)
 		missing = slices.DeleteFunc(missing, func(s migrate.TargetSuggestion) bool { return len(s.Detected) == 0 })
-		back, err := askTargets(pr, eng, missing, len(roots), picked)
+		if last && len(missing) == 0 {
+			last, i = false, len(roots)-1
+			continue
+		}
+		first := 0
+		if last {
+			first = len(missing) - 1
+		}
+		last = false
+		back, err := askTargets(pr, eng, missing, len(roots), m.picked, first)
 		if back {
 			i = len(roots) - 1
 			continue
@@ -189,8 +226,9 @@ func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migra
 		if err != nil {
 			return 0, err
 		}
+		opts.Targets = maps.Clone(flagTargets)
 		for _, s := range missing {
-			if ids := picked[s.Old]; len(ids) > 0 {
+			if ids := m.picked[s.Old]; len(ids) > 0 {
 				opts.Targets[s.Old] = ids
 			}
 		}
@@ -198,11 +236,11 @@ func askMappings(pr Prompter, eng *engine.Engine, st *migrate.State, opts *migra
 	}
 }
 
-// askTargets asks askMappings' assistant questions for missing, after answered root questions,
-// preselecting what picked holds and keeping each answer there. back is set when the user went
-// back from the first question to the roots (Esc).
-func askTargets(pr Prompter, eng *engine.Engine, missing []migrate.TargetSuggestion, answered int, picked map[string][]string) (back bool, err error) {
-	for j := 0; j < len(missing); {
+// askTargets asks askMappings' assistant questions for missing, from the first-th, after answered
+// root questions, preselecting what picked holds and keeping each answer there. back is set when
+// the user went back from the first question to the roots (Esc).
+func askTargets(pr Prompter, eng *engine.Engine, missing []migrate.TargetSuggestion, answered int, picked map[string][]string, first int) (back bool, err error) {
+	for j := first; j < len(missing); {
 		s := missing[j]
 		modules := map[string]bool{}
 		for _, r := range s.Records {
@@ -332,7 +370,7 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 		for _, k := range d.Kept {
 			fmt.Fprintf(w, "  %-7s %s: %s\n", "keep", k.Path, k.Reason)
 		}
-		printReported(w, "  ", d.NotMigrated, d.Unmappable)
+		printReported(w, "  ", d.NotMigrated, d.Unmappable, s.width)
 		for _, f := range d.Findings {
 			if f.Severity == target.SeverityInfo && f.Hint == "" {
 				continue
@@ -355,10 +393,10 @@ func printMigration(w io.Writer, s style, r *migrate.Result) {
 			fmt.Fprintln(w, s.warn(fmt.Sprintf("%s%s: %d record(s) left as they are", what, migrationLabel(d), len(d.Unmappable))))
 		case migrate.StatusFailed:
 			fmt.Fprintln(w, s.bad("failed "+migrationLabel(d)+": "+d.Error))
-			printHints(w, "    ", d.Hints)
+			printHints(w, "    ", d.Hints, s.width)
 		}
 	}
-	printReported(w, "", r.NotMigrated, r.Unmappable)
+	printReported(w, "", r.NotMigrated, r.Unmappable, s.width)
 	printSummary(w, s, r)
 	printMigratedMarkets(w, s, r.Markets)
 	for _, warn := range r.Warnings {
@@ -474,7 +512,7 @@ func printMigratedMarkets(w io.Writer, s style, ms []migrate.Market) {
 		case migrate.MarketFailed:
 			fmt.Fprintln(w, "  "+s.bad("failed "+m.Name+" ("+m.URL+"): "+m.Reason))
 		}
-		printHints(w, "      ", m.Hints)
+		printHints(w, "      ", m.Hints, s.width)
 	}
 }
 
@@ -488,14 +526,14 @@ func shownPath(m migrate.Moved) string {
 
 // printReported lists what is never migrated and the records lola cannot migrate, each with
 // its hint.
-func printReported(w io.Writer, indent string, items []migrate.Item, unmapped []migrate.Unmapped) {
+func printReported(w io.Writer, indent string, items []migrate.Item, unmapped []migrate.Unmapped, width int) {
 	for _, it := range items {
 		line := "not migrated: " + it.What + " " + it.Path
 		if it.Marker != "" {
 			line += " " + it.Marker
 		}
 		fmt.Fprintf(w, "%s%s\n", indent, line)
-		printHints(w, indent+"    ", it.Hints)
+		printHints(w, indent+"    ", it.Hints, width)
 	}
 	for _, u := range unmapped {
 		line := "unmappable " + u.Module + " (" + u.Assistant
@@ -503,14 +541,14 @@ func printReported(w io.Writer, indent string, items []migrate.Item, unmapped []
 			line += " at " + u.ProjectPath
 		}
 		fmt.Fprintf(w, "%s%s): %s\n", indent, line, u.Reason)
-		printHints(w, indent+"    ", u.Hints)
+		printHints(w, indent+"    ", u.Hints, width)
 	}
 }
 
-// printHints prints each hint on a line of its own.
-func printHints(w io.Writer, indent string, hints []string) {
+// printHints prints each hint on a line of its own, wrapped to width (hintLine).
+func printHints(w io.Writer, indent string, hints []string, width int) {
 	for _, h := range hints {
-		fmt.Fprintf(w, "%shint: %s\n", indent, h)
+		fmt.Fprintln(w, hintLine(indent, h, width))
 	}
 }
 

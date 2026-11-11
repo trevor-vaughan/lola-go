@@ -23,7 +23,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/target/claude"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
@@ -129,7 +129,7 @@ var _ = Describe("Templates", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		src = filepath.Join(tmp, "src", "kit")
@@ -420,7 +420,7 @@ var _ = Describe("Templates", func() {
 
 	It("after a timeout no later template renders and the run refuses", func() {
 		var seen []string
-		e.Targets = []target.Target{spy{Target: claude.Target{}, seen: &seen}}
+		e.Targets = []target.Target{spy{Target: claudeCode(), seen: &seen}}
 		e.TemplateLimits.Timeout = 100 * time.Millisecond
 		loop := "{% assign l = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' | split: '' %}" +
 			"{% for a in l %}{% for b in l %}{% for c in l %}{% for d in l %}{% assign s = a | append: b %}{% endfor %}{% endfor %}{% endfor %}{% endfor %}"
@@ -460,7 +460,7 @@ var _ = Describe("Templates", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".claude/commands/pk.md")).To(Equal("pk user:work\n"), "a profile switch")
 
-		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).NotTo(ContainElement(HaveField("Code", HavePrefix("template-"))), "check")
 
@@ -585,7 +585,7 @@ var _ = Describe("Templates", func() {
 			HaveKeyWithValue("file", "_partials/header.claude-code.liquid"), HaveKeyWithValue("line", 2),
 			HaveKeyWithValue("included_from", "commands/a.md.liquid:2"), HaveKeyWithValue("reason", "undefined variable in {{ titel }}")))
 
-		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code", "opencode"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code", "opencode"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		var got []string
 		for _, f := range rep.Modules[0].Findings {
@@ -604,7 +604,7 @@ var _ = Describe("Templates", func() {
 			"commands/ok.md.liquid": "ok {{ target }}",
 			"agents/h.md.liquid":    "---\nhooks: {{ target | json }}\n---\nh",
 		})
-		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code", "opencode"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{src}, []string{"claude-code", "opencode"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		var got []string
 		for _, f := range rep.Modules[0].Findings {
@@ -631,7 +631,7 @@ var _ = Describe("Templates", func() {
 		e.TemplateLimits.Timeout = 50 * time.Millisecond
 		writeTree(src, map[string]string{"commands/a.md.liquid": "{% assign l = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' | split: '' %}" +
 			"{% for a in l %}{% for b in l %}{% for c in l %}{% for d in l %}{% assign s = a | append: b %}{% endfor %}{% endfor %}{% endfor %}{% endfor %}"})
-		_, err = e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil)
+		_, err = e.Check(ctx, sc, proj, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).To(MatchError("kit: claude-code command a: commands/a.md.liquid: took longer than 50ms to render; lola stops a template after 50ms"))
 	})
 
@@ -838,7 +838,7 @@ var _ = Describe("Templates", func() {
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: kit, source: mods/kit, vars: {language: rust}}\n"})
 		rendersRust := func(arg string) bool {
 			GinkgoHelper()
-			rep, err := e.Check(ctx, sc, proj, []string{arg}, []string{"claude-code"}, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{arg}, []string{"claude-code"}, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			return slices.ContainsFunc(rep.Modules[0].Findings, func(f target.Finding) bool { return f.Code == "template-undefined-variable" })
 		}
@@ -850,7 +850,7 @@ var _ = Describe("Templates", func() {
 		Expect(rendersRust("kit")).To(BeTrue(), "the cache's kit came from the entry's source")
 
 		writeTree(filepath.Join(proj, ".lola"), map[string]string{"project.yml": "version: 1\nmodules: [\n"})
-		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred(), "an unreadable project.yml never stops lola check")
 		Expect(rep.Findings).To(ContainElement(And(HaveField("Severity", target.SeverityInfo), HaveField("Code", "vars-defaults"),
 			HaveField("Text", HaveSuffix("; lola check renders every module with its default vars")),
@@ -867,7 +867,7 @@ var _ = Describe("Templates", func() {
 			"commands/c.targets.jsonc": `{"opencode": {"tools": ["read"]}}`,
 			"_partials/p.liquid":       "\n{{ attrs.gone.deep }}{% raw %}{{ attrs.raw }}{% endraw %}",
 		})
-		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, []string{"claude-code", "opencode"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, []string{"claude-code", "opencode"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		var undefined []target.Finding
 		for _, f := range rep.Modules[0].Findings {
@@ -894,7 +894,7 @@ var _ = Describe("Templates", func() {
 			"_partials/p.liquid":        "\n{{ attrs.gone }}",
 			"_partials/q\x1b[2J.liquid": "{{ attrs.ignored }}",
 		})
-		rep, err = e.Check(ctx, sc, proj, []string{"mods/esc"}, []string{"claude-code"}, nil)
+		rep, err = e.Check(ctx, sc, proj, []string{"mods/esc"}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		var texts []string
 		for _, f := range rep.Modules[0].Findings {
@@ -945,7 +945,7 @@ var _ = Describe("Templates", func() {
 			Expect(errs.Hints(err)).To(Equal([]string{"lola info --project kit --json"}))
 			Expect(exists(".claude/commands/c.md")).To(BeFalse(), "nothing renders")
 
-			rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred(), "lola check reports a bad override and goes on")
 			Expect(rep.Modules[0].Findings).To(ContainElement(target.Finding{Severity: target.SeveritySkip, Module: "kit", Kind: "module",
 				Code: "vars-override", Text: want.text, Hint: want.fix}))
@@ -955,7 +955,7 @@ var _ = Describe("Templates", func() {
 		_, err = sync(engine.Options{})
 		Expect(err).To(MatchError("project.yml: modules[bare].vars.x: bare declares no var x; it declares none"))
 		Expect(errs.Hints(err)).To(BeEmpty(), "bare is not in the cache, so no command shows its vars")
-		checked, err := e.Check(ctx, sc, proj, []string{"mods/bare"}, nil, nil)
+		checked, err := e.Check(ctx, sc, proj, []string{"mods/bare"}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(checked.Modules[0].Findings).To(ContainElement(HaveField("Hint", "in project.yml, remove modules[bare].vars.x")))
 
@@ -963,7 +963,7 @@ var _ = Describe("Templates", func() {
 		_, err = sync(engine.Options{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(read(".claude/commands/c.md")).To(Equal("rust\n"))
-		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{"mods/kit"}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).NotTo(ContainElement(HaveField("Severity", target.SeveritySkip)))
 	})

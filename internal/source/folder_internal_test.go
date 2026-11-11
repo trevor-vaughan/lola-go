@@ -55,7 +55,9 @@ var _ = Describe("copyFile", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(target).To(Equal("ref/a.md"))
 
-		Expect(os.Remove(filepath.Join(dir, "ref", "a.md"))).To(Succeed())
+		// Park the original instead of deleting it: a freed inode can be handed straight back to the new file,
+		// and os.SameFile would then see no swap.
+		Expect(os.Rename(filepath.Join(dir, "ref", "a.md"), filepath.Join(dir, "ref", "a-parked.md"))).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(dir, "ref", "a.md"), []byte("another file"), 0o644)).To(Succeed())
 		in, err := root.Open(filepath.FromSlash(target))
 		Expect(err).NotTo(HaveOccurred())

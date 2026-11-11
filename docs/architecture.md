@@ -60,6 +60,10 @@ Maintainer notes on Packages. It has its own page: [Packages](architecture/packa
 
 How selections work and how the install flow runs. It has its own page: [Selections and the install flow](architecture/install-flow.md).
 
+## TUI flows
+
+Each interactive surface as a state machine: its screens, transitions and exits. It has its own page: [TUI flows](architecture/tui-flows.md).
+
 ## Plans and the ledger
 
 Maintainer notes on Plans and the ledger. It has its own page: [Plans and the ledger](architecture/plans-and-the-ledger.md).
@@ -70,11 +74,21 @@ Maintainer notes on Templates. It has its own page: [Templates](architecture/tem
 
 ## Targets
 
-- **One package per target** (`internal/target/claude`, …) implements the contract in
-  `internal/target`; `internal/targets` lists them explicitly (no `init()` registration). A
-  `depguard` rule in `.golangci.yml` lets target packages import only the contract (exactly, not
-  a sibling target), `module`, `paths`, `plan`, `untrusted`, the standard library and their vetted
-  third-party packages (`yaml`, `toml`, `semver`), never the engine, the CLI or lola's state.
+- **A target is a YAML spec** (`internal/targetspec/specs`) that the generic target in
+  `internal/target/spec` renders through `internal/target/mech` mechanisms, one per artifact
+  kind, with `internal/target/policy` supplying lola's severities, guards and hints. It implements
+  the contract in `internal/target`; `internal/targets` registers the built-in specs in a fixed
+  order (no `init()` registration). `targets.Load(paths.Paths)` also reads the user's specs from
+  `paths.Paths.Targets` (`*.yaml`; `.yml` refused) and returns the `Registry` (built-ins in
+  their order, a user spec of a built-in's id in its place, then user-only ids sorted); the CLI
+  calls it once before it builds the command tree and passes the `Registry` down. A load error is
+  fatal for every command and never falls back to a built-in. The CLI prints `note: <id> uses
+  your target spec …` once per replaced built-in (human output), and the engine adds the info
+  finding `target/user-spec`. User-writing guide: [Target specs](guides/target-specs.md). A
+  `depguard` rule in `.golangci.yml` lets these packages import only the contract (exactly),
+  `module`, `paths`, `plan`, `targetspec`, `untrusted`, the standard library and their vetted
+  third-party packages (`yaml`, `toml`, `semver`), never the engine, the CLI or lola's state; a
+  second rule keeps `mech` from importing `spec` or `policy`.
 - **Scope and root.** `Detect(scope, root)` gets the target's root for the scope, and
   `PlanContext.Root` carries it into `Plan`. OpenCode needs both: its user-scope root is its own
   config directory, whose existence marks it as set up, and it writes to `opencode.jsonc` when
@@ -129,9 +143,74 @@ Maintainer notes on Templates. It has its own page: [Templates](architecture/tem
   with the target's project markers, and executes nothing. Install, sync and check run each
   participating assistant once with its version arguments (`Engine.ProbeTimeout`, no shell),
   reading at most 4 KiB of its output, cached per binary build in
-  `$XDG_CACHE_HOME/lola/probes.json`. The version only feeds
-  `PlanContext.Version`, which `Admit` compares with capability `Bounds` to add findings;
-  rendering always follows the newest version, so output is the same on every machine.
+  `$XDG_CACHE_HOME/lola/probes.json`. A spec lists its probe methods and `read` (`internal/engine/probe.go`)
+  tries them in order: an `exec` method as above, a `file` method by reading a regular file of at
+  most 1 MiB under the home, config or data directory (its `match` group, or the string at its JSON
+  `pointer`). A method whose binary or file is missing is passed over; the first one that fails
+  is the `probe/unknown-version` finding when none yields a version, else it is `probe/not-found`, naming the first missing exec binary when the
+  spec has an exec method, otherwise the first missing file. The declared version selects the era a scope renders for; the probed one only
+  adds findings (`version/era-mismatch`, `version/undeclared`, `version/before-first-era`), so
+  output is the same on every machine.
+- **Eras.** `targets.Registry` builds one target per era of each spec (`spec.At`), oldest first;
+  `Registry.All` and `Lookup` return the newest. `Registry.For(id, version)` returns the target
+  for the era a version selects (`targetspec.Spec.Select`: the last era whose `since` is at or
+  below it; a version below the first selects the first, and `Registry.Era` reports that), and
+  `""` selects the newest. `Engine.declared` reads a scope's `target_versions` (the manifest's at
+  project scope, `config.yaml`'s at user scope; `Manifest.TargetVersions`, `Config.TargetVersions`)
+  and refuses an id the registry lacks. Each plan binds the declared era per scope
+  (`Engine.atEra`), so the `target.Target` interface and `PlanContext` carry no version.
+- **Version recording.** `engine/versions.go` decides what an install records. `VersionChoices`
+  lists the questions: targets with more than one era, with era labels newest first, the probed
+  version, the version the scope declares (asked about only by the review's "Change versions"),
+  and per era the values of the modules installed it drops that another era keeps
+  (`eraDrops`); the declared era, else the installed one at a standard scope (the user scope, or
+  the project `FoundHere` reports), is preselected. `WrittenFor` is the era the modules installed
+  in a scope (but the run's) are written for, per target: the install flow asks no question and
+  offers no "Change versions" for it (`installFlow.heldEras`). `InstallAll` refuses an install
+  whose era differs from theirs (`staleEras`, `Engine.eraConflict`), hinting the run for their era
+  and the run with `--force`, under which it rewrites them in the same run (`eraSynced`). The
+  review's `versionLines` say per destination which era is written for and why. `DefaultVersions` is the
+  no-terminal answer (installed version at a standard scope, nothing when not installed) and the
+  coached refusal at any other directory. `Records` keeps the versions a scope does not declare
+  already, and the plan writes them to the manifest (with the files, in the install's
+  transaction) or to `config.yaml` (after the files, `scopePlan.saveVersions`), reporting
+  `recorded ...` or `changed ...` notices (`would record ...` under `-n`), class detail, which
+  name the era written for and the installed version (`Engine.versionNotices`); the same function
+  says when an assistant with eras is not installed at a standard scope, so nothing is recorded.
+  `Engine.eraChoices` warns (`version/chosen-era`) of a version recorded at a standard scope for
+  another era than the installed assistant's, after `--strict` judged the plan's findings;
+  `--strict` refuses a scope's `version/era-mismatch` when the install writes files there.
+  `InstallResult.TargetVersions` lists the recordings (their source from
+  `ScopeInstall.Sources`), and `SyncResult.Rewrites` the era rewrites (`Engine.eraRewrites`).
+  The CLI (`flow.go`) takes
+  `-t <id>@<version>`, else asks, else calls `DefaultVersions`; `-y` and `--force` skip the
+  question. The probe's `version/era-mismatch` and `version/undeclared` are suppressed outside a
+  standard scope, and `version/era-mismatch` in the run that records a version it is given
+  (`probeRun.chosen`); the probe keeps that one per scope (`probeRun.mismatched`), which install
+  and sync report only for a scope they write files in, and lola check always. A frontmatter value the era written for drops and another era keeps
+  (`target.Finding.Key`, admitted again through that era's capabilities by `Engine.keptBy`) gets
+  `KeptSince`, a text naming the value and the era written for, and a first hint from
+  `Options.EraRun(scope, id, since)`: the install's run at that scope with that era's `-t`, or the
+  review's "Change versions"; without one (sync, update, lola check), the edit of
+  `target_versions` and the sync that applies it (`Engine.versionsEdit`). `Engine.keptByEra` is
+  the one formatter, for every command that plans; such a finding prints in full, never in a
+  module's notice count, and has no keep-it hint where `version/chosen-era` warns of its target
+  (`Engine.warnsOfEra`). A `-C` or Other directory the run created is removed again, saying so
+  (`installFlow.removeAbandoned`; `removeCreated` removes only empty directories, never a file or
+  symlink in one's place: it rmdirs), unless the install applied there. A missing `-C` directory
+  is refused before it is made when the run would not ask a version it needs
+  (`installFlow.ensureRoot`). A hint naming an assistant with eras for a directory that declares
+  none names each era's version (`ensureAssistants`'s, `Engine.targetRuns`). `trust.View` holds
+  project.yml's `target_versions`, accepted with the top-level targets but reported on its own
+  (`trust.Report.TargetVersions`, `TrustReport.topChanged` for what installs to them). The refusal's hints, one
+  per era (`Engine.EraHints`), rebuild the run (`installFlow.versionRun`) with every assistant it
+  installs for in one `-t`.
+- **Ledger eras.** `ledger.Entry.Eras` maps each target a module renders for to the `since` of the
+  era it was written for (`"eras": {"opencode": "1.0"}` in `lock.json`); an entry without a
+  target's era means its newest era. The sync plan (`templates.go`) compares it with the era the
+  scope now declares and, when they differ, re-renders the module and says
+  `<module>: rewrote <id> files from <old label> to <new label>`, or `would rewrite` in a dry
+  run.
 - **`lola check`** (`engine.Check`) stages a source like `cache add` into a temporary directory
   and detects its format (or reads a cached module), runs every target's `Plan` and keeps only
   the findings.
@@ -218,9 +297,9 @@ Maintainer notes on Install hooks. It has its own page: [Install hooks](architec
 
 ## Runtime hooks
 
-`target/claude` renders each matcher group of a module's runtime hooks as one `AddJSONMember` intent
-(kind `target.KindRuntimeHook`) under `/hooks/<Event>` of `.claude/settings.local.json`, or
-`~/.claude/settings.json` at user scope. Command handlers get `CLAUDE_PLUGIN_ROOT` and
+The `claude-code` target renders each matcher group of a module's runtime hooks as one
+`AddJSONMember` intent (kind `target.KindRuntimeHook`) under `/hooks/<Event>` of
+`.claude/settings.local.json`, or `~/.claude/settings.json` at user scope. Command handlers get `CLAUDE_PLUGIN_ROOT` and
 `CLAUDE_PLUGIN_DATA` (`PlanContext.PluginRoot` and `PluginData`, the same values `target.Expand`
 uses): textual forms are replaced in one pass, shell form gains an `export` prefix, and exec form
 becomes `env -- NAME=value NAME=value <command> <args>`. `--` must come before the assignments: GNU
@@ -237,7 +316,8 @@ only exec form fits: every `C:\` path holds `\`, so shell-form hooks are never f
 skip's hint names exec form alone.
 
 **Git-ignore check.** Targets stay pure, so the engine computes
-`PlanContext.LocalSettingsExposed` once per command (`probeRun.localSettings`), at project scope
+`PlanContext.SettingsExposed` once per settings file and command (`probeRun.settings`), for the
+settings file the target writes, at project scope
 and only for modules with runtime hooks: if the project or a parent holds `.git`, it runs
 `git ls-files --error-unmatch` (status 1 means untracked) and `git check-ignore -q --no-index`
 (status 0 means ignored) through `source.GitCommand`, whose `-c` overrides keep a cloned
@@ -245,8 +325,8 @@ repository's config from running programs (fsmonitor, hooks). Any other status, 
 the reason, and the target skips the hooks (fail closed).
 
 **Frontmatter hooks.** Claude Code also runs a `hooks:` key in skill, command and agent frontmatter.
-`module` checks every key equal to `hooks` ignoring case like `runtime_hooks`; `target/claude`
-(`componentHooks`) gives their command handlers the same rewrite and renders the rest of the
+`module` checks every key equal to `hooks` ignoring case like `runtime_hooks`; the `claude-code`
+target (`componentHooks`) gives their command handlers the same rewrite and renders the rest of the
 document through `target.Expand` separately, so `Expand`'s raw substitution never reaches hook shell
 text.
 

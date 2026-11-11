@@ -1,0 +1,43 @@
+# Runs the container-driven venom suites (`task e2e`). They need the network and a container
+# runtime, so they run on main, on demand and weekly rather than on every pull request.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VENOM_VERSION: v1.3.0
+  # sha256 of venom.linux-amd64 for VENOM_VERSION, from the release's asset digest.
+  VENOM_SHA256: 89832ec25e820c605cf0d3c09122e60bad43d13c1724aa6d375ef7109fbfe201
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2
+      - name: Install venom
+        run: |
+          curl -fsSL -o venom "https://github.com/ovh/venom/releases/download/${VENOM_VERSION}/venom.linux-amd64"
+          echo "${VENOM_SHA256}  venom" | sha256sum -c -
+          sudo install -m 0755 venom /usr/local/bin/venom
+      - run: task e2e MODE=llm
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: e2e-output
+          path: .test-output/
+          if-no-files-found: ignore

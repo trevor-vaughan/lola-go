@@ -27,7 +27,8 @@ type result struct {
 
 // lola runs the real command tree in-process with buffered, non-terminal streams.
 func lola(args ...string) result {
-	root := cli.NewRootCmd(os.Getenv)
+	root, err := cli.NewRootCmd(os.Getenv)
+	Expect(err).NotTo(HaveOccurred())
 	var out, errb bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&errb)

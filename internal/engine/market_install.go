@@ -16,7 +16,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
-	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -377,7 +376,7 @@ func (e *Engine) checkEntry(ctx context.Context, arg, parent string, display []s
 	if err != nil {
 		return nil, "", err
 	}
-	m, err := module.Detect(f.Dir, p.entry.Name, targets.IDs())
+	m, err := module.Detect(f.Dir, p.entry.Name, e.targetIDs())
 	if errors.Is(err, module.ErrNoModule) {
 		err = store.NoModuleAt(spec.Location, spec.Path, f.Dir, err)
 	}

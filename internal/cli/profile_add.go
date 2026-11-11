@@ -52,21 +52,24 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 			})
 		}
 	}
-	show := func(rps []engine.RemoteProfile) { a.page(cmd, cmd.ErrOrStderr(), stderr, printer(rps)) }
 	// --trust answers the question; what it accepted is still shown, as a record.
-	req.Show = func(rps []engine.RemoteProfile) {
-		if !a.json {
-			show(rps)
+	req.Show = func(rps []engine.RemoteProfile) error {
+		if a.json {
+			return nil
 		}
+		return a.pageThen(cmd, cmd.ErrOrStderr(), stderr, receiptNext(p, false), printer(rps))
 	}
 	if p.Interactive() {
 		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
-			show(rps)
 			var names []string
 			for _, rp := range rps {
 				names = append(names, rp.Profile)
 			}
-			return p.Confirm("Add "+strings.Join(names, ", ")+"? Nothing is turned on", Nav{})
+			question := "Add " + strings.Join(names, ", ") + "? Nothing is turned on"
+			if err := a.pageThen(cmd, cmd.ErrOrStderr(), stderr, question, printer(rps)); err != nil {
+				return false, err
+			}
+			return p.Confirm(question, Nav{})
 		}
 	}
 	if p.Interactive() {
@@ -76,7 +79,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 	}
 	res, err := eng.AddProfile(cmd.Context(), req)
 	if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
-		return &abortedError{"aborted; nothing was added."}
+		return ErrAborted
 	}
 	if err != nil {
 		return err

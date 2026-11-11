@@ -22,6 +22,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -237,7 +238,7 @@ var _ = Describe("remote profiles", func() {
 			url, src = base+"/example.git", base+"/profiles.git"
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-			v, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
+			v, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
 			Expect(err).NotTo(HaveOccurred())
 			mdigest = v.Meta.Digest
 			entry := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url + ", commit: " + mcommit + ", digest: " + mdigest + "}\n"
@@ -293,7 +294,7 @@ var _ = Describe("remote profiles", func() {
 				func(st cli.ProfileStep) ([]string, error) { return []string{"docs"}, nil }}, confirm: []bool{false}}
 			r := lolaP(sp, "profile", "--add", src, "--user")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).To(ContainSubstring("aborted; nothing was added."))
+			Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 			Expect(sp.calls).To(Equal([]string{"profiles", "confirm:Add remote:docs? Nothing is turned on"}))
 			Expect(sp.profileSteps).To(Equal([]cli.ProfileStep{{Source: src, Names: []string{"docs", "go"}}}))
 			Expect(r.err).To(ContainSubstring("remote:docs → "+filepath.Join(p.RemoteProfiles, "docs", "profile.yml")+
@@ -334,7 +335,7 @@ var _ = Describe("remote profiles", func() {
 			hurl := url[:len(url)-len("example.git")] + "hooked.git"
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin2"), filepath.Join(tmp, "pin2.lock"), filepath.Join(tmp, "pin2-staging")
-			hv, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: hurl})
+			hv, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: hurl})
 			Expect(err).NotTo(HaveOccurred())
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: example, source: " + url +
@@ -401,7 +402,8 @@ var _ = Describe("remote profiles", func() {
 				Expect(in.Close()).To(Succeed())
 			})
 			c := &confirming{scripted: scripted{}, answers: []bool{true}}
-			root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
 			var out bytes.Buffer
 			c.stderr = &bytes.Buffer{}
 			root.SetOut(&out)
@@ -412,6 +414,97 @@ var _ = Describe("remote profiles", func() {
 			Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
 			Expect(out.String()).To(ContainSubstring("create claude-code .claude/commands/m44.md"), "the viewer's text is uncapped")
 			Expect(out.String()).NotTo(ContainSubstring("… and"))
+		})
+
+		It("ends an add on Ctrl+C in its consent's viewer, before the question", func() {
+			GinkgoT().Setenv("COLUMNS", "120")
+			GinkgoT().Setenv("LINES", "2")
+			in, typed, err := os.Pipe()
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(typed.Close()).To(Succeed())
+				Expect(in.Close()).To(Succeed())
+			})
+			_, err = typed.WriteString("\x03")
+			Expect(err).NotTo(HaveOccurred())
+			c := &confirming{scripted: scripted{}}
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
+			var out bytes.Buffer
+			c.stderr = &bytes.Buffer{}
+			root.SetOut(&out)
+			root.SetErr(c.stderr)
+			root.SetIn(in)
+			root.SetArgs([]string{"profile", "go", "--add", src, "--user"})
+			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
+			Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
+			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the add: its question is not asked")
+			Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
+			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeAnExistingFile())
+		})
+
+		It("ends an add --trust on Ctrl+C in its record's viewer, before the receipt", func() {
+			GinkgoT().Setenv("COLUMNS", "120")
+			GinkgoT().Setenv("LINES", "2")
+			in, typed, err := os.Pipe()
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(typed.Close()).To(Succeed())
+				Expect(in.Close()).To(Succeed())
+			})
+			_, err = typed.WriteString("\x03")
+			Expect(err).NotTo(HaveOccurred())
+			c := &confirming{scripted: scripted{}}
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
+			var out bytes.Buffer
+			c.stderr = &bytes.Buffer{}
+			root.SetOut(&out)
+			root.SetErr(c.stderr)
+			root.SetIn(in)
+			root.SetArgs([]string{"profile", "go", "--add", src, "--user", "--trust"})
+			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
+			Expect(out.String()).To(ContainSubstring("q continue: Proceed? is asked next"))
+			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the add: the receipt is not asked")
+			Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
+			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeAnExistingFile())
+		})
+
+		It("ends an update on Ctrl+C in its consent's viewer, before the question", func() {
+			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
+			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
+			many := map[string]string{}
+			for i := range 45 {
+				many[fmt.Sprintf("commands/m%02d.md", i)] = "M\n"
+			}
+			hookedUpdate("true", many)
+			kept := filepath.Join(p.RemoteProfiles, "go", "profile.yml")
+			before, err := os.ReadFile(kept)
+			Expect(err).NotTo(HaveOccurred())
+			GinkgoT().Setenv("COLUMNS", "120")
+			GinkgoT().Setenv("LINES", "10")
+			in, typed, err := os.Pipe()
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				Expect(typed.Close()).To(Succeed())
+				Expect(in.Close()).To(Succeed())
+			})
+			_, err = typed.WriteString("\x03")
+			Expect(err).NotTo(HaveOccurred())
+			c := &confirming{scripted: scripted{}}
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
+			Expect(err).NotTo(HaveOccurred())
+			var out bytes.Buffer
+			c.stderr = &bytes.Buffer{}
+			root.SetOut(&out)
+			root.SetErr(c.stderr)
+			root.SetIn(in)
+			root.SetArgs([]string{"profile", "go", "--update", "--user"})
+			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
+			Expect(out.String()).To(ContainSubstring("q continue: Update remote:go? is asked next"))
+			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the update: its question is not asked")
+			Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
+			Expect(os.ReadFile(kept)).To(Equal(before))
 		})
 
 		It("an update with --trust shows one receipt for the profiles and each scope's sync; No updates and applies nothing", func() {
@@ -428,7 +521,7 @@ var _ = Describe("remote profiles", func() {
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(c.questions).To(Equal([]string{"Proceed?"}), "one question for the update and its sync")
 			Expect(r.err).To(ContainSubstring("trusting, as --trust=profiles,hooks allows:\n  → profiles: remote:go (changed)\n  → hooks: hooked pre-install (new)\n"))
-			Expect(r.err).To(HaveSuffix("aborted; nothing was updated.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(os.ReadFile(kept)).To(Equal(before), "nothing is written before the receipt's yes")
 
 			Expect(p.Consent).NotTo(BeAnExistingFile())
@@ -503,7 +596,8 @@ var _ = Describe("remote profiles", func() {
 				Expect(err).NotTo(HaveOccurred())
 				ctx, cancel := context.WithCancelCause(context.Background())
 				cancel(cli.Interrupted{Signal: sig}) // as cli.NotifyContext does on the signal
-				root := cli.NewRootCmd(os.Getenv)
+				root, err := cli.NewRootCmd(os.Getenv)
+				Expect(err).NotTo(HaveOccurred())
 				var out, errb bytes.Buffer
 				root.SetOut(&out)
 				root.SetErr(&errb)
@@ -532,7 +626,7 @@ var _ = Describe("remote profiles", func() {
 			r := lolaAsking(c, "profile", "go", "--update", "--user", "--trust=profiles")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(c.questions).To(Equal([]string{"Remove these and sync? No applies nothing"}), "a No to the removals is no refusal: no receipt follows")
-			Expect(r.err).To(HaveSuffix("aborted; nothing was updated.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(os.ReadFile(kept)).To(Equal(before))
 		})
 
@@ -756,7 +850,7 @@ var _ = Describe("remote profiles", func() {
 			r = lolaP(sp, "profile", "--update", "--all", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.calls).To(Equal([]string{"confirm:Update remote:docs?", "confirm:Update remote:go?"}), "go is at another commit too")
-			Expect(r.err).To(HaveSuffix("aborted; nothing was updated.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 
 			push("Docs 3")
 			sp = &scripted{confirm: []bool{false, true}}
@@ -809,15 +903,15 @@ var _ = Describe("remote profiles", func() {
 			sp := &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, n: 1}
 			r := lolaP(sp, "profile", "go", "docs", "--update", "--user")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).To(HaveSuffix("aborted; nothing was updated.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			sp = &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, n: 2}
 			r = lolaP(sp, "profile", "go", "docs", "--update", "--user", "--trust=hooks")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).To(HaveSuffix("aborted; nothing was updated.\n"), "with --trust nothing is written before the command's one receipt")
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "with --trust nothing is written before the command's one receipt")
 			sp = &ctrlC{scripted: &scripted{confirm: []bool{true, true}}, n: 2}
 			r = lolaP(sp, "profile", "go", "docs", "--update", "--user")
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.err).To(HaveSuffix("aborted; remote:go is updated, but not applied (lola sync --user example); nothing else was updated.\n"))
+			Expect(r.err).To(HaveSuffix("✗ cancelled — remote:go is updated, but not applied (lola sync --user example); nothing else was updated\n"))
 			Expect(filepath.Join(p.Home, ".claude", "commands", "ship.md")).To(BeAnExistingFile(), "nothing is applied")
 
 			// A profile that failed before Ctrl+C is reported, with each one the stop left, and fails the run.
@@ -862,7 +956,8 @@ var _ = Describe("remote profiles", func() {
 						cancel(cli.Interrupted{Signal: sig}) // as cli.NotifyContext does on the signal
 					}
 				}}
-				root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(sp))
+				root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(sp))
+				Expect(err).NotTo(HaveOccurred())
 				var out, errb bytes.Buffer
 				root.SetOut(&out)
 				root.SetErr(&errb)
@@ -1000,7 +1095,7 @@ var _ = Describe("remote profiles", func() {
 			bcommit := repo("big", files)
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin2"), filepath.Join(tmp, "pin2.lock"), filepath.Join(tmp, "pin2-staging")
-			v, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: strings.TrimSuffix(url, "example.git") + "big.git"})
+			v, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: strings.TrimSuffix(url, "example.git") + "big.git"})
 			Expect(err).NotTo(HaveOccurred())
 			work := filepath.Join(tmp, "profiles-work")
 			writeTree(work, map[string]string{"profiles/big.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: big, source: " +

@@ -35,6 +35,7 @@ var _ = Describe("Resolve", func() {
 		Expect(p.Markets).To(Equal("/h/.config/lola/markets.yaml"))
 		Expect(p.MarketCache).To(Equal("/h/.cache/lola/markets"))
 		Expect(p.UserProfiles).To(Equal("/h/.config/lola/profiles"))
+		Expect(p.Targets).To(Equal("/h/.config/lola/targets"))
 		Expect(p.UserLedger).To(Equal("/h/.local/state/lola/lock.json"))
 		Expect(p.UserLock).To(Equal("/h/.local/state/lola/.lock"))
 		Expect(p.Locks).To(Equal("/h/.local/state/lola/locks"))

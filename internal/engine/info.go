@@ -511,7 +511,7 @@ func refusal(err error) bool {
 		return false
 	}
 	_, conflict := errors.AsType[*plan.ConflictError](err)
-	_, targets := errors.AsType[*untrustedTargetsError](err)
+	_, targets := errors.AsType[*UntrustedTargetsError](err)
 	_, template := errors.AsType[*TemplateError](err)
 	_, script := errors.AsType[*scriptError](err)
 	return conflict || targets || template || script || errors.Is(err, ErrNotTrusted) || len(errs.Hints(err)) > 0

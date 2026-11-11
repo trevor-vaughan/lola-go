@@ -100,27 +100,12 @@ var _ = Describe("lola cache clean", func() {
 		Expect(doc["bytes_freed"]).To(BeNumerically(">", 0))
 	})
 
-	// cacheTwice caches module a twice from one folder, so its first version is superseded, and
-	// returns that version's path in the cache.
-	cacheTwice := func() string {
-		GinkgoHelper()
-		src := filepath.Join(filepath.Dir(p.Config), "src", "a")
-		writeTree(src, map[string]string{"lola.yml": "name: a\n", "commands/hi.md": "v1\n"})
-		Expect(lola("cache", "add", src).code).To(Equal(0))
-		ids, err := os.ReadDir(filepath.Join(p.Store, "a", "versions"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ids).To(HaveLen(1))
-		writeTree(src, map[string]string{"commands/hi.md": "v2\n"})
-		Expect(lola("cache", "add", src).code).To(Equal(0))
-		return filepath.Join(p.Store, "a", "versions", ids[0].Name())
-	}
-
 	DescribeTable("clean prints its plan and its result as rows, with a path that is not plain text cleaned",
 		func(plain bool) {
 			if os.Geteuid() == 0 {
 				Skip("root deletes in a read-only directory")
 			}
-			old := cacheTwice()
+			old := cacheTwice(p)
 			oldRel := "modules/a/versions/" + filepath.Base(old)
 			writeTree(filepath.Join(p.Staging, "run-\x1b[31m"), map[string]string{"x": "0123456789"})
 			writeTree(filepath.Join(p.Store, "bad"), map[string]string{"index.yml": "heads: [\n"})
@@ -183,7 +168,7 @@ var _ = Describe("lola cache clean", func() {
 	)
 
 	It("a confirmed clean whose every item changed says nothing was removed", func() {
-		old := cacheTwice()
+		old := cacheTwice(p)
 		asker := &confirming{answers: []bool{true}, meddle: func() { Expect(os.RemoveAll(old)).To(Succeed()) }}
 		r := lolaAsking(asker, "cache", "clean")
 		Expect(r.code).To(Equal(0), r.err)

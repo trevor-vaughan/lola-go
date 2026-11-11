@@ -165,18 +165,28 @@ Maintainer notes on Packages. It is split out of [architecture](../architecture.
   `<module>/runtime-hooks/<settings-file hash>`), each recording a digest.
 - `target`: The target contract: `Target`, `PlanContext`, `Finding`, capability tables and `Admit`,
   `Probe`, and helpers renderers share. No implementations.
-- `target/claude`, `target/gemini`, `target/opencode`, `target/agents`: The `claude-code`,
-  `gemini-cli`, `opencode` and `agents` renderers, each with its capability table and probe. One
-  package per target.
+- `targetspec`: A target's facts as a YAML spec (layout, detection, probe, frontmatter,
+  behaviors): the format, its loader and the embedded built-in specs. Imports nothing of lola's.
+- `target/policy`: Turns a spec's facts into `target.Capabilities`: lola's severities, guards and
+  hints.
+- `target/mech`: The mechanisms, each rendering one artifact kind (skills, commands, agents, MCP
+  servers, rules, runtime hooks) for the specs that name it. Cannot import `spec` or `policy`.
+- `target/spec`: The generic `target.Target` built from a spec's era (`New` the newest, `At` any):
+  detection, probe, capability table and the mechanisms it names. Builds the `claude-code`, `gemini-cli`, `opencode` and
+  `agents` targets.
   - `agents` writes skills only (capability table: `skill`, `Open`, a `description` required, the
     agentskills.io name pattern), has no binary, and is set up where `.agents/skills/` exists.
-  - `PlanContext.SharedSkills` carries the skills `agents` delivers, so `gemini` and `opencode` skip
+  - `PlanContext.SharedSkills` carries the skills `agents` delivers, so `gemini-cli` and `opencode` skip
     their own copy (`skill-via-agents`); the engine fills it by planning `agents` first, and `check`
     does the same.
   - `engine.TargetChoice.SetUpOnly` holds targets with no binary whose marker exists; `Installed`
     and `SetUp` stay binaries on `PATH`.
 - `target/conformance`: Specs every registered target must pass.
-- `targets`: The registry: the one list of every target.
+- `targets`: The `Registry`: every target built from the embedded specs in a fixed order, each
+  replaced by a user spec of its id, then user-only ids sorted. `Load(paths.Paths)` reads the
+  user's specs and is called by the CLI before the command tree is built; `Builtin()` is the
+  embedded specs alone; `Replaced(id)` names the file that replaced a built-in. `For(id, version)`
+  is the target for the era a version selects and `Era(id, version)` that era's `since`.
 - `plan`: Intents, `Compute` (diff + conflicts) and `Apply` (transaction over files, ledger and
   manifest).
 - `engine`:

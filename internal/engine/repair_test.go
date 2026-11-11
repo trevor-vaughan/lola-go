@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -33,7 +34,7 @@ var _ = Describe("Repair", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
@@ -112,7 +113,7 @@ var _ = Describe("Repair", func() {
 	It("forgets a module left on no target lola knows, and keeps the targets of an entry from before lock.json recorded them", func() {
 		edit(func(l *ledger.Ledger) {
 			ghost := *l.Modules["kit"]
-			ghost.Targets, ghost.Artifacts = []string{"bogus"}, []ledger.Artifact{{Target: "bogus", Kind: "file", Path: "x.md"}}
+			ghost.Targets, ghost.Artifacts, ghost.Eras = []string{"bogus"}, []ledger.Artifact{{Target: "bogus", Kind: "file", Path: "x.md"}}, map[string]string{"bogus": "1.0"}
 			l.Modules["ghost"] = &ghost
 			k := l.Modules["kit"]
 			k.Targets = nil

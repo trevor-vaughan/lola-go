@@ -30,7 +30,7 @@ var _ = Describe("Init", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(b)).To(MatchJSON(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"my.tools",
 			"version":"0.1.0","description":"Describe what this plugin does"}`))
-		m, err := module.Detect(dir, "x", targets.IDs())
+		m, err := module.Detect(dir, "x", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Format).To(Equal("agent-plugins"))
 		Expect(m.Name).To(Equal("my.tools"))
@@ -45,7 +45,7 @@ var _ = Describe("Init", func() {
 		s, err := engine.Init(dir, "lola")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(s.Files).To(Equal([]string{"lola.yml", "skills/hello/SKILL.md", "commands/hello.md"}))
-		m, err := module.Detect(dir, "x", targets.IDs())
+		m, err := module.Detect(dir, "x", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Format).To(Equal("lola"))
 		Expect(m.Name).To(Equal("my_module"))

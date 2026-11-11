@@ -34,7 +34,7 @@ the engine's.
     and a typed name that is already this marketplace (`sameMarket`).
   - After the fetch, a name another marketplace has (typed or the catalog's) goes to
     `takenName`: `Rename` asks a free name on a terminal (`askName`, which asks again until the
-    answer is a valid name no marketplace has), else the hint is `market.FreeName`'s `--add`.
+    answer is a valid name no marketplace has, pre-filled with the refused answer as typed), else the hint is `market.FreeName`'s `--add`.
   - A catalog's own name that no marketplace can have is asked the same way, pre-filled with its
     free slug, else refused with the slug's `--add`.
   - Those hints name the catalog file found with `--path` for a tree source, as another name

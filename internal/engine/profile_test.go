@@ -17,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -35,7 +36,7 @@ var _ = Describe("profiles", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, mods = filepath.Join(tmp, "proj"), filepath.Join(tmp, "mods")
 		e.Getwd = func() (string, error) { return proj, nil }
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())

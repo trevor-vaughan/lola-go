@@ -12,9 +12,10 @@ import (
 )
 
 // tidySelect decides what moves: what the names or --all select, else what Choose
-// answers; then the review, also for a Choose answer that only keeps. It returns nil when
-// nothing moves, and refuses with the result's candidates listed when it needs an answer it
-// cannot ask for.
+// answers; then the review, also for a Choose answer that only keeps. Going back from the
+// review of a Choose answer (ErrBack) asks Choose again; from any other review ErrBack is
+// returned. It returns nil when nothing moves, and refuses with the result's candidates listed
+// when it needs an answer it cannot ask for.
 func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res *TidyResult) ([]TidyUnit, TidyChoice, error) {
 	refuse := func(listed []TidyUnit, err error) ([]TidyUnit, TidyChoice, error) {
 		res.Candidates = listed
@@ -22,6 +23,7 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 	}
 	var chosen []TidyUnit
 	var choice TidyChoice
+	picked := false
 	switch {
 	case len(req.Select) > 0:
 		for _, sel := range req.Select {
@@ -57,6 +59,7 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 		return refuse(scan.Candidates, errs.WithHints(fmt.Errorf("lola tidy needs names or --all when it cannot ask (off a terminal or with --json): %s can move",
 			CountItems(len(scan.Candidates))), tidyHints(e.tidyRun(r, nil, "--all"))...))
 	default:
+		picked = true
 		var err error
 		if choice, err = req.Choose(scan); err != nil {
 			return nil, TidyChoice{}, err
@@ -116,6 +119,9 @@ func (e *Engine) tidySelect(req TidyRequest, s *tidyScanner, scan TidyScan, res 
 		}
 	}
 	ok, err := req.Confirm(choice)
+	if errors.Is(err, ErrBack) && picked {
+		return e.tidySelect(req, s, scan, res)
+	}
 	if err != nil {
 		return nil, TidyChoice{}, err
 	}

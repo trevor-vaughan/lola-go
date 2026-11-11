@@ -86,7 +86,8 @@ type TidyRequest struct {
 	Display []string
 	// Choose asks which units to move and which to keep; nil means it cannot ask.
 	Choose func(TidyScan) (TidyChoice, error)
-	// Confirm asks the review; nil means it cannot ask.
+	// Confirm asks the review; nil means it cannot ask. Its ErrBack, after a Choose answer, asks
+	// Choose again.
 	Confirm func(TidyChoice) (bool, error)
 }
 

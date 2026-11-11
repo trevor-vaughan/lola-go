@@ -40,7 +40,8 @@ var _ = Describe("lola migrate", func() {
 	Describe("progress", func() {
 		// onTerminal runs lola migrate -n with stderr a terminal, as it is when a person waits.
 		onTerminal := func() result {
-			root := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true))
+			root, err := cli.NewRootCmd(os.Getenv, cli.WithTerminals(false, true))
+			Expect(err).NotTo(HaveOccurred())
 			var out, errb bytes.Buffer
 			root.SetOut(&out)
 			root.SetErr(&errb)
@@ -202,7 +203,7 @@ var _ = Describe("lola migrate", func() {
 			r := lolaP(p, "migrate")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(p.calls).To(Equal([]string{"migrate-root:/Users/alice", "migrate-targets:claude-code", "confirm:Migrate?"}))
-			Expect(p.confirmNavs).To(Equal([]cli.Nav{{Answered: 2}}), "two mapping answers: q at Migrate? asks first")
+			Expect(p.confirmNavs).To(Equal([]cli.Nav{{Back: true, Answered: 2}}), "two mapping answers: q at Migrate? asks first, Esc goes back")
 			Expect(p.rootSteps).To(Equal([]cli.MigrateRootStep{{Old: "/Users/alice", Suggest: filepath.Join(tmp, "home"), Value: filepath.Join(tmp, "home"),
 				Records: 2}}), "one question covers the project path and kit's folder source")
 			Expect(p.mapTargetSteps).To(Equal([]cli.MigrateTargetStep{{Old: "claude-code", Supported: true, Modules: 2, Options: []string{"opencode"},

@@ -61,18 +61,9 @@ func Save(path string, changes []Change) error {
 	if err != nil {
 		return errs.WithHints(fmt.Errorf("not saving your selections: %w", err), "your picks were not written and nothing was installed")
 	}
-	var root *yaml.Node
-	switch {
-	case d == nil:
-		d = &yaml.Node{}
-		if err := yaml.Unmarshal([]byte(template), d); err != nil {
-			return err
-		}
-		root = d.Content[0]
-	case yamldoc.Root(d) == nil:
-		root = yamldoc.NullDocRoot(d, Version)
-	default:
-		root = d.Content[0]
+	d, root, err := docRoot(d, template)
+	if err != nil {
+		return err
 	}
 	for _, c := range changes {
 		if c.Entry.Empty() {
@@ -93,35 +84,72 @@ func Save(path string, changes []Change) error {
 // configTemplate starts a config.yaml lola creates.
 const configTemplate = "# lola settings. Safe to edit by hand.\nversion: 1\n"
 
+// docRoot is d, a document yamldoc.Read returned, with its root mapping; a missing file (nil d)
+// starts from tmpl, and a file with no content gets the version key.
+func docRoot(d *yaml.Node, tmpl string) (*yaml.Node, *yaml.Node, error) {
+	switch {
+	case d == nil:
+		d = &yaml.Node{}
+		if err := yaml.Unmarshal([]byte(tmpl), d); err != nil {
+			return nil, nil, err
+		}
+		return d, d.Content[0], nil
+	case yamldoc.Root(d) == nil:
+		return d, yamldoc.NullDocRoot(d, Version), nil
+	}
+	return d, d.Content[0], nil
+}
+
+// loadConfigDoc checks that config.yaml at path loads, then returns its document and root
+// mapping (docRoot). what names what the caller was saving, for the refusal.
+func loadConfigDoc(path, home, what string) (*yaml.Node, *yaml.Node, error) {
+	if _, err := LoadConfig(path, home); err != nil {
+		return nil, nil, errs.WithHints(fmt.Errorf("not saving your %s: %w", what, err), "fix config.yaml by hand, then rerun; nothing was written to it")
+	}
+	d, _, err := yamldoc.Read(path, Version)
+	if err != nil {
+		return nil, nil, err
+	}
+	return docRoot(d, configTemplate)
+}
+
 // SaveTheme writes theme: theme to config.yaml at path, replacing the key's value
 // or adding the key last; comments, order and every other key are kept. home is LoadConfig's.
 // A file that does not load is never overwritten, and a symlinked file is written at its target.
 func SaveTheme(path, home, theme string) error {
-	if _, err := LoadConfig(path, home); err != nil {
-		return errs.WithHints(fmt.Errorf("not saving your theme: %w", err), "fix config.yaml by hand, then rerun; nothing was written to it")
-	}
-	d, _, err := yamldoc.Read(path, Version)
+	d, root, err := loadConfigDoc(path, home, "theme")
 	if err != nil {
 		return err
-	}
-	var root *yaml.Node
-	switch {
-	case d == nil:
-		d = &yaml.Node{}
-		if err := yaml.Unmarshal([]byte(configTemplate), d); err != nil {
-			return err
-		}
-		root = d.Content[0]
-	case yamldoc.Root(d) == nil:
-		root = yamldoc.NullDocRoot(d, Version)
-	default:
-		root = d.Content[0]
 	}
 	if v := yamldoc.Value(root, "theme"); v != nil {
 		v.Value, v.Tag, v.Style = theme, "!!str", 0
 	} else {
 		root.Content = append(root.Content, yamldoc.Str("theme"), yamldoc.Str(theme))
 	}
+	return writeDoc(path, d, "lola asks again on its next run")
+}
+
+// SaveTargetVersions sets these ids' versions under target_versions: in config.yaml at path,
+// keeping every other key and id, creating the file (and key) when missing; a new key goes
+// last. home is LoadConfig's. A file that does not load is never overwritten, and a symlinked
+// file is written at its target.
+func SaveTargetVersions(path, home string, set map[string]string) error {
+	if len(set) == 0 {
+		return nil
+	}
+	d, root, err := loadConfigDoc(path, home, "assistant versions")
+	if err != nil {
+		return err
+	}
+	tv := yamldoc.Value(root, "target_versions")
+	switch {
+	case tv == nil:
+		tv = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		root.Content = append(root.Content, yamldoc.Str("target_versions"), tv)
+	case tv.Kind != yaml.MappingNode: // LoadConfig refuses every non-mapping value but null
+		tv.Kind, tv.Tag, tv.Value, tv.Style, tv.Content = yaml.MappingNode, "!!map", "", 0, nil
+	}
+	yamldoc.SetQuoted(tv, set)
 	return writeDoc(path, d, "lola asks again on its next run")
 }
 

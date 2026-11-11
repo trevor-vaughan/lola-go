@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -27,7 +28,7 @@ var _ = Describe("scratch locks", func() {
 		tmp = testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = New(p)
+		e = New(p, targets.Builtin())
 	})
 	// held reports whether another holder has lock: a lock on a new descriptor, which flock(2)
 	// treats as another holder, cannot be taken.
@@ -209,7 +210,7 @@ var _ = Describe("reviewOf a version an install's staged run holds", func() {
 		testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = New(p)
+		e = New(p, targets.Builtin())
 	})
 	commit := strings.Repeat("a", 40)
 	// staged prepares kit, a git module, in run as a fetch would, selecting comps.

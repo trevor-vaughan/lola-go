@@ -446,7 +446,9 @@ func (e *Engine) MakeProfile(ctx context.Context, req MakeRequest) (*SyncResult,
 // BundleEditRequest is lola profile <Name> --edit --bundle <Members>: set the members of Name, a
 // bundle or an empty profile, in order. Also is where else the run applies a bundle of yours that
 // reaches there (EditScopes' later scopes). Target words the hints as the run does; Options,
-// ConfirmRemovals, Trust and Show are the apply's, as a sync's are.
+// ConfirmRemovals, Trust and Show are the apply's, as a sync's are. ConfirmAfter, when set, asks
+// in ConfirmRemovals' place about the removals of an Also scope that only show once the bundle is
+// written, which can no longer go back to what came before it.
 type BundleEditRequest struct {
 	Scope           Scope
 	Also            []Scope
@@ -455,8 +457,9 @@ type BundleEditRequest struct {
 	Target          TargetRequest
 	Options         Options
 	ConfirmRemovals func([]Removal) (bool, error)
+	ConfirmAfter    func([]Removal) (bool, error)
 	Trust           func(TrustReport) (TrustAnswer, error)
-	Show            func(TrustReport)
+	Show            func(TrustReport) error
 }
 
 // BundleEdit is what lola profile --edit --bundle did: the bundle (Profile, its qualified name, and
@@ -666,8 +669,12 @@ func (e *Engine) EditBundle(ctx context.Context, req BundleEditRequest) (*Bundle
 			// Removals the check before the write did not see: a No or a cancel here leaves the
 			// files written, so neither may read as a run that changed nothing (ErrDeclined, the
 			// CLI's aborted).
+			after := req.ConfirmAfter
+			if after == nil {
+				after = req.ConfirmRemovals
+			}
 			then.ConfirmRemovals = func(rs []Removal) (bool, error) {
-				ok, err := req.ConfirmRemovals(rs)
+				ok, err := after(rs)
 				if err != nil {
 					return false, errors.New(err.Error())
 				}
@@ -797,7 +804,7 @@ func withPending(rep, pending TrustReport) TrustReport {
 // accepted.
 func shownCovers(shown, rep TrustReport) bool {
 	in := func(have, want any) bool { return reflect.DeepEqual(have, want) }
-	if rep.Targets != nil && !in(shown.Targets, rep.Targets) {
+	if rep.Targets != nil && !in(shown.Targets, rep.Targets) || rep.TargetVersions != nil && !in(shown.TargetVersions, rep.TargetVersions) {
 		return false
 	}
 	for _, pt := range rep.ProfileTargets {
@@ -827,6 +834,9 @@ func trustItems(rep TrustReport) string {
 	}
 	if rep.Targets != nil {
 		items = append(items, "changes to the targets of project.yml")
+	}
+	if rep.TargetVersions != nil {
+		items = append(items, "changes to the target_versions of project.yml")
 	}
 	for _, pt := range rep.ProfileTargets {
 		what := "targets"

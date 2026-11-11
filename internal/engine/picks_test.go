@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -32,7 +33,7 @@ var _ = Describe("profile entry picks", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
@@ -227,7 +228,7 @@ var _ = Describe("profile entry picks", func() {
 		Expect(led.Save(filepath.Join(proj, ".lola", "lock.json"))).To(Succeed())
 		sync(sc)
 
-		rep, err := e.Check(ctx, sc, proj, []string{dir}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{dir}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveExactElements(And(HaveField("Skipped", []string{"skill/b", "skill/c"}), HaveField("SkippedIn", "profile go and selections.yaml"))))
 
@@ -306,7 +307,7 @@ var _ = Describe("Target-narrowing: an install whose -t leaves out a target the 
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := engine.New(p)
+		e := engine.New(p, targets.Builtin())
 		ctx := context.Background()
 		proj, mod := filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
 		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "commands/hi.md": "Hi\n"})

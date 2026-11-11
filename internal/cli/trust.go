@@ -166,6 +166,15 @@ func consentRun(cmd *cobra.Command, args []string) func(engine.TrustKinds) strin
 	return func(k engine.TrustKinds) string { return fixedRun(cmd, args, k, "dry-run") }
 }
 
+// receiptNext is the question a --trust record's viewer is followed by: "Proceed?", the receipt,
+// when it will ask (a terminal, without -y); otherwise none, and the record is shown as output is.
+func receiptNext(p Prompter, yes bool) string {
+	if yes || !p.Interactive() {
+		return ""
+	}
+	return "Proceed?"
+}
+
 // receipt is a run's engine Receipt: what given, the run's --trust, covers, grouped by
 // kind on stderr, then, on a terminal and without yes (-y), one Proceed? [y/N], default No; off a
 // terminal the run proceeds. Under --json it proceeds and prints nothing: the document's trusted

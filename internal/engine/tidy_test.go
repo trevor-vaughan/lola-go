@@ -13,8 +13,10 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -34,7 +36,7 @@ func newTidyEnv() *tidyEnv {
 	Expect(err).NotTo(HaveOccurred())
 	p, err := paths.Resolve(os.Getenv)
 	Expect(err).NotTo(HaveOccurred())
-	t := &tidyEnv{tmp: tmp, proj: filepath.Join(tmp, "proj"), home: p.Home, p: p, e: engine.New(p)}
+	t := &tidyEnv{tmp: tmp, proj: filepath.Join(tmp, "proj"), home: p.Home, p: p, e: engine.New(p, targets.Builtin())}
 	Expect(os.MkdirAll(t.proj, 0o755)).To(Succeed())
 	t.e.Getwd = func() (string, error) { return t.proj, nil }
 	t.sc = engine.Scope{Kind: target.Project, ProjectDir: t.proj}
@@ -79,7 +81,7 @@ func (t *tidyEnv) reroot(key, dir string) {
 	GinkgoT().Setenv(key, dir)
 	p, err := paths.Resolve(os.Getenv)
 	Expect(err).NotTo(HaveOccurred())
-	t.p, t.e = p, engine.New(p)
+	t.p, t.e = p, engine.New(p, targets.Builtin())
 	t.e.Getwd = func() (string, error) { return t.proj, nil }
 }
 
@@ -667,5 +669,46 @@ var _ = Describe("lola tidy: the .agents/skills directory other tools share", fu
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Protected).To(ConsistOf(And(HaveField("Code", "kept"), HaveField("Reason", "on your keep-list (skill/theirs)"))),
 			"a lock says why it is locked")
+	})
+})
+
+var _ = Describe("Tidy and target_versions", func() {
+	var t *tidyEnv
+	BeforeEach(func() { t = newTidyEnv() })
+
+	run := func(sc engine.Scope, targets ...string) error {
+		_, err := t.e.Tidy(tidyCtx, engine.TidyRequest{Scope: sc, Dry: true, Targets: targets})
+		return err
+	}
+
+	It("refuses a project.yml declaring a version for an unknown target, with or without -t", func() {
+		t.install(t.sc)
+		f, err := os.OpenFile(filepath.Join(t.proj, ".lola", "project.yml"), os.O_APPEND|os.O_WRONLY, 0)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = f.WriteString("target_versions:\n  nope: \"1.0\"\n")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(f.Close()).To(Succeed())
+		for _, targets := range [][]string{nil, {"claude-code"}} {
+			err := run(t.sc, targets...)
+			Expect(err).To(MatchError(".lola/project.yml: target_versions.nope: lola has no target nope"))
+			Expect(errs.Hints(err)).To(ContainElement(HavePrefix("valid targets: ")))
+		}
+	})
+
+	It("refuses a project.yml it cannot read, rather than tidying for the newest era", func() {
+		t.files(filepath.Join(t.proj, ".lola"), map[string]string{"project.yml": "version: [\n"})
+		Expect(run(t.sc, "claude-code")).To(HaveOccurred())
+	})
+
+	It("refuses a config.yaml declaring a version for an unknown target at user scope", func() {
+		t.files(filepath.Dir(t.p.Config), map[string]string{filepath.Base(t.p.Config): "version: 1\ntarget_versions:\n  nope: \"1.0\"\n"})
+		err := run(t.user, "claude-code")
+		Expect(err).To(MatchError(t.p.Config + ": target_versions.nope: lola has no target nope"))
+		Expect(errs.Hints(err)).To(ContainElement(HavePrefix("valid targets: ")))
+	})
+
+	It("refuses a config.yaml it cannot read at user scope", func() {
+		t.files(filepath.Dir(t.p.Config), map[string]string{filepath.Base(t.p.Config): "version: [\n"})
+		Expect(run(t.user, "claude-code")).To(HaveOccurred())
 	})
 })

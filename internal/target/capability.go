@@ -24,7 +24,6 @@ type KindSpec struct {
 	Open     bool             // keep keys missing from Keys, unchecked; false drops them with a warn
 	Required []string         // keys that must be present, non-empty and valid
 	Name     *regexp.Regexp   // a name the target rejects is a forceable skip; nil accepts any
-	Bounds                    // the assistant versions that have this kind
 }
 
 // Shape is the YAML shape a frontmatter value must have.
@@ -54,8 +53,7 @@ type Value struct {
 	Guard *Finding
 	// Fold makes the key also stand for every frontmatter key equal to it ignoring case. No two
 	// Fold keys of one KindSpec may be equal ignoring case: key would pick one at random.
-	Fold   bool
-	Bounds // the assistant versions that read this key
+	Fold bool
 }
 
 // ContentRule matches artifact bodies of one kind that the target cannot handle as written.
@@ -65,7 +63,6 @@ type ContentRule struct {
 	Severity         Severity
 	Forceable        bool // for a skip: --force renders the artifact anyway
 	Code, Text, Hint string
-	Bounds           // the assistant versions that have this problem
 }
 
 // key returns the Value of frontmatter key k: its own, else that of a Fold key equal to it
@@ -91,7 +88,7 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 		at.Class = ClassSafety // a runtime hook runs with the user's permissions
 	}
 	spec, ok := caps.Kinds[kind]
-	if !ok || !spec.newest() {
+	if !ok {
 		f := at
 		f.Code, f.Text = "kind-unsupported", fmt.Sprintf("%s has no place for %ss", id, kind)
 		f, _ = Skipped(ctx, f)
@@ -99,9 +96,6 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	}
 	var finds []Finding
 	render := true
-	if spec.excludes(ctx.Version) {
-		finds = append(finds, versionFinding(at, fmt.Sprintf("%s %s has no place for %ss (added in %s)", id, ctx.Version, kind, spec.Since), spec.Since))
-	}
 	skip := func(f Finding) {
 		f, r := Skipped(ctx, f)
 		finds, render = append(finds, f), render && r
@@ -115,9 +109,8 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	var drop []string
 	for _, k := range slices.Sorted(maps.Keys(doc.Frontmatter)) {
 		f := at
-		f.Severity, f.Code = SeverityWarn, "frontmatter-key-dropped"
+		f.Severity, f.Code, f.Key = SeverityWarn, "frontmatter-key-dropped", k
 		v, known := spec.key(k)
-		known = known && v.newest()
 		switch {
 		case known && v.Guard != nil && (v.Drop != "" || !v.accepts(doc.Frontmatter[k])):
 			if !blank(doc.Frontmatter[k]) {
@@ -139,9 +132,6 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 		case !known && !spec.Open:
 			f.Text = fmt.Sprintf("%s dropped: %s does not support it", k, id)
 			f.Hint, f.AuthorHint = keyHint(id, kind, name, k, ""), true
-		case known && v.excludes(ctx.Version):
-			finds = append(finds, versionFinding(at, fmt.Sprintf("%s %s ignores %s (added in %s)", id, ctx.Version, k, v.Since), v.Since))
-			continue
 		default:
 			continue
 		}
@@ -159,14 +149,6 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	}
 	for _, rule := range caps.Rules {
 		if rule.Kind != kind || !rule.Pattern.MatchString(doc.Body) {
-			continue
-		}
-		if !rule.newest() {
-			if canonical(ctx.Version) != "" && !rule.excludes(ctx.Version) {
-				f := versionFinding(at, fmt.Sprintf("%s in %s %s (fixed in %s)", rule.Text, id, ctx.Version, rule.Until), rule.Until)
-				f.Code = "version/limited"
-				finds = append(finds, f)
-			}
 			continue
 		}
 		f := at
@@ -196,14 +178,6 @@ func Admit(id string, caps Capabilities, ctx PlanContext, kind, name string, doc
 	return kept, finds, render
 }
 
-// versionFinding is a warn about a gap between the newest version, which lola renders for,
-// and the installed one; its hint names version, the one to upgrade to.
-func versionFinding(at Finding, text, version string) Finding {
-	at.Severity, at.Code, at.Text = SeverityWarn, "version/unsupported", text
-	at.Hint = fmt.Sprintf("upgrade %s to %s or later", at.Target, version)
-	return at
-}
-
 // keyHint coaches a frontmatter key k that id drops from the artifact of kind named name: the
 // entry of the artifact's attribute file that gives id the value value, or, when
 // value is "", leaves k out for id. For name, which attribute files refuse, it names the change
@@ -229,16 +203,6 @@ func keyHint(id, kind, name, k, value string) string {
 func invalid(at Finding, err error) Finding {
 	at.Severity, at.Code, at.Text = SeveritySkip, "frontmatter-invalid", err.Error()
 	return at
-}
-
-// ToolsGuard is the Guard of an agent's tools key. Gemini CLI and OpenCode give an agent without
-// a tool list every tool, so a list the target cannot enforce must not be dropped quietly (user
-// decision 2026-10-09). fix is the target's own remedy; the engine adds the run with --force
-// that installs the agent unrestricted.
-func ToolsGuard(id, fix string) *Finding {
-	return &Finding{Code: "agent-tools-unenforceable",
-		Text: id + " cannot enforce this agent's tool list; without it the agent can use every tool",
-		Hint: fix}
 }
 
 // blank reports a frontmatter value that sets nothing: null, "", or an empty list or map.

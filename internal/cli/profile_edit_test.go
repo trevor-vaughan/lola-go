@@ -16,6 +16,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -295,7 +296,7 @@ var _ = Describe("lola profile --edit", func() {
 		url := testenv.ServeGitTLS(filepath.Join(tmp, "srv"), nil) + "/notes.git"
 		other := p
 		other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-		v, err := engine.New(other).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
+		v, err := engine.New(other, targets.Builtin()).Fetch(context.Background(), source.Spec{Kind: source.KindGit, Location: url})
 		Expect(err).NotTo(HaveOccurred())
 		body := "version: 1\ntargets: [claude-code]\nmodules:\n  - {name: notes, source: " + url + ", commit: " + gitIn(work, "rev-parse", "HEAD") +
 			", digest: '" + v.Meta.Digest + "'}\n"
@@ -764,12 +765,13 @@ var _ = Describe("lola profile --edit", func() {
 					return cli.ModuleAnswer{Names: []string{"kit", "lint"}}, nil
 				}},
 				components: []func(cli.ComponentPage) ([]string, error){func(cli.ComponentPage) ([]string, error) { return []string{"skill/a"}, nil }},
-				review:     []string{cli.ReviewApply}, confirm: []bool{true}}
+				review:     []string{cli.ReviewApply}}
 			r := lolaP(sp, "profile", "go", "--edit", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.moduleSteps[0]).To(And(HaveField("Title", "profile go › modules"), HaveField("None", true), HaveField("Preselect", []string{"kit", "notes"})))
 			Expect(sp.moduleSteps[0].Options).To(ContainElement(cli.ModuleOption{Name: "notes", Label: "notes (in profile go; not in your cache)"}))
-			Expect(sp.calls).To(ContainElements("components:profile go › kit", "confirm:Remove notes from profile go?"))
+			Expect(sp.calls).To(Equal([]string{"modules", "components:profile go › kit", "review"}), "the review lists the removal; its Apply asks it")
+			Expect(sp.reviewSteps[0].Summary).To(ContainSubstring("Remove notes from profile go"))
 			b, err := os.ReadFile(filepath.Join(p.UserProfiles, "go.yml"))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(b)).To(And(ContainSubstring("name: lint"), Not(ContainSubstring("notes")), ContainSubstring("skip: [skill/b]")))
@@ -799,7 +801,8 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(sp.memberSteps[0].Title).To(Equal("new bundle both › members"))
 			Expect(os.ReadFile(filepath.Join(p.UserProfiles, "both.yml"))).To(Equal([]byte("version: 1\nbundle: [go]\n")))
 
-			sp = &scripted{where: []int{0}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, nil }}}
+			sp = &scripted{where: []int{0}, modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){func(cli.ModuleStep) (cli.ModuleAnswer, error) { return cli.ModuleAnswer{}, nil }},
+				review: []string{cli.ReviewApply}}
 			r = lolaP(sp, "profile", "try", "--edit", "--user")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(sp.moduleSteps[0].Title).To(Equal("new profile try › modules"))
@@ -903,6 +906,33 @@ var _ = Describe("lola profile --edit", func() {
 			Expect(sp.calls).To(BeEmpty())
 		})
 
+		It("says in the review why user scope is a destination: no project found from here, or the profile on there too", func() {
+			writeTree(p.UserProfiles, map[string]string{"default.yml": "version: 1\ntargets: [claude-code]\n"})
+			Expect(lola("profile", "go", "--switch", "--user", "-y").code).To(Equal(0))
+			bare := filepath.Join(tmp, "bare")
+			Expect(os.MkdirAll(bare, 0o755)).To(Succeed())
+			GinkgoT().Chdir(bare)
+			review := func() *scripted {
+				return &scripted{modules: []func(cli.ModuleStep) (cli.ModuleAnswer, error){mods("kit")},
+					components: []func(cli.ComponentPage) ([]string, error){keep()}, review: []string{cli.ReviewQuit}}
+			}
+			sp := review()
+			r := lolaP(sp, "profile", "go", "--edit")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(sp.reviewSteps[0].Summary).To(HavePrefix("Summary:\n  user (" + p.Home + "), no .lola/ project in " + bare + " or above it:\n"))
+
+			proj := filepath.Join(tmp, "proj")
+			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
+			Expect(lola("sync", "-C", proj, "--trust=entries", "-y").code).To(Equal(0))
+			GinkgoT().Chdir(proj)
+			Expect(lola("profile", "user:go", "--switch", "-y").code).To(Equal(0))
+			sp = review()
+			r = lolaP(sp, "profile", "go", "--edit")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(sp.reviewSteps[0].Summary).To(And(ContainSubstring("  project ("+proj+"), found .lola/ at "+proj+":\n"),
+				ContainSubstring("  user ("+p.Home+"), where profile go is on too:\n")))
+		})
+
 		It("removes what you untick in each scope the profile is on, and under -n says it would", func() {
 			proj := filepath.Join(tmp, "proj")
 			writeTree(proj, map[string]string{".lola/project.yml": "version: 1\ntargets: [claude-code]\n"})
@@ -930,7 +960,8 @@ var _ = Describe("lola profile --edit", func() {
 			r = lolaP(sp, "profile", "go", "--edit")
 			Expect(r.code).To(Equal(0), r.err)
 			Expect(r.err).To(HavePrefix("project " + proj + ": profile go over project.yml\nuser scope: profile go over default\n"))
-			Expect(sp.calls).To(Equal([]string{"modules", "confirm:Remove kit from profile go?", "confirm:Remove these there too? No leaves that scope as it was"}))
+			Expect(sp.calls).To(Equal([]string{"modules", "confirm:Remove kit from profile go?", "confirm:Remove these there too? No changes nothing"}),
+				"each question before anything is written")
 			Expect(r.out).To(And(ContainSubstring("user:\n"), Not(ContainSubstring("lola sync --user"))))
 			Expect(os.ReadFile(goYml)).NotTo(ContainSubstring("kit"))
 			for _, f := range skillA {
@@ -1041,7 +1072,7 @@ var _ = Describe("lola profile --edit", func() {
 				r := lolaP(sp, "profile", "--edit", "kit", "--user")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}), r.err)
-				Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+				Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 
 				sp = &scripted{where: []int{1}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
 				r = lolaP(sp, "profile", "--edit", "kit", "--user", "-n")
@@ -1131,7 +1162,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(os.ReadFile(projectYml)).To(Equal(before), "the shared file is untouched")
 
 				sp = &scripted{where: []int{0}, components: []func(cli.ComponentPage) ([]string, error){pickA}, review: []string{cli.ReviewApply}}
-				r = lolaP(sp, "profile", "--edit", "kit", "-C", proj, "-t", "claude-code,opencode")
+				r = lolaP(sp, "profile", "--edit", "kit", "-C", proj, "-t", "claude-code,opencode@2.0")
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where", "components:project.yml › kit", "review"}))
 				Expect(sp.whereSteps[0].Options).To(Equal(options))
@@ -1149,7 +1180,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}))
 				Expect(sp.whereSteps[0].Title).To(Equal("work is a bundle. Which profile gets kit?"))
-				Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+				Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 				Expect(os.ReadFile(goYml)).To(Equal([]byte("version: 1\n")))
 				Expect(os.ReadFile(filepath.Join(p.UserProfiles, "docs.yml"))).To(Equal([]byte("version: 1\n")))
 
@@ -1167,7 +1198,7 @@ var _ = Describe("lola profile --edit", func() {
 				Expect(r.code).To(Equal(0), r.err)
 				Expect(sp.calls).To(Equal([]string{"where"}))
 				Expect(sp.whereSteps[0].Title).To(Equal("remote:team is read-only."))
-				Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+				Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 				Expect(os.ReadFile(defaultYml)).To(Equal(before))
 			})
 

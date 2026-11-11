@@ -63,7 +63,7 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 		return func(w io.Writer, s style) { printTrustDiff(w, s, name, run, rep, "") }
 	}
 	var asked bool
-	req.Show, req.Trust, req.ConfirmRemovals = a.syncQuestions(cmd, f, true, "Remove these and move? No applies nothing", diff, &asked)
+	req.Show, req.Trust, req.ConfirmRemovals, _ = a.syncQuestions(cmd, f, true, "Remove these and move? No applies nothing", Nav{}, diff, &asked)
 	if !a.json && p.Interactive() {
 		req.Replace = func(module, label string) (bool, error) {
 			return p.Confirm(untrusted.Text(label, untrusted.MaxName)+" lists "+untrusted.Text(module, untrusted.MaxName)+" already. Replace its entry?", Nav{})
@@ -86,11 +86,11 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 	switch {
 	case (isDeclined || aborted) && other != nil:
 		// A move between scopes asks before it writes either, so a No leaves both as they were.
-		what := "removals declined"
+		what := "removals declined; "
 		if !isDeclined {
-			what = "aborted"
+			what = "cancelled — "
 		}
-		return &abortedError{what + "; user scope and the project were not changed."}
+		return &abortedError{what + "user scope and the project were not changed"}
 	case isDeclined:
 		return removalsDeclined(eng, sc, declined)
 	case aborted:

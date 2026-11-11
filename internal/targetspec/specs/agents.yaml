@@ -1,0 +1,24 @@
+# .agents/skills, the agentskills.io directory that Codex, Gemini CLI, OpenCode, GitHub Copilot,
+# Cursor and Amp read. Claude Code does not read it. It holds skills only.
+id: agents
+readers: skills for Codex, Gemini, OpenCode, Copilot, Cursor, Amp
+kind_unsupported_note: .agents holds skills only
+roots: {project: "{project}", user: "{home}"}
+# .agents itself is not a marker: other tools keep unrelated things there.
+detect:
+  project: {any: [.agents/skills/]}
+  user: {any: [.agents/skills/]}
+eras:
+  - since: "0"
+    layout:
+      skill: {mech: agentskills-dir, path: .agents/skills, shared: true}
+    kinds:
+      skill:
+        unknown_keys: keep
+        required: [description]
+        keys:
+          description: {accepts: {shape: string}}
+          hooks: {unsupported: "the tools that read .agents/skills run no hooks from a skill's frontmatter", case_insensitive: true}
+          mcpServers: {unsupported: "the tools that read .agents/skills start no MCP servers from a skill's frontmatter", case_insensitive: true}
+          mcp_servers: {unsupported: "the tools that read .agents/skills start no MCP servers from a skill's frontmatter", case_insensitive: true}
+    shared: [skill-rules]

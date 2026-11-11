@@ -491,15 +491,30 @@ func sameRendering(a, b *ledger.RenderedWith) bool {
 // under the active profile active (nil for none): their recorded rendered_with differs from what
 // they would render with now, read from the version installed, or, when the cache no longer holds
 // it, records profiles other than the run's. Any other error reading the cache is returned. load
-// reads a cached version (e.Store.Load).
+// reads a cached version (e.Store.Load). It also lists those whose files were written for another
+// era of a target than the one sc now declares (eraRewrites).
 func (e *Engine) rerenders(sc Scope, led *ledger.Ledger, active *ledger.Active, load func(name, id string) (store.Version, error)) ([]string, error) {
 	run, err := e.newTemplateRun(sc, active)
+	if err != nil {
+		return nil, err
+	}
+	tv, _, err := e.declared(sc)
 	if err != nil {
 		return nil, err
 	}
 	var out []string
 	for _, name := range sortedNames(led) {
 		in := led.Modules[name]
+		now := map[string]string{}
+		for _, id := range in.InstalledTargets() {
+			if since, _, ok := e.Registry.Era(id, tv[id]); ok {
+				now[id] = since
+			}
+		}
+		if len(e.eraRewrites(name, in, now)) > 0 {
+			out = append(out, name)
+			continue
+		}
 		id, ok := strings.CutPrefix(in.Digest, "sha256:")
 		var v store.Version
 		if ok && len(id) >= 12 {
@@ -522,6 +537,47 @@ func (e *Engine) rerenders(sc Scope, led *ledger.Ledger, active *ledger.Active, 
 		}
 	}
 	return out, nil
+}
+
+// Rewrite is a module's files for a target that a sync rewrites for another era: the since of the
+// era they were written for (From) and of the one they are written for now (To).
+type Rewrite struct {
+	Module string `json:"module"`
+	Target string `json:"target"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+}
+
+// eraRewrites are the targets the module name is installed on, as in records, whose files were
+// written for another era than the one now gives (target id to since). A target in records no era
+// for was written for its newest.
+func (e *Engine) eraRewrites(name string, in *ledger.Entry, now map[string]string) []Rewrite {
+	var out []Rewrite
+	for _, id := range in.InstalledTargets() {
+		to, ok := now[id]
+		if !ok {
+			continue
+		}
+		was, ok := in.Eras[id]
+		if !ok {
+			was, _, _ = e.Registry.Era(id, "")
+		}
+		if was != to {
+			out = append(out, Rewrite{Module: name, Target: id, From: was, To: to})
+		}
+	}
+	return out
+}
+
+// rewriteNotice is the notice of r: "<module>: rewrote <id> files from <old label> to <new
+// label>", "would rewrite" for a dry run.
+func (e *Engine) rewriteNotice(r Rewrite, dry bool) Notice {
+	verb := "rewrote"
+	if dry {
+		verb = "would rewrite"
+	}
+	return Notice{Level: LevelInfo, Class: target.ClassDetail,
+		Text: fmt.Sprintf("%s: %s %s files from %s to %s", r.Module, verb, r.Target, e.eraOf(r.Target, r.From).label, e.eraOf(r.Target, r.To).label)}
 }
 
 // templateRun is one plan pass's rendering: the scope's profiles, in precedence

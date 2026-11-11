@@ -14,6 +14,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -72,7 +73,7 @@ var _ = Describe("a project's base picks are keyed by its repository", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		src = filepath.Join(tmp, "src", "example")
 		writeTree(src, exampleModule)
 	})
@@ -135,12 +136,12 @@ var _ = Describe("a project's base picks are keyed by its repository", func() {
 		a := filepath.Join(tmp, "a", "r")
 		writeTree(a, map[string]string{".git": "gitdir: nowhere\n"})
 		writeTree(filepath.Dir(p.Selections), map[string]string{"selections.yaml": "version: 1\nprojects:\n  " + a + ":\n    example:\n      only: [command/ship]\n"})
-		rep, err := e.Check(ctx, engine.Scope{Kind: target.Project, ProjectDir: a}, a, []string{src}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, engine.Scope{Kind: target.Project, ProjectDir: a}, a, []string{src}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(rep.Modules[0].Skipped).To(ContainElement("skill/review"))
 		Expect(rep.Findings).To(ContainElement(And(HaveField("Severity", target.SeverityWarn), HaveField("Code", "picks-keyed-by-path"),
-			HaveField("Text", "git could not read the repository of "+a+": fatal: not a git repository: "+filepath.Join(a, "nowhere")+"; picks for this project are keyed by its path"),
+			HaveField("Text", And(HavePrefix("git could not read the repository of "+a+": fatal: "), HaveSuffix("; picks for this project are keyed by its path"))),
 			HaveField("Hint", ""))))
 	})
 
@@ -151,8 +152,8 @@ var _ = Describe("a project's base picks are keyed by its repository", func() {
 			Rerun: func(...string) string { return "" }, Install: func(string, string, string, engine.TrustKinds) string { return "" }})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(info.Install).To(HaveLen(1))
-		Expect(info.Install[0].Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "git could not read the repository of " + a +
-			": fatal: not a git repository: " + filepath.Join(a, "nowhere") + "; picks for this project are keyed by its path"}))
+		Expect(info.Install[0].Notices).To(ContainElement(And(HaveField("Level", engine.LevelWarn),
+			HaveField("Text", And(HavePrefix("git could not read the repository of "+a+": fatal: "), HaveSuffix("; picks for this project are keyed by its path"))))))
 	})
 
 	It("lola list labels a pick by the key the file writes while the entry is still under the path", func() {

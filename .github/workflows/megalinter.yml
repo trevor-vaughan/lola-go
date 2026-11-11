@@ -1,0 +1,65 @@
+# Shared lint policy from trevor-vaughan/megalint-config. Pull requests lint changed files;
+# main and the weekly run lint the whole tree.
+name: megalinter
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: megalinter-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  megalinter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The ~3 GB image can exhaust a stock runner's free disk.
+      - uses: jlumbroso/free-disk-space@ceedf095f4ec1a097402bc6bd80831f2e1a6fde6 # v2.0.0
+
+      - id: week
+        run: echo "week=$(date -u '+%G-W%V')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/megalint/vuln-db
+          key: vuln-db-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: |
+            vuln-db-${{ runner.os }}-
+
+      # Pinned to the v0.7.0 commit and its immutable image; bump both together.
+      - id: megalint
+        uses: trevor-vaughan/megalint-config@2b08d482bc0ea3a06f2e89f264232e251370bc6c # v0.7.0
+        with:
+          megalinter-image: ghcr.io/trevor-vaughan/megalinter-custom-flavor:0.7.0-ml10.2.0
+          validate-all-codebase: ${{ github.event_name != 'pull_request' }}
+
+      - if: ${{ success() || failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: megalinter-reports
+          path: |
+            ${{ steps.megalint.outputs.reports-dir }}
+            mega-linter.log
+
+      # The upload API rejects a SARIF with an empty `runs` array.
+      - if: ${{ (success() || failure()) && steps.megalint.outputs.sarif-has-results == 'true' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+        with:
+          sarif_file: ${{ steps.megalint.outputs.sarif-file }}

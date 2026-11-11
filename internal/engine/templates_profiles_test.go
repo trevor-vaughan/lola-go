@@ -12,6 +12,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -21,7 +22,7 @@ var _ = Describe("the profiles a template sees", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := engine.New(p)
+		e := engine.New(p, targets.Builtin())
 		src := filepath.Join(tmp, "src", "kit")
 		writeTree(src, map[string]string{"commands/ship.md.liquid": "{{ profiles | join: ',' }}\n"})
 		writeTree(p.UserProfiles, map[string]string{"work.yml": "version: 1\nmodules: []\n"})

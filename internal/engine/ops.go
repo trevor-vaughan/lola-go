@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/ledger"
@@ -25,6 +27,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targetspec"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -78,7 +81,7 @@ func (e *Engine) noTargets() error {
 // version that does not match its digest, keeps only its own hints, the way forward: retrying would
 // refuse again.
 func (e *Engine) withRetry(spec InstallSpec, err error, fetched []string) error {
-	_, targets := errors.AsType[*untrustedTargetsError](err)
+	_, targets := errors.AsType[*UntrustedTargetsError](err)
 	_, conflicts := errors.AsType[*plan.ConflictError](err)
 	_, template := errors.AsType[*TemplateError](err) // the same install refuses the same way
 	_, hook := errors.AsType[*hookConsentError](err)
@@ -125,6 +128,13 @@ type ScopeInstall struct {
 	// Replace lists unowned destinations at this scope the install overwrites instead of
 	// refusing them as conflicts (plan.Replaceable): lola migrate's backed-up Python files.
 	Replace []plan.Replaceable
+	// Versions is, per target id, the assistant version to record and render for at this scope
+	// (-t <id>@<version>, or the version question's answer): the run plans for it in place of what
+	// the scope declares, and records in target_versions each that differs from it.
+	Versions map[string]string
+	// Sources is where each of Versions came from (VersionInstalled, VersionChosen, VersionFlag);
+	// one it lacks is VersionFlag.
+	Sources map[string]string
 }
 
 // InstallSpec is an install of the same modules at one or more scopes, applied together.
@@ -192,7 +202,51 @@ type ScopeResult struct {
 type InstallResult struct {
 	*Result
 	Scopes []ScopeResult `json:"scopes"`
+	// TargetVersions are the versions the install records in target_versions (would record,
+	// under -n), by scope then target.
+	TargetVersions []TargetVersion `json:"target_versions"`
+	// EraNotices are the notices, among Notices, of the modules a scope the install writes files in
+	// leaves written for another era than the one it writes for, and of an edit of target_versions
+	// not yet trusted that it honours (staleEras), which the review shows.
+	EraNotices []Notice `json:"-"`
+	// eraSyncs are the syncs, one per scope, that rewrite the modules the install leaves written for
+	// another era than the one it writes for, which InstallAll runs once the install has applied.
+	eraSyncs []SyncRequest
 }
+
+// eraSynced adds res, a sync of the modules an install's scope sc has written for another era
+// (InstallResult.eraSyncs), to out: its notices among the era notices, which the review shows.
+func (out *InstallResult) eraSynced(res *SyncResult, sc Scope, many bool) {
+	for i := range res.Modules {
+		res.Modules[i].Scope, res.Modules[i].Root, res.Modules[i].Rewritten = sc.Kind.String(), root(sc), true
+	}
+	for i := range res.Steps {
+		res.Steps[i].Scope, res.Steps[i].Root = sc.Kind.String(), root(sc)
+	}
+	out.Modules, out.Steps, out.Findings = append(out.Modules, res.Modules...), append(out.Steps, res.Steps...), append(out.Findings, res.Findings...)
+	out.EraNotices = append(out.EraNotices, inScope(res.Notices, sc, many)...)
+	out.Scripts, out.Trusted = append(out.Scripts, res.Scripts...), append(out.Trusted, res.Trusted...)
+}
+
+// TargetVersion is a version an install records for a target at a scope: the version, the one the
+// scope declared before ("" for none), where it came from (Source), the file it is recorded in, an
+// absolute path, and the since of the era its files are written for.
+type TargetVersion struct {
+	Scope    string `json:"scope"`
+	Target   string `json:"target"`
+	Version  string `json:"version"`
+	Previous string `json:"previous"`
+	Source   string `json:"source"`
+	File     string `json:"file"`
+	Era      string `json:"era"`
+}
+
+// Where a recorded version came from (TargetVersion.Source, ScopeInstall.Sources).
+const (
+	VersionInstalled = "installed" // the installed assistant's, where lola assumes it
+	VersionChosen    = "chosen"    // the version question's answer
+	VersionFlag      = "flag"      // -t <id>@<version>
+)
 
 // scopePlan is one scope of an install, locked, with its modules resolved and then planned. loaded
 // is the manifest as read under the lock, for the trust refresh (saveManifest); trust is the
@@ -226,6 +280,10 @@ type scopePlan struct {
 	profiles         func() ([]profile.Info, error) // infos, else listed once when first asked for (visibleOnce)
 	shared           map[string]bool                // the profile files an earlier scope of the run writes
 	overrides        map[string]string              // module → the name of the layer whose entry the target's override copied
+	record           map[string]string              // the versions ScopeInstall.Versions gives that the scope does not declare yet
+	recordIn         string                         // the file they are recorded in, as findings name it (Engine.declared)
+	recordWas        map[string]string              // the versions the scope declared before the install, which a recording replaces
+	oneEra           []string                       // the targets ScopeInstall.Versions gives a version that have one era: nothing is recorded for them
 }
 
 // targetWrite is the entries an install writes into one file, t's, each in its file form.
@@ -293,12 +351,26 @@ func (e *Engine) InstallAll(ctx context.Context, spec InstallSpec) (*InstallResu
 	}
 	for _, a := range added {
 		moves := e.installMoveHints(ctx, a, scopes, spec.Options.Display)
-		out.Notices = append(append(out.Notices, e.inProjectNotices(a, scopes, spec.Options, moves)...), moves...)
+		out.Notices = append(append(out.Notices, inScope(e.inProjectNotices(a, scopes, spec.Options, moves), a.sp.sc, spec.many())...), inScope(moves, a.sp.sc, spec.many())...)
 	}
 	for _, si := range then {
 		if err := e.syncEdited(ctx, spec, si, wrote, confirmed[si.Scope.Key()], out); err != nil {
 			return nil, err
 		}
+	}
+	for _, req := range out.eraSyncs {
+		res, err := e.Sync(ctx, req)
+		if err != nil {
+			verb, it := "are", "them"
+			if len(req.Modules) == 1 {
+				verb, it = "is", "it"
+			}
+			return nil, errs.WithHints(fmt.Errorf("%w; the install was applied %s, but %s %s still written for the version %s had", err, scopeWhere(req.Scope),
+				andJoin(shownAll(req.Modules)), verb, it), "rewrite "+it+": "+e.SyncCommand(req.Scope))
+		}
+		n := len(out.EraNotices)
+		out.eraSynced(res, req.Scope, spec.many())
+		out.Notices = append(out.Notices, out.EraNotices[n:]...)
 	}
 	return out, nil
 }
@@ -330,20 +402,70 @@ func (e *Engine) editedSync(spec InstallSpec, si ScopeInstall, wrote []fileEdit,
 	slices.Sort(modules)
 	req := &SyncRequest{Scope: si.Scope, Modules: slices.Compact(modules), Options: spec.Options, Display: spec.Options.Display}
 	if pending {
-		req.write = &profileWrites{read: map[string]*profile.Profile{}}
-		for _, f := range mine {
-			_, data, err := f.layer.read.Edit(f.layer.Path, f.change)
-			if err != nil {
-				return nil, err
-			}
-			_, p, err := madeFile(profile.KindUser, f.layer.Path, data)
-			if err != nil {
-				return nil, err
-			}
-			req.write.read[f.layer.Path] = p
+		if req.write, err = pendingWrites(mine); err != nil {
+			return nil, err
 		}
 	}
 	return req, nil
+}
+
+// pendingWrites reads the profile files of yours fs edit as the edits would write them, for a sync
+// of another scope planned before they are written.
+func pendingWrites(fs []fileEdit) (*profileWrites, error) {
+	w := &profileWrites{read: map[string]*profile.Profile{}}
+	for _, f := range fs {
+		_, data, err := f.layer.read.Edit(f.layer.Path, f.change)
+		if err != nil {
+			return nil, err
+		}
+		_, p, err := madeFile(profile.KindUser, f.layer.Path, data)
+		if err != nil {
+			return nil, err
+		}
+		w.read[f.layer.Path] = p
+	}
+	return w, nil
+}
+
+// confirmThen asks, before Uninstall at sc writes edits, about the removals the sync of each scope
+// in opts.Then would make once they are written (opts.ConfirmThen); a No is ErrDeclined, nothing
+// written. A scope that loads none of the files edits changes is not asked about.
+func (e *Engine) confirmThen(ctx context.Context, opts Options, edits []fileEdit) error {
+	for _, o := range opts.Then {
+		layers, err := e.scopeLayers(o)
+		if err != nil {
+			return err
+		}
+		var mine []fileEdit
+		for _, f := range edits {
+			if f.layer.Key == "" && slices.ContainsFunc(layers, func(l Layer) bool { return l.Path == f.layer.Path }) {
+				mine = append(mine, f)
+			}
+		}
+		if len(mine) == 0 {
+			continue
+		}
+		w, err := pendingWrites(mine)
+		if err != nil {
+			return err
+		}
+		res, err := e.Sync(ctx, SyncRequest{Scope: o, Options: Options{DryRun: true, Trust: opts.Trust, Display: opts.Display}, Display: opts.Display,
+			write: w, held: true}) // the uninstall holds the profiles lock
+		if err != nil {
+			return err
+		}
+		if len(res.Removals) == 0 {
+			continue
+		}
+		yes, err := opts.ConfirmThen(o, slices.Clone(res.Removals))
+		switch {
+		case err != nil:
+			return err
+		case !yes:
+			return ErrDeclined
+		}
+	}
+	return nil
 }
 
 // removalNames are the modules rs removes, each with the assistants it is removed from where known.
@@ -431,7 +553,7 @@ func (e *Engine) syncEdited(ctx context.Context, spec InstallSpec, si ScopeInsta
 		res.Steps[i].Scope, res.Steps[i].Root = si.Scope.Kind.String(), root(si.Scope)
 	}
 	out.Modules, out.Steps = append(out.Modules, res.Modules...), append(out.Steps, res.Steps...)
-	out.Findings, out.Notices = append(out.Findings, res.Findings...), append(out.Notices, res.Notices...)
+	out.Findings, out.Notices = append(out.Findings, res.Findings...), append(out.Notices, inScope(res.Notices, si.Scope, true)...)
 	out.Scripts, out.Trusted = append(out.Scripts, res.Scripts...), append(out.Trusted, res.Trusted...)
 	out.Scopes = append(out.Scopes, ScopeResult{Scope: si.Scope.Kind.String(), Root: root(si.Scope), ScopeSource: si.Source})
 	return nil
@@ -494,6 +616,11 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		}
 		return nil, errs.WithHints(err, spec.UserRun)
 	}
+	for _, si := range spec.Scopes {
+		if err := e.CheckVersions(si.Versions, nil); err != nil {
+			return nil, err
+		}
+	}
 	// A remote profile a scope needs that this machine lacks is restored from pins.yaml first,
 	// under the profiles lock it takes and releases itself.
 	var restored []Notice
@@ -540,7 +667,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	res.Notices = append(res.Notices, swept...)
 	res.Notices = append(res.Notices, restored...)
 	res.home = e.Paths.Home
-	out := &InstallResult{Result: res, Scopes: []ScopeResult{}}
+	out := &InstallResult{Result: res, Scopes: []ScopeResult{}, TargetVersions: []TargetVersion{}}
 	probes := e.newProbeRun(ctx)
 	var fetched []string
 	// staged: the arguments (arg) whose modules (name) were fetched into a staged run, in the cache
@@ -560,7 +687,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		}
 		unlocks = append(unlocks, unlock)
 		if len(others) > 0 {
-			res.Notices = append(res.Notices, e.unresolvedNotices(si.Scope, others, opts.DryRun, opts.Display)...)
+			res.Notices = append(res.Notices, inScope(e.unresolvedNotices(si.Scope, others, opts.DryRun, opts.Display), si.Scope, spec.many())...)
 		}
 		// The targets an install by source keeps (planInstallModule) and the files it removes
 		// come from the ledger, which is this checkout's own only while git does not track it.
@@ -588,7 +715,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		if plans[i].scopePicks, err = e.scopeSection(si.Scope); err != nil {
 			return nil, err
 		}
-		res.Notices = append(res.Notices, e.keyNotices(si.Scope)...)
+		res.Notices = append(res.Notices, inScope(e.keyNotices(si.Scope), si.Scope, spec.many())...)
 		plans[i].profiles = e.visibleOnce(si.Scope)
 		if infos := plans[i].infos; infos != nil {
 			plans[i].profiles = func() ([]profile.Info, error) { return infos, nil }
@@ -598,6 +725,20 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		}
 		if plans[i].templates, err = e.newTemplateRun(si.Scope, led.Profile); err != nil {
 			return nil, err
+		}
+		if len(si.Versions) > 0 {
+			if plans[i].record, plans[i].recordIn, err = e.Records(si.Scope, si.Versions); err != nil {
+				return nil, err
+			}
+			if plans[i].recordWas, _, err = e.declared(si.Scope); err != nil {
+				return nil, err
+			}
+			probes.chosen[si.Scope.Key()] = si.Versions
+			for _, id := range slices.Sorted(maps.Keys(si.Versions)) {
+				if len(e.Registry.Eras(id)) == 1 {
+					plans[i].oneEra = append(plans[i].oneEra, id)
+				}
+			}
 		}
 		if len(si.Targets) == 0 && rec != nil {
 			plans[i].untrustedTargets = e.uncoveredTargets(si.Scope, plans[i], spec.Modules, opts.Target)
@@ -729,7 +870,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 				if k == 0 {
 					res.Notices = append(res.Notices, entryNotices(r.market, r.Ref)...)
 				}
-				res.Notices = append(res.Notices, e.dependencyNotices(si.Scope, r.market, opts.DryRun)...)
+				res.Notices = append(res.Notices, inScope(e.dependencyNotices(si.Scope, r.market, opts.DryRun), si.Scope, spec.many())...)
 			}
 		}
 		out.Scopes = append(out.Scopes, ScopeResult{Scope: si.Scope.Kind.String(), Root: root(si.Scope), ScopeSource: si.Source})
@@ -756,9 +897,15 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		return nil, e.withRetry(spec, err, fetched)
 	}
 	for _, sp := range plans {
+		n, notes := len(res.Findings), len(res.Notices)
 		for _, rr := range sp.resolved {
 			if err := e.planInstallModule(ctx, sp, rr, sel, saves, opts, probes, res); err != nil {
 				return nil, e.withRetry(spec, err, fetched)
+			}
+		}
+		if len(plans) > 1 { // a module's findings, alike in each scope but for their hints, say which they are for
+			for i := n; i < len(res.Findings); i++ {
+				res.Findings[i].Scope = sp.sc.Kind.String()
 			}
 		}
 		for _, tw := range sp.writes {
@@ -768,6 +915,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 				delete(sp.overrides, m)
 			}
 		}
+		inScope(res.Notices[notes:], sp.sc, spec.many())
 	}
 	// A profile two scopes write (on in both) is written once, by the first scope's apply; scopes
 	// that would write it differently are refused before any write.
@@ -806,7 +954,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 			}
 			edits := editsOf(ctx, sp.sc, tw.t, tw.entries, nil, sp.overrides)
 			res.Edits = append(res.Edits, edits...)
-			res.Notices = append(res.Notices, e.alsoOn(sp.sc, tw.t, append(slices.Clone(scopes), spec.then...))...)
+			res.Notices = append(res.Notices, inScope(e.alsoOn(sp.sc, tw.t, append(slices.Clone(scopes), spec.then...)), sp.sc, spec.many())...)
 			if spec.profiles != nil && tw.t.Profile {
 				*spec.profiles = append(*spec.profiles, fileEdit{layer: tw.t.Layer, change: sp.fileChange(tw)})
 			}
@@ -869,12 +1017,12 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		picked[c.Section] = append(picked[c.Section], shown(c.Module))
 	}
 	for _, w := range personal {
-		res.Notices = append(res.Notices, Notice{Level: LevelInfo, Text: fmt.Sprintf("picks for %s saved in %s: they are yours, not your teammates'; a project profile shares picks with your team",
-			strings.Join(picked[w], ", "), untrusted.Text(w.Origin(), untrusted.MaxName))})
+		res.Notices = append(res.Notices, inScope([]Notice{{Level: LevelInfo, Text: fmt.Sprintf("picks for %s saved in %s: they are yours, not your teammates'; a project profile shares picks with your team",
+			strings.Join(picked[w], ", "), untrusted.Text(w.Origin(), untrusted.MaxName))}}, Scope{Kind: target.Project}, spec.many())...)
 	}
 	res.Findings = append(res.Findings, probes.findings...)
 	var preps []*prepared
-	for _, sp := range plans {
+	for i, sp := range plans {
 		n := len(res.Steps)
 		named := opts
 		named.named = nil
@@ -890,7 +1038,58 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		for i := n; i < len(res.Steps); i++ {
 			res.Steps[i].Root = root(sp.sc)
 		}
+		if len(res.Steps) > n { // the installed assistant's era matters to a scope the install writes files in
+			mismatched := probes.mismatched(sp.sc)
+			if err := StrictError(mismatched, "or rerun without --strict to write for the declared version", false); opts.Strict && err != nil {
+				var fixes []string
+				for _, f := range mismatched {
+					fixes = append(fixes, f.Hint)
+				}
+				return nil, e.withRetry(spec, errs.WithHints(err, fixes...), fetched) // each mismatch's fix first
+			}
+			res.Findings = append(res.Findings, mismatched...)
+		}
+		if len(res.Steps) > n || len(sp.record) > 0 { // the era the scope's files are written for is applied or changed
+			stale, notes, err := e.staleEras(sp, probes)
+			if err != nil {
+				return nil, e.withRetry(spec, err, fetched)
+			}
+			out.EraNotices = append(out.EraNotices, inScope(notes, sp.sc, spec.many())...)
+			if len(stale) > 0 && !opts.Force {
+				return nil, e.eraConflict(sp.sc, stale, opts)
+			}
+			if len(stale) > 0 {
+				// --force: the others follow the install's version, at the versions they have, in a
+				// sync planned now, so a refusal writes nothing.
+				var names []string
+				for _, st := range stale {
+					names = append(names, st.module)
+				}
+				req := SyncRequest{Scope: sp.sc, Modules: names, Options: opts, Display: opts.Display, ConfirmRemovals: spec.ConfirmRemovals,
+					versions: spec.Scopes[i].Versions}
+				dry := req
+				dry.Options.DryRun, dry.held = true, true // the install holds the profiles lock and the scope's
+				planned, err := e.Sync(ctx, dry)
+				if err != nil {
+					return nil, e.withRetry(spec, err, fetched)
+				}
+				if planned.OffTerminal != "" { // the sync needs a trust the install cannot give: its run asks, or refuses with the diff
+					return nil, errs.WithHints(fmt.Errorf("rewriting %s for the version this install writes for needs your trust first; nothing was written",
+						andJoin(shownAll(names))), "see what for, and trust it: "+e.SyncCommand(sp.sc))
+				}
+				if opts.DryRun {
+					out.eraSynced(planned, sp.sc, spec.many())
+				} else {
+					out.eraSyncs = append(out.eraSyncs, req)
+				}
+			}
+		}
 		preps = append(preps, pr)
+	}
+	// A version chosen for another era than the installed one's is warned of, after --strict
+	// judged the findings: the choice is the user's.
+	for _, sp := range plans {
+		res.Findings = append(res.Findings, e.eraChoices(sp, probes, opts.EraRun)...)
 	}
 	if err := e.confirmDeletes(spec, out); err != nil {
 		return nil, err
@@ -903,11 +1102,25 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 	for _, sp := range plans {
 		for _, tw := range sp.writes {
 			if !tw.t.Profile {
-				res.Notices = append(res.Notices, outsideNotices(sp.sc, tw.entries)...)
+				res.Notices = append(res.Notices, inScope(outsideNotices(sp.sc, tw.entries), sp.sc, spec.many())...)
 			}
 		}
 	}
+	// The versions a scope records are notices, not steps: lola's manifest edits never are.
+	var pending []Notice
+	for i, sp := range plans {
+		pending = append(pending, inScope(e.versionNotices(sp, probes, false, opts.EraRun), sp.sc, spec.many())...)
+		file := sp.recordIn // relative to the project, as findings name it; absolute here
+		if !filepath.IsAbs(file) {
+			file = filepath.Join(sp.sc.ProjectDir, file)
+		}
+		for _, id := range slices.Sorted(maps.Keys(sp.record)) {
+			out.TargetVersions = append(out.TargetVersions, TargetVersion{Scope: sp.sc.Kind.String(), Target: id, Version: shown(sp.record[id]),
+				Previous: shown(sp.recordWas[id]), Source: cmp.Or(spec.Scopes[i].Sources[id], VersionFlag), File: shown(file), Era: e.eraOf(id, sp.record[id]).since})
+		}
+	}
 	if opts.DryRun {
+		res.Notices = append(append(res.Notices, pending...), out.EraNotices...)
 		return out, nil
 	}
 	// What a staged run fetched reaches the cache now, after the receipt and before the first
@@ -929,7 +1142,12 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		return nil, e.withRetry(spec, err, fetched)
 	}
 	if spec.BeforeWrite != nil {
-		if err := spec.BeforeWrite(out); err != nil {
+		// It reviews the plan, where the recordings are still pending; the apply reports them done.
+		n := len(res.Notices)
+		res.Notices = append(res.Notices, pending...)
+		err := spec.BeforeWrite(out)
+		res.Notices = res.Notices[:n]
+		if err != nil {
 			return nil, e.withRetry(spec, err, fetched)
 		}
 	}
@@ -939,6 +1157,7 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 		}
 	}
 	for i, sp := range plans {
+		notes := len(res.Notices)
 		var change manifest.Change
 		var files []fileEdit
 		for _, tw := range sp.writes {
@@ -950,10 +1169,20 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 				files = append(files, fileEdit{layer: tw.t.Layer, change: c})
 			}
 		}
+		if sp.sc.Kind == target.Project {
+			change.TargetVersions = sp.record
+		}
 		updated := "the project's files, lock.json and " + e.manifestName(sp.sc) + " were updated"
 		err := e.saveManifest(sp.sc, sp.loaded, change, nil, files, sp.trust, updated, syncAgain(e.SyncCommand(sp.sc)), func(man []plan.ManifestWrite) error {
 			return e.commit(ctx, preps[i], opts, res, man, func(*plan.Plan) error { return e.makePluginData(sp.sc, sp.changes) })
 		})
+		if err == nil && sp.sc.Kind == target.User {
+			err = sp.saveVersions(e.Paths.Config, e.Paths.Home)
+		}
+		if err == nil {
+			res.Notices = append(res.Notices, e.versionNotices(sp, probes, true, opts.EraRun)...)
+		}
+		inScope(res.Notices[notes:], sp.sc, spec.many())
 		if err != nil && len(onFile) > 0 {
 			err = e.errApplied(err, sel.Path, sp.sc)
 		}
@@ -972,7 +1201,111 @@ func (e *Engine) installAll(ctx context.Context, spec InstallSpec, added *[]inst
 			return nil, e.withRetry(spec, err, fetched)
 		}
 	}
+	res.Notices = append(res.Notices, out.EraNotices...)
 	return out, nil
+}
+
+// many reports whether the install is into more than one scope, the scopes a profile edit syncs
+// after the first (then) included.
+func (spec InstallSpec) many() bool { return len(spec.Scopes)+len(spec.then) > 1 }
+
+// inScope is ns, each notice set to say it is for sc when many: alike in each scope, a notice of
+// an install into more than one names its own, as a sync's do. It sets them in place, so a tail of
+// the result's notices can be passed.
+func inScope(ns []Notice, sc Scope, many bool) []Notice {
+	if many {
+		for i := range ns {
+			ns[i].Scope = sc.Kind.String()
+		}
+	}
+	return ns
+}
+
+// eraConflict refuses an install at sc that writes target files for another era than the one the
+// scope's other modules (stale, each with its first such target) are written for, naming those
+// written for the first one's era: lola keeps one version of a target in a scope. It hints the run for the era they are written for (opts.EraRun)
+// and the run with --force (opts.ForceRun), which rewrites them; either is left out when unset.
+func (e *Engine) eraConflict(sc Scope, stale []staleEra, opts Options) error {
+	first := stale[0]
+	var names []string
+	for _, st := range stale {
+		if st.id == first.id && st.from.since == first.from.since { // what the message says of them all
+			names = append(names, st.module)
+		}
+	}
+	they, verb := andJoin(shownAll(names)), "are"
+	if len(names) == 1 {
+		verb = "is"
+	}
+	var hints []string
+	if opts.EraRun != nil {
+		hints = append(hints, "install for "+first.from.label+", the version "+they+" "+verb+" written for: "+opts.EraRun(sc, first.id, first.from.since))
+	}
+	if opts.ForceRun != "" {
+		hints = append(hints, "or rewrite "+they+" for "+first.to.label+" too: "+opts.ForceRun)
+	}
+	return errs.WithHints(fmt.Errorf("this install writes %s files for %s, but %s %s %s written for %s; lola keeps one %s version in a scope",
+		first.id, first.to.label, they, scopeWhere(sc), verb, first.from.label, first.id), hints...)
+}
+
+// staleEra is a module installed at a scope whose files for target id are written for era from,
+// where an install writes for era to.
+type staleEra struct {
+	module, id string
+	from, to   era
+}
+
+// staleEras are, at sp's scope, where the install writes files or records a version, the other
+// modules installed there whose files are written for another era of a target with more than one
+// than the one the install writes for, each with the first such target, which the install refuses
+// unless forced, and then rewrites (installAll); and, at project scope, the
+// notice that a version it writes for comes from an edit of target_versions the trust record does
+// not cover, which the sync shows.
+func (e *Engine) staleEras(sp *scopePlan, probes *probeRun) (stale []staleEra, _ []Notice, _ error) {
+	tv, tvFile, err := probes.declared(sp.sc)
+	if err != nil {
+		return nil, nil, err
+	}
+	var ids, mine []string
+	for _, c := range sp.changes {
+		mine = append(mine, c.Name)
+		for _, id := range c.Targets {
+			if !slices.Contains(ids, id) && len(e.eras(id)) > 1 {
+				ids = append(ids, id)
+			}
+		}
+	}
+	slices.Sort(ids)
+	for _, name := range slices.Sorted(maps.Keys(sp.led.Modules)) {
+		ent := sp.led.Modules[name]
+		if slices.Contains(mine, name) {
+			continue
+		}
+		for _, id := range ids {
+			from, to := e.eraOf(id, cmp.Or(ent.Eras[id], e.eras(id)[0].since)), e.eraOf(id, cmp.Or(tv[id], e.eras(id)[0].since))
+			if slices.Contains(ent.Targets, id) && from.since != to.since {
+				stale = append(stale, staleEra{module: name, id: id, from: from, to: to})
+				break
+			}
+		}
+	}
+	if sp.sc.Kind != target.Project || sp.trust == nil {
+		return stale, nil, nil
+	}
+	file, _, err := e.declared(sp.sc)
+	if err != nil {
+		return nil, nil, err
+	}
+	trusted := sp.trust.View.Part("").TargetVersions
+	if !slices.ContainsFunc(ids, func(id string) bool { _, records := sp.record[id]; return !records && file[id] != trusted[id] }) {
+		return stale, nil, nil
+	}
+	sync := e.SyncCommand(sp.sc)
+	why := "changed since you last trusted it; " + sync + " shows the change"
+	if !sp.trust.Exists {
+		why = "are not trusted yet; " + sync + " shows them" // a fresh clone: this machine never trusted the file
+	}
+	return stale, []Notice{{Level: LevelInfo, Text: untrusted.Text(tvFile, untrusted.MaxName) + "'s target_versions " + why}}, nil
 }
 
 // outsideNotices warns of each entry written to a project's manifest whose local source resolves
@@ -1106,16 +1439,34 @@ func (e *Engine) uncoveredTargets(sc Scope, sp *scopePlan, reqs []InstallRequest
 		why = "have not been trusted on this machine"
 	case t.ownTargets() && len(rec.View.Part(t.Key).Targets) == 0:
 		why = "have not been trusted yet" // the record holds the profile's entries, never its targets
+	case len(rec.View.Part(t.Key).Targets) == 0:
+		why = "are not trusted yet" // an install naming its assistants recorded the entries, never the targets
 	}
 	if t.ownTargets() {
 		file = projectProfileFile(t.Key)
 	}
-	err, named := &untrustedTargetsError{file + "'s top-level targets " + why}, e.installRun(sc, req, requestArgs(reqs, req)...)+" -t <id>"
+	ids := make([]string, len(fileTargets(t, sp.man)))
+	for i, id := range fileTargets(t, sp.man) {
+		ids[i] = untrusted.Text(id, untrusted.MaxName)
+	}
+	err := &UntrustedTargetsError{msg: file + "'s top-level targets [" + strings.Join(ids, ", ") + "] " + why}
+	named, nerr := e.targetRuns(sc, e.installRun(sc, req, requestArgs(reqs, req)...), fileTargets(t, sp.man))
+	if nerr != nil {
+		return nerr
+	}
+	// named are the runs naming the assistants, after "name the assistants" or "or name …".
+	or := func(lead string) []string {
+		out := make([]string, len(named))
+		for i, n := range named {
+			out[i] = lead + n
+		}
+		return out
+	}
 	switch {
 	case t.ownTargets() && !t.on:
-		return errs.WithHints(err, "review them by turning the profile on: "+e.switchRun(sc, t), "or name the assistants: "+named)
+		return errs.WithHints(err, append([]string{"review them by turning the profile on: " + e.switchRun(sc, t)}, or("or name the assistants")...)...)
 	case sp.unresolved:
-		return errs.WithHints(err, "name the assistants: "+named)
+		return errs.WithHints(err, or("name the assistants")...)
 	}
 	// project.yml's top-level targets no entry the sync loads installs to are recorded only with
 	// --trust=entries: a plain sync would not ask about them.
@@ -1124,11 +1475,50 @@ func (e *Engine) uncoveredTargets(sc Scope, sp *scopePlan, reqs []InstallRequest
 		if lerr != nil {
 			return lerr
 		}
-		if !installsToTargets(layers) {
-			return errs.WithHints(err, "trust them: "+e.SyncCommand(sc, TrustEntries.Arg()), "or name the assistants: "+named)
+		// The hint trusts them away from the sync's diff: the refusal shows them, as that diff would.
+		// It is given only when nothing else needs trust, since --trust=entries would accept entries
+		// it does not show; else the plain sync, which shows them all, is hinted.
+		rep := trustReport(checkParts(rec, trustParts(sp.man, layers, nil)))
+		if !installsToTargets(layers) && len(rep.Changes) == 0 && len(rep.Replacements) == 0 && len(rep.ProfileTargets) == 0 {
+			rep.ManifestChanged = rep.Status != trust.StatusTrusted
+			man := e.files(sc).manifest
+			err.Report, err.File = &rep, filepath.Join(filepath.Base(filepath.Dir(man)), filepath.Base(man))
+			return errs.WithHints(err, append([]string{"trust them: " + e.SyncCommand(sc, TrustEntries.Arg())}, or("or name the assistants")...)...)
 		}
 	}
-	return errs.WithHints(err, "review and apply them: "+e.SyncCommand(sc), "or name the assistants: "+named)
+	return errs.WithHints(err, append([]string{"review and apply them: " + e.SyncCommand(sc)}, or("or name the assistants")...)...)
+}
+
+// targetRuns are the runs, run with -t naming ids, that install for ids at sc, each as the tail of
+// a hint: ": <run>", or, when sc is another directory than the project lola runs in and declares
+// no version for an id with more than one era, one per era of the first such id, ", for <id>
+// <label>: <run>" with "<id>@<since>" in place of it; ids are shown safe to print. Only the first
+// such id gets its versions: with two, following a hint can still be refused for the other (only
+// opencode has more than one era today).
+func (e *Engine) targetRuns(sc Scope, run string, ids []string) ([]string, error) {
+	shown := make([]string, len(ids))
+	for i, id := range ids {
+		shown[i] = untrusted.Text(id, untrusted.MaxName)
+	}
+	with := func(ts []string) string { return run + " -t " + errs.ShellJoin([]string{strings.Join(ts, ",")}) }
+	tv, _, err := e.declared(sc)
+	if err != nil {
+		return nil, err
+	}
+	standard := sc.Kind == target.User || e.FoundHere(sc)
+	for i, id := range ids {
+		if _, ok := tv[id]; ok || standard || len(e.Registry.Eras(id)) < 2 {
+			continue
+		}
+		var out []string
+		for _, x := range e.eras(id) {
+			ts := slices.Clone(shown)
+			ts[i] += "@" + x.since
+			out = append(out, fmt.Sprintf(", for %s %s: %s", id, x.label, with(ts)))
+		}
+		return out, nil
+	}
+	return []string{": " + with(shown)}, nil
 }
 
 // requestArgs is the arguments of an install of reqs as a hint repeats them: each argument with
@@ -1178,11 +1568,25 @@ func (e *Engine) hasOwnTargets(sp *scopePlan, sc Scope, cwd string, r InstallReq
 	return false
 }
 
-// untrustedTargetsError is untrustedTargets' refusal; its message says why the targets are not
-// covered.
-type untrustedTargetsError struct{ msg string }
+// UntrustedTargetsError is untrustedTargets' refusal; its message says why the targets are not
+// covered. Report is set when its hint trusts them with --trust=entries, away from a sync that
+// shows them: what that trusts, project.yml's top-level targets and target_versions, shown beside
+// the refusal (File names the manifest, as the sync's trust diff does).
+type UntrustedTargetsError struct {
+	Report *TrustReport
+	File   string
+	msg    string
+}
 
-func (e *untrustedTargetsError) Error() string { return e.msg }
+func (e *UntrustedTargetsError) Error() string { return e.msg }
+
+// JSONFields carries, beside error and hints, the trust diff of what the hint trusts, if any.
+func (e *UntrustedTargetsError) JSONFields() map[string]any {
+	if e.Report == nil {
+		return map[string]any{}
+	}
+	return map[string]any{"trust": *e.Report}
+}
 
 // ErrNotTrusted is wrapped by the refusal to rewrite a manifest entry the trust record does not
 // cover.
@@ -1245,7 +1649,7 @@ func installTyped(reqs []InstallRequest) string {
 func (e *Engine) saveManifest(sc Scope, loaded *manifest.Manifest, c manifest.Change, profiles []profileEdit, files []fileEdit, rec *trust.Record,
 	applied, hint string, apply func([]plan.ManifestWrite) error) error {
 	var writes []plan.ManifestWrite
-	edited := c.Targets != nil || len(c.Set) > 0 || len(c.Remove) > 0
+	edited := c.Targets != nil || len(c.Set) > 0 || len(c.Remove) > 0 || len(c.TargetVersions) > 0
 	if edited {
 		dst, data, err := manifest.Edit(e.files(sc).manifest, c)
 		if err != nil {
@@ -1456,7 +1860,7 @@ func (e *Engine) editSelections(sel *config.Selections, spec InstallSpec, plans 
 		if err != nil {
 			return nil, err
 		}
-		changes, res.Notices = append(changes, se.changes...), append(res.Notices, se.notes...)
+		changes, res.Notices = append(changes, se.changes...), append(res.Notices, inScope(se.notes, si.Scope, spec.many())...)
 		res.Notices = e.mentionNotes(res.Notices, si, se, targets, mods, spec)
 	}
 	return changes, nil
@@ -1471,6 +1875,145 @@ func (sp *scopePlan) fileChange(tw targetWrite) manifest.Change {
 		c.Targets = sp.targets
 	}
 	return c
+}
+
+// versionNotices are the info notices of the versions sp's scope records, in id order: "recorded
+// <id> <version> in <file> (target_versions): files are written for <id> <era label>", "changed
+// <id> <old> → <new> …" for one that replaces a declared version; at a standard scope with
+// "(the installed version)" after one probes read installed, and "(matches the installed
+// <probed>)" after another of the installed one's era (eraChoices warns of one of another era).
+// Then, at a standard scope, one for each assistant sp writes for that has
+// more than one era, no version declared or given, and is not installed: lola writes for its
+// newest era and records nothing, with the run for each era (eraRun, nil for the -t alone). done
+// says the install wrote them; before, they say what it would do. A version recorded of a major
+// above its target's newest era's is newer than any lola knows, said before the version's line,
+// and a target with one era given a version records nothing: each says so.
+func (e *Engine) versionNotices(sp *scopePlan, probes *probeRun, done bool, eraRun func(sc Scope, id, since string) string) []Notice {
+	record, change, write, nothing := "would record", "would change", "would write", "record nothing"
+	if done {
+		record, change, write, nothing = "recorded", "changed", "wrote", "recorded nothing"
+	}
+	standard := sp.sc.Kind == target.User || e.FoundHere(sp.sc)
+	var out []Notice
+	for _, id := range sp.oneEra {
+		out = append(out, Notice{Level: LevelInfo, Class: target.ClassDetail, Text: id + "'s files are the same for every version lola knows; nothing recorded"})
+	}
+	for _, id := range slices.Sorted(maps.Keys(sp.record)) {
+		v := sp.record[id]
+		// Any version above the newest era's since is that era's; only one of a major above the
+		// newest era's is said to be newer than lola knows (2.9 is a 2.x lola knows as >=2.0).
+		newest := e.eras(id)[0]
+		newer := semver.Compare(semver.Major(targetspec.Canonical(v)), semver.Major(targetspec.Canonical(newest.since))) > 0
+		if newer {
+			out = append(out, Notice{Level: LevelInfo, Class: target.ClassDetail, Text: fmt.Sprintf("%s %s is newer than any %s lola knows; files are written for %s %s",
+				id, untrusted.Text(v, untrusted.MaxName), id, id, newest.label)})
+		}
+		text := fmt.Sprintf("%s %s %s", record, id, untrusted.Text(v, untrusted.MaxName))
+		if was, ok := sp.recordWas[id]; ok {
+			text = fmt.Sprintf("%s %s %s → %s", change, id, untrusted.Text(was, untrusted.MaxName), untrusted.Text(v, untrusted.MaxName))
+		}
+		probed := targetspec.Canonical(probes.versions[id])
+		same := probed != "" && semver.Compare(probed, targetspec.Canonical(v)) == 0
+		if standard && same {
+			text += " (the installed version)"
+		}
+		text += fmt.Sprintf(" in %s (target_versions): files are written for %s %s", untrusted.Text(sp.recordIn, untrusted.MaxName), id, e.eraOf(id, v).label)
+		// A version newer than any lola knows is written for the newest era, but is not of the
+		// installed version's era for it.
+		if since, before, _ := e.Registry.Era(id, probed); standard && probed != "" && !same && !before && !newer && since == e.eraOf(id, v).since {
+			text += fmt.Sprintf(" (matches the installed %s)", untrusted.Text(probes.versions[id], untrusted.MaxName))
+		}
+		out = append(out, Notice{Level: LevelInfo, Text: text, Class: target.ClassDetail})
+	}
+	var ids []string
+	for _, c := range sp.changes {
+		for _, id := range c.Targets {
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	for _, id := range ids {
+		if !e.notInstalledEra(sp, probes, id) {
+			continue
+		}
+		eras := e.eras(id)
+		var rerun func(id, since string) string
+		if eraRun != nil {
+			rerun = func(id, since string) string { return eraRun(sp.sc, id, since) }
+		}
+		out = append(out, Notice{Level: LevelInfo, Class: target.ClassDetail, Text: fmt.Sprintf("%s is not installed here, so lola %s for %s %s and %s",
+			id, write, id, eras[0].label, nothing), Hints: e.EraHints(id, "to choose, ", "", rerun)})
+	}
+	return out
+}
+
+// notInstalledEra reports whether versionNotices says of target id at sp's scope that it is not
+// installed, with the run for each of its eras: a standard scope that declares no version of id,
+// a target with more than one era, and no version of it probes read (planning probes it).
+func (e *Engine) notInstalledEra(sp *scopePlan, probes *probeRun, id string) bool {
+	tv, _, err := probes.declared(sp.sc)
+	if err != nil || sp.sc.Kind != target.User && !e.FoundHere(sp.sc) {
+		return false
+	}
+	_, declared := tv[id]
+	return !declared && len(e.eras(id)) > 1 && targetspec.Canonical(probes.versions[id]) == ""
+}
+
+// eraChoices are the warnings, at a standard scope, of the versions sp's scope records for an era
+// other than the installed assistant's (warnsOfEra), in id order: this machine's assistant reads
+// files written for another era than the ones written, with the hint to write for what it reads,
+// recording the installed version (eraRun, nil for the -t alone).
+func (e *Engine) eraChoices(sp *scopePlan, probes *probeRun, eraRun func(sc Scope, id, since string) string) []target.Finding {
+	var out []target.Finding
+	for _, id := range slices.Sorted(maps.Keys(sp.record)) {
+		if !e.warnsOfEra(sp, probes, id) {
+			continue
+		}
+		probed, chosen := untrusted.Text(probes.versions[id], untrusted.MaxName), e.eraOf(id, sp.record[id])
+		reads := e.eraOf(id, probes.versions[id]).label
+		text := fmt.Sprintf("this machine's %s %s reads files written for %s; these are written for %s", id, probed, reads, chosen.label)
+		if chosen.summary != "" {
+			text += " (" + chosen.summary + ")"
+		}
+		run := "-t " + id + "@" + probed
+		if eraRun != nil {
+			run = eraRun(sp.sc, id, probes.versions[id])
+		}
+		out = append(out, target.Finding{Severity: target.SeverityWarn, Target: id, Kind: "assistant", Code: "version/chosen-era", Text: text,
+			Hint: fmt.Sprintf("to write for what this machine's %s %s reads (%s): %s", id, probed, reads, run)})
+	}
+	return out
+}
+
+// warnsOfEra reports whether eraChoices warns of target id at sp's scope: a standard one, where
+// the install records a version of id of another era than the installed assistant's, whose
+// version probes read (planning probes it).
+func (e *Engine) warnsOfEra(sp *scopePlan, probes *probeRun, id string) bool {
+	v, ok := sp.record[id]
+	if !ok || sp.sc.Kind != target.User && !e.FoundHere(sp.sc) {
+		return false
+	}
+	installed, before, _ := e.Registry.Era(id, probes.versions[id])
+	return targetspec.Canonical(probes.versions[id]) != "" && !before && installed != e.eraOf(id, v).since
+}
+
+// saveVersions records sp's versions in config.yaml at path (home is LoadConfig's), after the
+// install wrote the files for them: a failure says the files are written for versions the file
+// does not declare, and how to record them.
+func (sp *scopePlan) saveVersions(path, home string) error {
+	err := config.SaveTargetVersions(path, home, sp.record)
+	if err == nil {
+		return nil
+	}
+	shownPath := untrusted.Text(path, untrusted.MaxName)
+	var wrote, hints []string
+	for _, id := range slices.Sorted(maps.Keys(sp.record)) {
+		v := untrusted.Text(sp.record[id], untrusted.MaxName)
+		wrote = append(wrote, id+" "+v)
+		hints = append(hints, fmt.Sprintf("rerun with -t %s@%s, or add %s: %q under target_versions: in %s", id, v, id, v, shownPath))
+	}
+	return errs.WithHints(fmt.Errorf("the files were written for %s, but the version was not recorded in %s: %w", andJoin(wrote), shownPath, err), hints...)
 }
 
 // picksLayers is the layers whose profile entries hold picks at sp's scope: its layers and its
@@ -1704,6 +2247,7 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 		res.Notices = append(res.Notices, *ignored)
 	}
 	opts.freshPin, opts.entryFrom, opts.profiles = !keepPin, from, sp.profiles
+	opts.eraWarned = func(id string) bool { return e.warnsOfEra(sp, probes, id) || e.notInstalledEra(sp, probes, id) }
 	opts.checkArg = e.checkName(checkWord(mentionArgs(v.Name, rr.v, rr.req, opts.staged, opts.DryRun)), v, e.committing(opts.staged, opts.DryRun, v.Name))
 	intents, finds, notes, mr, err := e.planModule(sp.sc, v, modTargets, &ent, x, opts, probes, sp.templates)
 	if err != nil {
@@ -1741,9 +2285,14 @@ func (e *Engine) planInstallModule(ctx context.Context, sp *scopePlan, rr resolv
 			}
 		}
 	}
-	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: planned, Intents: intents,
-		Entry: &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
-			Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, From: from}})
+	entry := &ledger.Entry{Source: ent.Source, Ref: ent.Ref, Path: ent.Path, Commit: commit, Digest: v.Meta.Digest, Targets: mr.Targets,
+		Components: ent.Components.Clone(), RenderedWith: mr.renderedWith, Eras: mr.eras, From: from}
+	sp.changes = append(sp.changes, plan.ModuleChange{Name: v.Name, Targets: planned, Intents: intents, Entry: entry})
+	res.Modules[len(res.Modules)-1].Kept = installed != nil && !opts.Force && !installed.HooksPending && !installed.ScriptsPending &&
+		installed.From == entry.From && installed.Source == entry.Source && installed.Ref == entry.Ref && installed.Path == entry.Path &&
+		installed.Commit == entry.Commit && installed.Digest == entry.Digest && slices.Equal(installed.Targets, entry.Targets) &&
+		reflect.DeepEqual(installed.Components, entry.Components) && reflect.DeepEqual(installed.RenderedWith, entry.RenderedWith) &&
+		maps.Equal(installed.Eras, entry.Eras)
 	// Hooks run only in a copy replaced from the hashed version, after the consent keyed on those
 	// bytes. A copy that needs no new version is replaced only to run them: Install keeps it when
 	// no hook runs, so what earlier hooks built in it stays. A target the module is not installed
@@ -2326,6 +2875,11 @@ func (e *Engine) Uninstall(ctx context.Context, sc Scope, names []string, opts O
 	clearing, err := e.picksToClear(sc, names, changes, pr.plan.Ledger, opts, res)
 	if err != nil {
 		return nil, err
+	}
+	if opts.ConfirmThen != nil && !opts.Force {
+		if err := e.confirmThen(ctx, opts, edits); err != nil {
+			return nil, err
+		}
 	}
 	if opts.DryRun {
 		return res, nil

@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -224,6 +226,22 @@ func RemoveKey(m *yaml.Node, key string) bool {
 
 // Str is a string scalar node.
 func Str(s string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s} }
+
+// SetQuoted sets each key of set (in sorted order) in the mapping m to its value as a
+// double-quoted string, so a version such as 2.10 is never read as a number. A key m already
+// holds with that same string keeps its node; another value replaces the node's, keeping its
+// comments; a new key goes last.
+func SetQuoted(m *yaml.Node, set map[string]string) {
+	for _, k := range slices.Sorted(maps.Keys(set)) {
+		cur := Value(m, k)
+		switch {
+		case cur == nil:
+			m.Content = append(m.Content, Str(k), &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: set[k], Style: yaml.DoubleQuotedStyle})
+		case cur.Kind != yaml.ScalarNode || cur.ShortTag() != "!!str" || cur.Value != set[k]:
+			cur.Kind, cur.Tag, cur.Value, cur.Content, cur.Style = yaml.ScalarNode, "!!str", set[k], nil, yaml.DoubleQuotedStyle
+		}
+	}
+}
 
 // MaxFlowItems is the longest list StrList writes on one line.
 const MaxFlowItems = 8

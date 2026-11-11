@@ -120,7 +120,8 @@ func (k *keyed) takesEsc() bool {
 	})
 }
 
-// KeyBinds is the key help: esc back and q quit where they apply, then the field's; quitQuestion
+// KeyBinds is the key help: esc back and q quit where they apply (ctrl+c quits in a text input,
+// which types q), then the field's; quitQuestion
 // while q asks it, and after Esc with no screen to go back to, a note that q quits: "first step"
 // when nothing is answered yet, else "no step to go back to" (a flow's closing question). lola's keys come first: the help is
 // cut to the terminal's width, and huh's alone fill 80 columns.
@@ -141,16 +142,19 @@ func (k *keyed) KeyBinds() []key.Binding {
 	if !k.takesEsc() && (k.index > 0 || k.nav.Back) {
 		binds = append(binds, key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")))
 	}
-	if !k.typing() {
+	if _, input := k.Field.(*huh.Input); input {
+		binds = append(binds, key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quits")))
+	} else if !k.typing() {
 		binds = append(binds, key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")))
 	}
 	return append(binds, k.Field.KeyBinds()...)
 }
 
-// Error is the field's error, but none while q asks: a group shows its fields' errors in the key
-// help's place, where the question is.
+// Error is the field's error, but none while q asks or the first-screen note shows: a group shows
+// its fields' errors in the key help's place, where they are. The field clears its error on the
+// next key it gets, as huh's fields do.
 func (k *keyed) Error() error {
-	if k.asking {
+	if k.asking || k.first {
 		return nil
 	}
 	return k.Field.Error()

@@ -344,7 +344,7 @@ func (a *app) marketAdd(cmd *cobra.Command, eng *engine.Engine, args []string, r
 	}
 	res, err := eng.AddMarket(cmd.Context(), req)
 	if errors.Is(err, ErrAborted) {
-		return &abortedError{"aborted; no marketplace was added."}
+		return ErrAborted
 	}
 	if err != nil {
 		return err
@@ -382,7 +382,7 @@ func (a *app) marketRemove(cmd *cobra.Command, eng *engine.Engine, args []string
 	}
 	res, err := eng.RemoveMarket(req)
 	if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
-		return &abortedError{"aborted; nothing was removed."}
+		return ErrAborted
 	}
 	if err != nil {
 		return err
@@ -413,7 +413,11 @@ func sshPicker(p Prompter) func(engine.MarketSSHStep) ([]string, error) {
 		for _, h := range st.Hosts {
 			hosts = append(hosts, SSHHostChoice{Host: h.Host, Entries: h.Entries})
 		}
-		return p.SSHHosts(SSHHostStep{Market: st.Market, Hosts: hosts})
+		var nav Nav
+		if st.Back {
+			nav = Nav{Back: true, Answered: 1} // the name question
+		}
+		return p.SSHHosts(SSHHostStep{Market: st.Market, Hosts: hosts, Nav: nav})
 	}
 }
 
@@ -483,7 +487,7 @@ func (a *app) marketUpdate(cmd *cobra.Command, eng *engine.Engine, args []string
 	// Ctrl+C in the host picker of a run's one marketplace; among several, it costs that one
 	// marketplace, as any failure does.
 	if errors.Is(failed, ErrAborted) {
-		return &abortedError{"aborted; no ssh host was allowed."}
+		return &abortedError{"cancelled — no ssh host was allowed"}
 	}
 	if a.json && failed != nil {
 		return &marketError{err: failed, res: res}

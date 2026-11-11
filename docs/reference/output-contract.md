@@ -25,6 +25,13 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - Under `--scope both` each scope has its own line and check.
   - `-v`/`--verbose` prints them all, grouped as above, without the author's hints, in the review
     before Apply too; `--plain` prints a row each and `--json` lists each with its `class`.
+- A notice in JSON is `level`, `text` and `class`, and `hints` when it has commands that act on it
+  (a list, absent otherwise, such as the one for an assistant with versions that is not installed);
+  human output prints each hint under it as a `hint:` line. When stdout and stderr are both a
+  terminal, a hint wider than it wraps at spaces, but a `lola …` command in it is never broken (one
+  wider than the terminal gets a line of its own); a pipe or a file gets each hint on one line. A
+  `--plain` notice row is `notice<TAB>level<TAB>text`; in a `sync` or `install` of `--scope both`
+  it ends with the scope it is for (`project` or `user`).
 - Scope commands (`install`, `uninstall`, `sync`, `update`, `list`, `info`, `check` when it reads
   the scope's entries, `tidy`, `repair`, and `lola profile` listing, showing, `--on`, `--off` and
   `--switch`) print one context line per scope:
@@ -125,7 +132,11 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     - A term split across a wrapped line is not found.
   - On quit the full text is printed, so it stays in your scrollback.
   - The plan a confirmation question follows (`uninstall`, `cache rm`, `cache clean`,
-    `migrate`, a bare `init`) opens the same way, and the question comes after you quit it.
+    `migrate`, a bare `init`), the trust diff and removals `sync` asks about, the trash's restore
+    plan, the profiles `profile --add` and `--update` ask about, and what `--trust` accepted when
+    `Proceed?` follows open the same way, and the
+    question comes after you quit it with `q` or Esc; Ctrl+C there ends the command instead (`✗ cancelled — nothing was changed`, or the command's own wording, exit
+    0), without asking.
   - In order, `--json` or `--plain`, a stream that is not a terminal, accessible mode
     (`LOLA_ACCESSIBLE=1` or `TERM=dumb`), `--no-pager`, `NO_PAGER` set to a non-empty value, and
     `pager: false` in your `config.yaml` print without it.
@@ -137,8 +148,17 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   including the pin it writes back for an unpinned entry you trusted before; `-y` never trusts.
 - `install --json` adds `scopes` (each with `scope`, `root` and `scope_source`), and per
   module `scope`, `skipped` (component names, `[]` when none) and `saved_to` (the
-  `selections.yaml` or the profile it saved the picks to, or `""`), and `equivalent_commands`
-  (`[]` when the run had no review).
+  `selections.yaml` or the profile it saved the picks to, or `""`), `rewritten` (`true` on a
+  module that `--force` did not install but rewrote for the version the install writes for, under
+  `-n` too; absent otherwise), `equivalent_commands`
+  (the review's; under `-n` with no review, the run that applies the plan, as `to apply:` prints
+  it; `[]` otherwise), and `target_versions` (`[]` when it records none): one object
+  per version the install records in `target_versions` (would record, under `-n`), `{scope,
+  target, version, previous, source, file, era}`.
+  - `previous` is the version the scope declared before, `""` for none; `era` is the `since` of the
+    era the files are written for; `file` is the `project.yml` or `config.yaml` it goes in.
+  - `source` is `installed` (the installed assistant's, where lola assumes it), `chosen` (your
+    answer to the version question) or `flag` (`-t <id>@<version>`).
 - `install`, `uninstall`, `sync`, `update`, `profile --on`, `--off`, `--switch` and `--move` carry `edits`
   (`[]` when the run wrote no entry): one object per entry lola wrote into a file, `{module,
   action, profile, kind, path, scope}`.
@@ -157,15 +177,18 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     `profile:user:<name>`); `list --plain` rows end with the two.
   - `list --json` has `notices` (`[]` when none), as `--plain` has `notice` rows.
 - `sync --json`:
-  - Top level: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`,
-    `equivalent_commands` (in a dry run that is not in sync, the command that applies the plan,
+  - Top level: `scope`, `root`, `dry_run`, `in_sync`, `trust`, `pins`, `removals`, `rewrites`
+    (`[]` when none: one `{module, target, from, to}` per module whose files the sync rewrites for
+    another era of a target, `from` and `to` the eras' `since`), `equivalent_commands` (in a dry run that is not in sync, the command that applies the plan,
     with the `--trust=` kinds it needs off a terminal; when the plan removes files, off a terminal
     that command is refused until you add `-y`, which it carries only when you gave it; otherwise
     `[]`), and the plan's `modules`, `steps`,
     `findings` and `notices`.
   - `trust` has `status` (`trusted`, `new`, `changed`, or `not_applicable` at user scope),
     `recorded` (this run wrote the trust record), `targets` (the top-level targets' `field`,
-    `from` and `to`; omitted when trusted), `profile_targets` (the same for a project profile's
+    `from` and `to`; omitted when trusted), `target_versions` (the same for `target_versions`,
+    `from` and `to` each an object of target id to version, `null` when there was none or is none
+    left; omitted when trusted), `profile_targets` (the same for a project profile's
     top-level `targets`, each with its `profile`; omitted when trusted), `changes` and
     `replacements`.
   - Each of `trust.changes` is per module:
@@ -206,7 +229,9 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
     same rows on stderr.
   - In a dry run, `--plain` prints `trust` rows (module, change, and the project profile the
     change is in, empty for `project.yml`; the top-level targets' row has an empty module and
-    the change `targets`) before the plan's, after a `replace` row (profile, the profile it
+    the change `targets`, and a `target_versions` change has a row per target, with an empty
+    module and profile, then the target, its version before and after, each empty when none:
+    `trust<TAB><TAB>target_versions<TAB><TAB>opencode<TAB>2.0<TAB>1.0`) before the plan's, after a `replace` row (profile, the profile it
     replaces) for an activation that puts a project profile in place of yours.
 - Text a module or a manifest chose shows control and invisible characters as `?`, in JSON as on
   a terminal:

@@ -1,0 +1,3 @@
+# The e2e suites point at git servers they start on 127.0.0.1; those links
+# exist only while a suite runs.
+exclude_loopback = true

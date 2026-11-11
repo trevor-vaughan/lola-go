@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -32,7 +33,7 @@ var _ = Describe("replaceable paths", func() {
 		writeTree(proj, map[string]string{".claude/commands/ship.md": "the Python lola's copy\n"})
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 	})
 	install := func(dry bool, replace ...plan.Replaceable) (*engine.InstallResult, error) {
 		si := engine.ScopeInstall{ScopeChoice: engine.ScopeChoice{Scope: engine.Scope{Kind: target.Project, ProjectDir: proj}, Source: engine.SourceFlag},
@@ -92,7 +93,7 @@ var _ = Describe("per-module targets and the pre-write callback", func() {
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
 	})
 	spec := func(scopeTargets []string, req engine.InstallRequest) engine.InstallSpec {

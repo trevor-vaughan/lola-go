@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -19,7 +20,7 @@ var _ = Describe("checkVars", func() {
 		testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := New(p)
+		e := New(p, targets.Builtin())
 		m := &module.Module{Name: "kit", Vars: map[string]any{"since": "x", "n": "1", "tools": []string{"rg"}}}
 		for k, v := range map[string]any{"since": time.Time{}, "n": uint64(1), "tools": []any{"rg"}} {
 			err := e.checkVars(Scope{Kind: target.User}, m, &manifest.Entry{Name: "kit", Vars: map[string]any{k: v}}, "", "", nil)
@@ -37,7 +38,7 @@ var _ = Describe("checksEntry", func() {
 		testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e := New(p)
+		e := New(p, targets.Builtin())
 		sc := Scope{Kind: target.User}
 		ent := manifest.Entry{Name: "kit", Source: "https://example.com/kit.git", Market: &manifest.MarketRef{Name: "acme", Source: "https://example.com/acme.git"}}
 		Expect(e.checksEntry(sc, "/", "@acme/kit", ent)).To(BeTrue())

@@ -20,6 +20,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/fsx"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/targetspec"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -95,6 +96,9 @@ type Entry struct {
 	Components *source.Components `json:"components,omitempty"`
 	// RenderedWith is what a module with templates was rendered with, nil for one without.
 	RenderedWith *RenderedWith `json:"rendered_with,omitempty"`
+	// Eras is, by target id, the since of the era of its assistant the module's files were
+	// written for; a target it does not name was written for its newest era.
+	Eras map[string]string `json:"eras,omitempty"`
 }
 
 // RenderedWith records the inputs of a module's templates that are not its source: Profiles, the scope's profiles a template sees (default at user scope when its file
@@ -388,10 +392,10 @@ func (l *Ledger) Strays(known func(target string) bool) []Stray {
 
 // Forget drops each item of drop (Strays' items) from l, then each module it took an item from
 // that is left installed on no target, as plan's updateLedger drops one, and returns those
-// modules in name order. A module loses each of its targets an item of drop names as unknown; an
-// entry written before lock.json recorded targets first gets the targets its artifacts are on
-// (InstalledTargets), so forgetting a path never uninstalls a module from its target. A module
-// drop names nothing of is left as it is.
+// modules in name order. A module loses each of its targets an item of drop names as unknown, and
+// its era; an entry written before lock.json recorded targets first gets the targets its artifacts
+// are on (InstalledTargets), so forgetting a path never uninstalls a module from its target. A
+// module drop names nothing of is left as it is.
 func (l *Ledger) Forget(drop []Stray) []string {
 	var gone []string
 	for _, name := range slices.Sorted(maps.Keys(l.Modules)) {
@@ -405,6 +409,7 @@ func (l *Ledger) Forget(drop []Stray) []string {
 		e.Targets = slices.DeleteFunc(e.Targets, func(t string) bool {
 			return slices.ContainsFunc(drop, func(s Stray) bool { return s.Module == name && s.Target == t && s.Unknown })
 		})
+		maps.DeleteFunc(e.Eras, func(t, _ string) bool { return !slices.Contains(e.Targets, t) })
 		e.Artifacts = slices.DeleteFunc(e.Artifacts, func(a Artifact) bool {
 			return slices.ContainsFunc(drop, func(s Stray) bool { return s.Kind == StrayArtifact && s.Module == name && s.id == a.ID() })
 		})
@@ -421,7 +426,8 @@ func (l *Ledger) Forget(drop []Stray) []string {
 
 // validate rejects what the JSON decoder accepts but the rest of lola cannot handle: null
 // module entries, module names that are not safe path segments, recorded sources lola would
-// not write (source.Recorded), targets that are not target names or are listed twice, artifacts
+// not write (source.Recorded), targets that are not target names or are listed twice, eras that
+// are not versions or for a target the entry does not list, artifacts
 // with no target or on a target the entry does not list, and members lola could not have written. It records each member again as canonical JSON.
 func (l *Ledger) validate() error {
 	if err := l.validateProfile(); err != nil {
@@ -453,6 +459,16 @@ func (l *Ledger) validate() error {
 			}
 			if slices.Contains(e.Targets[:i], t) {
 				return errs.WithHints(fmt.Errorf("module %s: target %q is listed twice", name, t), restoreHint)
+			}
+		}
+		installed := e.InstalledTargets()
+		for _, t := range slices.Sorted(maps.Keys(e.Eras)) {
+			switch {
+			case !slices.Contains(installed, t):
+				return errs.WithHints(fmt.Errorf("module %s: eras names target %q, which targets does not list", name, t), restoreHint)
+			case targetspec.Canonical(e.Eras[t]) == "":
+				return errs.WithHints(fmt.Errorf("module %s: eras: target %q has %q, which is not a version", name, t,
+					untrusted.Text(e.Eras[t], untrusted.MaxName)), restoreHint)
 			}
 		}
 		for i, a := range e.Artifacts {
@@ -554,7 +570,7 @@ func (l *Ledger) Clone() *Ledger {
 	}
 	for k, e := range l.Modules {
 		ec := *e
-		ec.Artifacts, ec.Targets = slices.Clone(e.Artifacts), slices.Clone(e.Targets)
+		ec.Artifacts, ec.Targets, ec.Eras = slices.Clone(e.Artifacts), slices.Clone(e.Targets), maps.Clone(e.Eras)
 		c.Modules[k] = &ec
 	}
 	c.normalize()

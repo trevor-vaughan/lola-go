@@ -22,8 +22,9 @@ linters:
           msg: internal/market uses module's name rules only; the engine loads modules
     depguard:
       rules:
-        # Targets are pure renderers behind the target contract: they may not reach into the
-        # engine, the CLI or lola's state, so each can grow without touching the core.
+        # Targets are specs rendered by internal/target/spec through policy and mech: those
+        # packages may not reach into the engine, the CLI or lola's state, so a target can grow
+        # without touching the core.
         targets:
           list-mode: strict
           files:
@@ -35,9 +36,33 @@ linters:
             - github.com/trevor-vaughan/lola-go/internal/module
             - github.com/trevor-vaughan/lola-go/internal/paths
             - github.com/trevor-vaughan/lola-go/internal/plan
+            - github.com/trevor-vaughan/lola-go/internal/target/mech # the spec-built target's mechanisms
+            - github.com/trevor-vaughan/lola-go/internal/target/policy # the spec-built target's policy
+            - github.com/trevor-vaughan/lola-go/internal/targetspec # a target spec's facts
             - github.com/trevor-vaughan/lola-go/internal/untrusted # sanitizing author text in findings
             - go.yaml.in/yaml/v3
             - github.com/BurntSushi/toml
+            - golang.org/x/mod/semver
+        # Mechanisms render one artifact kind each; they neither build targets nor decide policy.
+        mechanisms:
+          files:
+            - "**/internal/target/mech/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/trevor-vaughan/lola-go/internal/target/spec
+              desc: mechanisms render one kind; the spec-built target composes them
+            - pkg: github.com/trevor-vaughan/lola-go/internal/target/policy
+              desc: mechanisms take capabilities from Env; policy is applied once, by the target
+        # Target specs are facts other tools could read: the format and its loader import
+        # nothing of lola's.
+        targetspec:
+          list-mode: strict
+          files:
+            - "**/internal/targetspec/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - go.yaml.in/yaml/v3
             - golang.org/x/mod/semver
         # Profiles are read, never fetched or written: no network, no engine,
         # no state but the profile files themselves.

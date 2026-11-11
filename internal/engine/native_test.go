@@ -13,6 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/native/nativetest"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -49,7 +50,7 @@ var _ = Describe("module/native-executable finding", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		kit = filepath.Join(tmp, "src", "kit")
@@ -81,7 +82,7 @@ var _ = Describe("module/native-executable finding", func() {
 
 	It("hints at lola info of the path lola check was given, with its display flags", func() {
 		put("skills/demo/scripts/fmt", nativetest.ELF64())
-		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, []string{"--plain"})
+		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, nil, []string{"--plain"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(native(rep.Modules[0].Findings)).To(ConsistOf(
@@ -163,7 +164,7 @@ var _ = Describe("module/native-executable finding", func() {
 
 	It("is listed by Check under the module's findings", func() {
 		put("skills/demo/scripts/fmt", nativetest.ELF64())
-		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{kit}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(native(rep.Modules[0].Findings)).To(HaveLen(1))

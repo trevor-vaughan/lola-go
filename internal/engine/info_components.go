@@ -127,7 +127,7 @@ func (e *Engine) infoComponents(in *InfoInstall, sc Scope, v store.Version, ms M
 	had, known, err := e.installedSet(v.Name, entry)
 	if err != nil {
 		// The plan's new-component notice may have said so already.
-		if n := (Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: cannot tell which components are new: %s", v.Name, untrusted.CleanErr(err).Error())}); !slices.Contains(in.Notices, n) {
+		if n := (Notice{Level: LevelWarn, Text: fmt.Sprintf("%s: cannot tell which components are new: %s", v.Name, untrusted.CleanErr(err).Error())}); !slices.ContainsFunc(in.Notices, n.Same) {
 			in.Notices = append(in.Notices, n)
 		}
 	}

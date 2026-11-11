@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
+	"github.com/trevor-vaughan/lola-go/internal/target"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
@@ -49,7 +51,17 @@ func printSync(w io.Writer, s style, name string, r *engine.SyncResult, names []
 		printTrustDiff(w, s, name, run, r.Trust, more)
 	}
 	if r.InSync && !diffShown && !s.plain && len(r.Failed) == 0 && len(r.Gone) == 0 { // a module not checked is not up to date
-		printNotices(w, s, r.Result)
+		// A value another version keeps was said in full when the files were written: a run that
+		// writes none counts them per module, with the lola check that lists them.
+		res := *r.Result
+		var counts []string
+		if !s.verbose {
+			res.Findings, counts = foldDropped(res.Findings, func(string) bool { return true })
+		}
+		printNotices(w, s, &res)
+		for _, c := range counts {
+			fmt.Fprintln(w, s.info(c))
+		}
 		if r.DryRun {
 			fmt.Fprintln(w, s.info(inSync))
 		} else {
@@ -179,6 +191,33 @@ func printRemovals(w io.Writer, s style, rs []engine.Removal) {
 	}
 }
 
+// foldDropped is findings without those dropping a value another era of their target keeps
+// (KeptSince) of the modules folded reports, and the lines that count those per module and lola
+// check, in the order they first appear: "mod: 1 value dropped — lola check --project mod".
+func foldDropped(findings []target.Finding, folded func(module string) bool) ([]target.Finding, []string) {
+	var dropped []target.Finding
+	kept := slices.DeleteFunc(slices.Clone(findings), func(f target.Finding) bool {
+		if f.KeptSince != "" && f.Module != "" && f.Check != "" && folded(f.Module) {
+			dropped = append(dropped, f)
+			return true
+		}
+		return false
+	})
+	var counts []string
+	for i, f := range dropped {
+		if slices.ContainsFunc(dropped[:i], func(d target.Finding) bool { return d.Module == f.Module && d.Check == f.Check }) {
+			continue
+		}
+		n := len(slices.DeleteFunc(slices.Clone(dropped), func(d target.Finding) bool { return d.Module != f.Module || d.Check != f.Check }))
+		noun := "values"
+		if n == 1 {
+			noun = "value"
+		}
+		counts = append(counts, fmt.Sprintf("%s: %d %s dropped — %s", untrusted.Text(f.Module, untrusted.MaxName), n, noun, f.Check))
+	}
+	return kept, counts
+}
+
 // printSyncRefusal prints, in human output, what a sync refused off a terminal carries: why it
 // could not read an entry (its notices), its trust diff, which is never in --plain's rows, and
 // its removals.
@@ -201,7 +240,7 @@ func printSyncRefusal(w io.Writer, s style, name, run string, refusal *engine.Tr
 // with no change prints nothing. run is the command the header says needs trust (lola sync, or
 // lola update).
 func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustReport, more string) {
-	if len(rep.Changes) == 0 && rep.Targets == nil && len(rep.ProfileTargets) == 0 && len(rep.Replacements) == 0 {
+	if len(rep.Changes) == 0 && rep.Targets == nil && rep.TargetVersions == nil && len(rep.ProfileTargets) == 0 && len(rep.Replacements) == 0 {
 		return
 	}
 	if s.plain {
@@ -214,6 +253,9 @@ func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustRepo
 		if rep.Targets != nil {
 			fmt.Fprintf(w, "trust\t\ttargets\t\n")
 		}
+		for _, c := range versionChanges(rep.TargetVersions) { // one row per target, its versions from and to ("" for none)
+			fmt.Fprintf(w, "trust\t\ttarget_versions\t\t%s\t%s\t%s\n", c.id, c.from, c.to)
+		}
 		for _, pt := range rep.ProfileTargets {
 			fmt.Fprintf(w, "trust\t\t%s\t%s\n", pt.Field, pt.Profile) // targets, or a project bundle's members (bundle)
 		}
@@ -221,7 +263,7 @@ func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustRepo
 	}
 	// The header names the cause, so a re-pin the user asked for is not framed as someone else's
 	// change, and the file: the project's profiles when only they changed.
-	if rep.Targets == nil && !slices.ContainsFunc(rep.Changes, func(c engine.TrustChange) bool { return c.Profile == "" }) {
+	if rep.Targets == nil && rep.TargetVersions == nil && !slices.ContainsFunc(rep.Changes, func(c engine.TrustChange) bool { return c.Profile == "" }) {
 		var files []string
 		for _, c := range rep.Changes {
 			if f := engine.ProfileFile(c.Profile); !slices.Contains(files, f) {
@@ -237,7 +279,7 @@ func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustRepo
 		name = strings.Join(files, ", ")
 	}
 	switch {
-	case len(rep.Changes) == 0 && rep.Targets == nil && len(rep.ProfileTargets) == 0: // only a replacement: no file to name
+	case len(rep.Changes) == 0 && rep.Targets == nil && rep.TargetVersions == nil && len(rep.ProfileTargets) == 0: // only a replacement: no file to name
 		fmt.Fprintln(w, "an activation would put a project profile in place of one of yours; it needs your trust for:")
 	case rep.Status == trust.StatusNew:
 		fmt.Fprintf(w, "%s has not been trusted on this machine (a fresh clone, or a moved project):\n", name)
@@ -284,7 +326,75 @@ func printTrustDiff(w io.Writer, s style, name, run string, rep engine.TrustRepo
 			printTrustChange(w, c, more)
 		}
 		printTargetsChange(w, rep.TargetsOf(file))
+		if file == "" {
+			for _, row := range versionRows(rep.TargetVersions) {
+				fmt.Fprintln(w, "  "+row)
+			}
+		}
 	}
+	// What new target_versions drop, before the question: up to maxDrops in full, then how many
+	// more, with the dry run that lists them.
+	drops := make([]target.Finding, 0, min(len(rep.Drops), maxDrops))
+	for _, f := range rep.Drops[:min(len(rep.Drops), maxDrops)] {
+		if f.AuthorHint {
+			f.Hint = f.UserHint
+		}
+		drops = append(drops, f)
+	}
+	printFindings(w, s, drops)
+	if len(rep.Drops) > maxDrops {
+		fmt.Fprintln(w, s.info(fmt.Sprintf("and %d more — %s", len(rep.Drops)-maxDrops, rep.DropsRun)))
+	}
+}
+
+// versionChange is one target's change in project.yml's target_versions: its versions from and
+// to, each "" when the side has none (had, has).
+type versionChange struct {
+	id, from, to string
+	had, has     bool
+}
+
+// versionChanges are t's targets whose version changed, in id order; none for a nil t.
+func versionChanges(t *trust.FieldChange) []versionChange {
+	if t == nil {
+		return nil
+	}
+	from, _ := t.From.(map[string]string)
+	to, _ := t.To.(map[string]string)
+	ids := slices.Collect(maps.Keys(from))
+	for id := range to {
+		if _, had := from[id]; !had {
+			ids = append(ids, id)
+		}
+	}
+	slices.Sort(ids)
+	var out []versionChange
+	for _, id := range ids {
+		was, had := from[id]
+		now, has := to[id]
+		if !had || !has || was != now {
+			out = append(out, versionChange{id, was, now, had, has})
+		}
+	}
+	return out
+}
+
+// versionRows are the diff's rows for a change to project.yml's target_versions, one per target
+// id whose version changed, in id order: "~ target_versions opencode "1.0" → "2.0"", + for an id
+// added, - for one removed; none for nil.
+func versionRows(t *trust.FieldChange) []string {
+	var out []string
+	for _, c := range versionChanges(t) {
+		switch {
+		case !c.had:
+			out = append(out, fmt.Sprintf("+ target_versions %s %q", c.id, c.to))
+		case !c.has:
+			out = append(out, fmt.Sprintf("- target_versions %s %q", c.id, c.from))
+		default:
+			out = append(out, fmt.Sprintf("~ target_versions %s %q → %q", c.id, c.from, c.to))
+		}
+	}
+	return out
 }
 
 // printTargetsChange is the diff's row for a change to the top-level targets, or to a project

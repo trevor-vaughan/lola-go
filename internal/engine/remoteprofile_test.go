@@ -25,6 +25,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trash"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
@@ -46,7 +47,7 @@ var _ = Describe("remote profiles", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil }
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
@@ -63,7 +64,7 @@ var _ = Describe("remote profiles", func() {
 		// The pin is computed with a cache of its own, so the specs start with an empty one.
 		other := p
 		other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-		v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url})
+		v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: url})
 		Expect(err).NotTo(HaveOccurred())
 		digest = v.Meta.Digest
 		requests.Store(0)
@@ -781,7 +782,7 @@ var _ = Describe("remote profiles", func() {
 				u := url[:len(url)-len("example.git")] + name + ".git"
 				other := p
 				other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin-"+name), filepath.Join(tmp, "pin-"+name+".lock"), filepath.Join(tmp, "pin-"+name+"-staging")
-				v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
+				v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
 				Expect(err).NotTo(HaveOccurred())
 				entries += "  - name: " + name + "\n    source: " + u + "\n    commit: " + gitIn(w, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n"
 			}
@@ -812,7 +813,7 @@ var _ = Describe("remote profiles", func() {
 				u := url[:len(url)-len("example.git")] + name + ".git"
 				other := p
 				other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin-"+name), filepath.Join(tmp, "pin-"+name+".lock"), filepath.Join(tmp, "pin-"+name+"-staging")
-				v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
+				v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: u})
 				Expect(err).NotTo(HaveOccurred())
 				entries[name] = "  - name: " + name + "\n    source: " + u + "\n    commit: " + gitIn(w, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n"
 			}
@@ -1707,6 +1708,22 @@ var _ = Describe("remote profiles", func() {
 			Expect(res2.Changed).To(Equal([]string{"example"}))
 		})
 
+		It("stops an update when showing the --trust record fails: no receipt, nothing kept or recorded", func() {
+			publish(map[string]string{"profiles/go.yml": pinned() + "    rules: false\n"})
+			receipts := 0
+			_, err := e.UpdateProfile(ctx, engine.ProfileUpdateRequest{Scopes: []engine.Scope{user}, Names: []string{"go"}, Trust: engine.TrustProfiles,
+				Show:    func([]engine.RemoteProfile) error { return context.Canceled },
+				Receipt: func([]engine.Consent) (bool, error) { receipts++; return true, nil }})
+			stopped, ok := errors.AsType[*engine.UpdateStoppedError](err)
+			Expect(ok).To(BeTrue(), "%v", err)
+			Expect(stopped.Err).To(MatchError(context.Canceled))
+			Expect(stopped.Result.Updates).To(ConsistOf(And(HaveField("Profile", "remote:go"), HaveField("Outcome", engine.UpdateSkipped))))
+			Expect(stopped.Result.Updated()).To(BeEmpty())
+			Expect(receipts).To(BeZero())
+			Expect(file()).To(Equal(pinned()), "the profile is kept as it was")
+			Expect(p.Consent).NotTo(BeAnExistingFile(), "nothing is recorded")
+		})
+
 		It("commits the staged profiles with the run's hints, and names what it wrote when a later one changed", func() {
 			publish(map[string]string{"profiles/go.yml": pinned(), "profiles/docs.yml": "version: 1\ndescription: docs\n"})
 			_, err := e.AddProfile(ctx, engine.ProfileAddRequest{Scope: &user, Name: "docs", Source: src, Consent: yes})
@@ -1915,7 +1932,7 @@ var _ = Describe("remote profiles", func() {
 			kitURL, kitCommit := url[:len(url)-len("example.git")]+"kit.git", gitIn(kitWork, "rev-parse", "HEAD")
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-			v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
+			v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
 			Expect(err).NotTo(HaveOccurred())
 			entry := "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + kitURL + "\n    commit: " + kitCommit +
 				"\n    digest: " + v.Meta.Digest + "\n"
@@ -1946,7 +1963,7 @@ var _ = Describe("remote profiles", func() {
 			kitURL := url[:len(url)-len("example.git")] + "kit.git"
 			other := p
 			other.Store, other.StoreLock, other.Staging = filepath.Join(tmp, "pin"), filepath.Join(tmp, "pin.lock"), filepath.Join(tmp, "pin-staging")
-			v, err := engine.New(other).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
+			v, err := engine.New(other, targets.Builtin()).Fetch(ctx, source.Spec{Kind: source.KindGit, Location: kitURL})
 			Expect(err).NotTo(HaveOccurred())
 			publish(map[string]string{"profiles/go.yml": "version: 1\ntargets: [claude-code]\nmodules:\n  - name: kit\n    source: " + kitURL +
 				"\n    commit: " + gitIn(kitWork, "rev-parse", "HEAD") + "\n    digest: " + v.Meta.Digest + "\n    vars: {lang: rust}\n"})

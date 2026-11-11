@@ -146,8 +146,9 @@ type MarketResult struct {
 
 // MarketRename asks for the name of a marketplace being added: Why
 // the name it has will not do (another marketplace has it, from its source; or the catalog names
-// itself what no marketplace can be), Suggest the first free name ("" for none), and Problem why
-// the last answer was refused ("" on the first ask).
+// itself what no marketplace can be), Suggest the name offered: the first free name ("" for none)
+// on the first ask, the last answer as typed when it was refused; and Problem why the last answer
+// was refused ("" on the first ask).
 type MarketRename struct {
 	Why, Suggest, Problem string
 }
@@ -958,14 +959,14 @@ func takenName(reg market.Registry, r market.Registration, src marketSource, req
 }
 
 // askName asks rename for the name of a marketplace being added, from step, until the answer is
-// a name no marketplace of reg has: a refused answer is asked again, saying why.
+// a name no marketplace of reg has: a refused answer is asked again as typed, saying why.
 func askName(reg market.Registry, step MarketRename, rename func(MarketRename) (string, error)) (string, error) {
 	for {
-		answer, err := rename(step)
+		typed, err := rename(step)
 		if err != nil {
 			return "", err
 		}
-		answer = strings.TrimSpace(answer)
+		answer := strings.TrimSpace(typed)
 		err = market.ValidateName(answer)
 		r := reg.Find(answer)
 		switch {
@@ -976,6 +977,7 @@ func askName(reg market.Registry, step MarketRename, rename func(MarketRename) (
 		default:
 			return answer, nil
 		}
+		step.Suggest = untrusted.Text(typed, untrusted.MaxName)
 	}
 }
 
@@ -1063,6 +1065,14 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 	if !src.file && path.Clean(req.Path) != f.pin.File {
 		hintPath = f.pin.File
 	}
+	// The name question's reason, once the run asks it: Esc at the ssh question asks it again.
+	var askedWhy string
+	if rename := req.Rename; rename != nil {
+		req.Rename = func(st MarketRename) (string, error) {
+			askedWhy = st.Why
+			return rename(st)
+		}
+	}
 	name := req.Name
 	if name == "" {
 		if market.ValidateName(f.cat.Name) != nil {
@@ -1096,7 +1106,21 @@ func (e *Engine) AddMarket(ctx context.Context, req MarketAddRequest) (_ *Market
 			return nil, err
 		}
 	}
-	hosts, err := chooseSSH(name, f, req.SSHHosts, req.DryRun, req.PickSSH)
+	pick := req.PickSSH
+	if pick != nil && askedWhy != "" {
+		pick = func(st MarketSSHStep) ([]string, error) {
+			st.Back = true
+			return req.PickSSH(st)
+		}
+	}
+	hosts, err := chooseSSH(name, f, req.SSHHosts, req.DryRun, pick)
+	for errors.Is(err, ErrBack) {
+		// Back from the ssh question: the name question again, pre-filled with the name given.
+		if name, err = askName(reg, MarketRename{Why: askedWhy, Suggest: name}, req.Rename); err != nil {
+			return nil, err
+		}
+		hosts, err = chooseSSH(name, f, req.SSHHosts, req.DryRun, pick)
+	}
 	if err != nil {
 		return nil, err
 	}

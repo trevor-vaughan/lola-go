@@ -34,7 +34,7 @@ var _ = Describe("renderTemplates", func() {
 			Expect(os.MkdirAll(filepath.Dir(filepath.Join(root, p)), 0o755)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(root, p), []byte(c), 0o644)).To(Succeed())
 		}
-		m, err := module.Load(root, "kit", targets.IDs())
+		m, err := module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		return m
 	}

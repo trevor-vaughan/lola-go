@@ -162,6 +162,39 @@ var _ = Describe("lola tidy: choosing and moving", func() {
 		Expect(trashRuns(t)).To(BeEmpty())
 	})
 
+	It("going back (ErrBack) from the review of a picker's answer asks Choose again; from the review of named items it is returned", func() {
+		t.files(t.proj, map[string]string{".claude/skills/old/SKILL.md": "x\n", ".claude/skills/new/SKILL.md": "x\n"})
+		chooses, confirms := 0, 0
+		choose := func(s engine.TidyScan) (engine.TidyChoice, error) {
+			chooses++
+			for _, c := range s.Candidates {
+				if c.Name == "old" {
+					return engine.TidyChoice{Move: []engine.UnitID{c.ID}}, nil
+				}
+			}
+			Fail("no candidate skill/old")
+			return engine.TidyChoice{}, nil
+		}
+		confirm := func(engine.TidyChoice) (bool, error) {
+			confirms++
+			if confirms == 1 {
+				return false, engine.ErrBack
+			}
+			return true, nil
+		}
+		res, err := t.tidy(engine.TidyRequest{Choose: choose, Confirm: confirm})
+		Expect(err).NotTo(HaveOccurred())
+		Expect([]int{chooses, confirms}).To(Equal([]int{2, 2}), "the back asked Choose, then the review, again")
+		Expect(listed(res.Moved)).To(Equal([]string{"claude-code skill/old"}))
+
+		_, err = t.tidy(engine.TidyRequest{Select: pats("skill/new"), Choose: choose,
+			Confirm: func(engine.TidyChoice) (bool, error) { return false, engine.ErrBack }})
+		Expect(err).To(MatchError(engine.ErrBack), "no picker came before it")
+		Expect(chooses).To(Equal(2))
+		Expect(filepath.Join(t.proj, ".claude", "skills", "new")).To(BeADirectory())
+		Expect(t.p.Keep).NotTo(BeAnExistingFile())
+	})
+
 	It("a choice naming a unit lola did not offer refuses before anything moves", func() {
 		t.files(t.proj, map[string]string{".claude/skills/old/SKILL.md": "x\n", ".claude/commands/CLAUDE.md": "x\n"})
 		_, confirm := never()
@@ -280,7 +313,9 @@ var _ = Describe("lola tidy: choosing and moving", func() {
 		t.files(t.proj, map[string]string{".claude/commands/a.md": "a\n", ".claude/skills/b/SKILL.md": "b\n", ".claude/skills/c/SKILL.md": "c\n",
 			".claude/skills/d/SKILL.md": "d\n", ".claude/agents/e.md": "e\n"})
 		res, err := t.tidy(engine.TidyRequest{Select: pats("command/a", "skill/b", "skill/c", "skill/d", "agent/e"), Confirm: confirmWith(func() {
-			Expect(os.Remove(filepath.Join(t.proj, ".claude", "commands", "a.md"))).To(Succeed())
+			// Park the original instead of deleting it: a freed inode can be handed straight back to the new file,
+			// and os.SameFile would then see no swap.
+			Expect(os.Rename(filepath.Join(t.proj, ".claude", "commands", "a.md"), filepath.Join(t.proj, "a-parked.md"))).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(t.proj, ".claude", "commands", "a.md"), []byte("a again\n"), 0o644)).To(Succeed())
 			Expect(os.Rename(filepath.Join(t.proj, ".claude", "skills", "b"), filepath.Join(t.proj, "b-moved"))).To(Succeed())
 			t.link("../../b-moved", filepath.Join(t.proj, ".claude", "skills", "b"))

@@ -117,7 +117,7 @@ func restrict(m *module.Module, ids []string) {
 }
 
 var _ = Describe("every registered target", func() {
-	for _, t := range targets.All() {
+	for _, t := range targets.Builtin().All() {
 		for _, scope := range []target.Scope{target.Project, target.User} {
 			Context(t.ID()+" at "+scope.String()+" scope", func() {
 				var ctx target.PlanContext

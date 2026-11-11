@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"slices"
@@ -10,19 +11,25 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/config"
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
-	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
-// scopeSourceLabel says where a scope came from, in the summary.
-func scopeSourceLabel(c engine.ScopeChoice) string {
-	switch c.Source {
-	case engine.SourceConfig:
+// scopeSourceLabel says where a scope came from, in the summary. User scope is found, not named,
+// when no project is found from where lola runs, or when lola profile --edit adds it as a scope the
+// profile is on too (engine.EditScopes), after the project.
+func (fl *installFlow) scopeSourceLabel(c engine.ScopeChoice) string {
+	switch {
+	case c.Source == engine.SourceConfig:
 		return "config.yaml"
-	case engine.SourceDiscovered:
+	case c.Source != engine.SourceDiscovered:
+		return c.Source
+	case c.Scope.ProjectDir != "":
 		return "found .lola/ at " + untrusted.Text(c.Scope.ProjectDir, untrusted.MaxName)
+	case len(fl.scopes) > 1 && fl.f.profile != "":
+		return "where profile " + untrusted.Text(fl.f.profile, untrusted.MaxName) + " is on too"
 	}
-	return c.Source
+	return "no .lola/ project in " + untrusted.Text(fl.cwd, untrusted.MaxName) + " or above it"
 }
 
 // assistants are the targets the destination key installs for: the answer, else the
@@ -31,19 +38,14 @@ func (fl *installFlow) assistants(key string) []string {
 	if t := fl.targets[key]; t != nil {
 		return t
 	}
-	for _, s := range fl.choices.Scopes {
-		if s.Scope.Key() == key {
-			return s.FixedTargets
-		}
-	}
-	return nil
+	return fl.fixed[key]
 }
 
-// changes reports whether the run changes anything: a selections.yaml entry, a component, a
-// module not installed yet, or one its write target neither lists nor inherits (the install writes
+// changes reports whether the run changes anything: a selections.yaml entry, a component (one
+// written for another era than the run writes for too), a module not installed yet, or one its write target neither lists nor inherits (the install writes
 // its entry there), or lists at another commit than the one the install pins (it re-pins it),
-// --force, or an installed module whose files lola list does not report ok (missing, hand-edited,
-// stale): the engine repairs or reports those. A target that renders nothing of a module (skipped)
+// --force, a version it records in target_versions, or an installed module whose files lola list
+// does not report ok (missing, hand-edited, stale): the engine repairs or reports those. A target that renders nothing of a module (skipped)
 // stays as it is. A module the active profile lists
 // (pv.SaveOnly) changes only by its manifest entry: the install installs nothing of it, so neither
 // its components nor its files count.
@@ -51,8 +53,17 @@ func (fl *installFlow) changes(pv *engine.Preview) (bool, error) {
 	if len(pv.Changes) > 0 || fl.f.force {
 		return true, nil
 	}
+	for _, rec := range fl.recorded {
+		if len(rec.versions) > 0 {
+			return true, nil
+		}
+	}
 	for _, c := range fl.scopes {
 		key := c.Scope.Key()
+		eras, err := fl.eraLines(c.Scope) // the era each assistant is written for, which files of another are rewritten for
+		if err != nil {
+			return false, err
+		}
 		for _, name := range fl.modules {
 			m := fl.choices.Module(name)
 			if m == nil {
@@ -70,8 +81,8 @@ func (fl *installFlow) changes(pv *engine.Preview) (bool, error) {
 				continue
 			}
 			for _, id := range fl.assistants(key) {
-				d := m.Diff(key, id, pv.Selected[key][name])
-				if len(d.Added)+len(d.Updated)+len(d.Removed) > 0 {
+				d := m.Diff(key, id, eras[id].since, pv.Selected[key][name], nil)
+				if len(d.Added)+len(d.Updated)+len(d.Removed)+d.Rewritten > 0 {
 					return true, nil
 				}
 			}
@@ -98,7 +109,7 @@ func repins(ms engine.ModuleScope) bool {
 }
 
 // diffLine renders a component diff: + added, ~ updated, - removed, = N unchanged.
-func diffLine(d engine.ComponentDiff) string {
+func diffLine(d engine.ComponentDiff, era versionLine) string {
 	var parts []string
 	for _, x := range []struct {
 		glyph string
@@ -108,7 +119,13 @@ func diffLine(d engine.ComponentDiff) string {
 			parts = append(parts, x.glyph+" "+c)
 		}
 	}
-	if d.Unchanged > 0 || len(parts) == 0 {
+	if d.Rewritten > 0 {
+		parts = append(parts, strconv.Itoa(d.Rewritten)+" rewritten for "+era.id+" "+era.label)
+	}
+	switch {
+	case d.Rewritten > 0 && d.Unchanged > 0:
+		parts = append(parts, strconv.Itoa(d.Unchanged)+" unchanged")
+	case d.Unchanged > 0 || len(parts) == 0:
 		parts = append(parts, "= "+strconv.Itoa(d.Unchanged)+" unchanged")
 	}
 	return strings.Join(parts, ", ")
@@ -120,7 +137,7 @@ func diffLine(d engine.ComponentDiff) string {
 // entry of its write target (pv.WritesTo), and why: a higher layer's entry wins, or that file is not
 // on here; the selections.yaml changes, the notices and the findings a dry run of the install
 // reports, as the run prints them (printNotices), dropped answers, and the equivalent commands.
-func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *engine.Preview, findings []target.Finding) {
+func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *engine.Preview, planned *engine.InstallResult) error {
 	fmt.Fprintln(w, "Summary:")
 	for _, line := range fl.choices.Resolved {
 		fmt.Fprintln(w, "  "+line)
@@ -131,7 +148,23 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 		if c.Scope.ProjectDir == "" {
 			dest += " (" + untrusted.Text(fl.eng.Paths.Home, untrusted.MaxName) + ")"
 		}
-		fmt.Fprintf(w, "  %s, %s:\n", dest, scopeSourceLabel(c))
+		fmt.Fprintf(w, "  %s, %s:\n", dest, fl.scopeSourceLabel(c))
+		lines, err := fl.versionLines(c.Scope)
+		if err != nil {
+			return err
+		}
+		eras, err := fl.eraLines(c.Scope)
+		if err != nil {
+			return err
+		}
+		// The dry run's steps at the destination: a component rewritten for another era whose
+		// files come out the same writes none, and counts as unchanged.
+		var steps []plan.Step
+		for _, st := range planned.Steps {
+			if st.Scope == c.Scope.Kind.String() && st.Root == c.Scope.ProjectDir {
+				steps = append(steps, st)
+			}
+		}
 		for _, id := range fl.assistants(key) {
 			fmt.Fprintf(w, "    → for %s (%s)\n", id, fl.why[key])
 			for _, name := range fl.modules {
@@ -140,7 +173,7 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 				} else if ok {
 					fmt.Fprintf(w, "      %s: saves %s's entry; installs nothing while %s's entry wins\n", name, pv.WritesTo[key], winner)
 				} else if m := fl.choices.Module(name); m != nil {
-					fmt.Fprintf(w, "      %s: %s\n", name, diffLine(m.Diff(key, id, pv.Selected[key][name])))
+					fmt.Fprintf(w, "      %s: %s\n", name, diffLine(m.Diff(key, id, eras[id].since, pv.Selected[key][name], steps), eras[id]))
 				}
 			}
 		}
@@ -148,6 +181,9 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 			if m := fl.choices.Module(name); m != nil && repins(m.Scope(key)) {
 				fmt.Fprintf(w, "    → %s: re-pinned at %s\n", name, shortCommit(m.Scope(key).ListedCommit))
 			}
+		}
+		for _, l := range lines {
+			fmt.Fprintf(w, "    → %s\n", l.text)
 		}
 	}
 	// Picks a profile entry holds are listed under that profile, and an override's under the profile
@@ -190,7 +226,7 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 		fmt.Fprintf(w, "  %s:\n%s", in, strings.Join(entries[in], ""))
 	}
 	var found strings.Builder
-	printNotices(&found, style{verbose: fl.a.style(fl.cmd).verbose}, &engine.Result{Findings: findings, Notices: pv.Notices})
+	printNotices(&found, style{verbose: fl.a.style(fl.cmd).verbose}, &engine.Result{Findings: planned.Findings, Notices: append(slices.Clone(pv.Notices), planned.EraNotices...)})
 	for _, line := range strings.SplitAfter(found.String(), "\n") {
 		if line != "" {
 			fmt.Fprint(w, "  "+line)
@@ -219,6 +255,78 @@ func (fl *installFlow) printSummary(w io.Writer, spec engine.InstallSpec, pv *en
 			fmt.Fprintln(w, "note: the line above has unsafe characters replaced by '?'; it is not copyable as shown")
 		}
 	}
+	return nil
+}
+
+// versionLine is what the review says of the version a destination's files are written for: its
+// text, and the era written for (since, label).
+type versionLine struct{ id, since, label, text string }
+
+// versionLines say, for each assistant with more than one era the destination sc installs for,
+// the era its files are written for, and why: "<id> <label> (installed <v>; will be recorded in
+// <file>)" for a version the install records (the installed version named only where lola assumes
+// it), "(was <declared> in <file>; installed <v>)" for one that replaces the version the
+// destination declares, "(from <file>)" for one it declares, "(nothing recorded; <id> is not
+// installed here)" for the newest era written for want of one; each adds "; this scope's modules
+// are written for it" when the modules installed there hold that era (installFlow.heldEras).
+func (fl *installFlow) versionLines(sc engine.Scope) ([]versionLine, error) {
+	key := sc.Key()
+	if lines, ok := fl.lines[key]; ok { // read once per pass: each read probes the assistants
+		return lines, nil
+	}
+	qs, err := fl.eng.VersionChoices(fl.cmd.Context(), sc, fl.assistants(key), nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	_, file, err := fl.eng.Records(sc, nil)
+	if err != nil {
+		return nil, err
+	}
+	file = untrusted.Text(file, untrusted.MaxName)
+	rec := fl.recorded[key]
+	var out []versionLine
+	for _, q := range qs {
+		id := q.Target
+		at := 0
+		if v := cmp.Or(fl.versions[key][id], q.Declared); v != "" {
+			since, _, _ := fl.eng.Registry.Era(id, v)
+			at = max(slices.Index(q.Eras, since), 0)
+		}
+		why := "nothing recorded"
+		switch _, records := rec.versions[id]; {
+		case records && q.Declared != "" && q.Standard && q.Installed != "":
+			why = "was " + untrusted.Text(q.Declared, untrusted.MaxName) + " in " + file + "; installed " + untrusted.Text(q.Installed, untrusted.MaxName)
+		case records && q.Declared != "":
+			why = "was " + untrusted.Text(q.Declared, untrusted.MaxName) + " in " + file
+		case records && q.Standard && q.Installed != "":
+			why = "installed " + untrusted.Text(q.Installed, untrusted.MaxName) + "; will be recorded in " + file
+		case records:
+			why = "will be recorded in " + file
+		case q.Declared != "":
+			why = "from " + file
+		case q.Installed == "":
+			why += "; " + id + " is not installed here"
+		}
+		if held, ok := fl.heldEras[key][id]; ok && held == q.Eras[at] { // why no question asks it, nor Change versions
+			why += "; this scope's modules are written for it"
+		}
+		out = append(out, versionLine{id, q.Eras[at], q.Labels[at], id + " " + q.Labels[at] + " (" + why + ")"})
+	}
+	if fl.lines == nil {
+		fl.lines = map[string][]versionLine{}
+	}
+	fl.lines[key] = out
+	return out, nil
+}
+
+// eraLines are sc's versionLines by assistant.
+func (fl *installFlow) eraLines(sc engine.Scope) (map[string]versionLine, error) {
+	lines, err := fl.versionLines(sc)
+	eras := map[string]versionLine{}
+	for _, l := range lines {
+		eras[l.id] = l
+	}
+	return eras, err
 }
 
 // entryText shows a selections.yaml entry as it will be written; patterns from the file are
@@ -350,10 +458,17 @@ func (fl *installFlow) equivalents(spec engine.InstallSpec) []string {
 		for _, g := range groups {
 			args := append(append([]string{"lola", "install"}, g.args...), "--scope", si.Scope.Kind.String())
 			args = append(args, root...)
-			if len(si.Targets) > 0 {
-				args = append(args, "-t", strings.Join(si.Targets, ","))
+			ts := slices.Clone(si.Targets)
+			if len(ts) == 0 && len(si.Versions) > 0 { // -t naming only the answered ones would remove the others' files
+				ts = slices.Clone(fl.fixed[key])
+			}
+			if len(ts) > 0 {
+				args = append(args, "-t", strings.Join(withVersions(ts, si.Versions, "", ""), ","))
 			}
 			args = slices.Concat(args, edits(si.Edits, g.names), pre, g.where, edits(spec.GlobalEdits, g.names), post)
+			if slices.Contains(slices.Concat(fl.created, fl.picker.created), si.Scope.ProjectDir) { // the run created it: -y does
+				args = append(args, "-y")
+			}
 			out = append(out, errs.ShellJoin(args))
 		}
 	}

@@ -1,0 +1,58 @@
+# Gemini CLI.
+id: gemini-cli
+probe:
+  # `gemini --version` prints a bare version, e.g. "0.63.0".
+  - exec: {binaries: [gemini], args: [--version], match: '^(\d+\.\d+\.\d+[0-9A-Za-z.+-]*)'}
+roots: {project: "{project}", user: "{home}"}
+detect:
+  project: {any: [.gemini/, GEMINI.md]}
+  user: {any: [.gemini/, GEMINI.md]}
+eras:
+  - since: "0.1"
+    layout:
+      skill: {mech: skill-dir, path: .gemini/skills, reads_shared_skills: true, prepend_name: true}
+      command: {mech: toml-command, path: .gemini/commands, ext: .toml, sidecar: copy}
+      agent: {mech: markdown-file, path: .gemini/agents, ext: .md, prepend_name: true}
+      mcp: {mech: json-servers, file: .gemini/settings.json, pointer: /mcpServers, shape: gemini}
+      # Gemini has no rules directory: a module's rules become one GEMINI.md in a directory
+      # listed in context.includeDirectories, which Gemini reads in trusted folders.
+      rule: {mech: rules-dir, path: .gemini/lola, concat: GEMINI.md,
+             register: {file: .gemini/settings.json, list: /context/includeDirectories, member: dir}}
+    kinds:
+      skill:
+        unknown_keys: keep
+        required: [description]
+        keys:
+          description: {accepts: {shape: string}}
+          hooks: {unsupported: "gemini-cli runs no hooks from a skill's frontmatter", case_insensitive: true}
+          mcpServers: {unsupported: "gemini-cli starts no MCP servers from a skill's frontmatter", case_insensitive: true}
+          mcp_servers: {unsupported: "gemini-cli starts no MCP servers from a skill's frontmatter", case_insensitive: true}
+      command:
+        keys:
+          description: {accepts: {shape: string}}
+          mcp_servers: {unsupported: "gemini-cli starts no MCP servers from a command's frontmatter", case_insensitive: true}
+      # Agent values have the shapes of Gemini's localAgentSchema, which rejects the agent on
+      # any mismatch.
+      agent:
+        required: [description]
+        name: '^[a-z0-9_-]+$'
+        keys:
+          name: {accepts: {shape: string, pattern: '^[a-z0-9_-]+$'}}
+          description: {accepts: {shape: string}}
+          kind: {accepts: {shape: string, pattern: '^(local|remote)$'}}
+          display_name: {accepts: {shape: string}}
+          # Gemini's tool names: lowercase names joined by single underscores (read_file,
+          # mcp_server_tool, *). An agent without a tool list gets every tool.
+          tools: {accepts: {shape: string-list, pattern: '^[a-z0-9*-]+(_[a-z0-9*-]+)*$'}, absent_means: unrestricted, example: read_file}
+          model: {accepts: {shape: string, pattern: '^gemini-'}}
+          temperature: {accepts: {shape: number}}
+          max_turns: {accepts: {shape: positive-integer}}
+          timeout_mins: {accepts: {shape: positive-integer}}
+    behaviors:
+      - id: shell-injection
+        kind: command
+        detect: "(?m)(?:^|\\s)!`[^`]+`|^[ \\t]*`{3,}!"   # target.Shell, as written in render.go
+        effect: sent-as-text
+        what: "!`…`"
+        native: "!{…}"
+    shared: [skill-rules]

@@ -86,6 +86,16 @@ between them re-renders and asks trust again.
 target. An entry from before the field falls back to its artifacts' targets
 (`Entry.InstalledTargets`).
 
+An entry records, per target, the `since` of the era its files were written for (`Entry.Eras`,
+`eras`; the engine's `ModuleResult.eras`, set from the era the planned target was rendered at,
+which an install given a version takes in place of the declared one). A target it does not name was
+written for its newest era. `ledger.Load` refuses an era that is not a version or one for a target the entry
+does not list; `updateLedger` keeps the eras of the targets outside a change, and `Ledger.Forget` drops a
+forgotten target's. Sync says `<module>: rewrote <id> files for <id> <new label> (written for <old
+label>)` (`would rewrite` in a dry run) for a planned
+target whose era changed (`Engine.eraRewrites`), and `Engine.rerenders` lists such a module so a
+profile switch plans it too.
+
 **The profile in the ledger**. `profile` is the scope's active profile:
 a qualified name (`user:go`, `project:go`, `remote:go`; never `default`) and the action that put it
 there (`by`: `on` or `switch`). A pre-release `profiles` list is refused before the strict decode

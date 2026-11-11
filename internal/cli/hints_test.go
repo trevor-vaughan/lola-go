@@ -179,15 +179,26 @@ var _ = Describe("hints", func() {
 			func(proj string) []string { return []string{"git -C " + proj + " rm --cached .lola/lock.json"} }),
 		Entry("list's refusal of an unknown lock.json target, whose lola repair keeps -C",
 			func(proj string) []string { plantTarget(proj); return []string{"list", "-C", proj} },
-			func(proj string) []string { return []string{"lola repair -C " + proj} }),
+			func(proj string) []string { return []string{restoreHint("bogus"), "lola repair -C " + proj} }),
 		Entry("the same refusal under --json and --no-pager, which its lola repair keeps",
 			func(proj string) []string {
 				plantTarget(proj)
 				return []string{"list", "-C", proj, "--json", "--no-pager"}
 			},
-			func(proj string) []string { return []string{"lola repair -C " + proj + " --json --no-pager"} }),
+			func(proj string) []string {
+				return []string{restoreHint("bogus"), "lola repair -C " + proj + " --json --no-pager"}
+			}),
 	)
 })
+
+// restoreHint is the refusal's coaching for target id, missing from the user's target specs.
+func restoreHint(id string) string {
+	GinkgoHelper()
+	p, err := paths.Resolve(os.Getenv)
+	Expect(err).NotTo(HaveOccurred())
+	return "restore your target spec for " + id + " in " + p.Targets +
+		", then run this again to remove what lola wrote for it; lola repair forgets those files and leaves them"
+}
 
 // editLock edits proj's lock.json as a hand edit would: f changes the decoded document.
 func editLock(proj string, f func(doc map[string]any)) {

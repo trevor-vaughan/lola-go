@@ -1,0 +1,79 @@
+# OpenCode. At user scope its root is $XDG_CONFIG_HOME/opencode and the artifact directories
+# sit directly under it.
+id: opencode
+probe:
+  # `opencode --version` prints a bare version in 1.x ("1.0.12") and a named one in 2.x
+  # ("opencode v2.2.5").
+  - exec: {binaries: [opencode], args: [--version], match: '^(?:opencode )?v?(\d+\.\d+\.\d+[0-9A-Za-z.+-]*)'}
+roots: {project: "{project}", user: "{config_home}/opencode"}
+detect:
+  project: {any: [.opencode/, opencode.json, opencode.jsonc]}
+  # OpenCode's config directory exists once it is set up, even without an opencode.json.
+  user: {dir: .}
+eras:
+  - since: "1.0"
+    summary: "agent colors may also be theme names such as accent"
+    vars: {dir: {project: .opencode/, user: ""}}
+    layout:
+      skill: {mech: skill-dir, path: "{dir}skills", reads_shared_skills: true, name_matches_dir: true, prepend_name: true}
+      command: {mech: markdown-file, path: "{dir}commands", ext: .md, arguments: one-based, sidecar: drop}
+      agent: {mech: markdown-file, path: "{dir}agents", ext: .md, defaults: {mode: subagent}}
+      mcp: {mech: json-servers, file: {first: [opencode.jsonc, opencode.json]}, pointer: /mcp, shape: opencode}
+      # One instructions member per module: OpenCode expands a wildcard only in the last
+      # component of an absolute entry.
+      rule: {mech: rules-dir, path: "{dir}lola",
+             register: {file: {first: [opencode.jsonc, opencode.json]}, list: /instructions, member: glob}}
+    kinds:
+      skill:
+        unknown_keys: keep
+        required: [description]
+        name: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        keys:
+          description: {accepts: {shape: string}}
+          hooks: {unsupported: opencode runs no hooks from frontmatter, case_insensitive: true}
+          mcpServers: {unsupported: opencode starts no MCP servers from frontmatter, case_insensitive: true}
+      command:
+        keys:
+          description: {accepts: {shape: string}}
+          agent: {accepts: {shape: string}}
+          model: {accepts: {shape: string, pattern: '^[^/]+/.+$'}}
+          subtask: {accepts: {shape: bool}}
+      # OpenCode refuses to start on an agent value that does not match its config schema
+      # (https://opencode.ai/config.json, AgentConfig); permission's nested form passes unchecked.
+      agent:
+        unknown_keys: keep
+        required: [description]
+        keys:
+          description: {accepts: {shape: string}}
+          name: {implied_by: file-name}
+          tools: {unsupported: opencode configures tools with permissions, absent_means: unrestricted, alternative: permission}
+          model: {accepts: {shape: string, pattern: '^[^/]+/.+$'}}
+          variant: {accepts: {shape: string}}
+          mode: {accepts: {shape: string, pattern: '^(subagent|primary|all)$'}}
+          # 1.x takes a hex color or a theme name (packages/core/src/v1/config/agent.ts at v1.19.5)
+          # and fails the config load on anything else.
+          color: {accepts: {shape: string, pattern: '^(#[0-9a-fA-F]{6}|primary|secondary|accent|success|warning|error|info)$'}}
+          temperature: {accepts: {shape: number}}
+          top_p: {accepts: {shape: number}}
+          steps: {accepts: {shape: positive-integer}}
+          maxSteps: {accepts: {shape: positive-integer}}
+          hidden: {accepts: {shape: bool}}
+          disable: {accepts: {shape: bool}}
+          options: {accepts: {shape: map}}
+          hooks: {unsupported: opencode runs no hooks from frontmatter, case_insensitive: true}
+          mcpServers: {unsupported: opencode starts no MCP servers from frontmatter, case_insensitive: true}
+    behaviors:
+      # OpenCode's prompt.ts runs every !`…` in a command (SHELL_REGEX /!`([^`]+)`/g) with no
+      # permission check; Claude's ```! fence it never runs.
+      - {id: shell-unchecked, kind: command, detect: "!`[^`]+`", effect: runs-without-permission-check, what: "!`…`"}
+      - {id: shell-fence, kind: command, detect: "(?m)^[ \\t]*`{3,}!", effect: sent-as-text, what: fenced shell, alternative: "inline !`…`"}
+    shared: [skill-rules]
+  # OpenCode 2 takes hex colors only: 2.0.0 to 2.1.2 drop an agent whose color is a theme name
+  # (anomalyco/opencode #54057, #38796), and later versions ignore the name.
+  - since: "2.0"
+    summary: "agent colors must be hex (#rrggbb)"
+    extends: previous
+    kinds:
+      agent:
+        keys:
+          color: {accepts: {shape: string, pattern: '^#[0-9a-fA-F]{6}$'}}

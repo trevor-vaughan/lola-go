@@ -23,7 +23,7 @@ var _ = Describe("lola.yml components", func() {
 	load := func(lolaYML string, files map[string]string) (*module.Module, error) {
 		files["lola.yml"] = "name: example\n" + lolaYML
 		write(root, files)
-		return module.Load(root, "x", targets.IDs())
+		return module.Load(root, "x", targets.Builtin().IDs())
 	}
 	names := func(m *module.Module) map[string][]string {
 		out := map[string][]string{}
@@ -145,7 +145,7 @@ var _ = Describe("lola.yml components", func() {
 		Expect(m.RuntimeHooks[1].Name()).To(Equal("inline"))
 
 		write(root, map[string]string{"lola.yml": "name: example\n"})
-		m, err = module.Load(root, "x", targets.IDs())
+		m, err = module.Load(root, "x", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.RuntimeHooks).To(BeEmpty())
 	})
@@ -551,10 +551,10 @@ components:
 `,
 			"skills/native/SKILL.md": "---\ndescription: n\n---\n",
 		})
-		m, err := module.Load(root, "x", targets.IDs())
+		m, err := module.Load(root, "x", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(module.Normalize(root, m)).To(Succeed())
-		again, err := module.Load(root, "x", targets.IDs())
+		again, err := module.Load(root, "x", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(again.Manifest).To(Equal("lola.yml"))
 		Expect(again.Format).To(Equal("agent-plugins"))

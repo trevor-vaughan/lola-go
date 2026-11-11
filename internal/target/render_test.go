@@ -37,7 +37,7 @@ var _ = Describe("SkillTree and SidecarTree", func() {
 			{File: "commands/ship/plain.md", Doc: module.Doc{Body: "plain\n"}},
 		}}
 		side := target.SidecarTree("claude-code", cmd, ctx, ".claude/commands/ship", consent)
-		Expect(side).To(Equal(plan.Intent{Target: "claude-code", Kind: "command", Op: plan.OpCopyTree, Src: "/content/commands/ship",
+		Expect(side).To(Equal(plan.Intent{Target: "claude-code", Kind: "command", Name: "ship", Op: plan.OpCopyTree, Src: "/content/commands/ship",
 			Path: ".claude/commands/ship", Exclude: []string{"notes.md.liquid"},
 			Overlay: []plan.File{{Path: "notes.md", Data: []byte("---\na: 1\n---\nN\n")}}, Consent: consent}))
 	})

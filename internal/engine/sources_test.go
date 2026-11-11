@@ -31,6 +31,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
@@ -82,7 +83,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 		tmp = testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		proj = filepath.Join(tmp, "proj")
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
@@ -480,7 +481,7 @@ var _ = Describe("Engine with git and archive sources", func() {
 	It("checks an archive without adding it to the cache", func() {
 		archive := filepath.Join(tmp, "example.tgz")
 		Expect(os.WriteFile(archive, tarGz("example", exampleModule), 0o644)).To(Succeed())
-		rep, err := e.Check(ctx, sc, proj, []string{archive}, []string{"claude-code"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{archive}, []string{"claude-code"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules).To(ConsistOf(HaveField("Name", "example")))
 		names, err := e.Store.Names()

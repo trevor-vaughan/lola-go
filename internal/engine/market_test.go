@@ -19,6 +19,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -50,7 +51,7 @@ var _ = Describe("marketplaces", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return tmp, nil }
 		srv = filepath.Join(tmp, "srv")
 		Expect(os.MkdirAll(srv, 0o755)).To(Succeed())
@@ -284,7 +285,9 @@ var _ = Describe("marketplaces", func() {
 		Expect(steps).To(HaveLen(3))
 		Expect(steps[0]).To(Equal(engine.MarketRename{Why: "acme is already a marketplace, from " + url, Suggest: "acme-2"}))
 		Expect(steps[1].Problem).To(Equal("acme is already a marketplace, from " + url))
+		Expect(steps[1].Suggest).To(Equal("acme"), "a refused answer is offered again as typed")
 		Expect(steps[2].Problem).To(ContainSubstring(`marketplace name "Bad Name" is invalid`))
+		Expect(steps[2].Suggest).To(Equal("Bad Name"))
 
 		// The catalog is found by the name typed; a free name's hint names the file found.
 		general, _ := repo("general", map[string]string{"acme.yml": "name: general\nmodules: []\n"})
@@ -642,9 +645,9 @@ var _ = Describe("marketplaces", func() {
 		_, err := add(engine.MarketAddRequest{Source: folder})
 		Expect(err).NotTo(HaveOccurred())
 		sc := engine.Scope{Kind: target.User}
-		_, err = e.Check(ctx, sc, tmp, []string{"@ren/root"}, nil, []string{"--json"})
+		_, err = e.Check(ctx, sc, tmp, []string{"@ren/root"}, nil, nil, []string{"--json"})
 		Expect(errs.Hints(err)).To(Equal([]string{"lola check " + folder + " --json"}))
-		_, err = e.Check(ctx, sc, tmp, []string{"@ren/sub"}, nil, nil)
+		_, err = e.Check(ctx, sc, tmp, []string{"@ren/sub"}, nil, nil, nil)
 		Expect(err).To(MatchError(ContainSubstring("names itself subby")))
 		Expect(errs.Hints(err)).To(BeEmpty(), "lola check takes no --path")
 		_, err = e.AddEntry(ctx, "@ren/sub", "", "", nil)
@@ -939,6 +942,40 @@ var _ = Describe("marketplaces", func() {
 			Expect(show("none").Entries).To(BeEmpty())
 		})
 
+		It("going back from the picker asks the name question again, pre-filled with the name given; without one the picker has nothing before it", func() {
+			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
+				Expect(s.Back).To(BeFalse(), "a typed name asks no question")
+				return nil, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			var names []engine.MarketRename
+			var steps []engine.MarketSSHStep
+			answers := []string{"mine", "theirs"}
+			other, _ := repo("other", map[string]string{".claude-plugin/marketplace.json": sshCatalog})
+			_, err = add(engine.MarketAddRequest{Source: other, Rename: func(st engine.MarketRename) (string, error) {
+				names = append(names, st)
+				a := answers[0]
+				answers = answers[1:]
+				return a, nil
+			}, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
+				steps = append(steps, s)
+				if len(steps) == 1 {
+					return nil, engine.ErrBack
+				}
+				return []string{"other.test"}, nil
+			}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(names).To(HaveLen(2))
+			Expect(names[0].Why).To(Equal("priv is already a marketplace, from " + url))
+			Expect(names[1]).To(Equal(engine.MarketRename{Why: names[0].Why, Suggest: "mine"}))
+			Expect(steps).To(HaveLen(2))
+			Expect(steps[0]).To(And(HaveField("Market", "mine"), HaveField("Back", true)))
+			Expect(steps[1]).To(And(HaveField("Market", "theirs"), HaveField("Back", true)))
+			Expect(allowed("theirs")).To(Equal([]string{"other.test"}))
+			_, err = e.ShowMarket("mine", nil)
+			Expect(err).To(HaveOccurred(), "the name given first is not registered")
+		})
+
 		It("the picker offers only the hosts --ssh-host did not cover", func() {
 			var steps []engine.MarketSSHStep
 			_, err := add(engine.MarketAddRequest{Name: "priv", Source: url, SSHHosts: []string{"git.corp.test"}, PickSSH: func(s engine.MarketSSHStep) ([]string, error) {
@@ -1187,7 +1224,7 @@ var _ = Describe("removing marketplaces and the Python verbs", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return tmp, nil }
 		url = filepath.Join(tmp, "acme")
 		writeTree(url, map[string]string{".claude-plugin/marketplace.json": acmeCatalog, "tools/formatter/x.md": "x"})

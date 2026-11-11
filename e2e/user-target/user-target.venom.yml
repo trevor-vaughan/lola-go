@@ -1,0 +1,338 @@
+name: a user target spec installs a module into a tool lola has no built-in for
+# Run by scripts/e2e.sh (task e2e -- user-target) in the shared e2e container: this checkout's
+# lola-go at /opt/lola-go/lola-go, the suite at /e2e and e2e/common at /e2e-common. Every step is
+# {{.runtime}} exec [<options>] {{.container}} <argv>; any $, glob, redirection or pipe sits
+# inside a single-quoted sh -c, and no step names a host path. Cases run in order and read the
+# state earlier ones leave. The tool, quill, exists only as a spec file written by setup.sh into
+# the user's target directory; no Go change adds it. No assistant is on PATH.
+vars:
+  root: "."
+  runtime: podman
+  container: lola-e2e-user-target
+  lola: /opt/lola-go/lola-go
+  jsoncheck: python3 /e2e-common/jsoncheck.py
+  specs: /home/tester/.config/lola/targets
+  proj: /work/proj
+
+testcases:
+  - name: U1 The quill spec and a project with .quill/ are built
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} bash /e2e/scripts/setup.sh"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"fixture ready\""
+
+  - name: U2 install --help lists quill after the built-in targets
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install --help"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"comma-separated: claude-code, gemini-cli, opencode, agents, quill)\""
+
+  - name: U3 Installing into quill writes every component at its layout path and drops hooks
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill@2.0 -C {{.proj}} -y --json > /tmp/u3.json 2> /tmp/u3.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u3.json > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/u3.json\"))
+          want = [f for f in doc[\"findings\"] if f[\"kind\"] == \"agent\" and f[\"severity\"] == \"warn\" and f[\"target\"] == \"quill\"
+                  and f[\"text\"].startswith(\"hooks dropped: lola writes hooks and MCP servers into a component only under consent, which quill\")]
+          assert len(want) == 1, doc[\"findings\"]
+          print(\"ok hooks dropped, warn\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok hooks dropped, warn"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd {{.proj}}/.quill && find . -type f | sort'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"./skills/scribble/SKILL.md\""
+          - "result.systemout ShouldContainSubstring \"./commands/ink.md\""
+          - "result.systemout ShouldContainSubstring \"./agents/editor.md\""
+          - "result.systemout ShouldContainSubstring \"./rules/lola/pen/plain.md\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'grep -c hooks {{.proj}}/.quill/agents/editor.md'"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemout ShouldEqual \"0\""
+
+  - name: U4 list shows the module installed for quill
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C {{.proj}} --json > /tmp/u4.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} doc /tmp/u4.json"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemoutjson.modules.modules0.name ShouldEqual pen
+          - result.systemoutjson.modules.modules0.target ShouldEqual quill
+
+  - name: U5 uninstall removes the files
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} uninstall pen -C {{.proj}} -y"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ uninstalled pen (quill)\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'find {{.proj}}/.quill -type f'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldBeEmpty
+
+  - name: U6 A spec with a built-in's id replaces it, said on stderr in human output only
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'sed \"s/^id: quill/id: opencode/\" {{.specs}}/quill.yaml > {{.specs}}/opencode.yaml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C {{.proj}}"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemerr ShouldContainSubstring \"note: opencode uses your target spec {{.specs}}/opencode.yaml in place of lola's built-in\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} list -C {{.proj}} --json > /dev/null 2> /tmp/u6.err; echo exit=$?; ! grep -q \"in place of\" /tmp/u6.err'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} rm {{.specs}}/opencode.yaml"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: U7 A spec that cannot be loaded stops every command, naming the file and a hint
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} rm -f {{.specs}}/opencode.yaml"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'echo \"id: broken\" > {{.specs}}/broken.yaml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} version"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"error: \""
+          - "result.systemerr ShouldContainSubstring \"broken.yaml\""
+          - "result.systemerr ShouldContainSubstring \"  hint: \""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} version --json > /tmp/u7.out 2> /tmp/u7.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=1\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.jsoncheck}} refusal /tmp/u7.out /tmp/u7.err"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemoutjson.error ShouldContainSubstring \"broken.yaml\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} rm {{.specs}}/broken.yaml"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: U8 A .yml spec is refused with the rename hint
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} rm -f {{.specs}}/broken.yaml"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cp {{.specs}}/quill.yaml {{.specs}}/quill2.yml"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} list -C {{.proj}}"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"quill2.yml\""
+          - "result.systemerr ShouldContainSubstring \"hint: rename it to quill2.yaml: lola reads target specs only from .yaml files\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} rm {{.specs}}/quill2.yml"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: U9 A probed old version with nothing declared is said to write for the newest era, only where lola runs from the project
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p9/.quill /home/tester/.quill && echo \"{\\\"version\\\": \\\"1.2.0\\\"}\" > /home/tester/.quill/version.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p9 && {{.lola}} check /e2e/fixtures/pen -t quill --project --json > /tmp/u9.json 2> /tmp/u9.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u9.json > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/u9.json\"))
+          want = [f for f in doc[\"findings\"] if f[\"text\"].startswith(\"quill 1.2.0 is installed, but .lola/project.yml declares no version for it\")
+                  and f[\"severity\"] == \"warn\" and f[\"kind\"] == \"assistant\"]
+          assert len(want) == 1, doc[\"findings\"]
+          print(\"ok version/undeclared\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok version/undeclared"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd / && {{.lola}} check /e2e/fixtures/pen -t quill -C /work/p9 --json > /tmp/u9-other.json 2> /tmp/u9-other.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u9-other.json > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/u9-other.json\"))
+          assert doc[\"modules\"], doc
+          bad = [f for f in doc[\"findings\"] if f[\"code\"].startswith(\"version/\")]
+          assert not bad, bad
+          print(\"ok no version finding from another directory\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok no version finding from another directory"
+
+  - name: U10 A declared old version renders the old era with no version finding
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p10/.quill /work/p10/.lola && printf \"target_versions:\\n  quill: \\\"1.2\\\"\\n\" > /work/p10/.lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill -C /work/p10 -y --json > /tmp/u10.json 2> /tmp/u10.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: |
+          {{.runtime}} exec {{.container}} sh -c '{{.jsoncheck}} doc /tmp/u10.json > /dev/null && python3 -c "
+          import json
+          doc = json.load(open(\"/tmp/u10.json\"))
+          assert any(f[\"kind\"] == \"agent\" and f[\"target\"] == \"quill\" for f in doc[\"findings\"]), doc[\"findings\"]
+          paths = [st[\"path\"] for st in doc[\"steps\"]]
+          assert any(\"/slash/ink.md\" in pth for pth in paths), paths
+          assert not any(\"/commands/ink.md\" in pth for pth in paths), paths
+          bad = [f for f in doc[\"findings\"] if f[\"code\"].startswith(\"version/\")]
+          assert not bad, bad
+          print(\"ok no version finding\")
+          "'
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "ok no version finding"
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p10/.quill && find . -type f | sort'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"./slash/ink.md\""
+          - "result.systemout ShouldNotContainSubstring \"./commands/\""
+
+  - name: U11 A target_versions id lola has no target for is refused and nothing is written
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p11/.quill /work/p11/.lola && printf \"target_versions:\\n  nib: \\\"1.0\\\"\\n\" > /work/p11/.lola/project.yml'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/pen -t quill -C /work/p11 -y"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \".lola/project.yml: target_versions.nib: lola has no target nib\""
+          - "result.systemerr ShouldContainSubstring \"hint: valid targets: \""
+          - "result.systemerr ShouldContainSubstring \"hint: remove it, or add a target spec for it to {{.specs}}\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'find /work/p11/.quill -type f | wc -l'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "0"
+
+  - name: U12 Off a terminal, a directory other than lola's own with no declared version is refused, coached, writing nothing
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} {{.lola}} install /e2e/fixtures/pen -t quill -C /work/p12 -y"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldNotContainSubstring \"created /work/p12\""
+          - "result.systemerr ShouldContainSubstring \"error: -C /work/p12 does not exist; which quill version will read it? lola assumes the installed quill only for the project you run it in\""
+          - "result.systemerr ShouldContainSubstring \"hint: create it, for quill >=2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@2.0 -y\""
+          - "result.systemerr ShouldContainSubstring \"hint: create it, for quill >=1.0 <2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@1.0 -y\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test ! -e /work/p12'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p12 && {{.lola}} install /e2e/fixtures/pen -t quill -C /work/p12 -y'"
+        assertions:
+          - result.code ShouldEqual 1
+          - "result.systemerr ShouldContainSubstring \"which quill version will read /work/p12? lola assumes the installed quill only for the project you run it in, and /work/p12 declares none\""
+          - "result.systemerr ShouldContainSubstring \"hint: for quill >=2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@2.0 -y\""
+          - "result.systemerr ShouldContainSubstring \"hint: for quill >=1.0 <2.0: lola install /e2e/fixtures/pen -C /work/p12 -t quill@1.0 -y\""
+          - "result.systemerr ShouldNotContainSubstring \"declare it\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'test ! -e /work/p12/.lola && rmdir /work/p12'"
+        assertions:
+          - result.code ShouldEqual 0
+
+  - name: U13 -t quill@1.2 writes the 1.x era and records the version and the era
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c '{{.lola}} install /e2e/fixtures/pen -t quill@1.2 -C /work/p13 -y > /tmp/u13.out 2> /tmp/u13.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /tmp/u13.out"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"recorded quill 1.2 in .lola/project.yml (target_versions): files are written for quill >=1.0 <2.0\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p13/.quill && find . -type f | sort'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"./slash/ink.md\""
+          - "result.systemout ShouldNotContainSubstring \"./commands/\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} grep -A1 target_versions: /work/p13/.lola/project.yml"
+        assertions:
+          - result.code ShouldEqual 0
+          - 'result.systemout ShouldContainSubstring "quill: "1.2""'
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} python3 -c 'import json; print(json.load(open(\"/work/p13/.lola/lock.json\"))[\"modules\"][\"pen\"][\"eras\"])'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldEqual \"{'quill': '1.0'}\""
+
+  - name: U14 In the project lola runs in, an undeclared version is the installed one, recorded
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'mkdir -p /work/p14/.quill /home/tester/.quill && echo \"{\\\"version\\\": \\\"1.2.0\\\"}\" > /home/tester/.quill/version.json'"
+        assertions:
+          - result.code ShouldEqual 0
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p14 && {{.lola}} install /e2e/fixtures/pen -t quill --project -y > /tmp/u14.out 2> /tmp/u14.err; echo exit=$?'"
+        assertions:
+          - "result.systemout ShouldEqual \"exit=0\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} cat /tmp/u14.out"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"recorded quill 1.2.0 (the installed version) in .lola/project.yml (target_versions): files are written for quill >=1.0 <2.0\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/p14/.quill && find . -type f | sort'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"./slash/ink.md\""
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} grep -A1 target_versions: /work/p14/.lola/project.yml"
+        assertions:
+          - result.code ShouldEqual 0
+          - 'result.systemout ShouldContainSubstring "quill: "1.2.0""'

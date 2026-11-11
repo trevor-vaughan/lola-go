@@ -88,13 +88,20 @@ func stepLine(s style, st plan.Step) string {
 }
 
 func noticeLine(s style, n engine.Notice) string {
+	if s.plain && n.Scope != "" {
+		return "notice\t" + n.Level + "\t" + n.Text + "\t" + n.Scope
+	}
 	if s.plain {
 		return "notice\t" + n.Level + "\t" + n.Text
 	}
+	line := s.info(n.Text)
 	if n.Level == engine.LevelWarn {
-		return s.warn(n.Text)
+		line = s.warn(n.Text)
 	}
-	return s.info(n.Text)
+	for _, h := range n.Hints {
+		line += "\n" + hintLine("    ", h, s.width)
+	}
+	return line
 }
 
 // findingLine renders a warn or skip finding, with its hint; info findings print only as JSON
@@ -115,7 +122,7 @@ func findingLine(s style, f target.Finding) string {
 		return ""
 	}
 	if f.Hint != "" {
-		line += "\n    hint: " + f.Hint
+		line += "\n" + hintLine("    ", f.Hint, s.width)
 	}
 	return line
 }
@@ -156,7 +163,7 @@ func checkLine(s style, f target.Finding) string {
 	if f.Severity == target.SeverityInfo && !s.plain {
 		line := s.info(f.Describe())
 		if f.Hint != "" {
-			line += "\n    hint: " + f.Hint
+			line += "\n" + hintLine("    ", f.Hint, s.width)
 		}
 		return line
 	}
@@ -164,15 +171,21 @@ func checkLine(s style, f target.Finding) string {
 }
 
 // printInstall renders an install result; with more than one scope, steps are grouped and
-// modules named per scope.
+// modules named per scope. A module whose lock.json entry it kept (Kept), writing none of its files
+// and no entry for it, is already up to date: it says so, and counts the values its version drops,
+// as a sync with nothing to write does (foldDropped), unless --verbose.
 func printInstall(w io.Writer, s style, r *engine.InstallResult) {
-	printScoped(w, s, "installed", r.Result, r.Scopes)
+	upToDate := func(m engine.ModuleResult) bool {
+		return !r.DryRun && m.Kept && !slices.ContainsFunc(r.Steps, func(st plan.Step) bool { return st.Module == m.Name && st.Scope == m.Scope }) &&
+			!slices.ContainsFunc(r.Edits, func(ed engine.Edit) bool { return ed.Module == m.Name })
+	}
+	printScoped(w, s, "installed", r.Result, r.Scopes, upToDate)
 }
 
 // printResult renders an install or uninstall result: steps, MCP transparency, install
 // hooks, notices, and a summary line.
 func printResult(w io.Writer, s style, verb string, r *engine.Result) {
-	printScoped(w, s, verb, r, nil)
+	printScoped(w, s, verb, r, nil, nil)
 }
 
 // scopeLabel names a scope in human output.
@@ -183,14 +196,26 @@ func scopeLabel(sc engine.ScopeResult) string {
 	return sc.Scope
 }
 
-func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
+// printScoped renders a run's edits, plan, notices and closing lines; upToDate, nil for none, says
+// which modules are already up to date (printInstall).
+func printScoped(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult, upToDate func(engine.ModuleResult) bool) {
 	printEdits(w, s, r.Edits, r.DryRun)
 	printPlan(w, s, r, scopes, "")
-	printNotices(w, s, r)
+	res := *r
+	var counts []string
+	if upToDate != nil && !s.verbose && !s.plain {
+		res.Findings, counts = foldDropped(r.Findings, func(name string) bool {
+			return !slices.ContainsFunc(r.Modules, func(m engine.ModuleResult) bool { return m.Name == name && !upToDate(m) })
+		})
+	}
+	printNotices(w, s, &res)
+	for _, c := range counts {
+		fmt.Fprintln(w, s.info(c))
+	}
 	if r.DryRun || s.plain {
 		return
 	}
-	printDone(w, s, verb, r, scopes)
+	printDone(w, s, verb, r, scopes, upToDate)
 }
 
 // printEdits prints a run's write lines (editLine), or under --plain an edit row each: action,
@@ -381,12 +406,20 @@ func printScripts(w io.Writer, s style, scripts []engine.ScriptRun) {
 	}
 }
 
-// printDone prints the closing "✓ <verb> <module>" line of each module a run wrote.
-func printDone(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult) {
+// printDone prints the closing "✓ <verb> <module>" line of each module a run wrote, and
+// "✓ <module> already up to date" for each upToDate reports (nil for none).
+func printDone(w io.Writer, s style, verb string, r *engine.Result, scopes []engine.ScopeResult, upToDate func(engine.ModuleResult) bool) {
 	for _, m := range r.Modules {
+		if m.Rewritten { // its rewrite notice reports it
+			continue
+		}
 		where := ""
 		if len(scopes) > 1 {
 			where = " at " + m.Scope + " scope"
+		}
+		if upToDate != nil && upToDate(m) {
+			fmt.Fprintln(w, s.ok(fmt.Sprintf("%s already up to date%s (%s)", m.Name, where, strings.Join(m.Targets, ", "))))
+			continue
 		}
 		fmt.Fprintln(w, s.ok(fmt.Sprintf("%s %s%s (%s)", verb, m.Name, where, strings.Join(m.Targets, ", "))))
 	}
@@ -435,7 +468,8 @@ func printFindings(w io.Writer, s style, findings []target.Finding) {
 // under -v or --plain, else as one line per module and lola check (a scope's), in the order they
 // first appear: "<module>: 30 notices (claude-code 15, gemini-cli 15) — <the lola check> -t
 // claude-code,gemini-cli", -t naming the targets counted. A detail notice with no target counts as
-// "module". Detail that no lola check names (its Check is "") is printed in full. A hint for the
+// "module". Detail that no lola check names (its Check is ""), and a dropped value another era of
+// its target keeps (KeptSince), is printed in full. A hint for the
 // module's author (target.Finding.AuthorHint) is never printed here, only what the engine added for
 // the user: lola check prints the rest.
 func printNotices(w io.Writer, s style, r *engine.Result) {
@@ -477,7 +511,7 @@ func printNotices(w io.Writer, s style, r *engine.Result) {
 	var shown []target.Finding
 	for _, f := range findings {
 		switch {
-		case f.Class != target.ClassDetail || f.Module == "" || f.Check == "":
+		case f.Class != target.ClassDetail || f.Module == "" || f.Check == "" || f.KeptSince != "":
 			shown = append(shown, f)
 		case worthShowing(f): // the ones printFindings would print
 			add(key{f.Module, f.Check}, f.Target)

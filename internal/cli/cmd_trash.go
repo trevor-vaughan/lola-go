@@ -209,9 +209,10 @@ func (a *app) emptyTrash(cmd *cobra.Command, eng *engine.Engine, args []string, 
 // [<original>...] --restore would (a run ticked whole, every entry), after asking; when an
 // original exists, the only restore offered is --force's, and lola asks again before moving what
 // is there. Empty ticked runs is lola trash <run>... --empty, which asks. A tick the action cannot
-// take, or Cancel at the review, asks the picker again, saying why, its ticks kept. Each file
-// shows its credentials mark first, then its path relative to the run's project (whole when the
-// run has none), so a cut to the terminal's width takes the path's start last.
+// take, or Cancel at the review, asks the picker again, saying why, its ticks and action kept; so
+// does going back (Esc) from any question after it. Each file shows its credentials mark first,
+// then its path relative to the run's project (whole when the run has none), so a cut to the
+// terminal's width takes the path's start last.
 func (a *app) pickTrash(cmd *cobra.Command, eng *engine.Engine, p Prompter, list *engine.TrashList) error {
 	w, s := cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}
 	for _, n := range list.Notices {
@@ -245,7 +246,7 @@ func (a *app) pickTrash(cmd *cobra.Command, eng *engine.Engine, p Prompter, list
 		if err != nil {
 			return err
 		}
-		st.Preselect = ans.Picked
+		st.Preselect, st.Action = ans.Picked, ans.Action
 		whole, files, err := trashTicked(shows, ans.Picked)
 		if err != nil {
 			return err
@@ -262,7 +263,10 @@ func (a *app) pickTrash(cmd *cobra.Command, eng *engine.Engine, p Prompter, list
 					ids = append(ids, show.ID)
 				}
 			}
-			return a.emptyTrash(cmd, eng, ids, "", false, false, Nav{Answered: 1})
+			if err := a.emptyTrash(cmd, eng, ids, "", false, false, Nav{Back: true, Answered: 1}); !errors.Is(err, ErrBack) {
+				return err
+			}
+			st.Problem = ""
 		default:
 			problem, err := a.restorePicked(cmd, eng, p, shows, whole, files)
 			if !errors.Is(err, ErrBack) && (err != nil || problem == "") {
@@ -303,8 +307,8 @@ func trashTicked(shows []*engine.TrashShow, picked []string) (map[int]bool, map[
 // --restore makes it (the files ticked named by identity, so two whose paths print alike stay
 // apart), shown, then Restore, or, when an original exists, Restore with --force, which re-plans
 // those runs with --force and asks before moving what is there. It answers why the picker asks
-// again when two runs would restore one original, and ErrBack for Cancel at the review; with
-// nothing left to restore it says so.
+// again when two runs would restore one original, and ErrBack for Cancel at the review and for
+// going back from either question; Ctrl+C ends the run. With nothing left to restore it says so.
 func (a *app) restorePicked(cmd *cobra.Command, eng *engine.Engine, p Prompter, shows []*engine.TrashShow, whole map[int]bool, files map[int][]int) (string, error) {
 	var reqs []engine.TrashRestoreRequest
 	var plans []*engine.TrashRestoreResult
@@ -330,8 +334,14 @@ func (a *app) restorePicked(cmd *cobra.Command, eng *engine.Engine, p Prompter, 
 			printTrashRestore(w, s, plan)
 		}
 	}
-	a.page(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, show)
 	restored, existing := trashCounts(plans)
+	title := "Restore " + engine.CountItems(restored) + " from the trash?"
+	if restored == 0 {
+		title = "" // no question follows the plan
+	}
+	if err := a.pageThen(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr())}, title, show); err != nil {
+		return "", err // Ctrl+C in the plan's viewer: the question is not asked
+	}
 	if restored == 0 {
 		fmt.Fprintln(cmd.OutOrStdout(), a.style(cmd).info("nothing to restore, so nothing changed"))
 		return "", nil
@@ -340,8 +350,9 @@ func (a *app) restorePicked(cmd *cobra.Command, eng *engine.Engine, p Prompter, 
 	if existing > 0 {
 		choice = "Restore with --force: first move what is there into a new trash run"
 	}
-	_, err := p.Where(WhereStep{Title: "Restore " + engine.CountItems(restored) + " from the trash?", Options: []string{choice}})
-	if errors.Is(err, ErrAborted) {
+	_, err := p.Where(WhereStep{Title: title, Options: []string{choice},
+		Nav: Nav{Back: true, Answered: 1}})
+	if errors.Is(err, ErrCancelled) {
 		return "", ErrBack
 	}
 	if err != nil {
@@ -359,7 +370,7 @@ func (a *app) restorePicked(cmd *cobra.Command, eng *engine.Engine, p Prompter, 
 		}
 		restored, existing = trashCounts(plans)
 		q := "Move " + engine.CountItems(existing) + " in the way into a new trash run, then restore " + engine.CountItems(restored) + "?"
-		if err := a.confirm(cmd, nil, q, Nav{Answered: 2}, plans, show); err != nil {
+		if err := a.confirm(cmd, nil, q, Nav{Back: true, Answered: 2}, plans, show); err != nil {
 			return "", err
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -35,7 +36,7 @@ var _ = Describe("hints", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		sc = engine.Scope{Kind: target.Project, ProjectDir: proj}
@@ -158,7 +159,7 @@ var _ = Describe("hints", func() {
 			}),
 		Entry("check's argument that is neither a source nor a module in your cache",
 			func() error {
-				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, []string{"--plain"})
+				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, nil, []string{"--plain"})
 				return err
 			},
 			func() []string {
@@ -239,7 +240,7 @@ var _ = Describe("hints", func() {
 			func() string { return `"nope" is not a source; sources are ` + source.AcceptedForms }, nil),
 		Entry("check's argument that is neither a source nor a module in your cache",
 			func() error {
-				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, nil)
+				_, err := e.Check(ctx, sc, proj, []string{"nope"}, nil, nil, nil)
 				return err
 			},
 			func() string {

@@ -35,11 +35,12 @@ type PlanContext struct {
 	PluginData string // absolute ${PLUGIN_DATA} dir for this module and scope
 	SkipRules  bool   // the manifest entry says rules: false
 	Force      bool   // render forceable skips (Skipped)
-	Version    string // the installed assistant's version, "" when unknown; adds findings only (Bounds)
-	// LocalSettingsExposed says, at project scope, why git could commit the project's
-	// .claude/settings.local.json: tracked, not ignored, or not checkable. "" when git ignores
-	// it or the project is not in a git work tree. The engine runs git; targets stay pure.
-	LocalSettingsExposed string
+	// SettingsExposed says, at project scope, why git could commit abs, the absolute path of a
+	// settings file the target writes runtime hooks to: tracked, not ignored, or not checkable.
+	// why is "" when git ignores the file or the project is not in a git work tree; rel is the
+	// file relative to the project, in slash form, for coaching. Nil when the engine did not
+	// check, as at user scope or with no runtime hooks. The engine runs git; targets stay pure.
+	SettingsExposed func(abs string) (why, rel string)
 	// SharedSkills are the module's skills the agents target delivers at this scope: ones it
 	// admits with no skip and no forced finding, on a module whose targets include it. A target
 	// whose assistant reads .agents/skills writes no copy of its own of these, so the assistant

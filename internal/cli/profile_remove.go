@@ -41,7 +41,7 @@ func (a *app) profileRemove(cmd *cobra.Command, eng *engine.Engine, args []strin
 	}
 	res, err := eng.RemoveProfile(cmd.Context(), req)
 	if errors.Is(err, engine.ErrDeclined) || errors.Is(err, ErrAborted) {
-		return &abortedError{"aborted; nothing was removed."}
+		return ErrAborted
 	}
 	if err != nil {
 		return err

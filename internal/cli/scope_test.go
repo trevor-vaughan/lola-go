@@ -286,7 +286,7 @@ var _ = Describe("scope for every command", func() {
 		r = lolaAsking(c, "sync", "--scope", "both", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"trust"}), "user scope was never reached")
-		Expect(r.err).To(HaveSuffix("aborted; the project was not changed; user scope was not synced.\n"))
+		Expect(r.err).To(HaveSuffix("✗ cancelled — the project was not changed; user scope was not synced\n"))
 		Expect(inHome).NotTo(BeAnExistingFile())
 		r = lola("sync", "--scope", "both", "-C", proj)
 		Expect(r.code).To(Equal(1))

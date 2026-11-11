@@ -11,6 +11,7 @@ import (
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 )
 
 // rec is one installed.yml record as the Python lola writes it.
@@ -82,7 +83,7 @@ func installAssistants(root string) {
 func newEngine() *engine.Engine {
 	p, err := paths.Resolve(os.Getenv)
 	Expect(err).NotTo(HaveOccurred())
-	return engine.New(p)
+	return engine.New(p, targets.Builtin())
 }
 
 // reviewModule is a lola-go module with every component kind the Python lola records.

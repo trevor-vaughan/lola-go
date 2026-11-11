@@ -56,7 +56,7 @@ testcases:
         assertions:
           - result.code ShouldEqual 0
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && printf \"2\\n0\\n\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} install {{.git}}/review-kit.git --ref v1.4.0 -t claude-code\" /dev/null'"
+        script: "{{.runtime}} exec {{.container}} sh -c 'cd /work/acme && printf \"2\\n0\\n1\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} install {{.git}}/review-kit.git --ref v1.4.0 -t claude-code\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"1.   Project (/work/acme) — project.yml\""
@@ -105,7 +105,7 @@ testcases:
           - "result.systemerr ShouldEqual \"user scope: profile go-review over default\""
           - "result.systemout ShouldContainSubstring \"✓ added review-tools to profile go-review  (/home/tester/.config/lola/profiles/go-review.yml)\""
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"2\\n1\\n4\\n6\\n0\\n\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} profile --edit cc-skills-golang --user\" /dev/null'"
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"2\\n1\\n4\\n6\\n0\\n1\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} profile --edit cc-skills-golang --user\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"cc-skills-golang comes from default (base), loaded under every profile at user scope.\""
@@ -345,7 +345,7 @@ testcases:
           - "result.systemoutjson.hints.hints0 ShouldEqual \"lola install /e2e/fixtures/spellcheck --json --target claude-code --user --profile docs\""
           - "result.systemoutjson.hints.hints1 ShouldEqual \"lola install /e2e/fixtures/spellcheck --json --target claude-code --user --profile go-review\""
       - type: exec
-        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} install /e2e/fixtures/spellcheck --user -t claude-code\" /dev/null'"
+        script: "{{.runtime}} exec {{.container}} sh -c 'printf \"1\\n\" | LOLA_ACCESSIBLE=1 script -qec \"{{.lola}} install /e2e/fixtures/spellcheck --user -t claude-code\" /dev/null'"
         assertions:
           - result.code ShouldEqual 0
           - "result.systemout ShouldContainSubstring \"work is a bundle. Which profile gets /e2e/fixtures/spellcheck?\""

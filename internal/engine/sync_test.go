@@ -24,6 +24,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 	"github.com/trevor-vaughan/lola-go/internal/trust"
 )
@@ -44,7 +45,7 @@ var _ = Describe("Sync", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
@@ -1490,22 +1491,26 @@ var _ = Describe("Sync", func() {
 		}
 		lockPath := func() string { return filepath.Join(proj, ".lola", "lock.json") }
 		DescribeTable("refuses a planted ledger entry before asking anything, naming lock.json, the module and lola repair",
-			func(a ledger.Artifact, want string) {
+			func(a ledger.Artifact, want string, restore bool) {
 				drop()
 				plant(a)
 				before := state()
 				_, err := sync(engine.SyncRequest{ConfirmRemovals: confirm})
 				Expect(err).To(MatchError(lockPath() + ": module other: " + want))
-				Expect(errs.Hints(err)).To(Equal([]string{"lola repair --project"}))
+				hints := []string{"lola repair --project"}
+				if restore {
+					hints = append([]string{restoreHint(p, "bogus")}, hints...)
+				}
+				Expect(errs.Hints(err)).To(Equal(hints))
 				Expect(removals).To(BeEmpty(), "nothing was asked")
 				Expect(state()).To(Equal(before))
 			},
 			Entry("a path outside the project", ledger.Artifact{Target: "claude-code", Kind: "file", Path: "../outside.md"},
-				`artifact "../outside.md" on target "claude-code" leaves the target's root`),
+				`artifact "../outside.md" on target "claude-code" leaves the target's root`, false),
 			Entry("an absolute path", ledger.Artifact{Target: "claude-code", Kind: "file", Path: "/tmp/outside.md"},
-				`artifact "/tmp/outside.md" on target "claude-code" leaves the target's root`),
+				`artifact "/tmp/outside.md" on target "claude-code" leaves the target's root`, false),
 			Entry("an unknown target", ledger.Artifact{Target: "bogus", Kind: "file", Path: "x.md"},
-				`target "bogus" is not a target lola knows`),
+				`target "bogus" is not a target lola knows`, true),
 		)
 
 		DescribeTable("every command that reads lock.json refuses a planted entry the same way",
@@ -1514,7 +1519,7 @@ var _ = Describe("Sync", func() {
 				before := state()
 				err := run()
 				Expect(err).To(MatchError(lockPath() + `: module other: target "bogus" is not a target lola knows`))
-				Expect(errs.Hints(err)).To(Equal([]string{"lola repair --project"}))
+				Expect(errs.Hints(err)).To(Equal([]string{restoreHint(p, "bogus"), "lola repair --project"}))
 				Expect(state()).To(Equal(before), "nothing was written or moved")
 			},
 			Entry("lola list", func() error { _, _, err := e.Status(ctx, sc, nil); return err }),
@@ -1632,6 +1637,68 @@ var _ = Describe("Sync", func() {
 			_, err = sync(engine.SyncRequest{Trust: only("acc"), ConfirmRemovals: confirm})
 			Expect(err).To(MatchError(engine.ErrDeclined), "acc is no longer a change, so this answer accepts nothing")
 			Expect(changed(asked[0])).To(ConsistOf("example", "gone", "kit"), "each declined entry is asked about again")
+		})
+
+		It("going back from the removals asks the trust question again and plans its new answer from the start", func() {
+			gone := folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: gone})
+			folder("kit", nil)
+			folder("acc", nil)
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "kit", Source: "mods/kit"}, {Name: "acc", Source: "mods/acc"}}, Remove: []string{"gone"}})
+			answers := []func(engine.TrustReport) (engine.TrustAnswer, error){only("acc", "gone"), yes}
+			backs := 1
+			res, err := sync(engine.SyncRequest{
+				Trust: func(rep engine.TrustReport) (engine.TrustAnswer, error) {
+					next := answers[0]
+					answers = answers[1:]
+					return next(rep)
+				},
+				ConfirmRemovals: func([]engine.Removal) (bool, error) {
+					Fail("ConfirmBack asks the removals right after the trust question")
+					return false, nil
+				},
+				ConfirmBack: func(rs []engine.Removal) (bool, error) {
+					removals = append(removals, rs)
+					if backs > 0 {
+						backs--
+						Expect(filepath.Join(proj, ".claude/commands/acc.md")).NotTo(BeAnExistingFile(), "nothing is written before the removals are answered")
+						return false, engine.ErrBack
+					}
+					return true, nil
+				}})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(asked).To(HaveLen(2), "Esc at the removals asked the trust question again")
+			Expect(changed(asked[1])).To(Equal(changed(asked[0])), "about every change, as first asked")
+			Expect(removals).To(HaveLen(2))
+			Expect(read(".claude/commands/kit.md")).To(Equal("kit\n"), "kit, left out by the first answer, is installed by the second")
+			Expect(read(".claude/commands/acc.md")).To(Equal("acc\n"))
+			Expect(filepath.Join(proj, ".claude/commands/gone.md")).NotTo(BeAnExistingFile())
+			Expect(res.Notices).NotTo(ContainElement(HaveField("Text", HavePrefix("left as installed"))), "the first answer's note is dropped")
+			Expect(covered()).To(BeTrue())
+		})
+
+		It("asks ConfirmRemovals, whose ErrBack it returns, when no ConfirmBack is given or no trust question came before", func() {
+			gone := folder("gone", nil)
+			install(sc, engine.InstallRequest{Arg: gone})
+			pull(manifest.Change{Remove: []string{"gone"}})
+			_, err := sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: func([]engine.Removal) (bool, error) { return false, nil }})
+			Expect(err).To(MatchError(engine.ErrDeclined), "the trust answer is recorded; the next sync asks only the removals")
+			asked = nil
+			back := func([]engine.Removal) (bool, error) {
+				Fail("no trust question was asked: there is nothing in the run to go back to")
+				return false, nil
+			}
+			_, err = sync(engine.SyncRequest{Trust: yes, ConfirmBack: back, ConfirmRemovals: func([]engine.Removal) (bool, error) { return false, engine.ErrBack }})
+			Expect(err).To(MatchError(engine.ErrBack), "the caller's screen before the question is the one to go back to")
+			Expect(asked).To(BeEmpty())
+			Expect(read(".claude/commands/gone.md")).To(Equal("gone\n"))
+
+			pull(manifest.Change{Set: []manifest.Entry{{Name: "acc", Source: "mods/acc"}}})
+			folder("acc", nil)
+			_, err = sync(engine.SyncRequest{Trust: yes, ConfirmRemovals: func([]engine.Removal) (bool, error) { return false, engine.ErrBack }})
+			Expect(err).To(MatchError(engine.ErrBack), "without ConfirmBack, ErrBack after the trust question is returned too")
+			Expect(asked).To(HaveLen(1), "and the trust question is not asked again")
+			Expect(read(".claude/commands/gone.md")).To(Equal("gone\n"))
 		})
 
 		It("partial trust records and caches only what was accepted", func() {

@@ -23,7 +23,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/store"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/target/claude"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -46,7 +46,7 @@ var exampleModule = map[string]string{
 
 // spy is claude-code recording the scope and root the engine gives Detect and Plan.
 type spy struct {
-	claude.Target
+	target.Target
 	seen *[]string
 }
 
@@ -60,11 +60,17 @@ func (s spy) Plan(m *module.Module, ctx target.PlanContext) ([]plan.Intent, []ta
 	return s.Target.Plan(m, ctx)
 }
 
+func claudeCode() target.Target {
+	t, ok := targets.Builtin().Lookup("claude-code")
+	Expect(ok).To(BeTrue())
+	return t
+}
+
 // loose is claude-code with a version pattern that matches anywhere in the output.
-type loose struct{ claude.Target }
+type loose struct{ target.Target }
 
 func (loose) Probe() target.Probe {
-	return target.Probe{Binaries: []string{"claude"}, VersionArgs: []string{"--version"}, VersionRE: regexp.MustCompile(`(\d+\.\d+\.\d+)`)}
+	return target.Probe{Methods: []target.ProbeMethod{{Binaries: []string{"claude"}, Args: []string{"--version"}, Match: regexp.MustCompile(`(\d+\.\d+\.\d+)`)}}}
 }
 
 var _ = Describe("Engine", func() {
@@ -116,7 +122,7 @@ var _ = Describe("Engine", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj = filepath.Join(tmp, "proj")
 		e.Getwd = func() (string, error) { return proj, nil } // hints are written for a user in the project
 		src = filepath.Join(tmp, "src", "example")
@@ -748,7 +754,7 @@ var _ = Describe("Engine", func() {
 	Describe("Check", func() {
 		It("reports every target's findings for a folder without touching any state", func() {
 			writeTree(src, map[string]string{"agents/bare.md": "No description.\n", "AGENTS.md": "legacy\n"})
-			rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rep.Modules).To(HaveLen(1))
 			m := rep.Modules[0]
@@ -768,7 +774,7 @@ var _ = Describe("Engine", func() {
 
 		It("covers agents without -t only where .agents/skills is set up or the scope's targets name it", func() {
 			check := func() []string {
-				rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil)
+				rep, err := e.Check(ctx, sc, proj, []string{"../src/example"}, nil, nil, nil)
 				Expect(err).NotTo(HaveOccurred())
 				return rep.Modules[0].Targets
 			}
@@ -785,7 +791,7 @@ var _ = Describe("Engine", func() {
 
 			user := engine.Scope{Kind: target.User}
 			checkUser := func() []string {
-				rep, err := e.Check(ctx, user, proj, []string{"../src/example"}, nil, nil)
+				rep, err := e.Check(ctx, user, proj, []string{"../src/example"}, nil, nil, nil)
 				Expect(err).NotTo(HaveOccurred())
 				return rep.Modules[0].Targets
 			}
@@ -805,7 +811,7 @@ var _ = Describe("Engine", func() {
 				"ai.opencode/commands/oc.md":  "OpenCode.\n",
 				"dev.getlola/commands/all.md": "All.\n",
 			})
-			rep, err := e.Check(ctx, sc, proj, []string{pkg}, []string{"claude-code", "opencode"}, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{pkg}, []string{"claude-code", "opencode"}, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rep.Modules[0].Name).To(Equal("tools"))
 			Expect(rep.Modules[0].Findings).To(ContainElement(SatisfyAll(HaveField("Code", "module-warning"),
@@ -815,15 +821,15 @@ var _ = Describe("Engine", func() {
 		It("checks a cached module by name, and explains an argument that is neither", func() {
 			_, err := e.Fetch(ctx, source.Spec{Kind: source.KindFolder, Location: src})
 			Expect(err).NotTo(HaveOccurred())
-			rep, err := e.Check(ctx, sc, proj, []string{"example"}, []string{"claude-code"}, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{"example"}, []string{"claude-code"}, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rep.Modules[0].Name).To(Equal("example"))
 
-			_, err = e.Check(ctx, sc, proj, []string{"nothing-here"}, nil, nil)
+			_, err = e.Check(ctx, sc, proj, []string{"nothing-here"}, nil, nil, nil)
 			Expect(err).To(MatchError(`"nothing-here" is neither a source nor a module in your cache; pass a module folder or another source, ` +
 				"e.g. lola check ./my-module; sources are " + source.AcceptedForms))
 			Expect(errs.Hints(err)).To(ContainElement("cached modules: lola cache list"))
-			_, err = e.Check(ctx, sc, proj, []string{"../src/example"}, []string{"vim"}, nil)
+			_, err = e.Check(ctx, sc, proj, []string{"../src/example"}, []string{"vim"}, nil, nil)
 			Expect(err).To(MatchError(`unknown target "vim"`))
 		})
 	})
@@ -987,13 +993,13 @@ var _ = Describe("Engine", func() {
 
 	It("gives each target its scope and that scope's root, to detect, install and check", func() {
 		var seen []string
-		e.Targets = []target.Target{spy{seen: &seen}}
+		e.Targets = []target.Target{spy{Target: claudeCode(), seen: &seen}}
 		user := engine.Scope{Kind: target.User}
 		e.Detect(sc)
 		e.Detect(user)
 		_, err := install(claude, src)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = e.Check(ctx, user, proj, []string{src}, nil, nil)
+		_, err = e.Check(ctx, user, proj, []string{src}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(seen).To(Equal([]string{"detect project " + proj, "detect user " + p.Home, "plan project " + proj, "plan user " + p.Home}))
 	})
@@ -1037,7 +1043,7 @@ var _ = Describe("Engine", func() {
 			GinkgoT().Setenv("PATH", "bin:"+os.Getenv("PATH"))
 			p, err := paths.Resolve(os.Getenv)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(engine.New(p).Detect(sc)[0].Binary).To(BeEmpty())
+			Expect(engine.New(p, targets.Builtin()).Detect(sc)[0].Binary).To(BeEmpty())
 		})
 
 		It("still renders an explicitly chosen target whose assistant is missing, and says so", func() {
@@ -1045,7 +1051,7 @@ var _ = Describe("Engine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read(".claude/commands/ship.md")).To(Equal("Ship $ARGUMENTS\n"))
 			Expect(probeFindings(res)).To(Equal([]target.Finding{{Severity: target.SeverityInfo, Target: "claude-code", Kind: "assistant",
-				Code: "probe/not-found", Text: "claude is not on PATH; checked against the newest version lola knows"}}))
+				Code: "probe/not-found", Text: "claude is not on PATH"}}))
 		})
 
 		It("reads the installed version once per binary build and caches it", func() {
@@ -1072,7 +1078,7 @@ var _ = Describe("Engine", func() {
 		})
 
 		It("reads at most a few KiB of an assistant's version output", func() {
-			e.Targets = []target.Target{loose{}}
+			e.Targets = []target.Target{loose{claudeCode()}}
 			noise := filepath.Join(tmp, "noise")
 			Expect(os.WriteFile(noise, []byte(strings.Repeat("x", 64<<10)), 0o644)).To(Succeed())
 			assistant("claude", "cat \""+noise+"\"\necho 9.9.9\n")

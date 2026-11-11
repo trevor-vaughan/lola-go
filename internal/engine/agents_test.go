@@ -18,6 +18,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -33,7 +34,7 @@ var _ = Describe("Skills the agents target delivers to gemini-cli and opencode",
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, mod = filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
 		writeTree(mod, map[string]string{"lola.yml": "name: m\n",
 			"skills/review/SKILL.md":   "---\ndescription: Review code\n---\nReview it.\n",
@@ -131,13 +132,13 @@ var _ = Describe("Skills the agents target delivers to gemini-cli and opencode",
 		Expect(te.Target).To(Equal("agents"))
 		Expect(at(".gemini")).NotTo(BeAnExistingFile(), "nothing was written")
 
-		_, err = e.Check(ctx, sc, proj, []string{mod}, []string{"gemini-cli", "agents"}, nil)
+		_, err = e.Check(ctx, sc, proj, []string{mod}, []string{"gemini-cli", "agents"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("lola check agrees with install", func() {
 		checked := func(ids ...string) []target.Finding {
-			rep, err := e.Check(ctx, sc, proj, []string{mod}, ids, nil)
+			rep, err := e.Check(ctx, sc, proj, []string{mod}, ids, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(rep.Modules).To(HaveLen(1))
 			return rep.Modules[0].Findings
@@ -154,7 +155,7 @@ var _ = Describe("Skills the agents target delivers to gemini-cli and opencode",
 
 		other := filepath.Join(filepath.Dir(mod), "other-m")
 		writeTree(other, map[string]string{"lola.yml": "name: m\n", "skills/review/SKILL.md": "---\ndescription: Review code\n---\nReview it.\n"})
-		rep, err := e.Check(ctx, sc, proj, []string{other}, []string{"gemini-cli", "agents"}, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{other}, []string{"gemini-cli", "agents"}, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).To(ContainElement(via("gemini-cli", "review")), "another source named m is not the entry's")
 	})
@@ -164,7 +165,7 @@ var _ = Describe("Skills the agents target delivers to gemini-cli and opencode",
 		_, err := e.InstallAll(ctx, spec(mod, "opencode"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(at(".opencode/skills/review/SKILL.md")).To(BeAnExistingFile())
-		rep, err := e.Check(ctx, sc, proj, []string{mod}, nil, nil)
+		rep, err := e.Check(ctx, sc, proj, []string{mod}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Targets).To(ContainElement("agents"), "agents is checked where it is set up")
 		Expect(rep.Modules[0].Findings).NotTo(ContainElement(HaveField("Code", "skill-via-agents")), "install wrote opencode's own copy")
@@ -175,7 +176,7 @@ var _ = Describe("Skills the agents target delivers to gemini-cli and opencode",
 		s.ConfirmRemovals = func([]engine.Removal) (bool, error) { return true, nil }
 		_, err = e.InstallAll(ctx, s)
 		Expect(err).NotTo(HaveOccurred())
-		rep, err = e.Check(ctx, sc, proj, []string{mod}, nil, nil)
+		rep, err = e.Check(ctx, sc, proj, []string{mod}, nil, nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(rep.Modules[0].Findings).To(ContainElement(via("opencode", "review")), "the scope's targets now include agents")
 	})
@@ -193,7 +194,7 @@ var _ = Describe("The shared .agents/skills directory", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		proj, mod = filepath.Join(tmp, "proj"), filepath.Join(tmp, "m")
 		writeTree(mod, map[string]string{"lola.yml": "name: m\n", "skills/review/SKILL.md": "---\ndescription: Review code\n---\nReview it.\n"})
 		Expect(os.MkdirAll(filepath.Join(proj, ".lola"), 0o755)).To(Succeed())
@@ -220,14 +221,14 @@ var _ = Describe("The shared .agents/skills directory", func() {
 		Expect(os.MkdirAll(at(".agents/skills/review"), 0o755)).To(Succeed())
 		Expect(os.MkdirAll(at(".claude/skills"), 0o755)).To(Succeed())
 		Expect(os.Symlink(filepath.Join("..", "..", ".agents", "skills", "review"), at(".claude/skills/review"))).To(Succeed())
-		run := func(id string) string { return "lola install m -t " + id }
+		run := func(sc engine.Scope, id string) string { return "lola install m -C " + sc.ProjectDir + " -t " + id }
 		_, err := e.InstallAll(ctx, spec(engine.Options{Targets: []string{"claude-code", "agents"}, TargetRun: run}))
 		ce, ok := errors.AsType[*plan.ConflictError](err)
 		Expect(ok).To(BeTrue(), "%v", err)
 		Expect(ce.Conflicts).To(ConsistOf(And(HaveField("Target", "agents"), HaveField("Path", ".agents/skills/review/SKILL.md"),
 			HaveField("Reason", "resolves to the same file as claude-code .claude/skills/review/SKILL.md (via symlink); refusing to write it twice"),
 			HaveField("Forceable", false))))
-		Expect(errs.Hints(err)).To(Equal([]string{run("claude-code"), run("agents")}))
+		Expect(errs.Hints(err)).To(Equal([]string{run(sc, "claude-code"), run(sc, "agents")}), "each at the scope refused")
 		Expect(at(".agents/skills/review/SKILL.md")).NotTo(BeAnExistingFile(), "nothing was written")
 
 		_, err = e.InstallAll(ctx, spec(engine.Options{Targets: []string{"claude-code", "agents"}}))

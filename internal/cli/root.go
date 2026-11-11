@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,23 +15,25 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
 // version is stamped at build time with -ldflags "-X .../internal/cli.version=<v>".
 var version = "dev"
 
-// ErrAborted means the user declined or cancelled a prompt: exit 0, "aborted; nothing
-// changed." A Prompter returns it for Ctrl+C, end of input in accessible mode, and Quit.
+// ErrAborted means the user declined or cancelled a prompt: exit 0, "✗ cancelled — nothing was
+// changed". A Prompter returns it for Ctrl+C, end of input in accessible mode, and Quit.
 var ErrAborted = errors.New("aborted")
 
 // abortedError is a cancelled prompt whose command says what the cancel left as it was: exit 0,
-// with its message printed in place of "aborted; nothing changed.".
+// with its message printed after "✗ " in place of "cancelled — nothing was changed".
 // flagError is cobra's refusal of a command line's flags. They fail while the flags are parsed, so
 // a --json after the bad flag was never read: Execute looks for it in the command line itself.
 type flagError struct{ error }
@@ -43,8 +46,9 @@ func (e *abortedError) Error() string        { return e.msg }
 func (e *abortedError) Is(target error) bool { return target == ErrAborted }
 
 // quitError is a quit the user asked for with q, as against Ctrl+C or a No: exit 0, "✗ cancelled —
-// nothing was changed", in color when the forms that took the q are. A command that words its own
-// cancel (abortedError) keeps its wording for a quit too, as it says what the cancel left as it was.
+// nothing was changed", as every cancel prints, but in color when the forms that took the q are. A
+// command that words its own cancel (abortedError) keeps its wording for a quit too, as it says what
+// the cancel left as it was.
 type quitError struct{ color bool }
 
 func (e *quitError) Error() string        { return "cancelled — nothing was changed" }
@@ -61,6 +65,7 @@ const (
 // the install flow asks.
 type app struct {
 	getenv      func(string) string
+	reg         targets.Registry // built-in and user targets, loaded once by NewRootCmd
 	json        bool
 	plain       bool
 	scopeFlag   string   // --scope
@@ -105,11 +110,22 @@ func setupCobra() {
 	})
 }
 
-// NewRootCmd builds the full command tree. getenv is injected so tests control the
+// NewRootCmd builds the full command tree. It loads the target registry first and returns
+// targets.Load's error when a user spec cannot be loaded. getenv is injected so tests control the
 // environment; nothing reads os.Getenv directly.
-func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
+func NewRootCmd(getenv func(string) string, opts ...Option) (*cobra.Command, error) {
 	setupCobra()
-	a := &app{getenv: getenv}
+	// The registry is loaded before the tree, whose flag help lists its ids. Paths that cannot be
+	// resolved hold no user specs; a.engine reports why when a command needs them.
+	p, perr := paths.Resolve(getenv)
+	if perr != nil {
+		p = paths.Paths{}
+	}
+	reg, err := targets.Load(p)
+	if err != nil {
+		return nil, err
+	}
+	a := &app{getenv: getenv, reg: reg}
 	for _, o := range opts {
 		o(a)
 	}
@@ -140,6 +156,13 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 				return errs.WithHints(errors.New("--json and --plain cannot be combined"), "pick one output format")
 			}
 			a.display = outputFlags(cmd)
+			if !a.json && !a.plain {
+				for _, id := range a.reg.IDs() {
+					if f := a.reg.Replaced(id); f != "" {
+						fmt.Fprintf(cmd.ErrOrStderr(), "note: %s uses your target spec %s in place of lola's built-in\n", id, untrusted.Text(f, untrusted.MaxName))
+					}
+				}
+			}
 			return nil
 		},
 	}
@@ -178,7 +201,7 @@ func NewRootCmd(getenv func(string) string, opts ...Option) *cobra.Command {
 	a.offerSplits(root)
 	a.carryContext(root)
 	checkFlagAliases(root)
-	return root
+	return root, nil
 }
 
 // engine returns the engine, resolving XDG paths on first use.
@@ -188,7 +211,7 @@ func (a *app) engine() (*engine.Engine, error) {
 		if err != nil {
 			return nil, err
 		}
-		a.eng = engine.New(p)
+		a.eng = engine.New(p, a.reg)
 		a.eng.Display = a.display
 	}
 	return a.eng, nil
@@ -234,6 +257,19 @@ func (a *app) scope(cmd *cobra.Command, eng *engine.Engine) (engine.Scope, error
 	return res.Scopes[0].Scope, nil
 }
 
+// jsonRequested reports whether args ask for JSON output, for failures that come before flags are
+// parsed.
+func jsonRequested(args []string) bool {
+	return slices.ContainsFunc(args, func(arg string) bool { return arg == "--json" || arg == "--json=true" })
+}
+
+// StartupError prints err, which stopped lola before any command could run, per the output
+// contract (JSON when args ask for it) and returns the exit code.
+func StartupError(w io.Writer, err error, args []string) int {
+	writeError(w, err, jsonRequested(args), 0)
+	return 1
+}
+
 // Execute runs root and maps the outcome to an exit code: 0 on success or a cancelled
 // prompt, 1 on any error (printed per the output contract), and 128 plus the signal's number on
 // an error after a signal cancelled root's context (NotifyContext), printing nothing but the
@@ -246,10 +282,15 @@ func Execute(root *cobra.Command) int {
 	if flagErr != nil {
 		asJSON = false
 	}
-	if errors.As(err, new(*flagError)) && slices.ContainsFunc(os.Args[1:], func(arg string) bool {
-		return arg == "--json" || arg == "--json=true"
-	}) {
+	if errors.As(err, new(*flagError)) && jsonRequested(os.Args[1:]) {
 		asJSON = true
+	}
+	// An error's hints wrap to the terminal, as a command's do (style.width), unless --plain.
+	width := 0
+	if plain, err := root.PersistentFlags().GetBool("plain"); err == nil && !plain && isTTY(root.OutOrStdout()) && isTTY(root.ErrOrStderr()) {
+		if cols, _, err := term.GetSize(int(root.ErrOrStderr().(*os.File).Fd())); err == nil {
+			width = cols
+		}
 	}
 	var quit *quitError
 	var sig Interrupted
@@ -260,18 +301,18 @@ func Execute(root *cobra.Command) int {
 		fmt.Fprintln(root.ErrOrStderr(), style{color: quit.color}.bad(quit.Error()))
 		return 0
 	case errors.As(err, new(*abortedError)):
-		fmt.Fprintln(root.ErrOrStderr(), err.Error())
+		fmt.Fprintln(root.ErrOrStderr(), style{}.bad(err.Error()))
 		return 0
 	case errors.Is(err, ErrAborted):
-		fmt.Fprintln(root.ErrOrStderr(), "aborted; nothing changed.")
+		fmt.Fprintln(root.ErrOrStderr(), style{}.bad((&quitError{}).Error()))
 		return 0
 	case root.Context() != nil && errors.As(context.Cause(root.Context()), &sig):
 		if u, ok := errors.AsType[*updateError](err); ok && u.doc.UpdatedText() != "" {
-			writeError(root.ErrOrStderr(), err, asJSON)
+			writeError(root.ErrOrStderr(), err, asJSON, width)
 		}
 		return 128 + int(sig.Signal)
 	}
-	writeError(root.ErrOrStderr(), err, asJSON)
+	writeError(root.ErrOrStderr(), err, asJSON, width)
 	return 1
 }
 

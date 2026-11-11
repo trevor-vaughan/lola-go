@@ -11,7 +11,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/target/claude"
 	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -23,7 +22,7 @@ var _ = Describe("the Claude Code plugin adapter", func() {
 	detect := func(manifest string, files map[string]string) (*module.Module, error) {
 		files[".claude-plugin/plugin.json"] = manifest
 		write(root, files)
-		return module.Detect(root, "fallback", targets.IDs())
+		return module.Detect(root, "fallback", targets.Builtin().IDs())
 	}
 	paths := func(m *module.Module) map[string][]string {
 		out := map[string][]string{}
@@ -162,7 +161,9 @@ var _ = Describe("the Claude Code plugin adapter", func() {
 			".claude-plugin/plugin.json: mcpServers: the MCP bundle ./tools.mcpb is not supported: lola does not install it; it is kept under formats.claude-plugin",
 			".claude-plugin/plugin.json: mcpServers: the MCP bundle https://example.com/s.dxt is not supported: lola does not install it; it is kept under formats.claude-plugin"))
 
-		ins, _, err := claude.Target{}.Plan(m, target.PlanContext{Scope: target.Project, PluginRoot: "/copies/p", PluginData: "/data/p"})
+		claudeCode, ok := targets.Builtin().Lookup("claude-code")
+		Expect(ok).To(BeTrue())
+		ins, _, err := claudeCode.Plan(m, target.PlanContext{Scope: target.Project, PluginRoot: "/copies/p", PluginData: "/data/p"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ins).To(ContainElement(HaveField("Value", MatchJSON(`{"command":"node","args":["/copies/p/server.js"]}`))))
 		Expect(ins).To(ContainElement(HaveField("Value", MatchJSON(`{"command":"gh-mcp","env":{"D":"/data/p"}}`))))
@@ -446,7 +447,7 @@ var _ = Describe("module formats reading an unreadable directory", func() {
 		locked := filepath.Join(root, "commands", "sub")
 		Expect(os.Chmod(locked, 0o000)).To(Succeed())
 		DeferCleanup(os.Chmod, locked, os.FileMode(0o755))
-		_, err := module.Detect(root, "x", targets.IDs())
+		_, err := module.Detect(root, "x", targets.Builtin().IDs())
 		Expect(err).To(MatchError(ContainSubstring("commands/sub: permission denied")))
 		Expect(err.Error()).NotTo(ContainSubstring(root))
 
@@ -457,7 +458,7 @@ var _ = Describe("module formats reading an unreadable directory", func() {
 		locked = filepath.Join(root, "dev.getlola", "commands")
 		Expect(os.Chmod(locked, 0o000)).To(Succeed())
 		DeferCleanup(os.Chmod, locked, os.FileMode(0o755))
-		_, err = module.Detect(root, "x", targets.IDs())
+		_, err = module.Detect(root, "x", targets.Builtin().IDs())
 		Expect(err).To(MatchError(ContainSubstring("dev.getlola/commands: permission denied")))
 		Expect(err.Error()).NotTo(ContainSubstring(root))
 	})
@@ -471,7 +472,7 @@ var _ = Describe("module formats reading an unreadable directory", func() {
 		locked := filepath.Join(root, "skills", "b")
 		Expect(os.Chmod(locked, 0o000)).To(Succeed())
 		DeferCleanup(os.Chmod, locked, os.FileMode(0o755))
-		_, err := module.Detect(root, "x", targets.IDs())
+		_, err := module.Detect(root, "x", targets.Builtin().IDs())
 		Expect(err).To(MatchError(".claude-plugin/plugin.json: skills: skills/b: permission denied"))
 		Expect(errs.Hints(err)).To(Equal([]string{"check that the path can be read"}))
 
@@ -481,7 +482,7 @@ var _ = Describe("module formats reading an unreadable directory", func() {
 		write(root, map[string]string{"plugin.json": `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"p"}`,
 			"skills/a/SKILL.md": "---\nname: a\ndescription: A\n---\nA.\n", "skills/b/SKILL.md": "---\nname: b\ndescription: B\n---\nB.\n"})
 		Expect(os.Chmod(locked, 0o000)).To(Succeed())
-		_, err = module.Detect(root, "x", targets.IDs())
+		_, err = module.Detect(root, "x", targets.Builtin().IDs())
 		Expect(err).To(MatchError("skills/b: permission denied"))
 		Expect(errs.Hints(err)).To(Equal([]string{"check that the path can be read"}))
 	})
@@ -495,7 +496,7 @@ var _ = Describe("module formats reading an unreadable directory", func() {
 		locked := filepath.Join(root, ".claude-plugin")
 		Expect(os.Chmod(locked, 0o000)).To(Succeed())
 		DeferCleanup(os.Chmod, locked, os.FileMode(0o755))
-		_, err := module.Detect(root, "x", targets.IDs())
+		_, err := module.Detect(root, "x", targets.Builtin().IDs())
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(HavePrefix(".claude-plugin/plugin.json: "))
 		Expect(err.Error()).NotTo(ContainSubstring(root))

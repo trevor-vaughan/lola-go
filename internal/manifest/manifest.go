@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/module"
 	"github.com/trevor-vaughan/lola-go/internal/source"
+	"github.com/trevor-vaughan/lola-go/internal/targetspec"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
@@ -71,7 +73,10 @@ func (e *Entry) RulesOn() bool { return e == nil || e.Rules == nil || *e.Rules }
 type Manifest struct {
 	Version int      `yaml:"version"`
 	Targets []string `yaml:"targets,omitempty,flow"`
-	Modules []Entry  `yaml:"modules,omitempty"`
+	// TargetVersions is the assistant version the project renders each target for, target id → version as written.
+	// Load checks only the form of each id and version; the engine checks the ids against the registry.
+	TargetVersions map[string]string `yaml:"target_versions,omitempty"`
+	Modules        []Entry           `yaml:"modules,omitempty"`
 	// PreInstall and PostInstall are a project's install scripts, paths relative to
 	// the project directory as written, which wrap every module copy a run of the project's scope
 	// installs or replaces; "" for none. Only project.yml takes them.
@@ -151,6 +156,9 @@ func (m *Manifest) decode(b []byte, root *yaml.Node) error {
 // *UnresolvedError, its source's line found in root.
 func (m *Manifest) validate(root *yaml.Node) error {
 	if err := plainTargets(m.Targets); err != nil {
+		return err
+	}
+	if err := checkTargetVersions(m.TargetVersions); err != nil {
 		return err
 	}
 	if root != nil {
@@ -357,6 +365,21 @@ func plainTargets(ids []string) error {
 	for _, id := range ids {
 		if !untrusted.IsPlain(id) {
 			return errors.New("targets holds control or invisible characters")
+		}
+	}
+	return nil
+}
+
+// checkTargetVersions refuses a target_versions id that would not print as it is, and a value that
+// is not a version, in id order.
+func checkTargetVersions(tv map[string]string) error {
+	for _, id := range slices.Sorted(maps.Keys(tv)) {
+		if !untrusted.IsPlain(id) {
+			return errors.New("target_versions holds control or invisible characters")
+		}
+		if v := tv[id]; targetspec.Canonical(v) == "" {
+			return errs.WithHints(fmt.Errorf("target_versions.%s: %q is not a version", id, untrusted.Text(v, untrusted.MaxName)),
+				"write a version such as 2.1 or 1.19.5")
 		}
 	}
 	return nil

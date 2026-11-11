@@ -231,7 +231,7 @@ var _ = Describe("typed --trust", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(c.questions).To(Equal([]string{"Proceed?"}))
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=entries,hooks allows:\n  → entries: targets (new), plain (new)\n  → hooks: kit pre-install (new)\n"))
-		Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"))
+		Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 		Expect(written()).To(BeFalse())
 		Expect(filepath.Join(p.Home, ".claude")).NotTo(BeADirectory())
 		Expect(consent()).To(BeEmpty())
@@ -266,7 +266,7 @@ var _ = Describe("typed --trust", func() {
 		Expect(c.questions).To(Equal([]string{"Proceed?"}))
 		Expect(r.err).To(ContainSubstring("trusting, as --trust=entries,hooks allows:\n" +
 			"  → entries: targets (new), kit (new), plain (new)\n  → hooks: kit pre-install (new)\n"))
-		Expect(r.err).To(HaveSuffix("aborted; the project was not changed.\n"))
+		Expect(r.err).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
 		Expect(written()).To(BeFalse())
 		Expect(mark).NotTo(BeAnExistingFile())
 		Expect(consent()).To(BeEmpty())
@@ -283,7 +283,7 @@ var _ = Describe("typed --trust", func() {
 		c = &confirming{scripted: scripted{}, answers: []bool{false}}
 		r = lolaAsking(c, "install", kit, "-C", proj, "--trust=hooks")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(HaveSuffix("aborted; nothing changed.\n"), "No at install's receipt is an abort, not an error")
+		Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "No at install's receipt is an abort, not an error")
 		Expect(mark + "2").NotTo(BeAnExistingFile())
 	})
 
@@ -375,7 +375,7 @@ var _ = Describe("typed --trust", func() {
 
 		r := lola("install", plain, "-C", proj, "-y")
 		Expect(r.code).To(Equal(1))
-		Expect(r.err).To(ContainSubstring("error: .lola/profiles/go.yml's top-level targets have not been trusted on this machine\n" +
+		Expect(r.err).To(ContainSubstring("error: .lola/profiles/go.yml's top-level targets [claude-code] have not been trusted on this machine\n" +
 			"  hint: review and apply them: lola sync -C " + proj + "\n"))
 
 		r = lola("sync", "-C", proj)

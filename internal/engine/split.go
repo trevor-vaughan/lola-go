@@ -35,7 +35,7 @@ type SplitRequest struct {
 	Options         Options
 	ConfirmRemovals func([]Removal) (bool, error)
 	Trust           func(TrustReport) (TrustAnswer, error)
-	Show            func(TrustReport)
+	Show            func(TrustReport) error
 }
 
 // SplitPlan is what a split writes: Bundle, the file it rewrites into a

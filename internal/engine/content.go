@@ -300,7 +300,8 @@ func (e *Engine) contentHooks(sc Scope, v store.Version, ent manifest.Entry, fro
 // check hint keeps.
 func (e *Engine) declaredRuntimeHooks(sc Scope, v store.Version, ent manifest.Entry, from string, probes *probeRun, templates *templateRun,
 	display []string) ([]RuntimeHook, error) {
-	quiet := &probeRun{e: e, ctx: probes.ctx, versions: maps.Clone(probes.versions), exposed: probes.exposed}
+	quiet := &probeRun{e: e, ctx: probes.ctx, versions: maps.Clone(probes.versions), exposed: probes.exposed, declares: probes.declares,
+		eras: maps.Clone(probes.eras)}
 	ids := make([]string, len(e.Targets))
 	for i, t := range e.Targets {
 		ids[i] = t.ID()

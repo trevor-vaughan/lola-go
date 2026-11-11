@@ -20,7 +20,7 @@ var _ = Describe("Partials at load", func() {
 	BeforeEach(func() { root = filepath.Join(testenv.Isolate(), "mod") })
 	load := func(files map[string]string) (*module.Module, error) {
 		write(root, files)
-		return module.Load(root, "kit", targets.IDs())
+		return module.Load(root, "kit", targets.Builtin().IDs())
 	}
 
 	It("reads _partials/<name>.liquid and <name>.<target>.liquid into Partials", func() {
@@ -63,20 +63,20 @@ var _ = Describe("Partials at load", func() {
 		_, err = load(files)
 		Expect(err).NotTo(HaveOccurred(), "16 partials of 256 KiB are 4 MiB")
 		Expect(os.WriteFile(filepath.Join(root, "_partials", "p16.liquid"), []byte("x"), 0o644)).To(Succeed())
-		_, err = module.Load(root, "kit", targets.IDs())
+		_, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).To(MatchError("_partials: the partials hold 4194305 bytes; a module's partials are at most 4 MiB together"))
 		Expect(errs.Hints(err)).To(Equal([]string{"move or remove files in _partials/"}))
 		for i := 17; i < 20; i++ {
 			Expect(os.WriteFile(filepath.Join(root, "_partials", fmt.Sprintf("p%d.liquid", i)), []byte(strings.Repeat("x", 256<<10)), 0o644)).To(Succeed())
 		}
-		_, err = module.Load(root, "kit", targets.IDs())
+		_, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).To(MatchError("_partials: the partials hold 4980737 bytes; a module's partials are at most 4 MiB together"), "the true total")
 
 		Expect(os.RemoveAll(root)).To(Succeed())
 		_, err = load(map[string]string{"commands/c.md": "c\n", "_partials/big.liquid": strings.Repeat("x", 256<<10+1)})
 		Expect(err).To(MatchError("_partials/big.liquid: is 262145 bytes; a partial file is at most 256 KiB"))
 		Expect(os.WriteFile(filepath.Join(root, "_partials", "big.liquid"), []byte(strings.Repeat("x", 4<<20+1)), 0o644)).To(Succeed())
-		_, err = module.Load(root, "kit", targets.IDs())
+		_, err = module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).To(MatchError("_partials/big.liquid: is 4194305 bytes; a partial file is at most 256 KiB"),
 			"one file over both caps is named by the per-file one")
 
@@ -119,7 +119,7 @@ var _ = Describe("Partials at load", func() {
 		if es, err := os.ReadDir(root); err != nil || len(es) != 3 {
 			Skip("the file system folds case: _partials and _Partials are one directory")
 		}
-		m, err := module.Load(root, "kit", targets.IDs())
+		m, err := module.Load(root, "kit", targets.Builtin().IDs())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(m.Partials).To(Equal(map[string]string{"_partials/h.liquid": "h\n"}))
 		Expect(m.Warnings).To(ConsistOf("_Partials is not read; name it _partials"))

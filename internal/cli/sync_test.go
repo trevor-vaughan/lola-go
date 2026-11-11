@@ -56,9 +56,24 @@ func (c *confirming) Confirm(question string, _ cli.Nav) (bool, error) {
 	return pop(&c.answers, "confirm"), nil
 }
 
+// typingAtTrust is confirming that types keys on the terminal once the trust question is
+// answered, for the viewer that opens after it.
+type typingAtTrust struct {
+	*confirming
+	typed *os.File
+	keys  string
+}
+
+func (t *typingAtTrust) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
+	_, err := t.typed.WriteString(t.keys)
+	Expect(err).NotTo(HaveOccurred())
+	return t.confirming.Trust(st)
+}
+
 // lolaAsking runs lola with c as its Prompter.
 func lolaAsking(c *confirming, args ...string) result {
-	root := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c))
+	root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c))
+	Expect(err).NotTo(HaveOccurred())
 	var out bytes.Buffer
 	c.stderr = &bytes.Buffer{}
 	root.SetOut(&out)
@@ -714,7 +729,7 @@ var _ = Describe("lola sync", func() {
 		Expect(c.questions).To(Equal([]string{"trust"}))
 		Expect(c.before[0]).To(ContainSubstring(".lola/project.yml changed since lola last wrote it or you last trusted it:\n" +
 			"  + other         mods/other\n      files: 2 added\n        + commands/other.md\n        + mcps.json\n"))
-		Expect(r.err).To(HaveSuffix("aborted; the project was not changed.\n"))
+		Expect(r.err).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).NotTo(BeAnExistingFile())
 
 		c = &confirming{trusts: []engine.TrustAnswer{{All: true}}}
@@ -723,6 +738,36 @@ var _ = Describe("lola sync", func() {
 		Expect(r.err).To(ContainSubstring("→ trusting this change\n"), "the answer is echoed")
 		Expect(r.err).To(ContainSubstring("→ the same off a terminal: lola sync --project --trust=entries\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).To(BeARegularFile())
+	})
+
+	It("ends the sync on Ctrl+C in the removals' viewer, before their question", func() {
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
+		GinkgoT().Setenv("LOLA_PAGER", "")
+		GinkgoT().Setenv("COLUMNS", "120")
+		GinkgoT().Setenv("LINES", "2")
+		in, typed, err := os.Pipe()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			Expect(typed.Close()).To(Succeed())
+			Expect(in.Close()).To(Succeed())
+		})
+		_, err = typed.WriteString("q") // the trust diff's viewer
+		Expect(err).NotTo(HaveOccurred())
+		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}}
+		t := &typingAtTrust{confirming: c, typed: typed, keys: "\x03"}
+		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(t), cli.WithTerminals(true, true))
+		Expect(err).NotTo(HaveOccurred())
+		var out bytes.Buffer
+		c.stderr = &bytes.Buffer{}
+		root.SetOut(&out)
+		root.SetErr(c.stderr)
+		root.SetIn(in)
+		root.SetArgs([]string{"sync", "-C", proj})
+		Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
+		Expect(out.String()).To(ContainSubstring("q continue: Remove these and sync? No applies nothing is asked next"))
+		Expect(c.questions).To(Equal([]string{"trust"}), "Ctrl+C ended the sync: the removals question is not asked")
+		Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
+		Expect(filepath.Join(proj, ".claude", "commands", "kit.md")).To(BeARegularFile())
 	})
 
 	It("prints the removals it would make, then asks to confirm them; a No keeps the trust answer", func() {
@@ -860,6 +905,14 @@ var _ = Describe("lola sync", func() {
 		lolaAsking(c, "sync", "-C", proj)
 		Expect(c.steps[0].Changes).To(Equal(1))
 		Expect(c.steps[0].Groups).To(BeEmpty(), "the top-level targets alone: Trust all or Cancel")
+
+		// A target_versions edit is a row of its own, accepted with an entry that installs to the top-level targets.
+		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\ntarget_versions:\n  opencode: \"1.0\"\nmodules:\n"+kitOnly+"    rules: false\n"), 0o644)).To(Succeed())
+		c = &confirming{trusts: []engine.TrustAnswer{{}}}
+		lolaAsking(c, "sync", "-C", proj)
+		Expect(c.steps[0].Changes).To(Equal(3), "kit, the targets and opencode's version")
+		Expect(c.steps[0].Groups).To(Equal([]cli.TrustGroup{{Title: "Changed (1)", Options: []cli.TrustOption{{Module: "kit",
+			Label: "~ kit rules (none) → false; accepts the top-level targets [claude-code, opencode] → [claude-code]; accepts project.yml's target_versions"}}}}))
 	})
 
 	It("shows a trusted folder lola never installed as not installed yet", func() {

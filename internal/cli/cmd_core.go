@@ -18,7 +18,6 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/manifest"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
-	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 )
 
@@ -33,7 +32,7 @@ func (a *app) session(cmd *cobra.Command) (*engine.Engine, engine.Scope, error) 
 }
 
 func (a *app) addTargetFlag(cmd *cobra.Command, dst *[]string, usage string) {
-	cmd.Flags().StringSliceVarP(dst, "target", "t", nil, usage+" (repeatable or comma-separated: "+strings.Join(targets.IDs(), ", ")+")")
+	cmd.Flags().StringSliceVarP(dst, "target", "t", nil, usage+" (repeatable or comma-separated: "+strings.Join(a.reg.IDs(), ", ")+")")
 	_ = cmd.RegisterFlagCompletionFunc("target", a.completeTargets)
 }
 
@@ -139,7 +138,8 @@ func (a *app) installCmd() *cobra.Command {
 		usage: "lola install <source|name|@market/module>... [-t target]",
 		examples: []string{"lola install ./my-module -t claude-code", "lola install my-module", "lola install ./monorepo --path plugins/review",
 			"lola install https://github.com/acme/review.git --ref v1.2.0", "lola install ./review-1.2.0.tar.gz", "lola install @acme/formatter",
-			"lola install review-kit --scope project --skip skill/slow-lint", "lola install review-kit --unskip skill/slow-lint", "lola install"}}
+			"lola install review-kit --scope project --skip skill/slow-lint", "lola install review-kit --unskip skill/slow-lint",
+			"lola install ./m -C /srv/app -t opencode@1.19", "lola install"}}
 	cmd := &cobra.Command{
 		Use:     "install [<source|name|@market/module>...]",
 		Aliases: []string{"add"},
@@ -168,6 +168,8 @@ func (a *app) installCmd() *cobra.Command {
 			"directory…; nothing preselected, pick any of them); else a project with .lola/ at or\n" +
 			"above the current directory; else default_scope in $XDG_CONFIG_HOME/lola/config.yaml\n" +
 			"(version: 1, default_scope: project|user|both); otherwise install refuses to guess.\n" +
+			"A -C or Other directory that does not exist yet is created: on your yes on a terminal, or\n" +
+			"under -y or --force; a dry run never creates it.\n" +
 			"\n" +
 			"Components: $XDG_CONFIG_HOME/lola/selections.yaml lists the components you skip, globally\n" +
 			"and per project; a module from a profile takes its entry's only: and skip: instead (plus the\n" +
@@ -185,6 +187,15 @@ func (a *app) installCmd() *cobra.Command {
 			"and one that is off is saved, not applied. A module another layer provides asks on a terminal\n" +
 			"whether to change it there or override it in the profile on; --profile base and --override\n" +
 			"answer off one. -y and --force never answer it.\n" +
+			"\n" +
+			"Assistant versions: some assistants read files differently from one version to the next:\n" +
+			"opencode 2 takes only hex agent colors (#rrggbb), opencode 1 also theme names such as accent.\n" +
+			"lola writes for the version target_versions: declares, in .lola/project.yml or, at user\n" +
+			"scope, config.yaml. Where none is declared, lola asks on a terminal, the installed version\n" +
+			"preselected, and records your answer there; -y, --force and a run off a terminal record the\n" +
+			"installed version (when it is not installed, lola writes for the newest and records nothing).\n" +
+			"In another directory (-C) the installed version says nothing of the one that reads it, so\n" +
+			"lola asks with nothing preselected, and off a terminal stops: give -t <id>@<version>.\n" +
 			"\n" +
 			"--no-rules installs everything except the module's always-on rules and records that\n" +
 			"choice, so later renders keep it; --rules turns them back on.\n" +
@@ -224,7 +235,8 @@ func (a *app) installCmd() *cobra.Command {
 			return a.runInstall(cmd, g, args, f)
 		},
 	}
-	a.addTargetFlag(cmd, &f.targets, "assistants to install for; naming fewer than a module is installed on removes the others' files, after asking")
+	a.addTargetFlag(cmd, &f.targets, "assistants to install for; naming fewer than a module is installed on removes the others' files, after asking; "+
+		"<id>@<version> also records which version to write for")
 	cmd.Flags().StringSliceVar(&f.skips, "skip", nil, "do not install these components, and remember it in selections.yaml (kind/name or module:kind/name; repeatable or comma-separated)")
 	cmd.Flags().StringSliceVar(&f.onlys, "only", nil, "install only these components of each module that has them, and remember it (repeatable or comma-separated)")
 	cmd.Flags().StringSliceVar(&f.unskips, "unskip", nil, "install these skipped components again, and remember it (repeatable or comma-separated)")
@@ -241,7 +253,7 @@ func (a *app) installCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&f.dry, "dry-run", "n", false, "print the plan and write nothing (not even selections.yaml)")
 	cmd.Flags().BoolVarP(&f.yes, "yes", "y", false, "apply after the pickers without the review menu")
 	cmd.Flags().BoolVar(&f.force, "force", false, "overwrite unowned or hand-edited files and render skipped artifacts that can be, applying without the review menu (never answers a consent question)")
-	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module")
+	cmd.Flags().BoolVar(&f.strict, "strict", false, "fail without writing anything if any target would drop, change or skip part of a module, or an installed assistant is of another era than the version declared (a version you choose that differs from the installed one is warned of, not refused)")
 	cmd.Flags().BoolP("verbose", "v", false, "print every notice, not a count per module of those that are not about safety")
 	cmd.Flags().BoolVar(&f.noRules, "no-rules", false, "do not install the modules' always-on rules (remembered in the manifest)")
 	cmd.Flags().BoolVar(&f.rules, "rules", false, "install the modules' rules again after --no-rules")
@@ -552,7 +564,22 @@ func (a *app) checkCmd() *cobra.Command {
 			if len(args) == 0 {
 				args = []string{"."}
 			}
-			rep, err := eng.Check(cmd.Context(), sc, cwd, args, targets, outputFlags(cmd))
+			// -t takes <id>@<version> as install does: each target is checked for that version.
+			rerun := func(ts []string) string {
+				run := completeRun(cmd, args, "target")
+				if len(ts) > 0 {
+					run += " -t " + errs.ShellJoin([]string{untrusted.Text(strings.Join(ts, ","), untrusted.MaxName)})
+				}
+				return run
+			}
+			ids, versions, err := splitTargets(eng, targets, false, rerun)
+			if err != nil {
+				return err
+			}
+			if err := eng.CheckVersions(versions, func(id, since string) string { return rerun(withVersions(ids, versions, id, since)) }); err != nil {
+				return err
+			}
+			rep, err := eng.Check(cmd.Context(), sc, cwd, args, ids, versions, outputFlags(cmd))
 			if err != nil {
 				return err
 			}
@@ -569,7 +596,7 @@ func (a *app) checkCmd() *cobra.Command {
 			return engine.StrictError(all, "fix the module; lola install renders what each target supports", false)
 		},
 	}
-	a.addTargetFlag(cmd, &targets, "only check these assistants")
+	a.addTargetFlag(cmd, &targets, "only check these assistants; <id>@<version> checks for that version, as install takes it")
 	cmd.Flags().BoolVar(&strict, "strict", false, "exit with an error if any target would drop, change or skip part of a module")
 	return cmd
 }

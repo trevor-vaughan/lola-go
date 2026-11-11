@@ -233,7 +233,7 @@ var _ = Describe("core commands", func() {
 
 	It("shows which list member a plan adds to a shared config file", func() {
 		writeTree(mod, map[string]string{"rules/style.md": "Be brief.\n"})
-		r := lola("install", mod, "-C", proj, "-t", "gemini-cli,opencode", "--dry-run")
+		r := lola("install", mod, "-C", proj, "-t", "gemini-cli,opencode@2.0", "--dry-run")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.out).To(ContainSubstring(`✓ create gemini-cli  .gemini/settings.json /context/includeDirectories ".gemini/lola/example"`))
 		Expect(r.out).To(ContainSubstring(`✓ create opencode    opencode.json /instructions ".opencode/lola/example/*.md"`))
@@ -577,15 +577,16 @@ var _ = Describe("core commands", func() {
 		r := lola("install", mod, "-C", proj, "--strict")
 		Expect(r.code).To(Equal(1))
 		Expect(r.err).To(Equal(projectContext(proj) + "error: none of your installed assistants (claude-code) is set up here, so lola does not know where to install\n" +
-			"  hint: lola install " + mod + " --root " + proj + " --strict -t claude-code\n" +
-			"  hint: lola install " + mod + " --root " + proj + " --strict -t agents\n"))
+			"  hint: lola install " + mod + " --strict -C " + proj + " -t claude-code\n" +
+			"  hint: lola install " + mod + " --strict -C " + proj + " -t agents\n"))
 
 		Expect(os.Remove(filepath.Join(tmp, "bin", "claude"))).To(Succeed())
 		r = lola("install", mod, "-C", proj, "--json")
 		Expect(r.code).To(Equal(1))
-		run := "lola install " + mod + " --json --root " + proj
+		run := "lola install " + mod + " --json -C " + proj
 		Expect(r.err).To(MatchJSON(`{`+projectWriteContextJSON(proj)+`"error": "no assistant found on your PATH, so lola does not know where to install", "hints": ["`+
-			run+` -t claude-code", "`+run+` -t gemini-cli", "`+run+` -t opencode", "`+run+` -t agents"]}`), "the typed source and every flag")
+			run+` -t claude-code", "`+run+` -t gemini-cli", "for opencode >=2.0: `+run+` -t opencode@2.0", "for opencode >=1.0 <2.0: `+run+
+			` -t opencode@1.0", "`+run+` -t agents"]}`), "the typed source and every flag; opencode's version, which another directory needs")
 		for _, h := range []string{run + " -t gemini-cli", run + " -t claude-code"} {
 			again := runConfirmed(h) // the second drops gemini-cli, whose files it asks about
 			Expect(again.code).To(Equal(0), h+": "+again.err)
@@ -927,7 +928,7 @@ var _ = Describe("lola install into a .claude/skills/<n> linked to .agents/skill
 		Expect(os.Symlink(filepath.Join("..", "..", ".agents", "skills", "review"), filepath.Join(proj, ".claude", "skills", "review"))).To(Succeed())
 		r := lola("install", mod, "-C", proj, "-t", "claude-code,agents", "-y", "--strict")
 		Expect(r.code).To(Equal(1))
-		run := "lola install " + mod + " --root " + proj + " --strict -t "
+		run := "lola install " + mod + " --strict -C " + proj + " -t "
 		Expect(r.err).To(HaveSuffix("error: refusing to change anything: 1 conflict\n" +
 			"  agents: .agents/skills/review/SKILL.md: resolves to the same file as claude-code .claude/skills/review/SKILL.md (via symlink); refusing to write it twice\n" +
 			"  hint: " + run + "claude-code\n  hint: " + run + "agents\n"))

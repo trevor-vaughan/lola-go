@@ -15,6 +15,7 @@ type Paths struct {
 	Selections     string   // ConfigHome/lola/selections.yaml: components the user chose not to install
 	Pins           string   // ConfigHome/lola/pins.yaml: the versions installed from your profiles at user scope and your remote profiles' records, which lola writes
 	UserProfiles   string   // ConfigHome/lola/profiles: the user's profiles and default.yml
+	Targets        string   // ConfigHome/lola/targets: the user's target specs (*.yaml), which add or replace assistants
 	UserLedger     string   // StateHome/lola/lock.json
 	UserLock       string   // StateHome/lola/.lock
 	Locks          string   // StateHome/lola/locks: one lock file per project, outside the project's .lola/
@@ -70,6 +71,7 @@ func Resolve(getenv func(string) string) (Paths, error) {
 	p.Selections = filepath.Join(p.ConfigHome, "lola", "selections.yaml")
 	p.Pins = filepath.Join(p.ConfigHome, "lola", "pins.yaml")
 	p.UserProfiles = filepath.Join(p.ConfigHome, "lola", "profiles")
+	p.Targets = filepath.Join(p.ConfigHome, "lola", "targets")
 	p.UserLedger = filepath.Join(p.StateHome, "lola", "lock.json")
 	p.UserLock = filepath.Join(p.StateHome, "lola", ".lock")
 	p.Locks = filepath.Join(p.StateHome, "lola", "locks")

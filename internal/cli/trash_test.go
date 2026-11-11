@@ -274,7 +274,7 @@ var _ = Describe("lola trash", func() {
 		p := &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashQuit}}
 		r := lolaP(p, "trash")
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(ContainSubstring("aborted; nothing changed."))
+		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(r.out).To(BeEmpty())
 		Expect(p.calls).To(Equal([]string{"trash-pick"}))
 		Expect(tidyLabels(p.trashPickSteps[0].Options)).To(Equal([]string{
@@ -314,10 +314,10 @@ var _ = Describe("lola trash", func() {
 		r := lolaP(p, "trash")
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(r.err).To(ContainSubstring(flag.out), "the plan the flag form prints")
-		Expect(p.whereSteps[0]).To(Equal(cli.WhereStep{Title: "Restore 1 item from the trash?", Options: []string{"Restore"}}))
+		Expect(p.whereSteps[0]).To(Equal(cli.WhereStep{Title: "Restore 1 item from the trash?", Options: []string{"Restore"}, Nav: cli.Nav{Back: true, Answered: 1}}))
 		Expect(p.calls).To(Equal([]string{"trash-pick", "where", "trash-pick"}))
 		Expect(p.trashPickSteps[1].Preselect).To(Equal(tidyIDs(p.trashPickSteps[0].Options, "ship.md")))
-		Expect(r.err).To(ContainSubstring("aborted; nothing changed."))
+		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(ship).NotTo(BeAnExistingFile())
 
 		p = &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md")}, where: []int{0}}
@@ -357,7 +357,7 @@ var _ = Describe("lola trash", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"trash-pick", "where", "confirm:Move 1 item in the way into a new trash run, then restore 1 item?"}),
 			"counted from the plan with --force")
-		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Answered: 2}}))
+		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Back: true, Answered: 2}}))
 		Expect(read(ship)).To(Equal("new\n"))
 
 		p = &scripted{trashPick: []func(cli.TrashPickStep) (cli.TrashAnswer, error){trashTicks(cli.TrashRestore, "ship.md")}, where: []int{0}, confirm: []bool{true}}
@@ -379,7 +379,7 @@ var _ = Describe("lola trash", func() {
 		Expect(p.trashPickSteps[1].Problem).To(Equal("nothing ticked: tick files or runs, then pick what to do with them"))
 		Expect(p.trashPickSteps[2].Problem).To(Equal("Empty ticked runs deletes whole runs: tick a [whole run] row, not only files"))
 		Expect(p.trashPickSteps[2].Preselect).To(Equal(tidyIDs(p.trashPickSteps[1].Options, "lint.md")), "the last answer stays ticked")
-		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Answered: 1}}))
+		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Back: true, Answered: 1}}))
 		Expect(r.err).To(ContainSubstring("will delete from the trash:"), "the plan, before the question")
 		Expect(filepath.Join(trashDir, old)).To(BeADirectory())
 

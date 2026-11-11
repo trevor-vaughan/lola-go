@@ -29,6 +29,7 @@ const (
 type Intent struct {
 	Target string
 	Kind   string // skill, command, agent, mcp, rule
+	Name   string // the component it writes; "" for a file or registration all the module's rules share
 	Op     Op
 	Path   string
 
@@ -104,6 +105,7 @@ type Step struct {
 	Module string          `json:"module,omitempty"`
 	Target string          `json:"target"`
 	Kind   string          `json:"kind"`
+	Name   string          `json:"-"` // the component the step writes (Intent.Name); "" for a removal
 	Path   string          `json:"path"`
 	Key    string          `json:"key,omitempty"`
 	Value  string          `json:"value,omitempty"`  // the owned array element, for string array members

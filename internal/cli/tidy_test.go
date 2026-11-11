@@ -207,7 +207,7 @@ var _ = Describe("lola tidy", func() {
 			func(cli.TidyKeepStep) ([]string, error) { return nil, cli.ErrAborted }}}
 		r = lolaP(p, "tidy", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
-		Expect(r.err).To(ContainSubstring("aborted; nothing changed."))
+		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "tidy-keep"}))
 		Expect(p.tidyKeepSteps[0].Required).To(BeTrue())
 
@@ -230,13 +230,13 @@ var _ = Describe("lola tidy", func() {
 		Expect(p.tidyPickSteps[1].Preselect).To(Equal(tidyIDs(p.tidyPickSteps[0].Options, "skill/old")))
 		Expect(p.tidyKeepSteps[0].Nav).To(Equal(cli.Nav{Back: true, Answered: 1}))
 		Expect(tidyLabels(p.tidyKeepSteps[1].Options)).To(Equal([]string{"skill/old  claude-code"}), "the second move answer decides the keep options")
-		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Answered: 2}}), "move and keep answered: q at the question asks first")
+		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Back: true, Answered: 2}}), "move and keep answered: q at the question asks first")
 
 		p = &scripted{tidyPick: tidyPicks("claude-code"), confirm: []bool{false}}
 		r = lolaP(p, "tidy", "-C", proj)
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"tidy-pick", "confirm:Move 2 items to the trash?"}))
-		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Answered: 1}}), "one step answered: q quits at once")
+		Expect(p.confirmNavs).To(Equal([]cli.Nav{{Back: true, Answered: 1}}), "one step answered: q quits at once")
 	})
 
 	It("picker answers the CLI never offered are dropped: only the offered item moves, and the keep-list is unchanged", func() {
@@ -400,7 +400,7 @@ var _ = Describe("lola tidy", func() {
 		Expect(r.code).To(Equal(0), r.err)
 		Expect(p.calls).To(Equal([]string{"confirm:Move 1 item to the trash and keep 1?"}))
 		Expect(r.err).To(ContainSubstring("→ claude-code  skill/old  .claude/skills/old"))
-		Expect(r.err).To(ContainSubstring("aborted; nothing changed."))
+		Expect(r.err).To(ContainSubstring("✗ cancelled — nothing was changed"))
 		Expect(filepath.Join(proj, ".claude", "skills", "old")).To(BeADirectory())
 		Expect(filepath.Join(tmp, "config", "lola", "keep.yaml")).NotTo(BeAnExistingFile())
 

@@ -116,10 +116,11 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 	req.Interactive = p.Interactive()
 	picked := false
 	answered := 0 // the picker steps answered, which q at the question asks before dropping
+	var ans tidyAnswers
 	if req.Interactive {
 		req.Choose = func(scan engine.TidyScan) (choice engine.TidyChoice, err error) {
 			picked = true
-			choice, answered, err = tidyChoose(p, scan)
+			choice, answered, err = tidyChoose(p, scan, &ans)
 			return choice, err
 		}
 	}
@@ -155,7 +156,7 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 				asks = append(asks, fmt.Sprintf("stop keeping %d", n))
 			}
 			q := strings.Join(asks, " and ")
-			return p.Confirm(strings.ToUpper(q[:1])+q[1:]+"?", Nav{Answered: answered})
+			return p.Confirm(strings.ToUpper(q[:1])+q[1:]+"?", Nav{Back: picked, Answered: answered})
 		}
 	}
 	res, err := eng.Tidy(cmd.Context(), req)
@@ -172,14 +173,23 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 	return a.emit(cmd, func(w io.Writer, s style) { printTidy(w, s, res) }, res)
 }
 
+// tidyAnswers are tidy's picker answers, kept for when the closing question goes back (Esc) to
+// the last picker shown: move and keep, the IDs each answered, and atKeep, whether that picker
+// is the keep step.
+type tidyAnswers struct {
+	move, keep []string
+	atKeep     bool
+}
+
 // tidyChoose asks lola tidy's picker steps: which candidates move, then which
 // of the rest join the keep-list; going back from the keep step (Esc) asks the move step again,
-// as answered. The keep step offers one option per escaped literal selector,
+// as answered. Asked again after the closing question went back, it starts at the last picker
+// ans holds, as answered. The keep step offers one option per escaped literal selector,
 // since a keep entry covers every assistant's item of that name, and none for a selector that
 // would also keep an item chosen to move. When nothing moves, the keep step
 // needs a pick (TidyKeepStep.Required), so the choice is never empty; Ctrl+C cancels.
 // It returns how many steps were answered: the move step, and the keep step when it was asked.
-func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, int, error) {
+func tidyChoose(p Prompter, scan engine.TidyScan, ans *tidyAnswers) (engine.TidyChoice, int, error) {
 	opts := make([]TidyOption, len(scan.Candidates))
 	for i, c := range scan.Candidates {
 		opts[i] = TidyOption{ID: strconv.Itoa(i), Label: tidyLabel(c)}
@@ -188,27 +198,31 @@ func tidyChoose(p Prompter, scan engine.TidyScan) (engine.TidyChoice, int, error
 	for i, u := range scan.Protected {
 		locked[i] = tidyLabel(u) + "  " + u.Reason
 	}
-	var move []string
 	for {
-		var err error
-		if move, err = p.TidyPick(TidyPickStep{Options: opts, Locked: locked, Preselect: move}); err != nil {
-			return engine.TidyChoice{}, 0, err
+		if !ans.atKeep {
+			move, err := p.TidyPick(TidyPickStep{Options: opts, Locked: locked, Preselect: ans.move})
+			if err != nil {
+				return engine.TidyChoice{}, 0, err
+			}
+			ans.move = move
 		}
-		choice, asked, err := tidyKeep(p, scan, opts, move)
+		choice, asked, err := tidyKeep(p, scan, opts, ans)
+		ans.atKeep = err == nil && asked == 1
 		if !errors.Is(err, ErrBack) {
 			return choice, 1 + asked, err
 		}
 	}
 }
 
-// tidyKeep is tidyChoose's choice once the candidates move names (by opts' IDs) are chosen to
-// move: it asks the keep step for the rest, if any, and returns how many steps it asked (0 or 1).
-func tidyKeep(p Prompter, scan engine.TidyScan, opts []TidyOption, move []string) (engine.TidyChoice, int, error) {
+// tidyKeep is tidyChoose's choice once the candidates ans.move names (by opts' IDs) are chosen to
+// move: it asks the keep step for the rest, if any, ans.keep preselected, and returns how many
+// steps it asked (0 or 1). Going back from it drops ans.keep.
+func tidyKeep(p Prompter, scan engine.TidyScan, opts []TidyOption, ans *tidyAnswers) (engine.TidyChoice, int, error) {
 	var choice engine.TidyChoice
 	var moved, sels []config.Pattern
 	covers := map[config.Pattern][]string{}
 	for i, c := range scan.Candidates {
-		if slices.Contains(move, opts[i].ID) {
+		if slices.Contains(ans.move, opts[i].ID) {
 			choice.Move = append(choice.Move, c.ID)
 			moved = append(moved, c.Literal())
 		}
@@ -230,10 +244,12 @@ func tidyKeep(p Prompter, scan engine.TidyScan, opts []TidyOption, move []string
 		for i, l := range sels {
 			rest[i] = TidyOption{ID: l.String(), Label: untrusted.Text(l.String(), untrusted.MaxName) + "  " + strings.Join(covers[l], ", ")}
 		}
-		keep, err := p.TidyKeep(TidyKeepStep{Options: rest, Required: len(choice.Move) == 0, Nav: Nav{Back: true, Answered: 1}})
+		keep, err := p.TidyKeep(TidyKeepStep{Options: rest, Required: len(choice.Move) == 0, Preselect: ans.keep, Nav: Nav{Back: true, Answered: 1}})
 		if err != nil {
+			ans.keep = nil
 			return engine.TidyChoice{}, 1, err
 		}
+		ans.keep = keep
 		for _, l := range sels {
 			if slices.Contains(keep, l.String()) {
 				choice.Keep = append(choice.Keep, l)

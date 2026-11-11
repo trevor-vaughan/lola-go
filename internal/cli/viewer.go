@@ -15,8 +15,9 @@ import (
 )
 
 // viewAnswer is how the viewer was answered: in confirm mode y applies, c asks to
-// change an answer, n or Ctrl+C cancel, q quits and Esc goes back a screen. Read mode always ends
-// in viewCancel, which its callers ignore.
+// change an answer, n or Ctrl+C cancel, q quits and Esc goes back a screen. In read mode q and Esc
+// close it (viewClose) and Ctrl+C cancels (viewCancel), which ends the command when a question
+// follows the viewer.
 type viewAnswer int
 
 const (
@@ -25,6 +26,7 @@ const (
 	viewChange
 	viewBack
 	viewQuit
+	viewClose
 )
 
 // viewerModel is lola's full-screen viewer: a viewport over content, wrapped to the
@@ -158,7 +160,7 @@ func (m viewerModel) typeSearch(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// Answer is how a confirm-mode viewer was answered; viewCancel in read mode.
+// Answer is how the viewer was answered.
 func (m viewerModel) Answer() viewAnswer { return m.answer }
 
 func (m viewerModel) Init() tea.Cmd { return nil }
@@ -189,6 +191,7 @@ func (m viewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			switch {
 			case !m.confirm:
+				m.answer = viewClose
 			case m.nav.Answered >= 2:
 				m.asking = true
 				return m, nil
@@ -199,6 +202,7 @@ func (m viewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			switch {
 			case !m.confirm:
+				m.answer = viewClose
 			case m.nav.Back:
 				m.answer = viewBack
 			default:
@@ -250,14 +254,16 @@ func (m viewerModel) View() tea.View {
 }
 
 // footer is the position, "lines 41–80 of 312 · 25%", in bold, then the keys, cut to the width;
-// in confirm mode the answers come first, so a narrow terminal cuts the scrolling keys. In the
-// keys' place: quitQuestion while q asks it, and the first-screen note after Esc there.
+// in confirm mode the answers come first, then q, then / search, so a narrow terminal cuts the
+// paging keys first. A review's whole footer fits 120 columns; ↑↓ and j/k are left out of it for
+// that, as the keys a pager is expected to take. In the keys' place: quitQuestion while q asks it,
+// and the first-screen note after Esc there.
 func (m viewerModel) footer() string {
 	total := m.vp.TotalLineCount()
 	first := min(m.vp.YOffset()+1, total)
 	last := min(m.vp.YOffset()+m.vp.Height(), total)
 	pos := fmt.Sprintf("lines %d–%d of %d · %d%%", first, last, total, int(m.vp.ScrollPercent()*100))
-	const scroll = "↑↓/jk line · space/b page · g/G top/end · / search"
+	const scroll = "/ search · space/b page · g/G top/end"
 	next := "n/N next/prev"
 	if m.confirm {
 		next = "^n/^p next/prev"
@@ -296,7 +302,7 @@ func (m viewerModel) footer() string {
 
 // view shows content in the viewer on the terminal, on the alternate screen, and returns once the
 // user quits: in read mode on stdout, in confirm mode on stderr, where lola asks its questions,
-// at nav in its flow, with the answer (viewCancel in read mode). It then prints content where it showed it, so it stays in the terminal's
+// at nav in its flow, with the answer. It then prints content where it showed it, so it stays in the terminal's
 // scrollback. The keys come from stdin, or from the terminal when stdin is not one. Ctrl+C
 // arriving as a signal is a quit. then names the question asked next, for the footer of a read-mode viewer.
 func (a *app) view(cmd *cobra.Command, content string, confirm, change bool, nav Nav, then string) (viewAnswer, error) {

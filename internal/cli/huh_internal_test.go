@@ -108,6 +108,80 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		out.Reset()
 	})
 
+	// huh v2.0.3's accessible Select, MultiSelect and Input print their title alone.
+	DescribeTable("prints a prompt's description in a note before it, as huh's line prompts do not",
+		func(ask func(*huhForms) error, desc, title string, answers ...string) {
+			_ = ask(accessible(&out, answers...)) // some answers cancel: only what was printed counts
+			at := strings.Index(out.String(), desc)
+			Expect(at).To(BeNumerically(">=", 0), out.String())
+			Expect(at).To(BeNumerically("<", strings.Index(out.String(), title)), out.String())
+		},
+		Entry("Scope, asking for one", func(h *huhForms) error {
+			_, err := h.Scope(ScopeStep{Question: "Sync where?", ProjectRoot: "/p", One: true})
+			return err
+		}, "pick one", "Sync where?", "1", "0"),
+		Entry("SSHHosts", func(h *huhForms) error {
+			_, err := h.SSHHosts(SSHHostStep{Market: "acme", Hosts: []SSHHostChoice{{Host: "git.example", Entries: 1}}})
+			return err
+		}, "for acme: the catalog's ssh sources use your ssh keys and agent at the host you tick", "Allow ssh to which hosts?", "0"),
+		Entry("Profiles", func(h *huhForms) error {
+			_, err := h.Profiles(ProfileStep{Source: "src", Names: []string{"go"}})
+			return err
+		}, "from src", "Add which profiles?", "0"),
+		Entry("Members", func(h *huhForms) error {
+			_, err := h.Members(MembersStep{Title: "bundle work", Options: []ModuleOption{{Name: "go", Label: "go"}}})
+			return err
+		}, "the members ticked keep their order", "bundle work", "0"),
+		Entry("MarketName", func(h *huhForms) error {
+			_, err := h.MarketName(MarketNameStep{Why: "the catalog calls itself acme, a name you use", Value: "acme-2"})
+			return err
+		}, "the catalog calls itself acme, a name you use", "Name the marketplace", "acme-2"),
+		Entry("TrashPick", func(h *huhForms) error {
+			_, err := h.TrashPick(TrashPickStep{Options: []TidyOption{{ID: "r1", Label: "run 1"}}})
+			return err
+		}, "a [whole run] row takes the whole run", "Restore or empty which?", "1", "0", "1"),
+		Entry("TidyKeep", func(h *huhForms) error {
+			_, err := h.TidyKeep(TidyKeepStep{Options: []TidyOption{{ID: "a", Label: "a"}}})
+			return err
+		}, "what your keep-list names stays, and lola tidy stops offering it", "Add any of the rest to your keep-list?", "0"),
+		Entry("Assistants, at two scopes", func(h *huhForms) error {
+			_, err := h.Assistants(AssistantStep{Options: []string{"a", "b"}, Scopes: []string{"user", "project"}})
+			return err
+		}, "for user and project", "Install for which assistants?", "1", "0"),
+		Entry("MigrateTargets", func(h *huhForms) error {
+			_, err := h.MigrateTargets(MigrateTargetStep{Old: "cursor", Modules: 1, Options: []string{"opencode"}})
+			return err
+		}, "choosing none leaves them as they are", "cursor has no lola target", "0"),
+		Entry("MigrateRoot", func(h *huhForms) error {
+			_, err := h.MigrateRoot(MigrateRootStep{Old: "/old", Suggest: "/new", Records: 2})
+			return err
+		}, "2 project path(s) of the Python lola start with it", "/old not found on this machine", ""),
+		Entry("Background", func(h *huhForms) error {
+			_, err := h.Background()
+			return err
+		}, "lola picks its colors for it and saves your answer in config.yaml", "Is your terminal background dark or light?", "1"),
+		Entry("OtherDirectory", func(h *huhForms) error {
+			_, err := h.OtherDirectory(DirectoryStep{})
+			return err
+		}, "a project directory, relative to the current directory; ~ is your home", "Other directory", "dir"),
+		Entry("What next?, with an empty cache", func(h *huhForms) error {
+			_, err := h.Modules(ModuleStep{Problem: "nothing selected"})
+			return err
+		}, "nothing selected", "What next?", "2"),
+		Entry("Add a source…", func(h *huhForms) error {
+			_, err := h.Modules(ModuleStep{})
+			return err
+		}, "a module directory, archive, URL or git repository", "Source", "1", "src", ""),
+		Entry("Add a source…'s ref", func(h *huhForms) error {
+			_, err := h.Modules(ModuleStep{})
+			return err
+		}, "a git branch, tag or full commit SHA", "Ref (optional)", "1", "src", ""),
+		Entry("the review menu", func(h *huhForms) error {
+			_, err := h.Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}})
+			return err
+		}, "Ctrl+C cancels; nothing is written", "Apply these changes?", "1"),
+	)
+
 	It("offers Project, User and Other directory…, in that order, with nothing preselected", func() {
 		got, err := accessible(&out, "3", "1", "0").Scope(ScopeStep{Question: "Install where?", ProjectRoot: "/src/api"})
 		Expect(err).NotTo(HaveOccurred())
@@ -151,13 +225,51 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 	It("adds Cancel to a where-question of one choice", func() {
 		st := WhereStep{Title: "c comes from default (base), loaded under every profile at user scope.", Options: []string{"Remove it from default (base)"}}
 		_, err := accessible(&out, "2").Where(st)
-		Expect(err).To(MatchError(ErrAborted))
+		Expect(err).To(MatchError(ErrCancelled), "Cancel, told apart from Ctrl+C")
+		Expect(err).To(MatchError(ErrAborted), "and still a cancel to a caller that does not tell them apart")
 		Expect(out.String()).To(ContainSubstring("1. Remove it from default (base)\n2. Cancel\n"))
 
 		got, err := accessible(&out, "1").Where(st)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(0))
 	})
+	It("asks which version to write for as a numbered list, the title, then the scope and note, Enter taking the preselected one", func() {
+		st := VersionStep{Target: "opencode", Options: []string{">=2.0 — hex", ">=1.0 <2.0 — names"}, Labels: []string{">=2.0", ">=1.0 <2.0"},
+			Preselect: 1, Why: "matches installed 1.4.0", Note: "installed here: 1.4.0", Scope: "project (/p)", Step: Steps{At: 2, Of: 3}}
+		got, err := accessible(&out, "").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(1))
+		Expect(out.String()).To(ContainSubstring("Step 2 of 3 — Write opencode files for which version?\nfor project (/p); installed here: 1.4.0\n"))
+		Expect(out.String()).To(ContainSubstring("\nType a number (Enter = 2, matches installed 1.4.0) \n1. >=2.0 — hex\n2. >=1.0 <2.0 — names\n"))
+		Expect(out.String()).To(HaveSuffix("\n→ >=1.0 <2.0\n"), "Enter took the preselected answer, echoed as a typed one is")
+
+		out.Reset()
+		got, err = accessible(&out, "1").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(0))
+		Expect(out.String()).To(HaveSuffix("\n→ >=2.0\n"))
+
+		out.Reset()
+		st.Last = true
+		_, err = accessible(&out, "").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(ContainSubstring("Type a number (Enter = 2, your last answer) \n"))
+
+		out.Reset()
+		st.Preselect, st.Scope, st.Note = -1, "", ""
+		_, err = accessible(&out, "").Version(st)
+		Expect(err).To(MatchError(ErrAborted), "nothing preselected: Enter answers nothing, and end of input cancels")
+		Expect(out.String()).NotTo(ContainSubstring("for project"))
+		Expect(out.String()).To(ContainSubstring("Type a number (no default) \n"))
+	})
+
+	It("titles a version question asked again from the review as Change versions", func() {
+		st := VersionStep{Target: "opencode", Options: []string{">=2.0", ">=1.0 <2.0"}, Preselect: 0, Again: true, Last: true}
+		_, err := accessible(&out, "").Version(st)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(out.String()).To(HavePrefix("Change versions — Write opencode files for which version?\n"))
+	})
+
 	It("asks sync's trust question with Cancel under the cursor, and Choose… as numbered multi-selects with nothing preselected", func() {
 		st := TrustStep{Changes: 3, Groups: []TrustGroup{
 			{Title: "Changed (1)", Options: []TrustOption{{Module: "kit", Label: "~ kit rules (none) → false"}}},
@@ -373,7 +485,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("Step 3 of 5 — @acme — tools"))
 
 		out.Reset()
-		_, err = accessible(&out, "").Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}, Step: Steps{At: 5, Of: 5}})
+		_, err = accessible(&out, "1").Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}, Step: Steps{At: 5, Of: 5}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out.String()).To(HavePrefix("Step 5 of 5 — Review\nSummary:\n"))
 
@@ -387,6 +499,9 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		next := func(fields []huh.Field) []bool {
 			var out []bool
 			for _, f := range fields {
+				if sp, ok := f.(*sourcePick); ok {
+					f = sp.ms
+				}
 				if ms, ok := f.(*huh.MultiSelect[string]); ok {
 					out = append(out, strings.Contains(ms.WithTheme(huh.ThemeFunc(huh.ThemeBase)).View(), "enter: next"))
 				}
@@ -441,10 +556,11 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			}
 			return ""
 		}}
-		cmd := NewRootCmd(os.Getenv)
+		cmd, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
 		cmd.SetIn(&lineReader{lines: []string{"y"}})
 		cmd.SetErr(&out)
-		ok, err := a.ask(cmd, "Install m's Claude Code hooks?")
+		ok, err := a.huhPrompter(cmd).Consent("Install m's Claude Code hooks?")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ok).To(BeTrue())
 		Expect(out.String()).To(ContainSubstring("Install m's Claude Code hooks?"))
@@ -458,10 +574,11 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 				}
 				return ""
 			}}
-			cmd := NewRootCmd(os.Getenv)
+			cmd, err := NewRootCmd(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
 			cmd.SetIn(&lineReader{lines: []string{"y"}})
 			cmd.SetErr(&out)
-			ok, err := a.askScript(cmd, engine.ScriptQuestion{Event: engine.PreInstall, Path: "ci/check.sh", Root: "/work/proj", SHA256: "ab12", Later: later})
+			ok, err := askScript(cmd, a.huhPrompter(cmd), engine.ScriptQuestion{Event: engine.PreInstall, Path: "ci/check.sh", Root: "/work/proj", SHA256: "ab12", Later: later})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ok).To(BeTrue())
 			Expect(out.String()).To(HavePrefix("The project at /work/proj has a pre-install script. It runs as you, unconfined, for every module lola installs there:\n" +
@@ -481,7 +598,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(os.MkdirAll(filepath.Dir(kit), 0o755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(proj, "mods", "kit", "lola.yml"), []byte("name: kit\n"), 0o644)).To(Succeed())
 		Expect(os.WriteFile(kit, []byte("Kit\n"), 0o644)).To(Succeed())
-		root := NewRootCmd(os.Getenv)
+		root, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
 		root.SetArgs([]string{"install", filepath.Join(proj, "mods", "kit"), "-C", proj, "-t", "claude-code"})
 		root.SetOut(io.Discard)
 		root.SetErr(io.Discard)
@@ -490,9 +608,9 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 
 		// Each question waits in a lola process of its own, which the interrupt reaches.
 		for _, c := range []struct{ child, prompt, says string }{
-			{"sync", "Trust these changes?", "aborted; the project was not changed.\n"},
-			{"modules", "Install which modules?", "aborted; nothing changed.\n"},
-			{"hooks", "Run m's install hooks?", "aborted; nothing changed.\n"},
+			{"sync", "Trust these changes?", "✗ cancelled — the project was not changed\n"},
+			{"modules", "Install which modules?", "✗ cancelled — nothing was changed\n"},
+			{"hooks", "Run m's install hooks?", "✗ cancelled — nothing was changed\n"},
 		} {
 			cmd := exec.Command(os.Args[0], "-test.run=^TestInterruptChild$")
 			cmd.Env = append(os.Environ(), "LOLA_SPEC_CHILD="+c.child, "LOLA_SPEC_PROJECT="+proj, "LOLA_ACCESSIBLE=1")
@@ -563,8 +681,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(out.String()).To(ContainSubstring("cursor has no lola target — install its module for:"))
 	})
 
-	It("prints the summary, then offers the review menu with Apply as the default, in accessible mode", func() {
-		got, err := accessible(&out, "", "").Review(ReviewStep{Summary: "Summary:\n  user (/h), picked:\n", Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
+	It("prints the summary, then offers the review menu without a default, in accessible mode", func() {
+		got, err := accessible(&out, "1").Review(ReviewStep{Summary: "Summary:\n  user (/h), picked:\n", Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
 		Expect(out.String()).To(HavePrefix("Summary:\n  user (/h), picked:\n"))
@@ -731,17 +849,19 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			in   []string
 			want bool
 		}{{[]string{"y"}, true}, {[]string{"n"}, false}} {
-			cmd := NewRootCmd(os.Getenv)
+			cmd, err := NewRootCmd(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
 			cmd.SetIn(&lineReader{lines: tc.in})
 			cmd.SetErr(&out)
-			ok, err := a.ask(cmd, "Run m's install hooks?")
+			ok, err := a.huhPrompter(cmd).Consent("Run m's install hooks?")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ok).To(Equal(tc.want))
 		}
-		cmd := NewRootCmd(os.Getenv)
+		cmd, err := NewRootCmd(os.Getenv)
+		Expect(err).NotTo(HaveOccurred())
 		cmd.SetIn(&lineReader{})
 		cmd.SetErr(&out)
-		ok, err := a.ask(cmd, "Run m's install hooks?")
+		ok, err := a.huhPrompter(cmd).Consent("Run m's install hooks?")
 		Expect(err).To(MatchError(ErrAborted), "end of input is a cancel, not the default No")
 		Expect(ok).To(BeFalse())
 	})
@@ -763,7 +883,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 				}
 				return ""
 			}}
-			cmd := NewRootCmd(os.Getenv)
+			cmd, err := NewRootCmd(os.Getenv)
+			Expect(err).NotTo(HaveOccurred())
 			Expect(a.huhPrompter(cmd).(*huhForms).accessible).To(Equal(want), env)
 			Expect(a.huhPrompter(cmd).Interactive()).To(BeFalse(), "test streams are not terminals")
 		}
@@ -781,8 +902,9 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		// scope: toggle project, confirm; empty cache: Add a source…, then the source and no
 		// ref; modules: confirm the new module; components: drop undo, confirm; review: Apply.
 		var errb bytes.Buffer
-		h := accessible(&errb, "1", "0", "1", mod, "", "0", "2", "0", "")
-		root := NewRootCmd(os.Getenv, WithPrompter(h))
+		h := accessible(&errb, "1", "0", "1", mod, "", "0", "2", "0", "1")
+		root, err := NewRootCmd(os.Getenv, WithPrompter(h))
+		Expect(err).NotTo(HaveOccurred())
 		var stdout bytes.Buffer
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
@@ -793,12 +915,13 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(filepath.Join(proj, ".claude/commands/undo.md")).NotTo(BeAnExistingFile())
 
 		errb.Reset()
-		root = NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "0")))
+		root, err = NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "0")))
+		Expect(err).NotTo(HaveOccurred())
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
 		root.SetArgs([]string{"install", "-t", "claude-code", "--scope", "user"})
 		Expect(Execute(root)).To(Equal(0))
-		Expect(errb.String()).To(HaveSuffix("aborted; nothing changed.\n"), "end of input at the module picker cancels")
+		Expect(errb.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"), "end of input at the module picker cancels")
 		Expect(filepath.Join(os.Getenv("HOME"), ".claude")).NotTo(BeADirectory())
 	})
 
@@ -812,17 +935,20 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(os.MkdirAll(proj, 0o755)).To(Succeed())
 		Expect(os.MkdirAll(other, 0o755)).To(Succeed())
 		GinkgoT().Chdir(proj)
-		// scope: toggle Project and Other directory…, confirm; the path: first one that is not
-		// a directory, then the other project; components (one page, both roots alike): drop
-		// undo, confirm; review: Apply.
+		// scope: toggle Project and Other directory…, confirm; the path: first one that does not
+		// exist, declined to create, then the other project; components (one page, both roots
+		// alike): drop undo, confirm; review: Apply.
 		var errb bytes.Buffer
-		root := NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "3", "0", "nowhere", "../other", "2", "0", "")))
+		root, err := NewRootCmd(os.Getenv, WithPrompter(accessible(&errb, "1", "3", "0", "nowhere", "n", "../other", "2", "0", "1")))
+		Expect(err).NotTo(HaveOccurred())
 		var stdout bytes.Buffer
 		root.SetOut(&stdout)
 		root.SetErr(&errb)
 		root.SetArgs([]string{"install", mod, "-t", "claude-code"})
 		Expect(Execute(root)).To(Equal(0), errb.String())
+		Expect(errb.String()).To(ContainSubstring("Create " + filepath.Join(proj, "nowhere") + "? It does not exist yet"))
 		Expect(errb.String()).To(ContainSubstring(filepath.Join(proj, "nowhere") + " does not exist"))
+		Expect(filepath.Join(proj, "nowhere")).NotTo(BeAnExistingFile())
 		Expect(errb.String()).To(ContainSubstring("Equivalent commands:\n" +
 			"  lola install " + mod + " --scope project -C " + proj + " -t claude-code --skip deploy:command/undo\n" +
 			"  lola install " + mod + " --scope project -C " + other + " -t claude-code --skip deploy:command/undo\n"))
@@ -907,7 +1033,8 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			if p != nil {
 				opts = append(opts, WithPrompter(p))
 			}
-			root := NewRootCmd(os.Getenv, opts...)
+			root, err := NewRootCmd(os.Getenv, opts...)
+			Expect(err).NotTo(HaveOccurred())
 			var stdout, stderr bytes.Buffer
 			root.SetOut(&stdout)
 			root.SetErr(&stderr)
@@ -928,7 +1055,7 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(errb.String()).To(ContainSubstring("1.   mcp/stdio  claude-code\n"), "the keep picker names the selector it writes")
 		Expect(got).To(ContainSubstring("  → claude-code  mcp/remote (mcp.example.com)  .mcp.json /mcpServers/remote\n"), "the review")
 		Expect(errb.String()).To(ContainSubstring("Move 1 item to the trash?"))
-		Expect(got).To(ContainSubstring("aborted; nothing changed."))
+		Expect(got).To(ContainSubstring("✗ cancelled — nothing was changed"))
 
 		code, got = run(nil, "-n")
 		Expect(code).To(Equal(0), got)

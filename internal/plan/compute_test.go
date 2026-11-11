@@ -411,6 +411,20 @@ var _ = Describe("Compute", func() {
 			Expect(p.Ledger.Modules["a"].Targets).To(Equal([]string{tgt, "gemini-cli", "opencode"}))
 		})
 
+		It("keeps the eras of the targets it does not replan and takes the change's on the others", func() {
+			led.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "sha256:old", Targets: []string{tgt, "opencode"},
+				Eras: map[string]string{tgt: "1.0", "opencode": "1.0"}}
+			c := change("a", cmd(".claude/commands/x.md", "X"))
+			c.Entry.Targets, c.Entry.Eras = []string{tgt}, map[string]string{tgt: "2.0"}
+			p, err := plan.Compute(req(false, c))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Modules["a"].Eras).To(Equal(map[string]string{tgt: "2.0", "opencode": "1.0"}))
+
+			p, err = plan.Compute(req(false, plan.ModuleChange{Name: "a", Targets: []string{tgt}}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(p.Ledger.Modules["a"].Eras).To(Equal(map[string]string{"opencode": "1.0"}), "a target the module leaves takes its era with it")
+		})
+
 		It("records every target the change writes an artifact on", func() {
 			led.Modules["a"] = &ledger.Entry{Source: "/s/a", Digest: "sha256:old", Targets: []string{"opencode"}}
 			p, err := install("a", false, cmd(".claude/commands/x.md", "X"))

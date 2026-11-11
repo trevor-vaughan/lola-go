@@ -303,8 +303,10 @@ confirmation.
   asks which member, as an install does.
 - **On a terminal, no module** opens the profile's page: its modules ticked, then each one's
   components (`profile go-review › cc-skills-golang › skills`). Untick a module to remove it from
-  the profile; the review lists what goes, and No keeps it. A bundle's page lists the profiles it
-  can combine, its members ticked. `-n` opens the page, asks, and writes nothing.
+  the profile; the review lists what goes and its Apply removes it. When the untick is all that
+  changes, there is no review: lola shows what goes and asks, and No keeps it. A bundle's page lists
+  the profiles it can combine, its members ticked. Esc on a question after a page goes back to that
+  page as you answered it. `-n` opens the page, asks, and writes nothing.
 - **A module another layer gives** asks whether to change it there or give the profile its own
   entry.
   - On a terminal it asks first, then opens the module's component page titled with the
@@ -321,8 +323,10 @@ confirmation.
   asking. `-n` shows the plan and writes nothing. A change that only
   adds components asks nothing. A file you edited by hand is kept and refused, hinting `--force`.
 - **`--new`** makes the profile: with modules, written with them; without, empty, a copy
-  (`--from <profile>`) or a bundle (`--bundle a,b`). Nothing is switched on. On a terminal with
-  no modules the page asks whether it lists modules or bundles profiles.
+  (`--from <profile>`) or a bundle (`--bundle a,b`). Nothing is switched on. On a terminal,
+  `lola profile <new-name> --edit` (no module, no `--new`) asks whether the new profile lists
+  modules or bundles profiles, and Esc on the page that opens asks it again; one left with no
+  module ticked is shown in the review before it is made.
 - **`lola profile work --edit --bundle go-review,docs`** sets a bundle's members in place, in
   order (`''` for none), making a bare one that names no profile, and applies them where the
   bundle is on or nested in the bundle on; what that removes asks first. It refuses a profile that

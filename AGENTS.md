@@ -5,9 +5,10 @@ Guidance for coding agents working on lola (Go).
 ## Commands
 
 - `task build` -> `bin/lola`; `task test` (add `MODE=llm` for failures only); `task lint`;
-  `task vuln`; `task cross` (Windows/macOS build + vet); `task check` runs all gates. Artifacts go
-  to `.test-output/`. `task e2e [-- <suite>...]` runs the container suites under `e2e/` (podman or
-  docker, venom, network); it is not part of `check`, and the release checklist requires it.
+  `task vuln`; `task cross` (Windows/macOS build + vet); `task flows` (every `tui-flows.md` row
+  has a spec); `task check` runs all gates. Artifacts go to `.test-output/`.
+  `task e2e [-- <suite>...]` runs the container suites under `e2e/` (podman or docker, venom,
+  network); it is not part of `check`, and the release checklist requires it.
   `task release:notes` and `task release:bump [-- X.Y.Z]` are the release steps
   (`docs/release.md`).
 
@@ -21,9 +22,14 @@ Guidance for coding agents working on lola (Go).
 
 - **Behavior lives in `internal/engine`**; `internal/cli` only adapts it. New flows get engine
   specs first.
-- **Targets** are one package each under `internal/target/<name>`, listed in `internal/targets`.
-  They render through `target.Admit` and their capability table; anything they cannot express
-  is a `target.Finding`, never an error. Import boundaries are enforced by `depguard`.
+- **Targets** are YAML specs in `internal/targetspec/specs` (facts: layout, detection, probe,
+  frontmatter, behaviors), read through `internal/target/policy` (lola's severities, guards and
+  hints) and rendered by `internal/target/mech` mechanisms in the generic
+  `internal/target/spec` target; `internal/targets` registers them. A tool whose mechanisms
+  exist needs only a spec in `internal/targetspec/specs`, or a user's in
+  `$XDG_CONFIG_HOME/lola/targets`; `targets.Load` builds the `Registry` the CLI passes down.
+  They render through `target.Admit`; anything they cannot express is a `target.Finding`, never
+  an error. Import boundaries are enforced by `depguard`.
 - **Templates** render only through `internal/templating`; it alone imports liquid and reads no
   files.
 - **No package-level mutable state.** Paths come from `paths.Resolve(getenv)` in `main`; cobra
@@ -94,7 +100,7 @@ tmux capture-pane -t v -p | grep -v '^$' | tail -6
 tmux kill-session -t v; tmux kill-session -t holder
 ```
 
-- **Gotchas.** Use `-x 120` or wider (at 80 the viewer footer drops `q quit`). Pass the isolated
+- **Gotchas.** Use `-x 120` or wider (at 80 the viewer footer cuts `/ search` and the paging keys). Pass the isolated
   `HOME`/`XDG_*` inside the pane's `bash -c`; a running tmux server does not inherit your env.
   Kill by session name, never `pkill -f` (it matches your own shell). `lola trash --plain` rows start
   with a literal `run` column. `bin/lola` can be stale; `task build` refreshes it.

@@ -13,6 +13,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/source"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -35,7 +36,7 @@ var _ = Describe("last_used", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		day = time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
 		e.Now = func() time.Time { return day }
 		// An archive, which install pins, so sync reads the version lock.json records.
@@ -123,7 +124,7 @@ var _ = Describe("last_used", func() {
 				_, _, err := e.CachedModules()
 				Expect(err).NotTo(HaveOccurred())
 			}),
-			step(func() { ok(e.Check(ctx, sc, tmp, []string{"kit"}, nil, nil)) }),
+			step(func() { ok(e.Check(ctx, sc, tmp, []string{"kit"}, nil, nil, nil)) }),
 			step(func() {
 				_, _, err := e.Status(ctx, sc, nil)
 				Expect(err).NotTo(HaveOccurred())

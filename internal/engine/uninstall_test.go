@@ -17,6 +17,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/plan"
 	"github.com/trevor-vaughan/lola-go/internal/profile"
 	"github.com/trevor-vaughan/lola-go/internal/target"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -34,7 +35,7 @@ var _ = Describe("uninstall from the layer that provides a module", func() {
 		Expect(err).NotTo(HaveOccurred())
 		p, err = paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		e.Getwd = func() (string, error) { return tmp, nil }
 		user = engine.Scope{Kind: target.User}
 	})
@@ -460,7 +461,7 @@ func writeRemoteKit(p paths.Paths, name string) {
 	gitIn(work, "tag", "v1")
 	gitIn(tmp, "clone", "-q", "--bare", work, bare)
 	url := testenv.ServeGitTLS(filepath.Dir(bare), nil) + "/kit.git" // a remote profile names https sources only
-	e := engine.New(p)
+	e := engine.New(p, targets.Builtin())
 	user := engine.Scope{Kind: target.User}
 	_, err := e.Install(context.Background(), user, tmp, []engine.InstallRequest{{Arg: url, Ref: "v1"}}, engine.Options{Targets: []string{"claude-code"}})
 	Expect(err).NotTo(HaveOccurred())

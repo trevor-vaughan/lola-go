@@ -11,6 +11,7 @@ import (
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/errs"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
+	"github.com/trevor-vaughan/lola-go/internal/targets"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -22,7 +23,7 @@ var _ = Describe("store operations", func() {
 		tmp := testenv.Isolate()
 		p, err := paths.Resolve(os.Getenv)
 		Expect(err).NotTo(HaveOccurred())
-		e = engine.New(p)
+		e = engine.New(p, targets.Builtin())
 		src = filepath.Join(tmp, "example")
 		writeTree(src, map[string]string{"lola.yml": "name: example\ndescription: Review helpers\nkeywords: [Git]\n", "commands/a.md": "A"})
 		_, err = e.Fetch(ctx, sourceSpec(src))

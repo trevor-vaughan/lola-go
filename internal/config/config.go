@@ -14,6 +14,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/trevor-vaughan/lola-go/internal/errs"
+	"github.com/trevor-vaughan/lola-go/internal/targetspec"
 	"github.com/trevor-vaughan/lola-go/internal/untrusted"
 	"github.com/trevor-vaughan/lola-go/internal/yamldoc"
 )
@@ -54,6 +55,9 @@ type Config struct {
 	// Theme is the terminal background the pickers draw for: ThemeDark, ThemeLight,
 	// or "" when config.yaml does not say.
 	Theme string
+	// TargetVersions is target_versions: the assistant version declared per target id for user
+	// scope; nil when config.yaml does not say.
+	TargetVersions map[string]string
 }
 
 // Age is how long a cached version went unused, as lola cache clean --unused-for and
@@ -137,6 +141,7 @@ func LoadConfig(path, home string) (*Config, error) {
 		"post_install":     func(n *yaml.Node, at string) error { return d.script(n, at, home, &c.PostInstall) },
 		"cache_unused_for": func(n *yaml.Node, at string) error { return d.age(n, at, &c.CacheUnusedFor) },
 		"cache_fresh_for":  func(n *yaml.Node, at string) error { return d.age(n, at, &c.CacheFreshFor) },
+		"target_versions":  func(n *yaml.Node, at string) error { return d.targetVersions(n, at, &c.TargetVersions) },
 		"theme": func(n *yaml.Node, at string) error {
 			s, err := d.scalar(n, at, themeHint)
 			if err != nil {
@@ -168,6 +173,42 @@ func (d doc) script(n *yaml.Node, at, home string, s *Script) error {
 		return d.fail(n, at, fmt.Sprintf("%q is not an absolute path", untrusted.Text(p, untrusted.MaxName)), hint)
 	}
 	*s = Script{Path: filepath.Clean(p), Line: n.Line, Key: at}
+	return nil
+}
+
+// targetVersions reads target_versions into dst: a mapping of target id to version, kept as written
+// (2.10 stays 2.10). The ids are checked against the registry where the engine knows it.
+func (d doc) targetVersions(n *yaml.Node, at string, dst *map[string]string) error {
+	const hint = "write a version such as 2.1 or 1.19.5"
+	if isNull(n) {
+		return nil
+	}
+	got := map[string]string{}
+	fields := map[string]func(*yaml.Node, string) error{}
+	if n.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i]
+			if k.Kind == yaml.ScalarNode && !untrusted.IsPlain(k.Value) {
+				return d.fail(k, at, "an id must be plain text", "write the target's id")
+			}
+			fields[k.Value] = func(v *yaml.Node, sub string) error {
+				if v.Kind != yaml.ScalarNode {
+					return d.fail(v, sub, "must be a version, not "+kindName(v), hint)
+				}
+				if targetspec.Canonical(v.Value) == "" {
+					return d.fail(v, sub, fmt.Sprintf("%q is not a version", untrusted.Text(v.Value, untrusted.MaxName)), hint)
+				}
+				got[k.Value] = v.Value
+				return nil
+			}
+		}
+	}
+	if err := d.mapping(n, at, fields); err != nil {
+		return err
+	}
+	if len(got) > 0 {
+		*dst = got
+	}
 	return nil
 }
 

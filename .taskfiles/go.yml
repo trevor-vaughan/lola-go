@@ -80,3 +80,8 @@ tasks:
     deps: [tools]
     dir: '{{.ROOT_DIR}}'
     cmd: '"{{.TOOLS_DIR}}/govulncheck" ./...'
+
+  flows:
+    desc: Check every transition row of docs/architecture/tui-flows.md is pinned by a spec, and every spec name or pointer names a row
+    dir: '{{.ROOT_DIR}}'
+    cmd: go run ./scripts/tuiflows
