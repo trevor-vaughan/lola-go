@@ -1,0 +1,21 @@
+internal/engine/tidy_apply_test.go
+  s_fe9f625a0588b6::t_181eba4cea5c25 316-318
+internal/source/folder_internal_test.go
+  s_fe9f625a0588b6::t_a4ce6717dc0ecc 58-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1a08da476821698e6cac622e9157a9a81a42d6c",
+  "prompts": {},
+  "sessions": {
+    "s_fe9f625a0588b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "860b21e4-eae1-4dfa-9e09-18c2ccdc1175",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
