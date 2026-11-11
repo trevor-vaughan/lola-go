@@ -1,0 +1,29 @@
+internal/engine/repokey_test.go
+  s_fe9f625a0588b6::t_bf3e951e662277 144,155-156
+internal/config/repokey_test.go
+  s_fe9f625a0588b6::t_bf3e951e662277 132
+.github/workflows/megalinter.yml
+  s_fe9f625a0588b6::t_8e80e07fecd787 28,39,54,63
+.github/workflows/e2e.yml
+  s_fe9f625a0588b6::t_8e80e07fecd787 25,28,31,39
+.github/workflows/check.yml
+  s_fe9f625a0588b6::t_8e80e07fecd787 20,23,26,29
+internal/engine/repokey_internal_test.go
+  s_fe9f625a0588b6::t_a652f5a2e54b19 55-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a3630f826cf545912c0ea372ca5e941f0be854c7",
+  "prompts": {},
+  "sessions": {
+    "s_fe9f625a0588b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "860b21e4-eae1-4dfa-9e09-18c2ccdc1175",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
