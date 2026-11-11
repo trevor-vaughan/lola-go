@@ -1,0 +1,19 @@
+internal/testenv/testenv.go
+  s_71d1497346e925::t_1264ecb0860396 78-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "833e97c0e7f4764cce09544dbcf53c0249eb595d",
+  "prompts": {},
+  "sessions": {
+    "s_71d1497346e925": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7252fe00-096a-491d-b282-9b35a72d6b00",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Trevor Vaughan <peiriannydd@gmail.com>"
+    }
+  }
+}
