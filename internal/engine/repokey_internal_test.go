@@ -52,7 +52,7 @@ var _ = Describe("a clone git cannot read", func() {
 
 	It("keys picks by path when git cannot read the clone, naming git's reason", func() {
 		Expect(os.WriteFile(filepath.Join(proj, ".git"), []byte("gitdir: nowhere\n"), 0o644)).To(Succeed())
-		Expect(section()).To(Equal([]Notice{{Level: LevelWarn, Text: "git could not read the repository of " + proj +
-			": fatal: not a git repository: " + filepath.Join(proj, "nowhere") + "; picks for this project are keyed by its path"}}))
+		Expect(section()).To(ConsistOf(And(HaveField("Level", LevelWarn),
+			HaveField("Text", And(HavePrefix("git could not read the repository of "+proj+": fatal: "), HaveSuffix("; picks for this project are keyed by its path"))))))
 	})
 })

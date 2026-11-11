@@ -25,7 +25,7 @@ jobs:
       security-events: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -36,7 +36,7 @@ jobs:
       - id: week
         run: echo "week=$(date -u '+%G-W%V')" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/megalint/vuln-db
           key: vuln-db-${{ runner.os }}-${{ steps.week.outputs.week }}
@@ -51,7 +51,7 @@ jobs:
           validate-all-codebase: ${{ github.event_name != 'pull_request' }}
 
       - if: ${{ success() || failure() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: megalinter-reports
           path: |
@@ -60,6 +60,6 @@ jobs:
 
       # The upload API rejects a SARIF with an empty `runs` array.
       - if: ${{ (success() || failure()) && steps.megalint.outputs.sarif-has-results == 'true' }}
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           sarif_file: ${{ steps.megalint.outputs.sarif-file }}

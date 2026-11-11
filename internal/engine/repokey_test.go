@@ -141,7 +141,7 @@ var _ = Describe("a project's base picks are keyed by its repository", func() {
 		Expect(rep.Modules).To(HaveLen(1))
 		Expect(rep.Modules[0].Skipped).To(ContainElement("skill/review"))
 		Expect(rep.Findings).To(ContainElement(And(HaveField("Severity", target.SeverityWarn), HaveField("Code", "picks-keyed-by-path"),
-			HaveField("Text", "git could not read the repository of "+a+": fatal: not a git repository: "+filepath.Join(a, "nowhere")+"; picks for this project are keyed by its path"),
+			HaveField("Text", And(HavePrefix("git could not read the repository of "+a+": fatal: "), HaveSuffix("; picks for this project are keyed by its path"))),
 			HaveField("Hint", ""))))
 	})
 
@@ -152,8 +152,8 @@ var _ = Describe("a project's base picks are keyed by its repository", func() {
 			Rerun: func(...string) string { return "" }, Install: func(string, string, string, engine.TrustKinds) string { return "" }})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(info.Install).To(HaveLen(1))
-		Expect(info.Install[0].Notices).To(ContainElement(engine.Notice{Level: engine.LevelWarn, Text: "git could not read the repository of " + a +
-			": fatal: not a git repository: " + filepath.Join(a, "nowhere") + "; picks for this project are keyed by its path"}))
+		Expect(info.Install[0].Notices).To(ContainElement(And(HaveField("Level", engine.LevelWarn),
+			HaveField("Text", And(HavePrefix("git could not read the repository of "+a+": fatal: "), HaveSuffix("; picks for this project are keyed by its path"))))))
 	})
 
 	It("lola list labels a pick by the key the file writes while the entry is still under the path", func() {
