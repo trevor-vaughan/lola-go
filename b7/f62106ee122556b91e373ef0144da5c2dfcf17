@@ -1,0 +1,23 @@
+internal/config/repokey_test.go
+  s_fe9f625a0588b6::t_bf3e951e662277 132
+internal/engine/repokey_test.go
+  s_fe9f625a0588b6::t_bf3e951e662277 144,155-156
+internal/engine/repokey_internal_test.go
+  s_fe9f625a0588b6::t_a652f5a2e54b19 55-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b7f62106ee122556b91e373ef0144da5c2dfcf17",
+  "prompts": {},
+  "sessions": {
+    "s_fe9f625a0588b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "860b21e4-eae1-4dfa-9e09-18c2ccdc1175",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
