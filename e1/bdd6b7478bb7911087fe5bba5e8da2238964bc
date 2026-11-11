@@ -1,0 +1,23 @@
+.github/workflows/e2e.yml
+  s_fe9f625a0588b6::t_8e80e07fecd787 25,28,31,39
+.github/workflows/megalinter.yml
+  s_fe9f625a0588b6::t_8e80e07fecd787 28,39,54,63
+.github/workflows/check.yml
+  s_fe9f625a0588b6::t_8e80e07fecd787 20,23,26,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e1bdd6b7478bb7911087fe5bba5e8da2238964bc",
+  "prompts": {},
+  "sessions": {
+    "s_fe9f625a0588b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "860b21e4-eae1-4dfa-9e09-18c2ccdc1175",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
