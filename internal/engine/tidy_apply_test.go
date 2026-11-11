@@ -313,7 +313,9 @@ var _ = Describe("lola tidy: choosing and moving", func() {
 		t.files(t.proj, map[string]string{".claude/commands/a.md": "a\n", ".claude/skills/b/SKILL.md": "b\n", ".claude/skills/c/SKILL.md": "c\n",
 			".claude/skills/d/SKILL.md": "d\n", ".claude/agents/e.md": "e\n"})
 		res, err := t.tidy(engine.TidyRequest{Select: pats("command/a", "skill/b", "skill/c", "skill/d", "agent/e"), Confirm: confirmWith(func() {
-			Expect(os.Remove(filepath.Join(t.proj, ".claude", "commands", "a.md"))).To(Succeed())
+			// Park the original instead of deleting it: a freed inode can be handed straight back to the new file,
+			// and os.SameFile would then see no swap.
+			Expect(os.Rename(filepath.Join(t.proj, ".claude", "commands", "a.md"), filepath.Join(t.proj, "a-parked.md"))).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(t.proj, ".claude", "commands", "a.md"), []byte("a again\n"), 0o644)).To(Succeed())
 			Expect(os.Rename(filepath.Join(t.proj, ".claude", "skills", "b"), filepath.Join(t.proj, "b-moved"))).To(Succeed())
 			t.link("../../b-moved", filepath.Join(t.proj, ".claude", "skills", "b"))
