@@ -75,6 +75,12 @@ func Isolate() string {
 			t.Fatalf("testenv: %v", err)
 		}
 	}
+	// git commit and fetch start a detached `git maintenance run --auto` that outlives them and
+	// takes locks in .git, racing specs that snapshot a repository or remove its temp dir.
+	// The environment carries it past ServeGitTLS, which replaces GIT_CONFIG_GLOBAL.
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "maintenance.auto")
+	t.Setenv("GIT_CONFIG_VALUE_0", "false")
 	for _, dir := range []string{"home", "bin"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o700); err != nil {
 			t.Fatalf("testenv: %v", err)

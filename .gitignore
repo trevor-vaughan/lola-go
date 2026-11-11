@@ -2,6 +2,7 @@
 /.tools/
 /.test-output/
 .headroom/
+.worktrees/
 .claude/handoff/
 megalinter-reports/
 mega-linter.log
