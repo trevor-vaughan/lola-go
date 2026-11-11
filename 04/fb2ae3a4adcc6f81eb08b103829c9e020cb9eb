@@ -1,0 +1,19 @@
+lychee.toml
+  s_412ca18870d6a5::t_779b4d8a1afd01 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "04fb2ae3a4adcc6f81eb08b103829c9e020cb9eb",
+  "prompts": {},
+  "sessions": {
+    "s_412ca18870d6a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4bca9a06-415f-418e-b71e-b1f19b50c8cb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
