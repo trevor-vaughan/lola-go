@@ -1,0 +1,80 @@
+internal/cli/prompt.go
+  s_1570dbbc567460::t_62af7bc2e3da68 23-26,39,106-115,117,119,133,135-140,142,149-154,156,158
+internal/cli/theme_internal_test.go
+  s_1570dbbc567460::t_e16070c3b04a22 293,296-298
+internal/cli/flow.go
+  s_1570dbbc567460::t_c889cc3c65e376 936,939-940,1597,2343
+internal/cli/export_test.go
+  s_1570dbbc567460::t_e65a39fd8b4ca4 15-25
+internal/cli/interrupt_internal_test.go
+  s_1570dbbc567460::t_e7023236857cac 103
+internal/cli/sync_test.go
+  s_1570dbbc567460::t_8fae9c53295ac6 23,32,34,36,49-58,63,65-68
+  s_1570dbbc567460::t_7e0ce53477b6c0 741,743-748
+internal/cli/profile_move.go
+  s_1570dbbc567460::t_595a1717f54216 69
+internal/cli/cmd_market.go
+  s_1570dbbc567460::t_83aa9e14f026a2 380
+internal/cli/cmd_tidy.go
+  s_1570dbbc567460::t_83aa9e14f026a2 159
+internal/cli/profile_add.go
+  s_1570dbbc567460::t_ec3312404b8ffe 69
+internal/cli/profile_remove.go
+  s_1570dbbc567460::t_595a1717f54216 37,39
+internal/cli/profile_split.go
+  s_1570dbbc567460::t_595a1717f54216 29,36,105,110-111
+internal/cli/migrate_test.go
+  s_1570dbbc567460::t_e65a39fd8b4ca4 219-225
+internal/cli/confirm_test.go
+  s_1570dbbc567460::t_a861d48631c2a9 286,289-290,293-294
+internal/cli/trust.go
+  s_1570dbbc567460::t_539ab7dfc53731 187,190-191,194
+internal/cli/ask_internal_test.go
+  s_1570dbbc567460::t_252155c9926918 7,12,14,176-221
+internal/cli/profile_update.go
+  s_1570dbbc567460::t_ec3312404b8ffe 77
+internal/cli/keys_internal_test.go
+  s_1570dbbc567460::t_e16070c3b04a22 168,170-172,174
+internal/cli/cmd_sync.go
+  s_1570dbbc567460::t_83aa9e14f026a2 548-549
+internal/cli/keys_paths_internal_test.go
+  s_1570dbbc567460::t_825fd368a17559 19,44,47-51
+  s_1570dbbc567460::t_e16070c3b04a22 274,276-277
+internal/cli/remoteprofile_test.go
+  s_1570dbbc567460::t_e65a39fd8b4ca4 419-425
+  s_1570dbbc567460::t_8fae9c53295ac6 1161-1162,1173,1175
+  s_1570dbbc567460::t_7e0ce53477b6c0 456,459,463-468
+internal/cli/trust_test.go
+  s_1570dbbc567460::t_8fae9c53295ac6 36-37,39,45-47
+internal/cli/flow_test.go
+  s_1570dbbc567460::t_e928b64c3eea29 38,57-59,166,178,190,219,221,223
+docs/architecture/tui-flows.md
+  s_1570dbbc567460::t_29929ae45427da 1811,1823,1826,1864-1865
+  s_1570dbbc567460::t_ebd6b194988529 1128-1130,1164,1170,1184,1194-1195,1201,1889-1895,1917-1920,1939-1940,1948,1957-1962,1994
+  s_1570dbbc567460::t_35b26bb15fd508 1306-1308,1361,1370,1419,1438-1441,1492,1499,1509,1523-1524,1528-1529,1534-1535,1539-1540,1561-1563
+  s_1570dbbc567460::t_385d9e2ebbaf6b 1052-1053,1091,1114
+internal/cli/misc2_paths_test.go
+  s_1570dbbc567460::t_825fd368a17559 21-22
+internal/cli/huh_internal_test.go
+  s_1570dbbc567460::t_925af4266ccf09 418,423,425-427,429-430,563,581,856,864
+internal/cli/scope.go
+  s_1570dbbc567460::t_c889cc3c65e376 157
+internal/cli/prompter.go
+  s_1570dbbc567460::t_92796d2a5d1628 12,495-496
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a3f1f82f20fda1299444eb55e89208a9cae6d2b6",
+  "prompts": {},
+  "sessions": {
+    "s_1570dbbc567460": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965b813-af19-4711-b624-470b11a82df3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
