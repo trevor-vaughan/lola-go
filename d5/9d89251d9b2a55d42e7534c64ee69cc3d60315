@@ -1,0 +1,24 @@
+internal/cli/prompter.go
+  s_1570dbbc567460::t_0441fd97099818 6,102-111
+  s_1570dbbc567460::t_a28903fbc09e7f 112-113
+internal/cli/ask.go
+  s_1570dbbc567460::t_0441fd97099818 1-51
+internal/cli/ask_internal_test.go
+  s_1570dbbc567460::t_0441fd97099818 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "d59d89251d9b2a55d42e7534c64ee69cc3d60315",
+  "prompts": {},
+  "sessions": {
+    "s_1570dbbc567460": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965b813-af19-4711-b624-470b11a82df3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
