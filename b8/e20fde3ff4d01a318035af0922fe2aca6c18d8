@@ -1,0 +1,39 @@
+docs/architecture/sync.md
+  s_1570dbbc567460::t_219265e3229937 346-347
+  s_1570dbbc567460::t_9e4cd3e5666cd9 344-345
+internal/cli/ask_internal_test.go
+  s_1570dbbc567460::t_7503a4e978d05e 132
+internal/cli/keys_paths_internal_test.go
+  s_1570dbbc567460::t_26e21fd264d9e2 540
+  s_1570dbbc567460::t_53e21ce98882cc 533-539,541-546
+  s_1570dbbc567460::t_7503a4e978d05e 308-324,331-335
+  s_1570dbbc567460::t_d7c5b96d18366d 358,380
+  s_1570dbbc567460::t_e80a281c68874f 325-330
+internal/cli/prompt.go
+  s_1570dbbc567460::t_26e21fd264d9e2 119,142,158
+internal/cli/prompter.go
+  s_1570dbbc567460::t_26e21fd264d9e2 110-112,118
+internal/cli/ask.go
+  s_1570dbbc567460::t_26e21fd264d9e2 5,12-13,101,104-112
+  s_1570dbbc567460::t_9f980d9a798897 113
+internal/cli/huh.go
+  s_1570dbbc567460::t_26e21fd264d9e2 107,110-112,898
+internal/cli/viewer.go
+  s_1570dbbc567460::t_26e21fd264d9e2 94-95,97-100,306-308,314,317-321,323,352-354,359-361,364-366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b8e20fde3ff4d01a318035af0922fe2aca6c18d8",
+  "prompts": {},
+  "sessions": {
+    "s_1570dbbc567460": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965b813-af19-4711-b624-470b11a82df3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
