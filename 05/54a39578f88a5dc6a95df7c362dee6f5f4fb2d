@@ -1,0 +1,58 @@
+docs/architecture/sync.md
+  s_1570dbbc567460::t_f6b3a21fe08326 326-335,337-345
+docs/decisions.md
+  s_1570dbbc567460::t_64873e7c895daf 192
+docs/architecture/tui-flows.md
+  s_1570dbbc567460::t_711d0b70ec6e15 1663,1668
+docs/guides/choosing-what-to-install.md
+  s_1570dbbc567460::t_c60c1fdd26eb07 90-94,98,102-104
+docs/reference/output-contract.md
+  s_1570dbbc567460::t_16a173a42b0783 123-124,127,129-130,134-145
+docs/usage.md
+  s_1570dbbc567460::t_c60c1fdd26eb07 626
+AGENTS.md
+  s_1570dbbc567460::t_53c997a5c2d78f 79
+  s_1570dbbc567460::t_a8a87529663959 81-84,87-90,93-94
+  s_1570dbbc567460::t_60b91fbca539bf 77
+docs/architecture/install-flow.md
+  s_1570dbbc567460::t_707b8452ce00d4 225-230,232-233,297-298,305-307
+internal/cli/ask_internal_test.go
+  s_1570dbbc567460::t_7503a4e978d05e 132
+internal/cli/keys_paths_internal_test.go
+  s_1570dbbc567460::t_26e21fd264d9e2 540
+  s_1570dbbc567460::t_53e21ce98882cc 533-539,541-546
+  s_1570dbbc567460::t_7503a4e978d05e 308-324,331-335
+  s_1570dbbc567460::t_d7c5b96d18366d 358,380
+  s_1570dbbc567460::t_e80a281c68874f 325-330
+internal/cli/prompt.go
+  s_1570dbbc567460::t_26e21fd264d9e2 119,142,158
+internal/cli/prompter.go
+  s_1570dbbc567460::t_26e21fd264d9e2 110-112,118
+internal/cli/ask.go
+  s_1570dbbc567460::t_26e21fd264d9e2 5,12-13,101,104-112
+  s_1570dbbc567460::t_9f980d9a798897 113
+internal/cli/huh.go
+  s_1570dbbc567460::t_26e21fd264d9e2 107,110-112,898
+internal/cli/viewer.go
+  s_1570dbbc567460::t_26e21fd264d9e2 94-95,97-100,306-308,314,317-321,323,352-354,359-361,364-366
+e2e/install/install.venom.yml
+  s_1570dbbc567460::t_29c4e5321fdefe 30-33,791-797,799-800,802-807,810-813,816-822
+  s_1570dbbc567460::t_1a51bdc8e3edab 801,808-809,814-815
+  s_1570dbbc567460::t_76f0cb9a050295 798
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0554a39578f88a5dc6a95df7c362dee6f5f4fb2d",
+  "prompts": {},
+  "sessions": {
+    "s_1570dbbc567460": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965b813-af19-4711-b624-470b11a82df3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
