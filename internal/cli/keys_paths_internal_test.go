@@ -9,7 +9,6 @@ package cli
 // also pinned (viewer: start --run (stdout or stderr not a terminal)--> printed; viewer: start --run (accessible mode)--> printed; viewer: start --run (--no-pager or NO_PAGER)--> printed; viewer: start --run (LOLA_PAGER=cat)--> printed): viewer_internal_test.go "prints without the viewer"
 // also pinned (viewer: start --run (config.yaml unreadable)--> printed): viewer_internal_test.go "prints, and says why, when config.yaml cannot be read"
 // also pinned (viewer: start --run (taller than the terminal)--> viewer; viewer: start --run (fits, or the height unknown)--> printed): viewer_internal_test.go "opens output taller than the terminal, then prints it, and prints output that fits as it is"
-// also pinned (viewer: start --run (a review, the viewer not bypassed)--> review): huh_internal_test.go "opens the review in the viewer when nothing bypasses it"
 // also pinned (viewer: pager --exits--> done): pager_test.go "the question comes after the pager exits"
 // also pinned (viewer: pager --fails--> printed): pager_test.go "prints the diff unpaged, capped, before the question when the pager fails"
 // also pinned (viewer: viewer --scroll--> viewer): viewer_internal_test.go "scrolls by line, page and end, and its footer says where it is"
@@ -19,11 +18,6 @@ package cli
 // also pinned (viewer: viewer --ctrl+c (a question follows)--> cancelled): pager_test.go "ends the sync on Ctrl+C in the trust diff's viewer, before the question"
 // also pinned (viewer: search --answer (an empty term)--> viewer): viewer_internal_test.go "clears the search for an empty term"
 // also pinned (viewer: search --esc--> viewer; viewer: search --q--> search): viewer_internal_test.go "takes q and the other keys as text while typing, and Esc drops the typing"
-// also pinned (viewer: review --y--> apply; viewer: review --c (a step to change)--> change; viewer: review --n--> cancelled; viewer: review --ctrl+c--> cancelled; viewer: review --esc (a screen before)--> back; viewer: review --empty submit--> review): viewer_internal_test.go "in confirm mode, y applies, c asks to change, n and Ctrl+C cancel, q quits and Esc goes back; other keys answer nothing"
-// also pinned (viewer: review --c (no step to change)--> review): viewer_internal_test.go "without a step to change, offers no c and ignores it"
-// also pinned (viewer: review --q (fewer than two answers)--> cancelled; viewer: review --q (two or more answers)--> quit; viewer: quit --y--> cancelled; viewer: quit --n, enter or esc--> review): viewer_internal_test.go "in confirm mode with two or more steps answered, q asks first: y quits; n, Enter and Esc go back to the review"
-// also pinned (viewer: review --esc (no screen before)--> review): viewer_internal_test.go "in confirm mode with no screen to go back to, Esc says q quits and stays"
-// also pinned (viewer: review --ctrl+n or ctrl+p--> review): viewer_internal_test.go "leaves n as cancel in confirm mode, where Ctrl+N and Ctrl+P step"
 // also pinned (accessible: pick --a number--> pick; accessible: pick --answer--> next): huh_internal_test.go "offers Project, User and Other directory…, in that order, with nothing preselected"
 // also pinned (accessible: pick --empty submit (a pick needed)--> pick; accessible: pick --end of input--> cancelled): huh_internal_test.go "a picker that needs a pick refuses none, naming the keys, and still cancels at end of input"
 // also pinned (accessible: pick --empty submit (none is an answer)--> next): huh_internal_test.go "asks a bundle's members with its members ticked, and takes ticking none, as lola profile --edit's module page does"
@@ -115,7 +109,7 @@ var _ = Describe("the viewer's and pager's transitions", func() {
 	})
 
 	It("viewer: viewer --resize--> viewer", func() {
-		m := search(newViewer(numbered(30), false, 40, 11), "line 1")
+		m := search(newViewer(numbered(30), 40, 11), "line 1")
 		Expect(m.matches).To(Equal([]int{9, 10, 11, 12, 13, 14, 15, 16, 17, 18}))
 		Expect(m.matches[m.cur]).To(Equal(9), "line 10, the first match")
 		m = press(m, keyJ, keyJ, keyJ, keyJ, keyJ, keyJ)
@@ -126,16 +120,24 @@ var _ = Describe("the viewer's and pager's transitions", func() {
 	})
 
 	It("viewer: search --ctrl+c--> cancelled", func() {
-		m := newViewer(numbered(30), false, 40, 10)
+		m := newViewer(numbered(30), 40, 10)
 		m.then = "Migrate?"
 		m, q := quits(press(m, keySlash), keyCtrlC)
 		Expect(q).To(BeTrue())
 		Expect(m.Answer()).To(Equal(viewCancel), "a cancel, which ends the command before the question")
 	})
 
+	It("viewer: quit --y--> cancelled", func() {
+		m := newPrompt(numbered(30), Question{Prompt: "Apply these changes?", Answers: "ycn", Nav: Nav{Back: true, Answered: 2}}, false, 200, 10)
+		m, q := quits(m, keyQ)
+		Expect(q).To(BeFalse(), "q asks first")
+		m, q = quits(m, keyY)
+		Expect(q).To(BeTrue())
+		Expect(m.Answer()).To(Equal(viewQuit), "a quit, which the command reports as cancelled")
+	})
+
 	It("viewer: quit --ctrl+c--> cancelled", func() {
-		m := newViewer(numbered(30), true, 200, 10)
-		m.nav = Nav{Back: true, Answered: 2}
+		m := newPrompt(numbered(30), Question{Prompt: "Apply these changes?", Answers: "ycn", Nav: Nav{Back: true, Answered: 2}}, false, 200, 10)
 		m, q := quits(m, keyQ)
 		Expect(q).To(BeFalse(), "q asks first")
 		m, q = quits(m, keyCtrlC)

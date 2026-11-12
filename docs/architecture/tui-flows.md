@@ -26,7 +26,7 @@ what the answers mean.
   Claude Code hooks and a project's install scripts, asked by `lola install`, `sync`, `update`,
   `migrate` and `lola profile`'s writes
 - [Viewer and pager](#viewer-and-pager): how output, help and a confirmation's plan reach the
-  terminal, and the viewer's keys in read mode and in a review
+  terminal, and the viewer's keys
 - [Accessible mode](#accessible-mode): the line prompts `LOLA_ACCESSIBLE=1` and `TERM=dumb` ask
   instead of every screen above
 - [Form keys](#form-keys): the keys every full-screen form takes
@@ -68,7 +68,7 @@ without `<surface>: ` takes the surface of its file's own specs.
 | `q` | quits the run |
 | `ctrl+c` | cancels the run at once |
 | end of input | stdin ends before the screen is answered |
-| `Change …` | picks a step to ask again from the review (`c` in the viewer, then the "Change what?" menu; or the "Apply these changes?" menu) |
+| `Change …` | picks a step to ask again from the review (`c` at the review's question, then the "Change what?" menu; or the "Apply these changes?" menu) |
 | yes / no | answers a yes/no question (`y` / `n`) |
 | `Cancel` | picks a question's Cancel option, which reaches the flow as `ErrAborted` |
 | an option | picks that option of a question (`Lists modules`, `Edit profile …`) |
@@ -213,7 +213,7 @@ usual one).
 | version | `Write <id> files for which version?` (`Change versions — …` when asked again) | per destination and assistant with more than one era, unless `-t` or `target_versions` gives it, the scope's modules hold it, or `-y`/`--force` |
 | components | `<file> › <module>` (`— <destination>` when one of several) | per module with more than one component or an exclusion, unless `--skip`/`--only`/`--unskip`; one page per destination when their preselections differ |
 | no components | `Install <module> with no components?` (default No) | a page is submitted empty while it had a preselection |
-| review | `Review`: the summary, then `y apply · c change · n cancel` (viewer) or `Apply these changes?` (menu) | the run reviews and the plan changes something |
+| review | `Review`: the summary, then `Apply these changes? [y/c/n]` under it or in the viewer (`[y/n]` with nothing to change; no default), or in accessible mode the menu `Apply these changes?` | the run reviews and the plan changes something |
 
 ### Transitions
 
@@ -1560,8 +1560,7 @@ asks about reach the terminal: printed, through the user's pager, or in lola's v
 (`viewerModel`, `internal/cli/viewer.go`). `page` shows output and help; `pageThen` shows what a
 question follows, and the question is asked once the viewer or pager exits: sync's trust diff
 (`syncQuestions`, `internal/cli/cmd_sync.go`), the trash's restore plan (`restorePicked`,
-`internal/cli/cmd_trash.go`), and the record of what `--trust` accepted when the `Proceed?` receipt asks after it (`receiptNext`). The viewer has two modes: read mode for output, help and plans, and confirm
-mode for a review (`Review`, `internal/cli/huh.go`), which answers the flow that shows it.
+`internal/cli/cmd_trash.go`), and the record of what `--trust` accepted when the `Proceed?` receipt asks after it (`receiptNext`).
 `app.ask` (`internal/cli/ask.go`) asks a yes/no question, or the review's, under its text: inline (`inline`: the text printed, then a one-line prompt under it) when the text and the prompt line at its widest fit the terminal or paging prints, else in the viewer with the question in it (`prompt`); `$LOLA_PAGER` pages the text first and the question is asked inline after. The prompt takes one answer letter in its field and answers on Enter; a capital letter in `[y/N]` is Enter's default.
 
 ```mermaid
@@ -1587,7 +1586,6 @@ stateDiagram-v2
   [*] --> printed: --json, --plain, no terminal, accessible, --no-pager, NO_PAGER, pager false, fits
   [*] --> pager: LOLA_PAGER set
   [*] --> viewer: taller than the terminal
-  [*] --> review: a review on a full terminal
   pager --> done: exits
   pager --> printed: fails
   viewer --> search: /
@@ -1595,12 +1593,6 @@ stateDiagram-v2
   search --> cancelled: ctrl+c, a question follows
   viewer --> done: q, esc
   viewer --> cancelled: ctrl+c, a question follows
-  review --> apply: y
-  review --> change: c
-  review --> back: esc
-  review --> quit: q, two or more answers
-  review --> cancelled: n, ctrl+c, q
-  quit --> review: n, enter, esc
   quit --> cancelled: y, ctrl+c
   [*] --> inline: a question, fits or the viewer bypassed
   [*] --> prompt: a question taller than the terminal
@@ -1629,8 +1621,8 @@ stateDiagram-v2
 ```
 
 Rules are tried in the order of the `start` rows below; the first that matches decides. The viewer
-reads its keys from stdin, or from the terminal when stdin is not one; a read-mode viewer draws on
-stdout, a review on stderr, and each prints its text whole where it drew once it closes, so the text
+reads its keys from stdin, or from the terminal when stdin is not one; the viewer draws on
+stdout, and prints its text whole there once it closes, so the text
 stays in the terminal's scrollback. A plan that fits is printed on stderr before its question; one in
 the viewer goes to stdout, which is a terminal too whenever the viewer opens.
 
@@ -1645,8 +1637,7 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | pager | the user's `$LOLA_PAGER`, its stdin the text, uncapped; `LESS=FRX` unless `LESS` is set | `$LOLA_PAGER` is set and is not `cat` |
 | viewer | the text wrapped to the width on the alternate screen; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
 | search | the key line `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n N  next/prev` before the keys, the current match in reverse video | `/` in the viewer or a review |
-| review | the summary in confirm mode, footer `y apply · c change · n cancel · esc back · q quit` and the scrolling keys (`c change` only with a step to change, `esc back` only with a screen before), search's `^n/^p next/prev` | a review on a full terminal, the viewer not bypassed, at any length |
-| quit | `Quit? your answers so far are dropped — nothing has been changed [y/N]`: a review's footer, or after a question's field on its prompt line | `q` in a review or at a question with two or more answers held |
+| quit | the prompt line's note `Quit? your answers so far are dropped — nothing has been changed [y/N]` | `q` at a question with two or more answers held |
 | inline | the text printed on stderr, then the prompt line `Uninstall mymod? [y/N] █` under it (`[y/N]` bold, nothing in color); a hint or note after the field on the same line; `· esc back` at its end with a screen before | a question whose text and prompt line fit the terminal, or the viewer bypassed |
 | prompt | the text in the viewer on stderr, then the rule line, the prompt line (wrapped, never cut) and the key line `⏎ alone = no · q quit · ↑↓ space b  scroll · g G  top/end · /  search` (`⏎ alone` only with a default) | a question whose text and prompt line do not fit |
 
@@ -1664,7 +1655,6 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | start | run | LOLA_PAGER=cat | printed | |
 | start | run | taller than the terminal | viewer | |
 | start | run | fits, or the height unknown | printed | |
-| start | run | a review, the viewer not bypassed | review | at any length; each time it opens again (after Change what?'s back, say) it prints the summary to scrollback once more; a review a pass reaches without asking a step (Esc back to it, Change versions) keeps its `Step N of N — Review` title as it was |
 | start | ask | fits, or the viewer bypassed | inline | the text printed first; a question with no text never opens the viewer |
 | start | ask | taller than the terminal with its prompt | prompt | the prompt line counted at its widest, its longest note included |
 | start | ask | LOLA_PAGER set | pager | the text paged; once the pager exits, the question asked inline |
@@ -1711,19 +1701,7 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | prompt | resize | | prompt | the text wrapped again; the prompt line wraps, the key line is cut from the right |
 | quit | n, enter or esc | inline | inline | where it was |
 | quit | n, enter or esc | in the viewer | prompt | where it was |
-| review | y | | apply | |
-| review | c | a step to change | change | the flow's "Change what?" menu |
-| review | c | no step to change | review | nothing |
-| review | n | | cancelled | `n` cancels here: search steps with Ctrl+N and Ctrl+P |
-| review | ctrl+c | | cancelled | |
-| review | q | fewer than two answers | cancelled | a quit |
-| review | q | two or more answers | quit | |
-| review | esc | a screen before | back | |
-| review | esc | no screen before | review | the footer says `first step — q quits` until the next key |
-| review | empty submit | | review | Enter answers nothing: there is no default |
-| review | ctrl+n or ctrl+p | | review | the next or the previous match |
 | quit | y | | cancelled | a quit |
-| quit | n, enter or esc | | review | where it was |
 | quit | ctrl+c | | cancelled | |
 
 ### Exits
@@ -1732,8 +1710,8 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 |---|---|---|---|
 | printed | a `start` row prints, or the pager failed | nothing | the text; the command goes on |
 | done | the viewer closed, or the pager exited | nothing | the text in the scrollback; the command goes on, a question that follows asked next |
-| apply, change, back | a review's answer | nothing | the flow's next screen (see [Install](#install) and [Profile edit](#profile-edit)) |
-| cancelled | Ctrl+C or `n` in a review, a quit, Ctrl+C in a plan's viewer | nothing | `✗ cancelled — nothing was changed` (or the command's own wording, see [Inputs](#inputs)); 0 |
+| back | Esc at a question with a screen before | nothing | the flow's screen before (see [Install](#install) and [Profile edit](#profile-edit)) |
+| cancelled | Ctrl+C at a question or in a viewer a question follows, a quit | nothing | `✗ cancelled — nothing was changed` (or the command's own wording, see [Inputs](#inputs)); 0 |
 | answered | a letter or the default answered on Enter | nothing | the line with the answer stays; the command goes on with it |
 | refused | stdin ended at a question | nothing | the prompt line with its field empty, then the error, with `hint:` lines; 1 |
 
@@ -1741,8 +1719,7 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 
 | way back | asks again | keeps | drops |
 |---|---|---|---|
-| `n`, Enter or Esc at the quit question | the review | its place and its search | |
-| Esc in a review | the screen before (the flow's) | as the flow keeps | as the flow drops |
+| `n`, Enter or Esc at the quit question | the question | its place and its search | |
 
 ## Accessible mode
 
@@ -1796,7 +1773,7 @@ The flows are the full screen's (the same states, in the same order, and the sam
 differences: nothing goes back, as there is no Esc, so no re-entry rule reached by Esc applies; `q`
 quits nothing; end of input cancels with exit 0 where a full screen's is an error; output never opens
 the viewer; and the review is printed, then asked as the "Apply these changes?" menu, whose Change
-entries reach the same steps the viewer's `c` does.
+entries reach the same steps the question's `c` does.
 
 Accessible mode's own inputs: *a number* is a line holding an option's number; *a blank line* is
 Enter alone; *invalid* is any other line a prompt refuses.

@@ -16,17 +16,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// viewAnswer is how the viewer was answered: in confirm mode y applies, c asks to
-// change an answer, n or Ctrl+C cancel, q quits and Esc goes back a screen. In read mode q and Esc
-// close it (viewClose) and Ctrl+C cancels (viewCancel), which ends the command when a question
-// follows the viewer. In prompt mode an answer letter and Enter answer (viewAnswered), Esc goes
-// back (viewBack), q quits and Ctrl+C cancels.
+// viewAnswer is how the viewer was left: in read mode q and Esc close it (viewClose) and Ctrl+C
+// cancels (viewCancel), which ends the command when a question follows; with a question, Enter
+// answers (viewAnswered), Esc goes back (viewBack), q quits (viewQuit) and Ctrl+C cancels.
 type viewAnswer int
 
 const (
 	viewCancel viewAnswer = iota
-	viewApply
-	viewChange
 	viewBack
 	viewQuit
 	viewClose
@@ -35,30 +31,27 @@ const (
 
 // viewerModel is lola's full-screen viewer: a viewport over content, wrapped to the
 // terminal's width and wrapped again when it is resized, above the rule line, which says where the
-// screen is, and the key line (in confirm mode, one footer line). In confirm mode only y, c, n, q,
-// Esc and Ctrl+C answer; there is no default answer. nav places a confirm-mode viewer in its flow, as keyed places a form: Esc goes
-// back when nav.Back is set and otherwise says q quits, and q asks quitQuestion first with two or
-// more steps answered. s styles the footer, so NO_COLOR and LOLA_COLOR apply to it.
+// screen is, and the key line. With a question (prompt) only its answer letters, Enter, Backspace,
+// Esc, q and Ctrl+C answer it (promptKey); in the pager the other keys scroll and search. nav
+// places the question in its flow, as keyed places a form: Esc goes back when nav.Back is set and
+// otherwise says q quits, and q asks quitQuestion first with two or more steps answered. s styles
+// the footer, so NO_COLOR and LOLA_COLOR apply to it.
 //
 // / opens a search: type a term, Enter jumps to the first line at or below the top that holds it
 // (all lowercase matches any case) and Esc drops the typing; an empty term clears the search.
-// n and N (Ctrl+N and Ctrl+P in confirm mode, where n cancels) step through the matching lines,
+// n and N (Ctrl+N and Ctrl+P with a question, where n answers) step through the matching lines,
 // the current one in reverse video, wrapping at the ends. A term cut across two wrapped lines is
 // not found.
 type viewerModel struct {
 	vp      viewport.Model
 	content string
-	confirm bool
-	// noChange drops the c key and its footer entry, for a review with no answer to change.
-	noChange bool
-	answer   viewAnswer
-	nav      Nav
-	asking   bool // q asked quitQuestion
-	first    bool // Esc with no screen to go back to: the footer says q quits
+	answer  viewAnswer
+	nav     Nav
+	asking  bool // q asked quitQuestion
 	// then is the question asked once the viewer closes; a read-mode footer then says q continues
 	// to it instead of quitting.
 	then string
-	// prompt is the question asked in the viewer; nil in read and confirm mode. Its Show is not
+	// prompt is the question asked in the viewer; nil in read mode. Its Show is not
 	// used: content is its text.
 	prompt *Question
 	// inline draws the prompt line alone, under the text lola printed before the program: no
@@ -80,8 +73,8 @@ type viewerModel struct {
 
 // newViewer is a viewer over content sized to a terminal of width columns and height rows, the
 // last of which is the footer's.
-func newViewer(content string, confirm bool, width, height int) viewerModel {
-	m := viewerModel{vp: viewport.New(), content: strings.TrimSuffix(content, "\n"), confirm: confirm}
+func newViewer(content string, width, height int) viewerModel {
+	m := viewerModel{vp: viewport.New(), content: strings.TrimSuffix(content, "\n")}
 	m.resize(width, height)
 	return m
 }
@@ -212,7 +205,6 @@ func (m viewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stdinEnded:
 		return m.leave(viewCancel)
 	case tea.KeyPressMsg:
-		m.first = false
 		if m.searching {
 			return m.typeSearch(msg)
 		}
@@ -233,46 +225,15 @@ func (m viewerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		switch msg.String() {
-		case "q":
-			switch {
-			case !m.confirm:
-				m.answer = viewClose
-			case m.nav.Answered >= 2:
-				m.asking = true
-				return m, nil
-			default:
-				m.answer = viewQuit
-			}
-			return m, tea.Quit
-		case "esc":
-			switch {
-			case !m.confirm:
-				m.answer = viewClose
-			case m.nav.Back:
-				m.answer = viewBack
-			default:
-				m.first = true
-				return m, nil
-			}
+		case "q", "esc":
+			m.answer = viewClose
 			return m, tea.Quit
 		case "ctrl+c":
 			return m, tea.Quit
-		case "y", "c":
-			if m.confirm && (msg.String() == "y" || !m.noChange) {
-				m.answer = viewApply
-				if msg.String() == "c" {
-					m.answer = viewChange
-				}
-				return m, tea.Quit
-			}
-			return m, nil
 		case "/":
 			m.searching, m.typed = true, ""
 			return m, nil
 		case "n", "ctrl+n":
-			if msg.String() == "n" && m.confirm {
-				return m, tea.Quit
-			}
 			m.step(1)
 			return m, nil
 		case "N", "ctrl+p":
@@ -415,20 +376,15 @@ func (m viewerModel) View() tea.View {
 // between them.
 func (m viewerModel) footerRows() int {
 	switch {
-	case m.confirm:
-		return 1
 	case m.prompt != nil:
 		return 2 + promptRows(*m.prompt, m.width)
 	}
 	return 2
 }
 
-// footer is the lines under the text: in confirm mode confirmFooter, else the rule line, the
+// footer is the lines under the text: the rule line, the
 // prompt line padded to its widest rows when a question is asked, then the key line.
 func (m viewerModel) footer() string {
-	if m.confirm {
-		return m.confirmFooter()
-	}
 	lines := []string{m.rule()}
 	if m.prompt != nil {
 		p := strings.Split(m.promptView(), "\n")
@@ -480,53 +436,14 @@ func (m viewerModel) keyLine() string {
 	return ansi.Truncate(line, m.width, "…")
 }
 
-// confirmFooter is a review's footer: the position, "lines 41–80 of 312 · 25%", in bold, then the
-// answers, esc back and q quit, then the scrolling keys, cut to the width; quitQuestion while q
-// asks it, and the first-screen note after Esc there.
-func (m viewerModel) confirmFooter() string {
-	total := m.vp.TotalLineCount()
-	first := min(m.vp.YOffset()+1, total)
-	last := min(m.vp.YOffset()+m.vp.Height(), total)
-	pos := fmt.Sprintf("lines %d–%d of %d · %d%%", first, last, total, int(m.vp.ScrollPercent()*100))
-	keys := "y apply · c change · n cancel"
-	if m.noChange {
-		keys = "y apply · n cancel"
-	}
-	if m.nav.Back {
-		keys += " · esc back"
-	}
-	keys += " · q quit · / search · space/b page · g/G top/end"
-	if m.term != "" {
-		found := "no match"
-		if len(m.matches) > 0 {
-			found = fmt.Sprintf("%d of %d", m.cur+1, len(m.matches))
-		}
-		keys = "/" + m.term + " " + found + "  ^n/^p next/prev · " + keys
-	}
-	switch {
-	case m.searching:
-		keys = "/" + m.typed + "█  enter search · esc cancel"
-	case m.asking:
-		keys = quitQuestion + " [y/N]"
-	case m.first:
-		keys = "first step — q quits"
-	}
-	return ansi.Truncate(m.s.strong(pos)+"  "+m.s.paint("36", keys), m.width, "…")
-}
-
-// view shows content in the viewer on the terminal, on the alternate screen, and returns once the
-// user quits: in read mode on stdout, in confirm mode on stderr, where lola asks its questions,
-// at nav in its flow, with the answer. It then prints content where it showed it, so it stays in the terminal's
-// scrollback. The keys come from stdin, or from the terminal when stdin is not one. Ctrl+C
-// arriving as a signal is a quit. then names the question asked next, for the footer of a read-mode viewer.
-func (a *app) view(cmd *cobra.Command, content string, confirm, change bool, nav Nav, then string) (viewAnswer, error) {
+// view shows content in the viewer on stdout, on the alternate screen, and returns once the user
+// leaves it, how. It then prints content there, so it stays in the terminal's scrollback. then
+// names the question asked next, for the key line.
+func (a *app) view(cmd *cobra.Command, content, then string) (viewAnswer, error) {
 	out := cmd.OutOrStdout()
-	if confirm {
-		out = cmd.ErrOrStderr()
-	}
 	width, height := a.width(out), a.height(out)
-	m := newViewer(content, confirm, width, height)
-	m.s, m.noChange, m.nav, m.then = style{color: a.color(out)}, !change, nav, then
+	m := newViewer(content, width, height)
+	m.s, m.then = style{color: a.color(out)}, then
 	final, err := a.runViewer(cmd, out, m, width, height)
 	if err != nil {
 		return viewCancel, err

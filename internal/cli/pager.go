@@ -106,7 +106,7 @@ func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, pr
 		fmt.Fprint(w, buf.String())
 		return nil
 	}
-	ans, err := a.view(cmd, buf.String(), false, false, Nav{}, then)
+	ans, err := a.view(cmd, buf.String(), then)
 	switch {
 	case err != nil:
 		warn("the viewer failed: " + untrusted.CleanErr(err).Error())

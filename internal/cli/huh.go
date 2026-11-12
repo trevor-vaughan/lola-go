@@ -143,11 +143,7 @@ type huhForms struct {
 	// before the first form in color, and keeps the answer in isDark.
 	dark   func() (bool, error)
 	isDark *bool
-	view   func(content string, change bool, nav Nav) (viewAnswer, error) // the viewer in confirm mode on stderr (app.view)
-	ask    func(Question) (rune, error)                                   // a question on the full terminal (app.ask), on stderr
-	// viewer reports whether the review may open the viewer (app.paging), asked only when it
-	// would: it reads config.yaml.
-	viewer func() bool
+	ask    func(Question) (rune, error) // a question on the full terminal (app.ask), on stderr
 	// cancelRun stops the full-terminal form running; stdinEnded says stdin's end of input did.
 	// Both are set from the form's input goroutine and read after the form returns.
 	cancelRun  context.CancelFunc
@@ -164,11 +160,7 @@ func (a *app) accessible() bool {
 func (a *app) huhPrompter(cmd *cobra.Command) Prompter {
 	h := &huhForms{stdin: cmd.InOrStdin(), in: &eofReader{r: cmd.InOrStdin()}, out: cmd.ErrOrStderr(), tty: interactive(cmd),
 		accessible: a.accessible(), color: a.color(cmd.ErrOrStderr()), dark: func() (bool, error) { return a.darkBackground(cmd) },
-		view: func(content string, change bool, nav Nav) (viewAnswer, error) {
-			return a.view(cmd, content, true, change, nav, "")
-		},
-		ask:    func(q Question) (rune, error) { return a.ask(cmd, q) },
-		viewer: func() bool { return a.paging(cmd).viewer }}
+		ask: func(q Question) (rune, error) { return a.ask(cmd, q) }}
 	if p, err := paths.Resolve(a.getenv); err == nil {
 		h.home = p.Home
 	}
@@ -1188,53 +1180,49 @@ const reviewBack = "back"
 var reviewLabels = map[string]string{ReviewApply: "Apply", ReviewScope: "Change scope", ReviewModules: "Change modules",
 	ReviewAssistants: "Change assistants", ReviewVersions: "Change versions", ReviewComponents: "Change components", ReviewQuit: "Quit", reviewBack: "Back to the review"}
 
-// Review shows the summary and asks what to do with it. On a full terminal it is the
-// viewer's confirm mode: y applies, n cancels, q quits, Esc goes back to the last step, and c opens
-// the menu of the steps to change (the Change entries of st.Options, or back to the review, which
-// Esc also goes back to), whose answer the flow asks again before it comes back to the review;
-// with no step to change, the viewer does not offer c. In accessible mode,
-// and wherever paging bypasses the viewer (--no-pager, NO_PAGER, pager: false, an explicit
-// $LOLA_PAGER), the summary is printed, then the menu of every entry, Apply first and the default.
-// Either way the summary is headed by the review's number when the pass asked other steps.
+// Review shows the summary and asks what to do with it. On a full terminal it is a question,
+// "Apply these changes? [y/c/n]" with no default, under the summary or with it in the viewer
+// (Ask): y applies, n cancels, q quits, Esc goes back to the last step, and c opens the menu of
+// the steps to change (the Change entries of st.Options, or back to the review, which Esc also
+// goes back to), whose answer the flow asks again before it comes back to the review; with no step
+// to change, the question is "[y/n]". In accessible mode the summary is printed, then the menu of
+// every entry, with no default: a blank line asks again. Either way the summary is headed by the
+// review's number when the pass asked other steps.
 func (h *huhForms) Review(st ReviewStep) (string, error) {
 	if st.Step.Of > 1 {
 		st.Summary = st.Step.title(0, "Review") + "\n" + st.Summary
 	}
-	if !h.accessible && h.viewer() {
-		changes := slices.DeleteFunc(slices.Clone(st.Options), func(o string) bool { return o == ReviewApply || o == ReviewQuit })
-		for {
-			ans, err := h.view(st.Summary, len(changes) > 0, st.Nav)
-			switch {
-			case err != nil:
-				return "", err
-			case ans == viewApply:
-				return ReviewApply, nil
-			case ans == viewBack:
-				return "", ErrBack
-			case ans == viewQuit:
-				return "", h.quit()
-			case ans == viewCancel:
-				return "", ErrAborted
-			}
-			choice, err := h.menu("Change what?", append(slices.Clone(changes), reviewBack), changes[0], Nav{Back: true, Answered: st.Nav.Answered})
-			if errors.Is(err, ErrBack) {
-				continue
-			}
-			if err != nil || choice != reviewBack {
-				return choice, err
-			}
+	if h.accessible {
+		fmt.Fprint(h.out, st.Summary)
+		choice, err := h.menu("Apply these changes?", st.Options, "", st.Nav)
+		if err == nil && choice == ReviewQuit {
+			return "", ErrAborted
+		}
+		return choice, err
+	}
+	changes := slices.DeleteFunc(slices.Clone(st.Options), func(o string) bool { return o == ReviewApply || o == ReviewQuit })
+	q := Question{Show: func(w io.Writer, _ style) { fmt.Fprint(w, st.Summary) }, Prompt: "Apply these changes?", Answers: "ycn", Nav: st.Nav}
+	if len(changes) == 0 {
+		q.Answers = "yn"
+	}
+	for {
+		ans, err := h.Ask(q)
+		switch {
+		case err != nil:
+			return "", err
+		case ans == 'y':
+			return ReviewApply, nil
+		case ans == 'n':
+			return "", ErrAborted
+		}
+		choice, err := h.menu("Change what?", append(slices.Clone(changes), reviewBack), changes[0], Nav{Back: true, Answered: st.Nav.Answered})
+		if errors.Is(err, ErrBack) {
+			continue
+		}
+		if err != nil || choice != reviewBack {
+			return choice, err
 		}
 	}
-	fmt.Fprint(h.out, st.Summary)
-	def := ReviewApply
-	if h.accessible {
-		def = "" // a line prompt takes no default: Apply needs its number, and a blank line asks again
-	}
-	choice, err := h.menu("Apply these changes?", st.Options, def, st.Nav)
-	if err == nil && choice == ReviewQuit {
-		return "", ErrAborted
-	}
-	return choice, err
 }
 
 // menu asks title over the review menu's entries opts, labelled, with choice under the cursor, at

@@ -694,97 +694,86 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 		Expect(err).To(MatchError(ErrAborted))
 	})
 
-	It("shows the review in the viewer's confirm mode on a full terminal, c opening the steps to change", func() {
-		// review answers the viewer with answers in turn, and the Change menu with Enter.
-		offered := []bool{}
-		review := func(menuKeys string, answers ...viewAnswer) *huhForms {
-			return &huhForms{stdin: keys(menuKeys), in: &eofReader{r: strings.NewReader("")}, out: &bytes.Buffer{}, tty: true,
-				viewer: func() bool { return true },
-				view: func(s string, change bool, _ Nav) (viewAnswer, error) {
-					Expect(s).To(Equal("Summary:\n"))
-					offered = append(offered, change)
-					a := answers[0]
-					answers = answers[1:]
-					return a, nil
-				}}
-		}
+	// reviewing is the review on a full terminal: ask answers its questions with results in turn,
+	// recording each, and the Change menu reads menuKeys.
+	type result struct {
+		r   rune
+		err error
+	}
+	reviewing := func(asked *[]Question, menuKeys string, results ...result) *huhForms {
+		return &huhForms{stdin: keys(menuKeys), in: &eofReader{r: strings.NewReader("")}, out: &bytes.Buffer{}, tty: true,
+			ask: func(q Question) (rune, error) {
+				*asked = append(*asked, q)
+				res := results[0]
+				results = results[1:]
+				return res.r, res.err
+			}}
+	}
+
+	It("asks the review with y, c and n and no default, c opening the steps to change", func() {
+		var asked []Question
 		all := ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewScope, ReviewComponents, ReviewQuit}}
-		got, err := review("\r", viewApply).Review(all)
+		got, err := reviewing(&asked, "\r", result{r: 'y'}).Review(all)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
-		_, err = review("\r", viewCancel).Review(all)
+		Expect(asked[0].Prompt).To(Equal("Apply these changes?"))
+		Expect(asked[0].Answers).To(Equal("ycn"), "no default: Enter alone neither applies nor cancels")
+		Expect(ShowText(asked[0])).To(Equal("Summary:\n"))
+		_, err = reviewing(&asked, "\r", result{r: 'n'}).Review(all)
 		Expect(err).To(MatchError(ErrAborted))
-		got, err = review("\r", viewChange).Review(all)
+		got, err = reviewing(&asked, "\r", result{r: 'c'}).Review(all)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewScope), "Enter takes the first step to change")
-		Expect(offered).To(Equal([]bool{true, true, true}), "with steps to change, the viewer offers c")
 
-		offered = nil
-		got, err = review("jj\r", viewChange, viewApply).Review(all)
+		asked = nil
+		got, err = reviewing(&asked, "jj\r", result{r: 'c'}, result{r: 'y'}).Review(all)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply), "the menu's last entry goes back to the review")
-		Expect(offered).To(Equal([]bool{true, true}))
-		_, err = review("\x03", viewChange).Review(all)
+		Expect(asked).To(HaveLen(2))
+		_, err = reviewing(&asked, "\x03", result{r: 'c'}).Review(all)
 		Expect(err).To(MatchError(ErrAborted), "Ctrl+C in the Change menu cancels")
 
-		offered = nil
-		got, err = review("", viewApply).Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}})
+		asked = nil
+		got, err = reviewing(&asked, "", result{r: 'y'}).Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
-		Expect(offered).To(Equal([]bool{false}), "with no step to change, the viewer is asked not to offer c")
+		Expect(asked[0].Answers).To(Equal("yn"), "with no step to change, c is not offered")
 	})
 
 	It("goes back from the review on Esc, quits on q, and returns from the Change menu to the review on Esc", func() {
-		var navs []Nav
-		review := func(menuKeys string, answers ...viewAnswer) *huhForms {
-			return &huhForms{stdin: keys(menuKeys), in: &eofReader{r: strings.NewReader("")}, out: &bytes.Buffer{}, tty: true,
-				viewer: func() bool { return true },
-				view: func(_ string, _ bool, nav Nav) (viewAnswer, error) {
-					navs = append(navs, nav)
-					a := answers[0]
-					answers = answers[1:]
-					return a, nil
-				}}
-		}
+		var asked []Question
 		all := ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewScope, ReviewQuit}, Nav: Nav{Back: true, Answered: 3}}
-		_, err := review("", viewBack).Review(all)
+		_, err := reviewing(&asked, "", result{err: ErrBack}).Review(all)
 		Expect(err).To(MatchError(ErrBack))
-		Expect(navs).To(Equal([]Nav{{Back: true, Answered: 3}}), "the viewer gets the review's place in the flow")
-		_, err = review("", viewQuit).Review(all)
+		Expect(asked[0].Nav).To(Equal(Nav{Back: true, Answered: 3}), "the question gets the review's place in the flow")
+		_, err = reviewing(&asked, "", result{err: &quitError{}}).Review(all)
 		Expect(isQuit(err)).To(BeTrue())
-		got, err := review(escKey, viewChange, viewApply).Review(all)
+		got, err := reviewing(&asked, escKey, result{r: 'c'}, result{r: 'y'}).Review(all)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply), "Esc in the Change menu went back to the review, which y applied")
-		_, err = review("qy", viewChange).Review(all)
+		_, err = reviewing(&asked, "qy", result{r: 'c'}).Review(all)
 		Expect(isQuit(err)).To(BeTrue(), "q in the Change menu asks, three steps being answered, and y quits")
-
-		bypassed := onTerminal(escKey)
-		bypassed.viewer = func() bool { return false }
-		_, err = bypassed.Review(all)
-		Expect(err).To(MatchError(ErrBack), "Esc in the menu that replaces the viewer goes back too")
 	})
 
-	DescribeTable("prints the review and asks with the menu, as accessible mode does, when the viewer is bypassed",
+	DescribeTable("asks the review under its printed summary when the viewer is bypassed",
 		func(noPager bool, setup func()) {
 			if setup != nil {
 				setup()
 			}
+			GinkgoT().Setenv("COLUMNS", "80")
+			GinkgoT().Setenv("LINES", "40")
 			a := &app{getenv: os.Getenv, termOut: true, termErr: true, noPager: noPager}
 			cmd := &cobra.Command{}
 			var stdout, stderr bytes.Buffer
 			cmd.SetOut(&stdout)
 			cmd.SetErr(&stderr)
-			// The menu's second entry, Change components.
-			cmd.SetIn(keys("j\r"))
-			h := a.huhPrompter(cmd).(*huhForms)
-			h.view = func(string, bool, Nav) (viewAnswer, error) {
-				Fail("the review opened the viewer")
-				return viewCancel, nil
-			}
-			got, err := h.Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
+			// c at the review, then the menu's first entry, Change components.
+			cmd.SetIn(paced("c\r", "\r"))
+			got, err := a.huhPrompter(cmd).Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewComponents, ReviewQuit}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(ReviewComponents))
-			Expect(stderr.String()).To(HavePrefix("Summary:\n"), "printed above the menu, which picked Change components")
+			Expect(stderr.String()).To(HavePrefix("Summary:\n"), "printed above the question")
+			Expect(stderr.String()).NotTo(ContainSubstring(altScreen))
 		},
 		Entry("with NO_PAGER set", false, func() { GinkgoT().Setenv("NO_PAGER", "1") }),
 		Entry("with --no-pager", true, nil),
@@ -793,21 +782,22 @@ var _ = Describe("the huh adapter in accessible mode", func() {
 			Expect(os.MkdirAll(dir, 0o700)).To(Succeed())
 			Expect(os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("version: 1\npager: false\n"), 0o600)).To(Succeed())
 		}),
-		Entry("with $LOLA_PAGER set", false, func() { GinkgoT().Setenv("LOLA_PAGER", "less") }),
 	)
 
-	It("opens the review in the viewer when nothing bypasses it", func() {
+	It("asks the review in the viewer when its summary and question do not fit the terminal", func() {
 		GinkgoT().Setenv("LOLA_PAGER", "")
+		GinkgoT().Setenv("COLUMNS", "80")
+		GinkgoT().Setenv("LINES", "4")
 		a := &app{getenv: os.Getenv, termOut: true, termErr: true}
 		cmd := &cobra.Command{}
 		cmd.SetOut(&bytes.Buffer{})
 		cmd.SetErr(&out)
-		h := a.huhPrompter(cmd).(*huhForms)
-		h.view = func(string, bool, Nav) (viewAnswer, error) { return viewApply, nil }
-		got, err := h.Review(ReviewStep{Summary: "Summary:\n", Options: []string{ReviewApply, ReviewQuit}})
+		cmd.SetIn(keys("y\r"))
+		got, err := a.huhPrompter(cmd).Review(ReviewStep{Summary: numbered(10), Options: []string{ReviewApply, ReviewQuit}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(ReviewApply))
-		Expect(out.String()).To(BeEmpty(), "the viewer showed the summary")
+		Expect(out.String()).To(ContainSubstring(altScreen))
+		Expect(ansiStrip(out.String())).To(HaveSuffix(numbered(10) + "Apply these changes? [y/n] y\n"))
 	})
 
 	It("sizes a full-screen list to show every option that fits, and caps a long one", func() {
