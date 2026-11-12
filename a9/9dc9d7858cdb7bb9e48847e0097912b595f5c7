@@ -1,0 +1,44 @@
+docs/decisions.md
+  s_1570dbbc567460::t_64873e7c895daf 192
+docs/architecture/install-flow.md
+  s_1570dbbc567460::t_707b8452ce00d4 225-230,232-233,297-298,305-307
+docs/architecture/tui-flows.md
+  s_1570dbbc567460::t_711d0b70ec6e15 1663,1668
+AGENTS.md
+  s_1570dbbc567460::t_60b91fbca539bf 77
+  s_1570dbbc567460::t_53c997a5c2d78f 79
+  s_1570dbbc567460::t_a8a87529663959 81-84,87-90,93-94
+docs/architecture/sync.md
+  s_1570dbbc567460::t_f6b3a21fe08326 326-335,337-344
+  s_a19e98bfdc50a0::t_41ba0b3bfe49f6 345-347
+docs/usage.md
+  s_1570dbbc567460::t_c60c1fdd26eb07 626
+docs/guides/choosing-what-to-install.md
+  s_1570dbbc567460::t_c60c1fdd26eb07 90-94,98,102-104
+docs/reference/output-contract.md
+  s_1570dbbc567460::t_16a173a42b0783 123-124,127,129-130,134-145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a99dc9d7858cdb7bb9e48847e0097912b595f5c7",
+  "prompts": {},
+  "sessions": {
+    "s_1570dbbc567460": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965b813-af19-4711-b624-470b11a82df3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_a19e98bfdc50a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5fe4512c-5f0c-4a1e-b816-22adee7085c3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
