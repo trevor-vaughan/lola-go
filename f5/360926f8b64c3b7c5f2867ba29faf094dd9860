@@ -1,0 +1,110 @@
+docs/architecture/tui-flows.md
+  s_1570dbbc567460::t_ebd6b194988529 1961
+  s_1570dbbc567460::t_9bc2c48dec2f92 1561,1707
+  s_1570dbbc567460::t_f8dffd37043d6a 1706
+  s_1570dbbc567460::t_b6c5ae153a4831 1605-1609,1611-1622,1649-1651,1668-1670,1692-1693,1708
+  s_1570dbbc567460::t_33dd6906dedeca 1610,1687-1691,1694-1696
+  s_1570dbbc567460::t_35b26bb15fd508 1438
+  s_a19e98bfdc50a0::t_f0e27ee97fea65 1052-1053,1091,1114,1128-1130,1164,1170,1184,1194-1195,1201,1306-1308,1361,1370,1419,1439-1441,1492,1499,1509,1523-1524,1528-1529,1534-1535,1539-1540,1562-1563,1565,1697-1705,1709-1713,1737-1738,1811,1823,1826,1864-1865,1889-1895,1917-1920,1939-1940,1948,1957-1960,1962,1994
+internal/cli/huh.go
+  s_1570dbbc567460::t_994e570e63f3a6 105-109
+  s_1570dbbc567460::t_6a502a07fd2ff9 4,873-882,885-909,911-920,922
+  s_1570dbbc567460::t_816459cdcc067f 921
+  s_a19e98bfdc50a0::t_f1a08300aa67a0 110-112,147,170,245,923-928
+internal/cli/huh_internal_test.go
+  s_1570dbbc567460::t_925af4266ccf09 418,423,425-427,429-430,563,581
+  s_a19e98bfdc50a0::t_1e2d46d8f84a00 856,864
+internal/cli/viewer.go
+  s_1570dbbc567460::t_1d9fb16a0f4eb3 89,106-107,355,435-437,440
+  s_1570dbbc567460::t_9a8ba2e8cce830 9-10,22-23,33,60-71,294-351,358-359,361-363,369-379,402-405,414,432-434,438-439
+  s_1570dbbc567460::t_e68f7ac2d79156 172,188-199
+  s_1570dbbc567460::t_5d65e6d92f339c 226,354,357,360,364-367,380-400,406,415,417-418,420-421
+  s_1570dbbc567460::t_de650a3496bac9 368
+  s_a19e98bfdc50a0::t_4f278194384ea3 90-97,101-102,104-105,200-201,212-213,222,230-234,352-353,356,407,426-427,462-466,469,475,530-531,537-565,567
+internal/cli/keys_paths_internal_test.go
+  s_1570dbbc567460::t_825fd368a17559 44
+  s_1570dbbc567460::t_1165e968808cac 549
+  s_1570dbbc567460::t_22be109ea56d39 51,57-58,63-64,67,70,274,276-277,289-355,357-375,377-395,419-520,524-527,529,550-559,564,566-568
+  s_1570dbbc567460::t_40c3eeed9aaf02 356,376,396-418,523,531,534-548,560
+  s_a19e98bfdc50a0::t_c1bd3e265e317d 19,47-50,521-522,528,530,532-533,561-563,565,569
+e2e/install/install.venom.yml
+  s_a19e98bfdc50a0::t_79fdd7352afa21 30-33,791-822
+internal/cli/ask.go
+  s_a19e98bfdc50a0::t_d50d91db0a67b6 4-7,10-13,60-132
+internal/cli/ask_internal_test.go
+  s_a19e98bfdc50a0::t_8d6e0fb2119b56 4-7,12,14,94-222
+internal/cli/cmd_market.go
+  s_a19e98bfdc50a0::t_ed49a0f0b7bfd2 380
+internal/cli/cmd_sync.go
+  s_a19e98bfdc50a0::t_18af42bd212c65 548-549
+internal/cli/cmd_tidy.go
+  s_a19e98bfdc50a0::t_d105902e9320cd 159
+internal/cli/confirm_test.go
+  s_a19e98bfdc50a0::t_bc9bd44113bb72 286,289-290,293-294
+internal/cli/export_test.go
+  s_a19e98bfdc50a0::t_b28baa9462d4f2 1-25
+internal/cli/flow.go
+  s_a19e98bfdc50a0::t_2f6cdf39a91bd5 936,939-940,1597,2343
+internal/cli/flow_test.go
+  s_a19e98bfdc50a0::t_a21c53285310be 38,57-59,84,166,178,190,198-232
+internal/cli/interrupt_internal_test.go
+  s_a19e98bfdc50a0::t_b6c6ac280e840d 103
+internal/cli/keys.go
+  s_a19e98bfdc50a0::t_48b0979da2ec07 25-33
+internal/cli/keys_internal_test.go
+  s_a19e98bfdc50a0::t_e73fbe00f67c49 168,170-172,174
+internal/cli/migrate_test.go
+  s_a19e98bfdc50a0::t_1824705c1a47ba 219-225
+internal/cli/misc2_paths_test.go
+  s_a19e98bfdc50a0::t_b25f3e4a2ff074 21-22
+internal/cli/profile_add.go
+  s_a19e98bfdc50a0::t_3dea2bf7415f7d 69
+internal/cli/profile_move.go
+  s_a19e98bfdc50a0::t_8f94f1bafeae8a 69
+internal/cli/profile_remove.go
+  s_a19e98bfdc50a0::t_51c9cd3985363a 37,39
+internal/cli/profile_split.go
+  s_a19e98bfdc50a0::t_d76d31f7fdcb11 29,36,105,110-111
+internal/cli/profile_update.go
+  s_a19e98bfdc50a0::t_f2eab126eda2b6 77
+internal/cli/prompt.go
+  s_a19e98bfdc50a0::t_ff5d426a2b9a25 23-26,39,106-115,117,119,133,135-140,142,149-154,156,158
+internal/cli/prompter.go
+  s_a19e98bfdc50a0::t_7d1927e634fa1c 12,37-41,89-96,110-112,118,498-499
+internal/cli/remoteprofile_test.go
+  s_a19e98bfdc50a0::t_c1c2eb54b6eae6 419-425,456,459,463-468,1161-1162,1173,1175
+internal/cli/scope.go
+  s_a19e98bfdc50a0::t_d220203a509c36 157
+internal/cli/sync_test.go
+  s_a19e98bfdc50a0::t_64ef2639b93ef5 23,32,34,36,49-58,63,65-68,741,743-748
+internal/cli/theme_internal_test.go
+  s_a19e98bfdc50a0::t_f1c3e4c2d22519 293,296-298
+internal/cli/trust.go
+  s_a19e98bfdc50a0::t_bae9fa04a8a919 187,190-191,194
+internal/cli/trust_test.go
+  s_a19e98bfdc50a0::t_87b537ce5b65f3 36-37,39,45-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f5360926f8b64c3b7c5f2867ba29faf094dd9860",
+  "prompts": {},
+  "sessions": {
+    "s_1570dbbc567460": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965b813-af19-4711-b624-470b11a82df3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_a19e98bfdc50a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5fe4512c-5f0c-4a1e-b816-22adee7085c3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
