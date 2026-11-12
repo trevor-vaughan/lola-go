@@ -120,23 +120,29 @@ The output formats lola's commands share. It is split out of [usage](../usage.md
   - When stdout and stderr are terminals, human output and help taller than the terminal open
     in lola's viewer, the same on every OS. Output that fits is printed as it is.
   - `↑`/`↓` or `j`/`k` scroll a line, `PgUp`/`PgDn` or `b`/space a page, `g`/`G` or
-    `Home`/`End` go to the top or the end, and `q`, Esc or Ctrl+C quit; the footer shows where
-    you are (`lines 41–80 of 312 · 25%`).
+    `Home`/`End` go to the top or the end, and `q`, Esc or Ctrl+C quit; a bold rule under the
+    text shows where you are (`━━ lines 41–80 of 312 · ↓ 232 more`), and the line under it the keys.
   - `/` searches:
     - Type a term and press Enter to jump to the first line at or below the top that holds it,
-      with that line in reverse video and the footer saying which match it is (`/trust 2 of 7`).
+      with that line in reverse video and the key line saying which match it is (`/trust 2 of 7`).
     - A term in lowercase matches any case; one with a capital matches exactly.
-    - `n`/`N` go to the next and previous match, wrapping at the ends; in a confirmation's plan,
-      where `n` cancels, they are Ctrl+N and Ctrl+P.
+    - `n`/`N` go to the next and previous match, wrapping at the ends; with a question in the
+      viewer, where `n` is an answer, they are Ctrl+N and Ctrl+P.
     - Esc stops typing, and Enter on an empty term clears the search.
     - A term split across a wrapped line is not found.
   - On quit the full text is printed, so it stays in your scrollback.
-  - The plan a confirmation question follows (`uninstall`, `cache rm`, `cache clean`,
-    `migrate`, a bare `init`), the trust diff and removals `sync` asks about, the trash's restore
-    plan, the profiles `profile --add` and `--update` ask about, and what `--trust` accepted when
-    `Proceed?` follows open the same way, and the
-    question comes after you quit it with `q` or Esc; Ctrl+C there ends the command instead (`✗ cancelled — nothing was changed`, or the command's own wording, exit
-    0), without asking.
+  - A yes/no question (`uninstall`, `cache rm`, `cache clean`, `migrate`, a bare `init`, the
+    removals `sync` asks about, the profiles `profile --add` and `--update` ask about, hook consent,
+    `Proceed?`) and the install review sit under the text they ask about: printed, the prompt
+    `Uninstall mymod? [y/N]` on the next line, when both fit the terminal; otherwise in the viewer,
+    the prompt between the rule and the keys. Type the answer's letter and press Enter; Enter alone
+    takes the capital letter's answer (`[y/N]`: no), and the review (`[y/c/n]`) has none. Esc goes
+    back where there is a step before, `q` quits, Ctrl+C cancels (`✗ cancelled — nothing was
+    changed`, exit 0). With `$LOLA_PAGER` set, the text goes to your pager first and the question is
+    asked after it.
+  - The trust diff `sync` asks about and the trash's restore plan open the same way before their
+    picker: `q  continue to: <question>` closes the viewer and opens it; Ctrl+C ends the command
+    without asking.
   - In order, `--json` or `--plain`, a stream that is not a terminal, accessible mode
     (`LOLA_ACCESSIBLE=1` or `TERM=dumb`), `--no-pager`, `NO_PAGER` set to a non-empty value, and
     `pager: false` in your `config.yaml` print without it.

@@ -1660,12 +1660,12 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | start | ask | LOLA_PAGER set | pager | the text paged; once the pager exits, the question asked inline |
 | pager | exits | | done | lola ignores Ctrl+C while it runs, as git does; the question, if one follows, is asked next |
 | pager | fails | | printed | not found, found in the current directory, or exits non-zero: `⚠ <why>; showing it here`, and the text printed capped |
-| viewer | scroll | | viewer | the footer's position follows |
+| viewer | scroll | | viewer | the rule line's position follows |
 | viewer | resize | | viewer | the text wrapped again, the top line kept in range; with a search, the first match at or below the top line is the current one |
 | viewer | / | | search | |
 | viewer | n or N | | viewer | the next or the previous match, wrapping at the ends; nothing without a search |
 | viewer | q | | done | the text printed; a question that follows is asked next |
-| viewer | esc | | done | as `q`; the footer names only `q` |
+| viewer | esc | | done | as `q`; the key line names only `q` |
 | viewer | ctrl+c | nothing asked after | done | the text printed; exit 0 |
 | viewer | ctrl+c | a question follows | cancelled | the text printed; the question is not asked |
 | viewer | y, c or n | | viewer | nothing |

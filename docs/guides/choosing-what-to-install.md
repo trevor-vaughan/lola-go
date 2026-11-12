@@ -87,21 +87,21 @@ stateDiagram-v2
    - With several destinations, a module whose preselection is the same everywhere gets one page
      for all of them; otherwise it gets one page per destination, titled `<module> — project
      (<root>)` or `<module> — user`.
-5. **Review**: the summary in lola's [viewer](../usage.md#output-contract), with
-   `y apply · c change · n cancel · esc back · q quit` in its footer.
-   - `y` applies; `n` and Ctrl+C cancel; `q` quits and Esc goes back to the last step you
-     answered (see [Keys](#keys-q-quits-esc-goes-back)); Enter answers nothing.
+5. **Review**: the summary, then `Apply these changes? [y/c/n]` under it, or with it in lola's
+   [viewer](../usage.md#output-contract) when the summary does not fit your terminal.
+   - Type `y` and Enter to apply; `n` and Ctrl+C cancel; `q` quits and Esc goes back to the last
+     step you answered (see [Keys](#keys-q-quits-esc-goes-back)). Enter alone answers nothing:
+     the review has no default.
    - `c` opens a menu of Change scope, Change modules, Change assistants and Change components
      (each offered when that step was asked), ending with **Back to the review** (Esc there goes
      back to the review too). When no step can change (every answer came from a flag or the
-     situation), the footer omits `c change` and `c` does nothing.
+     situation), the question is `[y/n]` and `c` is not an answer.
    - Changing a step asks it again with your answers preselected, keeps later answers that still
      apply, and comes back to the review. Change scope keeps the component picks of the
      destinations you keep, and the summary counts the picks of the ones you remove as dropped.
-   - When you quit the viewer, the summary stays printed on your terminal.
-   - In accessible mode, and wherever the viewer is turned off (`--no-pager`, `NO_PAGER`,
-     `pager: false`, a `$LOLA_PAGER` you set), the summary is printed, then the menu of
-     **Apply**, the Change entries and Quit.
+   - The summary stays printed on your terminal, with your answer under it.
+   - In accessible mode the summary is printed, then the menu of **Apply**, the Change entries and
+     Quit.
 
 A step with no real choice is not shown: a scope, module, assistant or component flag answers
 it, as does a single installed assistant or a module with one component. The review is shown

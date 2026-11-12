@@ -222,16 +222,15 @@ far, and `remaining` forecasts the rest, exactly once what decides a step is kno
 (`componentPages`, shared with `ensureComponents`, and `ComponentPage.lists`), one field per step
 before.
 
-The huh adapter titles each list `Step n of m — <title>`, says `enter: next` under each but a form's
-last, and shows the review in the viewer's confirm mode (`app.view`): `viewApply` applies,
-`viewCancel` cancels, `viewQuit` quits, `viewBack` goes back a step, and `viewChange` opens the
-Change menu (`menu`), whose last entry, `reviewBack`, returns to the review, as Esc there does (the
-viewer is offered `change` only when the review has a Change entry).
+The huh adapter titles each list `Step n of m — <title>` and says `enter: next` under each but a form's
+last. It asks the review through `Prompter.Ask` (`huhForms.Review`): `Apply these changes? [y/c/n]`
+with no default, under the summary or with it in the viewer by `app.ask`'s fit rule. `y` applies, `n`
+and Ctrl+C cancel, `q` quits, Esc goes back a step, and `c` opens the Change menu (`menu`), whose last
+entry, `reviewBack`, returns to the review, as Esc there does. With no Change entry the question is
+`[y/n]`.
 
-In accessible mode, and whenever `paging` would not open the viewer (`huhForms.viewer`, asked only
-at the review since it reads `config.yaml`), it prints the summary before the full menu, whose
-cursor starts on Apply; in accessible mode the menu has no default (`menu` with no choice), so a
-blank line asks again.
+In accessible mode it prints the summary before the full menu (`menu` with no choice, so no default
+and a blank line asks again); the review's yes/no questions elsewhere are `askLine` prompts.
 
 `Prompter` implementations: the huh adapter (inline forms on stderr; accessible line prompts under
 `LOLA_ACCESSIBLE=1` or `TERM=dumb`, with an `eofReader` that turns end of input into a cancel), the
@@ -295,16 +294,16 @@ assistants; forgetting a picker reuses the review's Change machinery (`review`),
 moves its picks to `prevPicks`. `nav` derives each step's `Nav` from `before` and `held`, the
 answers held from screens the user answered.
 
-`askPage` asks a page and, when nothing is picked of a preselection, `ConfirmEmpty`, whose Esc asks
-the page again with nothing ticked. Inside the adapter, Esc from Add a source… answers the picker's
+`askPage` asks a page and, when nothing is picked of a preselection, `Install <module> with no
+components?` (`askYes`), whose Esc asks the page again with nothing ticked. Inside the adapter, Esc from Add a source… answers the picker's
 `AddSource` with no source (back to the picker), from Choose… asks the trust question again, and
 from the review's Change menu shows the review again; `scopePicker.pick` asks the scope picker again
 from Other directory….
 
 `tidyChoose` asks the move picker again, preselected, from the keep picker; `askMappings` walks its
 root questions by index and, through `askTargets`, the assistant questions, recomputed from the
-roots answered, going back from the first of them to the last root. `Prompter.Confirm` takes a `Nav`
-too: `tidyChoose` and `askMappings` return the steps they asked, which tidy's closing question and
-`app.confirm`'s "Migrate?" pass as `Answered` (no `Back`: the engine asks them after the pickers),
+roots answered, going back from the first of them to the last root. `Prompter.Ask` takes a `Nav`
+too (in its `Question`): `tidyChoose` and `askMappings` return the steps they asked, which tidy's
+closing question and the "Migrate?" question pass as `Answered` (no `Back`: the engine asks them after the pickers),
 so `q` there asks first after two answers, and Esc's note reads `no step to go back to — q quits`
 rather than `first step`; every other caller passes `Nav{}`.

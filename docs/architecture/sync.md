@@ -323,15 +323,28 @@ printed.
 
 `viewerModel` (`internal/cli/viewer.go`) is a bubbletea model over `bubbles/v2/viewport`:
 `ansi.Wrap` to the width, again on `tea.WindowSizeMsg`; `g`/`G`/`Home`/`End` added to the viewport's
-keys; a footer with the position in `style.strong` and the keys through `style.paint`; confirm mode,
-which answers a `viewAnswer`: `y` apply, `c` change, `n`/Ctrl+C cancel, `q` quit (`viewQuit`) and
-Esc back (`viewBack`), with the keys of `keyed` (below) by its `Nav`: the answers come first in its
-footer, so a narrow terminal cuts the scrolling keys (the install review, below).
+keys; under the text a bold rule (`rule`: `━━ lines 41–80 of 312 · ↓ 232 more`, `· end` at the last
+line), then the key line (`keyLine`, cut from the right to the width; `keyLineFor` builds it from
+`viewerKeys`, each entry tagged with the modes it shows in). It has three modes. Read mode scrolls
+and searches; `q`, Esc close it and Ctrl+C cancels (`viewCancel`). Continue mode, when `then` names
+the question asked next, puts `q  continue to: <then>` first in the key line. Prompt mode (`prompt`
+is the `Question`) puts the prompt line between the rule and the keys: only its answer letters,
+Enter, Backspace, Esc, `q` and Ctrl+C answer (`promptKey`), so the search steps with Ctrl+N and
+Ctrl+P, and `⏎ alone = no` leads the key line when the question has a default. With `inline` set, the
+prompt line is drawn alone, under text lola printed before the program: no viewport and no alternate
+screen.
 
-`app.view(cmd, content, confirm, change, nav)` runs it; with `change` false `viewerModel.noChange`
-drops the `c` key and its footer entry. It runs on the alternate screen, on stdout (read mode) or
-stderr (confirm mode), with the command's stdin unless that is `os.Stdin` (then bubbletea opens the
-terminal), and writes the text to the same stream after it quits.
+`app.view(cmd, content, then)` runs the read or continue mode on stdout, on the alternate screen, and
+prints the text there after it quits. Questions go through `app.ask` (`internal/cli/ask.go`), which
+renders the question's text, then picks by the fit rule (`fits`, with `promptRows` for the prompt
+line at its widest): through a `$LOLA_PAGER`, the text goes to that pager and the prompt is inline
+after it; when text and prompt fit, the text is printed and the prompt is inline; otherwise the
+viewer runs in prompt mode on stderr. `askIn` runs the model, prints the text and answered prompt
+line after the viewer's alternate screen so both stay in scrollback, and maps the result to the
+letter, `ErrBack`, a quit or `ErrAborted`. Inline, the done model's last frame ends in a newline,
+because bubbletea erases from the last row of the last frame down when the program ends. The program reads the command's stdin: a terminal
+`os.Stdin` is wrapped in `eofFile` and passed in, so the end of input is seen; only an `os.Stdin`
+that is not a terminal falls back to bubbletea opening the terminal.
 
 `page` returns only when the pager or the viewer has exited, so the question comes after it. A
 missing, refused or failing pager, or a viewer that cannot start, is a warning, and the capped text
