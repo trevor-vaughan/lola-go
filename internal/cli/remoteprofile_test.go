@@ -444,8 +444,8 @@ var _ = Describe("remote profiles", func() {
 		})
 
 		It("ends an add --trust on Ctrl+C in its record's viewer, before the receipt", func() {
-			GinkgoT().Setenv("COLUMNS", "120")
-			GinkgoT().Setenv("LINES", "2")
+			GinkgoT().Setenv("COLUMNS", "60")
+			GinkgoT().Setenv("LINES", "3")
 			in, typed, err := os.Pipe()
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() {
@@ -464,7 +464,7 @@ var _ = Describe("remote profiles", func() {
 			root.SetIn(in)
 			root.SetArgs([]string{"profile", "go", "--add", src, "--user", "--trust"})
 			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
-			Expect(out.String()).To(ContainSubstring("q continue: Proceed? is asked next"))
+			Expect(out.String()).To(ContainSubstring("q  continue to: Proceed?"))
 			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the add: the receipt is not asked")
 			Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeAnExistingFile())
@@ -501,7 +501,7 @@ var _ = Describe("remote profiles", func() {
 			root.SetIn(in)
 			root.SetArgs([]string{"profile", "go", "--update", "--user"})
 			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
-			Expect(out.String()).To(ContainSubstring("q continue: Update remote:go? is asked next"))
+			Expect(out.String()).To(ContainSubstring("q  continue to: Update remote:go?"))
 			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the update: its question is not asked")
 			Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(os.ReadFile(kept)).To(Equal(before))

@@ -743,8 +743,8 @@ var _ = Describe("lola sync", func() {
 	It("ends the sync on Ctrl+C in the removals' viewer, before their question", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
 		GinkgoT().Setenv("LOLA_PAGER", "")
-		GinkgoT().Setenv("COLUMNS", "120")
-		GinkgoT().Setenv("LINES", "2")
+		GinkgoT().Setenv("COLUMNS", "60")
+		GinkgoT().Setenv("LINES", "3")
 		in, typed, err := os.Pipe()
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
@@ -764,7 +764,7 @@ var _ = Describe("lola sync", func() {
 		root.SetIn(in)
 		root.SetArgs([]string{"sync", "-C", proj})
 		Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
-		Expect(out.String()).To(ContainSubstring("q continue: Remove these and sync? No applies nothing is asked next"))
+		Expect(out.String()).To(ContainSubstring("q  continue to: Remove these and sync? No applies nothing"))
 		Expect(c.questions).To(Equal([]string{"trust"}), "Ctrl+C ended the sync: the removals question is not asked")
 		Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "kit.md")).To(BeARegularFile())

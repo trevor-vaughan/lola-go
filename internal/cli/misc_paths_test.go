@@ -387,8 +387,8 @@ var _ = Describe("trash paths", func() {
 	It("ends the restore on Ctrl+C in its plan's viewer, before the question", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		GinkgoT().Setenv("LOLA_PAGER", "")
-		GinkgoT().Setenv("COLUMNS", "120")
-		GinkgoT().Setenv("LINES", "2")
+		GinkgoT().Setenv("COLUMNS", "50")
+		GinkgoT().Setenv("LINES", "3")
 		in, typed, err := os.Pipe()
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
@@ -406,7 +406,7 @@ var _ = Describe("trash paths", func() {
 		root.SetIn(in)
 		root.SetArgs([]string{"trash"})
 		Expect(cli.Execute(root)).To(Equal(0), errb.String())
-		Expect(out.String()).To(ContainSubstring("q continue: Restore 1 item from the trash? is asked next"))
+		Expect(out.String()).To(ContainSubstring("q  continue to: Restore 1 item from the trash?"))
 		Expect(p.calls).To(Equal([]string{"trash-pick"}), "Ctrl+C ended the run: the restore question is not asked")
 		Expect(errb.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 		Expect(ship).NotTo(BeAnExistingFile())

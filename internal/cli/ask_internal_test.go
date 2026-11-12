@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -51,4 +53,35 @@ var _ = Describe("a question's words", func() {
 		Entry("the review", "ycn", "answer y, c or n"),
 		Entry("the review, nothing to change", "yn", "answer y or n"),
 	)
+})
+
+var _ = Describe("fits", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	DescribeTable("counts the text wrapped to the width, then the rows under it",
+		func(text string, rows, width, height int, want bool) {
+			Expect(fits(text, rows, width, height)).To(Equal(want))
+		},
+		Entry("text and one row fill the terminal", numbered(7), 1, 80, 8, true),
+		Entry("one line more", numbered(8), 1, 80, 8, false),
+		Entry("a line wrapped to two, and a row", strings.Repeat("x", 100)+"\n", 1, 80, 3, true),
+		Entry("a line wrapped to two, and two rows", strings.Repeat("x", 100)+"\n", 2, 80, 3, false),
+		Entry("no text", "", 1, 80, 1, true),
+	)
+})
+
+var _ = Describe("the viewer's key line", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("names each mode's keys in table order, what Enter alone answers first and search last", func() {
+		Expect(keyLineFor(keysRead, nil, "")).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
+		Expect(keyLineFor(keysContinue, nil, "Restore which?")).To(Equal(
+			"q  continue to: Restore which? · ↑↓ space b  scroll · g G  top/end · /  search"))
+		q := Question{Prompt: "Uninstall kit?", Answers: "yN"}
+		Expect(keyLineFor(keysPrompt, &q, "")).To(Equal(
+			"⏎ alone = no · q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
+		q.Answers = "ycn"
+		Expect(keyLineFor(keysPrompt, &q, "")).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"),
+			"no default: nothing to say about Enter alone")
+	})
 })

@@ -104,12 +104,12 @@ var _ = Describe("the viewer's and pager's transitions", func() {
 	})
 
 	It("viewer: viewer --resize--> viewer", func() {
-		m := search(newViewer(numbered(30), false, 40, 10), "line 1")
+		m := search(newViewer(numbered(30), false, 40, 11), "line 1")
 		Expect(m.matches).To(Equal([]int{9, 10, 11, 12, 13, 14, 15, 16, 17, 18}))
 		Expect(m.matches[m.cur]).To(Equal(9), "line 10, the first match")
 		m = press(m, keyJ, keyJ, keyJ, keyJ, keyJ, keyJ)
 		Expect(m.vp.YOffset()).To(Equal(12))
-		m.resize(80, 12)
+		m.resize(80, 13)
 		Expect(m.matches[m.cur]).To(Equal(12), "the current match is the first at or below the top line, line 13")
 		Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 1 4 of 10"))
 	})

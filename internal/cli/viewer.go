@@ -30,9 +30,9 @@ const (
 )
 
 // viewerModel is lola's full-screen viewer: a viewport over content, wrapped to the
-// terminal's width and wrapped again when it is resized, above a footer that always shows the
-// position and the keys. In confirm mode only y, c, n, q, Esc and Ctrl+C answer; there is no
-// default answer. nav places a confirm-mode viewer in its flow, as keyed places a form: Esc goes
+// terminal's width and wrapped again when it is resized, above the rule line, which says where the
+// screen is, and the key line (in confirm mode, one footer line). In confirm mode only y, c, n, q,
+// Esc and Ctrl+C answer; there is no default answer. nav places a confirm-mode viewer in its flow, as keyed places a form: Esc goes
 // back when nav.Back is set and otherwise says q quits, and q asks quitQuestion first with two or
 // more steps answered. s styles the footer, so NO_COLOR and LOLA_COLOR apply to it.
 //
@@ -78,7 +78,7 @@ func newViewer(content string, confirm bool, width, height int) viewerModel {
 func (m *viewerModel) resize(width, height int) {
 	m.width = max(width, 1)
 	m.vp.SetWidth(m.width)
-	m.vp.SetHeight(max(height-1, 1))
+	m.vp.SetHeight(max(height-m.footerRows(), 1))
 	wrapped := ansi.Wrap(m.content, m.width, "")
 	m.vp.SetContent(wrapped)
 	m.vp.SetYOffset(m.vp.YOffset())
@@ -253,41 +253,83 @@ func (m viewerModel) View() tea.View {
 	return v
 }
 
-// footer is the position, "lines 41–80 of 312 · 25%", in bold, then the keys, cut to the width;
-// in confirm mode the answers come first, then q, then / search, so a narrow terminal cuts the
-// paging keys first. A review's whole footer fits 120 columns; ↑↓ and j/k are left out of it for
-// that, as the keys a pager is expected to take. In the keys' place: quitQuestion while q asks it,
-// and the first-screen note after Esc there.
+// footerRows is how many rows the lines under the text take: in confirm mode, its footer's one;
+// else the rule line and the key line.
+func (m viewerModel) footerRows() int {
+	if m.confirm {
+		return 1
+	}
+	return 2
+}
+
+// footer is the lines under the text: in confirm mode confirmFooter, else the rule line, then the
+// key line.
 func (m viewerModel) footer() string {
+	if m.confirm {
+		return m.confirmFooter()
+	}
+	return m.rule() + "\n" + m.keyLine()
+}
+
+// rule is the line under the text, bold and across the width: where the screen is,
+// "━━ lines 41–80 of 312 · ↓ 232 more ━━…", or "· end" once the last line shows.
+func (m viewerModel) rule() string {
 	total := m.vp.TotalLineCount()
 	first := min(m.vp.YOffset()+1, total)
 	last := min(m.vp.YOffset()+m.vp.Height(), total)
-	pos := fmt.Sprintf("lines %d–%d of %d · %d%%", first, last, total, int(m.vp.ScrollPercent()*100))
-	const scroll = "/ search · space/b page · g/G top/end"
-	next := "n/N next/prev"
-	if m.confirm {
-		next = "^n/^p next/prev"
+	where := "end"
+	if last < total {
+		where = fmt.Sprintf("↓ %d more", total-last)
 	}
-	keys := "q quit · " + scroll
+	label := fmt.Sprintf("━━ lines %d–%d of %d · %s ", first, last, total, where)
+	fill := max(m.width-ansi.StringWidth(label), 0)
+	return m.s.strong(ansi.Truncate(label+strings.Repeat("━", fill), m.width, ""))
+}
+
+// keyLine is the keys under the rule, cut from the right to the width: keyLineFor's, after the
+// search's term, which match is current and the keys that step through them; while a term is
+// typed, the typing.
+func (m viewerModel) keyLine() string {
+	mode := keysRead
 	if m.then != "" {
-		keys = "q continue: " + m.then + " is asked next · " + scroll
+		mode = keysContinue
 	}
-	if m.confirm {
-		answers := "y apply · c change · n cancel"
-		if m.noChange {
-			answers = "y apply · n cancel"
-		}
-		if m.nav.Back {
-			answers += " · esc back"
-		}
-		keys = answers + " · q quit · " + scroll
-	}
+	line := keyLineFor(mode, nil, m.then)
 	if m.term != "" {
 		found := "no match"
 		if len(m.matches) > 0 {
 			found = fmt.Sprintf("%d of %d", m.cur+1, len(m.matches))
 		}
-		keys = "/" + m.term + " " + found + "  " + next + " · " + keys
+		line = "/" + m.term + " " + found + " · n N  next/prev · " + line
+	}
+	if m.searching {
+		line = "/" + m.typed + "█  enter search · esc cancel"
+	}
+	return ansi.Truncate(line, m.width, "…")
+}
+
+// confirmFooter is a review's footer: the position, "lines 41–80 of 312 · 25%", in bold, then the
+// answers, esc back and q quit, then the scrolling keys, cut to the width; quitQuestion while q
+// asks it, and the first-screen note after Esc there.
+func (m viewerModel) confirmFooter() string {
+	total := m.vp.TotalLineCount()
+	first := min(m.vp.YOffset()+1, total)
+	last := min(m.vp.YOffset()+m.vp.Height(), total)
+	pos := fmt.Sprintf("lines %d–%d of %d · %d%%", first, last, total, int(m.vp.ScrollPercent()*100))
+	keys := "y apply · c change · n cancel"
+	if m.noChange {
+		keys = "y apply · n cancel"
+	}
+	if m.nav.Back {
+		keys += " · esc back"
+	}
+	keys += " · q quit · / search · space/b page · g/G top/end"
+	if m.term != "" {
+		found := "no match"
+		if len(m.matches) > 0 {
+			found = fmt.Sprintf("%d of %d", m.cur+1, len(m.matches))
+		}
+		keys = "/" + m.term + " " + found + "  ^n/^p next/prev · " + keys
 	}
 	switch {
 	case m.searching:

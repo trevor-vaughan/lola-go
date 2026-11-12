@@ -1660,8 +1660,8 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 |---|---|---|
 | printed | the text as it is, on stdout (a plan on stderr, before its question) | a `start` row says so |
 | pager | the user's `$LOLA_PAGER`, its stdin the text, uncapped; `LESS=FRX` unless `LESS` is set | `$LOLA_PAGER` is set and is not `cat` |
-| viewer | the text wrapped to the width on the alternate screen, above the footer `lines 41–80 of 312 · 25%  q quit · / search · space/b page · g/G top/end` (↑↓ and j/k scroll a line too; a review's whole footer fits 120 columns, and a narrower terminal cuts the paging keys first); before a question, `q continue: <question> is asked next` in place of `q quit` | the text is taller than the terminal |
-| search | the footer `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n/N next/prev` before the keys, the current match in reverse video | `/` in the viewer or a review |
+| viewer | the text wrapped to the width on the alternate screen; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
+| search | the key line `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n N  next/prev` before the keys, the current match in reverse video | `/` in the viewer or a review |
 | review | the summary in confirm mode, footer `y apply · c change · n cancel · esc back · q quit` and the scrolling keys (`c change` only with a step to change, `esc back` only with a screen before), search's `^n/^p next/prev` | a review on a full terminal, the viewer not bypassed, at any length |
 | quit | the footer `Quit? your answers so far are dropped — nothing has been changed [y/N]` | `q` in a review with two or more answers held |
 
