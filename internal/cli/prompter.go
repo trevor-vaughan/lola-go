@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/trevor-vaughan/lola-go/internal/engine"
 )
@@ -96,6 +97,18 @@ var ErrCancelled = fmt.Errorf("%w", ErrAborted)
 type Nav struct {
 	Back     bool
 	Answered int
+}
+
+// Question is a yes/no question, or the install review's, about the text Show prints: a plan, a
+// diff, a receipt, the hooks a consent covers; nil when there is none. Prompt is the question
+// ("Uninstall mymod?"), already safe to print. Answers lists the letters it takes, in order; a
+// capital one is the default Enter alone answers ("yN"), and with none Enter alone asks again
+// ("ycn"). Nav places it in its flow, as a form's Nav does.
+type Question struct {
+	Show    func(io.Writer, style)
+	Prompt  string
+	Answers string
+	Nav     Nav
 }
 
 // MigrateRootStep asks for the new root of Old, below which Records of the Python lola's project
