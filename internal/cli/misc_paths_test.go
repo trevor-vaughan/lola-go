@@ -25,8 +25,6 @@ package cli_test
 // also pinned (trash: pick --Restore ticked (nothing left to restore)--> done): trash_test.go "says there is nothing to restore when what was ticked is gone from the trash"
 // also pinned (trash: pick --Empty ticked runs--> empty; trash: empty --yes--> done; trash: empty --no--> cancelled): trash_test.go "empties the runs ticked whole after asking, and asks the picker again when nothing or only a run's files are ticked"
 // also pinned (cache clean: start --run (something to remove, on a terminal)--> confirm; cache clean: confirm --yes--> done): confirm_test.go "c4: on a terminal without --json, <cmd> asks after the plan and prints the human result" Entry("cache clean")
-// also pinned (cache clean: start --run (the plan taller than the terminal)--> plan; cache clean: plan --q--> confirm): confirm_test.go "c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question" Entry("cache clean")
-// also pinned (cache clean: plan --ctrl+c--> cancelled): confirm_test.go "viewer: viewer --ctrl+c (a question follows)--> cancelled"
 // also pinned (cache clean: start --run (--json, on a terminal)--> confirm): confirm_test.go "c3: on a terminal under --json, <cmd> prints the plan and the question on stderr and one JSON document on stdout" Entry("cache clean")
 // also pinned (cache clean: start --run (no terminal)--> refused): confirm_test.go "c2: off a terminal without --json, <cmd> prints the plan, then the error and its hint" Entry("cache clean")
 // also pinned (cache clean: confirm --yes (an item changed since the plan)--> done): clean_test.go "a confirmed clean whose every item changed says nothing was removed"

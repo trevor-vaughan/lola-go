@@ -5,30 +5,21 @@ package cli_test
 // "migrate: …" and "consent: …", the input followed by the row's guard in parentheses where rows
 // share a from and an input. Rows an existing spec pins already:
 //
-// also pinned (init: start --run (the plan taller than the terminal)--> plan; init: plan --q--> confirm): confirm_test.go "c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question"
-// also pinned (init: plan --ctrl+c--> cancelled): confirm_test.go "viewer: viewer --ctrl+c (a question follows)--> cancelled"
 // also pinned (init: start --run (no terminal)--> refused): confirm_test.go "off a terminal, refuses with the plan and a hint that keeps the run's flags, writing nothing"
 // also pinned (init: start --run (an invalid name)--> refused): confirm_test.go "refuses an invalid name before asking anything"
-// also pinned (init: start --run (the background unknown)--> theme; init: theme --answer--> confirm): theme_internal_test.go "is asked before the form, and its answer stays saved when the form's question is declined"
-// also pinned (init: theme --answer (the save fails)--> confirm): theme_internal_test.go "warns when it cannot save the answer, and goes on with it"
-// also pinned (init: theme --esc--> theme): keys_internal_test.go "Esc on the background question stays: it is a first screen"
-// also pinned (init: theme --end of input--> refused): theme_internal_test.go "tells how to skip the question when input ends before it is answered, and saves nothing"
-// also pinned (init: theme --ctrl+c--> cancelled): theme_internal_test.go "cancels when the question is cancelled, and saves nothing"
 // also pinned (init: confirm --yes--> done): confirm_test.go "on a terminal, shows the plan, asks, and scaffolds when you accept"
 // also pinned (init: confirm --no--> cancelled): confirm_test.go "on a terminal, declining writes nothing and exits 0"
-// also pinned (init: confirm --no--> cancelled): theme_internal_test.go "is asked before the form, and its answer stays saved when the form's question is declined"
 // also pinned (market add: start --run (the catalog's own name cannot name a marketplace)--> name): market_test.go "asks a name on a terminal for a catalog whose own name no marketplace can have, pre-filled with its slug"
 // also pinned (market add: name --esc--> name): keys_internal_test.go "Esc on the marketplace name question stays: it is a first screen"
 // also pinned (migrate: start --run (no terminal)--> refused): migrate_test.go "needs -y off a terminal, printing the plan and writing nothing"
-// also pinned (migrate: start --run (the plan taller than the terminal)--> plan; migrate: plan --q--> confirm): confirm_test.go "c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question"
-// also pinned (migrate: plan --ctrl+c--> cancelled): confirm_test.go "viewer: viewer --ctrl+c (a question follows)--> cancelled"
 // also pinned (migrate: root --answer--> next step; migrate: targets --answer--> next step): migrate_test.go "asks where each missing root is and which assistants stand in for each missing one, then migrates with the answers"
 // also pinned (migrate: root --esc (first screen)--> root; migrate: targets --esc (the first, after a root question)--> root): migrate_test.go "goes back from an assistant question to the root question on Esc, the root answered pre-filled"
 // also pinned (migrate: confirm --yes--> done): confirm_test.go "c4: on a terminal without --json, <cmd> asks after the plan and prints the human result"
 // also pinned (migrate: confirm --no--> cancelled): confirm_test.go "c5: declining <cmd> on a terminal writes nothing and exits 0"
 // also pinned (migrate: consent --yes--> done): misc2_paths_test.go "migrate: confirm --yes (a hook or script without your consent)--> consent"
 // also pinned (consent: start --run (--json or no terminal, post-install only)--> done): scripts_test.go "an untrusted project pre script refuses off a terminal with --trust=scripts; post is declined and pending"
-// also pinned (consent: hooks --esc or q--> hooks; consent: runtime --esc or q--> runtime; consent: script --esc or q--> script; consent: later --esc or q--> later): keys_internal_test.go "Esc and q answer no consent question: it waits for y, n or Enter"
+// also pinned (consent: hooks --esc--> hooks; consent: runtime --esc--> runtime; consent: script --esc--> script; consent: later --esc--> later): keys_paths_internal_test.go "viewer: inline --esc (no screen before)--> inline"
+// also pinned (consent: hooks --q--> cancelled; consent: runtime --q--> cancelled; consent: script --q--> cancelled; consent: later --q--> cancelled): keys_paths_internal_test.go "viewer: inline --q (fewer than two answers)--> cancelled"
 // also pinned (consent: later --ctrl+c--> cancelled): misc2_paths_test.go "consent: start --run (lola sync, nothing to install)--> later"
 
 import (

@@ -545,11 +545,8 @@ func (a *app) syncQuestions(cmd *cobra.Command, f syncFlags, activation bool, qu
 	}
 	ask := func(nav Nav) func([]engine.Removal) (bool, error) {
 		return func(rs []engine.Removal) (bool, error) {
-			if err := a.pageThen(cmd, cmd.ErrOrStderr(), stderr, question, func(w io.Writer, s style) { printRemovals(w, s, rs) }); err != nil {
-				return false, err
-			}
-			ok, err := p.Confirm(question, nav)
-			if err == nil && ok {
+			ok, err := askYes(p, Question{Show: func(w io.Writer, s style) { printRemovals(w, s, rs) }, Prompt: question, Nav: nav})
+			if ok {
 				names := make([]string, len(rs))
 				for i, r := range rs {
 					names[i] = r.Module

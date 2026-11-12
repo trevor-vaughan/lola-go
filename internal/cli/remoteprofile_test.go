@@ -416,30 +416,13 @@ var _ = Describe("remote profiles", func() {
 			Expect(out.String()).NotTo(ContainSubstring("… and"))
 		})
 
-		It("ends an add on Ctrl+C in its consent's viewer, before the question", func() {
-			GinkgoT().Setenv("COLUMNS", "120")
-			GinkgoT().Setenv("LINES", "2")
-			in, typed, err := os.Pipe()
-			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(func() {
-				Expect(typed.Close()).To(Succeed())
-				Expect(in.Close()).To(Succeed())
-			})
-			_, err = typed.WriteString("\x03")
-			Expect(err).NotTo(HaveOccurred())
-			c := &confirming{scripted: scripted{}}
-			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
-			Expect(err).NotTo(HaveOccurred())
-			var out bytes.Buffer
-			c.stderr = &bytes.Buffer{}
-			root.SetOut(&out)
-			root.SetErr(c.stderr)
-			root.SetIn(in)
-			root.SetArgs([]string{"profile", "go", "--add", src, "--user"})
-			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
-			Expect(out.String()).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
-			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the add: its question is not asked")
-			Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
+		It("asks an add with the profiles as the question's text; Ctrl+C there changes nothing", func() {
+			c := &confirming{scripted: scripted{}, fail: cli.ErrAborted}
+			r := lolaAsking(c, "profile", "go", "--add", src, "--user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(c.questions).To(Equal([]string{"Add remote:go? Nothing is turned on"}))
+			Expect(c.shows[0]).To(ContainSubstring("remote:go"), "the profiles are the question's text")
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeAnExistingFile())
 		})
 
@@ -470,40 +453,19 @@ var _ = Describe("remote profiles", func() {
 			Expect(filepath.Join(p.RemoteProfiles, "go")).NotTo(BeAnExistingFile())
 		})
 
-		It("ends an update on Ctrl+C in its consent's viewer, before the question", func() {
+		It("asks an update with the profile's changes as the question's text; Ctrl+C there changes nothing", func() {
 			Expect(lola("profile", "go", "--add", src, "--user", "--trust").code).To(Equal(0))
 			Expect(lola("profile", "go", "--on", "--user").code).To(Equal(0))
-			many := map[string]string{}
-			for i := range 45 {
-				many[fmt.Sprintf("commands/m%02d.md", i)] = "M\n"
-			}
-			hookedUpdate("true", many)
+			hookedUpdate("true", map[string]string{"commands/m00.md": "M\n"})
 			kept := filepath.Join(p.RemoteProfiles, "go", "profile.yml")
 			before, err := os.ReadFile(kept)
 			Expect(err).NotTo(HaveOccurred())
-			GinkgoT().Setenv("COLUMNS", "120")
-			GinkgoT().Setenv("LINES", "10")
-			in, typed, err := os.Pipe()
-			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(func() {
-				Expect(typed.Close()).To(Succeed())
-				Expect(in.Close()).To(Succeed())
-			})
-			_, err = typed.WriteString("\x03")
-			Expect(err).NotTo(HaveOccurred())
-			c := &confirming{scripted: scripted{}}
-			root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(c), cli.WithTerminals(true, true))
-			Expect(err).NotTo(HaveOccurred())
-			var out bytes.Buffer
-			c.stderr = &bytes.Buffer{}
-			root.SetOut(&out)
-			root.SetErr(c.stderr)
-			root.SetIn(in)
-			root.SetArgs([]string{"profile", "go", "--update", "--user"})
-			Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
-			Expect(out.String()).To(ContainSubstring("q  continue to: Update remote:go?"))
-			Expect(c.questions).To(BeEmpty(), "Ctrl+C ended the update: its question is not asked")
-			Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
+			c := &confirming{scripted: scripted{}, fail: cli.ErrAborted}
+			r := lolaAsking(c, "profile", "go", "--update", "--user")
+			Expect(r.code).To(Equal(0), r.err)
+			Expect(c.questions).To(Equal([]string{"Update remote:go?"}))
+			Expect(c.shows[0]).To(ContainSubstring("remote:go → "), "the profile's changes are the question's text")
+			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 			Expect(os.ReadFile(kept)).To(Equal(before))
 		})
 
@@ -1196,8 +1158,8 @@ type ctrlC struct {
 	before func(int)
 }
 
-func (c *ctrlC) Confirm(question string, nav cli.Nav) (bool, error) {
-	ok, err := c.scripted.Confirm(question, nav)
+func (c *ctrlC) Ask(q cli.Question) (rune, error) {
+	ans, err := c.scripted.Ask(q)
 	confirms := 0
 	for _, call := range c.calls {
 		if strings.HasPrefix(call, "confirm:") {
@@ -1208,7 +1170,7 @@ func (c *ctrlC) Confirm(question string, nav cli.Nav) (bool, error) {
 		c.before(confirms)
 	}
 	if confirms == c.n {
-		return false, cli.ErrAborted
+		return 0, cli.ErrAborted
 	}
-	return ok, err
+	return ans, err
 }

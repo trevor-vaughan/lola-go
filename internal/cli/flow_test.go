@@ -35,7 +35,7 @@ type scripted struct {
 	components []func(cli.ComponentPage) ([]string, error)
 	dirs       []func(cli.DirectoryStep) (string, error)
 	empty      []bool
-	emptyBacks int // the first emptyBacks ConfirmEmpty questions go back a screen, as Esc does
+	emptyBacks int // the first emptyBacks no-components questions go back a screen, as Esc does
 	review     []string
 	confirm    []bool
 	trust      []func(cli.TrustStep) (engine.TrustAnswer, error)
@@ -54,9 +54,9 @@ type scripted struct {
 	versions   []func(cli.VersionStep) (int, error)
 	consent    []bool
 
-	// the first emptyCancels ConfirmEmpty questions (after emptyBacks) and confirmCancels Confirm
-	// questions are cancelled, as Ctrl+C does; the first confirmBacks Confirm questions, before
-	// those, go back a screen, as Esc does; the first consentCancels Consent questions are
+	// the first emptyCancels no-components questions (after emptyBacks) and confirmCancels other
+	// yes/no questions are cancelled, as Ctrl+C does; the first confirmBacks of those, before
+	// them, go back a screen, as Esc does; the first consentCancels consent questions are
 	// cancelled, as Ctrl+C does
 	emptyCancels, confirmCancels, confirmBacks, consentCancels int
 
@@ -81,6 +81,7 @@ type scripted struct {
 	memberSteps    []cli.MembersStep
 	trashPickSteps []cli.TrashPickStep
 	versionSteps   []cli.VersionStep
+	asks           []cli.Question // every question Ask was asked
 
 	summaryTo io.Writer // where Review writes the summary, as the huh adapter leaves it on stderr
 }
@@ -162,7 +163,7 @@ func (s *scripted) Components(pg cli.ComponentPage) ([]string, error) {
 	s.calls, s.pages = append(s.calls, "components:"+pg.Title), append(s.pages, pg)
 	return pop(&s.components, "components")(pg)
 }
-func (s *scripted) ConfirmEmpty(module string, nav cli.Nav) (bool, error) {
+func (s *scripted) askEmpty(module string, nav cli.Nav) (bool, error) {
 	s.calls, s.emptyNavs = append(s.calls, "empty:"+module), append(s.emptyNavs, nav)
 	if s.emptyBacks > 0 {
 		s.emptyBacks--
@@ -174,7 +175,7 @@ func (s *scripted) ConfirmEmpty(module string, nav cli.Nav) (bool, error) {
 	}
 	return pop(&s.empty, "confirm-empty"), nil
 }
-func (s *scripted) Confirm(question string, nav cli.Nav) (bool, error) {
+func (s *scripted) askConfirm(question string, nav cli.Nav) (bool, error) {
 	s.calls, s.confirmNavs = append(s.calls, "confirm:"+question), append(s.confirmNavs, nav)
 	if s.confirmBacks > 0 {
 		s.confirmBacks--
@@ -186,13 +187,48 @@ func (s *scripted) Confirm(question string, nav cli.Nav) (bool, error) {
 	}
 	return pop(&s.confirm, "confirm"), nil
 }
-func (s *scripted) Consent(question string) (bool, error) {
+func (s *scripted) askConsent(question string) (bool, error) {
 	s.calls = append(s.calls, "consent:"+question)
 	if s.consentCancels > 0 {
 		s.consentCancels--
 		return false, cli.ErrAborted
 	}
 	return pop(&s.consent, "consent"), nil
+}
+
+// consentPrompt matches hookOptions' and askScript's consent questions; emptyPrompt the question
+// an install asks of a module whose components are all unticked.
+var (
+	consentPrompt = regexp.MustCompile(`^(Run .+'s install hooks|Install .+'s Claude Code hooks( and agent MCP servers)?|Run this project's \S+ script|Trust this project's \S+ script for later runs)\?$`)
+	emptyPrompt   = regexp.MustCompile(`^Install (.+) with no components\?$`)
+)
+
+// Ask answers a yes/no question from the queue of the kind its wording says: consent questions
+// from consent, the no-components question from empty, any other from confirm, each recorded in
+// calls as "consent:", "empty:" or "confirm:" with its scripted backs and cancels. The question is
+// kept in asks, and its text written to summaryTo, as the huh adapter leaves it on stderr.
+func (s *scripted) Ask(q cli.Question) (rune, error) {
+	s.asks = append(s.asks, q)
+	if s.summaryTo != nil {
+		fmt.Fprint(s.summaryTo, cli.ShowText(q))
+	}
+	var ok bool
+	var err error
+	switch m := emptyPrompt.FindStringSubmatch(q.Prompt); {
+	case m != nil:
+		ok, err = s.askEmpty(m[1], q.Nav)
+	case consentPrompt.MatchString(q.Prompt):
+		ok, err = s.askConsent(q.Prompt)
+	default:
+		ok, err = s.askConfirm(q.Prompt, q.Nav)
+	}
+	switch {
+	case err != nil:
+		return 0, err
+	case ok:
+		return 'y', nil
+	}
+	return 'n', nil
 }
 func (s *scripted) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 	s.calls, s.trustSteps = append(s.calls, "trust"), append(s.trustSteps, st)

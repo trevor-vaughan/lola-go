@@ -216,14 +216,13 @@ var _ = Describe("lola migrate", func() {
 			Expect(lola("list", "--user").out).To(MatchRegexp(`kit\s+opencode\s+✓ ok`))
 		})
 
-		It("colors the plan shown before Migrate? as the run's report is, and not under NO_COLOR", func() {
-			ask := func() string {
-				p := &scripted{roots: []string{filepath.Join(tmp, "home")}, mapTargets: [][]string{{"opencode"}}, confirm: []bool{false}}
-				return lolaP(p, "migrate").err
-			}
-			Expect(ask()).NotTo(ContainSubstring("\x1b["), "NO_COLOR is set")
-			GinkgoT().Setenv("LOLA_COLOR", "1")
-			Expect(ask()).To(ContainSubstring("\x1b["))
+		It("colors the plan that is Migrate?'s text as the run's report is, and only in color", func() {
+			p := &scripted{roots: []string{filepath.Join(tmp, "home")}, mapTargets: [][]string{{"opencode"}}, confirm: []bool{false}}
+			lolaP(p, "migrate")
+			Expect(p.asks).NotTo(BeEmpty())
+			q := p.asks[len(p.asks)-1]
+			Expect(cli.ShowTextColored(q)).To(ContainSubstring("\x1b["))
+			Expect(cli.ShowText(q)).NotTo(ContainSubstring("\x1b["))
 		})
 
 		It("goes back from an assistant question to the root question on Esc, the root answered pre-filled", func() {

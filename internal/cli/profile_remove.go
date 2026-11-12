@@ -34,9 +34,9 @@ func (a *app) profileRemove(cmd *cobra.Command, eng *engine.Engine, args []strin
 	case p.Interactive():
 		req.Confirm = func(rp engine.RemoteProfile) (bool, error) {
 			if strings.HasPrefix(rp.Profile, "user:") {
-				return p.Confirm("Remove profile "+rp.Profile+" ("+rp.File+")? It goes to the trash", Nav{})
+				return askYes(p, Question{Prompt: "Remove profile " + rp.Profile + " (" + rp.File + ")? It goes to the trash"})
 			}
-			return p.Confirm("Remove "+rp.Profile+" ("+rp.File+")? Its modules stay installed until each scope's next sync", Nav{})
+			return askYes(p, Question{Prompt: "Remove " + rp.Profile + " (" + rp.File + ")? Its modules stay installed until each scope's next sync"})
 		}
 	}
 	res, err := eng.RemoveProfile(cmd.Context(), req)

@@ -290,13 +290,12 @@ var _ = Describe("the background question before a command's first form", func()
 		var errb bytes.Buffer
 		cmd := &cobra.Command{}
 		cmd.SetErr(&errb)
-		h = onInput(paced("\r", "n"))
+		h = onInput(paced("\r", "\x1b[B\r"))
 		h.color = true
 		h.dark = func() (bool, error) { return a.darkBackground(cmd) }
-		ok, err := h.Confirm("Create module fresh in /work/fresh?", Nav{})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(ok).To(BeFalse(), "declined")
-		Expect(errb.String()).To(Equal("→ saved theme: dark in "+cfg+"\n"), "Enter took Dark, the first option, before the question's n")
+		_, err := h.Where(WhereStep{Title: "Restore which?", Options: []string{"Restore"}})
+		Expect(err).To(MatchError(ErrCancelled), "declined: Cancel, the option under Restore")
+		Expect(errb.String()).To(Equal("→ saved theme: dark in "+cfg+"\n"), "Enter took Dark, the first option, before the form")
 		c, err := config.LoadConfig(cfg, "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(c.Theme).To(Equal(config.ThemeDark), "saved before the question, and kept after its No")

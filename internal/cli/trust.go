@@ -184,13 +184,14 @@ func (a *app) receipt(cmd *cobra.Command, given engine.TrustKinds, yes bool) fun
 		if a.json {
 			return true, nil
 		}
-		w := cmd.ErrOrStderr()
-		printReceipt(w, style{color: a.color(w)}, given, items)
+		show := func(w io.Writer, s style) { printReceipt(w, s, given, items) }
 		p := a.prompter(cmd) // never asks under --json
 		if yes || !p.Interactive() {
+			w := cmd.ErrOrStderr()
+			show(w, style{color: a.color(w)})
 			return true, nil
 		}
-		ok, err := p.Confirm("Proceed?", Nav{})
+		ok, err := askYes(p, Question{Show: show, Prompt: "Proceed?"})
 		if err == nil && !ok {
 			return false, ErrAborted // nothing is written: aborted, as a declined confirmation is
 		}

@@ -1,11 +1,17 @@
 package cli
 
 import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 
+	"github.com/trevor-vaughan/lola-go/internal/engine"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
 
@@ -83,5 +89,134 @@ var _ = Describe("the viewer's key line", func() {
 		q.Answers = "ycn"
 		Expect(keyLineFor(keysPrompt, &q, "")).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"),
 			"no default: nothing to say about Enter alone")
+	})
+})
+
+var _ = Describe("promptRows", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("counts a prompt line at its widest, its hint included", func() {
+		// "ppp…p [y/N] y█" is 39 columns; with "  answer y or n (Enter means no)" 71.
+		q := Question{Prompt: strings.Repeat("p", 30), Answers: "yN"}
+		Expect(promptRows(q, 80)).To(Equal(1))
+		Expect(promptRows(q, 60)).To(Equal(2), "the hint wraps")
+		Expect(fits(numbered(6), promptRows(q, 60), 60, 8)).To(BeTrue())
+		Expect(fits(numbered(7), promptRows(q, 60), 60, 8)).To(BeFalse(), "the wrapped hint counts")
+	})
+})
+
+var _ = Describe("Ask, a yes/no question", func() {
+	var out bytes.Buffer
+	BeforeEach(func() {
+		testenv.Isolate()
+		out.Reset()
+	})
+	plan := Question{Show: func(w io.Writer, _ style) { fmt.Fprintln(w, "plan: remove kit") }, Prompt: "Uninstall kit?", Answers: "yN"}
+
+	It("in accessible mode prints the question's text, then a [y/N] line prompt read through the parser", func() {
+		ans, err := accessible(&out, "maybe", "Yes").Ask(plan)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ans).To(Equal('y'))
+		Expect(out.String()).To(Equal("plan: remove kit\nUninstall kit? [y/N] answer y or n (Enter means no)\nUninstall kit? [y/N] "))
+	})
+
+	It("in accessible mode takes a blank line as the default", func() {
+		ans, err := accessible(&out, "").Ask(plan)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ans).To(Equal('n'))
+	})
+
+	It("in accessible mode cancels at end of input, never answering the default", func() {
+		_, err := accessible(&out).Ask(plan)
+		Expect(err).To(MatchError(ErrAborted))
+		Expect(out.String()).To(HaveSuffix("Uninstall kit? [y/N] \n"), "the cancel prints under the prompt, not beside it")
+	})
+
+	It("in accessible mode cancels an answer that input ends before its newline", func() {
+		h := &huhForms{in: &eofReader{r: strings.NewReader("y")}, out: &out, tty: true, accessible: true}
+		_, err := h.Ask(plan)
+		Expect(err).To(MatchError(ErrAborted))
+	})
+
+	It("on a full terminal asks through the terminal's question", func() {
+		var got Question
+		h := &huhForms{tty: true, out: &out, ask: func(q Question) (rune, error) { got = q; return 'n', nil }}
+		ans, err := h.Ask(plan)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ans).To(Equal('n'))
+		Expect(got.Prompt).To(Equal("Uninstall kit?"))
+		Expect(out.String()).To(BeEmpty(), "the terminal's question prints the text itself")
+	})
+
+	It("off a terminal never asks", func() {
+		_, err := noPrompter{}.Ask(plan)
+		Expect(err).To(MatchError(errNoTerminal))
+	})
+
+	It("askYes asks with No as the default and reports the answer", func() {
+		var got Question
+		p := &askStub{ans: 'y', got: &got}
+		yes, err := askYes(p, Question{Prompt: "Go?"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(yes).To(BeTrue())
+		Expect(got.Answers).To(Equal("yN"))
+		yes, err = askYes(noPrompter{}, plan)
+		Expect(yes).To(BeFalse())
+		Expect(err).To(MatchError(errNoTerminal))
+	})
+})
+
+// askStub is a Prompter whose Ask records its question and answers ans.
+type askStub struct {
+	noPrompter
+	ans rune
+	got *Question
+}
+
+func (s *askStub) Ask(q Question) (rune, error) { *s.got = q; return s.ans, nil }
+
+// asker is a terminal that answers every question yes, keeping each.
+type asker struct {
+	Prompter
+	asked []Question
+}
+
+func (*asker) Interactive() bool { return true }
+func (p *asker) Ask(q Question) (rune, error) {
+	p.asked = append(p.asked, q)
+	return 'y', nil
+}
+
+var _ = Describe("hook and script consent", func() {
+	BeforeEach(func() { testenv.Isolate() })
+
+	It("asks with the hooks, the Claude Code hooks and the script as the question's text", func() {
+		p := &asker{}
+		a := &app{getenv: os.Getenv, newPrompter: func(*cobra.Command) Prompter { return p }}
+		cmd := &cobra.Command{}
+		var errb bytes.Buffer
+		cmd.SetErr(&errb)
+		var opts engine.Options
+		a.hookOptions(cmd, &opts)
+		ok, err := opts.Ask("kit", []engine.HookScript{{Event: "pre-install", Script: "setup.sh", SHA256: "ab12"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		ok, err = opts.AskRuntimeHooks("kit", []engine.RuntimeHook{{Event: "PreToolUse", Type: "command", Command: "echo hi"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+		ok, err = opts.AskScript(engine.ScriptQuestion{Event: engine.PreInstall, Path: "ci/check.sh", Root: "/work/proj", SHA256: "cd34"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ok).To(BeTrue())
+
+		Expect(p.asked).To(HaveLen(3))
+		Expect(p.asked[0].Prompt).To(Equal("Run kit's install hooks?"))
+		Expect(ShowText(p.asked[0])).To(Equal("kit has install hooks. They run as you, unconfined:\n" +
+			"    pre-install: setup.sh (sha256 ab12)\n" +
+			"  Consent covers only the scripts listed, not other files they run; review those too.\n"))
+		Expect(p.asked[1].Prompt).To(Equal("Install kit's Claude Code hooks?"))
+		Expect(ShowText(p.asked[1])).To(ContainSubstring("    PreToolUse: command\n      runs: echo hi\n"))
+		Expect(p.asked[2].Prompt).To(Equal("Run this project's pre-install script?"))
+		Expect(ShowText(p.asked[2])).To(ContainSubstring("    ci/check.sh (sha256 cd34)\n"))
+		Expect(errb.String()).To(BeEmpty(), "the hooks are printed with their question, never before it")
 	})
 })

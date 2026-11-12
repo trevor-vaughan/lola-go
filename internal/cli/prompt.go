@@ -20,9 +20,10 @@ func interactive(cmd *cobra.Command) bool {
 	return isTTY(cmd.InOrStdin()) && isTTY(cmd.ErrOrStderr())
 }
 
-// confirm asks question, at nav in its command's flow, before a destructive action, after show prints the plan on stderr in the style it is given, or, on a
-// terminal, in the viewer when it is taller than the terminal (or the user's pager; see page); the
-// injected Prompter or the huh adapter asks, under --json too, since the result goes to stdout.
+// confirm asks question, at nav in its command's flow, before a destructive action, with the plan
+// show prints as the question's text: under it, or with it in the viewer when they do not fit the
+// terminal (app.ask); the injected Prompter or the huh adapter asks, under --json too, since the
+// result goes to stdout.
 // Off a terminal it refuses, hinting the run (args are its names) with -y. Under --json that
 // refusal is all lola prints: one JSON line carrying plan, the plan it would have asked about
 // (what -n --json prints, where the command has -n), so a script reads the plan
@@ -35,11 +36,7 @@ func (a *app) confirm(cmd *cobra.Command, args []string, question string, nav Na
 		p = a.huhPrompter(cmd)
 	}
 	if p.Interactive() {
-		// page returns once the viewer or pager exits, so the question is never asked inside it.
-		if err := a.pageThen(cmd, cmd.ErrOrStderr(), style{color: a.color(cmd.ErrOrStderr()), asking: true}, question, show); err != nil {
-			return err
-		}
-		ok, err := p.Confirm(question, nav)
+		ok, err := askYes(p, Question{Show: show, Prompt: question, Nav: nav})
 		if err == nil && !ok {
 			return ErrAborted
 		}
@@ -106,17 +103,20 @@ func planFields(plan any) (map[string]any, error) {
 	return fields, nil
 }
 
-// askScript shows the project's install script q, beside the project's root, and asks p whether to
-// run it, or, with no copy for it to wrap now (q.Later), to trust it for later runs.
-func askScript(cmd *cobra.Command, p Prompter, q engine.ScriptQuestion) (bool, error) {
-	w := cmd.ErrOrStderr()
-	fmt.Fprintf(w, "The project at %s has a %s script. It runs as you, unconfined, for every module lola installs there:\n", q.Root, q.Event)
-	fmt.Fprintf(w, "    %s (sha256 %s)\n", q.Path, q.SHA256)
-	fmt.Fprintln(w, "  Consent covers only the script listed, not other files it runs; review those too.")
-	if q.Later {
-		return p.Consent("Trust this project's " + q.Event + " script for later runs?")
+// askScript asks p whether to run the project's install script q, beside the project's root, or,
+// with no copy for it to wrap now (q.Later), to trust it for later runs; the script's path and
+// digest are the question's text.
+func askScript(p Prompter, q engine.ScriptQuestion) (bool, error) {
+	show := func(w io.Writer, _ style) {
+		fmt.Fprintf(w, "The project at %s has a %s script. It runs as you, unconfined, for every module lola installs there:\n", q.Root, q.Event)
+		fmt.Fprintf(w, "    %s (sha256 %s)\n", q.Path, q.SHA256)
+		fmt.Fprintln(w, "  Consent covers only the script listed, not other files it runs; review those too.")
 	}
-	return p.Consent("Run this project's " + q.Event + " script?")
+	question := "Run this project's " + q.Event + " script?"
+	if q.Later {
+		question = "Trust this project's " + q.Event + " script for later runs?"
+	}
+	return askYes(p, Question{Show: show, Prompt: question, Trust: engine.TrustScripts})
 }
 
 // hookOptions sets the hook options of a command: install hooks' and scripts' output goes to
@@ -130,30 +130,32 @@ func (a *app) hookOptions(cmd *cobra.Command, opts *engine.Options) {
 	if !p.Interactive() {
 		return
 	}
-	opts.AskScript = func(q engine.ScriptQuestion) (bool, error) { return askScript(cmd, p, q) }
+	opts.AskScript = func(q engine.ScriptQuestion) (bool, error) { return askScript(p, q) }
 	opts.Ask = func(module string, hooks []engine.HookScript) (bool, error) {
-		w := cmd.ErrOrStderr()
-		fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
-		for _, h := range hooks {
-			fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256)
+		show := func(w io.Writer, _ style) {
+			fmt.Fprintf(w, "%s has install hooks. They run as you, unconfined:\n", module)
+			for _, h := range hooks {
+				fmt.Fprintf(w, "    %s: %s (sha256 %s)\n", h.Event, untrusted.Text(h.Script, len(h.Script)), h.SHA256)
+			}
+			fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
 		}
-		fmt.Fprintln(w, "  Consent covers only the scripts listed, not other files they run; review those too.")
-		return p.Consent("Run " + module + "'s install hooks?")
+		return askYes(p, Question{Show: show, Prompt: "Run " + module + "'s install hooks?", Trust: engine.TrustHooks})
 	}
 	opts.AskRuntimeHooks = func(module string, hooks []engine.RuntimeHook) (bool, error) {
-		w := cmd.ErrOrStderr()
 		what := "Claude Code hooks"
 		if slices.ContainsFunc(hooks, func(h engine.RuntimeHook) bool { return h.MCPServer != "" }) {
 			what = "Claude Code hooks and agent MCP servers"
 		}
-		fmt.Fprintf(w, "%s has %s:\n", module, what)
-		for _, h := range hooks {
-			for _, line := range runtimeHookLines(h) {
-				fmt.Fprintln(w, "    "+line)
+		show := func(w io.Writer, _ style) {
+			fmt.Fprintf(w, "%s has %s:\n", module, what)
+			for _, h := range hooks {
+				for _, line := range runtimeHookLines(h) {
+					fmt.Fprintln(w, "    "+line)
+				}
 			}
+			fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
 		}
-		fmt.Fprintln(w, "  These run inside Claude Code with your permissions.")
-		return p.Consent("Install " + module + "'s " + what + "?")
+		return askYes(p, Question{Show: show, Prompt: "Install " + module + "'s " + what + "?", Trust: engine.TrustRuntimeHooks})
 	}
 }
 

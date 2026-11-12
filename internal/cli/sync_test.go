@@ -20,7 +20,7 @@ import (
 )
 
 // confirming is a terminal Prompter for sync's questions: Trust answers from trusts in order
-// (an answer that accepts nothing is Cancel), Confirm from answers, and each question is
+// (an answer that accepts nothing is Cancel), each yes/no question from answers, and each question is
 // recorded with what stderr held when it was asked.
 type confirming struct {
 	scripted
@@ -29,10 +29,11 @@ type confirming struct {
 	answers   []bool
 	questions []string
 	before    []string
+	shows     []string // each question's text
 	steps     []cli.TrustStep
-	// meddle, when set, runs at each Confirm before it is answered, as another lola run would.
+	// meddle, when set, runs at each yes/no question before it is answered, as another lola run would.
 	meddle func()
-	// fail, when set, is what each Confirm returns in place of an answer (an interrupt, say).
+	// fail, when set, is what each yes/no question returns in place of an answer (an interrupt, say).
 	fail error
 }
 
@@ -45,29 +46,26 @@ func (c *confirming) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
 	return ans, nil
 }
 
-func (c *confirming) Confirm(question string, _ cli.Nav) (bool, error) {
-	c.questions, c.before = append(c.questions, question), append(c.before, c.stderr.String())
+// Ask answers a yes/no question from answers, writing its text to stderr as the huh adapter does
+// and recording the question, its text and what stderr held when it was asked; consent and the
+// no-components question go to the embedded scripted's queues.
+func (c *confirming) Ask(q cli.Question) (rune, error) {
+	if consentPrompt.MatchString(q.Prompt) || emptyPrompt.MatchString(q.Prompt) {
+		return c.scripted.Ask(q)
+	}
+	text := cli.ShowText(q)
+	c.stderr.WriteString(text)
+	c.questions, c.before, c.shows = append(c.questions, q.Prompt), append(c.before, c.stderr.String()), append(c.shows, text)
 	if c.meddle != nil {
 		c.meddle()
 	}
 	if c.fail != nil {
-		return false, c.fail
+		return 0, c.fail
 	}
-	return pop(&c.answers, "confirm"), nil
-}
-
-// typingAtTrust is confirming that types keys on the terminal once the trust question is
-// answered, for the viewer that opens after it.
-type typingAtTrust struct {
-	*confirming
-	typed *os.File
-	keys  string
-}
-
-func (t *typingAtTrust) Trust(st cli.TrustStep) (engine.TrustAnswer, error) {
-	_, err := t.typed.WriteString(t.keys)
-	Expect(err).NotTo(HaveOccurred())
-	return t.confirming.Trust(st)
+	if pop(&c.answers, "confirm") {
+		return 'y', nil
+	}
+	return 'n', nil
 }
 
 // lolaAsking runs lola with c as its Prompter.
@@ -740,33 +738,14 @@ var _ = Describe("lola sync", func() {
 		Expect(filepath.Join(proj, ".claude", "commands", "other.md")).To(BeARegularFile())
 	})
 
-	It("ends the sync on Ctrl+C in the removals' viewer, before their question", func() {
+	It("asks the removals with their list as the question's text; Ctrl+C there ends the sync", func() {
 		Expect(os.WriteFile(manPath, []byte("version: 1\ntargets: [claude-code]\nmodules: []\n"), 0o644)).To(Succeed())
-		GinkgoT().Setenv("LOLA_PAGER", "")
-		GinkgoT().Setenv("COLUMNS", "60")
-		GinkgoT().Setenv("LINES", "3")
-		in, typed, err := os.Pipe()
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
-			Expect(typed.Close()).To(Succeed())
-			Expect(in.Close()).To(Succeed())
-		})
-		_, err = typed.WriteString("q") // the trust diff's viewer
-		Expect(err).NotTo(HaveOccurred())
-		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}}
-		t := &typingAtTrust{confirming: c, typed: typed, keys: "\x03"}
-		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(t), cli.WithTerminals(true, true))
-		Expect(err).NotTo(HaveOccurred())
-		var out bytes.Buffer
-		c.stderr = &bytes.Buffer{}
-		root.SetOut(&out)
-		root.SetErr(c.stderr)
-		root.SetIn(in)
-		root.SetArgs([]string{"sync", "-C", proj})
-		Expect(cli.Execute(root)).To(Equal(0), c.stderr.String())
-		Expect(out.String()).To(ContainSubstring("q  continue to: Remove these and sync? No applies nothing"))
-		Expect(c.questions).To(Equal([]string{"trust"}), "Ctrl+C ended the sync: the removals question is not asked")
-		Expect(c.stderr.String()).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
+		c := &confirming{trusts: []engine.TrustAnswer{{All: true}}, fail: cli.ErrAborted}
+		r := lolaAsking(c, "sync", "-C", proj)
+		Expect(r.code).To(Equal(0), r.err)
+		Expect(c.questions).To(Equal([]string{"trust", "Remove these and sync? No applies nothing"}))
+		Expect(c.shows[0]).To(ContainSubstring("kit"), "the removals are the question's text")
+		Expect(r.err).To(HaveSuffix("✗ cancelled — the project was not changed\n"))
 		Expect(filepath.Join(proj, ".claude", "commands", "kit.md")).To(BeARegularFile())
 	})
 

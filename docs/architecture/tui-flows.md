@@ -1049,8 +1049,8 @@ stays. Esc at any question after it goes back to the picker, never to the questi
 `lola cache clean` (`cacheCleanCmd`, `internal/cli/cmd_store.go`) plans the clean
 (`engine.PlanClean`, `internal/engine/clean.go`), shows the plan and asks through `app.confirm`
 (`internal/cli/prompt.go`), then applies it (`engine.ApplyClean`), which checks each item again
-before it goes. The plan prints on stderr before the question, or opens in the viewer when it is
-taller than the terminal; the question is asked after the viewer closes.
+before it goes. The plan is the question's text: printed on stderr with the question under it, or, when the two do
+not fit the terminal, in the viewer with the question in it (see [Viewer and pager](#viewer-and-pager)).
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
@@ -1073,11 +1073,8 @@ stateDiagram-v2
   direction TB
 
   [*] --> confirm: something to remove, on a terminal
-  [*] --> plan: the plan taller than the terminal
   [*] --> done: nothing to remove, -y, -n
   [*] --> refused: no terminal
-  plan --> confirm: q
-  plan --> cancelled: ctrl+c
   confirm --> done: yes
   confirm --> cancelled: no
   done --> [*]
@@ -1091,22 +1088,18 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 
 | state | what the user sees | asked when |
 |---|---|---|
-| plan | the viewer holding the plan: `will remove from your cache:`, each item with its reason and size, the total, and what is kept and why | the plan is taller than the terminal, which shows the viewer |
-| confirm | the plan (unless the viewer showed it), then `Remove these from your cache?` (default No) | something to remove, without `-y` or `-n`, on a terminal, also under `--json` |
+| confirm | the plan: `will remove from your cache:`, each item with its reason and size, the total, and what is kept and why, then `Remove these from your cache?` under it, inline or in the viewer (default No) | something to remove, without `-y` or `-n`, on a terminal, also under `--json` |
 
 ### Transitions
 
 | from | input | guard | to | effects |
 |---|---|---|---|---|
 | start | run | something to remove, on a terminal | confirm | the plan on stderr first |
-| start | run | the plan taller than the terminal | plan | |
 | start | run | nothing to remove | done | `✓ nothing to clean`; nothing asked; the clean still runs, dating each cached version that has no last-used date in its `index.yml` |
 | start | run | --json, on a terminal | confirm | the plan and the question on stderr; the result as one JSON document on stdout |
 | start | run | no terminal | refused | the plan, then the error hinting `-y`; under `--json`, one JSON line carrying the plan |
 | start | run | -y | done | nothing asked |
 | start | run | -n | done | the plan; nothing removed or dated |
-| plan | q | | confirm | the viewer closes; the plan is not printed again |
-| plan | ctrl+c | | cancelled | the viewer closes; the question is not asked |
 | confirm | yes | | done | |
 | confirm | yes | an item changed since the plan | done | that item is kept, `(changed)` |
 | confirm | no | | cancelled | |
@@ -1118,7 +1111,7 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
 | done | a yes, `-y`, `-n`, or nothing to remove | the items removed from `$XDG_CACHE_HOME/lola/`; each module's `index.yml` updated; under `-n`, nothing | each item removed and kept, the bytes freed, or `✓ nothing to clean`; 0 |
-| cancelled | No, Ctrl+C (in the plan's viewer too), q | nothing | `✗ cancelled — nothing was changed`; 0 |
+| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 0 |
 | refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 1 |
 
 ### Re-entry
@@ -1132,15 +1125,9 @@ The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: 
 `lola init` with no directory (`initCmd`, `internal/cli/cmd_store.go`) plans the scaffold
 (`engine.PlanInit`, `internal/engine/init.go`), shows the plan and asks through `app.confirm`
 (`internal/cli/prompt.go`), then writes it (`engine.Init`), which checks every file again and
-writes them one at a time. The plan prints on stderr before the question, or opens in the viewer
-when it is taller than the terminal. With a directory, or `-y`, nothing is asked.
-
-The background question can come before the first full-screen form of any command, and is written
-down here once. The forms adapter resolves its colors once per run (`app.darkBackground`,
-`internal/cli/theme.go`) and asks `Is your terminal background dark or light?` when config.yaml
-has no `theme:`, the terminal does not answer lola's query, and accessible mode is off. The answer
-is saved in config.yaml before the form it comes before is drawn, so a No or Ctrl+C at that form
-leaves it saved.
+writes them one at a time. The plan is the question's text: printed on stderr with the question
+under it, or, when the two do not fit the terminal, in the viewer with the question in it (see
+[Viewer and pager](#viewer-and-pager)). With a directory, or `-y`, nothing is asked.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
@@ -1163,15 +1150,8 @@ stateDiagram-v2
   direction TB
 
   [*] --> confirm: no directory, on a terminal
-  [*] --> plan: the plan taller than the terminal
-  [*] --> theme: the background unknown
   [*] --> done: a directory, -y
   [*] --> refused: no terminal, an invalid name
-  plan --> theme: q, the background unknown
-  plan --> confirm: q
-  plan --> cancelled: ctrl+c
-  theme --> confirm
-  theme --> refused: end of input
   confirm --> done: yes
   confirm --> failed: yes, a write fails
   confirm --> cancelled: no
@@ -1181,39 +1161,27 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-Every screen also goes to `cancelled` on `ctrl+c` or `q`. The background question and the
-confirm are first screens: Esc there stays.
+The question also goes to `cancelled` on `ctrl+c` or `q`. It is a first screen: Esc there stays.
 
 ### States
 
 | state | what the user sees | asked when |
 |---|---|---|
-| plan | the viewer holding the plan: `will create module <name> in <path> (<format>):` and each file | the plan is taller than the terminal |
-| theme | `Is your terminal background dark or light?` (Dark, Light), `lola picks its colors for it and saves your answer in config.yaml`, drawn without lola's colors | before a run's first full-screen form, on a terminal, when config.yaml has no `theme:`, the terminal does not say its background, and accessible mode is off |
-| confirm | the plan (unless the viewer showed it), then `Create module <name> in <path>?` (default No) | no directory and no `-y`, on a terminal, also under `--json` |
+| confirm | the plan: `will create module <name> in <path> (<format>):` and each file, then `Create module <name> in <path>?` under it, inline or in the viewer (default No) | no directory and no `-y`, on a terminal, also under `--json` |
 
 ### Transitions
 
 | from | input | guard | to | effects |
 |---|---|---|---|---|
 | start | run | | confirm | the plan on stderr first |
-| start | run | the plan taller than the terminal | plan | |
-| start | run | the background unknown | theme | after the plan, before the question |
 | start | dir | | done | scaffolds the directory given; nothing asked, on a terminal too |
 | start | run | -y | done | scaffolds the current directory; nothing asked |
 | start | run | --json, on a terminal | confirm | the plan and the question on stderr; the result as one JSON document on stdout |
 | start | run | no terminal | refused | the plan, then the error hinting the run with `-y`; under `--json`, one JSON line carrying the plan |
 | start | run | an invalid name | refused | nothing asked, no plan shown |
-| plan | q | | confirm | the viewer closes; the plan is not printed again |
-| plan | ctrl+c | | cancelled | the viewer closes; the question is not asked |
-| theme | answer | | confirm | `theme: dark` or `theme: light` saved in config.yaml: `→ saved theme: <theme> in <path>` |
-| theme | answer | the save fails | confirm | `⚠ could not save theme: …; set theme: <theme> in <path>`; the answer holds for this run |
-| theme | esc | | theme | first screen: key help note |
-| theme | end of input | | refused | the hint says how to skip the question: `set theme: dark or theme: light in <path>`; nothing saved |
-| theme | ctrl+c | | cancelled | nothing saved |
 | confirm | yes | | done | writes the files |
 | confirm | yes | a write fails | failed | the files written before it stay: a partial scaffold |
-| confirm | no | | cancelled | nothing written; a background answered before it stays saved |
+| confirm | no | | cancelled | nothing written |
 | confirm | esc | | confirm | first screen: key help note |
 | confirm | ctrl+c | | cancelled | |
 
@@ -1223,14 +1191,14 @@ confirm are first screens: Esc there stays.
 |---|---|---|---|
 | done | a yes, a directory, or `-y` | the module's files in the directory | `✓ created module <name> in <dir> (<format>)`, its files and `→ try it: lola install …`; 0 |
 | failed | a write fails | the files written before it | `error: …`; 1 |
-| cancelled | No, Ctrl+C (in the plan's viewer too), q | nothing but a background answered before it, in config.yaml | `✗ cancelled — nothing was changed`; 0 |
-| refused | no terminal to ask on, an invalid name, or input ending at the background question | nothing | `error: …` with `hint:` lines; 1 |
+| cancelled | No, Ctrl+C, q | nothing | `✗ cancelled — nothing was changed`; 0 |
+| refused | no terminal to ask on or an invalid name | nothing | `error: …` with `hint:` lines; 1 |
 
 ### Re-entry
 
 | way back | asks again | keeps | drops |
 |---|---|---|---|
-| Esc on the background question or on the confirm | nothing: a first screen stays | | |
+| Esc on the confirm | nothing: a first screen stays | | |
 
 ## Market add
 
@@ -1335,7 +1303,9 @@ the modules' sources into the cache, shows the plan and asks `Migrate?` through 
 migrates each destination (`migrate.Migrate`), asking the
 [hook and script consent](#hook-and-script-consent) questions and the receipt
 ([Trust question](#trust-question)) as it installs. Going back from `Migrate?` (Esc) asks the last
-mapping question again, then plans again from the answers.
+mapping question again, then plans again from the answers. The plan is the question's text: printed
+on stderr with the question under it, or, when the two do not fit the terminal, in the viewer with
+the question in it (see [Viewer and pager](#viewer-and-pager)).
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
@@ -1361,7 +1331,6 @@ stateDiagram-v2
   [*] --> root: a missing root
   [*] --> targets: a missing assistant, one on your PATH
   [*] --> confirm: no mapping question
-  [*] --> plan: the plan taller than the terminal
   [*] --> done: -y, nothing to migrate
   [*] --> dryRun: -n, after the mapping questions
   [*] --> refused: no terminal
@@ -1371,8 +1340,6 @@ stateDiagram-v2
   targets --> targets: esc (after another assistant)
   targets --> root: esc (the first, after a root)
   targets --> confirm
-  plan --> confirm: q
-  plan --> cancelled: ctrl+c
   confirm --> targets: esc (after an assistant question)
   confirm --> root: esc (after root questions only)
   confirm --> consent: yes, a hook or script without consent
@@ -1391,8 +1358,7 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-Every screen also goes to `cancelled` on `ctrl+c`, and every screen but the consent questions on
-`q`. The first mapping question is a first screen: Esc there stays; so is `Migrate?` when no
+Every screen also goes to `cancelled` on `ctrl+c` or `q`. The first mapping question is a first screen: Esc there stays; so is `Migrate?` when no
 mapping question was asked.
 
 ### States
@@ -1401,8 +1367,7 @@ mapping question was asked.
 |---|---|---|
 | root | `<old> not found on this machine — new root (empty skips):`, `N project path(s) of the Python lola start with it`, pre-filled with your home, or the last answer when asked again | a root that missing project paths and local sources share, which `--map-root` does not map; on a terminal, without `-y` or `--json`, and under `-n` and `--force` too |
 | targets | `<old> is not installed here — install its module(s) for:` (`… has no lola target …`), `choosing none leaves them as they are`: the assistants on your PATH, every one ticked, or the last answer when asked again | an assistant the records name that this machine lacks, which `--map-target` does not map, with one on your PATH; after the roots, on the same terms |
-| plan | the viewer holding the plan | the plan is taller than the terminal |
-| confirm | the plan (unless the viewer showed it), then `Migrate?` (default No) | something to migrate, without `-y`, `--force` or `-n`, on a terminal, also under `--json` |
+| confirm | the plan, then `Migrate?` under it, inline or in the viewer (default No) | something to migrate, without `-y`, `--force` or `-n`, on a terminal, also under `--json` |
 | consent | the [consent questions](#hook-and-script-consent) of what it installs | a hook or script without your consent, after a yes |
 | receipt | `Proceed?` after what `--trust` covers (see [Trust question](#trust-question)) | `--trust` covers something, after a yes, without `-y` |
 
@@ -1420,7 +1385,6 @@ mapping question was asked.
 | start | run | --force | root | the mapping questions are asked; `Migrate?` is not |
 | start | run | --json, on a terminal | confirm | no mapping question; the plan and the question on stderr; the result as one JSON document on stdout |
 | start | run | no terminal | refused | the plan, then the error hinting `-y` |
-| start | run | the plan taller than the terminal | plan | |
 | start | run | nothing to migrate | done | `nothing more to migrate …` and what is left, and why; nothing asked |
 | root | answer | | next step | the root's records are looked for below the answer |
 | root | empty submit | | next step | that root's records are left |
@@ -1433,8 +1397,6 @@ mapping question was asked.
 | targets | esc | the first, after a root question | root | the last root, as answered; the assistants are worked out again after it |
 | targets | esc | first screen | targets | key help note |
 | targets | ctrl+c | | cancelled | |
-| plan | q | | confirm | the viewer closes; the plan is not printed again |
-| plan | ctrl+c | | cancelled | the viewer closes; the question is not asked |
 | confirm | yes | | done | migrates each destination |
 | confirm | yes | a hook or script without your consent | consent | asked as it installs |
 | confirm | yes | --trust | receipt | |
@@ -1454,7 +1416,7 @@ mapping question was asked.
 | done | a yes, `-y`, `--force`, or nothing to migrate | each destination's modules installed with lola; the Python lola's files copied or moved into a trash run; its home moved to the trash when nothing is left in it; its marketplaces registered | the report; 0 |
 | dry run | `-n` | nothing but the sources in the cache | the plan; 0 |
 | failed | a destination fails | the other destinations, migrated | the report, then `error: …`; 1 |
-| cancelled | No, Ctrl+C (in the plan's viewer too), q | nothing but the sources in the cache | `✗ cancelled — nothing was changed`; 0 |
+| cancelled | No, Ctrl+C, q | nothing but the sources in the cache | `✗ cancelled — nothing was changed`; 0 |
 | refused | no terminal to ask on | nothing | `error: …` with `hint:` lines; 1 |
 
 ### Re-entry
@@ -1473,10 +1435,10 @@ The engine asks these as it plans a write, before anything is written, through t
 (`Options.Ask`, `AskRuntimeHooks` and `AskScript`, set by `app.hookOptions`,
 `internal/cli/prompt.go`): `allowed` (`internal/engine/hooks.go`), `runtimeHookConsent`
 (`internal/engine/runtimehooks.go`) and `trustScript` (`internal/engine/scripts.go`). Each is a
-plain yes/no question (`Prompter.Consent`), drawn by huh with its own keys: `q` and Esc are no
-answer there, nothing goes back, and Ctrl+C ends the run with nothing written. Before each, what it
-asks about is listed on stderr: the hooks with their sha256, the Claude Code hooks with what they
-run, a project's script by its path and sha256, never its body. A run asks about its modules'
+yes/no question (`Prompter.Ask`) whose text is what it asks about, so it stays in sight of the
+question (inline, or in the viewer when it does not fit): the hooks with their sha256, the Claude
+Code hooks with what they run, a project's script by its path and sha256, never its body. Esc goes
+nowhere (`first step — q quits`), `q` quits and Ctrl+C ends the run, with nothing written. A run asks about its modules'
 install hooks and Claude Code hooks first, then about the project's scripts, pre-install before
 post-install, then shows the receipt ([Trust question](#trust-question)). A yes is recorded in
 `$XDG_STATE_HOME/lola/consent.json` with the run's writes, and a consent recorded for the same
@@ -1527,14 +1489,14 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-Every question also goes to `cancelled` on `ctrl+c`. *Next step* is the next consent question,
+Every question also goes to `cancelled` on `ctrl+c` or `q`. *Next step* is the next consent question,
 else the receipt when `--trust` covers something, else the run's writes.
 
 ### States
 
 | state | what the user sees | asked when |
 |---|---|---|
-| hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)`, then `Run <m>'s install hooks?` (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks |
+| hooks | `<m> has install hooks. They run as you, unconfined:`, each `<event>: <script> (sha256 <digest>)`, then `Run <m>'s install hooks?` under it (default No) | a module the run installs has hooks without a consent recorded for their digest, on a terminal, without `--json`, `-n` or a `--trust` covering hooks |
 | runtime | `<m> has Claude Code hooks:` (`… and agent MCP servers:`), each with what it runs or where it connects, then `Install <m>'s Claude Code hooks?` (`… and agent MCP servers?`) (default No) | a module's Claude Code hooks without a consent recorded for their digest at that settings file, on the same terms |
 | script | `The project at <root> has a <event> script. It runs as you, unconfined, for every module lola installs there:`, `<path> (sha256 <digest>)`, then `Run this project's <event> script?` (default No) | the project's pre-install or post-install script without a consent recorded for its digest, when the run installs a copy for it to wrap, on the same terms |
 | later | the same listing, then `Trust this project's pre-install script for later runs?` (default No) | `lola sync` with nothing to install, the project's pre-install script without consent |
@@ -1544,7 +1506,7 @@ else the receipt when `--trust` covers something, else the run's writes.
 
 | from | input | guard | to | effects |
 |---|---|---|---|---|
-| start | run | hooks without your consent, on a terminal | hooks | the hooks listed first |
+| start | run | hooks without your consent, on a terminal | hooks | the hooks listed as the question's text |
 | start | run | Claude Code hooks without your consent, on a terminal | runtime | |
 | start | run | a project script without your consent, on a terminal | script | its path and sha256, not its body |
 | start | run | lola sync, nothing to install | later | a pre-install script with no copy to wrap is asked about for later runs |
@@ -1558,20 +1520,24 @@ else the receipt when `--trust` covers something, else the run's writes.
 | hooks | no | a pre-install hook | refused | nothing written |
 | hooks | no | post-install hooks only | done | installed without them: `hooks_pending` in lock.json, and `<m>: post-install hook skipped without your consent; review and run it: lola sync … <m>` |
 | hooks | ctrl+c | | cancelled | nothing written |
-| hooks | esc or q | | hooks | no answer |
+| hooks | esc | | hooks | `first step — q quits` |
+| hooks | q | | cancelled | a quit; nothing written |
 | runtime | yes | | next step | the hooks written to the assistant's settings; the consent recorded |
 | runtime | no | | next step | the rest installed without the Claude Code hooks; the next sync asks again |
 | runtime | ctrl+c | | cancelled | nothing written |
-| runtime | esc or q | | runtime | no answer |
+| runtime | esc | | runtime | `first step — q quits` |
+| runtime | q | | cancelled | a quit; nothing written |
 | script | yes | | next step | the script runs around each module's install; the consent recorded |
 | script | no | pre-install | refused | nothing written |
 | script | no | post-install | done | installed without it: `scripts_pending` in lock.json, and a warning naming the sync that runs it |
 | script | ctrl+c | | cancelled | nothing written |
-| script | esc or q | | script | no answer |
+| script | esc | | script | `first step — q quits` |
+| script | q | | cancelled | a quit; nothing written |
 | later | yes | | done | the consent recorded; nothing runs |
 | later | no | | refused | names the script; nothing recorded |
 | later | ctrl+c | | cancelled | nothing recorded |
-| later | esc or q | | later | no answer |
+| later | esc | | later | `first step — q quits` |
+| later | q | | cancelled | a quit; nothing written |
 
 ### Exits
 
@@ -1592,12 +1558,11 @@ else the receipt when `--trust` covers something, else the run's writes.
 `app.paging` (`internal/cli/pager.go`) decides how human output, help, and the plan a confirmation
 asks about reach the terminal: printed, through the user's pager, or in lola's viewer
 (`viewerModel`, `internal/cli/viewer.go`). `page` shows output and help; `pageThen` shows what a
-question follows, and the question is asked once the viewer or pager exits: a confirmation's plan
-(`app.confirm`, `internal/cli/prompt.go`), sync's trust diff and removals (`syncQuestions`,
-`internal/cli/cmd_sync.go`), the trash's restore plan (`restorePicked`, `internal/cli/cmd_trash.go`),
-the profiles `lola profile --add` and `--update` ask to consent to, and the record of what
-`--trust` accepted when the `Proceed?` receipt asks after it (`receiptNext`). The viewer has two modes: read mode for output, help and plans, and confirm
+question follows, and the question is asked once the viewer or pager exits: sync's trust diff
+(`syncQuestions`, `internal/cli/cmd_sync.go`), the trash's restore plan (`restorePicked`,
+`internal/cli/cmd_trash.go`), and the record of what `--trust` accepted when the `Proceed?` receipt asks after it (`receiptNext`). The viewer has two modes: read mode for output, help and plans, and confirm
 mode for a review (`Review`, `internal/cli/huh.go`), which answers the flow that shows it.
+`app.ask` (`internal/cli/ask.go`) asks a yes/no question, or the review's, under its text: inline (`inline`: the text printed, then a one-line prompt under it) when the text and the prompt line at its widest fit the terminal or paging prints, else in the viewer with the question in it (`prompt`); `$LOLA_PAGER` pages the text first and the question is asked inline after. The prompt takes one answer letter in its field and answers on Enter; a capital letter in `[y/N]` is Enter's default.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
@@ -1637,6 +1602,24 @@ stateDiagram-v2
   review --> cancelled: n, ctrl+c, q
   quit --> review: n, enter, esc
   quit --> cancelled: y, ctrl+c
+  [*] --> inline: a question, fits or the viewer bypassed
+  [*] --> prompt: a question taller than the terminal
+  inline --> answered: enter, a letter or a default
+  inline --> back: esc, a screen before
+  inline --> quit: q, two or more answers
+  inline --> cancelled: q, ctrl+c
+  prompt --> answered: enter, a letter or a default
+  prompt --> back: esc, a screen before
+  prompt --> quit: q, two or more answers
+  prompt --> cancelled: q, ctrl+c
+  prompt --> search: /
+  search --> prompt: enter, esc, a question asked
+  inline --> refused: end of input
+  prompt --> refused: end of input
+  quit --> inline: n, enter, esc (inline)
+  quit --> prompt: n, enter, esc (in the viewer)
+  answered --> [*]
+  refused --> [*]
   printed --> [*]
   done --> [*]
   apply --> [*]
@@ -1663,7 +1646,9 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | viewer | the text wrapped to the width on the alternate screen; under it a bold rule across the width, `━━ lines 41–80 of 312 · ↓ 232 more ━━` (`· end` once the last line shows), then the key line `q quit · ↑↓ space b  scroll · g G  top/end · /  search`, cut from the right on a narrow terminal (j/k, PgUp/PgDn and Home/End work too); before a picker, `q  continue to: <title>` in place of `q quit` | the text is taller than the terminal |
 | search | the key line `/<term>█  enter search · esc cancel` while the term is typed; once searched, `/<term> 2 of 7` (or `no match`) and `n N  next/prev` before the keys, the current match in reverse video | `/` in the viewer or a review |
 | review | the summary in confirm mode, footer `y apply · c change · n cancel · esc back · q quit` and the scrolling keys (`c change` only with a step to change, `esc back` only with a screen before), search's `^n/^p next/prev` | a review on a full terminal, the viewer not bypassed, at any length |
-| quit | the footer `Quit? your answers so far are dropped — nothing has been changed [y/N]` | `q` in a review with two or more answers held |
+| quit | `Quit? your answers so far are dropped — nothing has been changed [y/N]`: a review's footer, or after a question's field on its prompt line | `q` in a review or at a question with two or more answers held |
+| inline | the text printed on stderr, then the prompt line `Uninstall mymod? [y/N] █` under it (`[y/N]` bold, nothing in color); a hint or note after the field on the same line; `· esc back` at its end with a screen before | a question whose text and prompt line fit the terminal, or the viewer bypassed |
+| prompt | the text in the viewer on stderr, then the rule line, the prompt line (wrapped, never cut) and the key line `⏎ alone = no · q quit · ↑↓ space b  scroll · g G  top/end · /  search` (`⏎ alone` only with a default) | a question whose text and prompt line do not fit |
 
 ### Transitions
 
@@ -1680,6 +1665,9 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | start | run | taller than the terminal | viewer | |
 | start | run | fits, or the height unknown | printed | |
 | start | run | a review, the viewer not bypassed | review | at any length; each time it opens again (after Change what?'s back, say) it prints the summary to scrollback once more; a review a pass reaches without asking a step (Esc back to it, Change versions) keeps its `Step N of N — Review` title as it was |
+| start | ask | fits, or the viewer bypassed | inline | the text printed first; a question with no text never opens the viewer |
+| start | ask | taller than the terminal with its prompt | prompt | the prompt line counted at its widest, its longest note included |
+| start | ask | LOLA_PAGER set | pager | the text paged; once the pager exits, the question asked inline |
 | pager | exits | | done | lola ignores Ctrl+C while it runs, as git does; the question, if one follows, is asked next |
 | pager | fails | | printed | not found, found in the current directory, or exits non-zero: `⚠ <why>; showing it here`, and the text printed capped |
 | viewer | scroll | | viewer | the footer's position follows |
@@ -1696,6 +1684,33 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | search | esc | | viewer | the typing dropped |
 | search | q | | search | typed as text, as every key but Enter, Esc, Backspace and Ctrl+C |
 | search | ctrl+c | a question follows | cancelled | as the viewer's `ctrl+c` |
+| search | enter or esc | a question asked | prompt | as in the viewer; the field as it was, the prompt line under the rule again |
+| inline | an answer letter | | inline | the field holds it, in lowercase, replacing one typed before |
+| inline | other key | | inline | the hint `answer y or n (Enter means no)` after the field (`answer y, c or n` with no default) |
+| inline | backspace | | inline | the field cleared |
+| inline | enter | a letter typed, or a default | answered | the line stays, the answer echoed: `Uninstall mymod? [y/N] y` |
+| inline | enter | nothing typed, no default | inline | the hint |
+| inline | esc | a screen before | back | |
+| inline | esc | no screen before | inline | `first step — q quits` after the field (`no step to go back to — q quits` with answers held) |
+| inline | q | fewer than two answers | cancelled | a quit |
+| inline | q | two or more answers | quit | |
+| inline | ctrl+c | | cancelled | the prompt line left with its field empty |
+| inline | end of input | | refused | `error: input ended before the question was answered`, hinting a terminal or `-y`; 1 |
+| prompt | scroll | | prompt | the rule line's position follows; Enter never scrolls |
+| prompt | an answer letter | | prompt | the field holds it |
+| prompt | enter | a letter typed, or a default | answered | the text and the answered prompt line printed to stderr |
+| prompt | enter | nothing typed, no default | prompt | the hint |
+| prompt | / | | search | the search returns to the prompt |
+| prompt | ctrl+n or ctrl+p | | prompt | the next or the previous match: `n` is an answer here |
+| prompt | esc | a screen before | back | |
+| prompt | esc | no screen before | prompt | as inline |
+| prompt | q | fewer than two answers | cancelled | a quit |
+| prompt | q | two or more answers | quit | |
+| prompt | ctrl+c | | cancelled | the prompt line left with its field empty |
+| prompt | end of input | | refused | the text and the unanswered prompt line printed to stderr, then the error |
+| prompt | resize | | prompt | the text wrapped again; the prompt line wraps, the key line is cut from the right |
+| quit | n, enter or esc | inline | inline | where it was |
+| quit | n, enter or esc | in the viewer | prompt | where it was |
 | review | y | | apply | |
 | review | c | a step to change | change | the flow's "Change what?" menu |
 | review | c | no step to change | review | nothing |
@@ -1719,6 +1734,8 @@ page), `g`/`G` or `Home`/`End` (the top or the end); *resize* is the terminal ch
 | done | the viewer closed, or the pager exited | nothing | the text in the scrollback; the command goes on, a question that follows asked next |
 | apply, change, back | a review's answer | nothing | the flow's next screen (see [Install](#install) and [Profile edit](#profile-edit)) |
 | cancelled | Ctrl+C or `n` in a review, a quit, Ctrl+C in a plan's viewer | nothing | `✗ cancelled — nothing was changed` (or the command's own wording, see [Inputs](#inputs)); 0 |
+| answered | a letter or the default answered on Enter | nothing | the line with the answer stays; the command goes on with it |
+| refused | stdin ended at a question | nothing | the prompt line with its field empty, then the error, with `hint:` lines; 1 |
 
 ### Re-entry
 
@@ -1791,7 +1808,7 @@ Enter alone; *invalid* is any other line a prompt refuses.
 | pick | the title, `Select up to N options.`, the options numbered (`[x]` before the ticked ones), and `Enter a number between 0 and N:` | a picker (huh's MultiSelect) |
 | choose | the title, the options numbered, and `Enter a number between 1 and N:` | a menu or a question with options (huh's Select) |
 | line | the title as the prompt | a text question (huh's Input) |
-| yesno | the title and `[y/N]` (`[Y/n]` when the default is yes) | a yes or no question (huh's Confirm) |
+| yesno | the question's text, then `<question> [y/N] ` | a yes or no question (`Ask`) |
 
 Each `Prompter` method (`internal/cli/prompter.go`) as a line prompt:
 
@@ -1803,11 +1820,10 @@ Each `Prompter` method (`internal/cli/prompter.go`) as a line prompt:
 | `MarketEntry` | choose | a number | the first entry | | yes |
 | `Assistants` | pick, the scopes it is for in a note | numbers, `0` | invalid | refused | yes |
 | `Version` | a note (the title, the scope, the version note), then choose titled `Type a number (Enter = 2, <why>)`, then the label taken (`→ >=2.0`) | a number | the preselected version; invalid with none preselected | | yes |
-| `Components` | one pick per kind, in turn, a disabled kind as a note | numbers, `0` | invalid | an answer, which asks `ConfirmEmpty` when every list is empty | yes |
-| `ConfirmEmpty` | yesno | y, n | No | | yes |
+| `Components` | one pick per kind, in turn, a disabled kind as a note | numbers, `0` | invalid | an answer, which asks `Install <module> with no components?` when every list is empty | yes |
 | `Review` | the summary printed, then choose: Apply, the Change entries, Quit, with what Ctrl+C does in a note | a number | invalid: Apply needs its number | | no viewer: this menu takes its place; Quit cancels |
 | `Trust` | choose; Choose… then one pick per kind, in turn | a number; numbers, `0` | invalid: trust, or Cancel, needs its number, whatever the full screen's cursor would be on | refused on the last list | yes |
-| `Confirm` | yesno | y, n | No | | yes |
+| `Ask` | yesno | y, n, yes, no, either case | the default (No) | | yes |
 | `Where` | choose, Cancel last | a number | the option preselected | | yes |
 | `Profiles` | pick, the source in a note | numbers, `0` | invalid | an answer | yes |
 | `Members` | pick, how members order in a note | numbers, `0` | invalid | an answer | yes |
@@ -1819,7 +1835,6 @@ Each `Prompter` method (`internal/cli/prompter.go`) as a line prompt:
 | `MigrateRoot` | line, the suggestion in its title, nothing pre-filled, the paths it moves in a note | an absolute path | skips the root | | yes |
 | `MigrateTargets` | pick, every assistant ticked, what none does in a note | numbers, `0` | invalid | an answer: skips them | yes |
 | `Background` | choose (Dark, Light), what the answer does in a note | a number | Dark | | yes |
-| `Consent` | yesno | y, n | No | | yes |
 
 "As the full screen" means the same states, in the same order, with the same exits, but for what no
 line prompt has: Esc, `q` and the viewer.
@@ -1846,8 +1861,8 @@ line prompt has: Esc, `q` and the viewer.
 | line | a blank line | nothing pre-filled | next | an empty answer |
 | line | end of input | | cancelled | |
 | yesno | y or n | | next | |
-| yesno | a blank line | | next | the default, No unless the question says otherwise |
-| yesno | invalid | | yesno | `invalid input. please try again` |
+| yesno | a blank line | | next | the default, No |
+| yesno | invalid | | yesno | `answer y or n (Enter means no)` |
 | yesno | end of input | | cancelled | |
 | choose | ctrl+c | | cancelled | as at any prompt |
 
@@ -1871,6 +1886,13 @@ line prompt has: Esc, `q` and the viewer.
 (`internal/cli/huh.go`: `requiredPick`, `sourcePick`). The other sections' tables name these keys
 where a surface uses them; this one says what each does on any form.
 
+The background question can come before the first full-screen form of any command, and is written
+down here once. The forms adapter resolves its colors once per run (`app.darkBackground`,
+`internal/cli/theme.go`) and asks `Is your terminal background dark or light?` when config.yaml
+has no `theme:`, the terminal does not answer lola's query, and accessible mode is off. The answer
+is saved in config.yaml before the form it comes before is drawn, so a No or Ctrl+C at that form
+leaves it saved.
+
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {
   'primaryColor': '#2f6dab',
@@ -1892,6 +1914,10 @@ stateDiagram-v2
   direction TB
 
   [*] --> screen
+  [*] --> theme: in color, the background unknown
+  theme --> screen: answer
+  theme --> refused: end of input
+  theme --> cancelled: ctrl+c
   screen --> next: answer
   screen --> back: esc, its first field, a screen before
   screen --> screen: esc, a field before or nothing before
@@ -1910,8 +1936,8 @@ stateDiagram-v2
   refused --> [*]
 ```
 
-*screen* is any field of a form: a picker (a multi-select), a menu (a select), a text input or a yes
-or no question; *picker* and *input* name a screen that is a picker or a text input. A key answers only the form it was typed
+*screen* is any field of a form: a picker (a multi-select), a menu (a select) or a text input;
+*picker* and *input* name a screen that is a picker or a text input. A key answers only the form it was typed
 in: keys read with the Esc or `q` that ended a form are dropped.
 
 ### States
@@ -1919,6 +1945,7 @@ in: keys read with the Esc or `q` that ended a form are dropped.
 | state | what the user sees | asked when |
 |---|---|---|
 | screen | the field, its key help led by `esc back · q quit` (no `esc back` with nothing before, `ctrl+c quits` in a text input) | a form |
+| theme | `Is your terminal background dark or light?` (Dark, Light), `lola picks its colors for it and saves your answer in config.yaml`, drawn without lola's colors | before a run's first full-screen form, on a terminal, when config.yaml has no `theme:`, the terminal does not say its background, and accessible mode is off |
 | filter | the filter line with the term being typed; the list cut to the options holding it | `/` on a filterable picker |
 | filtered | the list cut to the term, `esc clear filter` in the key help | the term set |
 | quit | `Quit? your answers so far are dropped — nothing has been changed [y/N]` in the key help's place | `q` with two or more answers held |
@@ -1927,6 +1954,12 @@ in: keys read with the Esc or `q` that ended a form are dropped.
 
 | from | input | guard | to | effects |
 |---|---|---|---|---|
+| start | a form | in color, the background unknown | theme | before the form |
+| theme | answer | | screen | `theme: dark` or `theme: light` saved in config.yaml: `→ saved theme: <theme> in <path>` |
+| theme | answer | the save fails | screen | `⚠ could not save theme: …; set theme: <theme> in <path>`; the answer holds for this run |
+| theme | esc | | theme | first screen: key help note |
+| theme | end of input | | refused | the hint says how to skip the question: `set theme: dark or theme: light in <path>`; nothing saved |
+| theme | ctrl+c | | cancelled | nothing saved |
 | screen | answer | | next | Enter |
 | screen | q | fewer than two answers | cancelled | a quit; the answers held are `Nav.Answered` plus the form's fields before |
 | screen | q | two or more answers | quit | |
@@ -1958,7 +1991,7 @@ in: keys read with the Esc or `q` that ended a form are dropped.
 
 | exit | when | on disk | output, exit code |
 |---|---|---|---|
-| next, back | an answer, an Esc that goes back | as the flow does | the ended full-screen form is erased, on a submit, a back, a quit and a cancel alike, so only the flow's next screen shows; not erased: a form stopped by end of input (refused), a consent question after Ctrl+C (`huhForms.Consent`), and accessible mode's line prompts, which stay as typed |
+| next, back | an answer, an Esc that goes back | as the flow does | the ended full-screen form is erased, on a submit, a back, a quit and a cancel alike, so only the flow's next screen shows; not erased: a form stopped by end of input (refused), and accessible mode's line prompts, which stay as typed |
 | cancelled | Ctrl+C, a quit | nothing | the full-screen form erased (but for the exceptions above), then `✗ cancelled — nothing was changed` (or the command's own wording); 0 |
 | refused | stdin ends | nothing | the error, with `hint:` lines; 1 |
 

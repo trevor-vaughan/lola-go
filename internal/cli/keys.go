@@ -22,6 +22,15 @@ const (
 // go back to the screen as it was.
 const quitQuestion = "Quit? your answers so far are dropped — nothing has been changed"
 
+// firstStepNote is what Esc says with no screen to go back to: "first step" when nothing is
+// answered yet, else "no step to go back to" (a flow's closing question).
+func firstStepNote(nav Nav) string {
+	if nav.Answered > 0 {
+		return "no step to go back to — q quits"
+	}
+	return "first step — q quits"
+}
+
 // keyed is a field of a full-screen form under lola's keys: q quits, unless the field takes it as
 // text (a text input, a filter being typed); Esc moves to the form's field before, as Shift+Tab
 // does, and on the form's first field goes back a screen, unless the field takes it (a filter

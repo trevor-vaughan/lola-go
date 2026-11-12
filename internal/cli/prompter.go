@@ -9,7 +9,7 @@ import (
 )
 
 // Prompter asks the install flow's questions: one method per step and one
-// for the review menu; and sync's questions: the trust picker and yes/no. The
+// for the review menu; the trust picker, and every yes/no question (Ask). The
 // huh adapter draws them inline on stderr; specs inject a scripted one. A method returns
 // ErrAborted when the user cancels. Scope, Modules, Assistants and a Required TidyKeep never
 // answer with nothing picked: the huh adapter refuses that in the form. Other
@@ -30,15 +30,15 @@ type Prompter interface {
 	// the index of the option picked.
 	Version(VersionStep) (int, error)
 	Components(ComponentPage) ([]string, error)
-	// ConfirmEmpty asks "Install <module> with no components?", default No.
-	ConfirmEmpty(module string, nav Nav) (bool, error)
 	Review(ReviewStep) (string, error)
 	// Trust asks sync's trust question: trust all the changes, choose the
 	// entries to trust, or cancel, which is ErrAborted (so is choosing nothing).
 	Trust(TrustStep) (engine.TrustAnswer, error)
-	// Confirm asks a yes/no question, default No: sync's removals, and the question that closes
-	// a flow (tidy's, migrate's), whose nav counts the steps answered before it.
-	Confirm(question string, nav Nav) (bool, error)
+	// Ask asks q, a yes/no question or the review's, under its text, answering the letter given,
+	// lowercased: on a full terminal inline or in the viewer, by the fit rule (app.ask); in
+	// accessible mode as a line prompt. Esc with q.Nav.Back is ErrBack; q quits; Ctrl+C, and end
+	// of input in accessible mode, are ErrAborted.
+	Ask(Question) (rune, error)
 	// Where asks where a change goes, or which restore lola trash's review
 	// runs: Title, one row per option and Cancel last, default the first; it answers the index of
 	// the option chosen, ErrCancelled for Cancel.
@@ -76,10 +76,6 @@ type Prompter interface {
 	// Background asks whether the terminal's background is dark, for the pickers' colors.
 	// lola asks once, when neither config.yaml nor the terminal says, and saves the answer.
 	Background() (bool, error)
-	// Consent asks a hook or project-script consent question ("Run <m>'s install hooks?"), default
-	// No: a plain yes/no on stderr, outside the forms' theme and keys, so neither q nor Esc answers
-	// it. Ctrl+C, and end of input in accessible mode, are ErrAborted.
-	Consent(question string) (bool, error)
 }
 
 // ErrBack is a Prompter's answer when the user goes back a screen (Esc): the flow asks the screen
@@ -89,6 +85,14 @@ var ErrBack = engine.ErrBack
 // ErrCancelled is a question's Cancel option picked (Where's), as against Ctrl+C: it is
 // ErrAborted to a caller that does not tell them apart.
 var ErrCancelled = fmt.Errorf("%w", ErrAborted)
+
+// askYes asks p q, a yes/no question whose Enter alone is No, and reports whether the answer is
+// yes.
+func askYes(p Prompter, q Question) (bool, error) {
+	q.Answers = "yN"
+	ans, err := p.Ask(q)
+	return err == nil && ans == 'y', err
+}
 
 // Nav is where a question stands in its flow, for the keys of the full-screen forms: Back says
 // there is a screen to go back to, which Esc does (on the first screen Esc says so instead), and
@@ -103,12 +107,15 @@ type Nav struct {
 // diff, a receipt, the hooks a consent covers; nil when there is none. Prompt is the question
 // ("Uninstall mymod?"), already safe to print. Answers lists the letters it takes, in order; a
 // capital one is the default Enter alone answers ("yN"), and with none Enter alone asks again
-// ("ycn"). Nav places it in its flow, as a form's Nav does.
+// ("ycn"). Nav places it in its flow, as a form's Nav does. Trust is the kind of consent a yes
+// gives (hooks, runtime hooks, scripts), 0 for any other question: -y never answers a consent
+// question, so when stdin ends before one is answered the refusal names --trust=<kind>.
 type Question struct {
 	Show    func(io.Writer, style)
 	Prompt  string
 	Answers string
 	Nav     Nav
+	Trust   engine.TrustKinds
 }
 
 // MigrateRootStep asks for the new root of Old, below which Records of the Python lola's project
@@ -471,9 +478,7 @@ func (noPrompter) Modules(ModuleStep) (ModuleAnswer, error)     { return ModuleA
 func (noPrompter) Assistants(AssistantStep) ([]string, error)   { return nil, errNoTerminal }
 func (noPrompter) Version(VersionStep) (int, error)             { return 0, errNoTerminal }
 func (noPrompter) Components(ComponentPage) ([]string, error)   { return nil, errNoTerminal }
-func (noPrompter) ConfirmEmpty(string, Nav) (bool, error)       { return false, errNoTerminal }
 func (noPrompter) Review(ReviewStep) (string, error)            { return "", errNoTerminal }
-func (noPrompter) Confirm(string, Nav) (bool, error)            { return false, errNoTerminal }
 func (noPrompter) Where(WhereStep) (int, error)                 { return 0, errNoTerminal }
 func (noPrompter) Profiles(ProfileStep) ([]string, error)       { return nil, errNoTerminal }
 func (noPrompter) MarketName(MarketNameStep) (string, error)    { return "", errNoTerminal }
@@ -490,5 +495,5 @@ func (noPrompter) MigrateRoot(MigrateRootStep) (string, error) { return "", errN
 func (noPrompter) MigrateTargets(MigrateTargetStep) ([]string, error) {
 	return nil, errNoTerminal
 }
-func (noPrompter) Background() (bool, error)    { return false, errNoTerminal }
-func (noPrompter) Consent(string) (bool, error) { return false, errNoTerminal }
+func (noPrompter) Background() (bool, error)  { return false, errNoTerminal }
+func (noPrompter) Ask(Question) (rune, error) { return 0, errNoTerminal }

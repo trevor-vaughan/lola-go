@@ -100,7 +100,7 @@ func TestInterruptChild(t *testing.T) {
 		})
 	case "hooks":
 		root = ask(func() error {
-			_, err := h.Consent("Run m's install hooks?")
+			_, err := h.Ask(Question{Prompt: "Run m's install hooks?", Answers: "yN"})
 			return err
 		})
 	default:
