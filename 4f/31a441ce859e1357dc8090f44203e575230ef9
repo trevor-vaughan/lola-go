@@ -1,0 +1,37 @@
+internal/cli/profile_edit_test.go
+  s_cdcf17caf8b368::t_606bac2d101a22 1014-1016
+docs/architecture/plans-and-the-ledger.md
+  s_7e3555e50dd21b::t_c9abf5dff4b968 82-85
+docs/usage.md
+  s_7e3555e50dd21b::t_06b29c07fbfde0 456-457
+internal/cli/flow.go
+  s_7e3555e50dd21b::t_6155bd7392e180 959-962
+internal/cli/human.go
+  s_7e3555e50dd21b::t_e8df12f4243ea2 238-239,241-243
+internal/cli/output.go
+  s_7e3555e50dd21b::t_e659eb01e53619 65-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "4f31a441ce859e1357dc8090f44203e575230ef9",
+  "prompts": {},
+  "sessions": {
+    "s_7e3555e50dd21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad87a83a0acb8f654",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    },
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
