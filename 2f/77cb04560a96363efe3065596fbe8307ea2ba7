@@ -1,0 +1,27 @@
+internal/cli/core_test.go
+  s_3bc35092fb1252::t_ff33f263494b9f 386
+internal/cli/misc2_paths_test.go
+  s_3bc35092fb1252::t_306ffdba26ab62 813
+internal/engine/info.go
+  s_3bc35092fb1252::t_b7b4ed354e20bc 237,1015
+internal/engine/runtimehooks.go
+  s_3bc35092fb1252::t_aeb86aa98b4abe 25-29,59-61,113,208-209,211-212,227,230,239
+internal/engine/runtimehooks_test.go
+  s_3bc35092fb1252::t_6dc10952426119 176,216-227,239,422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2f77cb04560a96363efe3065596fbe8307ea2ba7",
+  "prompts": {},
+  "sessions": {
+    "s_3bc35092fb1252": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad794a886e8ed7504",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
