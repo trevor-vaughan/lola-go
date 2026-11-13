@@ -1,0 +1,36 @@
+internal/engine/trustkinds_test.go
+  s_cdcf17caf8b368::t_a9aea78337b672 398
+docs/reference/output-contract.md
+  s_cdcf17caf8b368::t_6fb16060128593 276-278
+internal/engine/sync_test.go
+  s_cdcf17caf8b368::t_a9aea78337b672 972-985
+internal/engine/remote.go
+  s_cdcf17caf8b368::t_12a42f0675de87 185
+docs/guides/sync-and-trust.md
+  s_cdcf17caf8b368::t_6fb16060128593 273-276
+internal/engine/runtimehooks.go
+  s_cdcf17caf8b368::t_8aef4b31f4ff88 324-326,367-368
+  s_cdcf17caf8b368::t_c91ded49e50fb2 301-302,312
+  s_cdcf17caf8b368::t_b26c8d56854612 369
+internal/engine/runtimehooks_test.go
+  s_cdcf17caf8b368::t_aa5aca53504ab4 464,466,468,485,487,489-491,494,504-505
+internal/engine/content.go
+  s_cdcf17caf8b368::t_12a42f0675de87 79-80,90,142-144,169,290-293,298,300,302,305-313,322,334,337,341-350,353,446-477
+  s_cdcf17caf8b368::t_5f51df1a6ebdd3 478
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7984785e91d9ea6daad34756c55dd386e12c02a0",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
