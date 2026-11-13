@@ -66,7 +66,7 @@ func (a *app) profileMove(cmd *cobra.Command, eng *engine.Engine, args, modules 
 	req.Show, req.Trust, req.ConfirmRemovals, _ = a.syncQuestions(cmd, f, true, "Remove these and move? No applies nothing", Nav{}, diff, &asked)
 	if !a.json && p.Interactive() {
 		req.Replace = func(module, label string) (bool, error) {
-			return p.Confirm(untrusted.Text(label, untrusted.MaxName)+" lists "+untrusted.Text(module, untrusted.MaxName)+" already. Replace its entry?", Nav{})
+			return askYes(p, Question{Prompt: untrusted.Text(label, untrusted.MaxName) + " lists " + untrusted.Text(module, untrusted.MaxName) + " already. Replace its entry?"})
 		}
 	}
 	res, err := eng.Move(cmd.Context(), req)

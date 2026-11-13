@@ -33,18 +33,18 @@ type changing struct {
 	change func()
 }
 
-func (c *changing) Confirm(question string, _ cli.Nav) (bool, error) {
-	c.calls = append(c.calls, "confirm:"+question)
+func (c *changing) Ask(q cli.Question) (rune, error) {
+	c.calls = append(c.calls, "confirm:"+q.Prompt)
 	c.change()
-	return true, nil
+	return 'y', nil
 }
 
 // aborting is a terminal whose every question is answered with Ctrl+C.
 type aborting struct{ *scripted }
 
-func (a *aborting) Confirm(question string, _ cli.Nav) (bool, error) {
-	a.calls = append(a.calls, "confirm:"+question)
-	return false, cli.ErrAborted
+func (a *aborting) Ask(q cli.Question) (rune, error) {
+	a.calls = append(a.calls, "confirm:"+q.Prompt)
+	return 0, cli.ErrAborted
 }
 
 var _ = Describe("typed --trust", func() {

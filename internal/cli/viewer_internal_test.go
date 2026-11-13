@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
@@ -93,64 +94,67 @@ var sgr = regexp.MustCompile("\x1b\\[[0-9;]*m")
 var _ = Describe("the viewer", func() {
 	BeforeEach(func() { testenv.Isolate() })
 
-	// A 30-line text on a 40×10 terminal: 9 lines of text above the footer.
+	// A 30-line text on a 40×11 terminal: 9 lines of text above the rule and key lines.
+	// The name stays: keys_paths_internal_test.go's header pins "viewer: viewer --scroll--> viewer" to it.
 	DescribeTable("scrolls by line, page and end, and its footer says where it is",
 		func(want string, ks ...tea.KeyPressMsg) {
-			m := press(newViewer(numbered(30), false, 40, 10), ks...)
+			m := press(newViewer(numbered(30), 40, 11), ks...)
 			Expect(ansiStrip(m.footer())).To(HavePrefix(want))
 		},
-		Entry("at the start", "lines 1–9 of 30 · 0%"),
-		Entry("j", "lines 2–10 of 30 · 4%", keyJ),
-		Entry("↓", "lines 2–10 of 30 · 4%", keyDown),
-		Entry("k after j j", "lines 2–10 of 30 · 4%", keyJ, keyJ, keyK),
-		Entry("↑ after ↓ ↓", "lines 2–10 of 30 · 4%", keyDown, keyDown, keyUp),
-		Entry("space", "lines 10–18 of 30 · 42%", keySpace),
-		Entry("PgDn", "lines 10–18 of 30 · 42%", keyPgDn),
-		Entry("b after space space", "lines 10–18 of 30 · 42%", keySpace, keySpace, keyB),
-		Entry("PgUp after PgDn PgDn", "lines 10–18 of 30 · 42%", keyPgDn, keyPgDn, keyPgUp),
-		Entry("G", "lines 22–30 of 30 · 100%", keyShG),
-		Entry("End", "lines 22–30 of 30 · 100%", keyEnd),
-		Entry("g after G", "lines 1–9 of 30 · 0%", keyShG, keyG),
-		Entry("Home after End", "lines 1–9 of 30 · 0%", keyEnd, keyHome),
+		Entry("at the start", "━━ lines 1–9 of 30 · ↓ 21 more"),
+		Entry("j", "━━ lines 2–10 of 30 · ↓ 20 more", keyJ),
+		Entry("↓", "━━ lines 2–10 of 30 · ↓ 20 more", keyDown),
+		Entry("k after j j", "━━ lines 2–10 of 30 · ↓ 20 more", keyJ, keyJ, keyK),
+		Entry("↑ after ↓ ↓", "━━ lines 2–10 of 30 · ↓ 20 more", keyDown, keyDown, keyUp),
+		Entry("space", "━━ lines 10–18 of 30 · ↓ 12 more", keySpace),
+		Entry("PgDn", "━━ lines 10–18 of 30 · ↓ 12 more", keyPgDn),
+		Entry("b after space space", "━━ lines 10–18 of 30 · ↓ 12 more", keySpace, keySpace, keyB),
+		Entry("PgUp after PgDn PgDn", "━━ lines 10–18 of 30 · ↓ 12 more", keyPgDn, keyPgDn, keyPgUp),
+		Entry("G", "━━ lines 22–30 of 30 · end", keyShG),
+		Entry("End", "━━ lines 22–30 of 30 · end", keyEnd),
+		Entry("g after G", "━━ lines 1–9 of 30 · ↓ 21 more", keyShG, keyG),
+		Entry("Home after End", "━━ lines 1–9 of 30 · ↓ 21 more", keyEnd, keyHome),
 	)
 
-	It("in read mode before a question, the footer says q continues to that question and what asks next", func() {
-		m := newViewer(numbered(30), false, 120, 10)
-		m.then = "Migrate?"
-		Expect(ansiStrip(m.footer())).To(ContainSubstring("q continue: Migrate? is asked next · / search"))
-		Expect(ansiStrip(m.footer())).NotTo(ContainSubstring("q quit"))
-		Expect(ansiStrip(newViewer(numbered(30), false, 120, 10).footer())).To(ContainSubstring("q quit"))
+	It("before a picker, says q continues to it, in place of q quit", func() {
+		m := newViewer(numbered(30), 120, 11)
+		m.then = "Restore 1 item from the trash?"
+		Expect(m.keyLine()).To(HavePrefix("q  continue to: Restore 1 item from the trash? · ↑↓ space b  scroll"))
+		Expect(m.keyLine()).NotTo(ContainSubstring("q quit"))
+		Expect(newViewer(numbered(30), 120, 11).keyLine()).To(HavePrefix("q quit"))
 	})
 
-	It("shows the lines its footer names, and the keys", func() {
-		m := press(newViewer(numbered(30), false, 100, 10), keySpace)
+	It("shows the lines its rule line names, the rule across the width, and the keys", func() {
+		m := press(newViewer(numbered(30), 100, 11), keySpace)
 		lines := strings.Split(ansiStrip(m.View().Content), "\n")
-		Expect(lines).To(HaveLen(10))
+		Expect(lines).To(HaveLen(11))
 		Expect(strings.TrimSpace(lines[0])).To(Equal("line 10"))
 		Expect(strings.TrimSpace(lines[8])).To(Equal("line 18"))
-		Expect(lines[9]).To(Equal("lines 10–18 of 30 · 42%  q quit · / search · space/b page · g/G top/end"))
+		Expect(lines[9]).To(HavePrefix("━━ lines 10–18 of 30 · ↓ 12 more ━"))
+		Expect(ansi.StringWidth(lines[9])).To(Equal(100))
+		Expect(lines[10]).To(Equal("q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
 		Expect(m.View().AltScreen).To(BeTrue())
 	})
 
 	It("wraps the content to the width, and again when the terminal is resized", func() {
-		m := newViewer(strings.Repeat("word ", 30)+"\n", false, 20, 4)
+		m := newViewer(strings.Repeat("word ", 30)+"\n", 20, 5)
 		Expect(m.vp.TotalLineCount()).To(Equal(8))
-		next, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 4})
+		next, _ := m.Update(tea.WindowSizeMsg{Width: 50, Height: 5})
 		m = next.(viewerModel)
 		Expect(m.vp.TotalLineCount()).To(Equal(3))
-		Expect(ansiStrip(m.footer())).To(HavePrefix("lines 1–3 of 3 · 100%"))
+		Expect(ansiStrip(m.footer())).To(HavePrefix("━━ lines 1–3 of 3 · end"))
 	})
 
 	It("keeps its place in range when a resize shortens the content", func() {
-		m := press(newViewer(strings.Repeat("word ", 30), false, 20, 4), keyShG)
-		Expect(ansiStrip(m.footer())).To(HavePrefix("lines 6–8 of 8"))
-		next, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 4})
-		Expect(ansiStrip(next.(viewerModel).footer())).To(HavePrefix("lines 1–1 of 1"))
+		m := press(newViewer(strings.Repeat("word ", 30), 20, 5), keyShG)
+		Expect(ansiStrip(m.footer())).To(HavePrefix("━━ lines 6–8 of 8"))
+		next, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 5})
+		Expect(ansiStrip(next.(viewerModel).footer())).To(HavePrefix("━━ lines 1–1 of 1"))
 	})
 
 	DescribeTable("in read mode, q and Esc close it, Ctrl+C cancels, and y, c and n do nothing",
 		func(k tea.KeyPressMsg, quit bool, answer viewAnswer) {
-			m, q := quits(newViewer(numbered(30), false, 40, 10), k)
+			m, q := quits(newViewer(numbered(30), 40, 10), k)
 			Expect(q).To(Equal(quit))
 			Expect(m.Answer()).To(Equal(answer))
 		},
@@ -162,101 +166,20 @@ var _ = Describe("the viewer", func() {
 		Entry("n", keyN, false, viewCancel),
 	)
 
-	DescribeTable("in confirm mode, y applies, c asks to change, n and Ctrl+C cancel, q quits and Esc goes back; other keys answer nothing",
-		func(k tea.KeyPressMsg, quit bool, answer viewAnswer) {
-			m := newViewer(numbered(30), true, 40, 10)
-			m.nav = Nav{Back: true}
-			m, q := quits(m, k)
-			Expect(q).To(Equal(quit))
-			Expect(m.Answer()).To(Equal(answer))
-		},
-		Entry("y", keyY, true, viewApply),
-		Entry("c", keyC, true, viewChange),
-		Entry("n", keyN, true, viewCancel),
-		Entry("q", keyQ, true, viewQuit),
-		Entry("Esc", keyEsc, true, viewBack),
-		Entry("Ctrl+C", keyCtrlC, true, viewCancel),
-		Entry("Enter, which is no default answer", tea.KeyPressMsg{Code: tea.KeyEnter}, false, viewCancel),
-		Entry("j", keyJ, false, viewCancel),
-	)
-
-	It("in confirm mode with no screen to go back to, Esc says q quits and stays", func() {
-		m, q := quits(newViewer(numbered(3), true, 100, 10), keyEsc)
-		Expect(q).To(BeFalse())
-		Expect(ansiStrip(m.footer())).To(HaveSuffix("  first step — q quits"))
-		m = press(m, keyJ)
-		Expect(ansiStrip(m.footer())).NotTo(ContainSubstring("first step"), "the next key brings the keys back")
-		Expect(ansiStrip(m.footer())).NotTo(ContainSubstring("esc back"))
+	It("cuts its key line from the right, keeping q quit, at 40 columns", func() {
+		k := newViewer(numbered(30), 40, 11).keyLine()
+		Expect(k).To(HavePrefix("q quit · "))
+		Expect(k).To(HaveSuffix("…"))
+		Expect(ansi.StringWidth(k)).To(BeNumerically("<=", 40))
 	})
 
-	It("in confirm mode with two or more steps answered, q asks first: y quits; n, Enter and Esc go back to the review", func() {
-		m := newViewer(numbered(30), true, 200, 10)
-		m.nav = Nav{Back: true, Answered: 2}
-		m = press(m, keyJ)
-		m, q := quits(m, keyQ)
-		Expect(q).To(BeFalse())
-		Expect(ansiStrip(m.footer())).To(HaveSuffix("  Quit? your answers so far are dropped — nothing has been changed [y/N]"))
-		for _, no := range []tea.KeyPressMsg{keyN, {Code: tea.KeyEnter}, keyEsc} {
-			back, q := quits(m, no)
-			Expect(q).To(BeFalse(), no.String())
-			Expect(back.vp.YOffset()).To(Equal(1), "the review keeps its place")
-			Expect(ansiStrip(back.footer())).To(ContainSubstring("y apply"))
-		}
-		m, q = quits(m, keyY)
-		Expect(q).To(BeTrue())
-		Expect(m.Answer()).To(Equal(viewQuit))
-
-		m = newViewer(numbered(30), true, 200, 10)
-		m.nav = Nav{Back: true, Answered: 1}
-		m, q = quits(m, keyQ)
-		Expect(q).To(BeTrue(), "with one step answered, q quits at once")
-		Expect(m.Answer()).To(Equal(viewQuit))
-	})
-
-	It("names the answers first in a confirm-mode footer, then esc back and q quit, then the scrolling keys", func() {
-		m := newViewer(numbered(3), true, 200, 10)
-		m.nav = Nav{Back: true}
-		Expect(ansiStrip(m.footer())).To(Equal(
-			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · esc back · q quit · / search · space/b page · g/G top/end"))
-		Expect(ansiStrip(newViewer(numbered(3), true, 200, 10).footer())).To(Equal(
-			"lines 1–3 of 3 · 100%  y apply · c change · n cancel · q quit · / search · space/b page · g/G top/end"),
-			"with no screen to go back to, no esc back")
-	})
-
-	It("without a step to change, offers no c and ignores it", func() {
-		m := newViewer(numbered(3), true, 120, 10)
-		m.noChange = true
-		Expect(ansiStrip(m.footer())).To(Equal("lines 1–3 of 3 · 100%  y apply · n cancel · q quit · / search · space/b page · g/G top/end"))
-		_, q := quits(m, keyC)
-		Expect(q).To(BeFalse(), "c does nothing")
-		m, q = quits(m, keyY)
-		Expect(q).To(BeTrue())
-		Expect(m.Answer()).To(Equal(viewApply))
-	})
-
-	It("fits a review's whole footer in 120 columns, and at 80 keeps the answers, esc back and q quit", func() {
-		m := press(newViewer(numbered(1000), true, 120, 40), keySpace, keySpace, keySpace)
-		m.nav = Nav{Back: true}
-		Expect(ansiStrip(m.footer())).To(And(HaveSuffix("/ search · space/b page · g/G top/end"), Not(ContainSubstring("…"))))
-		m.resize(80, 40)
-		Expect(ansiStrip(m.footer())).To(ContainSubstring("y apply · c change · n cancel · esc back · q quit"))
-	})
-
-	It("cuts its footer to the width", func() {
-		f := ansiStrip(newViewer(numbered(30), true, 30, 10).footer())
-		Expect(f).To(Equal("lines 1–9 of 30 · 0%  y apply…"))
-	})
-
-	It("keeps q quit in a read footer at 40 columns", func() {
-		Expect(ansiStrip(newViewer(numbered(30), false, 40, 10).footer())).To(Equal("lines 1–9 of 30 · 0%  q quit · / search…"))
-	})
-
-	It("without color, styles its footer with bold alone (NO_COLOR, LOLA_COLOR=0)", func() {
-		m := newViewer(numbered(30), true, 100, 10)
+	It("draws its rule in bold and nothing in color, with color on or off", func() {
+		m := newViewer(numbered(30), 100, 11)
 		Expect(sgr.FindAllString(m.View().Content, -1)).To(HaveExactElements("\x1b[1m", "\x1b[22m"))
 		m.s = style{color: true}
-		Expect(sgr.FindAllString(m.View().Content, -1)).To(ContainElement("\x1b[36m"), "with color, the keys are colored")
+		Expect(sgr.FindAllString(m.View().Content, -1)).To(HaveExactElements("\x1b[1m", "\x1b[22m"))
 	})
+
 })
 
 // keys is a terminal's input: the keystrokes typed, then nothing more until the spec ends, as a
@@ -293,7 +216,7 @@ var _ = Describe("a.view, the viewer on the terminal", func() {
 
 	It("in read mode shows the text on stdout, then prints it there whole", func() {
 		cmd.SetIn(keys("jjq"))
-		ans, err := a().view(cmd, numbered(30), false, false, Nav{}, "")
+		ans, err := a().view(cmd, numbered(30), "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(ans).To(Equal(viewClose))
 		Expect(out.String()).To(ContainSubstring(altScreen))
@@ -301,24 +224,6 @@ var _ = Describe("a.view, the viewer on the terminal", func() {
 		Expect(errb.String()).To(BeEmpty())
 	})
 
-	DescribeTable("in confirm mode asks on stderr, then prints the text there whole, and returns the answer",
-		func(typed string, answer viewAnswer) {
-			cmd.SetIn(keys(typed))
-			ans, err := a().view(cmd, numbered(30), true, true, Nav{Back: true}, "")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(ans).To(Equal(answer))
-			Expect(errb.String()).To(ContainSubstring(altScreen))
-			Expect(errb.String()).To(HaveSuffix(numbered(30)))
-			Expect(out.String()).To(BeEmpty())
-		},
-		Entry("y", "y", viewApply),
-		Entry("after scrolling, y", "jj y", viewApply),
-		Entry("c", "c", viewChange),
-		Entry("n", "n", viewCancel),
-		Entry("q", "q", viewQuit),
-		Entry("Esc", "\x1b", viewBack),
-		Entry("Ctrl+C", "\x03", viewCancel),
-	)
 })
 
 var _ = Describe("which output opens in the viewer", func() {
@@ -431,13 +336,13 @@ var _ = Describe("which output opens in the viewer", func() {
 			"  hint: write pager: false to print without the viewer\n"))
 	})
 	Describe("search", func() {
-		// 30 lines on a 100×10 terminal; "line 2" holds line 20 to line 29.
-		read := func() viewerModel { return newViewer(numbered(30), false, 100, 10) }
+		// 30 lines on a 100×11 terminal; "line 2" holds line 20 to line 29.
+		read := func() viewerModel { return newViewer(numbered(30), 100, 11) }
 
 		It("jumps to the first match and says which it is, with the line in reverse video", func() {
 			m := search(read(), "line 2")
-			Expect(ansiStrip(m.footer())).To(HavePrefix("lines 17–25 of 30"))
-			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10  n/N next/prev"))
+			Expect(ansiStrip(m.footer())).To(HavePrefix("━━ lines 17–25 of 30"))
+			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10 · n N  next/prev"))
 			Expect(m.View().Content).To(MatchRegexp("\x1b\\[[0-9;]*7[0-9;]*mline 20"))
 			Expect(ansiStrip(m.View().Content)).To(ContainSubstring("line 20"))
 		})
@@ -461,7 +366,7 @@ var _ = Describe("which output opens in the viewer", func() {
 
 		DescribeTable("matches any case for a lowercase term, and exactly for one with a capital",
 			func(term, want string) {
-				m := search(newViewer("Alpha\nbeta\n", false, 40, 10), term)
+				m := search(newViewer("Alpha\nbeta\n", 40, 11), term)
 				Expect(ansiStrip(m.footer())).To(ContainSubstring(want))
 			},
 			Entry("lowercase", "alpha", "/alpha 1 of 1"),
@@ -478,7 +383,7 @@ var _ = Describe("which output opens in the viewer", func() {
 			m, quit := quits(m, keyQ)
 			Expect(quit).To(BeFalse())
 			m = press(m, keyEsc)
-			Expect(ansiStrip(m.footer())).To(HaveSuffix("q quit · / search · space/b page · g/G top/end"))
+			Expect(ansiStrip(m.footer())).To(HaveSuffix("q quit · ↑↓ space b  scroll · g G  top/end · /  search"))
 			Expect(m.term).To(BeEmpty())
 		})
 
@@ -495,16 +400,6 @@ var _ = Describe("which output opens in the viewer", func() {
 			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10"))
 		})
 
-		It("leaves n as cancel in confirm mode, where Ctrl+N and Ctrl+P step", func() {
-			m := search(newViewer(numbered(30), true, 140, 10), "line 2")
-			Expect(ansiStrip(m.footer())).To(ContainSubstring("^n/^p next/prev · y apply"))
-			m = press(m, keyCtrlN)
-			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 2 of 10"))
-			m = press(m, keyCtrlP)
-			Expect(ansiStrip(m.footer())).To(ContainSubstring("/line 2 1 of 10"))
-			_, quit := quits(m, keyN)
-			Expect(quit).To(BeTrue())
-		})
 	})
 })
 

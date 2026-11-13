@@ -2,6 +2,7 @@ package cli
 
 import (
 	"slices"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -20,6 +21,15 @@ const (
 // quitQuestion is what q asks once two or more steps are answered; y quits, and n, Enter or Esc
 // go back to the screen as it was.
 const quitQuestion = "Quit? your answers so far are dropped — nothing has been changed"
+
+// firstStepNote is what Esc says with no screen to go back to: "first step" when nothing is
+// answered yet, else "no step to go back to" (a flow's closing question).
+func firstStepNote(nav Nav) string {
+	if nav.Answered > 0 {
+		return "no step to go back to — q quits"
+	}
+	return "first step — q quits"
+}
 
 // keyed is a field of a full-screen form under lola's keys: q quits, unless the field takes it as
 // text (a text input, a filter being typed); Esc moves to the form's field before, as Shift+Tab
@@ -158,4 +168,48 @@ func (k *keyed) Error() error {
 		return nil
 	}
 	return k.Field.Error()
+}
+
+// keyMode is which viewer a key line is for: a pager with a question in it, read-only paging, or
+// text a picker follows.
+type keyMode int
+
+const (
+	keysPrompt keyMode = 1 << iota
+	keysRead
+	keysContinue
+)
+
+// viewerKeys is the viewer's key line in the order a narrow terminal cuts it from the right, each
+// entry with the modes it shows in; keyLineFor puts what Enter alone answers, or the picker q
+// continues to, before them.
+var viewerKeys = []struct {
+	text  string
+	modes keyMode
+}{
+	{"q quit", keysPrompt | keysRead},
+	{"↑↓ space b  scroll", keysPrompt | keysRead | keysContinue},
+	{"g G  top/end", keysPrompt | keysRead | keysContinue},
+	{"/  search", keysPrompt | keysRead | keysContinue},
+}
+
+// keyLineFor is the key line for mode: in a pager with question q, first what Enter alone answers
+// ("⏎ alone = no"; nothing when q has no default); before a picker, "q  continue to: <then>"; then
+// the keys viewerKeys lists for mode.
+func keyLineFor(mode keyMode, q *Question, then string) string {
+	var parts []string
+	switch mode {
+	case keysPrompt:
+		if def, ok := parseAnswer("", q.Answers); ok {
+			parts = append(parts, "⏎ alone = "+answerWords[def])
+		}
+	case keysContinue:
+		parts = append(parts, "q  continue to: "+then)
+	}
+	for _, k := range viewerKeys {
+		if k.modes&mode != 0 {
+			parts = append(parts, k.text)
+		}
+	}
+	return strings.Join(parts, " · ")
 }

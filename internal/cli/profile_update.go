@@ -74,11 +74,7 @@ func (a *app) profileUpdate(cmd *cobra.Command, eng *engine.Engine, args []strin
 	}
 	if p.Interactive() {
 		req.Consent = func(rps []engine.RemoteProfile) (bool, error) {
-			question := "Update " + rps[0].Profile + "?"
-			if err := a.pageThen(cmd, cmd.ErrOrStderr(), stderr, question, printer(rps)); err != nil {
-				return false, err
-			}
-			return p.Confirm(question, Nav{})
+			return askYes(p, Question{Show: printer(rps), Prompt: "Update " + rps[0].Profile + "?"})
 		}
 	}
 	// With --trust the command shows one receipt: the update stages the

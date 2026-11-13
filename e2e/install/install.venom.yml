@@ -27,6 +27,10 @@ vars:
   tar_cache: -e XDG_CACHE_HOME=/home/tester/.cache-tar
   # I3 runs a move hint in a project and homes of its own, which the later cases never read
   i3_homes: -e XDG_CONFIG_HOME=/home/tester/.config-i3 -e XDG_STATE_HOME=/home/tester/.state-i3 -e XDG_DATA_HOME=/home/tester/.data-i3 -e XDG_CACHE_HOME=/home/tester/.cache-i3
+  # I21's three runs each start with no recorded consent
+  i21_homes_yy: -e XDG_CONFIG_HOME=/home/tester/.config-i21yy -e XDG_STATE_HOME=/home/tester/.state-i21yy -e XDG_DATA_HOME=/home/tester/.data-i21yy -e XDG_CACHE_HOME=/home/tester/.cache-i21yy
+  i21_homes_yn: -e XDG_CONFIG_HOME=/home/tester/.config-i21yn -e XDG_STATE_HOME=/home/tester/.state-i21yn -e XDG_DATA_HOME=/home/tester/.data-i21yn -e XDG_CACHE_HOME=/home/tester/.cache-i21yn
+  i21_homes_y: -e XDG_CONFIG_HOME=/home/tester/.config-i21y -e XDG_STATE_HOME=/home/tester/.state-i21y -e XDG_DATA_HOME=/home/tester/.data-i21y -e XDG_CACHE_HOME=/home/tester/.cache-i21y
 
 testcases:
   - name: The fixtures are built, and kit.git's commits are the ones recorded
@@ -784,3 +788,35 @@ testcases:
           - result.systemout ShouldContainSubstring "✓ create gemini-cli  .gemini/skills/hi/SKILL.md"
           - result.systemout ShouldContainSubstring "/work/proj20b/.gemini/skills/hi/SKILL.md"
           - result.systemout ShouldNotContainSubstring "/work/proj20b/.agents/skills/hi/SKILL.md"
+
+  - name: I21 One write answers two yes/no questions in a row on a terminal in accessible mode
+    # Reason: a terminal in line mode hands lola one line per read, so answers typed or pasted
+    # ahead each reach their own question. Each run has homes of its own: a yes is recorded as
+    # consent, and a recorded consent asks nothing.
+    steps:
+      - type: exec
+        script: "{{.runtime}} exec {{.container}} sh -c 'for m in hka hkb; do d=/work/hk/$m; mkdir -p $d/commands $d/scripts; printf \"%s\\n\" --- \"description: $m\" --- $m > $d/commands/$m.md; printf \"#!/bin/sh\\necho ran-$m\\n\" > $d/scripts/post.sh; chmod +x $d/scripts/post.sh; printf \"name: $m\\ndescription: d\\nhooks: {post-install: scripts/post.sh}\\n\" > $d/lola.yml; done; ls /work/hk | tr \"\\n\" ,'"
+        assertions:
+          - result.code ShouldEqual 0
+          - result.systemout ShouldEqual "hka,hkb,"
+      - type: exec
+        script: "{{.runtime}} exec {{.i21_homes_yy}} {{.container}} sh -c 'mkdir -p /work/proj21yy && printf \"y\\ny\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21yy --scope project -t claude-code\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"Run hka's install hooks? [y/N]\""
+          - "result.systemout ShouldContainSubstring \"Run hkb's install hooks? [y/N]\""
+          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (claude-code): ran\""
+          - "result.systemout ShouldContainSubstring \"✓ hkb post-install hook scripts/post.sh (claude-code): ran\""
+      - type: exec
+        script: "{{.runtime}} exec {{.i21_homes_yn}} {{.container}} sh -c 'mkdir -p /work/proj21yn && printf \"y\\nn\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21yn --scope project -t claude-code\" /dev/null'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"✓ hka post-install hook scripts/post.sh (claude-code): ran\""
+          - "result.systemout ShouldContainSubstring \"⚠ hkb post-install hook scripts/post.sh (claude-code): declined\""
+      - type: exec
+        script: "{{.runtime}} exec {{.i21_homes_y}} {{.container}} sh -c 'mkdir -p /work/proj21y && printf \"y\\n\" | LOLA_ACCESSIBLE=1 NO_COLOR=1 script -qec \"{{.lola}} install /work/hk/hka /work/hk/hkb -C /work/proj21y --scope project -t claude-code\" /dev/null; test ! -e /work/proj21y/.claude'"
+        assertions:
+          - result.code ShouldEqual 0
+          - "result.systemout ShouldContainSubstring \"Run hkb's install hooks? [y/N] \""
+          - result.systemout ShouldContainSubstring "✗ cancelled — nothing was changed"
+          - result.systemout ShouldNotContainSubstring "ran-hka"

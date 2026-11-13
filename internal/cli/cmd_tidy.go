@@ -156,7 +156,7 @@ func (a *app) runTidy(cmd *cobra.Command, args []string, f tidyFlags) error {
 				asks = append(asks, fmt.Sprintf("stop keeping %d", n))
 			}
 			q := strings.Join(asks, " and ")
-			return p.Confirm(strings.ToUpper(q[:1])+q[1:]+"?", Nav{Back: picked, Answered: answered})
+			return askYes(p, Question{Prompt: strings.ToUpper(q[:1]) + q[1:] + "?", Nav: Nav{Back: picked, Answered: answered}})
 		}
 	}
 	res, err := eng.Tidy(cmd.Context(), req)

@@ -1,7 +1,6 @@
 package cli_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,7 +12,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/trevor-vaughan/lola-go/internal/cli"
 	"github.com/trevor-vaughan/lola-go/internal/paths"
 	"github.com/trevor-vaughan/lola-go/internal/testenv"
 )
@@ -285,77 +283,15 @@ var _ = Describe("a confirmation's JSON refusal", func() {
 		},
 		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"))
 
-	// onTerminal runs c on a terminal lines rows tall whose first key is key and whose later keys
-	// quit each viewer, answering yes.
-	onTerminal := func(c confirmCase, lines, key string) (*confirming, result) {
-		GinkgoHelper()
-		GinkgoT().Setenv("LOLA_PAGER", "")
-		GinkgoT().Setenv("COLUMNS", "80")
-		GinkgoT().Setenv("LINES", lines)
-		in, typed, err := os.Pipe()
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
-			Expect(typed.Close()).To(Succeed())
-			Expect(in.Close()).To(Succeed())
-		})
-		_, err = typed.WriteString(key)
-		Expect(err).NotTo(HaveOccurred())
-		// The result is taller than the terminal too: its viewer gets its own q, typed once the
-		// plan's viewer has exited.
-		p := &confirming{answers: []bool{true}, meddle: func() {
-			_, err := typed.WriteString("q")
-			Expect(err).NotTo(HaveOccurred())
-		}}
-		root, err := cli.NewRootCmd(os.Getenv, cli.WithPrompter(p), cli.WithTerminals(true, true))
-		Expect(err).NotTo(HaveOccurred())
-		var out bytes.Buffer
-		p.stderr = &bytes.Buffer{}
-		root.SetOut(&out)
-		root.SetErr(p.stderr)
-		root.SetIn(in)
-		root.SetArgs(c.args)
-		code := cli.Execute(root)
-		return p, result{out: out.String(), err: p.stderr.String(), code: code}
-	}
-
-	DescribeTable("c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question",
+	DescribeTable("c8: on a terminal, <cmd> asks its question with the plan as the question's text",
 		func(command string) {
 			c := fixture(command)
-			p, r := onTerminal(c, "2", "q")
+			p := &confirming{answers: []bool{true}}
+			r := lolaAsking(p, c.args...)
 			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
-			Expect(r.out).To(ContainSubstring(c.plan + "\n"))
-			Expect(p.questions).To(Equal([]string{c.question}), "the question comes after the viewer")
-			Expect(p.before[0]).NotTo(ContainSubstring(c.plan), "the plan went to the viewer, not stderr")
-			Expect(c.written()).To(BeTrue())
-		},
-		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"), Entry("init", "init"))
-
-	DescribeTable("c9: on a terminal, <cmd>'s plan prints plainly before the question when the viewer is bypassed",
-		func(command string, bypass func(), more ...string) {
-			c := fixture(command)
-			bypass()
-			c.args = with(c.args, more...)
-			p, r := onTerminal(c, "2", "q")
-			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).NotTo(ContainSubstring("\x1b[?1049h"))
-			Expect(p.before[0]).To(Or(HavePrefix(c.context+c.plan+"\n"), ContainSubstring("\r\x1b[2K"+c.plan+"\n")),
-				"the plan comes first, or after the progress line lola cleared")
 			Expect(p.questions).To(Equal([]string{c.question}))
-		},
-		Entry("migrate, NO_PAGER set", "migrate", func() { GinkgoT().Setenv("NO_PAGER", "1") }),
-		Entry("migrate, --no-pager", "migrate", func() {}, "--no-pager"),
-		Entry("uninstall, NO_PAGER set", "uninstall", func() { GinkgoT().Setenv("NO_PAGER", "1") }))
-
-	DescribeTable("viewer: viewer --ctrl+c (a question follows)--> cancelled",
-		func(command string) {
-			c := fixture(command)
-			p, r := onTerminal(c, "2", "\x03")
-			Expect(r.code).To(Equal(0), r.err)
-			Expect(r.out).To(ContainSubstring("\x1b[?1049h"), "the viewer opened")
-			Expect(r.err).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
-			Expect(p.questions).To(BeEmpty(), "Ctrl+C in the plan's viewer ends the command: its question is not asked")
-			Expect(c.written()).To(BeFalse())
+			Expect(p.shows[0]).To(HavePrefix(c.plan+"\n"), "the plan goes with its question, never out of its sight")
+			Expect(c.written()).To(BeTrue())
 		},
 		Entry("uninstall", "uninstall"), Entry("migrate", "migrate"), Entry("cache clean", "cache clean"), Entry("init", "init"))
 

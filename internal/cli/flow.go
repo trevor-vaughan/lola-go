@@ -932,11 +932,12 @@ func (fl *installFlow) askDrop(gone []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Fprint(fl.cmd.ErrOrStderr(), plan)
 	if fl.f.yes || fl.f.force {
+		fmt.Fprint(fl.cmd.ErrOrStderr(), plan)
 		return gone, nil
 	}
-	ok, err := fl.p.Confirm("Remove "+untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName)+" from "+fl.f.keepLabel+"?", fl.nav(ReviewApply))
+	ok, err := askYes(fl.p, Question{Show: func(w io.Writer, _ style) { fmt.Fprint(w, plan) },
+		Prompt: "Remove " + untrusted.Text(strings.Join(gone, ", "), untrusted.MaxName) + " from " + fl.f.keepLabel + "?", Nav: fl.nav(ReviewApply)})
 	if err != nil || !ok {
 		return nil, err
 	}
@@ -1593,7 +1594,7 @@ func (fl *installFlow) ensureRoot() error {
 		return nil
 	case !asks && (fl.f.yes || fl.f.force):
 	case asks:
-		ok, err := fl.p.Confirm("Create "+safe+"? It does not exist yet", Nav{})
+		ok, err := askYes(fl.p, Question{Prompt: "Create " + safe + "? It does not exist yet"})
 		if err != nil {
 			return err
 		}
@@ -2339,7 +2340,7 @@ func (fl *installFlow) askPage(m *engine.ModuleChoice, dests []engine.ScopeChoic
 		if len(picked) > 0 || len(fl.preselected(m, key)) == 0 {
 			return picked, true, nil
 		}
-		ok, err := fl.p.ConfirmEmpty(m.Name, Nav{Back: true, Answered: pg.Nav.Answered + 1})
+		ok, err := askYes(fl.p, Question{Prompt: "Install " + m.Name + " with no components?", Nav: Nav{Back: true, Answered: pg.Nav.Answered + 1}})
 		if !errors.Is(err, ErrBack) {
 			return picked, ok, err
 		}

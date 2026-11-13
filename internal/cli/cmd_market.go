@@ -377,7 +377,7 @@ func (a *app) marketRemove(cmd *cobra.Command, eng *engine.Engine, args []string
 		req.Confirm = func(engine.MarketRow) (bool, error) { return true, nil }
 	case p.Interactive():
 		req.Confirm = func(r engine.MarketRow) (bool, error) {
-			return p.Confirm("Forget marketplace "+r.Name+" ("+r.Source+") and drop its cached catalog?", Nav{})
+			return askYes(p, Question{Prompt: "Forget marketplace " + r.Name + " (" + r.Source + ") and drop its cached catalog?"})
 		}
 	}
 	res, err := eng.RemoveMarket(req)

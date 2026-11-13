@@ -25,8 +25,6 @@ package cli_test
 // also pinned (trash: pick --Restore ticked (nothing left to restore)--> done): trash_test.go "says there is nothing to restore when what was ticked is gone from the trash"
 // also pinned (trash: pick --Empty ticked runs--> empty; trash: empty --yes--> done; trash: empty --no--> cancelled): trash_test.go "empties the runs ticked whole after asking, and asks the picker again when nothing or only a run's files are ticked"
 // also pinned (cache clean: start --run (something to remove, on a terminal)--> confirm; cache clean: confirm --yes--> done): confirm_test.go "c4: on a terminal without --json, <cmd> asks after the plan and prints the human result" Entry("cache clean")
-// also pinned (cache clean: start --run (the plan taller than the terminal)--> plan; cache clean: plan --q--> confirm): confirm_test.go "c8: on a terminal, <cmd>'s plan taller than the terminal opens in the viewer, in full, before the question" Entry("cache clean")
-// also pinned (cache clean: plan --ctrl+c--> cancelled): confirm_test.go "viewer: viewer --ctrl+c (a question follows)--> cancelled"
 // also pinned (cache clean: start --run (--json, on a terminal)--> confirm): confirm_test.go "c3: on a terminal under --json, <cmd> prints the plan and the question on stderr and one JSON document on stdout" Entry("cache clean")
 // also pinned (cache clean: start --run (no terminal)--> refused): confirm_test.go "c2: off a terminal without --json, <cmd> prints the plan, then the error and its hint" Entry("cache clean")
 // also pinned (cache clean: confirm --yes (an item changed since the plan)--> done): clean_test.go "a confirmed clean whose every item changed says nothing was removed"
@@ -387,8 +385,8 @@ var _ = Describe("trash paths", func() {
 	It("ends the restore on Ctrl+C in its plan's viewer, before the question", func() {
 		id := trashRunOf(proj, at, "lola tidy", nil, ".claude/commands/ship.md")
 		GinkgoT().Setenv("LOLA_PAGER", "")
-		GinkgoT().Setenv("COLUMNS", "120")
-		GinkgoT().Setenv("LINES", "2")
+		GinkgoT().Setenv("COLUMNS", "50")
+		GinkgoT().Setenv("LINES", "3")
 		in, typed, err := os.Pipe()
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
@@ -406,7 +404,7 @@ var _ = Describe("trash paths", func() {
 		root.SetIn(in)
 		root.SetArgs([]string{"trash"})
 		Expect(cli.Execute(root)).To(Equal(0), errb.String())
-		Expect(out.String()).To(ContainSubstring("q continue: Restore 1 item from the trash? is asked next"))
+		Expect(out.String()).To(ContainSubstring("q  continue to: Restore 1 item from the trash?"))
 		Expect(p.calls).To(Equal([]string{"trash-pick"}), "Ctrl+C ended the run: the restore question is not asked")
 		Expect(errb.String()).To(HaveSuffix("✗ cancelled — nothing was changed\n"))
 		Expect(ship).NotTo(BeAnExistingFile())

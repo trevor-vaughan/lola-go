@@ -26,15 +26,14 @@ func (a *app) profileSplit(cmd *cobra.Command, eng *engine.Engine, args []string
 	}
 	sc := scs[0].Scope
 	a.printContext(cmd, eng, []engine.Scope{sc}, nil)
-	p, stderr := a.prompter(cmd), style{color: a.color(cmd.ErrOrStderr())}
+	p := a.prompter(cmd)
 	opts := engine.Options{DryRun: f.dry, Force: f.force, Display: outputFlags(cmd), ForceRun: forceRun(cmd, args), RenderRun: renderRun(cmd, args)}
 	opts.Trust, opts.Receipt = f.trust, a.receipt(cmd, f.trust, f.yes)
 	a.hookOptions(cmd, &opts)
 	req := engine.SplitRequest{Scope: sc, Name: args[0], To: to, Yes: f.yes, Options: opts}
 	if !a.json && p.Interactive() {
 		req.Confirm = func(plan engine.SplitPlan) (bool, error) {
-			printSplitPlan(cmd.ErrOrStderr(), stderr, plan)
-			return p.Confirm("Split "+untrusted.Text(args[0], untrusted.MaxName)+"?", Nav{})
+			return askYes(p, Question{Show: func(w io.Writer, s style) { printSplitPlan(w, s, plan) }, Prompt: "Split " + untrusted.Text(args[0], untrusted.MaxName) + "?"})
 		}
 	}
 	name := manifestName(sc)
@@ -103,13 +102,13 @@ func (a *app) offerSplit(run func(*cobra.Command, []string) error) func(*cobra.C
 			return err
 		}
 		stderr := style{color: a.color(cmd.ErrOrStderr())}
-		// The plan alone is shown before the question; a No prints the refusal once.
+		// The plan alone is the question's text; a No prints the refusal once.
 		var yes bool
 		var asking error
 		req := engine.SplitRequest{Scope: offer.Scope, Name: offer.Name, WriteOnly: true, Options: engine.Options{Display: outputFlags(cmd)},
 			Confirm: func(plan engine.SplitPlan) (bool, error) {
-				printSplitPlan(cmd.ErrOrStderr(), stderr, plan)
-				ok, cerr := a.prompter(cmd).Confirm("Split "+untrusted.Text(offer.Name, untrusted.MaxName)+" now?", Nav{})
+				ok, cerr := askYes(a.prompter(cmd), Question{Show: func(w io.Writer, s style) { printSplitPlan(w, s, plan) },
+					Prompt: "Split " + untrusted.Text(offer.Name, untrusted.MaxName) + " now?"})
 				yes, asking = ok, cerr
 				return ok, cerr
 			}}

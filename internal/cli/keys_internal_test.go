@@ -165,20 +165,13 @@ var _ = Describe("lola's keys on the full-screen forms: q quits, Esc goes back a
 		Expect(shown(f)).To(ContainSubstring("q quit"))
 	})
 
-	It("asks before quitting a flow's closing yes/no question once two steps are answered; a question that stands alone quits at once", func() {
-		ok, err := onTerminal("qny").Confirm("Move 1 item to the trash?", Nav{Answered: 2})
-		Expect(err).NotTo(HaveOccurred(), "q asked, n went back to the question, and y answered it")
-		Expect(ok).To(BeTrue())
-		_, err = onTerminal("qy").Confirm("Move 1 item to the trash?", Nav{Answered: 2})
-		Expect(isQuit(err)).To(BeTrue(), "y quits")
-		_, err = onTerminal("q").Confirm("Remove these from your cache?", Nav{})
-		Expect(isQuit(err)).To(BeTrue(), "a question that stands alone quits at once")
-
+	It("past the first step, Esc on a form's first field says there is no step to go back to", func() {
 		h := &huhForms{in: &eofReader{r: strings.NewReader("")}}
-		v := false
-		f, _ := h.form(huh.ThemeFunc(func(bool) *huh.Styles { return plainTheme() }), Nav{Answered: 2}, huh.NewConfirm().Title("Migrate?").Value(&v))
+		v := ""
+		f, _ := h.form(huh.ThemeFunc(func(bool) *huh.Styles { return plainTheme() }), Nav{Answered: 2},
+			huh.NewSelect[string]().Title("Restore which?").Options(huh.NewOption("a", "a")).Value(&v))
 		f.Init()
-		Expect(shown(f, keyEsc)).To(ContainSubstring("no step to go back to — q quits"), "past the first step, Esc does not call this the first step")
+		Expect(shown(f, keyEsc)).To(ContainSubstring("no step to go back to — q quits"))
 	})
 
 	It("asks before quitting a later list of a form when the lists before it make two answers", func() {
@@ -514,16 +507,4 @@ var _ = Describe("the questions of lola init, lola market --add and hook and scr
 		Expect(err).NotTo(HaveOccurred())
 		Expect(name).To(Equal("acme-2"), "the pre-filled name answered after Esc")
 	})
-
-	DescribeTable("Esc and q answer no consent question: it waits for y, n or Enter",
-		func(question string) {
-			ok, err := onTerminal(escKey + "q" + "y").Consent(question)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(ok).To(BeTrue(), "only the y answered")
-		},
-		Entry("hooks", "Run kit's install hooks?"),
-		Entry("runtime", "Install rt's Claude Code hooks?"),
-		Entry("script", "Run this project's pre-install script?"),
-		Entry("later", "Trust this project's pre-install script for later runs?"),
-	)
 })

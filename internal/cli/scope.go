@@ -154,7 +154,7 @@ func (sp *scopePicker) otherDirectory(picked []engine.ScopeChoice, nav Nav) (str
 			if !sp.create || safe != dir { // never create a path other than the one shown
 				break
 			}
-			ok, cerr := sp.p.Confirm("Create "+safe+"? It does not exist yet", nav)
+			ok, cerr := askYes(sp.p, Question{Prompt: "Create " + safe + "? It does not exist yet", Nav: nav})
 			if cerr != nil && !errors.Is(cerr, ErrBack) {
 				return "", cerr
 			}

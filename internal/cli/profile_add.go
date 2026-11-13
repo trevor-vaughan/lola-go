@@ -66,10 +66,7 @@ func (a *app) profileAdd(cmd *cobra.Command, eng *engine.Engine, args []string, 
 				names = append(names, rp.Profile)
 			}
 			question := "Add " + strings.Join(names, ", ") + "? Nothing is turned on"
-			if err := a.pageThen(cmd, cmd.ErrOrStderr(), stderr, question, printer(rps)); err != nil {
-				return false, err
-			}
-			return p.Confirm(question, Nav{})
+			return askYes(p, Question{Show: printer(rps), Prompt: question})
 		}
 	}
 	if p.Interactive() {

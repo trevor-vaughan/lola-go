@@ -74,20 +74,24 @@ A plain `bash` tool has no TTY, so interactive commands take the static path (`l
 args just errors `needs a module or source`). That proves parsing, not the UI. Launch in `tmux`,
 poll for a marker, send keys, read the pane. Assertions belong in specs and `--plain`/`--json` runs.
 
-- **Gates.** Forms and questions: `interactive()` (`internal/cli/prompt.go:20`) needs stdin and stderr
+- **Gates.** Forms and questions: `interactive()` (`internal/cli/prompt.go:19`) needs stdin and stderr
   on a TTY; `LOLA_ACCESSIBLE=1` or `TERM=dumb` swaps them for numbered line prompts. Viewer/pager:
-  `app.paging` (`internal/cli/pager.go:37`) needs stdout and stderr on a TTY and none of `--json`,
+  `app.paging` (`internal/cli/pager.go:38`) needs stdout and stderr on a TTY and none of `--json`,
   `--plain`, `--no-pager`, `NO_PAGER`, `pager: false`, `LOLA_PAGER=cat`; it opens only when the output
-  is at least as tall as the terminal, so use `-y 6` to force it.
-- **Surfaces** (ready marker): `lola help <cmd>` / bare `lola` viewer (`lines N–M of T`); `lola install`
-  form (`Step 1 of 5`, review `y apply · c change · n cancel`); scope pickers on `tidy`, `update`,
+  is at least as tall as the terminal, so use `-y 6` to force it. A question (`[y/N]`) opens it when its
+  text and prompt line do not fit; otherwise the text prints and the prompt sits under it.
+- **Surfaces** (ready marker): `lola help <cmd>` / bare `lola` viewer (`━━ lines N–M of T`); `lola install`
+  form (`Step 1 of 5`, review `Apply these changes? [y/c/n]`); scope pickers on `tidy`, `update`,
   `sync`, `repair`, `profile … --on/--switch/--move` (`<Verb> where?`); `trash` (`Restore or empty
   which?`); `cache clean` (`Remove these from your cache?`); `init` without `-y`; `profile <n> --edit
-  <mod>` (`Step 1 of 3`); trust diff on `sync`/`update` (`Trust these changes?`); `uninstall --project`
-  viewer before its question (`q continue:` footer). `uninstall`, `cache rm`, `info`, `cache add` and
+  <mod>` (`Step 1 of 3`); trust diff on `sync`/`update` (`Trust these changes?`); yes/no questions
+  (`[y/N]`: `uninstall`, `cache rm`, `tidy`'s last step, consent, `Proceed?`) under their text, or in the
+  viewer with the question in it when that does not fit (`━━ lines` above the prompt); a viewer before a
+  picker (`q  continue to:`). `uninstall`, `cache rm`, `info`, `cache add` and
   `market --add` with no args never go interactive; they error with hints.
 - **Keys.** Pickers: `x` toggle, `ctrl+a` all/none, `/` filter, `Enter`, `esc` back, `q` quit.
-  Confirms: `y`/`n`. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`, `q`. `ctrl+c` exits 0 with
+  Questions: type `y`, `n` (`c` at the review), then `Enter`; `Enter` alone takes the capital letter's
+  answer, and the review has none. Viewer: `j`/`k`, `g`/`G`, `/` then `Enter`, `n`/`N`, `q`. `ctrl+c` exits 0 with
   `nothing changed`. After `q` the viewer reprints its content to scrollback.
 
 ```bash

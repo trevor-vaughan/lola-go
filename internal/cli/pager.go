@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
 	"github.com/trevor-vaughan/lola-go/internal/config"
@@ -101,11 +102,11 @@ func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, pr
 		return nil
 	}
 	width, height := a.width(out), a.height(out)
-	if width == 0 || height == 0 || newViewer(buf.String(), false, width, height).vp.TotalLineCount() < height {
+	if width == 0 || height == 0 || fits(buf.String(), 1, width, height) {
 		fmt.Fprint(w, buf.String())
 		return nil
 	}
-	ans, err := a.view(cmd, buf.String(), false, false, Nav{}, then)
+	ans, err := a.view(cmd, buf.String(), then)
 	switch {
 	case err != nil:
 		warn("the viewer failed: " + untrusted.CleanErr(err).Error())
@@ -113,6 +114,18 @@ func (a *app) pageThen(cmd *cobra.Command, w io.Writer, s style, then string, pr
 		return ErrAborted
 	}
 	return nil
+}
+
+// fits reports whether text, then rows more under it, shows whole on a terminal width columns
+// wide and height rows high, the text wrapped to the width as the viewer wraps it. It decides
+// inline or the pager for a question (rows: its prompt line at its widest, promptRows) and for
+// read-only output (rows: 1, the shell's prompt that follows).
+func fits(text string, rows, width, height int) bool {
+	lines := 0
+	if text = strings.TrimSuffix(text, "\n"); text != "" {
+		lines = strings.Count(ansi.Wrap(text, width, ""), "\n") + 1
+	}
+	return lines+rows <= height
 }
 
 // runPager runs mode's pager with text on its stdin, writing to the terminal on stdout, and returns
