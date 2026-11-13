@@ -1,0 +1,34 @@
+internal/cli/huh.go
+  s_cdcf17caf8b368::t_6a5eb42c179afc 868-869,877
+internal/cli/keys_paths_internal_test.go
+  s_cdcf17caf8b368::t_dd4a80c35bcdda 525,527-565
+  s_cdcf17caf8b368::t_32e6dbadb53b4a 523-524,526
+internal/cli/ask.go
+  s_cdcf17caf8b368::t_6a5eb42c179afc 63-64,76,93
+internal/cli/reportbuf.go
+  s_cdcf17caf8b368::t_6a5eb42c179afc 102-120
+internal/cli/ask_internal_test.go
+  s_cdcf17caf8b368::t_c38f6bc1f79db1 129,144-145
+docs/architecture.md
+  s_cdcf17caf8b368::t_48cafac2c9f543 74-76
+docs/reference/output-contract.md
+  s_cdcf17caf8b368::t_fad7a5a6d1ed7b 34-36
+docs/usage.md
+  s_cdcf17caf8b368::t_eb6bc4a87c9e27 459-460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "1a86e685e70e00077167737f8b5fb1f7e4bd410d",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
