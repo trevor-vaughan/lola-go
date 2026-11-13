@@ -1,0 +1,28 @@
+docs/reference/output-contract.md
+  s_cdcf17caf8b368::t_22a36f99bd96c3 11-30,45-49,155-162
+AGENTS.md
+  s_cdcf17caf8b368::t_7faf08710a3962 92,95-97
+docs/usage.md
+  s_cdcf17caf8b368::t_530e2fa6e9f15a 428-446,450-458
+  s_cdcf17caf8b368::t_6f7dac8963581d 447-449
+docs/architecture.md
+  s_cdcf17caf8b368::t_28dc75d0f97bfd 67-84
+docs/architecture/plans-and-the-ledger.md
+  s_cdcf17caf8b368::t_28dc75d0f97bfd 79-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "999347cb0e5c66c3d04cd39561fcdeba800585f7",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
