@@ -1,0 +1,57 @@
+internal/engine/ops.go
+  s_cdcf17caf8b368::t_f59572d04efe5d 574-576
+docs/guides/sync-and-trust.md
+  s_cdcf17caf8b368::t_4c2219f25c0241 395
+  s_cdcf17caf8b368::t_55f44c9357eff2 359-366,392-394
+internal/engine/engine.go
+  s_cdcf17caf8b368::t_628ecbcca7f938 181-184
+docs/reference/update.md
+  s_cdcf17caf8b368::t_55f44c9357eff2 77
+docs/reference/sync.md
+  s_cdcf17caf8b368::t_55f44c9357eff2 33
+docs/reference/install.md
+  s_cdcf17caf8b368::t_55f44c9357eff2 30
+internal/engine/sync.go
+  s_cdcf17caf8b368::t_c13262efa8e9b7 501-502,507,1461,1476-1481,3174-3176,3186-3188
+  s_cdcf17caf8b368::t_fd32fa2f320d0e 1759
+  s_cdcf17caf8b368::t_f05463ec52ea62 500,504,508,512-516
+  s_cdcf17caf8b368::t_afaf3f79551424 1270,3177-3181
+  s_cdcf17caf8b368::t_4c2219f25c0241 503
+  s_cdcf17caf8b368::t_f2e64065c1666a 1486-1487,1492-1494,1497
+  s_cdcf17caf8b368::t_652d589093dba1 517,3182-3185,3189-3196
+internal/engine/trustkinds.go
+  s_cdcf17caf8b368::t_de360bc0649019 85-92
+internal/engine/trustkinds_test.go
+  s_cdcf17caf8b368::t_bde501db5f17f5 431-438,442-445
+  s_cdcf17caf8b368::t_ef20d931a07b93 439-441
+  s_cdcf17caf8b368::t_3467348c610e2b 373-374,381-430
+docs/architecture/sync.md
+  s_cdcf17caf8b368::t_4c2219f25c0241 215
+  s_cdcf17caf8b368::t_071c158737eba6 210-214
+internal/engine/hooks.go
+  s_cdcf17caf8b368::t_05528d10f41c71 104
+  s_cdcf17caf8b368::t_582b93b1342768 105-106
+  s_cdcf17caf8b368::t_14d677b23f1397 241,244
+  s_cdcf17caf8b368::t_fd32fa2f320d0e 111
+internal/engine/runtimehooks.go
+  s_cdcf17caf8b368::t_fd32fa2f320d0e 274
+  s_cdcf17caf8b368::t_05528d10f41c71 262-263
+internal/cli/sync_test.go
+  s_cdcf17caf8b368::t_999e6fb888fc2c 874,876
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "91469273bf4e944c412c4cbc8355a6339235bd37",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
