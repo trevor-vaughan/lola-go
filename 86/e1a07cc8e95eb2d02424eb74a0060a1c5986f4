@@ -1,0 +1,27 @@
+internal/cli/flow.go
+  s_cdcf17caf8b368::t_47b992db755948 863-868
+internal/cli/prompt.go
+  s_cdcf17caf8b368::t_9a65f599983744 145-160,163-168,170
+internal/cli/flow_test.go
+  s_cdcf17caf8b368::t_47b992db755948 1393-1417
+docs/architecture/tui-flows.md
+  s_cdcf17caf8b368::t_612512b528c755 1500
+docs/guides/authoring-modules.md
+  s_cdcf17caf8b368::t_0a2bf73d6b9d1a 506-507
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "86e1a07cc8e95eb2d02424eb74a0060a1c5986f4",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
