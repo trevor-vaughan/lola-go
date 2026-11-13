@@ -1,0 +1,29 @@
+internal/cli/findgroup.go
+  s_ee410262bb5bf4::t_68c2964f286900 14-17,19-21,24-27,29,41-52,54,56,59-61,63-90,96-99,101,103-114,117-148
+internal/cli/findgroup_internal_test.go
+  s_ee410262bb5bf4::t_39f90c4dc077fd 1-59
+internal/cli/flow_test.go
+  s_ee410262bb5bf4::t_a261ab104c6698 2503
+internal/cli/human.go
+  s_ee410262bb5bf4::t_23fa9b613645bc 440-441,459-460
+internal/cli/human_internal_test.go
+  s_ee410262bb5bf4::t_de9b29fbe964e1 81-82,84,87-89,96,101-104,138-140,169,201-202
+internal/cli/notices_test.go
+  s_ee410262bb5bf4::t_043d6feae7e2cd 52-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "cde9630d3d870f1407eb913b659c105a0a780db3",
+  "prompts": {},
+  "sessions": {
+    "s_ee410262bb5bf4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a826367729b265d83",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
