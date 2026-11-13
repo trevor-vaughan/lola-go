@@ -1,0 +1,26 @@
+internal/cli/viewer.go
+  s_cdcf17caf8b368::t_d9b89bd5a2ede2 219-221,227-236,243-262
+  s_cdcf17caf8b368::t_41a30a581848ba 263-264
+internal/cli/viewer_internal_test.go
+  s_cdcf17caf8b368::t_9f22ea7a63de28 442-449,451-452,456-462
+  s_cdcf17caf8b368::t_d9b89bd5a2ede2 450
+  s_cdcf17caf8b368::t_896f21ed55e4fc 453-455
+docs/reference/output-contract.md
+  s_cdcf17caf8b368::t_8cf75c6dcc25ae 167-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "1ad206fadbcb289424ab0dc5331ec9ecc9073998",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
