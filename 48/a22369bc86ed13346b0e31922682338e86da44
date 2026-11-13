@@ -1,0 +1,21 @@
+internal/cli/findgroup.go
+  s_ee410262bb5bf4::t_f408057d21f989 49,79-83,85
+internal/cli/findgroup_internal_test.go
+  s_ee410262bb5bf4::t_c6e2869a02cc0c 4-5,61-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "48a22369bc86ed13346b0e31922682338e86da44",
+  "prompts": {},
+  "sessions": {
+    "s_ee410262bb5bf4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a826367729b265d83",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
