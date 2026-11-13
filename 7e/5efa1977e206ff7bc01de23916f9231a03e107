@@ -1,0 +1,27 @@
+internal/engine/trustkinds_test.go
+  s_cdcf17caf8b368::t_3d4269bdefa86f 448-456
+docs/architecture/sync.md
+  s_cdcf17caf8b368::t_cf854ca491a10b 215-216
+internal/engine/runtimehooks.go
+  s_cdcf17caf8b368::t_cf854ca491a10b 301-305
+docs/guides/sync-and-trust.md
+  s_cdcf17caf8b368::t_cf854ca491a10b 395-396
+internal/engine/sync.go
+  s_cdcf17caf8b368::t_cf854ca491a10b 503-504,506,508,1273-1275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7e5efa1977e206ff7bc01de23916f9231a03e107",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
