@@ -1,0 +1,25 @@
+internal/cli/install_test.go
+  s_cdcf17caf8b368::t_16a546c0f1160d 286-297
+internal/cli/report.go
+  s_cdcf17caf8b368::t_efa8d868022103 58,87-90
+docs/reference/output-contract.md
+  s_cdcf17caf8b368::t_1c271708efb156 21
+docs/usage.md
+  s_cdcf17caf8b368::t_62dc8674ee8e5e 450-451
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e07d37e1f04e44f1e48d83e57808dd7cab2265d8",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
