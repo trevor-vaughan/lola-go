@@ -1,0 +1,21 @@
+internal/ledger/ledger_test.go
+  s_cdcf17caf8b368::t_43465e822291d1 485-539
+internal/ledger/ledger.go
+  s_cdcf17caf8b368::t_43465e822291d1 102-105,478-482,582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "103bd14f681eb4aeb2763533ae6b427e70a3991c",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
