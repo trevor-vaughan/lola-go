@@ -1,0 +1,29 @@
+docs/guides/install-scripts.md
+  s_d44392d15f79ea::t_4dfc0517e9f695 109-110
+docs/reference/output-contract.md
+  s_d44392d15f79ea::t_bce20181e54d5d 54-58
+internal/cli/human.go
+  s_d44392d15f79ea::t_9cb8a78d37bda7 252-253,258,269
+internal/cli/misc2_paths_test.go
+  s_d44392d15f79ea::t_deed75d08c6de3 26,919-928
+internal/cli/scripts_test.go
+  s_d44392d15f79ea::t_b1451cec25a340 82,97,139,143,145-146,225
+internal/engine/scripts.go
+  s_d44392d15f79ea::t_44e71dee9ad59b 79-88,96,363,369,426,437,545
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "d1dfadf2ab89ec7c78d432d47115616ce4bd1bfa",
+  "prompts": {},
+  "sessions": {
+    "s_d44392d15f79ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa47b044daf29445c",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
