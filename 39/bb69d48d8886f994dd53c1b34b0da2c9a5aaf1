@@ -1,0 +1,35 @@
+internal/cli/flow.go
+  s_cdcf17caf8b368::t_f485b129f258e5 141,873-874
+  s_cdcf17caf8b368::t_d8422fb71618d0 140,142,872,1465
+docs/architecture/tui-flows.md
+  s_cdcf17caf8b368::t_43fa5c402ddf62 1501
+internal/cli/flow_test.go
+  s_cdcf17caf8b368::t_a09df396ec9f41 1451-1452,1459-1464,1471-1482
+  s_cdcf17caf8b368::t_8f5e627a7c2f8d 1483
+docs/guides/install-trust-kinds.md
+  s_cdcf17caf8b368::t_43fa5c402ddf62 94-98
+docs/architecture/trust-kinds.md
+  s_cdcf17caf8b368::t_43fa5c402ddf62 92-94
+internal/cli/trust.go
+  s_cdcf17caf8b368::t_d8422fb71618d0 15
+  s_cdcf17caf8b368::t_f485b129f258e5 190-223
+  s_cdcf17caf8b368::t_43fa5c402ddf62 285,287-291
+docs/guides/sync-and-trust.md
+  s_cdcf17caf8b368::t_43fa5c402ddf62 400-402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "39bb69d48d8886f994dd53c1b34b0da2c9a5aaf1",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
