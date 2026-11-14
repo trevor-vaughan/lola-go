@@ -1,0 +1,33 @@
+internal/cli/sync_test.go
+  s_d44392d15f79ea::t_5a11a2b40e2a71 880-908
+docs/guides/sync-and-trust.md
+  s_d44392d15f79ea::t_f6e929fe26f48e 229,259-262
+docs/reference/output-contract.md
+  s_d44392d15f79ea::t_406515905ee532 303-305
+internal/cli/sync_output.go
+  s_d44392d15f79ea::t_84c2f8b45a71b2 380,453-455
+internal/engine/content.go
+  s_d44392d15f79ea::t_9cca1293bcc992 52-60,149-153,215-271
+internal/engine/sync.go
+  s_d44392d15f79ea::t_feee4beb6a4fbb 295,1978,2048,2348
+internal/module/frontmatter.go
+  s_d44392d15f79ea::t_815a7d7a7c5346 29-45
+internal/target/mech/claude.go
+  s_d44392d15f79ea::t_f0dc074e2c77fc 101-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "cc253817a09c4d1cf47e47f1a0d9d2dbaf9319a0",
+  "prompts": {},
+  "sessions": {
+    "s_d44392d15f79ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa47b044daf29445c",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
