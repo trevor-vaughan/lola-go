@@ -1,0 +1,33 @@
+docs/architecture/tui-flows.md
+  s_d44392d15f79ea::t_6ecc141aa6497a 94-95
+docs/guides/choosing-what-to-install.md
+  s_d44392d15f79ea::t_67597482303078 110-112
+docs/reference/install.md
+  s_d44392d15f79ea::t_2dfde2d2132d5c 45
+docs/reference/output-contract.md
+  s_d44392d15f79ea::t_78d101b0c2d80b 53
+internal/cli/cmd_core.go
+  s_d44392d15f79ea::t_8c0bef638a969a 255
+internal/cli/flow.go
+  s_d44392d15f79ea::t_9f4289a556edfb 240-242
+internal/cli/flow_test.go
+  s_d44392d15f79ea::t_51c22b2a808d69 758,761-763,785-800,1406,1412,1414,1750
+internal/cli/where_test.go
+  s_d44392d15f79ea::t_761c881b8ff424 51,61-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0f7b315713dbb10dc360944cc2973da231fa71c3",
+  "prompts": {},
+  "sessions": {
+    "s_d44392d15f79ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa47b044daf29445c",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
