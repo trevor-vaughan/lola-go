@@ -1,0 +1,51 @@
+internal/cli/profile_add.go
+  s_d44392d15f79ea::t_26a7e092a1db80 72
+internal/cli/scope.go
+  s_d44392d15f79ea::t_5c9847c835724c 42
+docs/architecture/tui-flows.md
+  s_d44392d15f79ea::t_a2605b032b8e62 641,647,861,883
+docs/reference/profile.md
+  s_d44392d15f79ea::t_6a9cff17419e46 54
+docs/reference/repair.md
+  s_d44392d15f79ea::t_7d3e0dd572edf9 17
+docs/reference/sync.md
+  s_d44392d15f79ea::t_2b75205f9371be 32
+docs/reference/tidy.md
+  s_d44392d15f79ea::t_bf3b279ecc9c58 20
+docs/reference/update.md
+  s_d44392d15f79ea::t_9561dbc52b1f3a 78
+internal/cli/cmd_profile.go
+  s_d44392d15f79ea::t_d7d36b2b3a37c5 452
+internal/cli/cmd_repair.go
+  s_d44392d15f79ea::t_a04881cf9beb83 60
+internal/cli/cmd_sync.go
+  s_d44392d15f79ea::t_882f3874b2e0cf 262
+internal/cli/cmd_tidy.go
+  s_d44392d15f79ea::t_f90782c6462f72 54,116
+internal/cli/cmd_update.go
+  s_d44392d15f79ea::t_f1d8f5a6168170 39
+internal/cli/misc_paths_test.go
+  s_d44392d15f79ea::t_bfe3c48905b298 11
+internal/cli/scope_paths_test.go
+  s_d44392d15f79ea::t_dc2e9da211ff9c 247-248,309
+internal/cli/scope_test.go
+  s_d44392d15f79ea::t_1a698b020c95aa 61-83,251-252
+internal/cli/tidy_test.go
+  s_d44392d15f79ea::t_6162b2b132a198 334,336,338-341,348,354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c52b5f3822081904f45a098206ce24c60f829397",
+  "prompts": {},
+  "sessions": {
+    "s_d44392d15f79ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa47b044daf29445c",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
