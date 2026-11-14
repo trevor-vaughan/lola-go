@@ -1,0 +1,119 @@
+internal/migrate/run.go
+  s_cdcf17caf8b368::t_33f620cefb7001 121,126-127,131-135,501,647
+  s_cdcf17caf8b368::t_9ae021c702741d 128-130
+internal/engine/runtimehooks.go
+  s_cdcf17caf8b368::t_796c3564e107be 52,602
+  s_cdcf17caf8b368::t_2512913edffe9d 139-141,146,149,151,155-156,307-308,310-311,314,317,322,326,329,333,336,340,343,347,350
+  s_cdcf17caf8b368::t_3fcbf887bf4cbc 277
+  s_cdcf17caf8b368::t_da1baab08be7de 56-57
+  s_cdcf17caf8b368::t_3b08ea315f64d9 157
+internal/cli/update_test.go
+  s_cdcf17caf8b368::t_06692a1a0134e1 730,762
+e2e/team/team.venom.yml
+  s_cdcf17caf8b368::t_ca29a7746b4663 633-634,644,648,650,682-683
+internal/engine/info.go
+  s_cdcf17caf8b368::t_f9cb1508da16d9 220-221,223
+internal/engine/marketinstall_test.go
+  s_cdcf17caf8b368::t_9b59da32a88a3b 252-253,300-301
+internal/cli/cmd_info.go
+  s_cdcf17caf8b368::t_fe8643b8bf7dd9 295-301
+internal/engine/trustkinds.go
+  s_cdcf17caf8b368::t_3fcbf887bf4cbc 132-136,141-145,150,152,164
+  s_cdcf17caf8b368::t_763d8a9dafdd02 151,161-163
+internal/cli/install_test.go
+  s_cdcf17caf8b368::t_73034d0ad5808a 365
+internal/cli/trust.go
+  s_cdcf17caf8b368::t_12e8f54caabc8e 246-248
+  s_cdcf17caf8b368::t_b18640be70c8b6 84
+docs/architecture/tui-flows.md
+  s_cdcf17caf8b368::t_12e8f54caabc8e 1499-1501
+internal/cli/sync_test.go
+  s_cdcf17caf8b368::t_a9594adea7bdcd 193-227,248
+  s_cdcf17caf8b368::t_8c475c1a2d50ee 242-247
+  s_cdcf17caf8b368::t_4b2ec7e93194ca 249
+internal/engine/sources_test.go
+  s_cdcf17caf8b368::t_1d2e461df2cd9d 431-432
+  s_cdcf17caf8b368::t_9b59da32a88a3b 305-306,402
+  s_cdcf17caf8b368::t_763d8a9dafdd02 422-423
+internal/cli/core_test.go
+  s_cdcf17caf8b368::t_b43aa3b7f33dd2 295-296,343,365
+  s_cdcf17caf8b368::t_ebe239a2adf5c4 328
+internal/cli/notices_test.go
+  s_cdcf17caf8b368::t_73034d0ad5808a 150
+internal/engine/hooks.go
+  s_cdcf17caf8b368::t_73813c132f5030 21
+  s_cdcf17caf8b368::t_b9ab5e394b7967 36-38
+  s_cdcf17caf8b368::t_1e5810477c20fd 48-54,96-97,106,110,118-138,338-339,382-387
+  s_cdcf17caf8b368::t_3fcbf887bf4cbc 426-427
+  s_cdcf17caf8b368::t_f9014f701e24cf 422-424
+  s_cdcf17caf8b368::t_3eec5e0610e745 388
+internal/cli/scripts_test.go
+  s_cdcf17caf8b368::t_174f48a8a27639 136,165,175
+  s_cdcf17caf8b368::t_2a723bb23235db 63-65,69-74
+  s_cdcf17caf8b368::t_d392fe8b368010 97
+  s_cdcf17caf8b368::t_adc7e7ffff9a96 77,82-83,119,121,142,145
+  s_cdcf17caf8b368::t_82ba7e2ec09252 144
+internal/cli/report.go
+  s_cdcf17caf8b368::t_906aa89e42059b 715,723-730
+  s_cdcf17caf8b368::t_7b456e507466b6 308,324
+  s_cdcf17caf8b368::t_6ab83783442310 709
+  s_cdcf17caf8b368::t_ca7ae97094a72f 731-732
+internal/engine/scripts_test.go
+  s_cdcf17caf8b368::t_f749e20304f58b 542
+  s_cdcf17caf8b368::t_9b59da32a88a3b 488-489,710
+internal/cli/trust_test.go
+  s_cdcf17caf8b368::t_06692a1a0134e1 106,359
+internal/cli/output.go
+  s_cdcf17caf8b368::t_8c475c1a2d50ee 149-150,155-156,160-163,166,169-175
+  s_cdcf17caf8b368::t_6ef22a659e388b 21
+internal/cli/cmd_migrate.go
+  s_cdcf17caf8b368::t_33f620cefb7001 327,356,561-581,583-590,604
+  s_cdcf17caf8b368::t_906aa89e42059b 582
+internal/engine/trustkinds_test.go
+  s_cdcf17caf8b368::t_9b59da32a88a3b 36-42,149-150
+  s_cdcf17caf8b368::t_09b3ba495b78f4 739-749
+  s_cdcf17caf8b368::t_69d59afc7ade64 755,773
+  s_cdcf17caf8b368::t_d69f8a83c61cd8 752,754,756-758,763-765,768-772,774,779,791,794-799,805-823
+  s_cdcf17caf8b368::t_f749e20304f58b 25-35
+  s_cdcf17caf8b368::t_1d2e461df2cd9d 249-250
+  s_cdcf17caf8b368::t_eda26558a1edcd 750-751,824-825
+internal/engine/runtimehooks_test.go
+  s_cdcf17caf8b368::t_796c3564e107be 478-479,494
+internal/engine/seen.go
+  s_cdcf17caf8b368::t_2512913edffe9d 64-75
+internal/cli/human.go
+  s_cdcf17caf8b368::t_6ab83783442310 258
+  s_cdcf17caf8b368::t_7b456e507466b6 254,262-263,265-266,276-278,282,287-293,297-326,328
+  s_cdcf17caf8b368::t_174f48a8a27639 294-296
+internal/cli/prompt.go
+  s_cdcf17caf8b368::t_dccc2933c8a21a 118,123-125,138,152-154
+  s_cdcf17caf8b368::t_13f22a84dbbf86 38-43,45-48,58-59
+internal/cli/migrate_test.go
+  s_cdcf17caf8b368::t_f9014f701e24cf 126,131-133
+internal/cli/info_test.go
+  s_cdcf17caf8b368::t_9ae021c702741d 269
+  s_cdcf17caf8b368::t_c47a8928b647f4 96-100
+internal/cli/misc2_paths_test.go
+  s_cdcf17caf8b368::t_3a4c1e765625ce 671,692
+  s_cdcf17caf8b368::t_dbfa30043e2bb1 532,534
+  s_cdcf17caf8b368::t_9ae021c702741d 668-670,691
+internal/engine/scripts.go
+  s_cdcf17caf8b368::t_5f94776a3ebc02 42-45,58,69-72,149-154,298-307,349-355,463,515,517-520,538,552-553
+  s_cdcf17caf8b368::t_3fcbf887bf4cbc 580-581
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "335ee2e28ada5fcfdd61cc37c8a4d2a6fb7e44a1",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
