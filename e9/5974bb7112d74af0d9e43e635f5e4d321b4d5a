@@ -1,0 +1,23 @@
+docs/reference/output-contract.md
+  s_d44392d15f79ea::t_193e42c357fbb9 106-108
+internal/cli/context_test.go
+  s_d44392d15f79ea::t_0e0bc40a7d9a57 288-301
+internal/engine/context.go
+  s_d44392d15f79ea::t_2d846c749b3f01 4,54-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e95974bb7112d74af0d9e43e635f5e4d321b4d5a",
+  "prompts": {},
+  "sessions": {
+    "s_d44392d15f79ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa47b044daf29445c",
+        "model": "unknown"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
