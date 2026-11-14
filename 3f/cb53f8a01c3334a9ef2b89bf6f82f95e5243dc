@@ -1,0 +1,94 @@
+internal/engine/scripts_test.go
+  s_cdcf17caf8b368::t_790d92cced2f3d 305-327
+internal/engine/scripts.go
+  s_cdcf17caf8b368::t_790d92cced2f3d 647
+internal/engine/hooks.go
+  s_cdcf17caf8b368::t_e663d2c5a24430 23
+  s_cdcf17caf8b368::t_790d92cced2f3d 510
+internal/cli/migrate_test.go
+  s_cdcf17caf8b368::t_fcac3c73ffd567 41-42,44
+internal/cli/cmd_sync.go
+  s_cdcf17caf8b368::t_6a8315df952bea 484,486
+internal/engine/engine.go
+  s_cdcf17caf8b368::t_6c26e697d065db 249-254,264-268
+  s_cdcf17caf8b368::t_6c5e3124b37906 951
+  s_cdcf17caf8b368::t_872a8a6f52dec1 255-263,946,948,979-981,1025
+internal/engine/choices.go
+  s_cdcf17caf8b368::t_1b620f8e8016be 50-51,302
+  s_cdcf17caf8b368::t_c86f2ffbb555c9 20
+  s_cdcf17caf8b368::t_872a8a6f52dec1 278,300-301
+internal/engine/ops.go
+  s_cdcf17caf8b368::t_872a8a6f52dec1 839-840
+  s_cdcf17caf8b368::t_1b620f8e8016be 841-842,906-907
+  s_cdcf17caf8b368::t_7488ac36c68d3f 673
+docs/architecture.md
+  s_cdcf17caf8b368::t_6d24297655e01d 81-94
+internal/engine/market_install.go
+  s_cdcf17caf8b368::t_872a8a6f52dec1 218,248
+internal/engine/market_internal_test.go
+  s_cdcf17caf8b368::t_f409436e0518b4 60
+internal/cli/root.go
+  s_cdcf17caf8b368::t_dcf902aa7825c9 86-87,105-110,137
+  s_cdcf17caf8b368::t_567225f4a50f8d 16
+internal/engine/remote.go
+  s_cdcf17caf8b368::t_34742df3e7b5a3 229
+internal/engine/engine_test.go
+  s_cdcf17caf8b368::t_15f061f81d97c0 1071-1085
+internal/cli/update_test.go
+  s_cdcf17caf8b368::t_92d9e0ad1c0854 702-708,710-714
+  s_cdcf17caf8b368::t_0284fcddd6ab3f 641-686,688-696,699-701,715-751
+  s_cdcf17caf8b368::t_01497d3868459e 4,14-15
+  s_cdcf17caf8b368::t_5c4f9c2a96519c 687
+  s_cdcf17caf8b368::t_114ef2831765e4 697-698
+  s_cdcf17caf8b368::t_a75ac2dfd2dc87 709
+internal/cli/flow.go
+  s_cdcf17caf8b368::t_a4048ed5d9e623 892
+  s_cdcf17caf8b368::t_6a8315df952bea 838,840,898,900,1113-1117,1728-1729,1731
+docs/reference/output-contract.md
+  s_cdcf17caf8b368::t_add8bb8325ed89 131-134
+internal/cli/progress_internal_test.go
+  s_cdcf17caf8b368::t_fcac3c73ffd567 50-51
+  s_cdcf17caf8b368::t_d2bf6011cd9ddd 1-49,52-55
+internal/engine/sync.go
+  s_cdcf17caf8b368::t_7488ac36c68d3f 485
+  s_cdcf17caf8b368::t_38444f4b0bac77 3095
+  s_cdcf17caf8b368::t_34742df3e7b5a3 426,755-757,829,868,925,1038,1683,2965-2966,3009,3011,3013,3015,3052,3096,3106
+  s_cdcf17caf8b368::t_872a8a6f52dec1 3012
+internal/cli/pager.go
+  s_cdcf17caf8b368::t_a4048ed5d9e623 85
+internal/engine/update_test.go
+  s_cdcf17caf8b368::t_0dbba9b46b37b2 172-185,200-207
+  s_cdcf17caf8b368::t_c0232dd9240f65 186-199
+docs/usage.md
+  s_cdcf17caf8b368::t_add8bb8325ed89 662-663
+internal/cli/huh.go
+  s_cdcf17caf8b368::t_a4048ed5d9e623 170
+  s_cdcf17caf8b368::t_b43dabfbc6c723 148,220-222
+internal/engine/choices_test.go
+  s_cdcf17caf8b368::t_872a8a6f52dec1 65-72
+docs/reference/migrate.md
+  s_cdcf17caf8b368::t_1f727861a3dd89 26
+internal/cli/progress.go
+  s_cdcf17caf8b368::t_dcf902aa7825c9 11-12,134-140,143-156
+  s_cdcf17caf8b368::t_e7c849b0208fa7 5-7,18-21,24-31,34,40-89,91-133,141-142
+internal/cli/ask.go
+  s_cdcf17caf8b368::t_a4048ed5d9e623 68
+internal/engine/probe.go
+  s_cdcf17caf8b368::t_7488ac36c68d3f 158,364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3fcb53f8a01c3334a9ef2b89bf6f82f95e5243dc",
+  "prompts": {},
+  "sessions": {
+    "s_cdcf17caf8b368": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14e60c56-1c77-44fc-9b50-e529f44303c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "LLM (riotbox) <llm@riotbox>"
+    }
+  }
+}
